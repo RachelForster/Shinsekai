@@ -3,6 +3,16 @@
 > 让你的纸片人老婆动起来。
 Simply animate your 2D waifu.
 
+Fork自 https://github.com/yuyuyzl/EasyVtuber
+
+由于是AI Vtuber，因此去掉了面捕功能。
+
+新增功能：
+
+1. 空闲自动做动作（眨眼、东张西望）
+2. 唱歌动作（自动跟随节奏摇摆，对口型）
+3. 说话动作（自动对口型）
+
 ## Installation
 ### 安装依赖库
 在虚拟环境中执行以下命令  
