@@ -63,4 +63,8 @@ https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=0
 右键属性-取消激活-分辨率类型自定义-分辨率512x512(与`--output_size`参数一致)-视频格式ARGB-激活
 
 ## Usage
-
+1. 打开OBS并配置好视频采集设备
+2. 将`main.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径
+3. 运行`main.bat`
+4. 使用post请求 http://127.0.0.1:7888/alive （默认端口为7888），
+并传入相应参数便可使用音频文件自动生成模型的动作，可参考`test.py`

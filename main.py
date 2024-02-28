@@ -506,5 +506,5 @@ if __name__ == '__main__':
     aiv.start()
 
     api.add_resource(FlaskAPI, '/alive')
-    app.run(port=7888)  # 运行 Flask app
+    app.run(port=args.port)  # 运行 Flask app
     print('process done')

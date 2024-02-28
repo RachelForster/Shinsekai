@@ -30,6 +30,7 @@ parser.add_argument('--bongo', action='store_true')
 parser.add_argument('--cache', type=str, default='256mb')  # 1gb
 parser.add_argument('--gpu_cache', type=str, default='512mb')
 parser.add_argument('--simplify', type=int, default=1)
+parser.add_argument('--port', type=int, default=7888)
 args = parser.parse_args()
 args.output_w = int(args.output_size.split('x')[0])
 args.output_h = int(args.output_size.split('x')[1])
