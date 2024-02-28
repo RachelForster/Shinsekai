@@ -294,7 +294,7 @@ class ActionAnimeV2:
     def check_deque(self):
         # 检查depue是否为空，若为空则加入归正动作
         cur_time = time.perf_counter()
-        return_time = cur_time + 0.3
+        return_time = cur_time + 0.3  # 回正时长
         if len(self.eyelid) == 0:
             self.eyelid.append([[self.mouth_eye_vector_c[3], 0], [self.mouth_eye_vector_c[2], 0], [cur_time, return_time]])
         if len(self.eyeball) == 0:
@@ -305,7 +305,7 @@ class ActionAnimeV2:
                 if self.mouth_eye_vector_c[i] > 0.:
                     mouth_type = i
                     break
-            self.mouth.append([[self.mouth_eye_vector_c[mouth_type], 0], [cur_time, return_time], mouth_type])
+            self.mouth.append([[self.mouth_eye_vector_c[mouth_type], 0], [cur_time, 0.05], mouth_type])
         if len(self.head_axial) == 0:
             self.head_axial.append([[self.pose_vector_c[1], 0], [cur_time, return_time]])
         if len(self.head_coronal) == 0:
