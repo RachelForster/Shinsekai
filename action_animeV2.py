@@ -44,8 +44,7 @@ def calc_cur(start, end, period):
 
 class ActionAnimeV2:
     def __init__(self):
-        # 同时只能有1个为True，用作动作状态过渡
-        self.action_state = [False] * len(ActionState)
+        self.action_state = [False] * len(ActionState)  # 同时只能有1个为True，用作动作状态过渡
 
         self.eyebrow_vector_c = [0.0] * 12
         self.mouth_eye_vector_c = [0.0] * 27
@@ -68,12 +67,14 @@ class ActionAnimeV2:
             self.reset_deque()
             self.check_deque()  # 所有回正
 
+            # 根据节奏点头
             beat_times, beat_strengths = beat_q['beat_times'], beat_q['beat_strengths']
             for i, beat_time in enumerate(beat_times[1:]):
                 s_cur, stength, beat_half = self.head_sagittal[-1][0][1], beat_strengths[i], (beat_time + beat_times[i]) / 2
                 self.head_sagittal.append([[s_cur, 1.0 * stength], [beat_times[i], beat_half]])
                 self.head_sagittal.append([[1.0 * stength, -0.8 * stength], [beat_half, beat_time]])
 
+            # 嘴巴根据音量开合
             voice_times, voice_strengths = mouth_q['voice_times'], mouth_q['voice_strengths']
             for i, voice_time in enumerate(voice_times[1:]):
                 m_cur = self.mouth[-1][0][1]
@@ -87,6 +88,8 @@ class ActionAnimeV2:
             self.eyelid.append([[l_cur, l_cur], [r_cur, r_cur], [t_cur, t_cur+random.uniform(2, 6)]])
             l_cur, r_cur, t_cur = self.eyelid[-1][0][1], self.eyelid[-1][1][1], self.eyelid[-1][2][1]
             self.eyelid.append([[l_cur, 0.3], [r_cur, 0.3], [t_cur, t_cur+0.8]])
+
+        # 节奏没了继续摇，摇到歌曲播完为止（填补歌曲末尾的静默期）
         if len(self.head_sagittal) <= 1:
             beat_times, stength = beat_q['beat_times'], beat_q['beat_strengths'][-1]
             s_cur, beat_interval = self.head_sagittal[-1][0][1], beat_times[-1] - beat_times[-2]
@@ -103,7 +106,7 @@ class ActionAnimeV2:
         self.eyeball_moving()
         return self.calc_cur_vector()
 
-    def rhythm(self, beat_q):
+    def rhythm(self, beat_q):  # 根据节奏摇
         if beat_q is None:
             return self.calc_cur_vector()
         state_idx = ActionState['rhythm']
@@ -145,27 +148,11 @@ class ActionAnimeV2:
             self.reset_deque()
             self.check_deque()  # 所有回正
 
-            # speech_times, voice_strengths = speech_q['voice_times'], speech_q['voice_strengths']
-            # self.mouth[-1][1][1] = speech_times[0][0]
-            # for i, speech_time in enumerate(speech_times):
-            #     speech_half = (speech_time[1] + speech_time[0]) / 2
-            #     self.mouth.append([[0, voice_strengths[i]], [speech_time[0], speech_half], 14 + random.randint(0, 4)])
-            #     self.mouth.append([[voice_strengths[i], 0], [speech_half, speech_time[1]], self.mouth[-1][2]])
-            #     if i < len(speech_times) - 1:
-            #         self.mouth.append([[0, 0], [speech_time[1], speech_times[i+1][0]], self.mouth[-1][2]])
-
-            speech_times = speech_q['speech_times']
+            # 嘴巴根据音量张合
             voice_times, voice_strengths = speech_q['voice_times'], speech_q['voice_strengths']
             for i, voice_time in enumerate(voice_times[1:]):
                 m_cur = self.mouth[-1][0][1]
                 self.mouth.append([[m_cur, voice_strengths[i]], [voice_times[i], voice_time], 14])
-
-            start_time, end_time, freq, amplitude = speech_times[0][0], speech_times[-1][1], 0.3, 0.2
-            while start_time < end_time:
-                s_cur = self.head_sagittal[-1][0][1]
-                self.head_sagittal.append([[s_cur, amplitude if s_cur != amplitude else -amplitude],
-                                           [start_time, start_time+freq]])
-                start_time += freq
 
             # 眼睛随机半闭
             l_cur, r_cur, t_cur = self.eyelid[-1][0][1], self.eyelid[-1][1][1], self.eyelid[-1][2][1]

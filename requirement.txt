@@ -1,6 +1,8 @@
 numpy
 scipy
 matplotlib
+librosa
+pygame
 protobuf==3.20.1
 pynput==1.7.6
 mediapipe==0.8.9.1
