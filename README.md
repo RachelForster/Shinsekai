@@ -11,7 +11,7 @@ Fork自 [`EasyVtuber`](https://github.com/yuyuyzl/EasyVtuber)。由于是AI Vtub
 1. 空闲自动做动作（眨眼、东张西望）
 2. 说话动作（自动对口型）
 3. 唱歌动作（自动对口型，跟随节奏摇摆）(coming soon...)
-4. 
+4. shaker (coming soon...)
 5. API调用接口
 
 Note [2024/2/28]: 阿里推出了[`EMO (Emote Portrait Alive)`](https://humanaigc.github.io/emote-portrait-alive/)。
