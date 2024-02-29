@@ -10,8 +10,8 @@ Fork自 [`EasyVtuber`](https://github.com/yuyuyzl/EasyVtuber)。由于是AI Vtub
 
 1. 空闲自动做动作（眨眼、东张西望）
 2. 说话动作（自动对口型）
-3. 唱歌动作（自动对口型，跟随节奏摇摆）(更新中...)
-4. 摇子（自动随节奏点头） (更新中...)
+3. 唱歌动作（自动对口型，跟随节奏摇摆）(更新中... 0.0)
+4. 摇子（自动随节奏点头） (更新中... 0.0)
 5. API调用接口
 
 Note [2024/2/28]: 阿里推出了[`EMO (Emote Portrait Alive)`](https://humanaigc.github.io/emote-portrait-alive/)。
@@ -71,3 +71,4 @@ https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=0
 并传入相应参数便可使用音频文件自动生成模型的动作，可参考`test.py`
 
 ### main.bat params
+更新中... 0.0
