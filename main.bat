@@ -1,5 +1,5 @@
 D:\anaconda3\envs\eaiv\python.exe main.py ^
---character uri_body ^
+--character lambda_00 ^
 --output_size 512x512 ^
 --simplify 1 ^
 --output_webcam unitycapture ^
