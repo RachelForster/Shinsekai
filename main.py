@@ -298,6 +298,7 @@ class EasyAIV(Process):  #
         self.alive_args_speech_q = alive_args['speech_q']
 
         self.alive_args_is_singing = alive_args['is_singing']
+        self.alive_args_is_music_play = alive_args['is_music_play']
         self.alive_args_beat_q = alive_args['beat_q']
         self.alive_args_mouth_q = alive_args['mouth_q']
 
@@ -361,6 +362,10 @@ class EasyAIV(Process):  #
                 if not self.alive_args_mouth_q.empty():
                     mouth_q = self.alive_args_mouth_q.get_nowait()
                 eyebrow_vector_c, mouth_eye_vector_c, pose_vector_c = action.singing(beat_q, mouth_q)
+            elif bool(self.alive_args_is_music_play.value):  # 摇子
+                if not self.alive_args_beat_q.empty():
+                    beat_q = self.alive_args_beat_q.get_nowait()
+                eyebrow_vector_c, mouth_eye_vector_c, pose_vector_c = action.rhythm(beat_q)
             else:  # 空闲状态
                 speech_q = None
                 mouth_q = None
@@ -455,6 +460,7 @@ class FlaskAPI(Resource):
         parser = reqparse.RequestParser()
         parser.add_argument('type', required=True)
         parser.add_argument('speech_path', default=None)
+        parser.add_argument('music_path', default=None)
         json_args = parser.parse_args()
 
         try:
@@ -465,6 +471,14 @@ class FlaskAPI(Resource):
                 else:
                     print('Need speech_path!! 0.0')
                     return {"status": "Need speech_path!! 0.0", "receive args": json_args}, 200
+            elif json_args['type'] == "rhythm":
+                if json_args['music_path']:
+                    alive.rhythm(json_args['music_path'])
+                else:
+                    print('Need music_path!! 0.0')
+                    return {"status": "Need music_path!! 0.0", "receive args": json_args}, 200
+            else:
+                print('No type call {}!! 0.0'.format(json_args['type']))
         except Exception as ex:
             print(ex)
 
@@ -492,8 +506,9 @@ if __name__ == '__main__':
     # 声明跨进程公共参数
     alive_args = {
         "is_speech": Value(c_bool, False),
-        "is_singing": Value(c_bool, False),
         "speech_q": Queue(),
+        "is_singing": Value(c_bool, False),
+        "is_music_play": Value(c_bool, False),
         "beat_q": Queue(),
         "mouth_q": Queue(),
     }
