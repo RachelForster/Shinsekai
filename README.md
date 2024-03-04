@@ -6,12 +6,14 @@ Simply animate your 2D waifu.
 Fork自 [`yuyuyzl/EasyVtuber`](https://github.com/yuyuyzl/EasyVtuber)。由于是AI Vtuber，因此去掉了原项目的面捕功能。
 本项目配合stable diffusion等文生图模型为最佳食用方式。
 
+**视频教程：制作中...0.0**
+
 ## Features not available in the original repo
 
 1. 空闲自动做动作（眨眼、东张西望）
 2. 说话动作（自动对口型）
 3. 摇子（自动随节奏点头）
-4. 唱歌动作（自动对口型，跟随节奏摇摆）(更新中... 0.0)
+4. 唱歌动作（自动对口型，跟随节奏摇摆）
 5. API调用接口
 
 ## Installation
@@ -68,7 +70,7 @@ https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=0
 
 ### 参数注解
 
-|        参数名        |  值类型  |                                                                               说明                                                                                |
+|        参数名        |  类型   |                                                                               说明                                                                                |
 |:-----------------:|:-----:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------:|
 |    --character    |  str  |                                                                `data/images`目录下的输入图像文件名，不需要带扩展名                                                                 |
 |   --output_size   |  str  |                                                 格式为`512x512`，必须是4的倍数。<br>增大它并不会让图像更清晰，但配合extend_movement会增大可动范围                                                 |

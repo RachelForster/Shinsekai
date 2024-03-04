@@ -461,6 +461,8 @@ class FlaskAPI(Resource):
         parser.add_argument('type', required=True)
         parser.add_argument('speech_path', default=None)
         parser.add_argument('music_path', default=None)
+        parser.add_argument('voice_path', default=None)
+        parser.add_argument('mouth_offset', default=0.0)
         json_args = parser.parse_args()
 
         try:
@@ -477,8 +479,14 @@ class FlaskAPI(Resource):
                 else:
                     print('Need music_path!! 0.0')
                     return {"status": "Need music_path!! 0.0", "receive args": json_args}, 200
+            elif json_args['type'] == "sing":
+                if json_args['music_path'] and json_args['voice_path']:
+                    alive.sing(json_args['music_path'], json_args['voice_path'], float(json_args['mouth_offset']))
+                else:
+                    print('Need music_path and voice_path!! 0.0')
+                    return {"status": "Need music_path and voice_path!! 0.0", "receive args": json_args}, 200
             else:
-                print('No type call {}!! 0.0'.format(json_args['type']))
+                print('No type name {}!! 0.0'.format(json_args['type']))
         except Exception as ex:
             print(ex)
 
