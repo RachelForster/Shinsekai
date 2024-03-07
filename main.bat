@@ -5,4 +5,5 @@ D:\anaconda3\envs\eaiv\python.exe main.py ^
 --output_webcam unitycapture ^
 --model standard_half ^
 --anime4k ^
+--sleep 20 ^
 --port 7888

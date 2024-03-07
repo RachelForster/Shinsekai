@@ -82,7 +82,7 @@ class ActionAnimeV2:
 
         if len(self.eyelid) <= 1 and random.uniform(0.0, 1.0) > 0.7:  # 随机闭眼
             l_cur, r_cur, t_cur = self.eyelid[-1][0][1], self.eyelid[-1][1][1], self.eyelid[-1][2][1]
-            eyelid_end = random.choice([0.7, 1.0])
+            eyelid_end = random.choice([0.5, 1.0])  # 0.7
             self.eyelid.append([[l_cur, eyelid_end], [r_cur, eyelid_end], [t_cur, t_cur+0.8]])
             l_cur, r_cur, t_cur = self.eyelid[-1][0][1], self.eyelid[-1][1][1], self.eyelid[-1][2][1]
             self.eyelid.append([[l_cur, l_cur], [r_cur, r_cur], [t_cur, t_cur+random.uniform(2, 6)]])
@@ -305,7 +305,7 @@ class ActionAnimeV2:
                 if self.mouth_eye_vector_c[i] > 0.:
                     mouth_type = i
                     break
-            self.mouth.append([[self.mouth_eye_vector_c[mouth_type], 0], [cur_time, 0.05], mouth_type])
+            self.mouth.append([[self.mouth_eye_vector_c[mouth_type], 0], [cur_time, cur_time + 0.05], mouth_type])
         if len(self.head_axial) == 0:
             self.head_axial.append([[self.pose_vector_c[1], 0], [cur_time, return_time]])
         if len(self.head_coronal) == 0:

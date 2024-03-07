@@ -371,7 +371,7 @@ class EasyAIV(Process):  #
                 mouth_q = None
                 beat_q = None
                 idle_flag = True
-                if time.perf_counter() - idle_start_time > 20:  # 空闲20秒就睡大觉
+                if args.sleep != -1 and time.perf_counter() - idle_start_time > args.sleep:  # 空闲20秒就睡大觉
                     eyebrow_vector_c, mouth_eye_vector_c, pose_vector_c = action.sleeping()
                 else:
                     eyebrow_vector_c, mouth_eye_vector_c, pose_vector_c = action.idle()
@@ -463,6 +463,7 @@ class FlaskAPI(Resource):
         parser.add_argument('music_path', default=None)
         parser.add_argument('voice_path', default=None)
         parser.add_argument('mouth_offset', default=0.0)
+        parser.add_argument('beat', default=2)
         json_args = parser.parse_args()
 
         try:
@@ -475,13 +476,13 @@ class FlaskAPI(Resource):
                     return {"status": "Need speech_path!! 0.0", "receive args": json_args}, 200
             elif json_args['type'] == "rhythm":
                 if json_args['music_path']:
-                    alive.rhythm(json_args['music_path'])
+                    alive.rhythm(json_args['music_path'], int(json_args['beat']))
                 else:
                     print('Need music_path!! 0.0')
                     return {"status": "Need music_path!! 0.0", "receive args": json_args}, 200
             elif json_args['type'] == "sing":
                 if json_args['music_path'] and json_args['voice_path']:
-                    alive.sing(json_args['music_path'], json_args['voice_path'], float(json_args['mouth_offset']))
+                    alive.sing(json_args['music_path'], json_args['voice_path'], float(json_args['mouth_offset']), int(json_args['beat']))
                 else:
                     print('Need music_path and voice_path!! 0.0')
                     return {"status": "Need music_path and voice_path!! 0.0", "receive args": json_args}, 200

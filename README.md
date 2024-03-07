@@ -14,7 +14,8 @@ Fork自 [`yuyuyzl/EasyVtuber`](https://github.com/yuyuyzl/EasyVtuber)。由于�
 2. 说话动作（自动对口型）
 3. 摇子（自动随节奏点头）
 4. 唱歌动作（自动对口型，跟随节奏摇摆）
-5. API调用接口
+5. 睡大觉（使用`--sleep`参数控制入睡间隔）
+6. API调用接口
 
 ## Installation
 ### 安装依赖库
@@ -62,13 +63,15 @@ https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=0
 在OBS添加完视频采集设备以后，右键视频采集设备-设置-取消激活-分辨率类型选自定义-分辨率512x512(与`--output_size`参数一致)-视频格式选ARGB-激活
 
 ## Usage
-1. 打开OBS并配置好视频采集设备
+### 快速测试
+1. 打开OBS，添加视频采集设备并按要求（[安装UnityCapture](#安装unitycapture)）进行配置
 2. 将`main.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径
 3. 运行`main.bat`
-4. 使用post请求 http://127.0.0.1:7888/alive （默认端口为7888），
-并传入相应参数便可使用音频文件自动生成模型的动作，具体示例可参考`test.py`
+4. 运行`test.py`，能听到声音并且OBS内的模型能动起来就算成功  
 
-### 参数注解
+具体使用可参考 [API Details](#api-details) 
+
+### 启动参数
 
 |        参数名        |  类型   |                                                                               说明                                                                                |
 |:-----------------:|:-----:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------:|
@@ -77,6 +80,77 @@ https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=0
 |    --simplify     |  int  |                                                             可用值为`1` `2` `3` `4`，值越大CPU运算量越小，但动作精度越低                                                             |
 |  --output_webcam  |  str  |                                                             可用值为`unitycapture`，选择对应的输出种类，不传不输出到摄像头                                                              |
 |      --model      |  str  | 可用值为`standard_float` `standard_half` `separable_float` `separable_half`，<br/>其中standard_float占用最多显存效果最好，separable_half占用最少显存效果最逊（但也完全够用了），float为双精度，half为单精度模型， |
-|  --port  |  int  |                                                                 本地API的端口号，默认为7888，若7888被占用则需要更改                                                                 |
+|      --port       |  int  |                                                                 本地API的端口号，默认为7888，若7888被占用则需要更改                                                                 |
+|      --sleep      |  int  |                                                             入睡间隔，默认为20，空闲状态下20秒后会睡大觉，设置为-1即可不进入睡觉状态                                                             |
 | --extend_movement | float |                                                  （暂时没有用）根据头部位置，对模型输出图像进一步进行移动和旋转使得上半身可动<br>传入的数值表示移动倍率（建议值为1）                                                   |
 
+## API Details
+
+API使用Flask来开发，默认运行在 http://127.0.0.1:7888 （默认端口为7888），可在`main.bat`的`--port`中修改端口号。
+使用post请求 http://127.0.0.1:7888/alive ，并传入参数即可做出对应动作，具体示例可参考`test.py`。
+
+### 根据音频说话
+
+**`REQUEST`**
+```json
+{
+  "type": "speak",
+  "speech_path": "your speech path"
+}
+```
+
+在`"speech_path"`中填写你的语音音频路径，支持wav, mp3, flac等格式（pygame支持的格式）
+
+**`RESPONSE`**
+```json
+{
+  "status": "success"
+}
+```
+
+### 根据音乐节奏摇
+
+**`REQUEST`**
+```json
+{
+  "type": "rhythm",
+  "music_path": "your music path",
+  "beat": 2
+}
+```
+
+在`"music_path"`中填写你的音频路径，支持wav, mp3, flac等格式（pygame支持的格式）。  
+`"beat"`（可选）：取值为 `1` `2` `4`，控制节拍，默认为2
+
+**`RESPONSE`**
+```json
+{
+  "status": "success"
+}
+```
+
+### 根据音乐和人声唱歌
+
+**`REQUEST`**
+```json
+{
+  "type": "sing",
+  "music_path": "your music path",
+  "voice_path": "your voice path",
+  "mouth_offset": 0.0,
+  "beat": 2
+}
+```
+
+口型驱动的原理是根据音量大小来控制嘴巴的大小，因此需要事先将人声提取出来以更精准地控制口型。
+假设你有一首歌，路径为`path/music.wav`，利用UVR5等工具分离出人声音频`path/voice.wav`，然后将`path/music.wav`填入`"music_path"`，
+将`path/voice.wav`填入`"voice_path"`，支持wav, mp3, flac等格式（pygame支持的格式）。  
+`"mouth_offset"`（可选）：取值区间为 `[0, 1]`，默认为`0`，如果角色唱歌时的嘴张的不够大，可以试试将这个值设大
+`"beat"`（可选）：取值为`1` `2` `4`，默认为`2`，控制节拍
+
+**`RESPONSE`**
+```json
+{
+  "status": "success"
+}
+```
