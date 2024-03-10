@@ -12,7 +12,7 @@ data = {
 # # 根据音频节奏摇
 # data = {
 #     "type": "rhythm",
-#     "music_path": r"data/music/aLIEz.MP3",  # 修改为你的音频路径
+#     "music_path": r"data/music/Noisy Radio - Chipi Chipi Chapa Chapa.flac",  # 修改为你的音频路径
 #     "beat": 1
 # }
 

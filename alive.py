@@ -71,7 +71,7 @@ class Alive(Process):
             pygame.mixer.init()
             pygame.mixer.music.load(speech_path)
             pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy():  # 在音频播放为完成之前不退出程序
+            while pygame.mixer.music.get_busy() and self.is_speech.value:  # 在音频播放为完成之前不退出程序
                 time.sleep(0.1)  # 减轻循环负担
             pygame.quit()
             self.is_speech.value = False
@@ -122,7 +122,7 @@ class Alive(Process):
             pygame.mixer.init()
             pygame.mixer.music.load(music_path)
             pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy():  # 在音频播放为完成之前不退出程序
+            while pygame.mixer.music.get_busy() and self.is_music_play.value:  # 在音频播放为完成之前不退出程序
                 time.sleep(0.1)  # 减轻循环负担
             pygame.quit()
             self.is_music_play.value = False

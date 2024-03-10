@@ -486,6 +486,14 @@ class FlaskAPI(Resource):
                 else:
                     print('Need music_path and voice_path!! 0.0')
                     return {"status": "Need music_path and voice_path!! 0.0", "receive args": json_args}, 200
+            elif json_args['type'] == "stop":
+                global alive_args
+                alive_args["is_speech"].value = False
+                alive_args["is_singing"].value = False
+                alive_args["is_music_play"].value = False
+                # alive.is_speech.value
+                # alive.is_singing.value
+                # alive.is_music_play.value
             else:
                 print('No type name {}!! 0.0'.format(json_args['type']))
         except Exception as ex:

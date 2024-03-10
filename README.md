@@ -67,7 +67,9 @@ https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=0
 1. 打开OBS，添加视频采集设备并按要求（[安装UnityCapture](#安装unitycapture)）进行配置
 2. 将`main.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径
 3. 运行`main.bat`
-4. 运行`test.py`，能听到声音并且OBS内的模型能动起来就算成功  
+4. 二选一
+   1. 运行`test.py`   
+   2. 将`webui.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径，然后运行`webui.bat`
 
 具体使用可参考 [API Details](#api-details) 
 
@@ -147,6 +149,22 @@ API使用Flask来开发，默认运行在 http://127.0.0.1:7888 （默认端口�
 将`path/voice.wav`填入`"voice_path"`，支持wav, mp3, flac等格式（pygame支持的格式）。  
 `"mouth_offset"`（可选）：取值区间为 `[0, 1]`，默认为`0`，如果角色唱歌时的嘴张的不够大，可以试试将这个值设大  
 `"beat"`（可选）：取值为`1` `2` `4`，默认为`2`，控制节拍
+
+**`RESPONSE`**
+```json
+{
+  "status": "success"
+}
+```
+
+### 停止当前动作
+
+**`REQUEST`**
+```json
+{
+  "type": "stop"
+}
+```
 
 **`RESPONSE`**
 ```json
