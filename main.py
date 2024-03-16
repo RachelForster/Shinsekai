@@ -11,7 +11,7 @@ from action_animeV2 import ActionAnimeV2
 from alive import Alive
 from multiprocessing import Value, Process, Queue
 from ctypes import c_bool
-import asyncio
+import os
 
 import queue
 import time
@@ -69,7 +69,7 @@ class ModelClientProcess(Process):
         self.cache_hit_ratio = Value('f', 0.0)
         self.gpu_cache_hit_ratio = Value('f', 0.0)
 
-        self.input_image_q = Queue()
+        self.input_image_q = model_process_args['input_image_q']
 
     def run(self):
         model = TalkingAnime3().to(self.device)
@@ -104,6 +104,8 @@ class ModelClientProcess(Process):
 
             if not self.input_image_q.empty():
                 input_image = self.input_image_q.get_nowait().to(self.device)
+                model.face_cache = OrderedDict()
+                model_cache = OrderedDict()
 
             model_input = None
             try:
@@ -264,7 +266,10 @@ class ModelClientProcess(Process):
 
 
 def prepare_input_img(IMG_WIDTH, charc):
-    img = Image.open(f"data/images/{charc}.png")
+    if os.path.exists(charc):
+        img = Image.open(charc)
+    else:
+        img = Image.open(f"data/images/{charc}.png")
     img = img.convert('RGBA')
     wRatio = img.size[0] / IMG_WIDTH
     img = img.resize((IMG_WIDTH, int(img.size[1] / wRatio)))
@@ -287,9 +292,9 @@ def prepare_input_img(IMG_WIDTH, charc):
 
 
 class EasyAIV(Process):  #
-    def __init__(self, extra_image, model_process_args, alive_args):
+    def __init__(self, model_process_args, alive_args):
         super().__init__()
-        self.extra_image = extra_image
+        # self.extra_image = extra_image
 
         self.model_process_input_queue = model_process_args['input_queue']
         self.model_process_output_queue = model_process_args['output_queue']
@@ -405,8 +410,8 @@ class EasyAIV(Process):  #
 
             postprocessed_image = model_output
 
-            if self.extra_image is not None:
-                postprocessed_image = cv2.vconcat([postprocessed_image, self.extra_image])
+            # if self.extra_image is not None:
+            #     postprocessed_image = cv2.vconcat([postprocessed_image, self.extra_image])
 
             k_scale = 1
             rotate_angle = 0
@@ -464,6 +469,7 @@ class FlaskAPI(Resource):
         parser.add_argument('voice_path', default=None)
         parser.add_argument('mouth_offset', default=0.0)
         parser.add_argument('beat', default=2)
+        parser.add_argument('img', default=None)
         json_args = parser.parse_args()
 
         try:
@@ -472,28 +478,29 @@ class FlaskAPI(Resource):
                 if json_args['speech_path']:
                     alive.speak(json_args['speech_path'])
                 else:
-                    print('Need speech_path!! 0.0')
                     return {"status": "Need speech_path!! 0.0", "receive args": json_args}, 200
             elif json_args['type'] == "rhythm":
                 if json_args['music_path']:
                     alive.rhythm(json_args['music_path'], int(json_args['beat']))
                 else:
-                    print('Need music_path!! 0.0')
                     return {"status": "Need music_path!! 0.0", "receive args": json_args}, 200
             elif json_args['type'] == "sing":
                 if json_args['music_path'] and json_args['voice_path']:
                     alive.sing(json_args['music_path'], json_args['voice_path'], float(json_args['mouth_offset']), int(json_args['beat']))
                 else:
-                    print('Need music_path and voice_path!! 0.0')
                     return {"status": "Need music_path and voice_path!! 0.0", "receive args": json_args}, 200
             elif json_args['type'] == "stop":
                 global alive_args
                 alive_args["is_speech"].value = False
                 alive_args["is_singing"].value = False
                 alive_args["is_music_play"].value = False
-                # alive.is_speech.value
-                # alive.is_singing.value
-                # alive.is_music_play.value
+            elif json_args['type'] == "change_img":
+                if json_args['img']:
+                    global model_process_args
+                    input_image, _ = prepare_input_img(512, json_args['img'])
+                    model_process_args['input_image_q'].put_nowait(input_image)
+                else:
+                    return {"status": "Need img!! 0.0", "receive args": json_args}, 200
             else:
                 print('No type name {}!! 0.0'.format(json_args['type']))
         except Exception as ex:
@@ -514,6 +521,7 @@ if __name__ == '__main__':
     model_process_args = {
         "output_queue": Queue(maxsize=3),
         "input_queue": Queue(),
+        "input_image_q": Queue()
     }
     # 初始化动作模块
     model_process = ModelClientProcess(input_image, device, model_process_args)
@@ -534,7 +542,7 @@ if __name__ == '__main__':
     alive.start()
 
     # 初始化主进程
-    aiv = EasyAIV(extra_image, model_process_args, alive_args)
+    aiv = EasyAIV(model_process_args, alive_args)
     aiv.start()
 
     api.add_resource(FlaskAPI, '/alive')

@@ -27,8 +27,8 @@ parser.add_argument('--perf', type=str)
 parser.add_argument('--anime4k', action='store_true')
 parser.add_argument('--alpha_split', action='store_true')
 parser.add_argument('--bongo', action='store_true')
-parser.add_argument('--cache', type=str, default='256mb')  # 1gb
-parser.add_argument('--gpu_cache', type=str, default='512mb')
+parser.add_argument('--cache', type=str, default='256mb')  # 256mb
+parser.add_argument('--gpu_cache', type=str, default='256mb')  # 256mb
 parser.add_argument('--simplify', type=int, default=1)
 parser.add_argument('--port', type=int, default=7888)
 parser.add_argument('--sleep', type=int, default=20)

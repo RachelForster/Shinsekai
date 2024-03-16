@@ -66,25 +66,25 @@ https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=0
 ### 快速测试
 1. 打开OBS，添加视频采集设备并按要求（[安装UnityCapture](#安装unitycapture)）进行配置
 2. 将`main.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径
-3. 运行`main.bat`
+3. 运行`main.bat`，等待初始化完毕，如配置无误，这时OBS中便能够看到人物在动
 4. 二选一
-   1. 运行`test.py`   
-   2. 将`webui.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径，然后运行`webui.bat`
+   1. 简单测试：运行`test.py`   
+   2. 运行webui：将`webui.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径，然后运行`webui.bat`  
 
 具体使用可参考 [API Details](#api-details) 
 
 ### 启动参数
 
-|        参数名        |  类型   |                                                                               说明                                                                                |
-|:-----------------:|:-----:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------:|
-|    --character    |  str  |                                                                `data/images`目录下的输入图像文件名，不需要带扩展名                                                                 |
-|   --output_size   |  str  |                                                 格式为`512x512`，必须是4的倍数。<br>增大它并不会让图像更清晰，但配合extend_movement会增大可动范围                                                 |
-|    --simplify     |  int  |                                                             可用值为`1` `2` `3` `4`，值越大CPU运算量越小，但动作精度越低                                                             |
-|  --output_webcam  |  str  |                                                             可用值为`unitycapture`，选择对应的输出种类，不传不输出到摄像头                                                              |
-|      --model      |  str  | 可用值为`standard_float` `standard_half` `separable_float` `separable_half`，<br/>其中standard_float占用最多显存效果最好，separable_half占用最少显存效果最逊（但也完全够用了），float为双精度，half为单精度模型， |
-|      --port       |  int  |                                                                 本地API的端口号，默认为7888，若7888被占用则需要更改                                                                 |
-|      --sleep      |  int  |                                                             入睡间隔，默认为20，空闲状态下20秒后会睡大觉，设置为-1即可不进入睡觉状态                                                             |
-| --extend_movement | float |                                                  （暂时没有用）根据头部位置，对模型输出图像进一步进行移动和旋转使得上半身可动<br>传入的数值表示移动倍率（建议值为1）                                                   |
+|        参数名        |  类型   |                                             说明                                              |
+|:-----------------:|:-----:|:-------------------------------------------------------------------------------------------:|
+|    --character    |  str  |                              `data/images`目录下的输入图像文件名，不需要带扩展名                               |
+|   --output_size   |  str  |               格式为`512x512`，必须是4的倍数。<br>增大它并不会让图像更清晰，但配合extend_movement会增大可动范围               |
+|    --simplify     |  int  |                           可用值为`1` `2` `3` `4`，值越大CPU运算量越小，但动作精度越低                           |
+|  --output_webcam  |  str  |                           可用值为`unitycapture`，选择对应的输出种类，不传不输出到摄像头                            |
+|      --model      |  str  | 可用值为`standard_float` `standard_half` `separable_float` `separable_half`，<br/>显存占用不同，选择合适的即可 |
+|      --port       |  int  |                               本地API的端口号，默认为7888，若7888被占用则需要更改                               |
+|      --sleep      |  int  |                           入睡间隔，默认为20，空闲状态下20秒后会睡大觉，设置为-1即可不进入睡觉状态                           |
+| --extend_movement | float |                （暂时没有用）根据头部位置，对模型输出图像进一步进行移动和旋转使得上半身可动<br>传入的数值表示移动倍率（建议值为1）                 |
 
 ## API Details
 
@@ -165,6 +165,25 @@ API使用Flask来开发，默认运行在 http://127.0.0.1:7888 （默认端口�
   "type": "stop"
 }
 ```
+
+**`RESPONSE`**
+```json
+{
+  "status": "success"
+}
+```
+
+### 更换当前图片
+
+**`REQUEST`**
+```json
+{
+  "type": "change_img", 
+  "img": "your image path"
+}
+```
+
+在`"img"`中填写图片路径，图片大小最好是`512x512`，png格式
 
 **`RESPONSE`**
 ```json

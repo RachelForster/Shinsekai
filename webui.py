@@ -45,6 +45,17 @@ def stop():
     print(res.json())
 
 
+def change_img(img_path):
+    print(img_path)
+    if img_path:
+        data = {
+            "type": "change_img",
+            "img": img_path
+        }
+        res = requests.post(f'http://127.0.0.1:{args.main_port}/alive', json=data)
+        print(res.json())
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--main_port', type=int, default=7888)
@@ -74,10 +85,11 @@ if __name__ == "__main__":
             sing_but = gr.Button("唱歌喵")
             sing_but.click(sing, [sing_file, sing_voice_file, sing_beat, sing_mouth])
         with gr.Tab("换皮"):
-            gr.Image()
-            gr.Button()
+            img = gr.Image(label="上传图片（512x512）", type="filepath", image_mode="RGBA")  # , height=300, width=300
+            change_but = gr.Button("启动！")
+            change_but.click(change_img, [img])
 
         stop_but = gr.Button("停止当前动作")
         stop_but.click(stop)
 
-    demo.launch(server_port=args.webui_port)
+    demo.launch(server_port=args.webui_port, inbrowser=True)

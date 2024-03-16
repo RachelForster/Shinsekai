@@ -3,7 +3,7 @@
 """
 import requests
 
-# 根据音频说话
+# # 根据音频说话
 data = {
     "type": "speak",
     "speech_path": r"data/speech/uri_speech_0.wav"  # 修改为你的语音音频路径
@@ -23,6 +23,17 @@ data = {
 #     "voice_path": r"data/song/不分手的恋爱-汪苏泷_voice.MP3",  # 修改为人声音频路径
 #     "mouth_offset": 0.0,
 #     "beat": 2
+# }
+
+# # 停止所有动作
+# data = {
+#     "type": "stop",
+# }
+
+# # 换皮肤
+# data = {
+#     "type": "change_img",
+#     "img": r'data/images/lambda_01.png'
 # }
 
 res = requests.post('http://127.0.0.1:7888/alive', json=data)
