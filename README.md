@@ -37,8 +37,11 @@ pip install -r requirements.txt
 
 ### 下载预训练模型  
 
-https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=0  
-解压到`data/models`文件夹中，与`placeholder.txt`同级  
+原模型文件地址：https://www.dropbox.com/s/y7b8jl4n2euv8xe/talking-head-anime-3-models.zip?dl=0  
+下载后解压到`data/models`文件夹中，与`placeholder.txt`同级  
+
+如果不想下载所有权重（四个版本），也可以在huggingface上下载：https://huggingface.co/ksuriuri/talking-head-anime-3-models
+
 正确的目录层级为  
 ```
 + models
@@ -192,3 +195,4 @@ API使用Flask来开发，默认运行在 http://127.0.0.1:7888 （默认端口�
   "status": "success"
 }
 ```
+
