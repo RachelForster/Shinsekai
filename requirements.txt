@@ -1,9 +1,9 @@
 numpy
 scipy
 matplotlib
-librosa
-pygame
-flask_restful
+librosa==0.10.1
+pygame==2.5.2
+flask_restful==0.3.10
 protobuf==3.20.1
 pynput==1.7.6
 mediapipe==0.8.11
