@@ -11,4 +11,4 @@ opencv_python==4.5.5.64
 Pillow==9.1.0
 pyanime4k==2.5.2
 pyvirtualcam==0.9.1
-gradio
+gradio==4.18.0
