@@ -3,6 +3,8 @@
 > 驱动你的纸片人老婆。
 Simply animate your 2D waifu.
 
+![Wellerman-Uri](assets/2347acc3-799f-4913-8035-ae077ba3dc22.gif)
+
 Fork自 [`yuyuyzl/EasyVtuber`](https://github.com/yuyuyzl/EasyVtuber)。由于是AI Vtuber，因此删减了原项目的面捕功能。
 本项目配合stable diffusion等文生图模型为最佳食用方式。喜欢请点个星星哦~
 
