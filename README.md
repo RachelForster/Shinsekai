@@ -6,7 +6,7 @@ Simply animate your 2D waifu.
 ![Wellerman-Uri](assets/2347acc3-799f-4913-8035-ae077ba3dc22.gif)
 
 [![](https://img.shields.io/badge/-完整效果展示Ⅰ-EEE?logo=bilibili)](https://www.bilibili.com/video/BV15H4y1o73x/?share_source=copy_web&vd_source=4641a345db4563ba087d0ed0ba8bdf85)
-[![](https://img.shields.io/badge/-完整效果展示Ⅱ-EEE?logo=bilibili)](https://www.bilibili.com/video/BV116421c7rp/?share_source=copy_web&vd_source=4641a345db4563ba087d0ed0ba8bdf85)
+[![](https://img.shields.io/badge/-完整效果展示Ⅱ-EEE?logo=bilibili)](https://www.bilibili.com/video/BV1Hp4y1c7TU/?share_source=copy_web&vd_source=4641a345db4563ba087d0ed0ba8bdf85)
 
 Fork自 [`yuyuyzl/EasyVtuber`](https://github.com/yuyuyzl/EasyVtuber)。由于是AI Vtuber，因此删减了原项目的面捕功能。
 本项目配合stable diffusion等文生图模型为最佳食用方式。喜欢请点个星星哦~
