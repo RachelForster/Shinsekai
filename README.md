@@ -1,6 +1,6 @@
 # EasyAIVtuber
 
-> 驱动你的纸片人老婆。
+> 驱动你的纸片人老婆/女儿。
 Simply animate your 2D waifu.
 
 ![Wellerman-Uri](assets/2347acc3-799f-4913-8035-ae077ba3dc22.gif)
