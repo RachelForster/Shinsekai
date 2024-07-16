@@ -201,3 +201,6 @@ API使用Flask来开发，默认运行在 http://127.0.0.1:7888 （默认端口�
 }
 ```
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Ksuriuri/EasyAIVtuber&type=Date)](https://star-history.com/#Ksuriuri/EasyAIVtuber&Date)
