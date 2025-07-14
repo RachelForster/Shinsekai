@@ -1,6 +1,5 @@
 import torch
 import cv2
-import pyvirtualcam
 import numpy as np
 from PIL import Image
 
@@ -29,6 +28,11 @@ fps_delay = 0.01
 
 from flask import Flask
 from flask_restful import Resource, Api, reqparse
+
+import sys
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
 
 app = Flask(__name__)
 api = Api(app)
@@ -290,6 +294,104 @@ def prepare_input_img(IMG_WIDTH, charc):
     print("Character Image Loaded:", charc)
     return input_image, extra_image
 
+# 新增类：图像显示线程
+class ImageDisplayThread(QThread):
+    update_signal = pyqtSignal(np.ndarray)
+    
+    def __init__(self, image_queue):
+        super().__init__()
+        self.image_queue = image_queue
+        self.running = True
+        
+    def run(self):
+        while self.running:
+            try:
+                if not self.image_queue.empty():
+                    image = self.image_queue.get()
+                    self.update_signal.emit(image)
+                QThread.msleep(10)  # 10ms刷新间隔
+            except Exception as e:
+                print(f"Display error: {e}")
+    
+    def stop(self):
+        self.running = False
+
+# 新增类：桌面悬浮窗
+class DesktopAssistantWindow(QWidget):
+    def __init__(self, image_queue):
+        super().__init__()
+        self.image_queue = image_queue
+        
+        # 窗口设置
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        
+        # 创建显示区域 - 使用布局管理器
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.label = QLabel()
+        self.label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.label)
+        
+        # 设置图像显示线程
+        self.display_thread = ImageDisplayThread(image_queue)
+        self.display_thread.update_signal.connect(self.update_image)
+        self.display_thread.start()
+        
+        # 初始大小
+        self.resize(2048, 2048)
+        
+        # 交互设置
+        self.drag_position = None
+        
+    def update_image(self, image):
+        """更新显示图像"""
+        height, width, channel = image.shape
+        bytes_per_line = 4 * width
+        qimg = QImage(image.data, width, height, bytes_per_line, QImage.Format_RGBA8888)
+        original_pixmap = QPixmap.fromImage(qimg)
+        
+        # 缩放图像以适应标签大小
+        scaled_pixmap = original_pixmap.scaled(
+            self.label.size(),
+            Qt.KeepAspectRatio,  # 保持宽高比
+            Qt.SmoothTransformation  # 平滑缩放
+        )
+        self.label.setPixmap(scaled_pixmap)
+
+        # # 自动调整窗口大小
+        # if self.width() != width or self.height() != height:
+        #     self.resize(width, height)
+        #     self.label.setFixedSize(width, height)
+    
+    def mousePressEvent(self, event):
+        """实现窗口拖动"""
+        if event.button() == Qt.LeftButton:
+            self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+    
+    def mouseMoveEvent(self, event):
+        """拖动窗口"""
+        if event.buttons() == Qt.LeftButton and self.drag_position:
+            self.move(event.globalPos() - self.drag_position)
+            event.accept()
+    
+    def wheelEvent(self, event):
+        """滚轮缩放窗口"""
+        delta = event.angleDelta().y() / 1200  # 缩放因子
+        new_width = max(100, self.width() * (1 + delta))
+        new_height = max(100, self.height() * (1 + delta))
+        new_height = int(new_height)
+        new_width = new_height
+        self.resize(new_width, new_height)
+        self.label.setFixedSize(new_width, new_height)
+    
+    def closeEvent(self, event):
+        """关闭窗口时停止线程"""
+        self.display_thread.stop()
+        self.display_thread.wait()
+        super().closeEvent(event)
 
 class EasyAIV(Process):  #
     def __init__(self, model_process_args, alive_args):
@@ -307,25 +409,45 @@ class EasyAIV(Process):  #
         self.alive_args_beat_q = alive_args['beat_q']
         self.alive_args_mouth_q = alive_args['mouth_q']
 
+    @staticmethod
+    def start_qt_app(display_queue):
+        """启动PyQt应用"""
+        app = QApplication(sys.argv)
+        window = DesktopAssistantWindow(display_queue)
+        print("QT Window starts!!")
+        window.show()
+        sys.exit(app.exec_())
+
+
     @torch.no_grad()
     def run(self):
         IMG_WIDTH = 512
+        
+        # 添加图像显示队列
+        display_queue = Queue(maxsize=3)  # 最大缓存3帧
+        
+        qt_process = Process(
+            target=EasyAIV.start_qt_app,
+            args=(display_queue,)
+        )
+        qt_process.daemon = True
+        qt_process.start()
 
-        cam = None
-        if args.output_webcam:
-            cam_scale = 1
-            cam_width_scale = 1
-            if args.anime4k:
-                cam_scale = 2
-            if args.alpha_split:
-                cam_width_scale = 2
-            cam = pyvirtualcam.Camera(width=args.output_w * cam_scale * cam_width_scale, height=args.output_h * cam_scale,
-                                      fps=30,
-                                      backend=args.output_webcam,
-                                      fmt=
-                                      {'unitycapture': pyvirtualcam.PixelFormat.RGBA, 'obs': pyvirtualcam.PixelFormat.RGB}[
-                                          args.output_webcam])
-            print(f'Using virtual camera: {cam.device}')
+        # cam = None
+        # if args.output_webcam:
+        #     cam_scale = 1
+        #     cam_width_scale = 1
+        #     if args.anime4k:
+        #         cam_scale = 2
+        #     if args.alpha_split:
+        #         cam_width_scale = 2
+        #     cam = pyvirtualcam.Camera(width=args.output_w * cam_scale * cam_width_scale, height=args.output_h * cam_scale,
+        #                               fps=30,
+        #                               backend=args.output_webcam,
+        #                               fmt=
+        #                               {'unitycapture': pyvirtualcam.PixelFormat.RGBA, 'obs': pyvirtualcam.PixelFormat.RGB}[
+        #                                   args.output_webcam])
+        #     print(f'Using virtual camera: {cam.device}')
 
         a = None
         if args.anime4k:
@@ -452,13 +574,15 @@ class EasyAIV(Process):  #
                 alpha_image = cv2.cvtColor(alpha_image, cv2.COLOR_RGB2RGBA)
                 postprocessed_image = cv2.hconcat([postprocessed_image, alpha_image])
 
-            if args.output_webcam:
-                result_image = postprocessed_image
-                if args.output_webcam == 'obs':
-                    result_image = cv2.cvtColor(result_image, cv2.COLOR_RGBA2RGB)
-                cam.send(result_image)
-                cam.sleep_until_next_frame()
-
+            # if args.output_webcam:
+            #     result_image = postprocessed_image
+            #     if args.output_webcam == 'obs':
+            #         result_image = cv2.cvtColor(result_image, cv2.COLOR_RGBA2RGB)
+            #     cam.send(result_image)
+            #     cam.sleep_until_next_frame()
+            
+            if not display_queue.full():
+                display_queue.put(postprocessed_image.copy()) 
 
 class FlaskAPI(Resource):
     def post(self):
