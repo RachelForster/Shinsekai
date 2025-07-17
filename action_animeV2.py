@@ -56,6 +56,7 @@ class ActionAnimeV2:
         self.head_axial = deque()  # [[start, end], [start_time, end_time]]
         self.head_coronal = deque()  # [[start, end], [start_time, end_time]]
         self.head_sagittal = deque()  # [[start, end], [start_time, end_time]]
+        self.chest = deque()  # [[start, end], [start_time, end_time]]  # 胸部动作
 
     def singing(self, beat_q, mouth_q):
         if beat_q is None or mouth_q is None:
@@ -104,6 +105,7 @@ class ActionAnimeV2:
             self.head_coronal.append([[c_cur, c_cur], [t_cur, t_cur+max(random.uniform(-0.5, 2.0), 0.0)]])
         self.auto_blink()
         self.eyeball_moving()
+        self.breathing()
         return self.calc_cur_vector()
 
     def rhythm(self, beat_q):  # 根据节奏摇
@@ -136,6 +138,7 @@ class ActionAnimeV2:
             self.head_coronal.append([[c_cur, c_cur], [t_cur, t_cur+random.uniform(0., 2.3)]])
         self.auto_blink()
         self.eyeball_moving()
+        self.breathing()
         return self.calc_cur_vector()
 
     def speaking(self, speech_q):
@@ -171,6 +174,7 @@ class ActionAnimeV2:
             self.head_axial.append([[a_cur, a_cur], [t_cur, t_cur+max(random.uniform(-0.5, 1.5), 0)]])
         self.auto_blink()
         self.eyeball_moving()
+        self.breathing()
         return self.calc_cur_vector()
 
     def sleeping(self):
@@ -206,6 +210,7 @@ class ActionAnimeV2:
             self.mouth.append([[m_cur, 0.8], [t_cur, self.head_sagittal[-1][1][0]], 14])
             m_cur, t_cur = self.mouth[-1][0][1], self.mouth[-1][1][1]
             self.mouth.append([[m_cur, 0.35], [self.head_sagittal[-1][1][0], self.head_sagittal[-1][1][1]], 14])
+        self.breathing()
         return self.calc_cur_vector()
 
     def idle(self):
@@ -219,7 +224,16 @@ class ActionAnimeV2:
         self.auto_blink(eyelid_random=True)
         self.eyeball_moving()
         self.head_moving()
+        self.breathing()
         return self.calc_cur_vector()
+
+    def breathing(self):
+        inhale_time, exhale_time = 0.8, 1.2  # 1.4, 2.0
+        if len(self.chest) <= 1:
+            c_cur, t_cur = self.chest[-1][0][1], self.chest[-1][1][1]
+            self.chest.append([[c_cur, 1], [t_cur, t_cur + inhale_time]])
+            c_cur, t_cur = self.chest[-1][0][1], self.chest[-1][1][1]
+            self.chest.append([[c_cur, 0], [t_cur, t_cur + exhale_time]])
 
     def auto_blink(self, eyelid_random=False):
         if len(self.eyelid) <= 1:
@@ -286,6 +300,9 @@ class ActionAnimeV2:
         period = (cur_time - self.head_sagittal[0][1][0]) / (self.head_sagittal[0][1][1] - self.head_sagittal[0][1][0]) * HALF_PI
         pose_vector_c[0] = calc_cur(self.head_sagittal[0][0][0], self.head_sagittal[0][0][1], period)
 
+        period = (cur_time - self.chest[0][1][0]) / (self.chest[0][1][1] - self.chest[0][1][0]) * HALF_PI
+        pose_vector_c[5] = calc_cur(self.chest[0][0][0], self.chest[0][0][1], period)
+
         self.eyebrow_vector_c = eyebrow_vector_c
         self.mouth_eye_vector_c = mouth_eye_vector_c
         self.pose_vector_c = pose_vector_c
@@ -312,6 +329,8 @@ class ActionAnimeV2:
             self.head_coronal.append([[self.pose_vector_c[2], 0], [cur_time, return_time]])
         if len(self.head_sagittal) == 0:
             self.head_sagittal.append([[self.pose_vector_c[0], 0], [cur_time, return_time]])
+        if len(self.chest) == 0:
+            self.chest.append([[self.pose_vector_c[5], 0], [cur_time, return_time]])
 
     def deque_pop_outdated(self):
         cur_time = time.perf_counter()
@@ -350,6 +369,12 @@ class ActionAnimeV2:
                 self.head_sagittal.popleft()
             else:
                 break
+        cur_time = time.perf_counter()
+        while len(self.chest) > 0:
+            if self.chest[0][1][1] < cur_time:
+                self.chest.popleft()
+            else:
+                break
 
     def reset_deque(self):
         self.eyelid = deque()
@@ -358,6 +383,7 @@ class ActionAnimeV2:
         self.head_axial = deque()
         self.head_coronal = deque()
         self.head_sagittal = deque()
+        self.chest = deque()
 
 
 
