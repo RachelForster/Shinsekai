@@ -2,6 +2,8 @@ import time
 import random
 import math
 from collections import deque
+from enum import Enum, auto
+
 
 # mouth_eye_vector_c:
 # 2, 3是右眼和左眼开闭（0-1）*******
@@ -37,6 +39,15 @@ ActionState = {
     'singing': 4
 }
 
+# 添加在文件顶部，ActionState定义之后
+class EmotionType(Enum):
+    NEUTRAL = 'NEUTRAL'    # 中性
+    HAPPY = 'HAPPY'      # 高兴
+    ANGRY = 'ANGRY'      # 生气
+    SAD = 'SAD'        # 悲伤
+    SURPRISED = 'SURPRISED'  # 惊讶
+    SLEEPY = 'SLEEPY'     # 困倦
+    RELAXED = 'RELAXED'    # 放松
 
 def calc_cur(start, end, period):
     return start + math.sin(period) * (end - start)
@@ -57,6 +68,61 @@ class ActionAnimeV2:
         self.head_coronal = deque()  # [[start, end], [start_time, end_time]]
         self.head_sagittal = deque()  # [[start, end], [start_time, end_time]]
         self.chest = deque()  # [[start, end], [start_time, end_time]]  # 胸部动作
+
+        self.current_emotion = EmotionType.NEUTRAL
+        self.emotion_intensity = 1.0  # 情绪强度 0.0-1.0
+
+        # 在ActionAnimeV2类中添加以下方法
+    def getEmotion(self, emotionType):
+        """
+        根据情绪类型设置面部表情
+        返回嘴型类型和眉毛向量
+        """
+        # 默认中性表情
+        mouth_type = 14  # 默认使用高兴嘴巴
+        eyebrow_vector = [0.0] * 12
+        
+        if emotionType == EmotionType.NEUTRAL:
+            # 中性表情：嘴巴微张，眉毛自然
+            mouth_type = 14
+            eyebrow_vector = [0.0] * 12
+        
+        elif emotionType == EmotionType.HAPPY:
+            # 高兴：嘴巴张大，眉毛上扬
+            mouth_type = 14
+            # 眉毛升高 (6,7为右左眉毛升高)
+            eyebrow_vector = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8, 0.8] + [0.0]*4
+        
+        elif emotionType == EmotionType.ANGRY:
+            # 生气：三角嘴，生气眉毛
+            mouth_type = 19
+            # 生气眉 (2,3为右左生气眉)
+            eyebrow_vector = [0.0, 0.0, 0.9, 0.9, 0.0, 0.0, 0.0, 0.0] + [0.0]*4
+        
+        elif emotionType == EmotionType.SAD:
+            # 悲伤：嘴巴uuu，眉毛降低+皱眉
+            mouth_type = 16
+            # 皱眉 (0,1为右左皱眉) + 眉毛降低 (4,5为右左眉毛降低)
+            eyebrow_vector = [0.7, 0.7, 0.0, 0.0, 0.6, 0.6, 0.0, 0.0] + [0.0]*4
+        
+        elif emotionType == EmotionType.SURPRISED:
+            # 惊讶：ooo嘴，眉毛升高
+            mouth_type = 18
+            # 眉毛升高 (6,7为右左眉毛升高)
+            eyebrow_vector = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0] + [0.0]*4
+        
+        elif emotionType == EmotionType.SLEEPY:
+            # 困倦：嘴巴微闭，眉毛降低
+            mouth_type = 14
+            # 眉毛降低 (4,5为右左眉毛降低)
+            eyebrow_vector = [0.0, 0.0, 0.0, 0.0, 0.8, 0.8, 0.0, 0.0] + [0.0]*4
+        
+        elif emotionType == EmotionType.RELAXED:
+            # 放松：嘴巴微张，眉毛自然
+            mouth_type = 14
+            eyebrow_vector = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.3] + [0.0]*4
+        
+        return mouth_type, eyebrow_vector
 
     def singing(self, beat_q, mouth_q):
         if beat_q is None or mouth_q is None:
@@ -140,6 +206,24 @@ class ActionAnimeV2:
         self.eyeball_moving()
         self.breathing()
         return self.calc_cur_vector()
+
+    def setEmotion(self, emotion):
+        self.current_emotion = emotion
+        if 'HAPPY' in emotion:
+            self.current_emotion = EmotionType.HAPPY
+        elif 'ANGRY' in emotion:
+            self.current_emotion = EmotionType.ANGRY
+        elif 'SAD' in emotion:
+            self.current_emotion = EmotionType.SAD
+        elif 'SURPRISED' in emotion:
+            self.current_emotion = EmotionType.SURPRISED
+        elif 'SLEEPY' in emotion:
+            self.current_emotion = EmotionType.SLEEPY
+        elif 'RELAXED' in emotion:
+            self.current_emotion = EmotionType.RELAXED
+        else:
+            self.current_emotion = EmotionType.NEUTRAL
+        print('setEmotion', self.current_emotion)
 
     def speaking(self, speech_q):
         if speech_q is None:
@@ -272,13 +356,15 @@ class ActionAnimeV2:
             self.head_sagittal.append([[s_cur, s_cur], [t_cur, t_next]])
 
     def calc_cur_vector(self):
-        eyebrow_vector_c = [0.0] * 12
+        
         mouth_eye_vector_c = [0.0] * 27
         pose_vector_c = [0.0] * 6
 
         self.deque_pop_outdated()
         self.check_deque()
         cur_time = time.perf_counter()
+
+        mouth_type, eyebrow_vector_c = self.getEmotion(self.current_emotion)    
 
         period = (cur_time - self.eyelid[0][2][0]) / (self.eyelid[0][2][1] - self.eyelid[0][2][0]) * HALF_PI
         mouth_eye_vector_c[3] = calc_cur(self.eyelid[0][0][0], self.eyelid[0][0][1], period)
@@ -289,7 +375,7 @@ class ActionAnimeV2:
         mouth_eye_vector_c[25] = calc_cur(self.eyeball[0][1][0], self.eyeball[0][1][1], period)
 
         period = (cur_time - self.mouth[0][1][0]) / (self.mouth[0][1][1] - self.mouth[0][1][0]) * HALF_PI
-        mouth_eye_vector_c[self.mouth[0][2]] = calc_cur(self.mouth[0][0][0], self.mouth[0][0][1], period)
+        mouth_eye_vector_c[mouth_type] = calc_cur(self.mouth[0][0][0], self.mouth[0][0][1], period)
 
         period = (cur_time - self.head_axial[0][1][0]) / (self.head_axial[0][1][1] - self.head_axial[0][1][0]) * HALF_PI
         pose_vector_c[1] = calc_cur(self.head_axial[0][0][0], self.head_axial[0][0][1], period)

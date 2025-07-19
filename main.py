@@ -320,7 +320,7 @@ class ImageDisplayThread(QThread):
 
 
 class ChatWorker(QThread):
-    response_received = pyqtSignal(str)  # 定义信号用于传递响应
+    response_received = pyqtSignal(str, str)  # 定义信号用于传递响应
     
     def __init__(self, deepseek, message):
         super().__init__()
@@ -329,17 +329,19 @@ class ChatWorker(QThread):
     
     def run(self):
         """在后台线程中执行聊天请求"""
-        response = self.deepseek.chat(self.message)
-        self.deepseek.get_voice(response)  # 调用DeepSeek的音频发送方法
-        self.response_received.emit(response)
+        message, emotion = self.deepseek.chat(self.message)
+        self.deepseek.get_voice(message)  # 调用DeepSeek的音频发送方法
+        self.response_received.emit(message, emotion)
 
 class DesktopAssistantWindow(QWidget):
-    def __init__(self, image_queue, deepseek):
+    def __init__(self, image_queue, emotion_queue, deepseek):
         super().__init__()
         self.image_queue = image_queue
         self.deepseek = deepseek
+        self.emotion_queue = emotion_queue
 
         self.chat_worker = None  # 用于处理聊天请求的工作线程
+        self.original_width = 1536
 
         # 窗口设置
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
@@ -358,32 +360,37 @@ class DesktopAssistantWindow(QWidget):
 
         # 添加对话框组件 - 显示人物当前说的话
         self.dialog_label = QLabel("")
-        self.dialog_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.dialog_label.setTextFormat(Qt.RichText)
+        self.dialog_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)  # 文本从顶部开始
         self.dialog_label.setStyleSheet("""
-            QLabel {
-                background-color: rgba(30, 30, 30, 180);
-                color: white;
-                font-size: 28px;
-                padding: 10px;
-                width: 400px;
-                border-radius: 10px;
-            }
+        QLabel {
+            background-color: rgba(50, 50, 50, 200);
+            color: #f0f0f0;  /* 柔和的白色 */
+            font-size: 28px;
+            font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
+            padding: 20px; 
+            border-radius: 12px;
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+            line-height: 200%;
+            letter-spacing: 2px;  /* 增加字间距 */
+        }
         """)
         self.dialog_label.setWordWrap(True)
-        self.dialog_label.hide()  # 初始隐藏
+        self.dialog_label.hide()
 
         self.label = QLabel()
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # 添加尺寸策略
         self.image_layout.addWidget(self.label)
 
-           # 将对话框添加到图像容器中（覆盖在图像上方）
+        # 将对话框添加到图像容器中（覆盖在图像上方）
         self.dialog_label.setParent(self.image_container)
-        self.dialog_label.setGeometry(QRect(10, 10, 300, 100))  # 右上角位置
 
         # 输入框布局
         input_layout = QHBoxLayout()
         input_layout.setSpacing(10)
+        
         # 输入框组件
         self.input_box = QLineEdit()
         self.input_box.setPlaceholderText("输入消息...")
@@ -391,9 +398,10 @@ class DesktopAssistantWindow(QWidget):
             QLineEdit {
                 background-color: rgba(50, 50, 50, 200);
                 color: white;
+                font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
                 border: 1px solid #555;
                 border-radius: 5px;
-                padding: 5px;
+                padding: 20px;
                 font-size: 28px;
             }
         """)
@@ -407,7 +415,7 @@ class DesktopAssistantWindow(QWidget):
                 color: white;
                 border: none;
                 border-radius: 5px;
-                padding: 5px 10px;
+                padding: 10px;
                 font-size: 28px;
             }
             QPushButton:hover {
@@ -431,7 +439,7 @@ class DesktopAssistantWindow(QWidget):
         self.display_thread.start()
         
         # 初始大小
-        self.resize(1024, 768)
+        self.resize(self.original_width, self.original_width)
         
         # 交互设置
         self.drag_position = None
@@ -444,11 +452,20 @@ class DesktopAssistantWindow(QWidget):
         qimg = QImage(image.data, width, height, bytes_per_line, QImage.Format_RGBA8888)
         pixmap = QPixmap.fromImage(qimg)
         
-        # 直接设置Pixmap到QLabel，不进行缩放
-        self.label.setPixmap(pixmap)
+        # 将图像放大
+        rate = self.original_width / 1024
+        scaled_pixmap = pixmap.scaled(
+            int(width * rate), 
+            int(height * rate),
+            Qt.KeepAspectRatio, 
+            Qt.SmoothTransformation
+        )
+        
+        # 设置放大后的图像
+        self.label.setPixmap(scaled_pixmap)
         
         # 调整QLabel大小以匹配图像尺寸
-        self.label.setFixedSize(1024, 1024)
+        self.label.setFixedSize(self.original_width, self.original_width)
 
         # 调整窗口大小以适应内容
         self.adjustSize()
@@ -462,26 +479,35 @@ class DesktopAssistantWindow(QWidget):
             self.input_box.clear()
             
             # 可选: 在对话框中显示用户发送的消息
-            self.setDisplayWords(f"你: {message}")
+            self.setDisplayWords(f"<b>你</b>：{message}")
 
-                 # 创建并启动聊天工作线程
+            # 创建并启动聊天工作线程
             self.chat_worker = ChatWorker(self.deepseek, message)
             self.chat_worker.response_received.connect(self.handleResponse)  # 连接信号
             self.chat_worker.start()  # 启动线程
     
-    def handleResponse(self, response):
+    def handleResponse(self, message, emotion):
         """处理聊天响应"""
         # 在对话框中显示AI的回复
-        self.setDisplayWords(f"狛枝凪斗: {response}")
+        self.setDisplayWords(f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color: #A7CA90;'>狛枝凪斗</b>：{message}</p>")
+        if not self.emotion_queue.full():
+            self.emotion_queue.put(emotion)
 
     def setDisplayWords(self, text):
         """显示人物说的话"""
         if text:
             self.dialog_label.setText(text)
             self.dialog_label.show()
-            self.dialog_label.adjustSize()  # 调整对话框大小以适应文本
-            # 10秒后自动隐藏
-            QTimer.singleShot(10000, self.dialog_label.hide)
+            
+            # 调整对话框大小以适应文本
+            self.dialog_label.adjustSize()
+            
+            # 设置对话框位置
+            y = self.label.height() - self.dialog_label.height()  # 从底部开始
+            
+            # 设置对话框几何位置
+            self.dialog_label.setGeometry(0, y, self.label.width(), self.dialog_label.height())
+
         else:
             self.dialog_label.hide()
        
@@ -518,13 +544,12 @@ class EasyAIV(Process):  #
         self.alive_args_is_music_play = alive_args['is_music_play']
         self.alive_args_beat_q = alive_args['beat_q']
         self.alive_args_mouth_q = alive_args['mouth_q']
-
     @staticmethod
-    def start_qt_app(display_queue):
+    def start_qt_app(display_queue, emotion_queue):
         """启动PyQt应用"""
         app = QApplication(sys.argv)
         deepseek = DeepSeek()
-        window = DesktopAssistantWindow(display_queue, deepseek)
+        window = DesktopAssistantWindow(display_queue, emotion_queue, deepseek)
         print("QT Window starts!!")
         window.show()
         sys.exit(app.exec_())
@@ -536,10 +561,13 @@ class EasyAIV(Process):  #
         
         # 添加图像显示队列
         display_queue = Queue(maxsize=3)  # 最大缓存3帧
+
+        # 情绪显示队列
+        emotion_queue = Queue(maxsize=3)
         
         qt_process = Process(
             target=EasyAIV.start_qt_app,
-            args=(display_queue,)
+            args=(display_queue, emotion_queue)
         )
         qt_process.daemon = True
         qt_process.start()
@@ -575,6 +603,8 @@ class EasyAIV(Process):  #
 
             idle_flag = False
             if bool(self.alive_args_is_speech.value):  # 正在说话
+                if not emotion_queue.empty():
+                    action.setEmotion(emotion_queue.get_nowait())
                 if not self.alive_args_speech_q.empty():
                     speech_q = self.alive_args_speech_q.get_nowait()
                 eyebrow_vector_c, mouth_eye_vector_c, pose_vector_c = action.speaking(speech_q)
