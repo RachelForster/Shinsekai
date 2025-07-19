@@ -10,6 +10,7 @@ from action_animeV2 import ActionAnimeV2
 from alive import Alive
 from multiprocessing import Value, Process, Queue
 from ctypes import c_bool
+from llm.deepseek import DeepSeek
 import os
 
 import queue
@@ -30,13 +31,14 @@ from flask import Flask
 from flask_restful import Resource, Api, reqparse
 
 import sys
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QRect
 from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
+from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QSizePolicy
 
 app = Flask(__name__)
 api = Api(app)
 
+global deepseek
 
 def convert_linear_to_srgb(image: torch.Tensor) -> torch.Tensor:
     rgb_image = torch_linear_to_srgb(image[0:3, :, :])
@@ -316,23 +318,112 @@ class ImageDisplayThread(QThread):
     def stop(self):
         self.running = False
 
-# 新增类：桌面悬浮窗
+
+class ChatWorker(QThread):
+    response_received = pyqtSignal(str)  # 定义信号用于传递响应
+    
+    def __init__(self, deepseek, message):
+        super().__init__()
+        self.deepseek = deepseek
+        self.message = message
+    
+    def run(self):
+        """在后台线程中执行聊天请求"""
+        response = self.deepseek.chat(self.message)
+        self.deepseek.get_voice(response)  # 调用DeepSeek的音频发送方法
+        self.response_received.emit(response)
+
 class DesktopAssistantWindow(QWidget):
-    def __init__(self, image_queue):
+    def __init__(self, image_queue, deepseek):
         super().__init__()
         self.image_queue = image_queue
-        
+        self.deepseek = deepseek
+
+        self.chat_worker = None  # 用于处理聊天请求的工作线程
+
         # 窗口设置
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
-        # 创建显示区域 - 使用布局管理器
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
+        # 主布局
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(10)
+
+        # 使用一个容器来放置图像和对话框
+        self.image_container = QWidget()
+        self.image_layout = QVBoxLayout(self.image_container)
+        self.image_layout.setContentsMargins(0, 0, 0, 0)
+        self.image_layout.setSpacing(0)
+
+        # 添加对话框组件 - 显示人物当前说的话
+        self.dialog_label = QLabel("")
+        self.dialog_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.dialog_label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(30, 30, 30, 180);
+                color: white;
+                font-size: 28px;
+                padding: 10px;
+                width: 400px;
+                border-radius: 10px;
+            }
+        """)
+        self.dialog_label.setWordWrap(True)
+        self.dialog_label.hide()  # 初始隐藏
+
         self.label = QLabel()
         self.label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.label)
+        self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # 添加尺寸策略
+        self.image_layout.addWidget(self.label)
+
+           # 将对话框添加到图像容器中（覆盖在图像上方）
+        self.dialog_label.setParent(self.image_container)
+        self.dialog_label.setGeometry(QRect(10, 10, 300, 100))  # 右上角位置
+
+        # 输入框布局
+        input_layout = QHBoxLayout()
+        input_layout.setSpacing(10)
+        # 输入框组件
+        self.input_box = QLineEdit()
+        self.input_box.setPlaceholderText("输入消息...")
+        self.input_box.setStyleSheet("""
+            QLineEdit {
+                background-color: rgba(50, 50, 50, 200);
+                color: white;
+                border: 1px solid #555;
+                border-radius: 5px;
+                padding: 5px;
+                font-size: 28px;
+            }
+        """)
+        self.input_box.returnPressed.connect(self.sendMessage)
+        
+        # 发送按钮
+        self.send_btn = QPushButton("发送")
+        self.send_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 5px 10px;
+                font-size: 28px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        self.send_btn.clicked.connect(self.sendMessage)
+        
+        input_layout.addWidget(self.input_box)
+        input_layout.addWidget(self.send_btn)
+        
+        # 将组件添加到主布局
+        main_layout.addWidget(self.image_container)
+        main_layout.addLayout(input_layout)
+        
+        self.setLayout(main_layout)
         
         # 设置图像显示线程
         self.display_thread = ImageDisplayThread(image_queue)
@@ -340,31 +431,60 @@ class DesktopAssistantWindow(QWidget):
         self.display_thread.start()
         
         # 初始大小
-        self.resize(2048, 2048)
+        self.resize(1024, 768)
         
         # 交互设置
         self.drag_position = None
         
     def update_image(self, image):
         """更新显示图像"""
+        self.original_image = image  # 保存原始图像
         height, width, channel = image.shape
         bytes_per_line = 4 * width
         qimg = QImage(image.data, width, height, bytes_per_line, QImage.Format_RGBA8888)
-        original_pixmap = QPixmap.fromImage(qimg)
+        pixmap = QPixmap.fromImage(qimg)
         
-        # 缩放图像以适应标签大小
-        scaled_pixmap = original_pixmap.scaled(
-            self.label.size(),
-            Qt.KeepAspectRatio,  # 保持宽高比
-            Qt.SmoothTransformation  # 平滑缩放
-        )
-        self.label.setPixmap(scaled_pixmap)
+        # 直接设置Pixmap到QLabel，不进行缩放
+        self.label.setPixmap(pixmap)
+        
+        # 调整QLabel大小以匹配图像尺寸
+        self.label.setFixedSize(1024, 1024)
 
-        # # 自动调整窗口大小
-        # if self.width() != width or self.height() != height:
-        #     self.resize(width, height)
-        #     self.label.setFixedSize(width, height)
+        # 调整窗口大小以适应内容
+        self.adjustSize()
     
+    def sendMessage(self):
+        """发送消息函数"""
+        message = self.input_box.text().strip()
+        if message:
+            print(f"发送消息: {message}")
+            # 清空输入框
+            self.input_box.clear()
+            
+            # 可选: 在对话框中显示用户发送的消息
+            self.setDisplayWords(f"你: {message}")
+
+                 # 创建并启动聊天工作线程
+            self.chat_worker = ChatWorker(self.deepseek, message)
+            self.chat_worker.response_received.connect(self.handleResponse)  # 连接信号
+            self.chat_worker.start()  # 启动线程
+    
+    def handleResponse(self, response):
+        """处理聊天响应"""
+        # 在对话框中显示AI的回复
+        self.setDisplayWords(f"狛枝凪斗: {response}")
+
+    def setDisplayWords(self, text):
+        """显示人物说的话"""
+        if text:
+            self.dialog_label.setText(text)
+            self.dialog_label.show()
+            self.dialog_label.adjustSize()  # 调整对话框大小以适应文本
+            # 10秒后自动隐藏
+            QTimer.singleShot(10000, self.dialog_label.hide)
+        else:
+            self.dialog_label.hide()
+       
     def mousePressEvent(self, event):
         """实现窗口拖动"""
         if event.button() == Qt.LeftButton:
@@ -376,16 +496,6 @@ class DesktopAssistantWindow(QWidget):
         if event.buttons() == Qt.LeftButton and self.drag_position:
             self.move(event.globalPos() - self.drag_position)
             event.accept()
-    
-    def wheelEvent(self, event):
-        """滚轮缩放窗口"""
-        delta = event.angleDelta().y() / 1200  # 缩放因子
-        new_width = max(100, self.width() * (1 + delta))
-        new_height = max(100, self.height() * (1 + delta))
-        new_height = int(new_height)
-        new_width = new_height
-        self.resize(new_width, new_height)
-        self.label.setFixedSize(new_width, new_height)
     
     def closeEvent(self, event):
         """关闭窗口时停止线程"""
@@ -413,7 +523,8 @@ class EasyAIV(Process):  #
     def start_qt_app(display_queue):
         """启动PyQt应用"""
         app = QApplication(sys.argv)
-        window = DesktopAssistantWindow(display_queue)
+        deepseek = DeepSeek()
+        window = DesktopAssistantWindow(display_queue, deepseek)
         print("QT Window starts!!")
         window.show()
         sys.exit(app.exec_())
@@ -432,22 +543,6 @@ class EasyAIV(Process):  #
         )
         qt_process.daemon = True
         qt_process.start()
-
-        # cam = None
-        # if args.output_webcam:
-        #     cam_scale = 1
-        #     cam_width_scale = 1
-        #     if args.anime4k:
-        #         cam_scale = 2
-        #     if args.alpha_split:
-        #         cam_width_scale = 2
-        #     cam = pyvirtualcam.Camera(width=args.output_w * cam_scale * cam_width_scale, height=args.output_h * cam_scale,
-        #                               fps=30,
-        #                               backend=args.output_webcam,
-        #                               fmt=
-        #                               {'unitycapture': pyvirtualcam.PixelFormat.RGBA, 'obs': pyvirtualcam.PixelFormat.RGB}[
-        #                                   args.output_webcam])
-        #     print(f'Using virtual camera: {cam.device}')
 
         a = None
         if args.anime4k:
@@ -640,6 +735,9 @@ if __name__ == '__main__':
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
     input_image, extra_image = prepare_input_img(512, args.character)
+
+    deepseek = DeepSeek()
+    deepseek.load_tts_model()
 
     # 声明跨进程公共参数
     model_process_args = {

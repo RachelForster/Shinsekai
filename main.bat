@@ -1,9 +1,10 @@
-D:\anaconda3\envs\eaiv\python.exe main.py ^
---character lambda_00 ^
---output_size 512x512 ^
---simplify 1 ^
+python main.py ^
+--character komaeda3 ^
+--output_size 1536x1536 ^
+--simplify 3 ^
 --output_webcam unitycapture ^
 --model standard_half ^
 --anime4k ^
---sleep 20 ^
---port 7888
+--sleep 300 ^
+--port 7888 ^
+--eyebrow
