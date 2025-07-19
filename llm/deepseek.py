@@ -99,7 +99,7 @@ USER_TEMPLATE = '''
 
 class DeepSeek:
     def __init__(self):
-        self.client = OpenAI(api_key="sk-f26f62b3698d4e2ba0f319d18e9b7798")
+        self.client = OpenAI(api_key="YOUR-API-KEY")
         self.client.base_url = "https://api.deepseek.com"
         self.messages = [{"role": "system", "content": USER_TEMPLATE}]
 
