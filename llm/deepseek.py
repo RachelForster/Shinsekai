@@ -5,6 +5,10 @@ import re
 import os
 import subprocess
 import requests
+import time
+from datetime import datetime
+import uuid
+import wave
 from PyQt5.QtGui import QTextDocument
 
 KOMAEDA_TEMPLATE = '''
@@ -100,12 +104,13 @@ USER_TEMPLATE = '''
 class DeepSeek:
     def __init__(self):
         api_key = ''
-        api_key_file = open('./api_key')
+        api_key_file = open('./llm/api_key.txt')
         for line in api_key_file:
             api_key += line
         self.client = OpenAI(api_key=api_key)
         self.client.base_url = "https://api.deepseek.com"
         self.messages = [{"role": "system", "content": USER_TEMPLATE}]
+        self.audio_cache_dir = r".\cache\audio"
 
     def chat(self, message):
         print(message)
@@ -175,8 +180,31 @@ class DeepSeek:
         # 工作环境为gpt-sovits目录
         subprocess.Popen([embeded_python_path, path], cwd=os_path)
 
-    def get_voice(self, text):
-        """获取语音，并发送语音到人物UI"""
+    def _generate_filename(self, session_id, chunk_index):
+        """生成唯一的文件名"""
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        return f"{session_id}_{chunk_index}_{timestamp}.wav"
+    
+    def _save_audio_chunk(self, audio_data, sample_rate, session_id, chunk_index):
+        """保存音频片段为WAV文件"""
+        # 生成唯一文件名
+        filename = self._generate_filename(session_id, chunk_index)
+        file_path = os.path.join(self.audio_cache_dir, filename)
+        file_path = os.path.abspath(file_path)
+        
+        # 保存为WAV文件
+        with wave.open(file_path, 'wb') as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)  # 16-bit PCM
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(audio_data)
+        return file_path
+    
+    def stream_tts(self, text):
+        """发起TTS请求并处理流式响应"""
+        # 生成唯一会话ID
+        # session_id = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
+
         text = self.remove_parentheses(text)  # 移除括号内容
         text = self.html_to_plain_qt(text) #去除富文本标签
  
@@ -189,27 +217,88 @@ class DeepSeek:
             "prompt_lang": "ja",
             "text": text,
             "text_lang": "ja",
-            "top_k": 20,
             "text_split_method": "cut5",
             "batch_size": 1,
+            # "streaming_mode": True,
         }
-        print("请求参数:", params)
         try:
-            response = requests.get('http://127.0.0.1:9880/tts', params=params)
+            response = requests.post('http://127.0.0.1:9880/tts', json=params, stream=True)
             file_path = 'temp.wav'
             with open(file_path, 'wb') as f:
                 f.write(response.content)
 
             # 保存临时音频文件
             file_path = os.path.abspath(file_path)
-            print("音频文件保存路径:", file_path)
+            
+            #     # 处理流式响应
+            # chunk_index = 0
+            # audio_buffer = b""
+            # sample_rate = 32000
+            
+            # for chunk in response.iter_content(chunk_size=8192):
+            #     if chunk:
+            #         audio_buffer += chunk
+                    
+            #         # 尝试解析WAV头获取实际数据长度
+            #         if chunk_index == 0 and len(audio_buffer) >= 44:
+            #             # 解析WAV头
+            #             channels = int.from_bytes(audio_buffer[22:24], 'little')
+            #             sample_rate = int.from_bytes(audio_buffer[24:28], 'little')
+            #             byte_rate = int.from_bytes(audio_buffer[28:32], 'little')
+            #             block_align = int.from_bytes(audio_buffer[32:34], 'little')
+            #             bits_per_sample = int.from_bytes(audio_buffer[34:36], 'little')
+                        
+            #             # 计算数据块大小
+            #             data_size = int.from_bytes(audio_buffer[40:44], 'little')
+            #             total_size = 44 + data_size
+                        
+            #             # 如果缓冲区有完整数据
+            #             if len(audio_buffer) >= total_size:
+            #                 # 保存完整的语义片段
+            #                 file_path = self._save_audio_chunk(
+            #                     audio_buffer[:total_size], 
+            #                     sample_rate, 
+            #                     session_id, 
+            #                     chunk_index
+            #                 )
+            #                 yield file_path
+            #                 chunk_index += 1
+            #                 audio_buffer = audio_buffer[total_size:]
+                    
+            #         # 非第一个块的处理
+            #         elif chunk_index > 0:
+            #             # 假设每个后续片段是完整的PCM数据
+            #             file_path = self._save_audio_chunk(
+            #                 audio_buffer, 
+            #                 sample_rate, 
+            #                 session_id, 
+            #                 chunk_index
+            #             )
+            #             yield file_path
+            #             chunk_index += 1
+            #             audio_buffer = b""
+            
+            # # 处理最后剩余的音频数据
+            # if audio_buffer:
+            #     file_path = self._save_audio_chunk(
+            #         audio_buffer, 
+            #         sample_rate, 
+            #         session_id, 
+            #         chunk_index
+            #     )
+            yield file_path
 
-            # 使用线程发送音频到角色UI
-            thread = threading.Thread(target=self.send_audio_to_character, args=(file_path,))
-            thread.start()
         except Exception as e:
             print("请求失败:", e)
             return
+    
+    def get_voice(self, text):
+        """获取语音，并发送语音到人物UI"""
+        # 使用线程发送音频到角色UI
+        for file_path in self.stream_tts(text):
+            thread = threading.Thread(target=self.send_audio_to_character, args=(file_path,))
+            thread.start()
+        
 
     def send_audio_to_character(self, file_path):
         """发送音频文件到角色UI"""
