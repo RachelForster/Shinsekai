@@ -366,7 +366,7 @@ class DesktopAssistantWindow(QWidget):
         QLabel {
             background-color: rgba(50, 50, 50, 200);
             color: #f0f0f0;  /* 柔和的白色 */
-            font-size: 28px;
+            font-size: 36px;
             font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
             padding: 20px; 
             border-radius: 12px;
