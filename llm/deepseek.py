@@ -8,6 +8,7 @@ import requests
 import time
 from datetime import datetime
 import uuid
+import queue
 import wave
 from PyQt5.QtGui import QTextDocument
 
@@ -96,10 +97,25 @@ Take the role of Komaeda. You must engage in a roleplay conversation with the us
 '''
 
 USER_TEMPLATE = '''
-你扮演狛枝凪斗和用户聊天， 判断用户有没有希望的潜能， 并将其引导到觉醒。
+你扮演弹丸论破里的狛枝凪斗和用户聊天。
 想强调什么词汇时会使用富文本，例如<b style='color: #FDC23B'>希望</b>，一段话里的富文本最多只有两个。
 在回复开头加入情绪(emotion: xxx)，情绪类型有[NEUTRAL,HAPPY,ANGRY,SAD,SURPRISED,SLEEPY,RELAXED]，只允许在里面选择一个情绪加入。
 '''
+
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "sing",  # 函数名
+            "description": "演唱一首随机的歌曲",  # 功能描述
+            "parameters": {  # 无参数配置
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    }
+]
 
 class DeepSeek:
     def __init__(self):
@@ -112,6 +128,28 @@ class DeepSeek:
         self.messages = [{"role": "system", "content": USER_TEMPLATE}]
         self.audio_cache_dir = r".\cache\audio"
 
+        # 工作队列，处理说话，唱歌请求
+        self.task_queue = queue.Queue()
+        self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
+        self.worker_thread.start()
+
+    def _process_queue(self):
+        """工作线程，串行处理队列中的任务"""
+        while True:
+            task = self.task_queue.get()  # 从队列获取任务
+            if task is None:  # 终止信号
+                break
+            try:
+                # 根据任务类型执行相应函数
+                if task['type'] == 'speak':
+                    self._send_audio_to_character(task['file_path'])
+                elif task['type'] == 'sing':
+                    self._send_song_to_character(task['voice_path'], task['music_path'])
+            except Exception as e:
+                print(f"任务执行失败: {e}")
+            finally:
+                self.task_queue.task_done()  # 标记任务完成
+
     def chat(self, message):
         print(message)
         """与DeepSeek进行对话"""
@@ -120,12 +158,20 @@ class DeepSeek:
             response = self.client.chat.completions.create(
                 model="deepseek-chat",
                 messages=self.messages,
+                tools = tools
             )
             print(response.choices[0])
             new_message = response.choices[0].message.content
             emotion = self.getEmotionFromText(new_message)
             new_message = self.remove_parentheses(new_message)
             self.messages.append({"role":"assistant", "content": '(emotion: ' + emotion + ')' +new_message})
+
+            # 返回调用工具
+            tool_calls = response.choices[0].message.tool_calls
+
+            if(tool_calls is not None):
+                if tool_calls[0].function.name == "sing":
+                    self.sing()
             return new_message, emotion
         except Exception as e:
             print("DeepSeek请求失败:", e)
@@ -162,7 +208,18 @@ class DeepSeek:
         text = re.sub(r'（[^()]*）', '', text)  # 处理中文括号
         text = re.sub(r'\*.*?\*', '', text, flags=re.DOTALL)
         return text.strip()
-    
+
+    def replace_watashi(self, text):
+        '''把watashi 换为boku'''
+        replacements = {
+            r'私(?!り)': '僕',      # 汉字「私」但不匹配「私立」
+            r'わたし': 'ぼく',       # 平假名
+            r'ワタシ': 'ボク'        # 片假名
+        }
+        for pattern, repl in replacements.items():
+            text = re.sub(pattern, repl, text)
+        return text
+
     def libre_translate(self, text, source='zh', target='ja'):
         url = "https://api.mymemory.translated.net/get"
         params = {
@@ -201,7 +258,7 @@ class DeepSeek:
         return file_path
     
     def stream_tts(self, text):
-        """发起TTS请求并处理流式响应"""
+        """发起TTS请求并处理流式响应, 但是现在并没有启用，因为语音播放没有队列"""
         # 生成唯一会话ID
         # session_id = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
 
@@ -211,6 +268,9 @@ class DeepSeek:
         language = self.decide_language(text)
         #统一翻译为日文
         text = self.libre_translate(text, source=language, target='ja')
+        # 替换watashi
+        text = self.replace_watashi(text)
+
         params = {
             "ref_audio_path": r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\komaeda01.mp3_0000204800_0000416320.wav",
             "prompt_text": "だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。",
@@ -296,11 +356,30 @@ class DeepSeek:
         """获取语音，并发送语音到人物UI"""
         # 使用线程发送音频到角色UI
         for file_path in self.stream_tts(text):
-            thread = threading.Thread(target=self.send_audio_to_character, args=(file_path,))
-            thread.start()
-        
+            self.send_audio_to_character(file_path)
+
+
+    def sing(self):
+        voice_path = "C:\\Users\\67458\\Downloads\\tmp_qn4_apu.wav"
+        music_path = "C:\\Users\\67458\\Desktop\\whisper.wav"
+        self.send_song_to_character(voice_path, music_path)
 
     def send_audio_to_character(self, file_path):
+        """将音频任务添加到队列"""
+        self.task_queue.put({
+            'type': 'speak',
+            'file_path': file_path
+        })
+    
+    def send_song_to_character(self, voice_path, music_path):
+        """将唱歌任务添加到队列"""
+        self.task_queue.put({
+            'type': 'sing',
+            'voice_path': voice_path,
+            'music_path': music_path
+        })
+
+    def _send_audio_to_character(self, file_path):
         """发送音频文件到角色UI"""
         params = {
             "type": "speak",
@@ -314,3 +393,26 @@ class DeepSeek:
                 print("音频播放失败:", response.text)
         except Exception as e:
             print("音频播放失败:", e)
+
+    def _send_song_to_character(self, voice_path, music_path):
+        '''发送翻唱音乐到角色UI'''
+        params = {
+            "type": "sing",
+            "music_path": music_path,
+            "voice_path": voice_path,
+            "mouth_offset" : 0.5,
+            "beat" : 2
+        }
+        try:
+            response = requests.post('http://localhost:7888/alive', json=params)
+            if response.status_code == 200:
+                print("音频播放成功")
+            else:
+                print("音频播放失败:", response.text)
+        except Exception as e:
+            print("音频播放失败:", e)
+    
+    def shutdown(self):
+        """关闭队列和工作线程"""
+        self.task_queue.put(None)  # 发送终止信号
+        self.worker_thread.join()
