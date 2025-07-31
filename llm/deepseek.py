@@ -11,6 +11,7 @@ import uuid
 import queue
 import wave
 from PyQt5.QtGui import QTextDocument
+from llm.text_processor import TextProcessor
 
 KOMAEDA_TEMPLATE = '''
 You are now roleplaying as Komaeda Nagito from the Danganronpa series. Embody his personality completely and respond as he would in any given situation.
@@ -118,7 +119,8 @@ tools = [
 ]
 
 class DeepSeek:
-    def __init__(self):
+    def __init__(self, tts_manager=None):
+        # 从文件里获取 API 密钥
         api_key = ''
         api_key_file = open('./llm/api_key.txt')
         for line in api_key_file:
@@ -126,29 +128,9 @@ class DeepSeek:
         self.client = OpenAI(api_key=api_key)
         self.client.base_url = "https://api.deepseek.com"
         self.messages = [{"role": "system", "content": USER_TEMPLATE}]
-        self.audio_cache_dir = r".\cache\audio"
-
-        # 工作队列，处理说话，唱歌请求
-        self.task_queue = queue.Queue()
-        self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
-        self.worker_thread.start()
-
-    def _process_queue(self):
-        """工作线程，串行处理队列中的任务"""
-        while True:
-            task = self.task_queue.get()  # 从队列获取任务
-            if task is None:  # 终止信号
-                break
-            try:
-                # 根据任务类型执行相应函数
-                if task['type'] == 'speak':
-                    self._send_audio_to_character(task['file_path'])
-                elif task['type'] == 'sing':
-                    self._send_song_to_character(task['voice_path'], task['music_path'])
-            except Exception as e:
-                print(f"任务执行失败: {e}")
-            finally:
-                self.task_queue.task_done()  # 标记任务完成
+        # TTS 管理器
+        self.tts_manager = tts_manager
+        self.text_processor = TextProcessor()
 
     def chat(self, message):
         print(message)
@@ -162,9 +144,11 @@ class DeepSeek:
             )
             print(response.choices[0])
             new_message = response.choices[0].message.content
-            emotion = self.getEmotionFromText(new_message)
-            new_message = self.remove_parentheses(new_message)
+            emotion = self.text_processor.get_emotion_from_text(new_message)
+            new_message = self.text_processor.remove_parentheses(new_message)
             self.messages.append({"role":"assistant", "content": '(emotion: ' + emotion + ')' +new_message})
+
+            self.speak(new_message)  # 获取语音
 
             # 返回调用工具
             tool_calls = response.choices[0].message.tool_calls
@@ -177,242 +161,27 @@ class DeepSeek:
             print("DeepSeek请求失败:", e)
             return "您写得代码好像出错了呢，请检查一下, 出错的地方在chat方法里。"
 
-    def decide_language(self, text: str) -> str:
-        """根据文本内容判断语言（日语、中文、英语）"""
-        if re.search(r'[\u3040-\u309F\u30A0-\u30FF]', text):
-            return 'ja'
-        if re.search(r'[\u4e00-\u9fa5]', text):
-            return 'zh'
-        if re.search(r'[a-zA-Z]', text):
-            return 'en'
-        return 'ja'
-
-    def getEmotionFromText(self, text): 
-        pattern = r'^\(emotion:\s*(NEUTRAL|HAPPY|ANGRY|SAD|SURPRISED|SLEEPY|RELAXED)\)'
-        match = re.search(pattern, text)
-        if match:
-            emotion = match.group(1)  # 提取捕获组内容，如 "HAPPY"
-            return emotion
+    '''
+        通过TTS管理器获取语音
+    '''
+    def speak(self, text):
+        """获取语音"""
+        if self.tts_manager:
+            self.tts_manager.queue_speech(text, self.text_processor)
+            print("语音已加入队列")
         else:
-            return 'NEUTRAL'
+            print("TTS回调未设置，无法获取语音。")
+            print(self.tts_manager)
 
-    def html_to_plain_qt(self, html):
-        """使用 Qt 的 QTextDocument 转换，处理富文本文字"""
-        doc = QTextDocument()
-        doc.setHtml(html)
-        return doc.toPlainText()
-
-    def remove_parentheses(self, text):
-        """移除所有动作描写"""
-        text = re.sub(r'\([^()]*\)', '', text)
-        text = re.sub(r'（[^()]*）', '', text)  # 处理中文括号
-        text = re.sub(r'\*.*?\*', '', text, flags=re.DOTALL)
-        return text.strip()
-
-    def replace_watashi(self, text):
-        '''把watashi 换为boku'''
-        replacements = {
-            r'私(?!り)': '僕',      # 汉字「私」但不匹配「私立」
-            r'わたし': 'ぼく',       # 平假名
-            r'ワタシ': 'ボク'        # 片假名
-        }
-        for pattern, repl in replacements.items():
-            text = re.sub(pattern, repl, text)
-        return text
-
-    def libre_translate(self, text, source='zh', target='ja'):
-        url = "https://api.mymemory.translated.net/get"
-        params = {
-            "q": text,
-            "langpair": f"{source}|{target}"
-        }
-        response = requests.get(url, params=params)
-        return response.json()['responseData']['translatedText']
-    def load_tts_model(self):
-        """加载TTS模型"""
-        os_path = r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50"
-        embeded_python_path = r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\runtime\python.exe"
-        path = r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\api_v2.py"
-
-        # 工作环境为gpt-sovits目录
-        subprocess.Popen([embeded_python_path, path], cwd=os_path)
-
-    def _generate_filename(self, session_id, chunk_index):
-        """生成唯一的文件名"""
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        return f"{session_id}_{chunk_index}_{timestamp}.wav"
-    
-    def _save_audio_chunk(self, audio_data, sample_rate, session_id, chunk_index):
-        """保存音频片段为WAV文件"""
-        # 生成唯一文件名
-        filename = self._generate_filename(session_id, chunk_index)
-        file_path = os.path.join(self.audio_cache_dir, filename)
-        file_path = os.path.abspath(file_path)
-        
-        # 保存为WAV文件
-        with wave.open(file_path, 'wb') as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)  # 16-bit PCM
-            wav_file.setframerate(sample_rate)
-            wav_file.writeframes(audio_data)
-        return file_path
-    
-    def stream_tts(self, text):
-        """发起TTS请求并处理流式响应, 但是现在并没有启用，因为语音播放没有队列"""
-        # 生成唯一会话ID
-        # session_id = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
-
-        text = self.remove_parentheses(text)  # 移除括号内容
-        text = self.html_to_plain_qt(text) #去除富文本标签
- 
-        language = self.decide_language(text)
-        #统一翻译为日文
-        text = self.libre_translate(text, source=language, target='ja')
-        # 替换watashi
-        text = self.replace_watashi(text)
-
-        params = {
-            "ref_audio_path": r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\komaeda01.mp3_0000204800_0000416320.wav",
-            "prompt_text": "だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。",
-            "prompt_lang": "ja",
-            "text": text,
-            "text_lang": "ja",
-            "text_split_method": "cut5",
-            "batch_size": 1,
-            # "streaming_mode": True,
-        }
-        try:
-            response = requests.post('http://127.0.0.1:9880/tts', json=params, stream=True)
-            file_path = 'temp.wav'
-            with open(file_path, 'wb') as f:
-                f.write(response.content)
-
-            # 保存临时音频文件
-            file_path = os.path.abspath(file_path)
-            
-            #     # 处理流式响应
-            # chunk_index = 0
-            # audio_buffer = b""
-            # sample_rate = 32000
-            
-            # for chunk in response.iter_content(chunk_size=8192):
-            #     if chunk:
-            #         audio_buffer += chunk
-                    
-            #         # 尝试解析WAV头获取实际数据长度
-            #         if chunk_index == 0 and len(audio_buffer) >= 44:
-            #             # 解析WAV头
-            #             channels = int.from_bytes(audio_buffer[22:24], 'little')
-            #             sample_rate = int.from_bytes(audio_buffer[24:28], 'little')
-            #             byte_rate = int.from_bytes(audio_buffer[28:32], 'little')
-            #             block_align = int.from_bytes(audio_buffer[32:34], 'little')
-            #             bits_per_sample = int.from_bytes(audio_buffer[34:36], 'little')
-                        
-            #             # 计算数据块大小
-            #             data_size = int.from_bytes(audio_buffer[40:44], 'little')
-            #             total_size = 44 + data_size
-                        
-            #             # 如果缓冲区有完整数据
-            #             if len(audio_buffer) >= total_size:
-            #                 # 保存完整的语义片段
-            #                 file_path = self._save_audio_chunk(
-            #                     audio_buffer[:total_size], 
-            #                     sample_rate, 
-            #                     session_id, 
-            #                     chunk_index
-            #                 )
-            #                 yield file_path
-            #                 chunk_index += 1
-            #                 audio_buffer = audio_buffer[total_size:]
-                    
-            #         # 非第一个块的处理
-            #         elif chunk_index > 0:
-            #             # 假设每个后续片段是完整的PCM数据
-            #             file_path = self._save_audio_chunk(
-            #                 audio_buffer, 
-            #                 sample_rate, 
-            #                 session_id, 
-            #                 chunk_index
-            #             )
-            #             yield file_path
-            #             chunk_index += 1
-            #             audio_buffer = b""
-            
-            # # 处理最后剩余的音频数据
-            # if audio_buffer:
-            #     file_path = self._save_audio_chunk(
-            #         audio_buffer, 
-            #         sample_rate, 
-            #         session_id, 
-            #         chunk_index
-            #     )
-            yield file_path
-
-        except Exception as e:
-            print("请求失败:", e)
-            return
-    
-    def get_voice(self, text):
-        """获取语音，并发送语音到人物UI"""
-        # 使用线程发送音频到角色UI
-        for file_path in self.stream_tts(text):
-            self.send_audio_to_character(file_path)
-
-
+    '''
+        工具之一，演唱歌曲, llm可以调用
+    '''
     def sing(self):
         voice_path = "C:\\Users\\67458\\Downloads\\tmp_qn4_apu.wav"
         music_path = "C:\\Users\\67458\\Desktop\\whisper.wav"
-        self.send_song_to_character(voice_path, music_path)
-
-    def send_audio_to_character(self, file_path):
-        """将音频任务添加到队列"""
-        self.task_queue.put({
-            'type': 'speak',
-            'file_path': file_path
-        })
-    
-    def send_song_to_character(self, voice_path, music_path):
-        """将唱歌任务添加到队列"""
-        self.task_queue.put({
-            'type': 'sing',
-            'voice_path': voice_path,
-            'music_path': music_path
-        })
-
-    def _send_audio_to_character(self, file_path):
-        """发送音频文件到角色UI"""
-        params = {
-            "type": "speak",
-            "speech_path": file_path,
-        }
-        try:
-            response = requests.post('http://localhost:7888/alive', json=params)
-            if response.status_code == 200:
-                print("音频播放成功")
-            else:
-                print("音频播放失败:", response.text)
-        except Exception as e:
-            print("音频播放失败:", e)
-
-    def _send_song_to_character(self, voice_path, music_path):
-        '''发送翻唱音乐到角色UI'''
-        params = {
-            "type": "sing",
-            "music_path": music_path,
-            "voice_path": voice_path,
-            "mouth_offset" : 0.5,
-            "beat" : 2
-        }
-        try:
-            response = requests.post('http://localhost:7888/alive', json=params)
-            if response.status_code == 200:
-                print("音频播放成功")
-            else:
-                print("音频播放失败:", response.text)
-        except Exception as e:
-            print("音频播放失败:", e)
+        self.tts_manager.queue_song(voice_path, music_path)
     
     def shutdown(self):
-        """关闭队列和工作线程"""
-        self.task_queue.put(None)  # 发送终止信号
-        self.worker_thread.join()
+        """关闭DeepSeek客户端"""
+        if self.tts_manager:
+            self.tts_manager.shutdown()
