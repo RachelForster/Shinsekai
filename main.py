@@ -11,6 +11,7 @@ from alive import Alive
 from multiprocessing import Value, Process, Queue
 from ctypes import c_bool
 from llm.deepseek import DeepSeek
+from tts.tts_manager import TTSManager
 import os
 
 import queue
@@ -330,7 +331,7 @@ class ChatWorker(QThread):
     def run(self):
         """在后台线程中执行聊天请求"""
         message, emotion = self.deepseek.chat(self.message)
-        self.deepseek.get_voice(message)  # 调用DeepSeek的音频发送方法
+        # self.deepseek.get_voice(message)  # 调用DeepSeek的音频发送方法
         self.response_received.emit(message, emotion)
 
 class DesktopAssistantWindow(QWidget):
@@ -548,7 +549,8 @@ class EasyAIV(Process):  #
     def start_qt_app(display_queue, emotion_queue):
         """启动PyQt应用"""
         app = QApplication(sys.argv)
-        deepseek = DeepSeek()
+        tts_manager = TTSManager()
+        deepseek = DeepSeek(tts_manager=tts_manager)
         window = DesktopAssistantWindow(display_queue, emotion_queue, deepseek)
         print("QT Window starts!!")
         window.show()
@@ -766,8 +768,11 @@ if __name__ == '__main__':
 
     input_image, extra_image = prepare_input_img(512, args.character)
 
-    deepseek = DeepSeek()
-    deepseek.load_tts_model()
+    # 初始化TTS管理器和LLM实例
+    tts_manager = TTSManager()
+
+    # 加载tts模型
+    tts_manager.load_tts_model()
 
     # 声明跨进程公共参数
     model_process_args = {
