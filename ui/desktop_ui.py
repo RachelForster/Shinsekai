@@ -1,9 +1,12 @@
 import sys
 import numpy as np
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+import threading
+import time
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
+
 
 class ImageDisplayThread(QThread):
     """图像显示线程，负责从队列获取图像并更新UI"""
@@ -13,6 +16,7 @@ class ImageDisplayThread(QThread):
         super().__init__()
         self.image_queue = image_queue
         self.running = True
+        self.font_size = 36  # 默认字体大小
         
     def run(self):
         while self.running:
@@ -23,7 +27,7 @@ class ImageDisplayThread(QThread):
                 QThread.msleep(10)  # 10ms刷新间隔
             except Exception as e:
                 print(f"Display error: {e}")
-    
+
     def stop(self):
         self.running = False
 
@@ -38,24 +42,28 @@ class ChatWorker(QThread):
     
     def run(self):
         """在后台线程中执行聊天请求"""
-        message, emotion = self.deepseek.chat(self.message)
-        self.response_received.emit(message, emotion)
+        result = self.deepseek.chat(self.message)
+        self.response_received.emit(result)
 
 class DesktopAssistantWindow(QWidget):
     """桌面助手主窗口"""
-    def __init__(self, image_queue, emotion_queue, deepseek):
+
+    message_submitted = pyqtSignal(str)  # 定义信号用于发送消息
+    def __init__(self, image_queue, emotion_queue, deepseek, sprite_mode=False):
+        """初始化窗口"""
         super().__init__()
         self.image_queue = image_queue
         self.deepseek = deepseek
         self.emotion_queue = emotion_queue
-        self.chat_worker = None  # 用于处理聊天请求的工作线程
+        self.sprite_mode = sprite_mode
         self.original_width = 1536
-        
+
         # 初始化UI
         self.setup_ui()
         
         # 设置图像显示线程
-        self.setup_image_thread()
+        if not self.sprite_mode:
+            self.setup_image_thread()
         
         # 初始大小
         self.resize(self.original_width, self.original_width)
@@ -83,7 +91,7 @@ class DesktopAssistantWindow(QWidget):
         
         # 对话框组件,覆盖在图像上
         self.setup_dialog_label()
-        
+
         
         # 输入框布局
         input_layout = self.setup_input_layout()
@@ -172,7 +180,7 @@ class DesktopAssistantWindow(QWidget):
         self.display_thread = ImageDisplayThread(self.image_queue)
         self.display_thread.update_signal.connect(self.update_image)
         self.display_thread.start()
-    
+
     def update_image(self, image):
         """更新显示图像"""
         self.original_image = image
@@ -199,21 +207,25 @@ class DesktopAssistantWindow(QWidget):
         """发送消息函数"""
         message = self.input_box.text().strip()
         if message:
-            print(f"发送消息: {message}")
+            print(f"UI发送消息: {message}")
             self.input_box.clear()
             self.setDisplayWords(f"<b>你</b>：{message}")
             
             # 创建并启动聊天工作线程
-            self.chat_worker = ChatWorker(self.deepseek, message)
-            self.chat_worker.response_received.connect(self.handleResponse)
-            self.chat_worker.start()
-    
-    def handleResponse(self, message, emotion):
+            if self.sprite_mode is False:
+                self.chat_worker = ChatWorker(self.deepseek, message)
+                self.chat_worker.response_received.connect(self.handleResponse)
+                self.chat_worker.start()
+
+            self.message_submitted.emit(message)  # 发出消息提交信号
+
+    def handleResponse(self, result):
         """处理聊天响应"""
-        self.setDisplayWords(f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color: #A7CA90;'>狛枝凪斗</b>：{message}</p>")
-        if not self.emotion_queue.full():
-            self.emotion_queue.put(emotion)
-    
+        if not self.sprite_mode:
+            self.setDisplayWords(f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color: #A7CA90;'>狛枝凪斗</b>：{result['message']}</p>")
+            if not self.emotion_queue.full():
+                self.emotion_queue.put(result['emotion'])
+
     def setDisplayWords(self, text):
         """显示人物说的话"""
         if text:
