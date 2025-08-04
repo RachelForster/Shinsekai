@@ -95,9 +95,6 @@ class ChatWorker(QThread):
                 # 释放音频资源
                 pygame.mixer.music.unload()
 
-            # 在每个item之间添加短暂延迟，使对话更自然
-            time.sleep(0.5)
-
 def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):
     """处理聊天响应"""
     print(f"处理消息: {message}")

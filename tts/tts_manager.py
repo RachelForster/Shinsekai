@@ -57,6 +57,7 @@ class TTSManager:
             text = text_processor.remove_parentheses(text)
             text = text_processor.html_to_plain_qt(text)
             language = text_processor.decide_language(text)
+            text = text_processor.replace_names(text)
             text = text_processor.libre_translate(text, source=language, target= voice_language)
             text = text_processor.replace_watashi(text)
 
