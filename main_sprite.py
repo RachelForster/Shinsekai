@@ -29,6 +29,17 @@ class ChatWorker(QThread):
         self.daemon = True  # 设置为守护线程
       
         self.sprite_prefix = './data/sprite/Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_'  # 立绘图片的前缀路径
+
+        self.character_name_color_map={
+            '狛枝凪斗': '#A7CA90',
+            '日向创': "#B9924F",
+            '？？？': '#FFFFFF'
+        }
+
+        self.character_sprite_prefix_map = {
+            '狛枝凪斗': './data/sprite/Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_',
+            '日向创': './data/sprite/Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_',
+        }
     
     def run(self):
         """在后台线程中执行聊天请求"""
@@ -44,19 +55,21 @@ class ChatWorker(QThread):
                 break
                 
             # 提取sprite和speech
+            character_name = item.get('character_name', '狛枝凪斗')
             sprite = item.get('sprite', 'default')
             speech = item.get('speech', '')
             
-            if not speech:
+            if not sprite:
                 continue
 
-            # 生成语音
+            # 生成语音，现在只训练了狛枝的语音模型
             if not self.tts_manager:
                 print("TTS管理器未初始化")
             else:
-                audio_path = self.tts_manager.generate_tts(speech, self.deepseek.text_processor)    
+                if character_name == '狛枝凪斗':
+                    audio_path = self.tts_manager.generate_tts(speech, self.deepseek.text_processor)
             # 1. 更新角色立绘
-            image_path = f'{self.sprite_prefix}{sprite}.webp'
+            image_path = f'{self.character_sprite_prefix_map.get(character_name, "")}{sprite}.webp'
             try:
                 # 使用 OpenCV 读取图像
                 cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
@@ -79,7 +92,7 @@ class ChatWorker(QThread):
                 print(f"加载图片时出错: {e}")
 
             # 2. 更新对话框文字
-            formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color: #A7CA90;'>狛枝凪斗</b>：{speech}</p>"
+            formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{self.character_name_color_map.get(character_name, '#FFFFFF')};'>{character_name}</b>：{speech}</p>"
             self.update_dialog_signal.emit(formatted_speech)            
 
             # 4. 播放语音
