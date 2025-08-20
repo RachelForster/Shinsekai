@@ -7,12 +7,35 @@ from PyQt5.QtWidgets import QApplication
 from tts import tts_manager
 from tts.tts_manager import TTSManager
 from ui.desktop_ui import DesktopAssistantWindow
+from config.character_config import CharacterConfig
 import threading
 import time
 import pygame
 import cv2
 import numpy as np
 import io
+
+characters = CharacterConfig.read_from_files('./data/config/characters.yaml')
+
+def getCharacter(name):
+    for character in characters:
+        if character.name == name:
+            return character
+    return None
+
+class CharacterConfig:
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None):
+        # 角色基本信息  
+        self.name = name
+        self.color = color
+        self.sprite_prefix = sprite_prefix
+
+        # 语音配置
+        self.gpt_model_path = gpt_model_path
+        self.sovits_model_path = sovits_model_path
+        self.refer_audio_path = refer_audio_path
+        self.prompt_text = prompt_text
+        self.prompt_lang = prompt_lang
 
 class ChatWorker(QThread):
     """后台聊天工作线程"""
@@ -29,17 +52,7 @@ class ChatWorker(QThread):
         self.daemon = True  # 设置为守护线程
       
         self.sprite_prefix = './data/sprite/Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_'  # 立绘图片的前缀路径
-
-        self.character_name_color_map={
-            '狛枝凪斗': '#A7CA90',
-            '日向创': "#B9924F",
-            '？？？': '#FFFFFF'
-        }
-
-        self.character_sprite_prefix_map = {
-            '狛枝凪斗': './data/sprite/Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_',
-            '日向创': './data/sprite/Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_',
-        }
+        self.character_config = getCharacter('狛枝凪斗')
     
     def run(self):
         """在后台线程中执行聊天请求"""
@@ -49,27 +62,47 @@ class ChatWorker(QThread):
         if not self.response_list:
             return
         
-        # 遍历响应列表中的每个item
         for item in self.response_list:
             if not self.running:
                 break
                 
-            # 提取sprite和speech
+            # 提取character_name, sprite和speech
             character_name = item.get('character_name', '狛枝凪斗')
             sprite = item.get('sprite', 'default')
             speech = item.get('speech', '')
-            
+
+            # 处理旁白
+            if character_name == '旁白':
+                formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b style='color:#84C2D5;'>{character_name}</b>：{speech}</p>"
+                self.update_dialog_signal.emit(formatted_speech)     
+                continue
+
+            self.character_config = getCharacter(character_name)
+            if not self.character_config:
+                print(f"未找到角色配置: {character_name}")
+                continue
+
             if not sprite:
                 continue
 
-            # 生成语音，现在只训练了狛枝的语音模型
+            self.sprite_prefix = self.character_config.sprite_prefix
+
+            audio_path = None
             if not self.tts_manager:
                 print("TTS管理器未初始化")
             else:
-                if character_name == '狛枝凪斗':
-                    audio_path = self.tts_manager.generate_tts(speech, self.deepseek.text_processor)
-            # 1. 更新角色立绘
-            image_path = f'{self.character_sprite_prefix_map.get(character_name, "")}{sprite}.webp'
+                # 切换模型
+                self.tts_manager.switch_model(self.character_config.gpt_model_path, self.character_config.sovits_model_path)
+                # 生成音频
+                audio_path = self.tts_manager.generate_tts(
+                    speech, 
+                    text_processor=self.deepseek.text_processor,
+                    ref_audio_path=self.character_config.refer_audio_path,
+                    prompt_text=self.character_config.prompt_text,
+                    prompt_lang=self.character_config.prompt_lang
+                )
+            # 更新角色立绘
+            image_path = f'{self.sprite_prefix}{sprite}.webp'
             try:
                 # 使用 OpenCV 读取图像
                 cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
@@ -91,22 +124,25 @@ class ChatWorker(QThread):
             except Exception as e:
                 print(f"加载图片时出错: {e}")
 
-            # 2. 更新对话框文字
-            formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{self.character_name_color_map.get(character_name, '#FFFFFF')};'>{character_name}</b>：{speech}</p>"
+            # 更新对话框文字
+            formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{self.character_config.name_color};'>{character_name}</b>：{speech}</p>"
             self.update_dialog_signal.emit(formatted_speech)            
 
-            # 4. 播放语音
+            # 播放语音
             if audio_path:
-                pygame.mixer.init()
-                pygame.mixer.music.load(audio_path)
-                pygame.mixer.music.play()
+                try:
+                    pygame.mixer.init()
+                    pygame.mixer.music.load(audio_path)
+                    pygame.mixer.music.play()
 
-                # 等待音频播放完成
-                while pygame.mixer.music.get_busy():
-                    time.sleep(0.1)
-                
-                # 释放音频资源
-                pygame.mixer.music.unload()
+                    # 等待音频播放完成
+                    while pygame.mixer.music.get_busy():
+                        time.sleep(0.1)
+                    
+                    # 释放音频资源
+                    pygame.mixer.music.unload()
+                except Exception as e:
+                    print(f"播放音频时出错: {e}")
 
 def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):
     """处理聊天响应"""
@@ -120,17 +156,24 @@ def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):
         print("Desktop UI未提供，无法更新界面")
     threading.Thread(target=thread.run).start()
 
-def main():    # 创建TTS管理器实例
+def main():    
+    # 创建TTS管理器实例
     tts_manager = TTSManager()
-    tts_manager.load_tts_model()  # 加载TTS模型
+    tts_manager.load_tts_model()
     
     # 创建DeepSeek实例
-    deepseek = DeepSeek()
+    user_template = ""
+    with open('./data/character_templates/komaeda_hinata.txt', 'r', encoding='utf-8') as f:
+        user_template = f.read()
+    print("Loaded user template:")
+    print(user_template)
+
+    deepseek = DeepSeek(user_template=user_template)
 
     # 创建图像队列和情感队列
     image_queue = Queue()
     emotion_queue = Queue()
-    
+
     # 创建桌面助手窗口
     app = QApplication([])
     window = DesktopAssistantWindow(image_queue, emotion_queue, deepseek, sprite_mode=True)

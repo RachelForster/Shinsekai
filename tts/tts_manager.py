@@ -12,7 +12,7 @@ import uuid
 
 #  GPT-SoVITS TTS管理器
 class TTSManager:
-    def __init__(self, character_ui_url="http://localhost:7888/alive", tts_server_url="http://127.0.0.1:9880/tts"):
+    def __init__(self, character_ui_url="http://localhost:7888/alive", tts_server_url="http://127.0.0.1:9880/"):
         self.audio_cache_dir = r".\cache\audio"
         self.character_ui_url = character_ui_url
         self.tts_server_url = tts_server_url
@@ -50,7 +50,7 @@ class TTSManager:
         text_processor: 文本处理器，用于预处理文本
         voice_language: 语音语言，默认为日语
     """
-    def generate_tts(self, text, text_processor=None, voice_language='ja'):
+    def generate_tts(self, text, text_processor=None, voice_language='ja', ref_audio_path=None, prompt_text=None, prompt_lang=None):
         """生成TTS语音"""
         # 预处理文本
         if text_processor:
@@ -62,9 +62,9 @@ class TTSManager:
             text = text_processor.replace_watashi(text)
 
         params = {
-            "ref_audio_path": r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\komaeda01.mp3_0000204800_0000416320.wav",
-            "prompt_text": self.ref_text,
-            "prompt_lang": self.ref_lang,
+            "ref_audio_path": ref_audio_path or self.ref_audio_path,
+            "prompt_text": prompt_text or self.ref_text,
+            "prompt_lang": prompt_lang or self.ref_lang,
             "text": text,
             "text_lang": voice_language,
             "text_split_method": "cut5",
@@ -74,7 +74,7 @@ class TTSManager:
         print("请求参数:", params)
         
         try:
-            response = requests.post(self.tts_server_url, json=params)
+            response = requests.post(self.tts_server_url+"tts", json=params)
             file_path = 'temp.wav'
             with open(file_path, 'wb') as f:
                 f.write(response.content)
@@ -86,6 +86,26 @@ class TTSManager:
         except Exception as e:
             print("TTS生成失败:", e)
             return None
+
+    def switch_model(self, gpt_model_path, sovits_model_path):
+        """切换TTS模型"""
+        try:
+            response = requests.post(self.tts_server_url+"set_gpt_weights", json={"weights_path": gpt_model_path})
+            if response.status_code == 200:
+                print("gpt模型切换成功:", gpt_model_path)
+            else:
+                print("gpt模型切换失败:", response.text)
+        except Exception as e:
+            print("切换gpt模型失败:", e)
+
+        try:
+            response = requests.post(self.tts_server_url+"set_sovits_weights", json={"weights_path": sovits_model_path})
+            if response.status_code == 200:
+                print("sovits模型切换成功:", sovits_model_path)
+            else:
+                print("sovits模型切换失败:", response.text)
+        except Exception as e:
+            print("切换sovits模型失败:", e)
 
     def queue_speech(self, text, language_processor=None):
         """将文本加入TTS队列"""
