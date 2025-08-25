@@ -32,6 +32,8 @@ parser.add_argument('--gpu_cache', type=str, default='256mb')  # 256mb
 parser.add_argument('--simplify', type=int, default=1)
 parser.add_argument('--port', type=int, default=7888)
 parser.add_argument('--sleep', type=int, default=20)
+parser.add_argument('--template', type=str, default='komaeda_sprite')
+
 args = parser.parse_args()
 args.output_w = int(args.output_size.split('x')[0])
 args.output_h = int(args.output_size.split('x')[1])
