@@ -16,7 +16,7 @@ class ImageDisplayThread(QThread):
         super().__init__()
         self.image_queue = image_queue
         self.running = True
-        self.font_size = 36  # 默认字体大小
+        self.font_size = "48px;"  # 默认字体大小
         
     def run(self):
         while self.running:
@@ -57,6 +57,7 @@ class DesktopAssistantWindow(QWidget):
         self.emotion_queue = emotion_queue
         self.sprite_mode = sprite_mode
         self.original_width = 1536
+        self.font_size = "48px;"  # 默认字体大小
 
         # 初始化UI
         self.setup_ui()
@@ -107,11 +108,11 @@ class DesktopAssistantWindow(QWidget):
         self.dialog_label = QLabel("")
         self.dialog_label.setTextFormat(Qt.RichText)
         self.dialog_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.dialog_label.setStyleSheet("""
-            QLabel {
+        self.dialog_label.setStyleSheet(f"""
+            QLabel {{
                 background-color: rgba(50, 50, 50, 200);
                 color: #f0f0f0;
-                font-size: 36px;
+                font-size: {self.font_size};
                 font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
                 padding: 20px; 
                 border-radius: 12px;
@@ -119,7 +120,7 @@ class DesktopAssistantWindow(QWidget):
                 border-bottom-right-radius: 0;
                 line-height: 200%;
                 letter-spacing: 2px;
-            }
+            }}
         """)
         self.dialog_label.setWordWrap(True)
         self.dialog_label.hide()

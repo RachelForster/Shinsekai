@@ -15,3 +15,34 @@
   refer_audio_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\output\\slicer_opt\\hinata\\hinata.mp3_0000000000_0000187520.wav"
   prompt_text: "いや、犯人が戸上の死体を移動させたとは考えられないんじゃないか?"
   prompt_lang: "ja"
+
+- name: "江之岛盾子"
+  color: "#EC955F"
+  sprite_prefix: "./data/sprite/Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_"
+  gpt_model_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\GPT_weights_v2ProPlus\\enoshima-e15.ckpt"
+  sovits_model_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\SoVITS_weights_v2ProPlus\\enoshima_e8_s336.pth"
+  refer_audio_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\output\\slicer_opt\\enoshima\\enoshima.wav_0000374400_0000486080.wav"
+  prompt_text: "むしろ小さいくらいじゃない?うん?"
+  prompt_lang: "ja"
+
+- name: "七海千秋"
+  color: "#E5A3A3"
+  sprite_prefix: "./data/sprite/Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_"
+  gpt_model_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\GPT_weights_v2ProPlus\\nanami-e15.ckpt"
+  sovits_model_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\SoVITS_weights_v2ProPlus\\nanami_e8_s496.pth"
+  refer_audio_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\output\\slicer_opt\\nanami\\nanami.aac_0001620800_0001747840.wav"
+  prompt_text: "でも、怪しい人の手がかりならある。"
+  prompt_lang: "ja"
+
+- name: "王马小吉"
+  color: "#9360C9"
+  sprite_prefix: "./data/sprite/Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_"
+  gpt_model_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\GPT_weights_v2ProPlus\\oma-e15.ckpt"
+  sovits_model_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\SoVITS_weights_v2ProPlus\\oma_e8_s1088.pth"
+  refer_audio_path: "C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50\\output\\slicer_opt\\oma\\oma.aac_0000611520_0000790080.wav"
+  prompt_text: "当たり前田のクラッカーだよああこれは自己防衛ってやつだよ"
+  prompt_lang: "ja"
+
+
+
+  

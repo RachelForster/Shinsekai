@@ -1,4 +1,5 @@
 from asyncio import Queue
+import sys
 from llm.deepseek_sprite import DeepSeek
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
@@ -14,6 +15,7 @@ import pygame
 import cv2
 import numpy as np
 import io
+import argparse
 
 characters = CharacterConfig.read_from_files('./data/config/characters.yaml')
 
@@ -22,20 +24,6 @@ def getCharacter(name):
         if character.name == name:
             return character
     return None
-
-class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None):
-        # 角色基本信息  
-        self.name = name
-        self.color = color
-        self.sprite_prefix = sprite_prefix
-
-        # 语音配置
-        self.gpt_model_path = gpt_model_path
-        self.sovits_model_path = sovits_model_path
-        self.refer_audio_path = refer_audio_path
-        self.prompt_text = prompt_text
-        self.prompt_lang = prompt_lang
 
 class ChatWorker(QThread):
     """后台聊天工作线程"""
@@ -70,6 +58,7 @@ class ChatWorker(QThread):
             character_name = item.get('character_name', '狛枝凪斗')
             sprite = item.get('sprite', 'default')
             speech = item.get('speech', '')
+            translate = item.get('translate', '')
 
             # 处理旁白
             if character_name == '旁白':
@@ -94,12 +83,18 @@ class ChatWorker(QThread):
                 # 切换模型
                 self.tts_manager.switch_model(self.character_config.gpt_model_path, self.character_config.sovits_model_path)
                 # 生成音频
+                text_processor = self.deepseek.text_processor
+                speech_text = speech
+                if translate:
+                    text_processor = None  # 如果有翻译则不使用文本处理
+                    speech_text = translate
                 audio_path = self.tts_manager.generate_tts(
-                    speech, 
-                    text_processor=self.deepseek.text_processor,
+                    speech_text, 
+                    text_processor=text_processor,
                     ref_audio_path=self.character_config.refer_audio_path,
                     prompt_text=self.character_config.prompt_text,
-                    prompt_lang=self.character_config.prompt_lang
+                    prompt_lang=self.character_config.prompt_lang,
+                    character_name=character_name
                 )
             # 更新角色立绘
             image_path = f'{self.sprite_prefix}{sprite}.webp'
@@ -156,19 +151,30 @@ def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):
         print("Desktop UI未提供，无法更新界面")
     threading.Thread(target=thread.run).start()
 
-def main():    
+def main():
+
+    parser = argparse.ArgumentParser(description='示例脚本')
+    # 添加参数
+    parser.add_argument('--template', '-t', type=str, help='用户模板名称', default='komaeda_sprite')
+
+    # 解析参数
+    args = parser.parse_args()
+
     # 创建TTS管理器实例
     tts_manager = TTSManager()
     tts_manager.load_tts_model()
     
     # 创建DeepSeek实例
+    print("加载用户模板...", args)
+
     user_template = ""
-    with open('./data/character_templates/komaeda_hinata.txt', 'r', encoding='utf-8') as f:
+    with open(f'./data/character_templates/{args.template}.txt', 'r', encoding='utf-8') as f:
         user_template = f.read()
     print("Loaded user template:")
     print(user_template)
 
     deepseek = DeepSeek(user_template=user_template)
+
 
     # 创建图像队列和情感队列
     image_queue = Queue()
@@ -177,7 +183,7 @@ def main():
     # 创建桌面助手窗口
     app = QApplication([])
     window = DesktopAssistantWindow(image_queue, emotion_queue, deepseek, sprite_mode=True)
-    init_image = cv2.imread('./data/sprite/Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp', cv2.IMREAD_UNCHANGED)
+    init_image = cv2.imread('./data/sprite/Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_01.webp', cv2.IMREAD_UNCHANGED)
     if init_image is not None:
         # 转换颜色格式 BGR -> RGBA
         if init_image.shape[2] == 3:  # RGB 图像
@@ -195,4 +201,5 @@ def main():
     app.exec_()
 
 if __name__ == "__main__":
+   
     main()

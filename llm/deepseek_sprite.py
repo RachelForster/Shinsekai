@@ -180,7 +180,7 @@ class DeepSeek:
         self.messages.append({"role": "user", "content": message})
         try:
             response = self.client.chat.completions.create(
-                model="deepseek-reasoner",
+                model="deepseek-chat",
                 messages=self.messages,
                 response_format={
                   'type': 'json_object'
