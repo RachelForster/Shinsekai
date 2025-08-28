@@ -114,7 +114,7 @@ def load_template_from_file(file_path):
 
 def generate_template(selected_characters):
     if not selected_characters:
-        return "请至少选择一个角色！"
+        return "请至少选择一个角色！", ""
     
     names = ""
     for char_name in selected_characters:
@@ -139,7 +139,7 @@ def generate_template(selected_characters):
     for char_name in selected_characters:
         char_detail = next((c for c in characters if c['name'] == char_name), None)
         template += f"{char_name}有{len(char_detail['sprites'])}张立绘：\n"
-        template += f"{char_detail['emotion_tags']}\n"
+        template += f"{char_detail['emotion_tags']}\n\n"
 
     template +=f"""
 要求：
@@ -147,11 +147,11 @@ def generate_template(selected_characters):
 2. character_name 只能是{names} 或者旁白。
 3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白时，该字段为-1。
 4. speech 字段是角色的台词，必须符合角色的性格和说话风格。
-5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有2到4个元素
+5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有至少两个元素。
 6. 旁白描写是场景动作描写\n
 """
     template += "\n请开始对话:\n"
-    return template
+    return template, ""
 
 def update_character_options():
     return gr.CheckboxGroup(choices=[c.get("name", "") for c in characters])
@@ -246,6 +246,10 @@ def stop_chat():
         return "没有正在运行的进程！"
 
 def save_template(template, filename):
+    path_obj = Path(TEMPLATE_DIR_PATH)
+    template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
+    if filename == "":
+        return "保存文件名不能为空！", template_files
     try:
         dest_path=""
         if filename.endswith(".txt"):
@@ -258,8 +262,6 @@ def save_template(template, filename):
         template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
         return "保存成功", template_files
     except Exception as e:
-        path_obj = Path(TEMPLATE_DIR_PATH)
-        template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
         return f"保存失败，{e}",template_files
 
 
@@ -456,7 +458,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
         generate_btn.click(
             generate_template,
             inputs=[selected_chars],
-            outputs=template_output
+            outputs=[template_output, filename]
         )
 
         save_btn.click(

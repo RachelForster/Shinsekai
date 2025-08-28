@@ -129,7 +129,7 @@ class DesktopAssistantWindow(QWidget):
     def setup_image_label(self):
         """初始化图像标签"""
         self.label = QLabel()
-        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setAlignment(Qt.AlignBottom | Qt.AlignHCenter)
         self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.image_layout.addWidget(self.label)
     
