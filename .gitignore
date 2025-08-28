@@ -1,0 +1,9 @@
+data/config
+data/models
+llm/__pycache__
+runtime/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
