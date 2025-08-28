@@ -61,7 +61,11 @@ name_map = {
     "小高和刚": "コダカ カズタカ",    # Kodaka Kazutaka
     "小高": "コダカ",
 
-    "神座出流": "カムクラ イズル"
+    "神座出流": "カムクラ イズル",  # Kamukura Izuru
+    "神座": "カムクラ",
+
+    "江之岛盾子": "エノシマ ジュンコ",  # Enoshima Junko
+    "盾子": "ジュンコ"
 }
 
 class TextProcessor:

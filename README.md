@@ -1,7 +1,7 @@
-# EasyAIVtuber
+# EasyAIDesktopAssistant
 
 > 驱动你的纸片人老婆/女儿。
-Simply animate your 2D waifu.
+Simply animate your 2D waifu on your desktop.
 
 ![Wellerman-Uri](assets/2347acc3-799f-4913-8035-ae077ba3dc22.gif)
 
@@ -56,27 +56,15 @@ pip install -r requirements.txt
   - standard_half
   - placeholder.txt
 ```
-### 安装OBS
-可在网上自行搜索教程安装
-
-### 安装UnityCapture
-
-> 注：如果电脑上安装过VTube Studio，也许OBS的视频采集设备的设备中就会有 VTubeStudioCam（没做过实验不太确定）。
-> 若有此设备，便无需执行下面步骤安装UnityCapture，直接使用 VTubeStudioCam 即可
-
-为了能够在OBS上看到纸片老婆并且使用透明背景，需要安装UnityCapture  
-参考 https://github.com/schellingb/UnityCapture#installation  
-只需要正常走完Install.bat，在OBS的视频采集设备中便能看到对应的设备（Unity Video Capture）。
 
 #### 如何使背景透明
 在OBS添加完视频采集设备以后，右键视频采集设备-设置-取消激活-分辨率类型选自定义-分辨率512x512(与`--output_size`参数一致)-视频格式选ARGB-激活
 
 ## Usage
 ### 快速测试
-1. 打开OBS，添加视频采集设备并按要求（[安装UnityCapture](#安装unitycapture)）进行配置
-2. 将`main.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径
-3. 运行`main.bat`，等待初始化完毕，如配置无误，这时OBS中便能够看到人物在动
-4. 二选一
+1. 将`main.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径
+2. 运行`main.bat`，等待初始化完毕，如配置无误，这时OBS中便能够看到人物在动
+3. 二选一
    1. 简单测试：运行`test.py`   
    2. 运行webui：将`webui.bat`中第一行的虚拟环境的路径修改为你自己的虚拟环境路径，然后运行`webui.bat`  
 
