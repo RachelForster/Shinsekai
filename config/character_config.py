@@ -1,11 +1,12 @@
 import yaml
 
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None):
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[]):
         # 角色基本信息  
         self.name = name
         self.name_color = color
         self.sprite_prefix = sprite_prefix
+        self.sprites = sprites
     
         # gpt-sovits 语音配置
         self.gpt_model_path = gpt_model_path
@@ -43,7 +44,8 @@ class CharacterConfig:
                 sovits_model_path=char_data.get('sovits_model_path'),
                 refer_audio_path=char_data.get('refer_audio_path'),
                 prompt_text=char_data.get('prompt_text'),
-                prompt_lang=char_data.get('prompt_lang')
+                prompt_lang=char_data.get('prompt_lang'),
+                sprites=char_data.get("sprites")
             )
             characters.append(character)
         
