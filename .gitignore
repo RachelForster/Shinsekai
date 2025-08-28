@@ -2,10 +2,7 @@ data/config
 data/models
 llm/__pycache__
 runtime/
+/tha3
+/tha2
+/__pycache__
 *.pyc
-*.pyo
-*.pyd
-__pycache__/
-tha2/
-tha3/
-assets/
