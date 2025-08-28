@@ -158,14 +158,10 @@ JSON
 '''
 
 class DeepSeek:
-    def __init__(self, tts_manager=None, user_template=None):
+    def __init__(self, tts_manager=None, user_template=None, api_key=None, base_url=None):
         # 从文件里获取 API 密钥
-        api_key = ''
-        api_key_file = open('./llm/api_key.txt')
-        for line in api_key_file:
-            api_key += line
         self.client = OpenAI(api_key=api_key)
-        self.client.base_url = "https://api.deepseek.com"
+        self.client.base_url = base_url
         self.user_template = USER_TEMPLATE
         if user_template:
             self.user_template = user_template
