@@ -157,11 +157,11 @@ class TTSManager:
             print("发送歌曲到角色UI失败:", e)
 
     # TODO: 实现加载TTS模型的逻辑, 整合GPT-SoVITS server
-    def load_tts_model(self):
+    def load_tts_model(self, gpt_sovits_work_path="C:\\AI\\GPT-SoVITS\\GPT-SoVITS-v2pro-20250604-nvidia50"):
         """加载TTS模型"""
-        os_path = r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50"
-        embeded_python_path = r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\runtime\python.exe"
-        path = r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\api_v2.py"
+        os_path = gpt_sovits_work_path
+        embeded_python_path = os_path + "\\runtime\\python.exe"
+        path = os_path + "\\api_v2.py"
         # 工作环境为gpt-sovits目录
         subprocess.Popen([embeded_python_path, path], cwd=os_path)
 

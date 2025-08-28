@@ -1,5 +1,19 @@
 from asyncio import Queue
 import sys
+import os
+from pathlib import Path
+
+
+# 获取当前脚本的绝对路径
+current_script = Path(__file__).resolve()
+
+# 获取项目根目录（main.py所在的目录）
+project_root = current_script.parent
+
+# 将项目根目录添加到Python模块搜索路径
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from llm.deepseek_sprite import DeepSeek
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
@@ -16,8 +30,27 @@ import cv2
 import numpy as np
 import io
 import argparse
+import yaml
+import math
 
+API_CONFIG_PATH = "./data/config/api.yaml"
 characters = CharacterConfig.read_from_files('./data/config/characters.yaml')
+api_config = {
+    "llm_api_key": "",
+    "llm_base_url": "",
+    "gpt_sovits_url": "",
+    "gpt_sovits_api_path":""
+}
+
+
+def load_api_config_from_file():
+    global api_config
+    try:
+        with open(API_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            api_config = yaml.safe_load(f) or {}
+        return "API配置已加载！"
+    except Exception as e:
+        return f"加载失败: {str(e)}"
 
 def getCharacter(name):
     for character in characters:
@@ -97,7 +130,9 @@ class ChatWorker(QThread):
                     character_name=character_name
                 )
             # 更新角色立绘
-            image_path = f'{self.sprite_prefix}{sprite}.webp'
+            sprite_id = int(sprite)
+            print(self.character_config.sprites)
+            image_path = self.character_config.sprites[sprite_id-1]['path']
             try:
                 # 使用 OpenCV 读取图像
                 cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
@@ -139,7 +174,15 @@ class ChatWorker(QThread):
                 except Exception as e:
                     print(f"播放音频时出错: {e}")
 
-def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):
+            if self.tts_manager is None:
+                sleep_span = len(speech) // 5
+                if sleep_span < 4:
+                    sleep_span = 4
+                time.sleep(sleep_span)
+
+def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):    
+    global api_config
+
     """处理聊天响应"""
     print(f"处理消息: {message}")
     thread = ChatWorker(deepseek, message, tts_manager)
@@ -152,17 +195,24 @@ def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):
     threading.Thread(target=thread.run).start()
 
 def main():
-
+    load_api_config_from_file()
     parser = argparse.ArgumentParser(description='示例脚本')
     # 添加参数
     parser.add_argument('--template', '-t', type=str, help='用户模板名称', default='komaeda_sprite')
+    parser.add_argument('--voice_mode', '-v', type=bool, default=True)
 
     # 解析参数
     args = parser.parse_args()
 
     # 创建TTS管理器实例
-    tts_manager = TTSManager()
-    tts_manager.load_tts_model()
+    tts_manager = None
+    if args.voice_mode:
+        tts_manager = TTSManager(tts_server_url=api_config.get("gpt_sovits_url",""))
+        try:
+            tts_manager.load_tts_model(gpt_sovits_work_path=api_config.get("gpt_sovits_api_path",""))
+        except Exception as e:
+            tts_manager=None
+            print("语音模块加载失败", e)
     
     # 创建DeepSeek实例
     print("加载用户模板...", args)
@@ -173,7 +223,7 @@ def main():
     print("Loaded user template:")
     print(user_template)
 
-    deepseek = DeepSeek(user_template=user_template)
+    deepseek = DeepSeek(user_template=user_template, api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""))
 
 
     # 创建图像队列和情感队列
@@ -183,7 +233,7 @@ def main():
     # 创建桌面助手窗口
     app = QApplication([])
     window = DesktopAssistantWindow(image_queue, emotion_queue, deepseek, sprite_mode=True)
-    init_image = cv2.imread('./data/sprite/Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_01.webp', cv2.IMREAD_UNCHANGED)
+    init_image = cv2.imread('./data\sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp', cv2.IMREAD_UNCHANGED)
     if init_image is not None:
         # 转换颜色格式 BGR -> RGBA
         if init_image.shape[2] == 3:  # RGB 图像
@@ -201,5 +251,4 @@ def main():
     app.exec_()
 
 if __name__ == "__main__":
-   
     main()
