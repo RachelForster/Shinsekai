@@ -6,4 +6,6 @@ runtime/
 *.pyo
 *.pyd
 __pycache__/
-
+tha2/
+tha3/
+assets/
