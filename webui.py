@@ -168,7 +168,7 @@ def upload_sprites(character_name, sprite_files, emotion_tags):
     # 找到对应的角色
     character = next((c for c in characters if c["name"] == character_name), None)
     if not character:
-        return f"找不到角色: {character_name}", []
+        return f"找不到角色: {character_name}", [], ''
     
     # 创建角色专属目录
     char_dir = os.path.join(UPLOAD_DIR, character["sprite_prefix"])
@@ -202,7 +202,7 @@ def upload_sprites(character_name, sprite_files, emotion_tags):
             "path": dest_path,
         })
         uploaded_sprites.append((dest_path))
-        emotion_tags +=f'立绘 {i}：\n'
+        emotion_tags +=f'立绘 {i+1}：\n'
     
     character["emotion_tags"]=emotion_tags
 
@@ -394,7 +394,11 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 sprite_files = gr.Files(
                     label="上传立绘图片",
                 )
-
+                upload_sprites_btn = gr.Button("上传图片")
+                upload_output = gr.Textbox(label="上传结果")
+               
+        with gr.Row():
+            with gr.Column():
                 # 显示已上传的立绘
                 sprites_gallery = gr.Gallery(
                     label="已上传的立绘",
@@ -404,15 +408,12 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     object_fit="contain",
                     height="auto"
                 )
-                upload_sprites_btn = gr.Button("上传图片")
-                upload_output = gr.Textbox(label="上传结果")
 
+            with gr.Column():
                 # 动态生成情绪标签输入框
                 gr.Markdown(f"这些是xxx的立绘，请你生成每张立绘的情绪关键字，格式为：立绘01：xxx")
                 emotion_inputs = gr.Textbox(label="情绪关键字描述：", lines=20)
-                
-                upload_emotion_btn=gr.Button("上传立绘标注")
-                
+                upload_emotion_btn=gr.Button("上传立绘标注")    
             # 上传立绘事件
             upload_sprites_btn.click(
                 upload_sprites,

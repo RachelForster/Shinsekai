@@ -1,5 +1,6 @@
 data/config
 data/models
+data/sprite
 llm/__pycache__
 runtime/
 /tha3
