@@ -131,7 +131,6 @@ class ChatWorker(QThread):
                 )
             # 更新角色立绘
             sprite_id = int(sprite)
-            print(self.character_config.sprites)
             image_path = self.character_config.sprites[sprite_id-1]['path']
             try:
                 # 使用 OpenCV 读取图像
@@ -224,7 +223,6 @@ def main():
     print(user_template)
 
     deepseek = DeepSeek(user_template=user_template, api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""))
-
 
     # 创建图像队列和情感队列
     image_queue = Queue()
