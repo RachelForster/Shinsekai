@@ -4,9 +4,9 @@ import threading
 import time
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, 
+from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
-
+import os
 
 class ImageDisplayThread(QThread):
     """图像显示线程，负责从队列获取图像并更新UI"""
@@ -53,14 +53,12 @@ class DesktopAssistantWindow(QWidget):
         """初始化窗口"""
         super().__init__()
         self.image_queue = image_queue
+        self.display_thread = None
         self.deepseek = deepseek
         self.emotion_queue = emotion_queue
         self.sprite_mode = sprite_mode
         self.original_width = 1536
         self.font_size = "48px;"  # 默认字体大小
-
-        # 初始化UI
-        self.setup_ui()
         
         # 设置图像显示线程
         if not self.sprite_mode:
@@ -68,6 +66,8 @@ class DesktopAssistantWindow(QWidget):
         
         # 初始大小
         self.resize(self.original_width, self.original_width)
+
+        self.setup_ui()
         
     def setup_ui(self):
         """初始化UI组件"""
@@ -86,13 +86,15 @@ class DesktopAssistantWindow(QWidget):
         self.image_layout.setContentsMargins(0, 0, 0, 0)
         self.image_layout.setSpacing(0)
         
-     
+      
         # 图像标签
         self.setup_image_label()   
         
         # 对话框组件,覆盖在图像上
         self.setup_dialog_label()
 
+        # 工具栏
+        self.setup_toolbar()
         
         # 输入框布局
         input_layout = self.setup_input_layout()
@@ -103,6 +105,105 @@ class DesktopAssistantWindow(QWidget):
         
         self.setLayout(main_layout)
     
+    def setup_toolbar(self):
+        """初始化右上角工具栏"""
+        # 创建工具栏容器
+        self.toolbar = QWidget(self.image_container)
+        self.toolbar.setFixedSize(140, 48)
+        self.toolbar.move(self.width() - 150, 10)
+        self.toolbar.setStyleSheet("background-color: rgba(50, 50, 50, 150); border-radius: 20px;")
+        
+        # 工具栏布局
+        toolbar_layout = QHBoxLayout(self.toolbar)
+        toolbar_layout.setContentsMargins(16, 0, 16, 0)
+        toolbar_layout.setSpacing(8)
+        
+        # 设置按钮
+        button_size = 48
+        self.settings_btn = QPushButton("⚙")
+        self.settings_btn.setFixedSize(button_size, button_size)
+        self.settings_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 100);
+                border: 2px solid rgba(255, 255, 255, 150);
+                border-radius: 24px;
+                color: white;
+                font-size: 28px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 150);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 200);
+            }
+        """)
+        self.settings_btn.clicked.connect(self.show_settings_menu)
+        
+        # 关闭按钮
+        self.close_btn = QPushButton("×")
+        self.close_btn.setFixedSize(button_size, button_size)
+        self.close_btn.setStyleSheet("""
+             QPushButton {
+                background-color: rgba(255, 255, 255, 100);
+                border: 2px solid rgba(255, 255, 255, 150);
+                border-radius: 24px;
+                color: white;
+                font-size: 28px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 150);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 200);
+            }
+        """)
+        self.close_btn.clicked.connect(self.close)
+        
+        # 添加到工具栏布局
+        toolbar_layout.addWidget(self.settings_btn)
+        toolbar_layout.addWidget(self.close_btn)
+    
+    def show_settings_menu(self):
+        """显示设置下拉菜单"""
+        menu = QMenu(self)
+
+        print("show settings")
+        
+        # 添加菜单项
+        history_action = QAction("历史记录", self)
+        language_action = QAction("语音语言", self)
+        donate_action = QAction("赞赏作者", self)
+        
+        # 连接菜单项的信号
+        history_action.triggered.connect(self.show_history)
+        language_action.triggered.connect(self.show_language_settings)
+        donate_action.triggered.connect(self.show_donate)
+        
+        # 添加菜单项到菜单
+        menu.addAction(history_action)
+        menu.addAction(language_action)
+        menu.addAction(donate_action)
+        
+        # 显示菜单在设置按钮下方
+        menu.exec_(self.settings_btn.mapToGlobal(
+            self.settings_btn.rect().bottomLeft()
+        ))
+    
+    def show_history(self):
+        """显示历史记录"""
+        print("显示历史记录功能")
+        # 这里可以添加显示历史记录的具体实现
+    
+    def show_language_settings(self):
+        """显示语音语言设置"""
+        print("显示语音语言设置功能")
+        # 这里可以添加语音语言设置的具体实现
+    
+    def show_donate(self):
+        """显示赞赏作者界面"""
+        print("显示赞赏作者功能")
+        # 这里可以添加赞赏作者的具体实现
+
     def setup_dialog_label(self):
         """初始化对话框标签"""
         self.dialog_label = QLabel("")
@@ -161,7 +262,7 @@ class DesktopAssistantWindow(QWidget):
                 background-color: #4CAF50;
                 color: white;
                 border: none;
-                border-radius: 5px;
+                border-radius: 10px;
                 padding: 10px;
                 font-size: 28px;
             }
@@ -190,7 +291,7 @@ class DesktopAssistantWindow(QWidget):
         qimg = QImage(image.data, width, height, bytes_per_line, QImage.Format_RGBA8888)
         pixmap = QPixmap.fromImage(qimg)
         
-        # 将图像放大
+        # # 将图像放大
         rate = self.original_width / 1024
         scaled_pixmap = pixmap.scaled(
             int(width * rate), 
@@ -252,9 +353,12 @@ class DesktopAssistantWindow(QWidget):
     
     def closeEvent(self, event):
         """关闭窗口时停止线程"""
-        self.display_thread.stop()
-        self.display_thread.wait()
+        if self.display_thread:
+            self.display_thread.stop()
+            self.display_thread.wait()
         super().closeEvent(event)
+        # 强制终止进程
+        os._exit(0)
 
 def start_qt_app(display_queue, emotion_queue, deepseek):
     """启动PyQt应用"""

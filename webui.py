@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 import json
 import subprocess
+import glob
 
 # 存储数据的全局变量
 api_config = {
@@ -159,10 +160,10 @@ def update_character_options():
 def upload_sprites(character_name, sprite_files, emotion_tags):
     """上传立绘并为每张图标注情绪关键词"""
     if not character_name:
-        return "请先选择或创建角色！", []
+        return "请先选择或创建角色！", [], ''
     
     if not sprite_files:
-        return "请选择要上传的图片！", []
+        return "请选择要上传的图片！", [], ''
     
     # 找到对应的角色
     character = next((c for c in characters if c["name"] == character_name), None)
@@ -172,10 +173,22 @@ def upload_sprites(character_name, sprite_files, emotion_tags):
     # 创建角色专属目录
     char_dir = os.path.join(UPLOAD_DIR, character["sprite_prefix"])
     Path(char_dir).mkdir(parents=True, exist_ok=True)
+
+    files = glob.glob(os.path.join(char_dir, '*'))
+    
+    for file in files:
+        try:
+            if os.path.isfile(file):
+                os.remove(file)  # 删除文件
+                print(f"已删除文件: {file}")
+        except Exception as e:
+            print(f"删除文件 {file} 时出错: {e}")
+            return '失败', [], ''
+
     
     # 处理上传的图片
-    if character["sprites"] is None:
-        character["sprites"]=[]
+    emotion_tags=''
+    character["sprites"]=[]
     uploaded_sprites = []
     for i, file in enumerate(sprite_files):
         # 获取文件名和扩展名
@@ -189,13 +202,14 @@ def upload_sprites(character_name, sprite_files, emotion_tags):
             "path": dest_path,
         })
         uploaded_sprites.append((dest_path))
+        emotion_tags +=f'立绘 {i}：\n'
     
     character["emotion_tags"]=emotion_tags
 
     # 保存到文件
     save_characters_to_file()
     
-    return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", uploaded_sprites
+    return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", uploaded_sprites, emotion_tags
 
 def upload_emotion_tags(character_name, emotion_tags):
     if not character_name:
@@ -210,6 +224,7 @@ def upload_emotion_tags(character_name, emotion_tags):
         return f"找不到角色: {character_name}"
     try:
         character["emotion_tags"]=emotion_tags
+        save_characters_to_file()
         return "标注成功！"
     except Exception as e:
         return f"标注出错了：{e}"
@@ -402,7 +417,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             upload_sprites_btn.click(
                 upload_sprites,
                 inputs=[selected_character, sprite_files, emotion_inputs],
-                outputs=[upload_output, sprites_gallery]
+                outputs=[upload_output, sprites_gallery, emotion_inputs]
             )
 
             upload_emotion_btn.click(
