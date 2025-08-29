@@ -518,3 +518,52 @@
   - path: ./data/sprite\naegi\Danganronpa_V3_Makoto_Naegi_Bonus_Mode_03.webp
   - path: ./data/sprite\naegi\Danganronpa_V3_Makoto_Naegi_Bonus_Mode_02.webp
   - path: ./data/sprite\naegi\Danganronpa_V3_Makoto_Naegi_Bonus_Mode_01.webp
+- color: rgba(194.33435662174037, 189.43898156976107, 189.43898156976107, 1)
+  emotion_tags: '立绘 1：害羞，不好意思
+
+    立绘 2：坚决，拒绝，禁止
+
+    立绘 3：歪头，疑问
+
+    立绘 4：欣慰
+
+    立绘 5：背过身
+
+    立绘 6：低头，愧疚，道歉
+
+    立绘 7：热，色情
+
+    立绘 8：生气，红温
+
+    立绘 9：大笑
+
+    立绘 10：唔噗噗，捂嘴笑
+
+    立绘 11：生气，亮爪子，残暴
+
+    立绘 12：杀意
+
+    立绘 13：平静，中性
+
+    '
+  gpt_model_path: ''
+  name: 黑白熊
+  prompt_lang: ''
+  prompt_text: ''
+  refer_audio_path: ''
+  sovits_model_path: ''
+  sprite_prefix: monokuma
+  sprites:
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_14.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_13.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_11.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_10.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_09.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_08.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_07.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_06.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_05.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_04.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_03.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_02.webp
+  - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_01.webp
