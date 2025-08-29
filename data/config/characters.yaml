@@ -233,7 +233,47 @@
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_18.webp
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_19.webp
 - color: '#E5A3A3'
-  emotion_tags: ''
+  emotion_tags: 'sprite 01: 中性，平静
+
+    sprite 02: 疲倦，困倦，打哈欠
+
+    sprite 03: 指点，引导，陈述
+
+    sprite 04: 生气，鼓起脸颊
+
+    sprite 05: 开心，微笑，温柔
+
+    sprite 06: 筋疲力尽，困倦，流口水
+
+    sprite 07: 皱眉，严肃，担心
+
+    sprite 08: 沉思，好奇
+
+    sprite 09: 中性，歪头，轻微好奇
+
+    sprite 10: 解释，指向，果断
+
+    sprite 11: 仔细查看，眺望
+
+    sprite 12: 不安，担忧，自闭
+
+    sprite 13: 十分兴奋, 激动到喘气
+
+    sprite 14: 沉思，低头，皱眉
+
+    sprite 15: 困倦，疲惫，在打瞌睡
+
+    sprite 16: 不满，难过，沮丧
+
+    sprite 17: 警告，阻止，制止
+
+    sprite 18: 埋怨，嘟嘴
+
+    sprite 19: 疑惑，思考，好奇
+
+    sprite 20: 严肃，不满，冷漠
+
+    sprite 21: 害羞，脸红'
   gpt_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\GPT_weights_v2ProPlus\nanami-e15.ckpt
   name: 七海千秋
   prompt_lang: ja
@@ -408,7 +448,47 @@
   sprite_prefix: saihara
   sprites: []
 - color: rgba(171.4101904714142, 153.811059460443, 131.1301976788606, 1)
-  emotion_tags: ''
+  emotion_tags: '立绘01： 轻松，微笑，平静
+
+    立绘02： 惊讶，震惊，困惑
+
+    立绘03： 悲伤，失落，沮丧
+
+    立绘04： 紧张，严肃，决心
+
+    立绘05： 担忧，不安，焦虑
+
+    立绘06： 愤怒，激动，坚定
+
+    立绘07： 振奋，呐喊，斗志昂扬
+
+    立绘08： 严肃，质问，不满
+
+    立绘09： 困惑，惊讶，质疑
+
+    立绘10： 决心，自信，坚定
+
+    立绘11： 思考，困惑，犹豫
+
+    立绘12： 沉思，专注，严肃
+
+    立绘13： 思考，深思，认真
+
+    立绘14： 尴尬，害羞，不好意思
+
+    立绘15： 沮丧，失望，低落
+
+    立绘16： 指责，愤怒，指控
+
+    立绘17： 惊慌，不安，震惊
+
+    立绘18： 惊讶，慌张，无助
+
+    立绘19： 惊吓，害怕，防御
+
+    立绘20： 恐惧，不知所措，流汗
+
+    立绘21：绝望，崩溃，痛苦。'
   gpt_model_path: ''
   name: 苗木诚
   prompt_lang: ''
