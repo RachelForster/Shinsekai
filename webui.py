@@ -333,6 +333,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     label="选择角色"
                 )
                 def update_character_dropdown():
+                    print(["新角色"]+[c.get("name", "") for c in characters])
                     return gr.Dropdown(choices=["新角色"]+[c.get("name", "") for c in characters])
                 
                 def update_character_information(selected_character):
@@ -343,15 +344,15 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                                 
                 gr.Markdown("#### 角色信息")
                 char_name = gr.Textbox(label="人物名称", placeholder="请输入人物名称")
-                char_color = gr.ColorPicker(label="名称颜色", value="#EC955F")
-                sprite_prefix = gr.Textbox(label="立绘上传目录名，请写英文，不要带汉语，例如：komaeda", value="komaeda")
+                char_color = gr.ColorPicker(label="名称显示颜色", value="#d07d7d")
+                sprite_prefix = gr.Textbox(label="立绘上传目录名，请写英文，不要带汉语，例如：komaeda", value="temp")
                 gr.Markdown("### 语音模块设置")
                 gr.Markdown("#### 以下如果没有可以为空")
                 gpt_model_path = gr.Textbox(label="GPT 模型路径")
                 sovits_model_path = gr.Textbox(label="SoVITS 模型路径， 如果没有可为空")
                 refer_audio_path = gr.Textbox(label="参考音频路径，如果没有可为空")
                 prompt_text = gr.Textbox(label="参考音频文本")
-                prompt_lang = gr.Textbox(label="参考音频的语言", value="ja")
+                prompt_lang = gr.Textbox(label="参考音频的语言")
                 add_btn = gr.Button("添加或保存人物设置")
                 add_output = gr.Textbox(label="操作结果")
     
@@ -371,8 +372,8 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             inputs=None,
             outputs=selected_character
         ).then(
-            lambda : char_name,
-            inputs=None,
+            lambda x: x,
+            inputs=char_name,
             outputs=selected_character
         )
         

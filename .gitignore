@@ -8,3 +8,4 @@ runtime/
 /__pycache__
 *.pyc
 *.pyc
+data/character_templates/_temp.txt
