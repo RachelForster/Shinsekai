@@ -59,8 +59,10 @@ class TTSManager:
             language = text_processor.decide_language(text)
             text = text_processor.replace_names(text)
             text = text_processor.libre_translate(text, source=language, target= voice_language)
-            if character_name == "狛枝凪斗":
+            if character_name == "狛枝凪斗" or character_name == "仆役":
                 text = text_processor.replace_watashi(text)
+        if  not ref_audio_path:
+            return ''
 
         params = {
             "ref_audio_path": ref_audio_path or self.ref_audio_path,
@@ -91,6 +93,10 @@ class TTSManager:
     def switch_model(self, gpt_model_path, sovits_model_path):
         """切换TTS模型"""
         try:
+            if not sovits_model_path:
+                return 
+            if not gpt_model_path:
+                return
             response = requests.get(self.tts_server_url+"set_gpt_weights", params={"weights_path": gpt_model_path})
             if response.status_code == 200:
                 print("gpt模型切换成功:", gpt_model_path)

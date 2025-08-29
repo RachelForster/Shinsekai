@@ -9,3 +9,4 @@ runtime/
 *.pyc
 *.pyc
 data/character_templates/_temp.txt
+temp.wav
