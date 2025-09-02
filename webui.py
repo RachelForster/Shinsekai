@@ -286,7 +286,7 @@ def launch_chat(template):
         if main_process is None or main_process.poll() is not None:
             # 启动一个长时间运行的进程（这里使用ping作为示例）
             main_process = subprocess.Popen(
-                ['./runtime/python.exe', 'main_sprite.py',  '--template=_temp']
+                ['./runtime/python.exe', 'main_sprite.py',  '--template=_temp', '--voice_mode=preset']
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
         else:

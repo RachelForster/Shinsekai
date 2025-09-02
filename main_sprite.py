@@ -135,6 +135,8 @@ class ChatWorker(QThread):
                     prompt_lang=self.character_config.prompt_lang,
                     character_name=character_name
                 )
+                if audio_path:
+                    should_sleep = False
             # 更新角色立绘
            
             image_path = self.character_config.sprites[sprite_id-1]['path']
@@ -166,7 +168,6 @@ class ChatWorker(QThread):
 
             # 播放语音
             if audio_path:
-                should_sleep = False
                 try:
                     pygame.mixer.init()
                     pygame.mixer.music.load(audio_path)
@@ -182,8 +183,7 @@ class ChatWorker(QThread):
                     print(f"播放音频时出错: {e}")
 
             if should_sleep:
-                print("应该睡一会儿")
-                sleep_span = len(speech) // 5
+                sleep_span = len(speech) // 8
                 if sleep_span < 4:
                     sleep_span = 4
                 time.sleep(sleep_span)
@@ -208,14 +208,14 @@ def main():
     parser = argparse.ArgumentParser(description='示例脚本')
     # 添加参数
     parser.add_argument('--template', '-t', type=str, help='用户模板名称', default='komaeda_sprite')
-    parser.add_argument('--voice_mode', '-v', type=bool, default=True)
+    parser.add_argument('--voice_mode', '-v', type=str, default='gen')
 
     # 解析参数
     args = parser.parse_args()
 
     # 创建TTS管理器实例
     tts_manager = None
-    if args.voice_mode:
+    if args.voice_mode == 'gen':
         tts_manager = TTSManager(tts_server_url=api_config.get("gpt_sovits_url",""))
         try:
             tts_manager.load_tts_model(gpt_sovits_work_path=api_config.get("gpt_sovits_api_path",""))
