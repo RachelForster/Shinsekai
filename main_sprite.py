@@ -61,6 +61,7 @@ def getCharacter(name):
 class ChatWorker(QThread):
     """后台聊天工作线程"""
     update_dialog_signal = pyqtSignal(str)
+    update_notification_signal = pyqtSignal(str)
     update_sprite_signal = pyqtSignal(np.ndarray)
     def __init__(self, deepseek, message, tts_manager: TTSManager = None):
         """初始化工作线程"""
@@ -83,7 +84,9 @@ class ChatWorker(QThread):
         if not self.response_list:
             return
         
-        for item in self.response_list:
+        self.update_notification_signal.emit(f"收到{len(self.response_list)}条回复，正在合成语音喵……")
+
+        for i, item in enumerate(self.response_list):
             if not self.running:
                 break
                 
@@ -96,7 +99,8 @@ class ChatWorker(QThread):
             # 处理旁白
             if character_name == '旁白':
                 formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b style='color:#84C2D5;'>{character_name}</b>：{speech}</p>"
-                self.update_dialog_signal.emit(formatted_speech)     
+                self.update_dialog_signal.emit(formatted_speech)
+                self.update_notification_signal.emit(f"收到消息 {i+1}/{len(self.response_list)}")
                 continue
 
             self.character_config = getCharacter(character_name)
@@ -106,16 +110,18 @@ class ChatWorker(QThread):
 
             if not sprite:
                 continue
-
+            should_sleep = True
             self.sprite_prefix = self.character_config.sprite_prefix
-
+            sprite_id = int(sprite)
             audio_path = None
             if not self.tts_manager:
-                print("TTS管理器未初始化")
+                if self.character_config.sprites[sprite_id-1].get('voice_path',''):
+                    audio_path = self.character_config.sprites[sprite_id-1]['voice_path']
             else:
                 # 切换模型
                 self.tts_manager.switch_model(self.character_config.gpt_model_path, self.character_config.sovits_model_path)
                 # 生成音频
+                self.update_notification_signal.emit(f"{character_name}正在准备回复……")
                 text_processor = self.deepseek.text_processor
                 speech_text = speech
                 if translate:
@@ -130,7 +136,7 @@ class ChatWorker(QThread):
                     character_name=character_name
                 )
             # 更新角色立绘
-            sprite_id = int(sprite)
+           
             image_path = self.character_config.sprites[sprite_id-1]['path']
             try:
                 # 使用 OpenCV 读取图像
@@ -155,10 +161,12 @@ class ChatWorker(QThread):
 
             # 更新对话框文字
             formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{self.character_config.name_color};'>{character_name}</b>：{speech}</p>"
-            self.update_dialog_signal.emit(formatted_speech)            
+            self.update_dialog_signal.emit(formatted_speech)
+            self.update_notification_signal.emit(f"收到消息 {i+1}/{len(self.response_list)}")
 
             # 播放语音
             if audio_path:
+                should_sleep = False
                 try:
                     pygame.mixer.init()
                     pygame.mixer.music.load(audio_path)
@@ -173,7 +181,8 @@ class ChatWorker(QThread):
                 except Exception as e:
                     print(f"播放音频时出错: {e}")
 
-            if self.tts_manager is None:
+            if should_sleep:
+                print("应该睡一会儿")
                 sleep_span = len(speech) // 5
                 if sleep_span < 4:
                     sleep_span = 4
@@ -188,6 +197,7 @@ def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):
     if desktop_ui:
         thread.update_dialog_signal.connect(desktop_ui.setDisplayWords)
         thread.update_sprite_signal.connect(desktop_ui.update_image)
+        thread.update_notification_signal.connect(desktop_ui.setNotification)
         print("连接信号到桌面UI")
     else:
         print("Desktop UI未提供，无法更新界面")
@@ -231,7 +241,7 @@ def main():
     # 创建桌面助手窗口
     app = QApplication([])
     window = DesktopAssistantWindow(image_queue, emotion_queue, deepseek, sprite_mode=True)
-    init_image = cv2.imread('./data\sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp', cv2.IMREAD_UNCHANGED)
+    init_image = cv2.imread('./data/sprite/usami/Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp', cv2.IMREAD_UNCHANGED)
     if init_image is not None:
         # 转换颜色格式 BGR -> RGBA
         if init_image.shape[2] == 3:  # RGB 图像
@@ -242,6 +252,8 @@ def main():
         elif init_image.shape[2] == 4:  # RGBA 图像
             init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
     window.update_image(init_image)  # 设置初始图像
+    window.setNotification("和大家开始聊天吧……")
+    window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:#e6b2b2'>兔兔美</b>：欢迎来到新世界程序，希望你和大家能开启love love~的新学期，快和大家聊天吧</p>")
 
     window.message_submitted.connect(lambda message: handleResponse(deepseek, message, tts_manager, window))
 

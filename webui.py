@@ -20,6 +20,7 @@ main_process = None
 
 # 创建存储上传文件的目录
 UPLOAD_DIR = "./data/sprite"
+VOICE_DIR = "./data/speech"
 API_CONFIG_PATH = "./data/config/api.yaml"
 CHARACTER_CONFIG_PATH = "./data/config/characters.yaml"
 TEMPLATE_DIR_PATH = "./data/character_templates"
@@ -229,7 +230,51 @@ def upload_emotion_tags(character_name, emotion_tags):
     except Exception as e:
         return f"标注出错了：{e}"
 
-# TODO 写一下启动聊天的逻辑
+def upload_voice(character_name, sprite_index, voice_file):
+    """为指定立绘上传语音文件"""
+    if not character_name:
+        return "请先选择角色！", None
+    
+    if not voice_file:
+        return "请选择语音文件！", None
+    
+    # 找到对应的角色
+    character = next((c for c in characters if c["name"] == character_name), None)
+    if not character:
+        return f"找不到角色: {character_name}", None
+    
+    # 确保有立绘
+    if not character["sprites"] or sprite_index >= len(character["sprites"]):
+        return "立绘不存在！", None
+    
+    # 创建语音目录
+    voice_char_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
+    Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
+    
+    # 保存语音文件
+    voice_filename = f"voice_{sprite_index:02d}{voice_file[voice_file.rfind('.'): ]}"
+    voice_path = os.path.join(voice_char_dir, voice_filename)
+    shutil.copyfile(voice_file, voice_path)
+    
+    # 更新角色数据
+    character["sprites"][sprite_index]["voice_path"] = voice_path
+    save_characters_to_file()
+    
+    return f"语音已上传到立绘 {sprite_index+1}！", voice_path
+
+def get_sprite_voice(character_name, sprite_index):
+    """获取指定立绘的语音路径"""
+    if not character_name or sprite_index is None:
+        return None
+    
+    # 找到对应的角色
+    character = next((c for c in characters if c["name"] == character_name), None)
+    if not character or not character["sprites"] or sprite_index >= len(character["sprites"]):
+        return None
+    
+    # 返回语音路径
+    return character["sprites"][sprite_index].get("voice_path", None)
+
 def launch_chat(template):
     global main_process
     print("启动聊天，使用模板:")
@@ -279,8 +324,6 @@ def save_template(template, filename):
     except Exception as e:
         return f"保存失败，{e}",template_files
 
-
-
 def get_character_sprites(character_name):
     """获取指定角色的所有立绘"""
     if not character_name:
@@ -320,7 +363,8 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             outputs=api_output
         )
     
-    active_character=gr.State("")
+    active_character=gr.State("") #当前选中的人物名
+    selected_sprite_index = gr.State(None)  # 存储当前选中的立绘索引
 
     with gr.Tab("人物设定"):
         gr.Markdown("## 人物管理")
@@ -386,7 +430,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             ]
         )
         
-        # 新增：立绘上传和情绪标注区域
+        # 立绘上传和情绪标注区域
         gr.Markdown("## 立绘管理")
         with gr.Row():
             with gr.Column():
@@ -412,9 +456,12 @@ with gr.Blocks(title="LLM 角色管理") as demo:
 
             with gr.Column():
                 # 动态生成情绪标签输入框
-                gr.Markdown(f"这些是xxx的立绘，请你生成每张立绘的情绪关键字，格式为：立绘01：xxx")
+                gr.Markdown("### 标注立绘情绪关键字")
+                gr.Markdown(f"这些是{selected_character.value}的立绘，请你生成每张立绘的情绪关键字，格式为：立绘 1：xxx")
                 emotion_inputs = gr.Textbox(label="情绪关键字描述：", lines=20)
-                upload_emotion_btn=gr.Button("上传立绘标注")    
+                upload_emotion_btn=gr.Button("上传立绘标注")
+            
+
             # 上传立绘事件
             upload_sprites_btn.click(
                 upload_sprites,
@@ -434,7 +481,80 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 inputs=[selected_character],
                 outputs=[sprites_gallery, emotion_inputs, sprite_files]
             )
-    
+
+            with gr.Column(scale=1):
+                gr.Markdown("### 选择立绘并上传语音")
+                # 当点击立绘时，更新选中的立绘索引
+                def select_sprite(evt: gr.SelectData):
+                    return evt.index
+                
+                sprites_gallery.select(
+                    fn=select_sprite,
+                    inputs=None,
+                    outputs=selected_sprite_index
+                )
+                
+                # 显示当前选中的立绘信息
+                selected_sprite_info = gr.Textbox(label="当前选中的立绘", interactive=False)
+                
+                # 语音播放组件
+                sprite_voice_player = gr.Audio(label="立绘语音", interactive=False)
+                
+                # 语音上传组件
+                voice_upload = gr.Audio(
+                    label="上传语音文件",
+                    sources=["upload"],
+                    type="filepath"
+                )
+                
+                upload_voice_btn = gr.Button("上传语音")
+                voice_upload_output = gr.Textbox(label="上传结果")
+                
+                # 更新选中立绘信息
+                def update_selected_sprite_info(character_name, sprite_index):
+                    if not character_name or sprite_index is None:
+                        return "未选择立绘", None
+                    
+                    character = next((c for c in characters if c["name"] == character_name), None)
+                    if not character or not character.get("sprites") or sprite_index >= len(character["sprites"]):
+                        return "立绘不存在", None
+                    
+                    sprite = character["sprites"][sprite_index]
+                    emotion_tag = sprite.get("emotion_tag", f"立绘{sprite_index+1}")
+                    voice_path = sprite.get("voice_path", "")
+                    
+                    info = f"立绘 {sprite_index+1}: {emotion_tag}"
+                    if voice_path:
+                        info += " (已有语音)"
+                    else:
+                        info += " (无语音)"
+                    
+                    return info, voice_path if voice_path else None
+                
+                # 当选择立绘或切换角色时更新信息
+                selected_sprite_index.change(
+                    fn=update_selected_sprite_info,
+                    inputs=[selected_character, selected_sprite_index],
+                    outputs=[selected_sprite_info, sprite_voice_player]
+                )
+                
+                selected_character.change(
+                    fn=lambda char_name: update_selected_sprite_info(char_name, selected_sprite_index.value) if selected_sprite_index.value is not None else ("未选择立绘", None),
+                    inputs=[selected_character],
+                    outputs=[selected_sprite_info, sprite_voice_player]
+                )
+                
+                # 上传语音事件
+                upload_voice_btn.click(
+                    fn=upload_voice,
+                    inputs=[selected_character, selected_sprite_index, voice_upload],
+                    outputs=[voice_upload_output, sprite_voice_player]
+                ).then(
+                    fn=update_selected_sprite_info,
+                    inputs=[selected_character, selected_sprite_index],
+                    outputs=[selected_sprite_info, sprite_voice_player]
+                )
+
     with gr.Tab("聊天模板"):
         gr.Markdown("## 聊天模板管理")  
         path_obj = Path(TEMPLATE_DIR_PATH)
