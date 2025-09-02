@@ -3,10 +3,68 @@ import numpy as np
 import threading
 import time
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,
+from PyQt5.QtGui import QFont, QImage, QPixmap
+from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem,
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
 import os
+
+class MessageDialog(QDialog):
+    def __init__(self, messages, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("对话历史记录")
+        self.setModal(True)
+        self.resize(600, 400)
+        
+        layout = QVBoxLayout()
+        
+        # 标题
+        title_label = QLabel("对话历史记录")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_font = QFont()
+        title_font.setBold(True)
+        title_font.setPointSize(14)
+        title_label.setFont(title_font)
+        layout.addWidget(title_label)
+        
+        # 消息列表
+        self.message_list = QListWidget()
+        self.message_list.setAlternatingRowColors(True)
+        
+        # 添加消息到列表
+        for msg in messages:
+            item_widget = self.create_message_widget(msg)
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(item_widget.sizeHint())
+            self.message_list.addItem(list_item)
+            self.message_list.setItemWidget(list_item, item_widget)
+        
+        layout.addWidget(self.message_list)
+        self.setLayout(layout)
+    
+    def create_message_widget(self, message):
+        widget = QLabel()
+        widget.setMargin(10)
+        widget.setWordWrap(True)
+        widget.setTextFormat(Qt.RichText)
+        
+        # 设置样式
+        widget.setStyleSheet("""
+            QLabel {
+                background-color: #f0f0f0;
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        
+        # 格式化消息
+        formatted_text = f"<b>{message['username']}</b>: {message['speech']}"
+        widget.setText(formatted_text)
+        
+        # 调整大小以适应内容
+        widget.adjustSize()
+        
+        return widget
+
 
 class ImageDisplayThread(QThread):
     """图像显示线程，负责从队列获取图像并更新UI"""
@@ -47,7 +105,6 @@ class ChatWorker(QThread):
 
 class DesktopAssistantWindow(QWidget):
     """桌面助手主窗口"""
-
     message_submitted = pyqtSignal(str)  # 定义信号用于发送消息
     def __init__(self, image_queue, emotion_queue, deepseek, sprite_mode=False):
         """初始化窗口"""
@@ -192,6 +249,28 @@ class DesktopAssistantWindow(QWidget):
     def show_history(self):
         """显示历史记录"""
         print("显示历史记录功能")
+        messages = self.get_messages_from_service()
+        
+        # 创建并显示对话框
+        dialog = MessageDialog(messages, self)
+        dialog.exec_()
+    
+    # TODO 写一下如何从外部获取对话记录
+    def get_messages_from_service(self):
+        # 模拟从外部服务获取数据
+        # 在实际应用中，这里可能是API调用、数据库查询等
+        return [
+            {"username": "张三", "speech": "你好，今天天气真不错！"},
+            {"username": "李四", "speech": "是的，很适合出去散步。"},
+            {"username": "张三", "speech": "你有什么计划吗？"},
+            {"username": "李四", "speech": "我打算去公园看书，你要一起来吗？"},
+            {"username": "张三", "speech": "好主意！半小时后公园门口见。"},
+            {"username": "王五", "speech": "你们在讨论什么？我可以加入吗？"},
+            {"username": "李四", "speech": "当然欢迎！我们打算去公园，一起吧！"},
+            {"username": "王五", "speech": "太棒了！我等会儿带些点心过去。"},
+            {"username": "张三", "speech": "完美！那我们等会儿见。"}
+        ]
+
         # 这里可以添加显示历史记录的具体实现
     
     def show_language_settings(self):
@@ -312,6 +391,7 @@ class DesktopAssistantWindow(QWidget):
             print(f"UI发送消息: {message}")
             self.input_box.clear()
             self.setDisplayWords(f"<b>你</b>：{message}")
+            self.input_box.setPlaceholderText("发送成功喵，等待回复中……")
             
             # 创建并启动聊天工作线程
             if self.sprite_mode is False:
@@ -320,6 +400,10 @@ class DesktopAssistantWindow(QWidget):
                 self.chat_worker.start()
 
             self.message_submitted.emit(message)  # 发出消息提交信号
+
+    def setNotification(self, message):
+        """设置提示词"""
+        self.input_box.setPlaceholderText(message)
 
     def handleResponse(self, result):
         """处理聊天响应"""

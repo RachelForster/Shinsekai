@@ -58,6 +58,7 @@
   sprite_prefix: komaeda
   sprites:
   - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_01.webp
+    voice_path: ./data/speech\komaeda\voice_00.wav
   - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_02.webp
   - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_03.webp
   - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_04.webp
@@ -448,47 +449,47 @@
   sprite_prefix: saihara
   sprites: []
 - color: rgba(171.4101904714142, 153.811059460443, 131.1301976788606, 1)
-  emotion_tags: '立绘01： 轻松，微笑，平静
+  emotion_tags: '立绘01：绝望，崩溃，痛苦
 
-    立绘02： 惊讶，震惊，困惑
+    立绘02：恐惧，不知所措，流汗
 
-    立绘03： 悲伤，失落，沮丧
+    立绘03：惊吓，害怕，防御
 
-    立绘04： 紧张，严肃，决心
+    立绘04：惊讶，慌张，无助
 
-    立绘05： 担忧，不安，焦虑
+    立绘05：惊慌，不安，震惊
 
-    立绘06： 愤怒，激动，坚定
+    立绘06：指责，愤怒，指控
 
-    立绘07： 振奋，呐喊，斗志昂扬
+    立绘07：沮丧，失望，低落
 
-    立绘08： 严肃，质问，不满
+    立绘08：尴尬，害羞，不好意思
 
-    立绘09： 困惑，惊讶，质疑
+    立绘09：思考，深思，认真
 
-    立绘10： 决心，自信，坚定
+    立绘10：沉思，专注，严肃
 
-    立绘11： 思考，困惑，犹豫
+    立绘11：思考，困惑，犹豫
 
-    立绘12： 沉思，专注，严肃
+    立绘12：决心，自信，坚定
 
-    立绘13： 思考，深思，认真
+    立绘13：困惑，惊讶，质疑
 
-    立绘14： 尴尬，害羞，不好意思
+    立绘14：严肃，质问，不满
 
-    立绘15： 沮丧，失望，低落
+    立绘15：振奋，呐喊，斗志昂扬
 
-    立绘16： 指责，愤怒，指控
+    立绘16：愤怒，激动，坚定
 
-    立绘17： 惊慌，不安，震惊
+    立绘17：担忧，不安，焦虑
 
-    立绘18： 惊讶，慌张，无助
+    立绘18：紧张，严肃，决心
 
-    立绘19： 惊吓，害怕，防御
+    立绘19：悲伤，失落，沮丧
 
-    立绘20： 恐惧，不知所措，流汗
+    立绘20：惊讶，震惊，困惑
 
-    立绘21：绝望，崩溃，痛苦。'
+    立绘21：轻松，微笑，平静'
   gpt_model_path: ''
   name: 苗木诚
   prompt_lang: ''
@@ -567,3 +568,16 @@
   - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_03.webp
   - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_02.webp
   - path: ./data/sprite\monokuma\Danganronpa_1_Monokuma_Halfbody_Sprite_01.webp
+- color: rgba(230.03436025333252, 177.9890636358564, 177.9890636358564, 1)
+  emotion_tags: '立绘 1：开心
+
+    '
+  gpt_model_path: ''
+  name: 兔兔美
+  prompt_lang: ''
+  prompt_text: ''
+  refer_audio_path: ''
+  sovits_model_path: ''
+  sprite_prefix: usami
+  sprites:
+  - path: ./data/sprite\usami\Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp
