@@ -50,7 +50,7 @@ class TTSManager:
         text_processor: 文本处理器，用于预处理文本
         voice_language: 语音语言，默认为日语
     """
-    def generate_tts(self, text, text_processor=None, voice_language='ja', ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None):
+    def generate_tts(self, text, text_processor=None, voice_language='ja', ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None, file_path=None):
         """生成TTS语音"""
         # 预处理文本
         if text_processor:
@@ -78,7 +78,8 @@ class TTSManager:
         
         try:
             response = requests.post(self.tts_server_url+"tts", json=params)
-            file_path = 'temp.wav'
+            if not file_path:
+                file_path = 'temp.wav'
             with open(file_path, 'wb') as f:
                 f.write(response.content)
 
