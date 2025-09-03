@@ -168,29 +168,53 @@
   sprite_prefix: hinata
   sprites:
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_01.webp
+    voice_path: ./data/speech\hinata\hinata_voice_00.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_02.webp
+    voice_path: ./data/speech\hinata\hinata_voice_01.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_03.webp
+    voice_path: ./data/speech\hinata\hinata_voice_02.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_04.webp
+    voice_path: ./data/speech\hinata\hinata_voice_03.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_05.webp
+    voice_path: ./data/speech\hinata\hinata_voice_04.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_06.webp
+    voice_path: ./data/speech\hinata\hinata_voice_05.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_07.webp
+    voice_path: ./data/speech\hinata\hinata_voice_06.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_08.webp
+    voice_path: ./data/speech\hinata\hinata_voice_07.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_09.webp
+    voice_path: ./data/speech\hinata\hinata_voice_08.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_10.webp
+    voice_path: ./data/speech\hinata\hinata_voice_09.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_11.webp
+    voice_path: ./data/speech\hinata\hinata_voice_10.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_12.webp
+    voice_path: ./data/speech\hinata\hinata_voice_11.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_13.webp
+    voice_path: ./data/speech\hinata\hinata_voice_12.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_14.webp
+    voice_path: ./data/speech\hinata\hinata_voice_13.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_15.webp
+    voice_path: ./data/speech\hinata\hinata_voice_14.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_16.webp
+    voice_path: ./data/speech\hinata\hinata_voice_15.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_17.webp
+    voice_path: ./data/speech\hinata\hinata_voice_16.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_18.webp
+    voice_path: ./data/speech\hinata\hinata_voice_17.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_19.webp
+    voice_path: ./data/speech\hinata\hinata_voice_18.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_20.webp
+    voice_path: ./data/speech\hinata\hinata_voice_19.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_21.webp
+    voice_path: ./data/speech\hinata\hinata_voice_20.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_22.webp
+    voice_path: ./data/speech\hinata\hinata_voice_21.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_23.webp
+    voice_path: ./data/speech\hinata\hinata_voice_22.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_24.webp
+    voice_path: ./data/speech\hinata\hinata_voice_23.wav
 - color: '#EC955F'
   emotion_tags: 'Sprite 01: 狂喜、兴奋、得意
 
@@ -239,24 +263,43 @@
   sprite_prefix: enoshima
   sprites:
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_01.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_00.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_02.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_01.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_03.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_02.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_04.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_03.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_05.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_04.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_06.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_05.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_07.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_06.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_08.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_07.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_09.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_08.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_10.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_09.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_11.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_10.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_12.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_11.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_13.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_12.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_14.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_13.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_15.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_14.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_16.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_15.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_17.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_16.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_18.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_17.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_19.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_18.wav
 - color: '#E5A3A3'
   emotion_tags: 'sprite 01: 中性，平静
 
@@ -309,26 +352,47 @@
   sprite_prefix: nanami
   sprites:
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_01.webp
+    voice_path: ./data/speech\nanami\nanami_voice_00.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_02.webp
+    voice_path: ./data/speech\nanami\nanami_voice_01.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_03.webp
+    voice_path: ./data/speech\nanami\nanami_voice_02.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_04.webp
+    voice_path: ./data/speech\nanami\nanami_voice_03.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_05.webp
+    voice_path: ./data/speech\nanami\nanami_voice_04.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_06.webp
+    voice_path: ./data/speech\nanami\nanami_voice_05.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_07.webp
+    voice_path: ./data/speech\nanami\nanami_voice_06.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_08.webp
+    voice_path: ./data/speech\nanami\nanami_voice_07.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_09.webp
+    voice_path: ./data/speech\nanami\nanami_voice_08.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_10.webp
+    voice_path: ./data/speech\nanami\nanami_voice_09.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_11.webp
+    voice_path: ./data/speech\nanami\nanami_voice_10.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_12.webp
+    voice_path: ./data/speech\nanami\nanami_voice_11.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_13.webp
+    voice_path: ./data/speech\nanami\nanami_voice_12.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_14.webp
+    voice_path: ./data/speech\nanami\nanami_voice_13.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_15.webp
+    voice_path: ./data/speech\nanami\nanami_voice_14.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_16.webp
+    voice_path: ./data/speech\nanami\nanami_voice_15.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_17.webp
+    voice_path: ./data/speech\nanami\nanami_voice_16.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_18.webp
+    voice_path: ./data/speech\nanami\nanami_voice_17.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_19.webp
+    voice_path: ./data/speech\nanami\nanami_voice_18.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_20.webp
+    voice_path: ./data/speech\nanami\nanami_voice_19.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_21.webp
+    voice_path: ./data/speech\nanami\nanami_voice_20.wav
 - color: '#9360C9'
   emotion_tags: 'Sprite 01: 中性，平静
 
@@ -381,25 +445,45 @@
   sprite_prefix: oma
   sprites:
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_01.webp
+    voice_path: ./data/speech\oma\oma_voice_00.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_02.webp
+    voice_path: ./data/speech\oma\oma_voice_01.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_03.webp
+    voice_path: ./data/speech\oma\oma_voice_02.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_04.webp
+    voice_path: ./data/speech\oma\oma_voice_03.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_05.webp
+    voice_path: ./data/speech\oma\oma_voice_04.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_06.webp
+    voice_path: ./data/speech\oma\oma_voice_05.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_07.webp
+    voice_path: ./data/speech\oma\oma_voice_06.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_08.webp
+    voice_path: ./data/speech\oma\oma_voice_07.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_09.webp
+    voice_path: ./data/speech\oma\oma_voice_08.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_10.webp
+    voice_path: ./data/speech\oma\oma_voice_09.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_11.webp
+    voice_path: ./data/speech\oma\oma_voice_10.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_12.webp
+    voice_path: ./data/speech\oma\oma_voice_11.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_13.webp
+    voice_path: ./data/speech\oma\oma_voice_12.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_14.webp
+    voice_path: ./data/speech\oma\oma_voice_13.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_15.webp
+    voice_path: ./data/speech\oma\oma_voice_14.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_16.webp
+    voice_path: ./data/speech\oma\oma_voice_15.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_17.webp
+    voice_path: ./data/speech\oma\oma_voice_16.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_18.webp
+    voice_path: ./data/speech\oma\oma_voice_17.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_19.webp
+    voice_path: ./data/speech\oma\oma_voice_18.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_20.webp
+    voice_path: ./data/speech\oma\oma_voice_19.wav
 - color: '#A7CA90'
   emotion_tags: '01：中性，平静
 
@@ -436,18 +520,31 @@
   sprite_prefix: servant
   sprites:
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_01.webp
+    voice_path: ./data/speech\servant\servant_voice_00.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_02.webp
+    voice_path: ./data/speech\servant\servant_voice_01.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_03.webp
+    voice_path: ./data/speech\servant\servant_voice_02.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_04.webp
+    voice_path: ./data/speech\servant\servant_voice_03.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_05.webp
+    voice_path: ./data/speech\servant\servant_voice_04.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_06.webp
+    voice_path: ./data/speech\servant\servant_voice_05.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_07.webp
+    voice_path: ./data/speech\servant\servant_voice_06.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_08.webp
+    voice_path: ./data/speech\servant\servant_voice_07.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_09.webp
+    voice_path: ./data/speech\servant\servant_voice_08.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_10.webp
+    voice_path: ./data/speech\servant\servant_voice_09.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_11.webp
+    voice_path: ./data/speech\servant\servant_voice_10.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_12.webp
+    voice_path: ./data/speech\servant\servant_voice_11.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_13.webp
+    voice_path: ./data/speech\servant\servant_voice_12.wav
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_01.webp
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_02.webp
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_03.webp
