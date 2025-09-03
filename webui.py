@@ -275,7 +275,7 @@ def get_sprite_voice(character_name, sprite_index):
     # 返回语音路径
     return character["sprites"][sprite_index].get("voice_path", None)
 
-def launch_chat(template):
+def launch_chat(template, voice_mode):
     global main_process
     print("启动聊天，使用模板:")
     try:
@@ -283,10 +283,11 @@ def launch_chat(template):
         with open(dest_path, mode='+wt',encoding="utf-8") as file:
             file.write(template)
 
+        voice_mode = 'gen' if voice_mode == '全语音模式' else 'preset'
         if main_process is None or main_process.poll() is not None:
             # 启动一个长时间运行的进程（这里使用ping作为示例）
             main_process = subprocess.Popen(
-                ['./runtime/python.exe', 'main_sprite.py',  '--template=_temp', '--voice_mode=preset']
+                ['./runtime/python.exe', 'main_sprite.py',  '--template=_temp', f'--voice_mode={voice_mode}']
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
         else:
@@ -556,38 +557,50 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 )
 
     with gr.Tab("聊天模板"):
-        gr.Markdown("## 聊天模板管理")  
-        path_obj = Path(TEMPLATE_DIR_PATH)
-        template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
-        selected_template = gr.Dropdown(
-            choices=template_files,
-            label="从文件导入"
-        )
+        gr.Markdown("您可以选择从文件导入模版或者选择人物生成模版")
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("## 聊天模板管理")  
+                path_obj = Path(TEMPLATE_DIR_PATH)
+                template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
+                selected_template = gr.Dropdown(
+                    choices=template_files,
+                    label="从文件导入"
+                )
 
-        load_template_btn = gr.Button("加载模板")
-        
-        # 动态更新角色选择下拉框
-        def update_template_dropdown():
-            template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
-            return gr.Dropdown(choices=template_files)
+                load_template_btn = gr.Button("加载模板")
 
-        # 初始为空，通过事件更新
-        selected_chars = gr.CheckboxGroup(
-            label="选择参与对话的角色",
-            choices=[c.get("name", "") for c in characters]
-        )
-        
-        generate_btn = gr.Button("生成模板")
+            with gr.Column():
+                # 初始为空，通过事件更新
+                selected_chars = gr.CheckboxGroup(
+                    label="选择参与对话的角色",
+                    choices=[c.get("name", "") for c in characters]
+                )
+                
+                generate_btn = gr.Button("生成模板")
         template_output = gr.Textbox(label="模板内容", lines=10, interactive=True)
 
         filename = gr.Textbox(label="保存的文件名", interactive=True)
         save_btn=gr.Button("保存模板")
+
+        voice_mode = gr.Radio(
+            choices=["全语音模式", "预设语音模式"],
+            label="选择语音模式",
+            value="预设语音模式",
+            info="全语音模式中每句台词都生成语音，需要好的显卡、配置好GPT Sovits，预设语音模式只在立绘有语音时播放，对显卡无要求"
+        )
 
         launch_btn = gr.Button("启动聊天")
         launch_output = gr.Textbox(label="启动结果")
         
         stop_btn = gr.Button("关闭聊天")
 
+
+        # 动态更新角色选择下拉框
+        def update_template_dropdown():
+            template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
+            return gr.Dropdown(choices=template_files)
+        
         # 当角色列表更新时，更新复选框选项
         def update_character_selection():
             return gr.CheckboxGroup(choices=[c.get("name", "") for c in characters])
@@ -610,7 +623,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
 
         launch_btn.click(
             launch_chat,
-            inputs=[template_output],
+            inputs=[template_output, voice_mode],
             outputs=launch_output
         )
 
