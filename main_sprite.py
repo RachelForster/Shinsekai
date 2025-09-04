@@ -42,6 +42,7 @@ api_config = {
     "gpt_sovits_api_path":""
 }
 
+chat_history = []
 
 def load_api_config_from_file():
     global api_config
@@ -78,8 +79,10 @@ class ChatWorker(QThread):
     
     def run(self):
         """在后台线程中执行聊天请求"""
+        global chat_history
         print(f"Deepseek处理消息: {self.message}")
         dialog = self.deepseek.chat(self.message)
+        chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {self.message}</p>")
         self.response_list = dialog if isinstance(dialog, list) else []
         if not self.response_list:
             return
@@ -95,10 +98,11 @@ class ChatWorker(QThread):
             sprite = item.get('sprite', 'default')
             speech = item.get('speech', '')
             translate = item.get('translate', '')
-
+        
             # 处理旁白
             if character_name == '旁白':
                 formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b style='color:#84C2D5;'>{character_name}</b>：{speech}</p>"
+                chat_history.append(formatted_speech)
                 self.update_dialog_signal.emit(formatted_speech)
                 self.update_notification_signal.emit(f"收到消息 {i+1}/{len(self.response_list)}")
                 continue
@@ -163,6 +167,7 @@ class ChatWorker(QThread):
 
             # 更新对话框文字
             formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{self.character_config.name_color};'>{character_name}</b>：{speech}</p>"
+            chat_history.append(formatted_speech)
             self.update_dialog_signal.emit(formatted_speech)
             self.update_notification_signal.emit(f"收到消息 {i+1}/{len(self.response_list)}")
 
@@ -202,6 +207,10 @@ def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):
     else:
         print("Desktop UI未提供，无法更新界面")
     threading.Thread(target=thread.run).start()
+
+def getHistory():   
+    """获取聊天历史记录"""
+    return chat_history
 
 def main():
     load_api_config_from_file()
@@ -256,8 +265,10 @@ def main():
     window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:#e6b2b2'>兔兔美</b>：欢迎来到新世界程序，希望你和大家能开启love love~的新学期，快和大家聊天吧</p>")
 
     window.message_submitted.connect(lambda message: handleResponse(deepseek, message, tts_manager, window))
+    window.open_chat_history_dialog.connect(lambda: window.open_history_dialog(getHistory()))
 
     window.show()
+
     app.exec_()
 
 if __name__ == "__main__":

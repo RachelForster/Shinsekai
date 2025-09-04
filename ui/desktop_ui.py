@@ -8,23 +8,37 @@ from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, 
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
 import os
 
+# 消息历史对话框
 class MessageDialog(QDialog):
     def __init__(self, messages, parent=None):
         super().__init__(parent)
         self.setWindowTitle("对话历史记录")
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
         self.setModal(True)
-        self.resize(600, 400)
+        self.resize(800, 600)
+        
+        # 设置半透明黑背景
+        self.setStyleSheet("""
+            QDialog {
+                background-color: rgba(0, 0, 0, 200);
+                color: white;
+                border-radius: 10px;
+            }
+            QListWidget {
+                background-color: rgba(255, 255, 255, 30);
+                alternate-background-color: rgba(255, 255, 255, 50);
+                color: white;
+                border: none;
+                border-radius: 5px;
+            }
+            QListWidget::item:selected {
+                background-color: rgba(255, 255, 255, 100);
+            }
+        """)
         
         layout = QVBoxLayout()
-        
-        # 标题
-        title_label = QLabel("对话历史记录")
-        title_label.setAlignment(Qt.AlignCenter)
-        title_font = QFont()
-        title_font.setBold(True)
-        title_font.setPointSize(14)
-        title_label.setFont(title_font)
-        layout.addWidget(title_label)
+        layout.setContentsMargins(15, 15, 15, 15)  # 添加边距
         
         # 消息列表
         self.message_list = QListWidget()
@@ -47,18 +61,20 @@ class MessageDialog(QDialog):
         widget.setWordWrap(True)
         widget.setTextFormat(Qt.RichText)
         
-        # 设置样式
+        # 设置样式 - 调整为深色主题
         widget.setStyleSheet("""
             QLabel {
-                background-color: #f0f0f0;
+                background-color: rgba(60, 60, 60, 180);
+                color: white;
+                font-size: 28px;
+                font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
                 border-radius: 8px;
                 padding: 10px;
             }
         """)
         
-        # 格式化消息
-        formatted_text = f"<b>{message['username']}</b>: {message['speech']}"
-        widget.setText(formatted_text)
+        # 格式化消息内容
+        widget.setText(message)
         
         # 调整大小以适应内容
         widget.adjustSize()
@@ -92,7 +108,7 @@ class ImageDisplayThread(QThread):
 class ChatWorker(QThread):
     """后台聊天工作线程"""
     response_received = pyqtSignal(str, str)  # 定义信号用于传递响应
-    
+
     def __init__(self, deepseek, message):
         super().__init__()
         self.deepseek = deepseek
@@ -106,6 +122,7 @@ class ChatWorker(QThread):
 class DesktopAssistantWindow(QWidget):
     """桌面助手主窗口"""
     message_submitted = pyqtSignal(str)  # 定义信号用于发送消息
+    open_chat_history_dialog = pyqtSignal()  # 定义信号用于打开聊天历史记录对话框
     def __init__(self, image_queue, emotion_queue, deepseek, sprite_mode=False):
         """初始化窗口"""
         super().__init__()
@@ -229,49 +246,24 @@ class DesktopAssistantWindow(QWidget):
         # 添加菜单项
         history_action = QAction("历史记录", self)
         language_action = QAction("语音语言", self)
-        donate_action = QAction("赞赏作者", self)
         
         # 连接菜单项的信号
-        history_action.triggered.connect(self.show_history)
+        history_action.triggered.connect(lambda: self.open_chat_history_dialog.emit())
         language_action.triggered.connect(self.show_language_settings)
-        donate_action.triggered.connect(self.show_donate)
         
         # 添加菜单项到菜单
         menu.addAction(history_action)
         menu.addAction(language_action)
-        menu.addAction(donate_action)
         
         # 显示菜单在设置按钮下方
         menu.exec_(self.settings_btn.mapToGlobal(
             self.settings_btn.rect().bottomLeft()
         ))
-    
-    def show_history(self):
-        """显示历史记录"""
-        print("显示历史记录功能")
-        messages = self.get_messages_from_service()
-        
+
+    def open_history_dialog(self, messages):
         # 创建并显示对话框
         dialog = MessageDialog(messages, self)
         dialog.exec_()
-    
-    # TODO 写一下如何从外部获取对话记录
-    def get_messages_from_service(self):
-        # 模拟从外部服务获取数据
-        # 在实际应用中，这里可能是API调用、数据库查询等
-        return [
-            {"username": "张三", "speech": "你好，今天天气真不错！"},
-            {"username": "李四", "speech": "是的，很适合出去散步。"},
-            {"username": "张三", "speech": "你有什么计划吗？"},
-            {"username": "李四", "speech": "我打算去公园看书，你要一起来吗？"},
-            {"username": "张三", "speech": "好主意！半小时后公园门口见。"},
-            {"username": "王五", "speech": "你们在讨论什么？我可以加入吗？"},
-            {"username": "李四", "speech": "当然欢迎！我们打算去公园，一起吧！"},
-            {"username": "王五", "speech": "太棒了！我等会儿带些点心过去。"},
-            {"username": "张三", "speech": "完美！那我们等会儿见。"}
-        ]
-
-        # 这里可以添加显示历史记录的具体实现
     
     def show_language_settings(self):
         """显示语音语言设置"""
