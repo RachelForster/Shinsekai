@@ -166,6 +166,7 @@ class DeepSeek:
         if user_template:
             self.user_template = user_template
         self.messages = [{"role": "system", "content": self.user_template}]
+
         # TTS 管理器
         self.tts_manager = tts_manager
         self.text_processor = TextProcessor()
