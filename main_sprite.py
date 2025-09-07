@@ -107,6 +107,10 @@ class ChatWorker(QThread):
                 chat_history.append(formatted_speech)
                 self.update_dialog_signal.emit(formatted_speech)
                 self.update_notification_signal.emit(f"收到消息 {i+1}/{len(self.response_list)}")
+                sleep_span = len(speech) // 8
+                if sleep_span < 4:
+                    sleep_span = 4
+                time.sleep(sleep_span)
                 continue
 
             self.character_config = getCharacter(character_name)
