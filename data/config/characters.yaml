@@ -558,17 +558,6 @@
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_11.webp
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_12.webp
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_13.webp
-- color: rgba(142.79837339346395, 206.2177060254944, 230.03436025333252, 1)
-  emotion_tags: ''
-  gpt_model_path: ''
-  name: 最原中一
-  prompt_lang: ja
-  prompt_text: ''
-  ref_audio_path: ''
-  refer_audio_path: ''
-  sovits_model_path: ''
-  sprite_prefix: saihara
-  sprites: []
 - color: rgba(171.4101904714142, 153.811059460443, 131.1301976788606, 1)
   emotion_tags: '立绘01：绝望，崩溃，痛苦
 
