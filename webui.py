@@ -103,6 +103,29 @@ def add_character(name, color, sprite_prefix, gpt_model_path,
         character["ref_audio_path"]=refer_audio_path
         save_characters_to_file()
         return "人物已更新！", [c.get("name", "") for c in characters]
+def delete_character(name):
+    global characters
+    if not name or name == "新角色":
+        return "请选择要删除的角色！", [c.get("name", "") for c in characters]
+    
+    character = next((c for c in characters if c["name"] == name), None)
+    if character is None:
+        return f"找不到角色: {name}", [c.get("name", "") for c in characters]
+    
+    characters.remove(character)
+    save_characters_to_file()
+    
+    # 删除角色的立绘目录
+    char_dir = os.path.join(UPLOAD_DIR, character["sprite_prefix"])
+    if os.path.exists(char_dir):
+        shutil.rmtree(char_dir)
+    
+    # 删除角色的语音目录
+    voice_char_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
+    if os.path.exists(voice_char_dir):
+        shutil.rmtree(voice_char_dir)
+    
+    return f"角色 {name} 已删除！", [c.get("name", "") for c in characters]
 
 def load_template_from_file(file_path):
     try:
@@ -386,6 +409,9 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     if character == None:
                         return "","","","","","","",""
                     return character["name"], character["color"], character["sprite_prefix"], character["gpt_model_path"], character["sovits_model_path"], character["refer_audio_path"], character["prompt_text"], character["prompt_lang"]
+                
+                # 删除人物
+                del_btn = gr.Button("删除人物")
                                 
                 gr.Markdown("#### 角色信息")
                 char_name = gr.Textbox(label="人物名称", placeholder="请输入人物名称")
@@ -421,7 +447,22 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             inputs=char_name,
             outputs=selected_character
         )
-        
+        # 删除人物事件
+        del_btn.click(
+            delete_character,
+            inputs=[selected_character],
+            outputs=[add_output]
+        ).then(
+            update_character_dropdown,
+            inputs=None,
+            outputs=selected_character
+        ).then(
+            lambda: ("","","","","","","",""),
+            inputs=None,
+            outputs=[char_name, char_color, sprite_prefix, gpt_model_path,
+                      sovits_model_path, refer_audio_path, prompt_text, prompt_lang]
+        )
+
         selected_character.change(
             update_character_information,
             inputs=[selected_character],
@@ -521,7 +562,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                         return "立绘不存在", None
                     
                     sprite = character["sprites"][sprite_index]
-                    emotion_tag = sprite.get("emotion_tag", f"立绘{sprite_index+1}")
+                    emotion_tag = sprite.get("emotion_tag", "")
                     voice_path = sprite.get("voice_path", "")
                     
                     info = f"立绘 {sprite_index+1}: {emotion_tag}"
@@ -557,10 +598,12 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 )
 
     with gr.Tab("聊天模板"):
-        gr.Markdown("您可以选择从文件导入模版或者选择人物生成模版")
+        gr.Markdown("## 聊天模板管理")  
+        gr.Markdown("您可以选择从文件导入模版或者选择人物生成模版" \
+        "")
         with gr.Row():
             with gr.Column():
-                gr.Markdown("## 聊天模板管理")  
+                
                 path_obj = Path(TEMPLATE_DIR_PATH)
                 template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
                 selected_template = gr.Dropdown(
@@ -637,6 +680,12 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             stop_chat,
             inputs=[],
             outputs=[launch_output]
+        )
+        
+        selected_character.change(
+            update_character_selection,
+            inputs=None,
+            outputs=[selected_chars]
         )
 
 if __name__ == "__main__":

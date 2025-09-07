@@ -22,10 +22,12 @@ class TTSManager:
         self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
         self.worker_thread.start()
         
-        # TTS配置, TODO: 这些配置可以从配置文件中读取
+        # TTS配置, 这些配置可以从配置文件中读取
         self.ref_audio_path = r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\komaeda01.mp3_0000204800_0000416320.wav",
         self.ref_text = "だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。"
         self.ref_lang = "ja"
+
+        self.voice_language = "ja"  # 默认语音语言为日语
 
     def _process_queue(self):
         """工作线程，串行处理队列中的任务"""
@@ -43,14 +45,7 @@ class TTSManager:
             finally:
                 self.task_queue.task_done()
 
-    """
-    生成TTS语音
-    参数:
-        text: 要转换为语音的文本
-        text_processor: 文本处理器，用于预处理文本
-        voice_language: 语音语言，默认为日语
-    """
-    def generate_tts(self, text, text_processor=None, voice_language='ja', ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None, file_path=None):
+    def generate_tts(self, text, text_processor=None, ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None, file_path=None):
         """生成TTS语音"""
         # 预处理文本
         if text_processor:
@@ -58,8 +53,9 @@ class TTSManager:
             text = text_processor.html_to_plain_qt(text)
             language = text_processor.decide_language(text)
             text = text_processor.replace_names(text)
-            text = text_processor.libre_translate(text, source=language, target= voice_language)
-            if character_name == "狛枝凪斗" or character_name == "仆役":
+            if language != self.voice_language:
+                text = text_processor.libre_translate(text, source=language, target=self.voice_language)
+            if self.voice_language == 'ja' and (character_name == "狛枝凪斗" or character_name == "仆役"):
                 text = text_processor.replace_watashi(text)
         if  not ref_audio_path:
             return ''
@@ -69,7 +65,7 @@ class TTSManager:
             "prompt_text": prompt_text or self.ref_text,
             "prompt_lang": prompt_lang or self.ref_lang,
             "text": text,
-            "text_lang": voice_language,
+            "text_lang": self.voice_language,
             "text_split_method": "cut5",
             "batch_size": 1,
         }
@@ -90,6 +86,10 @@ class TTSManager:
         except Exception as e:
             print("TTS生成失败:", e)
             return None
+
+    def set_language(self, language):
+        """设置语音语言"""
+        self.voice_language = language
 
     def switch_model(self, gpt_model_path, sovits_model_path):
         """切换TTS模型"""

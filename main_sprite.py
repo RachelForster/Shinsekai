@@ -28,10 +28,8 @@ import time
 import pygame
 import cv2
 import numpy as np
-import io
 import argparse
 import yaml
-import math
 
 API_CONFIG_PATH = "./data/config/api.yaml"
 characters = CharacterConfig.read_from_files('./data/config/characters.yaml')
@@ -41,7 +39,7 @@ api_config = {
     "gpt_sovits_url": "",
     "gpt_sovits_api_path":""
 }
-
+voice_lang = "ja"
 chat_history = []
 
 def load_api_config_from_file():
@@ -81,13 +79,17 @@ class ChatWorker(QThread):
         """在后台线程中执行聊天请求"""
         global chat_history
         print(f"Deepseek处理消息: {self.message}")
+        
+        start_time = time.perf_counter()
         dialog = self.deepseek.chat(self.message)
+        end_time = time.perf_counter()
+        print(f"Deepseek响应时间: {end_time - start_time:.2f} 秒")
         chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {self.message}</p>")
         self.response_list = dialog if isinstance(dialog, list) else []
         if not self.response_list:
             return
-        
-        self.update_notification_signal.emit(f"收到{len(self.response_list)}条回复，正在合成语音喵……")
+
+        self.update_notification_signal.emit(f"经过{end_time - start_time:.2f}秒收到{len(self.response_list)}条回复，正在合成语音喵……")
 
         for i, item in enumerate(self.response_list):
             if not self.running:
@@ -195,7 +197,6 @@ class ChatWorker(QThread):
 
 def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):    
     global api_config
-
     """处理聊天响应"""
     print(f"处理消息: {message}")
     thread = ChatWorker(deepseek, message, tts_manager)
@@ -266,6 +267,7 @@ def main():
 
     window.message_submitted.connect(lambda message: handleResponse(deepseek, message, tts_manager, window))
     window.open_chat_history_dialog.connect(lambda: window.open_history_dialog(getHistory()))
+    window.change_voice_language.connect(lambda lang: tts_manager.set_language(lang) if tts_manager else None)
 
     window.show()
 

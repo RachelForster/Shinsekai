@@ -1,12 +1,115 @@
 import sys
+from PIL.ImageChops import screen
 import numpy as np
 import threading
 import time
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt5.QtGui import QFont, QImage, QPixmap
-from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem,
+from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton,
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
 import os
+
+
+class LanguageDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("选择语言")
+        self.setModal(True)
+        
+        # 设置半透明黑色背景
+        self.setStyleSheet("""
+            QDialog {
+                background-color: rgba(0, 0, 0, 200);
+                border-radius: 10px;
+                color: white;
+            }
+            QRadioButton {
+                color: white;
+                padding: 8px;
+                font-size: 14px;
+            }
+            QRadioButton::indicator {
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                border: 2px solid white;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #4CAF50;
+                border: 2px solid white;
+            }
+            QPushButton {
+                background-color: rgba(76, 175, 80, 200);
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(76, 175, 80, 255);
+            }
+            QPushButton:pressed {
+                background-color: rgba(62, 142, 65, 255);
+            }
+        """)
+        
+        self.init_ui()
+        self.adjustSize()
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # 语言选项
+        self.language_group = QButtonGroup(self)
+        
+        # 英语选项
+        self.english_radio = QRadioButton("English")
+        self.language_group.addButton(self.english_radio, 0)
+        layout.addWidget(self.english_radio)
+        
+        # 中文选项
+        self.chinese_radio = QRadioButton("中文")
+        self.language_group.addButton(self.chinese_radio, 1)
+        layout.addWidget(self.chinese_radio)
+        
+        # 日语选项
+        self.japanese_radio = QRadioButton("日本語")
+        self.language_group.addButton(self.japanese_radio, 2)
+        layout.addWidget(self.japanese_radio)
+        
+        # 粤语选项
+        self.cantonese_radio = QRadioButton("粵語")
+        self.language_group.addButton(self.cantonese_radio, 3)
+        layout.addWidget(self.cantonese_radio)
+        
+        # 默认选择英语
+        self.english_radio.setChecked(True)
+        
+        # 确认按钮
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        self.confirm_button = QPushButton("确定")
+        self.confirm_button.clicked.connect(self.accept)
+        button_layout.addWidget(self.confirm_button)
+        
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+        
+        
+    def get_selected_language(self):
+        selected_id = self.language_group.checkedId()
+        languages = {
+            0: "en",
+            1: "zh",
+            2: "ja",
+            3: "yue"
+        }
+        return languages.get(selected_id, "en")
 
 # 消息历史对话框
 class MessageDialog(QDialog):
@@ -123,6 +226,7 @@ class DesktopAssistantWindow(QWidget):
     """桌面助手主窗口"""
     message_submitted = pyqtSignal(str)  # 定义信号用于发送消息
     open_chat_history_dialog = pyqtSignal()  # 定义信号用于打开聊天历史记录对话框
+    change_voice_language = pyqtSignal(str)  # 定义信号用于更改语音的语言
     def __init__(self, image_queue, emotion_queue, deepseek, sprite_mode=False):
         """初始化窗口"""
         super().__init__()
@@ -131,18 +235,26 @@ class DesktopAssistantWindow(QWidget):
         self.deepseek = deepseek
         self.emotion_queue = emotion_queue
         self.sprite_mode = sprite_mode
-        self.original_width = 1536
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.geometry()
+        self.original_width = min(screen_geometry.height(), screen_geometry.width()) // 4 * 3
+        self.original_height = self.original_width
         self.font_size = "48px;"  # 默认字体大小
-        
+
         # 设置图像显示线程
         if not self.sprite_mode:
             self.setup_image_thread()
         
         # 初始大小
-        self.resize(self.original_width, self.original_width)
+        self.resize(self.original_width, self.original_height)
 
+        # 初始化UI组件
         self.setup_ui()
-        
+
+        # 居中显示
+        self.move((screen_geometry.width() - self.original_width) // 2, 
+                  (screen_geometry.height() - self.original_height - 200))
+
     def setup_ui(self):
         """初始化UI组件"""
         # 窗口设置
@@ -184,7 +296,7 @@ class DesktopAssistantWindow(QWidget):
         # 创建工具栏容器
         self.toolbar = QWidget(self.image_container)
         self.toolbar.setFixedSize(140, 48)
-        self.toolbar.move(self.width() - 150, 10)
+        self.toolbar.move(self.original_width - 150, 10)
         self.toolbar.setStyleSheet("background-color: rgba(50, 50, 50, 150); border-radius: 20px;")
         
         # 工具栏布局
@@ -267,13 +379,21 @@ class DesktopAssistantWindow(QWidget):
     
     def show_language_settings(self):
         """显示语音语言设置"""
-        print("显示语音语言设置功能")
-        # 这里可以添加语音语言设置的具体实现
-    
-    def show_donate(self):
-        """显示赞赏作者界面"""
-        print("显示赞赏作者功能")
-        # 这里可以添加赞赏作者的具体实现
+        dialog = LanguageDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            selected_language = dialog.get_selected_language()
+            print(f"选择的语言: {selected_language}")
+            self.change_voice_language.emit(selected_language)
+            language_str = ""
+            if selected_language == "en":
+                language_str = "English"
+            elif selected_language == "zh":
+                language_str = "中文"
+            elif selected_language == "ja":
+                language_str = "日本語"
+            elif selected_language == "yue":
+                language_str = "粵語"
+            self.setNotification("语音语言已更改:" + language_str)
 
     def setup_dialog_label(self):
         """初始化对话框标签"""
@@ -363,7 +483,7 @@ class DesktopAssistantWindow(QWidget):
         pixmap = QPixmap.fromImage(qimg)
         
         # # 将图像放大
-        rate = self.original_width / 1024
+        rate = min(self.original_width / width, self.original_height / height)
         scaled_pixmap = pixmap.scaled(
             int(width * rate), 
             int(height * rate),
@@ -373,7 +493,7 @@ class DesktopAssistantWindow(QWidget):
         
         # 设置放大后的图像
         self.label.setPixmap(scaled_pixmap)
-        self.label.setFixedSize(self.original_width, self.original_width)
+        self.label.setFixedSize(self.original_height, self.original_width)
         self.adjustSize()
     
     def sendMessage(self):
