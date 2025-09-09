@@ -65,7 +65,10 @@ name_map = {
     "神座": "カムクラ",
 
     "江之岛盾子": "エノシマ ジュンコ",  # Enoshima Junko
-    "盾子": "ジュンコ"
+    "盾子": "ジュンコ",
+
+    "王马小吉": "オウマ コウキ",    # Oma Kokichi
+    "王马": "オウマ",
 }
 
 class TextProcessor:
