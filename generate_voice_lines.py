@@ -37,7 +37,7 @@ def load_characters_from_file():
     except Exception as e:
         return f"加载失败: {str(e)}", [[c.get("name", ""), c.get("color", ""), c.get("prompt_lang", "")] for c in characters]
 
-def generate_voice_lines(character_name, words):
+def generate_voice_lines(character_name, words, index=None):
     # 生成语音文件的逻辑
     global characters
     global tts_manager
@@ -45,10 +45,28 @@ def generate_voice_lines(character_name, words):
     character = next((c for c in characters if c["name"] == character_name), None)
 
     tts_manager.switch_model(character["gpt_model_path"], character["sovits_model_path"])
+    voice_char_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
+    Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
+    
+    def generate_tts_for_index(word, i):
+        voice_filename = f"{character['sprite_prefix']}_voice_{i:02d}.wav"
+        voice_path = os.path.join(voice_char_dir, voice_filename)
+        character['sprites'][i]["voice_path"] = voice_path
+        tts_manager.generate_tts(
+            word,
+            text_processor=None,
+            ref_audio_path=character['refer_audio_path'],
+            prompt_text=character['prompt_text'],
+            prompt_lang=character['prompt_lang'],
+            file_path=voice_path
+        )
+        print(f"生成语音文件: {voice_path}")
 
-    for i, word in enumerate(words):
-        voice_char_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
-        Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
+    if index is not None:
+        generate_tts_for_index(words[index], index)
+    else:
+        for i, word in enumerate(words):
+            generate_tts_for_index(word, i)
         
         # 保存语音文件
         voice_filename = f"{character['sprite_prefix']}_voice_{i:02d}.wav"
@@ -91,21 +109,28 @@ def main():
         tts_manager=None
         print("语音模块加载失败", e)
 
-    character_name = '仆役'
-    words = [
-    "…はい。",         # 01：中性，平静
-    "ごきげんよう。",     # 02：打招呼
-    "凡庸ですね…。",    # 03：失望，沮丧
-    "希望のためです。",    # 04：阐述，说明，自信
-    "うふふ…！",      # 05：兴奋，开心
-    "えへへ…。",      # 06：轻微拒绝，无奈地笑
-    "ごきげんよう…！",  # 07：狼狈地打招呼
-    "さぁ、行きましょう。", # 08：女王，命令，强势
-    "希望への糧です。",    # 09：阐述，说明
-    "絶望的ですね…。",    # 10：失望，叹气
-    "素晴らしい…！",    # 11：开心
-    "もっと、絶望を！",  # 12：狂喜，绝望
-    "たまりませんね…！", # 13：疼痛
+    character_name = '王马小吉'
+    words = words = [
+    "…嘘だよね？",      # Sprite 01: 中性，平静
+    "それ、本当なの？",    # Sprite 02: 惊讶，疑惑
+    "痛いよぉ…。",      # Sprite 03: 痛苦，挣扎
+    "馬鹿みたいだね。",    # Sprite 04: 嘲笑，幸灾乐祸
+    "ボクに騙されたの？",  # Sprite 05: 挑衅，惊讶，指点
+    "世界は、ボクのものだよ。",  # Sprite 06: 阴险，恶意
+    "やめてよぉ…！",    # Sprite 07: 恐怖，狂乱
+    "どう動こうかな…。",  # Sprite 08: 思考，沉思
+    "やっぱりボクは天才だ！", # Sprite 09: 轻松，愉悦
+    "わくわくしてきたよ！", # Sprite 10: 兴奋，激动
+    "うるさい、黙りなよ！",  # Sprite 11: 愤怒，激动
+    "な、なんだって！？",  # Sprite 12: 慌张，震惊
+    "もう、誰も信じてくれない。",  # Sprite 13: 难过，沮丧
+    "本当に痛いってば…。", # Sprite 14: 疼痛
+    "ボク、傷ついちゃったよ…。", # Sprite 15: 假哭 (好过分)
+    "全部、ボクの嘘だよ。",  # Sprite 16: 戏谑，得意
+    "いいこと思いついたんだ。", # Sprite 17: 诡计，密谋
+    "絶望する顔、楽しみだねぇ？", # Sprite 18: 邪恶，阴谋
+    "もう、飽きちゃったよ。",  # Sprite 19: 焦躁，不安
+    "全然、面白くないよ。",  # Sprite 20: 失望
 ]
     # 等待10秒，确保TTS模型加载完成
     time.sleep(10)

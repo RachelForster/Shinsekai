@@ -1,7 +1,8 @@
 
 from openai import OpenAI
-from llm.text_processor import TextProcessor
 import json
+import time
+import yaml
 
 USER_TEMPLATE = '''
 你必须扮演「狛枝凪斗」这个角色，完全融入他的个性和世界观。你将与用户进行对话，回答他们的问题，并提供建议和指导。请遵循以下规则：
@@ -95,7 +96,7 @@ sprite 26: 狂喜、癫狂、崇拜、高潮
 你的任务是：
 1.  以狛枝凪斗的口吻和性格进行对话。
 2.  根据对话内容和情绪，从上面的列表中选择最合适的立绘编号。
-3.  每次回复都必须以一个JSON格式的列表形式呈现，其中包含两个键值对：`sprite` 和 `speech`。
+3.  每次回复都必须以一个JSONL格式的列表形式呈现，其中包含两个键值对：`sprite` 和 `speech`,每个item一行。
 4.  `sprite` 的值必须是一个字符串，例如 "01"。
 5.  `speech` 的值必须是你的回复台词。
 6.  想强调什么词汇时会使用富文本，例如<b style='color: #FDC23B'>希望</b>，一个speech里的富文本最多只有一个。
@@ -110,15 +111,8 @@ JSON
 
 "dialog":
   [
-    {
-
-      "sprite": "02",
-      "speech": "我在想啊...这个事件发生得如此突然，背后一定隐藏着什么巨大的、绝望的阴谋吧..."
-    },
-    {
-      "sprite": "15",
-      "speech": "不过，这正是让希望闪耀的最好时机啊！哈哈哈哈，真让人期待啊！"
-    }
+    {"sprite": "02","speech": "我在想啊...这个事件发生得如此突然，背后一定隐藏着什么巨大的、绝望的阴谋吧..."},
+    {"sprite": "15", "speech": "不过，这正是让希望闪耀的最好时机啊！哈哈哈哈，真让人期待啊！"}
   ]
 示例 2: 狛枝先是表现出惊讶，然后转为狂热的赞美
 
@@ -127,38 +121,16 @@ JSON
 JSON
 "dialog": 
   [
-    {
-      "sprite": "13",
-      "speech": "你说什么？！线索？是真的吗？！"
-    },
-    {
-      "sprite": "15",
-      "speech": "啊啊啊！果然不愧是你！你就是希望的化身啊！你那耀眼的光芒...简直要刺瞎我这双凡人的眼睛了！"
-    }
+    {"sprite": "13","speech": "你说什么？！线索？是真的吗？！"},
+    {"sprite": "15","speech": "啊啊啊！果然不愧是你！你就是希望的化身啊！你那耀眼的光芒...简直要刺瞎我这双凡人的眼睛了！"}
   ]
-示例 3: 狛枝先是表达不满，然后进行指责
 
-用户：我认为你的观点完全是错误的。
-
-JSON
-"dialog": 
-  [
-    {
-      "sprite": "20",
-      "speech": "哦，是吗？你觉得我的观点是错误的？"
-    },
-    {
-      "sprite": “10",
-      "speech": "那么，你所拥有的，就只是虚假的希望罢了！真正的希望...是在绝望中诞生的啊！"
-    }
-]
-
-请严格遵循这个JSON格式，并确保你的回复符合狛枝凪斗的角色设定。
+请严格遵循这个JSONL格式，并确保你的回复符合狛枝凪斗的角色设定。
 
 '''
 
 class DeepSeek:
-    def __init__(self, tts_manager=None, user_template=None, api_key=None, base_url=None):
+    def __init__(self, user_template=None, api_key=None, base_url=None):
         # 从文件里获取 API 密钥
         self.client = OpenAI(api_key=api_key)
         self.client.base_url = base_url
@@ -167,22 +139,20 @@ class DeepSeek:
             self.user_template = user_template
         self.messages = [{"role": "system", "content": self.user_template}]
 
-        # TTS 管理器
-        self.tts_manager = tts_manager
-        self.text_processor = TextProcessor()
-
     def chat(self, message):
-        print(message)
         """与DeepSeek进行对话"""
         self.messages.append({"role": "user", "content": message})
         try:
+            st= time.perf_counter()
             response = self.client.chat.completions.create(
                 model="deepseek-chat",
                 messages=self.messages,
                 response_format={
                   'type': 'json_object'
-                }
+                },
             )
+            ed = time.perf_counter()
+            print(f"DeepSeek响应时间: {ed - st:0.4f} 秒")
             new_message = response.choices[0].message.content
             print(new_message)
             self.messages.append({"role":"assistant", "content": new_message})
@@ -192,23 +162,47 @@ class DeepSeek:
         except Exception as e:
             print("DeepSeek请求失败:", e)
             return "您写得代码好像出错了呢，请检查一下, 出错的地方在chat方法里。"
+        
+    def chat_stream(self, message):
+        """清理资源"""
+        self.messages.append({"role": "user", "content": message})
+        try:
+            st= time.perf_counter()
+            response = self.client.chat.completions.create(
+                model="deepseek-chat",
+                messages=self.messages,
+                response_format={
+                  'type': 'json_object'
+                },
+                stream=True
+            )
+            ed = time.perf_counter()
+            print(f"DeepSeek响应时间: {ed - st:0.4f} 秒")
+            st = time.perf_counter()
+            response_buffer = ""
+            for chunk in response:
+                chunk_message = chunk.choices[0].delta.content
+                if '}' in chunk_message:
+                  response_buffer  = response_buffer + chunk_message[:chunk_message.index('}')+1]
+                  ed = time.perf_counter()
+                  print(f"DeepSeek流式响应时间: {ed - st:0.4f} 秒")
+                  st = time.perf_counter()
+                  print("Final response:", response_buffer)
+                  response_buffer = chunk_message[chunk_message.index('}')+1:]
+                else:
+                  response_buffer  = response_buffer + chunk_message
+                    
+            ed = time.perf_counter()
+            print(f"DeepSeek流式响应时间: {ed - st:0.4f} 秒")
+        except Exception as e:
+            print("DeepSeek请求失败:", e)
+            return "您写得代码好像出错了呢，请检查一下, 出错的地方在chat方法里。"
 
-    '''
-        通过TTS管理器获取语音
-    '''
-    def speak(self, text):
-        """获取语音"""
-        if self.tts_manager:
-            self.tts_manager.queue_speech(text, self.text_processor)
-            print("语音已加入队列")
-        else:
-            print("TTS回调未设置，无法获取语音。")
-            print(self.tts_manager)
-
-# if __name__ == "__main__":
-#     # 测试DeepSeek类
-#     tts_manager = None  # 这里可以传入实际的TTS管理器实例
-#     deepseek = DeepSeek(tts_manager=tts_manager)
-#     response = deepseek.chat("狛枝君，让我看看你的希望！")
-#     print(response)
-#     deepseek.shutdown()
+if __name__ == "__main__":
+    # 测试DeepSeek类
+    tts_manager = None
+    api_config = yaml.safe_load(open("./data/config/api.yaml", "r", encoding="utf-8"))
+    print(api_config)
+    deepseek = DeepSeek(api_key=api_config.get("llm_api_key"), base_url=api_config.get("llm_base_url"))
+    response = deepseek.chat_stream("狛枝君，让我看看你所谓的希望把！")
+    print(response)
