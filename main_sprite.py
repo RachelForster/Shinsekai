@@ -216,7 +216,7 @@ class UIWorker(QThread):
         global chat_history
         while self.running:
             try:
-                # 从音频路径队列中获取数据，阻塞等待
+                # 从音频路径队列中获取数据
                 output_data = self.audio_path_queue.get()
                 if output_data is None:
                     break
@@ -230,6 +230,7 @@ class UIWorker(QThread):
                     formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b>{character_name}</b>：{speech}</p>"
                     chat_history.append(formatted_speech)
                     self.update_dialog_signal.emit(formatted_speech)
+                    time.sleep(len(speech)//8)
                     self.audio_path_queue.task_done()
                     continue
 
