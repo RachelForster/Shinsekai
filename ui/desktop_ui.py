@@ -227,12 +227,12 @@ class DesktopAssistantWindow(QWidget):
     message_submitted = pyqtSignal(str)  # 定义信号用于发送消息
     open_chat_history_dialog = pyqtSignal()  # 定义信号用于打开聊天历史记录对话框
     change_voice_language = pyqtSignal(str)  # 定义信号用于更改语音的语言
-    def __init__(self, image_queue, emotion_queue, deepseek, sprite_mode=False):
+    def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False):
         """初始化窗口"""
         super().__init__()
         self.image_queue = image_queue
         self.display_thread = None
-        self.deepseek = deepseek
+        self.deepseek = llm_manager
         self.emotion_queue = emotion_queue
         self.sprite_mode = sprite_mode
         screen = QApplication.primaryScreen()

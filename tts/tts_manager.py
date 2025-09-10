@@ -26,8 +26,11 @@ class TTSManager:
         self.ref_audio_path = r"C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\komaeda01.mp3_0000204800_0000416320.wav",
         self.ref_text = "だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。"
         self.ref_lang = "ja"
+        self.sovits_model_path = ''
 
         self.voice_language = "ja"  # 默认语音语言为日语
+
+        self.index = 0
 
     def _process_queue(self):
         """工作线程，串行处理队列中的任务"""
@@ -75,7 +78,9 @@ class TTSManager:
         try:
             response = requests.post(self.tts_server_url+"tts", json=params)
             if not file_path:
-                file_path = 'temp.wav'
+                file_id = self.index % 5
+                self.index += 1
+                file_path = f'cache\{file_id}.wav'
             with open(file_path, 'wb') as f:
                 f.write(response.content)
 
@@ -93,6 +98,9 @@ class TTSManager:
 
     def switch_model(self, gpt_model_path, sovits_model_path):
         """切换TTS模型"""
+        if self.sovits_model_path == sovits_model_path:
+            return
+        self.sovits_model_path = sovits_model_path
         try:
             if not sovits_model_path:
                 return 

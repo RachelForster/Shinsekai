@@ -14,7 +14,8 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from llm.deepseek_sprite import DeepSeek
+from llm.llm_manager import LLMManager
+from llm.text_processor import TextProcessor
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 from PyQt5.QtGui import QPixmap, QImage
@@ -30,6 +31,8 @@ import cv2
 import numpy as np
 import argparse
 import yaml
+import json
+from queue import Queue
 
 API_CONFIG_PATH = "./data/config/api.yaml"
 characters = CharacterConfig.read_from_files('./data/config/characters.yaml')
@@ -57,161 +60,234 @@ def getCharacter(name):
             return character
     return None
 
-class ChatWorker(QThread):
-    """后台聊天工作线程"""
-    update_dialog_signal = pyqtSignal(str)
+class LLMWorker(QThread):
+    # 发送通知给主UI线程的信号
     update_notification_signal = pyqtSignal(str)
-    update_sprite_signal = pyqtSignal(np.ndarray)
-    def __init__(self, deepseek, message, tts_manager: TTSManager = None):
-        """初始化工作线程"""
-        super().__init__()
-        self.deepseek = deepseek
-        self.message = message
-        self.response_list = []
-        self.tts_manager = tts_manager
+
+    def __init__(self, llm_manager, user_input_queue: Queue, tts_queue: Queue, parent=None):
+        super().__init__(parent)
+        self.llm_manager = llm_manager
+        self.user_input_queue = user_input_queue
+        self.tts_queue = tts_queue
         self.running = True
-        self.daemon = True  # 设置为守护线程
-      
-        self.sprite_prefix = './data/sprite/Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_'  # 立绘图片的前缀路径
-        self.character_config = getCharacter('狛枝凪斗')
-    
+
     def run(self):
-        """在后台线程中执行聊天请求"""
         global chat_history
-        print(f"Deepseek处理消息: {self.message}")
-        
-        start_time = time.perf_counter()
-        dialog = self.deepseek.chat(self.message)
-        end_time = time.perf_counter()
-        print(f"Deepseek响应时间: {end_time - start_time:.2f} 秒")
-        chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {self.message}</p>")
-        self.response_list = dialog if isinstance(dialog, list) else []
-        if not self.response_list:
-            return
-
-        self.update_notification_signal.emit(f"经过{end_time - start_time:.2f}秒收到{len(self.response_list)}条回复，正在合成语音喵……")
-
-        for i, item in enumerate(self.response_list):
-            if not self.running:
-                break
+        while self.running:
+            try:
+                # 从用户输入队列中获取任务，阻塞等待
+                message = self.user_input_queue.get()
+                if message is None:
+                    break
                 
-            # 提取character_name, sprite和speech
-            character_name = item.get('character_name', '狛枝凪斗')
-            sprite = item.get('sprite', 'default')
-            speech = item.get('speech', '')
-            translate = item.get('translate', '')
-        
-            # 处理旁白
-            if character_name == '旁白':
-                formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b style='color:#84C2D5;'>{character_name}</b>：{speech}</p>"
-                chat_history.append(formatted_speech)
-                self.update_dialog_signal.emit(formatted_speech)
-                self.update_notification_signal.emit(f"收到消息 {i+1}/{len(self.response_list)}")
-                sleep_span = len(speech) // 8
-                if sleep_span < 4:
-                    sleep_span = 4
-                time.sleep(sleep_span)
-                continue
+                print(f"LLMWorker: 开始处理消息: {message}")
+                self.update_notification_signal.emit("正在等待回复中...")
 
-            self.character_config = getCharacter(character_name)
-            if not self.character_config:
-                print(f"未找到角色配置: {character_name}")
-                continue
+                # 将用户消息添加到历史
+                formatted_user_message = f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message}</p>"
+                chat_history.append(formatted_user_message)
+                
+                start_time = time.perf_counter()
+                
+                # **关键修改点：使用流式模式**
+                response_stream = self.llm_manager.chat(message, stream=True)
+                
+                response_buffer = ""
+                content = ""
+                
+                start_index = 0
+                for chunk in response_stream:
+                    # 检查是否为完整消息块
+                    chunk_message = chunk.choices[0].delta.content
+                    response_buffer += chunk_message
+                    content += chunk_message
 
-            if not sprite:
-                continue
-            should_sleep = True
-            self.sprite_prefix = self.character_config.sprite_prefix
-            sprite_id = int(sprite)
-            audio_path = None
-            if not self.tts_manager:
-                if self.character_config.sprites[sprite_id-1].get('voice_path',''):
-                    audio_path = self.character_config.sprites[sprite_id-1]['voice_path']
-            else:
-                # 切换模型
-                self.tts_manager.switch_model(self.character_config.gpt_model_path, self.character_config.sovits_model_path)
-                # 生成音频
-                self.update_notification_signal.emit(f"{character_name}正在准备回复……")
-                text_processor = self.deepseek.text_processor
+                    while '}' in response_buffer:
+                        end_index = response_buffer.find('}') + 1
+                        start_index = end_index -1
+                        while start_index >=0:
+                            if response_buffer[start_index] == '{':
+                                break
+                            start_index = start_index-1
+                        if start_index < 0:
+                            break
+                        try:
+                            json_str = response_buffer[start_index:end_index]
+                            print(json_str)
+
+                            dialog_item = json.loads(json_str)
+                            self.tts_queue.put(dialog_item)
+                            response_buffer = response_buffer[end_index:].strip()
+
+                        except json.JSONDecodeError as e:
+                            # 如果解析失败，可能是JSON格式不完整，继续等待更多数据
+                            print(f"JSON解析错误，继续等待：{e}")
+                            break
+                self.llm_manager.add_message("assistant",content)           
+                end_time = time.perf_counter()
+                
+                self.update_notification_signal.emit(f"LLM响应结束，共耗时: {end_time - start_time:.2f} 秒")
+                
+                self.user_input_queue.task_done()
+
+            except Exception as e:
+                print(f"LLMWorker: 任务处理失败: {e}, {start_index}")
+                self.user_input_queue.task_done()
+
+
+class TTSWorker(QThread):
+    def __init__(self, tts_manager, tts_queue: Queue, audio_path_queue: Queue, parent=None):
+        super().__init__(parent)
+        self.tts_manager = tts_manager
+        self.tts_queue = tts_queue
+        self.audio_path_queue = audio_path_queue
+        self.running = True
+        self.text_processor = TextProcessor()
+
+    def put_data(self, character_name, speech, sprite, audio_path):
+        output_data = {
+            'audio_path': audio_path,
+            'character_name': character_name,
+            'sprite': sprite,
+            'speech': speech,
+        }
+        self.audio_path_queue.put(output_data)
+        self.tts_queue.task_done()
+
+    def run(self):
+        while self.running:
+            try:
+                item = self.tts_queue.get()
+                if item is None:
+                    break
+
+                character_name = item['character_name']
+                speech = item['speech']
+                translate = item.get('translate','')
+                
+                if item['sprite'] == '-1':
+                   self.put_data(character_name,speech,-1,'')
+                   continue
+
+                self.character_config = getCharacter(character_name)
+                if self.character_config is None: 
+                    continue
+                   
+                # 生成语音
                 speech_text = speech
+                text_processor = self.text_processor
+
                 if translate:
                     text_processor = None  # 如果有翻译则不使用文本处理
                     speech_text = translate
-                audio_path = self.tts_manager.generate_tts(
-                    speech_text, 
-                    text_processor=text_processor,
-                    ref_audio_path=self.character_config.refer_audio_path,
-                    prompt_text=self.character_config.prompt_text,
-                    prompt_lang=self.character_config.prompt_lang,
-                    character_name=character_name
-                )
-                if audio_path:
-                    should_sleep = False
-            # 更新角色立绘
-           
-            image_path = self.character_config.sprites[sprite_id-1]['path']
-            try:
-                # 使用 OpenCV 读取图像
-                cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
-                
-                if cv_image is not None:
-                    # 转换颜色格式 BGR -> RGBA
-                    if cv_image.shape[2] == 3:  # RGB 图像
-                        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-                        # 添加 alpha 通道
-                        alpha_channel = np.full((cv_image.shape[0], cv_image.shape[1]), 255, dtype=np.uint8)
-                        cv_image = cv2.merge([cv_image, alpha_channel])
-                    elif cv_image.shape[2] == 4:  # RGBA 图像
-                        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
-                    
-                    self.update_sprite_signal.emit(cv_image)  # 发出更新立绘的信号
-                    
+
+                audio_path = ''
+                if self.tts_manager:
+                    self.tts_manager.switch_model(self.character_config.gpt_model_path, self.character_config.sovits_model_path)
+                    audio_path = self.tts_manager.generate_tts(
+                        speech_text, 
+                        text_processor=text_processor,
+                        ref_audio_path=self.character_config.refer_audio_path,
+                        prompt_text=self.character_config.prompt_text,
+                        prompt_lang=self.character_config.prompt_lang,
+                    )
                 else:
-                    print(f"无法加载图片: {image_path}")
+                    audio_path = self.character_config.sprites[int(item['sprite']) -1].get('voice_path','')
+                # 将包含音频路径和原始数据的字典放入音频路径队列
+                self.put_data(character_name, speech, item['sprite'], audio_path)
+
             except Exception as e:
-                print(f"加载图片时出错: {e}")
+                print(f"TTSWorker: 任务处理失败: {e}")
+                self.tts_queue.task_done()
 
-            # 更新对话框文字
-            formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{self.character_config.name_color};'>{character_name}</b>：{speech}</p>"
-            chat_history.append(formatted_speech)
-            self.update_dialog_signal.emit(formatted_speech)
-            self.update_notification_signal.emit(f"收到消息 {i+1}/{len(self.response_list)}")
 
-            # 播放语音
-            if audio_path:
+class UIWorker(QThread):
+    # 发送给主UI线程的信号
+    update_sprite_signal = pyqtSignal(np.ndarray)
+    update_dialog_signal = pyqtSignal(str)
+    update_notification_signal = pyqtSignal(str)
+    
+    def __init__(self, audio_path_queue: Queue, parent=None):
+        super().__init__(parent)
+        self.audio_path_queue = audio_path_queue
+        self.running = True
+
+    def run(self):
+        global chat_history
+        while self.running:
+            try:
+                # 从音频路径队列中获取数据，阻塞等待
+                output_data = self.audio_path_queue.get()
+                if output_data is None:
+                    break
+
+                character_name = output_data['character_name']
+                sprite_id = output_data['sprite']
+                speech = output_data['speech']
+                audio_path = output_data['audio_path']
+
+                if character_name == "旁白":
+                    formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b>{character_name}</b>：{speech}</p>"
+                    chat_history.append(formatted_speech)
+                    self.update_dialog_signal.emit(formatted_speech)
+                    self.audio_path_queue.task_done()
+                    continue
+
+                # 获取角色配置
+                character_config = getCharacter(character_name)
+                
+                if not character_config:
+                    print(f"UIWorker: 未找到角色配置: {character_name}")
+                    self.audio_path_queue.task_done()
+                    continue
+
+                # 更新 UI 通知
+                self.update_notification_signal.emit(f"{character_name}正在回复……")
+
+                # 更新立绘
+                image_path = character_config.sprites[int(sprite_id) - 1]['path']
                 try:
-                    pygame.mixer.init()
-                    pygame.mixer.music.load(audio_path)
-                    pygame.mixer.music.play()
-
-                    # 等待音频播放完成
-                    while pygame.mixer.music.get_busy():
-                        time.sleep(0.1)
-                    
-                    # 释放音频资源
-                    pygame.mixer.music.unload()
+                    cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+                    if cv_image is not None:
+                        if cv_image.shape[2] == 3:
+                            cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+                            alpha_channel = np.full((cv_image.shape[0], cv_image.shape[1]), 255, dtype=np.uint8)
+                            cv_image = cv2.merge([cv_image, alpha_channel])
+                        elif cv_image.shape[2] == 4:
+                            cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
+                        self.update_sprite_signal.emit(cv_image)
+                    else:
+                        print(f"UIWorker: 无法加载图片: {image_path}")
                 except Exception as e:
-                    print(f"播放音频时出错: {e}")
+                    print(f"UIWorker: 加载图片时出错: {e}")
 
-            if should_sleep:
-                sleep_span = len(speech) // 8
-                if sleep_span < 4:
-                    sleep_span = 4
-                time.sleep(sleep_span)
+                # 更新对话框文本
+                formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{character_config.name_color};'>{character_name}</b>：{speech}</p>"
+                chat_history.append(formatted_speech)
+                self.update_dialog_signal.emit(formatted_speech)
 
-def handleResponse(deepseek, message, tts_manager=None, desktop_ui=None):    
-    global api_config
-    """处理聊天响应"""
-    print(f"处理消息: {message}")
-    thread = ChatWorker(deepseek, message, tts_manager)
-    if desktop_ui:
-        thread.update_dialog_signal.connect(desktop_ui.setDisplayWords)
-        thread.update_sprite_signal.connect(desktop_ui.update_image)
-        thread.update_notification_signal.connect(desktop_ui.setNotification)
-        print("连接信号到桌面UI")
-    else:
-        print("Desktop UI未提供，无法更新界面")
-    threading.Thread(target=thread.run).start()
+                min_stop_time = len(speech)//8
+                start_time = time.perf_counter()
+                # 播放音频
+                if audio_path:
+                    try:
+                        pygame.mixer.init()
+                        pygame.mixer.music.load(audio_path)
+                        pygame.mixer.music.play()
+                        while pygame.mixer.music.get_busy():
+                            time.sleep(1)
+                        pygame.mixer.music.unload()
+                    except Exception as e:
+                        print(f"UIWorker: 播放音频时出错: {e}")
+                end_time = time.perf_counter()
+                if end_time - start_time < min_stop_time:
+                    time.sleep(min_stop_time - (end_time - start_time))
+                
+                self.audio_path_queue.task_done()
+            
+            except Exception as e:
+                print(f"UIWorker: 任务处理失败: {e}")
+                self.audio_path_queue.task_done()
 
 def getHistory():   
     """获取聊天历史记录"""
@@ -246,32 +322,68 @@ def main():
     print("Loaded user template:")
     print(user_template)
 
-    deepseek = DeepSeek(user_template=user_template, api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""))
+    llm_manager = LLMManager(user_template=user_template, api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""))
 
     # 创建图像队列和情感队列
     image_queue = Queue()
     emotion_queue = Queue()
 
+     # 初始化 Pygame
+    pygame.mixer.init()
+
+    # 创建三个消息队列
+    user_input_queue = Queue()
+    tts_queue = Queue()
+    audio_path_queue = Queue()
+
+   
     # 创建桌面助手窗口
     app = QApplication([])
-    window = DesktopAssistantWindow(image_queue, emotion_queue, deepseek, sprite_mode=True)
+    window = DesktopAssistantWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True)
+
+    # 创建并启动 UI Worker 线程
+    ui_worker = UIWorker(audio_path_queue)
+    ui_worker.update_sprite_signal.connect(window.update_image)
+    ui_worker.update_dialog_signal.connect(window.setDisplayWords)
+    ui_worker.update_notification_signal.connect(window.setNotification)
+    ui_worker.start()
+    
+    # 创建并启动 TTS Worker 线程
+    tts_worker = TTSWorker(tts_manager, tts_queue, audio_path_queue)
+    tts_worker.start()
+
+    # 创建并启动 LLM Worker 线程
+    llm_worker = LLMWorker(llm_manager, user_input_queue, tts_queue)
+    llm_worker.update_notification_signal.connect(window.setNotification)
+    llm_worker.start()
+
+    
+    # 更新初始立绘
     init_image = cv2.imread('./data/sprite/usami/Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp', cv2.IMREAD_UNCHANGED)
     if init_image is not None:
-        # 转换颜色格式 BGR -> RGBA
-        if init_image.shape[2] == 3:  # RGB 图像
+        if init_image.shape[2] == 3:
             init_image = cv2.cvtColor(init_image, cv2.COLOR_BGR2RGB)
-            # 添加 alpha 通道
             alpha_channel = np.full((init_image.shape[0], init_image.shape[1]), 255, dtype=np.uint8)
             init_image = cv2.merge([init_image, alpha_channel])
-        elif init_image.shape[2] == 4:  # RGBA 图像
+        elif init_image.shape[2] == 4:
             init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
-    window.update_image(init_image)  # 设置初始图像
+    window.update_image(init_image)
     window.setNotification("和大家开始聊天吧……")
     window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:#e6b2b2'>兔兔美</b>：欢迎来到新世界程序，希望你和大家能开启love love~的新学期，快和大家聊天吧</p>")
 
-    window.message_submitted.connect(lambda message: handleResponse(deepseek, message, tts_manager, window))
+    # 连接 UI 信号到队列
+    def on_message_submitted(message):
+        user_input_queue.put(message)
+        window.setNotification("您的消息已提交，正在等待LLM处理...")
+    
+    window.message_submitted.connect(lambda message: on_message_submitted(message))
     window.open_chat_history_dialog.connect(lambda: window.open_history_dialog(getHistory()))
-    window.change_voice_language.connect(lambda lang: tts_manager.set_language(lang) if tts_manager else None)
+    window.change_voice_language.connect(lambda lang: tts_manager.set_language(lang) if tts_manager else None)  
+    
+    # 确保在程序退出时停止所有线程
+    app.aboutToQuit.connect(llm_worker.quit)
+    app.aboutToQuit.connect(tts_worker.quit)
+    app.aboutToQuit.connect(ui_worker.quit)
 
     window.show()
 

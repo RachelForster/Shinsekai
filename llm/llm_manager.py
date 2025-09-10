@@ -1,4 +1,6 @@
 
+from asyncio import Queue
+from threading import Thread
 from openai import OpenAI
 import json
 import time
@@ -129,7 +131,7 @@ JSON
 
 '''
 
-class DeepSeek:
+class LLMManager:
     def __init__(self, user_template=None, api_key=None, base_url=None):
         # 从文件里获取 API 密钥
         self.client = OpenAI(api_key=api_key)
@@ -139,7 +141,7 @@ class DeepSeek:
             self.user_template = user_template
         self.messages = [{"role": "system", "content": self.user_template}]
 
-    def chat(self, message):
+    def chat(self, message, stream=False):
         """与DeepSeek进行对话"""
         self.messages.append({"role": "user", "content": message})
         try:
@@ -150,7 +152,11 @@ class DeepSeek:
                 response_format={
                   'type': 'json_object'
                 },
+                stream=stream
             )
+            
+            if stream:
+                return response
             ed = time.perf_counter()
             print(f"DeepSeek响应时间: {ed - st:0.4f} 秒")
             new_message = response.choices[0].message.content
@@ -162,47 +168,19 @@ class DeepSeek:
         except Exception as e:
             print("DeepSeek请求失败:", e)
             return "您写得代码好像出错了呢，请检查一下, 出错的地方在chat方法里。"
-        
-    def chat_stream(self, message):
-        """清理资源"""
-        self.messages.append({"role": "user", "content": message})
-        try:
-            st= time.perf_counter()
-            response = self.client.chat.completions.create(
-                model="deepseek-chat",
-                messages=self.messages,
-                response_format={
-                  'type': 'json_object'
-                },
-                stream=True
-            )
-            ed = time.perf_counter()
-            print(f"DeepSeek响应时间: {ed - st:0.4f} 秒")
-            st = time.perf_counter()
-            response_buffer = ""
-            for chunk in response:
-                chunk_message = chunk.choices[0].delta.content
-                if '}' in chunk_message:
-                  response_buffer  = response_buffer + chunk_message[:chunk_message.index('}')+1]
-                  ed = time.perf_counter()
-                  print(f"DeepSeek流式响应时间: {ed - st:0.4f} 秒")
-                  st = time.perf_counter()
-                  print("Final response:", response_buffer)
-                  response_buffer = chunk_message[chunk_message.index('}')+1:]
-                else:
-                  response_buffer  = response_buffer + chunk_message
-                    
-            ed = time.perf_counter()
-            print(f"DeepSeek流式响应时间: {ed - st:0.4f} 秒")
-        except Exception as e:
-            print("DeepSeek请求失败:", e)
-            return "您写得代码好像出错了呢，请检查一下, 出错的地方在chat方法里。"
+    
+    def add_message(self, role, message):
+        self.messages.append({"role":role, "content":message})
 
-if __name__ == "__main__":
-    # 测试DeepSeek类
-    tts_manager = None
-    api_config = yaml.safe_load(open("./data/config/api.yaml", "r", encoding="utf-8"))
-    print(api_config)
-    deepseek = DeepSeek(api_key=api_config.get("llm_api_key"), base_url=api_config.get("llm_base_url"))
-    response = deepseek.chat_stream("狛枝君，让我看看你所谓的希望把！")
-    print(response)
+# if __name__ == "__main__":
+#     # 测试DeepSeek类
+#     tts_manager = None
+#     api_config = yaml.safe_load(open("./data/config/api.yaml", "r", encoding="utf-8"))
+#     print(api_config)
+#     deepseek = LLMManager(api_key=api_config.get("llm_api_key"), base_url=api_config.get("llm_base_url"))
+#     input_queue = Queue(maxsize=5)
+#     output_queue = Queue(maxsize=5)
+
+#     input_queue.put("狛枝君，让我看看你所谓的希望把！")
+#     response = output_queue.get()
+#     print(response)
