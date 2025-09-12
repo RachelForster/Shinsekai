@@ -81,7 +81,7 @@ class LLMWorker(QThread):
                     break
                 
                 print(f"LLMWorker: 开始处理消息: {message}")
-                self.update_notification_signal.emit("正在等待回复中...")
+                self.update_notification_signal.emit("发送成功，正在等待回复中...")
 
                 # 将用户消息添加到历史
                 formatted_user_message = f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message}</p>"
@@ -89,7 +89,6 @@ class LLMWorker(QThread):
                 
                 start_time = time.perf_counter()
                 
-                # **关键修改点：使用流式模式**
                 response_stream = self.llm_manager.chat(message, stream=True)
                 
                 response_buffer = ""
@@ -124,10 +123,7 @@ class LLMWorker(QThread):
                             print(f"JSON解析错误，继续等待：{e}")
                             break
                 self.llm_manager.add_message("assistant",content)           
-                end_time = time.perf_counter()
-                
-                self.update_notification_signal.emit(f"LLM响应结束，共耗时: {end_time - start_time:.2f} 秒")
-                
+                end_time = time.perf_counter()                
                 self.user_input_queue.task_done()
 
             except Exception as e:
@@ -190,6 +186,7 @@ class TTSWorker(QThread):
                         ref_audio_path=self.character_config.refer_audio_path,
                         prompt_text=self.character_config.prompt_text,
                         prompt_lang=self.character_config.prompt_lang,
+                        character_name=character_name,
                     )
                 else:
                     audio_path = self.character_config.sprites[int(item['sprite']) -1].get('voice_path','')
@@ -300,6 +297,7 @@ def main():
     # 添加参数
     parser.add_argument('--template', '-t', type=str, help='用户模板名称', default='komaeda_sprite')
     parser.add_argument('--voice_mode', '-v', type=str, default='gen')
+    parser.add_argument('--init_sprite_path', '-isp', type=str, default='')
 
     # 解析参数
     args = parser.parse_args()
@@ -358,9 +356,14 @@ def main():
     llm_worker.update_notification_signal.connect(window.setNotification)
     llm_worker.start()
 
-    
+    init_sprite_path= args.init_sprite_path
+    if not init_sprite_path:
+        init_sprite_path = './data/sprite/usami/Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp'
+        window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:#e6b2b2'>兔兔美</b>：欢迎来到新世界程序，希望你和大家能开启love love~的新学期，快和大家聊天吧</p>")
+
+
     # 更新初始立绘
-    init_image = cv2.imread('./data/sprite/usami/Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp', cv2.IMREAD_UNCHANGED)
+    init_image = cv2.imread(init_sprite_path, cv2.IMREAD_UNCHANGED)
     if init_image is not None:
         if init_image.shape[2] == 3:
             init_image = cv2.cvtColor(init_image, cv2.COLOR_BGR2RGB)
@@ -369,8 +372,7 @@ def main():
         elif init_image.shape[2] == 4:
             init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
     window.update_image(init_image)
-    window.setNotification("和大家开始聊天吧……")
-    window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:#e6b2b2'>兔兔美</b>：欢迎来到新世界程序，希望你和大家能开启love love~的新学期，快和大家聊天吧</p>")
+    window.setNotification("开始聊天吧……")
 
     # 连接 UI 信号到队列
     def on_message_submitted(message):

@@ -1,6 +1,6 @@
 python main.py ^
---character komaeda3 ^
---output_size 1536x1536 ^
+--character nanami ^
+--output_size 512x512 ^
 --simplify 3 ^
 --output_webcam unitycapture ^
 --model standard_half ^
