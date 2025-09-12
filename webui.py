@@ -298,7 +298,7 @@ def get_sprite_voice(character_name, sprite_index):
     # 返回语音路径
     return character["sprites"][sprite_index].get("voice_path", None)
 
-def launch_chat(template, voice_mode):
+def launch_chat(template, voice_mode, init_sprite_path):
     global main_process
     print("启动聊天，使用模板:")
     try:
@@ -307,10 +307,10 @@ def launch_chat(template, voice_mode):
             file.write(template)
 
         voice_mode = 'gen' if voice_mode == '全语音模式' else 'preset'
+        init_path = init_sprite_path[0] if init_sprite_path else ''
         if main_process is None or main_process.poll() is not None:
-            # 启动一个长时间运行的进程（这里使用ping作为示例）
             main_process = subprocess.Popen(
-                ['./runtime/python.exe', 'main_sprite.py',  '--template=_temp', f'--voice_mode={voice_mode}']
+                ['./runtime/python.exe', 'main_sprite.py',  '--template=_temp', f'--voice_mode={voice_mode}', f'--init_sprite_path={init_path}']
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
         else:
@@ -389,6 +389,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
     
     active_character=gr.State("") #当前选中的人物名
     selected_sprite_index = gr.State(None)  # 存储当前选中的立绘索引
+    init_sprite_path = gr.State("")
 
     with gr.Tab("人物设定"):
         gr.Markdown("## 人物管理")
@@ -633,6 +634,12 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             info="全语音模式中每句台词都生成语音，需要好的显卡、配置好GPT Sovits，预设语音模式只在立绘有语音时播放，对显卡无要求"
         )
 
+        with gr.Row():
+            initial_sprite_files = gr.Files(
+                label="选择初始立绘图片",
+            )
+            upload_init_sprite_btn = gr.Button("确认选择")
+
         launch_btn = gr.Button("启动聊天")
         launch_output = gr.Textbox(label="启动结果")
         
@@ -654,6 +661,12 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             outputs=[template_output, filename]
         )
 
+        upload_init_sprite_btn.click(
+            lambda file_path: (file_path,"选择成功"),
+            inputs=[initial_sprite_files],
+            outputs=[init_sprite_path, launch_output]
+        )
+
         save_btn.click(
             save_template,
             inputs=[template_output, filename],
@@ -666,7 +679,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
 
         launch_btn.click(
             launch_chat,
-            inputs=[template_output, voice_mode],
+            inputs=[template_output, voice_mode, init_sprite_path],
             outputs=launch_output
         )
 

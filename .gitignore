@@ -10,3 +10,4 @@ runtime/
 *.pyc
 data/character_templates/_temp.txt
 *.wav
+/tha3

@@ -210,7 +210,7 @@ class ImageDisplayThread(QThread):
 
 class ChatWorker(QThread):
     """后台聊天工作线程"""
-    response_received = pyqtSignal(str, str)  # 定义信号用于传递响应
+    response_received = pyqtSignal(dict)  # 定义信号用于传递响应
 
     def __init__(self, deepseek, message):
         super().__init__()

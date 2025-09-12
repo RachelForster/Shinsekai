@@ -69,6 +69,8 @@ name_map = {
 
     "王马小吉": "オウマ コウキ",    # Oma Kokichi
     "王马": "オウマ",
+
+    "兔兔美": "ウサミ"
 }
 
 class TextProcessor:
