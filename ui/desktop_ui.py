@@ -483,8 +483,11 @@ class DesktopAssistantWindow(QWidget):
         pixmap = QPixmap.fromImage(qimg)
         
         # # 将图像放大
-        scaled_with = max(1024, width)
-        rate = self.original_width / scaled_with
+        max_width = self.original_width * 0.9
+        min_width = self.original_width * 0.75
+        scaled_width = min (max_width, width)
+        scaled_width = max (min_width, scaled_width)
+        rate = self.original_width / scaled_width
         scaled_pixmap = pixmap.scaled(
             int(width * rate), 
             int(height * rate),
