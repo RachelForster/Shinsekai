@@ -100,7 +100,7 @@ def add_character(name, color, sprite_prefix, gpt_model_path,
         character["sovits_model_path"]=sovits_model_path
         character["prompt_text"]=prompt_text
         character["prompt_lang"]=prompt_lang
-        character["ref_audio_path"]=refer_audio_path
+        character["refer_audio_path"]=refer_audio_path
         save_characters_to_file()
         return "人物已更新！", [c.get("name", "") for c in characters]
 def delete_character(name):

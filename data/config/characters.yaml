@@ -691,3 +691,35 @@
   sprite_prefix: usami
   sprites:
   - path: ./data/sprite\usami\Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp
+- color: rgba(135.7378947607978, 161.3583679199219, 127.6569340508498, 1)
+  emotion_tags: '立绘 1：开心，狂喜
+
+    立绘 2：陈述，自信，指点
+
+    立绘 3：抱胸，自信
+
+    立绘 4：害羞
+
+    立绘 5：思考，质疑
+
+    立绘 6：中立
+
+    立绘 7：打招呼
+
+    '
+  gpt_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\GPT_weights_v2ProPlus\komaeda-e15.ckpt
+  name: 小狛枝
+  prompt_lang: ja
+  prompt_text: たまにはみんなでゲームやりたいなぁ 鞄にたくさんゲームを入れて学校に来てんだけどなぁ
+  ref_audio_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\nagiko\nagiko.wav_0000167360_0000382080.wav
+  refer_audio_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\nagiko\nagiko.wav_0000167360_0000382080.wav
+  sovits_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\SoVITS_weights_v2ProPlus\nagiko_e4_s72.pth
+  sprite_prefix: komaedachan
+  sprites:
+  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_3urh2w3urh2w3urh.png
+  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_6nxtca6nxtca6nxt.png
+  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_9lugto9lugto9lug.png
+  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_c5v875c5v875c5v8.png
+  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_ednzqgednzqgednz.png
+  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_fso67fso67fso67f.png
+  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_uoz6ncuoz6ncuoz6.png

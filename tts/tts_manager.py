@@ -51,6 +51,7 @@ class TTSManager:
     def generate_tts(self, text, text_processor=None, ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None, file_path=None):
         """生成TTS语音"""
         # 预处理文本
+        print("生成语音")
         if text_processor:
             text = text_processor.remove_parentheses(text)
             text = text_processor.html_to_plain_qt(text)
@@ -58,9 +59,10 @@ class TTSManager:
             text = text_processor.replace_names(text)
             if language != self.voice_language:
                 text = text_processor.libre_translate(text, source=language, target=self.voice_language)
-            if self.voice_language == 'ja' and (character_name == "狛枝凪斗" or character_name == "仆役"):
+            if self.voice_language == 'ja' and (character_name == "狛枝凪斗" or character_name == "仆役" or character_name == "小狛枝"):
                 text = text_processor.replace_watashi(text)
         if  not ref_audio_path:
+            print("没有参考音频")
             return ''
 
         params = {
@@ -72,7 +74,7 @@ class TTSManager:
             "text_split_method": "cut5",
             "batch_size": 1,
         }
-
+        
         print("请求参数:", params)
         
         try:
