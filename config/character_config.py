@@ -1,7 +1,7 @@
 import yaml
 
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[]):
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], sprite_scale = 1.0):
         # 角色基本信息  
         self.name = name
         self.name_color = color
@@ -14,6 +14,7 @@ class CharacterConfig:
         self.refer_audio_path = refer_audio_path
         self.prompt_text = prompt_text
         self.prompt_lang = prompt_lang
+        self.sprite_scale = sprite_scale
 
     @staticmethod
     def read_from_files(path):
@@ -45,7 +46,8 @@ class CharacterConfig:
                 refer_audio_path=char_data.get('refer_audio_path'),
                 prompt_text=char_data.get('prompt_text'),
                 prompt_lang=char_data.get('prompt_lang'),
-                sprites=char_data.get("sprites")
+                sprites=char_data.get("sprites"),
+                sprite_scale=char_data.get("sprite_scale",1.0),
             )
             characters.append(character)
         
