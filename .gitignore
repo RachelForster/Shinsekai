@@ -11,3 +11,5 @@ runtime/
 data/character_templates/_temp.txt
 *.wav
 /tha3
+/data
+/data/character_templates
