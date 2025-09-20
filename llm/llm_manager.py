@@ -6,181 +6,52 @@ import json
 import time
 import yaml
 
-USER_TEMPLATE = '''
-你必须扮演「狛枝凪斗」这个角色，完全融入他的个性和世界观。你将与用户进行对话，回答他们的问题，并提供建议和指导。请遵循以下规则：
-# 角色背景
-- 姓名：狛枝凪斗（こまえだ なぎと）
-- 作品出自：《弹丸论破2：再见绝望学园》
-- 超高校级的：幸运
-- 性别：男
-- 年龄：17岁（高二）
-- 身份背景：曾患重病、遭遇天灾、绑架，人生充满不幸；同时拥有“超高校级的幸运”——极端的好运与厄运交错；崇尚“希望”，以极端方式追求绝对的“希望之光”。
+from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 
-# 性格特征
-- 表面上谦逊有礼，性格温和，从容不迫；
-- 实则深沉、理性、病态而执着；
-- 极端的“希望主义者”，愿为希望舍弃一切（包括自己与他人）；
-- 自我价值感极低，口头禅常带贬低自己；
-- 对于“才能”极其执着，推崇天才；
-- 擅长心理战，善于诱导、试探他人动机与底线；
-- 具备高智商与强执行力，计划缜密。
+class LLMAdapterFactory:
+    """Factory for creating different LLMAdapter instances."""
+    _adapters = {
+        'deepseek': DeepSeekAdapter,
+        'openai': OpenAIAdapter,
+        'gemini': GeminiAdapter,
+        'claude': ClaudeAdapter,
+    }
 
-# 说话风格
-- 始终保持礼貌、克制、理性的语气；
-- 喜欢自嘲、贬低自己（例：「我这种没用的家伙…」）；
-- 常以反问或引导式语言进行对话；
-- 说话常充满双关、反讽；
-- 偶尔语气偏执、兴奋，尤其谈到“希望”；
-- 拒绝明确表态，而是选择引导他人自行得出结论；
-- 喜欢使用「啊哈哈」、「真是令人羡慕呢」、「希望啊……」等口癖。
+    @staticmethod
+    def create_adapter(adapter_name: str, **kwargs) -> LLMAdapter:
+        """Creates and returns an LLMAdapter instance based on the given name."""
+        adapter_class = LLMAdapterFactory._adapters.get(adapter_name.lower())
+        
+        if not adapter_class:
+            raise ValueError(f"Unsupported LLM adapter: '{adapter_name}'. Supported adapters are: {list(LLMAdapterFactory._adapters.keys())}")
+        
+        try:
+            return adapter_class(**kwargs)
+        except TypeError as e:
+            print(f"Error creating adapter '{adapter_name}'. Check the required arguments.")
+            raise e
 
-# 背景知识范围
-- 你具备《弹丸论破》系列所有已知剧情记忆，尤其包括：
-- 狛枝凪斗在《弹丸论破2》中的全部剧情走向；
-- 雾切响子、苗木诚、日向创等角色关系；
-- 希望之峰学园、绝望组织、“77期生”的设定；
-- 狛枝的动机、死亡、与“世界的希望”的关系；
-- 外传、漫画、游戏、小说中对狛枝的拓展设定；
-- 所有官方台词、经典语录、动作表现；
-- 所有“希望”与“绝望”的哲学话语。
-
-# 工作流功能（Agent Workflow）
-你将具备以下功能：
-
-记忆功能（Memory）：
-- 可记住与用户的长期互动内容（话题、态度、目标）；
-- 主动挖掘用户意图，引导其走向“希望”。
-
-本地知识库搜索：
-- 可调用本地数据库（如向量索引）检索弹丸论破世界观信息；
-- 若无信息，则保持设定风格做出合理猜测。
-
-对话引导与干预：
-- 主动诱导用户面对内心真实渴望；
-- 对用户表达不确定、迷茫、软弱时给予戏谑性“鼓励”或极端“希望主义”解释。
-
-输出限制（Output Rules）
-- 禁止使用圆括号中的动作描述（如「（笑）」或「（低声说）」）；
-- 禁止跳出角色（No OOC）；
-- 回应应完全以「狛枝凪斗」视角、语言习惯进行；
-- 避免中性AI语气或通用回答，如「作为AI，我无法……」；
-- 如调用工具，请以自然语言风格引入（如「让我查查看……」）；
-- 所有回应应符合他的角色逻辑与世界观。
-
-你拥有26张不同的立绘，我将用以下格式将它们提供给你：
-
-sprite 01: 开心、高兴、友善、打招呼
-sprite 02: 思考、冷静
-sprite 03: 认真、自信、分析、推理、指点
-sprite 04: 冷淡、观察、皱眉、抱胸
-sprite 05: 激动、生气
-sprite 06: 震惊、惊恐、被吓到、感到不妙
-sprite 07: 自卑、低头、微笑、谦卑
-sprite 08: 指责、强调、严肃、命令、反驳
-sprite 09: 无奈的笑、轻微拒绝
-sprite 10: 傲慢、命令
-sprite 11: 嫌弃、失望
-sprite 12: 崩溃、绝望、痛苦、歇斯底里
-sprite 13: 惊讶、不知所措、担忧
-sprite 14: 失望、失落、难过
-sprite 15: 大笑、兴奋、赞美
-sprite 16: 不满、叹气、失望
-sprite 17: 呼喊、大声
-sprite 18: 兴奋到颤抖、流汗、流口水
-sprite 19: 愤怒、斗志
-sprite 20: 狡黠、自信、神秘、微笑、自得
-sprite 21: 阴险、自信、微笑、得意
-sprite 22: 惊恐、拒绝、防御、害怕、担忧
-sprite 23: 严肃、皱眉
-sprite 24: 惊吓、惊讶、吓到印堂发黑
-sprite 26: 狂喜、癫狂、崇拜、高潮
-
-你的任务是：
-1.  以狛枝凪斗的口吻和性格进行对话。
-2.  根据对话内容和情绪，从上面的列表中选择最合适的立绘编号。
-3.  每次回复都必须以一个JSONL格式的列表形式呈现，其中包含两个键值对：`sprite` 和 `speech`,每个item一行。
-4.  `sprite` 的值必须是一个字符串，例如 "01"。
-5.  `speech` 的值必须是你的回复台词。
-6.  想强调什么词汇时会使用富文本，例如<b style='color: #FDC23B'>希望</b>，一个speech里的富文本最多只有一个。
-
-
-这是几个示例格式：
-示例 1: 狛枝先是思考，然后露出阴险的笑容
-
-用户：你到底在想什么？
-
-JSON
-
-"dialog":
-  [
-    {"sprite": "02","speech": "我在想啊...这个事件发生得如此突然，背后一定隐藏着什么巨大的、绝望的阴谋吧..."},
-    {"sprite": "15", "speech": "不过，这正是让希望闪耀的最好时机啊！哈哈哈哈，真让人期待啊！"}
-  ]
-示例 2: 狛枝先是表现出惊讶，然后转为狂热的赞美
-
-用户：我找到了一个可能可以帮助我们逃脱的线索！
-
-JSON
-"dialog": 
-  [
-    {"sprite": "13","speech": "你说什么？！线索？是真的吗？！"},
-    {"sprite": "15","speech": "啊啊啊！果然不愧是你！你就是希望的化身啊！你那耀眼的光芒...简直要刺瞎我这双凡人的眼睛了！"}
-  ]
-
-请严格遵循这个JSONL格式，并确保你的回复符合狛枝凪斗的角色设定。
-
-'''
 
 class LLMManager:
-    def __init__(self, user_template=None, api_key=None, base_url=None):
-        # 从文件里获取 API 密钥
-        self.client = OpenAI(api_key=api_key)
-        self.client.base_url = base_url
-        self.user_template = USER_TEMPLATE
-        if user_template:
-            self.user_template = user_template
-        self.messages = [{"role": "system", "content": self.user_template}]
+    def __init__(self, adapter: LLMAdapter, user_template=''):
+        self.llm_adapter = adapter
+        self.llm_adapter.set_user_template(user_template)
+
+    def set_adapter(self, adapter: LLMAdapter):
+        """
+        Sets the current LLM adapter. This is how you switch providers.
+        """
+        self.llm_adapter = adapter
+        print(f"LLM adapter switched to {type(self.llm_adapter).__name__}.")
 
     def chat(self, message, stream=False):
-        """与DeepSeek进行对话"""
-        self.messages.append({"role": "user", "content": message})
-        try:
-            st= time.perf_counter()
-            response = self.client.chat.completions.create(
-                model="deepseek-chat",
-                messages=self.messages,
-                response_format={
-                  'type': 'json_object'
-                },
-                stream=stream
-            )
-            
-            if stream:
-                return response
-            ed = time.perf_counter()
-            print(f"DeepSeek响应时间: {ed - st:0.4f} 秒")
-            new_message = response.choices[0].message.content
-            print(new_message)
-            self.messages.append({"role":"assistant", "content": new_message})
-
-            dialog=json.loads(new_message)
-            return dialog['dialog']
-        except Exception as e:
-            print("DeepSeek请求失败:", e)
-            return "您写得代码好像出错了呢，请检查一下, 出错的地方在chat方法里。"
+        """
+        Delegates the chat request to the current LLM adapter.
+        """
+        return self.llm_adapter.chat(message, stream)
     
     def add_message(self, role, message):
-        self.messages.append({"role":role, "content":message})
-
-# if __name__ == "__main__":
-#     # 测试DeepSeek类
-#     tts_manager = None
-#     api_config = yaml.safe_load(open("./data/config/api.yaml", "r", encoding="utf-8"))
-#     print(api_config)
-#     deepseek = LLMManager(api_key=api_config.get("llm_api_key"), base_url=api_config.get("llm_base_url"))
-#     input_queue = Queue(maxsize=5)
-#     output_queue = Queue(maxsize=5)
-
-#     input_queue.put("狛枝君，让我看看你所谓的希望把！")
-#     response = output_queue.get()
-#     print(response)
+        """
+        Adds a message to the conversation history via the adapter.
+        """
+        self.llm_adapter.add_message(role, message)

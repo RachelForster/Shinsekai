@@ -14,14 +14,13 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from llm.llm_manager import LLMManager
+from llm.llm_manager import LLMManager,LLMAdapterFactory
 from llm.text_processor import TextProcessor
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtWidgets import QApplication
-from tts import tts_manager
-from tts.tts_manager import TTSManager
+from tts.tts_manager import TTSManager, TTSAdapterFactory
 from ui.desktop_ui import DesktopAssistantWindow
 from config.character_config import CharacterConfig
 import threading
@@ -314,6 +313,8 @@ def main():
     parser.add_argument('--template', '-t', type=str, help='用户模板名称', default='komaeda_sprite')
     parser.add_argument('--voice_mode', '-v', type=str, default='gen')
     parser.add_argument('--init_sprite_path', '-isp', type=str, default='')
+    parser.add_argument('--tts',type=str,default="gpt-sovits")
+    parser.add_argument('--llm',type=str,default="deepseek")
 
     # 解析参数
     args = parser.parse_args()
@@ -321,12 +322,12 @@ def main():
     # 创建TTS管理器实例
     tts_manager = None
     if args.voice_mode == 'gen':
+        adapter = TTSAdapterFactory.create_adapter(
+            adapter_name=args.tts,
+            gpt_sovits_work_path=api_config.get("gpt_sovits_api_path","") 
+        )
         tts_manager = TTSManager(tts_server_url=api_config.get("gpt_sovits_url",""))
-        try:
-            tts_manager.load_tts_model(gpt_sovits_work_path=api_config.get("gpt_sovits_api_path",""))
-        except Exception as e:
-            tts_manager=None
-            print("语音模块加载失败", e)
+        tts_manager.set_tts_adapter(adapter=adapter)
     
     # 创建DeepSeek实例
     print("加载用户模板...", args)
@@ -337,7 +338,8 @@ def main():
     print("Loaded user template:")
     print(user_template)
 
-    llm_manager = LLMManager(user_template=user_template, api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""))
+    llm_adapter = LLMAdapterFactory.create_adapter(args.llm, api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""))
+    llm_manager = LLMManager(adapter=llm_adapter,user_template=user_template)
 
     # 创建图像队列和情感队列
     image_queue = Queue()
