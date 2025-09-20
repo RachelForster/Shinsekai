@@ -29,10 +29,39 @@ class GPTSoVitsAdapter(TTSAdapter):
     Adapter for the GPT-SoVITS TTS service.
     It adapts the GPT-SoVITS API to the standard TTSAdapter interface.
     """
-    def __init__(self, tts_server_url="http://127.0.0.1:9880/"):
+    def __init__(self, tts_server_url="http://127.0.0.1:9880/", gpt_sovits_work_path = None):
         self.tts_server_url = tts_server_url
         self.sovits_model_path = ''
         self.gpt_model_path = ''
+        self.gpt_sovits_work_path = gpt_sovits_work_path
+
+        # Load the model and start the server process here
+        self._start_server_process()
+
+    def _start_server_process(self):
+        """
+        Starts the GPT-SoVITS server process if it's not running.
+        This is now the adapter's responsibility.
+        """
+        try:
+            # You might want to add a check here to see if the process is already running
+            response = requests.get(self.tts_server_url)
+            if response.status_code == 200:
+                print("GPT-SoVITS server is already running.")
+                return
+        except requests.exceptions.ConnectionError:
+            print("GPT-SoVITS server not found, attempting to start...")
+
+        if self.gpt_sovits_work_path is None:
+            return
+
+        os_path = self.gpt_sovits_work_path
+        embeded_python_path = os.path.join(os_path, "runtime", "python.exe")
+        api_path = os.path.join(os_path, "api_v2.py")
+        
+        # Use subprocess.Popen to start the server in the background
+        subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
+        print("GPT-SoVITS server starting...")
 
     def generate_speech(self, text, file_path=None, **kwargs):
         """

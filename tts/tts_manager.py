@@ -3,10 +3,47 @@ import threading
 import queue
 import subprocess
 
-# Import the new adapter classes
-from tts_adapter import TTSAdapter, GPTSoVitsAdapter
+from tts.tts_adapter import TTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter, CosyVoiceAdapter
 
-#  GPT-SoVITS TTS管理器
+class TTSAdapterFactory:
+    """
+    Factory for creating different TTSAdapter instances.
+    """
+    _adapters = {
+        'gpt-sovits': GPTSoVitsAdapter,
+        'index-tts': IndexTTSAdapter,
+        'cosyvoice': CosyVoiceAdapter,
+    }
+
+    @staticmethod
+    def create_adapter(adapter_name: str, **kwargs) -> TTSAdapter:
+        """
+        Creates and returns a TTSAdapter instance based on the given name.
+        
+        Args:
+            adapter_name (str): The name of the adapter to create (e.g., 'elevenlabs').
+            **kwargs: Configuration arguments for the adapter's constructor (e.g., api_key, work_path).
+
+        Returns:
+            TTSAdapter: An instance of a concrete TTSAdapter.
+
+        Raises:
+            ValueError: If the adapter name is not supported.
+        """
+        adapter_class = TTSAdapterFactory._adapters.get(adapter_name.lower())
+        
+        if not adapter_class:
+            raise ValueError(f"Unsupported TTS adapter: '{adapter_name}'. Supported adapters are: {list(TTSAdapterFactory._adapters.keys())}")
+        
+        try:
+            # Instantiate the correct adapter class with the provided kwargs
+            return adapter_class(**kwargs)
+        except TypeError as e:
+            print(f"Error creating adapter '{adapter_name}'. Check the required arguments.")
+            raise e
+
+
+#  TTS管理器
 class TTSManager:
     def __init__(self, character_ui_url="http://localhost:7888/alive", tts_server_url="http://127.0.0.1:9880/"):
         self.audio_cache_dir = r".\cache\audio"
@@ -15,7 +52,7 @@ class TTSManager:
         self.index = 0
 
         # Use the adapter for TTS operations
-        self.tts_adapter = GPTSoVitsAdapter(tts_server_url)
+        self.tts_adapter = None
 
         # Work queue for processing speak/sing requests
         self.task_queue = queue.Queue()
