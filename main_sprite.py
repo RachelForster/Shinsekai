@@ -60,6 +60,15 @@ def getCharacter(name):
             return character
     return None
 
+def getCharacterScale(character_name: str):
+    if character_name is None:
+        return 1.0
+    character = getCharacter(character_name)
+    if character is None:
+        return 1.0
+    return character.sprite_scale
+
+
 class LLMWorker(QThread):
     # 发送通知给主UI线程的信号
     update_notification_signal = pyqtSignal(str)
@@ -200,7 +209,7 @@ class TTSWorker(QThread):
 
 class UIWorker(QThread):
     # 发送给主UI线程的信号
-    update_sprite_signal = pyqtSignal(np.ndarray)
+    update_sprite_signal = pyqtSignal(np.ndarray, float)
     update_dialog_signal = pyqtSignal(str)
     update_notification_signal = pyqtSignal(str)
     
@@ -253,7 +262,9 @@ class UIWorker(QThread):
                             cv_image = cv2.merge([cv_image, alpha_channel])
                         elif cv_image.shape[2] == 4:
                             cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
-                        self.update_sprite_signal.emit(cv_image)
+
+                        rate = getCharacterScale(character_name)
+                        self.update_sprite_signal.emit(cv_image, rate)
                     else:
                         print(f"UIWorker: 无法加载图片: {image_path}")
                 except Exception as e:

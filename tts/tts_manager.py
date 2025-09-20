@@ -16,6 +16,7 @@ class TTSManager:
         self.audio_cache_dir = r".\cache\audio"
         self.character_ui_url = character_ui_url
         self.tts_server_url = tts_server_url
+        self.cache_num = 10
 
         # 工作队列，处理说话，唱歌请求
         self.task_queue = queue.Queue()
@@ -27,6 +28,7 @@ class TTSManager:
         self.ref_text = "だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。"
         self.ref_lang = "ja"
         self.sovits_model_path = ''
+        self.gpt_model_path = ''
 
         self.voice_language = "ja"  # 默认语音语言为日语
 
@@ -80,7 +82,7 @@ class TTSManager:
         try:
             response = requests.post(self.tts_server_url+"tts", json=params)
             if not file_path:
-                file_id = self.index % 5
+                file_id = self.index % self.cache_num
                 self.index += 1
                 file_path = f'cache\{file_id}.wav'
             with open(file_path, 'wb') as f:
@@ -100,28 +102,28 @@ class TTSManager:
 
     def switch_model(self, gpt_model_path, sovits_model_path):
         """切换TTS模型"""
-        if self.sovits_model_path == sovits_model_path:
+        if self.sovits_model_path == sovits_model_path and self.gpt_model_path == gpt_model_path:
             return
         self.sovits_model_path = sovits_model_path
+        self.gpt_model_path = gpt_model_path
+
         try:
-            if not sovits_model_path:
-                return 
-            if not gpt_model_path:
-                return
-            response = requests.get(self.tts_server_url+"set_gpt_weights", params={"weights_path": gpt_model_path})
-            if response.status_code == 200:
-                print("gpt模型切换成功:", gpt_model_path)
-            else:
-                print("gpt模型切换失败:", response.text)
+            if sovits_model_path:
+                response = requests.get(self.tts_server_url+"set_gpt_weights", params={"weights_path": gpt_model_path})
+                if response.status_code == 200:
+                    print("gpt模型切换成功:", gpt_model_path)
+                else:
+                    print("gpt模型切换失败:", response.text)
         except Exception as e:
             print("切换gpt模型失败:", e)
 
         try:
-            response = requests.get(self.tts_server_url+"set_sovits_weights", params={"weights_path": sovits_model_path})
-            if response.status_code == 200:
-                print("sovits模型切换成功:", sovits_model_path)
-            else:
-                print("sovits模型切换失败:", response.text)
+            if gpt_model_path:
+                response = requests.get(self.tts_server_url+"set_sovits_weights", params={"weights_path": sovits_model_path})
+                if response.status_code == 200:
+                    print("sovits模型切换成功:", sovits_model_path)
+                else:
+                    print("sovits模型切换失败:", response.text)
         except Exception as e:
             print("切换sovits模型失败:", e)
 

@@ -87,7 +87,8 @@ def add_character(name, color, sprite_prefix, gpt_model_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
             "sprites": [],  # 新增：存储立绘和情绪标签
-            "emotion_tags": ""
+            "sprite_scale": 1.0,
+            "emotion_tags": "",
         }    
         characters.append(character)
         save_characters_to_file()
@@ -136,6 +137,17 @@ def load_template_from_file(file_path):
         return template, file_name
     except Exception as e:
         return f"加载失败: {str(e)}", file_name
+def save_sprite_scale(name, scale):
+    global characters
+    
+    if not name:
+        return "名称不能为空！", [c.get("name", "") for c in characters]
+    character = next((c for c in characters if c["name"] == name), None)
+
+    if character:
+        character['sprite_scale'] = scale
+        save_characters_to_file()
+        return "保存立绘缩放倍率成功"
 
 def generate_template(selected_characters):
     if not selected_characters:
@@ -484,6 +496,17 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 )
                 upload_sprites_btn = gr.Button("上传图片")
                 upload_output = gr.Textbox(label="上传结果")
+
+                # 添加滑块控件
+                sprite_scale = gr.Slider(
+                    minimum=0,      # 最小值
+                    maximum=3,      # 最大值
+                    value=1.0,      # 初始值
+                    step=0.1,       # 步长/精度
+                    label="选择立绘放大/缩小倍数，如果发现立绘过大、过小可以来调节", # 标签
+                    interactive=True # 可交互
+                )
+                sprite_scale_save_btn = gr.Button("保存立绘放大/缩小倍数")
                
         with gr.Row():
             with gr.Column():
@@ -517,12 +540,35 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 inputs=[selected_character, emotion_inputs],
                 outputs=[upload_output]
             )
+
+            def get_sprite_scale(name):
+                if not name:
+                    return 1.0    
+                character = next((c for c in characters if c["name"] == name), None)
+
+                if character:
+                    return character.get("sprite_scale", 1.0)
+                else:
+                    return 1.0
             
             # 当选择角色时更新立绘显示
             selected_character.change(
                 get_character_sprites,
                 inputs=[selected_character],
                 outputs=[sprites_gallery, emotion_inputs, sprite_files]
+            )
+
+            #上传scale
+            sprite_scale_save_btn.click(
+                save_sprite_scale,
+                inputs=[selected_character, sprite_scale],
+                outputs=[upload_output]
+            )
+
+            selected_character.change(
+                get_sprite_scale,
+                inputs=[selected_character],
+                outputs=[sprite_scale]
             )
 
             with gr.Column(scale=1):
@@ -596,12 +642,11 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     fn=update_selected_sprite_info,
                     inputs=[selected_character, selected_sprite_index],
                     outputs=[selected_sprite_info, sprite_voice_player]
-                )
+                )                
 
     with gr.Tab("聊天模板"):
         gr.Markdown("## 聊天模板管理")  
-        gr.Markdown("您可以选择从文件导入模版或者选择人物生成模版" \
-        "")
+        gr.Markdown("您可以选择从文件导入模版或者选择人物生成模版")
         with gr.Row():
             with gr.Column():
                 

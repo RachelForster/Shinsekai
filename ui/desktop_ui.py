@@ -474,7 +474,7 @@ class DesktopAssistantWindow(QWidget):
         self.display_thread.update_signal.connect(self.update_image)
         self.display_thread.start()
 
-    def update_image(self, image):
+    def update_image(self, image, character_rate=None):
         """更新显示图像"""
         self.original_image = image
         height, width, channel = image.shape
@@ -483,11 +483,11 @@ class DesktopAssistantWindow(QWidget):
         pixmap = QPixmap.fromImage(qimg)
         
         # # 将图像放大
-        max_width = self.original_width * 0.9
-        min_width = self.original_width * 0.75
-        scaled_width = min (max_width, width)
-        scaled_width = max (min_width, scaled_width)
-        rate = self.original_width / scaled_width
+        max_width = self.original_width - 20
+        max_height = self.original_height * 0.9
+        scaled_width = max_width
+        scaled_height = max_height
+        rate = min(scaled_width / width, scaled_height/height) * (1 if character_rate is None else character_rate)
         scaled_pixmap = pixmap.scaled(
             int(width * rate), 
             int(height * rate),
