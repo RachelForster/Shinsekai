@@ -188,7 +188,12 @@ class TTSWorker(QThread):
 
                 audio_path = ''
                 if self.tts_manager:
-                    self.tts_manager.switch_model(self.character_config.gpt_model_path, self.character_config.sovits_model_path)
+                    model_info ={
+                        'sovits_model_path': self.character_config.sovits_model_path, 
+                        'gpt_model_path': self.character_config.gpt_model_path,
+                    }
+
+                    self.tts_manager.switch_model(model_info)
                     audio_path = self.tts_manager.generate_tts(
                         speech_text, 
                         text_processor=text_processor,
