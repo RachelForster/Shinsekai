@@ -105,6 +105,7 @@ class OpenAIAdapter(LLMAdapter):
 class GeminiAdapter(LLMAdapter):
     def __init__(self, api_key=None, model="gemini-1.5-pro", **kwargs):
         super().__init__(**kwargs)
+        import genai
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(model_name=model)
         self.history = []
@@ -147,6 +148,7 @@ class GeminiAdapter(LLMAdapter):
 class ClaudeAdapter(LLMAdapter):
     def __init__(self, api_key=None, model="claude-3-opus-20240229", **kwargs):
         super().__init__(**kwargs)
+        import anthropic
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
         self.system_prompt = ''

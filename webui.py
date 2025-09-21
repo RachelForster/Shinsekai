@@ -6,6 +6,8 @@ from pathlib import Path
 import json
 import subprocess
 import glob
+import character_utils.file_util as fu
+from config.character_config import CharacterConfig
 
 # 存储数据的全局变量
 api_config = {
@@ -413,6 +415,8 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     choices=["新角色"] + [c.get("name", "") for c in characters],
                     label="选择角色"
                 )
+                export_btn = gr.Button("导出到./output文件夹")
+                del_btn = gr.Button("删除人物")
                 def update_character_dropdown():
                     print(["新角色"]+[c.get("name", "") for c in characters])
                     return gr.Dropdown(choices=["新角色"]+[c.get("name", "") for c in characters])
@@ -423,23 +427,62 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                         return "","","","","","","",""
                     return character["name"], character["color"], character["sprite_prefix"], character["gpt_model_path"], character["sovits_model_path"], character["refer_audio_path"], character["prompt_text"], character["prompt_lang"]
                 
-                # 删除人物
-                del_btn = gr.Button("删除人物")
-                                
+            with gr.Column():
+                gr.Markdown("从文件导入")
+                import_file = gr.File(label="选择文件")
+                import_btn = gr.Button("从文件导入人物")
+                import_output = gr.Textbox("输出结果")
+
+                def export_character(character_name):
+                    character = next((c for c in characters if c["name"] == character_name), None)
+                    if character is None:
+                        return "人物不存在"
+                    try:
+                        output_path = Path('./output')
+                        output_path.mkdir(parents=True,exist_ok=True)
+                        character = CharacterConfig(
+                            name = character["name"],
+                            color=character["color"], 
+                            sprite_prefix=character["sprite_prefix"],
+                            gpt_model_path=character.get("gpt_model_path", ""), 
+                            sovits_model_path=character.get("sovits_model_path",""), 
+                            refer_audio_path=character.get("refer_audio_path",""), 
+                            prompt_text=character.get("prompt_text",""), 
+                            prompt_lang=character.get("prompt_lang",""),
+                            sprites=character.get("sprites",[]),
+                            emotion_tags=character.get("emotion_tags",""),
+                            sprite_scale=character.get("sprite_scale", 1.0)
+                        )
+                        fu.export_character([character], output_path=f'./output/{character.name}.char')
+                        return "导出成功"
+                    except Exception as e:
+                        return f"导出失败 {e}"
+                    
+                def import_character(file_path):
+                    try:
+                        fu.import_character(file_path)
+                        load_characters_from_file()
+                        return f"导入成功"
+                    except Exception as e:
+                        return f"导入失败：{e}"
+
+        # 删除人物
+        with gr.Row():
+            with gr.Column():
                 gr.Markdown("#### 角色信息")
                 char_name = gr.Textbox(label="人物名称", placeholder="请输入人物名称")
                 char_color = gr.ColorPicker(label="名称显示颜色", value="#d07d7d")
-                sprite_prefix = gr.Textbox(label="立绘上传目录名，请写英文，不要带汉语，例如：komaeda", value="temp")
+                sprite_prefix = gr.Textbox(label="上传数据目录名，请写英文，不要带汉语，例如：komaeda", value="temp")
                 gr.Markdown("### 语音模块设置")
                 gr.Markdown("#### 以下如果没有可以为空")
-                gpt_model_path = gr.Textbox(label="GPT 模型路径")
-                sovits_model_path = gr.Textbox(label="SoVITS 模型路径， 如果没有可为空")
-                refer_audio_path = gr.Textbox(label="参考音频路径，如果没有可为空")
+                gpt_model_path = gr.Textbox(label="GPT 模型路径，如果没有可以为空")
+                sovits_model_path = gr.Textbox(label="SoVITS 模型路径")
+                refer_audio_path = gr.Textbox(label="参考音频路径")
                 prompt_text = gr.Textbox(label="参考音频文本")
-                prompt_lang = gr.Textbox(label="参考音频的语言")
+                prompt_lang = gr.Textbox(label="参考音频的语言, 英语填en，日语填ja，汉语填zh")
                 add_btn = gr.Button("添加或保存人物设置")
                 add_output = gr.Textbox(label="操作结果")
-    
+
 
         # 添加人物事件
         add_btn.click(
@@ -483,6 +526,22 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 char_name, char_color, sprite_prefix, gpt_model_path,
                 sovits_model_path, refer_audio_path, prompt_text, prompt_lang
             ]
+        )
+
+        export_btn.click(
+            export_character,
+            inputs=[selected_character],
+            outputs=[import_output]
+        )
+
+        import_btn.click(
+            import_character,
+            inputs=[import_file],
+            outputs=[import_output]
+        ).then(
+            update_character_dropdown,
+            inputs=[],
+            outputs=[selected_character]
         )
         
         # 立绘上传和情绪标注区域
