@@ -275,7 +275,7 @@ class UIWorker(QThread):
                     print(f"UIWorker: 加载图片时出错: {e}")
 
                 # 更新对话框文本
-                formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{character_config.name_color};'>{character_name}</b>：{speech}</p>"
+                formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{character_config.color};'>{character_name}</b>：{speech}</p>"
                 chat_history.append(formatted_speech)
                 self.update_dialog_signal.emit(formatted_speech)
 

@@ -134,10 +134,40 @@ class IndexTTSAdapter(TTSAdapter):
     Adapter for a hypothetical Index TTS service.
     This demonstrates how a new service can be integrated.
     """
-    def __init__(self, index_server_url="http://localhost:8000/"):
+    def __init__(self, index_server_url="http://localhost:9880/", index_server_work_path = None):
         self.index_server_url = index_server_url
         self.current_model = None
 
+        self.gpt_sovits_work_path = index_server_work_path
+
+        # Load the model and start the server process here
+        self._start_server_process()
+
+    def _start_server_process(self):
+        """
+        Starts the GPT-SoVITS server process if it's not running.
+        This is now the adapter's responsibility.
+        """
+        try:
+            # You might want to add a check here to see if the process is already running
+            response = requests.get(self.index_server_url)
+            if response.status_code == 200:
+                print("GPT-SoVITS server is already running.")
+                return
+        except requests.exceptions.ConnectionError:
+            print("GPT-SoVITS server not found, attempting to start...")
+
+        if self.gpt_sovits_work_path is None:
+            return
+
+        os_path = self.gpt_sovits_work_path
+        embeded_python_path = os.path.join(os_path, "runtime", "python.exe")
+        api_path = os.path.join(os_path, "api_v2.py")
+        
+        # Use subprocess.Popen to start the server in the background
+        subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
+        print("GPT-SoVITS server starting...")
+    
     def generate_speech(self, text, file_path=None, **kwargs):
         """Generates speech using the Index TTS API."""
         try:
@@ -225,3 +255,88 @@ class CosyVoiceAdapter(TTSAdapter):
         if model:
             self.current_model = model
             print(f"CosyVoice model switched to: {self.current_model}")
+
+class GenieTTSAdapter(TTSAdapter):
+    """
+    Adapter for the Genie TTS service.
+    Encapsulates the logic for loading character models, setting references, and generating speech.
+    """
+    def __init__(self, character_name: str, onnx_model_dir: str):
+        import genie_tts as genie
+        self.character_name = character_name
+        self.onnx_model_dir = onnx_model_dir
+        
+        # Step 1: Load the character voice model during initialization
+        self._load_character_model()
+
+    def _load_character_model(self):
+        """Internal method to load the character voice model."""
+        try:
+            genie.load_character(
+                character_name=self.character_name,
+                onnx_model_dir=self.onnx_model_dir,
+            )
+            print(f"Genie TTS character '{self.character_name}' loaded successfully.")
+        except Exception as e:
+            print(f"Failed to load Genie TTS character model: {e}")
+            raise
+
+    def generate_speech(self, text, file_path=None, **kwargs):
+        """
+        Generates TTS audio using the Genie TTS engine.
+        
+        Args:
+            text (str): The text to synthesize.
+            file_path (str, optional): The path to save the generated audio.
+            **kwargs: Extra arguments, including 'ref_audio_path' and 'audio_text'.
+        
+        Returns:
+            str: The absolute path of the generated audio file, or None on failure.
+        """
+        ref_audio_path = kwargs.get('ref_audio_path')
+        audio_text = kwargs.get('audio_text')
+        
+        if ref_audio_path and audio_text:
+            # Step 2: Set the reference audio if provided
+            try:
+                genie.set_reference_audio(
+                    character_name=self.character_name,
+                    audio_path=ref_audio_path,
+                    audio_text=audio_text,
+                )
+                print("Genie TTS reference audio set successfully.")
+            except Exception as e:
+                print(f"Failed to set Genie TTS reference audio: {e}")
+                # You might choose to raise an exception or continue without reference audio
+
+        try:
+            # Step 3: Run TTS inference
+            if not file_path:
+                file_path = os.path.join("temp", f"genie_tts_{os.urandom(4).hex()}.wav")
+            
+            genie.tts(
+                character_name=self.character_name,
+                text=text,
+                play=False,  # Set to False to prevent direct playback
+                save_path=file_path,
+            )
+            print("Genie TTS audio generation complete.")
+            return os.path.abspath(file_path)
+        except Exception as e:
+            print(f"Genie TTS generation failed: {e}")
+            return None
+
+    def switch_model(self, model_info):
+        """
+        For Genie TTS, this method can be used to switch characters or reload the model.
+        `model_info` is expected to have 'character_name' and 'onnx_model_dir'.
+        """
+        new_character_name = model_info.get("character_name")
+        new_onnx_model_dir = model_info.get("onnx_model_dir")
+
+        if new_character_name and new_onnx_model_dir:
+            if self.character_name != new_character_name or self.onnx_model_dir != new_onnx_model_dir:
+                self.character_name = new_character_name
+                self.onnx_model_dir = new_onnx_model_dir
+                print(f"Switching Genie TTS character to: {self.character_name}")
+                self._load_character_model()
