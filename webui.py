@@ -5,7 +5,13 @@ import shutil
 from pathlib import Path
 import json
 import subprocess
+import hashlib
 import glob
+import sys
+current_script = Path(__file__).resolve()
+project_root = current_script.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 import character_utils.file_util as fu
 from config.character_config import CharacterConfig
 
@@ -267,13 +273,10 @@ def upload_emotion_tags(character_name, emotion_tags):
     except Exception as e:
         return f"标注出错了：{e}"
 
-def upload_voice(character_name, sprite_index, voice_file):
+def upload_voice(character_name, sprite_index, voice_file, voice_text):
     """为指定立绘上传语音文件"""
     if not character_name:
         return "请先选择角色！", None
-    
-    if not voice_file:
-        return "请选择语音文件！", None
     
     # 找到对应的角色
     character = next((c for c in characters if c["name"] == character_name), None)
@@ -283,6 +286,10 @@ def upload_voice(character_name, sprite_index, voice_file):
     # 确保有立绘
     if not character["sprites"] or sprite_index >= len(character["sprites"]):
         return "立绘不存在！", None
+    
+    original_voice_path = character["sprites"][sprite_index].get("voice_path","")
+    if (not voice_file) and (not original_voice_path):
+        return "请选择语音文件！", None
     
     # 创建语音目录
     voice_char_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
@@ -295,6 +302,7 @@ def upload_voice(character_name, sprite_index, voice_file):
     
     # 更新角色数据
     character["sprites"][sprite_index]["voice_path"] = voice_path
+    character["sprites"][sprite_index]["voice_text"] = voice_text
     save_characters_to_file()
     
     return f"语音已上传到立绘 {sprite_index+1}！", voice_path
@@ -302,15 +310,15 @@ def upload_voice(character_name, sprite_index, voice_file):
 def get_sprite_voice(character_name, sprite_index):
     """获取指定立绘的语音路径"""
     if not character_name or sprite_index is None:
-        return None
+        return None,""
     
     # 找到对应的角色
     character = next((c for c in characters if c["name"] == character_name), None)
     if not character or not character["sprites"] or sprite_index >= len(character["sprites"]):
-        return None
+        return None,""
     
     # 返回语音路径
-    return character["sprites"][sprite_index].get("voice_path", None)
+    return character["sprites"][sprite_index].get("voice_path", None), character["sprites"][sprite_index].get("voice_path", "") 
 
 def launch_chat(template, voice_mode, init_sprite_path):
     global main_process
@@ -323,8 +331,16 @@ def launch_chat(template, voice_mode, init_sprite_path):
         voice_mode = 'gen' if voice_mode == '全语音模式' else 'preset'
         init_path = init_sprite_path[0] if init_sprite_path else ''
         if main_process is None or main_process.poll() is not None:
+            # 计算模板内容的哈希值（使用 SHA256 算法）
+            template_hash = hashlib.md5(template.encode('utf-8')).hexdigest()
+            history_filename = f"{template_hash}.json"
             main_process = subprocess.Popen(
-                ['./runtime/python.exe', 'main_sprite.py',  '--template=_temp', f'--voice_mode={voice_mode}', f'--init_sprite_path={init_path}']
+                ['./runtime/python.exe', 
+                 'main_sprite.py', 
+                 '--template=_temp', 
+                 f'--voice_mode={voice_mode}',
+                 f'--history={history_filename}'
+                 ]
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
         else:
@@ -646,7 +662,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 selected_sprite_info = gr.Textbox(label="当前选中的立绘", interactive=False)
                 
                 # 语音播放组件
-                sprite_voice_player = gr.Audio(label="立绘语音", interactive=False)
+                sprite_voice_player = gr.Audio(label="立绘语音，预设语音模式直接播放，但全语音模式就可以作为参考音频", interactive=False)
                 
                 # 语音上传组件
                 voice_upload = gr.Audio(
@@ -654,6 +670,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     sources=["upload"],
                     type="filepath"
                 )
+                sprite_voice_text = gr.Textbox(label="立绘语音内容，全语音模式需填写", interactive=True)
                 
                 upload_voice_btn = gr.Button("上传语音")
                 voice_upload_output = gr.Textbox(label="上传结果")
@@ -661,15 +678,16 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 # 更新选中立绘信息
                 def update_selected_sprite_info(character_name, sprite_index):
                     if not character_name or sprite_index is None:
-                        return "未选择立绘", None
+                        return "未选择立绘", None, ""
                     
                     character = next((c for c in characters if c["name"] == character_name), None)
                     if not character or not character.get("sprites") or sprite_index >= len(character["sprites"]):
-                        return "立绘不存在", None
+                        return "立绘不存在", None,""
                     
                     sprite = character["sprites"][sprite_index]
                     emotion_tag = sprite.get("emotion_tag", "")
                     voice_path = sprite.get("voice_path", "")
+                    voice_text = sprite.get("voice_text", "")
                     
                     info = f"立绘 {sprite_index+1}: {emotion_tag}"
                     if voice_path:
@@ -677,13 +695,13 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     else:
                         info += " (无语音)"
                     
-                    return info, voice_path if voice_path else None
+                    return info, voice_path if voice_path else None, voice_text
                 
                 # 当选择立绘或切换角色时更新信息
                 selected_sprite_index.change(
                     fn=update_selected_sprite_info,
                     inputs=[selected_character, selected_sprite_index],
-                    outputs=[selected_sprite_info, sprite_voice_player]
+                    outputs=[selected_sprite_info, sprite_voice_player, sprite_voice_text]
                 )
                 
                 selected_character.change(
@@ -695,12 +713,12 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 # 上传语音事件
                 upload_voice_btn.click(
                     fn=upload_voice,
-                    inputs=[selected_character, selected_sprite_index, voice_upload],
+                    inputs=[selected_character, selected_sprite_index, voice_upload, sprite_voice_text],
                     outputs=[voice_upload_output, sprite_voice_player]
                 ).then(
                     fn=update_selected_sprite_info,
                     inputs=[selected_character, selected_sprite_index],
-                    outputs=[selected_sprite_info, sprite_voice_player]
+                    outputs=[selected_sprite_info, sprite_voice_player, sprite_voice_text]
                 )                
 
     with gr.Tab("聊天模板"):
