@@ -1,16 +1,9 @@
 from asyncio import Queue
-import sys
 import os
 from pathlib import Path
-
-
-# 获取当前脚本的绝对路径
+import sys
 current_script = Path(__file__).resolve()
-
-# 获取项目根目录（main.py所在的目录）
 project_root = current_script.parent
-
-# 将项目根目录添加到Python模块搜索路径
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -34,6 +27,7 @@ import json
 from queue import Queue
 
 API_CONFIG_PATH = "./data/config/api.yaml"
+CHAT_HISTORY_PATH = "./data/chat_history"
 characters = CharacterConfig.read_from_files('./data/config/characters.yaml')
 api_config = {
     "llm_api_key": "",
@@ -191,13 +185,20 @@ class TTSWorker(QThread):
                         'sovits_model_path': self.character_config.sovits_model_path, 
                         'gpt_model_path': self.character_config.gpt_model_path,
                     }
-
                     self.tts_manager.switch_model(model_info)
+
+                    sprite_id = int(item["sprite"]) -1
+                    ref_audio_path = self.character_config.refer_audio_path
+                    prompt_text = self.character_config.prompt_text
+                    if self.character_config.sprites[sprite_id].get("voice_text",None):
+                        ref_audio_path = Path(self.character_config.sprites[sprite_id].get("voice_path")).absolute()
+                        ref_audio_path = str(ref_audio_path)
+                        prompt_text = self.character_config.sprites[sprite_id].get("voice_text")
                     audio_path = self.tts_manager.generate_tts(
                         speech_text, 
                         text_processor=text_processor,
-                        ref_audio_path=self.character_config.refer_audio_path,
-                        prompt_text=self.character_config.prompt_text,
+                        ref_audio_path=ref_audio_path,
+                        prompt_text=prompt_text,
                         prompt_lang=self.character_config.prompt_lang,
                         character_name=character_name,
                     )
@@ -208,6 +209,7 @@ class TTSWorker(QThread):
 
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")
+                self.put_data(character_name, speech, item['sprite'], '')
                 self.tts_queue.task_done()
 
 
@@ -234,7 +236,7 @@ class UIWorker(QThread):
                 character_name = output_data['character_name']
                 sprite_id = output_data['sprite']
                 speech = output_data['speech']
-                audio_path = output_data['audio_path']
+                audio_path = output_data.get('audio_path','')
 
                 if character_name == "旁白":
                     formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b>{character_name}</b>：{speech}</p>"
@@ -306,6 +308,37 @@ def getHistory():
     """获取聊天历史记录"""
     return chat_history
 
+def save_chat_history(filename, history):
+    """根据提供的文件名保存聊天记录到 JSON 文件。"""
+    if not filename:
+        print("没有提供历史文件名，跳过保存。")
+        return
+    history_dir = Path(CHAT_HISTORY_PATH)
+    history_dir.mkdir(parents=True, exist_ok=True)
+    history_path = history_dir / filename
+    try:
+        with open(history_path, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=4)
+        print(f"聊天记录已保存到 {history_path}")
+    except Exception as e:
+        print(f"保存聊天记录失败: {e}")
+
+def load_chat_history(filename):
+    """根据提供的文件名加载聊天记录。"""
+    global chat_history
+    if not filename:
+        print("没有提供历史文件名，跳过加载。")
+        return
+        
+    history_path = Path(CHAT_HISTORY_PATH) / filename
+    if history_path.exists():
+        try:
+            with open(history_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+            print(f"聊天记录已从 {history_path} 加载。")
+        except Exception as e:
+            print(f"加载聊天记录失败: {e}")
+
 def main():
     load_api_config_from_file()
     parser = argparse.ArgumentParser(description='示例脚本')
@@ -313,6 +346,7 @@ def main():
     parser.add_argument('--template', '-t', type=str, help='用户模板名称', default='komaeda_sprite')
     parser.add_argument('--voice_mode', '-v', type=str, default='gen')
     parser.add_argument('--init_sprite_path', '-isp', type=str, default='')
+    parser.add_argument('--history','--his',type=str, default='')
     parser.add_argument('--tts',type=str,default="gpt-sovits")
     parser.add_argument('--llm',type=str,default="deepseek")
 
@@ -332,6 +366,10 @@ def main():
     # 创建DeepSeek实例
     print("加载用户模板...", args)
 
+    messages = []
+    if args.history:
+        messages = load_chat_history(args.history)
+
     user_template = ""
     with open(f'./data/character_templates/{args.template}.txt', 'r', encoding='utf-8') as f:
         user_template = f.read()
@@ -341,11 +379,14 @@ def main():
     llm_adapter = LLMAdapterFactory.create_adapter(args.llm, api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""))
     llm_manager = LLMManager(adapter=llm_adapter,user_template=user_template)
 
+    if messages:
+        llm_manager.set_messages(messages)
+
     # 创建图像队列和情感队列
     image_queue = Queue()
     emotion_queue = Queue()
 
-     # 初始化 Pygame
+    # 初始化 Pygame
     pygame.mixer.init()
 
     # 创建三个消息队列
@@ -397,14 +438,22 @@ def main():
         user_input_queue.put(message)
         window.setNotification("您的消息已提交，正在等待LLM处理...")
     
+    if messages:
+        msg = messages[-1]['content']
+        dialog = json.loads(msg)['dialog']
+        audio_path_queue.put(dialog[-1])
+
+    
     window.message_submitted.connect(lambda message: on_message_submitted(message))
     window.open_chat_history_dialog.connect(lambda: window.open_history_dialog(getHistory()))
-    window.change_voice_language.connect(lambda lang: tts_manager.set_language(lang) if tts_manager else None)  
+    window.change_voice_language.connect(lambda lang: tts_manager.set_language(lang) if tts_manager else None)
+    window.close_window.connect(app.quit)
     
     # 确保在程序退出时停止所有线程
     app.aboutToQuit.connect(llm_worker.quit)
     app.aboutToQuit.connect(tts_worker.quit)
     app.aboutToQuit.connect(ui_worker.quit)
+    app.aboutToQuit.connect(lambda :save_chat_history(args.history,llm_manager.get_messages()))
 
     window.show()
 

@@ -35,7 +35,8 @@ class LLMAdapterFactory:
 class LLMManager:
     def __init__(self, adapter: LLMAdapter, user_template=''):
         self.llm_adapter = adapter
-        self.llm_adapter.set_user_template(user_template)
+        self.messages = []
+        self.set_user_template(user_template)
 
     def set_adapter(self, adapter: LLMAdapter):
         """
@@ -43,15 +44,50 @@ class LLMManager:
         """
         self.llm_adapter = adapter
         print(f"LLM adapter switched to {type(self.llm_adapter).__name__}.")
+        self.messages = []
 
+    def set_user_template(self, template: str):
+        """Sets the system prompt/user template and resets the messages list."""
+        self.messages = [{"role": "system", "content": template}]
+        self.llm_adapter.set_user_template(template)
+        
+    def add_message(self, role, content):
+        """Adds a message to the conversation history."""
+        self.messages.append({"role": role, "content": content})
+    
+    def get_messages(self):
+        """Returns the current list of messages."""
+        return self.messages
+
+    def set_messages(self, new_messages: list):
+        """Sets the conversation history to a new list of messages."""
+        if isinstance(new_messages, list):
+            self.messages = new_messages
+            print("Chat history has been updated.")
+        else:
+            print("Error: new_messages must be a list.")
+            
     def chat(self, message, stream=False):
         """
         Delegates the chat request to the current LLM adapter.
         """
-        return self.llm_adapter.chat(message, stream)
-    
-    def add_message(self, role, message):
-        """
-        Adds a message to the conversation history via the adapter.
-        """
-        self.llm_adapter.add_message(role, message)
+        self.add_message("user", message) # 先添加用户消息
+        response = self.llm_adapter.chat(self.get_messages(), stream) # 传递整个消息列表
+        
+        # 如果不是流式响应，处理并添加助手消息
+        if not stream and response:
+            try:
+                # 获取不同适配器的响应内容
+                if isinstance(self.llm_adapter, (DeepSeekAdapter, OpenAIAdapter)):
+                    new_message = response.choices[0].message.content
+                elif isinstance(self.llm_adapter, GeminiAdapter):
+                    new_message = response.text
+                elif isinstance(self.llm_adapter, ClaudeAdapter):
+                    new_message = response.content[0].text
+                
+                self.add_message("assistant", new_message) # 添加助手消息
+                print(f"Assistant's response added: {new_message}")
+            except Exception as e:
+                print(f"Failed to process or add assistant message: {e}")
+        
+        return response
