@@ -162,10 +162,12 @@ def generate_template(selected_characters):
         return "请至少选择一个角色！", ""
     
     names = ""
+
+    # 让同样的人物生成同样的模板，就会有一样的md5了，进而会有同样的聊天历史文件。
+    selected_characters = sorted(selected_characters)
+
     for char_name in selected_characters:
-        char_detail = next((c for c in characters if c['name'] == char_name), None)
-        if char_detail:
-            names += f"{char_name},"
+        names += f"{char_name},"
     
     template = f"你需要模拟弹丸论破中{names}的对话:\n"
     template += '''
