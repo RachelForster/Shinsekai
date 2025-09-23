@@ -510,13 +510,19 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     except Exception as e:
                         return f"导入失败：{e}"
 
-        # 删除人物
         with gr.Row():
             with gr.Column():
                 gr.Markdown("#### 角色信息")
                 char_name = gr.Textbox(label="人物名称", placeholder="请输入人物名称")
                 char_color = gr.ColorPicker(label="名称显示颜色", value="#d07d7d")
                 sprite_prefix = gr.Textbox(label="上传数据目录名，请写英文，不要带汉语，例如：komaeda", value="temp")
+            with gr.Column():
+                gr.Markdown("#### 角色设定")
+                character_setting = gr.TextArea(label="角色设定，写出角色的背景信息，性格特点，语言习惯", interactive=True)
+                ai_help_btn = gr.Button("AI 一键帮写")
+        
+        with gr.Row():
+            with gr.Column():
                 gr.Markdown("### 语音模块设置")
                 gr.Markdown("#### 以下如果没有可以为空")
                 gpt_model_path = gr.Textbox(label="GPT 模型路径，如果没有可以为空")
@@ -535,6 +541,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 char_name, char_color, sprite_prefix, gpt_model_path,
                 sovits_model_path, refer_audio_path, prompt_text, prompt_lang
             ],
+
             outputs=[
                 add_output
             ]
