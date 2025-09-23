@@ -23,8 +23,6 @@ class LLMAdapter(ABC):
         """Sets the system prompt/user template."""
         self.user_template = template
 
-# --- Concrete Adapters ---
-
 class DeepSeekAdapter(LLMAdapter):
     def __init__(self, api_key=None, base_url=None, model="deepseek-chat", **kwargs):
         super().__init__(**kwargs)
@@ -57,13 +55,13 @@ class OpenAIAdapter(LLMAdapter):
     
     def chat(self, messages: list, stream: bool = False, **kwargs):
         """Sends a message to the OpenAI LLM."""
-
         try:
             # 使用传入的 messages 参数
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 stream=stream,
+                response_format={'type': 'json_object'},
                 **kwargs
             )
             return response
