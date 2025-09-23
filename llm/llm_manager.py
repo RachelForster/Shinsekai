@@ -11,10 +11,9 @@ from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAd
 class LLMAdapterFactory:
     """Factory for creating different LLMAdapter instances."""
     _adapters = {
-        'deepseek': DeepSeekAdapter,
         'openai': OpenAIAdapter,
-        'gemini': GeminiAdapter,
-        'claude': ClaudeAdapter,
+        'genai': GeminiAdapter,
+        'anthropic': ClaudeAdapter,
     }
 
     @staticmethod
@@ -36,6 +35,7 @@ class LLMManager:
     def __init__(self, adapter: LLMAdapter, user_template=''):
         self.llm_adapter = adapter
         self.messages = []
+        self.user_template = user_template
         self.set_user_template(user_template)
 
     def set_adapter(self, adapter: LLMAdapter):
@@ -49,12 +49,16 @@ class LLMManager:
     def set_user_template(self, template: str):
         """Sets the system prompt/user template and resets the messages list."""
         self.messages = [{"role": "system", "content": template}]
+        self.user_template = template
         self.llm_adapter.set_user_template(template)
         
     def add_message(self, role, content):
         """Adds a message to the conversation history."""
         self.messages.append({"role": role, "content": content})
     
+    def clear_messages(self):
+        self.messages = [{"role": "system", "content": self.user_template}]
+
     def get_messages(self):
         """Returns the current list of messages."""
         return self.messages

@@ -14,12 +14,16 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 import character_utils.file_util as fu
 from config.character_config import CharacterConfig
+from llm.constants import LLM_BASE_URLS, LLM_MODELS
 
 # 存储数据的全局变量
 api_config = {
     "llm_api_key": "",
     "llm_base_url": "",
-    "gpt_sovits_url": ""
+    "llm_provider": "Deepseek",
+    "llm_model": "deepseek-chat",
+    "gpt_sovits_url": "",
+    "gpt_sovits_api_path":""
 }
 
 characters = []
@@ -34,11 +38,13 @@ CHARACTER_CONFIG_PATH = "./data/config/characters.yaml"
 TEMPLATE_DIR_PATH = "./data/character_templates"
 Path(UPLOAD_DIR).mkdir(exist_ok=True)
 
-def save_api_config(api_key, base_url, sovits_url, gpt_sovits_api_path):
+def save_api_config(llm_provider, llm_model, api_key, base_url, sovits_url, gpt_sovits_api_path):
     global api_config
     api_config = {
         "llm_api_key": api_key,
         "llm_base_url": base_url,
+        "llm_provider": llm_provider,
+        "llm_model": llm_model,
         "gpt_sovits_url": sovits_url,
         "gpt_sovits_api_path": gpt_sovits_api_path
     }
@@ -332,6 +338,7 @@ def launch_chat(template, voice_mode, init_sprite_path):
 
         voice_mode = 'gen' if voice_mode == '全语音模式' else 'preset'
         init_path = init_sprite_path[0] if init_sprite_path else ''
+
         if main_process is None or main_process.poll() is not None:
             # 计算模板内容的哈希值（使用 SHA256 算法）
             template_hash = hashlib.md5(template.encode('utf-8')).hexdigest()
@@ -341,7 +348,8 @@ def launch_chat(template, voice_mode, init_sprite_path):
                  'main_sprite.py', 
                  '--template=_temp', 
                  f'--voice_mode={voice_mode}',
-                 f'--history={history_filename}'
+                 f'--init_sprite_path={init_path}',
+                 f'--history={history_filename}',
                  ]
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
@@ -393,6 +401,10 @@ def get_character_sprites(character_name):
     
     return [(s["path"]) for s in character["sprites"]], character["emotion_tags"],[]
 
+def update_llm_base_url(llm_provider):
+    """更新LLM基础网址"""
+    return LLM_BASE_URLS.get(llm_provider, "")
+
 # 创建界面
 with gr.Blocks(title="LLM 角色管理") as demo:
     load_characters_from_file()
@@ -404,8 +416,15 @@ with gr.Blocks(title="LLM 角色管理") as demo:
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### LLM API 配置")
+                llm_provider = gr.Dropdown(
+                    choices=list(LLM_BASE_URLS.keys()),
+                    label="选择大语言模型供应商",
+                    value=api_config.get("llm_provider", "Deepseek")
+                )
+                llm_model = gr.Textbox(label="模型ID", value=api_config.get("llm_model", ""))
                 api_key = gr.Textbox(label="LLM API Key", type="password", value=api_config.get("llm_api_key", ""))
                 base_url = gr.Textbox(label="LLM API 基础网址", value=api_config.get("llm_base_url", ""))
+                
                 gr.Markdown("### GPT SoVITS API 配置，如果没有可以不填")
                 sovits_url = gr.Textbox(label="GPT-SoVITS API 调用地址", value=api_config.get("gpt_sovits_url", ""))
                 gpt_sovits_api_path = gr.Textbox(label="GPT-SoVITS 服务启动路径", value=api_config.get("gpt_sovits_api_path", ""))
@@ -413,12 +432,19 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             with gr.Column():
                 api_output = gr.Textbox(label="输出信息", interactive=False)
         
+        # Add events to update the dropdowns and base URL
+        llm_provider.change(
+            update_llm_base_url,
+            inputs=llm_provider,
+            outputs=base_url
+        )
+
         save_api_btn.click(
             save_api_config,
-            inputs=[api_key, base_url, sovits_url, gpt_sovits_api_path],
+            inputs=[llm_provider, llm_model,api_key, base_url, sovits_url, gpt_sovits_api_path],
             outputs=api_output
         )
-    
+
     active_character=gr.State("") #当前选中的人物名
     selected_sprite_index = gr.State(None)  # 存储当前选中的立绘索引
     init_sprite_path = gr.State("")

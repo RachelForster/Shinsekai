@@ -1,6 +1,7 @@
 from asyncio import Queue
 import os
 from pathlib import Path
+
 import sys
 current_script = Path(__file__).resolve()
 project_root = current_script.parent
@@ -16,6 +17,7 @@ from PyQt5.QtWidgets import QApplication
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from ui.desktop_ui import DesktopAssistantWindow
 from config.character_config import CharacterConfig
+from llm.constants import LLM_ADAPTER
 import threading
 import time
 import pygame
@@ -325,19 +327,52 @@ def save_chat_history(filename, history):
 
 def load_chat_history(filename):
     """根据提供的文件名加载聊天记录。"""
-    global chat_history
     if not filename:
         print("没有提供历史文件名，跳过加载。")
         return
         
+    messages=[]
     history_path = Path(CHAT_HISTORY_PATH) / filename
     if history_path.exists():
         try:
             with open(history_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                messages = json.load(f)
             print(f"聊天记录已从 {history_path} 加载。")
         except Exception as e:
             print(f"加载聊天记录失败: {e}")
+
+    global chat_history
+    chat_history.clear()
+    try:
+        for message in messages:
+            if message["role"] == 'user':
+                chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message['content']}</p>")
+            if message['role'] == 'assistant':
+                dialog = json.load(message['content'])['dialog']
+                for item in dialog:
+                    chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>{item['character_name']}</b>: {item['speech']}</p>")
+
+        print("chat-history", chat_history)
+    except Exception as e:
+        print("显示聊天历史失败", e)
+        return messages
+    return messages
+
+
+def clear_chat_history(history_file, ui_queue, llm_manager):
+    global chat_history
+    chat_history.clear()
+    history_file_path =Path(history_file)
+    if history_file_path.exists():
+        history_file_path.unlink()
+
+    llm_manager.clear_messages()
+
+    ui_queue.put({
+        'character_name':'旁白',
+        'speech':'消息记录已清空',
+        'sprite':'-1',
+    })
 
 def main():
     load_api_config_from_file()
@@ -373,10 +408,13 @@ def main():
     user_template = ""
     with open(f'./data/character_templates/{args.template}.txt', 'r', encoding='utf-8') as f:
         user_template = f.read()
-    print("Loaded user template:")
-    print(user_template)
 
-    llm_adapter = LLMAdapterFactory.create_adapter(args.llm, api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""))
+    llm_provider = api_config.get("llm_provider","deepseek")
+    llm_model = api_config.get("llm_model",'deepseek_chat')
+    if not llm_provider:
+        print("Please choose the llm provider")
+        return
+    llm_adapter = LLMAdapterFactory.create_adapter(adapter_name=LLM_ADAPTER.get(llm_provider), api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""), model = llm_model)
     llm_manager = LLMManager(adapter=llm_adapter,user_template=user_template)
 
     if messages:
@@ -393,7 +431,6 @@ def main():
     user_input_queue = Queue()
     tts_queue = Queue()
     audio_path_queue = Queue()
-
    
     # 创建桌面助手窗口
     app = QApplication([])
@@ -415,11 +452,11 @@ def main():
     llm_worker.update_notification_signal.connect(window.setNotification)
     llm_worker.start()
 
-    init_sprite_path= args.init_sprite_path
+    init_sprite_path = args.init_sprite_path
+    print (init_sprite_path)
     if not init_sprite_path:
         init_sprite_path = './data/sprite/usami/Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp'
         window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:#e6b2b2'>兔兔美</b>：欢迎来到新世界程序，希望你和大家能开启love love~的新学期，快和大家聊天吧</p>")
-
 
     # 更新初始立绘
     init_image = cv2.imread(init_sprite_path, cv2.IMREAD_UNCHANGED)
@@ -439,15 +476,23 @@ def main():
         window.setNotification("您的消息已提交，正在等待LLM处理...")
     
     if messages:
-        msg = messages[-1]['content']
-        dialog = json.loads(msg)['dialog']
-        audio_path_queue.put(dialog[-1])
+        try:
+            msg = ''
+            if messages[-1]['role'] == 'assistant':
+                msg = messages[-1]['content']
+            elif len[messages] > 2:
+                msg = messages[-2]['content']
+            dialog = json.loads(msg)['dialog']
+            audio_path_queue.put(dialog[-1])
+        except Exception as e:
+            print('更新初始立绘失败', e)
 
     
     window.message_submitted.connect(lambda message: on_message_submitted(message))
     window.open_chat_history_dialog.connect(lambda: window.open_history_dialog(getHistory()))
     window.change_voice_language.connect(lambda lang: tts_manager.set_language(lang) if tts_manager else None)
     window.close_window.connect(app.quit)
+    window.clear_chat_history.connect(lambda: clear_chat_history(history_file=args.history, ui_queue=audio_path_queue, llm_manager=llm_manager))
     
     # 确保在程序退出时停止所有线程
     app.aboutToQuit.connect(llm_worker.quit)

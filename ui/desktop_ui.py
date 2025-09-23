@@ -228,6 +228,7 @@ class DesktopAssistantWindow(QWidget):
     open_chat_history_dialog = pyqtSignal()  # 定义信号用于打开聊天历史记录对话框
     change_voice_language = pyqtSignal(str)  # 定义信号用于更改语音的语言
     close_window = pyqtSignal() #关闭窗口信号
+    clear_chat_history = pyqtSignal()
 
     def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False):
         """初始化窗口"""
@@ -359,15 +360,19 @@ class DesktopAssistantWindow(QWidget):
         
         # 添加菜单项
         history_action = QAction("历史记录", self)
+        clear_history_action = QAction("清空历史记录",self)
         language_action = QAction("语音语言", self)
         
         # 连接菜单项的信号
         history_action.triggered.connect(lambda: self.open_chat_history_dialog.emit())
         language_action.triggered.connect(self.show_language_settings)
+        clear_history_action.triggered.connect(lambda: self.clear_chat_history.emit())
         
         # 添加菜单项到菜单
         menu.addAction(history_action)
+        menu.addAction(clear_history_action)
         menu.addAction(language_action)
+        
         
         # 显示菜单在设置按钮下方
         menu.exec_(self.settings_btn.mapToGlobal(
