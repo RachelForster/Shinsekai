@@ -348,7 +348,7 @@ def load_chat_history(filename):
             if message["role"] == 'user':
                 chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message['content']}</p>")
             if message['role'] == 'assistant':
-                dialog = json.load(message['content'])['dialog']
+                dialog = json.loads(message['content'])['dialog']
                 for item in dialog:
                     chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>{item['character_name']}</b>: {item['speech']}</p>")
 
