@@ -102,8 +102,9 @@ class LLMWorker(QThread):
                 for chunk in response_stream:
                     # 检查是否为完整消息块
                     chunk_message = chunk.choices[0].delta.content
-                    response_buffer += chunk_message
-                    content += chunk_message
+                    if chunk_message:
+                        response_buffer += chunk_message
+                        content += chunk_message
 
                     while '}' in response_buffer:
                         end_index = response_buffer.find('}') + 1
@@ -158,6 +159,7 @@ class TTSWorker(QThread):
         while self.running:
             try:
                 item = self.tts_queue.get()
+                print("LLM worker get an item")
                 if item is None:
                     break
 
@@ -352,7 +354,6 @@ def load_chat_history(filename):
                 for item in dialog:
                     chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>{item['character_name']}</b>: {item['speech']}</p>")
 
-        print("chat-history", chat_history)
     except Exception as e:
         print("显示聊天历史失败", e)
         return messages
@@ -410,11 +411,12 @@ def main():
         user_template = f.read()
 
     llm_provider = api_config.get("llm_provider","deepseek")
-    llm_model = api_config.get("llm_model",'deepseek_chat')
+    llm_model = api_config.get("llm_model").get(llm_provider,'')
+    api_key =api_config.get("llm_api_key").get(llm_provider,'')
     if not llm_provider:
         print("Please choose the llm provider")
         return
-    llm_adapter = LLMAdapterFactory.create_adapter(adapter_name=LLM_ADAPTER.get(llm_provider), api_key=api_config.get("llm_api_key",""),base_url=api_config.get("llm_base_url",""), model = llm_model)
+    llm_adapter = LLMAdapterFactory.create_adapter(adapter_name=LLM_ADAPTER.get(llm_provider), api_key=api_key,base_url=api_config.get("llm_base_url",""), model = llm_model)
     llm_manager = LLMManager(adapter=llm_adapter,user_template=user_template)
 
     if messages:

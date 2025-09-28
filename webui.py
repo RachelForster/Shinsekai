@@ -18,10 +18,10 @@ from llm.constants import LLM_BASE_URLS, LLM_MODELS
 
 # 存储数据的全局变量
 api_config = {
-    "llm_api_key": "",
+    "llm_api_key": {},
     "llm_base_url": "",
     "llm_provider": "Deepseek",
-    "llm_model": "deepseek-chat",
+    "llm_model": {},
     "gpt_sovits_url": "",
     "gpt_sovits_api_path":""
 }
@@ -40,11 +40,15 @@ Path(UPLOAD_DIR).mkdir(exist_ok=True)
 
 def save_api_config(llm_provider, llm_model, api_key, base_url, sovits_url, gpt_sovits_api_path):
     global api_config
+    llm_api_key = api_config.get("llm_api_key",{})
+    llm_model_map = api_config.get("llm_model",{})
+    llm_api_key[llm_provider] = api_key
+    llm_model_map[llm_provider] = llm_model
     api_config = {
-        "llm_api_key": api_key,
+        "llm_api_key": llm_api_key,
         "llm_base_url": base_url,
         "llm_provider": llm_provider,
-        "llm_model": llm_model,
+        "llm_model": llm_model_map,
         "gpt_sovits_url": sovits_url,
         "gpt_sovits_api_path": gpt_sovits_api_path
     }
@@ -401,9 +405,12 @@ def get_character_sprites(character_name):
     
     return [(s["path"]) for s in character["sprites"]], character["emotion_tags"],[]
 
-def update_llm_base_url(llm_provider):
-    """更新LLM基础网址"""
-    return LLM_BASE_URLS.get(llm_provider, "")
+def update_llm_info(llm_provider):
+    """更新LLM信息"""
+    global api_config
+    llm_model_map = api_config.get("llm_model",{})
+    llm_api_map = api_config.get("llm_api_key",{})
+    return LLM_BASE_URLS.get(llm_provider, ""), llm_model_map.get(llm_provider,""), llm_api_map.get(llm_provider,"")
 
 # 创建界面
 with gr.Blocks(title="LLM 角色管理") as demo:
@@ -434,9 +441,22 @@ with gr.Blocks(title="LLM 角色管理") as demo:
         
         # Add events to update the dropdowns and base URL
         llm_provider.change(
-            update_llm_base_url,
+            update_llm_info,
             inputs=llm_provider,
-            outputs=base_url
+            outputs=[base_url,llm_model,api_key]
+
+
+
+
+
+
+
+
+
+
+
+
+
         )
 
         save_api_btn.click(
