@@ -42,6 +42,7 @@ def save_api_config(llm_provider, llm_model, api_key, base_url, sovits_url, gpt_
     global api_config
     llm_api_key = api_config.get("llm_api_key",{})
     llm_model_map = api_config.get("llm_model",{})
+    llm_api_key = {} if llm_api_key is None else llm_api_key
     llm_api_key[llm_provider] = api_key
     llm_model_map[llm_provider] = llm_model
     api_config = {

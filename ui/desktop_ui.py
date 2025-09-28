@@ -242,7 +242,12 @@ class DesktopAssistantWindow(QWidget):
         screen_geometry = screen.geometry()
         self.original_width = min(screen_geometry.height(), screen_geometry.width()) // 4 * 3
         self.original_height = self.original_width
-        self.font_size = "48px;"  # 默认字体大小
+
+        base_dpi = 300.0
+        curren_dpi = screen.logicalDotsPerInch()
+        self.font_size = f"{str(int(48*curren_dpi//base_dpi))}px;"
+        self.btn_font_size = f"{str(int(28*curren_dpi//base_dpi))}px;"
+        print(self.font_size)
 
         # 设置图像显示线程
         if not self.sprite_mode:
@@ -440,33 +445,33 @@ class DesktopAssistantWindow(QWidget):
         # 输入框
         self.input_box = QLineEdit()
         self.input_box.setPlaceholderText("输入消息...")
-        self.input_box.setStyleSheet("""
-            QLineEdit {
+        self.input_box.setStyleSheet(f"""
+            QLineEdit {{
                 background-color: rgba(50, 50, 50, 200);
                 color: white;
                 font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
                 border: 1px solid #555;
                 border-radius: 5px;
                 padding: 20px;
-                font-size: 28px;
-            }
+                font-size: {self.btn_font_size};
+            }}
         """)
         self.input_box.returnPressed.connect(self.sendMessage)
         
         # 发送按钮
         self.send_btn = QPushButton("发送")
-        self.send_btn.setStyleSheet("""
-            QPushButton {
+        self.send_btn.setStyleSheet(f"""
+            QPushButton {{
                 background-color: #4CAF50;
                 color: white;
                 border: none;
                 border-radius: 10px;
                 padding: 10px;
-                font-size: 28px;
-            }
-            QPushButton:hover {
+                font-size: {self.btn_font_size}
+            }}
+            QPushButton:hover {{
                 background-color: #45a049;
-            }
+            }}
         """)
         self.send_btn.clicked.connect(self.sendMessage)
         
