@@ -15,6 +15,7 @@ if str(project_root) not in sys.path:
 import character_utils.file_util as fu
 from config.character_config import CharacterConfig
 from llm.constants import LLM_BASE_URLS, LLM_MODELS
+from llm.llm_manager import LLMAdapterFactory, LLMManager
 
 # 存储数据的全局变量
 api_config = {
@@ -25,6 +26,8 @@ api_config = {
     "gpt_sovits_url": "",
     "gpt_sovits_api_path":""
 }
+
+llm_manager = None
 
 characters = []
 
@@ -37,6 +40,55 @@ API_CONFIG_PATH = "./data/config/api.yaml"
 CHARACTER_CONFIG_PATH = "./data/config/characters.yaml"
 TEMPLATE_DIR_PATH = "./data/character_templates"
 Path(UPLOAD_DIR).mkdir(exist_ok=True)
+
+def generate_character_setting(name, setting):
+    global characters
+    global llm_manager
+    global api_config
+
+    if not name or name == "新角色":
+        return "请选择要生成的角色！", setting
+    
+    character = next((c for c in characters if c["name"] == name), None)
+    if character is None:
+        return f"找不到角色: {name}", setting
+    
+    setting = "无" if not setting else setting
+
+    template = f"""
+    你需要帮助用户写出{name}的角色设定，包括{name}的背景信息，性格特点，和语言习惯。输出plain text格式，不要使用markdown格式。
+    将{name}的背景信息，性格特点，和语言习惯分段写，并且同一段内标号，不一定是3点，有可能比3点多。
+    输出格式示例：
+    {name}的背景信息：
+    1.姓名和出处：
+    2.外表：
+    3.背景：
+    4.经历：
+
+    {name}的性格特点：
+    1.
+    2.
+    3.
+
+    {name}的语言习惯：
+    1.
+    2.
+    """
+    try:
+        if llm_manager is None:
+            llm_provider = api_config.get("llm_provider","Deepseek")
+            llm_model = api_config.get("llm_model").get(llm_provider,'')
+            api_key =api_config.get("llm_api_key").get(llm_provider,'')
+            if not llm_provider:
+                print("Please choose the llm provider")
+                return "请先设定大语言模型供应商", setting
+            llm_adapter = LLMAdapterFactory.create_adapter(llm_provider=llm_provider, api_key=api_key,base_url=api_config.get("llm_base_url",""), model = llm_model)
+            llm_manager = LLMManager(adapter=llm_adapter,user_template = template)
+        llm_manager.set_user_template(template)
+        character["character_setting"] = llm_manager.chat(f"补充信息：{setting},请输出结果：", stream = False, response_format={"type":"text"})
+        return "输出成功", character['character_setting']
+    except Exception as e:
+        return f"输出失败:{e}", setting
 
 def save_api_config(llm_provider, llm_model, api_key, base_url, sovits_url, gpt_sovits_api_path):
     global api_config
@@ -88,7 +140,7 @@ def save_characters_to_file():
         return f"保存失败: {str(e)}"
 
 def add_character(name, color, sprite_prefix, gpt_model_path, 
-                 sovits_model_path, refer_audio_path, prompt_text, prompt_lang):
+                 sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting):
     global characters
     
     if not name:
@@ -105,9 +157,10 @@ def add_character(name, color, sprite_prefix, gpt_model_path,
             "refer_audio_path": refer_audio_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
-            "sprites": [],  # 新增：存储立绘和情绪标签
+            "sprites": [],
             "sprite_scale": 1.0,
             "emotion_tags": "",
+            "character_setting": "",
         }    
         characters.append(character)
         save_characters_to_file()
@@ -121,6 +174,7 @@ def add_character(name, color, sprite_prefix, gpt_model_path,
         character["prompt_text"]=prompt_text
         character["prompt_lang"]=prompt_lang
         character["refer_audio_path"]=refer_audio_path
+        character["character_setting"]=character_setting
         save_characters_to_file()
         return "人物已更新！", [c.get("name", "") for c in characters]
 def delete_character(name):
@@ -180,7 +234,8 @@ def generate_template(selected_characters):
     for char_name in selected_characters:
         names += f"{char_name},"
     
-    template = f"你需要模拟弹丸论破中{names}的对话:\n"
+    template = f"你需要模拟{names}的对话:\n"
+
     template += '''
 每次输出时，必须严格使用 JSON 格式，结构为：
 {
@@ -199,6 +254,13 @@ def generate_template(selected_characters):
         template += f"{char_name}有{len(char_detail['sprites'])}张立绘：\n"
         template += f"{char_detail['emotion_tags']}\n\n"
 
+    template += "\n角色说明：\n"
+    for char_name in selected_characters:
+        char_detail = next((c for c in characters if c['name'] == char_name), None)
+        if char_detail.get("character_setting",''):
+            template += f"以下是{char_name}的角色设定：\n"
+            template += f"{char_detail.get("character_setting","")}\n\n"
+        
     template +=f"""
 要求：
 1. 不要输出除 JSON 以外的任何文本。
@@ -429,10 +491,11 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     label="选择大语言模型供应商",
                     value=api_config.get("llm_provider", "Deepseek")
                 )
-                llm_model = gr.Textbox(label="模型ID", value=api_config.get("llm_model", ""))
-                api_key = gr.Textbox(label="LLM API Key", type="password", value=api_config.get("llm_api_key", ""))
+                llm_provider_value = api_config.get("llm_provider","Deepseek")
+                llm_model = gr.Textbox(label="模型ID", value=api_config.get("llm_model", "").get(llm_provider_value,""))
+                api_key = gr.Textbox(label="LLM API Key", type="password", value=api_config.get("llm_api_key", {}).get(llm_provider_value,""))
                 base_url = gr.Textbox(label="LLM API 基础网址", value=api_config.get("llm_base_url", ""))
-                
+    
                 gr.Markdown("### GPT SoVITS API 配置，如果没有可以不填")
                 sovits_url = gr.Textbox(label="GPT-SoVITS API 调用地址", value=api_config.get("gpt_sovits_url", ""))
                 gpt_sovits_api_path = gr.Textbox(label="GPT-SoVITS 服务启动路径", value=api_config.get("gpt_sovits_api_path", ""))
@@ -445,19 +508,6 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             update_llm_info,
             inputs=llm_provider,
             outputs=[base_url,llm_model,api_key]
-
-
-
-
-
-
-
-
-
-
-
-
-
         )
 
         save_api_btn.click(
@@ -489,8 +539,8 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 def update_character_information(selected_character):
                     character = next((c for c in characters if c["name"] == selected_character), None)
                     if character == None:
-                        return "","","","","","","",""
-                    return character["name"], character["color"], character["sprite_prefix"], character["gpt_model_path"], character["sovits_model_path"], character["refer_audio_path"], character["prompt_text"], character["prompt_lang"]
+                        return "","","","","","","","",""
+                    return character["name"], character["color"], character["sprite_prefix"], character["gpt_model_path"], character["sovits_model_path"], character["refer_audio_path"], character["prompt_text"], character["prompt_lang"], character.get("character_setting","")
                 
             with gr.Column():
                 gr.Markdown("从文件导入")
@@ -560,7 +610,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             add_character,
             inputs=[
                 char_name, char_color, sprite_prefix, gpt_model_path,
-                sovits_model_path, refer_audio_path, prompt_text, prompt_lang
+                sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting
             ],
 
             outputs=[
@@ -585,10 +635,10 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             inputs=None,
             outputs=selected_character
         ).then(
-            lambda: ("","","","","","","",""),
+            lambda: ("","","","","","","","",""),
             inputs=None,
             outputs=[char_name, char_color, sprite_prefix, gpt_model_path,
-                      sovits_model_path, refer_audio_path, prompt_text, prompt_lang]
+                      sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting]
         )
 
         selected_character.change(
@@ -596,7 +646,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             inputs=[selected_character],
             outputs=[
                 char_name, char_color, sprite_prefix, gpt_model_path,
-                sovits_model_path, refer_audio_path, prompt_text, prompt_lang
+                sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting
             ]
         )
 
@@ -614,6 +664,12 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             update_character_dropdown,
             inputs=[],
             outputs=[selected_character]
+        )
+
+        ai_help_btn.click(
+            generate_character_setting,
+            inputs=[selected_character, character_setting],
+            outputs=[import_output, character_setting]
         )
         
         # 立绘上传和情绪标注区域
