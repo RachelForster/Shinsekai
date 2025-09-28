@@ -17,12 +17,3 @@ LLM_MODELS = {
     "豆包": ["doubao-seed-1.6", "doubao-seed-1.6-flash", "doubao-seed-1.6-thinking"],
     "通义千问": ["qwen-max", "qwen-plus"]
 }
-
-LLM_ADAPTER = {
-    "Deepseek": "openai",
-    "ChatGPT": "openai",
-    "Gemini": "genai",
-    "Claude": "anthropic",
-    "豆包": "openai",
-    "通义千问": "openai"
-}

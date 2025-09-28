@@ -30,7 +30,7 @@ class DeepSeekAdapter(LLMAdapter):
         self.client.base_url = base_url
         self.model = model
 
-    def chat(self, messages: list, stream: bool = False, **kwargs):
+    def chat(self, messages: list, stream: bool = False, response_format={'type': 'json_object'}, **kwargs):
         """Sends a message to the DeepSeek LLM."""
         try:
             # 使用传入的 messages 参数
@@ -38,7 +38,7 @@ class DeepSeekAdapter(LLMAdapter):
                 model=self.model,
                 messages=messages,
                 stream=stream,
-                response_format={'type': 'json_object'},
+                response_format=response_format,
                 **kwargs
             )
             return response
@@ -53,7 +53,7 @@ class OpenAIAdapter(LLMAdapter):
         self.client.base_url = base_url
         self.model = model
     
-    def chat(self, messages: list, stream: bool = False, **kwargs):
+    def chat(self, messages: list, stream: bool = False, response_format={'type': 'json_object'}, **kwargs):
         """Sends a message to the OpenAI LLM."""
         try:
             # 使用传入的 messages 参数
@@ -61,7 +61,7 @@ class OpenAIAdapter(LLMAdapter):
                 model=self.model,
                 messages=messages,
                 stream=stream,
-                response_format={'type': 'json_object'},
+                response_format=response_format,
                 **kwargs
             )
             return response

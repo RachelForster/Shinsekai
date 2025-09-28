@@ -17,7 +17,6 @@ from PyQt5.QtWidgets import QApplication
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from ui.desktop_ui import DesktopAssistantWindow
 from config.character_config import CharacterConfig
-from llm.constants import LLM_ADAPTER
 import threading
 import time
 import pygame
@@ -210,6 +209,7 @@ class TTSWorker(QThread):
                     audio_path = self.character_config.sprites[int(item['sprite']) -1].get('voice_path','')
                 # 将包含音频路径和原始数据的字典放入音频路径队列
                 self.put_data(character_name, speech, item['sprite'], audio_path)
+                print(f'TTSWorker put: {audio_path} into the UI queue')
 
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")
@@ -410,13 +410,13 @@ def main():
     with open(f'./data/character_templates/{args.template}.txt', 'r', encoding='utf-8') as f:
         user_template = f.read()
 
-    llm_provider = api_config.get("llm_provider","deepseek")
+    llm_provider = api_config.get("llm_provider","Deepseek")
     llm_model = api_config.get("llm_model").get(llm_provider,'')
     api_key =api_config.get("llm_api_key").get(llm_provider,'')
     if not llm_provider:
         print("Please choose the llm provider")
         return
-    llm_adapter = LLMAdapterFactory.create_adapter(adapter_name=LLM_ADAPTER.get(llm_provider), api_key=api_key,base_url=api_config.get("llm_base_url",""), model = llm_model)
+    llm_adapter = LLMAdapterFactory.create_adapter(llm_provider=llm_provider, api_key=api_key,base_url=api_config.get("llm_base_url",""), model = llm_model)
     llm_manager = LLMManager(adapter=llm_adapter,user_template=user_template)
 
     if messages:

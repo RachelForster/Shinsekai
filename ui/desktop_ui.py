@@ -247,7 +247,6 @@ class DesktopAssistantWindow(QWidget):
         curren_dpi = screen.logicalDotsPerInch()
         self.font_size = f"{str(int(48*curren_dpi//base_dpi))}px;"
         self.btn_font_size = f"{str(int(28*curren_dpi//base_dpi))}px;"
-        print(self.font_size)
 
         # 设置图像显示线程
         if not self.sprite_mode:

@@ -11,23 +11,26 @@ from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAd
 class LLMAdapterFactory:
     """Factory for creating different LLMAdapter instances."""
     _adapters = {
-        'openai': OpenAIAdapter,
-        'genai': GeminiAdapter,
-        'anthropic': ClaudeAdapter,
+        "Deepseek": DeepSeekAdapter,
+        "ChatGPT": OpenAIAdapter,
+        "Gemini":  GeminiAdapter,
+        "Claude": ClaudeAdapter,
+        "豆包": OpenAIAdapter,
+        "通义千问": OpenAIAdapter,
     }
 
     @staticmethod
-    def create_adapter(adapter_name: str, **kwargs) -> LLMAdapter:
+    def create_adapter(llm_provider: str, **kwargs) -> LLMAdapter:
         """Creates and returns an LLMAdapter instance based on the given name."""
-        adapter_class = LLMAdapterFactory._adapters.get(adapter_name.lower())
+        adapter_class = LLMAdapterFactory._adapters.get(llm_provider)
         
         if not adapter_class:
-            raise ValueError(f"Unsupported LLM adapter: '{adapter_name}'. Supported adapters are: {list(LLMAdapterFactory._adapters.keys())}")
+            raise ValueError(f"Unsupported LLM adapter: '{llm_provider}'. Supported adapters are: {list(LLMAdapterFactory._adapters.keys())}")
         
         try:
             return adapter_class(**kwargs)
         except TypeError as e:
-            print(f"Error creating adapter '{adapter_name}'. Check the required arguments.")
+            print(f"Error creating adapter '{llm_provider}'. Check the required arguments.")
             raise e
 
 
@@ -71,12 +74,12 @@ class LLMManager:
         else:
             print("Error: new_messages must be a list.")
             
-    def chat(self, message, stream=False):
+    def chat(self, message, stream=False, response_format = {'type':'json_object'}):
         """
         Delegates the chat request to the current LLM adapter.
         """
         self.add_message("user", message) # 先添加用户消息
-        response = self.llm_adapter.chat(self.get_messages(), stream) # 传递整个消息列表
+        response = self.llm_adapter.chat(self.get_messages(), stream, response_format) # 传递整个消息列表
         
         # 如果不是流式响应，处理并添加助手消息
         if not stream and response:
@@ -91,7 +94,7 @@ class LLMManager:
                 
                 self.add_message("assistant", new_message) # 添加助手消息
                 print(f"Assistant's response added: {new_message}")
+                return new_message
             except Exception as e:
                 print(f"Failed to process or add assistant message: {e}")
-        
         return response
