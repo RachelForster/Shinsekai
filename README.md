@@ -6,7 +6,7 @@
 
 ### AI角色管理
 - **角色创建与配置**
-  - 自定义角色名称、显示颜色
+  - 自定义角色立绘，语音，和设定
   - AI辅助生成角色背景故事和性格设定
   - 支持角色导入/导出，方便分享
 
@@ -18,19 +18,13 @@
 - **情绪标注**
   - 为每张立绘标注情绪关键词
   - 智能情绪与立绘匹配
-  - 批量情绪标签管理
 
 ### 语音系统
 - **双模式支持**
   - **全语音模式**：每句台词实时生成语音（需GPT-SoVITS）
   - **预设语音模式**：播放预先上传的语音文件
 
-- **语音管理**
-  - 为立绘绑定特定语音
-  - 支持多种音频格式
-  - 语音文本内容管理
-
-![Wellerman-Uri](assets/2347acc3-799f-4913-8035-ae077ba3dc22.gif)
+![Wellerman-Uri](assets/present_example.png)
 
 [![](https://img.shields.io/badge/-完整效果展示Ⅰ-EEE?logo=bilibili)](https://www.bilibili.com/video/BV15H4y1o73x/?share_source=copy_web&vd_source=4641a345db4563ba087d0ed0ba8bdf85)
 [![](https://img.shields.io/badge/-完整效果展示Ⅱ-EEE?logo=bilibili)](https://www.bilibili.com/video/BV1Hp4y1c7TU/?share_source=copy_web&vd_source=4641a345db4563ba087d0ed0ba8bdf85)
@@ -43,8 +37,7 @@
 ```
 git clone https://github.com/RachelForster/Shinsekai
 ```
-- 或者：下载整合包并解压
-
+- 或者：下载整合包并解压：https://github.com/RachelForster/Shinsekai/releases 
 
 ### 安装依赖库
 如果是整合包，请双击install.bat
