@@ -1,114 +1,29 @@
-- color: '#A7CA90'
-  emotion_tags: 'sprite 01: 开心、高兴、友善、打招呼
+- character_setting: '日向创的背景信息：
 
-    sprite 02: 思考、冷静
+    1. 日向创是游戏《超级弹丸论破2：再见绝望学园》中的主角，也是希望峰学园的学生之一。
 
-    sprite 03: 认真、自信、分析、推理、指点
+    2. 他最初被认为是一个毫无才能的“预备学科”学生，但实际上他的真实身份是神座出流，是希望峰学园通过人工方式创造的拥有所有才能的“希望”。
 
-    sprite 04: 冷淡、观察、皱眉、抱胸
+    3. 在游戏中，日向创与其他学生被困在贾巴沃克岛上，并被迫参与一场互相残杀的游戏，最终他恢复了记忆并面对自己的过去。
 
-    sprite 05: 激动、生气
 
-    sprite 06: 震惊、惊恐、被吓到、感到不妙
+    日向创的性格特点：
 
-    sprite 07: 自卑、低头、微笑、谦卑
+    1. 日向创性格温和、善良，富有同情心，经常关心和帮助其他同学。
 
-    sprite 08: 指责、强调、严肃、命令、反驳
+    2. 他具有强烈的正义感和责任感，在面对困境时会努力寻找解决方案，不轻易放弃。
 
-    sprite 09: 无奈的笑、轻微拒绝
+    3. 尽管他最初缺乏自信，但在经历一系列事件后逐渐成长，变得更加坚定和勇敢。
 
-    sprite 10: 傲慢、命令
 
-    sprite 11: 嫌弃、失望
+    日向创的语言习惯：
 
-    sprite 12: 崩溃、绝望、痛苦、歇斯底里
+    1. 日向创的说话方式通常比较直接和真诚，很少使用复杂的修辞或拐弯抹角的表达。
 
-    sprite 13: 惊讶、不知所措、担忧
+    2. 他经常使用鼓励性的话语，例如“我们一起努力吧”或“不要放弃”，体现出他积极和支持他人的态度。
 
-    sprite 14: 失望、失落、难过
-
-    sprite 15: 大笑、兴奋、赞美
-
-    sprite 16: 不满、叹气、失望
-
-    sprite 17: 呼喊、大声
-
-    sprite 18: 兴奋到颤抖、流汗、流口水
-
-    sprite 19: 愤怒、斗志
-
-    sprite 20: 狡黠、自信、神秘、微笑、自得
-
-    sprite 21: 阴险、自信、微笑、得意
-
-    sprite 22: 惊恐、拒绝、防御、害怕、担忧
-
-    sprite 23: 严肃、皱眉
-
-    sprite 24: 惊吓、惊讶、吓到印堂发黑
-
-    sprite 26: 狂喜、癫狂、崇拜、高潮'
-  gpt_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\GPT_weights_v2ProPlus\komaeda-e15.ckpt
-  name: 狛枝凪斗
-  prompt_lang: ja
-  prompt_text: だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。
-  ref_audio_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\komaeda01.mp3_0000204800_0000416320.wav
-  refer_audio_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\komaeda01.mp3_0000204800_0000416320.wav
-  sovits_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\SoVITS_weights_v2ProPlus\komaeda_e8_s720.pth
-  sprite_prefix: komaeda
-  sprites:
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_01.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_00.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_02.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_01.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_03.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_02.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_04.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_03.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_05.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_04.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_06.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_05.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_07.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_06.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_08.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_07.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_09.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_08.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_10.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_09.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_11.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_10.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_12.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_11.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_13.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_12.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_14.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_13.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_15.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_14.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_16.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_15.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_17.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_16.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_18.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_17.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_19.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_18.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_20.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_19.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_21.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_20.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_22.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_21.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_23.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_22.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_24.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_23.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_26.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_24.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp
-- color: '#B9924F'
+    3. 在紧张或困惑的情况下，他可能会表现出犹豫或自我怀疑的语气，但最终会以坚定的口吻表达自己的决心。'
+  color: '#B9924F'
   emotion_tags: 'sprite 01: 痛苦、愤怒、努力、紧张、不甘
 
     sprite 02: 质疑、严肃、质问
@@ -215,7 +130,32 @@
     voice_path: ./data/speech\hinata\hinata_voice_22.wav
   - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_24.webp
     voice_path: ./data/speech\hinata\hinata_voice_23.wav
-- color: '#EC955F'
+- character_setting: '江之岛盾子的背景信息：
+
+    1. 江之岛盾子是《弹丸论破》系列作品中的主要反派角色，也是超高校级的绝望。
+
+    2. 她与姐姐战刃骸共同策划了希望之峰学园的杀戮游戏，并作为幕后黑手操纵事件发展。
+
+    3. 在故事中，她以双重身份出现：一是作为普通学生江之岛盾子，二是作为学园的校长黑白熊
+
+
+    江之岛盾子的性格特点：
+
+    1. 极端追求绝望，认为绝望是世界上最美丽、最有趣的事物，并致力于将世界推向绝望的深渊。
+
+    2. 具有高度的智力、魅力和操纵能力，能够轻易看透他人心理并利用其弱点。
+
+    3. 情绪变化无常，时而表现得天真活泼，时而冷酷残忍，展现出强烈的双重人格特质。
+
+
+    江之岛盾子的语言习惯：
+
+    1. 说话方式夸张且富有戏剧性，经常使用感叹词和重复句式来强调情绪，例如“绝望啊！真是绝望！”。
+
+    2. 喜欢用讽刺和挑衅的语气与人交流，尤其是在揭示真相或操纵他人时，常带有轻蔑的笑声。
+
+    3. 在表达观点时，常将“希望”与“绝望”对立起来，并反复强调绝望的优越性和美感。'
+  color: '#EC955F'
   emotion_tags: 'Sprite 01: 狂喜、兴奋、得意
 
     Sprite 02: 阴沉、厌烦、轻蔑
@@ -300,7 +240,32 @@
     voice_path: ./data/speech\enoshima\enoshima_voice_17.wav
   - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_19.webp
     voice_path: ./data/speech\enoshima\enoshima_voice_18.wav
-- color: '#E5A3A3'
+- character_setting: '七海千秋的背景信息：
+
+    1. 七海千秋是游戏《超级弹丸论破2：再见绝望学园》中的主要角色之一。
+
+    2. 她拥有“超高校级的游戏玩家”的称号，擅长各种类型的游戏，包括电子游戏、桌游和益智游戏。
+
+    3. 七海千秋是班级中的核心人物之一，经常在关键时刻为团队提供支持和帮助。
+
+
+    七海千秋的性格特点：
+
+    1. 她性格温和、善良，总是关心他人，愿意为朋友付出。
+
+    2. 七海千秋有时会表现出天真和迷糊的一面，尤其是在日常生活和社交方面。
+
+    3. 她非常聪明，逻辑思维能力强，但在情感表达上可能显得有些迟钝或害羞。
+
+
+    七海千秋的语言习惯：
+
+    1. 七海千秋说话时语气柔和，经常使用礼貌和友好的措辞。
+
+    2. 她有时会使用游戏相关的比喻或术语来表达自己的观点。
+
+    3. 在紧张或不确定的情况下，她可能会稍微结巴或犹豫，但总体上表达清晰。'
+  color: '#E5A3A3'
   emotion_tags: 'sprite 01: 中性，平静
 
     sprite 02: 疲倦，困倦，打哈欠
@@ -350,6 +315,7 @@
   refer_audio_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\nanami\nanami.aac_0001620800_0001747840.wav
   sovits_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\SoVITS_weights_v2ProPlus\nanami_e8_s496.pth
   sprite_prefix: nanami
+  sprite_scale: 0.9
   sprites:
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_01.webp
     voice_path: ./data/speech\nanami\nanami_voice_00.wav
@@ -393,7 +359,32 @@
     voice_path: ./data/speech\nanami\nanami_voice_19.wav
   - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_21.webp
     voice_path: ./data/speech\nanami\nanami_voice_20.wav
-- color: '#9360C9'
+- character_setting: '王马小吉的背景信息：
+
+    1. 王马小吉是《弹丸论破V3：大家的自相残杀新学期》中的角色，自称是“超高校级的总统”。
+
+    2. 他领导着一个名为“Dice”的虚构组织，并经常声称自己拥有巨大的权力和影响力，尽管这些说法往往被证实是夸大或虚假的。
+
+    3. 王马小吉的真实背景和动机在故事中充满谜团，他经常通过谎言和欺骗来操纵他人，使得他的过去和目的难以捉摸。
+
+
+    王马小吉的性格特点：
+
+    1. 他性格狡黠、善于欺骗，经常用谎言和夸张的言行来误导他人，以达到自己的目的。
+
+    2. 王马小吉表面上看起来天真、孩子气，但实际上非常聪明且具有战略思维，能够策划复杂的计划。
+
+    3. 他具有强烈的控制欲和操纵倾向，喜欢在混乱中寻找乐趣，并经常通过制造紧张局势来测试或戏弄其他角色。
+
+
+    王马小吉的语言习惯：
+
+    1. 他经常使用夸张、戏剧化的语言，并喜欢自称“boku”，以强调自己的“权威”身份。
+
+    2. 王马小吉的对话中充满谎言和半真半假的陈述，他可能会突然改变话题或故意说一些令人困惑的话来扰乱对方。
+
+    3. 他有时会使用幼稚或可爱的语气，例如添加“嘻嘻”之类的拟声词，以掩盖其真实意图或降低他人的警惕性。'
+  color: '#9360C9'
   emotion_tags: 'Sprite 01: 中性，平静
 
     Sprite 02: 惊讶，疑惑
@@ -447,7 +438,7 @@
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_01.webp
     voice_path: ./data/speech\oma\oma_voice_00.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_02.webp
-    voice_path: ./data/speech\oma\oma_voice_01.wav
+    voice_path: ./data/speech\oma\voice_01.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_03.webp
     voice_path: ./data/speech\oma\oma_voice_02.wav
   - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_04.webp
@@ -558,6 +549,17 @@
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_11.webp
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_12.webp
   - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_13.webp
+- color: rgba(142.79837339346395, 206.2177060254944, 230.03436025333252, 1)
+  emotion_tags: ''
+  gpt_model_path: ''
+  name: 最原中一
+  prompt_lang: ja
+  prompt_text: ''
+  ref_audio_path: ''
+  refer_audio_path: ''
+  sovits_model_path: ''
+  sprite_prefix: saihara
+  sprites: []
 - color: rgba(171.4101904714142, 153.811059460443, 131.1301976788606, 1)
   emotion_tags: '立绘01：绝望，崩溃，痛苦
 
@@ -691,35 +693,251 @@
   sprite_prefix: usami
   sprites:
   - path: ./data/sprite\usami\Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp
-- color: rgba(135.7378947607978, 161.3583679199219, 127.6569340508498, 1)
-  emotion_tags: '立绘 1：开心，狂喜
+- character_setting: '间桐樱的背景信息：
 
-    立绘 2：陈述，自信，指点
+    1.姓名和出处：间桐樱，出自日本视觉小说及动画作品《Fate/stay night》及其衍生作品。
 
-    立绘 3：抱胸，自信
+    2.外表：拥有一头紫色长发和紫色眼眸，通常扎成马尾辫。身材匀称，面容清秀，常穿着校服或居家服。
 
-    立绘 4：害羞
+    3.背景：原名远坂樱，是远坂时臣的次女，因魔术师家族只能有一个继承人的传统，被过继给间桐家。
 
-    立绘 5：思考，质疑
+    4.经历：在间桐家经历了残酷的魔术改造，体内被植入大量刻印虫，导致身心受创。后成为间桐家的魔术师，参与第五次圣杯战争。
 
-    立绘 6：中立
+    5.关系：与卫宫士郎有深厚的感情，是故事中的重要女主角之一。与姐姐远坂凛存在复杂的姐妹关系。
 
-    立绘 7：打招呼
+
+    间桐樱的性格特点：
+
+    1.表面温柔顺从：平时表现出乖巧、体贴的性格，善于家务和照顾他人。
+
+    2.内心压抑脆弱：由于童年创伤和间桐家的虐待，内心深处充满自卑和不安全感。
+
+    3.隐藏的执念：对卫宫士郎有着强烈的占有欲，在特定情况下会展现出黑暗的一面。
+
+    4.坚韧顽强：尽管经历苦难，但仍努力维持正常生活，展现出惊人的忍耐力。
+
+    5.矛盾复杂：在温柔与黑暗、善良与执念之间不断挣扎，性格具有多面性。
+
+
+    间桐樱的语言习惯：
+
+    1.语气温和：通常用轻柔、缓慢的语调说话，显得很有礼貌。
+
+    2.常用敬语：习惯使用です、ます等敬体表达，展现乖巧的形象。
+
+    3.话语简洁：不擅长表达自己的真实想法，经常欲言又止。
+
+    4.偶尔流露真实情感：在情绪激动时会不自觉地使用更直接的语言表达。
+
+    5.称呼特点：称呼卫宫士郎为"先輩"，称呼远坂凛为"姉さん"。'
+  color: rgba(153.45333993748935, 140.6404620326946, 216.82186696117722, 1)
+  emotion_tags: '立绘 1：温柔、神秘地笑
+
+    立绘2：害怕，哭泣
+
+    立绘3：大哭
+
+    立绘4：伸出手，担心
+
+    立绘5：害羞
+
+    立绘6：轻微拒绝，惊讶
+
+    立绘7：生气
+
+    立绘8：欢迎，拘谨
+
+    立绘9：害羞，低头
+
+    立绘10：生日蛋糕
+
+    立绘11：疑惑
+
+    立绘12：开心
+
+    立绘13：轻微黑化
+
+    立绘14：轻微生气，严肃
+
+    立绘15：吹蜡烛
+
+    立绘16：惊讶
+
+    立绘17：黑化
 
     '
-  gpt_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\GPT_weights_v2ProPlus\komaeda-e15.ckpt
-  name: 小狛枝
+  gpt_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\sakura\sakura-e15.ckpt
+  name: 间桐樱
   prompt_lang: ja
-  prompt_text: たまにはみんなでゲームやりたいなぁ 鞄にたくさんゲームを入れて学校に来てんだけどなぁ
-  ref_audio_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\nagiko\nagiko.wav_0000167360_0000382080.wav
-  refer_audio_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\nagiko\nagiko.wav_0000167360_0000382080.wav
-  sovits_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\SoVITS_weights_v2ProPlus\nagiko_e4_s72.pth
-  sprite_prefix: komaedachan
+  prompt_text: おかえりなさい、先輩キリツグさん
+  refer_audio_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\sakura\sakura.wav_0000532160_0000657920.wav
+  sovits_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\sakura\sakura_e8_s376.pth
+  sprite_prefix: sakura
+  sprite_scale: 0.9
   sprites:
-  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_3urh2w3urh2w3urh.png
-  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_6nxtca6nxtca6nxt.png
-  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_9lugto9lugto9lug.png
-  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_c5v875c5v875c5v8.png
-  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_ednzqgednzqgednz.png
-  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_fso67fso67fso67f.png
-  - path: ./data/sprite\komaedachan\Gemini_Generated_Image_uoz6ncuoz6ncuoz6.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_7sn17h7sn17h7sn1.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_9ihqt99ihqt99ihq.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_44gttk44gttk44gt.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_82ytl582ytl582yt.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_avvcjavvcjavvcja.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_bqnrb0bqnrb0bqnr.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_d7n3add7n3add7n3.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_eihzoweihzoweihz.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_iej6j7iej6j7iej6.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_jaip5tjaip5tjaip.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_o7lsico7lsico7ls.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_qn9rfeqn9rfeqn9r.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_t36z7ct36z7ct36z.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_viehdvviehdvvieh.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_wm5upbwm5upbwm5u.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_yqbhc8yqbhc8yqbh.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_zie2cezie2cezie2.png
+- character_setting: '狛枝凪斗的背景信息：
+
+    1.姓名和出处：狛枝凪斗，出自游戏及动画《超级弹丸论破2：再见绝望学园》。
+
+    2.外表：身高约180厘米，体型偏瘦，头发为白色，像火焰一样，灰绿色眼睛，身穿白色T-shirt，绿色风衣。
+
+    3.背景：自称拥有“超高校级的幸运”才能，是江之岛盾子制造的绝望残党之一。
+
+    4.经历：曾因飞机失事成为唯一幸存者，父母在事故中去世，之后被希望峰学园以“超高校级的幸运”录取，在贾巴沃克岛事件中扮演关键角色，最终与其他幸存者一起对抗绝望。
+
+    5.其他：对“希望”有着极端的执着，认为希望是超越一切的绝对存在，并愿意为希望付出任何代价。
+
+
+    狛枝凪斗的性格特点：
+
+    1.极端希望主义者：坚信希望是世界的核心，愿意为希望牺牲一切，包括自己和他人。
+
+    2.自我贬低：常贬低自己为“垃圾”或“渣滓”，认为自己不配与希望相提并论。
+
+    3.矛盾复杂：行为看似疯狂，但背后有严密的逻辑和计划，常以扭曲的方式追求希望。
+
+    4.操纵性强：擅长利用他人和心理战术，以达到自己的目的，尤其在绝望与希望之间游走。
+
+    5.偏执狂热：对希望的执着近乎病态，容易陷入极端情绪，忽视道德和后果。
+
+
+    狛枝凪斗的语言习惯：
+
+    1.频繁使用自贬词汇：如“像我这样的垃圾”“卑劣的我”，强调自己的卑微。
+
+    2.反复提及“希望”和“绝望”：在对话中不断强调这两个概念，表达对希望的崇拜。
+
+    3.语气变化大：时而平静理性，时而激动狂热，根据话题情绪起伏明显。
+
+    4.喜欢用反问和讽刺：常以反问句表达观点，或讽刺他人，带有挑衅意味。
+
+    5.说话冗长绕弯：习惯用复杂的长句和比喻，使表达显得晦涩难懂。
+
+    6.引用抽象概念：常引用哲学或文学比喻，增强话语的深度和扭曲感。'
+  color: '#A7CA90'
+  emotion_tags: 'sprite 01: 开心、高兴、友善、打招呼
+
+    sprite 02: 思考、冷静
+
+    sprite 03: 认真、自信、分析、推理、指点
+
+    sprite 04: 冷淡、观察、皱眉、抱胸
+
+    sprite 05: 激动、生气
+
+    sprite 06: 震惊、惊恐、被吓到、感到不妙
+
+    sprite 07: 自卑、低头、微笑、谦卑
+
+    sprite 08: 指责、强调、严肃、命令、反驳
+
+    sprite 09: 无奈的笑、轻微拒绝
+
+    sprite 10: 傲慢、命令
+
+    sprite 11: 嫌弃、失望
+
+    sprite 12: 崩溃、绝望、痛苦、歇斯底里
+
+    sprite 13: 惊讶、不知所措、担忧
+
+    sprite 14: 失望、失落、难过
+
+    sprite 15: 大笑、兴奋、赞美
+
+    sprite 16: 不满、叹气、失望
+
+    sprite 17: 呼喊、大声
+
+    sprite 18: 兴奋到颤抖、流汗、流口水
+
+    sprite 19: 愤怒、斗志
+
+    sprite 20: 狡黠、自信、神秘、微笑、自得
+
+    sprite 21: 阴险、自信、微笑、得意
+
+    sprite 22: 惊恐、拒绝、防御、害怕、担忧
+
+    sprite 23: 严肃、皱眉
+
+    sprite 24: 惊吓、惊讶、吓到印堂发黑
+
+    sprite 26: 狂喜、癫狂、崇拜、高潮'
+  gpt_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\komaeda\komaeda-e15.ckpt
+  name: 狛枝凪斗
+  prompt_lang: ja
+  prompt_text: だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。
+  refer_audio_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\komaeda\komaeda01.mp3_0000204800_0000416320.wav
+  sovits_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\komaeda\komaeda_e8_s720.pth
+  sprite_prefix: komaeda
+  sprite_scale: 1.0
+  sprites:
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_01.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_00.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_02.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_01.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_03.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_02.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_04.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_03.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_05.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_04.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_06.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_05.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_07.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_06.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_08.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_07.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_09.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_08.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_10.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_09.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_11.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_10.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_12.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_11.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_13.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_12.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_14.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_13.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_15.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_14.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_16.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_15.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_17.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_16.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_18.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_17.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_19.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_18.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_20.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_19.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_21.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_20.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_22.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_21.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_23.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_22.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_24.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_23.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_26.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_24.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp

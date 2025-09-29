@@ -1,12 +1,15 @@
 import yaml
 
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale = 1.0):
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale = 1.0, character_setting=""):
         # 角色基本信息  
         self.name = name
         self.color = color
         self.sprite_prefix = sprite_prefix
         self.sprites = sprites
+        self.character_setting = character_setting
+        self.sprite_scale = sprite_scale
+        self.emotion_tags = emotion_tags
     
         # gpt-sovits 语音配置
         self.gpt_model_path = gpt_model_path
@@ -14,8 +17,7 @@ class CharacterConfig:
         self.refer_audio_path = refer_audio_path
         self.prompt_text = prompt_text
         self.prompt_lang = prompt_lang
-        self.sprite_scale = sprite_scale
-        self.emotion_tags = emotion_tags
+       
 
     @staticmethod
     def read_from_files(path):
@@ -49,8 +51,8 @@ class CharacterConfig:
                 prompt_lang=char_data.get('prompt_lang'),
                 sprites=char_data.get("sprites"),
                 sprite_scale=char_data.get("sprite_scale",1.0),
-                emotion_tags=char_data.get("emotion_tags","")
+                emotion_tags=char_data.get("emotion_tags",""),
+                character_setting=char_data.get("character_setting",""),
             )
-            characters.append(character)
-        
+            characters.append(character)  
         return characters
