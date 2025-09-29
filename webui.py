@@ -36,6 +36,7 @@ main_process = None
 # 创建存储上传文件的目录
 UPLOAD_DIR = "./data/sprite"
 VOICE_DIR = "./data/speech"
+MODEL_DIR = "./data/models"
 API_CONFIG_PATH = "./data/config/api.yaml"
 CHARACTER_CONFIG_PATH = "./data/config/characters.yaml"
 TEMPLATE_DIR_PATH = "./data/character_templates"
@@ -198,6 +199,11 @@ def delete_character(name):
     voice_char_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
     if os.path.exists(voice_char_dir):
         shutil.rmtree(voice_char_dir)
+
+    # 删除角色的gpt-sovits相关模型和语音
+    model_char_dir = os.path.join(MODEL_DIR, character["sprite_prefix"])
+    if os.path.exists(model_char_dir):
+        shutil.rmtree(model_char_dir)
     
     return f"角色 {name} 已删除！", [c.get("name", "") for c in characters]
 
@@ -495,13 +501,51 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                 llm_model = gr.Textbox(label="模型ID", value=api_config.get("llm_model", "").get(llm_provider_value,""))
                 api_key = gr.Textbox(label="LLM API Key", type="password", value=api_config.get("llm_api_key", {}).get(llm_provider_value,""))
                 base_url = gr.Textbox(label="LLM API 基础网址", value=api_config.get("llm_base_url", ""))
-    
-                gr.Markdown("### GPT SoVITS API 配置，如果没有可以不填")
+            with gr.Column():
+                    api_output = gr.Textbox(label="输出信息", interactive=False)
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("### GPT SoVITS API 配置，如果没有可以不填，如果你想让角色读出台词，就需要配置")
+                gr.Markdown("#### 前提条件")
+                gr.Markdown('''
+                1. 你的GPU大于等于6G
+                2. 下载好GPT-SOVITS整合包
+                ''')
                 sovits_url = gr.Textbox(label="GPT-SoVITS API 调用地址", value=api_config.get("gpt_sovits_url", ""))
                 gpt_sovits_api_path = gr.Textbox(label="GPT-SoVITS 服务启动路径", value=api_config.get("gpt_sovits_api_path", ""))
                 save_api_btn = gr.Button("保存配置")
             with gr.Column():
-                api_output = gr.Textbox(label="输出信息", interactive=False)
+                gr.Markdown("### 下载GPT SOVITS整合包")
+                gr.HTML('''
+                 <a href="https://github.com/RVC-Boss/GPT-SoVITS" 
+                       download="GPT-SoVITS-v2pro-20250604.7z"
+                       style="display: inline-block; padding: 12px 24px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; font-size: 16px; margin-top: 10px;">
+                       GPT-SOVITS github 源地址
+                    </a>
+                 <a href="https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604.7z" 
+                       download="GPT-SoVITS-v2pro-20250604.7z"
+                       style="display: inline-block; padding: 12px 24px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; font-size: 16px; margin-top: 10px;">
+                       点击下载GPT-SOVITS整合包
+                    </a>
+                    <a href="https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604-nvidia50.7z" 
+                       download="GPT-SoVITS-v2pro-20250604-50x0.7z"
+                       style="display: inline-block; padding: 12px 24px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; font-size: 16px; margin-top: 10px;">
+                       点击下载GPT-SOVITS整合包（50系显卡适用）
+                    </a>
+                ''')
+                with gr.Accordion("使用说明", open=False):
+                    gr.Markdown("""
+                    如果你想让角色读出台词，则需要下载GPT-SOVITS整合包。
+                    ### 解压和使用步骤:
+                    1. 下载完成后，使用7-Zip或类似工具解压文件
+                    2. 将解压后的文件夹目录填写在GPT-SOVITS 服务启动路径中，注意该目录下有api_v2.py
+                    
+                    ### 注意事项:
+                    - 确保有足够的磁盘空间(至少11GB可用空间)
+                    - 建议使用稳定的网络环境下载
+                    - 如遇下载问题，请检查网络连接或稍后重试
+                    """)
+            
         
         # Add events to update the dropdowns and base URL
         llm_provider.change(
@@ -543,7 +587,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     return character["name"], character["color"], character["sprite_prefix"], character["gpt_model_path"], character["sovits_model_path"], character["refer_audio_path"], character["prompt_text"], character["prompt_lang"], character.get("character_setting","")
                 
             with gr.Column():
-                gr.Markdown("从文件导入")
+                gr.Markdown("#### 从文件导入")
                 import_file = gr.File(label="选择文件")
                 import_btn = gr.Button("从文件导入人物")
                 import_output = gr.Textbox("输出结果")
@@ -595,12 +639,12 @@ with gr.Blocks(title="LLM 角色管理") as demo:
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### 语音模块设置")
-                gr.Markdown("#### 以下如果没有可以为空")
+                gr.Markdown("#### 以下如果没有可以为空，如果你想让角色读出台词，就需要填写")
                 gpt_model_path = gr.Textbox(label="GPT 模型路径，如果没有可以为空")
                 sovits_model_path = gr.Textbox(label="SoVITS 模型路径")
                 refer_audio_path = gr.Textbox(label="参考音频路径")
-                prompt_text = gr.Textbox(label="参考音频文本")
-                prompt_lang = gr.Textbox(label="参考音频的语言, 英语填en，日语填ja，汉语填zh")
+                prompt_text = gr.Textbox(label="参考音频的文字内容")
+                prompt_lang = gr.Textbox(label="参考音频的语言, 英语填en，日语填ja，中文填zh")
                 add_btn = gr.Button("添加或保存人物设置")
                 add_output = gr.Textbox(label="操作结果")
 
@@ -689,7 +733,7 @@ with gr.Blocks(title="LLM 角色管理") as demo:
                     minimum=0,      # 最小值
                     maximum=3,      # 最大值
                     value=1.0,      # 初始值
-                    step=0.1,       # 步长/精度
+                    step=0.05,       # 步长/精度
                     label="选择立绘放大/缩小倍数，如果发现立绘过大、过小可以来调节", # 标签
                     interactive=True # 可交互
                 )
@@ -759,7 +803,11 @@ with gr.Blocks(title="LLM 角色管理") as demo:
             )
 
             with gr.Column(scale=1):
-                gr.Markdown("### 选择立绘并上传语音")
+                gr.Markdown("### 选择立绘并上传语音（可选）")
+                gr.Markdown("""
+                - 如果没有配置GPT-SOVITS，这里上传的音频就会绑定立绘直接播放
+                - 如果配置了GPT-SOVITS，如果某个立绘需要和默认参考音频不同的感情，可上传不同的参考音频，并填写其语音文本内容
+                """)
                 # 当点击立绘时，更新选中的立绘索引
                 def select_sprite(evt: gr.SelectData):
                     return evt.index
