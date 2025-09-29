@@ -52,7 +52,7 @@ conda activate shinkekai
 ```
 pip install -r requirements.txt
 ```
-### 开始使用
+### 开启Web UI
 如果是整合包，双击start.bat则可以开启Web ui
 1. 在项目目录下执行：
 ```
@@ -64,9 +64,10 @@ python webui.py
 GPT-SOVITS 项目地址：https://github.com/RVC-Boss/GPT-SoVITS
 
 ### 快速体验
-1. 切换到 ``聊天模板`` 标签页，从下拉框中选择nanami.txt，点击加载模板
-2. 点击``启动聊天``按钮，你会看见一个默认的弹窗
-3. 发送消息，七海就会回复你了
+1. 获取LLM API key，并填写到API配置里，保存
+2. 切换到 ``聊天模板`` 标签页，从下拉框中选择nanami.txt，点击加载模板
+3. 点击``启动聊天``按钮，你会看见一个默认的弹窗
+4. 发送消息，七海就会回复你了
 
 ## 配置API
 ### 1. 进入 API 设定页面
