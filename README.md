@@ -62,3 +62,33 @@ python webui.py
 ### 下载GPT-SOVITS整合包(可选)  
 如果你需要角色读出台词，则需要下载该整合包
 GPT-SOVITS 项目地址：https://github.com/RVC-Boss/GPT-SoVITS
+
+### 快速体验
+1. 切换到 ``聊天模板`` 标签页，从下拉框中选择nanami.txt，点击加载模板
+2. 点击``启动聊天``按钮，你会看见一个默认的弹窗
+3. 发送消息，七海就会回复你了
+
+## 配置API
+### 1. 进入 API 设定页面
+打开程序后，点击顶部的 "API 设定" 标签页
+
+### 2. 配置大语言模型 (LLM)
+1. **选择大语言模型供应商**: 从下拉菜单中选择 "Deepseek"（其他的也可以）
+2. **模型ID**: 输入 Deepseek 模型名称（如 deepseek-chat）
+3. **LLM API Key**: 输入从 Deepseek 获取的 API 密钥 (下面有教程)
+4. **LLM API 基础网址**: 程序会自动填充 Deepseek 的 API 地址
+
+### 如何从 Deepseek 获取 API Key，其他的也类似
+#### 步骤 1: 注册 Deepseek 账户
+1. 访问 Deepseek 官方网站 (https://platform.deepseek.com/)
+2. 点击注册并创建账户
+#### 步骤 2: 获取 API Key
+1. 登录 Deepseek 控制台
+2. 进入 "API Keys" 管理页面
+3. 点击 "Create new API key"
+4. 为密钥命名（如"shinsekai"）
+5. 复制生成的 API Key（注意：密钥只显示一次，请妥善保存）填写到LLM API Key里
+#### 步骤 3: 查看可用模型
+1. 在 Deepseek 文档中查看当前可用的模型列表
+2. 常用的模型包括：deepseek-chat、deepseek-reasoner 等
+3. 将模型名称填写到程序的"模型ID"字段中
