@@ -12,7 +12,7 @@ current_script = Path(__file__).resolve()
 project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
-import character_utils.file_util as fu
+import tools.file_util as fu
 from config.character_config import CharacterConfig
 from llm.constants import LLM_BASE_URLS, LLM_MODELS
 from llm.llm_manager import LLMAdapterFactory, LLMManager

@@ -113,9 +113,54 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
         # 清理临时目录
         shutil.rmtree(temp_dir)
 
+def _resolve_name_conflict(name: str, existing_names: set) -> str:
+    """
+    解决名称冲突，如果名称已存在则添加(1)、(2)等后缀。
+    
+    Args:
+        name (str): 原始名称
+        existing_names (set): 已存在的名称集合
+        
+    Returns:
+        str: 解决冲突后的名称
+    """
+    if name not in existing_names:
+        return name
+    
+    counter = 1
+    new_name = f"{name}（{counter}）"
+    while new_name in existing_names:
+        counter += 1
+        new_name = f"{name}（{counter}）"
+    
+    return new_name
+
+def _resolve_sprite_prefix_conflict(sprite_prefix: str, existing_prefixes: set) -> str:
+    """
+    解决sprite_prefix冲突，如果前缀已存在则添加1、2等后缀。
+    
+    Args:
+        sprite_prefix (str): 原始sprite_prefix
+        existing_prefixes (set): 已存在的sprite_prefix集合
+        
+    Returns:
+        str: 解决冲突后的sprite_prefix
+    """
+    if sprite_prefix not in existing_prefixes:
+        return sprite_prefix
+    
+    counter = 1
+    new_prefix = f"{sprite_prefix}{counter}"
+    while new_prefix in existing_prefixes:
+        counter += 1
+        new_prefix = f"{sprite_prefix}{counter}"
+    
+    return new_prefix
+
 def import_character(input_path: str) -> list[CharacterConfig]:
     """
     从 .cha 文件导入人物配置及其依赖文件，并将配置追加入 characters.yaml。
+    检测名称和sprite_prefix冲突，自动添加后缀解决冲突。
     
     Args:
         input_path (str): 要导入的 .cha 文件路径。
@@ -143,19 +188,49 @@ def import_character(input_path: str) -> list[CharacterConfig]:
         if not yaml_data:
             raise ValueError("YAML配置文件为空或格式错误。")
 
+        # 读取现有配置，用于检测冲突
+        existing_names = set()
+        existing_sprite_prefixes = set()
+        
+        if CHARACTERS_CONFIG_PATH.exists():
+            with open(CHARACTERS_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                existing_configs = yaml.safe_load(f) or []
+                for config in existing_configs:
+                    existing_names.add(config.get('name', ''))
+                    existing_sprite_prefixes.add(config.get('sprite_prefix', ''))
+        
+        # 记录本次导入中已使用的名称和sprite_prefix，避免内部冲突
+        imported_names = set(existing_names)
+        imported_sprite_prefixes = set(existing_sprite_prefixes)
+
         for char_data in yaml_data:
-            sprite_prefix = char_data.get('sprite_prefix')
+            original_name = char_data.get('name', '')
+            original_sprite_prefix = char_data.get('sprite_prefix', '')
             
-            # 恢复立绘文件
-            if sprite_prefix:
-                source_sprite_dir = temp_dir / 'sprites' / sprite_prefix
-                dest_sprite_dir = SPRITE_DIR / sprite_prefix
+            # 解决名称冲突
+            new_name = _resolve_name_conflict(original_name, imported_names)
+            char_data['name'] = new_name
+            imported_names.add(new_name)
+            
+            # 解决sprite_prefix冲突
+            new_sprite_prefix = _resolve_sprite_prefix_conflict(original_sprite_prefix, imported_sprite_prefixes)
+            char_data['sprite_prefix'] = new_sprite_prefix
+            imported_sprite_prefixes.add(new_sprite_prefix)
+            
+            # 如果名称或sprite_prefix被修改，打印提示信息
+            if new_name != original_name or new_sprite_prefix != original_sprite_prefix:
+                print(f"检测到冲突，已将 '{original_name}' ({original_sprite_prefix}) 重命名为 '{new_name}' ({new_sprite_prefix})")
+            
+            # 恢复立绘文件（使用新的sprite_prefix）
+            if new_sprite_prefix:
+                source_sprite_dir = temp_dir / 'sprites' / original_sprite_prefix
+                dest_sprite_dir = SPRITE_DIR / new_sprite_prefix
                 if source_sprite_dir.is_dir():
                     shutil.copytree(source_sprite_dir, dest_sprite_dir, dirs_exist_ok=True)
 
-                # 恢复语音文件
-                source_speech_dir = temp_dir / 'speech' / sprite_prefix
-                dest_speech_dir = SPEECH_DIR / sprite_prefix
+                # 恢复语音文件（使用新的sprite_prefix）
+                source_speech_dir = temp_dir / 'speech' / original_sprite_prefix
+                dest_speech_dir = SPEECH_DIR / new_sprite_prefix
                 if source_speech_dir.is_dir():
                     shutil.copytree(source_speech_dir, dest_speech_dir, dirs_exist_ok=True)
             
@@ -166,16 +241,17 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                 'refer_audio_path': char_data.get('refer_audio_path')
             }
             
-
-
             for key, path in model_paths.items():
-                source_model_path = temp_dir / path
-                dest_model_dir = MODEL_DIR / sprite_prefix
-                dest_model_dir.mkdir(parents=True, exist_ok=True)
-                dest_model_path = dest_model_dir / Path(path).name
-                print(source_model_path, dest_model_path)
-                shutil.copy2(source_model_path, dest_model_path)
-                char_data[key] = str(dest_model_path.resolve()) # 更新为新的绝对路径
+                if path:  # 确保路径不为空
+                    source_model_path = temp_dir / path
+                    dest_model_dir = MODEL_DIR / new_sprite_prefix
+                    dest_model_dir.mkdir(parents=True, exist_ok=True)
+                    dest_model_path = dest_model_dir / Path(path).name
+                    if source_model_path.exists():  # 确保源文件存在
+                        shutil.copy2(source_model_path, dest_model_path)
+                        char_data[key] = str(dest_model_path.resolve())  # 更新为新的绝对路径
+                    else:
+                        char_data[key] = None
 
             # 将更新后的数据创建为 CharacterConfig 对象
             imported_configs.append(CharacterConfig(
@@ -188,8 +264,9 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                 prompt_text=char_data.get('prompt_text'),
                 prompt_lang=char_data.get('prompt_lang'),
                 sprites=char_data.get("sprites"),
-                emotion_tags = char_data.get("emotion_tags",""),
-                sprite_scale=char_data.get("sprite_scale", 1.0)
+                emotion_tags=char_data.get("emotion_tags", ""),
+                sprite_scale=char_data.get("sprite_scale", 1.0),
+                character_setting = char_data.get("character_setting","")
             ))
         
         # 将配置追加到 characters.yaml
@@ -213,5 +290,3 @@ def import_character(input_path: str) -> list[CharacterConfig]:
     finally:
         # 清理临时目录
         shutil.rmtree(temp_dir)
-
-

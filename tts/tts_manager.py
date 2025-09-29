@@ -2,8 +2,8 @@ import requests
 import threading
 import queue
 import subprocess
-
 from tts.tts_adapter import TTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter, CosyVoiceAdapter
+from pathlib import Path
 
 class TTSAdapterFactory:
     """
@@ -46,11 +46,12 @@ class TTSAdapterFactory:
 #  TTS管理器
 class TTSManager:
     def __init__(self, character_ui_url="http://localhost:7888/alive", tts_server_url="http://127.0.0.1:9880/"):
-        self.audio_cache_dir = r".\cache\audio"
+        self.audio_cache_dir = Path(".\\cache\\audio")
         self.character_ui_url = character_ui_url
         self.cache_num = 10
         self.index = 0
 
+        self.audio_cache_dir.mkdir(exist_ok=True, parents=True)
         # Use the adapter for TTS operations
         self.tts_adapter = None
 
@@ -85,7 +86,7 @@ class TTSManager:
             return ''
 
         # The adapter handles the specifics of the TTS generation
-        file_path = f'cache\\{self.index % self.cache_num}.wav'
+        file_path = f'cache\\audio\\{self.index % self.cache_num}.wav'
         self.index += 1
         
         return self.tts_adapter.generate_speech(
