@@ -1,3 +1,5 @@
+[中文版](README.md) | [English Version](docs/README_EN.md)
+
 # 新世界程序
 
 > AI galgame/乙女游戏/RPG游戏，接入大语言模型，自动切换立绘，支持语音合成
