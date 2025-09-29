@@ -193,7 +193,7 @@ def delete_character(name):
     save_characters_to_file()
 
     sprite_prefix = character.get("sprite_prefix", '')
-    if not sprite_prefix
+    if not sprite_prefix:
         return "已删除角色", [c.get("name", "") for c in characters]
      
     # 删除角色的立绘目录
