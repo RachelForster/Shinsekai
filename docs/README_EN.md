@@ -1,4 +1,4 @@
-[中文版](README.md) | [English Version](docs/README_EN.md)
+[中文版](https://github.com/RachelForster/Shinsekai/blob/main/README.md) | [English Version](docs/README_EN.md)
 
 # Shinsekai Program
 
@@ -26,7 +26,7 @@
   - **Full Voice Mode**: Real-time voice generation for every line (requires GPT-SoVITS)
   - **Preset Voice Mode**: Play pre-uploaded voice files
 
-![Wellerman-Uri](assets/present_example.png)
+![Wellerman-Uri](https://github.com/RachelForster/Shinsekai/blob/main/assets/present_example.png)
 
 [![](https://img.shields.io/badge/-Full_Demo_Ⅰ-EEE?logo=bilibili)](https://www.bilibili.com/video/BV15H4y1o73x/?share_source=copy_web&vd_source=4641a345db4563ba087d0ed0ba8bdf85)
 [![](https://img.shields.io/badge/-Full_Demo_Ⅱ-EEE?logo=bilibili)](https://www.bilibili.com/video/BV1Hp4y1c7TU/?share_source=copy_web&vd_source=4641a345db4563ba087d0ed0ba8bdf85)
@@ -37,13 +37,13 @@
 
 ### Get the Project
 - Clone the repository:
+```
 git clone https://github.com/RachelForster/Shinsekai
-
-text
-- Or: Download the integrated package from releases: https://github.com/RachelForster/Shinsekai/releases 
+```
+- Or: Download the one-click package from releases: https://github.com/RachelForster/Shinsekai/releases 
 
 ### Install Dependencies
-If using the integrated package, double-click `install.bat`
+If using the one-click package, double-click `install.bat`
 
 1. Create and activate virtual environment:
 ```
