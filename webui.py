@@ -488,7 +488,7 @@ with gr.Blocks(title="新世界程序") as demo:
     gr.Markdown("# 新世界程序")
     gr.Markdown('''
     - （b站、小红书）作者：不二咲爱笑 
-    - github: https://github.com/RachelForster/EasyAIDesktopAssistant qq交流群：1033281516、本软件是开源软件，禁止商用
+    - github: https://github.com/RachelForster/Shinsekai qq交流群：1033281516、本软件是开源软件，禁止商用
     ''')
     with gr.Tab("API 设定"):
         gr.Markdown("## API 配置")
