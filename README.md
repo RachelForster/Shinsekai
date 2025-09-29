@@ -41,7 +41,7 @@
 ### 获取项目
 - git clone本项目
 ```
-git clone https://github.com/RachelForster/EasyAIDesktopAssistant
+git clone https://github.com/RachelForster/Shinsekai
 ```
 - 或者：下载整合包并解压
 
