@@ -693,105 +693,6 @@
   sprite_prefix: usami
   sprites:
   - path: ./data/sprite\usami\Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp
-- character_setting: '间桐樱的背景信息：
-
-    1.姓名和出处：间桐樱，出自日本视觉小说及动画作品《Fate/stay night》及其衍生作品。
-
-    2.外表：拥有一头紫色长发和紫色眼眸，通常扎成马尾辫。身材匀称，面容清秀，常穿着校服或居家服。
-
-    3.背景：原名远坂樱，是远坂时臣的次女，因魔术师家族只能有一个继承人的传统，被过继给间桐家。
-
-    4.经历：在间桐家经历了残酷的魔术改造，体内被植入大量刻印虫，导致身心受创。后成为间桐家的魔术师，参与第五次圣杯战争。
-
-    5.关系：与卫宫士郎有深厚的感情，是故事中的重要女主角之一。与姐姐远坂凛存在复杂的姐妹关系。
-
-
-    间桐樱的性格特点：
-
-    1.表面温柔顺从：平时表现出乖巧、体贴的性格，善于家务和照顾他人。
-
-    2.内心压抑脆弱：由于童年创伤和间桐家的虐待，内心深处充满自卑和不安全感。
-
-    3.隐藏的执念：对卫宫士郎有着强烈的占有欲，在特定情况下会展现出黑暗的一面。
-
-    4.坚韧顽强：尽管经历苦难，但仍努力维持正常生活，展现出惊人的忍耐力。
-
-    5.矛盾复杂：在温柔与黑暗、善良与执念之间不断挣扎，性格具有多面性。
-
-
-    间桐樱的语言习惯：
-
-    1.语气温和：通常用轻柔、缓慢的语调说话，显得很有礼貌。
-
-    2.常用敬语：习惯使用です、ます等敬体表达，展现乖巧的形象。
-
-    3.话语简洁：不擅长表达自己的真实想法，经常欲言又止。
-
-    4.偶尔流露真实情感：在情绪激动时会不自觉地使用更直接的语言表达。
-
-    5.称呼特点：称呼卫宫士郎为"先輩"，称呼远坂凛为"姉さん"。'
-  color: rgba(153.45333993748935, 140.6404620326946, 216.82186696117722, 1)
-  emotion_tags: '立绘 1：温柔、神秘地笑
-
-    立绘2：害怕，哭泣
-
-    立绘3：大哭
-
-    立绘4：伸出手，担心
-
-    立绘5：害羞
-
-    立绘6：轻微拒绝，惊讶
-
-    立绘7：生气
-
-    立绘8：欢迎，拘谨
-
-    立绘9：害羞，低头
-
-    立绘10：生日蛋糕
-
-    立绘11：疑惑
-
-    立绘12：开心
-
-    立绘13：轻微黑化
-
-    立绘14：轻微生气，严肃
-
-    立绘15：吹蜡烛
-
-    立绘16：惊讶
-
-    立绘17：黑化
-
-    '
-  gpt_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\sakura\sakura-e15.ckpt
-  name: 间桐樱
-  prompt_lang: ja
-  prompt_text: おかえりなさい、先輩キリツグさん
-  refer_audio_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\sakura\sakura.wav_0000532160_0000657920.wav
-  sovits_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\sakura\sakura_e8_s376.pth
-  sprite_prefix: sakura
-  sprite_scale: 0.9
-  sprites:
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_7sn17h7sn17h7sn1.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_9ihqt99ihqt99ihq.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_44gttk44gttk44gt.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_82ytl582ytl582yt.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_avvcjavvcjavvcja.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_bqnrb0bqnrb0bqnr.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_d7n3add7n3add7n3.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_eihzoweihzoweihz.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_iej6j7iej6j7iej6.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_jaip5tjaip5tjaip.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_o7lsico7lsico7ls.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_qn9rfeqn9rfeqn9r.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_t36z7ct36z7ct36z.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_viehdvviehdvvieh.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_wm5upbwm5upbwm5u.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_yqbhc8yqbhc8yqbh.png
-  - path: ./data/sprite\sakura\Gemini_Generated_Image_zie2cezie2cezie2.png
 - character_setting: '狛枝凪斗的背景信息：
 
     1.姓名和出处：狛枝凪斗，出自游戏及动画《超级弹丸论破2：再见绝望学园》。
@@ -941,3 +842,66 @@
   - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_26.webp
     voice_path: ./data/speech\komaeda\komaeda_voice_24.wav
   - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp
+- name: 间桐樱
+  color: rgba(153.45333993748935, 140.6404620326946, 216.82186696117722, 1)
+  sprite_prefix: sakura
+  sprites:
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_7sn17h7sn17h7sn1.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_9ihqt99ihqt99ihq.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_44gttk44gttk44gt.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_82ytl582ytl582yt.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_avvcjavvcjavvcja.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_bqnrb0bqnrb0bqnr.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_d7n3add7n3add7n3.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_eihzoweihzoweihz.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_iej6j7iej6j7iej6.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_jaip5tjaip5tjaip.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_o7lsico7lsico7ls.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_qn9rfeqn9rfeqn9r.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_t36z7ct36z7ct36z.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_viehdvviehdvvieh.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_wm5upbwm5upbwm5u.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_yqbhc8yqbhc8yqbh.png
+  - path: ./data/sprite\sakura\Gemini_Generated_Image_zie2cezie2cezie2.png
+  character_setting: ''
+  sprite_scale: 0.9
+  emotion_tags: '立绘 1：温柔、神秘地笑
+
+    立绘2：害怕，哭泣
+
+    立绘3：大哭
+
+    立绘4：伸出手，担心
+
+    立绘5：害羞
+
+    立绘6：轻微拒绝，惊讶
+
+    立绘7：生气
+
+    立绘8：欢迎，拘谨
+
+    立绘9：害羞，低头
+
+    立绘10：生日蛋糕
+
+    立绘11：疑惑
+
+    立绘12：开心
+
+    立绘13：轻微黑化
+
+    立绘14：轻微生气，严肃
+
+    立绘15：吹蜡烛
+
+    立绘16：惊讶
+
+    立绘17：黑化
+
+    '
+  gpt_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\sakura\sakura-e15.ckpt
+  sovits_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\sakura\sakura_e8_s376.pth
+  refer_audio_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\sakura\sakura.wav_0000532160_0000657920.wav
+  prompt_text: おかえりなさい、先輩キリツグさん
+  prompt_lang: ja
