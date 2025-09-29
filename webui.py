@@ -47,12 +47,14 @@ def generate_character_setting(name, setting):
     global llm_manager
     global api_config
 
-    if not name or name == "新角色":
-        return "请选择要生成的角色！", setting
+    if not name:
+        return "请选择或输入要生成的角色的名字！", setting
     
     character = next((c for c in characters if c["name"] == name), None)
     if character is None:
-        return f"找不到角色: {name}", setting
+        add_character(name=name, color='', sprite_prefix='', gpt_model_path='', 
+                sovits_model_path='', refer_audio_path='', prompt_text='', prompt_lang='', character_setting=setting)
+        character = next((c for c in characters if c["name"] == name), None)
     
     setting = "无" if not setting else setting
 
@@ -189,7 +191,11 @@ def delete_character(name):
     
     characters.remove(character)
     save_characters_to_file()
-    
+
+    sprite_prefix = character.get("sprite_prefix", '')
+    if not sprite_prefix
+        return "已删除角色", [c.get("name", "") for c in characters]
+     
     # 删除角色的立绘目录
     char_dir = os.path.join(UPLOAD_DIR, character["sprite_prefix"])
     if os.path.exists(char_dir):
@@ -715,7 +721,7 @@ with gr.Blocks(title="新世界程序") as demo:
 
         ai_help_btn.click(
             generate_character_setting,
-            inputs=[selected_character, character_setting],
+            inputs=[char_name, character_setting],
             outputs=[import_output, character_setting]
         )
         
