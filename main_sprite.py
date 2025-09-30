@@ -458,18 +458,20 @@ def main():
     print (init_sprite_path)
     if not init_sprite_path:
         init_sprite_path = './data/sprite/usami/Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp'
-        window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:#e6b2b2'>兔兔美</b>：欢迎来到新世界程序，希望你和大家能开启love love~的新学期，快和大家聊天吧</p>")
 
     # 更新初始立绘
-    init_image = cv2.imread(init_sprite_path, cv2.IMREAD_UNCHANGED)
-    if init_image is not None:
-        if init_image.shape[2] == 3:
-            init_image = cv2.cvtColor(init_image, cv2.COLOR_BGR2RGB)
-            alpha_channel = np.full((init_image.shape[0], init_image.shape[1]), 255, dtype=np.uint8)
-            init_image = cv2.merge([init_image, alpha_channel])
-        elif init_image.shape[2] == 4:
-            init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
-    window.update_image(init_image)
+    try:
+        init_image = cv2.imread(init_sprite_path, cv2.IMREAD_UNCHANGED)
+        if init_image is not None:
+            if init_image.shape[2] == 3:
+                init_image = cv2.cvtColor(init_image, cv2.COLOR_BGR2RGB)
+                alpha_channel = np.full((init_image.shape[0], init_image.shape[1]), 255, dtype=np.uint8)
+                init_image = cv2.merge([init_image, alpha_channel])
+            elif init_image.shape[2] == 4:
+                init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
+        window.update_image(init_image)
+    except Exception as e:
+        print("更新初始立绘失败",e)
     window.setNotification("开始聊天吧……")
 
     # 连接 UI 信号到队列
