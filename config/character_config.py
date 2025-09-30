@@ -40,7 +40,13 @@ class CharacterConfig:
                 raise ValueError("YAML配置缺少必需字段（name, color, sprite_prefix）")
             
             # 创建CharacterConfig对象
-            character = CharacterConfig(
+            character=CharacterConfig.parse_dic(char_data=char_data)
+            characters.append(character)
+        return characters
+    
+    @staticmethod
+    def parse_dic(char_data):
+        character = CharacterConfig(
                 name=char_data['name'],
                 color=char_data['color'],
                 sprite_prefix=char_data['sprite_prefix'],
@@ -54,5 +60,5 @@ class CharacterConfig:
                 emotion_tags=char_data.get("emotion_tags",""),
                 character_setting=char_data.get("character_setting",""),
             )
-            characters.append(character)  
-        return characters
+        return character
+    

@@ -473,6 +473,7 @@ def main():
     except Exception as e:
         print("更新初始立绘失败",e)
     window.setNotification("开始聊天吧……")
+    window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
 
     # 连接 UI 信号到队列
     def on_message_submitted(message):
