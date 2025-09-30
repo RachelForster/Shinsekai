@@ -41,7 +41,8 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
                 'prompt_lang': config.prompt_lang,
                 'sprite_scale': config.sprite_scale,
                 'sprites': config.sprites,
-                'emotion_tags':config.emotion_tags
+                'emotion_tags':config.emotion_tags,
+                'character_setting': config.character_setting
             }
 
             # 处理绝对路径的模型和参考音频
@@ -254,20 +255,8 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                         char_data[key] = None
 
             # 将更新后的数据创建为 CharacterConfig 对象
-            imported_configs.append(CharacterConfig(
-                name=char_data['name'],
-                color=char_data['color'],
-                sprite_prefix=char_data['sprite_prefix'],
-                gpt_model_path=char_data.get('gpt_model_path'),
-                sovits_model_path=char_data.get('sovits_model_path'),
-                refer_audio_path=char_data.get('refer_audio_path'),
-                prompt_text=char_data.get('prompt_text'),
-                prompt_lang=char_data.get('prompt_lang'),
-                sprites=char_data.get("sprites"),
-                emotion_tags=char_data.get("emotion_tags", ""),
-                sprite_scale=char_data.get("sprite_scale", 1.0),
-                character_setting = char_data.get("character_setting","")
-            ))
+            imported_configs.append(CharacterConfig.parse_dic(char_data=char_data))
+            print(f"==========import{char_data.get("character_setting")}")
         
         # 将配置追加到 characters.yaml
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)

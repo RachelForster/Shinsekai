@@ -608,19 +608,7 @@ with gr.Blocks(title="新世界程序") as demo:
                     try:
                         output_path = Path('./output')
                         output_path.mkdir(parents=True,exist_ok=True)
-                        character = CharacterConfig(
-                            name = character["name"],
-                            color=character["color"], 
-                            sprite_prefix=character["sprite_prefix"],
-                            gpt_model_path=character.get("gpt_model_path", ""), 
-                            sovits_model_path=character.get("sovits_model_path",""), 
-                            refer_audio_path=character.get("refer_audio_path",""), 
-                            prompt_text=character.get("prompt_text",""), 
-                            prompt_lang=character.get("prompt_lang",""),
-                            sprites=character.get("sprites",[]),
-                            emotion_tags=character.get("emotion_tags",""),
-                            sprite_scale=character.get("sprite_scale", 1.0)
-                        )
+                        character = CharacterConfig.parse_dic(char_data=character)
                         fu.export_character([character], output_path=f'./output/{character.name}.char')
                         return "导出成功"
                     except Exception as e:
