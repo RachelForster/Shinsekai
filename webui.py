@@ -271,7 +271,8 @@ def generate_template(selected_characters):
         char_detail = next((c for c in characters if c['name'] == char_name), None)
         if char_detail.get("character_setting",''):
             template += f"以下是{char_name}的角色设定：\n"
-            template += f"{char_detail.get("character_setting","")}\n\n"
+            character_setting = char_detail.get("character_setting","")
+            template += f"{character_setting}\n\n"
         
     template +=f"""
 要求：
