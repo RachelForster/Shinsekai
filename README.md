@@ -28,10 +28,11 @@
 
 ![Wellerman-Uri](assets/present_example.png)
 
-[![](https://img.shields.io/badge/-完整效果展示Ⅰ-EEE?logo=bilibili)](https://www.bilibili.com/video/BV15H4y1o73x/?share_source=copy_web&vd_source=4641a345db4563ba087d0ed0ba8bdf85)
+[![](https://img.shields.io/badge/-完整效果展示Ⅰ-EEE?logo=bilibili)](bilibili.com/video/BV1V4H7z5Ez7/)
 [![](https://img.shields.io/badge/-完整效果展示Ⅱ-EEE?logo=bilibili)](https://www.bilibili.com/video/BV1Hp4y1c7TU/?share_source=copy_web&vd_source=4641a345db4563ba087d0ed0ba8bdf85)
 
-**视频教程：制作中...0.0**
+**视频教程**
+1. 配置API和导入角色包教程: [教程](bilibili.com/video/BV1V4H7z5Ez7/)
 
 ## 快速使用
 ### 获取项目
@@ -65,9 +66,10 @@ GPT-SOVITS 项目地址：https://github.com/RVC-Boss/GPT-SoVITS
 
 ### 快速体验
 1. 获取LLM API key，并填写到API配置里，保存
-2. 切换到 ``聊天模板`` 标签页，从下拉框中选择nanami.txt，点击加载模板
-3. 点击``启动聊天``按钮，你会看见一个默认的弹窗
-4. 发送消息，七海就会回复你了
+2. 下载七海的人物包（或者其他人物的人物包）[nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char)并在``角色管理``界面导入人物
+3. 切换到 ``聊天模板`` 标签页，勾选七海千秋，然后点击生成模板
+4. 点击``启动聊天``按钮，你会看见一个默认的弹窗
+5. 发送消息，七海就会回复你了
 
 ## 配置API
 ### 1. 进入 API 设定页面

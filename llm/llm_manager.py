@@ -13,7 +13,7 @@ class LLMAdapterFactory:
     _adapters = {
         "Deepseek": DeepSeekAdapter,
         "ChatGPT": OpenAIAdapter,
-        "Gemini":  GeminiAdapter,
+        "Gemini":  OpenAIAdapter,
         "Claude": ClaudeAdapter,
         "豆包": OpenAIAdapter,
         "通义千问": OpenAIAdapter,
