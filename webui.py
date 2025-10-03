@@ -423,8 +423,12 @@ def launch_chat(template, voice_mode, init_sprite_path):
             # 计算模板内容的哈希值（使用 SHA256 算法）
             template_hash = hashlib.md5(template.encode('utf-8')).hexdigest()
             history_filename = f"{template_hash}.json"
+            python_path = 'python'
+            runtime_python_path = Path('./runtime')
+            if runtime_python_path.exists():
+                python_path = './runtime/python.exe'
             main_process = subprocess.Popen(
-                ['./runtime/python.exe', 
+                [python_path, 
                  'main_sprite.py', 
                  '--template=_temp', 
                  f'--voice_mode={voice_mode}',
