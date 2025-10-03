@@ -256,7 +256,7 @@ def import_character(input_path: str) -> list[CharacterConfig]:
 
             # 将更新后的数据创建为 CharacterConfig 对象
             imported_configs.append(CharacterConfig.parse_dic(char_data=char_data))
-            print(f"==========import{char_data.get("character_setting")}")
+            print(f"==========import{char_data.get('character_setting')}")
         
         # 将配置追加到 characters.yaml
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
