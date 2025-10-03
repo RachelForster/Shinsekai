@@ -241,6 +241,7 @@ class UIWorker(QThread):
                 sprite_id = output_data['sprite']
                 speech = output_data['speech']
                 audio_path = output_data.get('audio_path','')
+                audio_path = Path(audio_path).as_posix()
 
                 if character_name == "旁白":
                     formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b>{character_name}</b>：{speech}</p>"
@@ -263,6 +264,8 @@ class UIWorker(QThread):
 
                 # 更新立绘
                 image_path = character_config.sprites[int(sprite_id) - 1]['path']
+                image_path = Path(image_path).as_posix()
+
                 try:
                     cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
                     if cv_image is not None:
@@ -490,7 +493,7 @@ def main():
             dialog = json.loads(msg)['dialog']
             audio_path_queue.put(dialog[-1])
         except Exception as e:
-            print('更新初始立绘失败', e)
+            print('最后一条消息更新失败', e)
 
     
     window.message_submitted.connect(lambda message: on_message_submitted(message))

@@ -4,6 +4,7 @@ import os
 import requests
 import threading
 import queue
+from pathlib import Path
 import subprocess
 from typing import Optional, Callable
 
@@ -34,6 +35,11 @@ class GPTSoVitsAdapter(TTSAdapter):
         self.sovits_model_path = ''
         self.gpt_model_path = ''
         self.gpt_sovits_work_path = gpt_sovits_work_path
+
+        # Consider the user's input mistake
+        if self.gpt_sovits_work_path.endswith(".py"):
+            self.gpt_sovits_work_path = Path(self.gpt_sovits_work_path).parent.as_posix()
+        
 
         # Load the model and start the server process here
         self._start_server_process()

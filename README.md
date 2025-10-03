@@ -46,8 +46,8 @@ git clone https://github.com/RachelForster/Shinsekai
 如果是整合包，请双击install.bat
 1. 创建并激活虚拟环境  
 ```
-conda create -n shinsekai python=3.10
-conda activate shinkekai
+conda create -n shinsekai python=3.13
+conda activate shinsekai
 ```
 2. 然后在项目目录下执行以下命令  
 ```
