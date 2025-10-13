@@ -222,6 +222,7 @@ class UIWorker(QThread):
     update_sprite_signal = pyqtSignal(np.ndarray, float)
     update_dialog_signal = pyqtSignal(str)
     update_notification_signal = pyqtSignal(str)
+    update_option_signal = pyqtSignal(list)
     
     def __init__(self, audio_path_queue: Queue, parent=None):
         super().__init__(parent)
@@ -248,6 +249,11 @@ class UIWorker(QThread):
                     chat_history.append(formatted_speech)
                     self.update_dialog_signal.emit(formatted_speech)
                     time.sleep(len(speech)//8)
+                    self.audio_path_queue.task_done()
+                    continue
+                elif character_name == "选项":
+                    optionList = speech.split('/')
+                    self.update_option_signal.emit(optionList)
                     self.audio_path_queue.task_done()
                     continue
 
@@ -446,6 +452,7 @@ def main():
     ui_worker.update_sprite_signal.connect(window.update_image)
     ui_worker.update_dialog_signal.connect(window.setDisplayWords)
     ui_worker.update_notification_signal.connect(window.setNotification)
+    ui_worker.update_option_signal.connect(window.setOptions)
     ui_worker.start()
     
     # 创建并启动 TTS Worker 线程

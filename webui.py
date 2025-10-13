@@ -245,8 +245,8 @@ def generate_template(selected_characters):
 
     for char_name in selected_characters:
         names += f"{char_name},"
-    
-    template = f"你需要模拟{names}的对话:\n"
+
+    template = f"你需要模拟一个RPG剧情对话系统，出场人物有：{names}\n"
 
     template += '''
 每次输出时，必须严格使用 JSON 格式，结构为：
@@ -277,11 +277,12 @@ def generate_template(selected_characters):
     template +=f"""
 要求：
 1. 不要输出除 JSON 以外的任何文本。
-2. character_name 只能是{names} 或者旁白。
+2. character_name 只能是{names} 或者旁白,选项。
 3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白时，该字段为-1。
 4. speech 字段是角色的台词，必须符合角色的性格和说话风格。
 5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有至少两个元素。
-6. 旁白描写是场景动作描写\n
+6. 旁白描写是场景动作描写
+7. 选项必须是dialog最后一个元素，不能出现在其他地方，你必须在dialog最后一个元素中添加选项，选项元素的character_name必须是选项，内容在speech内，选项如果多于两个请用"/"分隔，xx选项必须是用户可以选择的对话、行为等，选项中不能出现任何多余的描述和内容，必须是纯文本。选项里有一个是纯粹出其不意的。\n
 """
     template += "\n请开始对话:\n"
     return template, ""

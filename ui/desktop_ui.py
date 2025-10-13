@@ -243,7 +243,7 @@ class DesktopAssistantWindow(QWidget):
         self.original_width = min(screen_geometry.height(), screen_geometry.width()) // 4 * 3
         self.original_height = self.original_width
 
-        base_dpi = 300.0
+        base_dpi = 150.0
         curren_dpi = screen.logicalDotsPerInch()
         self.font_size = f"{str(int(48*curren_dpi//base_dpi))}px;"
         self.btn_font_size = f"{str(int(28*curren_dpi//base_dpi))}px;"
@@ -285,6 +285,9 @@ class DesktopAssistantWindow(QWidget):
         
         # 对话框组件,覆盖在图像上
         self.setup_dialog_label()
+
+        # 选项容器,与对话框标签位置相同
+        self.setup_options_widget()
 
         # 工具栏
         self.setup_toolbar()
@@ -429,6 +432,30 @@ class DesktopAssistantWindow(QWidget):
         self.dialog_label.hide()
         self.dialog_label.setParent(self.image_container)
     
+
+    def setup_options_widget(self):
+        """初始化选项容器，与对话框标签位置相同"""
+        self.options_widget = QWidget()
+        
+        # 设置容器的基本样式，与dialog_label相似
+        self.options_widget.setStyleSheet("""
+            QWidget {
+                background-color: rgba(50, 50, 50, 200); /* 与dialog_label背景相似 */
+                border-radius: 12px;
+                border-bottom-left-radius: 0;
+                border-bottom-right-radius: 0;
+                font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
+            }
+        """)
+        
+        self.options_layout = QVBoxLayout(self.options_widget)
+        self.options_layout.setContentsMargins(15, 15, 15, 15) # 稍微大一点的边距
+        self.options_layout.setSpacing(10)
+        
+        # 设置父组件，使其覆盖在图像上
+        self.options_widget.setParent(self.image_container)
+        self.options_widget.hide()
+
     def setup_image_label(self):
         """初始化图像标签"""
         self.label = QLabel()
@@ -527,6 +554,7 @@ class DesktopAssistantWindow(QWidget):
                 self.chat_worker.start()
 
             self.message_submitted.emit(message)  # 发出消息提交信号
+    
 
     def setNotification(self, message):
         """设置提示词"""
@@ -542,6 +570,7 @@ class DesktopAssistantWindow(QWidget):
     def setDisplayWords(self, text):
         """显示人物说的话"""
         if text:
+            self.options_widget.hide()
             self.dialog_label.setText(text)
             self.dialog_label.show()
             self.dialog_label.adjustSize()
@@ -549,6 +578,78 @@ class DesktopAssistantWindow(QWidget):
             self.dialog_label.setGeometry(0, y, self.label.width(), self.dialog_label.height())
         else:
             self.dialog_label.hide()
+    
+    def option_clicked(self, text):
+        """选项按钮点击处理函数"""
+        print(f"Option clicked: {text}")
+        self.input_box.setText(text) # 将内容添加到输入框
+        self.setOptions([])          # 隐藏选项
+        self.sendMessage()           # 自动发送消息
+    
+    def setOptions(self, optionList: list[str]):
+        """
+        在dialog label相同的地方显示一组半透明选项按钮，并隐藏dialog label。
+        点击选项按钮会将内容添加到输入框并发送。
+        """
+        # 1. 互斥：隐藏对话框标签
+        self.dialog_label.hide() 
+
+        # 2. 清除现有按钮
+        while self.options_layout.count():
+            item = self.options_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        if not optionList:
+            # 3. 如果列表为空，隐藏选项容器并返回
+            self.options_widget.hide()
+            return
+
+        # 4. 添加新按钮
+        for option_text in optionList:
+            option_btn = QPushButton(option_text)
+            option_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            
+            # 设置半透明样式，使用主题色和字体大小
+            option_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: rgba(255, 255, 255, 50);
+                    color: white;
+                    border-radius: 6px;
+                    padding: 10px;
+                    text-align: left;
+                    font-size: {self.font_size};
+                    word-wrap: break-word; /* 启用文本换行 */
+                    min-height: 40px;
+                }}
+                QPushButton:hover {{
+                    background-color: rgba(255, 255, 255, 30);
+                    border: 1px solid;
+                }}
+            """)
+            
+            # 连接点击事件，使用 lambda 传递选项内容
+            option_btn.clicked.connect(lambda checked, text=option_text: self.option_clicked(text))
+            
+            self.options_layout.addWidget(option_btn)
+
+        # 5. 调整容器大小以适应内容
+        self.options_widget.adjustSize()
+        
+        # 6. 放置在图像标签的底部 (与 dialog_label 相同的定位逻辑)
+        # 获取 options_widget 适应内容后的高度
+        final_height = self.options_widget.sizeHint().height()
+        y = self.label.height() - final_height
+        
+        # 确保宽度和 label 相同，高度为适应内容后的高度
+        self.options_widget.setGeometry(0, y, self.label.width(), final_height)
+
+        # 7. 显示选项
+        self.options_widget.show()
+        # 确保在图像和其他元素上方显示 (工具栏和对话框标签除外)
+        self.options_widget.raise_()
+        self.toolbar.raise_()
     
     def mousePressEvent(self, event):
         """实现窗口拖动"""

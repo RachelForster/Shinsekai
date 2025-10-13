@@ -2,7 +2,7 @@
 LLM_BASE_URLS = {
     "Deepseek": "https://api.deepseek.com/v1",
     "ChatGPT": "https://api.openai.com/v1",
-    "Gemini": "https://generativelanguage.googleapis.com/v1beta",
+    "Gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
     "Claude": "https://api.anthropic.com/v1",
     "豆包": "https://ark.cn-beijing.volces.com/api/v3",
     "通义千问": "https://dashscope.aliyuncs.com/api/v1"
