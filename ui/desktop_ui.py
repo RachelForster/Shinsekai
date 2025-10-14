@@ -229,6 +229,7 @@ class DesktopAssistantWindow(QWidget):
     change_voice_language = pyqtSignal(str)  # 定义信号用于更改语音的语言
     close_window = pyqtSignal() #关闭窗口信号
     clear_chat_history = pyqtSignal()
+    skip_speech_signal = pyqtSignal() # 跳过当前语音信号
 
     def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False):
         """初始化窗口"""
@@ -431,7 +432,26 @@ class DesktopAssistantWindow(QWidget):
         self.dialog_label.setWordWrap(True)
         self.dialog_label.hide()
         self.dialog_label.setParent(self.image_container)
-    
+
+        self.skip_button = QPushButton(">")
+        self.skip_button.setParent(self.image_container)
+        self.skip_button.setFixedSize(48, 48)
+        self.skip_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 150);
+                color: white;
+                border: none;
+                border-radius: 24px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 100, 100, 100);
+            }
+        """)
+        # 4. 连接按钮到跳过信号
+        self.skip_button.clicked.connect(lambda: self.skip_speech_signal.emit()) 
+        self.skip_button.hide()
 
     def setup_options_widget(self):
         """初始化选项容器，与对话框标签位置相同"""
@@ -576,8 +596,14 @@ class DesktopAssistantWindow(QWidget):
             self.dialog_label.adjustSize()
             y = self.label.height() - self.dialog_label.height()
             self.dialog_label.setGeometry(0, y, self.label.width(), self.dialog_label.height())
+            self.skip_button.move(
+                self.dialog_label.geometry().right() - self.skip_button.width() - 20, 
+                self.dialog_label.geometry().bottom() - self.skip_button.height() - 10
+            )
+            self.skip_button.show()
         else:
             self.dialog_label.hide()
+            self.skip_button.hide() # 隐藏跳过按钮
     
     def option_clicked(self, text):
         """选项按钮点击处理函数"""
