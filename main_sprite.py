@@ -228,11 +228,30 @@ class UIWorker(QThread):
         super().__init__(parent)
         self.audio_path_queue = audio_path_queue
         self.running = True
+        self.task_done_requested = threading.Event() # 使用 Event 对象作为跳过标志
+        self.current_audio_path = None
+
+    def skip_speech(self):
+        """停止当前音频播放"""
+        print("UIWorker: 跳过")
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.stop()
+        
+        # 尝试卸载音频，以防 run 循环还未执行到 unload
+        if self.current_audio_path:
+            try:
+                pygame.mixer.music.unload() 
+                self.current_audio_path = None
+            except Exception as e:
+                # 忽略卸载失败的错误，因为可能已经被 unload
+                pass 
+        self.task_done_requested.set()
 
     def run(self):
         global chat_history
         while self.running:
             try:
+                self.task_done_requested.clear()
                 # 从音频路径队列中获取数据
                 output_data = self.audio_path_queue.get()
                 if output_data is None:
@@ -297,22 +316,35 @@ class UIWorker(QThread):
                 min_stop_time = len(speech)//8
                 start_time = time.perf_counter()
                 # 播放音频
+                audio_played = False
+                self.current_audio_path = audio_path
                 if audio_path:
                     try:
                         pygame.mixer.init()
                         pygame.mixer.music.load(audio_path)
+                        self.current_audio_path = audio_path
                         pygame.mixer.music.play()
-                        while pygame.mixer.music.get_busy():
-                            time.sleep(1)
-                        pygame.mixer.music.unload()
+                        audio_played = True
+                        while pygame.mixer.music.get_busy() and not self.task_done_requested.is_set(): # 检查是否被请求跳过
+                            time.sleep(0.1)
+
                     except Exception as e:
                         print(f"UIWorker: 播放音频时出错: {e}")
+
+                    finally:
+                        # 无论如何，尝试在 finally 中卸载资源
+                        if audio_played:
+                            try:
+                                pygame.mixer.music.unload() 
+                            except Exception:
+                                pass # 忽略卸载失败
+                        self.current_audio_path = None # 清除记录
+
                 end_time = time.perf_counter()
-                if end_time - start_time < min_stop_time:
-                    time.sleep(min_stop_time - (end_time - start_time))
-                
-                self.audio_path_queue.task_done()
-            
+                if not self.task_done_requested.is_set():
+                    # 如果没有被跳过，则执行最小时间等待
+                    if end_time - start_time < min_stop_time:
+                        time.sleep(min_stop_time - (end_time - start_time))
             except Exception as e:
                 print(f"UIWorker: 任务处理失败: {e}")
                 self.audio_path_queue.task_done()
@@ -336,14 +368,14 @@ def save_chat_history(filename, history):
     except Exception as e:
         print(f"保存聊天记录失败: {e}")
 
-def load_chat_history(filename):
+def load_chat_history(file_path):
     """根据提供的文件名加载聊天记录。"""
-    if not filename:
+    if not file_path:
         print("没有提供历史文件名，跳过加载。")
         return
         
     messages=[]
-    history_path = Path(CHAT_HISTORY_PATH) / filename
+    history_path = Path(file_path)
     if history_path.exists():
         try:
             with open(history_path, 'r', encoding='utf-8') as f:
@@ -482,6 +514,8 @@ def main():
         window.update_image(init_image)
     except Exception as e:
         print("更新初始立绘失败",e)
+        init_image = np.zeros((512, 512, 4), dtype=np.uint8)
+        window.update_image(init_image)
     window.setNotification("开始聊天吧……")
     window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
 
@@ -508,6 +542,7 @@ def main():
     window.change_voice_language.connect(lambda lang: tts_manager.set_language(lang) if tts_manager else None)
     window.close_window.connect(app.quit)
     window.clear_chat_history.connect(lambda: clear_chat_history(history_file=args.history, ui_queue=audio_path_queue, llm_manager=llm_manager))
+    window.skip_speech_signal.connect(lambda: ui_worker.skip_speech())
     
     # 确保在程序退出时停止所有线程
     app.aboutToQuit.connect(llm_worker.quit)

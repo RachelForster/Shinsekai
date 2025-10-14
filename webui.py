@@ -37,6 +37,7 @@ main_process = None
 UPLOAD_DIR = "./data/sprite"
 VOICE_DIR = "./data/speech"
 MODEL_DIR = "./data/models"
+HISTORY_DIR = "./data/chat_history"
 API_CONFIG_PATH = "./data/config/api.yaml"
 CHARACTER_CONFIG_PATH = "./data/config/characters.yaml"
 TEMPLATE_DIR_PATH = "./data/character_templates"
@@ -307,21 +308,23 @@ def upload_sprites(character_name, sprite_files, emotion_tags):
     char_dir = os.path.join(UPLOAD_DIR, character["sprite_prefix"])
     Path(char_dir).mkdir(parents=True, exist_ok=True)
 
-    files = glob.glob(os.path.join(char_dir, '*'))
+    # files = glob.glob(os.path.join(char_dir, '*'))
     
-    for file in files:
-        try:
-            if os.path.isfile(file):
-                os.remove(file)  # 删除文件
-                print(f"已删除文件: {file}")
-        except Exception as e:
-            print(f"删除文件 {file} 时出错: {e}")
-            return '失败', [], ''
+    # for file in files:
+    #     try:
+    #         if os.path.isfile(file):
+    #             os.remove(file)  # 删除文件
+    #             print(f"已删除文件: {file}")
+    #     except Exception as e:
+    #         print(f"删除文件 {file} 时出错: {e}")
+    #         return '失败', [], ''
 
     
     # 处理上传的图片
     emotion_tags=''
-    character["sprites"]=[]
+    if "sprites" not in character or character["sprites"] is None:
+        character["sprites"]=[]
+    num_existing_sprites = len(character["sprites"])
     uploaded_sprites = []
     for i, file in enumerate(sprite_files):
         # 获取文件名和扩展名
@@ -335,14 +338,79 @@ def upload_sprites(character_name, sprite_files, emotion_tags):
             "path": dest_path,
         })
         uploaded_sprites.append((dest_path))
-        emotion_tags +=f'立绘 {i+1}：\n'
-    
-    character["emotion_tags"]=emotion_tags
+        emotion_tags +=f'立绘 {num_existing_sprites+i+1}：\n'
+    character["emotion_tags"]= character.get("emotion_tags","")+emotion_tags
 
     # 保存到文件
     save_characters_to_file()
+
+    return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", [item['path'] for item in character["sprites"]], character["emotion_tags"]
+
+def delete_all_sprites(character_name):
+    """删除角色的所有立绘"""
+    if not character_name:
+        return "请先选择角色！", [], ""
     
-    return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", uploaded_sprites, emotion_tags
+    # 找到对应的角色
+    character = next((c for c in characters if c["name"] == character_name), None)
+    if not character:
+        return f"找不到角色: {character_name}", [], ""
+    
+    # 删除角色的立绘目录
+    char_dir = os.path.join(UPLOAD_DIR, character["sprite_prefix"])
+    if os.path.exists(char_dir):
+        shutil.rmtree(char_dir)
+
+    char_voice_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
+    if os.path.exists(char_voice_dir):
+        shutil.rmtree(char_voice_dir)
+    
+    # 清空角色的立绘列表
+    character["sprites"] = []
+    character["emotion_tags"] = ""
+    
+    # 保存到文件
+    save_characters_to_file()
+    
+    return f"已删除 {character_name} 的所有立绘！", [], ""
+
+def delete_single_sprite(character_name, sprite_index):
+    """删除角色的指定立绘"""
+    if not character_name:
+        return "请先选择角色！", []
+    
+    # 找到对应的角色
+    character = next((c for c in characters if c["name"] == character_name), None)
+    if not character:
+        return f"找不到角色: {character_name}", [], ""
+    
+    # 确保有立绘
+    if not character["sprites"] or sprite_index >= len(character["sprites"]):
+        return "立绘不存在！", [], ""
+    
+    # 删除指定的立绘文件
+    sprite_path = character["sprites"][sprite_index]["path"]
+    if os.path.exists(sprite_path) and os.path.isfile(sprite_path):
+        os.remove(sprite_path)
+    voice_path = character["sprites"][sprite_index].get("voice_path","")
+    if voice_path and os.path.exists(voice_path) and os.path.isfile(voice_path):
+        os.remove(voice_path)
+    
+    # 从角色的立绘列表中移除
+    character["sprites"].pop(sprite_index)
+    
+    # 更新情绪标签
+    emotion_tags = ""
+    original_tags = character.get("emotion_tags", "").split('\n')
+    original_tags.pop(sprite_index)
+    for i in range(len(character["sprites"])):
+        current_tag = original_tags[i].split("：")[-1] if "：" in original_tags[i] else original_tags[i].split(":")[-1]
+        emotion_tags += f'立绘 {i+1}：{current_tag}\n'
+    character["emotion_tags"] = emotion_tags
+    # 保存到文件
+    save_characters_to_file()
+    
+    return f"已删除 {character_name} 的第 {sprite_index+1} 张立绘！", [s["path"] for s in character["sprites"]], emotion_tags
 
 def upload_emotion_tags(character_name, emotion_tags):
     if not character_name:
@@ -409,7 +477,7 @@ def get_sprite_voice(character_name, sprite_index):
     # 返回语音路径
     return character["sprites"][sprite_index].get("voice_path", None), character["sprites"][sprite_index].get("voice_path", "") 
 
-def launch_chat(template, voice_mode, init_sprite_path):
+def launch_chat(template, voice_mode, init_sprite_path, history_file):
     global main_process
     print("启动聊天，使用模板:")
     try:
@@ -419,11 +487,12 @@ def launch_chat(template, voice_mode, init_sprite_path):
 
         voice_mode = 'gen' if voice_mode == '全语音模式' else 'preset'
         init_path = init_sprite_path[0] if init_sprite_path else ''
+        history_file = history_file[0] if history_file else ''
 
         if main_process is None or main_process.poll() is not None:
             # 计算模板内容的哈希值（使用 SHA256 算法）
             template_hash = hashlib.md5(template.encode('utf-8')).hexdigest()
-            history_filename = f"{template_hash}.json"
+            history_file_path = Path(history_file) if history_file else Path(f"{HISTORY_DIR}/{template_hash}.json")
             python_path = 'python'
             runtime_python_path = Path('./runtime')
             if runtime_python_path.exists():
@@ -434,7 +503,7 @@ def launch_chat(template, voice_mode, init_sprite_path):
                  '--template=_temp', 
                  f'--voice_mode={voice_mode}',
                  f'--init_sprite_path={init_path}',
-                 f'--history={history_filename}',
+                 f'--history={history_file_path.resolve()}',
                  ]
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
@@ -578,6 +647,7 @@ with gr.Blocks(title="新世界程序") as demo:
     active_character=gr.State("") #当前选中的人物名
     selected_sprite_index = gr.State(None)  # 存储当前选中的立绘索引
     init_sprite_path = gr.State("")
+    history_file_path = gr.State("")
 
     with gr.Tab("人物设定"):
         gr.Markdown("## 人物管理")
@@ -741,6 +811,7 @@ with gr.Blocks(title="新世界程序") as demo:
                     interactive=True # 可交互
                 )
                 sprite_scale_save_btn = gr.Button("保存立绘放大/缩小倍数")
+                delete_all_sprites_btn = gr.Button("删除所有立绘")
                
         with gr.Row():
             with gr.Column():
@@ -753,11 +824,12 @@ with gr.Blocks(title="新世界程序") as demo:
                     object_fit="contain",
                     height="auto"
                 )
+                delete_single_sprite_btn = gr.Button("删除选中立绘")
 
             with gr.Column():
                 # 动态生成情绪标签输入框
                 gr.Markdown("### 标注立绘情绪关键字")
-                gr.Markdown(f"这些是{selected_character.value}的立绘，请你生成每张立绘的情绪关键字，格式为：立绘 1：xxx")
+                gr.Markdown(f"这些是{selected_character.value}的立绘，请你生成每张立绘的情绪、动作关键字，格式为：立绘 1：xxx")
                 emotion_inputs = gr.Textbox(label="情绪关键字描述：", lines=20)
                 upload_emotion_btn=gr.Button("上传立绘标注")
             
@@ -805,6 +877,18 @@ with gr.Blocks(title="新世界程序") as demo:
                 outputs=[sprite_scale]
             )
 
+            delete_all_sprites_btn.click(
+                delete_all_sprites,
+                inputs=[selected_character],
+                outputs=[upload_output, sprites_gallery, emotion_inputs]
+            )
+
+            delete_single_sprite_btn.click(
+                delete_single_sprite,
+                inputs=[selected_character, selected_sprite_index],
+                outputs=[upload_output, sprites_gallery, emotion_inputs]
+            )
+
             with gr.Column(scale=1):
                 gr.Markdown("### 选择立绘并上传语音（可选）")
                 gr.Markdown("""
@@ -833,7 +917,7 @@ with gr.Blocks(title="新世界程序") as demo:
                     sources=["upload"],
                     type="filepath"
                 )
-                sprite_voice_text = gr.Textbox(label="立绘语音内容，全语音模式需填写", interactive=True)
+                sprite_voice_text = gr.Textbox(label="立绘语音内容，如果该语音是参考语音需填写", interactive=True)
                 
                 upload_voice_btn = gr.Button("上传语音")
                 voice_upload_output = gr.Textbox(label="上传结果")
@@ -921,9 +1005,11 @@ with gr.Blocks(title="新世界程序") as demo:
 
         with gr.Row():
             initial_sprite_files = gr.Files(
-                label="选择初始立绘图片",
+                label="选择初始立绘图片（可选）",
             )
-            upload_init_sprite_btn = gr.Button("确认选择")
+            history_file = gr.Files(
+                label="选择历史对话文件（可选）",
+            )
 
         launch_btn = gr.Button("启动聊天")
         launch_output = gr.Textbox(label="启动结果")
@@ -946,12 +1032,6 @@ with gr.Blocks(title="新世界程序") as demo:
             outputs=[template_output, filename]
         )
 
-        upload_init_sprite_btn.click(
-            lambda file_path: (file_path,"选择成功"),
-            inputs=[initial_sprite_files],
-            outputs=[init_sprite_path, launch_output]
-        )
-
         save_btn.click(
             save_template,
             inputs=[template_output, filename],
@@ -964,7 +1044,7 @@ with gr.Blocks(title="新世界程序") as demo:
 
         launch_btn.click(
             launch_chat,
-            inputs=[template_output, voice_mode, init_sprite_path],
+            inputs=[template_output, voice_mode, initial_sprite_files, history_file],
             outputs=launch_output
         )
 
