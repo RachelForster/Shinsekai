@@ -29,6 +29,7 @@ from queue import Queue
 
 API_CONFIG_PATH = "./data/config/api.yaml"
 CHAT_HISTORY_PATH = "./data/chat_history"
+SOUND_EFFECT_PATH = "./data/system/sound"
 characters = CharacterConfig.read_from_files('./data/config/characters.yaml')
 api_config = {
     "llm_api_key": "",
@@ -165,9 +166,9 @@ class TTSWorker(QThread):
                 character_name = item['character_name']
                 speech = item['speech']
                 translate = item.get('translate','')
-                
-                if item['sprite'] == '-1':
-                   self.put_data(character_name,speech,-1,'')
+                sprite = item.get('sprite','-1')
+                if sprite == '-1' or sprite == -1:
+                   self.put_data(character_name,speech,'-1','')
                    continue
 
                 self.character_config = getCharacter(character_name)
@@ -213,7 +214,7 @@ class TTSWorker(QThread):
 
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")
-                self.put_data(character_name, speech, item['sprite'], '')
+                self.put_data(character_name, speech, item.get('sprite', '-1'), '')
                 self.tts_queue.task_done()
 
 
@@ -223,6 +224,7 @@ class UIWorker(QThread):
     update_dialog_signal = pyqtSignal(str)
     update_notification_signal = pyqtSignal(str)
     update_option_signal = pyqtSignal(list)
+    update_value_signal = pyqtSignal(str)
     
     def __init__(self, audio_path_queue: Queue, parent=None):
         super().__init__(parent)
@@ -232,8 +234,9 @@ class UIWorker(QThread):
         self.current_audio_path = None
 
     def skip_speech(self):
-        """停止当前音频播放"""
-        print("UIWorker: 跳过")
+        """跳过当前对话"""
+        if self.audio_path_queue.empty():
+            return
         if pygame.mixer.music.get_busy():
             pygame.mixer.music.stop()
         
@@ -263,16 +266,21 @@ class UIWorker(QThread):
                 audio_path = output_data.get('audio_path','')
                 audio_path = Path(audio_path).as_posix()
 
-                if character_name == "旁白":
+                if character_name == "选项":
+                    optionList = speech.split('/')
+                    self.update_option_signal.emit(optionList)
+                    self.audio_path_queue.task_done()
+                    continue
+                elif character_name == "数值":
+                    self.update_value_signal.emit(speech)
+                    self.audio_path_queue.task_done()
+                    continue
+                elif sprite_id == '-1' or sprite_id == -1:
                     formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b>{character_name}</b>：{speech}</p>"
                     chat_history.append(formatted_speech)
                     self.update_dialog_signal.emit(formatted_speech)
-                    time.sleep(len(speech)//8)
-                    self.audio_path_queue.task_done()
-                    continue
-                elif character_name == "选项":
-                    optionList = speech.split('/')
-                    self.update_option_signal.emit(optionList)
+                    if not self.task_done_requested.is_set():
+                        self.task_done_requested.wait(timeout=len(speech)/10)
                     self.audio_path_queue.task_done()
                     continue
 
@@ -343,8 +351,11 @@ class UIWorker(QThread):
                 end_time = time.perf_counter()
                 if not self.task_done_requested.is_set():
                     # 如果没有被跳过，则执行最小时间等待
-                    if end_time - start_time < min_stop_time:
-                        time.sleep(min_stop_time - (end_time - start_time))
+                    remaining_time = min_stop_time - (end_time - start_time)
+                    if remaining_time > 0:
+                        # 使用 self.task_done_requested.wait() 代替 time.sleep()
+                        # 这样如果 skip_speech() 在等待期间被调用，等待会立即停止。
+                        self.task_done_requested.wait(timeout=remaining_time) 
             except Exception as e:
                 print(f"UIWorker: 任务处理失败: {e}")
                 self.audio_path_queue.task_done()
@@ -485,6 +496,7 @@ def main():
     ui_worker.update_dialog_signal.connect(window.setDisplayWords)
     ui_worker.update_notification_signal.connect(window.setNotification)
     ui_worker.update_option_signal.connect(window.setOptions)
+    ui_worker.update_value_signal.connect(window.update_numeric_info)
     ui_worker.start()
     
     # 创建并启动 TTS Worker 线程

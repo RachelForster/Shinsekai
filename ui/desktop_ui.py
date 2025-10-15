@@ -2,6 +2,7 @@ import sys
 from PIL.ImageChops import screen
 import numpy as np
 import threading
+import pygame
 import time
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt5.QtGui import QFont, QImage, QPixmap
@@ -184,6 +185,30 @@ class MessageDialog(QDialog):
         
         return widget
 
+class ClickableLabel(QLabel):
+    """可点击的标签"""
+    clicked = pyqtSignal()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        try:
+            # 播放短音效使用 pygame.mixer.Sound，而不是 pygame.mixer.music
+            self.click_sound = pygame.mixer.Sound('./data/system/sound/switch.ogg')
+        except Exception as e:
+            print(f"Error loading sound effect: {e}")
+            self.click_sound = None
+
+        # ... (其他初始化) ...
+
+    def play_click_sound(self):
+        """播放点击音效"""
+        if self.click_sound:
+            # 使用 .play() 播放音效
+            self.click_sound.play()
+
+    def mousePressEvent(self, event):
+        self.clicked.emit()
+        self.play_click_sound()
+
 
 class ImageDisplayThread(QThread):
     """图像显示线程，负责从队列获取图像并更新UI"""
@@ -279,8 +304,10 @@ class DesktopAssistantWindow(QWidget):
         self.image_layout = QVBoxLayout(self.image_container)
         self.image_layout.setContentsMargins(0, 0, 0, 0)
         self.image_layout.setSpacing(0)
-        
-      
+
+        # 数值信息标签
+        self.setup_numeric_label()
+
         # 图像标签
         self.setup_image_label()   
         
@@ -410,9 +437,38 @@ class DesktopAssistantWindow(QWidget):
                 language_str = "粵語"
             self.setNotification("语音语言已更改:" + language_str)
 
+    def setup_numeric_label(self):
+        # 1. 创建用于显示富文本的“数值组件”
+        self.numeric_info_label = QLabel(self.image_container) # 以 self.label (图像容器) 为父组件
+        
+        # 2. 设置样式和属性
+        self.numeric_info_label.setFont(QFont("Microsoft YaHei", int(self.btn_font_size[0:-3]), QFont.Bold))
+        # 允许显示富文本（HTML 格式）
+        self.numeric_info_label.setTextFormat(Qt.RichText) 
+        # 设置初始文本（示例）
+        self.numeric_info_label.setText("<b>HP:</b> <span style='color:red;'>100</span>")
+        
+        # 3. 设置半透明背景和字体颜色
+        # 为了覆盖图像，设置一个半透明背景，并确保文字清晰可见
+        self.numeric_info_label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(0, 0, 0, 150); /* 半透明黑色背景 */
+                padding: 12px;
+                border-radius: 16px;
+                color: white; /* 白色字体 */
+            }
+        """)
+        
+        # 4. 调整大小策略：根据内容自动调整
+        self.numeric_info_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        
+        # 5. 初始隐藏（如果需要，你也可以直接显示）
+        self.numeric_info_label.hide() 
+
     def setup_dialog_label(self):
         """初始化对话框标签"""
-        self.dialog_label = QLabel("")
+        self.dialog_label = ClickableLabel()
+        self.dialog_label.clicked.connect(lambda: self.skip_speech_signal.emit()) 
         self.dialog_label.setTextFormat(Qt.RichText)
         self.dialog_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.dialog_label.setStyleSheet(f"""
@@ -438,7 +494,7 @@ class DesktopAssistantWindow(QWidget):
         self.skip_button.setFixedSize(48, 48)
         self.skip_button.setStyleSheet("""
             QPushButton {
-                background-color: rgba(255, 255, 255, 150);
+                background-color: rgba(255, 255, 255, 0);
                 color: white;
                 border: none;
                 border-radius: 24px;
@@ -450,7 +506,6 @@ class DesktopAssistantWindow(QWidget):
             }
         """)
         # 4. 连接按钮到跳过信号
-        self.skip_button.clicked.connect(lambda: self.skip_speech_signal.emit()) 
         self.skip_button.hide()
 
     def setup_options_widget(self):
@@ -575,6 +630,22 @@ class DesktopAssistantWindow(QWidget):
 
             self.message_submitted.emit(message)  # 发出消息提交信号
     
+    def update_numeric_info(self, html_text: str):
+        """
+        更新数值组件显示的富文本内容。
+        例如: window.update_numeric_info("<b>EXP:</b> <span style='color:lime;'>+15</span>")
+        """
+        self.numeric_info_label.setText(html_text)
+        
+        # 内容变化后，需要重新调整大小并重新定位
+        self.numeric_info_label.adjustSize()
+        
+        # 如果内容为空，隐藏组件
+        if not html_text.strip():
+            self.numeric_info_label.hide()
+        else:
+            self.numeric_info_label.show()
+            self.numeric_info_label.raise_()
 
     def setNotification(self, message):
         """设置提示词"""
