@@ -192,7 +192,7 @@ class ClickableLabel(QLabel):
         super().__init__(*args, **kwargs)
         try:
             # 播放短音效使用 pygame.mixer.Sound，而不是 pygame.mixer.music
-            self.click_sound = pygame.mixer.Sound('./data/system/sound/switch.ogg')
+            self.click_sound = pygame.mixer.Sound('./assets/system/sound/switch.ogg')
         except Exception as e:
             print(f"Error loading sound effect: {e}")
             self.click_sound = None
@@ -705,31 +705,33 @@ class DesktopAssistantWindow(QWidget):
 
         # 4. 添加新按钮
         for option_text in optionList:
-            option_btn = QPushButton(option_text)
+            option_btn = ClickableLabel()
+            option_btn.setText(option_text)
+            option_btn.setTextFormat(Qt.RichText)
             option_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             
             # 设置半透明样式，使用主题色和字体大小
             option_btn.setStyleSheet(f"""
-                QPushButton {{
+                QLabel {{
                     background-color: rgba(255, 255, 255, 50);
                     color: white;
                     border-radius: 6px;
                     padding: 10px;
                     text-align: left;
                     font-size: {self.font_size};
-                    word-wrap: break-word; /* 启用文本换行 */
                     min-height: 40px;
                 }}
-                QPushButton:hover {{
+                QLabel:hover {{
                     background-color: rgba(255, 255, 255, 30);
                     border: 1px solid;
                 }}
             """)
             
             # 连接点击事件，使用 lambda 传递选项内容
-            option_btn.clicked.connect(lambda checked, text=option_text: self.option_clicked(text))
+            option_btn.clicked.connect(lambda text=option_text: self.option_clicked(text))
             
             self.options_layout.addWidget(option_btn)
+            self.options_widget.adjustSize()
 
         # 5. 调整容器大小以适应内容
         self.options_widget.adjustSize()

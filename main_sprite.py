@@ -167,7 +167,7 @@ class TTSWorker(QThread):
                 speech = item['speech']
                 translate = item.get('translate','')
                 sprite = item.get('sprite','-1')
-                if sprite == '-1' or sprite == -1:
+                if sprite == "-1" or sprite == -1:
                    self.put_data(character_name,speech,'-1','')
                    continue
 
@@ -215,7 +215,6 @@ class TTSWorker(QThread):
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")
                 self.put_data(character_name, speech, item.get('sprite', '-1'), '')
-                self.tts_queue.task_done()
 
 
 class UIWorker(QThread):
@@ -260,9 +259,9 @@ class UIWorker(QThread):
                 if output_data is None:
                     break
 
-                character_name = output_data['character_name']
-                sprite_id = output_data['sprite']
-                speech = output_data['speech']
+                character_name = output_data.get('character_name','')
+                sprite_id = output_data.get('sprite','-1')
+                speech = output_data.get('speech','')
                 audio_path = output_data.get('audio_path','')
                 audio_path = Path(audio_path).as_posix()
 
@@ -317,9 +316,10 @@ class UIWorker(QThread):
                     print(f"UIWorker: 加载图片时出错: {e}")
 
                 # 更新对话框文本
-                formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{character_config.color};'>{character_name}</b>：{speech}</p>"
-                chat_history.append(formatted_speech)
-                self.update_dialog_signal.emit(formatted_speech)
+                if speech:
+                    formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{character_config.color};'>{character_name}</b>：{speech}</p>"
+                    chat_history.append(formatted_speech)
+                    self.update_dialog_signal.emit(formatted_speech)
 
                 min_stop_time = len(speech)//8
                 start_time = time.perf_counter()
@@ -358,6 +358,11 @@ class UIWorker(QThread):
                         self.task_done_requested.wait(timeout=remaining_time) 
             except Exception as e:
                 print(f"UIWorker: 任务处理失败: {e}")
+                formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b>{character_name}</b>：{speech}</p>"
+                chat_history.append(formatted_speech)
+                self.update_dialog_signal.emit(formatted_speech)
+                if not self.task_done_requested.is_set():
+                    self.task_done_requested.wait(timeout=len(speech)/10)
                 self.audio_path_queue.task_done()
 
 def getHistory():   
@@ -511,7 +516,7 @@ def main():
     init_sprite_path = args.init_sprite_path
     print (init_sprite_path)
     if not init_sprite_path:
-        init_sprite_path = './data/sprite/usami/Danganronpa_V3_Monomi_Bonus_Mode_Sprites_14.webp'
+        init_sprite_path = './assets/system/picture/shinsekai.png'
 
     # 更新初始立绘
     try:
@@ -524,13 +529,16 @@ def main():
             elif init_image.shape[2] == 4:
                 init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
         window.update_image(init_image)
+        window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
+
+        if len(chat_history) <= 1:
+            window.setOptions(['开始'])
     except Exception as e:
         print("更新初始立绘失败",e)
         init_image = np.zeros((512, 512, 4), dtype=np.uint8)
         window.update_image(init_image)
+        window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
     window.setNotification("开始聊天吧……")
-    window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
-
     # 连接 UI 信号到队列
     def on_message_submitted(message):
         user_input_queue.put(message)
@@ -544,7 +552,18 @@ def main():
             elif len[messages] > 2:
                 msg = messages[-2]['content']
             dialog = json.loads(msg)['dialog']
-            audio_path_queue.put(dialog[-1])
+            while dialog and (dialog[-1].get("sprite",'-1') == '-1' or dialog[-1].get("sprite",'-1') == -1):
+                audio_path_queue.put(dialog[-1])
+                dialog.pop()
+            if dialog:
+                audio_path_queue.put(
+                    {
+                        'character_name': dialog[-1].get('character_name',''),
+                        'sprite': dialog[-1].get('sprite','-1'),
+                        'speech': "",
+                    }
+                )
+                
         except Exception as e:
             print('最后一条消息更新失败', e)
 
