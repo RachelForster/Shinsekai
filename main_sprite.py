@@ -167,7 +167,7 @@ class TTSWorker(QThread):
                 speech = item['speech']
                 translate = item.get('translate','')
                 sprite = item.get('sprite','-1')
-                if sprite == "-1" or sprite == -1:
+                if sprite == "-1" or sprite == -1 or character_name in ["选项","数值"]:
                    self.put_data(character_name,speech,'-1','')
                    continue
 

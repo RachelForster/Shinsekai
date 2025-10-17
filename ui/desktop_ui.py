@@ -709,6 +709,7 @@ class DesktopAssistantWindow(QWidget):
             option_btn.setText(option_text)
             option_btn.setTextFormat(Qt.RichText)
             option_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            option_btn.setWordWrap(True)
             
             # 设置半透明样式，使用主题色和字体大小
             option_btn.setStyleSheet(f"""
@@ -716,7 +717,7 @@ class DesktopAssistantWindow(QWidget):
                     background-color: rgba(255, 255, 255, 50);
                     color: white;
                     border-radius: 6px;
-                    padding: 10px;
+                    padding: 5px;
                     text-align: left;
                     font-size: {self.font_size};
                     min-height: 40px;
