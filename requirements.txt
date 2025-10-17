@@ -4,3 +4,4 @@ opencv_python
 gradio
 pyQT5
 openai
+opencc-python-reimplemented

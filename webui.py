@@ -256,7 +256,8 @@ def generate_template(selected_characters):
     {
       "character_name": "角色名",
       "sprite": "对应的立绘ID",
-      "speech": "该角色说的话"
+      "speech": "该角色说的中文台词",
+      "translate": "该角色说的话的日文翻译（可选）"
     }
   ]
 }
@@ -284,7 +285,7 @@ def generate_template(selected_characters):
 5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有至少两个元素。
 6. 旁白描写是场景动作描写
 7. 你必须在dialog最后一个元素中添加选项，选项元素的character_name必须是选项，内容在speech内，选项如果多于两个请用"/"分隔，xx选项必须是用户可以选择的对话、行为等，选项中不能出现任何多余的描述和内容，必须是纯文本。选项里有一个是纯粹插科打诨，无厘头的，有一个是非常精明的选项，另一个中庸的选项，选项必须符合角色的性格和说话风格，选项必须和当前的剧情相关联，不能无关紧要。
-8. 数值可以用富文本，可以添加颜色、emoji等表示，颜色尽量淡一些，例如 <span style='color:xxxx;'>HP：100</span>，选项元素的character_name必须是数值，内容在speech内，如果有多个数值，请用换行符分隔开，在这里，数值代表角色的状态或者用户的状态。
+8. 数值可以用富文本，可以添加颜色、emoji等表示，颜色尽量浅一些，符合马卡龙配色，例如 <span style='color:xxxx;'>HP：100</span>，选项元素的character_name必须是数值，内容在speech内，如果有多个数值，请用<br>分隔开，在这里，数值代表角色的状态或者用户的状态。
 """
     template += "\n请开始对话，开始时介绍下用户所处的情境和背景，以及在做什么事情：\n"
     return template, ""

@@ -250,7 +250,7 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                     dest_model_path = dest_model_dir / Path(path).name
                     if source_model_path.exists():  # 确保源文件存在
                         shutil.copy2(source_model_path, dest_model_path)
-                        char_data[key] = str(dest_model_path.resolve())  # 更新为新的绝对路径
+                        char_data[key] = dest_model_path.as_posix()  # 更新为相对路径
                     else:
                         char_data[key] = None
 

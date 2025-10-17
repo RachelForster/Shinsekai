@@ -440,27 +440,28 @@ class DesktopAssistantWindow(QWidget):
     def setup_numeric_label(self):
         # 1. 创建用于显示富文本的“数值组件”
         self.numeric_info_label = QLabel(self.image_container) # 以 self.label (图像容器) 为父组件
-        
-        # 2. 设置样式和属性
-        self.numeric_info_label.setFont(QFont("Microsoft YaHei", int(self.btn_font_size[0:-3]), QFont.Bold))
         # 允许显示富文本（HTML 格式）
         self.numeric_info_label.setTextFormat(Qt.RichText) 
         # 设置初始文本（示例）
+        self.numeric_info_label.setWordWrap(True)
         self.numeric_info_label.setText("<b>HP:</b> <span style='color:red;'>100</span>")
         
         # 3. 设置半透明背景和字体颜色
         # 为了覆盖图像，设置一个半透明背景，并确保文字清晰可见
-        self.numeric_info_label.setStyleSheet("""
-            QLabel {
-                background-color: rgba(0, 0, 0, 150); /* 半透明黑色背景 */
+        self.numeric_info_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: rgba(0, 0, 0, 100); /* 半透明黑色背景 */
                 padding: 12px;
+                font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
+                font-size: {self.font_size};
+                line-height: 150%;
                 border-radius: 16px;
                 color: white; /* 白色字体 */
-            }
+            }}
         """)
         
         # 4. 调整大小策略：根据内容自动调整
-        self.numeric_info_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.numeric_info_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         
         # 5. 初始隐藏（如果需要，你也可以直接显示）
         self.numeric_info_label.hide() 
@@ -686,6 +687,7 @@ class DesktopAssistantWindow(QWidget):
     def setOptions(self, optionList: list[str]):
         """
         在dialog label相同的地方显示一组半透明选项按钮，并隐藏dialog label。
+        
         点击选项按钮会将内容添加到输入框并发送。
         """
         # 1. 互斥：隐藏对话框标签
@@ -730,10 +732,8 @@ class DesktopAssistantWindow(QWidget):
             
             # 连接点击事件，使用 lambda 传递选项内容
             option_btn.clicked.connect(lambda text=option_text: self.option_clicked(text))
-            
             self.options_layout.addWidget(option_btn)
-            self.options_widget.adjustSize()
-
+    
         # 5. 调整容器大小以适应内容
         self.options_widget.adjustSize()
         
