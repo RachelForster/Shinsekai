@@ -22,6 +22,7 @@ import time
 import pygame
 import cv2
 import numpy as np
+from opencc import OpenCC
 import argparse
 import yaml
 import json
@@ -39,6 +40,7 @@ api_config = {
 }
 voice_lang = "ja"
 chat_history = []
+cc = OpenCC('t2s')  # 繁体到简体转换器
 
 def load_api_config_from_file():
     global api_config
@@ -164,6 +166,7 @@ class TTSWorker(QThread):
                     break
 
                 character_name = item['character_name']
+                character_name = cc.convert(character_name)
                 speech = item['speech']
                 translate = item.get('translate','')
                 sprite = item.get('sprite','-1')
@@ -185,18 +188,18 @@ class TTSWorker(QThread):
 
                 audio_path = ''
                 if self.tts_manager:
+                    print(Path(self.character_config.sovits_model_path).resolve().as_posix())
                     model_info ={
-                        'sovits_model_path': self.character_config.sovits_model_path, 
-                        'gpt_model_path': self.character_config.gpt_model_path,
+                        'sovits_model_path': Path(self.character_config.sovits_model_path).resolve().as_posix(), 
+                        'gpt_model_path': Path(self.character_config.gpt_model_path).resolve().as_posix(),
                     }
                     self.tts_manager.switch_model(model_info)
 
                     sprite_id = int(item["sprite"]) -1
-                    ref_audio_path = self.character_config.refer_audio_path
+                    ref_audio_path = Path(self.character_config.refer_audio_path).resolve().as_posix()
                     prompt_text = self.character_config.prompt_text
                     if self.character_config.sprites[sprite_id].get("voice_text",None):
-                        ref_audio_path = Path(self.character_config.sprites[sprite_id].get("voice_path")).absolute()
-                        ref_audio_path = str(ref_audio_path)
+                        ref_audio_path = Path(self.character_config.sprites[sprite_id].get("voice_path")).resolve().as_posix()
                         prompt_text = self.character_config.sprites[sprite_id].get("voice_text")
                     audio_path = self.tts_manager.generate_tts(
                         speech_text, 
