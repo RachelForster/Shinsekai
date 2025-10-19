@@ -27,6 +27,7 @@ import argparse
 import yaml
 import json
 from queue import Queue
+import traceback
 
 API_CONFIG_PATH = "./data/config/api.yaml"
 CHAT_HISTORY_PATH = "./data/chat_history"
@@ -135,6 +136,7 @@ class LLMWorker(QThread):
 
             except Exception as e:
                 print(f"LLMWorker: 任务处理失败: {e}, {start_index}")
+                traceback.print_exc()
                 self.user_input_queue.task_done()
 
 
@@ -217,6 +219,7 @@ class TTSWorker(QThread):
 
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")
+                traceback.print_exc()
                 self.put_data(character_name, speech, item.get('sprite', '-1'), '')
 
 
@@ -261,12 +264,14 @@ class UIWorker(QThread):
                 output_data = self.audio_path_queue.get()
                 if output_data is None:
                     break
-
+                
+                print("UIWorker: 获取到音频路径数据:", output_data)
                 character_name = output_data.get('character_name','')
                 sprite_id = output_data.get('sprite','-1')
                 speech = output_data.get('speech','')
                 audio_path = output_data.get('audio_path','')
-                audio_path = Path(audio_path).as_posix()
+                if audio_path:
+                    audio_path = Path(audio_path).as_posix()
 
                 if character_name == "选项":
                     optionList = speech.split('/')
@@ -301,6 +306,7 @@ class UIWorker(QThread):
                 image_path = character_config.sprites[int(sprite_id) - 1]['path']
                 image_path = Path(image_path).as_posix()
 
+
                 try:
                     cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
                     if cv_image is not None:
@@ -329,7 +335,7 @@ class UIWorker(QThread):
                 # 播放音频
                 audio_played = False
                 self.current_audio_path = audio_path
-                if audio_path:
+                if audio_path and audio_path is not None and Path(audio_path).exists():
                     try:
                         pygame.mixer.init()
                         pygame.mixer.music.load(audio_path)
@@ -360,6 +366,7 @@ class UIWorker(QThread):
                         # 这样如果 skip_speech() 在等待期间被调用，等待会立即停止。
                         self.task_done_requested.wait(timeout=remaining_time) 
             except Exception as e:
+                traceback.print_exc()
                 print(f"UIWorker: 任务处理失败: {e}")
                 formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b>{character_name}</b>：{speech}</p>"
                 chat_history.append(formatted_speech)
