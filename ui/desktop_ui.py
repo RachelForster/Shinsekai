@@ -3,13 +3,117 @@ from PIL.ImageChops import screen
 import numpy as np
 import threading
 import pygame
+import yaml
 import time
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize
+from PyQt5.QtWidgets import QSlider
 from PyQt5.QtGui import QFont, QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton,
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
 import os
 
+
+class FontSizeDialog(QDialog):
+    """用于设置字体大小的对话框"""
+    def __init__(self, current_base_size, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("设置字体大小")
+        self.setModal(True)
+        self.current_base_size = current_base_size
+        self.new_base_size = current_base_size
+
+        self.setStyleSheet("""
+            QDialog {
+                background-color: rgba(0, 0, 0, 200);
+                border-radius: 10px;
+                color: white;
+            }
+            QLabel {
+                color: white;
+                font-size: 16px;
+                padding: 5px;
+            }
+            QSlider::groove:horizontal {
+                height: 8px;
+                background: #505050;
+                margin: 2px 0;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #4CAF50;
+                border: 1px solid #ddd;
+                width: 18px;
+                margin: -5px 0;
+                border-radius: 9px;
+            }
+            QPushButton {
+                background-color: rgba(76, 175, 80, 200);
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(76, 175, 80, 255);
+            }
+        """)
+
+        self.init_ui()
+        self.adjustSize()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+
+        # 标签
+        info_label = QLabel("调整UI文本基础大小（影响对话和按钮）：")
+        layout.addWidget(info_label)
+
+        # 滑块
+        self.slider = QSlider(Qt.Horizontal)
+        # 假设最小基础字体为10px，最大为60px
+        self.slider.setRange(10, 60) 
+        # 初始值是当前的基础字体大小
+        self.slider.setValue(self.current_base_size) 
+        self.slider.setSingleStep(2)
+        self.slider.valueChanged.connect(self.update_label)
+        layout.addWidget(self.slider)
+
+        # 当前值显示标签
+        self.value_label = QLabel(f"当前大小: {self.current_base_size}px")
+        layout.addWidget(self.value_label)
+
+        # 按钮布局
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        self.confirm_button = QPushButton("确定")
+        self.confirm_button.clicked.connect(self.accept)
+        button_layout.addWidget(self.confirm_button)
+
+        self.cancel_button = QPushButton("取消")
+        self.cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(200, 50, 50, 200);
+            }
+            QPushButton:hover {
+                background-color: rgba(200, 50, 50, 255);
+            }
+        """)
+        self.cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(self.cancel_button)
+
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+
+    def update_label(self, value):
+        self.new_base_size = value
+        self.value_label.setText(f"当前大小: {value}px")
+
+    def get_new_font_size(self):
+        return self.new_base_size
 
 class LanguageDialog(QDialog):
     def __init__(self, parent=None):
@@ -259,20 +363,24 @@ class DesktopAssistantWindow(QWidget):
     def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False):
         """初始化窗口"""
         super().__init__()
+        self.CONFIG_FILE = './data/config/system_config.yaml'
         self.image_queue = image_queue
         self.display_thread = None
         self.deepseek = llm_manager
         self.emotion_queue = emotion_queue
         self.sprite_mode = sprite_mode
+        self.current_options = []
         screen = QApplication.primaryScreen()
         screen_geometry = screen.geometry()
         self.original_width = min(screen_geometry.height(), screen_geometry.width()) // 4 * 3
         self.original_height = self.original_width
 
+        self.config = self._read_config()
+        self.base_font_size_px = self.config.get('base_font_size_px', 48)
         base_dpi = 150.0
         curren_dpi = screen.logicalDotsPerInch()
-        self.font_size = f"{str(int(48*curren_dpi//base_dpi))}px;"
-        self.btn_font_size = f"{str(int(28*curren_dpi//base_dpi))}px;"
+        self.font_size = f"{str(int(self.base_font_size_px*curren_dpi//base_dpi))}px;"
+        self.btn_font_size = f"{str(int(self.base_font_size_px*curren_dpi//base_dpi))}px;"
 
         # 设置图像显示线程
         if not self.sprite_mode:
@@ -328,7 +436,123 @@ class DesktopAssistantWindow(QWidget):
         main_layout.addLayout(input_layout)
         
         self.setLayout(main_layout)
+
+        self.apply_font_styles()
     
+    def apply_font_styles(self):
+        """根据当前的 font_size 和 btn_font_size 更新所有UI元素的样式"""
+        # Recalculate DPI scaled sizes
+        screen = QApplication.primaryScreen()
+        curren_dpi = screen.logicalDotsPerInch()
+        base_dpi = 150.0
+        
+        self.font_size = f"{str(int(self.base_font_size_px*curren_dpi//base_dpi))}px;"
+        # Button font is scaled relative to the default dialog font (48px)
+        self.btn_font_size = f"{str(int(self.base_font_size_px*28//48*curren_dpi//base_dpi))}px;" 
+        
+        # Apply to dialog label
+        self.dialog_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: rgba(50, 50, 50, 200);
+                color: #f0f0f0;
+                font-size: {self.font_size};
+                font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
+                padding: 20px; 
+                border-radius: 12px;
+                border-bottom-left-radius: 0;
+                border-bottom-right-radius: 0;
+                line-height: 200%;
+                letter-spacing: 2px;
+            }}
+        """)
+
+        # Apply to numeric label
+        self.numeric_info_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: rgba(0, 0, 0, 100); /* 半透明黑色背景 */
+                padding: 12px;
+                font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
+                font-size: {self.font_size};
+                line-height: 150%;
+                border-radius: 16px;
+                color: white; /* 白色字体 */
+            }}
+        """)
+        
+        # Apply to input box
+        self.input_box.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: rgba(50, 50, 50, 200);
+                color: white;
+                font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
+                border: 1px solid #555;
+                border-radius: 5px;
+                padding: 20px;
+                font-size: {self.btn_font_size};
+            }}
+        """)
+        
+        # Apply to send button
+        self.send_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 10px;
+                padding: 10px;
+                font-size: {self.btn_font_size}
+            }}
+            QPushButton:hover {{
+                background-color: #45a049;
+            }}
+        """)
+        
+        # Re-apply styles to any existing options (if visible/available)
+        for i in range(self.options_layout.count()):
+            item = self.options_layout.itemAt(i)
+            widget = item.widget()
+            if widget is not None:
+                 widget.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: rgba(255, 255, 255, 50);
+                        color: white;
+                        border-radius: 6px;
+                        padding: 5px;
+                        text-align: left;
+                        font-size: {self.font_size};
+                        min-height: 40px;
+                    }}
+                    QLabel:hover {{
+                        background-color: rgba(255, 255, 255, 30);
+                        border: 1px solid;
+                    }}
+                """)
+
+        # Since sizes changed, force a re-layout/adjust
+        self.dialog_label.adjustSize()
+        self.numeric_info_label.adjustSize()
+        if self.options_widget.isVisible():
+            self.setDisplayWords("Test")
+            self.setOptions(self.current_options)
+
+    
+    def show_font_size_settings(self):
+        """显示字体大小设置对话框"""
+        dialog = FontSizeDialog(self.base_font_size_px, self)
+        if dialog.exec_() == QDialog.Accepted:
+            new_size = dialog.get_new_font_size()
+            if new_size != self.base_font_size_px:
+                self.base_font_size_px = new_size
+                
+                # 1. 更新配置并写入文件
+                self.config['base_font_size_px'] = new_size
+                self._write_config() # 写入 YAML 文件
+                
+                # 2. 动态更新所有UI的字体样式
+                self.apply_font_styles()
+                
+                self.setNotification(f"字体大小已更改为 {new_size}px")
+
     def setup_toolbar(self):
         """初始化右上角工具栏"""
         # 创建工具栏容器
@@ -390,23 +614,24 @@ class DesktopAssistantWindow(QWidget):
     def show_settings_menu(self):
         """显示设置下拉菜单"""
         menu = QMenu(self)
-
-        print("show settings")
         
         # 添加菜单项
         history_action = QAction("历史记录", self)
         clear_history_action = QAction("清空历史记录",self)
         language_action = QAction("语音语言", self)
+        font_size_action = QAction("字体大小", self)
         
         # 连接菜单项的信号
         history_action.triggered.connect(lambda: self.open_chat_history_dialog.emit())
         language_action.triggered.connect(self.show_language_settings)
         clear_history_action.triggered.connect(lambda: self.clear_chat_history.emit())
+        font_size_action.triggered.connect(self.show_font_size_settings)
         
         # 添加菜单项到菜单
         menu.addAction(history_action)
         menu.addAction(clear_history_action)
         menu.addAction(language_action)
+        menu.addAction(font_size_action)
         
         
         # 显示菜单在设置按钮下方
@@ -690,6 +915,8 @@ class DesktopAssistantWindow(QWidget):
         
         点击选项按钮会将内容添加到输入框并发送。
         """
+        self.current_options = optionList
+        print(f"Setting options: {optionList}")
         # 1. 互斥：隐藏对话框标签
         self.dialog_label.hide() 
 
@@ -770,6 +997,34 @@ class DesktopAssistantWindow(QWidget):
             self.display_thread.wait()
         super().closeEvent(event)
         self.close_window.emit()
+    
+    def _read_config(self):
+        """读取配置文件，如果不存在则返回默认配置"""
+        default_config = {
+            'base_font_size_px': 48, # 默认基础字体大小
+            'voice_language': 'ja'
+        }
+        if os.path.exists(self.CONFIG_FILE):
+            try:
+                # In a real implementation, you'd use 'yaml.safe_load'
+                # For this example, we assume it's read correctly or return default
+                with open(self.CONFIG_FILE, 'r', encoding='utf-8') as f:
+                   return yaml.safe_load(f)
+                print("NOTE: YAML read function is a placeholder.")
+                return default_config # Placeholder implementation
+            except Exception as e:
+                print(f"Error reading config file: {e}. Using default settings.")
+                return default_config
+        return default_config
+
+    def _write_config(self):
+        """将当前配置写入YAML文件"""
+        try:
+            # In a real implementation, you'd use 'yaml.dump'
+            with open(self.CONFIG_FILE, 'w', encoding='utf-8') as f:
+                yaml.dump(self.config, f, default_flow_style=False, allow_unicode=True)
+        except Exception as e:
+            print(f"Error writing config file: {e}")
 
 def start_qt_app(display_queue, emotion_queue, deepseek):
     """启动PyQt应用"""

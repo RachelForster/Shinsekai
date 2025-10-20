@@ -129,6 +129,7 @@ class LLMWorker(QThread):
                         except json.JSONDecodeError as e:
                             # 如果解析失败，可能是JSON格式不完整，继续等待更多数据
                             print(f"JSON解析错误，继续等待：{e}")
+                            traceback.print_exc()
                             break
                 self.llm_manager.add_message("assistant",content)           
                 end_time = time.perf_counter()                
@@ -265,7 +266,7 @@ class UIWorker(QThread):
                 if output_data is None:
                     break
                 
-                print("UIWorker: 获取到音频路径数据:", output_data)
+                # print("UIWorker: 获取到音频路径数据:", output_data)
                 character_name = output_data.get('character_name','')
                 sprite_id = output_data.get('sprite','-1')
                 speech = output_data.get('speech','')
