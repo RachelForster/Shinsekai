@@ -380,14 +380,12 @@ def getHistory():
     """获取聊天历史记录"""
     return chat_history
 
-def save_chat_history(filename, history):
+def save_chat_history(file_path, history):
     """根据提供的文件名保存聊天记录到 JSON 文件。"""
-    if not filename:
+    if not file_path:
         print("没有提供历史文件名，跳过保存。")
         return
-    history_dir = Path(CHAT_HISTORY_PATH)
-    history_dir.mkdir(parents=True, exist_ok=True)
-    history_path = history_dir / filename
+    history_path = Path(file_path)
     try:
         with open(history_path, 'w', encoding='utf-8') as f:
             json.dump(history, f, ensure_ascii=False, indent=4)
@@ -400,7 +398,7 @@ def load_chat_history(file_path):
     if not file_path:
         print("没有提供历史文件名，跳过加载。")
         return
-        
+     
     messages=[]
     history_path = Path(file_path)
     if history_path.exists():
@@ -472,6 +470,7 @@ def main():
 
     messages = []
     if args.history:
+        print("加载历史记录...", args.history)
         messages = load_chat_history(args.history)
 
     user_template = ""

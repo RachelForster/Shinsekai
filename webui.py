@@ -489,7 +489,7 @@ def launch_chat(template, voice_mode, init_sprite_path, history_file):
 
         voice_mode = 'gen' if voice_mode == '全语音模式' else 'preset'
         init_path = init_sprite_path[0] if init_sprite_path else ''
-        history_file = history_file[0] if history_file else ''
+        history_file = history_file if history_file else ''
 
         if main_process is None or main_process.poll() is not None:
             # 计算模板内容的哈希值（使用 SHA256 算法）
@@ -1009,10 +1009,10 @@ with gr.Blocks(title="新世界程序") as demo:
             initial_sprite_files = gr.Files(
                 label="选择初始立绘图片（可选）",
             )
-            history_file = gr.Files(
-                label="选择历史对话文件（可选）",
+            history_file = gr.Textbox(
+                label="输入历史记录文件路径（可选）",
+                info="如果填写了历史记录文件，则会加载之前的对话记录，否则会新建一个历史记录文件保存在.data/chat_history目录下"
             )
-
         launch_btn = gr.Button("启动聊天")
         launch_output = gr.Textbox(label="启动结果")
         
