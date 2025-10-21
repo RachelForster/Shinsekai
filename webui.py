@@ -1011,7 +1011,7 @@ with gr.Blocks(title="新世界程序") as demo:
             )
             history_file = gr.Textbox(
                 label="输入历史记录文件路径（可选）",
-                info="如果填写了历史记录文件，则会加载之前的对话记录，否则会新建一个历史记录文件保存在.data/chat_history目录下"
+                info="模版未变动时：上传文件将自动关联历史记录；留空则加载默认历史记录文件。模版变动时, 关联的历史文件也会变动。历史文件保存在./data/chat_history/目录下。",
             )
         launch_btn = gr.Button("启动聊天")
         launch_output = gr.Textbox(label="启动结果")
