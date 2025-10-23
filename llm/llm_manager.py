@@ -5,6 +5,7 @@ from openai import OpenAI
 import json
 import time
 import yaml
+import traceback
 
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 
@@ -58,7 +59,7 @@ class LLMManager:
     def add_message(self, role, content):
         """Adds a message to the conversation history."""
         self.messages.append({"role": role, "content": content})
-    
+
     def clear_messages(self):
         self.messages = [{"role": "system", "content": self.user_template}]
 
