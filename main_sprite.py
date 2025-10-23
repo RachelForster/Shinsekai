@@ -9,7 +9,9 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from llm.llm_manager import LLMManager,LLMAdapterFactory
-from llm.text_processor import TextProcessor
+from llm.history_manager import HistoryManager
+from core.workers import LLMWorker, TTSWorker, UIWorker
+from core.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 from PyQt5.QtGui import QPixmap, QImage
@@ -17,6 +19,7 @@ from PyQt5.QtWidgets import QApplication
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from ui.desktop_ui import DesktopAssistantWindow
 from config.character_config import CharacterConfig
+from config.config_manager import ConfigManager
 import threading
 import time
 import pygame
@@ -29,420 +32,40 @@ import json
 from queue import Queue
 import traceback
 
-API_CONFIG_PATH = "./data/config/api.yaml"
 CHAT_HISTORY_PATH = "./data/chat_history"
-SOUND_EFFECT_PATH = "./data/system/sound"
-characters = CharacterConfig.read_from_files('./data/config/characters.yaml')
-api_config = {
-    "llm_api_key": "",
-    "llm_base_url": "",
-    "gpt_sovits_url": "",
-    "gpt_sovits_api_path":""
-}
+
 voice_lang = "ja"
-chat_history = []
 cc = OpenCC('t2s')  # 繁体到简体转换器
-
-def load_api_config_from_file():
-    global api_config
-    try:
-        with open(API_CONFIG_PATH, 'r', encoding='utf-8') as f:
-            api_config = yaml.safe_load(f) or {}
-        return "API配置已加载！"
-    except Exception as e:
-        return f"加载失败: {str(e)}"
-
-def getCharacter(name):
-    for character in characters:
-        if character.name == name:
-            return character
-    return None
-
-def getCharacterScale(character_name: str):
-    if character_name is None:
-        return 1.0
-    character = getCharacter(character_name)
-    if character is None:
-        return 1.0
-    return character.sprite_scale
-
-
-class LLMWorker(QThread):
-    # 发送通知给主UI线程的信号
-    update_notification_signal = pyqtSignal(str)
-
-    def __init__(self, llm_manager, user_input_queue: Queue, tts_queue: Queue, parent=None):
-        super().__init__(parent)
-        self.llm_manager = llm_manager
-        self.user_input_queue = user_input_queue
-        self.tts_queue = tts_queue
-        self.running = True
-
-    def run(self):
-        global chat_history
-        while self.running:
-            try:
-                # 从用户输入队列中获取任务，阻塞等待
-                message = self.user_input_queue.get()
-                if message is None:
-                    break
-                
-                print(f"LLMWorker: 开始处理消息: {message}")
-                self.update_notification_signal.emit("发送成功，正在等待回复中...")
-
-                # 将用户消息添加到历史
-                formatted_user_message = f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message}</p>"
-                chat_history.append(formatted_user_message)
-                
-                start_time = time.perf_counter()
-                
-                response_stream = self.llm_manager.chat(message, stream=True)
-                
-                response_buffer = ""
-                content = ""
-                
-                start_index = 0
-                for chunk in response_stream:
-                    # 检查是否为完整消息块
-                    chunk_message = chunk.choices[0].delta.content
-                    if chunk_message:
-                        response_buffer += chunk_message
-                        content += chunk_message
-
-                    while '}' in response_buffer:
-                        end_index = response_buffer.find('}') + 1
-                        start_index = end_index -1
-                        while start_index >=0:
-                            if response_buffer[start_index] == '{':
-                                break
-                            start_index = start_index-1
-                        if start_index < 0:
-                            break
-                        try:
-                            json_str = response_buffer[start_index:end_index]
-                            print(json_str)
-
-                            dialog_item = json.loads(json_str)
-                            self.tts_queue.put(dialog_item)
-                            response_buffer = response_buffer[end_index:].strip()
-
-                        except json.JSONDecodeError as e:
-                            # 如果解析失败，可能是JSON格式不完整，继续等待更多数据
-                            print(f"JSON解析错误，继续等待：{e}")
-                            traceback.print_exc()
-                            break
-                self.llm_manager.add_message("assistant",content)           
-                end_time = time.perf_counter()                
-                self.user_input_queue.task_done()
-
-            except Exception as e:
-                print(f"LLMWorker: 任务处理失败: {e}, {start_index}")
-                traceback.print_exc()
-                self.user_input_queue.task_done()
-
-
-class TTSWorker(QThread):
-    def __init__(self, tts_manager, tts_queue: Queue, audio_path_queue: Queue, parent=None):
-        super().__init__(parent)
-        self.tts_manager = tts_manager
-        self.tts_queue = tts_queue
-        self.audio_path_queue = audio_path_queue
-        self.running = True
-        self.text_processor = TextProcessor()
-
-    def put_data(self, character_name, speech, sprite, audio_path):
-        output_data = {
-            'audio_path': audio_path,
-            'character_name': character_name,
-            'sprite': sprite,
-            'speech': speech,
-        }
-        self.audio_path_queue.put(output_data)
-        self.tts_queue.task_done()
-
-    def run(self):
-        while self.running:
-            try:
-                item = self.tts_queue.get()
-                print("LLM worker get an item")
-                if item is None:
-                    break
-
-                character_name = item['character_name']
-                character_name = cc.convert(character_name)
-                speech = item['speech']
-                translate = item.get('translate','')
-                sprite = item.get('sprite','-1')
-                if sprite == "-1" or sprite == -1 or character_name in ["选项","数值"]:
-                   self.put_data(character_name,speech,'-1','')
-                   continue
-
-                self.character_config = getCharacter(character_name)
-                if self.character_config is None: 
-                    continue
-                   
-                # 生成语音
-                speech_text = speech
-                text_processor = self.text_processor
-
-                if translate:
-                    text_processor = None  # 如果有翻译则不使用文本处理
-                    speech_text = translate
-
-                audio_path = ''
-                if self.tts_manager:
-                    print(Path(self.character_config.sovits_model_path).resolve().as_posix())
-                    model_info ={
-                        'sovits_model_path': Path(self.character_config.sovits_model_path).resolve().as_posix(), 
-                        'gpt_model_path': Path(self.character_config.gpt_model_path).resolve().as_posix(),
-                    }
-                    self.tts_manager.switch_model(model_info)
-
-                    sprite_id = int(item["sprite"]) -1
-                    ref_audio_path = Path(self.character_config.refer_audio_path).resolve().as_posix()
-                    prompt_text = self.character_config.prompt_text
-                    if self.character_config.sprites[sprite_id].get("voice_text",None):
-                        ref_audio_path = Path(self.character_config.sprites[sprite_id].get("voice_path")).resolve().as_posix()
-                        prompt_text = self.character_config.sprites[sprite_id].get("voice_text")
-                    audio_path = self.tts_manager.generate_tts(
-                        speech_text, 
-                        text_processor=text_processor,
-                        ref_audio_path=ref_audio_path,
-                        prompt_text=prompt_text,
-                        prompt_lang=self.character_config.prompt_lang,
-                        character_name=character_name,
-                    )
-                else:
-                    audio_path = self.character_config.sprites[int(item['sprite']) -1].get('voice_path','')
-                # 将包含音频路径和原始数据的字典放入音频路径队列
-                self.put_data(character_name, speech, item['sprite'], audio_path)
-                print(f'TTSWorker put: {audio_path} into the UI queue')
-
-            except Exception as e:
-                print(f"TTSWorker: 任务处理失败: {e}")
-                traceback.print_exc()
-                self.put_data(character_name, speech, item.get('sprite', '-1'), '')
-
-
-class UIWorker(QThread):
-    # 发送给主UI线程的信号
-    update_sprite_signal = pyqtSignal(np.ndarray, float)
-    update_dialog_signal = pyqtSignal(str)
-    update_notification_signal = pyqtSignal(str)
-    update_option_signal = pyqtSignal(list)
-    update_value_signal = pyqtSignal(str)
-    
-    def __init__(self, audio_path_queue: Queue, parent=None):
-        super().__init__(parent)
-        self.audio_path_queue = audio_path_queue
-        self.running = True
-        self.task_done_requested = threading.Event() # 使用 Event 对象作为跳过标志
-        self.current_audio_path = None
-
-    def skip_speech(self):
-        """跳过当前对话"""
-        if self.audio_path_queue.empty():
-            return
-        if pygame.mixer.music.get_busy():
-            pygame.mixer.music.stop()
-        
-        # 尝试卸载音频，以防 run 循环还未执行到 unload
-        if self.current_audio_path:
-            try:
-                pygame.mixer.music.unload() 
-                self.current_audio_path = None
-            except Exception as e:
-                # 忽略卸载失败的错误，因为可能已经被 unload
-                pass 
-        self.task_done_requested.set()
-
-    def run(self):
-        global chat_history
-        while self.running:
-            try:
-                self.task_done_requested.clear()
-                # 从音频路径队列中获取数据
-                output_data = self.audio_path_queue.get()
-                if output_data is None:
-                    break
-                
-                # print("UIWorker: 获取到音频路径数据:", output_data)
-                character_name = output_data.get('character_name','')
-                sprite_id = output_data.get('sprite','-1')
-                speech = output_data.get('speech','')
-                audio_path = output_data.get('audio_path','')
-                if audio_path:
-                    audio_path = Path(audio_path).as_posix()
-
-                if character_name == "选项":
-                    optionList = speech.split('/')
-                    self.update_option_signal.emit(optionList)
-                    self.audio_path_queue.task_done()
-                    continue
-                elif character_name == "数值":
-                    self.update_value_signal.emit(speech)
-                    self.audio_path_queue.task_done()
-                    continue
-                elif sprite_id == '-1' or sprite_id == -1:
-                    formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b>{character_name}</b>：{speech}</p>"
-                    chat_history.append(formatted_speech)
-                    self.update_dialog_signal.emit(formatted_speech)
-                    if not self.task_done_requested.is_set():
-                        self.task_done_requested.wait(timeout=len(speech)/10)
-                    self.audio_path_queue.task_done()
-                    continue
-
-                # 获取角色配置
-                character_config = getCharacter(character_name)
-                
-                if not character_config:
-                    print(f"UIWorker: 未找到角色配置: {character_name}")
-                    self.audio_path_queue.task_done()
-                    continue
-
-                # 更新 UI 通知
-                self.update_notification_signal.emit(f"{character_name}正在回复……")
-
-                # 更新立绘
-                image_path = character_config.sprites[int(sprite_id) - 1]['path']
-                image_path = Path(image_path).as_posix()
-
-
-                try:
-                    cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
-                    if cv_image is not None:
-                        if cv_image.shape[2] == 3:
-                            cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-                            alpha_channel = np.full((cv_image.shape[0], cv_image.shape[1]), 255, dtype=np.uint8)
-                            cv_image = cv2.merge([cv_image, alpha_channel])
-                        elif cv_image.shape[2] == 4:
-                            cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
-
-                        rate = getCharacterScale(character_name)
-                        self.update_sprite_signal.emit(cv_image, rate)
-                    else:
-                        print(f"UIWorker: 无法加载图片: {image_path}")
-                except Exception as e:
-                    print(f"UIWorker: 加载图片时出错: {e}")
-
-                # 更新对话框文本
-                if speech:
-                    formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{character_config.color};'>{character_name}</b>：{speech}</p>"
-                    chat_history.append(formatted_speech)
-                    self.update_dialog_signal.emit(formatted_speech)
-
-                min_stop_time = len(speech)//8
-                start_time = time.perf_counter()
-                # 播放音频
-                audio_played = False
-                self.current_audio_path = audio_path
-                if audio_path and audio_path is not None and Path(audio_path).exists():
-                    try:
-                        pygame.mixer.init()
-                        pygame.mixer.music.load(audio_path)
-                        self.current_audio_path = audio_path
-                        pygame.mixer.music.play()
-                        audio_played = True
-                        while pygame.mixer.music.get_busy() and not self.task_done_requested.is_set(): # 检查是否被请求跳过
-                            time.sleep(0.1)
-
-                    except Exception as e:
-                        print(f"UIWorker: 播放音频时出错: {e}")
-
-                    finally:
-                        # 无论如何，尝试在 finally 中卸载资源
-                        if audio_played:
-                            try:
-                                pygame.mixer.music.unload() 
-                            except Exception:
-                                pass # 忽略卸载失败
-                        self.current_audio_path = None # 清除记录
-
-                end_time = time.perf_counter()
-                if not self.task_done_requested.is_set():
-                    # 如果没有被跳过，则执行最小时间等待
-                    remaining_time = min_stop_time - (end_time - start_time)
-                    if remaining_time > 0:
-                        # 使用 self.task_done_requested.wait() 代替 time.sleep()
-                        # 这样如果 skip_speech() 在等待期间被调用，等待会立即停止。
-                        self.task_done_requested.wait(timeout=remaining_time) 
-            except Exception as e:
-                traceback.print_exc()
-                print(f"UIWorker: 任务处理失败: {e}")
-                formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'><b>{character_name}</b>：{speech}</p>"
-                chat_history.append(formatted_speech)
-                self.update_dialog_signal.emit(formatted_speech)
-                if not self.task_done_requested.is_set():
-                    self.task_done_requested.wait(timeout=len(speech)/10)
-                self.audio_path_queue.task_done()
+chat_history = []
+history_manager = HistoryManager(chat_history)
 
 def getHistory():   
     """获取聊天历史记录"""
-    return chat_history
+    return history_manager.get_history()
 
 def save_chat_history(file_path, history):
     """根据提供的文件名保存聊天记录到 JSON 文件。"""
-    if not file_path:
-        print("没有提供历史文件名，跳过保存。")
-        return
-    history_path = Path(file_path)
-    try:
-        with open(history_path, 'w', encoding='utf-8') as f:
-            json.dump(history, f, ensure_ascii=False, indent=4)
-        print(f"聊天记录已保存到 {history_path}")
-    except Exception as e:
-        print(f"保存聊天记录失败: {e}")
+    history_manager.save_chat_history(file_path, history)
 
 def load_chat_history(file_path):
-    """根据提供的文件名加载聊天记录。"""
-    if not file_path:
-        print("没有提供历史文件名，跳过加载。")
-        return
-     
-    messages=[]
-    history_path = Path(file_path)
-    if history_path.exists():
-        try:
-            with open(history_path, 'r', encoding='utf-8') as f:
-                messages = json.load(f)
-            print(f"聊天记录已从 {history_path} 加载。")
-        except Exception as e:
-            print(f"加载聊天记录失败: {e}")
-
-    global chat_history
-    chat_history.clear()
-    try:
-        for message in messages:
-            if message["role"] == 'user':
-                chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message['content']}</p>")
-            if message['role'] == 'assistant':
-                dialog = json.loads(message['content'])['dialog']
-                for item in dialog:
-                    chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>{item['character_name']}</b>: {item['speech']}</p>")
-
-    except Exception as e:
-        print("显示聊天历史失败", e)
-        return messages
-    return messages
-
+    return history_manager.load_chat_history(file_path)
 
 def clear_chat_history(history_file, ui_queue, llm_manager):
-    global chat_history
-    chat_history.clear()
-    history_file_path =Path(history_file)
-    if history_file_path.exists():
-        history_file_path.unlink()
+    history_manager.clear_chat_history(history_file)
 
     llm_manager.clear_messages()
 
-    ui_queue.put({
-        'character_name':'旁白',
-        'speech':'消息记录已清空',
-        'sprite':'-1',
-    })
+    ui_queue.put(TTSOutputMessage(
+        audio_path="",
+        character_name="系统",
+        speech="历史记录已经清空",
+        sprite='-1',
+        is_system_message=False
+    ))
 
 def main():
-    load_api_config_from_file()
+    global chat_history
+    config = ConfigManager()
     parser = argparse.ArgumentParser(description='示例脚本')
     # 添加参数
     parser.add_argument('--template', '-t', type=str, help='用户模板名称', default='komaeda_sprite')
@@ -458,11 +81,12 @@ def main():
     # 创建TTS管理器实例
     tts_manager = None
     if args.voice_mode == 'gen':
+        gsv_url, gsv_api_path = config.get_gpt_sovits_config()
         adapter = TTSAdapterFactory.create_adapter(
             adapter_name=args.tts,
-            gpt_sovits_work_path=api_config.get("gpt_sovits_api_path","") 
+            gpt_sovits_work_path=gsv_api_path
         )
-        tts_manager = TTSManager(tts_server_url=api_config.get("gpt_sovits_url",""))
+        tts_manager = TTSManager(tts_server_url=gsv_url)
         tts_manager.set_tts_adapter(adapter=adapter)
     
     # 创建DeepSeek实例
@@ -473,17 +97,16 @@ def main():
         print("加载历史记录...", args.history)
         messages = load_chat_history(args.history)
 
+
     user_template = ""
     with open(f'./data/character_templates/{args.template}.txt', 'r', encoding='utf-8') as f:
         user_template = f.read()
 
-    llm_provider = api_config.get("llm_provider","Deepseek")
-    llm_model = api_config.get("llm_model").get(llm_provider,'')
-    api_key =api_config.get("llm_api_key").get(llm_provider,'')
+    llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
     if not llm_provider:
-        print("Please choose the llm provider")
+        print("请选择大语言模型供应商")
         return
-    llm_adapter = LLMAdapterFactory.create_adapter(llm_provider=llm_provider, api_key=api_key,base_url=api_config.get("llm_base_url",""), model = llm_model)
+    llm_adapter = LLMAdapterFactory.create_adapter(llm_provider=llm_provider, api_key=api_key, base_url=base_url, model = llm_model)
     llm_manager = LLMManager(adapter=llm_adapter,user_template=user_template)
 
     if messages:
@@ -519,7 +142,7 @@ def main():
     tts_worker.start()
 
     # 创建并启动 LLM Worker 线程
-    llm_worker = LLMWorker(llm_manager, user_input_queue, tts_queue)
+    llm_worker = LLMWorker(llm_manager, user_input_queue, tts_queue, chat_history=chat_history)
     llm_worker.update_notification_signal.connect(window.setNotification)
     llm_worker.start()
 
@@ -541,7 +164,7 @@ def main():
         window.update_image(init_image)
         window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
 
-        if len(chat_history) <= 1:
+        if len(getHistory()) <= 1:
             window.setOptions(['开始'])
     except Exception as e:
         print("更新初始立绘失败",e)
@@ -551,35 +174,47 @@ def main():
     window.setNotification("开始聊天吧……")
     # 连接 UI 信号到队列
     def on_message_submitted(message):
-        user_input_queue.put(message)
+        print("已提交：", message)
+        user_input_queue.put(UserInputMessage(text=message))
         window.setNotification("您的消息已提交，正在等待LLM处理...")
     
+    # 恢复最后一条消息
     if messages:
         try:
             msg = ''
-            if messages[-1]['role'] == 'assistant':
-                msg = messages[-1]['content']
-            elif len[messages] > 2:
-                msg = messages[-2]['content']
+            while messages and messages[-1]['role'] == 'user':
+                messages.pop()
+            msg = messages[-1]['content']
+            print(msg)
+            if messages and messages[-1]['role'] == 'system':
+                raise ValueError("没有任何LLM发送的历史消息！")
             dialog = json.loads(msg)['dialog']
-            while dialog and (dialog[-1].get("sprite",'-1') == '-1' or dialog[-1].get("sprite",'-1') == -1):
-                audio_path_queue.put(dialog[-1])
+            while dialog and (dialog[-1].get("sprite",'-1') == '-1' or dialog[-1].get("sprite",'-1') == -1): 
+                audio_path_queue.put(TTSOutputMessage(
+                    audio_path='',
+                    character_name=dialog[-1].get('character_name',''),
+                    speech=dialog[-1].get('speech'),
+                    sprite='-1',
+                    is_system_message=True
+                ))
                 dialog.pop()
             if dialog:
+                # 只更新立绘
                 audio_path_queue.put(
-                    {
-                        'character_name': dialog[-1].get('character_name',''),
-                        'sprite': dialog[-1].get('sprite','-1'),
-                        'speech': "",
-                    }
+                    TTSOutputMessage(
+                        audio_path='',
+                        character_name=dialog[-1].get('character_name',''),
+                        speech='',
+                        sprite=dialog[-1].get('sprite','-1'),
+                        is_system_message=False
+                    )
                 )
-                
         except Exception as e:
+            traceback.print_exc()
             print('最后一条消息更新失败', e)
-
-    
+  
     window.message_submitted.connect(lambda message: on_message_submitted(message))
-    window.open_chat_history_dialog.connect(lambda: window.open_history_dialog(getHistory()))
+    window.open_chat_history_dialog.connect(lambda: window.open_history_dialog(chat_history))
     window.change_voice_language.connect(lambda lang: tts_manager.set_language(lang) if tts_manager else None)
     window.close_window.connect(app.quit)
     window.clear_chat_history.connect(lambda: clear_chat_history(history_file=args.history, ui_queue=audio_path_queue, llm_manager=llm_manager))

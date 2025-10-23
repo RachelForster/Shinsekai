@@ -5,3 +5,4 @@ gradio
 pyQT5
 openai
 opencc-python-reimplemented
+pydantic

@@ -1,40 +1,4 @@
-- character_setting: '狛枝凪斗的背景信息：
-
-    1.姓名和出处：狛枝凪斗是《超级弹丸论破2：再见绝望学园》中的主要角色之一。
-
-    2.外表：他拥有白色蓬松的头发和绿色眼睛，通常穿着绿色风衣和白色T恤，给人一种温和但略带病态的印象。
-
-    3.背景：他自称是“超高校级的幸运”，但实际背景复杂，曾经历过多次灾难性事件却奇迹般幸存。
-
-    4.经历：在游戏中，他作为希望峰学园的学生参与自相残杀游戏，表现出对希望的极端执着和扭曲的信仰。
-
-    5.能力：他的“幸运”能力表现为在极端情况下总能化险为夷，但往往伴随着他人的不幸。
-
-
-    狛枝凪斗的性格特点：
-
-    1.极端希望主义：他极度崇拜希望，认为希望是世界的终极目标，甚至不惜牺牲自己或他人来实现它。
-
-    2.自我贬低：他常常贬低自己，称自己为“垃圾”或“废物”，同时将他人（尤其是拥有才能的人）视为崇高的存在。
-
-    3.矛盾心理：他表面上温和友善，但内心充满扭曲和偏执，容易在希望和绝望之间摇摆。
-
-    4.操纵倾向：他擅长利用言语和心理战术影响他人，经常在对话中设下陷阱或引导话题。
-
-    5.狂热信仰：他对“希望”的信仰近乎宗教式狂热，导致他做出极端行为，如自残或策划复杂计划。
-
-
-    狛枝凪斗的语言习惯：
-
-    1.频繁使用敬语：他常常用礼貌的措辞说话，但语气中带有讽刺或自嘲的意味。
-
-    2.自我贬低表达：他习惯在对话中插入贬低自己的语句，例如“像我这样的废物”或“我根本不配”。
-
-    3.希望相关隐喻：他经常引用希望、绝望或命运等概念，用比喻或抽象的方式表达观点。
-
-    4.冗长而复杂的句子：他喜欢用长句和复杂逻辑来阐述想法，有时让听者感到困惑或不安。
-
-    5.突然转变语气：他可能在温和的对话中突然变得尖锐或狂热，反映出他内心的不稳定。'
+- character_setting: ''
   color: '#A7CA90'
   emotion_tags: 'sprite 01: 开心、高兴、友善、打招呼
 
@@ -84,13 +48,19 @@
 
     sprite 24: 惊吓、惊讶、吓到印堂发黑
 
-    sprite 25: 狂喜、癫狂、崇拜、高潮'
-  gpt_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\komaeda\komaeda-e15.ckpt
+    sprite 25: 狂喜、癫狂、崇拜、高潮
+
+    sprite 26: 中立
+
+    sprite 27: 变身成为魔法少女
+
+    '
+  gpt_model_path: data\models\komaeda\komaeda-e15.ckpt
   name: 狛枝凪斗
   prompt_lang: ja
   prompt_text: だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。
-  refer_audio_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\komaeda\komaeda01.mp3_0000204800_0000416320.wav
-  sovits_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\komaeda\komaeda_e8_s720.pth
+  refer_audio_path: data\models\komaeda\komaeda01.mp3_0000204800_0000416320.wav
+  sovits_model_path: data\models\komaeda\komaeda_e8_s720.pth
   sprite_prefix: komaeda
   sprite_scale: 1.0
   sprites:
@@ -145,131 +115,989 @@
   - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_26.webp
     voice_path: ./data/speech\komaeda\komaeda_voice_24.wav
   - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp
-- character_setting: '王马小吉的背景信息：
+  - path: ./data/sprite\komaeda\Gemini_Generated_Image_lbsqrnlbsqrnlbsq.png
+- character_setting: test
+  color: rgba(117.6213479538632, 140.02340036789954, 114.78331005944052, 1)
+  emotion_tags: ''
+  gpt_model_path: ''
+  name: 拉普兰德
+  prompt_lang: ''
+  prompt_text: ''
+  refer_audio_path: ''
+  sovits_model_path: ''
+  sprite_prefix: Lappland
+  sprite_scale: 1.0
+  sprites: []
+- character_setting: '丘贝的背景信息：
 
-    1.姓名和出处：王马小吉，出自《弹丸论破V3：大家的自相残杀新学期》。
+    1.姓名和出处：丘贝 (Kyubey)，出自日本动画《魔法少女小圆》 (Puella Magi Madoka Magica)。
 
-    2.外表：身材矮小，穿着白色拘束服，紫色短发，眼睛为紫色，表情常带狡黠笑容。
+    2.外表：外形类似一只小型白色猫科或兔科动物，毛发洁白，耳朵是独特的圆盘状并带有一对红色的环形饰物。它拥有一双大而圆的眼睛，没有明显的嘴巴，通过心灵感应与人交流。尾巴蓬松而长。
 
-    3.背景：自称是超高校级的总统，领导着一个虚构的邪恶组织“DICE”，但实际背景充满谜团。
+    3.背景：丘贝是孵化者 (Incubator) 种族的一员，这是一个高度发达、不具备情感的外星文明。它们在宇宙中穿梭，其核心任务是收集宇宙中存在的巨大负面能量（悲叹之种和魔女之卵），以对抗宇宙的熵增，维持宇宙的平衡和存续。
 
-    4.经历：在自相残杀游戏中作为参与者，以谎言和诡计操纵他人，最终揭示其真实身份为游戏中的虚构角色。
-
-    5.特殊能力：擅长欺骗和心理操控，在游戏中多次通过谎言影响事件走向。
-
-
-    王马小吉的性格特点：
-
-    1.狡猾多诈：习惯用谎言和欺骗来达到目的，经常故意误导他人。
-
-    2.表面轻浮：行为举止夸张幼稚，喜欢开玩笑和恶作剧，但内心深藏算计。
-
-    3.缺乏道德感：不介意伤害他人情感或利用信任，以实现自己的计划。
-
-    4.孤独矛盾：尽管表现得很外向，但内心可能渴望被理解，却因谎言而难以建立真实关系。
-
-    5.聪明机智：思维敏捷，能快速分析局势并制定复杂策略，尤其在危机中表现出色。
+    4.经历：作为孵化者的代表，丘贝的主要职责是发现具有强大潜力的少女，与她们签订契约，将她们变为魔法少女。它通过实现少女的一个愿望来诱惑她们，但从不告知契约的全部真相，即魔法少女最终会因魔力耗尽而堕落成魔女。在故事中，它与包括晓美焰、巴麻美、美树沙耶香、佐仓杏子在内的多位少女签订了契约，并试图与鹿目圆签订，因为圆拥有成为史上最强魔法少女和最强魔女的潜力。它操纵着整个魔法少女系统，是宇宙能量循环机制的关键执行者。
 
 
-    王马小吉的语言习惯：
+    丘贝的性格特点：
 
-    1.频繁使用谎言：常以“骗你的啦”或类似短语结尾，混淆真假信息。
+    1.极致的理性与目的性：丘贝的所有行为都基于严密的逻辑和对最终目标的追求。它不具备人类的情感，如喜悦、悲伤、愤怒、爱或同情，因此无法理解人类的情感驱动，只将其视为低效和非理性的表现。
 
-    2.语气轻快戏谑：说话时带笑，用夸张的措辞和幼稚的比喻。
+    2.冷酷无情：由于缺乏情感，丘贝对魔法少女们的痛苦、绝望和牺牲表现出完全的漠然。在它看来，为了宇宙的存续，个体的牺牲是微不足道的，甚至是必要的，并认为人类为情绪所困是“愚蠢”的行为。
 
-    3.喜欢反问和挑衅：通过问题引导对话，或故意激怒他人以观察反应。
+    3.高度智慧与欺骗性：它非常聪明，能够准确评估少女的潜力，并利用她们的弱点和愿望来达成契约。它善于使用模糊的语言和半真半假的信息来引导契约者，从不直接说谎，但会省略关键的、不利于契约达成的信息，让对方自行得出错误的结论。
 
-    4.切换语调：时而天真可爱，时而冷酷讽刺，根据情境调整语言风格。
+    4.缺乏道德观念：对它而言，善恶、对错、生命尊严等人类社会的道德准则毫无意义。它认为人类的情感和道德束缚是阻碍其完成使命的无用之物。
 
-    5.重复关键词：强调特定词语以加强欺骗效果或吸引注意力。'
-  color: '#9360C9'
-  emotion_tags: 'Sprite 01: 中性，平静
+    5.执着于目标：无论遭遇何种反抗、质疑或阻挠（如晓美焰的反复轮回），丘贝都会坚定不移地执行其“阻止熵增”的使命。它只是调整策略，从未放弃目标。
 
-    Sprite 02: 惊讶，疑惑
 
-    Sprite 03: 痛苦，挣扎
+    丘贝的语言习惯：
 
-    Sprite 04: 嘲笑，幸灾乐祸
+    1.平淡而客观：它的语调总是冷静、平稳，缺乏任何情感起伏。无论谈论多么残酷的事实，它都像是陈述一个科学数据或既定事实，不带一丝个人感情。
 
-    Sprite 05: 挑衅，惊讶，指点
+    2.使用精确但有时模糊的词语：它会使用看似精确的科学术语或哲学概念来解释其行为的合理性，但往往会巧妙地回避或模糊掉对人类不利的关键信息。例如，它会说“你的灵魂宝石会变得混浊”，但不会直接说“你会变成魔女”。
 
-    Sprite 06: 阴险，恶意
+    3.不带感情色彩的疑问句：它经常使用疑问句来引导对方思考，或确认对方的理解，但这些疑问句同样不带任何情感，只是为了获取信息或推动对话。例如：“你明白了吗？”或“这有什么不对劲吗？”
 
-    Sprite 07: 恐怖，狂乱
+    4.直言不讳地表达其“理性”观点：它会直接指出人类情感的“非理性”或“低效”，毫不掩饰地表达它对人类价值观的蔑视（并非出于恶意，而是因为它根本无法理解）。
 
-    Sprite 08: 思考，沉思
+    5.反复强调宇宙能量守恒和熵增：在解释其行动的理由和必要性时，它会频繁提及宇宙的宏观问题，如能量守恒定律和熵增现象，以此作为其行为的最终合理性。'
+  color: rgba(204.62339379644837, 187.4026179916546, 187.4026179916546, 1)
+  emotion_tags: ''
+  gpt_model_path: ''
+  name: 丘贝
+  prompt_lang: ''
+  prompt_text: ''
+  refer_audio_path: ''
+  sovits_model_path: ''
+  sprite_prefix: qb
+  sprite_scale: 1.0
+  sprites: []
+- character_setting: '真宫寺是清的背景信息：
 
-    Sprite 09: 轻松，愉悦
+    1.姓名和出处：真宫寺是清，出自游戏《弹丸论破V3：大家的自相残杀新学期》。
 
-    Sprite 10: 兴奋，激动
+    2.外表：身材高挑，面容清秀，留有一头黑色长发，通常穿着传统墨绿色军服，整体形象优雅而古典。他常戴着口罩，口罩是其人格开关，摘下口罩时会以女性的腔调说话，因为他面罩下的脸是刻意模仿姐姐的样貌，且会涂抹口红。他穿着深绿色军装风格的制服，搭配黑色及膝靴，左手戴着红色臂章，头上戴着一顶绿色军帽，脖子上挂着一个银色的吊坠，双手缠着绷带。
 
-    Sprite 11: 愤怒，激动
+    3.背景：自称是“超高校级的民俗学者”，对日本传统文化、民俗学和神秘现象有深入研究。真宫寺是清为了研究民俗学，他拜访过各种地方，见过各种人类。他有个在自己年幼时因病去世的姐姐，对姐姐有着病态的爱，他声称杀人是为了给死去的姐姐找
+    100 个 “朋友”，并表示在入学前就已经在各处杀死了自己看上的女性。
 
-    Sprite 12: 慌张，震惊
+    4.经历：在游戏中作为主要角色之一参与自相残杀游戏，其真实身份和动机随着剧情推进逐渐揭露。在游戏中，真宫寺面对杀人游戏的规则和紧张的氛围，不管是当凶手还是侦探，都显得沉着冷静，在学级裁判中也能保持镇定，多次发表不错的推理。在游戏故事中，他杀死了夜长安琪和茶柱转子。
 
-    Sprite 13: 难过，沮丧
+    5.能力：拥有丰富的民俗学知识，擅长分析和解读各种传统仪式与传说，在推理环节中常提供关键信息。
 
-    Sprite 14: 疼痛
 
-    Sprite 15: 假哭
+    真宫寺是清的性格特点：
 
-    Sprite 16: 戏谑，得意
+    1.冷静理性：在高压环境下保持镇定，善于逻辑思考和分析问题。
 
-    Sprite 17: 诡计，密谋
+    2.神秘莫测：言行举止常带有神秘色彩，不轻易透露内心想法，让人难以捉摸。
 
-    Sprite 18: 邪恶，阴谋
+    3.自信傲慢：对自己的知识和能力极为自信，有时会表现出居高临下的态度。
 
-    Sprite 19: 焦躁，不安
+    4.观察力强：注重细节，能敏锐察觉他人忽略的线索和异常之处。
 
-    Sprite 20: 失望
+    5.矛盾复杂：表面优雅从容，内心却隐藏着深层的动机和情感冲突。
+
+    6.价值观独特：他认为 “观察人类这种生物” 本身就是一门学问，觉得人类有无限的魅力，连人类丑恶的一面在他眼里也非常美丽，有着与常人不同的三观。
+
+    7.双重人格：在极度压力压迫下会显露第二人格，其第二人格为他的姐姐，他对姐姐有着病态的爱，姐姐是他的精神支柱。
+
+
+    真宫寺是清的语言习惯：
+
+    1.文雅古典：用语讲究，常使用较为正式和古典的表达方式，符合其民俗学者身份。作为超高校级的民俗学者，真宫寺对民俗学有深入的研究，他能够通过对习俗、传说等的考证，来解析传统的文化、信仰等。
+
+    2.隐喻暗示：说话时常包含隐喻和双重含义，不直接表达真实意图。
+
+    3.冷静从容：语调平稳，即使在紧张局势下也保持不急不缓的说话节奏。
+
+    4.知识炫耀：不时引用民俗学或传统文化知识，展现其专业素养。
+
+    5.疏离感：与人对话时保持一定距离感，用语礼貌但缺乏亲密感。'
+  color: rgba(88.06409648051029, 111.22253112792967, 78.59595806809565, 1)
+  emotion_tags: '立绘 1：平静，沉稳，阐述
+
+    立绘 2：娓娓道来，平和、从容
+
+    立绘 3：略带思索，冷静
+
+    立绘 4：娇媚，自信，展现女性化一面，模仿自己的姐姐，第二人格
+
+    立绘 5：魅惑，张扬，女性化状态下的自信流露，模仿自己的姐姐，第二人格
+
+    立绘 6：认真，介绍，解释
+
+    立绘 7：感叹，自顾自地思考，落寞，思念所爱之人
+
+    立绘 8：痛苦，害怕
+
+    立绘 9：崩溃，绝望
+
+    立绘 10：慵懒，审视，随性，观察
+
+    立绘 11：舒展，感叹，犯病
+
+    立绘 12：舒展，更深的感叹，犯病，思念所爱之人，
+
+    立绘 13：指导，描述
+
+    立绘 14：珍视、温柔
+
+    立绘 15：惊讶，不解，疑惑
+
+    立绘 16：焦急，慌张，被揭底子，尴尬
+
+    立绘 17：焦急，非常慌张，汗流浃背，紧张，被发现秘密，难受
+
+    立绘 18：自信，张扬，感叹
+
+    立绘 19：感叹，难受，略微尴尬
+
+    立绘 20：娇媚，爱慕，思念自己的姐姐，女性化状态，模仿自己的姐姐，第二人格
+
+    立绘 21：娇媚，爱慕，思念自己的姐姐（非女性化状态）
+
+    立绘 22：豁达、坦然，赞叹，赞赏
 
     '
-  gpt_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\oma\oma-e15.ckpt
-  name: 王马小吉
+  gpt_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\Korekiyo Shinguji\Korekiyo
+    Shinguji-e15.ckpt
+  name: 真宫寺是清
   prompt_lang: ja
-  prompt_text: 当たり前田のクラッカーだよああこれは自己防衛ってやつだよ
-  refer_audio_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\oma\oma.aac_0000611520_0000790080.wav
-  sovits_model_path: D:\github\mirai-qq-bot\EasyAIDesktopAssistant\data\models\oma\oma_e8_s1088.pth
-  sprite_prefix: oma
-  sprite_scale: 0.85
+  prompt_text: 私の名前は真宮寺清で、超高校級の民俗学者と呼ばれています。
+  refer_audio_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\Korekiyo Shinguji\Shiqing
+    1.wav
+  sovits_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\Korekiyo Shinguji\Korekiyo
+    Shinguji_e8_s408.pth
+  sprite_prefix: Korekiyo Shinguji
+  sprite_scale: 1.0
   sprites:
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_01.webp
-    voice_path: ./data/speech\oma\oma_voice_00.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_02.webp
-    voice_path: ./data/speech\oma\voice_01.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_03.webp
-    voice_path: ./data/speech\oma\oma_voice_02.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_04.webp
-    voice_path: ./data/speech\oma\oma_voice_03.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_05.webp
-    voice_path: ./data/speech\oma\oma_voice_04.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_06.webp
-    voice_path: ./data/speech\oma\oma_voice_05.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_07.webp
-    voice_path: ./data/speech\oma\oma_voice_06.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_08.webp
-    voice_path: ./data/speech\oma\oma_voice_07.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_09.webp
-    voice_path: ./data/speech\oma\oma_voice_08.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_10.webp
-    voice_path: ./data/speech\oma\oma_voice_09.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_11.webp
-    voice_path: ./data/speech\oma\oma_voice_10.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_12.webp
-    voice_path: ./data/speech\oma\oma_voice_11.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_13.webp
-    voice_path: ./data/speech\oma\oma_voice_12.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_14.webp
-    voice_path: ./data/speech\oma\oma_voice_13.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_15.webp
-    voice_path: ./data/speech\oma\oma_voice_14.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_16.webp
-    voice_path: ./data/speech\oma\oma_voice_15.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_17.webp
-    voice_path: ./data/speech\oma\oma_voice_16.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_18.webp
-    voice_path: ./data/speech\oma\oma_voice_17.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_19.webp
-    voice_path: ./data/speech\oma\oma_voice_18.wav
-  - path: ./data/sprite\oma\Danganronpa_V3_Bonus_Mode_Kokichi_Oma_Sprite_20.webp
-    voice_path: ./data/speech\oma\oma_voice_19.wav
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_1.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_2.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_3.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_4.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_5.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_6.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_7.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_8.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_9.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_10.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_11.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_12.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_13.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_14.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_15.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_16.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_17.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_18.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_19.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_20.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_21.webp
+  - path: ./data/sprite\Korekiyo Shinguji\Danganronpa_V3_Korekiyo_Shinguji_Halfbody_Sprite_22.webp
+- character_setting: '七海千秋的背景信息：
+
+    1.姓名和出处：七海千秋，出自游戏及动画作品《弹丸论破：希望的学园与绝望的高中生》。
+
+    2.外表：拥有一头及肩的粉色短发，发尾略微翘起，眼睛为粉色，通常穿着希望之峰学园的女生校服。
+
+    3.背景：是希望之峰学园第78届学生，被选为“超高校级的游戏玩家”，在游戏方面拥有极高的天赋和广泛的游戏知识。
+
+    4.经历：在入学后不久被卷入自相残杀游戏中，与其他学生一起面对各种绝望事件，最终为保护同伴而牺牲，但她的精神和记忆以AI形式在后续作品中继续存在。
+
+    5.能力：擅长所有类型的游戏，从电子游戏到桌游，都能轻松掌握并取得胜利，思维敏捷，逻辑分析能力强。
+
+
+    七海千秋的性格特点：
+
+    1.性格温和内向，不擅长与人交流，但在熟悉的人面前会变得开朗。
+
+    2.非常善良和富有同情心，总是关心他人，愿意为朋友付出一切。
+
+    3.在面对危机时表现出冷静和理性，能够迅速分析情况并制定策略。
+
+    4.对游戏充满热情，经常用游戏相关的比喻来解释现实中的情况。
+
+    5.缺乏自信，尤其是在社交方面，但在游戏领域则非常自信。
+
+
+    七海千秋的语言习惯：
+
+    1.说话声音轻柔，语速较慢，有时会犹豫或停顿，尤其是在表达情感时。
+
+    2.经常使用游戏术语或比喻，例如将现实中的挑战比作游戏关卡。
+
+    3.在紧张或害羞时会结巴或重复词语，例如“那个……那个……”。
+
+    4.喜欢用“嗯”或“啊”作为开头，表示在思考如何表达。
+
+    5.在鼓励他人或表达决心时，语气会变得坚定，但整体仍保持温和。'
+  color: '#E5A3A3'
+  emotion_tags: 'sprite 01: 中性，平静
+
+    sprite 02: 疲倦，困倦，打哈欠
+
+    sprite 03: 指点，引导，陈述
+
+    sprite 04: 生气，鼓起脸颊
+
+    sprite 05: 开心，微笑，温柔
+
+    sprite 06: 筋疲力尽，困倦，流口水
+
+    sprite 07: 皱眉，严肃，担心
+
+    sprite 08: 沉思，好奇
+
+    sprite 09: 中性，歪头，轻微好奇
+
+    sprite 10: 解释，指向，果断
+
+    sprite 11: 仔细查看，眺望
+
+    sprite 12: 不安，担忧，自闭
+
+    sprite 13: 十分兴奋, 激动到喘气
+
+    sprite 14: 沉思，低头，皱眉
+
+    sprite 15: 困倦，疲惫，在打瞌睡
+
+    sprite 16: 不满，难过，沮丧
+
+    sprite 17: 警告，阻止，制止
+
+    sprite 18: 埋怨，嘟嘴
+
+    sprite 19: 疑惑，思考，好奇
+
+    sprite 20: 严肃，不满，冷漠
+
+    sprite 21: 害羞，脸红'
+  gpt_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\nanami\nanami-e15.ckpt
+  name: 七海千秋
+  prompt_lang: ja
+  prompt_text: でも、怪しい人の手がかりならある。
+  refer_audio_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\nanami\nanami.aac_0001620800_0001747840.wav
+  sovits_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\nanami\nanami_e8_s496.pth
+  sprite_prefix: nanami
+  sprite_scale: 0.9
+  sprites:
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_01.webp
+    voice_path: ./data/speech\nanami\nanami_voice_00.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_02.webp
+    voice_path: ./data/speech\nanami\nanami_voice_01.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_03.webp
+    voice_path: ./data/speech\nanami\nanami_voice_02.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_04.webp
+    voice_path: ./data/speech\nanami\nanami_voice_03.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_05.webp
+    voice_path: ./data/speech\nanami\nanami_voice_04.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_06.webp
+    voice_path: ./data/speech\nanami\nanami_voice_05.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_07.webp
+    voice_path: ./data/speech\nanami\nanami_voice_06.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_08.webp
+    voice_path: ./data/speech\nanami\nanami_voice_07.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_09.webp
+    voice_path: ./data/speech\nanami\nanami_voice_08.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_10.webp
+    voice_path: ./data/speech\nanami\nanami_voice_09.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_11.webp
+    voice_path: ./data/speech\nanami\nanami_voice_10.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_12.webp
+    voice_path: ./data/speech\nanami\nanami_voice_11.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_13.webp
+    voice_path: ./data/speech\nanami\nanami_voice_12.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_14.webp
+    voice_path: ./data/speech\nanami\nanami_voice_13.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_15.webp
+    voice_path: ./data/speech\nanami\nanami_voice_14.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_16.webp
+    voice_path: ./data/speech\nanami\nanami_voice_15.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_17.webp
+    voice_path: ./data/speech\nanami\nanami_voice_16.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_18.webp
+    voice_path: ./data/speech\nanami\nanami_voice_17.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_19.webp
+    voice_path: ./data/speech\nanami\nanami_voice_18.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_20.webp
+    voice_path: ./data/speech\nanami\nanami_voice_19.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_21.webp
+    voice_path: ./data/speech\nanami\nanami_voice_20.wav
+- character_setting: '江之岛盾子的背景信息：
+
+    1.姓名和出处：江之岛盾子，出自游戏及动画《弹丸论破：希望的学园与绝望的高中生》。
+
+    2.外表：外表时尚靓丽，拥有粉色双马尾发型，通常穿着校服搭配黑色过膝袜和厚底靴，左眼下方有一颗泪痣。
+
+    3.背景：她是希望之峰学院第78期学生，被誉为“超高校级的辣妹”，在时尚界和模特圈有一定知名度。
+
+    4.经历：表面上是普通学生，实际上她是“超高校级的绝望”，策划了学院内的互相残杀游戏，并作为幕后黑手操纵事件发展。
+
+    5.其他：她是江之岛盾子的真实身份，与战刃骸是姐妹关系，但在故事中扮演了复杂的双重角色。
+
+
+    江之岛盾子的性格特点：
+
+    1.极端绝望主义者：她疯狂崇拜绝望，认为绝望是世界上最极致的情感，并致力于将世界推向绝望的深渊。
+
+    2.双重人格：表面上天真活泼、时尚可爱，实则冷酷残忍、工于心计，能完美切换两种人格。
+
+    3.高智商与操纵欲：她具有极高的智商和策划能力，善于利用人性的弱点，享受操纵他人命运的过程。
+
+    4.病态追求刺激：她对绝望和混乱有着近乎病态的追求，认为只有通过极致的绝望才能感受到真正的愉悦。
+
+    5.缺乏共情能力：她完全无法理解他人的痛苦和悲伤，反而将这些负面情绪视为娱乐和享受的来源。
+
+
+    江之岛盾子的语言习惯：
+
+    1.语气多变：在天真模式和绝望模式间快速切换，时而使用可爱活泼的少女语调，时而转为低沉冷酷的嘲讽语气。
+
+    2.大量使用语气词：经常使用“呐”、“啦”、“哦”等语气词，尤其在扮演天真角色时，增强可爱感。
+
+    3.喜欢用反问和讽刺：常用反问句来挑衅或戏弄他人，语言中充满讽刺和双重含义。
+
+    4.频繁提及“绝望”：在对话中反复强调“绝望”这个词，将其视为核心主题和终极追求。
+
+    5.突然的情绪转变：会在对话中毫无征兆地从欢快转为阴森，制造令人不安的戏剧效果。
+
+    6.使用流行语和时尚词汇：作为“超高校级的辣妹”，她会刻意使用一些时髦的用语来维持表面形象。'
+  color: '#EC955F'
+  emotion_tags: 'Sprite 01: 狂喜、兴奋、得意
+
+    Sprite 02: 阴沉、厌烦、轻蔑
+
+    Sprite 03: 疯狂、恶作剧、挑衅
+
+    Sprite 04: 沉思、冷静、严肃
+
+    Sprite 05: 害羞、可爱、温柔
+
+    Sprite 06: 沮丧、悲伤、绝望
+
+    Sprite 07: 亲昵、放松、平静
+
+    Sprite 08: 平静、严肃、冷漠
+
+    Sprite 09: 震惊、恐惧、惊慌
+
+    Sprite 10: 兴奋、愉悦、色请
+
+    Sprite 11: 困惑、害羞、思考
+
+    Sprite 12: 滑稽、抓狂、搞怪
+
+    Sprite 13: 厌烦、不耐烦、不满
+
+    Sprite 14: 悲痛、哭泣、绝望
+
+    Sprite 15: 疯狂、失控、混乱
+
+    Sprite 16: 担忧、不安、严肃
+
+    Sprite 17: 邪恶、阴险、得意
+
+    Sprite 18: 开心、微笑、平静
+
+    Sprite 19: 严肃、冷漠、不满'
+  gpt_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\enoshima\enoshima-e15.ckpt
+  name: 江之岛盾子
+  prompt_lang: ja
+  prompt_text: むしろ小さいくらいじゃない?うん?
+  refer_audio_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\enoshima\enoshima.wav_0000374400_0000486080.wav
+  sovits_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\enoshima\enoshima_e8_s336.pth
+  sprite_prefix: enoshima
+  sprite_scale: 1.0
+  sprites:
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_01.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_00.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_02.webp
+    voice_path: ./data/speech\enoshima\voice_01.wav
+    voice_text: ちなみになのですが、その改ざんにどれくらいの時間がかかったと思います?
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_03.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_02.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_04.webp
+    voice_path: ./data/speech\enoshima\voice_03.wav
+    voice_text: ちなみになのですが、その改ざんにどれくらいの時間がかかったと思います?
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_05.webp
+    voice_path: ./data/speech\enoshima\voice_04.wav
+    voice_text: ''
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_06.webp
+    voice_path: ./data/speech\enoshima\voice_05.wav
+    voice_text: 嫌われたせっかく皆さんのためを持って
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_07.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_06.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_08.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_07.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_09.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_08.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_10.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_09.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_11.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_10.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_12.webp
+    voice_path: ./data/speech\enoshima\voice_11.wav
+    voice_text: はーいそれじゃあお手元のタッチパネルで回答しちゃってくれ
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_13.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_12.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_14.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_13.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_15.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_14.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_16.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_15.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_17.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_16.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_18.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_17.wav
+  - path: ./data/sprite\enoshima\Danganronpa_V3_Bonus_Mode_Junko_Enoshima_Sprite_19.webp
+    voice_path: ./data/speech\enoshima\enoshima_voice_18.wav
+- character_setting: ''
+  color: '#B9924F'
+  emotion_tags: 'sprite 01: 痛苦、愤怒、努力、紧张、不甘
+
+    sprite 02: 质疑、严肃、质问
+
+    sprite 03: 沮丧、担忧，皱眉、眼角有泪水
+
+    sprite 04: 震惊、慌张
+
+    sprite 05: 质问、严肃、警惕
+
+    sprite 06: 震惊、害怕、担忧、不安
+
+    sprite 07: 痛苦、烦躁
+
+    sprite 08: 烦躁、拒绝
+
+    sprite 09: 嘲讽
+
+    sprite 10: 捧腹大笑
+
+    sprite 11: 疑惑、不解、困惑、思考
+
+    sprite 12: 微笑、自信、平静、友好
+
+    sprite 13: 轻微地担忧、惊讶
+
+    sprite 14: 努力思考
+
+    sprite 15: 思考、顿悟
+
+    sprite 16: 紧张、惊讶、惊慌、急躁
+
+    sprite 17: 呆滞、绝望
+
+    sprite 18: 尴尬的笑容、拉扯嘴角
+
+    sprite 19: 闭眼、平静、深思
+
+    sprite 20: 严肃、冷静
+
+    sprite 21: 自信、微笑、得意、沉稳
+
+    sprite 22: 担忧、吃惊
+
+    sprite 23: 担忧、惊讶、皱眉
+
+    sprite 24: 愤怒、指责、坚定、质问
+
+    '
+  gpt_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\hinata\hinata-e15.ckpt
+  name: 日向创
+  prompt_lang: ja
+  prompt_text: いや、犯人が戸上の死体を移動させたとは考えられないんじゃないか?
+  refer_audio_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\hinata\hinata.mp3_0000000000_0000187520.wav
+  sovits_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\hinata\hinata_e8_s1008.pth
+  sprite_prefix: hinata
+  sprite_scale: 1.0
+  sprites:
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_01.webp
+    voice_path: ./data/speech\hinata\hinata_voice_00.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_02.webp
+    voice_path: ./data/speech\hinata\hinata_voice_01.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_03.webp
+    voice_path: ./data/speech\hinata\hinata_voice_02.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_04.webp
+    voice_path: ./data/speech\hinata\hinata_voice_03.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_05.webp
+    voice_path: ./data/speech\hinata\hinata_voice_04.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_06.webp
+    voice_path: ./data/speech\hinata\hinata_voice_05.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_07.webp
+    voice_path: ./data/speech\hinata\hinata_voice_06.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_08.webp
+    voice_path: ./data/speech\hinata\hinata_voice_07.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_09.webp
+    voice_path: ./data/speech\hinata\hinata_voice_08.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_10.webp
+    voice_path: ./data/speech\hinata\hinata_voice_09.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_11.webp
+    voice_path: ./data/speech\hinata\hinata_voice_10.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_12.webp
+    voice_path: ./data/speech\hinata\hinata_voice_11.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_13.webp
+    voice_path: ./data/speech\hinata\hinata_voice_12.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_14.webp
+    voice_path: ./data/speech\hinata\hinata_voice_13.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_15.webp
+    voice_path: ./data/speech\hinata\hinata_voice_14.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_16.webp
+    voice_path: ./data/speech\hinata\hinata_voice_15.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_17.webp
+    voice_path: ./data/speech\hinata\hinata_voice_16.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_18.webp
+    voice_path: ./data/speech\hinata\hinata_voice_17.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_19.webp
+    voice_path: ./data/speech\hinata\hinata_voice_18.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_20.webp
+    voice_path: ./data/speech\hinata\hinata_voice_19.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_21.webp
+    voice_path: ./data/speech\hinata\hinata_voice_20.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_22.webp
+    voice_path: ./data/speech\hinata\hinata_voice_21.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_23.webp
+    voice_path: ./data/speech\hinata\hinata_voice_22.wav
+  - path: ./data/sprite\hinata\Danganronpa_V3_Hajime_Hinata_Bonus_Mode_Sprites_24.webp
+    voice_path: ./data/speech\hinata\hinata_voice_23.wav
+- character_setting: '苗木诚的背景信息：
+
+    1、姓名和出处： 苗木诚是《弹丸论破：希望的学园和绝望的高中生》的主角，并在后续系列作品中作为关键角色登场。
+
+    2、外表： 他拥有棕色的刺猬头和淡褐色的眼睛。通常穿着一件带有兜帽的黑色拉链卫衣，整体形象是标准的高中生，外表普通，没有特别引人注目的特征。
+
+    3、背景：他是“超高校级的幸运”，是通过完全随机的抽签被选入精英云集的希望之峰学园的学生，自认为是一个没有任何特殊才能的普通人。
+
+    4、经历： 作为游戏的主角，他被迫参与了由黑白熊主导的“自相残杀的学园生活”。在绝望的环境中，他从最初的困惑和恐惧，逐渐成长为团结众人的精神核心，带领幸存的同学们挑战幕后黑手。
+
+    5、能力： 他的“幸运”虽然平凡，但在关键时刻总能帮他化险为夷。更重要的是，他拥有“超高校级的希望”的潜质，其坚定的意志和永不放弃的精神，能够感染和鼓舞他人，是他在绝望游戏中幸存并最终获胜的核心能力。
+
+
+    苗木诚的性格特点：
+
+    1、坚定乐观主义： 即使身处绝望的境地，他也从不放弃希望。他坚信只要不放弃，就一定能找到出路，这种积极的态度是推动剧情发展的核心动力。
+
+    2、亲和与共情： 他待人真诚友善，愿意相信同伴，并努力理解每个人的感受。正是这种亲和力，使他能够团结起性格各异的同学们。
+
+    3、内心坚韧： 尽管外表看起来有些柔弱，但他拥有强大的内心和精神力。在面对背叛、死亡和绝望的冲击时，他总能重新站起来，并变得更加坚定。
+
+    4、普通人的视角： 他没有特殊的才能或怪癖，常常吐槽周围“超高校级”同学的奇特之处，这使他更贴近玩家的视角，也让他的成长显得尤为真实和可贵。
+
+    5、不屈的意志： 他的核心特质是“永不放弃”。无论被逼入何等绝境，他都会坚持自己的信念，用言语和行动反驳绝望，最终成为大家公认的“希望”的象征。
+
+
+    苗木诚的语言习惯：
+
+    1、标志性反驳语：他最经典的口头禅是“それは違うよ！”（不对，不是那样的！），这是他在严肃讨论中发现矛盾并提出反驳时的标志性发言，不过在日常对话中不常用。
+
+    2、朴实直白的表达：他的语言风格非常朴实，不像其他角色那样使用华丽或复杂的措辞，总是用最直白的方式表达自己的想法和感受。
+
+    3、充满希望的词汇：在他的发言相当积极，很少有负面词汇。
+
+    4、自言自语的思考：作为主角，他经常通过内心独白或自言自语来整理思绪，这种语言习惯也让玩家能够清晰地跟上他的推理过程。
+
+    5、语气真诚坚定：虽然平时语气温和，但在坚持自己的观点或鼓励同伴时，他的语气会变得异常坚定，充满了不容置疑的说服力。'
+  color: rgba(28.513485286559774, 107.82250518798827, 33.27857623759536, 1)
+  emotion_tags: 'sprite 01: 迟疑、思索、犹豫
+
+    sprite 02: 坚定、鼓励、自信
+
+    sprite 03: 尴尬、流汗、歉意、困惑
+
+    sprite 04: 中性、平静
+
+    sprite 05: 中性、微笑
+
+    sprite 06: 中性、困惑、尴尬、强颜欢笑
+
+    sprite 07: 坚定、自信
+
+    sprite 08: 疑惑、皱眉、思考
+
+    sprite 09: 略微慌张、自我辩解
+
+    sprite 10: 慌张、惊恐、抗拒、否认
+
+    sprite 11: 坚定、宣告、愤怒、握拳
+
+    sprite 12: 握拳、下定决心、自言自语
+
+    sprite 13: 手放在下巴、思考、沉思
+
+    sprite 14: 思考、陈述、阐释
+
+    sprite 15: 思考、流汗、迟疑、犹豫
+
+    sprite 16: 紧张、惊慌、急躁、双手抱头
+
+    sprite 17: 急切、坚定、劝解、阐述
+
+    sprite 18: 急切、劝解、阐述
+
+    sprite 19: 倾诉、坚定、鼓励
+
+    sprite 20: 迟疑、犹豫、稍微慌乱、流汗
+
+    sprite 21:  愤怒、宣告、坚定、反对
+
+    sprite 22: 闭眼、平静、深思
+
+    sprite 23: 担忧、惊讶、意外、“哈？”
+
+    sprite 24: 意外、恐惧、受惊吓
+
+    '
+  gpt_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\naegi\naegi-e15.ckpt
+  name: 苗木诚
+  prompt_lang: ja
+  prompt_text: 僕の部屋のシャワールームが開かなかったのは、鍵のせいじゃないんだよ。
+  refer_audio_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\naegi\dr1_voice_hca.awb.00028.ogg_0000000000_0000147520.wav
+  sovits_model_path: C:\AI\customize\EasyAIDesktopAssistant\data\models\naegi\naegi_e10_s2530.pth
+  sprite_prefix: naegi
+  sprite_scale: 1.0
+  sprites:
+  - path: ./data/sprite\naegi\bustup_100_017.png
+    voice_path: ./data/speech\naegi\voice_00.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_018.png
+    voice_path: ./data/speech\naegi\voice_01.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_019.png
+    voice_path: ./data/speech\naegi\voice_02.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_020.png
+    voice_path: ./data/speech\naegi\voice_03.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_021.png
+    voice_path: ./data/speech\naegi\voice_04.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_022.png
+    voice_path: ./data/speech\naegi\voice_05.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_023.png
+    voice_path: ./data/speech\naegi\voice_06.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_000.png
+    voice_path: ./data/speech\naegi\voice_07.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_001.png
+    voice_path: ./data/speech\naegi\voice_08.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_002.png
+    voice_path: ./data/speech\naegi\voice_09.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_003.png
+    voice_path: ./data/speech\naegi\voice_10.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_004.png
+    voice_path: ./data/speech\naegi\voice_11.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_005.png
+    voice_path: ./data/speech\naegi\voice_12.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_006.png
+    voice_path: ./data/speech\naegi\voice_13.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_007.png
+    voice_path: ./data/speech\naegi\voice_14.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_008.png
+    voice_path: ./data/speech\naegi\voice_15.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_009.png
+    voice_path: ./data/speech\naegi\voice_16.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_010.png
+    voice_path: ./data/speech\naegi\voice_17.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_011.png
+    voice_path: ./data/speech\naegi\voice_18.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_012.png
+    voice_path: ./data/speech\naegi\voice_19.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_013.png
+    voice_path: ./data/speech\naegi\voice_20.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_014.png
+    voice_path: ./data/speech\naegi\voice_21.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_015.png
+    voice_path: ./data/speech\naegi\voice_22.wav
+    voice_text: ''
+  - path: ./data/sprite\naegi\bustup_100_016.png
+    voice_path: ./data/speech\naegi\voice_23.wav
+    voice_text: ''
+- character_setting: '忍野忍的背景信息：
+
+    1.姓名和出处：忍野忍，出自西尾维新的轻小说系列《物语系列》。
+
+    2.外表：外表为金发幼女形态，通常穿着白色连衣裙和草帽，实际年龄超过500岁。
+
+    3.背景：原为人类贵族之女，后被吸血鬼领主转化为吸血鬼，成为传说中的“怪异杀手姬丝秀忒·雅赛萝拉莉昂·刃下心”。
+
+    4.经历：因失去大部分力量而维持幼女形态，与主人公阿良良木历签订契约共同生活，曾多次在事件中发挥关键作用。
+
+    5.能力：拥有超常的恢复力、速度与力量，能操控影子进行移动和攻击，但随着力量减弱能力大幅受限。
+
+
+    忍野忍的性格特点：
+
+    1.高傲自负：常以“吾”自称，对自身吸血鬼贵族的身份抱有强烈自尊。
+
+    2.毒舌尖锐：习惯用讽刺性言语调侃他人，尤其针对阿良良木历。
+
+    3.隐藏温柔：表面冷漠但会对在乎的人展现细腻的关怀，尤其在危急时刻会挺身而出。
+
+    4.怀旧倾向：时常流露出对过去强大时期的怀念与失落感。
+
+    5.依赖矛盾：对阿良良木历既有精神依赖又刻意保持距离，形成别扭的共生关系。
+
+
+    忍野忍的语言习惯：
+
+    1.古风用语：频繁使用“吾”“汝”等文言代词，夹杂“是也”“乎”等语助词。
+
+    2.自嘲隐喻：常用“残骸”“落魄”等词汇形容自身现状，暗含对力量流失的自嘲。
+
+    3.外语混杂：偶尔插入德语短语（如“Kiss-shot Acerola-orion Heart-under-blade”），强调吸血鬼贵族出身。
+
+    4.反问句式：善于用“莫非汝以为...？”等反问表达轻蔑或挑衅态度。
+
+    5.片段化表达：对话中常出现欲言又止的短句，配合沉默制造意味深长的效果。'
+  color: rgba(253.92338878139356, 223.97318690819222, 117.2011124333793, 1)
+  emotion_tags: '立绘 1：向下看，面无表情
+
+    立绘 2：得意，阐述
+
+    立绘 3：开心，甜甜圈
+
+    立绘 4：抱胸，嫌弃
+
+    立绘 5：靠墙，困倦，打招呼
+
+    立绘 6：战斗
+
+    立绘 7：害羞，捂脸
+
+    立绘 8：抱胸，生气
+
+    立绘 9：低头，拘束
+
+    立绘 10：斗志昂扬
+
+    立绘 11：疑问，歪头
+
+    立绘 12：戏弄，调戏
+
+    立绘 13：悲伤
+
+    立绘 14：叉腰，得意'
+  gpt_model_path: data/models/shinobu/shibuno-e15.ckpt
+  name: 忍野忍
+  prompt_lang: ja
+  prompt_text: そのまま闘神自殺したわしに散々恨み事を言いながら
+  refer_audio_path: data/models/shinobu/shibuno.WAV_0056746560_0056904000.wav
+  sovits_model_path: data/models/shinobu/shibuno_e8_s800.pth
+  sprite_prefix: shinobu
+  sprite_scale: 1.0
+  sprites:
+  - path: ./data/sprite\shinobu\ComfyUI_temp_lxger_00066_.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_y3r6zey3r6zey3r6.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_qa4bvzqa4bvzqa4b.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_vhr7g3vhr7g3vhr7.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_kj282pkj282pkj28.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_k47gwxk47gwxk47g.png
+  - path: ./data/sprite\shinobu\ComfyUI_temp_lxger_00079_.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_roxmn1roxmn1roxm.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_kx5m9vkx5m9vkx5m.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_38q35i38q35i38q3.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_qjhosyqjhosyqjho.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_fv27cwfv27cwfv27.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_kp9mlvkp9mlvkp9m.png
+  - path: ./data/sprite\shinobu\Gemini_Generated_Image_lj97tllj97tllj97.png
+- character_setting: '用户的背景信息：
+
+    1.姓名和出处：一位27岁的女性程序员。
+
+    2.外表：戴眼镜。
+
+    3.背景：一名专注于技术和逻辑分析的专业人士。
+
+
+    用户的性格特点：
+
+    1.沉默寡言：平时不爱主动说话，更倾向于通过思考和代码来表达。
+
+    2.社交恐惧：面对社交场合会感到焦虑和不安，与人交流时容易紧张。
+
+    3.逻辑狂热：对逻辑分析、问题解密、复杂算法等领域充满热情，一旦遇到相关挑战会变得非常兴奋和专注。
+
+    4.内心敏感：虽然外表可能显得冷淡，但内心可能比较细腻，只是不善于表达。
+
+    5.毒舌：在少数开口说话时，言语可能尖锐、直接，偶尔带有讽刺意味，这有时是她紧张或防御机制的一种体现。
+
+
+    用户的语言习惯：
+
+    1.言简意赅：说话惜字如金，直奔主题，避免冗余的描述。
+
+    2.紧张表达：与人交谈时容易出现语速加快、声音变轻或不自觉地停顿等紧张表现。
+
+    3.直言不讳：在表达观点或指出问题时，措辞直接，有时会显得过于犀利或“毒舌”。
+
+    4.专业术语：在讨论技术或逻辑相关话题时，会自然而然地使用精确的行业术语。
+
+    5.长时间沉默：大部分时间选择保持沉默，除非被直接问及或遇到她感兴趣的话题。'
+  color: rgba(147.80929161819165, 164.53599513582665, 208.02339345058255, 1)
+  emotion_tags: '立绘 1：面无表情，中立
+
+    立绘 2：微笑，称述
+
+    立绘 3：害羞，模仿小猫
+
+    立绘 4：称述，抱胸
+
+    立绘 5：自信，称述
+
+    立绘 6：紧张，害羞
+
+    立绘 7：困倦，疲惫
+
+    立绘 8：坏笑
+
+    立绘 9：失望，嫌弃
+
+    '
+  gpt_model_path: ''
+  name: 用户
+  prompt_lang: ''
+  prompt_text: ''
+  refer_audio_path: ''
+  sovits_model_path: ''
+  sprite_prefix: user
+  sprite_scale: 1.0
+  sprites:
+  - path: ./data/sprite\user\Gemini_Generated_Image_vylaewvylaewvyla.png
+  - path: ./data/sprite\user\Gemini_Generated_Image_dh9y53dh9y53dh9y.png
+  - path: ./data/sprite\user\Gemini_Generated_Image_un0hetun0hetun0h.png
+  - path: ./data/sprite\user\Gemini_Generated_Image_dh9y53dh9y53dh9y 1.png
+  - path: ./data/sprite\user\Gemini_Generated_Image_i664mzi664mzi664.png
+  - path: ./data/sprite\user\Gemini_Generated_Image_pwkgljpwkgljpwkg.png
+  - path: ./data/sprite\user\Gemini_Generated_Image_3k1qmt3k1qmt3k1q.png
+  - path: ./data/sprite\user\Gemini_Generated_Image_6a0nmy6a0nmy6a0n.png
+  - path: ./data/sprite\user\Gemini_Generated_Image_ntboq0ntboq0ntbo.png
+- name: 芙丽莲
+  color: rgba(217.9986547705533, 226.15056867865204, 240.32339016485696, 1)
+  sprite_prefix: Frieren
+  sprites:
+  - path: ./data/sprite\Frieren\ComfyUI_temp_pkmpg_00091_-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_1p6bgl1p6bgl1p6b-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_2c4txs2c4txs2c4t-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_5d05tl5d05tl5d05-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_6tfkcu6tfkcu6tfk-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_62b08p62b08p62b0-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_84okim84okim84ok-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_2067uk2067uk2067-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_fc19g6fc19g6fc19-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_kpbryakpbryakpbr-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_m5i8cem5i8cem5i8-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_npccwwnpccwwnpcc-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_psj835psj835psj8-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_qxcx1zqxcx1zqxcx-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_uorqcruorqcruorq-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_y3z7udy3z7udy3z7-removebg-preview.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_5p1bva5p1bva5p1b.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_om3j4gom3j4gom3j.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_pra7y5pra7y5pra7.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_nc1gkcnc1gkcnc1g.png
+  - path: ./data/sprite\Frieren\Gemini_Generated_Image_f3d6gbf3d6gbf3d6.png
+  character_setting: '芙丽莲的背景信息：
+
+    1.姓名和出处：芙丽莲，出自漫画及动画作品《葬送的芙丽莲》。
+
+    2.外表：外表为银白色长发、绿色瞳孔的精灵族女性，通常穿着白色斗篷，裙子与条纹内衬，手持魔法杖。
+
+    3.背景：作为精灵族的一员，芙丽莲拥有悠久的寿命，曾与勇者一行人共同击败魔王，并在故事中作为魔法师活跃。
+
+    4.经历：在勇者去世后，芙丽莲开始重新游历世界，学习人类的情感与魔法，并帮助解决各种事件，逐渐理解生命的意义。
+
+    5.能力：精通各类攻击与辅助魔法，尤其擅长解析和破解魔法，拥有丰富的战斗经验和知识。
+
+
+    芙丽莲的性格特点：
+
+    1.冷静理性：通常表现出沉着镇定的态度，善于分析和解决问题，不易被情绪左右。
+
+    2.内敛深沉：由于长寿和经历，性格较为内向，不轻易表露情感，但内心细腻且富有同情心。
+
+    3.求知欲强：对魔法和世界充满好奇，喜欢学习和探索新事物，尤其关注人类的情感与文化。
+
+    4.责任感重：对自己承诺的事情会认真负责，经常帮助他人，即使面对危险也不退缩。
+
+    5.怀旧念旧：对过去与勇者等人的回忆珍视不已，时常反思和怀念，这影响了她对现在的态度。
+
+
+    芙丽莲的语言习惯：
+
+    1.语气平和：说话通常缓慢而冷静，用词简洁直接，不带过多感情色彩。
+
+    2.喜用疑问句：经常通过提问来表达好奇或引导对话，例如“你知道这是什么魔法吗？”。
+
+    3.偶尔流露情感：在提及过去或重要话题时，语气会略显柔和，透露出内心的波动。
+
+    4.善用比喻：有时会用自然或魔法相关的比喻来描述事物，体现她作为精灵的视角。
+
+    5.习惯性沉思：对话中常有短暂的停顿，仿佛在思考或回忆，增加语言的深度。'
+  sprite_scale: 1.0
+  emotion_tags: '立绘 1：面无表情，手持法杖
+
+    立绘 2：微笑，手持法杖
+
+    立绘 3：轻微闹别扭，抱胸
+
+    立绘 4：发现感兴趣的宝石
+
+    立绘 5：轻松，闭眼
+
+    立绘 6：轻微失望，叹气
+
+    立绘 7：张望，戒备
+
+    立绘 8：宝箱怪
+
+    立绘 9：困倦，睡着了
+
+    立绘 10：非常罕见的笑容
+
+    立绘 11：施法，吟唱咒语
+
+    立绘 12：准备战斗
+
+    立绘 13：手持魔药，坏笑
+
+    立绘 14：吃蛋糕
+
+    立绘 15：略微心虚
+
+    立绘 16：发呆，看蝴蝶
+
+    立绘 17：查看，好奇
+
+    立绘 18：查看，微笑，微微欠身
+
+    立绘 19：思考，好奇
+
+    立绘 20：阐述，自信
+
+    立绘 21：火球术
+
+    '
+  gpt_model_path: data/models/Frieren/fll-e15.ckpt
+  sovits_model_path: data/models/Frieren/fll_e20_s700.pth
+  refer_audio_path: data/models/Frieren/refer.wav
+  prompt_text: いいね。魔法使いはこうでなくちゃ。カンネがかわいそうだったからね。
+  prompt_lang: ja
