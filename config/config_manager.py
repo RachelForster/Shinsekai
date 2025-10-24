@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from pydantic import ValidationError
 from config.schema import AppConfig, Character, ApiConfig, SystemConfig
+from llm.constants import LLM_BASE_URLS
 import traceback
 
 class ConfigManager:
@@ -113,6 +114,52 @@ class ConfigManager:
             self.config.system_config.model_dump(by_alias=True)
         )
         print("system_config.yaml 保存完成。")
+    
+    def save_api_config_new(self, llm_provider: str, llm_model: str, api_key: str, base_url: str, sovits_url: str, gpt_sovits_api_path: str) -> str:
+        """
+        更新内存中的 ApiConfig，并将其保存到 api.yaml。
+        """
+        if self._config is None:
+            return "错误：配置未加载或加载失败，无法保存 API 配置。"
+
+        print("正在更新并保存 api.yaml...")
+        current_api_config = self.config.api_config.model_copy(deep=True)
+        current_api_config.llm_api_key[llm_provider] = api_key
+        current_api_config.llm_model[llm_provider] = llm_model
+
+        current_api_config.llm_provider = llm_provider
+        current_api_config.llm_base_url = base_url
+        current_api_config.gpt_sovits_url = sovits_url
+        current_api_config.gpt_sovits_api_path = gpt_sovits_api_path
+
+        self.config.api_config = current_api_config
+        
+        # 6. 持久化到文件
+        self._save_single_config(
+            self._API_CONFIG_PATH, 
+            self.config.api_config.model_dump(by_alias=True)
+        )
+        return "API配置已保存！"
+
+    def update_llm_info(self, llm_provider: str) -> tuple[str, str, str]:
+        """
+        根据给定的 LLM 提供商名称，从配置中获取对应的 Base URL, 模型名称和 API Key。
+        
+        返回: (base_url, llm_model, api_key)
+        """
+        if self._config is None:
+            raise RuntimeError("配置未加载，无法获取 LLM 信息。")
+
+        api_config = self.config.api_config
+        
+        base_url = LLM_BASE_URLS.get(llm_provider,"")
+        
+        # 从字典中获取对应提供商的模型和 API Key
+        llm_model = api_config.llm_model.get(llm_provider, "")
+        api_key = api_config.llm_api_key.get(llm_provider, "")
+
+        # 返回 Base URL, 模型名称, API Key
+        return base_url, llm_model, api_key
 
     def save_characters_config(self) -> None:
         """独立保存角色列表配置到 characters.yaml"""

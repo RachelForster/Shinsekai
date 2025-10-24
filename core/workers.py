@@ -67,7 +67,7 @@ class LLMWorker(BaseWorker):
         # 队列中传入和传出的应是 Pydantic 消息模型
         self.user_input_queue: Queue[UserInputMessage] = user_input_queue
         self.tts_queue: Queue[LLMDialogMessage] = tts_queue
-        self.chat_history = chat_history or []  # 使用传入的历史或初始化为空列表
+        self.chat_history = chat_history
 
     def run(self):
         while self.running:
@@ -164,8 +164,9 @@ class TTSWorker(BaseWorker):
         self.text_processor = TextProcessor()
         self.cc = OpenCC('t2s')  # 繁体到简体转换器
 
-    def put_data(self, character_name: str, speech: str, sprite: str, audio_path: str, is_system_message: bool = False):
+    def put_data(self, character_name: str, speech: str, sprite: str, audio_path, is_system_message: bool = False):
         """将处理结果封装成 Pydantic 模型并放入下一个队列"""
+        audio_path = audio_path or ""
         output_data = TTSOutputMessage(
             audio_path=audio_path,
             character_name=character_name,
@@ -198,8 +199,8 @@ class TTSWorker(BaseWorker):
                 character_name_s = self.cc.convert(character_name)
 
                 # 检查是否为特殊系统消息
-                if sprite == "-1" or sprite == -1 or character_name_s in ["选项","数值"]:
-                    # 对于选项、数值或通用旁白，直接放入下一队列，标记为系统消息
+                if character_name_s in ["选项","数值","旁白"]:
+                    # 对于选项、数值或通用旁白，直接放入下一队列
                     self.put_data(character_name_s, speech, '-1', '', is_system_message=True)
                     continue
                 
@@ -265,7 +266,7 @@ class TTSWorker(BaseWorker):
                 print(f"TTSWorker: 任务处理失败: {e}")
                 traceback.print_exc()
                 # 失败时也必须调用 task_done，并通知 UI 这是一个非语音的旁白
-                self.put_data(character_name_s, speech, '-1', '', is_system_message=True) # 使用 -1 表示无立绘或语音
+                self.put_data(character_name_s, speech, '-1', '') # 使用 -1 表示无立绘或语音
 
     def quit(self):
         """确保在退出前能解锁队列"""
@@ -288,7 +289,7 @@ class UIWorker(QThread):
         self.running = True
         self.task_done_requested = threading.Event() # 使用 Event 对象作为跳过标志
         self.current_audio_path = None
-        self.chat_history = chat_history or []  # 使用传入的历史或初始化为空列表
+        self.chat_history = chat_history
 
     def skip_speech(self):
         """跳过当前对话"""
@@ -332,7 +333,7 @@ class UIWorker(QThread):
                 if audio_path:
                     audio_path = Path(audio_path).as_posix()
 
-                if is_system_message or sprite_id == '-1' or sprite_id == -1:
+                if is_system_message:
                     if character_name == "选项":
                         optionList = speech.split('/')
                         self.update_option_signal.emit(optionList)
@@ -352,13 +353,15 @@ class UIWorker(QThread):
 
                 # 更新 UI 通知
                 self.update_notification_signal.emit(f"{character_name}正在回复……")
-
-                # 更新立绘
-                image_path = character_config.sprites[int(sprite_id) - 1]['path']
-                image_path = Path(image_path).as_posix()
-
+                
+                # 更新对话框文本
+                if speech:
+                    self._update_dialog(character_name, speech, character_config.color, is_system=False)
 
                 try:
+                    # 更新立绘
+                    image_path = character_config.sprites[int(sprite_id) - 1]['path']
+                    image_path = Path(image_path).as_posix()
                     cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
                     if cv_image is not None:
                         if cv_image.shape[2] == 3:
@@ -376,9 +379,6 @@ class UIWorker(QThread):
                     traceback.print_exc()
                     print(f"UIWorker: 加载图片时出错: {e}")
 
-                # 更新对话框文本
-                if speech:
-                    self._update_dialog(character_name, speech, character_config.color, is_system=False)
 
                 min_stop_time = len(speech)//8
                 start_time = time.perf_counter()
@@ -418,7 +418,7 @@ class UIWorker(QThread):
             except Exception as e:
                 traceback.print_exc()
                 print(f"UIWorker: 任务处理失败: {e}")
-                self._update_dialog(character_name, speech, "#84C2D5")
+                self._update_dialog(character_name, speech, "#84C2D5", character_name in [])
                 if not self.task_done_requested.is_set():
                     self.task_done_requested.wait(timeout=len(speech)/10)
                 self.audio_path_queue.task_done()

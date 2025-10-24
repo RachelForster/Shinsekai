@@ -14,206 +14,19 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 import tools.file_util as fu
 from config.character_config import CharacterConfig
-from llm.constants import LLM_BASE_URLS, LLM_MODELS
-from llm.llm_manager import LLMAdapterFactory, LLMManager
+from config.character_manager import CharacterManager
+from config.config_manager import ConfigManager
+from llm.constants import LLM_BASE_URLS
 
-# 存储数据的全局变量
-api_config = {
-    "llm_api_key": {},
-    "llm_base_url": "",
-    "llm_provider": "Deepseek",
-    "llm_model": {},
-    "gpt_sovits_url": "",
-    "gpt_sovits_api_path":""
-}
-
-llm_manager = None
-
-characters = []
-
+config_manager = ConfigManager()
+character_manager = CharacterManager()
 main_process = None
 
 # 创建存储上传文件的目录
-UPLOAD_DIR = "./data/sprite"
-VOICE_DIR = "./data/speech"
-MODEL_DIR = "./data/models"
-HISTORY_DIR = "./data/chat_history"
-API_CONFIG_PATH = "./data/config/api.yaml"
-CHARACTER_CONFIG_PATH = "./data/config/characters.yaml"
 TEMPLATE_DIR_PATH = "./data/character_templates"
-Path(UPLOAD_DIR).mkdir(exist_ok=True)
+HISTORY_DIR='./data/chat_history'
 
-def generate_character_setting(name, setting):
-    global characters
-    global llm_manager
-    global api_config
-
-    if not name:
-        return "请选择或输入要生成的角色的名字！", setting
-    
-    character = next((c for c in characters if c["name"] == name), None)
-    if character is None:
-        add_character(name=name, color='', sprite_prefix='', gpt_model_path='', 
-                sovits_model_path='', refer_audio_path='', prompt_text='', prompt_lang='', character_setting=setting)
-        character = next((c for c in characters if c["name"] == name), None)
-    
-    setting = "无" if not setting else setting
-
-    template = f"""
-    你需要帮助用户写出{name}的角色设定，包括{name}的背景信息，性格特点，和语言习惯。输出plain text格式，不要使用markdown格式。
-    将{name}的背景信息，性格特点，和语言习惯分段写，并且同一段内标号，不一定是3点，有可能比3点多。
-    输出格式示例：
-    {name}的背景信息：
-    1.姓名和出处：
-    2.外表：
-    3.背景：
-    4.经历：
-
-    {name}的性格特点：
-    1.
-    2.
-    3.
-
-    {name}的语言习惯：
-    1.
-    2.
-    """
-    try:
-        if llm_manager is None:
-            llm_provider = api_config.get("llm_provider","Deepseek")
-            llm_model = api_config.get("llm_model").get(llm_provider,'')
-            api_key =api_config.get("llm_api_key").get(llm_provider,'')
-            if not llm_provider:
-                print("Please choose the llm provider")
-                return "请先设定大语言模型供应商", setting
-            llm_adapter = LLMAdapterFactory.create_adapter(llm_provider=llm_provider, api_key=api_key,base_url=api_config.get("llm_base_url",""), model = llm_model)
-            llm_manager = LLMManager(adapter=llm_adapter,user_template = template)
-        llm_manager.set_user_template(template)
-        character["character_setting"] = llm_manager.chat(f"补充信息：{setting},请输出结果：", stream = False, response_format={"type":"text"})
-        return "输出成功", character['character_setting']
-    except Exception as e:
-        return f"输出失败:{e}", setting
-
-def save_api_config(llm_provider, llm_model, api_key, base_url, sovits_url, gpt_sovits_api_path):
-    global api_config
-    llm_api_key = api_config.get("llm_api_key",{})
-    llm_model_map = api_config.get("llm_model",{})
-    llm_api_key = {} if llm_api_key is None else llm_api_key
-    llm_api_key[llm_provider] = api_key
-    llm_model_map[llm_provider] = llm_model
-    api_config = {
-        "llm_api_key": llm_api_key,
-        "llm_base_url": base_url,
-        "llm_provider": llm_provider,
-        "llm_model": llm_model_map,
-        "gpt_sovits_url": sovits_url,
-        "gpt_sovits_api_path": gpt_sovits_api_path
-    }
-    yaml.dump(api_config, open(API_CONFIG_PATH, 'w', encoding='utf-8'), allow_unicode=True)
-    return "API配置已保存！"
-
-def load_api_config_from_file():
-    global api_config
-    try:
-        with open(API_CONFIG_PATH, 'r', encoding='utf-8') as f:
-            api_config = yaml.safe_load(f) or {}
-        return "API配置已加载！"
-    except Exception as e:
-        return f"加载失败: {str(e)}"
-
-def load_characters_from_file():
-    global characters
-    try:
-        with open(CHARACTER_CONFIG_PATH, 'r', encoding='utf-8') as f:
-            loaded_characters = yaml.safe_load(f) or []
-            characters.clear()
-            characters.extend(loaded_characters)
-        return "人物设定已加载！", [[c.get("name", ""), c.get("color", ""), c.get("prompt_lang", "")] for c in characters]
-    except Exception as e:
-        return f"加载失败: {str(e)}", [[c.get("name", ""), c.get("color", ""), c.get("prompt_lang", "")] for c in characters]
-
-def save_characters_to_file():
-    global characters
-    try:
-        # 保存到当前目录下的characters.yaml文件
-        file_path = CHARACTER_CONFIG_PATH
-        with open(file_path, 'w', encoding='utf-8') as f:
-            yaml.dump(characters, f, allow_unicode=True)
-        return f"人物设定已保存到 {file_path}！"
-    except Exception as e:
-        return f"保存失败: {str(e)}"
-
-def add_character(name, color, sprite_prefix, gpt_model_path, 
-                 sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting):
-    global characters
-    
-    if not name:
-        return "名称不能为空！", [c.get("name", "") for c in characters]
-        
-    character = next((c for c in characters if c["name"] == name), None)
-    if character is None:
-        character = {
-            "name": name,
-            "color": color,
-            "sprite_prefix": sprite_prefix,
-            "gpt_model_path": gpt_model_path,
-            "sovits_model_path": sovits_model_path,
-            "refer_audio_path": refer_audio_path,
-            "prompt_text": prompt_text,
-            "prompt_lang": prompt_lang,
-            "sprites": [],
-            "sprite_scale": 1.0,
-            "emotion_tags": "",
-            "character_setting": "",
-        }    
-        characters.append(character)
-        save_characters_to_file()
-        return "人物已添加！", [c.get("name", "") for c in characters]
-    else:
-        character["name"]=name
-        character["color"]=color
-        character["sprite_prefix"]=sprite_prefix
-        character["gpt_model_path"]=gpt_model_path
-        character["sovits_model_path"]=sovits_model_path
-        character["prompt_text"]=prompt_text
-        character["prompt_lang"]=prompt_lang
-        character["refer_audio_path"]=refer_audio_path
-        character["character_setting"]=character_setting
-        save_characters_to_file()
-        return "人物已更新！", [c.get("name", "") for c in characters]
-def delete_character(name):
-    global characters
-    if not name or name == "新角色":
-        return "请选择要删除的角色！", [c.get("name", "") for c in characters]
-    
-    character = next((c for c in characters if c["name"] == name), None)
-    if character is None:
-        return f"找不到角色: {name}", [c.get("name", "") for c in characters]
-    
-    characters.remove(character)
-    save_characters_to_file()
-
-    sprite_prefix = character.get("sprite_prefix", '')
-    if not sprite_prefix:
-        return "已删除角色", [c.get("name", "") for c in characters]
-     
-    # 删除角色的立绘目录
-    char_dir = os.path.join(UPLOAD_DIR, character["sprite_prefix"])
-    if os.path.exists(char_dir):
-        shutil.rmtree(char_dir)
-    
-    # 删除角色的语音目录
-    voice_char_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
-    if os.path.exists(voice_char_dir):
-        shutil.rmtree(voice_char_dir)
-
-    # 删除角色的gpt-sovits相关模型和语音
-    model_char_dir = os.path.join(MODEL_DIR, character["sprite_prefix"])
-    if os.path.exists(model_char_dir):
-        shutil.rmtree(model_char_dir)
-    
-    return f"角色 {name} 已删除！", [c.get("name", "") for c in characters]
-
+#Template Page
 def load_template_from_file(file_path):
     try:
         file_name = file_path
@@ -223,18 +36,6 @@ def load_template_from_file(file_path):
         return template, file_name
     except Exception as e:
         return f"加载失败: {str(e)}", file_name
-def save_sprite_scale(name, scale):
-    global characters
-    
-    if not name:
-        return "名称不能为空！", [c.get("name", "") for c in characters]
-    character = next((c for c in characters if c["name"] == name), None)
-
-    if character:
-        character['sprite_scale'] = scale
-        save_characters_to_file()
-        return "保存立绘缩放倍率成功"
-
 def generate_template(selected_characters):
     if not selected_characters:
         return "请至少选择一个角色！", ""
@@ -264,18 +65,17 @@ def generate_template(selected_characters):
     '''
     template += "\n立绘说明:\n"
     for char_name in selected_characters:
-        char_detail = next((c for c in characters if c['name'] == char_name), None)
-        template += f"{char_name}有{len(char_detail['sprites'])}张立绘：\n"
-        template += f"{char_detail['emotion_tags']}\n\n"
+        char_detail = config_manager.get_character_by_name(char_name)
+        template += f"{char_name}有{len(char_detail.sprites)}张立绘：\n"
+        template += f"{char_detail.emotion_tags}\n\n"
 
     template += "\n角色说明：\n"
     for char_name in selected_characters:
-        char_detail = next((c for c in characters if c['name'] == char_name), None)
-        if char_detail.get("character_setting",''):
+        char_detail = config_manager.get_character_by_name(char_name)
+        if char_detail.character_setting:
             template += f"以下是{char_name}的角色设定：\n"
-            character_setting = char_detail.get("character_setting","")
+            character_setting = char_detail.character_setting
             template += f"{character_setting}\n\n"
-        
     template +=f"""
 要求：
 1. 不要输出除 JSON 以外的任何文本。
@@ -289,196 +89,6 @@ def generate_template(selected_characters):
 """
     template += "\n请开始对话，开始时介绍下用户所处的情境和背景，以及在做什么事情：\n"
     return template, ""
-
-def update_character_options():
-    return gr.CheckboxGroup(choices=[c.get("name", "") for c in characters])
-
-def upload_sprites(character_name, sprite_files, emotion_tags):
-    """上传立绘并为每张图标注情绪关键词"""
-    if not character_name:
-        return "请先选择或创建角色！", [], ''
-    
-    if not sprite_files:
-        return "请选择要上传的图片！", [], ''
-    
-    # 找到对应的角色
-    character = next((c for c in characters if c["name"] == character_name), None)
-    if not character:
-        return f"找不到角色: {character_name}", [], ''
-    
-    # 创建角色专属目录
-    char_dir = os.path.join(UPLOAD_DIR, character["sprite_prefix"])
-    Path(char_dir).mkdir(parents=True, exist_ok=True)
-
-    # files = glob.glob(os.path.join(char_dir, '*'))
-    
-    # for file in files:
-    #     try:
-    #         if os.path.isfile(file):
-    #             os.remove(file)  # 删除文件
-    #             print(f"已删除文件: {file}")
-    #     except Exception as e:
-    #         print(f"删除文件 {file} 时出错: {e}")
-    #         return '失败', [], ''
-
-    
-    # 处理上传的图片
-    emotion_tags=''
-    if "sprites" not in character or character["sprites"] is None:
-        character["sprites"]=[]
-    num_existing_sprites = len(character["sprites"])
-    uploaded_sprites = []
-    for i, file in enumerate(sprite_files):
-        # 获取文件名和扩展名
-        filename = os.path.basename(file.name)
-        # 保存文件到角色目录
-        dest_path = os.path.join(char_dir, filename)
-        shutil.copyfile(file.name, dest_path)
-        
-        # 添加到角色的立绘列表
-        character["sprites"].append({
-            "path": dest_path,
-        })
-        uploaded_sprites.append((dest_path))
-        emotion_tags +=f'立绘 {num_existing_sprites+i+1}：\n'
-    character["emotion_tags"]= character.get("emotion_tags","")+emotion_tags
-
-    # 保存到文件
-    save_characters_to_file()
-
-    return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", [item['path'] for item in character["sprites"]], character["emotion_tags"]
-
-def delete_all_sprites(character_name):
-    """删除角色的所有立绘"""
-    if not character_name:
-        return "请先选择角色！", [], ""
-    
-    # 找到对应的角色
-    character = next((c for c in characters if c["name"] == character_name), None)
-    if not character:
-        return f"找不到角色: {character_name}", [], ""
-    
-    # 删除角色的立绘目录
-    char_dir = os.path.join(UPLOAD_DIR, character["sprite_prefix"])
-    if os.path.exists(char_dir):
-        shutil.rmtree(char_dir)
-
-    char_voice_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
-    if os.path.exists(char_voice_dir):
-        shutil.rmtree(char_voice_dir)
-    
-    # 清空角色的立绘列表
-    character["sprites"] = []
-    character["emotion_tags"] = ""
-    
-    # 保存到文件
-    save_characters_to_file()
-    
-    return f"已删除 {character_name} 的所有立绘！", [], ""
-
-def delete_single_sprite(character_name, sprite_index):
-    """删除角色的指定立绘"""
-    if not character_name:
-        return "请先选择角色！", []
-    
-    # 找到对应的角色
-    character = next((c for c in characters if c["name"] == character_name), None)
-    if not character:
-        return f"找不到角色: {character_name}", [], ""
-    
-    # 确保有立绘
-    if not character["sprites"] or sprite_index >= len(character["sprites"]):
-        return "立绘不存在！", [], ""
-    
-    # 删除指定的立绘文件
-    sprite_path = character["sprites"][sprite_index]["path"]
-    if os.path.exists(sprite_path) and os.path.isfile(sprite_path):
-        os.remove(sprite_path)
-    voice_path = character["sprites"][sprite_index].get("voice_path","")
-    if voice_path and os.path.exists(voice_path) and os.path.isfile(voice_path):
-        os.remove(voice_path)
-    
-    # 从角色的立绘列表中移除
-    character["sprites"].pop(sprite_index)
-    
-    # 更新情绪标签
-    emotion_tags = ""
-    original_tags = character.get("emotion_tags", "").split('\n')
-    original_tags.pop(sprite_index)
-    for i in range(len(character["sprites"])):
-        current_tag = original_tags[i].split("：")[-1] if "：" in original_tags[i] else original_tags[i].split(":")[-1]
-        emotion_tags += f'立绘 {i+1}：{current_tag}\n'
-    character["emotion_tags"] = emotion_tags
-    # 保存到文件
-    save_characters_to_file()
-    
-    return f"已删除 {character_name} 的第 {sprite_index+1} 张立绘！", [s["path"] for s in character["sprites"]], emotion_tags
-
-def upload_emotion_tags(character_name, emotion_tags):
-    if not character_name:
-        return "请先选择或创建角色！"
-    
-    if not emotion_inputs:
-        return "请输入情绪标注！"
-    
-    # 找到对应的角色
-    character = next((c for c in characters if c["name"] == character_name), None)
-    if not character:
-        return f"找不到角色: {character_name}"
-    try:
-        character["emotion_tags"]=emotion_tags
-        save_characters_to_file()
-        return "标注成功！"
-    except Exception as e:
-        return f"标注出错了：{e}"
-
-def upload_voice(character_name, sprite_index, voice_file, voice_text):
-    """为指定立绘上传语音文件"""
-    if not character_name:
-        return "请先选择角色！", None
-    
-    # 找到对应的角色
-    character = next((c for c in characters if c["name"] == character_name), None)
-    if not character:
-        return f"找不到角色: {character_name}", None
-    
-    # 确保有立绘
-    if not character["sprites"] or sprite_index >= len(character["sprites"]):
-        return "立绘不存在！", None
-    
-    original_voice_path = character["sprites"][sprite_index].get("voice_path","")
-    if (not voice_file) and (not original_voice_path):
-        return "请选择语音文件！", None
-    
-    # 创建语音目录
-    voice_char_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
-    Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
-    
-    # 保存语音文件
-    voice_filename = f"voice_{sprite_index:02d}{voice_file[voice_file.rfind('.'): ]}"
-    voice_path = os.path.join(voice_char_dir, voice_filename)
-    shutil.copyfile(voice_file, voice_path)
-    
-    # 更新角色数据
-    character["sprites"][sprite_index]["voice_path"] = voice_path
-    character["sprites"][sprite_index]["voice_text"] = voice_text
-    save_characters_to_file()
-    
-    return f"语音已上传到立绘 {sprite_index+1}！", voice_path
-
-def get_sprite_voice(character_name, sprite_index):
-    """获取指定立绘的语音路径"""
-    if not character_name or sprite_index is None:
-        return None,""
-    
-    # 找到对应的角色
-    character = next((c for c in characters if c["name"] == character_name), None)
-    if not character or not character["sprites"] or sprite_index >= len(character["sprites"]):
-        return None,""
-    
-    # 返回语音路径
-    return character["sprites"][sprite_index].get("voice_path", None), character["sprites"][sprite_index].get("voice_path", "") 
-
 def launch_chat(template, voice_mode, init_sprite_path, history_file):
     global main_process
     print("启动聊天，使用模板:")
@@ -513,7 +123,6 @@ def launch_chat(template, voice_mode, init_sprite_path, history_file):
             return "进程已经在运行中！PID: " + str(main_process.pid)
     except Exception as e:
         print("启动模版失败：", e)
-
 def stop_chat():
     global main_process
     if main_process is not None and main_process.poll() is None:
@@ -524,7 +133,6 @@ def stop_chat():
         return f"进程 {pid} 已停止！"
     else:
         return "没有正在运行的进程！"
-
 def save_template(template, filename):
     path_obj = Path(TEMPLATE_DIR_PATH)
     template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
@@ -544,30 +152,9 @@ def save_template(template, filename):
     except Exception as e:
         return f"保存失败，{e}",template_files
 
-def get_character_sprites(character_name):
-    """获取指定角色的所有立绘"""
-    if not character_name:
-        return [],"",[]
-    
-    character = next((c for c in characters if c["name"] == character_name), None)
-    if (not character) or ("sprites" not in character):
-        return [],"",[]
-    elif "emotion_tags" not in character:
-        return [(s["path"]) for s in character["sprites"]], "",[]
-    
-    return [(s["path"]) for s in character["sprites"]], character["emotion_tags"],[]
-
-def update_llm_info(llm_provider):
-    """更新LLM信息"""
-    global api_config
-    llm_model_map = api_config.get("llm_model",{})
-    llm_api_map = api_config.get("llm_api_key",{})
-    return LLM_BASE_URLS.get(llm_provider, ""), llm_model_map.get(llm_provider,""), llm_api_map.get(llm_provider,"")
 
 # 创建界面
 with gr.Blocks(title="新世界程序") as demo:
-    load_characters_from_file()
-    load_api_config_from_file()
     gr.Markdown("# 新世界程序")
     gr.Markdown('''
     - （b站、小红书）作者：不二咲爱笑 
@@ -577,28 +164,30 @@ with gr.Blocks(title="新世界程序") as demo:
         gr.Markdown("## API 配置")
         with gr.Row():
             with gr.Column():
+                _provider,_model,_base_url,_api_key = config_manager.get_llm_api_config()
                 gr.Markdown("### LLM API 配置")
                 llm_provider = gr.Dropdown(
                     choices=list(LLM_BASE_URLS.keys()),
                     label="选择大语言模型供应商",
-                    value=api_config.get("llm_provider", "Deepseek")
+                    value=_provider
                 )
-                llm_provider_value = api_config.get("llm_provider","Deepseek")
-                llm_model = gr.Textbox(label="模型ID", value=api_config.get("llm_model", "").get(llm_provider_value,""))
-                api_key = gr.Textbox(label="LLM API Key", type="password", value=api_config.get("llm_api_key", {}).get(llm_provider_value,""))
-                base_url = gr.Textbox(label="LLM API 基础网址", value=api_config.get("llm_base_url", ""))
+                llm_provider_value = config_manager.config.api_config.llm_provider
+                llm_model = gr.Textbox(label="模型ID", value=_model)
+                api_key = gr.Textbox(label="LLM API Key", type="password", value=_api_key)
+                base_url = gr.Textbox(label="LLM API 基础网址", value=_base_url)
             with gr.Column():
                     api_output = gr.Textbox(label="输出信息", interactive=False)
         with gr.Row():
             with gr.Column():
+                _gsv_url,_gpt_sovits_work_path = config_manager.get_gpt_sovits_config()
                 gr.Markdown("### GPT SoVITS API 配置，如果没有可以不填，如果你想让角色读出台词，就需要配置")
                 gr.Markdown("#### 前提条件")
                 gr.Markdown('''
                 1. 你的GPU大于等于6G
                 2. 下载好GPT-SOVITS整合包
                 ''')
-                sovits_url = gr.Textbox(label="GPT-SoVITS API 调用地址", value=api_config.get("gpt_sovits_url", ""))
-                gpt_sovits_api_path = gr.Textbox(label="GPT-SoVITS 服务启动路径", value=api_config.get("gpt_sovits_api_path", ""))
+                sovits_url = gr.Textbox(label="GPT-SoVITS API 调用地址", value=_gsv_url)
+                gpt_sovits_api_path = gr.Textbox(label="GPT-SoVITS 服务启动路径", value=_gpt_sovits_work_path)
                 save_api_btn = gr.Button("保存配置")
             with gr.Column():
                 gr.Markdown("### 下载GPT SOVITS整合包")
@@ -635,13 +224,13 @@ with gr.Blocks(title="新世界程序") as demo:
         
         # Add events to update the dropdowns and base URL
         llm_provider.change(
-            update_llm_info,
+            config_manager.update_llm_info,
             inputs=llm_provider,
             outputs=[base_url,llm_model,api_key]
         )
 
         save_api_btn.click(
-            save_api_config,
+            config_manager.save_api_config_new,
             inputs=[llm_provider, llm_model,api_key, base_url, sovits_url, gpt_sovits_api_path],
             outputs=api_output
         )
@@ -658,20 +247,19 @@ with gr.Blocks(title="新世界程序") as demo:
                 gr.Markdown("### 人物管理")
                 gr.Markdown("#### 加载或添加可用角色")
                 selected_character = gr.Dropdown(
-                    choices=["新角色"] + [c.get("name", "") for c in characters],
+                    choices=["新角色"] + character_manager.get_character_name_list(),
                     label="选择角色"
                 )
                 export_btn = gr.Button("导出到./output文件夹")
                 del_btn = gr.Button("删除人物")
                 def update_character_dropdown():
-                    print(["新角色"]+[c.get("name", "") for c in characters])
-                    return gr.Dropdown(choices=["新角色"]+[c.get("name", "") for c in characters])
+                    return gr.Dropdown(choices=["新角色"]+character_manager.get_character_name_list())
                 
                 def update_character_information(selected_character):
-                    character = next((c for c in characters if c["name"] == selected_character), None)
+                    character = config_manager.get_character_by_name(selected_character)
                     if character == None:
                         return "","","","","","","","",""
-                    return character["name"], character["color"], character["sprite_prefix"], character["gpt_model_path"], character["sovits_model_path"], character["refer_audio_path"], character["prompt_text"], character["prompt_lang"], character.get("character_setting","")
+                    return character.name, character.color, character.sprite_prefix, character.gpt_model_path, character.sovits_model_path, character.refer_audio_path, character.prompt_text, character.prompt_lang, character.character_setting
                 
             with gr.Column():
                 gr.Markdown("#### 从文件导入")
@@ -680,13 +268,13 @@ with gr.Blocks(title="新世界程序") as demo:
                 import_output = gr.Textbox("输出结果")
 
                 def export_character(character_name):
-                    character = next((c for c in characters if c["name"] == character_name), None)
+                    character = config_manager.get_character_by_name(character_name)
                     if character is None:
                         return "人物不存在"
                     try:
                         output_path = Path('./output')
                         output_path.mkdir(parents=True,exist_ok=True)
-                        character = CharacterConfig.parse_dic(char_data=character)
+                        character = CharacterConfig.parse_dic(char_data=character.__dict__)
                         fu.export_character([character], output_path=f'./output/{character.name}.char')
                         return "导出成功"
                     except Exception as e:
@@ -695,7 +283,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 def import_character(file_path):
                     try:
                         fu.import_character(file_path)
-                        load_characters_from_file()
+                        config_manager.reload()
                         return f"导入成功"
                     except Exception as e:
                         return f"导入失败：{e}"
@@ -726,12 +314,11 @@ with gr.Blocks(title="新世界程序") as demo:
 
         # 添加人物事件
         add_btn.click(
-            add_character,
+            character_manager.add_character,
             inputs=[
                 char_name, char_color, sprite_prefix, gpt_model_path,
                 sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting
             ],
-
             outputs=[
                 add_output
             ]
@@ -746,7 +333,7 @@ with gr.Blocks(title="新世界程序") as demo:
         )
         # 删除人物事件
         del_btn.click(
-            delete_character,
+            character_manager.delete_character,
             inputs=[selected_character],
             outputs=[add_output]
         ).then(
@@ -786,7 +373,7 @@ with gr.Blocks(title="新世界程序") as demo:
         )
 
         ai_help_btn.click(
-            generate_character_setting,
+            character_manager.generate_character_setting,
             inputs=[char_name, character_setting],
             outputs=[import_output, character_setting]
         )
@@ -838,37 +425,34 @@ with gr.Blocks(title="新世界程序") as demo:
 
             # 上传立绘事件
             upload_sprites_btn.click(
-                upload_sprites,
+                character_manager.upload_sprites,
                 inputs=[selected_character, sprite_files, emotion_inputs],
                 outputs=[upload_output, sprites_gallery, emotion_inputs]
             )
 
             upload_emotion_btn.click(
-                upload_emotion_tags,
+                character_manager.upload_emotion_tags,
                 inputs=[selected_character, emotion_inputs],
                 outputs=[upload_output]
             )
 
-            def get_sprite_scale(name):
-                if not name:
-                    return 1.0    
-                character = next((c for c in characters if c["name"] == name), None)
-
+            def get_sprite_scale(name):    
+                character=config_manager.get_character_by_name(name)
                 if character:
-                    return character.get("sprite_scale", 1.0)
+                    return character.sprite_scale
                 else:
                     return 1.0
             
             # 当选择角色时更新立绘显示
             selected_character.change(
-                get_character_sprites,
+                character_manager.get_character_sprites,
                 inputs=[selected_character],
                 outputs=[sprites_gallery, emotion_inputs, sprite_files]
             )
 
             #上传scale
             sprite_scale_save_btn.click(
-                save_sprite_scale,
+                character_manager.save_sprite_scale,
                 inputs=[selected_character, sprite_scale],
                 outputs=[upload_output]
             )
@@ -880,13 +464,13 @@ with gr.Blocks(title="新世界程序") as demo:
             )
 
             delete_all_sprites_btn.click(
-                delete_all_sprites,
+                character_manager.delete_all_sprites,
                 inputs=[selected_character],
                 outputs=[upload_output, sprites_gallery, emotion_inputs]
             )
 
             delete_single_sprite_btn.click(
-                delete_single_sprite,
+                character_manager.delete_single_sprite,
                 inputs=[selected_character, selected_sprite_index],
                 outputs=[upload_output, sprites_gallery, emotion_inputs]
             )
@@ -929,16 +513,19 @@ with gr.Blocks(title="新世界程序") as demo:
                     if not character_name or sprite_index is None:
                         return "未选择立绘", None, ""
                     
-                    character = next((c for c in characters if c["name"] == character_name), None)
-                    if not character or not character.get("sprites") or sprite_index >= len(character["sprites"]):
+                    character = config_manager.get_character_by_name(character_name)
+                    if not character or not character.sprites or sprite_index >= len(character.sprites):
                         return "立绘不存在", None,""
                     
-                    sprite = character["sprites"][sprite_index]
-                    emotion_tag = sprite.get("emotion_tag", "")
-                    voice_path = sprite.get("voice_path", "")
-                    voice_text = sprite.get("voice_text", "")
+                    sprite = character.sprites[sprite_index]
+                    if isinstance(sprite,dict):
+                        voice_path = sprite.get("voice_path")
+                        voice_text = sprite.get("voice_text")
+                    else:
+                        voice_path = sprite.voice_path
+                        voice_text = sprite.voice_text
                     
-                    info = f"立绘 {sprite_index+1}: {emotion_tag}"
+                    info = f"立绘 {sprite_index+1}"
                     if voice_path:
                         info += " (已有语音)"
                     else:
@@ -961,7 +548,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 
                 # 上传语音事件
                 upload_voice_btn.click(
-                    fn=upload_voice,
+                    fn=character_manager.upload_voice,
                     inputs=[selected_character, selected_sprite_index, voice_upload, sprite_voice_text],
                     outputs=[voice_upload_output, sprite_voice_player]
                 ).then(
@@ -975,7 +562,6 @@ with gr.Blocks(title="新世界程序") as demo:
         gr.Markdown("您可以选择从文件导入模版或者选择人物生成模版")
         with gr.Row():
             with gr.Column():
-                
                 path_obj = Path(TEMPLATE_DIR_PATH)
                 template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
                 selected_template = gr.Dropdown(
@@ -989,7 +575,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 # 初始为空，通过事件更新
                 selected_chars = gr.CheckboxGroup(
                     label="选择参与对话的角色",
-                    choices=[c.get("name", "") for c in characters]
+                    choices=character_manager.get_character_name_list()
                 )
                 
                 generate_btn = gr.Button("生成模板")
@@ -1026,7 +612,7 @@ with gr.Blocks(title="新世界程序") as demo:
         
         # 当角色列表更新时，更新复选框选项
         def update_character_selection():
-            return gr.CheckboxGroup(choices=[c.get("name", "") for c in characters])
+            return gr.CheckboxGroup(choices=character_manager.get_character_name_list())
         
         generate_btn.click(
             generate_template,
