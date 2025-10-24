@@ -103,6 +103,7 @@ def main():
         user_template = f.read()
 
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
+    print(llm_provider, llm_model, base_url, api_key)
     if not llm_provider:
         print("请选择大语言模型供应商")
         return
@@ -129,7 +130,7 @@ def main():
     window = DesktopAssistantWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True)
 
     # 创建并启动 UI Worker 线程
-    ui_worker = UIWorker(audio_path_queue)
+    ui_worker = UIWorker(audio_path_queue, chat_history=chat_history)
     ui_worker.update_sprite_signal.connect(window.update_image)
     ui_worker.update_dialog_signal.connect(window.setDisplayWords)
     ui_worker.update_notification_signal.connect(window.setNotification)
