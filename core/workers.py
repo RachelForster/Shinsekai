@@ -233,17 +233,20 @@ class TTSWorker(BaseWorker):
                             raise IndexError("Sprite ID out of range")
                     except (ValueError, IndexError):
                         print(f"无效或缺失的立绘编号: {sprite}. 使用默认立绘。")
-                        sprite_id = 0 # 默认使用第一个立绘的语音参考
+                        sprite_id = -1 # 默认使用第一个立绘的语音参考
 
                     # 语音参考处理
                     ref_audio_path = Path(self.character_config.refer_audio_path).resolve().as_posix()
                     prompt_text = self.character_config.prompt_text
                     
-                    sprite_data = self.character_config.sprites[sprite_id]
-                    if sprite_data.get("voice_text", None):
-                        # 如果特定立绘有自己的语音参考
-                        ref_audio_path = Path(sprite_data.get("voice_path")).resolve().as_posix()
-                        prompt_text = sprite_data.get("voice_text")
+                    try:
+                        sprite_data = self.character_config.sprites[sprite_id]
+                        if sprite_data.get("voice_text", None):
+                            # 如果特定立绘有自己的语音参考
+                            ref_audio_path = Path(sprite_data.get("voice_path")).resolve().as_posix()
+                            prompt_text = sprite_data.get("voice_text")
+                    except Exception as e:
+                        print("没有立绘")
                         
                     # 生成 TTS
                     audio_path = self.tts_manager.generate_tts(
