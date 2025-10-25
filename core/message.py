@@ -28,5 +28,5 @@ class TTSOutputMessage(BaseModel):
     audio_path: str = Field(..., description="生成的语音文件的路径")
     character_name: str = Field(..., description="说话的角色名称")
     speech: str = Field(..., description="原始的角色文本")
-    sprite: str = Field(..., description="当前使用的立绘编号")
+    sprite: Optional[Union[str,int]] = Field('-1', description="当前使用的立绘编号")
     is_system_message: bool = Field(False, description="是否是系统通知或非对话消息")

@@ -79,6 +79,7 @@ class DesktopAssistantWindow(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(10)
         
+        self.setup_background_label()        
         # 图像容器
         self.image_container = QWidget()
         self.image_layout = QVBoxLayout(self.image_container)
@@ -107,6 +108,8 @@ class DesktopAssistantWindow(QWidget):
         main_layout.addWidget(self.image_container)
         main_layout.addLayout(input_layout)
         
+        self.background_label.lower()
+
         self.setLayout(main_layout)
 
         self.apply_font_styles()
@@ -484,6 +487,45 @@ class DesktopAssistantWindow(QWidget):
         self.display_thread = ImageDisplayThread(self.image_queue)
         self.display_thread.update_signal.connect(self.update_image)
         self.display_thread.start()
+
+    def setup_background_label(self):
+        self.background_label = QLabel(self)
+        self.background_label.setGeometry(0, 0, self.original_width, self.original_height)
+        self.background_label.setAlignment(Qt.AlignCenter)
+        self.background_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def setBackgroundImage(self, image_path: str):
+        """
+        设置窗口背景图片，图片将缩放填充整个窗口。
+        
+        :param image_path: 背景图片文件的路径。
+        """
+        if not os.path.exists(image_path):
+            print(f"Background image file not found: {image_path}")
+            # 可以设置一个纯色背景作为 fallback
+            self.background_label.setStyleSheet("background-color: white;")
+            self.background_label.setText("背景图加载失败")
+            return
+
+        # 使用 QPixmap 加载图片
+        pixmap = QPixmap(image_path)
+        
+        # 动态设置样式表，使用 border-image 来实现背景填充和缩放
+        # 设置 background_label 的样式表
+        style = f"""
+            QLabel {{
+                background-image: url({image_path});
+                background-repeat: no-repeat;
+                background-position: center;
+                background-color: #333333; 
+            }}
+        """
+        # 更可靠的方式是使用 QPixmap 和 QLabel.setPixmap，并手动缩放
+        
+        # 重新设置背景图片
+        scaled_pixmap = pixmap.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        self.background_label.setPixmap(scaled_pixmap)
+        self.background_label.lower()
 
     def update_image(self, image, character_rate=None):
         """更新显示图像"""

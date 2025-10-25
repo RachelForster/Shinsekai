@@ -2,7 +2,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from pydantic import ValidationError
-from config.schema import AppConfig, Character, ApiConfig, SystemConfig
+from config.schema import AppConfig, Character, ApiConfig, SystemConfig, Background
 from llm.constants import LLM_BASE_URLS
 import traceback
 
@@ -18,6 +18,7 @@ class ConfigManager:
     _API_CONFIG_PATH = Path("data/config/api.yaml")
     _CHARACTERS_CONFIG_PATH = Path("data/config/characters.yaml")
     _SYSTEM_CONFIG_PATH = Path("data/config/system_config.yaml")
+    _BACKGOUND_CONFIG_PATH = Path("data/config/background.yaml")
 
     def __new__(cls, *args, **kwargs):
         """实现单例模式"""
@@ -56,6 +57,7 @@ class ConfigManager:
             api_data = self._load_yaml(self._API_CONFIG_PATH)
             characters_data = self._load_yaml(self._CHARACTERS_CONFIG_PATH)
             system_data = self._load_yaml(self._SYSTEM_CONFIG_PATH)
+            background_data = self._load_yaml(self._BACKGOUND_CONFIG_PATH)
 
             # 通过 Pydantic 进行验证和结构化
             api_config = ApiConfig.model_validate(api_data)
@@ -66,12 +68,14 @@ class ConfigManager:
                 characters_data = [] # 处理文件为空或格式错误的情况
                 
             character_list = [Character.model_validate(item) for item in characters_data]
+            background = [Background.model_validate(item) for item in background_data]
 
             # 构建顶层 AppConfig 实体
             self._config = AppConfig(
                 api_config=api_config,
                 system_config=system_config,
-                characters=character_list
+                characters=character_list,
+                background_list=background
             )
             print("配置加载成功！")
         except ValidationError as e:
@@ -172,6 +176,17 @@ class ConfigManager:
         characters_data = [char.model_dump(by_alias=True) for char in self.config.characters]
         self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
         print("characters.yaml 保存完成。")
+    
+    def save_background_config(self) -> None:
+        if self._config is None:
+            print("警告：配置未加载或加载失败，无法保存角色配置。")
+            return
+            
+        print("正在保存 background.yaml...")
+        # 角色列表需要将每个 Character 实体转换为字典
+        background_data = [char.model_dump(by_alias=True) for char in self.config.background_list]
+        self._save_single_config(self._BACKGOUND_CONFIG_PATH, background_data)
+        print("background.yaml 保存完成。")
 
     def _save_single_config(self, file_path: Path, data: Union[Dict, List]) -> None:
         """保存单个配置到 YAML 文件"""
@@ -182,6 +197,11 @@ class ConfigManager:
                 yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
         except Exception as e:
             print(f"错误：保存配置到 {file_path} 失败: {e}")
+    def get_background_by_name(self, name: str) -> Optional[Background]:
+        for char in self.config.background_list:
+            if char.name.lower() == name.lower():
+                return char
+        return None
 
     def get_character_by_name(self, name: str) -> Optional[Character]:
         """根据角色名称获取角色配置实体"""

@@ -30,6 +30,16 @@ class Character(BaseModel):
     prompt_text: Optional[str] = Field(None, description="角色的初始 Prompt/台词 (可选)")
     prompt_lang: Optional[str] = Field(None, description="Prompt 语言，例如: ja (可选)")
 
+class Background(BaseModel):
+    """单个背景配置的实体模型"""
+    # 背景基本信息
+    name: str = Field(..., description="背景组名称")
+    sprite_prefix: str = Field(..., description="背景图片的上传目录名")
+    
+    # 列表中可能包含 Sprite 模型，也可能只是原始字典
+    # 使用 Union[List[Sprite], List[dict]] 提高兼容性
+    sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="背景图片列表")
+    bg_tags: str = Field(default="", description="背景图片的信息")
 
 # API Config Model
 class ApiConfig(BaseModel):
@@ -51,5 +61,6 @@ class SystemConfig(BaseModel):
 class AppConfig(BaseModel):
     """应用的整体配置模型，包含角色列表、API 配置和系统配置"""
     characters: List[Character] = Field(..., description="角色配置列表")
+    background_list: List[Background] = Field(..., description="背景组设置")
     api_config: ApiConfig = Field(..., description="API 相关配置")
     system_config: SystemConfig = Field(..., description="系统相关配置")

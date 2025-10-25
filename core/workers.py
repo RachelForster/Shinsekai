@@ -199,9 +199,9 @@ class TTSWorker(BaseWorker):
                 character_name_s = self.cc.convert(character_name)
 
                 # 检查是否为特殊系统消息
-                if character_name_s in ["选项","数值","旁白"]:
+                if character_name_s in ["选项","数值","旁白","场景"]:
                     # 对于选项、数值或通用旁白，直接放入下一队列
-                    self.put_data(character_name_s, speech, '-1', '', is_system_message=True)
+                    self.put_data(character_name_s, speech, sprite, '', is_system_message=True)
                     continue
                 
                 # 获取角色配置
@@ -262,7 +262,7 @@ class TTSWorker(BaseWorker):
                     audio_path = self.character_config.sprites[int(sprite) - 1].get('voice_path', '')
                     
                 # 将包含音频路径和原始数据的字典放入音频路径队列
-                self.put_data(character_name_s, speech, sprite, audio_path)
+                self.put_data(character_name_s, speech, str(sprite), audio_path)
                 print(f'TTSWorker put: {audio_path} into the UI queue')
 
             except Exception as e:
@@ -285,14 +285,16 @@ class UIWorker(QThread):
     update_notification_signal = pyqtSignal(str)
     update_option_signal = pyqtSignal(list)
     update_value_signal = pyqtSignal(str)
+    update_bg = pyqtSignal(str)
     
-    def __init__(self, audio_path_queue: Queue, parent=None, chat_history=None):
+    def __init__(self, audio_path_queue: Queue, parent=None, chat_history=None, bg_group=None):
         super().__init__(parent)
         self.audio_path_queue = audio_path_queue
         self.running = True
         self.task_done_requested = threading.Event() # 使用 Event 对象作为跳过标志
         self.current_audio_path = None
         self.chat_history = chat_history
+        self.bg_group = bg_group or []
 
     def skip_speech(self):
         """跳过当前对话"""
@@ -342,6 +344,16 @@ class UIWorker(QThread):
                         self.update_option_signal.emit(optionList)
                     elif character_name == "数值":
                         self.update_value_signal.emit(speech)
+                    elif character_name == "场景":
+                        try:
+                            sprite_id = int(sprite_id) - 1
+                            if sprite_id < 0 or sprite_id >= len(self.bg_group):
+                                raise IndexError("背景图片的index不正常")
+                            bg_path = Path(self.bg_group[sprite_id].get("path")).as_posix()
+                            self.update_bg.emit(bg_path)
+                        except Exception as e:
+                            traceback.print_exc()
+                            print("更新背景失败",e)
                     else:
                         self._update_dialog(character_name, speech, "#84C2D5")
                         if not self.task_done_requested.is_set():
