@@ -16,10 +16,12 @@ import tools.file_util as fu
 from config.character_config import CharacterConfig
 from config.character_manager import CharacterManager
 from config.config_manager import ConfigManager
+from config.background_manager import BackgroundManager
 from llm.constants import LLM_BASE_URLS
 
 config_manager = ConfigManager()
 character_manager = CharacterManager()
+background_manager = BackgroundManager()
 main_process = None
 
 # 创建存储上传文件的目录
@@ -36,7 +38,7 @@ def load_template_from_file(file_path):
         return template, file_name
     except Exception as e:
         return f"加载失败: {str(e)}", file_name
-def generate_template(selected_characters):
+def generate_template(selected_characters, bg_name):
     if not selected_characters:
         return "请至少选择一个角色！", ""
     
@@ -76,11 +78,22 @@ def generate_template(selected_characters):
             template += f"以下是{char_name}的角色设定：\n"
             character_setting = char_detail.character_setting
             template += f"{character_setting}\n\n"
+
+    if bg_name:
+        print(bg_name)
+        bg = config_manager.get_background_by_name(bg_name)
+        print(bg)
+        if bg.sprites:
+            template +="场景说明：\n"
+            template += f"现在有{len(bg.sprites)}个场景："
+            template += f"{bg.bg_tags}\n\n"
+    
+
     template +=f"""
 要求：
 1. 不要输出除 JSON 以外的任何文本。
-2. character_name 只能是{names} 或者旁白,选项,数值。
-3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。
+2. character_name 只能是{names} 或者旁白,选项,数值，场景。
+3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。当角色名为场景时，可以从场景中选择一张，代表切换场景。
 4. speech 字段是角色的台词，必须符合角色的性格和说话风格。
 5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有至少两个元素。
 6. 旁白描写是场景动作描写
@@ -89,7 +102,7 @@ def generate_template(selected_characters):
 """
     template += "\n请开始对话，开始时介绍下用户所处的情境和背景，以及在做什么事情：\n"
     return template, ""
-def launch_chat(template, voice_mode, init_sprite_path, history_file):
+def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_bg):
     global main_process
     print("启动聊天，使用模板:")
     try:
@@ -116,6 +129,7 @@ def launch_chat(template, voice_mode, init_sprite_path, history_file):
                  f'--voice_mode={voice_mode}',
                  f'--init_sprite_path={init_path}',
                  f'--history={history_file_path.resolve()}',
+                 f'--bg={selected_bg}'
                  ]
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
@@ -237,6 +251,7 @@ with gr.Blocks(title="新世界程序") as demo:
 
     active_character=gr.State("") #当前选中的人物名
     selected_sprite_index = gr.State(None)  # 存储当前选中的立绘索引
+    selected_bg_index = gr.State(None)
     init_sprite_path = gr.State("")
     history_file_path = gr.State("")
 
@@ -556,6 +571,110 @@ with gr.Blocks(title="新世界程序") as demo:
                     inputs=[selected_character, selected_sprite_index],
                     outputs=[selected_sprite_info, sprite_voice_player, sprite_voice_text]
                 )                
+    with gr.Tab("背景管理"):
+        gr.Markdown("## 背景管理")
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("#### 背景信息")
+                selected_bg_group = gr.Dropdown(
+                    choices=["新背景"] + background_manager.get_background_name_list(),
+                    label="选择背景组"
+                )
+                bg_name = gr.Textbox(label="背景组名称", placeholder="请输入背景组名称")
+                bg_prefix = gr.Textbox(label="上传数据目录名，请写英文，不要带汉语，例如：world1", value="temp")
+                bg_save_btn = gr. Button("添加/保存背景组")
+                bg_files = gr.Files(
+                    label="上传背景图片",
+                )
+                upload_bg_btn = gr.Button("上传图片")
+                upload_bg_output = gr.Textbox(label="上传结果")
+                delete_all_bg_btn = gr.Button("删除所有背景图片")
+               
+        with gr.Row():
+            with gr.Column():
+                # 显示已上传的立绘
+                def select_sprite(evt: gr.SelectData):
+                    return evt.index
+                
+                bg_gallery = gr.Gallery(
+                    label="已上传的背景图片",
+                    show_label=True,
+                    elem_id="gallery",
+                    columns=3,
+                    object_fit="contain",
+                    height="auto"
+                )
+                delete_single_bg_btn = gr.Button("删除选中背景图片")
+
+            with gr.Column():
+                gr.Markdown("### 描述背景")
+                gr.Markdown(f"这些是{selected_bg_group.value}的背景图片，请你生成每张背景图片的地点，氛围，格式为：背景 1：xxx")
+                bg_info_inputs = gr.Textbox(label="背景描述：", lines=20)
+                upload_bg_info_btn=gr.Button("上传背景信息")
+            
+            bg_gallery.select(
+                fn=select_sprite,
+                inputs=None,
+                outputs=[selected_bg_index]
+            )
+
+            bg_save_btn.click(
+                background_manager.add_background,
+                inputs=[bg_name, bg_prefix],
+                outputs=[upload_bg_output, selected_bg_group]
+            ).then(
+                lambda : gr.Dropdown(choices=['新背景']+background_manager.get_background_name_list()),
+                inputs=None,
+                outputs=selected_bg_group
+            ).then(
+                lambda x: x,
+                inputs=bg_name,
+                outputs=selected_bg_group
+            )
+
+            # 上传立绘事件
+            upload_bg_btn.click(
+                background_manager.upload_sprites,
+                inputs=[selected_bg_group, bg_files, bg_info_inputs],
+                outputs=[upload_bg_output, bg_gallery, bg_info_inputs]
+            )
+
+            upload_bg_info_btn.click(
+                background_manager.upload_bg_tags,
+                inputs=[selected_bg_group, bg_info_inputs],
+                outputs=[upload_bg_output]
+            )
+            
+            # 当选择角色时更新立绘显示
+            selected_bg_group.change(
+                background_manager.get_background_sprites,
+                inputs=[selected_bg_group],
+                outputs=[bg_gallery, bg_info_inputs, bg_files]
+            )
+
+            def get_bg_info(name):
+                bg = config_manager.get_background_by_name(name)
+                if bg is None:
+                    return '',''
+                return bg.name, bg.sprite_prefix
+
+            selected_bg_group.change(
+                get_bg_info,
+                inputs=[selected_bg_group],
+                outputs=[bg_name, bg_prefix]
+            )
+
+            delete_all_bg_btn.click(
+                background_manager.delete_all_sprites,
+                inputs=[selected_bg_group],
+                outputs=[upload_bg_output, bg_gallery, bg_info_inputs]
+            )
+
+            delete_single_sprite_btn.click(
+                background_manager.delete_single_sprite,
+                inputs=[selected_bg_group, selected_bg_index],
+                outputs=[upload_bg_output, bg_gallery, bg_info_inputs]
+            )
 
     with gr.Tab("聊天模板"):
         gr.Markdown("## 聊天模板管理")  
@@ -576,6 +695,12 @@ with gr.Blocks(title="新世界程序") as demo:
                 selected_chars = gr.CheckboxGroup(
                     label="选择参与对话的角色",
                     choices=character_manager.get_character_name_list()
+                )
+
+                selected_bg = gr.Radio(
+                    label="选择背景",
+                    choices=background_manager.get_background_name_list(),
+                    interactive=True
                 )
                 
                 generate_btn = gr.Button("生成模板")
@@ -613,10 +738,13 @@ with gr.Blocks(title="新世界程序") as demo:
         # 当角色列表更新时，更新复选框选项
         def update_character_selection():
             return gr.CheckboxGroup(choices=character_manager.get_character_name_list())
+    
+        def update_bg_selection():
+            return gr.Radio(choices=background_manager.get_background_name_list(), interactive=True)
         
         generate_btn.click(
             generate_template,
-            inputs=[selected_chars],
+            inputs=[selected_chars, selected_bg],
             outputs=[template_output, filename]
         )
 
@@ -632,7 +760,7 @@ with gr.Blocks(title="新世界程序") as demo:
 
         launch_btn.click(
             launch_chat,
-            inputs=[template_output, voice_mode, initial_sprite_files, history_file],
+            inputs=[template_output, voice_mode, initial_sprite_files, history_file, selected_bg],
             outputs=launch_output
         )
 
@@ -652,6 +780,12 @@ with gr.Blocks(title="新世界程序") as demo:
             update_character_selection,
             inputs=None,
             outputs=[selected_chars]
+        )
+
+        selected_bg_group.change(
+            update_bg_selection,
+            inputs=None,
+            outputs=[selected_bg]
         )
 
 if __name__ == "__main__":

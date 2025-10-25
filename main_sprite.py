@@ -74,6 +74,7 @@ def main():
     parser.add_argument('--history','--his',type=str, default='')
     parser.add_argument('--tts',type=str,default="gpt-sovits")
     parser.add_argument('--llm',type=str,default="deepseek")
+    parser.add_argument('--bg', type=str,default='')
 
     # 解析参数
     args = parser.parse_args()
@@ -129,13 +130,16 @@ def main():
     app = QApplication([])
     window = DesktopAssistantWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True)
 
+
+    bg_group = config.get_background_by_name(args.bg).sprites
     # 创建并启动 UI Worker 线程
-    ui_worker = UIWorker(audio_path_queue, chat_history=chat_history)
+    ui_worker = UIWorker(audio_path_queue, chat_history=chat_history,bg_group=bg_group)
     ui_worker.update_sprite_signal.connect(window.update_image)
     ui_worker.update_dialog_signal.connect(window.setDisplayWords)
     ui_worker.update_notification_signal.connect(window.setNotification)
     ui_worker.update_option_signal.connect(window.setOptions)
     ui_worker.update_value_signal.connect(window.update_numeric_info)
+    ui_worker.update_bg.connect(window.setBackgroundImage)
     ui_worker.start()
     
     # 创建并启动 TTS Worker 线程
