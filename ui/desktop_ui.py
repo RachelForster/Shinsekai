@@ -36,6 +36,7 @@ class DesktopAssistantWindow(QWidget):
         """初始化窗口"""
         super().__init__()
         self.CONFIG_FILE = './data/config/system_config.yaml'
+        self.HORIZONTAL_MARGIN_PERCENT = 0.2
         self.image_queue = image_queue
         self.display_thread = None
         self.deepseek = llm_manager
@@ -44,11 +45,13 @@ class DesktopAssistantWindow(QWidget):
         self.current_options = []
         screen = QApplication.primaryScreen()
         screen_geometry = screen.geometry()
-        self.original_width = min(screen_geometry.height(), screen_geometry.width()) // 4 * 3
-        self.original_height = self.original_width
+        self.original_width = screen_geometry.width() // 4 * 3
+        self.original_height = screen_geometry.height() // 4 * 3
 
         self.config = self._read_config()
         self.base_font_size_px = self.config.get('base_font_size_px', 48)
+
+        # 设置字体大小
         base_dpi = 150.0
         curren_dpi = screen.logicalDotsPerInch()
         self.font_size = f"{str(int(self.base_font_size_px*curren_dpi//base_dpi))}px;"
@@ -77,7 +80,7 @@ class DesktopAssistantWindow(QWidget):
         # 主布局
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(10)
+        main_layout.setSpacing(16)
         
         self.setup_background_label()        
         # 图像容器
@@ -518,6 +521,7 @@ class DesktopAssistantWindow(QWidget):
                 background-repeat: no-repeat;
                 background-position: center;
                 background-color: #333333; 
+                border-radius: 24px;
             }}
         """
         # 更可靠的方式是使用 QPixmap 和 QLabel.setPixmap，并手动缩放
@@ -550,7 +554,7 @@ class DesktopAssistantWindow(QWidget):
         
         # 设置放大后的图像
         self.label.setPixmap(scaled_pixmap)
-        self.label.setFixedSize(self.original_height, self.original_width)
+        self.label.setFixedSize(self.original_width, self.original_height)
         self.adjustSize()
     
     def sendMessage(self):
@@ -604,9 +608,21 @@ class DesktopAssistantWindow(QWidget):
             self.options_widget.hide()
             self.dialog_label.setText(text)
             self.dialog_label.show()
+            container_width = self.label.width() # 使用 self.label 的宽度作为容器宽度
+            margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
+            new_width = container_width - (2 * margin_width)
+
+            self.dialog_label.setFixedWidth(new_width) 
             self.dialog_label.adjustSize()
-            y = self.label.height() - self.dialog_label.height()
-            self.dialog_label.setGeometry(0, y, self.label.width(), self.dialog_label.height())
+            height = max(int(self.original_height * 0.3), self.dialog_label.height())
+            
+            # 2. 计算垂直位置 (保持在底部)
+            y = self.label.height() - height
+            
+            # 3. 设置居中的位置和调整后的尺寸
+            self.dialog_label.setGeometry(margin_width, y, new_width, height)
+            
+            # 4. 调整跳过按钮的位置
             self.skip_button.move(
                 self.dialog_label.geometry().right() - self.skip_button.width() - 20, 
                 self.dialog_label.geometry().bottom() - self.skip_button.height() - 10
@@ -675,17 +691,21 @@ class DesktopAssistantWindow(QWidget):
             option_btn.clicked.connect(lambda text=option_text: self.option_clicked(text))
             self.options_layout.addWidget(option_btn)
     
-        # 5. 调整容器大小以适应内容
-        self.options_widget.adjustSize()
+        container_width = self.label.width() # 使用 self.label 的宽度作为容器宽度
+        margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
+        new_width = container_width - (2 * margin_width)
         
-        # 6. 放置在图像标签的底部 (与 dialog_label 相同的定位逻辑)
-        # 获取 options_widget 适应内容后的高度
+        # 5a. 临时设置宽度来获取正确的 sizeHint (高度)
+        self.options_widget.setFixedWidth(new_width)
+        
+        # 5b. 获取适应新宽度后的高度
         final_height = self.options_widget.sizeHint().height()
+        
+        # 6. 放置在图像标签的底部
         y = self.label.height() - final_height
         
-        # 确保宽度和 label 相同，高度为适应内容后的高度
-        self.options_widget.setGeometry(0, y, self.label.width(), final_height)
-
+        # 7. 设置居中的位置和最终的尺寸
+        self.options_widget.setGeometry(margin_width, y, new_width, final_height)
         # 7. 显示选项
         self.options_widget.show()
         # 确保在图像和其他元素上方显示 (工具栏和对话框标签除外)

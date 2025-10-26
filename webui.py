@@ -80,10 +80,8 @@ def generate_template(selected_characters, bg_name):
             template += f"{character_setting}\n\n"
 
     if bg_name:
-        print(bg_name)
         bg = config_manager.get_background_by_name(bg_name)
-        print(bg)
-        if bg.sprites:
+        if bg and bg.sprites:
             template +="场景说明：\n"
             template += f"现在有{len(bg.sprites)}个场景："
             template += f"{bg.bg_tags}\n\n"
@@ -699,7 +697,7 @@ with gr.Blocks(title="新世界程序") as demo:
 
                 selected_bg = gr.Radio(
                     label="选择背景",
-                    choices=background_manager.get_background_name_list(),
+                    choices=background_manager.get_background_name_list()+['透明背景'],
                     interactive=True
                 )
                 
@@ -740,7 +738,7 @@ with gr.Blocks(title="新世界程序") as demo:
             return gr.CheckboxGroup(choices=character_manager.get_character_name_list())
     
         def update_bg_selection():
-            return gr.Radio(choices=background_manager.get_background_name_list(), interactive=True)
+            return gr.Radio(choices=background_manager.get_background_name_list() + ['透明背景'], interactive=True)
         
         generate_btn.click(
             generate_template,
