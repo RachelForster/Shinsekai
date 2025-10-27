@@ -83,7 +83,7 @@ def generate_template(selected_characters, bg_name):
         bg = config_manager.get_background_by_name(bg_name)
         if bg and bg.sprites:
             template +="场景说明：\n"
-            template += f"现在有{len(bg.sprites)}个场景："
+            template += f"现在有{len(bg.sprites)}个可用场景：\n"
             template += f"{bg.bg_tags}\n\n"
     
 
@@ -91,7 +91,7 @@ def generate_template(selected_characters, bg_name):
 要求：
 1. 不要输出除 JSON 以外的任何文本。
 2. character_name 只能是{names} 或者旁白,选项,数值，场景。
-3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。当角色名为场景时，可以从场景中选择一张，代表切换场景。
+3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。当角色名为场景时，可以从场景中选择一张，代表切换场景, 如果要切换场景，它必须出现在第一个元素。
 4. speech 字段是角色的台词，必须符合角色的性格和说话风格。
 5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有至少两个元素。
 6. 旁白描写是场景动作描写

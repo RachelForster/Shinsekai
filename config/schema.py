@@ -1,5 +1,23 @@
-from pydantic import BaseModel, Field, HttpUrl, FilePath
-from typing import List, Dict, Optional, Union
+from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator
+from pydantic_core import PydanticUseDefault
+from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar
+
+# ----------------- 解决 YAML None 问题的工具 -----------------
+def default_if_none(value: Any) -> Any:
+    """
+    如果输入值是 None，则抛出 PydanticUseDefault 异常，
+    让 Pydantic 使用字段的默认值。
+    """
+    if value is None:
+        raise PydanticUseDefault()
+    return value
+
+# 创建一个可复用的 Annotated 类型，用于在遇到 None 时使用默认值
+T = TypeVar('T')
+# 注意：该 Annotated 类型应包裹原始类型，并且只能用于设置了默认值的字段。
+DefaultIfNone = Annotated[T, BeforeValidator(default_if_none)]
+# -------------------------------------------------------------
+
 
 # Character Config Models
 class Sprite(BaseModel):
@@ -16,46 +34,41 @@ class Character(BaseModel):
     sprite_prefix: str = Field(..., description="立绘文件名的通用前缀")
     
     # 列表中可能包含 Sprite 模型，也可能只是原始字典
-    # 使用 Union[List[Sprite], List[dict]] 提高兼容性
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="角色的立绘和对应语音的列表")
-    
-    character_setting: str = Field(default="", description="角色背景、性格和语言习惯的详细描述")
-    sprite_scale: float = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
-    emotion_tags: str = Field(default="", description="情绪标签和对应的立绘编号描述")
-    
+    character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
+    sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
+    emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
+
     # gpt-sovits 相关的配置
-    gpt_model_path: Optional[str] = Field(None, description="角色 GPT 模型的路径 (可选)")
-    sovits_model_path: Optional[str] = Field(None, description="角色的 SoVITS 语音模型路径 (可选)")
-    refer_audio_path: Optional[str] = Field(None, description="用于语音克隆的参考音频路径 (可选)")
-    prompt_text: Optional[str] = Field(None, description="角色的初始 Prompt/台词 (可选)")
-    prompt_lang: Optional[str] = Field(None, description="Prompt 语言，例如: ja (可选)")
+    gpt_model_path: Optional[str] = Field('', description="角色 GPT 模型的路径 (可选)")
+    sovits_model_path: Optional[str] = Field('', description="角色的 SoVITS 语音模型路径 (可选)")
+    refer_audio_path: Optional[str] = Field('', description="用于语音克隆的参考音频路径 (可选)")
+    prompt_text: Optional[str] = Field('', description="角色的初始 Prompt/台词 (可选)")
+    prompt_lang: Optional[str] = Field('', description="Prompt 语言，例如: ja (可选)")
 
 class Background(BaseModel):
     """单个背景配置的实体模型"""
-    # 背景基本信息
     name: str = Field(..., description="背景组名称")
     sprite_prefix: str = Field(..., description="背景图片的上传目录名")
-    
-    # 列表中可能包含 Sprite 模型，也可能只是原始字典
-    # 使用 Union[List[Sprite], List[dict]] 提高兼容性
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="背景图片列表")
-    bg_tags: str = Field(default="", description="背景图片的信息")
+    bg_tags: DefaultIfNone[str] = Field(default="", description="背景图片的信息") # 应用 DefaultIfNone
 
 # API Config Model
 class ApiConfig(BaseModel):
     """API 相关的配置，如 GPT-SoVITS 和 LLM 的设置"""
-    gpt_sovits_api_path: Optional[str] = Field(..., description="GPT-SoVITS API 的安装路径")
-    gpt_sovits_url: Optional[Union[HttpUrl, str]] = Field(..., description="GPT-SoVITS API 的访问 URL")
-    llm_api_key: Dict[str, str] = Field(..., description="不同 LLM 服务商的 API Key 字典")
-    llm_base_url: Union[HttpUrl, str] = Field(..., description="LLM 服务的 Base URL")
-    llm_model: Dict[str, str] = Field(..., description="不同 LLM 服务商使用的具体模型名称字典")
-    llm_provider: Optional[str] = Field("Deepseek", description="LLM 服务器商名字")
+    gpt_sovits_api_path: DefaultIfNone[str] = Field(default='', description="GPT-SoVITS API 的安装路径")
+    gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="GPT-SoVITS API 的访问 URL")
+    llm_api_key: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商的 API Key 字典")
+    llm_base_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="LLM 服务的 Base URL")
+    llm_model: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商使用的具体模型名称字典")
+    llm_provider: DefaultIfNone[str] = Field(default="Deepseek", description="LLM 服务器商名字")
 
 # System Config Model
 class SystemConfig(BaseModel):
     """系统相关的通用配置"""
-    base_font_size_px: Optional[int] = Field(48, description="基础字体大小 (像素)")
-    voice_language: Optional[str] = Field(..., description="系统语音的默认语言 (例如: ja)")
+    # 应用 DefaultIfNone
+    base_font_size_px: DefaultIfNone[int] = Field(default=48, description="基础字体大小 (像素)")
+    voice_language: DefaultIfNone[str] = Field(default='ja', description="系统语音的默认语言 (例如: ja)")
 
 # Main Config Model
 class AppConfig(BaseModel):

@@ -32,11 +32,14 @@ class DesktopAssistantWindow(QWidget):
     clear_chat_history = pyqtSignal()
     skip_speech_signal = pyqtSignal() # 跳过当前语音信号
 
-    def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False):
+    def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False, background_mode = False):
         """初始化窗口"""
         super().__init__()
         self.CONFIG_FILE = './data/config/system_config.yaml'
-        self.HORIZONTAL_MARGIN_PERCENT = 0.2
+        if background_mode:
+            self.HORIZONTAL_MARGIN_PERCENT = 0.2
+        else:
+            self.HORIZONTAL_MARGIN_PERCENT = 0
         self.image_queue = image_queue
         self.display_thread = None
         self.deepseek = llm_manager
@@ -45,8 +48,8 @@ class DesktopAssistantWindow(QWidget):
         self.current_options = []
         screen = QApplication.primaryScreen()
         screen_geometry = screen.geometry()
-        self.original_width = screen_geometry.width() // 4 * 3
         self.original_height = screen_geometry.height() // 4 * 3
+        self.original_width = screen_geometry.width() // 4 * 3 if background_mode else self.original_height
 
         self.config = self._read_config()
         self.base_font_size_px = self.config.get('base_font_size_px', 48)
