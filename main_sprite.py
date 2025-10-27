@@ -125,12 +125,17 @@ def main():
     user_input_queue = Queue()
     tts_queue = Queue()
     audio_path_queue = Queue()
-   
+    
+    # 获取背景组
+    bg_group = None
+    try:
+        bg_group = None if args.bg is None or args.bg == "透明背景" else config.get_background_by_name(args.bg).sprites
+    except Exception as e:
+        pass
     # 创建桌面助手窗口
     app = QApplication([])
-    window = DesktopAssistantWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True)
+    window = DesktopAssistantWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True, background_mode=(bg_group!=None))
 
-    bg_group = None if args.bg =='' or args.bg == "透明背景" else config.get_background_by_name(args.bg).sprites
     # 创建并启动 UI Worker 线程
     ui_worker = UIWorker(audio_path_queue, chat_history=chat_history,bg_group=bg_group)
     ui_worker.update_sprite_signal.connect(window.update_image)
