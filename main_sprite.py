@@ -132,6 +132,12 @@ def main():
         bg_group = None if args.bg is None or args.bg == "透明背景" else config.get_background_by_name(args.bg).sprites
     except Exception as e:
         pass
+
+    bgm_list = []
+    try:
+        bgm_list = [] if args.bg is None or args.bg == "透明背景" else config.get_background_by_name(args.bg).bgm_list
+    except Exception as e:
+        pass
     # 创建桌面助手窗口
     app = QApplication([])
     window = DesktopAssistantWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True, background_mode=(bg_group!=None))
@@ -147,7 +153,7 @@ def main():
     ui_worker.start()
     
     # 创建并启动 TTS Worker 线程
-    tts_worker = TTSWorker(tts_manager, tts_queue, audio_path_queue)
+    tts_worker = TTSWorker(tts_manager, tts_queue, audio_path_queue, bgm_list=bgm_list)
     tts_worker.start()
 
     # 创建并启动 LLM Worker 线程
