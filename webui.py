@@ -85,13 +85,17 @@ def generate_template(selected_characters, bg_name):
             template +="场景说明：\n"
             template += f"现在有{len(bg.sprites)}个可用场景：\n"
             template += f"{bg.bg_tags}\n\n"
-    
+
+        if bg and bg.bgm_list:
+            template += "BGM说明：\n"
+            template += f"现在有{len(bg.bgm_list)}个可用BGM：\n"
+            template += f"{bg.bgm_tags}\n\n"
 
     template +=f"""
 要求：
 1. 不要输出除 JSON 以外的任何文本。
-2. character_name 只能是{names} 或者旁白,选项,数值，场景。
-3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。当角色名为场景时，可以从场景中选择一张，代表切换场景, 如果要切换场景，它必须出现在第一个元素。
+2. character_name 只能是{names} 或者旁白,选项,数值,场景,bgm。
+3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。当角色名为场景时，可以从场景中选择一张，代表切换场景, 如果要切换场景，它必须出现在第一个元素。当角色名为bgm时，sprite的值代表bgm编号，可以根据不同的氛围切换bgm, 不要太频繁。
 4. speech 字段是角色的台词，必须符合角色的性格和说话风格。
 5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有至少两个元素。
 6. 旁白描写是场景动作描写
@@ -590,7 +594,7 @@ with gr.Blocks(title="新世界程序") as demo:
                
         with gr.Row():
             with gr.Column():
-                # 显示已上传的立绘
+                # 显示已上传的背景图片
                 def select_sprite(evt: gr.SelectData):
                     return evt.index
                 
@@ -609,6 +613,81 @@ with gr.Blocks(title="新世界程序") as demo:
                 gr.Markdown(f"这些是{selected_bg_group.value}的背景图片，请你生成每张背景图片的地点，氛围，格式为：背景 1：xxx")
                 bg_info_inputs = gr.Textbox(label="背景描述：", lines=20)
                 upload_bg_info_btn=gr.Button("上传背景信息")
+
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("#### 背景信息")
+                bgm_files = gr.Files(
+                    label="上传背景音乐",
+                )
+                upload_bgm_btn = gr.Button("上传音乐")
+                upload_bgm_output = gr.Textbox(label="上传结果")
+                delete_all_bgm_btn = gr.Button("删除所有背景音乐")
+        with gr.Row():
+            with gr.Column():
+                # 显示已上传的背景音乐
+                def select_sprite(evt: gr.SelectData):
+                    return evt.index
+                
+                bgm_list_display = gr.Dataframe(
+                    headers=["选择", "序号", "文件名", "路径", "标签描述"],
+                    datatype=["bool", "number", "str", "str", "str"],
+                    wrap=True,
+                    interactive=True, 
+                    label="背景音乐列表 (勾选要删除的项，点击行播放)"
+                )
+
+                # --- 实时播放音频组件 ---
+                audio_player = gr.Audio(
+                    label="选中行音频播放器", 
+                    interactive=True, 
+                    type="filepath"
+                )
+
+                delete_selected_bgms_btn = gr.Button("批量删除选中的音乐条")    
+                bgm_output_message = gr.Textbox(label="操作结果", interactive=False)
+            
+            with gr.Column():
+                gr.Markdown("### 描述背景音乐")
+                gr.Markdown(f"这些是{selected_bg_group.value}的背景音乐，请你生成每条背景音乐的情绪，氛围，格式为：音乐 1：xxx")
+                bgm_info_inputs = gr.Textbox(label="背景音乐描述：", lines=20)
+                upload_bgm_info_btn=gr.Button("上传背景音乐描述")
+                
+                # 上传音乐
+                upload_bgm_btn.click(
+                    fn=background_manager.upload_bgms,
+                    inputs=[selected_bg_group, bgm_files],
+                    outputs=[upload_bgm_output, bgm_list_display, bgm_info_inputs]
+                )
+                # 1. 绑定行点击事件 (实现实时播放)
+                bgm_list_display.select(
+                    fn=background_manager.handle_bgm_selection,
+                    inputs=[bgm_list_display],
+                    outputs=[bgm_output_message, audio_player],
+                    show_progress=True,
+                )
+
+                # 2. 绑定背景选择事件 (用于加载列表)
+                # (此处的 load_bgms_and_tags 需要更新，以便它返回 Audio 的 update)
+                # 假设 load_bgms_and_tags 函数返回 (dataframe, tags_text)
+                selected_bg_group.change(
+                    fn=background_manager.load_bgms_and_tags,
+                    inputs=[selected_bg_group],
+                    outputs=[bgm_list_display, bgm_info_inputs], 
+                    show_progress=False
+                )
+                
+                delete_selected_bgms_btn.click(
+                    fn=background_manager.batch_delete_bgms,
+                    inputs=[selected_bg_group, bgm_list_display, bgm_info_inputs],
+                    outputs=[bgm_output_message, bgm_list_display, bgm_info_inputs]
+                )
+
+                upload_bgm_info_btn.click(
+                    fn=background_manager.upload_bgm_tags,
+                    inputs=[selected_bg_group,bgm_info_inputs],
+                    outputs=[bgm_output_message]
+                )
             
             bg_gallery.select(
                 fn=select_sprite,
@@ -643,7 +722,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 outputs=[upload_bg_output]
             )
             
-            # 当选择角色时更新立绘显示
+            # 当选择背景组时更新立绘显示
             selected_bg_group.change(
                 background_manager.get_background_sprites,
                 inputs=[selected_bg_group],
@@ -668,10 +747,22 @@ with gr.Blocks(title="新世界程序") as demo:
                 outputs=[upload_bg_output, bg_gallery, bg_info_inputs]
             )
 
-            delete_single_sprite_btn.click(
+            delete_single_bg_btn.click(
                 background_manager.delete_single_sprite,
                 inputs=[selected_bg_group, selected_bg_index],
                 outputs=[upload_bg_output, bg_gallery, bg_info_inputs]
+            )
+
+            upload_bg_btn.click(
+                background_manager.upload_sprites,
+                inputs=[selected_bg_group, bg_files, bg_info_inputs],
+                outputs=[upload_bg_output, bg_gallery, bg_info_inputs]
+            )
+
+            upload_bg_info_btn.click(
+                background_manager.upload_bg_tags,
+                inputs=[selected_bg_group, bg_info_inputs],
+                outputs=[upload_bg_output]
             )
 
     with gr.Tab("聊天模板"):

@@ -4,14 +4,13 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
 from config.schema import Background, Sprite # 确保导入了 Background 和 Sprite
 from config.config_manager import ConfigManager
+import pandas as pd
 import gradio as gr 
 import yaml 
 
-UPLOAD_DIR = "data/sprites" # 保持不变，但逻辑上应该指向背景图片目录
 BACKGROUND_CONFIG_PATH = ConfigManager._BACKGOUND_CONFIG_PATH # 更正为背景配置路径
-
-# 定义背景图片目录的基路径，与角色区分
-BACKGROUND_UPLOAD_DIR = "data/backgrounds" # 新增背景专属目录
+BACKGROUND_UPLOAD_DIR = "data/backgrounds"
+BGM_UPLOAD_DIR = "data/bgm"
 
 class BackgroundManager:
     """
@@ -63,7 +62,9 @@ class BackgroundManager:
                 name=name,
                 sprite_prefix=sprite_prefix,
                 sprites=[],
-                bg_tags=""
+                bg_tags="",
+                bgm_list=[],
+                bgm_tags="",
             )    
             background_list.append(new_background)
             self._save_background_config()
@@ -311,3 +312,311 @@ class BackgroundManager:
                  bg_info_list = []
                  
             return f"加载失败: {str(e)}", bg_info_list
+        
+    # ------------------------- BGM 管理 --------------------------
+    def upload_bgms(self, background_name: str, bgm_files: List[Any]):
+        """
+        上传背景音乐文件并更新背景的音乐列表和标签。
+
+        Returns:
+            Tuple[str, List[str], str]: (操作结果消息, 所有背景音乐路径列表, 更新后的标签文本)
+        """
+        if not background_name:
+            return "请先选择或创建背景组！", pd.DataFrame(), ''
+        
+        if not bgm_files:
+            return "请选择要上传的背景音乐文件！", pd.DataFrame(), ''
+        
+        background: Optional[Background] = self._config_manager.get_background_by_name(background_name)
+        if not background:
+            return f"找不到背景组: {background_name}", pd.DataFrame(), ''
+        
+        # 修正目录，使用 Background 的 prefix 和 BGM_UPLOAD_DIR
+        bgm_dir = os.path.join(BGM_UPLOAD_DIR, background.sprite_prefix) # 使用 sprite_prefix 作为子目录名
+        Path(bgm_dir).mkdir(parents=True, exist_ok=True)
+        
+        # 确保 bgm_list 存在
+        if not hasattr(background, 'bgm_list') or background.bgm_list is None:
+            background.bgm_list = []
+
+        num_existing_bgms = len(background.bgm_list)
+        bgm_tags_to_add = ''
+        
+        for i, file in enumerate(bgm_files):
+            filename = os.path.basename(file.name)
+            dest_path = os.path.join(bgm_dir, filename)
+            shutil.copyfile(file.name, dest_path)
+            
+            # 假设 bgm_list 存储的是路径字符串
+            background.bgm_list.append(dest_path) 
+            
+            # 为新上传的音乐添加标签占位符
+            bgm_tags_to_add += f'音乐 {num_existing_bgms + i + 1}：\n'
+            
+        current_bgm_tags = background.bgm_tags if hasattr(background, 'bgm_tags') and background.bgm_tags else ""
+        background.bgm_tags = current_bgm_tags + bgm_tags_to_add
+
+        self._config_manager.save_background_config()
+
+        df, tags = self.load_bgms_and_tags(background_name)
+
+        return f"成功为 {background_name} 上传 {len(bgm_files)} 个背景音乐文件！", df, tags
+
+
+    def delete_all_bgms(self, background_name: str) -> Tuple[str, List[str], str]:
+        """
+        删除背景组的所有背景音乐文件。
+        
+        Returns:
+            Tuple[str, List[str], str]: (操作结果消息, 空音乐路径列表, 空标签文本)
+        """
+        if not background_name:
+            return "请先选择背景组！", [], ""
+        
+        background: Optional[Background] = self._config_manager.get_background_by_name(background_name)
+        if not background:
+            return f"找不到背景组: {background_name}", [], ""
+        
+        # 删除背景音乐目录
+        bgm_dir = os.path.join(BGM_UPLOAD_DIR, background.sprite_prefix)
+        if os.path.exists(bgm_dir):
+            shutil.rmtree(bgm_dir)
+        
+        # 清空背景属性
+        if hasattr(background, 'bgm_list'):
+            background.bgm_list = []
+        if hasattr(background, 'bgm_tags'):
+            background.bgm_tags = ""
+        
+        self._config_manager.save_background_config()
+        
+        return f"已删除 {background_name} 的所有背景音乐！", [], ""
+
+
+    def upload_bgm_tags(self, background_name: str, bgm_tags: str) -> str:
+        """
+        上传/更新背景的音乐标签文本。
+        
+        Returns:
+            str: 操作结果消息。
+        """
+        if not background_name:
+            return "请先选择或创建背景组！"
+        
+        if not bgm_tags:
+            return "请输入背景音乐标注！"
+        
+        background: Optional[Background] = self._config_manager.get_background_by_name(background_name)
+        if not background:
+            return f"找不到背景组: {background_name}"
+        
+        try:
+            background.bgm_tags = bgm_tags
+            self._config_manager.save_background_config()
+            return "背景音乐标注成功！"
+        except Exception as e:
+            return f"背景音乐标注出错了：{e}"
+
+
+    def get_background_bgms(self, background_name: str):
+        """
+        获取指定背景组的所有背景音乐路径和标签。
+        
+        Returns:
+            Tuple[List[str], str, List[Any]]: (音乐路径列表, 标签文本, 额外的返回列表 (始终为空))
+        """
+        if not background_name:
+            return [], "", []
+        
+        background: Optional[Background] = self._config_manager.get_background_by_name(background_name)
+        
+        if not background:
+            return [], "", []
+
+        bgm_paths = getattr(background, 'bgm_list', [])
+        bgm_tags = getattr(background, 'bgm_tags', "")
+        
+        return bgm_paths, bgm_tags, []
+    
+    def format_bgms_for_display(self,bgm_paths: List[str], bgm_tags: str) -> pd.DataFrame:
+        """
+        将 BGM 路径和标签格式化为带序号和复选框的 Dataframe。
+        """
+        data = []
+        # 尝试解析标签（假设标签是按行与路径对应的）
+        tags_list = bgm_tags.strip().split('\n') if bgm_tags else []
+        
+        for i, path in enumerate(bgm_paths):
+            # 提取文件名
+            file_name = os.path.basename(path)
+            # 获取对应标签，如果标签列表不够长，则使用空字符串
+            tag_line = tags_list[i] if i < len(tags_list) else ""
+            # 尝试从标签行中提取实际内容（跳过 '音乐 X：' 前缀）
+            tag_content = tag_line.split('：', 1)[-1].strip() if '：' in tag_line else tag_line
+
+            data.append({
+                "选择": False, # 默认不选中
+                "序号": i + 1,
+                "文件名": file_name,
+                "路径": path,
+                "标签描述": tag_content
+            })
+        return pd.DataFrame(data)
+    
+    def load_bgms_and_tags(self, background_name: str):
+        """
+        根据选择的背景组加载并显示 BGM 列表和标签。
+        """
+        if not background_name:
+            return pd.DataFrame(), ""
+            
+        bgm_paths, bgm_tags, _ = self.get_background_bgms(background_name)
+        
+        # 将路径和标签转换为 Dataframe 格式
+        bgm_dataframe = self.format_bgms_for_display(bgm_paths, bgm_tags)
+        
+        return bgm_dataframe, bgm_tags
+    
+    def delete_single_bgm(self, background_name: str, bgm_index: int) -> Tuple[str, List[str], str]:
+        """
+        删除背景组的指定背景音乐文件。
+        
+        Returns:
+            Tuple[str, List[str], str]: (操作结果消息, 剩余音乐路径列表, 更新后的标签文本)
+        """
+        if not background_name:
+            return "请先选择背景组！", [], ""
+        
+        background: Optional[Background] = self._config_manager.get_background_by_name(background_name)
+        if not background:
+            return f"找不到背景组: {background_name}", [], ""
+        
+        bgm_list = getattr(background, 'bgm_list', [])
+        bgm_tags = getattr(background, 'bgm_tags', "")
+
+        # 索引检查
+        if not bgm_list or bgm_index < 0 or bgm_index >= len(bgm_list):
+            return "背景音乐不存在！", bgm_list, bgm_tags
+        
+        bgm_path: str = bgm_list[bgm_index]
+        
+        # 删除文件
+        if bgm_path and os.path.exists(bgm_path) and os.path.isfile(bgm_path):
+            os.remove(bgm_path)
+        
+        # 从列表中移除
+        bgm_list.pop(bgm_index)
+        
+        # 更新标签
+        new_bgm_tags = ""
+        original_tags_list = bgm_tags.strip().split('\n') if bgm_tags else []
+        
+        if bgm_index < len(original_tags_list):
+            original_tags_list.pop(bgm_index)
+        
+        for i, line in enumerate(original_tags_list):
+            # 尝试解析并重建标签行
+            parts = line.split('：') if '：' in line else line.split(':')
+            current_tag = parts[-1].strip() if len(parts) > 1 else ""
+            new_bgm_tags += f'音乐 {i+1}：{current_tag}\n'
+        
+        background.bgm_tags = new_bgm_tags
+        
+        self._config_manager.save_background_config()
+        
+        return f"已删除 {background_name} 的第 {bgm_index+1} 个背景音乐文件！", bgm_list, new_bgm_tags
+
+    def batch_delete_bgms(
+        self,
+        background_name: str, 
+        bgm_dataframe: pd.DataFrame,
+        bgm_tags 
+    ) -> Tuple[str, pd.DataFrame]:
+        """
+        根据 Dataframe 中的复选框状态批量删除选定的背景音乐。
+        """
+        if not background_name:
+            return "请先选择背景组！", pd.DataFrame(), bgm_tags
+
+        if bgm_dataframe.empty:
+            return "没有音乐条可供删除。", pd.DataFrame(), ""
+
+        # 1. 确定要删除的索引
+        try:
+            # 获取 Dataframe 中 '选择' 为 True 的行
+            selected_rows = bgm_dataframe[bgm_dataframe['选择'] == True]
+            # 获取这些行在原始 BGM 列表中的索引 (即 '序号' - 1)
+            indices_to_delete = selected_rows['序号'].tolist()
+        except Exception as e:
+            return f"处理数据失败: {e}", bgm_dataframe, bgm_tags
+
+        if not indices_to_delete:
+            return "请勾选要删除的音乐条。", bgm_dataframe, bgm_tags
+
+        # 2. 批量删除（从大索引到小索引，防止删除操作改变后续索引）
+        indices_to_delete.sort(reverse=True)
+        
+        deleted_count = 0
+        message = ""
+
+        for original_index in indices_to_delete:
+            # 注意：这里的 index 是用户看到的 '序号' (从 1 开始)，需要减 1 转换为 Python 列表索引 (从 0 开始)
+            list_index = original_index - 1 
+            
+            # 调用 Manager 的单条删除方法
+            try:
+                msg, remaining_paths, remaining_tags = self.delete_single_bgm(background_name, list_index)
+                # 如果删除成功，则计数
+                if "已删除" in msg:
+                    deleted_count += 1
+                else:
+                    message += f"删除序号 {original_index} 失败: {msg}\n"
+            except Exception as e:
+                message += f"删除序号 {original_index} 发生异常: {e}\n"
+
+        # 3. 重新加载和显示剩余的 BGM
+        remaining_paths, remaining_tags, _ = self.get_background_bgms(background_name)
+        new_dataframe = self.format_bgms_for_display(remaining_paths, remaining_tags)
+
+        final_message = f"成功删除了 {deleted_count} 个音乐条。"
+        if message:
+            final_message += "\n部分删除失败的提示：\n" + message
+            
+        return final_message, new_dataframe, remaining_tags
+    
+    def handle_bgm_selection(self, evt: gr.SelectData, bgm_dataframe: pd.DataFrame):
+        """
+        处理 Dataframe 行选择事件，返回选中行的路径和 Audio 组件的更新。
+        
+        Returns:
+            Tuple[str, gr.Audio.update]: (操作消息, Audio 组件更新对象)
+        """
+        if evt is None or evt.index is None:
+            return "请点击 Dataframe 中的一行。", ""
+        
+        # 获取点击的行索引 (evt.index 是 (row_index, col_index))
+        row_index = evt.index[0]
+        
+        if row_index < 0 or row_index >= len(bgm_dataframe):
+            return "无效的行选择。", ""
+        
+        # 从 Dataframe 中取出选中行对应的文件路径
+        # 假设 '路径' 是 Dataframe 中的一列
+        try:
+            selected_path = bgm_dataframe.iloc[row_index]['路径']
+            
+            if not selected_path or not os.path.exists(selected_path):
+                return f"文件路径不存在: {selected_path}", ""
+                
+            file_name = os.path.basename(selected_path)
+            
+            # 返回更新后的 Audio 组件
+            return (
+                f"正在播放: {file_name}", 
+                selected_path
+            )
+            
+        except KeyError:
+            return "Dataframe 缺少 '路径' 列，无法播放。", ""
+        except Exception as e:
+            return f"播放出错: {e}", ""

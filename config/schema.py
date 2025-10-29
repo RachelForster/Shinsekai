@@ -52,6 +52,8 @@ class Background(BaseModel):
     sprite_prefix: str = Field(..., description="背景图片的上传目录名")
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="背景图片列表")
     bg_tags: DefaultIfNone[str] = Field(default="", description="背景图片的信息") # 应用 DefaultIfNone
+    bgm_list: Optional[List[str]] = Field(default_factory=list, description="背景音乐列表")
+    bgm_tags: DefaultIfNone[str] = Field(default="",description="背景音乐描述")
 
 # API Config Model
 class ApiConfig(BaseModel):

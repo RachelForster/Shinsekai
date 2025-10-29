@@ -155,7 +155,7 @@ class LLMWorker(BaseWorker):
 
 
 class TTSWorker(BaseWorker):
-    def __init__(self, tts_manager: TTSManager, tts_queue: Queue, audio_path_queue: Queue, parent=None):
+    def __init__(self, tts_manager: TTSManager, tts_queue: Queue, audio_path_queue: Queue, parent=None, bgm_list = []):
         super().__init__(parent)
         self.tts_manager = tts_manager
         # 队列中传入和传出的应是 Pydantic 消息模型
@@ -163,6 +163,7 @@ class TTSWorker(BaseWorker):
         self.audio_path_queue: Queue[TTSOutputMessage] = audio_path_queue
         self.text_processor = TextProcessor()
         self.cc = OpenCC('t2s')  # 繁体到简体转换器
+        self.bgm_list = bgm_list
 
     def put_data(self, character_name: str, speech: str, sprite: str, audio_path, is_system_message: bool = False):
         """将处理结果封装成 Pydantic 模型并放入下一个队列"""
@@ -203,7 +204,20 @@ class TTSWorker(BaseWorker):
                     # 对于选项、数值或通用旁白，直接放入下一队列
                     self.put_data(character_name_s, speech, sprite, '', is_system_message=True)
                     continue
+                elif character_name == 'bgm':
+                    bgm_path = ''
+                    try:
+                        sprite_id = int(sprite)
+                        bgm_path = self.bgm_list[sprite_id]
+                    except Exception as e:
+                        bgm_path = ''
+                        print("无法得到bgm path",e)
+                        traceback.print_exc()
+                    finally:
+                        self.put_data(character_name,'',sprite, bgm_path, is_system_message=True)
+                    continue
                 
+
                 # 获取角色配置
                 self.character_config = getCharacter(character_name_s)
                 if self.character_config is None: 
@@ -293,24 +307,71 @@ class UIWorker(QThread):
         self.running = True
         self.task_done_requested = threading.Event() # 使用 Event 对象作为跳过标志
         self.current_audio_path = None
+        self.current_bgm_path = None
         self.chat_history = chat_history
         self.bg_group = bg_group or []
+        self.DIALOG_CHANNEL_ID = 7
+
+        self.init_channel()
+
+    def init_channel(self):
+        # --- 新增 Mixer 初始化和通道获取 ---
+        try:
+            pygame.mixer.init()
+            # 确保有足够的通道，此处至少需要 DIALOG_CHANNEL_ID + 1 个
+            if pygame.mixer.get_num_channels() < self.DIALOG_CHANNEL_ID + 1:
+                pygame.mixer.set_num_channels(self.DIALOG_CHANNEL_ID + 1)
+            
+            # 获取对话专用通道
+            self.dialog_channel: pygame.mixer.Channel = pygame.mixer.Channel(self.DIALOG_CHANNEL_ID)
+            print(f"UIWorker: 对话播放通道初始化成功，使用通道 {self.DIALOG_CHANNEL_ID}")
+
+        except Exception as e:
+            print(f"UIWorker: Pygame Mixer 初始化或通道获取失败: {e}")
+            self.dialog_channel = None # 如果失败，则禁用音频播放
+        # --- 结束新增 ---
+    def switch_bgm(self, new_bgm_path: str):
+        """
+        加载并循环播放新的背景音乐文件。
+        """
+        if not new_bgm_path or not Path(new_bgm_path).exists():
+            return
+
+        new_bgm_path = Path(new_bgm_path).as_posix()
+
+        if new_bgm_path == self.current_bgm_path:
+            if pygame.mixer.music.get_busy():
+                 return
+            # 如果路径相同，但已停止，则重新播放
+            pygame.mixer.music.play(-1)
+            print(f"BGM: 重新开始播放：{new_bgm_path}")
+            return
+            
+        try:
+            if pygame.mixer.music.get_busy():
+                pygame.mixer.music.stop()
+            pygame.mixer.music.unload() 
+            pygame.mixer.music.load(new_bgm_path)
+            pygame.mixer.music.set_volume(0.5)
+            pygame.mixer.music.play(-1)
+            self.current_bgm_path = new_bgm_path
+        except pygame.error as e:
+            print(f"BGM: 切换背景音乐失败 ({new_bgm_path}): {e}")
+            self.current_bgm_path = None
+        except Exception as e:
+            print(f"切换bgm时发生错误")
+            
+    # --- 结束 switch_bgm 方法 ---
 
     def skip_speech(self):
         """跳过当前对话"""
         if self.audio_path_queue.empty():
             return
-        if pygame.mixer.music.get_busy():
-            pygame.mixer.music.stop()
-        
-        # 尝试卸载音频，以防 run 循环还未执行到 unload
-        if self.current_audio_path:
-            try:
-                pygame.mixer.music.unload() 
-                self.current_audio_path = None
-            except Exception as e:
-                # 忽略卸载失败的错误，因为可能已经被 unload
-                pass 
+        if self.dialog_channel and self.dialog_channel.get_busy():
+            self.dialog_channel.stop()
+
+        self.current_audio_path = None
+
         self.task_done_requested.set()
     def _update_dialog(self, name: str, speech: str, color: str, is_system = True):
         if is_system:
@@ -354,6 +415,8 @@ class UIWorker(QThread):
                         except Exception as e:
                             traceback.print_exc()
                             print("更新背景失败",e)
+                    elif character_name == 'bgm':
+                        self.switch_bgm(audio_path)
                     else:
                         self._update_dialog(character_name, speech, "#84C2D5")
                         if not self.task_done_requested.is_set():
@@ -394,20 +457,18 @@ class UIWorker(QThread):
                     traceback.print_exc()
                     print(f"UIWorker: 加载图片时出错: {e}")
 
-
                 min_stop_time = len(speech)//8
                 start_time = time.perf_counter()
                 # 播放音频
                 audio_played = False
                 self.current_audio_path = audio_path
-                if audio_path and audio_path is not None and Path(audio_path).exists():
+
+                if self.dialog_channel and audio_path and Path(audio_path).exists():
                     try:
-                        pygame.mixer.init()
-                        pygame.mixer.music.load(audio_path)
-                        self.current_audio_path = audio_path
-                        pygame.mixer.music.play()
+                        tts_sound = pygame.mixer.Sound(audio_path)
+                        self.dialog_channel.play(tts_sound)
                         audio_played = True
-                        while pygame.mixer.music.get_busy() and not self.task_done_requested.is_set(): # 检查是否被请求跳过
+                        while self.dialog_channel.get_busy() and not self.task_done_requested.is_set():
                             time.sleep(0.1)
 
                     except Exception as e:
