@@ -95,14 +95,14 @@ def generate_template(selected_characters, bg_name):
 要求：
 1. 不要输出除 JSON 以外的任何文本。
 2. character_name 只能是{names} 或者旁白,选项,数值,场景,bgm。
-3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。当角色名为场景时，可以从场景中选择一张，代表切换场景, 如果要切换场景，它必须出现在第一个元素。当角色名为bgm时，sprite的值代表bgm编号，可以根据不同的氛围切换bgm, 不要太频繁。
+3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。当角色名为场景时，可以从场景中选择场景编号，代表切换场景, 如果要切换场景，它必须出现在第一个元素。当角色名为bgm时，sprite的值代表bgm编号，可以根据不同的氛围切换bgm, 不要太频繁。
 4. speech 字段是角色的台词，必须符合角色的性格和说话风格。
 5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有至少两个元素。
 6. 旁白描写是场景动作描写
 7. 你必须在dialog最后一个元素中添加选项，选项元素的character_name必须是选项，内容在speech内，选项如果多于两个请用"/"分隔，xx选项必须是用户可以选择的对话、行为等，选项中不能出现任何多余的描述和内容，必须是纯文本。选项里有一个是纯粹插科打诨，无厘头的，有一个是非常精明的选项，另一个中庸的选项，选项必须符合角色的性格和说话风格，选项必须和当前的剧情相关联，不能无关紧要。
 8. 数值可以用富文本，可以添加颜色、emoji等表示，颜色尽量浅一些，符合马卡龙配色，例如 <span style='color:xxxx;'>HP：100</span>，选项元素的character_name必须是数值，内容在speech内，如果有多个数值，请用<br>分隔开，在这里，数值代表角色的状态或者用户的状态。
 """
-    template += "\n请开始对话，开始时介绍下用户所处的情境和背景，以及在做什么事情：\n"
+    template += "\n请开始对话，开始时介绍下用户所处的情境和背景，设定初始的场景和bgm,以及在做什么事情：\n"
     return template, ""
 def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_bg):
     global main_process
@@ -582,6 +582,51 @@ with gr.Blocks(title="新世界程序") as demo:
                     choices=["新背景"] + background_manager.get_background_name_list(),
                     label="选择背景组"
                 )
+                export_bg_btn = gr.Button("导出到./output文件夹")
+                del_bg_btn = gr.Button("删除背景组")
+            with gr.Column():
+                gr.Markdown("#### 从文件导入")
+                import_bg_file = gr.File(label="选择文件")
+                import_bg_btn = gr.Button("从文件导入背景组")
+                import_bg_output = gr.Textbox("输出结果")
+
+            def update_character_dropdown():
+                    return gr.Dropdown(choices=["新角色"]+character_manager.get_character_name_list())
+
+            export_bg_btn.click(
+                background_manager.export_background_file,
+                inputs=[selected_bg_group],
+                outputs=[import_bg_output]
+            )
+            del_bg_btn.click(
+                background_manager.delete_background,
+                inputs=[selected_bg_group],
+                outputs=[import_bg_output]
+            ).then(
+                lambda : gr.Dropdown(choices=['新背景']+background_manager.get_background_name_list()),
+                inputs=None,
+                outputs=selected_bg_group
+            ).then(
+                lambda : "新背景",
+                inputs=None,
+                outputs=selected_bg_group
+            )
+
+            import_bg_btn.click(
+                background_manager.import_background_file,
+                inputs=[import_bg_file],
+                outputs=[import_bg_output]  
+            ).then(
+                lambda : gr.Dropdown(choices=['新背景']+background_manager.get_background_name_list()),
+                inputs=None,
+                outputs=selected_bg_group
+            ).then(
+                lambda : "新背景",
+                inputs=None,
+                outputs=selected_bg_group
+            )
+        with gr.Row():
+            with gr.Column():
                 bg_name = gr.Textbox(label="背景组名称", placeholder="请输入背景组名称")
                 bg_prefix = gr.Textbox(label="上传数据目录名，请写英文，不要带汉语，例如：world1", value="temp")
                 bg_save_btn = gr. Button("添加/保存背景组")
@@ -707,13 +752,6 @@ with gr.Blocks(title="新世界程序") as demo:
                 lambda x: x,
                 inputs=bg_name,
                 outputs=selected_bg_group
-            )
-
-            # 上传立绘事件
-            upload_bg_btn.click(
-                background_manager.upload_sprites,
-                inputs=[selected_bg_group, bg_files, bg_info_inputs],
-                outputs=[upload_bg_output, bg_gallery, bg_info_inputs]
             )
 
             upload_bg_info_btn.click(

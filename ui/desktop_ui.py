@@ -20,7 +20,7 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from ui.components import ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog
+from ui.components import ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, CrossFadeSprite, TypingLabel
 from ui.workers import ImageDisplayThread, ChatWorker
 
 class DesktopAssistantWindow(QWidget):
@@ -374,7 +374,7 @@ class DesktopAssistantWindow(QWidget):
 
     def setup_dialog_label(self):
         """初始化对话框标签"""
-        self.dialog_label = ClickableLabel()
+        self.dialog_label = TypingLabel()
         self.dialog_label.clicked.connect(lambda: self.skip_speech_signal.emit()) 
         self.dialog_label.setTextFormat(Qt.RichText)
         self.dialog_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
@@ -440,9 +440,8 @@ class DesktopAssistantWindow(QWidget):
 
     def setup_image_label(self):
         """初始化图像标签"""
-        self.label = QLabel()
-        self.label.setAlignment(Qt.AlignBottom | Qt.AlignHCenter)
-        self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.label = CrossFadeSprite(self.original_width, self.original_height)
+        # self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.image_layout.addWidget(self.label)
     
     def setup_input_layout(self):
@@ -537,28 +536,7 @@ class DesktopAssistantWindow(QWidget):
     def update_image(self, image, character_rate=None):
         """更新显示图像"""
         self.original_image = image
-        height, width, channel = image.shape
-        bytes_per_line = 4 * width
-        qimg = QImage(image.data, width, height, bytes_per_line, QImage.Format_RGBA8888)
-        pixmap = QPixmap.fromImage(qimg)
-        
-        # # 将图像放大
-        max_width = self.original_width - 20
-        max_height = self.original_height * 0.9
-        scaled_width = max_width
-        scaled_height = max_height
-        rate = min(scaled_width / width, scaled_height/height) * (1 if character_rate is None else character_rate)
-        scaled_pixmap = pixmap.scaled(
-            int(width * rate), 
-            int(height * rate),
-            Qt.KeepAspectRatio, 
-            Qt.SmoothTransformation
-        )
-        
-        # 设置放大后的图像
-        self.label.setPixmap(scaled_pixmap)
-        self.label.setFixedSize(self.original_width, self.original_height)
-        self.adjustSize()
+        self.label.setSprite(image, character_rate)
     
     def sendMessage(self):
         """发送消息函数"""
@@ -610,7 +588,6 @@ class DesktopAssistantWindow(QWidget):
         if text:
             self.options_widget.hide()
             self.dialog_label.setText(text)
-            self.dialog_label.show()
             container_width = self.label.width() # 使用 self.label 的宽度作为容器宽度
             margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
             new_width = container_width - (2 * margin_width)
@@ -624,6 +601,9 @@ class DesktopAssistantWindow(QWidget):
             
             # 3. 设置居中的位置和调整后的尺寸
             self.dialog_label.setGeometry(margin_width, y, new_width, height)
+
+            self.dialog_label.show()
+            self.dialog_label.setDisplayWords(text) # 启动打字机效果
             
             # 4. 调整跳过按钮的位置
             self.skip_button.move(

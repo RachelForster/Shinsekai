@@ -7,3 +7,4 @@ openai
 opencc-python-reimplemented
 pydantic
 pandas
+requests
