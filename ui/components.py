@@ -5,9 +5,9 @@ import threading
 import pygame
 import yaml
 import time
-from PyQt5.QtCore import QRect, QTimer, Qt, QThread, pyqtSignal, QObject, QSize, QPropertyAnimation, QSequentialAnimationGroup, pyqtProperty
-from PyQt5.QtWidgets import QGridLayout, QSlider
-from PyQt5.QtGui import QFont, QFontMetrics, QImage, QPixmap
+from PyQt5.QtCore import QEasingCurve, QRect, QTimer, Qt, QThread, pyqtSignal, QObject, QSize, QPropertyAnimation, QSequentialAnimationGroup, pyqtProperty
+from PyQt5.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton, QGraphicsOpacityEffect,
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
 import os
@@ -16,6 +16,7 @@ from PyQt5.QtGui import QImage, QPixmap
 
 
 # 交叉渐变立绘组件
+# 交叉渐变立绘组件
 class CrossFadeSprite(QWidget):
     def __init__(self, original_width, original_height, parent=None):
         super().__init__(parent)
@@ -23,6 +24,7 @@ class CrossFadeSprite(QWidget):
         self.original_width = original_width
         self.original_height = original_height 
         self.setFixedSize(original_width, original_height)
+        self.current_character: str | None = None  # 当前显示的角色名
         
         # 布局，确保两个 QLabel 重叠
         layout = QGridLayout(self)
@@ -80,8 +82,9 @@ class CrossFadeSprite(QWidget):
         rate_x = max_width / img_width if img_width > 0 else 0
         rate_y = max_height / img_height if img_height > 0 else 0
 
-        rate = min(rate_x, rate_y) * (1 if character_rate is None else character_rate)
-        
+        # rate = min(rate_x, rate_y) * (1 if character_rate is None else character_rate)
+        rate = rate_y * (1 if character_rate is None else character_rate)
+
         if rate <= 0: return QPixmap()
 
         # 应用缩放
@@ -133,6 +136,8 @@ class CrossFadeSprite(QWidget):
         
         # 开始动画
         self.parallel_group.start()
+        self.resize(scaled_pixmap.width(), self.height())
+        return scaled_pixmap.width(), self.height()
 
     def _animationFinished(self):
         """动画结束后的清理工作"""
@@ -155,6 +160,195 @@ class CrossFadeSprite(QWidget):
         scaled_pixmap = self._get_scaled_pixmap(image, character_rate)
         if scaled_pixmap:
             self.label_old.setPixmap(scaled_pixmap)
+    
+    def clear(self):
+        """清除立绘"""
+        self.label_old.clear()
+        self.label_new.clear()
+        self.current_character = None
+
+class SpritePanel(QWidget):
+    """
+    立绘显示面板，使用绝对定位实现立绘重叠和居中错位。
+    立绘尺寸采用固定高度、自由宽度策略。
+    """
+    def __init__(self, panel_width: int, panel_height: int, max_slots_num: int = 3, parent=None):
+        super().__init__(parent)
+        self.panel_width = panel_width
+        self.panel_height = panel_height
+        self.setFixedSize(panel_width, panel_height)
+        self.max_slots_num = max_slots_num
+        
+        # 尺寸参考 (用于 CrossFadeSprite 内部缩放高度)
+        self.sprite_width_ref = panel_width  # 宽度只做参考，不限制
+        self.sprite_height_ref = panel_height
+        
+        # --- 布局 (使用 QHBoxLayout 仅实现居中) ---
+        self.main_layout = QHBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+        
+        # 关键：center_widget 是立绘的父容器，用于绝对定位
+        self.center_widget = QWidget(self)
+        # center_widget 的尺寸应与 SpritePanel 相同，以便正确计算绝对坐标
+        self.center_widget.setFixedSize(panel_width, panel_height) 
+        
+        # 将 center_widget 居中
+        self.main_layout.addStretch(1)
+        self.main_layout.addWidget(self.center_widget)
+        self.main_layout.addStretch(1)
+
+        # --- 槽位管理 ---
+        self.sprite_slots = []
+        self.sprite_lru = {}  # {character_id: slot_index}
+        
+        # 计算水平偏移量 (用于错开立绘)
+        # 将面板宽度分成 N+1 份，中心点落在第 1, 2, ..., N 份的交界处
+        self.horizontal_offset_unit = self.panel_width / self.max_slots_num
+        
+        # 初始化槽位
+        for i in range(self.max_slots_num):
+            # 将 center_widget 作为父对象
+            sprite = CrossFadeSprite(self.sprite_width_ref, self.sprite_height_ref, self.center_widget)
+            
+            # 初始尺寸：设为 0，等待 set_sprite 时调整
+            sprite.setGeometry(0, 0, 0, 0)
+            
+            self.sprite_slots.append(sprite)
+            sprite.hide()
+
+    def _get_or_create_slot(self, character_id: str) -> CrossFadeSprite | None:
+        """
+        获取或创建立绘槽位。
+        """
+        if character_id in self.sprite_lru:
+            # 命中，更新 LRU
+            slot_index = self.sprite_lru.pop(character_id)
+            self.sprite_lru[character_id] = slot_index
+            return self.sprite_slots[slot_index]
+
+        # 未命中，分配新槽位
+        if len(self.sprite_lru) < self.max_slots_num:
+            # 还有空闲槽位，从最小索引开始找
+            used_indices = set(self.sprite_lru.values())
+            for i in range(self.max_slots_num):
+                if i not in used_indices:
+                    slot_index = i
+                    break
+        else:
+            # LRU淘汰
+            oldest_id, slot_index = next(iter(self.sprite_lru.items()))
+            self.sprite_lru.pop(oldest_id)
+            self.sprite_slots[slot_index].clear() # 清理被淘汰槽位
+
+        self.sprite_lru[character_id] = slot_index
+        return self.sprite_slots[slot_index]
+    def _reposition_sprites(self):
+        """
+        重新计算并定位所有可见立绘，确保立绘组在 SpritePanel 中居中。
+        """
+        active_slots = []
+        for char_id, slot_index in self.sprite_lru.items():
+            sprite = self.sprite_slots[slot_index]
+            # 获取当前立绘的实际宽度
+            w = sprite.width()
+            if w > 0:
+                active_slots.append({'sprite': sprite, 'index': slot_index, 'w': w})
+
+        if not active_slots:
+            return
+
+        # 1. 估算立绘组的最小/最大 X 坐标 (基于目标中心点)
+        min_slot_index = min(s['index'] for s in active_slots)
+        max_slot_index = max(s['index'] for s in active_slots)
+        
+        # 目标中心点的 X 坐标范围：从 (min_slot_index + 1) 到 (max_slot_index + 1) * offset_unit
+        
+        # 计算最左侧立绘的左边缘 X_min
+        # X_min = 目标中心点 X[min_slot] - 0.5 * w[min_slot]
+        target_center_min = self.horizontal_offset_unit * (min_slot_index + 1)
+        X_min = target_center_min - (active_slots[0]['w'] / 2) # 假设第一个就是 min_slot 的立绘
+
+        # 计算最右侧立绘的右边缘 X_max
+        # X_max = 目标中心点 X[max_slot] + 0.5 * w[max_slot]
+        target_center_max = self.horizontal_offset_unit * (max_slot_index + 1)
+        X_max = target_center_max + (active_slots[-1]['w'] / 2) # 假设最后一个就是 max_slot 的立绘
+       
+        group_width = target_center_max - target_center_min + (active_slots[-1]['w'] / 2) + (active_slots[0]['w'] / 2) # 估算组宽度
+        
+        # 整体居中补偿 (将立绘组中心对齐到面板中心)
+        # compensation = (self.panel_width / 2) - (target_center_min + target_center_max) / 2
+        compensation = (self.panel_width / 2) - ((target_center_min + target_center_max) / 2) # 居中补偿
+        
+        # 重新定位所有立绘
+        for item in active_slots:
+            w = item['w']
+            sprite = item['sprite']
+            slot_index = item['index']
+            
+            # 目标中心点 X 坐标
+            target_center_x = self.horizontal_offset_unit * (slot_index + 1) 
+            
+            # 实际左上角 X 坐标 (居中对齐) + 整体补偿
+            x_pos = target_center_x - (w / 2) + compensation
+            
+            # Y 坐标 (底部对齐)
+            y_pos = self.panel_height - sprite.height() # 使用 sprite.height()，因为它被 resize 过了
+
+            sprite.move(int(x_pos), int(y_pos))
+
+    def switch_sprite(self, character_id: str, image_data: np.ndarray, character_rate=None):
+        """
+        设置立绘并显示，动态调整其位置和尺寸。
+        """
+        sprite = self._get_or_create_slot(character_id)
+        if sprite is None: return
+
+        # 1. 设置立绘并获取实际的缩放尺寸
+        w, h = sprite.setSprite(image_data, character_rate)
+
+        if w == 0 or h == 0: return
+
+        # 2. 重新计算立绘位置 (居中对齐到槽位中心点)
+        slot_index = self.sprite_lru[character_id]
+        
+        # 目标中心点 X 坐标 (在 center_widget 内的绝对坐标)
+        target_center_x = self.horizontal_offset_unit * (slot_index)
+
+        # 实际左上角 X 坐标 (实现立绘在其槽位中心居中)
+        x_pos = target_center_x - (w / 2) 
+        
+        # Y 坐标 (底部对齐)
+        y_pos = 0
+        
+        # 3. 应用新的位置和尺寸
+        sprite.setGeometry(int(x_pos), int(y_pos), int(w), int(h))
+        
+        self._reposition_sprites()
+        # 4. 显示和层级
+        sprite.show()
+        sprite.raise_() # 确保新登场或切换的立绘在最前面
+
+
+    def darken_all(self, exclude_character_id: str | None = None):
+        """
+        使所有非当前说话者的立绘变暗。
+        """
+        for char_id, slot_index in self.sprite_lru.items():
+            sprite = self.sprite_slots[slot_index]
+            if char_id == exclude_character_id:
+                # sprite.lighten()
+                sprite.raise_() # 确保说话者在最前面
+            # else:
+                # sprite.darken()
+
+    def clear_all(self):
+        """
+        清除所有立绘。
+        """
+        for sprite in self.sprite_slots:
+            sprite.clear()
+        self.sprite_lru.clear()
 
 class FontSizeDialog(QDialog):
     """用于设置字体大小的对话框"""
