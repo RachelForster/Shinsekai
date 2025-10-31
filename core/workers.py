@@ -204,10 +204,11 @@ class TTSWorker(BaseWorker):
                     # 对于选项、数值或通用旁白，直接放入下一队列
                     self.put_data(character_name_s, speech, sprite, '', is_system_message=True)
                     continue
+                # 如果是BGM切换请求, 则处理BGM切换
                 elif character_name == 'bgm':
                     bgm_path = ''
                     try:
-                        sprite_id = int(sprite)
+                        sprite_id = int(sprite) -1 
                         bgm_path = self.bgm_list[sprite_id]
                     except Exception as e:
                         bgm_path = ''
@@ -352,7 +353,7 @@ class UIWorker(QThread):
                 pygame.mixer.music.stop()
             pygame.mixer.music.unload() 
             pygame.mixer.music.load(new_bgm_path)
-            pygame.mixer.music.set_volume(0.5)
+            pygame.mixer.music.set_volume(0.3)
             pygame.mixer.music.play(-1)
             self.current_bgm_path = new_bgm_path
         except pygame.error as e:
@@ -478,7 +479,7 @@ class UIWorker(QThread):
                         # 无论如何，尝试在 finally 中卸载资源
                         if audio_played:
                             try:
-                                pygame.mixer.music.unload() 
+                                pygame.mixer.Sound.stop(tts_sound)
                             except Exception:
                                 pass # 忽略卸载失败
                         self.current_audio_path = None # 清除记录

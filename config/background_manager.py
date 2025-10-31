@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
 from config.schema import Background, Sprite # 确保导入了 Background 和 Sprite
 from config.config_manager import ConfigManager
+import tools.file_util as fu
 import pandas as pd
 import gradio as gr 
 import yaml 
@@ -98,7 +99,7 @@ class BackgroundManager:
         
         # 移除背景组
         try:
-            background_list.remove(background_to_delete) # 修正列表名
+            background_list.remove(background_to_delete)
         except ValueError:
             return f"找不到背景组: {name}", current_names
             
@@ -111,8 +112,12 @@ class BackgroundManager:
         
         # 删除相关目录 (只删除背景图片目录)
         char_dir = os.path.join(BACKGROUND_UPLOAD_DIR, sprite_prefix) # 修正为背景目录
-        if os.path.exists(char_dir):
+        if sprite_prefix and os.path.exists(char_dir):
             shutil.rmtree(char_dir)
+
+        bgm_dir = os.path.join(BGM_UPLOAD_DIR, sprite_prefix) # 删除相关 BGM 目录
+        if sprite_prefix and os.path.exists(bgm_dir):
+            shutil.rmtree(bgm_dir)
         
         return f"背景组 {name} 已删除！", new_names
 
@@ -620,3 +625,39 @@ class BackgroundManager:
             return "Dataframe 缺少 '路径' 列，无法播放。", ""
         except Exception as e:
             return f"播放出错: {e}", ""
+        
+
+    def export_background_file(self, background_name: str) -> str:
+        """导出指定背景组到 .bg 文件"""
+        try:
+            background: Optional[Background] = self._config_manager.get_background_by_name(background_name)
+            if not background:
+                return f"找不到背景组: {background_name}"
+
+            fu.export_background([background], f"./output/{background_name}.bg")
+            return f"背景组已导出到: /output/{background_name}.bg"
+        except Exception as e:
+            return f"背景导出失败: {e}"
+    def import_background_file(self, input_path: str):
+        """从 .bg 文件导入背景配置"""
+        try:
+            existing_configs = self._config_manager.config.background_list
+            new_configs = fu.import_background(input_path, existing_configs)
+            
+            # 将导入的配置合并到现有配置中
+            # 注意：import_background 已经处理了冲突，这里只需要追加
+            for config in new_configs:
+                # 检查是否因为冲突被重命名，如果 name 已在 existing_configs 中，则说明是 import 函数解决的冲突
+                if config not in existing_configs:
+                     existing_configs.append(config)
+
+            self._config_manager.save_background_config()
+            
+            # 刷新显示列表 (与 load_backgrounds_from_file 类似)
+            bg_name_list = [b.name for b in existing_configs]
+            
+            return f"成功导入 {len(new_configs)} 个背景组！", bg_name_list
+        except Exception as e:
+            # 刷新显示列表
+            bg_name_list = [b.name for b in self._config_manager.config.background_list]
+            return f"背景导入失败: {e}", bg_name_list

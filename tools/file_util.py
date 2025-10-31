@@ -5,6 +5,9 @@ import yaml
 import json
 from pathlib import Path
 from config.character_config import CharacterConfig
+from config.schema import Background
+from config.config_manager import ConfigManager
+from typing import List
 import platform
 import subprocess
 
@@ -15,6 +18,9 @@ SPEECH_DIR = BASE_DATA_PATH / 'speech'
 MODEL_DIR = BASE_DATA_PATH / 'models'
 CONFIG_DIR = BASE_DATA_PATH / 'config'
 CHARACTERS_CONFIG_PATH = CONFIG_DIR / 'characters.yaml'
+BACKGROUND_CONFIG_PATH = CONFIG_DIR / 'background.yaml'
+BACKGROUND_UPLOAD_DIR = BASE_DATA_PATH / 'backgrounds'
+BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
 
 def export_character(character_configs: list[CharacterConfig], output_path: str):
     """
@@ -273,6 +279,180 @@ def import_character(input_path: str) -> list[CharacterConfig]:
             yaml.dump(existing_data, f, allow_unicode=True, sort_keys=False)
 
         print(f"人物成功从 {input_path} 导入，并已将配置追加到 {CHARACTERS_CONFIG_PATH}。")
+        return imported_configs
+
+    finally:
+        # 清理临时目录
+        shutil.rmtree(temp_dir)
+
+# ---------------------------------------------
+
+
+def export_background(background_configs: List[Background], output_path: str = './output/background.bg'):
+    """
+    将背景配置及其依赖文件（图片和音乐）打包成一个 .bg 文件。
+    
+    Args:
+        background_configs (List[Background]): 要导出的 Background 对象列表。
+        output_path (str): 导出的 .bg 文件路径 (默认路径为 ./output/background.bg)。
+    """
+    Path('./output').mkdir(exist_ok=True) # 确保输出目录存在
+    temp_dir = Path(f'./temp_export_bg_{os.getpid()}')
+    temp_dir.mkdir(exist_ok=True)
+    
+    try:
+        background_data_list = []
+
+        for config in background_configs:
+            # 准备要写入YAML的配置数据 (转换为字典，排除 FilePath 类型)
+            bg_data = config.model_dump(
+                exclude_none=True, 
+                mode='json' # 确保 FilePath/HttpUrl 被转换为字符串
+            )
+            
+            # 处理背景图片文件 (sprites)
+            if config.sprite_prefix:
+                # 复制图片文件
+                sprite_source_dir = Path(BACKGROUND_UPLOAD_DIR) / config.sprite_prefix
+                if sprite_source_dir.is_dir():
+                    shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix, dirs_exist_ok=True)
+                
+                # 复制背景音乐文件 (bgm_list)
+                bgm_source_dir = Path(BGM_UPLOAD_DIR) / config.sprite_prefix
+                if bgm_source_dir.is_dir():
+                    shutil.copytree(bgm_source_dir, temp_dir / 'bgm' / config.sprite_prefix, dirs_exist_ok=True)
+                    
+            # 导出时，bgm_list 和 sprites 中的 path 仍然是系统路径，
+            # 导入时需要处理，这里保持原样，因为数据结构中没有像字符导出那样处理模型路径。
+            # Pydantic 模型导出为字典时，FilePath 会被正确转换为字符串路径。
+            
+            background_data_list.append(bg_data)
+
+        # 将配置数据写入临时文件
+        with open(temp_dir / 'background.yaml', 'w', encoding='utf-8') as f:
+            yaml.dump(background_data_list, f, allow_unicode=True, sort_keys=False)
+        
+        # 打包成 .bg 文件
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for file_path in temp_dir.rglob('*'):
+                if file_path.is_file():
+                    # 计算文件在zip中的相对路径
+                    arcname = file_path.relative_to(temp_dir)
+                    zf.write(file_path, arcname)
+        
+        folder_path = Path(output_path).parent.resolve()
+        
+        # 尝试打开导出目录
+        system = platform.system()
+        if system == 'Windows':
+            subprocess.Popen(['explorer', str(folder_path)])
+        elif system == 'Darwin':  # macOS
+            subprocess.Popen(['open', str(folder_path)])
+        elif system == 'Linux':
+            subprocess.Popen(['xdg-open', str(folder_path)])
+
+        print(f"背景包成功导出到: {output_path}")
+
+    finally:
+        # 清理临时目录
+        shutil.rmtree(temp_dir)
+
+def import_background(input_path: str, existing_configs: List[Background]) -> List[Background]:
+    """
+    从 .bg 文件导入背景配置及其依赖文件，并将配置合并到现有列表中。
+    检测名称和sprite_prefix冲突，自动添加后缀解决冲突。
+    
+    Args:
+        input_path (str): 要导入的 .bg 文件路径。
+        existing_configs (List[Background]): 当前已有的 Background 配置列表。
+        
+    Returns:
+        List[Background]: 导入的 Background 对象列表。
+    """
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"文件未找到: {input_path}")
+        
+    temp_dir = Path(f'./temp_import_bg_{os.getpid()}')
+    temp_dir.mkdir(exist_ok=True)
+    
+    imported_configs = []
+
+    try:
+        # 解压 .bg 文件到临时目录
+        with zipfile.ZipFile(input_path, 'r') as zf:
+            zf.extractall(temp_dir)
+
+        # 读取YAML配置文件
+        with open(temp_dir / 'background.yaml', 'r', encoding='utf-8') as f:
+            yaml_data = yaml.safe_load(f)
+
+        if not yaml_data:
+            raise ValueError("背景配置 YAML 文件为空或格式错误。")
+
+        # 读取现有配置，用于检测冲突
+        existing_names = {config.name for config in existing_configs}
+        existing_sprite_prefixes = {config.sprite_prefix for config in existing_configs}
+        
+        # 记录本次导入中已使用的名称和sprite_prefix，避免内部冲突
+        imported_names = set(existing_names)
+        imported_sprite_prefixes = set(existing_sprite_prefixes)
+
+        for bg_data in yaml_data:
+            original_name = bg_data.get('name', '')
+            original_sprite_prefix = bg_data.get('sprite_prefix', '')
+            
+            # 解决名称冲突
+            new_name = _resolve_name_conflict(original_name, imported_names)
+            bg_data['name'] = new_name
+            imported_names.add(new_name)
+            
+            # 解决sprite_prefix冲突
+            new_sprite_prefix = _resolve_sprite_prefix_conflict(original_sprite_prefix, imported_sprite_prefixes)
+            bg_data['sprite_prefix'] = new_sprite_prefix
+            imported_sprite_prefixes.add(new_sprite_prefix)
+            
+            # 如果名称或sprite_prefix被修改，打印提示信息
+            if new_name != original_name or new_sprite_prefix != original_sprite_prefix:
+                print(f"检测到背景冲突，已将 '{original_name}' ({original_sprite_prefix}) 重命名为 '{new_name}' ({new_sprite_prefix})")
+            
+            # 恢复背景图片文件（使用新的sprite_prefix）
+            if new_sprite_prefix:
+                # 恢复图片
+                source_sprite_dir = temp_dir / 'sprites' / original_sprite_prefix
+                dest_sprite_dir = Path(BACKGROUND_UPLOAD_DIR) / new_sprite_prefix
+                if source_sprite_dir.is_dir():
+                    shutil.copytree(source_sprite_dir, dest_sprite_dir, dirs_exist_ok=True)
+
+                # 恢复音乐文件
+                source_bgm_dir = temp_dir / 'bgm' / original_sprite_prefix
+                dest_bgm_dir = Path(BGM_UPLOAD_DIR) / new_sprite_prefix
+                if source_bgm_dir.is_dir():
+                    shutil.copytree(source_bgm_dir, dest_bgm_dir, dirs_exist_ok=True)
+            # 更新 sprites 中的路径
+            if 'sprites' in bg_data:
+                for sprite_entry in bg_data['sprites']:
+                    # 路径是相对路径，需要重新构建新的绝对或相对路径
+                    if 'path' in sprite_entry:
+                        # 假设 path 存储的是文件名或相对于原始前缀的路径
+                        filename = Path(sprite_entry['path']).name
+                        new_path = Path(BACKGROUND_UPLOAD_DIR) / new_sprite_prefix / filename
+                        sprite_entry['path'] = new_path.as_posix()
+
+            # 更新 bgm_list 中的路径
+            if 'bgm_list' in bg_data:
+                new_bgm_list = []
+                for path in bg_data['bgm_list']:
+                    filename = Path(path).name
+                    new_path = Path(BGM_UPLOAD_DIR) / new_sprite_prefix / filename
+                    new_bgm_list.append(new_path.as_posix())
+                bg_data['bgm_list'] = new_bgm_list
+                
+            # 将更新后的数据创建为 Background 对象
+            # 注意：这里需要一个从字典创建 Background 实例的方法，假设 Pydantic 的 Background() 可用
+            imported_configs.append(Background.model_validate(bg_data))
+        
+        # 导入后，调用方需要将这些 imported_configs 合并到 ConfigManager 的配置中并保存。
+        print(f"背景包成功从 {input_path} 导入。")
         return imported_configs
 
     finally:
