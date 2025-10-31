@@ -168,23 +168,23 @@ def main():
 
     # 更新初始立绘
     try:
-        init_image = cv2.imread(init_sprite_path, cv2.IMREAD_UNCHANGED)
-        if init_image is not None:
-            if init_image.shape[2] == 3:
-                init_image = cv2.cvtColor(init_image, cv2.COLOR_BGR2RGB)
-                alpha_channel = np.full((init_image.shape[0], init_image.shape[1]), 255, dtype=np.uint8)
-                init_image = cv2.merge([init_image, alpha_channel])
-            elif init_image.shape[2] == 4:
-                init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
-        window.update_image(init_image)
+        # init_image = cv2.imread(init_sprite_path, cv2.IMREAD_UNCHANGED)
+        # if init_image is not None:
+        #     if init_image.shape[2] == 3:
+        #         init_image = cv2.cvtColor(init_image, cv2.COLOR_BGR2RGB)
+        #         alpha_channel = np.full((init_image.shape[0], init_image.shape[1]), 255, dtype=np.uint8)
+        #         init_image = cv2.merge([init_image, alpha_channel])
+        #     elif init_image.shape[2] == 4:
+        #         init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
+        # window.update_image(init_image)
         window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
 
         if len(getHistory()) <= 1:
             window.setOptions(['开始'])
     except Exception as e:
-        print("更新初始立绘失败",e)
-        init_image = np.zeros((512, 512, 4), dtype=np.uint8)
-        window.update_image(init_image)
+        # print("更新初始立绘失败",e)
+        # init_image = np.zeros((512, 512, 4), dtype=np.uint8)
+        # window.update_image(init_image)
         window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
     window.setNotification("开始聊天吧……")
     # 连接 UI 信号到队列

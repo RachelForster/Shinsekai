@@ -20,7 +20,7 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from ui.components import ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, CrossFadeSprite, TypingLabel
+from ui.components import ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, TypingLabel, SpritePanel, CrossFadeSprite
 from ui.workers import ImageDisplayThread, ChatWorker
 
 class DesktopAssistantWindow(QWidget):
@@ -32,7 +32,7 @@ class DesktopAssistantWindow(QWidget):
     clear_chat_history = pyqtSignal()
     skip_speech_signal = pyqtSignal() # 跳过当前语音信号
 
-    def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False, background_mode = False):
+    def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False, background_mode = False, max_sprite_slots=3):
         """初始化窗口"""
         super().__init__()
         self.CONFIG_FILE = './data/config/system_config.yaml'
@@ -42,6 +42,7 @@ class DesktopAssistantWindow(QWidget):
             self.HORIZONTAL_MARGIN_PERCENT = 0
         self.image_queue = image_queue
         self.display_thread = None
+        self.max_sprite_slots = max_sprite_slots
         self.deepseek = llm_manager
         self.emotion_queue = emotion_queue
         self.sprite_mode = sprite_mode
@@ -440,9 +441,10 @@ class DesktopAssistantWindow(QWidget):
 
     def setup_image_label(self):
         """初始化图像标签"""
-        self.label = CrossFadeSprite(self.original_width, self.original_height)
+        self.sprite_panel = SpritePanel(self.original_width, self.original_height, max_slots_num=self.max_sprite_slots)
+        # self.label = CrossFadeSprite(self.original_width, self.original_height)
         # self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.image_layout.addWidget(self.label)
+        self.image_layout.addWidget(self.sprite_panel)
     
     def setup_input_layout(self):
         """初始化输入布局"""
@@ -533,11 +535,11 @@ class DesktopAssistantWindow(QWidget):
         self.background_label.setPixmap(scaled_pixmap)
         self.background_label.lower()
 
-    def update_image(self, image, character_rate=None):
+    def update_image(self, image, character_name="", scale_rate=1.0):
         """更新显示图像"""
         self.original_image = image
-        self.label.setSprite(image, character_rate)
-    
+        self.sprite_panel.switch_sprite(character_name, image, scale_rate)
+
     def sendMessage(self):
         """发送消息函数"""
         message = self.input_box.text().strip()
@@ -588,7 +590,7 @@ class DesktopAssistantWindow(QWidget):
         if text:
             self.options_widget.hide()
             self.dialog_label.setText(text)
-            container_width = self.label.width() # 使用 self.label 的宽度作为容器宽度
+            container_width = self.original_width # 使用 self.original_width 作为容器宽度
             margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
             new_width = container_width - (2 * margin_width)
 
@@ -597,7 +599,7 @@ class DesktopAssistantWindow(QWidget):
             height = max(int(self.original_height * 0.3), self.dialog_label.height())
             
             # 2. 计算垂直位置 (保持在底部)
-            y = self.label.height() - height
+            y = self.original_height - height
             
             # 3. 设置居中的位置和调整后的尺寸
             self.dialog_label.setGeometry(margin_width, y, new_width, height)
@@ -673,8 +675,8 @@ class DesktopAssistantWindow(QWidget):
             # 连接点击事件，使用 lambda 传递选项内容
             option_btn.clicked.connect(lambda text=option_text: self.option_clicked(text))
             self.options_layout.addWidget(option_btn)
-    
-        container_width = self.label.width() # 使用 self.label 的宽度作为容器宽度
+
+        container_width = self.original_width # 使用 self.original_width 作为容器宽度
         margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
         new_width = container_width - (2 * margin_width)
         
@@ -685,7 +687,7 @@ class DesktopAssistantWindow(QWidget):
         final_height = self.options_widget.sizeHint().height()
         
         # 6. 放置在图像标签的底部
-        y = self.label.height() - final_height
+        y = self.original_height - final_height
         
         # 7. 设置居中的位置和最终的尺寸
         self.options_widget.setGeometry(margin_width, y, new_width, final_height)

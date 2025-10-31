@@ -295,7 +295,7 @@ class TTSWorker(BaseWorker):
 
 class UIWorker(QThread):
     # 发送给主UI线程的信号
-    update_sprite_signal = pyqtSignal(np.ndarray, float)
+    update_sprite_signal = pyqtSignal(np.ndarray, str, float)  # 图像数据，角色名称，缩放比例
     update_dialog_signal = pyqtSignal(str)
     update_notification_signal = pyqtSignal(str)
     update_option_signal = pyqtSignal(list)
@@ -450,8 +450,7 @@ class UIWorker(QThread):
                         elif cv_image.shape[2] == 4:
                             cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
 
-                        rate = character_config.sprite_scale
-                        self.update_sprite_signal.emit(cv_image, rate)
+                        self.update_sprite_signal.emit(cv_image, character_name, character_config.sprite_scale)
                     else:
                         print(f"UIWorker: 无法加载图片: {image_path}")
                 except Exception as e:
