@@ -78,7 +78,7 @@ class DesktopAssistantWindow(QWidget):
     def setup_ui(self):
         """初始化UI组件"""
         # 窗口设置
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setWindowFlags(Qt.FramelessWindowHint |  Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
         # 主布局
@@ -239,8 +239,8 @@ class DesktopAssistantWindow(QWidget):
         """初始化右上角工具栏"""
         # 创建工具栏容器
         self.toolbar = QWidget(self.image_container)
-        self.toolbar.setFixedSize(140, 48)
-        self.toolbar.move(self.original_width - 150, 10)
+        self.toolbar.setFixedSize(200, 48)
+        self.toolbar.move(self.original_width - 200, 10)
         self.toolbar.setStyleSheet("background-color: rgba(50, 50, 50, 150); border-radius: 20px;")
         
         # 工具栏布局
@@ -268,7 +268,27 @@ class DesktopAssistantWindow(QWidget):
             }
         """)
         self.settings_btn.clicked.connect(self.show_settings_menu)
-        
+
+        # 最小化按钮
+        self.minimize_btn = QPushButton("−")
+        self.minimize_btn.setFixedSize(button_size, button_size)
+        self.minimize_btn.setStyleSheet("""
+             QPushButton {
+                background-color: rgba(255, 255, 255, 100);
+                border: 2px solid rgba(255, 255, 255, 150);
+                border-radius: 24px;
+                color: white;
+                font-size: 28px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 150);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 200);
+            }
+        """)
+        self.minimize_btn.clicked.connect(self.minimize_window)
+
         # 关闭按钮
         self.close_btn = QPushButton("×")
         self.close_btn.setFixedSize(button_size, button_size)
@@ -291,6 +311,7 @@ class DesktopAssistantWindow(QWidget):
         
         # 添加到工具栏布局
         toolbar_layout.addWidget(self.settings_btn)
+        toolbar_layout.addWidget(self.minimize_btn)
         toolbar_layout.addWidget(self.close_btn)
     
     def show_settings_menu(self):
@@ -700,7 +721,13 @@ class DesktopAssistantWindow(QWidget):
         # 确保在图像和其他元素上方显示 (工具栏和对话框标签除外)
         self.options_widget.raise_()
         self.toolbar.raise_()
-    
+    def minimize_window(self):
+        """
+        调用 QWidget 的 showMinimized() 方法来最小化窗口。
+        """
+        self.showMinimized()
+        print("窗口已最小化")
+
     def mousePressEvent(self, event):
         """实现窗口拖动"""
         if event.button() == Qt.LeftButton:

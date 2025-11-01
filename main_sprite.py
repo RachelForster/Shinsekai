@@ -14,7 +14,7 @@ from core.workers import LLMWorker, TTSWorker, UIWorker
 from core.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
-from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtGui import QPixmap, QImage, QIcon
 from PyQt5.QtWidgets import QApplication
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from ui.desktop_ui import DesktopAssistantWindow
@@ -236,6 +236,11 @@ def main():
     window.skip_speech_signal.connect(lambda: ui_worker.skip_speech())
     
     # 确保在程序退出时停止所有线程
+    try:
+        appIcon = QIcon('./assets/system/picture/icon.png')
+        app.setWindowIcon(appIcon)
+    except Exception as e:
+        print("设置窗口图标失败", e)
     app.aboutToQuit.connect(llm_worker.quit)
     app.aboutToQuit.connect(tts_worker.quit)
     app.aboutToQuit.connect(ui_worker.quit)
