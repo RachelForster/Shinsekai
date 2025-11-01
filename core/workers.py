@@ -237,7 +237,7 @@ class TTSWorker(BaseWorker):
 
                 if translate:
                     text_processor = None  # 如果有翻译则不使用文本处理
-                    speech_text = translate
+                    speech_text = self.text_processor.remove_parentheses(translate)
 
                 audio_path = ''
                 if self.tts_manager:
@@ -271,6 +271,8 @@ class TTSWorker(BaseWorker):
                         print("没有立绘")
                         
                     # 生成 TTS
+                    if text_processor:
+                        speech_text = text_processor.remove_parentheses(speech_text)
                     audio_path = self.tts_manager.generate_tts(
                         speech_text, 
                         text_processor=text_processor,
