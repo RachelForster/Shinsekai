@@ -102,12 +102,12 @@ class CrossFadeSprite(QWidget):
         """
         if self.is_animating:
             print("正在进行动画，忽略本次切换。")
-            return
+            return 0, 0
             
         scaled_pixmap = self._get_scaled_pixmap(image, character_rate)
         if scaled_pixmap.isNull():
             print("错误：无法生成有效的 QPixmap。")
-            return
+            return 0, 0
             
         # 1. 将新立绘设置到 '新' 标签上
         self.label_new.setPixmap(scaled_pixmap)
@@ -161,6 +161,10 @@ class CrossFadeSprite(QWidget):
         if scaled_pixmap:
             self.label_old.setPixmap(scaled_pixmap)
     
+    def fadeOut(self):
+        """使立绘淡出（隐藏）"""
+        self.setSprite(np.zeros((1,1,4), dtype=np.uint8), 1.0)  # 传入空图像实现淡出效果
+
     def clear(self):
         """清除立绘"""
         self.label_old.clear()
@@ -329,6 +333,24 @@ class SpritePanel(QWidget):
         sprite.show()
         sprite.raise_() # 确保新登场或切换的立绘在最前面
 
+    def remove(self, character_id: str):
+        """
+        移除指定角色的立绘。
+        """
+        if character_id in self.sprite_lru:
+            slot_index = self.sprite_lru.pop(character_id)
+            sprite = self.sprite_slots[slot_index]
+            sprite.fadeOut()
+            sprite.clear()
+            sprite.hide()
+            self._reposition_sprites()
+            
+    def remove_all(self):
+        """
+        移除所有立绘。
+        """
+        for char_id in list(self.sprite_lru.keys()):
+            self.remove(char_id)
 
     def darken_all(self, exclude_character_id: str | None = None):
         """

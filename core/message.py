@@ -16,9 +16,10 @@ class LLMDialogMessage(BaseModel):
     这是从 LLM 响应流中解析出的 JSON 对象。
     """
     character_name: str = Field(..., description="说话的角色名称")
-    speech: str = Field(..., description="角色将要说出的文本")
+    speech: Optional[str] = Field("", description="角色将要说出的文本")
     sprite: Optional[Union[str,int]] = Field("-1", description="角色立绘编号，'-1'表示不需要立绘变化")
     translate: Optional[str] = Field("", description="可选的翻译文本，如果存在则用于 TTS")
+    effect: Optional[str] = Field("", description="角色的特效名称")
 
 class TTSOutputMessage(BaseModel):
     """
@@ -27,6 +28,7 @@ class TTSOutputMessage(BaseModel):
     """
     audio_path: str = Field(..., description="生成的语音文件的路径")
     character_name: str = Field(..., description="说话的角色名称")
-    speech: str = Field(..., description="原始的角色文本")
+    speech: Optional[str] = Field("", description="原始的角色文本")
     sprite: Optional[Union[str,int]] = Field('-1', description="当前使用的立绘编号")
+    effect: Optional[str] = Field("", description="应用的特效名称")
     is_system_message: bool = Field(False, description="是否是系统通知或非对话消息")

@@ -440,7 +440,7 @@ class DesktopAssistantWindow(QWidget):
         self.options_widget.hide()
 
     def setup_image_label(self):
-        """初始化图像标签"""
+        """初始化立绘标签"""
         self.sprite_panel = SpritePanel(self.original_width, self.original_height, max_slots_num=self.max_sprite_slots)
         # self.label = CrossFadeSprite(self.original_width, self.original_height)
         # self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -507,6 +507,7 @@ class DesktopAssistantWindow(QWidget):
         
         :param image_path: 背景图片文件的路径。
         """
+        self.sprite_panel.remove_all()  # 清除所有立绘显示
         if not os.path.exists(image_path):
             print(f"Background image file not found: {image_path}")
             # 可以设置一个纯色背景作为 fallback
@@ -538,7 +539,10 @@ class DesktopAssistantWindow(QWidget):
     def update_image(self, image, character_name="", scale_rate=1.0):
         """更新显示图像"""
         self.original_image = image
-        self.sprite_panel.switch_sprite(character_name, image, scale_rate)
+        if image.size == 0:
+            self.sprite_panel.remove(character_name)
+        else:
+             self.sprite_panel.switch_sprite(character_name, image, scale_rate)
 
     def sendMessage(self):
         """发送消息函数"""

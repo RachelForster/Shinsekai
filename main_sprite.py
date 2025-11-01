@@ -176,7 +176,7 @@ def main():
         #         init_image = cv2.merge([init_image, alpha_channel])
         #     elif init_image.shape[2] == 4:
         #         init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
-        # window.update_image(init_image)
+        window.setBackgroundImage('./assets/system/picture/shinsekai.png')
         window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
 
         if len(getHistory()) <= 1:
