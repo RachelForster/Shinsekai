@@ -5,7 +5,7 @@ import time
 import traceback
 from queue import Queue
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 
@@ -29,6 +29,12 @@ if str(project_root) not in sys.path:
 from config.config_manager import ConfigManager # ConfigManager 是单例
 from core.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 
+SOUND_EFFECT_CHANNEL_ID = 6  # 假设第6个通道用于音效播放
+SOUND_EFFECTS_PATH = {
+    "DISAPPOINTED": "./assets/system/sound/disappointed.wav",
+    "SHOCKED": "./assets/system/sound/shocked.wav",
+    "ATTENTION": "./assets/system/sound/attention.wav",
+}
 # --- 抽象 Worker 接口定义 ---
 
 class BaseWorker(QThread):
@@ -165,7 +171,7 @@ class TTSWorker(BaseWorker):
         self.cc = OpenCC('t2s')  # 繁体到简体转换器
         self.bgm_list = bgm_list
 
-    def put_data(self, character_name: str, speech: str, sprite: str, audio_path, is_system_message: bool = False):
+    def put_data(self, character_name: str, speech: str, sprite: str, audio_path, is_system_message: bool = False, effect: str = ""):
         """将处理结果封装成 Pydantic 模型并放入下一个队列"""
         audio_path = audio_path or ""
         output_data = TTSOutputMessage(
@@ -173,7 +179,8 @@ class TTSWorker(BaseWorker):
             character_name=character_name,
             sprite=sprite,
             speech=speech,
-            is_system_message=is_system_message
+            is_system_message=is_system_message,
+            effect=effect
         )
         self.audio_path_queue.put(output_data)
         self.tts_queue.task_done()
@@ -202,7 +209,7 @@ class TTSWorker(BaseWorker):
                 # 检查是否为特殊系统消息
                 if character_name_s in ["选项","数值","旁白","场景"]:
                     # 对于选项、数值或通用旁白，直接放入下一队列
-                    self.put_data(character_name_s, speech, sprite, '', is_system_message=True)
+                    self.put_data(character_name_s, speech, sprite, '', is_system_message=True, effect=item.effect)
                     continue
                 # 如果是BGM切换请求, 则处理BGM切换
                 elif character_name == 'bgm':
@@ -215,7 +222,7 @@ class TTSWorker(BaseWorker):
                         print("无法得到bgm path",e)
                         traceback.print_exc()
                     finally:
-                        self.put_data(character_name,'',sprite, bgm_path, is_system_message=True)
+                        self.put_data(character_name,'',sprite, bgm_path, is_system_message=True, effect=item.effect)
                     continue
                 
 
@@ -277,14 +284,14 @@ class TTSWorker(BaseWorker):
                     audio_path = self.character_config.sprites[int(sprite) - 1].get('voice_path', '')
                     
                 # 将包含音频路径和原始数据的字典放入音频路径队列
-                self.put_data(character_name_s, speech, str(sprite), audio_path)
+                self.put_data(character_name_s, speech, str(sprite), audio_path, is_system_message=False, effect=item.effect)
                 print(f'TTSWorker put: {audio_path} into the UI queue')
 
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")
                 traceback.print_exc()
                 # 失败时也必须调用 task_done，并通知 UI 这是一个非语音的旁白
-                self.put_data(character_name_s, speech, '-1', '') # 使用 -1 表示无立绘或语音
+                self.put_data(character_name_s, speech, '-1', '', is_system_message=False, effect=item.effect) # 使用 -1 表示无立绘或语音
 
     def quit(self):
         """确保在退出前能解锁队列"""
@@ -360,9 +367,31 @@ class UIWorker(QThread):
             print(f"BGM: 切换背景音乐失败 ({new_bgm_path}): {e}")
             self.current_bgm_path = None
         except Exception as e:
-            print(f"切换bgm时发生错误")
-            
-    # --- 结束 switch_bgm 方法 ---
+            print(f"切换bgm时发生错误") 
+            traceback.print_exc()
+
+    def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False):
+        """解析特效"""
+        match effect:
+            case 'LEAVE':
+                if after_dialog:
+                    self.remove_character_sprite(args.get('character_name'))
+            case _:
+                if not after_dialog:
+                    sound_effect_path = SOUND_EFFECTS_PATH.get(effect.upper(), None)
+                    if sound_effect_path:
+                        self.play_sound_effect(sound_effect_path)
+    def play_sound_effect(self, sound_effect_path: str):
+        """播放音效"""
+        if not Path(sound_effect_path).exists():
+            print(f"音效文件不存在: {sound_effect_path}")
+            return
+        try:
+            effect_sound = pygame.mixer.Sound(sound_effect_path)
+            sound_channel = pygame.mixer.Channel(SOUND_EFFECT_CHANNEL_ID)
+            sound_channel.play(effect_sound)
+        except Exception as e:
+            print(f"播放音效失败: {e}")
 
     def skip_speech(self):
         """跳过当前对话"""
@@ -381,6 +410,33 @@ class UIWorker(QThread):
             formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{color};'>{name}</b>：{speech}</p>"
         self.chat_history.append(formatted_speech)
         self.update_dialog_signal.emit(formatted_speech)
+
+    def _update_sprite(self, character_name: str, sprite_id: int):
+        try:
+            character_config = getCharacter(character_name)
+            if character_config is None:
+                raise ValueError(f"未找到角色配置: {character_name}")   
+            image_path = Path(character_config.sprites[sprite_id]['path']).as_posix()
+            cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+            if cv_image is not None:
+                if cv_image.shape[2] == 3:
+                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+                    alpha_channel = np.full((cv_image.shape[0], cv_image.shape[1]), 255, dtype=np.uint8)
+                    cv_image = cv2.merge([cv_image, alpha_channel])
+                elif cv_image.shape[2] == 4:
+                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
+
+                self.update_sprite_signal.emit(cv_image, character_name, character_config.sprite_scale)
+            else:
+                print(f"UIWorker: 无法加载图片: {image_path}")
+        except Exception as e:
+            traceback.print_exc()
+            print(f"UIWorker: 加载图片时出错: {e}")
+    
+    def remove_character_sprite(self, character_name: str):
+        """移除指定角色的立绘显示"""
+        self.update_sprite_signal.emit(np.empty((0,), dtype=np.uint8), character_name, 1.0)  # 传入空图像实现淡出效果
+
     def run(self):
         while self.running:
             try:
@@ -437,26 +493,13 @@ class UIWorker(QThread):
                 if speech:
                     self._update_dialog(character_name, speech, character_config.color, is_system=False)
 
-                try:
-                    # 更新立绘
-                    image_path = character_config.sprites[int(sprite_id) - 1]['path']
-                    image_path = Path(image_path).as_posix()
-                    cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
-                    if cv_image is not None:
-                        if cv_image.shape[2] == 3:
-                            cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-                            alpha_channel = np.full((cv_image.shape[0], cv_image.shape[1]), 255, dtype=np.uint8)
-                            cv_image = cv2.merge([cv_image, alpha_channel])
-                        elif cv_image.shape[2] == 4:
-                            cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
+                # 更新立绘显示
+                self._update_sprite(character_name, int(sprite_id)-1)
 
-                        self.update_sprite_signal.emit(cv_image, character_name, character_config.sprite_scale)
-                    else:
-                        print(f"UIWorker: 无法加载图片: {image_path}")
-                except Exception as e:
-                    traceback.print_exc()
-                    print(f"UIWorker: 加载图片时出错: {e}")
-
+                # 解析并执行特效
+                self.resolve_effect(effect=output_data.effect, args={"character_name": character_name}, after_dialog=False)
+                
+                # 计算最小播放时间
                 min_stop_time = len(speech)//8
                 start_time = time.perf_counter()
                 # 播放音频
@@ -490,7 +533,9 @@ class UIWorker(QThread):
                     if remaining_time > 0:
                         # 使用 self.task_done_requested.wait() 代替 time.sleep()
                         # 这样如果 skip_speech() 在等待期间被调用，等待会立即停止。
-                        self.task_done_requested.wait(timeout=remaining_time) 
+                        self.task_done_requested.wait(timeout=remaining_time)
+
+                self.resolve_effect(effect=output_data.effect, args={"character_name": character_name}, after_dialog=True)
             except Exception as e:
                 traceback.print_exc()
                 print(f"UIWorker: 任务处理失败: {e}")
