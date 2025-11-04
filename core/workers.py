@@ -383,6 +383,7 @@ class UIWorker(QThread):
                     sound_effect_path = SOUND_EFFECTS_PATH.get(effect.upper(), None)
                     if sound_effect_path:
                         self.play_sound_effect(sound_effect_path)
+
     def play_sound_effect(self, sound_effect_path: str):
         """播放音效"""
         if not Path(sound_effect_path).exists():

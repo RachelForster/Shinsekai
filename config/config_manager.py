@@ -197,6 +197,7 @@ class ConfigManager:
                 yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
         except Exception as e:
             print(f"错误：保存配置到 {file_path} 失败: {e}")
+
     def get_background_by_name(self, name: str) -> Optional[Background]:
         for char in self.config.background_list:
             if char.name.lower() == name.lower():

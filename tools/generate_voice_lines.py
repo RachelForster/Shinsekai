@@ -8,7 +8,7 @@ from pathlib import Path
 current_script = Path(__file__).resolve()
 
 # 获取项目根目录（main.py所在的目录）
-project_root = current_script.parent
+project_root = current_script.parent.parent
 
 # 将项目根目录添加到Python模块搜索路径
 if str(project_root) not in sys.path:

@@ -18,6 +18,8 @@ from config.character_manager import CharacterManager
 from config.config_manager import ConfigManager
 from config.background_manager import BackgroundManager
 from llm.constants import LLM_BASE_URLS
+from tools.crop_sprite import batch_crop_upper_half
+from tools.remove_bg import batch_remove_background
 
 config_manager = ConfigManager()
 character_manager = CharacterManager()
@@ -50,7 +52,7 @@ def generate_template(selected_characters, bg_name):
     for char_name in selected_characters:
         names += f"{char_name},"
 
-    template = f"你需要模拟一个RPG剧情对话系统，出场人物有：{names}\n"
+    template = f"你需要模拟一个RPG剧情对话系统，出场人物有：{names}，以及其他相关人物，请根据剧情调度人物\n"
 
     template += '''
 每次输出时，必须严格使用 JSON 格式，结构为：
@@ -916,6 +918,43 @@ with gr.Blocks(title="新世界程序") as demo:
             inputs=None,
             outputs=[selected_bg]
         )
+
+    with gr.Tab("小工具"):
+        gr.Markdown("# 立绘处理")
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("## 批量裁剪立绘")
+                crop_input = gr.Textbox(label="请输入需要裁剪的目录")
+                crop_output = gr.Textbox(label="输出目录，可以为空")
+                crop_ratio = gr.Slider(
+                    minimum=0,      # 最小值
+                    maximum=1,      # 最大值
+                    value=1,      # 初始值
+                    step=0.05,       # 步长/精度
+                    label="保留上半多少的比例，0.5是对半裁，0.8是保留上半80%的部分", # 标签
+                    interactive=True # 可交互
+                )
+                crop_button=gr.Button("确认裁剪")
+                
+            with gr.Column():
+                gr.Markdown("## 批量抠出立绘")
+                gr.Markdown(" ### 首次用的时候可能会先下载个模型，时间比较长")
+                rmbg_input = gr.Textbox(label="请输入需要处理的目录")
+                rmbg_output = gr.Textbox(label="输出目录，可以为空")
+                rmbg_button=gr.Button("确认处理")
+        with gr.Row():     
+            crop_output_info = gr.Textbox(label="输出信息",interactive=False)
+
+            crop_button.click(
+                fn=batch_crop_upper_half,
+                inputs=[crop_ratio, crop_input],
+                outputs=[crop_output_info]
+            )
+            rmbg_button.click(
+                fn=batch_remove_background,
+                inputs=[rmbg_input, rmbg_output],
+                outputs=[crop_output_info]
+            )
 
 if __name__ == "__main__":
     demo.launch()

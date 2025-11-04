@@ -5,7 +5,7 @@ import threading
 import pygame
 import yaml
 import time
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize, QUrl
 from PyQt5.QtWidgets import QSlider
 from PyQt5.QtGui import QFont, QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton,
@@ -23,6 +23,7 @@ if str(project_root) not in sys.path:
 from ui.components import ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, TypingLabel, SpritePanel, CrossFadeSprite
 from ui.workers import ImageDisplayThread, ChatWorker
 
+DIALOG_FRAME_PATH = Path('./assets/system/picture/dialog_frame.png').absolute().as_posix()
 class DesktopAssistantWindow(QWidget):
     """桌面助手主窗口"""
     message_submitted = pyqtSignal(str)  # 定义信号用于发送消息
@@ -133,21 +134,25 @@ class DesktopAssistantWindow(QWidget):
         self.btn_font_size = f"{str(int(self.base_font_size_px*28//48*curren_dpi//base_dpi))}px;" 
         
         # Apply to dialog label
+        df_pixel_map = QPixmap(DIALOG_FRAME_PATH)
+        
         self.dialog_label.setStyleSheet(f"""
             QLabel {{
                 background-color: rgba(50, 50, 50, 200);
                 color: #f0f0f0;
                 font-size: {self.font_size};
                 font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
-                padding: 20px; 
-                border-radius: 12px;
+                padding: 16px; 
                 border-bottom-left-radius: 0;
                 border-bottom-right-radius: 0;
                 line-height: 200%;
                 letter-spacing: 2px;
+                border-image: url({QUrl.fromLocalFile(DIALOG_FRAME_PATH).toString()}) 40 40 40 40 stretch;
+                border-width: 40px;
             }}
         """)
-
+        self.dialog_label.setPixmap(df_pixel_map)
+        
         # Apply to numeric label
         self.numeric_info_label.setStyleSheet(f"""
             QLabel {{
@@ -158,6 +163,8 @@ class DesktopAssistantWindow(QWidget):
                 line-height: 150%;
                 border-radius: 16px;
                 color: white; /* 白色字体 */
+                border-image: url({QUrl.fromLocalFile(DIALOG_FRAME_PATH).toString()}) 15 15 15 15 stretch;
+                border-width: 15px; 
             }}
         """)
         
@@ -406,12 +413,14 @@ class DesktopAssistantWindow(QWidget):
                 color: #f0f0f0;
                 font-size: {self.font_size};
                 font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
-                padding: 20px; 
+                padding: 40px; 
                 border-radius: 12px;
                 border-bottom-left-radius: 0;
                 border-bottom-right-radius: 0;
                 line-height: 200%;
                 letter-spacing: 2px;
+                border-image: url({DIALOG_FRAME_PATH}) 40 40 40 40 stretch;
+                border-width: 40px;
             }}
         """)
         self.dialog_label.setWordWrap(True)
