@@ -16,16 +16,15 @@ def batch_crop_upper_half(factor, directory, output_dir=None):
     
     # 验证因子范围
     if not 0 < factor <= 1:
-        print("错误：因子必须在0到1之间")
-        return False
+        return("错误：因子必须在0到1之间")
     
     # 检查目录是否存在
     if not os.path.exists(directory):
-        print(f"错误：目录 '{directory}' 不存在")
+        return(f"错误：目录 '{directory}' 不存在")
         return False
     
     # 设置输出目录
-    if output_dir is None:
+    if output_dir is None or output_dir == '':
         output_dir = os.path.join(directory, f"cropped_upper_{factor}")
     
     # 创建输出目录
@@ -69,7 +68,7 @@ def batch_crop_upper_half(factor, directory, output_dir=None):
                 # 生成输出文件名
                 filename = os.path.basename(image_path)
                 name, ext = os.path.splitext(filename)
-                output_filename = f"{name}_upper{ext}"
+                output_filename = f"{name}{ext}"
                 output_path = os.path.join(output_dir, output_filename)
                 
                 # 保存图片
@@ -85,7 +84,7 @@ def batch_crop_upper_half(factor, directory, output_dir=None):
     print(f"\n处理完成！")
     print(f"成功处理: {processed_count} 个文件")
     print(f"处理失败: {error_count} 个文件")
-    print(f"输出目录: {output_dir}")
+    return f"成功裁剪，输出目录: {output_dir}"
     
     return True
 

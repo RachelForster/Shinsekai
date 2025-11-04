@@ -8,3 +8,5 @@ opencc-python-reimplemented
 pydantic
 pandas
 requests
+onnxruntime
+rembg

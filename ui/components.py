@@ -740,7 +740,6 @@ class TypingLabel(ClickableLabel):
             self.setText(self._full_text)
             self._is_typing = False
             self.typingFinished.emit()
-            print("打字被跳过。")
             
     # 重新实现 ClickableLabel 基类的内部跳过方法，防止重复连接或冲突
     def _skip_typing_internal(self):
@@ -752,5 +751,6 @@ class TypingLabel(ClickableLabel):
         """
         if self._is_typing:
             self.skip_typing()
+            self.play_click_sound()
         else:
             super().mousePressEvent(event) # 传递给 ClickableLabel 的点击处理
