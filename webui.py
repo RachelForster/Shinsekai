@@ -930,10 +930,10 @@ with gr.Blocks(title="新世界程序") as demo:
 
     with gr.Tab("小工具"):
         gr.Markdown("# 立绘处理")
-        with gr.Accordion(label="批量自动生成立绘，需要Gemini API Key和充值token,建议大家还是去用免费的Gemini界面", open=False):
+        gr.Markdown("## 批量自动生成立绘（需要提前配置好Gemini API Key）")
+        with gr.Accordion(label="需要Gemini API Key和充值token, 建议大家还是去用免费的Gemini界面", open=False):
             with gr.Row():
                 with gr.Column():
-                        gr.Markdown("## 自动生成立绘（需要提前配置好Gemini API Key）")
                         character_generate_sprites = gr.Dropdown(choices=character_manager.get_character_name_list())
                         sprite_num = gr.Slider(
                             minimum=1,      # 最小值
