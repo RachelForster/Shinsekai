@@ -62,10 +62,10 @@ class ApiConfig(BaseModel):
     gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="GPT-SoVITS API 的访问 URL")
 
     t2i_work_path: DefaultIfNone[str] = Field(default='', description="T2I API 的工作目录")
-    t2i_api_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="T2I API 的访问 URL")
+    t2i_api_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='http://127.0.0.1:8188', description="T2I API 的访问 URL")
     t2i_default_workflow_path: DefaultIfNone[str] = Field(default='', description="T2I API 默认工作流路径")
     t2i_prompt_node_id: DefaultIfNone[str] = Field(default='6', description="T2I 工作流的 Prompt 节点ID")
-    t2i_output_node_id: DefaultIfNone[str] = Field(default='17', description="T2I 工作流的 保存图片 节点id")
+    t2i_output_node_id: DefaultIfNone[str] = Field(default='9', description="T2I 工作流的 保存图片 节点id")
 
     llm_api_key: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商的 API Key 字典")
     llm_base_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="LLM 服务的 Base URL")
