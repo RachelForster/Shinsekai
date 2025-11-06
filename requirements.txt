@@ -10,3 +10,4 @@ pandas
 requests
 onnxruntime
 rembg
+google-genai

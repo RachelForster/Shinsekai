@@ -10,9 +10,10 @@ from typing import Optional, Dict, Any, Union
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 
 # 假设以下依赖文件已在项目路径中
-from llm.llm_manager import LLMManager # 假设的依赖
-from llm.text_processor import TextProcessor # 假设的依赖
-from tts.tts_manager import TTSManager # 假设的依赖
+from llm.llm_manager import LLMManager
+from llm.text_processor import TextProcessor
+from tts.tts_manager import TTSManager
+from t2i.t2i_manager import T2IManager
 from opencc import OpenCC # 假设的依赖
 import yaml
 import numpy as np
@@ -29,6 +30,7 @@ if str(project_root) not in sys.path:
 from config.config_manager import ConfigManager # ConfigManager 是单例
 from core.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 
+config_manager = ConfigManager()
 SOUND_EFFECT_CHANNEL_ID = 6  # 假设第6个通道用于音效播放
 SOUND_EFFECTS_PATH = {
     "DISAPPOINTED": "./assets/system/sound/disappointed.wav",
@@ -61,7 +63,7 @@ class BaseWorker(QThread):
         # QThread 的停止通常在主应用退出时由 app.aboutToQuit.connect(worker.quit) 处理
 
 def getCharacter(name: str):
-    return ConfigManager().get_character_by_name(name)
+    return config_manager.get_character_by_name(name)
 
 class LLMWorker(BaseWorker):
     # 发送通知给主UI线程的信号，与 BaseWorker 的 notification_signal 相同
@@ -161,7 +163,7 @@ class LLMWorker(BaseWorker):
 
 
 class TTSWorker(BaseWorker):
-    def __init__(self, tts_manager: TTSManager, tts_queue: Queue, audio_path_queue: Queue, parent=None, bgm_list = []):
+    def __init__(self, tts_manager: TTSManager, t2i_manager: T2IManager, tts_queue: Queue, audio_path_queue: Queue, parent=None, bgm_list = []):
         super().__init__(parent)
         self.tts_manager = tts_manager
         # 队列中传入和传出的应是 Pydantic 消息模型
@@ -170,7 +172,8 @@ class TTSWorker(BaseWorker):
         self.text_processor = TextProcessor()
         self.cc = OpenCC('t2s')  # 繁体到简体转换器
         self.bgm_list = bgm_list
-
+        self.t2i_manager = t2i_manager
+    
     def put_data(self, character_name: str, speech: str, sprite: str, audio_path, is_system_message: bool = False, effect: str = ""):
         """将处理结果封装成 Pydantic 模型并放入下一个队列"""
         audio_path = audio_path or ""
@@ -184,6 +187,13 @@ class TTSWorker(BaseWorker):
         )
         self.audio_path_queue.put(output_data)
         self.tts_queue.task_done()
+    def handleCG(self, message: LLMDialogMessage):
+        try:
+            cg_path = self.t2i_manager.t2i(prompt=message.speech,prompt_processor=None)
+            self.put_data(message.character_name,message.speech, sprite='-1',audio_path=cg_path,is_system_message=True)
+        except Exception as e: 
+            print(f"生成CG失败，{e}")
+            traceback.print_exc()
 
     def run(self):
         while self.running:
@@ -223,6 +233,9 @@ class TTSWorker(BaseWorker):
                         traceback.print_exc()
                     finally:
                         self.put_data(character_name,'',sprite, bgm_path, is_system_message=True, effect=item.effect)
+                    continue
+                elif character_name == 'CG':
+                    self.handleCG(message=item)
                     continue
                 
 
@@ -383,7 +396,7 @@ class UIWorker(QThread):
                     sound_effect_path = SOUND_EFFECTS_PATH.get(effect.upper(), None)
                     if sound_effect_path:
                         self.play_sound_effect(sound_effect_path)
-
+        
     def play_sound_effect(self, sound_effect_path: str):
         """播放音效"""
         if not Path(sound_effect_path).exists():
@@ -477,6 +490,13 @@ class UIWorker(QThread):
                             print("更新背景失败",e)
                     elif character_name == 'bgm':
                         self.switch_bgm(audio_path)
+                    elif character_name == 'CG':
+                        try:
+                            cg_path = audio_path
+                            self.update_bg.emit(cg_path)
+                        except Exception as e:
+                            print(f"更新CG失败：{e}")
+                            traceback.print_exc()
                     else:
                         self._update_dialog(character_name, speech, "#84C2D5")
                         if not self.task_done_requested.is_set():

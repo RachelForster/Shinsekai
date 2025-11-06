@@ -20,6 +20,7 @@ from tts.tts_manager import TTSManager, TTSAdapterFactory
 from ui.desktop_ui import DesktopAssistantWindow
 from config.character_config import CharacterConfig
 from config.config_manager import ConfigManager
+from t2i.t2i_manager import T2IAdapterFactory, T2IManager
 import threading
 import time
 import pygame
@@ -75,9 +76,24 @@ def main():
     parser.add_argument('--tts',type=str,default="gpt-sovits")
     parser.add_argument('--llm',type=str,default="deepseek")
     parser.add_argument('--bg', type=str,default='')
+    parser.add_argument('--t2i',type=str,default='ComfyUI')
 
     # 解析参数
     args = parser.parse_args()
+
+    t2i_manager=None
+    try: 
+        t2i_adapter=T2IAdapterFactory.create_adapter(adapter_name='ComfyUI',
+                                                     work_path=config.config.api_config.t2i_work_path,
+                                                     api_url=config.config.api_config.t2i_api_url, 
+                                                     workflow_path=config.config.api_config.t2i_default_workflow_path,
+                                                     prompt_node_id=config.config.api_config.t2i_prompt_node_id, 
+                                                     output_node_id=config.config.api_config.t2i_output_node_id
+                                                    )
+        t2i_manager = T2IManager(t2i_adapter)
+    except Exception as e:
+        print(f"T2I manager初始化失败{e}")
+        traceback.print_exc()
 
     # 创建TTS管理器实例
     tts_manager = None
@@ -89,6 +105,7 @@ def main():
         )
         tts_manager = TTSManager(tts_server_url=gsv_url)
         tts_manager.set_tts_adapter(adapter=adapter)
+    
     
     # 创建DeepSeek实例
     print("加载用户模板...", args)
@@ -153,7 +170,7 @@ def main():
     ui_worker.start()
     
     # 创建并启动 TTS Worker 线程
-    tts_worker = TTSWorker(tts_manager, tts_queue, audio_path_queue, bgm_list=bgm_list)
+    tts_worker = TTSWorker(tts_manager,t2i_manager, tts_queue, audio_path_queue, bgm_list=bgm_list)
     tts_worker.start()
 
     # 创建并启动 LLM Worker 线程
