@@ -213,10 +213,10 @@ with gr.Blocks(title="新世界程序") as demo:
                 gpt_sovits_api_path = gr.Textbox(label="GPT-SoVITS 服务启动路径", value=_gpt_sovits_work_path)
 
                 gr.Markdown("### ComfyUI 配置")
-                with gr.Accordion("如果没有可以不填", open=False):
+                with gr.Accordion("如果没有可以不填，这是用来生成CG的", open=False):
                     t2i_url = gr.Textbox(label="ComfyUI API 调用地址", value=config_manager.config.api_config.t2i_api_url)
-                    t2i_work_path = gr.Textbox(label="ComfyUI 服务启动路径", value=config_manager.config.api_config.t2i_work_path)
-                    t2i_default_workflow_path = gr.Textbox(label="ComfyUI 默认工作流路径", value=config_manager.config.api_config.t2i_default_workflow_path)
+                    t2i_work_path = gr.Textbox(label="ComfyUI 安装路径", value=config_manager.config.api_config.t2i_work_path)
+                    t2i_default_workflow_path = gr.Textbox(label="ComfyUI 默认工作流路径（需要导出生API格式的json文件）", value=config_manager.config.api_config.t2i_default_workflow_path)
                     prompt_node_id = gr.Textbox(label="输入节点ID", value=config_manager.config.api_config.t2i_prompt_node_id)
                     output_node_id = gr.Textbox(label="保存节点ID", value=config_manager.config.api_config.t2i_output_node_id)
                 save_api_btn = gr.Button("保存配置")
@@ -930,58 +930,59 @@ with gr.Blocks(title="新世界程序") as demo:
 
     with gr.Tab("小工具"):
         gr.Markdown("# 立绘处理")
-        with gr.Row():
-            with gr.Column():
-                gr.Markdown("## 自动生成立绘（需要提前配置好Gemini API Key）")
-                character_generate_sprites = gr.Dropdown(choices=character_manager.get_character_name_list())
-                sprite_num = gr.Slider(
-                    minimum=1,      # 最小值
-                    maximum=100,      # 最大值
-                    value=1,      # 初始值
-                    step=1,       # 步长/精度
-                    label="生成立绘的数量", # 标签
-                    interactive=True # 可交互
-                )
-                generate_sprite_prompts_button = gr.Button("生成立绘提示词")
-                ref_pic = gr.File(label="请输入参考图片")
-            with gr.Column():
-                sprite_prompts = gr.TextArea(lines=10, label="立绘提示词，一行代表一个", interactive=True)
-                sprite_output_dir = gr.Textbox(label="请输入输出的目录，默认为data/sprite/角色上传目录名")
-                generate_sprites_btn=gr.Button("批量生成立绘")
-            with gr.Column():    
-                sprites_generated_gallery = gr.Gallery(
-                    label="已生成的立绘",
-                    show_label=True,
-                    elem_id="gallery",
-                    columns=3,
-                    object_fit="contain",
-                    height="auto"
-                )
-                regenerate_btn = gr.Button("重新生成该立绘")
+        with gr.Accordion(label="批量自动生成立绘，需要Gemini API Key和充值token,建议大家还是去用免费的Gemini界面", open=False):
+            with gr.Row():
+                with gr.Column():
+                        gr.Markdown("## 自动生成立绘（需要提前配置好Gemini API Key）")
+                        character_generate_sprites = gr.Dropdown(choices=character_manager.get_character_name_list())
+                        sprite_num = gr.Slider(
+                            minimum=1,      # 最小值
+                            maximum=100,      # 最大值
+                            value=1,      # 初始值
+                            step=1,       # 步长/精度
+                            label="生成立绘的数量", # 标签
+                            interactive=True # 可交互
+                        )
+                        generate_sprite_prompts_button = gr.Button("生成立绘提示词")
+                        ref_pic = gr.File(label="请输入参考图片")
+                with gr.Column():
+                    sprite_prompts = gr.TextArea(lines=10, label="立绘提示词，一行代表一个", interactive=True)
+                    sprite_output_dir = gr.Textbox(label="请输入输出的目录，默认为data/sprite/角色上传目录名")
+                    generate_sprites_btn=gr.Button("批量生成立绘")
+                with gr.Column():    
+                    sprites_generated_gallery = gr.Gallery(
+                        label="已生成的立绘",
+                        show_label=True,
+                        elem_id="gallery",
+                        columns=3,
+                        object_fit="contain",
+                        height="auto"
+                    )
+                    regenerate_btn = gr.Button("重新生成该立绘")
 
-            def generate_prompts(num, name):
-                prompt_list = image_generator.generate_prompts(num, config_manager.get_character_by_name(name).character_setting)
-                result = ''
-                index = 0
-                for item in prompt_list:
-                    result = result + f'立绘 {index+1}：{item}\n'
-                    index += 1
-                return result
-            def generate_sprites(name,ref, prompt_list, dir):
-                prompt_list=prompt_list.strip().split('\n')
-                if not dir:
-                    dir = Path('data/sprite') / config_manager.get_character_by_name(name).sprite_prefix
-                return image_generator.batch_generate_sprites(ref, prompt_list, dir)
-            generate_sprite_prompts_button.click(
-                fn=generate_prompts,
-                inputs=[sprite_num, character_generate_sprites],
-                outputs=[sprite_prompts]
-            )
-            generate_sprites_btn.click(
-                generate_sprites,
-                inputs=[character_generate_sprites,ref_pic,sprite_prompts,sprite_output_dir],
-                outputs=[sprites_generated_gallery]
-            )
+                def generate_prompts(num, name):
+                    prompt_list = image_generator.generate_prompts(num, config_manager.get_character_by_name(name).character_setting)
+                    result = ''
+                    index = 0
+                    for item in prompt_list:
+                        result = result + f'立绘 {index+1}：{item}\n'
+                        index += 1
+                    return result
+                def generate_sprites(name,ref, prompt_list, dir):
+                    prompt_list=prompt_list.strip().split('\n')
+                    if not dir:
+                        dir = Path('data/sprite') / config_manager.get_character_by_name(name).sprite_prefix
+                    return image_generator.batch_generate_sprites(ref, prompt_list, dir)
+                generate_sprite_prompts_button.click(
+                    fn=generate_prompts,
+                    inputs=[sprite_num, character_generate_sprites],
+                    outputs=[sprite_prompts]
+                )
+                generate_sprites_btn.click(
+                    generate_sprites,
+                    inputs=[character_generate_sprites,ref_pic,sprite_prompts,sprite_output_dir],
+                    outputs=[sprites_generated_gallery]
+                )
 
         with gr.Row():
             with gr.Column():

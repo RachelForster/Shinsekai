@@ -754,3 +754,110 @@ class TypingLabel(ClickableLabel):
             self.play_click_sound()
         else:
             super().mousePressEvent(event) # 传递给 ClickableLabel 的点击处理
+
+class VolumeDialog(QDialog):
+    """用于设置音量的对话框（模拟功能）"""
+    def __init__(self, current_volume: int, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("设置音量")
+        self.setModal(True)
+        # 假设音量范围是 0-100
+        self.current_volume = current_volume
+        self.new_volume = current_volume
+
+        # 样式与 FontSizeDialog 保持一致
+        self.setStyleSheet("""
+            QDialog {
+                background-color: rgba(0, 0, 0, 200);
+                border-radius: 10px;
+                color: white;
+            }
+            QLabel {
+                color: white;
+                font-size: 16px;
+                padding: 5px;
+            }
+            QSlider::groove:horizontal {
+                height: 8px;
+                background: #505050;
+                margin: 2px 0;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #4CAF50;
+                border: 1px solid #ddd;
+                width: 18px;
+                margin: -5px 0;
+                border-radius: 9px;
+            }
+            QPushButton {
+                background-color: rgba(76, 175, 80, 200);
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(76, 175, 80, 255);
+            }
+        """)
+
+        self.init_ui()
+        self.adjustSize()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+
+        # 标签
+        info_label = QLabel("调整BGM音量 (0 - 100)：")
+        layout.addWidget(info_label)
+
+        # 滑块
+        self.slider = QSlider(Qt.Horizontal)
+        # 音量范围 0-100
+        self.slider.setRange(0, 100) 
+        # 初始值是当前的音量
+        self.slider.setValue(self.current_volume) 
+        self.slider.setSingleStep(1)
+        self.slider.valueChanged.connect(self.update_label)
+        layout.addWidget(self.slider)
+
+        # 当前值显示标签
+        self.value_label = QLabel(f"当前音量: {self.current_volume}")
+        layout.addWidget(self.value_label)
+
+        # 按钮布局
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        self.confirm_button = QPushButton("确定")
+        self.confirm_button.clicked.connect(self.accept)
+        button_layout.addWidget(self.confirm_button)
+
+        self.cancel_button = QPushButton("取消")
+        self.cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(200, 50, 50, 200);
+            }
+            QPushButton:hover {
+                background-color: rgba(200, 50, 50, 255);
+            }
+        """)
+        self.cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(self.cancel_button)
+
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+
+    def update_label(self, value):
+        """滑块值变化时更新标签和内部变量"""
+        self.new_volume = value
+        self.value_label.setText(f"当前音量: {value}")
+        # 在实际应用中，这里可能会调用一个函数来实时改变音量
+
+    def get_new_volume(self):
+        """返回用户设置的新音量值"""
+        return self.new_volume

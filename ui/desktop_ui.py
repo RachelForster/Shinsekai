@@ -20,7 +20,7 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from ui.components import ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, TypingLabel, SpritePanel, CrossFadeSprite
+from ui.components import VolumeDialog, ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, TypingLabel, SpritePanel, CrossFadeSprite
 from ui.workers import ImageDisplayThread, ChatWorker
 
 DIALOG_FRAME_PATH = Path('./assets/system/picture/dialog_frame.png').absolute().as_posix()
@@ -330,24 +330,32 @@ class DesktopAssistantWindow(QWidget):
         clear_history_action = QAction("清空历史记录",self)
         language_action = QAction("语音语言", self)
         font_size_action = QAction("字体大小", self)
+        volumn_action = QAction("音量", self)
         
         # 连接菜单项的信号
         history_action.triggered.connect(lambda: self.open_chat_history_dialog.emit())
         language_action.triggered.connect(self.show_language_settings)
         clear_history_action.triggered.connect(lambda: self.clear_chat_history.emit())
         font_size_action.triggered.connect(self.show_font_size_settings)
+        volumn_action.triggered.connect(self.show_volumn_settings)
         
         # 添加菜单项到菜单
         menu.addAction(history_action)
         menu.addAction(clear_history_action)
         menu.addAction(language_action)
         menu.addAction(font_size_action)
+        menu.addAction(volumn_action)
         
         
         # 显示菜单在设置按钮下方
         menu.exec_(self.settings_btn.mapToGlobal(
             self.settings_btn.rect().bottomLeft()
         ))
+    def show_volumn_settings(slef):
+        dialog = VolumeDialog(30)
+        if dialog.exec_() == QDialog.Accepted:
+            selected_volumn = dialog.get_new_volume()
+            pygame.mixer.music.set_volume(selected_volumn/100)
 
     def open_history_dialog(self, messages):
         # 创建并显示对话框
