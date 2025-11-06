@@ -20,10 +20,12 @@ from config.background_manager import BackgroundManager
 from llm.constants import LLM_BASE_URLS
 from tools.crop_sprite import batch_crop_upper_half
 from tools.remove_bg import batch_remove_background
+from tools.generate_sprites import ImageGenerator
 
 config_manager = ConfigManager()
 character_manager = CharacterManager()
 background_manager = BackgroundManager()
+image_generator = ImageGenerator()
 main_process = None
 
 # 创建存储上传文件的目录
@@ -97,7 +99,7 @@ def generate_template(selected_characters, bg_name):
     template +=f"""
 要求：
 1. 不要输出除 JSON 以外的任何文本。
-2. character_name 只能是{names} 或者旁白,选项,数值,场景,bgm。
+2. character_name 只能是{names} 或者旁白,选项,数值,场景,bgm,CG。
 3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。当角色名为场景时，可以从场景中选择场景编号，代表切换场景, 如果要切换场景，它必须出现在第一个元素。当角色名为bgm时，sprite的值代表bgm编号，可以根据不同的氛围切换bgm, 不要太频繁。
 4. speech 字段是角色的台词，必须符合角色的性格和说话风格。
 5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有至少两个元素。
@@ -105,6 +107,7 @@ def generate_template(selected_characters, bg_name):
 7. 你必须在dialog最后一个元素中添加选项，选项元素的character_name必须是选项，内容在speech内，选项如果多于两个请用"/"分隔，xx选项必须是用户可以选择的对话、行为等，选项中不能出现任何多余的描述和内容，必须是纯文本。选项里有一个是纯粹插科打诨，无厘头的，有一个是非常精明的选项，另一个中庸的选项，选项必须符合角色的性格和说话风格，选项必须和当前的剧情相关联，不能无关紧要。
 8. 数值可以用富文本，可以添加颜色、emoji等表示，颜色尽量浅一些，符合马卡龙配色，例如 <span style='color:xxxx;'>HP：100</span>，选项元素的character_name必须是数值，内容在speech内，如果有多个数值，请用<br>分隔开，在这里，数值代表角色的状态或者用户的状态。
 9. effect 字段是可选的，如果有需要可以添加特效名称，选择范围在 LEAVE（离场）, SHOCKED, DISAPPOINTED, ATTENTION 内，如果没有特效需求，请不要添加此字段。
+10. 你需要在剧情关键节点或者情感高潮的时候生成CG，当character_name 是CG时，speech内容必须是使用Stable Diffusion生成图片的prompt，必须在开头加入highres, 8k, bestscores等质量关键字，加入人物名称，例如 nagito komaeda, 并且描述人物发型，外貌，穿着，接着加入人物表情、动作关键字，最后加入环境描写
 """
     template += "\n请开始对话，开始时介绍下用户所处的情境和背景，设定初始的场景和bgm,以及在做什么事情：\n"
     return template, ""
@@ -195,7 +198,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 llm_model = gr.Textbox(label="模型ID", value=_model)
                 api_key = gr.Textbox(label="LLM API Key", type="password", value=_api_key)
                 base_url = gr.Textbox(label="LLM API 基础网址", value=_base_url)
-            with gr.Column():
+            with gr.Column():  
                     api_output = gr.Textbox(label="输出信息", interactive=False)
         with gr.Row():
             with gr.Column():
@@ -208,6 +211,14 @@ with gr.Blocks(title="新世界程序") as demo:
                 ''')
                 sovits_url = gr.Textbox(label="GPT-SoVITS API 调用地址", value=_gsv_url)
                 gpt_sovits_api_path = gr.Textbox(label="GPT-SoVITS 服务启动路径", value=_gpt_sovits_work_path)
+
+                gr.Markdown("### ComfyUI 配置")
+                with gr.Accordion("如果没有可以不填", open=False):
+                    t2i_url = gr.Textbox(label="ComfyUI API 调用地址", value=config_manager.config.api_config.t2i_api_url)
+                    t2i_work_path = gr.Textbox(label="ComfyUI 服务启动路径", value=config_manager.config.api_config.t2i_work_path)
+                    t2i_default_workflow_path = gr.Textbox(label="ComfyUI 默认工作流路径", value=config_manager.config.api_config.t2i_default_workflow_path)
+                    prompt_node_id = gr.Textbox(label="输入节点ID", value=config_manager.config.api_config.t2i_prompt_node_id)
+                    output_node_id = gr.Textbox(label="保存节点ID", value=config_manager.config.api_config.t2i_output_node_id)
                 save_api_btn = gr.Button("保存配置")
             with gr.Column():
                 gr.Markdown("### 下载GPT SOVITS整合包")
@@ -240,8 +251,6 @@ with gr.Blocks(title="新世界程序") as demo:
                     - 建议使用稳定的网络环境下载
                     - 如遇下载问题，请检查网络连接或稍后重试
                     """)
-            
-        
         # Add events to update the dropdowns and base URL
         llm_provider.change(
             config_manager.update_llm_info,
@@ -251,7 +260,7 @@ with gr.Blocks(title="新世界程序") as demo:
 
         save_api_btn.click(
             config_manager.save_api_config_new,
-            inputs=[llm_provider, llm_model,api_key, base_url, sovits_url, gpt_sovits_api_path],
+            inputs=[llm_provider, llm_model,api_key, base_url, sovits_url, gpt_sovits_api_path, t2i_url, t2i_work_path, t2i_default_workflow_path,prompt_node_id,output_node_id],
             outputs=api_output
         )
 
@@ -921,6 +930,59 @@ with gr.Blocks(title="新世界程序") as demo:
 
     with gr.Tab("小工具"):
         gr.Markdown("# 立绘处理")
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("## 自动生成立绘（需要提前配置好Gemini API Key）")
+                character_generate_sprites = gr.Dropdown(choices=character_manager.get_character_name_list())
+                sprite_num = gr.Slider(
+                    minimum=1,      # 最小值
+                    maximum=100,      # 最大值
+                    value=1,      # 初始值
+                    step=1,       # 步长/精度
+                    label="生成立绘的数量", # 标签
+                    interactive=True # 可交互
+                )
+                generate_sprite_prompts_button = gr.Button("生成立绘提示词")
+                ref_pic = gr.File(label="请输入参考图片")
+            with gr.Column():
+                sprite_prompts = gr.TextArea(lines=10, label="立绘提示词，一行代表一个", interactive=True)
+                sprite_output_dir = gr.Textbox(label="请输入输出的目录，默认为data/sprite/角色上传目录名")
+                generate_sprites_btn=gr.Button("批量生成立绘")
+            with gr.Column():    
+                sprites_generated_gallery = gr.Gallery(
+                    label="已生成的立绘",
+                    show_label=True,
+                    elem_id="gallery",
+                    columns=3,
+                    object_fit="contain",
+                    height="auto"
+                )
+                regenerate_btn = gr.Button("重新生成该立绘")
+
+            def generate_prompts(num, name):
+                prompt_list = image_generator.generate_prompts(num, config_manager.get_character_by_name(name).character_setting)
+                result = ''
+                index = 0
+                for item in prompt_list:
+                    result = result + f'立绘 {index+1}：{item}\n'
+                    index += 1
+                return result
+            def generate_sprites(name,ref, prompt_list, dir):
+                prompt_list=prompt_list.strip().split('\n')
+                if not dir:
+                    dir = Path('data/sprite') / config_manager.get_character_by_name(name).sprite_prefix
+                return image_generator.batch_generate_sprites(ref, prompt_list, dir)
+            generate_sprite_prompts_button.click(
+                fn=generate_prompts,
+                inputs=[sprite_num, character_generate_sprites],
+                outputs=[sprite_prompts]
+            )
+            generate_sprites_btn.click(
+                generate_sprites,
+                inputs=[character_generate_sprites,ref_pic,sprite_prompts,sprite_output_dir],
+                outputs=[sprites_generated_gallery]
+            )
+
         with gr.Row():
             with gr.Column():
                 gr.Markdown("## 批量裁剪立绘")
