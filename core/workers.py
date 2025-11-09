@@ -134,9 +134,9 @@ class LLMWorker(BaseWorker):
 
                         except json.JSONDecodeError as e:
                             # 如果解析失败，可能是JSON格式不完整，继续等待更多数据
-                            print(f"JSON解析错误，继续等待：{e}")
+                            print(f"JSON解析错误，跳过该消息：{e}")
+                            response_buffer = response_buffer[end_index:].strip()
                             traceback.print_exc()
-                            break
                         except Exception as e:
                             print(f"Pydantic 验证或放入队列失败: {e}")
                             traceback.print_exc()

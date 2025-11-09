@@ -81,6 +81,7 @@ def main():
     # 解析参数
     args = parser.parse_args()
 
+    # T2I manager
     t2i_manager=None
     try: 
         t2i_adapter=T2IAdapterFactory.create_adapter(adapter_name=args.t2i,
