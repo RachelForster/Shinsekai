@@ -57,6 +57,7 @@ class ImageGenerator:
             "2. 你的最终输出必须是一个可解析的 JSON 数组 (JSON Array of Strings)，"
             "   不包含任何额外的解释或文本，例如：[\"prompt 1\", \"prompt 2\", ...]。"
             "3. 生成的提示词必须符合人物的性格和背景，不允许出现OOC（Out of Character）的情况"
+            "4. 每个提示词开头都是Make the character xxxx （做出一定的表情和姿势）"
         )
 
         user_prompt = (

@@ -6,7 +6,7 @@ import pygame
 import yaml
 import time
 from PyQt5.QtCore import QEasingCurve, QRect, QTimer, Qt, QThread, pyqtSignal, QObject, QSize, QPropertyAnimation, QSequentialAnimationGroup, pyqtProperty
-from PyQt5.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider
+from PyQt5.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider, QColorDialog
 from PyQt5.QtGui import QColor, QFont, QFontMetrics, QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton, QGraphicsOpacityEffect,
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
@@ -860,3 +860,165 @@ class VolumeDialog(QDialog):
     def get_new_volume(self):
         """返回用户设置的新音量值"""
         return self.new_volume
+
+class ThemeColorDialog(QDialog):
+    """用于设置主题颜色（Accent Color）的对话框，返回 RGBA 格式。"""
+    
+    def __init__(self, current_rgba_string: str, parent=None):
+        """
+        初始化对话框。
+        :param current_rgba_string: 当前主题颜色的 RGBA 字符串，例如 'rgba(76, 175, 80, 255)'。
+        """
+        super().__init__(parent)
+        self.setWindowTitle("设置主题颜色 (包含透明度)")
+        self.setModal(True)
+        
+        # 将 RGBA 字符串解析为 QColor (需要一个辅助函数或使用 QColor 的构造器)
+        self.current_qcolor = self._parse_rgba_string(current_rgba_string)
+        self.selected_qcolor = self.current_qcolor # 初始选中的颜色
+        
+        # 样式保持不变
+        self.setStyleSheet("""
+            QDialog {
+                background-color: rgba(0, 0, 0, 200);
+                border-radius: 10px;
+                color: white;
+            }
+            QLabel {
+                color: white;
+                font-size: 16px;
+                padding: 5px;
+            }
+            #ColorDisplayLabel {
+                border: 3px solid white;
+                border-radius: 5px;
+                min-width: 150px;
+                min-height: 50px;
+                margin: 5px;
+            }
+            QPushButton {
+                background-color: rgba(76, 175, 80, 200);
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(76, 175, 80, 255);
+            }
+        """)
+
+        self.init_ui()
+        self.adjustSize()
+
+    def _parse_rgba_string(self, rgba_string: str) -> QColor:
+        """
+        辅助函数：尝试从 'rgba(r, g, b, a)' 字符串创建一个 QColor 对象。
+        """
+        try:
+            # 移除 'rgba(' 和 ')'
+            content = rgba_string.strip().replace('rgba(', '').replace(')', '')
+            # 分割 R, G, B, A 值
+            r, g, b, a = map(int, content.split(','))
+            return QColor(r, g, b, a)
+        except Exception:
+            # 解析失败时返回一个默认值 (例如不透明的绿色)
+            return QColor(76, 175, 80, 255)
+
+    def _format_qcolor_to_rgba_string(self, color: QColor) -> str:
+        """
+        辅助函数：将 QColor 格式化为 'rgba(r, g, b, a)' 字符串。
+        """
+        # QColor.getRgb() 返回 (r, g, b, a) 的元组
+        r, g, b, a = color.getRgb()
+        return f"rgba({r}, {g}, {b}, {a})"
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        
+        info_label = QLabel("当前主题颜色预览（含透明度）：")
+        layout.addWidget(info_label)
+
+        # --- 颜色选择区域 ---
+        color_select_layout = QHBoxLayout()
+        
+        # 1. 颜色预览标签
+        self.color_display_label = QLabel()
+        self.color_display_label.setObjectName("ColorDisplayLabel") 
+        self.color_display_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.update_color_preview(self.selected_qcolor) # 初始化预览颜色
+
+        # 2. 选择颜色按钮
+        self.select_button = QPushButton("打开调色板")
+        self.select_button.clicked.connect(self.open_color_picker)
+        
+        color_select_layout.addWidget(self.color_display_label)
+        color_select_layout.addStretch(1)
+        color_select_layout.addWidget(self.select_button)
+        
+        layout.addLayout(color_select_layout)
+
+        # --- 按钮布局 ---
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        self.confirm_button = QPushButton("确定")
+        self.confirm_button.clicked.connect(self.accept)
+        button_layout.addWidget(self.confirm_button)
+
+        self.cancel_button = QPushButton("取消")
+        self.cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(200, 50, 50, 200);
+            }
+            QPushButton:hover {
+                background-color: rgba(200, 50, 50, 255);
+            }
+        """)
+        self.cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(self.cancel_button)
+
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+        
+    def update_color_preview(self, color: QColor):
+        """更新颜色预览标签的背景和文本"""
+        rgba_str = self._format_qcolor_to_rgba_string(color)
+        
+        self.color_display_label.setStyleSheet(
+            f"""
+            #ColorDisplayLabel {{ 
+                background-color: {rgba_str}; 
+                border: 3px solid white;
+                border-radius: 5px;
+                min-width: 150px;
+                min-height: 50px;
+                margin: 5px;
+            }}
+            """
+        )
+        self.color_display_label.setText(rgba_str) # 直接显示 RGBA 字符串
+
+    def open_color_picker(self):
+        """弹出 QColorDialog 让用户选择颜色，并启用 Alpha 选项。"""
+        
+        # 关键：使用 ShowAlphaChannel 选项强制显示透明度滑块
+        options = QColorDialog.ColorDialogOption.ShowAlphaChannel
+        
+        new_color = QColorDialog.getColor(
+            initial=self.selected_qcolor, 
+            parent=self, 
+            title="选择您的主题颜色 (含透明度)",
+            options=options # 传入选项
+        )
+        
+        if new_color.isValid():
+            self.selected_qcolor = new_color # 更新内部 QColor 
+            self.update_color_preview(self.selected_qcolor)
+
+    def get_selected_color(self) -> str:
+        """返回用户最终确定的 RGBA 颜色字符串"""
+        return self._format_qcolor_to_rgba_string(self.selected_qcolor)

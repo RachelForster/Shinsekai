@@ -6,7 +6,7 @@ import pygame
 import yaml
 import time
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize, QUrl
-from PyQt5.QtWidgets import QSlider
+from PyQt5.QtWidgets import QSlider,QMessageBox
 from PyQt5.QtGui import QFont, QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton,
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
@@ -20,8 +20,11 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from ui.components import VolumeDialog, ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, TypingLabel, SpritePanel, CrossFadeSprite
+from ui.components import VolumeDialog, ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, TypingLabel, SpritePanel, ThemeColorDialog
 from ui.workers import ImageDisplayThread, ChatWorker
+from config.config_manager import ConfigManager
+
+config_manager = ConfigManager()
 
 DIALOG_FRAME_PATH = Path('./assets/system/picture/dialog_frame.png').absolute().as_posix()
 class DesktopAssistantWindow(QWidget):
@@ -61,6 +64,10 @@ class DesktopAssistantWindow(QWidget):
         curren_dpi = screen.logicalDotsPerInch()
         self.font_size = f"{str(int(self.base_font_size_px*curren_dpi//base_dpi))}px;"
         self.btn_font_size = f"{str(int(self.base_font_size_px*curren_dpi//base_dpi))}px;"
+
+        # 对话框颜色
+        self.theme_color = config_manager.config.system_config.theme_color
+        self.second_color = 'rgba(50, 50, 50, 100)'
 
         # 设置图像显示线程
         if not self.sprite_mode:
@@ -143,12 +150,16 @@ class DesktopAssistantWindow(QWidget):
                 font-size: {self.font_size};
                 font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
                 padding: 16px; 
+                border-radius: 16px;
                 border-bottom-left-radius: 0;
                 border-bottom-right-radius: 0;
                 line-height: 200%;
                 letter-spacing: 2px;
-                border-image: url({QUrl.fromLocalFile(DIALOG_FRAME_PATH).toString()}) 40 40 40 40 stretch;
-                border-width: 40px;
+                background: qlineargradient(
+                    x1: 0, y1: 0, x2: 0, y2: 1, 
+                    stop: 0   {self.theme_color},      
+                    stop: 1   {self.second_color}     
+                );
             }}
         """)
         self.dialog_label.setPixmap(df_pixel_map)
@@ -165,6 +176,11 @@ class DesktopAssistantWindow(QWidget):
                 color: white; /* 白色字体 */
                 border-image: url({QUrl.fromLocalFile(DIALOG_FRAME_PATH).toString()}) 15 15 15 15 stretch;
                 border-width: 15px; 
+                background: qlineargradient(
+                    x1: 0, y1: 0, x2: 0, y2: 1, 
+                    stop: 0   {self.theme_color},      
+                    stop: 1   {self.second_color}     
+                );
             }}
         """)
         
@@ -184,15 +200,16 @@ class DesktopAssistantWindow(QWidget):
         # Apply to send button
         self.send_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: #4CAF50;
+                background-color: {self.theme_color};
+                font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
                 color: white;
                 border: none;
                 border-radius: 10px;
-                padding: 10px;
+                padding: 20px;
                 font-size: {self.btn_font_size}
             }}
             QPushButton:hover {{
-                background-color: #45a049;
+                background-color: rgba(50, 50, 50, 200);
             }}
         """)
         
@@ -331,20 +348,23 @@ class DesktopAssistantWindow(QWidget):
         language_action = QAction("语音语言", self)
         font_size_action = QAction("字体大小", self)
         volumn_action = QAction("音量", self)
+        theme_color_action = QAction("主题色",self)
         
         # 连接菜单项的信号
         history_action.triggered.connect(lambda: self.open_chat_history_dialog.emit())
         language_action.triggered.connect(self.show_language_settings)
-        clear_history_action.triggered.connect(lambda: self.clear_chat_history.emit())
+        clear_history_action.triggered.connect(self.clear_history)
         font_size_action.triggered.connect(self.show_font_size_settings)
         volumn_action.triggered.connect(self.show_volumn_settings)
-        
+        theme_color_action.triggered.connect(self.show_theme_color_dialog)
+
         # 添加菜单项到菜单
         menu.addAction(history_action)
         menu.addAction(clear_history_action)
         menu.addAction(language_action)
         menu.addAction(font_size_action)
         menu.addAction(volumn_action)
+        menu.addAction(theme_color_action)
         
         
         # 显示菜单在设置按钮下方
@@ -352,16 +372,38 @@ class DesktopAssistantWindow(QWidget):
             self.settings_btn.rect().bottomLeft()
         ))
     def show_volumn_settings(slef):
-        dialog = VolumeDialog(30)
+        dialog = VolumeDialog(config_manager.config.system_config.music_volumn)
         if dialog.exec_() == QDialog.Accepted:
             selected_volumn = dialog.get_new_volume()
+            config_manager.config.system_config.music_volumn = selected_volumn
+            config_manager.save_system_config()
             pygame.mixer.music.set_volume(selected_volumn/100)
 
+    def clear_history(self):
+        reply = QMessageBox.question(
+            self,                                 # 父窗口 (parent)
+            '确认',                           # 窗口标题 (title)
+            "您确定要清除历史吗？。", # 提示信息 (text)
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, # 按钮组合
+            QMessageBox.StandardButton.No        # 默认选中的按钮（按回车键时的默认操作）
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.clear_chat_history.emit()
     def open_history_dialog(self, messages):
         # 创建并显示对话框
         dialog = MessageDialog(messages, self)
         dialog.exec_()
     
+    def show_theme_color_dialog(self):
+        dialog = ThemeColorDialog(self.theme_color)
+        if dialog.exec_() == QDialog.Accepted:
+            self.theme_color = dialog.get_selected_color()
+            config_manager.config.system_config.theme_color = self.theme_color
+            self.apply_font_styles()
+            self.setNotification("主题颜色已更改" + self.theme_color)
+            config_manager.save_system_config()
+
     def show_language_settings(self):
         """显示语音语言设置"""
         dialog = LanguageDialog(self)
@@ -378,6 +420,9 @@ class DesktopAssistantWindow(QWidget):
                 language_str = "日本語"
             elif selected_language == "yue":
                 language_str = "粵語"
+
+            config_manager.config.system_config.voice_language = selected_language
+            config_manager.save_system_config()
             self.setNotification("语音语言已更改:" + language_str)
 
     def setup_numeric_label(self):
@@ -689,6 +734,14 @@ class DesktopAssistantWindow(QWidget):
             self.options_widget.hide()
             return
 
+        try:
+            content = self.theme_color.strip().replace('rgba(', '').replace(')', '')
+            r, g, b, a = map(int, content.split(','))
+        # 创建一个非常低的透明度版本 (例如 10%) 作为背景柔和光晕
+            low_opacity_theme = f"rgba({r}, {g}, {b}, 50)" 
+        except Exception:
+            low_opacity_theme = "rgba(50, 50, 50, 25)"
+
         # 4. 添加新按钮
         for option_text in optionList:
             option_btn = ClickableLabel()
@@ -703,15 +756,28 @@ class DesktopAssistantWindow(QWidget):
                     background-color: rgba(255, 255, 255, 50);
                     color: white;
                     border-radius: 6px;
-                    padding: 5px;
+                    padding: 9px;
                     text-align: left;
                     font-size: {self.font_size};
                     min-height: 40px;
+                    background: qlineargradient(
+                        x1: 0, y1: 0, x2: 1, y2: 0, 
+                        stop: 0   {self.theme_color},      
+                        stop: 1   {self.second_color}     
+                    );
                 }}
                 QLabel:hover {{
-                    background-color: rgba(255, 255, 255, 30);
-                    border: 1px solid;
-                }}
+                background-color: {low_opacity_theme};
+                border-bottom: 5px solid {self.theme_color}; 
+                color: white; 
+                padding: 9px 20px 11px 20px;
+            }}
+
+            QLabel:pressed {{
+                /* 按下状态：模拟点击反馈 */
+                background-color: {self.theme_color};
+                color: white;
+            }}
             """)
             
             # 连接点击事件，使用 lambda 传递选项内容

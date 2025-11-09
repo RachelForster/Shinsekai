@@ -21,11 +21,13 @@ from llm.constants import LLM_BASE_URLS
 from tools.crop_sprite import batch_crop_upper_half
 from tools.remove_bg import batch_remove_background
 from tools.generate_sprites import ImageGenerator
+from llm.template_generator import TemplateGenerator 
 
 config_manager = ConfigManager()
 character_manager = CharacterManager()
 background_manager = BackgroundManager()
 image_generator = ImageGenerator()
+template_generator = TemplateGenerator()
 main_process = None
 
 # 创建存储上传文件的目录
@@ -42,76 +44,10 @@ def load_template_from_file(file_path):
         return template, file_name
     except Exception as e:
         return f"加载失败: {str(e)}", file_name
-def generate_template(selected_characters, bg_name):
-    if not selected_characters:
-        return "请至少选择一个角色！", ""
-    
-    names = ""
-
-    # 让同样的人物生成同样的模板，就会有一样的md5了，进而会有同样的聊天历史文件。
-    selected_characters = sorted(selected_characters)
-
-    for char_name in selected_characters:
-        names += f"{char_name},"
-
-    template = f"你需要模拟一个RPG剧情对话系统，出场人物有：{names}，以及其他相关人物，请根据剧情调度人物\n"
-
-    template += '''
-每次输出时，必须严格使用 JSON 格式，结构为：
-{
-  "dialog": [
-    {
-      "character_name": "角色名",
-      "sprite": "str, 对应的立绘ID字符串，例如 01, 02",
-      "speech": "该角色说的中文台词",
-      "effect": "角色的特效名称（可选）,选择范围在 LEAVE, SHOCKED, DISAPPOINTED, ATTENTION 内",
-      "translate": "该角色说的话的日文翻译（可选）"
-    }
-  ]
-}
-    '''
-    template += "\n立绘说明:\n"
-    for char_name in selected_characters:
-        char_detail = config_manager.get_character_by_name(char_name)
-        template += f"{char_name}有{len(char_detail.sprites)}张立绘：\n"
-        template += f"{char_detail.emotion_tags}\n\n"
-
-    template += "\n角色说明：\n"
-    for char_name in selected_characters:
-        char_detail = config_manager.get_character_by_name(char_name)
-        if char_detail.character_setting:
-            template += f"以下是{char_name}的角色设定：\n"
-            character_setting = char_detail.character_setting
-            template += f"{character_setting}\n\n"
-
-    if bg_name:
-        bg = config_manager.get_background_by_name(bg_name)
-        if bg and bg.sprites:
-            template +="场景说明：\n"
-            template += f"现在有{len(bg.sprites)}个可用场景：\n"
-            template += f"{bg.bg_tags}\n\n"
-
-        if bg and bg.bgm_list:
-            template += "BGM说明：\n"
-            template += f"现在有{len(bg.bgm_list)}个可用BGM：\n"
-            template += f"{bg.bgm_tags}\n\n"
-
-    template +=f"""
-要求：
-1. 不要输出除 JSON 以外的任何文本。
-2. character_name 只能是{names} 或者旁白,选项,数值,场景,bgm,CG。
-3. sprite 字段必须填写一个立绘数字代号，只允许是两位数字（例如 01, 02，你需根据台词语气自动选择合适的立绘。当角色名为旁白，数值或选项时，该字段为-1。当角色名为场景时，可以从场景中选择场景编号，代表切换场景, 如果要切换场景，它必须出现在第一个元素。当角色名为bgm时，sprite的值代表bgm编号，可以根据不同的氛围切换bgm, 不要太频繁。
-4. speech 字段是角色的台词，必须符合角色的性格和说话风格。
-5. 所有对话都必须放在 "dialog" 数组中，数组内按对话顺序排列。数组中有至少两个元素。
-6. 旁白描写是场景动作描写
-7. 你必须在dialog最后一个元素中添加选项，选项元素的character_name必须是选项，内容在speech内，选项如果多于两个请用"/"分隔，xx选项必须是用户可以选择的对话、行为等，选项中不能出现任何多余的描述和内容，必须是纯文本。选项里有一个是纯粹插科打诨，无厘头的，有一个是非常精明的选项，另一个中庸的选项，选项必须符合角色的性格和说话风格，选项必须和当前的剧情相关联，不能无关紧要。
-8. 数值可以用富文本，可以添加颜色、emoji等表示，颜色尽量浅一些，符合马卡龙配色，例如 <span style='color:xxxx;'>HP：100</span>，选项元素的character_name必须是数值，内容在speech内，如果有多个数值，请用<br>分隔开，在这里，数值代表角色的状态或者用户的状态。
-9. effect 字段是可选的，如果有需要可以添加特效名称，选择范围在 LEAVE（离场）, SHOCKED, DISAPPOINTED, ATTENTION 内，如果没有特效需求，请不要添加此字段。
-10. 你需要在剧情关键节点或者情感高潮的时候生成CG，当character_name 是CG时，speech内容必须是使用Stable Diffusion生成图片的prompt，必须在开头加入highres, 8k, bestscores等质量关键字，加入人物名称，例如 nagito komaeda, 并且描述人物发型，外貌，穿着，接着加入人物表情、动作关键字，最后加入环境描写
-"""
-    template += "\n请开始对话，开始时介绍下用户所处的情境和背景，设定初始的场景和bgm,以及在做什么事情：\n"
-    return template, ""
-def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_bg):
+def generate_template(selected_characters, bg_name, use_effect, use_translation, use_cg):
+    template, out = template_generator.generate_chat_template(selected_characters, bg_name, use_effect == '是', use_cg == '是', use_translation == '是')
+    return template, out
+def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_bg, use_cg):
     global main_process
     print("启动聊天，使用模板:")
     try:
@@ -138,7 +74,8 @@ def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_b
                  f'--voice_mode={voice_mode}',
                  f'--init_sprite_path={init_path}',
                  f'--history={history_file_path.resolve()}',
-                 f'--bg={selected_bg}'
+                 f'--bg={selected_bg}',
+                 f'--t2i={'ComfyUI' if use_cg == '是' else ''}',
                  ]
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
@@ -872,7 +809,11 @@ with gr.Blocks(title="新世界程序") as demo:
                     choices=background_manager.get_background_name_list()+['透明背景'],
                     interactive=True
                 )
-                
+
+                use_effect = gr.Radio(label="是否开启特殊效果（人物离场、惊讶等效果）",choices=['是','否'], value="是")
+                use_translation = gr.Radio(label="是否使用LLM翻译（比免费的API翻译得更精确）",choices=['是','否'],value="是")
+                use_cg = gr.Radio(label="是否开启CG生成，得配置了ComfyUI才可以使用",choices=['是','否'],value="否")
+
                 generate_btn = gr.Button("生成模板")
         template_output = gr.Textbox(label="模板内容", lines=10, interactive=True)
 
@@ -914,7 +855,7 @@ with gr.Blocks(title="新世界程序") as demo:
         
         generate_btn.click(
             generate_template,
-            inputs=[selected_chars, selected_bg],
+            inputs=[selected_chars, selected_bg, use_effect, use_translation, use_cg],
             outputs=[template_output, filename]
         )
 
@@ -930,7 +871,7 @@ with gr.Blocks(title="新世界程序") as demo:
 
         launch_btn.click(
             launch_chat,
-            inputs=[template_output, voice_mode, initial_sprite_files, history_file, selected_bg],
+            inputs=[template_output, voice_mode, initial_sprite_files, history_file, selected_bg, use_cg],
             outputs=launch_output
         )
 
@@ -988,7 +929,7 @@ with gr.Blocks(title="新世界程序") as demo:
                         object_fit="contain",
                         height="auto"
                     )
-                    regenerate_btn = gr.Button("重新生成该立绘")
+                    # regenerate_btn = gr.Button("重新生成该立绘")
 
                 def generate_prompts(num, name):
                     prompt_list = image_generator.generate_prompts(num, config_manager.get_character_by_name(name).character_setting)
@@ -1008,10 +949,17 @@ with gr.Blocks(title="新世界程序") as demo:
                     inputs=[sprite_num, character_generate_sprites],
                     outputs=[sprite_prompts]
                 )
+
                 generate_sprites_btn.click(
                     generate_sprites,
                     inputs=[character_generate_sprites,ref_pic,sprite_prompts,sprite_output_dir],
                     outputs=[sprites_generated_gallery]
+                )
+
+                character_name_list_len.change(
+                    update_character_dropdown,
+                    inputs=None,
+                    outputs=[character_generate_sprites]
                 )
 
         with gr.Row():
