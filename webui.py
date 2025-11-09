@@ -269,6 +269,8 @@ with gr.Blocks(title="新世界程序") as demo:
     selected_bg_index = gr.State(None)
     init_sprite_path = gr.State("")
     history_file_path = gr.State("")
+    character_name_list_len = gr.State(0)
+    background_name_list_len = gr.State(0)
 
     with gr.Tab("人物设定"):
         gr.Markdown("## 人物管理")
@@ -360,6 +362,10 @@ with gr.Blocks(title="新世界程序") as demo:
             lambda x: x,
             inputs=char_name,
             outputs=selected_character
+        ).then(
+            lambda : len(character_manager.get_character_name_list()),
+            inputs=[],
+            outputs=[character_name_list_len]
         )
         # 删除人物事件
         del_btn.click(
@@ -375,6 +381,10 @@ with gr.Blocks(title="新世界程序") as demo:
             inputs=None,
             outputs=[char_name, char_color, sprite_prefix, gpt_model_path,
                       sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting]
+        ).then(
+            lambda : len(character_manager.get_character_name_list()),
+            inputs=[],
+            outputs=[character_name_list_len]
         )
 
         selected_character.change(
@@ -400,6 +410,10 @@ with gr.Blocks(title="新世界程序") as demo:
             update_character_dropdown,
             inputs=[],
             outputs=[selected_character]
+        ).then(
+            lambda : len(character_manager.get_character_name_list()),
+            inputs=[],
+            outputs=[character_name_list_len]
         )
 
         ai_help_btn.click(
@@ -606,11 +620,13 @@ with gr.Blocks(title="新世界程序") as demo:
             def update_character_dropdown():
                     return gr.Dropdown(choices=["新角色"]+character_manager.get_character_name_list())
 
+            # 导出背景
             export_bg_btn.click(
                 background_manager.export_background_file,
                 inputs=[selected_bg_group],
                 outputs=[import_bg_output]
             )
+            # 删除背景
             del_bg_btn.click(
                 background_manager.delete_background,
                 inputs=[selected_bg_group],
@@ -623,8 +639,13 @@ with gr.Blocks(title="新世界程序") as demo:
                 lambda : "新背景",
                 inputs=None,
                 outputs=selected_bg_group
-            )
+            ).then(
+                lambda : len(background_manager.get_background_name_list()),
+                inputs=[],
+                outputs=[background_name_list_len]
+            )   
 
+            # 导入背景
             import_bg_btn.click(
                 background_manager.import_background_file,
                 inputs=[import_bg_file],
@@ -637,7 +658,11 @@ with gr.Blocks(title="新世界程序") as demo:
                 lambda : "新背景",
                 inputs=None,
                 outputs=selected_bg_group
-            )
+            ).then(
+                lambda : len(background_manager.get_background_name_list()),
+                inputs=[],
+                outputs=[background_name_list_len]
+            )  
         with gr.Row():
             with gr.Column():
                 bg_name = gr.Textbox(label="背景组名称", placeholder="请输入背景组名称")
@@ -753,6 +778,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 outputs=[selected_bg_index]
             )
 
+            # 修改或添加背景组
             bg_save_btn.click(
                 background_manager.add_background,
                 inputs=[bg_name, bg_prefix],
@@ -765,6 +791,10 @@ with gr.Blocks(title="新世界程序") as demo:
                 lambda x: x,
                 inputs=bg_name,
                 outputs=selected_bg_group
+            ).then(
+                lambda : len(background_manager.get_background_name_list()),
+                inputs=[],
+                outputs=[background_name_list_len]
             )
 
             upload_bg_info_btn.click(
@@ -915,17 +945,17 @@ with gr.Blocks(title="新世界程序") as demo:
             inputs=[],
             outputs=[launch_output]
         )
-        
-        selected_character.change(
-            update_character_selection,
-            inputs=None,
-            outputs=[selected_chars]
-        )
 
-        selected_bg_group.change(
+        background_name_list_len.change(
             update_bg_selection,
             inputs=None,
             outputs=[selected_bg]
+        )
+
+        character_name_list_len.change(
+            update_character_selection,
+            inputs=None,
+            outputs=[selected_chars]
         )
 
     with gr.Tab("小工具"):
@@ -1001,7 +1031,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 
             with gr.Column():
                 gr.Markdown("## 批量抠出立绘")
-                gr.Markdown(" ### 首次用的时候可能会先下载个模型，时间比较长")
+                gr.Markdown(" ### 首次用的时候可能会先自动下载个模型，时间比较长")
                 rmbg_input = gr.Textbox(label="请输入需要处理的目录")
                 rmbg_output = gr.Textbox(label="输出目录，可以为空")
                 rmbg_button=gr.Button("确认处理")
