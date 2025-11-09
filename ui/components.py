@@ -729,7 +729,6 @@ class TypingLabel(ClickableLabel):
             self.typing_timer.stop()
             self._is_typing = False
             self.typingFinished.emit() # 发出完成信号
-            print("打字完成。")
 
     def skip_typing(self):
         """

@@ -83,7 +83,7 @@ def main():
 
     t2i_manager=None
     try: 
-        t2i_adapter=T2IAdapterFactory.create_adapter(adapter_name='ComfyUI',
+        t2i_adapter=T2IAdapterFactory.create_adapter(adapter_name=args.t2i,
                                                      work_path=config.config.api_config.t2i_work_path,
                                                      api_url=config.config.api_config.t2i_api_url, 
                                                      workflow_path=config.config.api_config.t2i_default_workflow_path,
@@ -193,7 +193,7 @@ def main():
         #         init_image = cv2.merge([init_image, alpha_channel])
         #     elif init_image.shape[2] == 4:
         #         init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
-        window.setBackgroundImage('./assets/system/picture/shinsekai.png')
+        # window.setBackgroundImage('./assets/system/picture/shinsekai.png')
         window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
 
         if len(getHistory()) <= 1:
