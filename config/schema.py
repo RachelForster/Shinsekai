@@ -72,6 +72,8 @@ class ApiConfig(BaseModel):
     llm_model: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商使用的具体模型名称字典")
     llm_provider: DefaultIfNone[str] = Field(default="Deepseek", description="LLM 服务器商名字")
 
+    hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
+
 # System Config Model
 class SystemConfig(BaseModel):
     """系统相关的通用配置"""
