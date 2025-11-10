@@ -7,7 +7,7 @@ from config.config_manager import ConfigManager
 import gradio as gr 
 import yaml 
 
-UPLOAD_DIR = "data/sprites"
+UPLOAD_DIR = "data/sprite"
 VOICE_DIR = "data/voices"
 MODEL_DIR = "data/models"
 CHARACTER_CONFIG_PATH = ConfigManager._CHARACTERS_CONFIG_PATH 
