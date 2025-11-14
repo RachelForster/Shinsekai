@@ -63,6 +63,11 @@ def clear_chat_history(history_file, ui_queue, llm_manager):
         sprite='-1',
         is_system_message=False
     ))
+def save_bg(bg_path, bgm_path):
+    config = ConfigManager()
+    config.config.system_config.background_path = bg_path
+    config.config.system_config.bgm_path = bgm_path
+    config.save_system_config()
 
 def main():
     global chat_history
@@ -168,6 +173,7 @@ def main():
     ui_worker.update_option_signal.connect(window.setOptions)
     ui_worker.update_value_signal.connect(window.update_numeric_info)
     ui_worker.update_bg.connect(window.setBackgroundImage)
+    ui_worker.update_cg.connect(window.show_cg_image)
     ui_worker.start()
     
     # 创建并启动 TTS Worker 线程
@@ -245,6 +251,25 @@ def main():
         except Exception as e:
             traceback.print_exc()
             print('最后一条消息更新失败', e)
+
+
+        try:
+            bgm_path = config.config.system_config.bgm_path
+            bg_path = config.config.system_config.background_path
+            if bgm_path:
+                audio_path_queue.put(
+                    TTSOutputMessage(
+                        audio_path=bgm_path,
+                        character_name="bgm",
+                        sprite="-1",
+                        is_system_message=True
+                    )
+                )
+            if bg_path:
+                window.setBackgroundImage(bg_path)
+        except Exception as e:
+            print("更新背景和bgm失败",e)
+            traceback.print_exc()
   
     window.message_submitted.connect(lambda message: on_message_submitted(message))
     window.open_chat_history_dialog.connect(lambda: window.open_history_dialog(chat_history))
@@ -263,6 +288,7 @@ def main():
     app.aboutToQuit.connect(tts_worker.quit)
     app.aboutToQuit.connect(ui_worker.quit)
     app.aboutToQuit.connect(lambda :save_chat_history(args.history,llm_manager.get_messages()))
+    app.aboutToQuit.connect(lambda :save_bg(bg_path=window.current_background_path,bgm_path=ui_worker.current_bgm_path))
 
     window.show()
 

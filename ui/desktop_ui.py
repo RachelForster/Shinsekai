@@ -20,7 +20,7 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from ui.components import VolumeDialog, ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, TypingLabel, SpritePanel, ThemeColorDialog
+from ui.components import CGWidget, VolumeDialog, ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, TypingLabel, SpritePanel, ThemeColorDialog
 from ui.workers import ImageDisplayThread, ChatWorker
 from config.config_manager import ConfigManager
 
@@ -55,6 +55,7 @@ class DesktopAssistantWindow(QWidget):
         screen_geometry = screen.geometry()
         self.original_height = screen_geometry.height() // 4 * 3
         self.original_width = screen_geometry.width() // 4 * 3 if background_mode else self.original_height
+        self.current_background_path = None 
 
         self.config = self._read_config()
         self.base_font_size_px = self.config.get('base_font_size_px', 48)
@@ -101,10 +102,14 @@ class DesktopAssistantWindow(QWidget):
         self.image_layout.setContentsMargins(0, 0, 0, 0)
         self.image_layout.setSpacing(0)
 
+        # CG
+        self.cg_widget = CGWidget(self.theme_color, self.image_container)
+        self.cg_widget.cg_display_changed.connect(self.handle_cg_display_change)
+
         # 数值信息标签
         self.setup_numeric_label()
 
-        # 图像标签
+        # 立绘展示板
         self.setup_image_label()   
         
         # 对话框组件,覆盖在图像上
@@ -124,11 +129,48 @@ class DesktopAssistantWindow(QWidget):
         main_layout.addLayout(input_layout)
         
         self.background_label.lower()
+        self.cg_widget.lower() # 初始时，CG 在背景上方
+        self.sprite_panel.raise_() # 立绘在 CG 上方
+        self.dialog_label.raise_() # 对话框和选项在所有图像组件上方
+        self.options_widget.raise_()
 
         self.setLayout(main_layout)
 
+        self.cg_widget.setGeometry(0,0,self.original_width, self.original_height)
         self.apply_font_styles()
     
+    def handle_cg_display_change(self, is_cg_visible: bool):
+        """
+        处理 CG 显示状态的改变。
+        is_cg_visible: True 时隐藏立绘，False 时显示立绘。
+        """
+        if is_cg_visible:
+            # 调整 CG 的层次，使其浮动到立绘之上，实现覆盖
+            self.cg_widget.raise_()
+            
+            # 隐藏立绘
+            self.sprite_panel.hide()
+            
+            # 保持对话框、选项、数值信息和工具栏可见，并确保它们在最顶层
+            self.dialog_label.show()
+            self.options_widget.show()
+            self.numeric_info_label.show()
+            self.toolbar.show()
+            
+            # 4. 确保对话框等元素在 CG 之上
+            self.dialog_label.raise_() 
+            self.options_widget.raise_()
+            self.numeric_info_label.raise_()
+            self.toolbar.raise_() 
+            
+        else:
+            self.sprite_panel.show()
+            # 恢复 CG 到立绘之下
+            self.cg_widget.lower()
+            self.cg_widget.hide()
+    def show_cg_image(self, cg_path: str):
+        """外部接口：显示一个CG，它会触发立绘隐藏"""
+        self.cg_widget.show_cg(cg_path)
     def apply_font_styles(self):
         """根据当前的 font_size 和 btn_font_size 更新所有UI元素的样式"""
         # Recalculate DPI scaled sizes
@@ -584,12 +626,16 @@ class DesktopAssistantWindow(QWidget):
         self.background_label.setAlignment(Qt.AlignCenter)
         self.background_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
+        
+
     def setBackgroundImage(self, image_path: str):
         """
         设置窗口背景图片，图片将缩放填充整个窗口。
         
         :param image_path: 背景图片文件的路径。
         """
+        if image_path == self.current_background_path:
+            return
         self.sprite_panel.remove_all()  # 清除所有立绘显示
         if not os.path.exists(image_path):
             print(f"Background image file not found: {image_path}")
@@ -618,6 +664,7 @@ class DesktopAssistantWindow(QWidget):
         scaled_pixmap = pixmap.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
         self.background_label.setPixmap(scaled_pixmap)
         self.background_label.lower()
+        self.current_background_path = image_path
 
     def update_image(self, image, character_name="", scale_rate=1.0):
         """更新显示图像"""

@@ -67,7 +67,7 @@ class TemplateGenerator:
     "立绘规范：sprite 字段必须填写一个两位数字代号（例如 01, 02），并根据当前台词语气和情绪自动选择最合适的立绘。",
     "非立绘角色：当 character_name 为 旁白、数值 或 选项 时，sprite 字段必须固定为 -1。",
     
-    "场景切换：当 character_name 为 场景 时，sprite 填写场景编号，表示切换场景。该元素必须作为 dialog 数组中的第一个元素出现。其他字段为空。",
+    "场景切换：当 character_name 为 场景 时，sprite 填写场景编号，表示切换场景。其他字段为空。",
     "BGM 切换：当 character_name 为 bgm 时，sprite 填写 BGM 编号，表示切换bgm。应根据当前氛围进行切换，但不得过于频繁。其他字段为空。",
 
     "台词风格：speech 字段必须是角色的中文台词，内容和表达方式必须严格符合角色的个性、说话风格和背景设定。",
@@ -81,7 +81,7 @@ class TemplateGenerator:
     "数值显示：数值元素表示当前用户状态或者角色状态数值，或者当前任务，该元素要求出现在dialog数组的前部，当 character_name 为 数值 时，speech 内使用富文本格式（如 <span style='color:xxxx;'>HP：100</span>）。颜色应选择浅色系，符合马卡龙配色。多个数值用 <br> 分隔。",
 ]       
         if use_cg:
-            REQUIREMENTS.append("CG 生成：在剧情关键节点或情感高潮时，将character_name 设置为CG，speech 内容必须是用于 Stable Diffusion 生成图片的 Prompt，必须在开头加入 highres, 8k, bestscores 等质量关键字，描述人数，例如1girl，并详细描述人物名称，例如nanami chiaki、人物发型发色，以及眼睛颜色、服装、表情、动作和环境。可以加入和viewer的互动，例如looking at the viewer")       
+            REQUIREMENTS.append("CG 生成：在剧情关键节点或情感高潮时，将character_name 设置为CG，speech 内容必须是用于 Stable Diffusion 生成图片的 Prompt，必须在开头加入 highres, masterpiece, 8k, bestscores 等高质量关键字，描述人数，例如1girl，并写出人物名称，例如nanami chiaki、人物发型发色，以及眼睛颜色、服装、表情、动作和环境。可以加入和viewer的互动，例如looking at the viewer")       
         if use_llm_translation:
             REQUIREMENTS.append("翻译字段：translate字段必须为角色台词 speech 的日文翻译，请将角色的台词翻译为日文，而不要将角色的动作翻译出来")
         if use_effect:
