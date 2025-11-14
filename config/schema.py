@@ -82,6 +82,8 @@ class SystemConfig(BaseModel):
     voice_language: DefaultIfNone[str] = Field(default='ja', description="系统语音的默认语言 (例如: ja)")
     music_volumn: DefaultIfNone[int] =Field(default=30,description="bgm 音量")
     theme_color: DefaultIfNone[str] = Field(default='rgba(50,50,50,200)',description="主题色")
+    bgm_path: DefaultIfNone[str] = Field(default="",description="BGM 的路径")
+    background_path: DefaultIfNone[str] = Field(default="",description="背景图片的路径")
 
 # Main Config Model
 class AppConfig(BaseModel):

@@ -104,6 +104,7 @@ if __name__ == "__main__":
     INPUT_FILE = "input.wav" 
     OUTPUT_FOLDER = "output_stitched_audio"
 
+
     if HUGGING_FACE_TOKEN == "YOUR_HUGGING_FACE_TOKEN_HERE":
         print("!!! 请在代码顶部设置您的 HUGGING_FACE_TOKEN 才能运行 !!!")
     elif not os.path.exists(INPUT_FILE):

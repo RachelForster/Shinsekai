@@ -323,6 +323,7 @@ class UIWorker(QThread):
     update_option_signal = pyqtSignal(list)
     update_value_signal = pyqtSignal(str)
     update_bg = pyqtSignal(str)
+    update_cg = pyqtSignal(str)
     
     def __init__(self, audio_path_queue: Queue, parent=None, chat_history=None, bg_group=None):
         super().__init__(parent)
@@ -493,7 +494,7 @@ class UIWorker(QThread):
                     elif character_name == 'CG':
                         try:
                             cg_path = audio_path
-                            self.update_bg.emit(cg_path)
+                            self.update_cg.emit(cg_path)
                         except Exception as e:
                             print(f"更新CG失败：{e}")
                             traceback.print_exc()

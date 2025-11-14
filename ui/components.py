@@ -6,7 +6,7 @@ import pygame
 import yaml
 import time
 from PyQt5.QtCore import QEasingCurve, QRect, QTimer, Qt, QThread, pyqtSignal, QObject, QSize, QPropertyAnimation, QSequentialAnimationGroup, pyqtProperty
-from PyQt5.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider, QColorDialog
+from PyQt5.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider, QColorDialog,QFileDialog,QMessageBox
 from PyQt5.QtGui import QColor, QFont, QFontMetrics, QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton, QGraphicsOpacityEffect,
                              QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
@@ -1022,3 +1022,172 @@ class ThemeColorDialog(QDialog):
     def get_selected_color(self) -> str:
         """返回用户最终确定的 RGBA 颜色字符串"""
         return self._format_qcolor_to_rgba_string(self.selected_qcolor)
+    
+class CGWidget(QWidget):
+    """
+    只用于显示全屏CG图和操作按钮的浮动Widget。
+    - 负责在显示时覆盖所有下层元素（包括立绘）。
+    """
+    cg_display_changed = pyqtSignal(bool) # True: CG显示, False: CG隐藏
+
+    def __init__(self, theme_color: str, parent=None):
+        super().__init__(parent)
+        self.theme_color = theme_color
+        self.current_cg_pixmap = None
+        
+        # 必须设置 WA_TranslucentBackground 和 FramelessWindowHint 才能实现完全透明
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.SubWindow) # 确保它浮动在父窗口之上
+        
+        # 主布局
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 1. CG 图像标签 (全屏，用于显示CG)
+        self.cg_label = QLabel()
+        self.cg_label.setAlignment(Qt.AlignCenter)
+        self.cg_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # 设置一个黑色或半透明背景，以覆盖下层元素
+        self.cg_label.setStyleSheet("background-color: rgba(0, 0, 0, 100);")
+        main_layout.addWidget(self.cg_label)
+        
+        # 2. CG 按钮工具栏 (浮动在右上角)
+        self.setup_cg_toolbar()
+        
+        self.hide() # 初始隐藏
+
+    def setup_cg_toolbar(self):
+        """设置 CG 模式下的操作按钮工具栏"""
+        self.cg_toolbar = QWidget(self) # 以自身为父组件
+        self.cg_toolbar.setStyleSheet("background-color: transparent;")
+        
+        toolbar_layout = QHBoxLayout(self.cg_toolbar)
+        toolbar_layout.setContentsMargins(15, 15, 15, 15)
+        toolbar_layout.setSpacing(10)
+        toolbar_layout.addStretch(1)
+
+        button_style = f"""
+            QPushButton {{
+                background-color: rgba(50, 50, 50, 150);
+                border: 2px solid {self.theme_color};
+                border-radius: 10px;
+                color: white;
+                padding: 10px 20px;
+                font-size: 20px;
+            }}
+            QPushButton:hover {{
+                background-color: rgba(50, 50, 50, 200);
+            }}
+        """
+
+        self.save_cg_btn = QPushButton("💾 保存")
+        self.save_cg_btn.setStyleSheet(button_style)
+        self.save_cg_btn.clicked.connect(self.save_current_cg)
+        
+        self.close_cg_btn = QPushButton("❌ 关闭")
+        self.close_cg_btn.setStyleSheet(button_style)
+        self.close_cg_btn.clicked.connect(self.hide_cg)
+
+        toolbar_layout.addWidget(self.save_cg_btn)
+        toolbar_layout.addWidget(self.close_cg_btn)
+        
+        self.cg_toolbar.adjustSize() # 调整工具栏大小
+        self.cg_toolbar.raise_()
+
+    def resizeEvent(self, event):
+        """处理 Widget 大小变化，重新定位工具栏"""
+        super().resizeEvent(event)
+        
+        # 确保 cg_label 覆盖整个组件
+        self.cg_label.setGeometry(0,0,self.width(),self.height())
+        
+        # 重新缩放 CG
+        if self.current_cg_pixmap:
+            scaled_cg = self.current_cg_pixmap.scaled(
+                self.size(),
+                Qt.KeepAspectRatio, 
+                Qt.SmoothTransformation
+            )
+            self.cg_label.setPixmap(scaled_cg)
+
+        # 重新定位 CG 工具栏到右上角
+        toolbar_width = self.cg_toolbar.sizeHint().width()
+        toolbar_height = self.cg_toolbar.sizeHint().height()
+        
+        self.cg_toolbar.setGeometry(
+            self.width() - toolbar_width - 20, # 右边距 20
+            self.height()//2, # 垂直居中
+            toolbar_width,
+            toolbar_height
+        )
+
+    # --- Public Methods ---
+    def show_cg(self, cg_path: str):
+        """显示 CG 图像"""
+        if not os.path.exists(cg_path):
+            print(f"CG file not found: {cg_path}")
+            return
+        
+        pixmap = QPixmap(cg_path)
+        if pixmap.isNull():
+            print(f"Failed to load pixmap from: {cg_path}")
+            return
+            
+        self.current_cg_pixmap = pixmap
+        
+        # 缩放并设置 CG
+        scaled_cg = self.current_cg_pixmap.scaled(
+            self.width(),
+            self.height(),
+            Qt.KeepAspectRatioByExpanding, 
+            Qt.SmoothTransformation
+        )
+        self.cg_label.setPixmap(scaled_cg)
+        
+        self.show()
+        self.raise_() # 确保它在最顶层
+        self.cg_display_changed.emit(True)
+
+    def hide_cg(self):
+        """隐藏 CG 图像"""
+        self.hide()
+        self.current_cg_pixmap = None
+        self.cg_label.clear()
+        self.cg_display_changed.emit(False)
+
+    def save_current_cg(self):
+        """保存当前显示的 CG 图像（占位符）"""
+        if self.current_cg_pixmap is None:
+            print("No CG image is currently displayed to save.")
+            return
+
+        # 1. 获取用户选择的目录路径
+        # QFileDialog.getExistingDirectory 提示用户选择一个现有目录
+        save_dir = QFileDialog.getExistingDirectory(
+            self, 
+            "选择保存 CG 图像的目录", 
+            os.path.expanduser("~") # 默认目录设置为用户主目录
+        )
+
+        if save_dir:
+            # 2. 生成带时间戳的唯一文件名
+            file_name = "CG.png" # 默认使用 PNG 格式
+            
+            # 3. 组合完整的文件路径
+            full_path = os.path.join(save_dir, file_name)
+            
+            # 4. 尝试保存 QPixmap
+            # 注意：保存操作默认是异步的，但对于本地文件保存通常即时完成
+            success = self.current_cg_pixmap.save(full_path, "PNG")
+
+            if success:
+                print(f"CG saved successfully to: {full_path}")
+                # 可选：在这里添加一个 QDialog 提示用户保存成功
+                QMessageBox.information(self, "保存成功", f"CG 图像已成功保存到:\n{full_path}")
+            else:
+                print(f"Failed to save CG image to: {full_path}")
+                # 可选：在这里添加一个 QMessageBox 提示保存失败
+                QMessageBox.critical(self, "保存失败", f"无法保存图像到:\n{full_path}")
+        else:
+            # 用户取消了保存操作
+            print("CG save operation cancelled.")
