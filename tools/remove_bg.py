@@ -55,7 +55,7 @@ def batch_remove_background(input_dir, output_dir=None):
         try:
             filename = os.path.basename(image_path)
             name, ext = os.path.splitext(filename)
-            output_filename = f"{name}_ai_transparent{ext}" 
+            output_filename = f"{name}{ext}" 
             output_path = os.path.join(output_dir, output_filename)
             ai_remove_background(image_path, output_path)
             processed_count += 1
