@@ -151,13 +151,7 @@ class DesktopAssistantWindow(QWidget):
             # 隐藏立绘
             self.sprite_panel.hide()
             
-            # 保持对话框、选项、数值信息和工具栏可见，并确保它们在最顶层
-            self.dialog_label.show()
-            self.options_widget.show()
-            self.numeric_info_label.show()
-            self.toolbar.show()
-            
-            # 4. 确保对话框等元素在 CG 之上
+            # 确保对话框等元素在 CG 之上
             self.dialog_label.raise_() 
             self.options_widget.raise_()
             self.numeric_info_label.raise_()
