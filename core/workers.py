@@ -494,7 +494,10 @@ class UIWorker(QThread):
                     elif character_name == 'CG':
                         try:
                             cg_path = audio_path
-                            self.update_cg.emit(cg_path)
+                            if 'no person' in speech:
+                                self.update_bg(audio_path)
+                            else:
+                                self.update_cg.emit(cg_path)
                         except Exception as e:
                             print(f"更新CG失败：{e}")
                             traceback.print_exc()

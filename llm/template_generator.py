@@ -81,7 +81,10 @@ class TemplateGenerator:
     "数值显示：数值元素表示当前用户状态或者角色状态数值，或者当前任务，该元素要求出现在dialog数组的前部，当 character_name 为 数值 时，speech 内使用富文本格式（如 <span style='color:xxxx;'>HP：100</span>）。颜色应选择浅色系，符合马卡龙配色。多个数值用 <br> 分隔。",
 ]       
         if use_cg:
-            REQUIREMENTS.append("CG 生成：在剧情关键节点或情感高潮时，将character_name 设置为CG，speech 内容必须是用于 Stable Diffusion 生成图片的 Prompt，必须在开头加入 highres, masterpiece, 8k, bestscores 等高质量关键字，描述人数，例如1girl，并写出人物名称，例如nanami chiaki、人物发型发色，以及眼睛颜色、服装、表情、动作和环境。可以加入和viewer的互动，例如looking at the viewer")       
+            REQUIREMENTS.append("CG 生成：在要表现角色魅力、剧情关键节点或情感高潮时，将character_name 设置为CG，speech 内容必须是用于 Stable Diffusion " \
+            "生成图片的 Prompt，必须在开头加入 highres, masterpiece, 8k, bestscores 等高质量关键字，描述人数，例如1girl，并写出人物名称，例如nanami chiaki、" \
+            "人物发型发色，以及眼睛颜色、服装、表情、动作和场景。可以加入和viewer的互动，例如looking at the viewer"
+            "如果要用CG生成背景图片，请先加入质量关键词，再加入no person, pure senery, 再详细描述景物，景色。")                 
         if use_llm_translation:
             REQUIREMENTS.append("翻译字段：translate字段必须为角色台词 speech 的日文翻译，请将角色的台词翻译为日文，而不要将角色的动作翻译出来")
         if use_effect:
