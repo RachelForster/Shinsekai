@@ -100,9 +100,9 @@ class CrossFadeSprite(QWidget):
         """
         加载新立绘并开始交叉渐变动画。
         """
-        if self.is_animating:
-            print("正在进行动画，忽略本次切换。")
-            return 0, 0
+        # if self.is_animating:
+        #     print("正在进行动画，忽略本次切换。")
+        #     return 0, 0
             
         scaled_pixmap = self._get_scaled_pixmap(image, character_rate)
         if scaled_pixmap.isNull():

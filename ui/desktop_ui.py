@@ -57,8 +57,7 @@ class DesktopAssistantWindow(QWidget):
         self.original_width = screen_geometry.width() // 4 * 3 if background_mode else self.original_height
         self.current_background_path = None 
 
-        self.config = self._read_config()
-        self.base_font_size_px = self.config.get('base_font_size_px', 48)
+        self.base_font_size_px = config_manager.config.system_config.base_font_size_px
 
         # 设置字体大小
         base_dpi = 150.0
@@ -287,8 +286,8 @@ class DesktopAssistantWindow(QWidget):
                 self.base_font_size_px = new_size
                 
                 # 1. 更新配置并写入文件
-                self.config['base_font_size_px'] = new_size
-                self._write_config() # 写入 YAML 文件
+                config_manager.config.system_config.base_font_size_px = new_size
+                config_manager.save_system_config()
                 
                 # 2. 动态更新所有UI的字体样式
                 self.apply_font_styles()
@@ -871,34 +870,6 @@ class DesktopAssistantWindow(QWidget):
             self.display_thread.wait()
         super().closeEvent(event)
         self.close_window.emit()
-    
-    def _read_config(self):
-        """读取配置文件，如果不存在则返回默认配置"""
-        default_config = {
-            'base_font_size_px': 48, # 默认基础字体大小
-            'voice_language': 'ja'
-        }
-        if os.path.exists(self.CONFIG_FILE):
-            try:
-                # In a real implementation, you'd use 'yaml.safe_load'
-                # For this example, we assume it's read correctly or return default
-                with open(self.CONFIG_FILE, 'r', encoding='utf-8') as f:
-                   return yaml.safe_load(f)
-                print("NOTE: YAML read function is a placeholder.")
-                return default_config # Placeholder implementation
-            except Exception as e:
-                print(f"Error reading config file: {e}. Using default settings.")
-                return default_config
-        return default_config
-
-    def _write_config(self):
-        """将当前配置写入YAML文件"""
-        try:
-            # In a real implementation, you'd use 'yaml.dump'
-            with open(self.CONFIG_FILE, 'w', encoding='utf-8') as f:
-                yaml.dump(self.config, f, default_flow_style=False, allow_unicode=True)
-        except Exception as e:
-            print(f"Error writing config file: {e}")
 
 def start_qt_app(display_queue, emotion_queue, deepseek):
     """启动PyQt应用"""

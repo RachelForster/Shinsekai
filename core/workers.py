@@ -376,7 +376,8 @@ class UIWorker(QThread):
                 pygame.mixer.music.stop()
             pygame.mixer.music.unload() 
             pygame.mixer.music.load(new_bgm_path)
-            pygame.mixer.music.set_volume(0.3)
+            volumn = config_manager.config.system_config.music_volumn/100
+            pygame.mixer.music.set_volume(volumn)
             pygame.mixer.music.play(-1)
             self.current_bgm_path = new_bgm_path
         except pygame.error as e:
@@ -388,16 +389,19 @@ class UIWorker(QThread):
 
     def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False):
         """解析特效"""
-        match effect:
-            case 'LEAVE':
-                if after_dialog:
-                    self.remove_character_sprite(args.get('character_name'))
-            case _:
-                if not after_dialog:
-                    sound_effect_path = SOUND_EFFECTS_PATH.get(effect.upper(), None)
-                    if sound_effect_path:
-                        self.play_sound_effect(sound_effect_path)
-        
+        try:
+            match effect:
+                case 'LEAVE':
+                    if after_dialog:
+                        self.remove_character_sprite(args.get('character_name'))
+                case _:
+                    if not after_dialog:
+                        sound_effect_path = SOUND_EFFECTS_PATH.get(effect.upper(), None)
+                        if sound_effect_path:
+                            self.play_sound_effect(sound_effect_path)
+        except Exception as e:
+            print("播放特效失败",e)
+            
     def play_sound_effect(self, sound_effect_path: str):
         """播放音效"""
         if not Path(sound_effect_path).exists():
