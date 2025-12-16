@@ -113,15 +113,14 @@ class GPTSoVitsAdapter(TTSAdapter):
         sovits_model_path = model_info.get('sovits_model_path', '')
         
         if self.sovits_model_path == sovits_model_path and self.gpt_model_path == gpt_model_path:
+            print("No model switch needed, current models are already set.")
             return
-
-        self.sovits_model_path = sovits_model_path
-        self.gpt_model_path = gpt_model_path
         
         try:
             if gpt_model_path and gpt_model_path.endswith(".ckpt"):
                 response = requests.get(self.tts_server_url + "set_gpt_weights", params={"weights_path": gpt_model_path})
                 response.raise_for_status()
+                self.gpt_model_path = gpt_model_path
                 print(f"gpt model switched successfully: {gpt_model_path}")
         except Exception as e:
             print(f"Failed to switch gpt model: {e}")
@@ -130,6 +129,7 @@ class GPTSoVitsAdapter(TTSAdapter):
             if sovits_model_path and sovits_model_path.endswith(".pth"):
                 response = requests.get(self.tts_server_url + "set_sovits_weights", params={"weights_path": sovits_model_path})
                 response.raise_for_status()
+                self.sovits_model_path = sovits_model_path
                 print(f"sovits model switched successfully: {sovits_model_path}")
         except Exception as e:
             print(f"Failed to switch sovits model: {e}")

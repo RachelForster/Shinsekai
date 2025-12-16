@@ -1,0 +1,92 @@
+2025-12-16 22:18:50.335 - RealTimeSTT: realtimestt - INFO - Starting RealTimeSTT
+2025-12-16 22:18:50.340 - RealTimeSTT: realtimestt - INFO - Initializing audio recording (creating pyAudio input stream, sample rate: 16000 buffer size: 512
+2025-12-16 22:18:50.343 - RealTimeSTT: realtimestt - INFO - Initializing WebRTC voice with Sensitivity 3
+2025-12-16 22:18:50.343 - RealTimeSTT: realtimestt - DEBUG - WebRTC VAD voice activity detection engine initialized successfully
+2025-12-16 22:18:56.798 - RealTimeSTT: realtimestt - ERROR - Error initializing Silero VAD voice activity detection engine: 'Authorization'
+Traceback (most recent call last):
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 204, in _validate_not_a_forked_repo
+    response = json.loads(_read_url(Request(url, headers=headers)))
+                          ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 185, in _read_url
+    with urlopen(url) as r:
+         ~~~~~~~^^^^^
+  File "urllib\request.py", line 189, in urlopen
+  File "urllib\request.py", line 495, in open
+  File "urllib\request.py", line 604, in http_response
+  File "urllib\request.py", line 533, in error
+  File "urllib\request.py", line 466, in _call_chain
+  File "urllib\request.py", line 613, in http_error_default
+urllib.error.HTTPError: HTTP Error 403: rate limit exceeded
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\RealtimeSTT\audio_recorder.py", line 922, in __init__
+    self.silero_vad_model, _ = torch.hub.load(
+                               ~~~~~~~~~~~~~~^
+        repo_or_dir="snakers4/silero-vad",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        onnx=silero_use_onnx
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 643, in load
+    repo_or_dir = _get_cache_or_reload(
+        repo_or_dir,
+    ...<4 lines>...
+        skip_validation=skip_validation,
+    )
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 263, in _get_cache_or_reload
+    _validate_not_a_forked_repo(repo_owner, repo_name, ref)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 207, in _validate_not_a_forked_repo
+    del headers["Authorization"]
+        ~~~~~~~^^^^^^^^^^^^^^^^^
+KeyError: 'Authorization'
+2025-12-16 22:21:54.830 - RealTimeSTT: realtimestt - INFO - Starting RealTimeSTT
+2025-12-16 22:21:54.835 - RealTimeSTT: realtimestt - INFO - Initializing audio recording (creating pyAudio input stream, sample rate: 16000 buffer size: 512
+2025-12-16 22:21:54.837 - RealTimeSTT: realtimestt - INFO - Initializing WebRTC voice with Sensitivity 3
+2025-12-16 22:21:54.837 - RealTimeSTT: realtimestt - DEBUG - WebRTC VAD voice activity detection engine initialized successfully
+2025-12-16 22:22:01.951 - RealTimeSTT: realtimestt - ERROR - Error initializing Silero VAD voice activity detection engine: 'Authorization'
+Traceback (most recent call last):
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 204, in _validate_not_a_forked_repo
+    response = json.loads(_read_url(Request(url, headers=headers)))
+                          ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 185, in _read_url
+    with urlopen(url) as r:
+         ~~~~~~~^^^^^
+  File "urllib\request.py", line 189, in urlopen
+  File "urllib\request.py", line 495, in open
+  File "urllib\request.py", line 604, in http_response
+  File "urllib\request.py", line 533, in error
+  File "urllib\request.py", line 466, in _call_chain
+  File "urllib\request.py", line 613, in http_error_default
+urllib.error.HTTPError: HTTP Error 403: rate limit exceeded
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\RealtimeSTT\audio_recorder.py", line 922, in __init__
+    self.silero_vad_model, _ = torch.hub.load(
+                               ~~~~~~~~~~~~~~^
+        repo_or_dir="snakers4/silero-vad",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        onnx=silero_use_onnx
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 643, in load
+    repo_or_dir = _get_cache_or_reload(
+        repo_or_dir,
+    ...<4 lines>...
+        skip_validation=skip_validation,
+    )
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 263, in _get_cache_or_reload
+    _validate_not_a_forked_repo(repo_owner, repo_name, ref)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\AI\customize\EasyAIDesktopAssistant\runtime\Lib\site-packages\torch\hub.py", line 207, in _validate_not_a_forked_repo
+    del headers["Authorization"]
+        ~~~~~~~^^^^^^^^^^^^^^^^^
+KeyError: 'Authorization'

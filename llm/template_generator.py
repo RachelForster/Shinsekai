@@ -27,8 +27,8 @@ class TemplateGenerator:
         "character_name": "角色名",
         "sprite": "str, 对应的立绘ID字符串，例如 01, 02",
         "speech": "该角色说的中文台词",
-        {USE_EFFECT_JSON_STATEMENT if use_effect else None}
-        {USE_TRANSALTION_JSON_STATEMENT if use_llm_translation else None}
+        {USE_EFFECT_JSON_STATEMENT if use_effect else ''}
+        {USE_TRANSALTION_JSON_STATEMENT if use_llm_translation else ''}
         }}
     ]
     }}

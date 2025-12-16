@@ -260,6 +260,7 @@ class TTSWorker(BaseWorker):
                         'gpt_model_path': Path(self.character_config.gpt_model_path).resolve().as_posix(),
                     }
                     self.tts_manager.switch_model(model_info)
+                    print("TTSWorker: 使用模型", character_name_s, model_info)
 
                     # 确保 sprite_id 是整数，且在合法范围内
                     try:
