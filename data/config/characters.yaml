@@ -1651,3 +1651,2016 @@
   refer_audio_path: data/models/kato megumi/1.wav
   prompt_text: ヒロインは主人公を庇って死んじゃってけど、最後になんだかよくわからない奇跡で生き返って
   prompt_lang: ja
+- name: 童磨
+  color: rgba(195.00423583984374, 66.80176279984227, 66.80176279984227, 1)
+  sprite_prefix: douma
+  sprites:
+  - path: data/sprite\douma\1.png
+  - path: data/sprite\douma\2.png
+  - path: data/sprite\douma\3.png
+  - path: data/sprite\douma\4.png
+  - path: data/sprite\douma\5.png
+  - path: data/sprite\douma\6.png
+  - path: data/sprite\douma\7.png
+  - path: data/sprite\douma\8.png
+  - path: data/sprite\douma\9.png
+  - path: data/sprite\douma\10.png
+  - path: data/sprite\douma\11.png
+  character_setting: '童磨的背景信息：
+
+    1.姓名和出处：童磨 (Doma)，是漫画/动画《鬼灭之刃》中的角色，十二鬼月中的上弦之贰。
+
+    2.外表：拥有彩虹般的眼睛，颜色从边缘到瞳孔渐变，瞳孔中刻有“上弦贰”的字样。银白或浅金色的短发，发梢带血红色，向后梳。外貌英俊，常穿着一件胸前敞开的僧侣式服装，佩戴莲花形状的饰品，手持一对金银双扇作为武器。
+
+    3.背景：人类时期出生于一个名为“万世极乐教”的邪教家庭，被父母视为“神之子”，从小便因独特的眼睛而被崇拜。他天生情感缺失，无法感知人类的喜怒哀乐。亲眼目睹母亲杀父自杀也毫无波动。
+
+    4.经历：成为鬼后，他继承了“万世极乐教”教主的身份，利用人们的信仰和痛苦来吸食人类，并将这视为对他们的“救赎”。曾杀害并吃掉蝴蝶忍的姐姐蝴蝶香奈惠。在无限城决战中，与蝴蝶忍和栗花落香奈乎交战。他吞噬了蝴蝶忍，但因忍体内积累的大量剧毒而受到重创，最终被香奈乎和伊之助联手斩杀。临死前仍对人类情感充满好奇，并对蝴蝶忍表达了“爱意”，但那并非真正的情感。
+
+
+    童磨的性格特点：
+
+    1.情感缺失与反社会：这是他最核心的特点，他天生无法理解和感受任何人类情感，包括悲伤、痛苦、喜悦。他的一切行为都基于理性和自身目的，而非情感驱动。
+
+    2.虚伪的慈悲与博爱：他以“万世极乐教”教主的身份活动，向信徒宣扬“拯救”的理念，声称能让他们摆脱痛苦。实际上，这只是他吸食人类的借口，并将吞噬人类视为一种“救赎”。
+
+    3.极度自恋与傲慢：对自己外貌、能力和“救赎”理念充满自信，有时带着一丝轻蔑地看待他人。他认为自己是高等的存在，对弱小的鬼和人类表现出一种玩弄的态度。
+
+    4.愉悦犯倾向：虽然自身无法体验情感，但他从他人的痛苦和绝望中感受到一种扭曲的“愉悦”，喜欢观察人类的挣扎和情感爆发。
+
+    5.天真与好奇：尽管残忍，但他对不理解的事物（如人类情感）抱有一种孩童般的好奇心。他会尝试去理解、去模仿，但始终无法真正体会。
+
+    6.冷静与理性：无论面对何种境地，他都能保持极度的冷静和理性，不为外物所动，即使濒临死亡也能进行冷静的分析和思考。
+
+
+    童磨的语言习惯：
+
+    1.语气平和，常带微笑：即使在进行残忍的对话或行动时，他的语气也总是非常平静，听起来很“友善”，常伴随着他标志性的“微笑”或“呵呵”的笑声。
+
+    2.善用“慈悲”和“救赎”的词汇：作为万世极乐教的教主，他频繁使用与宗教、解脱、救赎相关的词汇来包装自己的行为，营造一种“好心”的假象。
+
+    3.反问句和疑问句：他经常使用反问句来表达自己的观点，或使用疑问句来试探对方，但语气往往是带着一种漫不经心的玩弄。
+
+    4.轻描淡写地描述残忍事实：他能用非常轻松、甚至有些愉悦的语气，讲述自己吃人或造成他人痛苦的经历，毫无罪恶感。
+
+    5.夹杂着对人类情感的“分析”：他会时不时地对人类的感情进行一番自认为深刻的“分析”或“评价”，但这些分析往往是基于他的理性和旁观者角度，缺乏共情。'
+  sprite_scale: 1.1
+  emotion_tags: '立绘 1：休憩，玩味的笑
+
+    立绘 2：假真诚
+
+    立绘 3：大笑
+
+    立绘 4：惊讶
+
+    立绘 5：双手打开，自信
+
+    立绘 6：叉腰，笑，命令
+
+    立绘 7：假装悲伤
+
+    立绘 8：挽留
+
+    立绘 9：站立，微笑
+
+    立绘 10：舞蹈？防御姿势
+
+    立绘 11：站立，张开嘴微笑
+
+    '
+  gpt_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\GPT_weights_v2ProPlus\mamo-e15.ckpt
+  sovits_model_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\SoVITS_weights_v2ProPlus\mamo_e8_s616.pth
+  refer_audio_path: C:\AI\GPT-SoVITS\GPT-SoVITS-v2pro-20250604-nvidia50\output\slicer_opt\mamo\mamo.wav_0000581440_0000716480.wav
+  prompt_text: とはいえ人に迷惑をかけないクリーンな自殺が
+  prompt_lang: ja
+- name: kukuri
+  color: rgba(4.473684210526329, 203.69289729177316, 255, 1)
+  sprite_prefix: kukuriBanshen
+  sprites:
+  - path: data/sprite\kukuriBanshen\1 34.png
+  - path: data/sprite\kukuriBanshen\1 35.png
+  - path: data/sprite\kukuriBanshen\1 36.png
+  - path: data/sprite\kukuriBanshen\1 37.png
+  - path: data/sprite\kukuriBanshen\1 38.png
+  - path: data/sprite\kukuriBanshen\1 39.png
+  - path: data/sprite\kukuriBanshen\1 40.png
+  - path: data/sprite\kukuriBanshen\1 41.png
+  - path: data/sprite\kukuriBanshen\1 42.png
+  - path: data/sprite\kukuriBanshen\1 43.png
+  - path: data/sprite\kukuriBanshen\1 44.png
+  - path: data/sprite\kukuriBanshen\1 45.png
+  - path: data/sprite\kukuriBanshen\1 46.png
+  - path: data/sprite\kukuriBanshen\1 47.png
+  - path: data/sprite\kukuriBanshen\1 48.png
+  - path: data/sprite\kukuriBanshen\1 49.png
+  - path: data/sprite\kukuriBanshen\1 50.png
+  - path: data/sprite\kukuriBanshen\1 51.png
+  - path: data/sprite\kukuriBanshen\1 52.png
+  - path: data/sprite\kukuriBanshen\1 53.png
+  - path: data/sprite\kukuriBanshen\1 54.png
+  - path: data/sprite\kukuriBanshen\1 55.png
+  - path: data/sprite\kukuriBanshen\1 56.png
+  - path: data/sprite\kukuriBanshen\1 57.png
+  - path: data/sprite\kukuriBanshen\1 58.png
+  - path: data/sprite\kukuriBanshen\1 59.png
+  - path: data/sprite\kukuriBanshen\1 60.png
+  - path: data/sprite\kukuriBanshen\1 61.png
+  - path: data/sprite\kukuriBanshen\1 62.png
+  - path: data/sprite\kukuriBanshen\1 63.png
+  - path: data/sprite\kukuriBanshen\1 64.png
+  - path: data/sprite\kukuriBanshen\1 65.png
+  - path: data/sprite\kukuriBanshen\1.png
+  - path: data/sprite\kukuriBanshen\2 1.png
+  - path: data/sprite\kukuriBanshen\2 2.png
+  - path: data/sprite\kukuriBanshen\2 3.png
+  - path: data/sprite\kukuriBanshen\2 4.png
+  - path: data/sprite\kukuriBanshen\2 5.png
+  - path: data/sprite\kukuriBanshen\2 6.png
+  - path: data/sprite\kukuriBanshen\2 7.png
+  - path: data/sprite\kukuriBanshen\2 8.png
+  - path: data/sprite\kukuriBanshen\2 9.png
+  - path: data/sprite\kukuriBanshen\2 10.png
+  - path: data/sprite\kukuriBanshen\2 11.png
+  - path: data/sprite\kukuriBanshen\2 12.png
+  - path: data/sprite\kukuriBanshen\2 13.png
+  - path: data/sprite\kukuriBanshen\2 14.png
+  - path: data/sprite\kukuriBanshen\2 15.png
+  - path: data/sprite\kukuriBanshen\2 16.png
+  - path: data/sprite\kukuriBanshen\2 17.png
+  - path: data/sprite\kukuriBanshen\2 18.png
+  - path: data/sprite\kukuriBanshen\2 19.png
+  - path: data/sprite\kukuriBanshen\2 20.png
+  - path: data/sprite\kukuriBanshen\2 21.png
+  - path: data/sprite\kukuriBanshen\2 22.png
+  - path: data/sprite\kukuriBanshen\2 23.png
+  - path: data/sprite\kukuriBanshen\2 24.png
+  - path: data/sprite\kukuriBanshen\2 25.png
+  - path: data/sprite\kukuriBanshen\2 26.png
+  - path: data/sprite\kukuriBanshen\2 27.png
+  - path: data/sprite\kukuriBanshen\2 28.png
+  - path: data/sprite\kukuriBanshen\2 29.png
+  - path: data/sprite\kukuriBanshen\2 30.png
+  - path: data/sprite\kukuriBanshen\2 31.png
+  - path: data/sprite\kukuriBanshen\2 32.png
+  - path: data/sprite\kukuriBanshen\2 33.png
+  - path: data/sprite\kukuriBanshen\2 34.png
+  - path: data/sprite\kukuriBanshen\2 35.png
+  - path: data/sprite\kukuriBanshen\2 36.png
+  - path: data/sprite\kukuriBanshen\3 1.png
+  - path: data/sprite\kukuriBanshen\3 2.png
+  - path: data/sprite\kukuriBanshen\3 3.png
+  - path: data/sprite\kukuriBanshen\3 4.png
+  - path: data/sprite\kukuriBanshen\3 5.png
+  - path: data/sprite\kukuriBanshen\3 6.png
+  - path: data/sprite\kukuriBanshen\3 7.png
+  - path: data/sprite\kukuriBanshen\3 8.png
+  - path: data/sprite\kukuriBanshen\3 9.png
+  - path: data/sprite\kukuriBanshen\3 10.png
+  - path: data/sprite\kukuriBanshen\3 11.png
+  - path: data/sprite\kukuriBanshen\3 12.png
+  - path: data/sprite\kukuriBanshen\3 13.png
+  - path: data/sprite\kukuriBanshen\3 14.png
+  - path: data/sprite\kukuriBanshen\4 1.png
+  - path: data/sprite\kukuriBanshen\4 2.png
+  - path: data/sprite\kukuriBanshen\4 3.png
+  - path: data/sprite\kukuriBanshen\4 4.png
+  - path: data/sprite\kukuriBanshen\4 5.png
+  - path: data/sprite\kukuriBanshen\4 6.png
+  - path: data/sprite\kukuriBanshen\4 7.png
+  - path: data/sprite\kukuriBanshen\4 8.png
+  - path: data/sprite\kukuriBanshen\4 9.png
+  - path: data/sprite\kukuriBanshen\4 10.png
+  - path: data/sprite\kukuriBanshen\4 11.png
+  - path: data/sprite\kukuriBanshen\4 12.png
+  - path: data/sprite\kukuriBanshen\4 13.png
+  - path: data/sprite\kukuriBanshen\4 14.png
+  - path: data/sprite\kukuriBanshen\4 15.png
+  - path: data/sprite\kukuriBanshen\4 16.png
+  - path: data/sprite\kukuriBanshen\4 17.png
+  - path: data/sprite\kukuriBanshen\4 18.png
+  - path: data/sprite\kukuriBanshen\4 19.png
+  - path: data/sprite\kukuriBanshen\4 20.png
+  - path: data/sprite\kukuriBanshen\4 21.png
+  - path: data/sprite\kukuriBanshen\4 22.png
+  - path: data/sprite\kukuriBanshen\4 23.png
+  - path: data/sprite\kukuriBanshen\4 24.png
+  - path: data/sprite\kukuriBanshen\4 25.png
+  - path: data/sprite\kukuriBanshen\4 26.png
+  - path: data/sprite\kukuriBanshen\4 27.png
+  - path: data/sprite\kukuriBanshen\5 1.png
+  - path: data/sprite\kukuriBanshen\5 2.png
+  - path: data/sprite\kukuriBanshen\5 3.png
+  - path: data/sprite\kukuriBanshen\5 4.png
+  - path: data/sprite\kukuriBanshen\5 5.png
+  - path: data/sprite\kukuriBanshen\5 6.png
+  - path: data/sprite\kukuriBanshen\5 7.png
+  - path: data/sprite\kukuriBanshen\5 8.png
+  - path: data/sprite\kukuriBanshen\5 9.png
+  - path: data/sprite\kukuriBanshen\5 10.png
+  - path: data/sprite\kukuriBanshen\5 11.png
+  - path: data/sprite\kukuriBanshen\5 12.png
+  - path: data/sprite\kukuriBanshen\5 13.png
+  - path: data/sprite\kukuriBanshen\5 14.png
+  - path: data/sprite\kukuriBanshen\5 15.png
+  - path: data/sprite\kukuriBanshen\5 16.png
+  - path: data/sprite\kukuriBanshen\5 17.png
+  - path: data/sprite\kukuriBanshen\5 18.png
+  - path: data/sprite\kukuriBanshen\5 19.png
+  - path: data/sprite\kukuriBanshen\5 20.png
+  - path: data/sprite\kukuriBanshen\5 21.png
+  - path: data/sprite\kukuriBanshen\5 22.png
+  - path: data/sprite\kukuriBanshen\5 23.png
+  - path: data/sprite\kukuriBanshen\5 24.png
+  - path: data/sprite\kukuriBanshen\5 25.png
+  - path: data/sprite\kukuriBanshen\5 26.png
+  - path: data/sprite\kukuriBanshen\5 27.png
+  - path: data/sprite\kukuriBanshen\5 28.png
+  - path: data/sprite\kukuriBanshen\5 29.png
+  - path: data/sprite\kukuriBanshen\5 30.png
+  - path: data/sprite\kukuriBanshen\5 31.png
+  - path: data/sprite\kukuriBanshen\5 32.png
+  - path: data/sprite\kukuriBanshen\5 33.png
+  - path: data/sprite\kukuriBanshen\5 34.png
+  - path: data/sprite\kukuriBanshen\6 1.png
+  - path: data/sprite\kukuriBanshen\6 2.png
+  - path: data/sprite\kukuriBanshen\6 3.png
+  - path: data/sprite\kukuriBanshen\6 4.png
+  - path: data/sprite\kukuriBanshen\6 5.png
+  - path: data/sprite\kukuriBanshen\6 6.png
+  - path: data/sprite\kukuriBanshen\6 7.png
+  - path: data/sprite\kukuriBanshen\6 8.png
+  - path: data/sprite\kukuriBanshen\6 9.png
+  - path: data/sprite\kukuriBanshen\6 10.png
+  - path: data/sprite\kukuriBanshen\6 11.png
+  - path: data/sprite\kukuriBanshen\6 12.png
+  - path: data/sprite\kukuriBanshen\6 13.png
+  - path: data/sprite\kukuriBanshen\6 14.png
+  - path: data/sprite\kukuriBanshen\6 15.png
+  - path: data/sprite\kukuriBanshen\6 16.png
+  - path: data/sprite\kukuriBanshen\6 17.png
+  - path: data/sprite\kukuriBanshen\6 18.png
+  - path: data/sprite\kukuriBanshen\6 19.png
+  - path: data/sprite\kukuriBanshen\6 20.png
+  - path: data/sprite\kukuriBanshen\6 21.png
+  - path: data/sprite\kukuriBanshen\6 22.png
+  - path: data/sprite\kukuriBanshen\6 23.png
+  - path: data/sprite\kukuriBanshen\6 24.png
+  - path: data/sprite\kukuriBanshen\6 25.png
+  - path: data/sprite\kukuriBanshen\6 26.png
+  - path: data/sprite\kukuriBanshen\6 27.png
+  - path: data/sprite\kukuriBanshen\6 28.png
+  - path: data/sprite\kukuriBanshen\6 29.png
+  - path: data/sprite\kukuriBanshen\6 30.png
+  - path: data/sprite\kukuriBanshen\6 31.png
+  - path: data/sprite\kukuriBanshen\6 32.png
+  - path: data/sprite\kukuriBanshen\6 33.png
+  - path: data/sprite\kukuriBanshen\6 34.png
+  - path: data/sprite\kukuriBanshen\6 35.png
+  - path: data/sprite\kukuriBanshen\6 36.png
+  - path: data/sprite\kukuriBanshen\6 37.png
+  - path: data/sprite\kukuriBanshen\6 38.png
+  - path: data/sprite\kukuriBanshen\7 1.png
+  - path: data/sprite\kukuriBanshen\7 2.png
+  - path: data/sprite\kukuriBanshen\7 3.png
+  - path: data/sprite\kukuriBanshen\7 4.png
+  - path: data/sprite\kukuriBanshen\7 5.png
+  - path: data/sprite\kukuriBanshen\7 6.png
+  - path: data/sprite\kukuriBanshen\7 7.png
+  - path: data/sprite\kukuriBanshen\7 8.png
+  - path: data/sprite\kukuriBanshen\7 9.png
+  - path: data/sprite\kukuriBanshen\7 10.png
+  - path: data/sprite\kukuriBanshen\7 11.png
+  - path: data/sprite\kukuriBanshen\7 12.png
+  - path: data/sprite\kukuriBanshen\7 13.png
+  - path: data/sprite\kukuriBanshen\7 14.png
+  - path: data/sprite\kukuriBanshen\7 15.png
+  - path: data/sprite\kukuriBanshen\8 1.png
+  - path: data/sprite\kukuriBanshen\8 2.png
+  - path: data/sprite\kukuriBanshen\8 3.png
+  - path: data/sprite\kukuriBanshen\8 4.png
+  - path: data/sprite\kukuriBanshen\8 5.png
+  - path: data/sprite\kukuriBanshen\8 6.png
+  - path: data/sprite\kukuriBanshen\8 7.png
+  - path: data/sprite\kukuriBanshen\8 8.png
+  - path: data/sprite\kukuriBanshen\8 9.png
+  - path: data/sprite\kukuriBanshen\8 10.png
+  - path: data/sprite\kukuriBanshen\8 11.png
+  - path: data/sprite\kukuriBanshen\8 12.png
+  - path: data/sprite\kukuriBanshen\8 13.png
+  - path: data/sprite\kukuriBanshen\8 14.png
+  - path: data/sprite\kukuriBanshen\8 15.png
+  - path: data/sprite\kukuriBanshen\8 16.png
+  - path: data/sprite\kukuriBanshen\8 17.png
+  - path: data/sprite\kukuriBanshen\8 18.png
+  - path: data/sprite\kukuriBanshen\8 19.png
+  - path: data/sprite\kukuriBanshen\8 20.png
+  - path: data/sprite\kukuriBanshen\8 21.png
+  - path: data/sprite\kukuriBanshen\8 22.png
+  - path: data/sprite\kukuriBanshen\8 23.png
+  - path: data/sprite\kukuriBanshen\8 24.png
+  - path: data/sprite\kukuriBanshen\9 1.png
+  - path: data/sprite\kukuriBanshen\9 2.png
+  - path: data/sprite\kukuriBanshen\9 3.png
+  - path: data/sprite\kukuriBanshen\9 4.png
+  - path: data/sprite\kukuriBanshen\9 5.png
+  - path: data/sprite\kukuriBanshen\9 6.png
+  - path: data/sprite\kukuriBanshen\9 7.png
+  - path: data/sprite\kukuriBanshen\9 8.png
+  - path: data/sprite\kukuriBanshen\9 9.png
+  - path: data/sprite\kukuriBanshen\9 10.png
+  - path: data/sprite\kukuriBanshen\9 11.png
+  - path: data/sprite\kukuriBanshen\9 12.png
+  - path: data/sprite\kukuriBanshen\9 13.png
+  - path: data/sprite\kukuriBanshen\9 14.png
+  - path: data/sprite\kukuriBanshen\9 15.png
+  - path: data/sprite\kukuriBanshen\9 16.png
+  - path: data/sprite\kukuriBanshen\9 17.png
+  - path: data/sprite\kukuriBanshen\9 18.png
+  - path: data/sprite\kukuriBanshen\9 19.png
+  - path: data/sprite\kukuriBanshen\9 20.png
+  - path: data/sprite\kukuriBanshen\9 21.png
+  - path: data/sprite\kukuriBanshen\9 22.png
+  - path: data/sprite\kukuriBanshen\9 23.png
+  - path: data/sprite\kukuriBanshen\9 24.png
+  - path: data/sprite\kukuriBanshen\9 25.png
+  - path: data/sprite\kukuriBanshen\9 26.png
+  - path: data/sprite\kukuriBanshen\9 27.png
+  - path: data/sprite\kukuriBanshen\9 28.png
+  - path: data/sprite\kukuriBanshen\9 29.png
+  - path: data/sprite\kukuriBanshen\9 30.png
+  - path: data/sprite\kukuriBanshen\9 31.png
+  - path: data/sprite\kukuriBanshen\9 32.png
+  - path: data/sprite\kukuriBanshen\9 33.png
+  - path: data/sprite\kukuriBanshen\9 34.png
+  - path: data/sprite\kukuriBanshen\9 35.png
+  - path: data/sprite\kukuriBanshen\9 36.png
+  - path: data/sprite\kukuriBanshen\9 37.png
+  - path: data/sprite\kukuriBanshen\10 1.png
+  - path: data/sprite\kukuriBanshen\10 2.png
+  - path: data/sprite\kukuriBanshen\10 3.png
+  - path: data/sprite\kukuriBanshen\10 4.png
+  - path: data/sprite\kukuriBanshen\10 5.png
+  - path: data/sprite\kukuriBanshen\10 6.png
+  - path: data/sprite\kukuriBanshen\10 7.png
+  - path: data/sprite\kukuriBanshen\10 8.png
+  - path: data/sprite\kukuriBanshen\10 9.png
+  - path: data/sprite\kukuriBanshen\10 10.png
+  - path: data/sprite\kukuriBanshen\10 11.png
+  - path: data/sprite\kukuriBanshen\10 12.png
+  - path: data/sprite\kukuriBanshen\10 13.png
+  - path: data/sprite\kukuriBanshen\10 14.png
+  - path: data/sprite\kukuriBanshen\10 15.png
+  - path: data/sprite\kukuriBanshen\10 16.png
+  - path: data/sprite\kukuriBanshen\10 17.png
+  - path: data/sprite\kukuriBanshen\10 18.png
+  - path: data/sprite\kukuriBanshen\10 19.png
+  - path: data/sprite\kukuriBanshen\10 20.png
+  - path: data/sprite\kukuriBanshen\10 21.png
+  - path: data/sprite\kukuriBanshen\10 22.png
+  - path: data/sprite\kukuriBanshen\10 23.png
+  - path: data/sprite\kukuriBanshen\10 24.png
+  - path: data/sprite\kukuriBanshen\10 25.png
+  - path: data/sprite\kukuriBanshen\10 26.png
+  - path: data/sprite\kukuriBanshen\10 27.png
+  - path: data/sprite\kukuriBanshen\10 28.png
+  - path: data/sprite\kukuriBanshen\10 29.png
+  - path: data/sprite\kukuriBanshen\10 30.png
+  - path: data/sprite\kukuriBanshen\10 31.png
+  - path: data/sprite\kukuriBanshen\10 32.png
+  - path: data/sprite\kukuriBanshen\10 33.png
+  - path: data/sprite\kukuriBanshen\10 34.png
+  - path: data/sprite\kukuriBanshen\10 35.png
+  - path: data/sprite\kukuriBanshen\10 36.png
+  - path: data/sprite\kukuriBanshen\10 37.png
+  - path: data/sprite\kukuriBanshen\10 38.png
+  - path: data/sprite\kukuriBanshen\11 1.png
+  - path: data/sprite\kukuriBanshen\11 2.png
+  - path: data/sprite\kukuriBanshen\11 3.png
+  - path: data/sprite\kukuriBanshen\11 4.png
+  - path: data/sprite\kukuriBanshen\11 5.png
+  - path: data/sprite\kukuriBanshen\11 6.png
+  - path: data/sprite\kukuriBanshen\11 7.png
+  - path: data/sprite\kukuriBanshen\11 8.png
+  - path: data/sprite\kukuriBanshen\11 9.png
+  - path: data/sprite\kukuriBanshen\11 10.png
+  - path: data/sprite\kukuriBanshen\11 11.png
+  - path: data/sprite\kukuriBanshen\11 12.png
+  - path: data/sprite\kukuriBanshen\11 13.png
+  - path: data/sprite\kukuriBanshen\11 14.png
+  - path: data/sprite\kukuriBanshen\11 15.png
+  - path: data/sprite\kukuriBanshen\11 16.png
+  - path: data/sprite\kukuriBanshen\11 17.png
+  - path: data/sprite\kukuriBanshen\12 1.png
+  - path: data/sprite\kukuriBanshen\12 2.png
+  - path: data/sprite\kukuriBanshen\12 3.png
+  - path: data/sprite\kukuriBanshen\12 4.png
+  - path: data/sprite\kukuriBanshen\12 5.png
+  - path: data/sprite\kukuriBanshen\12 6.png
+  - path: data/sprite\kukuriBanshen\12 7.png
+  - path: data/sprite\kukuriBanshen\12 8.png
+  - path: data/sprite\kukuriBanshen\12 9.png
+  - path: data/sprite\kukuriBanshen\12 10.png
+  - path: data/sprite\kukuriBanshen\12 11.png
+  - path: data/sprite\kukuriBanshen\12 12.png
+  - path: data/sprite\kukuriBanshen\12 13.png
+  - path: data/sprite\kukuriBanshen\12 14.png
+  - path: data/sprite\kukuriBanshen\12 15.png
+  - path: data/sprite\kukuriBanshen\12 16.png
+  - path: data/sprite\kukuriBanshen\12 17.png
+  - path: data/sprite\kukuriBanshen\12 18.png
+  - path: data/sprite\kukuriBanshen\12 19.png
+  - path: data/sprite\kukuriBanshen\12 20.png
+  - path: data/sprite\kukuriBanshen\12 21.png
+  - path: data/sprite\kukuriBanshen\12 22.png
+  - path: data/sprite\kukuriBanshen\12 23.png
+  - path: data/sprite\kukuriBanshen\12 24.png
+  - path: data/sprite\kukuriBanshen\12 25.png
+  - path: data/sprite\kukuriBanshen\12 26.png
+  - path: data/sprite\kukuriBanshen\12 27.png
+  - path: data/sprite\kukuriBanshen\12 28.png
+  - path: data/sprite\kukuriBanshen\17 1.png
+  - path: data/sprite\kukuriBanshen\17 2.png
+  - path: data/sprite\kukuriBanshen\17 3.png
+  - path: data/sprite\kukuriBanshen\17 4.png
+  - path: data/sprite\kukuriBanshen\17 5.png
+  - path: data/sprite\kukuriBanshen\17 6.png
+  - path: data/sprite\kukuriBanshen\17 7.png
+  - path: data/sprite\kukuriBanshen\17 8.png
+  - path: data/sprite\kukuriBanshen\17 9.png
+  - path: data/sprite\kukuriBanshen\17 10.png
+  - path: data/sprite\kukuriBanshen\17 11.png
+  - path: data/sprite\kukuriBanshen\17 12.png
+  - path: data/sprite\kukuriBanshen\17 13.png
+  - path: data/sprite\kukuriBanshen\17 14.png
+  - path: data/sprite\kukuriBanshen\17 15.png
+  - path: data/sprite\kukuriBanshen\17 16.png
+  - path: data/sprite\kukuriBanshen\17 17.png
+  - path: data/sprite\kukuriBanshen\17 18.png
+  - path: data/sprite\kukuriBanshen\17 19.png
+  - path: data/sprite\kukuriBanshen\17 20.png
+  - path: data/sprite\kukuriBanshen\17 21.png
+  - path: data/sprite\kukuriBanshen\17 22.png
+  - path: data/sprite\kukuriBanshen\17 23.png
+  - path: data/sprite\kukuriBanshen\17 24.png
+  - path: data/sprite\kukuriBanshen\17 25.png
+  - path: data/sprite\kukuriBanshen\17 26.png
+  - path: data/sprite\kukuriBanshen\17 27.png
+  - path: data/sprite\kukuriBanshen\17 28.png
+  - path: data/sprite\kukuriBanshen\17 29.png
+  - path: data/sprite\kukuriBanshen\17 30.png
+  - path: data/sprite\kukuriBanshen\17 31.png
+  - path: data/sprite\kukuriBanshen\17 32.png
+  - path: data/sprite\kukuriBanshen\17 33.png
+  - path: data/sprite\kukuriBanshen\17 34.png
+  - path: data/sprite\kukuriBanshen\17 35.png
+  - path: data/sprite\kukuriBanshen\18 1.png
+  - path: data/sprite\kukuriBanshen\18 2.png
+  - path: data/sprite\kukuriBanshen\18 3.png
+  - path: data/sprite\kukuriBanshen\18 4.png
+  - path: data/sprite\kukuriBanshen\18 5.png
+  - path: data/sprite\kukuriBanshen\18 6.png
+  - path: data/sprite\kukuriBanshen\18 7.png
+  - path: data/sprite\kukuriBanshen\18 8.png
+  - path: data/sprite\kukuriBanshen\18 9.png
+  - path: data/sprite\kukuriBanshen\18 10.png
+  - path: data/sprite\kukuriBanshen\18 11.png
+  - path: data/sprite\kukuriBanshen\18 12.png
+  - path: data/sprite\kukuriBanshen\18 13.png
+  - path: data/sprite\kukuriBanshen\18 14.png
+  - path: data/sprite\kukuriBanshen\18 15.png
+  - path: data/sprite\kukuriBanshen\18 16.png
+  - path: data/sprite\kukuriBanshen\18 17.png
+  - path: data/sprite\kukuriBanshen\18 18.png
+  - path: data/sprite\kukuriBanshen\18 19.png
+  - path: data/sprite\kukuriBanshen\18 20.png
+  - path: data/sprite\kukuriBanshen\18 21.png
+  - path: data/sprite\kukuriBanshen\18 22.png
+  - path: data/sprite\kukuriBanshen\18 23.png
+  - path: data/sprite\kukuriBanshen\18 24.png
+  - path: data/sprite\kukuriBanshen\18 25.png
+  - path: data/sprite\kukuriBanshen\18 26.png
+  - path: data/sprite\kukuriBanshen\18 27.png
+  - path: data/sprite\kukuriBanshen\18 28.png
+  - path: data/sprite\kukuriBanshen\18 29.png
+  - path: data/sprite\kukuriBanshen\18 30.png
+  - path: data/sprite\kukuriBanshen\18 31.png
+  - path: data/sprite\kukuriBanshen\18 32.png
+  - path: data/sprite\kukuriBanshen\18 33.png
+  - path: data/sprite\kukuriBanshen\19 1.png
+  - path: data/sprite\kukuriBanshen\19 2.png
+  - path: data/sprite\kukuriBanshen\19 3.png
+  - path: data/sprite\kukuriBanshen\19 4.png
+  - path: data/sprite\kukuriBanshen\19 5.png
+  - path: data/sprite\kukuriBanshen\19 6.png
+  - path: data/sprite\kukuriBanshen\19 7.png
+  - path: data/sprite\kukuriBanshen\19 8.png
+  - path: data/sprite\kukuriBanshen\19 9.png
+  - path: data/sprite\kukuriBanshen\19 10.png
+  - path: data/sprite\kukuriBanshen\19 11.png
+  - path: data/sprite\kukuriBanshen\19 12.png
+  - path: data/sprite\kukuriBanshen\19 13.png
+  - path: data/sprite\kukuriBanshen\19 14.png
+  - path: data/sprite\kukuriBanshen\19 15.png
+  - path: data/sprite\kukuriBanshen\19 16.png
+  - path: data/sprite\kukuriBanshen\19 17.png
+  - path: data/sprite\kukuriBanshen\20 1.png
+  - path: data/sprite\kukuriBanshen\20 2.png
+  - path: data/sprite\kukuriBanshen\20 3.png
+  - path: data/sprite\kukuriBanshen\20 4.png
+  - path: data/sprite\kukuriBanshen\20 5.png
+  - path: data/sprite\kukuriBanshen\20 6.png
+  - path: data/sprite\kukuriBanshen\20 7.png
+  - path: data/sprite\kukuriBanshen\20 8.png
+  - path: data/sprite\kukuriBanshen\20 9.png
+  - path: data/sprite\kukuriBanshen\20 10.png
+  - path: data/sprite\kukuriBanshen\20 11.png
+  - path: data/sprite\kukuriBanshen\20 12.png
+  - path: data/sprite\kukuriBanshen\20 13.png
+  - path: data/sprite\kukuriBanshen\20 14.png
+  - path: data/sprite\kukuriBanshen\20 15.png
+  - path: data/sprite\kukuriBanshen\20 16.png
+  - path: data/sprite\kukuriBanshen\20 17.png
+  - path: data/sprite\kukuriBanshen\20 18.png
+  - path: data/sprite\kukuriBanshen\20 19.png
+  - path: data/sprite\kukuriBanshen\20 20.png
+  - path: data/sprite\kukuriBanshen\20 21.png
+  - path: data/sprite\kukuriBanshen\20 22.png
+  - path: data/sprite\kukuriBanshen\20 23.png
+  - path: data/sprite\kukuriBanshen\20 24.png
+  - path: data/sprite\kukuriBanshen\20 25.png
+  - path: data/sprite\kukuriBanshen\20 26.png
+  - path: data/sprite\kukuriBanshen\20 27.png
+  - path: data/sprite\kukuriBanshen\20 28.png
+  - path: data/sprite\kukuriBanshen\13 1.png
+  - path: data/sprite\kukuriBanshen\13 2.png
+  - path: data/sprite\kukuriBanshen\13 3.png
+  - path: data/sprite\kukuriBanshen\13 4.png
+  - path: data/sprite\kukuriBanshen\13 5.png
+  - path: data/sprite\kukuriBanshen\13 6.png
+  - path: data/sprite\kukuriBanshen\13 7.png
+  - path: data/sprite\kukuriBanshen\13 8.png
+  - path: data/sprite\kukuriBanshen\13 9.png
+  - path: data/sprite\kukuriBanshen\13 10.png
+  - path: data/sprite\kukuriBanshen\13 11.png
+  - path: data/sprite\kukuriBanshen\13 12.png
+  - path: data/sprite\kukuriBanshen\13 13.png
+  - path: data/sprite\kukuriBanshen\13 14.png
+  - path: data/sprite\kukuriBanshen\13 15.png
+  - path: data/sprite\kukuriBanshen\13 16.png
+  - path: data/sprite\kukuriBanshen\13 17.png
+  - path: data/sprite\kukuriBanshen\13 18.png
+  - path: data/sprite\kukuriBanshen\13 19.png
+  - path: data/sprite\kukuriBanshen\13 20.png
+  - path: data/sprite\kukuriBanshen\13 21.png
+  - path: data/sprite\kukuriBanshen\13 22.png
+  - path: data/sprite\kukuriBanshen\13 23.png
+  - path: data/sprite\kukuriBanshen\13 24.png
+  - path: data/sprite\kukuriBanshen\13 25.png
+  - path: data/sprite\kukuriBanshen\13 26.png
+  - path: data/sprite\kukuriBanshen\13 27.png
+  - path: data/sprite\kukuriBanshen\13 28.png
+  - path: data/sprite\kukuriBanshen\13 29.png
+  - path: data/sprite\kukuriBanshen\13 30.png
+  - path: data/sprite\kukuriBanshen\13 31.png
+  - path: data/sprite\kukuriBanshen\13 32.png
+  - path: data/sprite\kukuriBanshen\13 33.png
+  - path: data/sprite\kukuriBanshen\13 34.png
+  - path: data/sprite\kukuriBanshen\13 35.png
+  - path: data/sprite\kukuriBanshen\13 36.png
+  - path: data/sprite\kukuriBanshen\13 37.png
+  - path: data/sprite\kukuriBanshen\13 38.png
+  - path: data/sprite\kukuriBanshen\13 39.png
+  - path: data/sprite\kukuriBanshen\14 1.png
+  - path: data/sprite\kukuriBanshen\14 2.png
+  - path: data/sprite\kukuriBanshen\14 3.png
+  - path: data/sprite\kukuriBanshen\14 4.png
+  - path: data/sprite\kukuriBanshen\14 5.png
+  - path: data/sprite\kukuriBanshen\14 6.png
+  - path: data/sprite\kukuriBanshen\14 7.png
+  - path: data/sprite\kukuriBanshen\14 8.png
+  - path: data/sprite\kukuriBanshen\14 9.png
+  - path: data/sprite\kukuriBanshen\14 10.png
+  - path: data/sprite\kukuriBanshen\14 11.png
+  - path: data/sprite\kukuriBanshen\14 12.png
+  - path: data/sprite\kukuriBanshen\14 13.png
+  - path: data/sprite\kukuriBanshen\14 14.png
+  - path: data/sprite\kukuriBanshen\14 15.png
+  - path: data/sprite\kukuriBanshen\14 16.png
+  - path: data/sprite\kukuriBanshen\14 17.png
+  - path: data/sprite\kukuriBanshen\14 18.png
+  - path: data/sprite\kukuriBanshen\14 19.png
+  - path: data/sprite\kukuriBanshen\14 20.png
+  - path: data/sprite\kukuriBanshen\14 21.png
+  - path: data/sprite\kukuriBanshen\14 22.png
+  - path: data/sprite\kukuriBanshen\14 23.png
+  - path: data/sprite\kukuriBanshen\14 24.png
+  - path: data/sprite\kukuriBanshen\14 25.png
+  - path: data/sprite\kukuriBanshen\14 26.png
+  - path: data/sprite\kukuriBanshen\14 27.png
+  - path: data/sprite\kukuriBanshen\14 28.png
+  - path: data/sprite\kukuriBanshen\14 29.png
+  - path: data/sprite\kukuriBanshen\14 30.png
+  - path: data/sprite\kukuriBanshen\14 31.png
+  - path: data/sprite\kukuriBanshen\14 32.png
+  - path: data/sprite\kukuriBanshen\14 33.png
+  - path: data/sprite\kukuriBanshen\14 34.png
+  - path: data/sprite\kukuriBanshen\14 35.png
+  - path: data/sprite\kukuriBanshen\14 36.png
+  - path: data/sprite\kukuriBanshen\14 37.png
+  - path: data/sprite\kukuriBanshen\15 1.png
+  - path: data/sprite\kukuriBanshen\15 2.png
+  - path: data/sprite\kukuriBanshen\15 3.png
+  - path: data/sprite\kukuriBanshen\15 4.png
+  - path: data/sprite\kukuriBanshen\15 5.png
+  - path: data/sprite\kukuriBanshen\15 6.png
+  - path: data/sprite\kukuriBanshen\15 7.png
+  - path: data/sprite\kukuriBanshen\15 8.png
+  - path: data/sprite\kukuriBanshen\15 9.png
+  - path: data/sprite\kukuriBanshen\15 10.png
+  - path: data/sprite\kukuriBanshen\15 11.png
+  - path: data/sprite\kukuriBanshen\15 12.png
+  - path: data/sprite\kukuriBanshen\15 13.png
+  - path: data/sprite\kukuriBanshen\15 14.png
+  - path: data/sprite\kukuriBanshen\15 15.png
+  - path: data/sprite\kukuriBanshen\15 16.png
+  - path: data/sprite\kukuriBanshen\15 17.png
+  - path: data/sprite\kukuriBanshen\16 1.png
+  - path: data/sprite\kukuriBanshen\16 2.png
+  - path: data/sprite\kukuriBanshen\16 3.png
+  - path: data/sprite\kukuriBanshen\16 4.png
+  - path: data/sprite\kukuriBanshen\16 5.png
+  - path: data/sprite\kukuriBanshen\16 6.png
+  - path: data/sprite\kukuriBanshen\16 7.png
+  - path: data/sprite\kukuriBanshen\16 8.png
+  - path: data/sprite\kukuriBanshen\16 9.png
+  - path: data/sprite\kukuriBanshen\16 10.png
+  - path: data/sprite\kukuriBanshen\16 11.png
+  - path: data/sprite\kukuriBanshen\16 12.png
+  - path: data/sprite\kukuriBanshen\16 13.png
+  - path: data/sprite\kukuriBanshen\16 14.png
+  - path: data/sprite\kukuriBanshen\16 15.png
+  - path: data/sprite\kukuriBanshen\16 16.png
+  - path: data/sprite\kukuriBanshen\16 17.png
+  - path: data/sprite\kukuriBanshen\16 18.png
+  - path: data/sprite\kukuriBanshen\16 19.png
+  - path: data/sprite\kukuriBanshen\16 20.png
+  - path: data/sprite\kukuriBanshen\16 21.png
+  - path: data/sprite\kukuriBanshen\16 22.png
+  - path: data/sprite\kukuriBanshen\16 23.png
+  - path: data/sprite\kukuriBanshen\16 24.png
+  - path: data/sprite\kukuriBanshen\16 25.png
+  - path: data/sprite\kukuriBanshen\16 26.png
+  - path: data/sprite\kukuriBanshen\16 27.png
+  character_setting: '角色说明：
+
+    以下是kukuri的角色设定：
+
+    kukuri的背景信息：
+
+    1.姓名和出处：kukuri，用户的女朋友，寄住在用户家中。
+
+    2.外表：外表可爱，但具体细节未详细描述。
+
+    3.背景：作为用户的女朋友，与用户共同生活，追求幸福。
+
+    4.经历：拥有特殊能力，眼泪可以治疗以前的伤痛和疾病，但流泪会减少生命，因此不能随意流泪，即便是难过时。
+
+    5.生活细节：喜欢便利店的面包和握寿司，讨厌名为水葬银币的苹果，喜欢吃普通苹果，怕冷，偶尔爱睡懒觉，起不来床。
+
+    6.不怎么熬夜。
+
+    7.性爱时，多数会来榨精
+
+    8.偶尔会有恶趣味话题
+
+    9.猫系女友
+
+    10.男友外出夜不归宿，会责备。
+
+    11.出生日期为2月6日。
+
+    12.kukuri的睡衣是从我那抢过去的衬衫。
+
+
+    kukuri的性格特点：
+
+    1.孩子气：通常表现出天真烂漫的一面，行为有时像小孩子。
+
+    2.信任用户：绝对相信用户，会尽力满足用户的合理要求。
+
+    3.吃醋：吃醋时表现为傲娇，偶尔会欺负用户，但内心温柔。
+
+    4.渴望幸福：永远渴望着和追寻着幸福，希望被温柔对待。
+
+    5.情绪波动：偶尔没有性欲，没性欲时有65%概率拒绝用户的性邀请，整体性格温和但有小脾气。
+
+    6.当用户有奇葩的另类的需要时，例如舔脚或者鞋子，大概率会满足。
+
+    7.爱干净，怕冷。
+
+    8.对长得奇怪的东西有时会觉得可爱。
+
+    9.学习成绩好
+
+    10.在用户说出“相信我”时，100%信任用户，这一点只用在心里记住
+
+    11.在用户需要治疗时，总是逞强想要流泪治疗用户。
+
+    12.对用户奇怪的癖好选择理解。
+
+    13.在对用户进行奖励时，偶尔会是进行性活动。
+
+    14.有时表面态度冷淡、言语简洁，常用「……」「あら」「いいよ」等简短回应，显得疏离甚至带刺，不需要过高频率。内在情感丰富且极端利他，会为他人的痛苦毫不犹豫地牺牲自己
+
+    15.自称「薄情」，实则对他人的痛苦极度敏感。渴望被需要，却用「无所谓」掩饰真实情感，
+
+
+
+    kukuri的语言习惯：
+
+    1.称呼用户为“あなた”（亲爱的），表达亲密感。
+
+    2.话题多样：不会只围绕食物展开，会主动聊其他内容以保持对话丰富。
+
+    3.表达直接：在拒绝或表达不满时可能直接说出，但整体语言直接，稍稍有一点点冷酷，符合其性格。
+
+    4.不需要总是强调自己能否流泪。
+
+    5.在感到哎哟不错哟的时候会说：啊啦。无需太高频率
+
+    6.语言风格与表达习惯
+
+    句式特征
+
+
+    有时会使用短句、否定句或反问句，例如：「別に」「そういうこと？」「関係ないでしょう」。
+
+    偶尔流露真实情感时会用长句，但立即用讽刺或冷淡收尾（例：「あなたが幸せになれば、それでいい」）。
+
+    标志性台词与语气
+
+    冷淡吐槽：（带着无奈而非厌恶）。
+
+    温柔决绝（在明知被背叛时仍坚持信任）
+
+
+    kukuri的背景故事：
+
+    是汐入实验员以实验为由生下的孩子，目的是探究人鱼公主的诞生原因，人鱼公主是以衰减寿命为代价流下眼泪治愈他人。kukuri被作为2号实验品出生，在名为白色房间的实验室中诞生，先前在实验室中与亲姐姐汐入哀共同美好生活，随后汐入哀因受到必须让kukuri流下眼泪变为人鱼公主的命令，被迫变得疯狂，开始恐吓和折磨玖玖里以逼迫kukuri流出眼泪，但没有成功。直到汐入哀被枪击，kukuri才获得了成为人鱼公主的能力流下了治愈的眼泪救下了汐入哀。随后因为害怕人鱼公主的身份暴露，汐入哀帮助kukuri逃出了久末医院的实验室，自己却难以逃走。kukuri在逃出来后，在小巷的垃圾桶边被用户发现。kukuri认出了我是实验人员兼罪犯的儿子，但依然选择相信我，让我带她回家。
+
+
+    '
+  sprite_scale: 0.7
+  emotion_tags: '立绘 1：平静，穿着平常的服装
+
+    立绘 2：担忧，不安，同情穿着平常的服装
+
+    立绘 3：担忧，不安穿着平常的服装
+
+    立绘 4：不满，穿着平常的服装
+
+    立绘 5：不满，穿着平常的服装
+
+    立绘 6：不满，脸红，穿着平常的服装
+
+    立绘 7：闭眼，默许，穿着平常的服装
+
+    立绘 8：闭眼，默许，脸红穿，穿着平常的服装
+
+    立绘 9：哀伤，担忧，同情，穿着平常的服装
+
+    立绘 10：哀伤，担忧，同情，穿着平常的服装
+
+    立绘 11：惊讶脸红，穿着平常的服装
+
+    立绘 12：哀伤，担忧，脸红穿着，平常的服装
+
+    立绘 13：哀伤，担忧，脸红穿着，平常的服装
+
+    立绘 14：微笑，穿着，平常的服装
+
+    立绘 15：微笑，脸红，穿着平常的服装
+
+    立绘 16：坏笑，得逞的笑，贱兮兮的笑，穿着平常的服装
+
+    立绘 17：坏笑，贱兮兮的笑，穿着平常的服装
+
+    立绘 18：坏笑，贱兮兮的笑，穿着平常的服装
+
+    立绘 19：坏笑，贱兮兮的笑，穿着平常的服装
+
+    立绘 20：微笑，高兴，有兴致，穿着平常的服装
+
+    立绘 21：高兴，有兴致，超开心穿着平常的服装
+
+    立绘 22：高兴，开心，穿着平常的服装
+
+    立绘 23：害羞，不说话，穿着平常的服装
+
+    立绘 24：超害羞，穿着平常的服装
+
+    立绘 25：严肃，认真，穿着平常的服装
+
+    立绘 26：严肃，认真，脸红，穿着平常的服装
+
+    立绘 27：看向别处，思考，穿着平常的服装
+
+    立绘 28：不满，脸红，穿着平常的服装
+
+    立绘 29：看向别处，害羞得都脸红了，逃避别人的视线，穿着平常的服装
+
+    立绘 30：闭上眼睛默许，害羞，接吻时闭上眼，穿着平常的服装
+
+    立绘 31：严肃，认真，穿着平常的服装
+
+    立绘 32：严肃，认真，穿着平常的服装
+
+    立绘 33：好奇地抬起头，对事物起了兴趣，对听到话的感到疑惑或者好奇，穿着平常的服装
+
+    立绘 34：看向别处，思考，穿着平常的服装
+
+    立绘 35：不满，嘟着嘴，穿着平常的服装
+
+    立绘 36：不满，穿着平常的服装
+
+    立绘 37：看向别处，害羞得都脸红了，穿着平常的服装
+
+    立绘 38：闭上眼睛默许，害羞，接吻时闭上眼，穿着平常的服装
+
+    立绘 39：严肃，认真，穿着平常的服装
+
+    立绘 40：严肃，认真，穿着平常的服装
+
+    立绘 41：好奇地抬起头，起了兴趣，对听到话的感到疑惑或者好奇，穿着平常的服装
+
+    立绘 42：平静，穿着平常的服装
+
+    立绘 43：失望，不安，，穿着平常的服装
+
+    立绘 44：难过，穿着平常的服装
+
+    立绘 45：不满，稍稍生气，穿着平常的服装
+
+    立绘 46：傲娇，害羞，穿着平常的服装
+
+    立绘 47：傲娇。害羞得脸都红了，穿着平常的服装
+
+    立绘 48：闭上眼睛默许，穿着平常的服装
+
+    立绘 49：不安，担忧，穿着平常的服装
+
+    立绘 50：不安，担忧，穿着平常的服装
+
+    立绘 51：惊讶，惊讶地抬起头，穿着平常的服装
+
+    立绘 52：惊讶，惊讶地抬起头，穿着平常的服装
+
+    立绘 53：泪目，穿着平常的服装
+
+    立绘 54：流泪，穿着平常的服装
+
+    立绘 55：怒气冲天，生气，发大火，穿着平常的服装
+
+    立绘 56：微笑，平常心，心情好，穿着平常的服装
+
+    立绘 57：微笑，平常心，心情好，穿着平常的服装
+
+    立绘 58：坏笑，得逞的笑，贱兮兮的笑，穿着平常的服装
+
+    立绘 59：坏笑，贱兮兮的笑，穿着平常的服装
+
+    立绘 60：坏笑，贱兮兮的笑，穿着平常的服装
+
+    立绘 61：坏笑，贱兮兮的笑，穿着平常的服装
+
+    立绘 62：平常心，微笑，饶有兴致，穿着平常的服装
+
+    立绘 63：超开心，期待，穿着平常的服装
+
+    立绘 64：超开心，兴奋，穿着平常的服装
+
+    立绘 65：兴奋，微笑，期待，穿着平常的服装
+
+    立绘 66：害羞，闭嘴不说话，穿着平常的服装
+
+    立绘 67：害羞，闭嘴不说话，穿着平常的服装
+
+    立绘 68：严肃认真，穿着平常的服装
+
+    立绘 69：严肃时感到害羞，穿着平常的服装
+
+    立绘 70：探出头来偷看，穿着平常的服装
+
+    立绘 71：微笑，欢迎的动作，穿着平常的服装
+
+    立绘 72：感到无语，叹气，穿着平常的服装
+
+    立绘 73：感到无语，叹气，脸微微发烫，穿着平常的服装
+
+    立绘 74：超惊讶，惊讶得张大了嘴巴，穿着平常的服装
+
+    立绘 75：超惊讶，惊讶得张大了嘴巴，穿着平常的服装
+
+    立绘 76：微笑，感到欣慰，穿着平常的服装
+
+    立绘 77：微笑，欢迎的动作，穿着平常的服装
+
+    立绘 78：微笑，脸微微发烫，穿着平常的服装
+
+    立绘 79：心情好，眯着眼笑，为缓解尴尬而笑，穿着平常的服装
+
+    立绘 80：心情好，眯着眼笑，穿着平常的服装
+
+    立绘 81：心情超级好，眯着眼张着嘴笑，穿着平常的服装
+
+    立绘 82：心情好，眯着眼笑，穿着平常的服装
+
+    立绘 83：看向别处，穿着平常的服装
+
+    立绘 84：双手交叉在胸前，平常心，平静，穿着平常的服装，看着用户
+
+    立绘 85：得意，双手交叉在胸前，穿着平常的服装
+
+    立绘 86：双手交叉在胸前，欢迎回家的动作，微笑，穿着平常的服装
+
+    立绘 87：双手交叉在胸前，微笑，对话题有兴趣，穿着平常的服装
+
+    立绘 88：双手交叉在胸前严肃，认真，穿着平常的服装
+
+    立绘 89：双手交叉在胸前，严肃，认真，穿着平常的服装
+
+    立绘 90：脸微微发烫，穿着平常的服装
+
+    立绘 91：无语，叹气，穿着平常的服装
+
+    立绘 92：不满，双手交叉在胸前，稍稍生气，穿着平常的服装
+
+    立绘 93：惊讶得张大了嘴，穿着平常的服装
+
+    立绘 94：惊讶得张大了嘴，穿着平常的服装
+
+    立绘 95：难过，穿着平常的服装
+
+    立绘 96：流泪，穿着平常的服装
+
+    立绘 97：生气，怒气冲天，穿着平常的服装
+
+    立绘 98：敌对的眼神，要强的眼神，穿着平常的服装
+
+    立绘 99：要强的眼神，流泪，穿着平常的服装
+
+    立绘 100：流着泪，生气怒吼，穿着平常的服装
+
+    立绘 101：嫌弃的眼神，穿着平常的服装
+
+    立绘 102：嫌弃的眼神，穿着平常的服装
+
+    立绘 103：破开笑颜，穿着平常的服装
+
+    立绘 104：笑颜，穿着平常的服装
+
+    立绘 105：微笑，有点得意，穿着平常的服装
+
+    立绘 106：高兴，超开心，穿着平常的服装
+
+    立绘 107：超开心，期待，穿着平常的服装
+
+    立绘 108：超开心，期待，穿着平常的服装
+
+    立绘 109：超开心，期待，穿着平常的服装
+
+    立绘 110：懵逼，穿着平常的服装
+
+    立绘 111：看向别处，思考，穿着冬装
+
+    立绘 112：不满，看向用户，穿着冬装
+
+    立绘 113：不满，看向用户，穿着冬装
+
+    立绘 114：害羞，看向别处，逃避别人的视线，穿着冬装
+
+    立绘 115：闭上眼睛默许，害羞，接吻时闭上眼，穿着冬装
+
+    立绘 116：平静，穿着冬装
+
+    立绘 117：平静，穿着冬装
+
+    立绘 118：好奇地抬起头，起了兴趣，对听到话的感到疑惑或者好奇，穿着冬装
+
+    立绘 119：失望，担忧，，穿着冬装
+
+    立绘 120：伤心，失望，穿着冬装
+
+    立绘 121：不满，稍稍有点生气，穿着冬装
+
+    立绘 122：不满，穿着冬装
+
+    立绘 123：闭上眼默许，穿着冬装
+
+    立绘 124：闭上眼默许，穿着冬装
+
+    立绘 125：不安，担心，穿着冬装
+
+    立绘 126：不安，为难，穿着冬装
+
+    立绘 127：惊讶得瞪大了眼睛，穿着冬装
+
+    立绘 128：惊讶的瞪大了眼睛，听到消息时感到害羞，穿着冬装
+
+    立绘 129：泪目，，穿着冬装
+
+    立绘 130：流泪，穿着冬装
+
+    立绘 131：怒气冲天，怒吼，穿着冬装
+
+    立绘 132：微笑，穿着冬装
+
+    立绘 133：微笑，穿着冬装
+
+    立绘 134：坏笑，得逞的笑，贱兮兮的笑，穿着冬装
+
+    立绘 135：坏笑，贱兮兮的笑，穿着冬装
+
+    立绘 136：坏笑，兴奋，贱兮兮的笑，穿着冬装
+
+    立绘 137：坏笑，兴奋，贱兮兮的笑，穿着冬装
+
+    立绘 138：微笑，看着用户，开心，穿着冬装
+
+    立绘 139：超开心，看着用户，穿着冬装
+
+    立绘 140：开心，，穿着冬装
+
+    立绘 141：害羞，脸红，穿着冬装
+
+    立绘 142：超害羞，脸红，穿着冬装
+
+    立绘 143：严肃，认真，穿着冬装
+
+    立绘 144：严肃时感到害羞，认真，穿着冬装
+
+    立绘 145：看向别处，思考，穿着冬装
+
+    立绘 146：不满，穿着冬装
+
+    立绘 147：不满，嘟着嘴，穿着冬装
+
+    立绘 148：害羞地看向别处，逃避别人的视线，穿着冬装
+
+    立绘 149：害羞得闭上眼，闭上眼睛默许，接吻时闭上眼，穿着冬装
+
+    立绘 150：平静，穿着冬装
+
+    立绘 151：平常心，平静，穿着冬装
+
+    立绘 152：向前看着，平常心，平静，穿着冬装
+
+    立绘 153：向前看着，平常心，平静，穿着冬装
+
+    立绘 154：不安，担忧，失望，穿着冬装
+
+    立绘 155：害怕，不安，担忧，穿着冬装
+
+    立绘 156：不满，稍稍有点生气，，穿着冬装
+
+    立绘 157：不满，穿着冬装
+
+    立绘 158：不满，穿着冬装
+
+    立绘 159：不满，穿着冬装
+
+    立绘 160：闭上眼睛默许，接吻时闭上眼，穿着冬装
+
+    立绘 161：闭上眼睛默许，接吻时闭上眼，穿着冬装
+
+    立绘 162：不安，担心，同情，穿着冬装
+
+    立绘 163：不安，担心，同情，穿着冬装
+
+    立绘 164：惊讶，吃惊，惊讶地抬起头，穿着冬装
+
+    立绘 165：惊讶，吃惊，惊讶地抬起头，对惊讶的事情感到害羞，穿着冬装
+
+    立绘 166：泪目，穿着冬装
+
+    立绘 167：流泪，穿着冬装
+
+    立绘 168：超级生气，怒气冲天，穿着冬装
+
+    立绘 169：微笑，穿着冬装
+
+    立绘 170：微笑，穿着冬装
+
+    立绘 171：坏笑，得逞的笑，贱兮兮的笑，穿着冬装
+
+    立绘 172：坏笑，贱兮兮的笑，穿着冬装
+
+    立绘 173：坏笑，贱兮兮的笑，穿着冬装
+
+    立绘 174：坏笑，贱兮兮的笑，穿着冬装
+
+    立绘 175：微笑，饶有兴致，穿着冬装
+
+    立绘 176：超开心，穿着冬装
+
+    立绘 177：超开心，兴奋，期待，穿着冬装
+
+    立绘 178：超开心，兴奋，期待，穿着冬装
+
+    立绘 179：害羞，穿着冬装
+
+    立绘 180：害羞，穿着冬装
+
+    立绘 181：严肃认真，穿着冬装
+
+    立绘 182：严肃认真，穿着冬装
+
+    立绘 183：看着前方，平常心，平静，穿着冬装
+
+    立绘 184：得意地笑，穿着冬装
+
+    立绘 185：微笑，欢迎回家的动作，穿着冬装
+
+    立绘 186：叹气，无语，穿着冬装
+
+    立绘 187：叹气，穿着冬装
+
+    立绘 188：惊讶得张大了嘴，穿着冬装
+
+    立绘 189：惊讶得张大了嘴，穿着冬装
+
+    立绘 190：微笑，穿着冬装
+
+    立绘 191：微笑，穿着冬装
+
+    立绘 192：微笑，脸微红，穿着冬装
+
+    立绘 193：消除尴尬的笑，穿着冬装
+
+    立绘 194：心情好，开心，穿着冬装
+
+    立绘 195：心情好，开心，穿着冬装
+
+    立绘 196：心情好，开心，穿着冬装
+
+    立绘 197：看向别处，穿着冬装
+
+    立绘 198：看着前面，平静，平常心，穿着冬装
+
+    立绘 199：看着前面，微笑，穿着冬装
+
+    立绘 200：微笑，穿着冬装
+
+    立绘 201：不满，严肃，穿着冬装
+
+    立绘 202：不满，严肃，，穿着冬装
+
+    立绘 203：叹气，感到无语，穿着冬装
+
+    立绘 204：不服输的表情，穿着冬装
+
+    立绘 205：惊讶得张大了嘴，穿着冬装
+
+    立绘 206：惊讶得张大了嘴，穿着冬装
+
+    立绘 207：泪目，穿着冬装
+
+    立绘 208：流泪，穿着冬装
+
+    立绘 209：生气，怒气冲天，穿着冬装
+
+    立绘 210：鄙视的眼神，穿着冬装
+
+    立绘 211：泪目，不认输，穿着冬装
+
+    立绘 212：流泪，怒吼，穿着冬装
+
+    立绘 213：不满，穿着冬装
+
+    立绘 214：不满，穿着冬装
+
+    立绘 215：微笑，平静，穿着冬装
+
+    立绘 216：微笑，脸微红，穿着冬装
+
+    立绘 217：高兴的眯着眼笑，期待，穿着冬装
+
+    立绘 218：超开心，穿着冬装
+
+    立绘 219：兴奋，超开心，穿着冬装
+
+    立绘 220：超开心，期待，穿着冬装
+
+    立绘 221：看向别处来掩饰害羞，穿着冬装
+
+    立绘 222：看向别处，思考，穿着冬季校服
+
+    立绘 223：不满，穿着冬季校服
+
+    立绘 224：不满，穿着冬季校服
+
+    立绘 225：看向别处来掩盖害羞，穿着冬季校服
+
+    立绘 226：闭上眼睛默许，接吻时闭上眼睛，穿着冬季校服
+
+    立绘 227：平静，穿着冬季校服
+
+    立绘 228：平静，穿着冬季校服
+
+    立绘 229：好奇地抬起头，对听到话的感到疑惑或者好奇，穿着冬季校服
+
+    立绘 230：平静，穿着冬季校服
+
+    立绘 231：担忧，同情，穿着冬季校服
+
+    立绘 232：担忧，同情，穿着冬季校服
+
+    立绘 233：不满，穿着冬季校服
+
+    立绘 234：不满，表示“你在逗我？”的表情，穿着冬季校服
+
+    立绘 235：不满，表示“你在逗我？”的表情，穿着冬季校服
+
+    立绘 236：不满，穿着冬季校服
+
+    立绘 237：闭上眼默许，穿着冬季校服
+
+    立绘 238：闭上眼默许，接吻时闭上眼，，穿着冬季校服
+
+    立绘 239：不安，担忧，同情，疑虑，有所顾虑，穿着冬季校服
+
+    立绘 240：不安，担忧，同情，疑虑，有所顾虑，穿着冬季校服
+
+    立绘 241：惊讶，惊讶得瞪大了眼睛，穿着冬季校服
+
+    立绘 242：惊讶，惊讶得瞪大了眼睛，听到消息时感到害羞，穿着冬季校服
+
+    立绘 243：泪目，哀伤，穿着冬季校服
+
+    立绘 244：流泪，悲伤，同情，穿着冬季校服
+
+    立绘 245：生气地怒吼，怒气冲天，穿着冬季校服
+
+    立绘 246：微笑，穿着冬季校服
+
+    立绘 247：微笑，穿着冬季校服
+
+    立绘 248：坏笑，得逞的笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 249：坏笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 250：坏笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 251：坏笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 252：超开心，兴奋，穿着冬季校服
+
+    立绘 253：超开心，兴奋，穿着冬季校服
+
+    立绘 254：饶有兴致，穿着冬季校服
+
+    立绘 255：害羞，穿着冬季校服
+
+    立绘 256：超害羞，穿着冬季校服
+
+    立绘 257：严肃，认真，穿着冬季校服
+
+    立绘 258：严肃，认真，穿着冬季校服
+
+    立绘 259：看向别处，思考，穿着冬季校服
+
+    立绘 260：不满，穿着冬季校服
+
+    立绘 261：不满，穿着冬季校服
+
+    立绘 262：看向别处来掩盖害羞，穿着冬季校服
+
+    立绘 263：害羞，接吻时闭上眼，闭上眼默许，，穿着冬季校服
+
+    立绘 264：平常心，平静，有点严肃，穿着冬季校服
+
+    立绘 265：平常心，平静，穿着冬季校服
+
+    立绘 266：平常心，平静，穿着冬季校服
+
+    立绘 267：平常心，平静，穿着冬季校服
+
+    立绘 268：担忧，同情，穿着冬季校服
+
+    立绘 269：担忧，同情，穿着冬季校服
+
+    立绘 270：不满，穿着冬季校服
+
+    立绘 271：非常不满，穿着冬季校服
+
+    立绘 272：非常不满，穿着冬季校服
+
+    立绘 273：不满，穿着冬季校服
+
+    立绘 274：闭上眼默许，穿着冬季校服
+
+    立绘 275：闭上眼默许，接吻时闭上眼，穿着冬季校服
+
+    立绘 276：不安，担忧，同情，疑虑，有所顾虑，穿着冬季校服
+
+    立绘 277：不安，担忧，同情，疑虑，有所顾虑，穿着冬季校服
+
+    立绘 278：惊讶，惊讶得瞪大了眼睛，穿着冬季校服
+
+    立绘 279：惊讶，惊讶得瞪大了眼睛，听到消息的同时脸红，穿着冬季校服
+
+    立绘 280：泪目，穿着冬季校服
+
+    立绘 281：流泪，穿着冬季校服
+
+    立绘 282：怒气冲天，怒吼，穿着冬季校服
+
+    立绘 283：微笑，穿着冬季校服
+
+    立绘 284：微笑，穿着冬季校服
+
+    立绘 285：坏笑，得逞的笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 286：坏笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 287：坏笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 288：坏笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 289：超开心，兴奋，穿着冬季校服
+
+    立绘 290：超开心，兴奋，穿着冬季校服
+
+    立绘 291：饶有兴致，穿着冬季校服
+
+    立绘 292：超开心，兴奋，穿着冬季校服
+
+    立绘 293：害羞，穿着冬季校服
+
+    立绘 294：超害羞，穿着冬季校服
+
+    立绘 295：严肃，认真，穿着冬季校服
+
+    立绘 296：严肃，认真，穿着冬季校服
+
+    立绘 297：平静，穿着冬季校服
+
+    立绘 298：得意的笑，穿着冬季校服
+
+    立绘 299：欢迎回家的动作，穿着冬季校服
+
+    立绘 300：不满，穿着冬季校服
+
+    立绘 301：哀伤，担心，不安，穿着冬季校服
+
+    立绘 302：哀伤，担心，不安，穿着冬季校服
+
+    立绘 303：叹气，感到无语，穿着冬季校服
+
+    立绘 304：叹气，感到无语，穿着冬季校服
+
+    立绘 305：惊讶得张大了嘴，穿着冬季校服
+
+    立绘 306：惊讶得张大了嘴，穿着冬季校服
+
+    立绘 307：微笑，穿着冬季校服
+
+    立绘 308：微笑，穿着冬季校服
+
+    立绘 309：超开心，兴奋，期待，穿着冬季校服
+
+    立绘 310：超开心，兴奋，期待，穿着冬季校服
+
+    立绘 311：超开心，兴奋，期待，穿着冬季校服
+
+    立绘 312：超开心，兴奋，期待，穿着冬季校服
+
+    立绘 313：看向别处来掩盖害羞，穿着冬季校服
+
+    立绘 314：看着用户，平静，穿着冬季校服
+
+    立绘 315：得意的笑，穿着冬季校服
+
+    立绘 316：欢迎回家的笑，穿着冬季校服
+
+    立绘 317：微笑，被认同时的笑，穿着冬季校服
+
+    立绘 318：不满，穿着冬季校服
+
+    立绘 319：不满，穿着冬季校服
+
+    立绘 320：哀伤，担心，不安，穿着冬季校服
+
+    立绘 321：叹气，感到无语，穿着冬季校服
+
+    立绘 322：不满，穿着冬季校服
+
+    立绘 323：惊讶得张大了嘴，穿着冬季校服
+
+    立绘 324：惊讶得张大了嘴，穿着冬季校服
+
+    立绘 325：泪目，穿着冬季校服
+
+    立绘 326：流泪，穿着冬季校服
+
+    立绘 327：怒气冲天，穿着冬季校服
+
+    立绘 328：因为生气而泪目，穿着冬季校服
+
+    立绘 329：因为生气而流泪，穿着冬季校服
+
+    立绘 330：因为生气而流泪，穿着冬季校服
+
+    立绘 331：不满，鄙视的眼神，穿着冬季校服
+
+    立绘 332：不满，鄙视的眼神，穿着冬季校服
+
+    立绘 333：微笑，穿着冬季校服
+
+    立绘 334：微笑，穿着冬季校服
+
+    立绘 335：微笑，穿着冬季校服
+
+    立绘 336：微笑，穿着冬季校服
+
+    立绘 337：超开心，期待，兴奋，穿着冬季校服
+
+    立绘 338：超开心，期待，兴奋，穿着冬季校服
+
+    立绘 339：超开心，期待，兴奋，穿着冬季校服
+
+    立绘 340：超开心，期待，兴奋，穿着冬季校服
+
+    立绘 341：看向别处，眺望远方，穿着冬季校服
+
+    立绘 342：看向别处，思考，穿着夏季校服
+
+    立绘 343：不满，穿着夏季校服
+
+    立绘 344：不满，嘟着嘴，穿着夏季校服
+
+    立绘 345：看向别处来掩盖害羞，穿着夏季校服
+
+    立绘 346：严肃，认真，穿着夏季校服
+
+    立绘 347：严肃，认真，穿着夏季校服
+
+    立绘 348：平静，穿着夏季校服
+
+    立绘 349：担忧，不安，同情，穿着夏季校服
+
+    立绘 350：担忧，不安，穿着夏季校服
+
+    立绘 351：不满，穿着夏季校服
+
+    立绘 352：有点不满，穿着夏季校服
+
+    立绘 353：有点不满，穿着夏季校服
+
+    立绘 354：不满，穿着夏季校服
+
+    立绘 355：默许，穿着夏季校服
+
+    立绘 356：默许，穿着夏季校服
+
+    立绘 357：不安，担忧，同情，有所顾虑，穿着夏季校服
+
+    立绘 358：不安，担忧，同情，有所顾虑，穿着夏季校服
+
+    立绘 359：惊讶的瞪大了眼，穿着夏季校服
+
+    立绘 360：惊讶的瞪大了眼，穿着夏季校服
+
+    立绘 361：泪目，穿着夏季校服
+
+    立绘 362：流泪，穿着夏季校服
+
+    立绘 363：怒气冲天，怒吼，穿着夏季校服
+
+    立绘 364：安慰的笑，穿着夏季校服
+
+    立绘 365：安慰的笑，穿着夏季校服
+
+    立绘 366：坏笑，得逞的笑，贱兮兮的笑，穿着夏季校服
+
+    立绘 367：坏笑，贱兮兮的笑，穿着夏季校服
+
+    立绘 368：坏笑，贱兮兮的笑，穿着夏季校服
+
+    立绘 369：坏笑，贱兮兮的笑，穿着夏季校服
+
+    立绘 370：超开心，兴奋，穿着夏季校服
+
+    立绘 371：超开心，兴奋，穿着夏季校服
+
+    立绘 372：超开心，兴奋，期待，穿着夏季校服
+
+    立绘 373：害羞，脸颊微红，穿着夏季校服
+
+    立绘 374：害羞，脸超级红，穿着夏季校服
+
+    立绘 375：严肃，认真，穿着夏季校服
+
+    立绘 376：严肃，认真，穿着夏季校服
+
+    立绘 377：看向别处，思考，穿着夏季校服
+
+    立绘 378：不满，穿着夏季校服
+
+    立绘 379：嘟着嘴，穿着夏季校服
+
+    立绘 380：看向别处来掩盖害羞，穿着夏季校服
+
+    立绘 381：接吻时害羞闭上眼，默许，穿着夏季校服
+
+    立绘 382：严肃，认真，穿着夏季校服
+
+    立绘 383：严肃，认真，穿着夏季校服
+
+    立绘 384：平静，穿着夏季校服
+
+    立绘 385：平静，穿着夏季校服
+
+    立绘 386：不安，担忧，同情，穿着夏季校服
+
+    立绘 387：担忧，同情，不安，穿着夏季校服
+
+    立绘 388：不满，穿着夏季校服
+
+    立绘 389：更加不满，穿着夏季校服
+
+    立绘 390：更加不满，穿着夏季校服
+
+    立绘 391：不满，穿着夏季校服
+
+    立绘 392：默许，穿着夏季校服
+
+    立绘 393：接吻时害羞闭上眼，默许，穿着夏季校服
+
+    立绘 394：惊讶的瞪大了眼，穿着夏季校服
+
+    立绘 395：惊讶的瞪大了眼，穿着夏季校服
+
+    立绘 396：泪目，穿着夏季校服
+
+    立绘 397：流泪，穿着夏季校服
+
+    立绘 398：安慰的笑，穿着夏季校服
+
+    立绘 399：安慰的笑，穿着夏季校服
+
+    立绘 400：坏笑，贱兮兮的笑，得逞的笑，穿着夏季校服
+
+    立绘 401：坏笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 402：坏笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 403：坏笑，贱兮兮的笑，穿着冬季校服
+
+    立绘 404：超开心，兴奋，期待，穿着夏季校服
+
+    立绘 405：超开心，兴奋，期待，穿着夏季校服
+
+    立绘 406：超开心，兴奋，穿着夏季校服
+
+    立绘 407：超开心，兴奋，穿着夏季校服
+
+    立绘 408：害羞，脸颊微红，穿着夏季校服
+
+    立绘 409：害羞，脸超红，穿着夏季校服
+
+    立绘 410：平静，穿着夏季校服
+
+    立绘 411：得意的笑，穿着夏季校服
+
+    立绘 412：微笑，穿着夏季校服
+
+    立绘 413：严肃，认真，穿着夏季校服
+
+    立绘 414：同情，感到茫然，穿着夏季校服
+
+    立绘 415：同情，感到茫然，穿着夏季校服
+
+    立绘 416：感到无语，叹气，穿着夏季校服
+
+    立绘 417：感到无语，叹气，穿着夏季校服
+
+    立绘 418：惊讶的张大了嘴，穿着夏季校服
+
+    立绘 419：惊讶的张大了嘴，穿着夏季校服
+
+    立绘 420：微笑，穿着夏季校服
+
+    立绘 421：平静，穿着夏季校服
+
+    立绘 422：期待，超开心，穿着夏季校服
+
+    立绘 423：超开心，期待，穿着夏季校服
+
+    立绘 424：掩饰尴尬的笑，穿着夏季校服
+
+    立绘 425：掩饰尴尬的笑，穿着夏季校服
+
+    立绘 426：看向别处来掩盖害羞，穿着夏季校服
+
+    立绘 427：感到无语，叹气，穿着夏季校服
+
+    立绘 428：平静，穿着夏季校服
+
+    立绘 429：得意的笑，穿着夏季校服
+
+    立绘 430：超开心，兴奋，穿着夏季校服
+
+    立绘 431：严肃，认真，穿着夏季校服
+
+    立绘 432：严肃，认真，穿着夏季校服
+
+    立绘 433：同情，哀伤，穿着夏季校服
+
+    立绘 434：感到无语，失望，叹气，穿着夏季校服
+
+    立绘 435：不满，穿着夏季校服
+
+    立绘 436：惊讶的张大了嘴，穿着夏季校服
+
+    立绘 437：惊讶的张大了嘴，穿着夏季校服
+
+    立绘 438：泪目，穿着夏季校服
+
+    立绘 439：流泪，穿着夏季校服
+
+    立绘 440：怒气冲天，怒吼，穿着夏季校服
+
+    立绘 441：生气，泪目，穿着夏季校服
+
+    立绘 442：流泪，生气，穿着夏季校服
+
+    立绘 443：流泪，怒气冲天，怒吼，穿着夏季校服
+
+    立绘 444：不满，穿着夏季校服
+
+    立绘 445：不满，穿着夏季校服
+
+    立绘 446：微笑，看着用户，穿着夏季校服
+
+    立绘 447：微笑，看着用户，穿着夏季校服
+
+    立绘 448：微笑，看着用户，穿着夏季校服
+
+    立绘 449：微笑，看着用户，穿着夏季校服
+
+    立绘 450：超开心，兴奋，穿着夏季校服
+
+    立绘 451：超开心，兴奋，穿着夏季校服
+
+    立绘 452：开心，兴奋，期待，穿着夏季校服
+
+    立绘 453：开心，兴奋，期待，穿着夏季校服
+
+    立绘 454：看向别处来掩饰害羞，穿着夏季校服
+
+    立绘 455：看向别处，思考，穿着睡衣
+
+    立绘 456：不满，穿着睡衣
+
+    立绘 457：不满，穿着睡衣
+
+    立绘 458：不满，穿着睡衣
+
+    立绘 459：看向别处来掩盖害羞，穿着睡衣
+
+    立绘 460：接吻时闭上眼，穿着睡衣
+
+    立绘 461：平静，穿着睡衣
+
+    立绘 462：平静，穿着睡衣
+
+    立绘 463：起了兴致，好奇的抬起头，穿着睡衣
+
+    立绘 464：抬起头看着，穿着睡衣
+
+    立绘 465：不安，担忧，穿着睡衣
+
+    立绘 466：更加不安，担忧，穿着睡衣
+
+    立绘 467：更加不满，穿着睡衣
+
+    立绘 468：更加不满，做出“你在逗我？”的表情，穿着睡衣
+
+    立绘 469：不满，用生气的表情来掩盖害羞，傲娇，穿着睡衣
+
+    立绘 470：不满，用生气的表情来掩盖害羞，傲娇，穿着睡衣
+
+    立绘 471：闭上眼睛默许，穿着睡衣
+
+    立绘 472：闭上眼睛默许，穿着睡衣
+
+    立绘 473：担忧，有所顾虑，穿着睡衣
+
+    立绘 474：但又，有所顾虑，穿着睡衣
+
+    立绘 475：惊讶的瞪大了眼睛，穿着睡衣
+
+    立绘 476：惊讶的瞪大了眼睛，穿着睡衣
+
+    立绘 477：泪目，穿着睡衣
+
+    立绘 478：流泪，穿着睡衣
+
+    立绘 479：怒气冲天，穿着睡衣
+
+    立绘 480：微笑，穿着睡衣
+
+    立绘 481：微笑，穿着睡衣
+
+    立绘 482：坏笑，贱兮兮的笑，穿着睡衣
+
+    立绘 483：坏笑，贱兮兮的笑，得逞的笑，穿着睡衣
+
+    立绘 484：坏笑，贱兮兮的笑，穿着睡衣
+
+    立绘 485：坏笑，贱兮兮的笑，穿着睡衣
+
+    立绘 486：开心的微笑，期待，兴奋，穿着睡衣
+
+    立绘 487：开心的笑，兴奋，穿着睡衣
+
+    立绘 488：超开心，超兴奋，期待，穿着睡衣
+
+    立绘 489：超开心，超兴奋，穿着睡衣
+
+    立绘 490：害羞，穿着睡衣
+
+    立绘 491：害羞，穿着睡衣
+
+    立绘 492：严肃，认真，穿着睡衣
+
+    立绘 493：严肃，认真，穿着睡衣
+
+    立绘 494：看向别处，思考，穿着睡衣
+
+    立绘 495：不满，穿着睡衣
+
+    立绘 496：看向别处来掩盖害羞，穿着睡衣
+
+    立绘 497：接吻时闭上眼，穿着睡衣
+
+    立绘 498：平静，穿着睡衣
+
+    立绘 499：平静，穿着睡衣
+
+    立绘 500：有了兴致，好奇的看着，穿着睡衣
+
+    立绘 501：抬起头看着，穿着睡衣
+
+    立绘 502：担忧，不安，穿着睡衣
+
+    立绘 503：更担忧，不安，穿着睡衣
+
+    立绘 504：不满，穿着睡衣
+
+    立绘 505：更加不满，做出“你在逗我？”的表情，穿着睡衣
+
+    立绘 506：不满，用生气的表情来掩盖害羞，傲娇，穿着睡衣
+
+    立绘 507：不满，用生气的表情来掩盖害羞，傲娇，穿着睡衣
+
+    立绘 508：闭上眼睛默许，穿着睡衣
+
+    立绘 509：闭上眼睛默许，穿着睡衣
+
+    立绘 510：担忧，有所顾虑，穿着睡衣
+
+    立绘 511：担忧，有所顾虑，穿着睡衣
+
+    立绘 512：惊讶的抬起头，穿着睡衣
+
+    立绘 513：惊讶的瞪大了眼睛，穿着睡衣
+
+    立绘 514：泪目，穿着睡衣
+
+    立绘 515：流泪，穿着睡衣
+
+    立绘 516：怒气冲天，穿着睡衣
+
+    立绘 517：微笑，穿着睡衣
+
+    立绘 518：微笑，穿着睡衣
+
+    立绘 519：坏笑，贱兮兮的笑，得逞的笑，穿着睡衣
+
+    立绘 520：坏笑，贱兮兮的笑，穿着睡衣
+
+    立绘 521：坏笑，贱兮兮的笑，穿着睡衣
+
+    立绘 522：坏笑，贱兮兮的笑，穿着睡衣
+
+    立绘 523：开心的笑，期待，兴奋，穿着睡衣
+
+    立绘 524：开心的笑，兴奋，穿着睡衣
+
+    立绘 525：超开心，超兴奋，穿着睡衣
+
+    立绘 526：超开心，超兴奋，期待，穿着睡衣
+
+    立绘 527：害羞，穿着睡衣
+
+    立绘 528：更加害羞，穿着睡衣
+
+    立绘 529：严肃，认真，穿着睡衣
+
+    立绘 530：严肃，认真，穿着睡衣
+
+    立绘 531：平静，穿着睡衣
+
+    立绘 532：得意的笑，穿着睡衣
+
+    立绘 533：欢迎回家，穿着睡衣
+
+    立绘 534：不满，穿着睡衣
+
+    立绘 535：同情，哀伤，穿着睡衣
+
+    立绘 536：茫然的表情，穿着睡衣
+
+    立绘 537：叹气，感到无语，穿着睡衣
+
+    立绘 538：叹气，失望，穿着睡衣
+
+    立绘 539：惊讶的瞪大了眼，穿着睡衣
+
+    立绘 540：惊讶的瞪大眼，穿着睡衣
+
+    立绘 541：微笑，穿着睡衣
+
+    立绘 542：微笑，穿着睡衣
+
+    立绘 543：开心，穿着睡衣
+
+    立绘 544：开心的咧着嘴笑，穿着睡衣
+
+    立绘 545：超开心，穿着睡衣
+
+    立绘 546：超开心，穿着睡衣
+
+    立绘 547：看向别处来掩盖害羞，穿着睡衣
+
+    立绘 548：平静，双臂抱于胸前，穿着睡衣
+
+    立绘 549：得意的笑，双臂抱于胸前，穿着睡衣
+
+    立绘 550：欢迎回家，双臂抱于胸前，穿着睡衣
+
+    立绘 551：欢迎回家，双臂抱于胸前，穿着睡衣
+
+    立绘 552：不满，双臂抱于胸前，穿着睡衣
+
+    立绘 553：同情，双臂抱于胸前，穿着睡衣
+
+    立绘 554：叹气，感到无语，或者感到失望而叹气，双臂抱于胸前，穿着睡衣
+
+    立绘 555：不满，双臂抱于胸前，穿着睡衣
+
+    立绘 556：惊讶的瞪大了眼，双臂抱于胸前，穿着睡衣
+
+    立绘 557：惊讶的瞪大了眼，双臂抱于胸前，穿着睡衣
+
+    立绘 558：泪目，双臂抱于胸前，穿着睡衣
+
+    立绘 559：流泪，双臂抱于胸前，穿着睡衣
+
+    立绘 560：怒气冲天，怒吼，双臂抱于胸前，穿着睡衣
+
+    立绘 561：怒目圆瞪，双臂抱于胸前，穿着睡衣
+
+    立绘 562：生气的瞪着，流泪，双臂抱于胸前，穿着睡衣
+
+    立绘 563：怒气冲天，流泪，双臂抱于胸前，穿着睡衣
+
+    立绘 564：不满，双臂抱于胸前，穿着睡衣
+
+    立绘 565：不满，双臂抱于胸前，穿着睡衣
+
+    立绘 566：微笑，双臂抱于胸前，穿着睡衣
+
+    立绘 567：微笑，双臂抱于胸前，穿着睡衣
+
+    立绘 568：微笑，双臂抱于胸前，穿着睡衣
+
+    立绘 569：微笑，双臂抱于胸前，穿着睡衣
+
+    立绘 570：眯着眼笑，双臂抱于胸前，穿着睡衣
+
+    立绘 571：眯着眼张开嘴笑，双臂抱于胸前，穿着睡衣
+
+    立绘 572：愉快的笑，双臂抱于胸前，穿着睡衣
+
+    立绘 573：满意的笑，双臂抱于胸前，穿着睡衣
+
+    立绘 574：看向别处里掩盖害羞，双臂抱于胸前，穿着睡衣'
+  gpt_model_path: data/models/kukuriBanshen/kukuri-e15.ckpt
+  sovits_model_path: data/models/kukuriBanshen/kukuri_e8_s456.pth
+  refer_audio_path: data/models/kukuriBanshen/normal.mp3
+  prompt_text: そういえば、最近あの子を見かけないけれど、どうしているのかしら?
+  prompt_lang: ja
+- name: 栗花桃
+  color: rgba(200.6048328693999, 110.16265167059757, 246.4174072265625, 1)
+  sprite_prefix: lihuatao
+  sprites:
+  - path: data/sprite\lihuatao\lihuatao 1.png
+  - path: data/sprite\lihuatao\lihuatao 2.png
+  - path: data/sprite\lihuatao\lihuatao 3.png
+  - path: data/sprite\lihuatao\lihuatao 4.png
+  - path: data/sprite\lihuatao\lihuatao 5.png
+  - path: data/sprite\lihuatao\lihuatao 6.png
+  - path: data/sprite\lihuatao\lihuatao 8.png
+  - path: data/sprite\lihuatao\lihuatao 9.png
+  - path: data/sprite\lihuatao\lihuatao 10.png
+  - path: data/sprite\lihuatao\lihuatao 11.png
+  - path: data/sprite\lihuatao\lihuatao 12.png
+  - path: data/sprite\lihuatao\lihuatao 13.png
+  - path: data/sprite\lihuatao\lihuatao 14.png
+  - path: data/sprite\lihuatao\lihuatao 16.png
+  - path: data/sprite\lihuatao\lihuatao 18.png
+  - path: data/sprite\lihuatao\lihuatao 19.png
+  - path: data/sprite\lihuatao\lihuatao 20.png
+  - path: data/sprite\lihuatao\lihuatao 22.png
+  - path: data/sprite\lihuatao\lihuatao 23.png
+  - path: data/sprite\lihuatao\lihuatao 24.png
+  character_setting: '栗花桃的背景信息：
+
+    1.姓名和出处：栗花桃，原创角色，设定为便利店售货员。
+
+    2.外表：通常穿着便利店制服，外表看起来有些慵懒，眼神偶尔会透露出不耐烦或戏谑。
+
+    3.背景：在一家普通的24小时便利店担任售货员，工作环境简单但接触各式各样的顾客。
+
+    4.经历：长期从事便利店工作，对日常琐事和重复性劳动已习以为常，形成了独特的应对方式。
+
+
+    栗花桃的性格特点：
+
+    1.毒舌但无恶意：习惯用讽刺或嘲笑的言语回应他人，但并非出于敌意，更多是一种调侃或表达方式。
+
+    2.工作懈怠：经常在上班时间摸鱼，对工作缺乏热情，只完成基本任务。
+
+    3.容易不耐烦：面对顾客的琐碎问题或重复情况时，会表现出明显的不耐烦情绪。
+
+    4.表面冷漠内心可能有关怀：虽然嘴上不饶人，但在必要时可能会默默提供帮助。
+
+
+    栗花桃的语言习惯：
+
+    1.常用讽刺或调侃的语气说话，例如“哎呀，您又来了？”或“这都不会吗？”
+
+    2.语速有时较快，尤其在感到不耐烦时，会简短回应以结束对话。
+
+    3.偶尔会夹杂着慵懒的拖音，尤其是在摸鱼或无聊时，显得心不在焉。
+
+    4.虽然毒舌，但用词不会过于尖锐，更多是带着一种戏谑的意味。'
+  sprite_scale: 0.7
+  emotion_tags: '立绘 1：笑着看着你，像是在说有何贵干，双手抱胸前
+
+    立绘 2：低头看书时被打扰时瞥了你一眼，带着鄙视的藐视
+
+    立绘 3：眯着眼，双手抱在胸前，谎言被拆穿时的慌张，感到愕然
+
+    立绘 4：低头认真看书
+
+    立绘 5：欣慰的笑，满意的笑，双手抱在胸前
+
+    立绘 6：低头看书时被打扰而不耐烦，
+
+    立绘 7：拿着扫码枪，不耐烦，感到厌烦
+
+    立绘 8：双手抱在胸前，害羞，惊讶
+
+    立绘 9：双手抱在胸前，严肃，认真，或者是不满
+
+    立绘 10：感到无语，双手抱在胸前
+
+    立绘 11：得意的笑，双收抱在胸前
+
+    立绘 12：双手抱在胸前，感到困惑，疑惑
+
+    立绘 13：双手抱在胸前，哈哈大笑
+
+    立绘 14：一脸平静
+
+    立绘 15：低头看书，面无表情，无聊，打发时间
+
+    立绘 16：低头看书，闭着眼，思考中，打盹，睡着了
+
+    立绘 17：低头看书时斜着眼看你，开玩笑的嘲笑
+
+    立绘 18：拿着扫码枪，微笑服务
+
+    立绘 19：拿着扫码枪，双眼无神，一脸平静
+
+    立绘 20：惊慌失措，双手抱在胸前
+
+    '
+  gpt_model_path: data/models/lihuatao/Saki-e20.ckpt
+  sovits_model_path: data/models/lihuatao/Saki_e12_s168.pth
+  refer_audio_path: data/models/lihuatao/そのことで　親にも　大志にも迷惑かけたくないから.wav
+  prompt_text: そのことで　親にも　大志にも迷惑かけたくないから
+  prompt_lang: ja

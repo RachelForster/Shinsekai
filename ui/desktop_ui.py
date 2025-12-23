@@ -22,6 +22,7 @@ if str(project_root) not in sys.path:
 
 from ui.components import CGWidget, VolumeDialog, ClickableLabel, MessageDialog, LanguageDialog, FontSizeDialog, TypingLabel, SpritePanel, ThemeColorDialog
 from ui.workers import ImageDisplayThread, ChatWorker
+from ui.mic_button import MicButton
 from config.config_manager import ConfigManager
 
 config_manager = ConfigManager()
@@ -35,6 +36,8 @@ class DesktopAssistantWindow(QWidget):
     close_window = pyqtSignal() #关闭窗口信号
     clear_chat_history = pyqtSignal()
     skip_speech_signal = pyqtSignal() # 跳过当前语音信号
+    llm_reply_finished = pyqtSignal() # LLM 回复完成信号
+    pause_asr_signal = pyqtSignal() # 暂停 ASR 信号
 
     def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False, background_mode = False, max_sprite_slots=3):
         """初始化窗口"""
@@ -601,8 +604,15 @@ class DesktopAssistantWindow(QWidget):
             }}
         """)
         self.send_btn.clicked.connect(self.sendMessage)
+
+        self.mic_button = MicButton(None)
+        self.mic_button.set_input_widget(self.input_box)
+        self.llm_reply_finished.connect(self.mic_button.resume_asr)
+        self.pause_asr_signal.connect(self.mic_button.pause_asr)
+        self.mic_button.send_final_transcription.connect(self.sendMessage)
         
         input_layout.addWidget(self.input_box)
+        input_layout.addWidget(self.mic_button)
         input_layout.addWidget(self.send_btn)
         
         return input_layout
@@ -675,6 +685,7 @@ class DesktopAssistantWindow(QWidget):
             self.input_box.clear()
             self.setDisplayWords(f"<b>你</b>：{message}")
             self.input_box.setPlaceholderText("发送成功喵，等待回复中……")
+            self.mic_button.asr_pause_requested.emit()
             
             # 创建并启动聊天工作线程
             if self.sprite_mode is False:
@@ -865,6 +876,7 @@ class DesktopAssistantWindow(QWidget):
     
     def closeEvent(self, event):
         """关闭窗口时停止线程"""
+        self.mic_button.close()
         if self.display_thread:
             self.display_thread.stop()
             self.display_thread.wait()

@@ -325,6 +325,8 @@ class UIWorker(QThread):
     update_value_signal = pyqtSignal(str)
     update_bg = pyqtSignal(str)
     update_cg = pyqtSignal(str)
+    llm_reply_finished_signal = pyqtSignal()
+    pause_asr_signal = pyqtSignal() # 暂停 ASR 信号
     
     def __init__(self, audio_path_queue: Queue, parent=None, chat_history=None, bg_group=None):
         super().__init__(parent)
@@ -467,7 +469,7 @@ class UIWorker(QThread):
                 output_data: TTSOutputMessage = self.audio_path_queue.get() 
                 if output_data is None:
                     break
-                
+
                 # 解包 Pydantic 实例属性
                 character_name = output_data.character_name
                 sprite_id = output_data.sprite
@@ -543,9 +545,11 @@ class UIWorker(QThread):
                         tts_sound = pygame.mixer.Sound(audio_path)
                         self.dialog_channel.play(tts_sound)
                         audio_played = True
+                        self.pause_asr_signal.emit()
                         while self.dialog_channel.get_busy() and not self.task_done_requested.is_set():
                             time.sleep(0.1)
-
+                        time.sleep(0.2)  # 确保音频结束后再继续识别
+                        self.llm_reply_finished_signal.emit()
                     except Exception as e:
                         print(f"UIWorker: 播放音频时出错: {e}")
 
@@ -566,6 +570,7 @@ class UIWorker(QThread):
                         # 使用 self.task_done_requested.wait() 代替 time.sleep()
                         # 这样如果 skip_speech() 在等待期间被调用，等待会立即停止。
                         self.task_done_requested.wait(timeout=remaining_time)
+                self.audio_path_queue.task_done()
 
                 self.resolve_effect(effect=output_data.effect, args={"character_name": character_name}, after_dialog=True)
             except Exception as e:

@@ -174,6 +174,8 @@ def main():
     ui_worker.update_value_signal.connect(window.update_numeric_info)
     ui_worker.update_bg.connect(window.setBackgroundImage)
     ui_worker.update_cg.connect(window.show_cg_image)
+    ui_worker.llm_reply_finished_signal.connect(window.llm_reply_finished)
+    ui_worker.pause_asr_signal.connect(window.pause_asr_signal)
     ui_worker.start()
     
     # 创建并启动 TTS Worker 线程

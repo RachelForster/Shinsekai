@@ -43,16 +43,27 @@ class ASRAdapter(ABC):
         获取服务的当前状态（例如：'Running', 'Stopped', 'Error'）。
         """
         pass
+    
+    @abstractmethod
+    def pause(self):
+        """暂停识别。"""
+        pass
 
-from RealtimeSTT import AudioToTextRecorder
+    @abstractmethod
+    def resume(self):
+        """恢复识别。"""
+        pass
 
 class RealtimeSTTAdapter(ASRAdapter):
     """
     RealtimeSTT 库的适配器。
     将 RealtimeSTT 的 AudioToTextRecorder 行为映射到 ASRAdapter 接口。
     """
+
     def __init__(self, language: str, callback: TranscriptionCallback, model_name: str = "small"):
-        super().__init__(language, callback)
+        super().__init__(language, callback)    
+        from RealtimeSTT import AudioToTextRecorder
+
         self._recorder: Optional[AudioToTextRecorder] = None
         self._is_running = False
         self.model_name = model_name
@@ -64,7 +75,8 @@ class RealtimeSTTAdapter(ASRAdapter):
         # 将 RealtimeSTT 的回调函数包装起来，以便传递给外部的 self.callback
         def internal_callback(text, is_partial):
             self.callback(text, is_partial)
-            
+        
+        from RealtimeSTT import AudioToTextRecorder
         self._recorder = AudioToTextRecorder(
             model=self.model_name,
             language=self.language,
@@ -102,6 +114,17 @@ class RealtimeSTTAdapter(ASRAdapter):
         """获取 RealtimeSTT 的运行状态。"""
         return "Running" if self._is_running else "Stopped"
 
+    def pause(self):
+        if self._is_running and self._recorder:
+            print("RealtimeSTT: 暂停录制...")
+            self._recorder.stop_recording() # 停止录制但保留模型加载
+            self._is_running = False
+
+    def resume(self):
+        if not self._is_running and self._recorder:
+            print("RealtimeSTT: 恢复录制...")
+            self._recorder.start_recording()
+            self._is_running = True
 import json
 import pyaudio
 from vosk import Model, KaldiRecognizer
@@ -119,6 +142,10 @@ class VoskAdapter(ASRAdapter):
         self.model_path = Path(model_path).absolute().as_posix()
         self._is_running = False
         self._thread: Optional[threading.Thread] = None
+
+        # 暂停事件
+        self._pause_event = threading.Event()
+        self._pause_event.set()  # 初始状态为“不暂停”
         
         # 音频配置
         self.samplerate = 16000
@@ -146,6 +173,12 @@ class VoskAdapter(ASRAdapter):
         stream.start_stream()
         
         while self._is_running:
+            if not self._pause_event.is_set():
+                # 如果处于暂停状态，休眠一小会，避免占用 CPU
+                import time
+                time.sleep(0.1)
+                continue
+
             data = stream.read(self.chunk_size, exception_on_overflow=False)
             if recognizer.AcceptWaveform(data):
                 # 最终结果 (Final Result)
@@ -190,3 +223,15 @@ class VoskAdapter(ASRAdapter):
     def get_status(self) -> str:
         """获取 Vosk 的运行状态。"""
         return "Running" if self._is_running else "Stopped"
+    
+    def pause(self):
+        """暂停 Vosk 识别。"""
+        if self._is_running:
+            print("Vosk: 暂停识别...")
+            self._pause_event.clear()  # 设置为暂停状态
+    
+    def resume(self):
+        """恢复 Vosk 识别。"""
+        if self._is_running:
+            print("Vosk: 恢复识别...")
+            self._pause_event.set()  # 设置为运行状态
