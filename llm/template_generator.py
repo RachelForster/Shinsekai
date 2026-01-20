@@ -62,7 +62,7 @@ class TemplateGenerator:
         REQUIREMENTS = [
     "格式严格：输出内容必须严格且仅为 JSON 格式，不得包含任何附加的解释、说明或问候语。",
     
-    f"角色名限制：character_name 字段只能是以下之一：{names} 或者固定关键字：旁白、选项、数值{"、场景" if bg_name else ''}{"、bgm" if bg_name else ''}{"、CG" if use_cg else ''}。",
+    f"角色名限制：character_name 字段只能是以下之一：{names} 或者固定关键字：旁白、选项、数值{"，场景" if bg_name else ''}{"，bgm" if bg_name else ''}{"，CG" if use_cg else ''}。",
     
     "立绘规范：sprite 字段必须填写一个两位数字代号（例如 01, 02），并根据当前台词语气和情绪自动选择最合适的立绘。",
     "非立绘角色：当 character_name 为 旁白、数值 或 选项 时，sprite 字段必须固定为 -1。",

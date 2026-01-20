@@ -1,8 +1,5 @@
 import sys
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QPushButton, 
-    QLineEdit, QHBoxLayout
-)
+from PyQt5.QtWidgets import (QPushButton, QTextEdit)
 from PyQt5.QtGui import QIcon, QColor, QFont
 from PyQt5.QtCore import QSize, Qt, pyqtSignal, QObject
 
@@ -38,7 +35,8 @@ class MicButton(QPushButton):
         self.asr_adapter = asr_adapter
         if asr_adapter is None:
             # 默认使用 Vosk 适配器，语言为中文
-            self.asr_adapter = VoskAdapter(language="zh", callback=None)
+            self.asr_adapter = VoskAdapter(
+                language="zh", callback=self._handle_transcription_update)
         self._is_asr_running = False
         
         # 创建信号对象并将其连接到内部回调函数
@@ -71,9 +69,9 @@ class MicButton(QPushButton):
             }}
         """)
 
-    def set_input_widget(self, line_edit: QLineEdit):
-        """设置接收转录结果的 QLineEdit 控件。"""
-        self.line_edit = line_edit
+    def set_input_widget(self, input: QTextEdit):
+        """设置接收转录结果的 QTextEdit 控件。"""
+        self.line_edit = input
         # 初始时确保有一个 line_edit 属性，即使为空
         self.original_text = ""
 
@@ -111,7 +109,7 @@ class MicButton(QPushButton):
         try:
             # 记录当前输入框中的文本，作为转录结果的前缀
             if hasattr(self, 'line_edit'):
-                 self.original_text = self.line_edit.text()
+                 self.original_text = self.line_edit.toPlainText()
             self.setStyleSheet(self.styleSheet().replace(self.INACTIVE_COLOR, self.ACTIVE_COLOR))
             self.asr_adapter.start()
             self._is_asr_running = True

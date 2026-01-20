@@ -63,6 +63,11 @@ def clear_chat_history(history_file, ui_queue, llm_manager):
         sprite='-1',
         is_system_message=False
     ))
+
+def copy_chat_history_to_clipboard():
+    """将聊天记录复制到系统剪贴板，去除 HTML 标签并格式化为纯文本。"""
+    history_manager.copy_chat_history_to_clipboard()
+
 def save_bg(bg_path, bgm_path):
     config = ConfigManager()
     config.config.system_config.background_path = bg_path
@@ -279,6 +284,7 @@ def main():
     window.close_window.connect(app.quit)
     window.clear_chat_history.connect(lambda: clear_chat_history(history_file=args.history, ui_queue=audio_path_queue, llm_manager=llm_manager))
     window.skip_speech_signal.connect(lambda: ui_worker.skip_speech())
+    window.copy_chat_history_to_clipboard.connect(lambda: copy_chat_history_to_clipboard())
     
     # 确保在程序退出时停止所有线程
     try:

@@ -1,7 +1,8 @@
 from typing import Optional
 from pathlib import Path
 import json
-
+import re
+from PyQt5.QtWidgets import QApplication
 
 class HistoryManager:
     _instance: Optional['HistoryManager'] = None
@@ -63,6 +64,27 @@ class HistoryManager:
         return messages
 
 
+    def copy_chat_history_to_clipboard(self):
+        if not self.chat_history:
+            print("聊天记录为空，无需复制。")
+            return
+
+        formatted_text = ""
+        
+        for entry in self.chat_history:
+            # 1. 使用正则表达式去除 HTML 标签
+            clean_text = re.sub(r'<[^>]+>', '', entry)
+            
+            # 2. 确保格式为 "姓名: 话语" (通常正则清洗后已经是这个格式)
+            formatted_text += clean_text.strip() + "\n"
+
+        # 3. 获取 Qt 剪贴板实例并设置文本
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(formatted_text)
+            print("聊天记录已成功复制到剪贴板。")
+        else:
+            print("无法访问系统剪贴板。")
     def clear_chat_history(self, history_file):
         self.chat_history.clear()
         history_file_path =Path(history_file)

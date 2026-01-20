@@ -9,7 +9,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize, QUrl
 from PyQt5.QtWidgets import QSlider,QMessageBox
 from PyQt5.QtGui import QFont, QImage, QPixmap
 from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton,
-                             QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
+                             QHBoxLayout, QPushButton, QTextEdit, QSizePolicy)
 import os
 
 from pathlib import Path
@@ -38,6 +38,7 @@ class DesktopAssistantWindow(QWidget):
     skip_speech_signal = pyqtSignal() # 跳过当前语音信号
     llm_reply_finished = pyqtSignal() # LLM 回复完成信号
     pause_asr_signal = pyqtSignal() # 暂停 ASR 信号
+    copy_chat_history_to_clipboard = pyqtSignal() # 复制聊天记录到剪贴板信号.
 
     def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False, background_mode = False, max_sprite_slots=3):
         """初始化窗口"""
@@ -224,7 +225,7 @@ class DesktopAssistantWindow(QWidget):
         
         # Apply to input box
         self.input_box.setStyleSheet(f"""
-            QLineEdit {{
+            QTextEdit {{
                 background-color: rgba(50, 50, 50, 200);
                 color: white;
                 font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
@@ -383,6 +384,7 @@ class DesktopAssistantWindow(QWidget):
         # 添加菜单项
         history_action = QAction("历史记录", self)
         clear_history_action = QAction("清空历史记录",self)
+        copy_history_action = QAction("复制历史记录到剪贴板",self)
         language_action = QAction("语音语言", self)
         font_size_action = QAction("字体大小", self)
         volumn_action = QAction("音量", self)
@@ -395,10 +397,12 @@ class DesktopAssistantWindow(QWidget):
         font_size_action.triggered.connect(self.show_font_size_settings)
         volumn_action.triggered.connect(self.show_volumn_settings)
         theme_color_action.triggered.connect(self.show_theme_color_dialog)
+        copy_history_action.triggered.connect(self.copy_chat_history_to_clipboard)
 
         # 添加菜单项到菜单
         menu.addAction(history_action)
         menu.addAction(clear_history_action)
+        menu.addAction(copy_history_action)
         menu.addAction(language_action)
         menu.addAction(font_size_action)
         menu.addAction(volumn_action)
@@ -573,10 +577,11 @@ class DesktopAssistantWindow(QWidget):
         input_layout.setSpacing(10)
         
         # 输入框
-        self.input_box = QLineEdit()
+        self.input_box = QTextEdit()
+        self.input_box.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         self.input_box.setPlaceholderText("输入消息...")
         self.input_box.setStyleSheet(f"""
-            QLineEdit {{
+            QTextEdit {{
                 background-color: rgba(50, 50, 50, 200);
                 color: white;
                 font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
@@ -586,7 +591,7 @@ class DesktopAssistantWindow(QWidget):
                 font-size: {self.btn_font_size};
             }}
         """)
-        self.input_box.returnPressed.connect(self.sendMessage)
+        # self.input_box.returnPressed.connect(self.sendMessage)
         
         # 发送按钮
         self.send_btn = QPushButton("发送")
@@ -679,7 +684,7 @@ class DesktopAssistantWindow(QWidget):
 
     def sendMessage(self):
         """发送消息函数"""
-        message = self.input_box.text().strip()
+        message = self.input_box.toPlainText().strip()
         if message:
             print(f"UI发送消息: {message}")
             self.input_box.clear()

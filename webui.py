@@ -63,6 +63,7 @@ def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_b
             # 计算模板内容的哈希值（使用 SHA256 算法）
             template_hash = hashlib.md5(template.encode('utf-8')).hexdigest()
             history_file_path = Path(history_file) if history_file else Path(f"{HISTORY_DIR}/{template_hash}.json")
+            t2i = 'ComfyUI' if use_cg == '是' else ''
             python_path = 'python'
             runtime_python_path = Path('./runtime')
             if runtime_python_path.exists():
@@ -75,8 +76,8 @@ def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_b
                  f'--init_sprite_path={init_path}',
                  f'--history={history_file_path.resolve()}',
                  f'--bg={selected_bg}',
-                 f'--t2i={'ComfyUI' if use_cg == '是' else ''}',
-                 ]
+                 f'--t2i={t2i}',
+                ]
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
         else:
