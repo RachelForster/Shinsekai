@@ -579,6 +579,7 @@ class DesktopAssistantWindow(QWidget):
         # 输入框
         self.input_box = QTextEdit()
         self.input_box.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.input_box.setMaximumHeight(100)
         self.input_box.setPlaceholderText("输入消息...")
         self.input_box.setStyleSheet(f"""
             QTextEdit {{
@@ -591,6 +592,7 @@ class DesktopAssistantWindow(QWidget):
                 font-size: {self.btn_font_size};
             }}
         """)
+        self.input_box.installEventFilter(self)
         # self.input_box.returnPressed.connect(self.sendMessage)
         
         # 发送按钮
@@ -887,6 +889,15 @@ class DesktopAssistantWindow(QWidget):
             self.display_thread.wait()
         super().closeEvent(event)
         self.close_window.emit()
+
+    def eventFilter(self, obj, event):
+        if obj == self.input_box and event.type() == event.KeyPress:
+            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                # 同样判断是否带有修饰键
+                if not event.modifiers() & Qt.ControlModifier:
+                    self.send_btn.click() # 你的发送函数
+                    return True # 表示事件已处理，不再向下传递（即不换行）
+        return super().eventFilter(obj, event)
 
 def start_qt_app(display_queue, emotion_queue, deepseek):
     """启动PyQt应用"""
