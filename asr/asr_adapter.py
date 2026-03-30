@@ -198,8 +198,12 @@ class VoskAdapter(ASRAdapter):
 
     def start(self):
         """启动 Vosk 识别线程。"""
-        if self._is_running or self.model is None:
-            print("Vosk: 适配器未准备好或已在运行。")
+        if self._is_running:
+            print("Vosk: 适配器已在运行。")
+            return
+        
+        if self.model is None:
+            print("Vosk: 无法启动识别，因为模型加载失败。")
             return
 
         print("Vosk: 启动识别...")

@@ -1,4 +1,6 @@
 import sys
+
+from anyio import sleep
 from PyQt5.QtWidgets import (QPushButton, QTextEdit)
 from PyQt5.QtGui import QIcon, QColor, QFont
 from PyQt5.QtCore import QSize, Qt, pyqtSignal, QObject
@@ -90,7 +92,7 @@ class MicButton(QPushButton):
             # print(f"Final transcription: {text}")
             text = text.replace(' ', '').strip()
             self.line_edit.setText(self.original_text + ('，' if self.original_text else '') + text)
-            self.original_text = self.line_edit.text()
+            self.original_text = self.line_edit.toPlainText()  # 更新 original_text 为最新的完整文本
             self.send_final_transcription.emit()
 
     def _toggle_asr(self):
@@ -130,6 +132,7 @@ class MicButton(QPushButton):
         if not self._is_asr_running:
             return
         print("尝试恢复 ASR...")
+        sleep(0.5)  # 等待 ASR 适配器完全暂停
         self.original_text = ''
         self.line_edit.setText(self.original_text)  # 恢复到暂停时的文本
         self.asr_adapter.resume()
