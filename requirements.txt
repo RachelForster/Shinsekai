@@ -11,3 +11,5 @@ requests
 onnxruntime
 rembg
 google-genai
+tiktoken
+pyaudio
