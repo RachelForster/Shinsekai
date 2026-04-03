@@ -84,6 +84,7 @@ class GPTSoVitsAdapter(TTSAdapter):
             "text_lang": kwargs.get("text_lang", "ja"),
             "text_split_method": "cut5",
             "batch_size": 1,
+            "speed_factor": kwargs.get("speed_factor", 1.2),
         }
 
         try:
@@ -113,7 +114,7 @@ class GPTSoVitsAdapter(TTSAdapter):
         sovits_model_path = model_info.get('sovits_model_path', '')
         
         if self.sovits_model_path == sovits_model_path and self.gpt_model_path == gpt_model_path:
-            print("No model switch needed, current models are already set.")
+            print("No model switch needed, current models are already set.", self.gpt_model_path, self.sovits_model_path)
             return
         
         try:

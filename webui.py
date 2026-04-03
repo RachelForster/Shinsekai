@@ -11,7 +11,7 @@ import sys
 current_script = Path(__file__).resolve()
 project_root = current_script.parent
 if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+    sys.path.append(str(project_root))
 import tools.file_util as fu
 from config.character_config import CharacterConfig
 from config.character_manager import CharacterManager
@@ -22,6 +22,11 @@ from tools.crop_sprite import batch_crop_upper_half
 from tools.remove_bg import batch_remove_background
 from tools.generate_sprites import ImageGenerator
 from llm.template_generator import TemplateGenerator 
+try:
+    import blivedm
+    print(f"DEBUG: blivedm 实际加载路径: {blivedm.__file__}")
+except Exception as e:
+    print(f"DEBUG: 加载失败: {e}")
 
 config_manager = ConfigManager()
 character_manager = CharacterManager()
@@ -47,7 +52,7 @@ def load_template_from_file(file_path):
 def generate_template(selected_characters, bg_name, use_effect, use_translation, use_cg):
     template, out = template_generator.generate_chat_template(selected_characters, bg_name, use_effect == '是', use_cg == '是', use_translation == '是')
     return template, out
-def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_bg, use_cg):
+def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_bg, use_cg, room_id):
     global main_process
     print("启动聊天，使用模板:")
     try:
@@ -64,10 +69,8 @@ def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_b
             template_hash = hashlib.md5(template.encode('utf-8')).hexdigest()
             history_file_path = Path(history_file) if history_file else Path(f"{HISTORY_DIR}/{template_hash}.json")
             t2i = 'ComfyUI' if use_cg == '是' else ''
-            python_path = 'python'
-            runtime_python_path = Path('./runtime')
-            if runtime_python_path.exists():
-                python_path = './runtime/python.exe'
+            # This is the python path we used to start the current script
+            python_path = sys.executable
             main_process = subprocess.Popen(
                 [python_path, 
                  'main_sprite.py', 
@@ -77,6 +80,7 @@ def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_b
                  f'--history={history_file_path.resolve()}',
                  f'--bg={selected_bg}',
                  f'--t2i={t2i}',
+                    f'--room_id={room_id}'
                 ]
             )
             return "聊天进程已启动！PID: " + str(main_process.pid)
@@ -280,7 +284,6 @@ with gr.Blocks(title="新世界程序") as demo:
                 prompt_lang = gr.Textbox(label="参考音频的语言, 英语填en，日语填ja，中文填zh")
                 add_btn = gr.Button("添加或保存人物设置")
                 add_output = gr.Textbox(label="操作结果")
-
 
         # 添加人物事件
         add_btn.click(
@@ -836,6 +839,8 @@ with gr.Blocks(title="新世界程序") as demo:
                 label="输入历史记录文件路径（可选）",
                 info="模版未变动时：上传文件将自动关联历史记录；留空则加载默认历史记录文件。模版变动时, 关联的历史文件也会变动。历史文件保存在./data/chat_history/目录下。",
             )
+        with gr.Row():
+            room_id = gr.Textbox(label="直播可选，输入bilibili房间ID", interactive=True)
         launch_btn = gr.Button("启动聊天")
         launch_output = gr.Textbox(label="启动结果")
         
@@ -872,7 +877,7 @@ with gr.Blocks(title="新世界程序") as demo:
 
         launch_btn.click(
             launch_chat,
-            inputs=[template_output, voice_mode, initial_sprite_files, history_file, selected_bg, use_cg],
+            inputs=[template_output, voice_mode, initial_sprite_files, history_file, selected_bg, use_cg, room_id],
             outputs=launch_output
         )
 

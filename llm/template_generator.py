@@ -60,26 +60,26 @@ class TemplateGenerator:
                 template += f"{bg.bgm_tags}\n\n"
 
         REQUIREMENTS = [
-    "格式严格：输出内容必须严格且仅为 JSON 格式，不得包含任何附加的解释、说明或问候语。",
-    
-    f"角色名限制：character_name 字段只能是以下之一：{names} 或者固定关键字：旁白、选项、数值{"，场景" if bg_name else ''}{"，bgm" if bg_name else ''}{"，CG" if use_cg else ''}。",
-    
-    "立绘规范：sprite 字段必须填写一个两位数字代号（例如 01, 02），并根据当前台词语气和情绪自动选择最合适的立绘。",
-    "非立绘角色：当 character_name 为 旁白、数值 或 选项 时，sprite 字段必须固定为 -1。",
-    
-    "场景切换：当 character_name 为 场景 时，sprite 填写场景编号，表示切换场景。其他字段为空。",
-    "BGM 切换：当 character_name 为 bgm 时，sprite 填写 BGM 编号，表示切换bgm。应根据当前氛围进行切换，但不得过于频繁。其他字段为空。",
+            "格式严格：输出内容必须严格且仅为 JSON 格式，不得包含任何附加的解释、说明或问候语。",
+            
+            f"角色名限制：character_name 字段只能是以下之一：{names} 或者固定关键字：旁白, 选项, 数值{', 场景' if bg_name else ''}{', bgm' if bg_name else ''}{', CG' if use_cg else ''}。",
+            
+            "立绘规范：sprite 字段必须填写一个两位数字代号（例如 01, 02），并根据当前台词语气和情绪自动选择最合适的立绘。",
+            "非立绘角色：当 character_name 为 旁白, 数值 或 选项 时，sprite 字段必须固定为 -1。",
+            
+            "场景切换：当 character_name 为 场景 时，sprite 填写场景编号，表示切换场景。其他字段为空。",
+            "BGM 切换：当 character_name 为 bgm 时，sprite 填写 BGM 编号，表示切换bgm。应根据当前氛围进行切换，但不得过于频繁。其他字段为空。",
 
-    "台词风格：speech 字段必须是角色的中文台词，内容和表达方式必须严格符合角色的个性、说话风格和背景设定。",
-    "数组结构：所有对话和事件必须按时间顺序放入 dialog 数组中，数组中必须包含至少两个元素。",
-    "旁白用途：旁白元素用于描写场景变化、人物动作和环境气氛。",
-    
-    "选项位置：dialog 数组的最后一个元素必须是选项。",
-    "选项格式：选项内容在 speech 内，所有选项用 '/' 分隔。选项必须是用户可选择的对话或行为的纯文本描述，不得包含任何多余的描述或说明。",
-    "选项平衡：选项必须包括：一个纯粹的插科打诨/无厘头选项、一个精明/理智的选项、以及一个中庸的选项。所有选项必须与当前的剧情紧密关联，并符合人物性格。",
-    
-    "数值显示：数值元素表示当前用户状态或者角色状态数值，或者当前任务，该元素要求出现在dialog数组的前部，当 character_name 为 数值 时，speech 内使用富文本格式（如 <span style='color:xxxx;'>HP：100</span>）。颜色应选择浅色系，符合马卡龙配色。多个数值用 <br> 分隔。",
-]       
+            "台词风格：speech 字段必须是角色的中文台词，内容和表达方式必须严格符合角色的个性、说话风格和背景设定。",
+            "数组结构：所有对话和事件必须按时间顺序放入 dialog 数组中，数组中必须包含至少两个元素。",
+            "旁白用途：旁白元素用于描写场景变化、人物动作和环境气氛。",
+            
+            "选项位置：dialog 数组的最后一个元素必须是选项。",
+            "选项格式：选项内容在 speech 内，所有选项用 '/' 分隔。选项必须是用户可选择的对话或行为的纯文本描述，不得包含任何多余的描述或说明。",
+            "选项平衡：选项必须包括：一个纯粹的插科打诨/无厘头选项、一个精明/理智的选项、以及一个中庸的选项。所有选项必须与当前的剧情紧密关联，并符合人物性格。",
+            
+            "数值显示：数值元素表示当前用户状态或者角色状态数值，或者当前任务，该元素要求出现在dialog数组的前部，当 character_name 为 数值 时，speech 内使用富文本格式（如 <span style='color:xxxx;'>HP: 100</span>）。颜色应选择浅色系，符合马卡龙配色。多个数值用 <br> 分隔。",
+        ]
         if use_cg:
             REQUIREMENTS.append("CG 生成：在要表现角色魅力、剧情关键节点或情感高潮时，将character_name 设置为CG，speech 内容必须是用于 Stable Diffusion " \
             "生成图片的 Prompt，必须在开头加入 highres, masterpiece, 8k, bestscores 等高质量关键字，描述人数，例如1girl，并写出人物名称，例如nanami chiaki、" \
@@ -94,5 +94,5 @@ class TemplateGenerator:
         for item in REQUIREMENTS:
             template += f"{index}、{item}\n"
             index += 1
-        template += f"\n请开始对话，开始时介绍下用户所处的情境和背景，{"设置初始的场景和bgm，" if bg_name and bg_name !="透明背景" else ''}以及在做什么事情：\n"
+        template += f"\n请开始对话, 开始时介绍下用户所处的情境和背景, {'设置初始的场景和bgm, ' if bg_name and bg_name !='透明背景' else '' } 以及在做什么事情: \n"
         return template, ""

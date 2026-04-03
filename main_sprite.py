@@ -6,8 +6,7 @@ import sys
 current_script = Path(__file__).resolve()
 project_root = current_script.parent
 if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
+    sys.path.append(str(project_root))
 from llm.llm_manager import LLMManager,LLMAdapterFactory
 from llm.history_manager import HistoryManager
 from core.workers import LLMWorker, TTSWorker, UIWorker
@@ -32,6 +31,7 @@ import yaml
 import json
 from queue import Queue
 import traceback
+from live.danmuku_handler import start_bilibili_service
 
 CHAT_HISTORY_PATH = "./data/chat_history"
 
@@ -87,6 +87,7 @@ def main():
     parser.add_argument('--llm',type=str,default="deepseek")
     parser.add_argument('--bg', type=str,default='')
     parser.add_argument('--t2i',type=str,default='ComfyUI')
+    parser.add_argument('--room_id', type=str, default='', help='bilibili live room id')
 
     # 解析参数
     args = parser.parse_args()
@@ -285,6 +286,10 @@ def main():
     window.clear_chat_history.connect(lambda: clear_chat_history(history_file=args.history, ui_queue=audio_path_queue, llm_manager=llm_manager))
     window.skip_speech_signal.connect(lambda: ui_worker.skip_speech())
     window.copy_chat_history_to_clipboard.connect(lambda: copy_chat_history_to_clipboard())
+
+    if args.room_id:
+        print("启动B站直播弹幕监听，房间ID:", args.room_id)
+        start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
     
     # 确保在程序退出时停止所有线程
     try:

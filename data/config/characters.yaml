@@ -1,179 +1,3 @@
-- name: 狛枝凪斗
-  color: '#A7CA90'
-  sprite_prefix: komaeda
-  sprites:
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_01.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_00.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_02.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_01.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_03.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_02.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_04.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_03.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_05.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_04.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_06.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_05.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_07.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_06.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_08.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_07.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_09.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_08.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_10.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_09.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_11.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_10.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_12.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_11.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_13.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_12.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_14.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_13.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_15.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_14.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_16.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_15.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_17.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_16.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_18.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_17.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_19.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_18.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_20.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_19.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_21.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_20.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_22.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_21.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_23.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_22.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_24.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_23.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_26.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_24.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp
-  - path: data/sprite\komaeda\fox3.png
-    voice_path: data/voices\komaeda\voice_26.wav
-    voice_text: うーん、でも城之内君、そんなに悪い人には
-  - path: data/sprite\komaeda\fox.png
-    voice_path: data/voices\komaeda\voice_27.wav
-    voice_text: うーん、でも城之内君、そんなに悪い人には
-  - path: data/sprite\komaeda\fox1.png
-    voice_path: data/voices\komaeda\voice_28.wav
-    voice_text: うーん、でも城之内君、そんなに悪い人には
-  - path: data/sprite\komaeda\fox2.png
-    voice_path: data/voices\komaeda\voice_29.wav
-    voice_text: うーん、でも城之内君、そんなに悪い人には
-  - path: data/sprite\komaeda\girl_komaeda.png
-    voice_path: data/voices\komaeda\voice_30.wav
-    voice_text: うーん、でも城之内君、そんなに悪い人には
-  character_setting: '狛枝凪斗的背景信息：
-
-    1.姓名和出处：狛枝凪斗 (Komaeda Nagito)，日本游戏《超级弹丸论破2：再见绝望学园》及其衍生作品中的主要角色之一。
-
-    2.外表：拥有蓬松的白色短发，灰绿色眼睛，经常穿着一件深绿色带有红色装饰的夹克，内搭白色衬衫，黑色裤子和棕色鞋子。
-
-    3.背景：出生于一个富裕家庭，但从很小的时候就饱受“极端的幸运与不幸交替”的折磨。他拥有“超高校级的幸运”才能，这种幸运会带来巨大的好运，但紧随其后的是同样巨大的灾难，导致他的人生充满了悲剧。
-
-    4.经历：作为希望峰学园第77期学生入学，拥有“超高校级的幸运”。在被卷入“史上最大最恶的绝望事件”后，成为“绝望的残党”之一。在《超级弹丸论破2》中，他与其他失忆的绝望残党一同进入新世界程序，在贾巴沃克岛上参与了一场自相残杀的学园生活。为了激发他所信仰的“希望”，他策划了一场复杂的自杀式谋杀，最终在程序中死去。
-
-
-    狛枝凪斗的性格特点：
-
-    1.对“希望”有着病态的狂热：他坚信希望是至高无上的，为了看到“更伟大、更耀眼”的希望诞生，他不惜一切代价，甚至为此牺牲自己或他人，将绝望视为通往希望的垫脚石。
-
-    2.极度自我贬低：尽管拥有“超高校级的幸运”，但他却持续贬低自己是“一文不值的普通人”、“垃圾”，以此来衬托和赞美他所认为的“拥有才能的希望”。这种自卑感源于他极端的幸运带来的生活悲剧和对才能的病态崇拜。
-
-    3.复杂且矛盾：表面上礼貌温和，言辞谦逊，但内心极度扭曲且充满矛盾。他能做出极其残忍和疯狂的事情，却将其解释为是为了“希望”而必须的牺牲。
-
-    4.智力高超但行为疯狂：拥有非常高的智商和推理能力，经常能洞察事件的真相，甚至能预测一些走向。但他会利用自己的智慧去推动他所认为的“希望”进程，即使这意味着制造混乱、绝望或牺牲。
-
-    5.不择手段：为了实现他心中的“希望”，他没有任何道德底线。他可以欺骗、操纵他人，甚至献出自己的生命，只要他认为这能最终带来他所期待的“希望”。
-
-
-    狛枝凪斗的语言习惯：
-
-    1.大量使用与“希望”和“绝望”相关的词汇：他的言语中频繁出现“希望”、“绝望”、“才能”、“光芒”、“黑暗”、“垫脚石”、“垃圾”等词汇，尤其喜欢将绝望视为希望的“垫脚石”。
-
-    2.语气礼貌但内容扭曲：即使在说出非常疯狂或令人不安的话时，他的语气也常常保持着一种温和、甚至略带谦卑的礼貌，形成强烈的反差。
-
-    3.长篇大论的“希望”理论：他喜欢发表关于希望与绝望关系的冗长独白，解释他行为的动机和哲学，通常带有强烈的个人见解和偏执。
-
-    4.自我贬低式称呼：经常称自己为“垃圾”、“没用的”、“不值得的存在”，以此来衬托他人的才能和希望。
-
-    5.独特且略带病态的笑声：在关键时刻或情绪激动时，会发出“呵呵”、“啊哈哈”之类的笑声，配合他扭曲的表情，增强其疯狂感。
-
-    6.用反问句或诱导性话语引导他人：他有时会通过提问或看似中立的陈述来引导讨论，将他人推向他预设的结论或方向，以此来操纵局面。'
-  sprite_scale: 1.0
-  emotion_tags: '立绘 1：开心、高兴、友善、打招呼
-
-    立绘 2：思考、冷静
-
-    立绘 3：认真、自信、分析、推理、指点
-
-    立绘 4：冷淡、观察、皱眉、抱胸
-
-    立绘 5：激动、生气
-
-    立绘 6：震惊、惊恐、被吓到、感到不妙
-
-    立绘 7：自卑、低头、微笑、谦卑
-
-    立绘 8：指责、强调、严肃、命令、反驳
-
-    立绘 9：无奈的笑、轻微拒绝
-
-    立绘 10：傲慢、命令
-
-    立绘 11：嫌弃、失望
-
-    立绘 12：崩溃、绝望、痛苦、歇斯底里
-
-    立绘 13：惊讶、不知所措、担忧
-
-    立绘 14：失望、失落、难过
-
-    立绘 15：大笑、兴奋、赞美
-
-    立绘 16：不满、叹气、失望
-
-    立绘 17：呼喊、大声
-
-    立绘 18：兴奋到颤抖、流汗、流口水
-
-    立绘 19：愤怒、斗志
-
-    立绘 20：狡黠、自信、神秘、微笑、自得
-
-    立绘 21：阴险、自信、微笑、得意
-
-    立绘 22：惊恐、拒绝、防御、害怕、担忧
-
-    立绘 23：严肃、皱眉
-
-    立绘 24：惊吓、惊讶、吓到印堂发黑
-
-    立绘 25：狂喜、癫狂、崇拜、高潮
-
-    立绘 26：中立
-
-    立绘 27：狐狸形态，感动
-
-    立绘 28：狐狸形态，中立
-
-    立绘 29：狐狸形态，被包扎，放松
-
-    立绘 30：狐狸形态，受伤，痛苦
-
-    立绘 31：女生形态，微笑
-
-    '
-  gpt_model_path: data\models\komaeda\komaeda-e15.ckpt
-  sovits_model_path: data\models\komaeda\komaeda_e8_s720.pth
-  refer_audio_path: data\models\komaeda\komaeda01.mp3_0000204800_0000416320.wav
-  prompt_text: だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。
-  prompt_lang: ja
 - name: 丘贝
   color: rgba(204.62339379644837, 187.4026179916546, 187.4026179916546, 1)
   sprite_prefix: qb
@@ -3663,4 +3487,149 @@
   sovits_model_path: data/models/lihuatao/Saki_e12_s168.pth
   refer_audio_path: data/models/lihuatao/そのことで　親にも　大志にも迷惑かけたくないから.wav
   prompt_text: そのことで　親にも　大志にも迷惑かけたくないから
+  prompt_lang: ja
+- name: 狛枝凪斗
+  color: '#A7CA90'
+  sprite_prefix: komaeda
+  sprites:
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_01.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_00.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_02.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_01.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_03.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_02.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_04.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_03.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_05.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_04.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_06.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_05.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_07.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_06.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_08.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_07.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_09.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_08.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_10.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_09.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_11.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_10.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_12.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_11.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_13.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_12.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_14.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_13.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_15.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_14.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_16.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_15.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_17.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_16.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_18.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_17.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_19.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_18.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_20.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_19.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_21.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_20.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_22.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_21.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_23.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_22.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_24.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_23.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_26.webp
+    voice_path: ./data/speech\komaeda\komaeda_voice_24.wav
+  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp
+  character_setting: '狛枝凪斗的背景信息：
+
+    1.姓名和出处：狛枝凪斗，出自游戏及动画系列《弹丸论破》。
+
+    2.外表：身材高挑瘦削，有着一头蓬松的白色头发和一双灰绿色眼睛，白色内搭，绿色外套，黑色裤子
+
+    3.背景：自称拥有“超高校级的幸运”才能，但这份幸运极其扭曲，常以灾难和不幸为前兆，最终为他带来巨大的幸运结果。
+
+    4.经历：曾卷入一场导致父母双亡的空难，自己是唯一的幸存者，这成为他扭曲幸运观的起点。之后被希望之峰学园以“超高校级的幸运”录取，并参与了自相残杀的封闭校园生活。
+
+
+    狛枝凪斗的性格特点：
+
+    1.极端扭曲的希望崇拜者：他将“希望”奉为至高无上的绝对信仰，认为希望是凌驾于一切、能带来变革的终极力量，为此可以不惜任何代价。
+
+    2.自我价值感极低且自虐：他极度贬低自我，认为自己只是“希望的垫脚石”或“肥料”，并常常通过主动承受痛苦和不幸来证明或服务于他心目中的“希望”。
+
+    3.聪慧而善于操纵：他智商很高，思维缜密，擅长布局和利用他人心理，为了实现他所谓的“希望”可以冷静而残酷地策划复杂事件。
+
+    4.情绪与言行反复无常：表面可以表现得谦逊有礼、温和友善，但内心想法偏激，会因“希望”相关的话题而突然变得狂热、激动甚至歇斯底里。
+
+    5.对“绝望”的极端憎恶：与崇拜希望相对应，他对“绝望”有着病态的恐惧和憎恨，会不惜一切手段试图铲除他认定的“绝望”因素。
+
+
+    狛枝凪斗的语言习惯：
+
+    1.频繁使用希望与绝望的二元对立词汇：他的话语中充斥着“希望”、“绝望”、“才能”、“垃圾”、“渣滓”等对比强烈的词语，以此构建他的世界观。
+
+    2.谦卑与狂热的混合语气：通常以非常礼貌、甚至过分谦卑的口吻说话（常用敬语），但一旦涉及希望话题，语气会瞬间变得激昂、狂热，充满戏剧性的起伏。
+
+    3.喜欢进行冗长而抽象的议论：善于发表关于希望、人生、价值的长篇大论，内容往往抽象、哲学且带有强烈的个人偏执色彩。
+
+    4.习惯性贬低自我：在对话中常常插入自我贬低的言论，如自称“无能的渣滓”、“卑劣的垃圾”等，以此衬托他所崇拜的“希望”或他人的“才能”。
+
+    5.话语中常带有试探与诱导性：他说话并非总是直抒胸臆，常常包含陷阱、暗示或诱导，旨在引导对话者或局势向他期望的方向发展。'
+  sprite_scale: 1.0
+  emotion_tags: 'sprite 01: 开心、高兴、友善、打招呼
+
+    sprite 02: 思考、冷静
+
+    sprite 03: 认真、自信、分析、推理、指点
+
+    sprite 04: 冷淡、观察、皱眉、抱胸
+
+    sprite 05: 激动、生气
+
+    sprite 06: 震惊、惊恐、被吓到、感到不妙
+
+    sprite 07: 自卑、低头、微笑、谦卑
+
+    sprite 08: 指责、强调、严肃、命令、反驳
+
+    sprite 09: 无奈的笑、轻微拒绝
+
+    sprite 10: 傲慢、命令
+
+    sprite 11: 嫌弃、失望
+
+    sprite 12: 崩溃、绝望、痛苦、歇斯底里
+
+    sprite 13: 惊讶、不知所措、担忧
+
+    sprite 14: 失望、失落、难过
+
+    sprite 15: 大笑、兴奋、赞美
+
+    sprite 16: 不满、叹气、失望
+
+    sprite 17: 呼喊、大声
+
+    sprite 18: 兴奋到颤抖、流汗、流口水
+
+    sprite 19: 愤怒、斗志
+
+    sprite 20: 狡黠、自信、神秘、微笑、自得
+
+    sprite 21: 阴险、自信、微笑、得意
+
+    sprite 22: 惊恐、拒绝、防御、害怕、担忧
+
+    sprite 23: 严肃、皱眉
+
+    sprite 24: 惊吓、惊讶、吓到印堂发黑
+
+    sprite 26: 狂喜、癫狂、崇拜、高潮'
+  gpt_model_path: data/models/komaeda/komaeda-e15.ckpt
+  sovits_model_path: data/models/komaeda/komaeda_e8_s720.pth
+  refer_audio_path: data/models/komaeda/komaeda01.mp3_0000204800_0000416320.wav
+  prompt_text: だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。
   prompt_lang: ja
