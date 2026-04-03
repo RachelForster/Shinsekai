@@ -7,7 +7,7 @@ project_root = current_script.parent.parent
 print("project_root",project_root)
 # 将项目根目录添加到Python模块搜索路径
 if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+    sys.path.append(str(project_root))
 
 import asyncio
 import websockets

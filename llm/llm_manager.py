@@ -10,6 +10,9 @@ import logging
 
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 from llm.compact_manager import CompactManager
+from llm.tools.tool_manager import ToolManager
+
+tool_manager = ToolManager()
 
 class LLMAdapterFactory:
     """Factory for creating different LLMAdapter instances."""
@@ -44,6 +47,7 @@ class LLMManager:
         self.user_template = user_template
         self.compact_manager = CompactManager(adapter, max_tokens, compact_threshold)
         self.set_user_template(user_template)
+        self.tools_definitions = tool_manager.get_definitions()  # 获取工具定义列表
         
         # 设置日志
         logging.basicConfig(level=logging.INFO)
@@ -110,7 +114,7 @@ class LLMManager:
                 self.logger.error(f"Auto-compaction failed: {e}")
         
         # 传递消息列表给LLM适配器
-        response = self.llm_adapter.chat(self.get_messages(), stream, response_format)
+        response = self.llm_adapter.chat(self.get_messages(), stream, response_format，tools=self.tools_definitions)
         
         # 如果不是流式响应，处理并添加助手消息
         if not stream and response:

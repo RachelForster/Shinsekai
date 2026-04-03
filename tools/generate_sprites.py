@@ -11,7 +11,7 @@ from PIL import Image
 current_script = Path(__file__).resolve()
 project_root = current_script.parent.parent
 if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+    sys.path.append(str(project_root))
 
 from config.config_manager import ConfigManager
 
