@@ -7,6 +7,7 @@ current_script = Path(__file__).resolve()
 project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
+import llm.tools.character_tools
 from llm.llm_manager import LLMManager,LLMAdapterFactory
 from llm.history_manager import HistoryManager
 from core.workers import LLMWorker, TTSWorker, UIWorker

@@ -12,6 +12,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject
 # 假设以下依赖文件已在项目路径中
 from llm.llm_manager import LLMManager
 from llm.text_processor import TextProcessor
+from llm.tools.tool_manager import ToolManager
 from tts.tts_manager import TTSManager
 from t2i.t2i_manager import T2IManager
 from opencc import OpenCC # 假设的依赖
@@ -76,6 +77,7 @@ class LLMWorker(BaseWorker):
         self.user_input_queue: Queue[UserInputMessage] = user_input_queue
         self.tts_queue: Queue[LLMDialogMessage] = tts_queue
         self.chat_history = chat_history
+        self.tool_manager = ToolManager()
 
     def run(self):
         while self.running:
@@ -104,7 +106,8 @@ class LLMWorker(BaseWorker):
                 start_index = 0
                 for chunk in response_stream:
                     # 检查是否为完整消息块
-                    chunk_message = chunk.choices[0].delta.content
+                    chunk_message = chunk
+                    # chunk_message = chunk.choices[0].delta.content
                     if chunk_message:
                         response_buffer += chunk_message
                         content += chunk_message
@@ -122,7 +125,7 @@ class LLMWorker(BaseWorker):
                         try:
                             # 确保 JSON 结构完整
                             json_str = response_buffer[start_index_temp:end_index]
-                            print(json_str)
+                            # print(json_str)
 
                             dialog_item = json.loads(json_str)
                             # 使用 Pydantic 模型验证和封装数据
@@ -204,7 +207,7 @@ class TTSWorker(BaseWorker):
             try:
                 # 期望获取的是 LLMDialogMessage 实例
                 item: LLMDialogMessage = self.tts_queue.get()
-                print("TTS Worker get an item")
+                # print("TTS Worker get an item")
                 if item is None:
                     break
 

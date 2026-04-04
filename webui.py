@@ -21,12 +21,7 @@ from llm.constants import LLM_BASE_URLS
 from tools.crop_sprite import batch_crop_upper_half
 from tools.remove_bg import batch_remove_background
 from tools.generate_sprites import ImageGenerator
-from llm.template_generator import TemplateGenerator 
-try:
-    import blivedm
-    print(f"DEBUG: blivedm 实际加载路径: {blivedm.__file__}")
-except Exception as e:
-    print(f"DEBUG: 加载失败: {e}")
+from llm.template_generator import TemplateGenerator
 
 config_manager = ConfigManager()
 character_manager = CharacterManager()
@@ -237,7 +232,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 
             with gr.Column():
                 gr.Markdown("#### 从文件导入")
-                import_file = gr.File(label="选择文件")
+                import_file = gr.File(label="选择文件", file_count="multiple")
                 import_btn = gr.Button("从文件导入人物")
                 import_output = gr.Textbox("输出结果")
 
@@ -254,13 +249,28 @@ with gr.Blocks(title="新世界程序") as demo:
                     except Exception as e:
                         return f"导出失败 {e}"
                     
-                def import_character(file_path):
-                    try:
-                        fu.import_character(file_path)
-                        config_manager.reload()
-                        return f"导入成功"
-                    except Exception as e:
-                        return f"导入失败：{e}"
+                def import_character(file_paths):
+                    if not file_paths:
+                        return "请先选择文件"
+                
+                    success_count = 0
+                    error_messages = []
+                    
+                    # file_paths is a list
+                    for file_path in file_paths:
+                        try:
+                            fu.import_character(file_path)
+                            success_count += 1
+                        except Exception as e:
+                            error_messages.append(f"文件 {os.path.basename(file_path)} 导入失败: {e}")
+            
+                    config_manager.reload()
+                    
+                    result_msg = f"成功导入 {success_count} 个角色。"
+                    if error_messages:
+                        result_msg += "\n失败详情：\n" + "\n".join(error_messages)
+                        
+                    return result_msg
 
         with gr.Row():
             with gr.Column():

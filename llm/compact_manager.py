@@ -41,10 +41,12 @@ class CompactManager:
         if self.encoder:
             # 使用tiktoken精确计算
             total_tokens = 0
+            # logger.debug(f"Counting tokens for {len(messages)} messages using tiktoken")
             for message in messages:
                 content = message.get('content', '')
                 role = message.get('role', '')
                 # 每个消息都有一些额外的token开销
+                # logger.debug(f"Counting tokens for message: role={role}, content: {content}")
                 total_tokens += len(self.encoder.encode(content)) + 4  # 4个token用于角色和格式
             return total_tokens
         else:
@@ -68,8 +70,10 @@ class CompactManager:
         """检查是否需要压缩记忆"""
         if self.num_tokens == 0:  # 如果是第一次计算token数量
             self.num_tokens = self.count_tokens(messages)
+            logger.info(f"Initial token count: {self.num_tokens} tokens for {len(messages)} messages")
         else:
-            self.increase_token_count(messages[-2:], token_usage)  # 只计算最近两条消息的token数
+            self.increase_token_count(messages[-1:], token_usage)  # 只计算最近一条消息的token数
+            # logger.info(f"Increase token count messages:{messages}")
         token_count = self.num_tokens
         threshold_tokens = self.max_tokens * self.compact_threshold
 
@@ -88,7 +92,7 @@ class CompactManager:
         if len(messages) <= 2:  # 只有system消息和少量对话，不需要压缩
             return messages
         
-        logger.info(f"Starting compaction of {len(messages)} messages")
+        # logger.info(f"Starting compaction of {len(messages)} messages")
         
         # 保留system消息
         system_message = messages[0] if messages[0]['role'] == 'system' else None
@@ -121,7 +125,7 @@ class CompactManager:
             recent_messages = messages_to_compact[-3:]  # 保留最后3条消息
             compacted_messages.extend(recent_messages)
             
-            logger.info(f"Compaction completed. Original: {len(messages)} messages, Compacted: {len(compacted_messages)} messages")
+            # logger.info(f"Compaction completed. Original: {len(messages)} messages, Compacted: {len(compacted_messages)} messages")
             self.num_tokens = 0
             return compacted_messages
             
@@ -179,7 +183,7 @@ class CompactManager:
     
     def auto_compact_if_needed(self, messages: List[Dict[str, str]], token_usage: int = 0) -> List[Dict[str, str]]:
         """自动检查并压缩消息（如果需要）"""
-        logger.info("num tokens before compaction check: {}".format(self.num_tokens))
+        # logger.info("num tokens before compaction check: {}".format(self.num_tokens))
         if self.needs_compaction(messages, token_usage):
             logger.info("Token limit approaching, performing automatic compaction...")
             return self.compact_messages(messages)
