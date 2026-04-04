@@ -162,7 +162,7 @@ class LLMManager:
         流式工具处理逻辑 (内部私有)
         """
         tools_defs = tool_manager.get_definitions()  # 获取工具定义列表
-        print("tools_defs:", tools_defs)
+        # print("tools_defs:", tools_defs)
         
         response_stream = self.llm_adapter.chat(
             messages=self.get_messages(),
@@ -198,7 +198,17 @@ class LLMManager:
         # 3. 如果需要调工具，执行完后递归
         if has_tool_use:
             tool_calls_list = list(full_tool_calls.values())
-            self.add_message("assistant", "", tool_calls=tool_calls_list)
+            
+            # 【关键修改】：将 ToolCall 对象转换为字典列表
+            serializable_tool_calls = []
+            for tc in tool_calls_list:
+                tc_dict = tc.model_dump()
+                if 'index' in tc_dict:
+                    del tc_dict['index']
+                serializable_tool_calls.append(tc_dict)
+
+            # 存入消息历史的是纯字典
+            self.add_message("assistant", "", tool_calls=serializable_tool_calls)
             
             for tc in tool_calls_list:
                 self.logger.info(f"Executing tool: {tc.function.name}")
@@ -206,8 +216,6 @@ class LLMManager:
                 self.add_message("tool", result, tool_call_id=tc.id, name=tc.function.name)
             
             yield from self._chat_with_tools_stream(**kwargs)
-        # else:
-        #     self.add_message("assistant", collected_content)
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
         """

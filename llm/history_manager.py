@@ -1,3 +1,4 @@
+import traceback
 from typing import Optional
 from pathlib import Path
 import json
@@ -30,6 +31,7 @@ class HistoryManager:
                 json.dump(history, f, ensure_ascii=False, indent=4)
             print(f"聊天记录已保存到 {history_path}")
         except Exception as e:
+            traceback.print_exc()
             print(f"保存聊天记录失败: {e}")
 
     def load_chat_history(self,file_path):
