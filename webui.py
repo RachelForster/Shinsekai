@@ -58,6 +58,8 @@ def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_b
         voice_mode = 'gen' if voice_mode == '全语音模式' else 'preset'
         init_path = init_sprite_path[0] if init_sprite_path else ''
         history_file = history_file if history_file else ''
+        config_manager.config.system_config.live_room_id = room_id
+        config_manager.save_system_config()  # 保存系统配置，包括 live_room_id
 
         if main_process is None or main_process.poll() is not None:
             # 计算模板内容的哈希值（使用 SHA256 算法）
@@ -125,6 +127,7 @@ with gr.Blocks(title="新世界程序") as demo:
         with gr.Row():
             with gr.Column():
                 _provider,_model,_base_url,_api_key = config_manager.get_llm_api_config()
+                _is_streaming = "是" if config_manager.config.api_config.is_streaming else "否"
                 gr.Markdown("### LLM API 配置")
                 llm_provider = gr.Dropdown(
                     choices=list(LLM_BASE_URLS.keys()),
@@ -135,6 +138,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 llm_model = gr.Textbox(label="模型ID", value=_model)
                 api_key = gr.Textbox(label="LLM API Key", type="password", value=_api_key)
                 base_url = gr.Textbox(label="LLM API 基础网址", value=_base_url)
+                is_streaming = gr.Radio(label="是否使用流式响应", choices=["是", "否"], value=_is_streaming)
             with gr.Column():  
                     api_output = gr.Textbox(label="输出信息", interactive=False)
         with gr.Row():
@@ -197,7 +201,7 @@ with gr.Blocks(title="新世界程序") as demo:
 
         save_api_btn.click(
             config_manager.save_api_config_new,
-            inputs=[llm_provider, llm_model,api_key, base_url, sovits_url, gpt_sovits_api_path, t2i_url, t2i_work_path, t2i_default_workflow_path,prompt_node_id,output_node_id],
+            inputs=[llm_provider, llm_model,api_key, base_url, is_streaming, sovits_url, gpt_sovits_api_path, t2i_url, t2i_work_path, t2i_default_workflow_path,prompt_node_id,output_node_id],
             outputs=api_output
         )
 
@@ -850,7 +854,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 info="模版未变动时：上传文件将自动关联历史记录；留空则加载默认历史记录文件。模版变动时, 关联的历史文件也会变动。历史文件保存在./data/chat_history/目录下。",
             )
         with gr.Row():
-            room_id = gr.Textbox(label="直播可选，输入bilibili房间ID", interactive=True)
+            room_id = gr.Textbox(label="直播可选，输入bilibili房间ID", interactive=True, value=config_manager.config.system_config.live_room_id)
         launch_btn = gr.Button("启动聊天")
         launch_output = gr.Textbox(label="启动结果")
         

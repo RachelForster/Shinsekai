@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+import os
+import sys
 import threading
 from typing import Callable, Optional
 from pathlib import Path
@@ -61,7 +63,25 @@ class RealtimeSTTAdapter(ASRAdapter):
     """
 
     def __init__(self, language: str, callback: TranscriptionCallback, model_name: str = "small"):
-        super().__init__(language, callback)    
+        super().__init__(language, callback)
+        # 自动定位你的虚拟环境中的 nvidia 库路径
+        venv_path = sys.prefix
+        nvidia_base = os.path.join(venv_path, r'Lib\site-packages\nvidia')
+
+        # 需要加入搜索路径的子目录
+        sub_dirs = [
+            r'cudnn\bin',
+            r'cublas\bin',
+            r'curand\bin'
+        ]
+
+        for sub in sub_dirs:
+            full_path = os.path.join(nvidia_base, sub)
+            if os.path.exists(full_path):
+                os.add_dll_directory(full_path)
+                print(f"已添加 DLL 搜索路径: {full_path}")
+
+
         from RealtimeSTT import AudioToTextRecorder
 
         self._recorder: Optional[AudioToTextRecorder] = None
@@ -80,7 +100,8 @@ class RealtimeSTTAdapter(ASRAdapter):
         self._recorder = AudioToTextRecorder(
             model=self.model_name,
             language=self.language,
-            compute_type="int8",
+            compute_type="float16",  # 可选参数，根据需要调整
+            device="cuda",  # 可选参数，根据需要调整
             initial_prompt="这是一段中文语音：",
             on_realtime_transcription_update=internal_callback
         )

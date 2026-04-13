@@ -71,6 +71,7 @@ class ApiConfig(BaseModel):
     llm_base_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="LLM 服务的 Base URL")
     llm_model: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商使用的具体模型名称字典")
     llm_provider: DefaultIfNone[str] = Field(default="Deepseek", description="LLM 服务器商名字")
+    is_streaming: DefaultIfNone[bool] = Field(default=True, description="是否使用流式响应")
 
     hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
 
@@ -84,6 +85,7 @@ class SystemConfig(BaseModel):
     theme_color: DefaultIfNone[str] = Field(default='rgba(50,50,50,200)',description="主题色")
     bgm_path: DefaultIfNone[str] = Field(default="",description="BGM 的路径")
     background_path: DefaultIfNone[str] = Field(default="",description="背景图片的路径")
+    live_room_id : DefaultIfNone[str] = Field(default="", description="直播间ID，用于直播相关功能")
 
 # Main Config Model
 class AppConfig(BaseModel):

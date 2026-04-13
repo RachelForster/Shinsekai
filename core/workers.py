@@ -97,59 +97,60 @@ class LLMWorker(BaseWorker):
                 
                 start_time = time.perf_counter()
                 
-                # chat 函数的输入是原始文本
-                response_stream = self.llm_manager.chat(message.text, stream=True)
-                
+                # 统一获取响应流
+                is_streaming = config_manager.config.api_config.is_streaming
+                raw_response = self.llm_manager.chat(message.text, stream=is_streaming)
+
+                # 如果不是流式，将其包装成一个列表，使下文的 for 循环可以统一处理
+                if is_streaming:
+                    response_stream = raw_response
+                else:
+                    # 包装成可迭代对象，模拟流式的一个 chunk
+                    response_stream = [raw_response]
+
                 response_buffer = ""
-                content = "" # 记录 LLM 的完整回复内容
+                content = ""  # 记录 LLM 的完整回复内容
                 
-                start_index = 0
+                # 2. 统一处理逻辑
                 for chunk in response_stream:
-                    # 检查是否为完整消息块
+                    # 假设 chunk 直接就是字符串内容，如果是对象请根据实际 SDK 调整
                     chunk_message = chunk
-                    # chunk_message = chunk.choices[0].delta.content
+                    
                     if chunk_message:
                         response_buffer += chunk_message
                         content += chunk_message
 
+                    # 缓冲区解析 JSON 的逻辑
                     while '}' in response_buffer:
+                        # 查找最近的一对 {}
                         end_index = response_buffer.find('}') + 1
-                        start_index_temp = end_index -1
-                        while start_index_temp >=0:
-                            if response_buffer[start_index_temp] == '{':
-                                break
-                            start_index_temp -= 1
-                        if start_index_temp < 0:
+                        start_index_temp = response_buffer.rfind('{', 0, end_index)
+                        
+                        if start_index_temp == -1:
+                            # 没找到匹配的左括号，可能是不完整的 JSON，跳出等待更多 chunk
                             break
                         
                         try:
-                            # 确保 JSON 结构完整
                             json_str = response_buffer[start_index_temp:end_index]
-                            # print(json_str)
-
                             dialog_item = json.loads(json_str)
-                            # 使用 Pydantic 模型验证和封装数据
-                            llm_dialog = LLMDialogMessage(**dialog_item)
                             
-                            # 将 Pydantic 实例放入 tts_queue
+                            # 验证并放入队列
+                            llm_dialog = LLMDialogMessage(**dialog_item)
                             self.tts_queue.put(llm_dialog)
+                            
+                            # 截断已处理的缓冲区
                             response_buffer = response_buffer[end_index:].strip()
 
-                        except json.JSONDecodeError as e:
-                            # 如果解析失败，可能是JSON格式不完整，继续等待更多数据
-                            print(f"JSON解析错误，跳过该消息：{e}")
+                        except json.JSONDecodeError:
+                            # 如果解析失败，可能是嵌套或格式问题，跳过该段尝试后续
                             response_buffer = response_buffer[end_index:].strip()
-                            traceback.print_exc()
                         except Exception as e:
-                            print(f"Pydantic 验证或放入队列失败: {e}")
-                            traceback.print_exc()
-                            # 假设 JSON 结构正确但 Pydantic 验证失败，也跳出内层循环
+                            print(f"处理失败: {e}")
                             response_buffer = response_buffer[end_index:].strip()
                             break
 
-                # LLM 历史应记录完整的 JSON 字符串
-                self.llm_manager.add_message("assistant",content)           
-                end_time = time.perf_counter()                
+                # 3. 记录历史与状态清理
+                self.llm_manager.add_message("assistant", content)           
                 self.user_input_queue.task_done()
 
             except Exception as e:
@@ -304,7 +305,7 @@ class TTSWorker(BaseWorker):
                     
                 # 将包含音频路径和原始数据的字典放入音频路径队列
                 self.put_data(character_name_s, speech, str(sprite), audio_path, is_system_message=False, effect=item.effect)
-                print(f'TTSWorker put: {audio_path} into the UI queue')
+                # print(f'TTSWorker put: {audio_path} into the UI queue')
 
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")

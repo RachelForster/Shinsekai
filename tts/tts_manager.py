@@ -48,7 +48,7 @@ class TTSManager:
     def __init__(self, character_ui_url="http://localhost:7888/alive", tts_server_url="http://127.0.0.1:9880/"):
         self.audio_cache_dir = Path(".\\cache\\audio")
         self.character_ui_url = character_ui_url
-        self.cache_num = 10
+        self.cache_num = 100
         self.index = 0
 
         self.audio_cache_dir.mkdir(exist_ok=True, parents=True)

@@ -76,14 +76,14 @@ class ToolManager:
         return self._tools_definitions
 
     def execute(self, name: str, arguments_json: str) -> str:
+        self.logger.info(f"Executing tool: {name} with arguments: {arguments_json}")
         if name not in self._functions:
             return json.dumps({"error": f"Tool '{name}' not found."})
         
         try:
             args = json.loads(arguments_json)
-            # 注意：这里的调用需要根据你的工具函数是全局函数还是类方法进行微调
-            # 如果是 CharacterTools 的实例方法，func 已经被绑定了 self
             result = self._functions[name](**args)
             return json.dumps(result, ensure_ascii=False)
         except Exception as e:
+            self.logger.error(f"Error executing tool '{name}': {e}")
             return json.dumps({"error": str(e)})

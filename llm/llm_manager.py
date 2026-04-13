@@ -236,12 +236,12 @@ class LLMManager:
         if hasattr(message, 'tool_calls') and message.tool_calls:
             self.add_message("assistant", "", tool_calls=message.tool_calls)
             for tc in message.tool_calls:
-                result = self.tool_manager.execute(tc.function.name, tc.function.arguments)
+                result = tool_manager.execute(tc.function.name, tc.function.arguments)
                 self.add_message("tool", result, tool_call_id=tc.id, name=tc.function.name)
 
             self.logger.info("Tools executed, fetching final response...")
             return self._chat_with_tools_sync(**kwargs)
         else:
             content = message.content or ""
-            self.add_message("assistant", content)
+            # self.add_message("assistant", content)
             return content
