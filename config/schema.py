@@ -60,6 +60,7 @@ class ApiConfig(BaseModel):
     """API 相关的配置，如 GPT-SoVITS 和 LLM 的设置"""
     gpt_sovits_api_path: DefaultIfNone[str] = Field(default='', description="GPT-SoVITS API 的工作目录")
     gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="GPT-SoVITS API 的访问 URL")
+    tts_speed: DefaultIfNone[float] = Field(default=1.0, description="TTS 语速 (默认值 1.0)")
 
     t2i_work_path: DefaultIfNone[str] = Field(default='', description="T2I API 的工作目录")
     t2i_api_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='http://127.0.0.1:8188', description="T2I API 的访问 URL")

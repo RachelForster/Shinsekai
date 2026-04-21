@@ -1,5 +1,6 @@
 
 from asyncio import Queue
+import json
 from threading import Thread
 from openai import OpenAI
 import logging
@@ -157,91 +158,133 @@ class LLMManager:
         else:
             return self._chat_with_tools_sync(**kwargs)
 
+    # llm_manager.py 修正核心片段
+
     def _chat_with_tools_stream(self, **kwargs) -> Generator[str, None, None]:
-        """
-        流式工具处理逻辑 (内部私有)
-        """
-        tools_defs = tool_manager.get_definitions()  # 获取工具定义列表
-        # print("tools_defs:", tools_defs)
-        
+        tools_defs = tool_manager.get_definitions()
         response_stream = self.llm_adapter.chat(
-            messages=self.get_messages(),
-            stream=True,
-            tools=tools_defs if tools_defs else None,
-            **kwargs
+            messages=self.get_messages(), stream=True, 
+            tools=tools_defs if tools_defs else None, **kwargs
         )
+        if response_stream is None: return
 
         full_tool_calls = {}
         has_tool_use = False
         collected_content = ""
 
-        for chunk in response_stream:
-            delta = chunk.choices[0].delta
-            
-            # 1. 处理工具碎片
-            if hasattr(delta, 'tool_calls') and delta.tool_calls:
-                has_tool_use = True
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    if idx not in full_tool_calls:
-                        full_tool_calls[idx] = tc
-                    if tc.function and tc.function.arguments:
-                        full_tool_calls[idx].function.arguments += tc.function.arguments
-                continue
+        if isinstance(self.llm_adapter, ClaudeAdapter):
+            with response_stream as stream:
+                for event in stream:
+                    if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                        yield event.delta.text
+                        collected_content += event.delta.text
+                    elif event.type == "content_block_start" and event.content_block.type == "tool_use":
+                        has_tool_use = True
+                        full_tool_calls[event.index] = {"id": event.content_block.id, "name": event.content_block.name, "input": ""}
+                    elif event.type == "record_delta" and event.delta.type == "input_json_delta":
+                        full_tool_calls[event.index]["input"] += event.delta.partial_json
+        else:
+            for chunk in response_stream:
+                if not chunk or not chunk.choices: continue
+                delta = chunk.choices[0].delta
+                if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                    has_tool_use = True
+                    for tc in delta.tool_calls:
+                        if tc.index not in full_tool_calls: full_tool_calls[tc.index] = tc
+                        if tc.function and tc.function.arguments:
+                            full_tool_calls[tc.index].function.arguments += tc.function.arguments
+                if hasattr(delta, 'content') and delta.content:
+                    yield delta.content
+                    collected_content += delta.content
 
-            # 2. 正常内容 yield 给 Worker
-            if hasattr(delta, 'content') and delta.content:
-                content = delta.content
-                collected_content += content
-                yield content
-
-        # 3. 如果需要调工具，执行完后递归
         if has_tool_use:
-            tool_calls_list = list(full_tool_calls.values())
-            
-            # 【关键修改】：将 ToolCall 对象转换为字典列表
-            serializable_tool_calls = []
-            for tc in tool_calls_list:
-                tc_dict = tc.model_dump()
-                if 'index' in tc_dict:
-                    del tc_dict['index']
-                serializable_tool_calls.append(tc_dict)
+            formatted_calls = []
+            for idx in sorted(full_tool_calls.keys()):
+                tc = full_tool_calls[idx]
+                t_id = tc["id"] if isinstance(tc, dict) else tc.id
+                t_name = tc["name"] if isinstance(tc, dict) else tc.function.name
+                t_args = tc["input"] if isinstance(tc, dict) else tc.function.arguments
+                formatted_calls.append({"id": t_id, "type": "function", "function": {"name": t_name, "arguments": t_args}})
 
-            # 存入消息历史的是纯字典
-            self.add_message("assistant", "", tool_calls=serializable_tool_calls)
-            
-            for tc in tool_calls_list:
-                self.logger.info(f"Executing tool: {tc.function.name}")
-                result = tool_manager.execute(tc.function.name, tc.function.arguments)
-                self.add_message("tool", result, tool_call_id=tc.id, name=tc.function.name)
+            # --- 关键：必须先添加 Assistant 消息 ---
+            self.add_message("assistant", collected_content, tool_calls=formatted_calls)
+
+            # --- 然后添加 Tool 结果消息 ---
+            for call in formatted_calls:
+                try:
+                    func_name = call['function']['name']
+                    func_args = call['function']['arguments']
+                    if isinstance(func_args, str):
+                        if not func_args.strip():
+                            func_args = "{}"  # 修正为空 JSON 对象字符串
+                    
+                    # 2. 执行工具
+                    result = tool_manager.execute(func_name, func_args)
+                    
+                    # 3. 确保结果不为空且为字符串（以便 LLM 接收）
+                    if result is None:
+                        result = json.dumps({"status": "success", "result": "no return value"})
+                    elif not isinstance(result, str):
+                        result = json.dumps(result)
+
+                except Exception as e:
+                    self.logger.error(f"Tool execution failed: {e}")
+                    result = json.dumps({"error": str(e)})
+                self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
             
             yield from self._chat_with_tools_stream(**kwargs)
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
-        """
-        同步工具处理逻辑，无流式处理
-        """
-        tools_defs = tool_manager.get_definitions()  # 获取工具定义列表
-        # print("tools_defs:", tools_defs)        
-
+        tools_defs = tool_manager.get_definitions()
         response = self.llm_adapter.chat(
-            messages=self.get_messages(),
-            stream=False,
-            tools=tools_defs if tools_defs else None,
-            **kwargs
+            messages=self.get_messages(), stream=False,
+            tools=tools_defs if tools_defs else None, **kwargs
         )
+        if not response: return ""
 
-        message = response.choices[0].message
-        
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            self.add_message("assistant", "", tool_calls=message.tool_calls)
-            for tc in message.tool_calls:
-                result = tool_manager.execute(tc.function.name, tc.function.arguments)
-                self.add_message("tool", result, tool_call_id=tc.id, name=tc.function.name)
+        content = ""
+        tool_calls = []
 
-            self.logger.info("Tools executed, fetching final response...")
+        if isinstance(self.llm_adapter, ClaudeAdapter):
+            for block in response.content:
+                if block.type == 'text': content += block.text
+                elif block.type == 'tool_use': tool_calls.append(block)
+        else:
+            message = response.choices[0].message
+            content = message.content or ""
+            tool_calls = getattr(message, 'tool_calls', []) or []
+
+        if tool_calls:
+            formatted_calls = []
+            for tc in tool_calls:
+                t_name = tc.function.name if hasattr(tc, 'function') else tc.name
+                t_args = tc.function.arguments if hasattr(tc, 'function') else tc.input
+                formatted_calls.append({"id": tc.id, "type": "function", "function": {"name": t_name, "arguments": t_args}})
+
+            # --- 关键：先 Assistant 再 Tool ---
+            self.add_message("assistant", content, tool_calls=formatted_calls)
+            for call in formatted_calls:
+                try:
+                    func_name = call['function']['name']
+                    func_args = call['function']['arguments']
+                    if isinstance(func_args, str):
+                        if not func_args.strip():
+                            func_args = "{}"  # 修正为空 JSON 对象字符串
+                    
+                    # 2. 执行工具
+                    result = tool_manager.execute(func_name, func_args)
+                    
+                    # 3. 确保结果不为空且为字符串（以便 LLM 接收）
+                    if result is None:
+                        result = json.dumps({"status": "success", "result": "no return value"})
+                    elif not isinstance(result, str):
+                        result = json.dumps(result)
+
+                except Exception as e:
+                    self.logger.error(f"Tool execution failed: {e}")
+                    result = json.dumps({"error": str(e)})
+                self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
+
             return self._chat_with_tools_sync(**kwargs)
         else:
-            content = message.content or ""
-            # self.add_message("assistant", content)
             return content

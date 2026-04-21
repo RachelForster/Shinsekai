@@ -32,7 +32,10 @@ import yaml
 import json
 from queue import Queue
 import traceback
-from live.danmuku_handler import start_bilibili_service
+try:
+    from live.danmuku_handler import start_bilibili_service
+except ImportError as e:
+    print(f"导入Bilibili服务失败: {e}")
 
 CHAT_HISTORY_PATH = "./data/chat_history"
 
@@ -290,8 +293,11 @@ def main():
 
     if args.room_id:
         print("启动B站直播弹幕监听，房间ID:", args.room_id)
-        start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
-    
+        try:
+            start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
+        except ImportError as e:
+            print(f"导入Bilibili服务失败: {e}")
+
     # 确保在程序退出时停止所有线程
     try:
         appIcon = QIcon('./assets/system/picture/icon.png')
