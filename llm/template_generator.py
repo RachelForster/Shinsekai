@@ -3,7 +3,15 @@ from config.character_manager import ConfigManager
 config_manager = ConfigManager()
 
 class TemplateGenerator:
-    def generate_chat_template(self, selected_characters, bg_name, use_effect, use_cg, use_llm_translation):
+    def generate_chat_template(
+        self,
+        selected_characters,
+        bg_name,
+        use_effect,
+        use_cg,
+        use_llm_translation,
+        use_cot=False
+    ):
         if not selected_characters:
             return "请至少选择一个角色！", ""
         
@@ -62,7 +70,7 @@ class TemplateGenerator:
         REQUIREMENTS = [
             "格式严格：输出内容必须严格且仅为 JSON 格式，不得包含任何附加的解释、说明或问候语。",
             
-            f"角色名限制：character_name 字段只能是以下之一：{names} 以及其他可能出现的人物名, 或者固定关键字：旁白, 选项, 数值{', 场景' if bg_name else ''}{', bgm' if bg_name else ''}{', CG' if use_cg else ''}。",
+            f"角色名限制：character_name 字段只能是以下之一：{names} 以及其他可能出现的人物名, 或者固定关键字：{'思维链,' if use_cot else ''} 旁白, 选项, 数值{', 场景' if bg_name else ''}{', bgm' if bg_name else ''}{', CG' if use_cg else ''}。",
             
             "立绘规范：sprite 字段必须填写一个两位数字代号（例如 01, 02），并根据当前台词语气和情绪自动选择最合适的立绘。",
             "非立绘角色：当 character_name 为 旁白, 数值 或 选项 时，sprite 字段必须固定为 -1。",
@@ -89,6 +97,8 @@ class TemplateGenerator:
             REQUIREMENTS.append("翻译字段：translate字段必须为角色台词 speech 的日文翻译，请将角色的台词翻译为日文，而不要将角色的动作翻译出来")
         if use_effect:
             REQUIREMENTS.append("特效使用：effect 字段为可选，值必须在 LEAVE、SHOCKED、DISAPPOINTED、ATTENTION 范围内。LEAVE是人物离场，无特效需求时，必须省略此字段。")
+        if use_cot:
+            REQUIREMENTS.insert(0,"思维链：你必须在输出实际对话/旁白之前，先插入一个 `character_name` 为思维链的条目（sprite 固定为 -1），该条目不显示给玩家仅供后台记录，其 `speech` 字段必须严格按照 `<摘要>刚刚发生：...</摘要><动机>当前说话者的真实动机：...</动机><走向>剧情接下来可能的走向：...</走向>` 的格式填写，三项内容缺一不可且用尖括号标签区分。")
         template += "要求：\n"
         for item in REQUIREMENTS:
             if not (bg_name and bg_name !='透明背景') and ('场景切换' in item or 'BGM 切换' in item):

@@ -220,6 +220,12 @@ class TTSWorker(BaseWorker):
                 # 繁简转换角色名
                 character_name_s = self.cc.convert(character_name)
 
+                
+                # 检查是否为思维链
+                if character_name_s == "思维链":
+                    self.tts_queue.task_done()
+                    print("TTSWorker: 思维链",speech)
+                    continue
                 # 检查是否为特殊系统消息
                 if character_name_s in ["选项","数值","旁白","场景"]:
                     # 对于选项、数值或通用旁白，直接放入下一队列

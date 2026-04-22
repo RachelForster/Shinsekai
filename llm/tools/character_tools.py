@@ -9,7 +9,7 @@ tool_manager = ToolManager()
 def get_character_info(character_name: str = ''):
     """
     获取特定角色的详细背景设定、性格特点及立绘id和对应的情绪标注。
-    当你忘记了某个角色的设定和立绘时，可以调用这个工具来查询。输入角色名，输出该角色的详细信息。
+    当你忘记了某个角色的设定和立绘时，可以调用这个工具来查询。输入角色名，输出该角色的详细信息。如果在system中出现该人物，请不要调用这个工具。
     注意：调用时必须在 character_name 参数中提供角色姓名。
     """
     if not character_name or not character_name.strip():

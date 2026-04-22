@@ -741,9 +741,12 @@ class DesktopAssistantWindow(QWidget):
             margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
             new_width = container_width - (2 * margin_width)
 
-            self.dialog_label.setFixedWidth(new_width) 
+            self.dialog_label.setFixedWidth(new_width)
             self.dialog_label.adjustSize()
-            height = max(int(self.original_height * 0.3), self.dialog_label.height())
+            min_height = int(self.original_height * 0.3)
+            max_height = int(self.original_height * 0.6)
+            height = max(min_height, self.dialog_label.height())
+            height = min(height, max_height)
             
             # 2. 计算垂直位置 (保持在底部)
             y = self.original_height - height
@@ -760,6 +763,7 @@ class DesktopAssistantWindow(QWidget):
                 self.dialog_label.geometry().bottom() - self.skip_button.height() - 10
             )
             self.skip_button.show()
+            self.toolbar.raise_()
         else:
             self.dialog_label.hide()
             self.skip_button.hide() # 隐藏跳过按钮

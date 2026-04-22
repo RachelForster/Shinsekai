@@ -44,8 +44,15 @@ def load_template_from_file(file_path):
         return template, file_name
     except Exception as e:
         return f"加载失败: {str(e)}", file_name
-def generate_template(selected_characters, bg_name, use_effect, use_translation, use_cg):
-    template, out = template_generator.generate_chat_template(selected_characters, bg_name, use_effect == '是', use_cg == '是', use_translation == '是')
+def generate_template(selected_characters, bg_name, use_effect, use_translation, use_cg, use_cot):
+    template, out = template_generator.generate_chat_template(
+        selected_characters,
+        bg_name,
+        use_effect == '是',
+        use_cg == '是',
+        use_translation == '是',
+        use_cot == '是'
+    )
     return template, out
 def launch_chat(template, voice_mode, init_sprite_path, history_file, selected_bg, use_cg, room_id):
     global main_process
@@ -831,6 +838,7 @@ with gr.Blocks(title="新世界程序") as demo:
                 use_effect = gr.Radio(label="是否开启特殊效果（人物离场、惊讶等效果）",choices=['是','否'], value="是")
                 use_translation = gr.Radio(label="是否使用LLM翻译（比免费的API翻译得更精确）",choices=['是','否'],value="是")
                 use_cg = gr.Radio(label="是否开启CG生成，得配置了ComfyUI才可以使用",choices=['是','否'],value="否")
+                use_cot = gr.Radio(label="是否启用思维链（仅内部推理，不输出）",choices=['是','否'],value="否")
 
                 generate_btn = gr.Button("生成模板")
         template_output = gr.Textbox(label="模板内容", lines=10, interactive=True)
@@ -875,7 +883,7 @@ with gr.Blocks(title="新世界程序") as demo:
         
         generate_btn.click(
             generate_template,
-            inputs=[selected_chars, selected_bg, use_effect, use_translation, use_cg],
+            inputs=[selected_chars, selected_bg, use_effect, use_translation, use_cg, use_cot],
             outputs=[template_output, filename]
         )
 
