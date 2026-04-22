@@ -30,6 +30,7 @@ from opencc import OpenCC
 import argparse
 import yaml
 import json
+import re
 from queue import Queue
 import traceback
 try:
@@ -72,6 +73,107 @@ def copy_chat_history_to_clipboard():
     """将聊天记录复制到系统剪贴板，去除 HTML 标签并格式化为纯文本。"""
     history_manager.copy_chat_history_to_clipboard()
 
+def replay_history_entry(window, history_entry: str):
+    """回放一条历史记录。若为选项则重新显示选项。"""
+    if not history_entry:
+        return
+
+    plain_text = re.sub(r"<[^>]+>", "", history_entry).strip()
+    name = ""
+    content = plain_text
+    if "：" in plain_text:
+        name, content = plain_text.split("：", 1)
+    elif ":" in plain_text:
+        name, content = plain_text.split(":", 1)
+
+    if name.strip() == "选项":
+        option_list = [item.strip() for item in content.split("/") if item.strip()]
+        window.setOptions(option_list)
+        # window.setNotification("已回溯到选项，请重新选择")
+    else:
+        window.setDisplayWords(history_entry)
+        # window.setNotification("已回溯该条记录")
+
+def is_option_history_entry(history_entry: str) -> bool:
+    if not isinstance(history_entry, str):
+        return False
+    plain_text = re.sub(r"<[^>]+>", "", history_entry).strip()
+    return plain_text.startswith("选项：") or plain_text.startswith("选项:")
+
+def is_user_history_entry(history_entry: str) -> bool:
+    if not isinstance(history_entry, str):
+        return False
+    return "你</b>" in history_entry or "你</b>：" in history_entry or "你</b>:" in history_entry
+
+def extract_valid_dialog_from_messages(messages: list) -> list:
+    """从历史消息中提取最后一条可用 assistant dialog。"""
+    for message in reversed(messages):
+        if message.get("role") != "assistant":
+            continue
+        content = message.get("content", "")
+        if not content:
+            continue
+        try:
+            parsed = json.loads(content)
+            dialog = parsed.get("dialog", [])
+            if isinstance(dialog, list) and dialog:
+                return dialog
+        except Exception:
+            continue
+    return []
+
+def revert_chat_history(user_index: int, llm_manager, chat_history, window):
+    """按 user_index 回溯到该用户消息之前的上一条 assistant 记录。"""
+    if user_index < 0:
+        return
+
+    # 1) 找到第 user_index 条用户消息在 chat_history 中的位置
+    current_user_idx = -1
+    user_history_pos = -1
+    for idx, entry in enumerate(chat_history):
+        if is_user_history_entry(entry):
+            current_user_idx += 1
+            if current_user_idx == user_index:
+                user_history_pos = idx
+                break
+
+    if user_history_pos == -1:
+        return
+
+    # 2) 回溯目标是该用户消息之前最近的一条非 user 记录（通常是 assistant/选项）
+    target_index = -1
+    for idx in range(user_history_pos - 1, -1, -1):
+        if not is_user_history_entry(chat_history[idx]):
+            target_index = idx
+            break
+
+    if target_index < 0:
+        return
+
+    # 3) 裁剪 UI 聊天历史（原地修改，保持引用不变）
+    del chat_history[target_index + 1:]
+
+    messages = llm_manager.get_messages()
+    if not messages:
+        return
+
+    # 4) 简化：LLM 消息仅保留到 user_index 之前。
+    # 也就是遇到第 user_index 条 user 消息时停止，不包含该 user 及其后续消息。
+    new_messages = []
+    current_user_idx = -1
+    for message in messages:
+        role = message.get("role")
+        if role == "user":
+            current_user_idx += 1
+            if current_user_idx >= user_index:
+                break
+        new_messages.append(message)
+
+    llm_manager.set_messages(new_messages)
+
+    if chat_history:
+        replay_history_entry(window, chat_history[-1])
+
 def save_bg(bg_path, bgm_path):
     config = ConfigManager()
     config.config.system_config.background_path = bg_path
@@ -98,18 +200,19 @@ def main():
 
     # T2I manager
     t2i_manager=None
-    try: 
-        t2i_adapter=T2IAdapterFactory.create_adapter(adapter_name=args.t2i,
-                                                     work_path=config.config.api_config.t2i_work_path,
-                                                     api_url=config.config.api_config.t2i_api_url, 
-                                                     workflow_path=config.config.api_config.t2i_default_workflow_path,
-                                                     prompt_node_id=config.config.api_config.t2i_prompt_node_id, 
-                                                     output_node_id=config.config.api_config.t2i_output_node_id
-                                                    )
-        t2i_manager = T2IManager(t2i_adapter)
-    except Exception as e:
-        print(f"T2I manager初始化失败{e}")
-        traceback.print_exc()
+    if args.t2i:
+        try: 
+            t2i_adapter=T2IAdapterFactory.create_adapter(adapter_name=args.t2i,
+                                                        work_path=config.config.api_config.t2i_work_path,
+                                                        api_url=config.config.api_config.t2i_api_url, 
+                                                        workflow_path=config.config.api_config.t2i_default_workflow_path,
+                                                        prompt_node_id=config.config.api_config.t2i_prompt_node_id, 
+                                                        output_node_id=config.config.api_config.t2i_output_node_id
+                                                        )
+            t2i_manager = T2IManager(t2i_adapter)
+        except Exception as e:
+            print(f"T2I manager初始化失败{e}")
+            traceback.print_exc()
 
     # 创建TTS管理器实例
     tts_manager = None
@@ -232,14 +335,9 @@ def main():
     # 恢复最后一条消息
     if messages:
         try:
-            msg = ''
-            while messages and messages[-1]['role'] == 'user':
-                messages.pop()
-            msg = messages[-1]['content']
-            print(msg)
-            if messages and messages[-1]['role'] == 'system':
-                raise ValueError("没有任何LLM发送的历史消息！")
-            dialog = json.loads(msg)['dialog']
+            dialog = extract_valid_dialog_from_messages(messages)
+            if not dialog:
+                raise ValueError("没有可恢复的有效 assistant dialog")
             while dialog and (dialog[-1].get("sprite",'-1') == '-1' or dialog[-1].get("sprite",'-1') == -1): 
                 audio_path_queue.put(TTSOutputMessage(
                     audio_path='',
@@ -290,6 +388,14 @@ def main():
     window.clear_chat_history.connect(lambda: clear_chat_history(history_file=args.history, ui_queue=audio_path_queue, llm_manager=llm_manager))
     window.skip_speech_signal.connect(lambda: ui_worker.skip_speech())
     window.copy_chat_history_to_clipboard.connect(lambda: copy_chat_history_to_clipboard())
+    window.revert_chat_history.connect(
+        lambda index: revert_chat_history(
+            user_index=index,
+            llm_manager=llm_manager,
+            chat_history=chat_history,
+            window=window
+        )
+    )
 
     if args.room_id:
         print("启动B站直播弹幕监听，房间ID:", args.room_id)

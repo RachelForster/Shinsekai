@@ -7,7 +7,7 @@ import yaml
 import time
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize, QUrl
 from PyQt5.QtWidgets import QSlider,QMessageBox
-from PyQt5.QtGui import QFont, QImage, QPixmap
+from PyQt5.QtGui import QFont, QImage, QPixmap, QFontMetrics
 from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton,
                              QHBoxLayout, QPushButton, QTextEdit, QSizePolicy)
 import os
@@ -39,6 +39,7 @@ class DesktopAssistantWindow(QWidget):
     llm_reply_finished = pyqtSignal() # LLM 回复完成信号
     pause_asr_signal = pyqtSignal() # 暂停 ASR 信号
     copy_chat_history_to_clipboard = pyqtSignal() # 复制聊天记录到剪贴板信号.
+    revert_chat_history = pyqtSignal(int) # 回溯聊天记录到指定索引
 
     def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False, background_mode = False, max_sprite_slots=3):
         """初始化窗口"""
@@ -435,7 +436,8 @@ class DesktopAssistantWindow(QWidget):
     def open_history_dialog(self, messages):
         # 创建并显示对话框
         dialog = MessageDialog(messages, self)
-        dialog.exec_()
+        if dialog.exec_() == QDialog.Accepted and dialog.selected_revert_user_index is not None:
+            self.revert_chat_history.emit(dialog.selected_revert_user_index)
     
     def show_theme_color_dialog(self):
         dialog = ThemeColorDialog(self.theme_color)
@@ -848,9 +850,34 @@ class DesktopAssistantWindow(QWidget):
         
         # 5a. 临时设置宽度来获取正确的 sizeHint (高度)
         self.options_widget.setFixedWidth(new_width)
+        self.options_layout.activate()
+        self.options_widget.adjustSize()
         
         # 5b. 获取适应新宽度后的高度
         final_height = self.options_widget.sizeHint().height()
+        # 某些时机（如启动初期/回溯后）sizeHint 可能尚未稳定。
+        # 使用当前字体度量估算每个选项文本所需高度，避免只显示一条缝或内容被截断。
+        font = QFont('Microsoft YaHei')
+        # self.font_size 形如 "32px;"，提取数字并设置给测量字体
+        font_px = self.base_font_size_px
+        try:
+            font_px = int(self.font_size.replace("px", "").replace(";", "").strip())
+        except Exception:
+            pass
+        font.setPixelSize(max(12, font_px))
+
+        metrics = QFontMetrics(font)
+        # 选项按钮可用文本宽度（扣掉左右边距和按钮 padding）
+        text_width = max(120, new_width - 30 - 18)
+        estimated_height = 15 + 15 + 10  # 容器上下边距 + 首个间距基线
+        for option_text in optionList:
+            rect = metrics.boundingRect(0, 0, text_width, 10000, Qt.TextWordWrap, option_text)
+            # 按钮文本高度 + 按钮内边距 + 最小按钮高度 + 按钮间距
+            option_height = max(40, rect.height() + 18)
+            estimated_height += option_height + 10
+
+        min_visible_height = max(80, estimated_height)
+        final_height = max(final_height, min_visible_height)
         
         # 6. 放置在图像标签的底部
         y = self.original_height - final_height

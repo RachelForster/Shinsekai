@@ -581,6 +581,8 @@ class MessageDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("对话历史记录")
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.messages = list(messages)
+        self.selected_revert_user_index = None
 
         self.setModal(True)
         self.resize(800, 600)
@@ -612,8 +614,13 @@ class MessageDialog(QDialog):
         self.message_list.setAlternatingRowColors(True)
         
         # 添加消息到列表
-        for msg in messages:
-            item_widget = self.create_message_widget(msg)
+        user_counter = 0
+        for idx, msg in enumerate(self.messages):
+            user_index = None
+            if self.is_user_message(msg):
+                user_index = user_counter
+                user_counter += 1
+            item_widget = self.create_message_widget(msg, idx, user_index)
             list_item = QListWidgetItem()
             list_item.setSizeHint(item_widget.sizeHint())
             self.message_list.addItem(list_item)
@@ -622,14 +629,19 @@ class MessageDialog(QDialog):
         layout.addWidget(self.message_list)
         self.setLayout(layout)
     
-    def create_message_widget(self, message):
-        widget = QLabel()
-        widget.setMargin(10)
-        widget.setWordWrap(True)
-        widget.setTextFormat(Qt.RichText)
-        
+    def create_message_widget(self, message, index, user_index=None):
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(8)
+
+        message_label = QLabel()
+        message_label.setMargin(10)
+        message_label.setWordWrap(True)
+        message_label.setTextFormat(Qt.RichText)
+
         # 设置样式 - 调整为深色主题
-        widget.setStyleSheet("""
+        message_label.setStyleSheet("""
             QLabel {
                 background-color: rgba(60, 60, 60, 180);
                 color: white;
@@ -639,14 +651,51 @@ class MessageDialog(QDialog):
                 padding: 10px;
             }
         """)
-        
-        # 格式化消息内容
-        widget.setText(message)
-        
-        # 调整大小以适应内容
-        widget.adjustSize()
-        
-        return widget
+        message_label.setText(message)
+
+        container_layout.addWidget(message_label)
+        if self.is_user_message(message) and user_index is not None:
+            actions_layout = QHBoxLayout()
+            actions_layout.setContentsMargins(0, 4, 0, 6)
+            actions_layout.addStretch()
+            revert_btn = QPushButton("回溯到上一条")
+            revert_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: rgba(60, 60, 60, 180);
+                    color: white;
+                    border: 1px solid rgba(255, 255, 255, 60);
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    font-family: 'Microsoft YaHei', 'SimHei', 'Arial';
+                }
+                QPushButton:hover {
+                    background-color: rgba(80, 80, 80, 200);
+                }
+            """)
+            revert_btn.clicked.connect(lambda _, uidx=user_index: self.select_revert_user_index(uidx))
+            actions_layout.addWidget(revert_btn)
+            container_layout.addLayout(actions_layout)
+
+        container.adjustSize()
+        return container
+
+    def is_user_message(self, message) -> bool:
+        if not isinstance(message, str):
+            return False
+        return "你</b>" in message or "你</b>：" in message or "你</b>:" in message
+
+    def select_revert_user_index(self, user_index: int):
+        reply = QMessageBox.question(
+            None,
+            "确认回溯",
+            "确定回溯到上一条记录吗？之后的对话将被移除。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.selected_revert_user_index = user_index
+            self.accept()
 
 class ClickableLabel(QLabel):
     """可点击的标签"""

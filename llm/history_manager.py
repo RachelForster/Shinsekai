@@ -31,7 +31,7 @@ class HistoryManager:
                 json.dump(history, f, ensure_ascii=False, indent=4)
             print(f"聊天记录已保存到 {history_path}")
         except Exception as e:
-            traceback.print_exc()
+            # traceback.print_exc()
             print(f"保存聊天记录失败: {e}")
 
     def load_chat_history(self,file_path):
@@ -56,7 +56,14 @@ class HistoryManager:
                 if message["role"] == 'user':
                     self.chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message['content']}</p>")
                 if message['role'] == 'assistant':
-                    dialog = json.loads(message['content'])['dialog']
+                    content = message.get('content', '')
+                    if not content:
+                        # 工具调用中间态可能写入空 assistant，跳过即可
+                        continue
+                    parsed = json.loads(content)
+                    dialog = parsed.get('dialog', [])
+                    if not isinstance(dialog, list):
+                        continue
                     for item in dialog:
                         self.chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>{item['character_name']}</b>: {item['speech']}</p>")
 

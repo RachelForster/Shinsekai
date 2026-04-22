@@ -104,6 +104,9 @@ class TTSManager:
 
     def switch_model(self, model_info):
         """Switches the TTS model via the adapter."""
+        if model_info is None:
+            print("No model info provided, cannot switch model.")
+            return
         self.tts_adapter.switch_model(model_info)
 
     # ---------------- Used in the THA mode ------------------------------

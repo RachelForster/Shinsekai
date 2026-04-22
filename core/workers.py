@@ -486,6 +486,11 @@ class UIWorker(QThread):
 
                 if is_system_message:
                     if character_name == "选项":
+                        formatted_option = (
+                            f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'>"
+                            f"<b>选项</b>：{speech}</p>"
+                        )
+                        self.chat_history.append(formatted_option)
                         optionList = speech.split('/')
                         self.update_option_signal.emit(optionList)
                     elif character_name == "数值":

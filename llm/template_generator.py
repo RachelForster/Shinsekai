@@ -91,6 +91,8 @@ class TemplateGenerator:
             REQUIREMENTS.append("特效使用：effect 字段为可选，值必须在 LEAVE、SHOCKED、DISAPPOINTED、ATTENTION 范围内。LEAVE是人物离场，无特效需求时，必须省略此字段。")
         template += "要求：\n"
         for item in REQUIREMENTS:
+            if not (bg_name and bg_name !='透明背景') and ('场景切换' in item or 'BGM 切换' in item):
+                continue
             template += f"- {item}\n"
         template += f"\n请开始对话, 开始时介绍下用户所处的情境和背景, {'设置初始的场景和bgm, ' if bg_name and bg_name !='透明背景' else '' } 以及在做什么事情: \n"
         return template, ""
