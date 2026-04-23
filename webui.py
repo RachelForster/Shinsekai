@@ -146,17 +146,58 @@ with gr.Blocks(title="新世界程序") as demo:
                 api_key = gr.Textbox(label="LLM API Key", type="password", value=_api_key)
                 base_url = gr.Textbox(label="LLM API 基础网址", value=_base_url)
                 is_streaming = gr.Radio(label="是否使用流式响应", choices=["是", "否"], value=_is_streaming)
+                with gr.Accordion("高级LLM设置", open=False):
+                    gr.Markdown("说明：OpenAI/Deepseek/豆包/通义千问通常支持 temperature、presence_penalty、frequency_penalty；Claude 仅使用 temperature；Gemini 通过 OpenAI 兼容接口时按兼容能力处理。repetition_penalty 并非所有 provider 支持，不支持时会自动忽略。")
+                    temperature = gr.Slider(
+                        minimum=0.0,
+                        maximum=2.0,
+                        value=float(config_manager.config.api_config.temperature),
+                        step=0.05,
+                        label="temperature"
+                    )
+                    repetition_penalty = gr.Slider(
+                        minimum=0.5,
+                        maximum=2.0,
+                        value=float(config_manager.config.api_config.repetition_penalty),
+                        step=0.05,
+                        label="repetition_penalty"
+                    )
+                    presence_penalty = gr.Slider(
+                        minimum=-2.0,
+                        maximum=2.0,
+                        value=float(config_manager.config.api_config.presence_penalty),
+                        step=0.05,
+                        label="presence_penalty"
+                    )
+                    frequency_penalty = gr.Slider(
+                        minimum=-2.0,
+                        maximum=2.0,
+                        value=float(config_manager.config.api_config.frequency_penalty),
+                        step=0.05,
+                        label="frequency_penalty"
+                    )
+                    max_context_tokens = gr.Number(
+                        label="最大上下文 token",
+                        value=int(config_manager.config.api_config.max_context_tokens),
+                        precision=0
+                    )
             with gr.Column():  
                     api_output = gr.Textbox(label="输出信息", interactive=False)
         with gr.Row():
             with gr.Column():
-                _gsv_url,_gpt_sovits_work_path = config_manager.get_gpt_sovits_config()
-                gr.Markdown("### GPT SoVITS API 配置，如果没有可以不填，如果你想让角色读出台词，就需要配置")
+                _gsv_url,_gpt_sovits_work_path,_tts_provider = config_manager.get_gpt_sovits_config()
+                gr.Markdown("### TTS API 配置，如果没有可以不填，如果你想让角色读出台词，就需要配置")
+                tts_provider = gr.Dropdown(
+                    choices=["Genie TTS", "GPT SoVITS"],
+                    label="TTS 引擎",
+                    value="Genie TTS" if _tts_provider == "genie-tts" else "GPT SoVITS"
+                )
                 gr.Markdown("#### 前提条件")
                 gr.Markdown('''
                 1. 你的GPU大于等于6G
                 2. 下载好GPT-SOVITS整合包
                 ''')
+                gr.Markdown("说明：Genie TTS 适用于 CPU；GPT SoVITS 更依赖 GPU 性能。")
                 sovits_url = gr.Textbox(label="GPT-SoVITS API 调用地址", value=_gsv_url)
                 gpt_sovits_api_path = gr.Textbox(label="GPT-SoVITS 服务启动路径", value=_gpt_sovits_work_path)
 
@@ -208,7 +249,13 @@ with gr.Blocks(title="新世界程序") as demo:
 
         save_api_btn.click(
             config_manager.save_api_config_new,
-            inputs=[llm_provider, llm_model,api_key, base_url, is_streaming, sovits_url, gpt_sovits_api_path, t2i_url, t2i_work_path, t2i_default_workflow_path,prompt_node_id,output_node_id],
+            inputs=[
+                llm_provider, llm_model, api_key, base_url, is_streaming,
+                tts_provider,
+                sovits_url, gpt_sovits_api_path,
+                t2i_url, t2i_work_path, t2i_default_workflow_path, prompt_node_id, output_node_id,
+                temperature, repetition_penalty, presence_penalty, frequency_penalty, max_context_tokens
+            ],
             outputs=api_output
         )
 

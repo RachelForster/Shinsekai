@@ -40,11 +40,19 @@ class LLMAdapterFactory:
 
 
 class LLMManager:
-    def __init__(self, adapter: LLMAdapter, user_template='', max_tokens: int = 128000, compact_threshold: float = 0.9):
+    def __init__(
+        self,
+        adapter: LLMAdapter,
+        user_template='',
+        max_tokens: int = 128000,
+        compact_threshold: float = 0.9,
+        generation_config: Optional[Dict[str, Any]] = None
+    ):
         self.llm_adapter = adapter
         self.messages = []
         self.user_template = user_template
         self.compact_manager = CompactManager(adapter, max_tokens, compact_threshold)
+        self.generation_config = generation_config or {}
         self.set_user_template(user_template)
         self.tools_definitions = tool_manager.get_definitions()  # 获取工具定义列表
         self.tools_manager = tool_manager
@@ -162,9 +170,11 @@ class LLMManager:
 
     def _chat_with_tools_stream(self, **kwargs) -> Generator[str, None, None]:
         tools_defs = tool_manager.get_definitions()
+        merged_kwargs = dict(self.generation_config)
+        merged_kwargs.update(kwargs)
         response_stream = self.llm_adapter.chat(
             messages=self.get_messages(), stream=True, 
-            tools=tools_defs if tools_defs else None, **kwargs
+            tools=tools_defs if tools_defs else None, **merged_kwargs
         )
         if response_stream is None: return
 
@@ -236,9 +246,11 @@ class LLMManager:
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
         tools_defs = tool_manager.get_definitions()
+        merged_kwargs = dict(self.generation_config)
+        merged_kwargs.update(kwargs)
         response = self.llm_adapter.chat(
             messages=self.get_messages(), stream=False,
-            tools=tools_defs if tools_defs else None, **kwargs
+            tools=tools_defs if tools_defs else None, **merged_kwargs
         )
         if not response: return ""
 

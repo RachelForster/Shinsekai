@@ -189,7 +189,7 @@ def main():
     parser.add_argument('--voice_mode', '-v', type=str, default='gen')
     parser.add_argument('--init_sprite_path', '-isp', type=str, default='')
     parser.add_argument('--history','--his',type=str, default='')
-    parser.add_argument('--tts',type=str,default="gpt-sovits")
+    parser.add_argument('--tts',type=str,default="")
     parser.add_argument('--llm',type=str,default="deepseek")
     parser.add_argument('--bg', type=str,default='')
     parser.add_argument('--t2i',type=str,default='ComfyUI')
@@ -217,10 +217,12 @@ def main():
     # 创建TTS管理器实例
     tts_manager = None
     if args.voice_mode == 'gen':
-        gsv_url, gsv_api_path = config.get_gpt_sovits_config()
+        gsv_url, gsv_api_path, config_tts_provider = config.get_gpt_sovits_config()
+        adapter_name = args.tts if args.tts else config_tts_provider
         adapter = TTSAdapterFactory.create_adapter(
-            adapter_name=args.tts,
-            gpt_sovits_work_path=gsv_api_path
+            adapter_name=adapter_name,
+            gpt_sovits_work_path=gsv_api_path,
+            tts_server_url=gsv_url
         )
         tts_manager = TTSManager(tts_server_url=gsv_url)
         tts_manager.set_tts_adapter(adapter=adapter)
@@ -245,7 +247,19 @@ def main():
         print("请选择大语言模型供应商")
         return
     llm_adapter = LLMAdapterFactory.create_adapter(llm_provider=llm_provider, api_key=api_key, base_url=base_url, model = llm_model)
-    llm_manager = LLMManager(adapter=llm_adapter,user_template=user_template)
+    llm_manager = LLMManager(
+        adapter=llm_adapter,
+        user_template=user_template,
+        max_tokens=int(config.config.api_config.max_context_tokens),
+        generation_config={
+            "temperature": float(config.config.api_config.temperature),
+            "repetition_penalty": float(config.config.api_config.repetition_penalty),
+            "presence_penalty": float(config.config.api_config.presence_penalty),
+            "frequency_penalty": float(config.config.api_config.frequency_penalty),
+            # 作为单轮输出上限而非上下文上限，给一个温和值
+            "max_tokens": 4096
+        }
+    )
 
     if messages:
         llm_manager.set_messages(messages)

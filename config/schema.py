@@ -60,6 +60,7 @@ class ApiConfig(BaseModel):
     """API 相关的配置，如 GPT-SoVITS 和 LLM 的设置"""
     gpt_sovits_api_path: DefaultIfNone[str] = Field(default='', description="GPT-SoVITS API 的工作目录")
     gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="GPT-SoVITS API 的访问 URL")
+    tts_provider: DefaultIfNone[str] = Field(default='gpt-sovits', description="TTS 提供器类型: gpt-sovits / genie-tts")
     tts_speed: DefaultIfNone[float] = Field(default=1.0, description="TTS 语速 (默认值 1.0)")
 
     t2i_work_path: DefaultIfNone[str] = Field(default='', description="T2I API 的工作目录")
@@ -73,6 +74,11 @@ class ApiConfig(BaseModel):
     llm_model: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商使用的具体模型名称字典")
     llm_provider: DefaultIfNone[str] = Field(default="Deepseek", description="LLM 服务器商名字")
     is_streaming: DefaultIfNone[bool] = Field(default=True, description="是否使用流式响应")
+    temperature: DefaultIfNone[float] = Field(default=0.7, description="LLM 采样温度")
+    repetition_penalty: DefaultIfNone[float] = Field(default=1.0, description="重复惩罚")
+    presence_penalty: DefaultIfNone[float] = Field(default=0.0, description="存在惩罚")
+    frequency_penalty: DefaultIfNone[float] = Field(default=0.0, description="频率惩罚")
+    max_context_tokens: DefaultIfNone[int] = Field(default=128000, description="最大上下文 token")
 
     hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
 

@@ -4,6 +4,16 @@ from openai import OpenAI
 import time
 import json
 
+SUPPORTED_CHAT_PARAMS = {
+    "DeepSeekAdapter": {"temperature", "presence_penalty", "frequency_penalty", "max_tokens"},
+    "OpenAIAdapter": {"temperature", "presence_penalty", "frequency_penalty", "max_tokens"},
+    "ClaudeAdapter": {"temperature", "max_tokens"},
+}
+
+def filter_supported_chat_params(adapter_name: str, kwargs: dict) -> dict:
+    supported = SUPPORTED_CHAT_PARAMS.get(adapter_name, set())
+    return {k: v for k, v in kwargs.items() if k in supported}
+
 class LLMAdapter(ABC):
     """
     Abstract Adapter for LLM services.
@@ -33,6 +43,7 @@ class DeepSeekAdapter(LLMAdapter):
     def chat(self, messages: list, stream: bool = False, response_format={'type': 'json_object'}, **kwargs):
         """Sends a message to the DeepSeek LLM."""
         try:
+            kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
             # 使用传入的 messages 参数
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -56,6 +67,7 @@ class OpenAIAdapter(LLMAdapter):
     def chat(self, messages: list, stream: bool = False, response_format={'type': 'json_object'}, **kwargs):
         """Sends a message to the OpenAI LLM."""
         try:
+            kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
             # 使用传入的 messages 参数
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -196,6 +208,7 @@ class ClaudeAdapter(LLMAdapter):
 
     def chat(self, messages: list, stream: bool = False, **kwargs):
         try:
+            kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
             system_msg, cleaned_msgs = self._clean_messages(messages)
             
             # 如果没有消息，Claude 也会报错
@@ -221,7 +234,8 @@ class ClaudeAdapter(LLMAdapter):
                     system=system_msg,
                     messages=cleaned_msgs,
                     tools=anthropic_tools if anthropic_tools else None,
-                    max_tokens=4096
+                    max_tokens=kwargs.get("max_tokens", 4096),
+                    temperature=kwargs.get("temperature", 0.7)
                 )
             else:
                 return self.client.messages.create(
@@ -229,7 +243,8 @@ class ClaudeAdapter(LLMAdapter):
                     system=system_msg,
                     messages=cleaned_msgs,
                     tools=anthropic_tools if anthropic_tools else None,
-                    max_tokens=4096
+                    max_tokens=kwargs.get("max_tokens", 4096),
+                    temperature=kwargs.get("temperature", 0.7)
                 )
         except Exception as e:
             print(f"Claude API Error: {e}")

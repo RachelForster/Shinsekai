@@ -119,7 +119,27 @@ class ConfigManager:
         )
         print("system_config.yaml 保存完成。")
     
-    def save_api_config_new(self, llm_provider: str, llm_model: str, api_key: str, base_url: str, is_streaming: str, sovits_url: str, gpt_sovits_api_path: str, t2i_url: str, t2i_work_path: str, t2i_default_workflow_path: str, prompt_node_id: str, output_node_id: str) -> str:
+    def save_api_config_new(
+        self,
+        llm_provider: str,
+        llm_model: str,
+        api_key: str,
+        base_url: str,
+        is_streaming: str,
+        tts_provider: str,
+        sovits_url: str,
+        gpt_sovits_api_path: str,
+        t2i_url: str,
+        t2i_work_path: str,
+        t2i_default_workflow_path: str,
+        prompt_node_id: str,
+        output_node_id: str,
+        temperature: float,
+        repetition_penalty: float,
+        presence_penalty: float,
+        frequency_penalty: float,
+        max_context_tokens: int
+    ) -> str:
         """
         更新内存中的 ApiConfig，并将其保存到 api.yaml。
         """
@@ -134,6 +154,13 @@ class ConfigManager:
         current_api_config.llm_provider = llm_provider
         current_api_config.llm_base_url = base_url
         current_api_config.is_streaming = (is_streaming == "是")
+        tts_provider_mapping = {
+            "GPT SoVITS": "gpt-sovits",
+            "Genie TTS": "genie-tts",
+            "gpt-sovits": "gpt-sovits",
+            "genie-tts": "genie-tts"
+        }
+        current_api_config.tts_provider = tts_provider_mapping.get(tts_provider, "gpt-sovits")
         current_api_config.gpt_sovits_url = sovits_url
         current_api_config.gpt_sovits_api_path = gpt_sovits_api_path
         current_api_config.t2i_api_url=t2i_url
@@ -141,6 +168,11 @@ class ConfigManager:
         current_api_config.t2i_default_workflow_path=t2i_default_workflow_path
         current_api_config.t2i_prompt_node_id=prompt_node_id
         current_api_config.t2i_output_node_id=output_node_id
+        current_api_config.temperature = float(temperature)
+        current_api_config.repetition_penalty = float(repetition_penalty)
+        current_api_config.presence_penalty = float(presence_penalty)
+        current_api_config.frequency_penalty = float(frequency_penalty)
+        current_api_config.max_context_tokens = int(max_context_tokens)
         self.config.api_config = current_api_config
 
         
@@ -225,7 +257,11 @@ class ConfigManager:
         return llm_provider, model, base_url, api_key
 
     def get_gpt_sovits_config(self):
-        return self.config.api_config.gpt_sovits_url, self.config.api_config.gpt_sovits_api_path
+        return (
+            self.config.api_config.gpt_sovits_url,
+            self.config.api_config.gpt_sovits_api_path,
+            self.config.api_config.tts_provider
+        )
 
     def get_base_font_size(self) -> int:
         """获取基础字体大小"""

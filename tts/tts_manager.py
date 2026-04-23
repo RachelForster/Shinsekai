@@ -2,7 +2,7 @@ import requests
 import threading
 import queue
 import subprocess
-from tts.tts_adapter import TTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter, CosyVoiceAdapter
+from tts.tts_adapter import TTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter, CosyVoiceAdapter, GenieTTSAdapter
 from pathlib import Path
 
 class TTSAdapterFactory:
@@ -11,6 +11,7 @@ class TTSAdapterFactory:
     """
     _adapters = {
         'gpt-sovits': GPTSoVitsAdapter,
+        'genie-tts': GenieTTSAdapter,
         'index-tts': IndexTTSAdapter,
         'cosyvoice': CosyVoiceAdapter,
     }
@@ -95,7 +96,8 @@ class TTSManager:
             ref_audio_path=ref_audio_path,
             prompt_text=prompt_text,
             prompt_lang=prompt_lang,
-            text_lang=self.voice_language
+            text_lang=self.voice_language,
+            character_name=character_name
         )
 
     def set_language(self, language):

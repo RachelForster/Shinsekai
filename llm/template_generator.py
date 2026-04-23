@@ -98,7 +98,7 @@ class TemplateGenerator:
         if use_effect:
             REQUIREMENTS.append("特效使用：effect 字段为可选，值必须在 LEAVE、SHOCKED、DISAPPOINTED、ATTENTION 范围内。LEAVE是人物离场，无特效需求时，必须省略此字段。")
         if use_cot:
-            REQUIREMENTS.insert(0,"思维链：你必须在输出实际对话/旁白之前，先插入一个 `character_name` 为思维链的条目（sprite 固定为 -1），该条目不显示给玩家仅供后台记录，其 `speech` 字段必须严格按照 `<摘要>刚刚发生：...</摘要><动机>当前说话者的真实动机：...</动机><走向>剧情接下来可能的走向：...</走向>` 的格式填写，三项内容缺一不可且用尖括号标签区分。")
+            REQUIREMENTS.insert(0,"思维链：你必须在输出实际对话/旁白之前，先插入一个 `character_name` 为思维链的条目（sprite 固定为 -1），该条目不显示给玩家仅供后台记录，其 `speech` 字段必须严格按照 `<摘要>...</摘要><动机>当前各个人物真实动机：...</动机><剧情走向>...</剧情走向>` 的格式填写，三项内容缺一不可且用尖括号标签区分。")
         template += "要求：\n"
         for item in REQUIREMENTS:
             if not (bg_name and bg_name !='透明背景') and ('场景切换' in item or 'BGM 切换' in item):

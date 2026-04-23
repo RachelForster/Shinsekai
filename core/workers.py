@@ -266,6 +266,7 @@ class TTSWorker(BaseWorker):
                 if self.tts_manager:
                     # 路径处理
                     model_info ={
+                        'character_name': character_name_s,
                         'sovits_model_path': Path(self.character_config.sovits_model_path).resolve().as_posix(), 
                         'gpt_model_path': Path(self.character_config.gpt_model_path).resolve().as_posix(),
                     }
