@@ -4,6 +4,10 @@ import os
 import requests
 import threading
 import queue
+import base64
+import math
+import wave
+import array
 from pathlib import Path
 import subprocess
 import time
@@ -282,6 +286,13 @@ class GenieTTSAdapter(TTSAdapter):
         self.reference_audio_key = None
         self._start_server_process()
 
+    @staticmethod
+    def _encode_name(name: str) -> str:
+        if not name:
+            return ""
+        # Remove '=' padding to keep folder names shorter and cleaner.
+        return base64.urlsafe_b64encode(name.encode("utf-8")).decode("ascii").rstrip("=")
+
     def _resolve_converter_script(self):
         if not self.tts_work_path:
             return None
@@ -328,6 +339,75 @@ class GenieTTSAdapter(TTSAdapter):
             )
         print(f"ONNX convert finished for '{character_name}': {onnx_dir}")
 
+    def _is_valid_wav_file(self, file_path: str) -> bool:
+        if not file_path or not os.path.exists(file_path):
+            return False
+        try:
+            with wave.open(file_path, "rb") as wav_f:
+                # Trigger parsing.
+                wav_f.getnchannels()
+                wav_f.getframerate()
+                wav_f.getnframes()
+            return True
+        except Exception:
+            return False
+
+    def _write_raw_stream_as_wav(self, raw_bytes: bytes, out_path: str, sample_rate: int = 32000) -> bool:
+        if not raw_bytes:
+            return False
+        pcm_bytes = b""
+
+        # Case 1: float32 PCM in [-1, 1]
+        if len(raw_bytes) % 4 == 0:
+            try:
+                float_arr = array.array("f")
+                float_arr.frombytes(raw_bytes)
+                if float_arr:
+                    max_abs = max(abs(x) for x in float_arr if math.isfinite(x))
+                    if max_abs <= 2.0:
+                        pcm_i16 = array.array("h")
+                        for x in float_arr:
+                            if not math.isfinite(x):
+                                x = 0.0
+                            if x > 1.0:
+                                x = 1.0
+                            elif x < -1.0:
+                                x = -1.0
+                            pcm_i16.append(int(x * 32767.0))
+                        pcm_bytes = pcm_i16.tobytes()
+            except Exception:
+                pcm_bytes = b""
+
+        # Case 2: int16 PCM stream
+        if not pcm_bytes and len(raw_bytes) % 2 == 0:
+            pcm_bytes = raw_bytes
+
+        if not pcm_bytes:
+            return False
+
+        try:
+            with wave.open(out_path, "wb") as wav_f:
+                wav_f.setnchannels(1)
+                wav_f.setsampwidth(2)
+                wav_f.setframerate(sample_rate)
+                wav_f.writeframes(pcm_bytes)
+            return self._is_valid_wav_file(out_path)
+        except Exception:
+            return False
+
+    def _write_pcm_chunks_as_wav(self, chunks, out_path: str, sample_rate: int = 32000) -> bool:
+        try:
+            with wave.open(out_path, "wb") as wav_f:
+                wav_f.setnchannels(1)
+                wav_f.setsampwidth(2)
+                wav_f.setframerate(sample_rate)
+                for chunk in chunks:
+                    if chunk:
+                        wav_f.writeframesraw(chunk)
+            return self._is_valid_wav_file(out_path)
+        except Exception:
+            return False
+
     def _start_server_process(self):
         """Starts the Genie TTS server process if it isn't running."""
         if self._is_server_alive():
@@ -368,16 +448,17 @@ class GenieTTSAdapter(TTSAdapter):
         except Exception:
             return False
 
-    def _load_character_model(self):
+    def _load_character_model(self, language="ja"):
         """Load the character model via Genie TTS HTTP API."""
         if not self.character_name or not self.onnx_model_dir:
             print("Genie TTS switch_model missing character_name/onnx_model_dir.")
             return
         try:
+            encoded_character_name = self._encode_name(self.character_name)
             payload = {
-                "character_name": self.character_name,
+                "character_name": encoded_character_name,
                 "onnx_model_dir": self.onnx_model_dir,
-                "language": "zh"
+                "language": language
             }
             response = requests.post(self.tts_server_url + "load_character", json=payload, timeout=20)
             response.raise_for_status()
@@ -407,18 +488,21 @@ class GenieTTSAdapter(TTSAdapter):
             print("Genie TTS has no active character. Call switch_model first.")
             return None
         
-        if self.loaded_character_name != self.character_name:
-            self._load_character_model()
-
         ref_audio_path = kwargs.get('ref_audio_path')
         audio_text = kwargs.get('prompt_text')
         audio_lang = kwargs.get('prompt_lang') or kwargs.get('text_lang') or "zh"
         reference_audio_key = f"{ref_audio_path}|{audio_text}|{audio_lang}"
+        encoded_character_name = self._encode_name(self.character_name)
+
+        if self.loaded_character_name != self.character_name:
+            self._load_character_model(audio_lang)
+
+        
 
         if ref_audio_path and audio_text and self.reference_audio_key != reference_audio_key:
             try:
                 payload = {
-                    "character_name": self.character_name,
+                    "character_name": encoded_character_name,
                     "audio_path": ref_audio_path,
                     "audio_text": audio_text,
                     "language": audio_lang
@@ -434,27 +518,43 @@ class GenieTTSAdapter(TTSAdapter):
             if not file_path:
                 file_path = os.path.join("temp", f"genie_tts_{os.urandom(4).hex()}.wav")
 
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            abs_file_path = os.path.abspath(file_path)
+            print(f"Genie TTS save path: {abs_file_path}")
+            os.makedirs(os.path.dirname(abs_file_path), exist_ok=True)
             payload = {
-                "character_name": self.character_name,
+                "character_name": encoded_character_name,
                 "text": text,
                 "split_sentence": False,
-                "save_path": file_path
             }
-            response = requests.post(self.tts_server_url + "tts", json=payload, timeout=90)
-            response.raise_for_status()
+            with requests.post(self.tts_server_url + "tts", json=payload, stream=True, timeout=120) as response:
+                response.raise_for_status()
+                chunks = [chunk for chunk in response.iter_content(chunk_size=4096) if chunk]
 
-            # If server returns stream, write it. If server writes directly to save_path, keep existing file.
-            if response.content and len(response.content) > 44:
-                with open(file_path, 'wb') as f:
-                    f.write(response.content)
+            if not chunks:
+                print("Genie TTS returned empty audio stream.")
+                return None
 
-            if not os.path.exists(file_path):
-                print(f"Genie TTS did not create output file: {file_path}")
+            first_bytes = chunks[0][:16]
+            is_riff = first_bytes[:4] == b"RIFF"
+            if is_riff:
+                with open(abs_file_path, "wb") as f:
+                    for chunk in chunks:
+                        f.write(chunk)
+            else:
+                # Official sample streams raw PCM bytes to PyAudio directly.
+                # Here we encapsulate raw PCM into a standard WAV file for pygame playback.
+                if not self._write_pcm_chunks_as_wav(chunks, abs_file_path, sample_rate=32000):
+                    raw_bytes = b"".join(chunks)
+                    if not self._write_raw_stream_as_wav(raw_bytes, abs_file_path, sample_rate=32000):
+                        print("Genie TTS output is not valid WAV and conversion failed.")
+                        return None
+
+            if not os.path.exists(abs_file_path):
+                print(f"Genie TTS did not create output file: {abs_file_path}")
                 return None
 
             print("Genie TTS audio generation complete.")
-            return os.path.abspath(file_path)
+            return abs_file_path
         except Exception as e:
             print(f"Genie TTS generation failed: {e}")
             return None
@@ -471,9 +571,10 @@ class GenieTTSAdapter(TTSAdapter):
         ckpt_model_path = model_info.get("gpt_model_path")
         pth_model_path = model_info.get("sovits_model_path")
         new_onnx_model_dir = model_info.get("onnx_model_dir")
+        encoded_character_name = self._encode_name(new_character_name) if new_character_name else ""
 
-        if not new_onnx_model_dir and new_character_name:
-            new_onnx_model_dir = str((Path("onnx") / new_character_name).resolve())
+        if not new_onnx_model_dir and encoded_character_name:
+            new_onnx_model_dir = str((Path("onnx") / encoded_character_name).resolve())
 
         if new_onnx_model_dir and not self._has_onnx_files(new_onnx_model_dir):
             if ckpt_model_path and pth_model_path:

@@ -94,6 +94,79 @@ class SystemConfig(BaseModel):
     background_path: DefaultIfNone[str] = Field(default="",description="背景图片的路径")
     live_room_id : DefaultIfNone[str] = Field(default="", description="直播间ID，用于直播相关功能")
 
+    # 音乐翻唱流水线（YouTube/B站下载 → UVR 分离 → RVC 转换 → pydub 合成）
+    music_cover_work_dir: DefaultIfNone[str] = Field(
+        default="./data/music_cover",
+        description="翻唱流水线工作目录（下载、分离、中间文件与成品）",
+    )
+    music_cover_yt_dlp_exe: DefaultIfNone[str] = Field(
+        default="",
+        description="yt-dlp 可执行文件路径，留空则从 PATH 查找 yt-dlp",
+    )
+    music_cover_ffmpeg_exe: DefaultIfNone[str] = Field(
+        default="",
+        description="ffmpeg 可执行文件路径，留空则由 pydub 使用系统 PATH",
+    )
+    music_cover_uvr_cmd_template: DefaultIfNone[str] = Field(
+        default="",
+        description=(
+            "UVR 或其它分离工具命令模板。占位符：{input_wav} 输入波形，{out_dir} 输出目录。"
+            "需在 out_dir 下生成可识别的 vocals / instrumental 波形（文件名含 Vocals、Instrumental、no_vocals 等关键字）。"
+        ),
+    )
+    music_cover_rvc_cmd_template: DefaultIfNone[str] = Field(
+        default="",
+        description=(
+            "留空则使用 rvc-python（RVCInference）；若填写则改为 shell 命令模板。"
+            "占位符：{input_wav} 干声，{output_wav} 输出，{model_pth} 模型，{index_file} 索引。"
+        ),
+    )
+    music_cover_rvc_model_path: DefaultIfNone[str] = Field(
+        default="",
+        description="RVC .pth 模型路径",
+    )
+    music_cover_rvc_index_path: DefaultIfNone[str] = Field(
+        default="",
+        description="RVC .index 特征索引路径（可选，无则传空）",
+    )
+    # rvc-python（RVCInference）参数；若 music_cover_rvc_cmd_template 非空则仍走命令行
+    music_cover_rvc_device: DefaultIfNone[str] = Field(
+        default="cuda:0",
+        description='rvc-python 计算设备，如 "cpu"、"cuda:0"',
+    )
+    music_cover_rvc_model_version: DefaultIfNone[str] = Field(
+        default="v2",
+        description='模型版本：v1 或 v2（对应 CLI -v）',
+    )
+    music_cover_rvc_f0_method: DefaultIfNone[str] = Field(
+        default="rmvpe",
+        description="音高提取：harvest / crepe / rmvpe / pm",
+    )
+    music_cover_rvc_pitch: DefaultIfNone[float] = Field(
+        default=0.0,
+        description="变调（半音）",
+    )
+    music_cover_rvc_index_rate: DefaultIfNone[float] = Field(
+        default=0.75,
+        description="特征检索占比 index_rate",
+    )
+    music_cover_rvc_filter_radius: DefaultIfNone[int] = Field(
+        default=3,
+        description="音高中值滤波半径 filter_radius",
+    )
+    music_cover_rvc_resample_sr: DefaultIfNone[int] = Field(
+        default=0,
+        description="输出重采样采样率，0 表示使用库默认（不强制传参）",
+    )
+    music_cover_rvc_rms_mix_rate: DefaultIfNone[float] = Field(
+        default=0.25,
+        description="音量包络混合比例 rms_mix_rate",
+    )
+    music_cover_rvc_protect: DefaultIfNone[float] = Field(
+        default=0.33,
+        description="清辅音保护 protect",
+    )
+
 # Main Config Model
 class AppConfig(BaseModel):
     """应用的整体配置模型，包含角色列表、API 配置和系统配置"""

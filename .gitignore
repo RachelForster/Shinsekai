@@ -24,3 +24,4 @@ assets/system/models/vosk-model-small-cn-0.22/am/final.mdl
 /assets/system/models
 /data
 *.yaml
+/onnx

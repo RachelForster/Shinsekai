@@ -13,3 +13,6 @@ rembg
 google-genai
 tiktoken
 pyaudio
+yt-dlp
+pydub
+rvc-python

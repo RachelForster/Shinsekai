@@ -266,3 +266,46 @@ class ConfigManager:
     def get_base_font_size(self) -> int:
         """获取基础字体大小"""
         return self.config.system_config.base_font_size_px
+
+    def save_music_cover_config(
+        self,
+        work_dir: str,
+        yt_dlp_exe: str,
+        ffmpeg_exe: str,
+        uvr_cmd_template: str,
+        rvc_cmd_template: str,
+        rvc_model_path: str,
+        rvc_index_path: str,
+        rvc_device: str,
+        rvc_model_version: str,
+        rvc_f0_method: str,
+        rvc_pitch: float,
+        rvc_index_rate: float,
+        rvc_filter_radius: int,
+        rvc_resample_sr: int,
+        rvc_rms_mix_rate: float,
+        rvc_protect: float,
+    ) -> str:
+        """保存音乐翻唱流水线相关系统配置。"""
+        if self._config is None:
+            return "错误：配置未加载，无法保存。"
+        sc = self.config.system_config.model_copy(deep=True)
+        sc.music_cover_work_dir = work_dir or "./data/music_cover"
+        sc.music_cover_yt_dlp_exe = yt_dlp_exe or ""
+        sc.music_cover_ffmpeg_exe = ffmpeg_exe or ""
+        sc.music_cover_uvr_cmd_template = uvr_cmd_template or ""
+        sc.music_cover_rvc_cmd_template = rvc_cmd_template or ""
+        sc.music_cover_rvc_model_path = rvc_model_path or ""
+        sc.music_cover_rvc_index_path = rvc_index_path or ""
+        sc.music_cover_rvc_device = rvc_device or "cuda:0"
+        sc.music_cover_rvc_model_version = rvc_model_version or "v2"
+        sc.music_cover_rvc_f0_method = rvc_f0_method or "rmvpe"
+        sc.music_cover_rvc_pitch = float(rvc_pitch)
+        sc.music_cover_rvc_index_rate = float(rvc_index_rate)
+        sc.music_cover_rvc_filter_radius = int(rvc_filter_radius)
+        sc.music_cover_rvc_resample_sr = int(rvc_resample_sr)
+        sc.music_cover_rvc_rms_mix_rate = float(rvc_rms_mix_rate)
+        sc.music_cover_rvc_protect = float(rvc_protect)
+        self.config.system_config = sc
+        self.save_system_config()
+        return "音乐翻唱配置已保存。"

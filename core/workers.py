@@ -474,6 +474,8 @@ class UIWorker(QThread):
 
     def run(self):
         while self.running:
+            character_name = ""
+            speech = ""
             try:
                 self.task_done_requested.clear()
                 # 从音频路径队列中获取数据
@@ -498,7 +500,7 @@ class UIWorker(QThread):
                             f"<b>选项</b>：{speech}</p>"
                         )
                         self.chat_history.append(formatted_option)
-                        optionList = speech.split('/')
+                        optionList = [p.strip() for p in speech.split("/") if p.strip()]
                         self.update_option_signal.emit(optionList)
                     elif character_name == "数值":
                         self.update_value_signal.emit(speech)
@@ -530,21 +532,23 @@ class UIWorker(QThread):
                             self.task_done_requested.wait(timeout=max(len(speech)/10, 0.5))
                     continue
 
-                # 获取角色配置
+                # 获取角色配置（历史会话可能在不同机器/配置下恢复，缺少角色时不应抛错，否则异常分支里 setDisplayWords 会盖住刚显示的选项）
                 character_config = getCharacter(character_name)
-                
+                fallback_color = "#84C2D5"
                 if not character_config:
-                    raise ValueError(f"未找到角色配置: {character_name}")
+                    print(f"UIWorker: 未找到角色配置「{character_name}」，跳过立绘；仅在有台词时用占位颜色显示")
 
-                # 更新 UI 通知
                 self.update_notification_signal.emit(f"{character_name}正在回复……")
-                
-                # 更新对话框文本
-                if speech:
-                    self._update_dialog(character_name, speech, character_config.color, is_system=False)
 
-                # 更新立绘显示
-                self._update_sprite(character_name, int(sprite_id)-1)
+                if speech:
+                    color = character_config.color if character_config else fallback_color
+                    self._update_dialog(character_name, speech, color, is_system=False)
+
+                if character_config:
+                    try:
+                        self._update_sprite(character_name, int(sprite_id) - 1)
+                    except (ValueError, TypeError, IndexError) as e:
+                        print(f"UIWorker: 立绘更新跳过（索引或数据无效）: {e}")
 
                 # 解析并执行特效
                 self.resolve_effect(effect=output_data.effect, args={"character_name": character_name}, after_dialog=False)
@@ -592,7 +596,12 @@ class UIWorker(QThread):
             except Exception as e:
                 traceback.print_exc()
                 print(f"UIWorker: 任务处理失败: {e}")
-                self._update_dialog(character_name, speech, "#84C2D5", character_name in [])
+                try:
+                    self.update_notification_signal.emit(f"界面更新失败: {e}")
+                except Exception:
+                    pass
+                # 勿在此处 setDisplayWords，否则会隐藏已显示的选项/对话
                 if not self.task_done_requested.is_set():
-                    self.task_done_requested.wait(timeout=len(speech)/10)
+                    wait = max(len(speech) / 10, 0.3) if speech else 0.3
+                    self.task_done_requested.wait(timeout=wait)
                 self.audio_path_queue.task_done()

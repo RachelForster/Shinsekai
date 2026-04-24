@@ -319,26 +319,19 @@ def main():
     if not init_sprite_path:
         init_sprite_path = './assets/system/picture/shinsekai.png'
 
-    # 更新初始立绘
+    _welcome_html = (
+        "<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！"
+        "这是个初始立绘和对话。输入消息，你的角色就会出现。</p>"
+    )
+    # 更新初始立绘（已从文件恢复会话时不要先刷欢迎语，否则会 hide 选项区并与恢复队列竞争）
     try:
-        # init_image = cv2.imread(init_sprite_path, cv2.IMREAD_UNCHANGED)
-        # if init_image is not None:
-        #     if init_image.shape[2] == 3:
-        #         init_image = cv2.cvtColor(init_image, cv2.COLOR_BGR2RGB)
-        #         alpha_channel = np.full((init_image.shape[0], init_image.shape[1]), 255, dtype=np.uint8)
-        #         init_image = cv2.merge([init_image, alpha_channel])
-        #     elif init_image.shape[2] == 4:
-        #         init_image = cv2.cvtColor(init_image, cv2.COLOR_BGRA2RGBA)
-        # window.setBackgroundImage('./assets/system/picture/shinsekai.png')
-        window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
-
-        if len(getHistory()) <= 1:
-            window.setOptions(['开始'])
-    except Exception as e:
-        # print("更新初始立绘失败",e)
-        # init_image = np.zeros((512, 512, 4), dtype=np.uint8)
-        # window.update_image(init_image)
-        window.setDisplayWords("<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！这是个初始立绘和对话。输入消息，你的角色就会出现。</p>")
+        if not messages:
+            window.setDisplayWords(_welcome_html)
+            if len(getHistory()) <= 1:
+                window.setOptions(["开始"])
+    except Exception:
+        if not messages:
+            window.setDisplayWords(_welcome_html)
     window.setNotification("开始聊天吧……")
     # 连接 UI 信号到队列
     def on_message_submitted(message):
@@ -352,15 +345,23 @@ def main():
             dialog = extract_valid_dialog_from_messages(messages)
             if not dialog:
                 raise ValueError("没有可恢复的有效 assistant dialog")
-            while dialog and (dialog[-1].get("sprite",'-1') == '-1' or dialog[-1].get("sprite",'-1') == -1): 
-                audio_path_queue.put(TTSOutputMessage(
-                    audio_path='',
-                    character_name=dialog[-1].get('character_name',''),
-                    speech=dialog[-1].get('speech'),
-                    sprite='-1',
-                    is_system_message=True
-                ))
-                dialog.pop()
+            # 末尾连续 sprite=-1 的系统句（旁白、选项等）从列表尾部弹出，但入队须按对话时间正序。
+            # 否则先入队「选项」再入队更早的旁白时，UIWorker 里后者的 setDisplayWords 会盖住选项。
+            trailing_system: list = []
+            while dialog and (
+                dialog[-1].get("sprite", "-1") == "-1" or dialog[-1].get("sprite", "-1") == -1
+            ):
+                trailing_system.append(dialog.pop())
+            for item in reversed(trailing_system):
+                audio_path_queue.put(
+                    TTSOutputMessage(
+                        audio_path="",
+                        character_name=item.get("character_name", ""),
+                        speech=item.get("speech"),
+                        sprite="-1",
+                        is_system_message=True,
+                    )
+                )
             if dialog:
                 # 只更新立绘
                 audio_path_queue.put(
