@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
     QButtonGroup,
     QComboBox,
     QDoubleSpinBox,
@@ -35,7 +35,7 @@ def _add_collapsible_block(tree: QTreeWidget, title: str, content: QWidget) -> N
     tree.addTopLevelItem(top)
     child = QTreeWidgetItem()
     top.addChild(child)
-    content.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+    content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
     tree.setItemWidget(child, 0, content)
     top.setExpanded(False)
     # 占满列宽、避免子行缩进过窄
@@ -52,7 +52,7 @@ class ApiSettingsTab(QWidget):
         root = QVBoxLayout(self)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         scroll.setWidget(inner)
         lay = QVBoxLayout(inner)
@@ -72,7 +72,7 @@ class ApiSettingsTab(QWidget):
             self.llm_provider.setCurrentIndex(idx)
         self.llm_model = QLineEdit(_model)
         self.api_key = QLineEdit(_api_key)
-        self.api_key.setEchoMode(QLineEdit.Password)
+        self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.base_url = QLineEdit(_base_url)
         self.stream_yes = QRadioButton("是")
         self.stream_no = QRadioButton("否")
@@ -138,7 +138,7 @@ class ApiSettingsTab(QWidget):
         main_tree.setHeaderHidden(True)
         main_tree.setAnimated(True)
         main_tree.setIndentation(20)
-        main_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        main_tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         _add_collapsible_block(main_tree, "LLM API 基础", llm_panel)
         _add_collapsible_block(main_tree, "高级 LLM 设置", adv)
 
@@ -188,7 +188,7 @@ class ApiSettingsTab(QWidget):
         ]:
             link = QLabel(f'<a href="{url}">{text}</a>')
             link.setOpenExternalLinks(True)
-            link.setTextInteractionFlags(Qt.TextBrowserInteraction)
+            link.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
             links_ly.addWidget(link)
         help_lbl = QLabel(
             "解压后请将目录填到「TTS引擎 服务启动路径」。GPT SoVITS 建议至少 11GB 磁盘，Genie TTS 约 4GB。"
@@ -208,7 +208,7 @@ class ApiSettingsTab(QWidget):
 
         save = QPushButton("保存配置")
         save.clicked.connect(self._on_save)
-        lay.addWidget(save, alignment=Qt.AlignLeft)
+        lay.addWidget(save, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.llm_provider.currentTextChanged.connect(self._on_provider_change)
         root.addWidget(scroll)

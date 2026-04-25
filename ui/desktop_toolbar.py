@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt5.QtWidgets import QHBoxLayout, QPushButton, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from ui import styles
 

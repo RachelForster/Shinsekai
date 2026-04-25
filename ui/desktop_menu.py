@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import pygame
-from PyQt5.QtWidgets import QAction, QDialog, QMenu, QMessageBox
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QDialog, QMenu, QMessageBox
 
 from config.config_manager import ConfigManager
 from ui.components import (
@@ -21,7 +22,7 @@ class DesktopMenuMixin:
     def show_font_size_settings(self) -> None:
         """显示字体大小设置对话框"""
         dialog = FontSizeDialog(self.base_font_size_px, self)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             new_size = dialog.get_new_font_size()
             if new_size != self.base_font_size_px:
                 self.base_font_size_px = new_size
@@ -58,13 +59,13 @@ class DesktopMenuMixin:
         menu.addAction(volumn_action)
         menu.addAction(theme_color_action)
 
-        menu.exec_(
+        menu.exec(
             self.settings_btn.mapToGlobal(self.settings_btn.rect().bottomLeft())
         )
 
     def show_volumn_settings(self) -> None:
         dialog = VolumeDialog(config_manager.config.system_config.music_volumn)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             selected_volumn = dialog.get_new_volume()
             config_manager.config.system_config.music_volumn = selected_volumn
             config_manager.save_system_config()
@@ -83,12 +84,12 @@ class DesktopMenuMixin:
 
     def open_history_dialog(self, messages) -> None:
         dialog = MessageDialog(messages, self)
-        if dialog.exec_() == QDialog.Accepted and dialog.selected_revert_user_index is not None:
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_revert_user_index is not None:
             self.revert_chat_history.emit(dialog.selected_revert_user_index)
 
     def show_theme_color_dialog(self) -> None:
         dialog = ThemeColorDialog(self.theme_color)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             self.theme_color = dialog.get_selected_color()
             config_manager.config.system_config.theme_color = self.theme_color
             self.apply_font_styles()
@@ -98,7 +99,7 @@ class DesktopMenuMixin:
     def show_language_settings(self) -> None:
         """显示语音语言设置"""
         dialog = LanguageDialog(self)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             selected_language = dialog.get_selected_language()
             print(f"选择的语言: {selected_language}")
             self.change_voice_language.emit(selected_language)

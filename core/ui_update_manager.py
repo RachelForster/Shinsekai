@@ -13,7 +13,7 @@ from typing import Any, Dict, List, MutableSequence, Optional
 import cv2
 import numpy as np
 import pygame
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal
 
 from config.config_manager import ConfigManager
 

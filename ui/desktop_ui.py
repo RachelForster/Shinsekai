@@ -4,10 +4,10 @@ import numpy as np
 import threading
 import yaml
 import time
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize, QUrl
-from PyQt5.QtWidgets import QSlider
-from PyQt5.QtGui import QFont, QImage, QPixmap, QFontMetrics
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import QEvent, Qt, QThread, pyqtSignal, QObject, QSize, QUrl
+from PyQt6.QtWidgets import QSlider
+from PyQt6.QtGui import QFont, QImage, QPixmap, QFontMetrics
+from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
     QWidget,
@@ -101,8 +101,8 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def setup_ui(self):
         """初始化UI组件"""
         # 窗口设置
-        self.setWindowFlags(Qt.FramelessWindowHint |  Qt.Window)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         # 主布局
         main_layout = QVBoxLayout()
@@ -237,7 +237,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         # 1. 创建用于显示富文本的“数值组件”
         self.numeric_info_label = QLabel(self.image_container) # 以 self.label (图像容器) 为父组件
         # 允许显示富文本（HTML 格式）
-        self.numeric_info_label.setTextFormat(Qt.RichText) 
+        self.numeric_info_label.setTextFormat(Qt.TextFormat.RichText) 
         # 设置初始文本（示例）
         self.numeric_info_label.setWordWrap(True)
         self.numeric_info_label.setText("<b>HP:</b> <span style='color:red;'>100</span>")
@@ -249,7 +249,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         )
         
         # 4. 调整大小策略：根据内容自动调整
-        self.numeric_info_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.numeric_info_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         
         # 5. 初始隐藏（如果需要，你也可以直接显示）
         self.numeric_info_label.hide() 
@@ -258,8 +258,10 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         """初始化对话框标签"""
         self.dialog_label = TypingLabel()
         self.dialog_label.clicked.connect(lambda: self.skip_speech_signal.emit()) 
-        self.dialog_label.setTextFormat(Qt.RichText)
-        self.dialog_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.dialog_label.setTextFormat(Qt.TextFormat.RichText)
+        self.dialog_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
         self.dialog_label.setStyleSheet(
             styles.dialog_label_initial(self.font_size, DIALOG_FRAME_PATH)
         )
@@ -293,7 +295,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         """初始化立绘标签"""
         self.sprite_panel = SpritePanel(self.original_width, self.original_height, max_slots_num=self.max_sprite_slots)
         # self.label = CrossFadeSprite(self.original_width, self.original_height)
-        # self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.image_layout.addWidget(self.sprite_panel)
     
     def setup_input_layout(self):
@@ -338,8 +340,8 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def setup_background_label(self):
         self.background_label = QLabel(self)
         self.background_label.setGeometry(0, 0, self.original_width, self.original_height)
-        self.background_label.setAlignment(Qt.AlignCenter)
-        self.background_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.background_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.background_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         
 
@@ -366,7 +368,11 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         # 设置 background_label 的样式表
         # 使用 QPixmap + setPixmap；若改用纯 QSS 可试 styles.background_label_qlabel_image
         # 重新设置背景图片
-        scaled_pixmap = pixmap.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        scaled_pixmap = pixmap.scaled(
+            self.size(),
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
         self.background_label.setPixmap(scaled_pixmap)
         self.background_label.lower()
         self.current_background_path = image_path
@@ -503,8 +509,8 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         for option_text in optionList:
             option_btn = ClickableLabel()
             option_btn.setText(option_text)
-            option_btn.setTextFormat(Qt.RichText)
-            option_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            option_btn.setTextFormat(Qt.TextFormat.RichText)
+            option_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             option_btn.setWordWrap(True)
             
             # 设置半透明样式，使用主题色和字体大小
@@ -548,7 +554,9 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         text_width = max(120, new_width - 30 - 18)
         estimated_height = 15 + 15 + 10  # 容器上下边距 + 首个间距基线
         for option_text in optionList:
-            rect = metrics.boundingRect(0, 0, text_width, 10000, Qt.TextWordWrap, option_text)
+            rect = metrics.boundingRect(
+                0, 0, text_width, 10000, int(Qt.TextFlag.TextWordWrap), option_text
+            )
             # 按钮文本高度 + 按钮内边距 + 最小按钮高度 + 按钮间距
             option_height = max(40, rect.height() + 18)
             estimated_height += option_height + 10
@@ -569,14 +577,15 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
 
     def mousePressEvent(self, event):
         """实现窗口拖动"""
-        if event.button() == Qt.LeftButton:
-            self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+        if event.button() == Qt.MouseButton.LeftButton:
+            g = event.globalPosition().toPoint()
+            self.drag_position = g - self.frameGeometry().topLeft()
             event.accept()
     
     def mouseMoveEvent(self, event):
         """拖动窗口"""
-        if event.buttons() == Qt.LeftButton and self.drag_position:
-            self.move(event.globalPos() - self.drag_position)
+        if event.buttons() == Qt.MouseButton.LeftButton and self.drag_position:
+            self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
     
     def closeEvent(self, event):
@@ -589,10 +598,10 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.close_window.emit()
 
     def eventFilter(self, obj, event):
-        if obj == self.input_box and event.type() == event.KeyPress:
-            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+        if obj == self.input_box and event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 # 同样判断是否带有修饰键
-                if not event.modifiers() & Qt.ControlModifier:
+                if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                     self.send_btn.click() # 你的发送函数
                     return True # 表示事件已处理，不再向下传递（即不换行）
         return super().eventFilter(obj, event)
@@ -603,4 +612,4 @@ def start_qt_app(display_queue, emotion_queue, deepseek):
     window = DesktopAssistantWindow(display_queue, emotion_queue, deepseek)
     print("QT Window starts!!")
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

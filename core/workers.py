@@ -4,7 +4,7 @@ from queue import Queue
 from pathlib import Path
 from typing import Optional
 
-from PyQt5.QtCore import QThread
+from PyQt6.QtCore import QThread
 
 # 假设以下依赖文件已在项目路径中
 from llm.tools.tool_manager import ToolManager

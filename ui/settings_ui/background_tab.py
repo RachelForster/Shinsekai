@@ -6,10 +6,10 @@ import os
 from pathlib import Path
 
 import pandas as pd
-from PyQt5.QtCore import Qt, QUrl, pyqtSignal, QSize
-from PyQt5.QtGui import QIcon, QPixmap
-from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -39,14 +39,16 @@ class BackgroundSettingsTab(QWidget):
     def __init__(self, ctx: SettingsUIContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._ctx = ctx
-        self._player = QMediaPlayer(self, QMediaPlayer.LowLatency)
+        self._player = QMediaPlayer(self)
+        self._audio = QAudioOutput(self)
+        self._player.setAudioOutput(self._audio)
         self._build_ui()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         scroll.setWidget(inner)
         lay = QVBoxLayout(inner)
@@ -120,9 +122,9 @@ class BackgroundSettingsTab(QWidget):
 
         mid = QVBoxLayout()
         self.bg_gallery = QListWidget()
-        self.bg_gallery.setViewMode(QListWidget.IconMode)
+        self.bg_gallery.setViewMode(QListWidget.ViewMode.IconMode)
         self.bg_gallery.setIconSize(QSize(100, 100))
-        self.bg_gallery.setResizeMode(QListWidget.Adjust)
+        self.bg_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.bg_gallery.setMinimumHeight(180)
         mid.addWidget(QLabel("已上传的背景图片"))
         mid.addWidget(self.bg_gallery)
@@ -169,7 +171,9 @@ class BackgroundSettingsTab(QWidget):
         b2 = QVBoxLayout()
         self.bgm_table = QTableWidget(0, 5)
         self.bgm_table.setHorizontalHeaderLabels(["选", "序号", "文件名", "路径", "标签描述"])
-        self.bgm_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.bgm_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
         self.bgm_table.cellClicked.connect(self._on_bgm_cell)
         b2.addWidget(QLabel("背景音乐列表（点行播放；勾选后批量删除）"))
         b2.addWidget(self.bgm_table)
@@ -250,8 +254,18 @@ class BackgroundSettingsTab(QWidget):
                 continue
             pix = QPixmap(str(p))
             if not pix.isNull():
-                it = QListWidgetItem(QIcon(pix.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)), Path(p).name)
-                it.setData(Qt.UserRole, p)
+                it = QListWidgetItem(
+                    QIcon(
+                        pix.scaled(
+                            100,
+                            100,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                    ),
+                    Path(p).name,
+                )
+                it.setData(Qt.ItemDataRole.UserRole, p)
                 self.bg_gallery.addItem(it)
 
     def _fill_bgm_table(self, df: pd.DataFrame) -> None:
@@ -262,8 +276,8 @@ class BackgroundSettingsTab(QWidget):
             r = self.bgm_table.rowCount()
             self.bgm_table.insertRow(r)
             c0 = QTableWidgetItem()
-            c0.setFlags(c0.flags() | Qt.ItemIsUserCheckable)
-            c0.setCheckState(Qt.Unchecked)
+            c0.setFlags(c0.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            c0.setCheckState(Qt.CheckState.Unchecked)
             c1 = QTableWidgetItem(str(int(row.get("序号", r + 1))))
             c2 = QTableWidgetItem(str(row.get("文件名", "")))
             c3 = QTableWidgetItem(str(row.get("路径", "")))
@@ -285,7 +299,7 @@ class BackgroundSettingsTab(QWidget):
             c4 = self.bgm_table.item(r, 4)
             rows.append(
                 {
-                    "选择": c0.checkState() == Qt.Checked if c0 else False,
+                    "选择": c0.checkState() == Qt.CheckState.Checked if c0 else False,
                     "序号": int(c1.text()) if c1 and c1.text().isdigit() else r + 1,
                     "文件名": c2.text() if c2 else "",
                     "路径": c3.text() if c3 else "",
@@ -311,7 +325,7 @@ class BackgroundSettingsTab(QWidget):
             self.bgm_output_message.setText(f"文件不存在: {path}")
             return
         self.bgm_output_message.setText(f"正在播放: {os.path.basename(path)}")
-        self._player.setMedia(QMediaContent(QUrl.fromLocalFile(str(Path(path).absolute()))))
+        self._player.setSource(QUrl.fromLocalFile(str(Path(path).absolute())))
         self._player.play()
 
     def _on_export(self) -> None:

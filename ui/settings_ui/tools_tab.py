@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QIcon, QPixmap
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
@@ -40,7 +40,7 @@ class ToolsSettingsTab(QWidget):
         root = QVBoxLayout(self)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         scroll.setWidget(inner)
         lay = QVBoxLayout(inner)
@@ -89,9 +89,9 @@ class ToolsSettingsTab(QWidget):
 
         col3 = QVBoxLayout()
         self.sprites_gallery = QListWidget()
-        self.sprites_gallery.setViewMode(QListWidget.IconMode)
+        self.sprites_gallery.setViewMode(QListWidget.ViewMode.IconMode)
         self.sprites_gallery.setIconSize(QSize(120, 120))
-        self.sprites_gallery.setResizeMode(QListWidget.Adjust)
+        self.sprites_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.sprites_gallery.setMinimumHeight(200)
         col3.addWidget(QLabel("已生成的立绘"))
         col3.addWidget(self.sprites_gallery)
@@ -191,8 +191,18 @@ class ToolsSettingsTab(QWidget):
             if p and Path(p).exists():
                 pix = QPixmap(str(p))
                 if not pix.isNull():
-                    item = QListWidgetItem(QIcon(pix.scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)), Path(p).name)
-                    item.setData(Qt.UserRole, str(p))
+                    item = QListWidgetItem(
+                        QIcon(
+                            pix.scaled(
+                                120,
+                                120,
+                                Qt.AspectRatioMode.KeepAspectRatio,
+                                Qt.TransformationMode.SmoothTransformation,
+                            )
+                        ),
+                        Path(p).name,
+                    )
+                    item.setData(Qt.ItemDataRole.UserRole, str(p))
                     self.sprites_gallery.addItem(item)
         self.tool_output.setPlainText(f"已生成 {len(files)} 张（输出目录: {out_dir}）")
 

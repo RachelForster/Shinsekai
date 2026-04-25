@@ -15,10 +15,10 @@ from core.workers import LLMWorker, TTSWorker, UIWorker
 from core.app_runtime import AppRuntime, set_app_runtime
 from core.ui_update_manager import UIUpdateManager, connect_to_desktop_window
 from core.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
-from PyQt5.QtWidgets import QWidget, QVBoxLayout
-from PyQt5.QtCore import QThread, pyqtSignal, QObject
-from PyQt5.QtGui import QPixmap, QImage, QIcon
-from PyQt5.QtWidgets import QApplication
+from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtCore import QThread, pyqtSignal, QObject
+from PyQt6.QtGui import QPixmap, QImage, QIcon
+from PyQt6.QtWidgets import QApplication
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from ui.desktop_ui import DesktopAssistantWindow
 from config.character_config import CharacterConfig
@@ -444,7 +444,7 @@ def main():
 
     window.show()
 
-    app.exec_()
+    app.exec()
 
 if __name__ == "__main__":
     main()

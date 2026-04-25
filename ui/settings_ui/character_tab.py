@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, QSize, QUrl, pyqtSignal
-from PyQt5.QtGui import QIcon, QPixmap
-from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt, QSize, QUrl, pyqtSignal
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
@@ -39,14 +39,16 @@ class CharacterSettingsTab(QWidget):
     def __init__(self, ctx: SettingsUIContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._ctx = ctx
-        self._player = QMediaPlayer(self, QMediaPlayer.LowLatency)
+        self._player = QMediaPlayer(self)
+        self._audio = QAudioOutput(self)
+        self._player.setAudioOutput(self._audio)
         self._build_ui()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         scroll.setWidget(inner)
         lay = QVBoxLayout(inner)
@@ -163,9 +165,9 @@ class CharacterSettingsTab(QWidget):
 
         sp_mid = QVBoxLayout()
         self.sprites_gallery = QListWidget()
-        self.sprites_gallery.setViewMode(QListWidget.IconMode)
+        self.sprites_gallery.setViewMode(QListWidget.ViewMode.IconMode)
         self.sprites_gallery.setIconSize(QSize(100, 100))
-        self.sprites_gallery.setResizeMode(QListWidget.Adjust)
+        self.sprites_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.sprites_gallery.setMinimumHeight(200)
         self.sprites_gallery.currentRowChanged.connect(self._on_sprite_row)
         sp_mid.addWidget(QLabel("已上传的立绘（点击选择）"))
@@ -282,8 +284,18 @@ class CharacterSettingsTab(QWidget):
                 continue
             pix = QPixmap(p)
             if not pix.isNull():
-                it = QListWidgetItem(QIcon(pix.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)), Path(p).name)
-                it.setData(Qt.UserRole, p)
+                it = QListWidgetItem(
+                    QIcon(
+                        pix.scaled(
+                            100,
+                            100,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                    ),
+                    Path(p).name,
+                )
+                it.setData(Qt.ItemDataRole.UserRole, p)
                 self.sprites_gallery.addItem(it)
 
     def _on_sprite_row(self) -> None:
@@ -441,7 +453,7 @@ class CharacterSettingsTab(QWidget):
         if not p or not Path(p).is_file():
             QMessageBox.information(self, "播放", "无有效语音文件")
             return
-        self._player.setMedia(QMediaContent(QUrl.fromLocalFile(Path(p).resolve().as_posix())))
+        self._player.setSource(QUrl.fromLocalFile(Path(p).resolve().as_posix()))
         self._player.play()
 
     def _on_upload_voice(self) -> None:

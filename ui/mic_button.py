@@ -1,9 +1,9 @@
 import sys
 
 from anyio import sleep
-from PyQt5.QtWidgets import (QPushButton, QTextEdit)
-from PyQt5.QtGui import QIcon, QColor, QFont
-from PyQt5.QtCore import QSize, Qt, pyqtSignal, QObject
+from PyQt6.QtWidgets import (QPushButton, QTextEdit)
+from PyQt6.QtGui import QIcon, QColor, QFont
+from PyQt6.QtCore import QSize, Qt, pyqtSignal, QObject
 
 # 导入您提供的适配器文件 (假设文件名为 asr_adapter.py 并在同一目录下)
 # 实际项目中，您可能需要确保 asr_adapter.py 中的所有依赖（如 RealtimeSTT, vosk, pyaudio）已安装。

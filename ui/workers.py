@@ -2,7 +2,7 @@
 # This file is part of EasyAI Desktop Assistant in THA mode
 # 
 
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QSize
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject, QSize
 import numpy as np
 
 class ImageDisplayThread(QThread):

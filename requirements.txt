@@ -2,7 +2,7 @@ numpy
 pygame
 opencv_python
 gradio
-pyQT5
+PyQt6
 openai
 opencc-python-reimplemented
 pydantic

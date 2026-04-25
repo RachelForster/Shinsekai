@@ -5,9 +5,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
     QListWidget,
@@ -153,8 +153,8 @@ class SettingsWindow(QMainWindow):
         ):
             self._nav.addItem(QListWidgetItem(label))
         self._nav.setCurrentRow(0)
-        self._nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._nav.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self._nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._nav.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self._nav.setMinimumWidth(200)
         self._nav.setMaximumWidth(400)
         self._nav.setSpacing(4)
@@ -165,7 +165,7 @@ class SettingsWindow(QMainWindow):
         self._character.character_list_changed.connect(self._tools.refresh_characters)
         self._background.background_list_changed.connect(self._template.refresh_lists)
 
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
         splitter.addWidget(self._nav)
         splitter.addWidget(self._stack)

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import traceback
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -37,7 +37,7 @@ class MusicCoverSettingsTab(QWidget):
         root = QVBoxLayout(self)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         scroll.setWidget(inner)
         lay = QVBoxLayout(inner)
@@ -126,7 +126,7 @@ class MusicCoverSettingsTab(QWidget):
         self.mc_query = QPlainTextEdit()
         self.mc_query.setMaximumHeight(80)
         self.mc_query.setPlaceholderText("搜索词或 URL")
-        self.mc_pick = QSlider(Qt.Horizontal)
+        self.mc_pick = QSlider(Qt.Orientation.Horizontal)
         self.mc_pick.setRange(0, 7)
         self.mc_pick.setValue(0)
         self.mc_pick_label = QLabel("选用第 0 条")

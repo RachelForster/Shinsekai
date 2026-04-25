@@ -5,14 +5,27 @@ import threading
 import pygame
 import yaml
 import time
-from PyQt5.QtCore import QEasingCurve, QRect, QTimer, Qt, QThread, pyqtSignal, QObject, QSize, QPropertyAnimation, QSequentialAnimationGroup, pyqtProperty
-from PyQt5.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider, QColorDialog,QFileDialog,QMessageBox
-from PyQt5.QtGui import QColor, QFont, QFontMetrics, QImage, QPixmap
-from PyQt5.QtWidgets import (QApplication, QLabel, QWidget, QVBoxLayout, QMenu, QAction,QDialog, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton, QGraphicsOpacityEffect,
-                             QHBoxLayout, QPushButton, QLineEdit, QSizePolicy)
+from PyQt6.QtCore import QEasingCurve, QRect, QTimer, Qt, QThread, pyqtSignal, QObject, QSize, QPropertyAnimation, QSequentialAnimationGroup, pyqtProperty
+from PyQt6.QtGui import QAction, QColor, QFont, QFontMetrics, QImage, QPixmap
+from PyQt6.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider, QColorDialog, QFileDialog, QMessageBox
+from PyQt6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QWidget,
+    QVBoxLayout,
+    QMenu,
+    QDialog,
+    QListWidget,
+    QListWidgetItem,
+    QButtonGroup,
+    QRadioButton,
+    QGraphicsOpacityEffect,
+    QHBoxLayout,
+    QPushButton,
+    QLineEdit,
+    QSizePolicy,
+)
 import os
-
-from PyQt5.QtGui import QImage, QPixmap
 
 
 # 交叉渐变立绘组件
@@ -35,7 +48,9 @@ class CrossFadeSprite(QWidget):
         
         # 1. '旧' 立绘标签 - 用于淡出
         self.label_old = QLabel(self)
-        self.label_old.setAlignment(Qt.AlignBottom | Qt.AlignHCenter)
+        self.label_old.setAlignment(
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter
+        )
         self.label_old.setScaledContents(False) 
         self.old_opacity_effect = QGraphicsOpacityEffect(self.label_old)
         self.old_opacity_effect.setOpacity(1.0)
@@ -43,7 +58,9 @@ class CrossFadeSprite(QWidget):
         
         # 2. '新' 立绘标签 - 用于淡入
         self.label_new = QLabel(self)
-        self.label_new.setAlignment(Qt.AlignBottom | Qt.AlignHCenter)
+        self.label_new.setAlignment(
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter
+        )
         self.label_new.setScaledContents(False)
         self.new_opacity_effect = QGraphicsOpacityEffect(self.label_new)
         self.new_opacity_effect.setOpacity(0.0)
@@ -64,12 +81,14 @@ class CrossFadeSprite(QWidget):
         # 1. 转换为 QImage/QPixmap
         height, width, channel = image.shape
         # bytes_per_line = 4 * width # 假设输入图像是 RGBA8888 格式
-        # PyQt5 中，QImage 构造函数可以直接处理 buffer，但如果使用 fromBuffer，
+        # QImage 构造函数可以直接处理 buffer，但如果使用 fromBuffer，
         # 需要确保数据类型和步长正确。此处我们沿用您提供的 QImage(data, w, h, bpl, format) 构造
         bytes_per_line = width * channel  # 实际的字节数，4*width 仅适用于 RGBA8888
         
-        # 确保格式匹配：如果您的 np 数组是 4 通道 (RGBA)，请使用 QImage.Format_RGBA8888
-        qimg = QImage(image.data, width, height, bytes_per_line, QImage.Format_RGBA8888)
+        # 确保格式匹配：4 通道 (RGBA) 使用 QImage.Format.Format_RGBA8888（PyQt6 枚举在 Format 下）
+        qimg = QImage(
+            image.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888
+        )
         pixmap = QPixmap.fromImage(qimg)
         
         # 2. 缩放逻辑
@@ -91,8 +110,8 @@ class CrossFadeSprite(QWidget):
         scaled_pixmap = pixmap.scaled(
             int(img_width * rate), 
             int(img_height * rate),
-            Qt.KeepAspectRatio, 
-            Qt.SmoothTransformation
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
         )
         return scaled_pixmap
 
@@ -431,7 +450,7 @@ class FontSizeDialog(QDialog):
         layout.addWidget(info_label)
 
         # 滑块
-        self.slider = QSlider(Qt.Horizontal)
+        self.slider = QSlider(Qt.Orientation.Horizontal)
         # 假设最小基础字体为10px，最大为60px
         self.slider.setRange(10, 60) 
         # 初始值是当前的基础字体大小
@@ -580,7 +599,7 @@ class MessageDialog(QDialog):
     def __init__(self, messages, parent=None):
         super().__init__(parent)
         self.setWindowTitle("对话历史记录")
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.messages = list(messages)
         self.selected_revert_user_index = None
 
@@ -638,7 +657,7 @@ class MessageDialog(QDialog):
         message_label = QLabel()
         message_label.setMargin(10)
         message_label.setWordWrap(True)
-        message_label.setTextFormat(Qt.RichText)
+        message_label.setTextFormat(Qt.TextFormat.RichText)
 
         # 设置样式 - 调整为深色主题
         message_label.setStyleSheet("""
@@ -864,7 +883,7 @@ class VolumeDialog(QDialog):
         layout.addWidget(info_label)
 
         # 滑块
-        self.slider = QSlider(Qt.Horizontal)
+        self.slider = QSlider(Qt.Orientation.Horizontal)
         # 音量范围 0-100
         self.slider.setRange(0, 100) 
         # 初始值是当前的音量
@@ -1085,8 +1104,10 @@ class CGWidget(QWidget):
         self.current_cg_pixmap = None
         
         # 必须设置 WA_TranslucentBackground 和 FramelessWindowHint 才能实现完全透明
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.SubWindow) # 确保它浮动在父窗口之上
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.SubWindow
+        )  # 确保它浮动在父窗口之上
         
         # 主布局
         main_layout = QVBoxLayout(self)
@@ -1094,8 +1115,8 @@ class CGWidget(QWidget):
         
         # 1. CG 图像标签 (全屏，用于显示CG)
         self.cg_label = QLabel()
-        self.cg_label.setAlignment(Qt.AlignCenter)
-        self.cg_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.cg_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.cg_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         # 设置一个黑色或半透明背景，以覆盖下层元素
         self.cg_label.setStyleSheet("background-color: rgba(0, 0, 0, 100);")
         main_layout.addWidget(self.cg_label)
@@ -1154,8 +1175,8 @@ class CGWidget(QWidget):
         if self.current_cg_pixmap:
             scaled_cg = self.current_cg_pixmap.scaled(
                 self.size(),
-                Qt.KeepAspectRatio, 
-                Qt.SmoothTransformation
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
             )
             self.cg_label.setPixmap(scaled_cg)
 
@@ -1188,8 +1209,8 @@ class CGWidget(QWidget):
         scaled_cg = self.current_cg_pixmap.scaled(
             self.width(),
             self.height(),
-            Qt.KeepAspectRatioByExpanding, 
-            Qt.SmoothTransformation
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation
         )
         self.cg_label.setPixmap(scaled_cg)
         
