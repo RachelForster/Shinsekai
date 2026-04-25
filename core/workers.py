@@ -6,7 +6,7 @@ from queue import Queue
 from pathlib import Path
 from typing import Optional, Dict, Any, Union
 
-from PyQt5.QtCore import QThread, pyqtSignal, QObject
+from PyQt5.QtCore import QThread
 
 # 假设以下依赖文件已在项目路径中
 from llm.llm_manager import LLMManager
@@ -30,6 +30,7 @@ if str(project_root) not in sys.path:
 from config.config_manager import ConfigManager # ConfigManager 是单例
 from core.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from core.stream_parser import LlmResponseStreamParser
+from core.ui_update_manager import UIUpdateManager
 
 config_manager = ConfigManager()
 SOUND_EFFECT_CHANNEL_ID = 6  # 假设第6个通道用于音效播放
@@ -44,8 +45,6 @@ class BaseWorker(QThread):
     """
     Worker 抽象基类，定义了统一 QThread 基础。
     """
-    # 统一的信号，用于通知主线程（UI）状态更新
-    notification_signal = pyqtSignal(str)
 
     def __init__(self, *args, **kwargs):
         # 确保 QThread 初始化
@@ -67,11 +66,17 @@ def getCharacter(name: str):
     return config_manager.get_character_by_name(name)
 
 class LLMWorker(BaseWorker):
-    # 发送通知给主UI线程的信号，与 BaseWorker 的 notification_signal 相同
-    update_notification_signal = BaseWorker.notification_signal 
-
-    def __init__(self, llm_manager: LLMManager, user_input_queue: Queue, tts_queue: Queue, parent=None, chat_history=None):
+    def __init__(
+        self,
+        llm_manager: LLMManager,
+        user_input_queue: Queue,
+        tts_queue: Queue,
+        ui_update_manager: UIUpdateManager,
+        parent=None,
+        chat_history=None,
+    ):
         super().__init__(parent)
+        self.ui_update_manager = ui_update_manager
         self.llm_manager = llm_manager
         # 队列中传入和传出的应是 Pydantic 消息模型
         self.user_input_queue: Queue[UserInputMessage] = user_input_queue
@@ -89,7 +94,7 @@ class LLMWorker(BaseWorker):
                     break
                 
                 print(f"LLMWorker: 开始处理消息: {message.text}")
-                self.update_notification_signal.emit("发送成功，正在等待回复中...")
+                self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
 
                 # 将用户消息添加到历史 (以 UI 格式和 LLM 格式分别处理)
                 formatted_user_message = f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message.text}</p>"
@@ -293,19 +298,16 @@ class TTSWorker(BaseWorker):
         super().quit()
 
 class UIWorker(QThread):
-    # 发送给主UI线程的信号
-    update_sprite_signal = pyqtSignal(np.ndarray, str, float)  # 图像数据，角色名称，缩放比例
-    update_dialog_signal = pyqtSignal(str)
-    update_notification_signal = pyqtSignal(str)
-    update_option_signal = pyqtSignal(list)
-    update_value_signal = pyqtSignal(str)
-    update_bg = pyqtSignal(str)
-    update_cg = pyqtSignal(str)
-    llm_reply_finished_signal = pyqtSignal()
-    pause_asr_signal = pyqtSignal() # 暂停 ASR 信号
-    
-    def __init__(self, audio_path_queue: Queue, parent=None, chat_history=None, bg_group=None):
+    def __init__(
+        self,
+        audio_path_queue: Queue,
+        ui_update_manager: UIUpdateManager,
+        parent=None,
+        chat_history=None,
+        bg_group=None,
+    ):
         super().__init__(parent)
+        self.ui_update_manager = ui_update_manager
         self.audio_path_queue = audio_path_queue
         self.running = True
         self.task_done_requested = threading.Event() # 使用 Event 对象作为跳过标志
@@ -409,7 +411,7 @@ class UIWorker(QThread):
         else:
             formatted_speech = f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color:{color};'>{name}</b>：{speech}</p>"
         self.chat_history.append(formatted_speech)
-        self.update_dialog_signal.emit(formatted_speech)
+        self.ui_update_manager.post_dialog(formatted_speech)
 
     def _update_sprite(self, character_name: str, sprite_id: int):
         try:
@@ -426,7 +428,9 @@ class UIWorker(QThread):
                 elif cv_image.shape[2] == 4:
                     cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
 
-                self.update_sprite_signal.emit(cv_image, character_name, character_config.sprite_scale)
+                self.ui_update_manager.post_sprite_update(
+                    cv_image, character_name, character_config.sprite_scale
+                )
             else:
                 print(f"UIWorker: 无法加载图片: {image_path}")
         except Exception as e:
@@ -435,7 +439,9 @@ class UIWorker(QThread):
     
     def remove_character_sprite(self, character_name: str):
         """移除指定角色的立绘显示"""
-        self.update_sprite_signal.emit(np.empty((0,), dtype=np.uint8), character_name, 1.0)  # 传入空图像实现淡出效果
+        self.ui_update_manager.post_sprite_update(
+            np.empty((0,), dtype=np.uint8), character_name, 1.0
+        )  # 传入空图像实现淡出效果
 
     def run(self):
         while self.running:
@@ -466,16 +472,16 @@ class UIWorker(QThread):
                         )
                         self.chat_history.append(formatted_option)
                         optionList = [p.strip() for p in speech.split("/") if p.strip()]
-                        self.update_option_signal.emit(optionList)
+                        self.ui_update_manager.post_options(optionList)
                     elif character_name == "数值":
-                        self.update_value_signal.emit(speech)
+                        self.ui_update_manager.post_numeric_value(speech)
                     elif character_name == "场景":
                         try:
                             sprite_id = int(sprite_id) - 1
                             if sprite_id < 0 or sprite_id >= len(self.bg_group):
                                 raise IndexError("背景图片的index不正常")
                             bg_path = Path(self.bg_group[sprite_id].get("path")).as_posix()
-                            self.update_bg.emit(bg_path)
+                            self.ui_update_manager.post_background(bg_path)
                         except Exception as e:
                             traceback.print_exc()
                             print("更新背景失败",e)
@@ -485,9 +491,9 @@ class UIWorker(QThread):
                         try:
                             cg_path = audio_path
                             if 'no person' in speech:
-                                self.update_bg(audio_path)
+                                self.ui_update_manager.post_background(audio_path)
                             else:
-                                self.update_cg.emit(cg_path)
+                                self.ui_update_manager.post_cg(cg_path)
                         except Exception as e:
                             print(f"更新CG失败：{e}")
                             traceback.print_exc()
@@ -503,7 +509,7 @@ class UIWorker(QThread):
                 if not character_config:
                     print(f"UIWorker: 未找到角色配置「{character_name}」，跳过立绘；仅在有台词时用占位颜色显示")
 
-                self.update_notification_signal.emit(f"{character_name}正在回复……")
+                self.ui_update_manager.post_notification(f"{character_name}正在回复……")
 
                 if speech:
                     color = character_config.color if character_config else fallback_color
@@ -530,11 +536,11 @@ class UIWorker(QThread):
                         tts_sound = pygame.mixer.Sound(audio_path)
                         self.dialog_channel.play(tts_sound)
                         audio_played = True
-                        self.pause_asr_signal.emit()
+                        self.ui_update_manager.post_pause_asr()
                         while self.dialog_channel.get_busy() and not self.task_done_requested.is_set():
                             time.sleep(0.1)
                         time.sleep(0.2)  # 确保音频结束后再继续识别
-                        self.llm_reply_finished_signal.emit()
+                        self.ui_update_manager.post_llm_reply_finished()
                     except Exception as e:
                         print(f"UIWorker: 播放音频时出错: {e}")
 
@@ -562,7 +568,7 @@ class UIWorker(QThread):
                 traceback.print_exc()
                 print(f"UIWorker: 任务处理失败: {e}")
                 try:
-                    self.update_notification_signal.emit(f"界面更新失败: {e}")
+                    self.ui_update_manager.post_notification(f"界面更新失败: {e}")
                 except Exception:
                     pass
                 # 勿在此处 setDisplayWords，否则会隐藏已显示的选项/对话

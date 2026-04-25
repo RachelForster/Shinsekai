@@ -11,6 +11,7 @@ import llm.tools.character_tools
 from llm.llm_manager import LLMManager,LLMAdapterFactory
 from llm.history_manager import HistoryManager
 from core.workers import LLMWorker, TTSWorker, UIWorker
+from core.ui_update_manager import UIUpdateManager, connect_to_desktop_window
 from core.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
@@ -290,19 +291,17 @@ def main():
         pass
     # 创建桌面助手窗口
     app = QApplication([])
+    ui_updates = UIUpdateManager()
     window = DesktopAssistantWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True, background_mode=(bg_group!=None))
+    connect_to_desktop_window(ui_updates, window)
 
     # 创建并启动 UI Worker 线程
-    ui_worker = UIWorker(audio_path_queue, chat_history=chat_history,bg_group=bg_group)
-    ui_worker.update_sprite_signal.connect(window.update_image)
-    ui_worker.update_dialog_signal.connect(window.setDisplayWords)
-    ui_worker.update_notification_signal.connect(window.setNotification)
-    ui_worker.update_option_signal.connect(window.setOptions)
-    ui_worker.update_value_signal.connect(window.update_numeric_info)
-    ui_worker.update_bg.connect(window.setBackgroundImage)
-    ui_worker.update_cg.connect(window.show_cg_image)
-    ui_worker.llm_reply_finished_signal.connect(window.llm_reply_finished)
-    ui_worker.pause_asr_signal.connect(window.pause_asr_signal)
+    ui_worker = UIWorker(
+        audio_path_queue,
+        ui_updates,
+        chat_history=chat_history,
+        bg_group=bg_group,
+    )
     ui_worker.start()
     
     # 创建并启动 TTS Worker 线程
@@ -310,8 +309,13 @@ def main():
     tts_worker.start()
 
     # 创建并启动 LLM Worker 线程
-    llm_worker = LLMWorker(llm_manager, user_input_queue, tts_queue, chat_history=chat_history)
-    llm_worker.update_notification_signal.connect(window.setNotification)
+    llm_worker = LLMWorker(
+        llm_manager,
+        user_input_queue,
+        tts_queue,
+        ui_updates,
+        chat_history=chat_history,
+    )
     llm_worker.start()
 
     init_sprite_path = args.init_sprite_path
