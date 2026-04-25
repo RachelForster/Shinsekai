@@ -86,7 +86,7 @@ class ApiConfig(BaseModel):
 class SystemConfig(BaseModel):
     """系统相关的通用配置"""
     # 应用 DefaultIfNone
-    base_font_size_px: DefaultIfNone[int] = Field(default=48, description="基础字体大小 (像素)")
+    base_font_size_px: DefaultIfNone[int] = Field(default=56, description="基础字体大小 (像素)")
     voice_language: DefaultIfNone[str] = Field(default='ja', description="系统语音的默认语言 (例如: ja)")
     music_volumn: DefaultIfNone[int] =Field(default=30,description="bgm 音量")
     theme_color: DefaultIfNone[str] = Field(default='rgba(50,50,50,200)',description="主题色")

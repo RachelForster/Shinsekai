@@ -1,1 +1,15 @@
-"""Gradio webui 拆分的标签页与组件（按需 `from ui.webui.music_cover_tab import ...`）。"""
+"""原 Gradio 标签页已迁移至 `ui.settings_ui`（PyQt）。此处保留兼容导入。"""
+
+from ui.settings_ui import (
+    SettingsUIContext,
+    SettingsWindow,
+    WebUIContext,
+    create_default_context,
+)
+
+__all__ = [
+    "SettingsUIContext",
+    "WebUIContext",
+    "SettingsWindow",
+    "create_default_context",
+]
