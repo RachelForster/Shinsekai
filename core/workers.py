@@ -1,6 +1,5 @@
 import abc
 from abc import ABC, abstractmethod
-import json
 import time
 import traceback
 from queue import Queue
@@ -30,6 +29,7 @@ if str(project_root) not in sys.path:
 # 导入 ConfigManager 和 Pydantic 消息模型
 from config.config_manager import ConfigManager # ConfigManager 是单例
 from core.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
+from core.stream_parser import LlmResponseStreamParser
 
 config_manager = ConfigManager()
 SOUND_EFFECT_CHANNEL_ID = 6  # 假设第6个通道用于音效播放
@@ -108,49 +108,14 @@ class LLMWorker(BaseWorker):
                     # 包装成可迭代对象，模拟流式的一个 chunk
                     response_stream = [raw_response]
 
-                response_buffer = ""
-                content = ""  # 记录 LLM 的完整回复内容
-                
-                # 2. 统一处理逻辑
+                parser = LlmResponseStreamParser()
                 for chunk in response_stream:
-                    # 假设 chunk 直接就是字符串内容，如果是对象请根据实际 SDK 调整
-                    chunk_message = chunk
-                    
-                    if chunk_message:
-                        response_buffer += chunk_message
-                        content += chunk_message
-
-                    # 缓冲区解析 JSON 的逻辑
-                    while '}' in response_buffer:
-                        # 查找最近的一对 {}
-                        end_index = response_buffer.find('}') + 1
-                        start_index_temp = response_buffer.rfind('{', 0, end_index)
-                        
-                        if start_index_temp == -1:
-                            # 没找到匹配的左括号，可能是不完整的 JSON，跳出等待更多 chunk
-                            break
-                        
-                        try:
-                            json_str = response_buffer[start_index_temp:end_index]
-                            dialog_item = json.loads(json_str)
-                            
-                            # 验证并放入队列
-                            llm_dialog = LLMDialogMessage(**dialog_item)
-                            self.tts_queue.put(llm_dialog)
-                            
-                            # 截断已处理的缓冲区
-                            response_buffer = response_buffer[end_index:].strip()
-
-                        except json.JSONDecodeError:
-                            # 如果解析失败，可能是嵌套或格式问题，跳过该段尝试后续
-                            response_buffer = response_buffer[end_index:].strip()
-                        except Exception as e:
-                            print(f"处理失败: {e}")
-                            response_buffer = response_buffer[end_index:].strip()
-                            break
+                    chunk_message = chunk if isinstance(chunk, str) else str(chunk) if chunk is not None else ""
+                    for llm_dialog in parser.feed(chunk_message):
+                        self.tts_queue.put(llm_dialog)
 
                 # 3. 记录历史与状态清理
-                self.llm_manager.add_message("assistant", content)           
+                self.llm_manager.add_message("assistant", parser.accumulated_text)           
                 self.user_input_queue.task_done()
 
             except Exception as e:
