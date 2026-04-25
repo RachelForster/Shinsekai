@@ -1,18 +1,34 @@
 """
-集中定义从 LLM / UI 等 worker 线程发往主界面的信号，避免在 QThread 子类上分散声明。
+集中定义从 worker 发往主界面的 Qt 信号，以及在此之上封装的对话/立绘/BGM/特效等操作。
 
-Worker 只调用本类提供的 post_* 方法，由方法内部 emit，不直接触达信号对象。
-
-在应用主线程中创建 `UIUpdateManager` 实例，注入各 worker，并在 `connect_to_desktop_window` 中
-一次性接到 `DesktopAssistantWindow` 的槽。
+这类方法从 UI 工作线程调用，内部通过信号跨线程更新主界面；BGM/音效使用 pygame，与 UIWorker 中的对话通道分离。
 """
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+import traceback
+from pathlib import Path
+from typing import Any, Dict, List, MutableSequence, Optional
 
+import cv2
 import numpy as np
+import pygame
 from PyQt5.QtCore import QObject, pyqtSignal
+
+from config.config_manager import ConfigManager
+
+SOUND_EFFECT_CHANNEL_ID = 6
+SOUND_EFFECTS_PATH = {
+    "DISAPPOINTED": "./assets/system/sound/disappointed.wav",
+    "SHOCKED": "./assets/system/sound/shocked.wav",
+    "ATTENTION": "./assets/system/sound/attention.wav",
+}
+
+_config_manager = ConfigManager()
+
+
+def get_character_by_name(name: str):
+    return _config_manager.get_character_by_name(name)
 
 
 class UIUpdateManager(QObject):
@@ -26,8 +42,18 @@ class UIUpdateManager(QObject):
     llm_reply_finished_signal = pyqtSignal()
     pause_asr_signal = pyqtSignal()
 
-    def __init__(self, parent: Optional[QObject] = None) -> None:
+    def __init__(
+        self,
+        parent: Optional[QObject] = None,
+        chat_history: Optional[MutableSequence[str]] = None,
+        bg_group: Optional[List] = None,
+    ) -> None:
         super().__init__(parent)
+        self.chat_history: MutableSequence[str] = chat_history if chat_history is not None else []
+        self.bg_group: List = list(bg_group or [])
+        self.current_bgm_path: Optional[str] = None
+
+    # --- 低层：仅发信号 ---
 
     def post_sprite_update(self, image: np.ndarray, character_name: str, scale: float) -> None:
         self.update_sprite_signal.emit(image, character_name, scale)
@@ -55,6 +81,97 @@ class UIUpdateManager(QObject):
 
     def post_pause_asr(self) -> None:
         self.pause_asr_signal.emit()
+
+    # --- 高层：业务组装（原 UIWorker 上的逻辑） ---
+
+    def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
+        if is_system:
+            formatted = (
+                f"<p style='line-height: 135%; letter-spacing: 2px; color:{color};'>"
+                f"<b>{name}</b>：{speech}</p>"
+            )
+        else:
+            formatted = (
+                f"<p style='line-height: 135%; letter-spacing: 2px;'>"
+                f"<b style='color:{color};'>{name}</b>：{speech}</p>"
+            )
+        self.chat_history.append(formatted)
+        self.post_dialog(formatted)
+
+    def update_sprite(self, character_name: str, sprite_id: int) -> None:
+        try:
+            character_config = get_character_by_name(character_name)
+            if character_config is None:
+                raise ValueError(f"未找到角色配置: {character_name}")
+            image_path = Path(character_config.sprites[sprite_id]["path"]).as_posix()
+            cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+            if cv_image is not None:
+                if cv_image.shape[2] == 3:
+                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+                    alpha_channel = np.full((cv_image.shape[0], cv_image.shape[1]), 255, dtype=np.uint8)
+                    cv_image = cv2.merge([cv_image, alpha_channel])
+                elif cv_image.shape[2] == 4:
+                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
+                self.post_sprite_update(cv_image, character_name, character_config.sprite_scale)
+            else:
+                print(f"UIUpdateManager: 无法加载图片: {image_path}")
+        except Exception as e:
+            traceback.print_exc()
+            print(f"UIUpdateManager: 加载图片时出错: {e}")
+
+    def remove_character_sprite(self, character_name: str) -> None:
+        self.post_sprite_update(np.empty((0,), dtype=np.uint8), character_name, 1.0)
+
+    def switch_bgm(self, new_bgm_path: str) -> None:
+        if not new_bgm_path or not Path(new_bgm_path).exists():
+            return
+        new_bgm_path = Path(new_bgm_path).as_posix()
+        if new_bgm_path == self.current_bgm_path:
+            if pygame.mixer.music.get_busy():
+                return
+            pygame.mixer.music.play(-1)
+            print(f"BGM: 重新开始播放：{new_bgm_path}")
+            return
+        try:
+            if pygame.mixer.music.get_busy():
+                pygame.mixer.music.stop()
+            pygame.mixer.music.unload()
+            pygame.mixer.music.load(new_bgm_path)
+            volume = _config_manager.config.system_config.music_volumn / 100
+            pygame.mixer.music.set_volume(volume)
+            pygame.mixer.music.play(-1)
+            self.current_bgm_path = new_bgm_path
+        except pygame.error as e:
+            print(f"BGM: 切换背景音乐失败 ({new_bgm_path}): {e}")
+            self.current_bgm_path = None
+        except Exception:
+            print("切换bgm时发生错误")
+            traceback.print_exc()
+
+    def play_sound_effect(self, sound_effect_path: str) -> None:
+        if not Path(sound_effect_path).exists():
+            print(f"音效文件不存在: {sound_effect_path}")
+            return
+        try:
+            effect_sound = pygame.mixer.Sound(sound_effect_path)
+            sound_channel = pygame.mixer.Channel(SOUND_EFFECT_CHANNEL_ID)
+            sound_channel.play(effect_sound)
+        except Exception as e:
+            print(f"播放音效失败: {e}")
+
+    def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> None:
+        try:
+            match effect:
+                case "LEAVE":
+                    if after_dialog:
+                        self.remove_character_sprite(args.get("character_name"))
+                case _:
+                    if not after_dialog:
+                        path = SOUND_EFFECTS_PATH.get(effect.upper(), None)
+                        if path:
+                            self.play_sound_effect(path)
+        except Exception as e:
+            print("播放特效失败", e)
 
 
 def connect_to_desktop_window(ui: UIUpdateManager, window: Any) -> None:

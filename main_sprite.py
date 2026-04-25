@@ -10,7 +10,9 @@ if str(project_root) not in sys.path:
 import llm.tools.character_tools
 from llm.llm_manager import LLMManager,LLMAdapterFactory
 from llm.history_manager import HistoryManager
+from llm.text_processor import TextProcessor
 from core.workers import LLMWorker, TTSWorker, UIWorker
+from core.app_runtime import AppRuntime, set_app_runtime
 from core.ui_update_manager import UIUpdateManager, connect_to_desktop_window
 from core.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
@@ -276,7 +278,9 @@ def main():
     user_input_queue = Queue()
     tts_queue = Queue()
     audio_path_queue = Queue()
-    
+
+    text_processor = TextProcessor()
+
     # 获取背景组
     bg_group = None
     try:
@@ -291,31 +295,34 @@ def main():
         pass
     # 创建桌面助手窗口
     app = QApplication([])
-    ui_updates = UIUpdateManager()
+    ui_updates = UIUpdateManager(chat_history=chat_history, bg_group=bg_group or [])
     window = DesktopAssistantWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True, background_mode=(bg_group!=None))
     connect_to_desktop_window(ui_updates, window)
 
-    # 创建并启动 UI Worker 线程
-    ui_worker = UIWorker(
-        audio_path_queue,
-        ui_updates,
-        chat_history=chat_history,
-        bg_group=bg_group,
+    set_app_runtime(
+        AppRuntime(
+            config=config,
+            ui_update_manager=ui_updates,
+            llm_manager=llm_manager,
+            tts_manager=tts_manager,
+            t2i_manager=t2i_manager,
+            bgm_list=bgm_list,
+            user_input_queue=user_input_queue,
+            tts_queue=tts_queue,
+            audio_path_queue=audio_path_queue,
+            text_processor=text_processor,
+            opencc=cc,
+        )
     )
+
+    # 创建并启动 Worker 线程（队列显式连接流水线，其馀从 app_runtime 注入）
+    ui_worker = UIWorker(audio_path_queue)
     ui_worker.start()
-    
-    # 创建并启动 TTS Worker 线程
-    tts_worker = TTSWorker(tts_manager,t2i_manager, tts_queue, audio_path_queue, bgm_list=bgm_list)
+
+    tts_worker = TTSWorker(tts_queue, audio_path_queue)
     tts_worker.start()
 
-    # 创建并启动 LLM Worker 线程
-    llm_worker = LLMWorker(
-        llm_manager,
-        user_input_queue,
-        tts_queue,
-        ui_updates,
-        chat_history=chat_history,
-    )
+    llm_worker = LLMWorker(user_input_queue, tts_queue)
     llm_worker.start()
 
     init_sprite_path = args.init_sprite_path
@@ -433,7 +440,7 @@ def main():
     app.aboutToQuit.connect(tts_worker.quit)
     app.aboutToQuit.connect(ui_worker.quit)
     app.aboutToQuit.connect(lambda :save_chat_history(args.history,llm_manager.get_messages()))
-    app.aboutToQuit.connect(lambda :save_bg(bg_path=window.current_background_path,bgm_path=ui_worker.current_bgm_path))
+    app.aboutToQuit.connect(lambda :save_bg(bg_path=window.current_background_path,bgm_path=ui_updates.current_bgm_path))
 
     window.show()
 
