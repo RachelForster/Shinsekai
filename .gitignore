@@ -25,3 +25,4 @@ assets/system/models/vosk-model-small-cn-0.22/am/final.mdl
 /data
 *.yaml
 /onnx
+/ui/settings_ui/images

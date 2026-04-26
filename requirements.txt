@@ -13,4 +13,3 @@ rembg
 google-genai
 tiktoken
 pyaudio
-qt-material

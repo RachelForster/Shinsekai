@@ -12,8 +12,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
-    QPlainTextEdit,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -27,17 +25,20 @@ from PyQt6.QtWidgets import (
 
 from llm.constants import LLM_BASE_URLS
 from ui.settings_ui.context import SettingsUIContext
+from ui.settings_ui.feedback import feedback_result, message_fail
 
 
-def _add_collapsible_block(tree: QTreeWidget, title: str, content: QWidget) -> None:
-    """在树中增加一项：默认折叠，展开后显示 content。"""
+def _add_collapsible_block(
+    tree: QTreeWidget, title: str, content: QWidget, *, expanded: bool = False
+) -> None:
+    """在树中增加一项，展开后显示 content。"""
     top = QTreeWidgetItem([title])
     tree.addTopLevelItem(top)
     child = QTreeWidgetItem()
     top.addChild(child)
     content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
     tree.setItemWidget(child, 0, content)
-    top.setExpanded(False)
+    top.setExpanded(expanded)
     # 占满列宽、避免子行缩进过窄
     child.setFirstColumnSpanned(True)
 
@@ -98,13 +99,14 @@ class ApiSettingsTab(QWidget):
         adv = QWidget()
         adv_lay = QVBoxLayout(adv)
         adv_lay.setContentsMargins(0, 0, 0, 0)
-        adv_lay.addWidget(
-            QLabel(
-                "说明：OpenAI/Deepseek/豆包/通义千问通常支持 temperature、presence_penalty、frequency_penalty；"
-                "Claude 仅使用 temperature；Gemini 通过 OpenAI 兼容接口时按兼容能力处理。"
-                "repetition_penalty 并非所有 provider 支持，不支持时会自动忽略。"
-            )
+        adv_help = QLabel(
+            "说明：OpenAI/Deepseek/豆包/通义千问通常支持 temperature、presence_penalty、frequency_penalty；"
+            "Claude 仅使用 temperature；Gemini 通过 OpenAI 兼容接口时按兼容能力处理。"
+            "repetition_penalty 并非所有 provider 支持，不支持时会自动忽略。"
         )
+        adv_help.setWordWrap(True)
+        adv_help.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        adv_lay.addWidget(adv_help)
         adv_form = QFormLayout()
         ac = self._ctx.config_manager.config.api_config
         self.temperature = QDoubleSpinBox()
@@ -139,8 +141,8 @@ class ApiSettingsTab(QWidget):
         main_tree.setAnimated(True)
         main_tree.setIndentation(20)
         main_tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        _add_collapsible_block(main_tree, "LLM API 基础", llm_panel)
-        _add_collapsible_block(main_tree, "高级 LLM 设置", adv)
+        _add_collapsible_block(main_tree, "LLM API 基础", llm_panel, expanded=True)
+        _add_collapsible_block(main_tree, "高级 LLM 设置", adv, expanded=False)
 
         _gsv_url, _gpt_sovits_work_path, _tts_provider = self._ctx.config_manager.get_gpt_sovits_config()
         tts_box = QGroupBox()
@@ -161,9 +163,9 @@ class ApiSettingsTab(QWidget):
         tts_form.addRow("TTS引擎 服务启动路径", self.gpt_sovits_api_path)
         tts_lay.addLayout(tts_form)
 
+        api = self._ctx.config_manager.config.api_config
         comfy = QGroupBox("ComfyUI（可选，用于生成 CG）")
         cf = QFormLayout(comfy)
-        api = self._ctx.config_manager.config.api_config
         self.t2i_url = QLineEdit(api.t2i_api_url)
         self.t2i_work_path = QLineEdit(api.t2i_work_path)
         self.t2i_default_workflow_path = QLineEdit(api.t2i_default_workflow_path)
@@ -174,8 +176,8 @@ class ApiSettingsTab(QWidget):
         cf.addRow("ComfyUI 默认工作流路径", self.t2i_default_workflow_path)
         cf.addRow("输入节点ID", self.prompt_node_id)
         cf.addRow("保存节点ID", self.output_node_id)
-        tts_lay.addWidget(comfy)
-        _add_collapsible_block(main_tree, "TTS 与 ComfyUI", tts_box)
+        _add_collapsible_block(main_tree, "TTS", tts_box, expanded=True)
+        _add_collapsible_block(main_tree, "ComfyUI", comfy, expanded=False)
 
         links_w = QWidget()
         links_ly = QVBoxLayout(links_w)
@@ -197,14 +199,7 @@ class ApiSettingsTab(QWidget):
         links_ly.addWidget(help_lbl)
         _add_collapsible_block(main_tree, "资源下载与说明", links_w)
 
-        out_row = QHBoxLayout()
-        out_row.addWidget(main_tree, stretch=2)
-        self.api_output = QPlainTextEdit()
-        self.api_output.setReadOnly(True)
-        self.api_output.setMaximumHeight(200)
-        self.api_output.setPlaceholderText("输出信息")
-        out_row.addWidget(self.api_output, stretch=1)
-        lay.addLayout(out_row)
+        lay.addWidget(main_tree)
 
         save = QPushButton("保存配置")
         save.clicked.connect(self._on_save)
@@ -217,7 +212,7 @@ class ApiSettingsTab(QWidget):
         try:
             base, model, key = self._ctx.config_manager.update_llm_info(name)
         except Exception as e:
-            self.api_output.setPlainText(f"更新供应商信息失败: {e}")
+            message_fail(self, "API 配置", f"更新供应商信息失败: {e}")
             return
         self.base_url.setText(base)
         self.llm_model.setText(model)
@@ -245,5 +240,4 @@ class ApiSettingsTab(QWidget):
             self.frequency_penalty.value(),
             self.max_context_tokens.value(),
         )
-        self.api_output.setPlainText(msg)
-        QMessageBox.information(self, "API 配置", msg)
+        feedback_result(self, "API 配置", msg)

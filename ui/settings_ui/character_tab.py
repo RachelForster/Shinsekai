@@ -13,16 +13,17 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -30,6 +31,12 @@ from PyQt6.QtWidgets import (
 import tools.file_util as fu
 from config.character_config import CharacterConfig
 from ui.settings_ui.context import SettingsUIContext
+from ui.settings_ui.feedback import (
+    feedback_result,
+    is_failure_message,
+    message_fail,
+    toast_success,
+)
 from ui.settings_ui.utils import path_file_list
 
 
@@ -52,43 +59,52 @@ class CharacterSettingsTab(QWidget):
         inner = QWidget()
         scroll.setWidget(inner)
         lay = QVBoxLayout(inner)
+        lay.setSpacing(10)
 
         lay.addWidget(QLabel("<h2>人物管理</h2>"))
-        top = QHBoxLayout()
-        col_a = QVBoxLayout()
-        col_a.addWidget(QLabel("加载或添加可用角色"))
+
+        # --- 1. 角色选择、导入/导出、文件结果 ---
+        box_files = QGroupBox("当前角色与 .char 文件")
+        bl = QVBoxLayout(box_files)
         self.selected_character = QComboBox()
-        col_a.addWidget(self.selected_character)
+        self.selected_character.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        char_row = QFormLayout()
+        char_row.addRow("当前角色", self.selected_character)
+        bl.addLayout(char_row)
+        file_ops = QHBoxLayout()
         export_btn = QPushButton("导出到 ./output 文件夹")
         export_btn.clicked.connect(self._on_export)
         del_btn = QPushButton("删除人物")
         del_btn.clicked.connect(self._on_delete)
-        col_a.addWidget(export_btn)
-        col_a.addWidget(del_btn)
-        top.addLayout(col_a)
-
-        col_b = QVBoxLayout()
-        col_b.addWidget(QLabel("从文件导入（可多选 .char）"))
+        file_ops.addWidget(export_btn)
+        file_ops.addWidget(del_btn)
+        file_ops.addStretch(1)
+        bl.addLayout(file_ops)
+        sep1 = QFrame()
+        sep1.setFrameShape(QFrame.Shape.HLine)
+        sep1.setFrameShadow(QFrame.Shadow.Sunken)
+        bl.addWidget(sep1)
+        bl.addWidget(QLabel("从文件导入（可多选 .char）"))
+        self._import_paths: list[str] = []
         imp_row = QHBoxLayout()
         self.import_files_display = QLineEdit()
         self.import_files_display.setReadOnly(True)
         self.import_files_display.setPlaceholderText("未选择文件")
         pick_files = QPushButton("选择文件…")
         pick_files.clicked.connect(self._pick_import_files)
-        self._import_paths: list[str] = []
-        imp_row.addWidget(self.import_files_display)
+        imp_row.addWidget(self.import_files_display, stretch=1)
         imp_row.addWidget(pick_files)
-        col_b.addLayout(imp_row)
+        bl.addLayout(imp_row)
         import_btn = QPushButton("从文件导入人物")
         import_btn.clicked.connect(self._on_import)
-        col_b.addWidget(import_btn)
-        self.import_output = QPlainTextEdit()
-        self.import_output.setReadOnly(True)
-        self.import_output.setMaximumHeight(100)
-        col_b.addWidget(self.import_output)
-        top.addLayout(col_b)
-        lay.addLayout(top)
+        bl.addWidget(import_btn)
+        lay.addWidget(box_files)
 
+        # --- 2. 人物信息（表单 + 设定长文本）---
+        box_info = QGroupBox("人物信息与角色设定")
+        bi = QVBoxLayout(box_info)
         info_row = QHBoxLayout()
         left_info = QFormLayout()
         self.char_name = QLineEdit()
@@ -98,19 +114,24 @@ class CharacterSettingsTab(QWidget):
         left_info.addRow("人物名称", self.char_name)
         left_info.addRow("名称显示颜色", self.char_color)
         left_info.addRow("上传数据目录名（英文）", self.sprite_prefix)
-        info_row.addLayout(left_info)
+        info_row.addLayout(left_info, stretch=0)
         right_info = QVBoxLayout()
         right_info.addWidget(QLabel("角色设定"))
         self.character_setting = QPlainTextEdit()
-        self.character_setting.setMinimumHeight(100)
+        self.character_setting.setMinimumHeight(120)
+        self.character_setting.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         ai_btn = QPushButton("AI 一键帮写")
         ai_btn.clicked.connect(self._on_ai_help)
-        right_info.addWidget(self.character_setting)
-        right_info.addWidget(ai_btn)
-        info_row.addLayout(right_info)
-        lay.addLayout(info_row)
+        right_info.addWidget(self.character_setting, stretch=1)
+        right_info.addWidget(ai_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        info_row.addLayout(right_info, stretch=1)
+        bi.addLayout(info_row)
+        lay.addWidget(box_info)
 
-        voice_box = QGroupBox("语音模块（可选）")
+        # --- 3. 语音参考路径（TTS 侧）---
+        voice_box = QGroupBox("语音模型参考（SoVITS 等，可选）")
         vf = QFormLayout(voice_box)
         self.gpt_model_path = QLineEdit()
         self.sovits_model_path = QLineEdit()
@@ -124,102 +145,108 @@ class CharacterSettingsTab(QWidget):
         vf.addRow("语言 (en/ja/zh)", self.prompt_lang)
         lay.addWidget(voice_box)
 
-        add_row = QHBoxLayout()
+        # --- 4. 保存人物 + 与立绘/标注相关的总反馈 ---
+        box_save = QGroupBox("保存人物档案")
+        bs = QVBoxLayout(box_save)
         add_btn = QPushButton("添加或保存人物设置")
         add_btn.clicked.connect(self._on_add)
-        add_row.addWidget(add_btn)
-        self.add_output = QPlainTextEdit()
-        self.add_output.setReadOnly(True)
-        self.add_output.setMaximumHeight(80)
-        add_row.addWidget(self.add_output)
-        lay.addLayout(add_row)
+        bs.addWidget(add_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        lay.addWidget(box_save)
 
-        lay.addWidget(QLabel("<h2>立绘管理</h2>"))
-        sp_row = QHBoxLayout()
-        sp_left = QVBoxLayout()
+        # --- 5. 立绘：先上传与缩放，再「画廊+情绪」并列，最下为当前立绘语音 ---
+        lay.addWidget(QLabel("<h2>立绘与语音</h2>"))
+        box_sprites = QGroupBox("立绘管理")
+        bsp = QVBoxLayout(box_sprites)
         up_row = QHBoxLayout()
         self.sprite_files_display = QLineEdit()
         self.sprite_files_display.setReadOnly(True)
         self._sprite_paths: list[str] = []
         b_up = QPushButton("选择立绘图片…")
         b_up.clicked.connect(self._pick_sprites)
-        up_row.addWidget(self.sprite_files_display)
+        up_row.addWidget(self.sprite_files_display, stretch=1)
         up_row.addWidget(b_up)
-        sp_left.addLayout(up_row)
+        bsp.addLayout(up_row)
+        up_btns = QHBoxLayout()
         upload_sprites_btn = QPushButton("上传图片")
         upload_sprites_btn.clicked.connect(self._on_upload_sprites)
-        sp_left.addWidget(upload_sprites_btn)
+        up_btns.addWidget(upload_sprites_btn)
+        up_btns.addWidget(QLabel("立绘显示缩放"))
         self.sprite_scale = QDoubleSpinBox()
         self.sprite_scale.setRange(0, 3)
         self.sprite_scale.setSingleStep(0.05)
         self.sprite_scale.setValue(1.0)
-        sp_left.addWidget(QLabel("立绘显示缩放"))
-        sp_left.addWidget(self.sprite_scale)
-        scale_save = QPushButton("保存立绘放大/缩小倍数")
+        up_btns.addWidget(self.sprite_scale)
+        scale_save = QPushButton("保存缩放")
+        scale_save.setToolTip("保存立绘放大/缩小倍数")
         scale_save.clicked.connect(self._on_save_scale)
-        sp_left.addWidget(scale_save)
+        up_btns.addWidget(scale_save)
         del_all_sp = QPushButton("删除所有立绘")
         del_all_sp.clicked.connect(self._on_delete_all_sprites)
-        sp_left.addWidget(del_all_sp)
-        sp_row.addLayout(sp_left)
+        up_btns.addWidget(del_all_sp)
+        up_btns.addStretch(1)
+        bsp.addLayout(up_btns)
 
+        gallery_row = QHBoxLayout()
         sp_mid = QVBoxLayout()
         self.sprites_gallery = QListWidget()
         self.sprites_gallery.setViewMode(QListWidget.ViewMode.IconMode)
         self.sprites_gallery.setIconSize(QSize(100, 100))
         self.sprites_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.sprites_gallery.setMinimumHeight(200)
+        self.sprites_gallery.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.sprites_gallery.currentRowChanged.connect(self._on_sprite_row)
         sp_mid.addWidget(QLabel("已上传的立绘（点击选择）"))
-        sp_mid.addWidget(self.sprites_gallery)
+        sp_mid.addWidget(self.sprites_gallery, stretch=1)
         del_one = QPushButton("删除选中立绘")
         del_one.clicked.connect(self._on_delete_one_sprite)
         sp_mid.addWidget(del_one)
-        sp_row.addLayout(sp_mid)
+        gallery_row.addLayout(sp_mid, stretch=2)
 
         sp_right = QVBoxLayout()
-        sp_right.addWidget(QLabel("标注立绘情绪关键字"))
+        emo_lbl = QLabel("标注立绘情绪关键字（与上传/排序对应）")
+        emo_lbl.setWordWrap(True)
+        sp_right.addWidget(emo_lbl)
         self.emotion_inputs = QPlainTextEdit()
         self.emotion_inputs.setMinimumHeight(150)
-        sp_right.addWidget(self.emotion_inputs)
+        sp_right.addWidget(self.emotion_inputs, stretch=1)
         tag_btn = QPushButton("上传立绘标注")
         tag_btn.clicked.connect(self._on_upload_tags)
         sp_right.addWidget(tag_btn)
-        sp_row.addLayout(sp_right)
-        lay.addLayout(sp_row)
+        gallery_row.addLayout(sp_right, stretch=1)
+        bsp.addLayout(gallery_row)
 
-        voice_row = QHBoxLayout()
-        vv = QVBoxLayout()
-        vv.addWidget(QLabel("立绘与语音（可选）"))
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setFrameShadow(QFrame.Shadow.Sunken)
+        bsp.addWidget(sep2)
+
+        bsp.addWidget(QLabel("<b>当前选中立绘的语音</b>（在上方画廊中点选立绘后使用）"))
         self.selected_sprite_info = QLineEdit()
         self.selected_sprite_info.setReadOnly(True)
-        vv.addWidget(self.selected_sprite_info)
+        bsp.addWidget(self.selected_sprite_info)
         play_v = QPushButton("播放当前立绘语音")
         play_v.clicked.connect(self._on_play_voice)
-        vv.addWidget(play_v)
+        bsp.addWidget(play_v, alignment=Qt.AlignmentFlag.AlignLeft)
         self.sprite_voice_path = QLineEdit()
         self.sprite_voice_path.setPlaceholderText("当前语音文件路径")
         self.sprite_voice_path.setReadOnly(True)
-        vv.addWidget(self.sprite_voice_path)
+        bsp.addWidget(self.sprite_voice_path)
         self.sprite_voice_text = QLineEdit()
         self.sprite_voice_text.setPlaceholderText("立绘语音内容 / 参考语音需填写文字")
-        vv.addWidget(self.sprite_voice_text)
+        bsp.addWidget(self.sprite_voice_text)
         vr = QHBoxLayout()
         self.voice_upload_path = QLineEdit()
         bvw = QPushButton("选择语音…")
         bvw.clicked.connect(self._pick_voice)
-        vr.addWidget(self.voice_upload_path)
+        vr.addWidget(self.voice_upload_path, stretch=1)
         vr.addWidget(bvw)
-        vv.addLayout(vr)
-        upload_voice_btn = QPushButton("上传语音")
+        bsp.addLayout(vr)
+        upload_voice_btn = QPushButton("上传语音到当前立绘")
         upload_voice_btn.clicked.connect(self._on_upload_voice)
-        vv.addWidget(upload_voice_btn)
-        self.voice_upload_output = QPlainTextEdit()
-        self.voice_upload_output.setReadOnly(True)
-        self.voice_upload_output.setMaximumHeight(60)
-        vv.addWidget(self.voice_upload_output)
-        voice_row.addLayout(vv)
-        lay.addLayout(voice_row)
+        bsp.addWidget(upload_voice_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        lay.addWidget(box_sprites)
 
         root.addWidget(scroll)
 
@@ -323,19 +350,19 @@ class CharacterSettingsTab(QWidget):
     def _on_export(self) -> None:
         name = self._current_char()
         if not name or name == "新角色":
-            self.import_output.setPlainText("请选择有效角色")
+            message_fail(self, "导出", "请选择有效角色")
             return
         c = self._ctx.config_manager.get_character_by_name(name)
         if c is None:
-            self.import_output.setPlainText("人物不存在")
+            message_fail(self, "导出", "人物不存在")
             return
         try:
             Path("./output").mkdir(parents=True, exist_ok=True)
             ch = CharacterConfig.parse_dic(char_data=c.__dict__)
             fu.export_character([ch], output_path=f"./output/{c.name}.char")
-            self.import_output.setPlainText("导出成功")
+            toast_success(self, "导出", "导出成功")
         except Exception as e:
-            self.import_output.setPlainText(f"导出失败 {e}")
+            message_fail(self, "导出", f"导出失败: {e}")
 
     def _pick_import_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(self, "导入 .char", "", "Character (*.char);;All (*)")
@@ -344,7 +371,7 @@ class CharacterSettingsTab(QWidget):
 
     def _on_import(self) -> None:
         if not self._import_paths:
-            self.import_output.setPlainText("请先选择文件")
+            message_fail(self, "导入", "请先选择文件")
             return
         success = 0
         err: list[str] = []
@@ -358,7 +385,9 @@ class CharacterSettingsTab(QWidget):
         msg = f"成功导入 {success} 个角色。"
         if err:
             msg += "\n" + "\n".join(err)
-        self.import_output.setPlainText(msg)
+            message_fail(self, "导入", msg)
+        else:
+            toast_success(self, "导入", msg)
         self._refresh_character_combo()
         self.character_list_changed.emit()
 
@@ -374,14 +403,14 @@ class CharacterSettingsTab(QWidget):
             self.prompt_lang.text().strip(),
             self.character_setting.toPlainText().strip(),
         )
-        self.add_output.setPlainText(msg)
+        feedback_result(self, "人物", msg)
         self._refresh_character_combo(self.char_name.text().strip())
         self.character_list_changed.emit()
 
     def _on_delete(self) -> None:
         name = self._current_char()
         msg, _ = self._ctx.character_manager.delete_character(name)
-        self.add_output.setPlainText(msg)
+        feedback_result(self, "人物", msg)
         self._refresh_character_combo("新角色")
         self._on_character_change("新角色")
         self.character_list_changed.emit()
@@ -391,8 +420,14 @@ class CharacterSettingsTab(QWidget):
             self.char_name.text().strip(),
             self.character_setting.toPlainText(),
         )
-        self.import_output.setPlainText(out)
         self.character_setting.setPlainText(setting)
+        if is_failure_message(out):
+            message_fail(self, "AI 帮写", out)
+        else:
+            body = (out or "").strip()
+            if len(body) > 500:
+                body = body[:500] + "…"
+            toast_success(self, "AI 帮写", body or "已更新角色设定")
 
     def _pick_sprites(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(self, "立绘图片", "", "Images (*.png *.jpg *.jpeg *.webp);;All (*)")
@@ -402,14 +437,14 @@ class CharacterSettingsTab(QWidget):
     def _on_upload_sprites(self) -> None:
         name = self._current_char()
         if not self._sprite_paths:
-            self.add_output.setPlainText("请选择要上传的图片")
+            message_fail(self, "立绘", "请选择要上传的图片")
             return
         msg, paths, emo = self._ctx.character_manager.upload_sprites(
             name,
             path_file_list(self._sprite_paths),
             self.emotion_inputs.toPlainText(),
         )
-        self.add_output.setPlainText(msg)
+        feedback_result(self, "立绘", msg)
         self._load_gallery(paths)
         self.emotion_inputs.setPlainText(emo)
         self._refresh_character_combo(name)
@@ -417,11 +452,11 @@ class CharacterSettingsTab(QWidget):
 
     def _on_save_scale(self) -> None:
         msg = self._ctx.character_manager.save_sprite_scale(self._current_char(), self.sprite_scale.value())
-        self.add_output.setPlainText(msg)
+        feedback_result(self, "立绘", msg)
 
     def _on_delete_all_sprites(self) -> None:
         msg, paths, emo = self._ctx.character_manager.delete_all_sprites(self._current_char())
-        self.add_output.setPlainText(msg)
+        feedback_result(self, "立绘", msg)
         self._load_gallery(paths)
         self.emotion_inputs.setPlainText(emo)
         self.character_list_changed.emit()
@@ -431,7 +466,7 @@ class CharacterSettingsTab(QWidget):
         if idx is None:
             return
         msg, paths, emo = self._ctx.character_manager.delete_single_sprite(self._current_char(), idx)
-        self.add_output.setPlainText(msg)
+        feedback_result(self, "立绘", msg)
         self._load_gallery(paths)
         self.emotion_inputs.setPlainText(emo)
         self._update_sprite_side_info()
@@ -441,7 +476,7 @@ class CharacterSettingsTab(QWidget):
         msg = self._ctx.character_manager.upload_emotion_tags(
             self._current_char(), self.emotion_inputs.toPlainText()
         )
-        self.add_output.setPlainText(msg)
+        feedback_result(self, "立绘", msg)
 
     def _pick_voice(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "语音文件", "", "Audio (*.wav *.mp3 *.ogg);;All (*)")
@@ -451,7 +486,7 @@ class CharacterSettingsTab(QWidget):
     def _on_play_voice(self) -> None:
         p = self.sprite_voice_path.text().strip()
         if not p or not Path(p).is_file():
-            QMessageBox.information(self, "播放", "无有效语音文件")
+            message_fail(self, "播放", "无有效语音文件")
             return
         self._player.setSource(QUrl.fromLocalFile(Path(p).resolve().as_posix()))
         self._player.play()
@@ -459,16 +494,16 @@ class CharacterSettingsTab(QWidget):
     def _on_upload_voice(self) -> None:
         vfile = self.voice_upload_path.text().strip()
         if not vfile:
-            self.voice_upload_output.setPlainText("请选择语音文件")
+            message_fail(self, "语音", "请选择语音文件")
             return
         idx = self._selected_sprite_index()
         if idx is None:
-            self.voice_upload_output.setPlainText("请先选择立绘")
+            message_fail(self, "语音", "请先选择立绘")
             return
         msg, vpath = self._ctx.character_manager.upload_voice(
             self._current_char(), idx, vfile, self.sprite_voice_text.text()
         )
-        self.voice_upload_output.setPlainText(msg)
+        feedback_result(self, "语音", msg)
         if vpath:
             self.sprite_voice_path.setText(vpath)
         self._update_sprite_side_info()

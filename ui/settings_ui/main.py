@@ -1,0 +1,204 @@
+# ///////////////////////////////////////////////////////////////
+# 新世界程序 — 设置窗口（PyDracula shell + 各功能页）
+# 基于 Wanderson M. PyDracula；侧栏按钮与 stackedWidget 页已接好。
+# ///////////////////////////////////////////////////////////////
+
+from __future__ import annotations
+
+import sys
+from collections.abc import Callable
+from pathlib import Path
+
+_SETTINGS_UI_DIR = Path(__file__).resolve().parent
+if str(_SETTINGS_UI_DIR) not in sys.path:
+    sys.path.insert(0, str(_SETTINGS_UI_DIR))
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
+
+# Dracula 模块（需将 settings_ui 目录加入 path）
+from modules import *
+
+from ui.settings_ui.api_tab import ApiSettingsTab
+from ui.settings_ui.background_tab import BackgroundSettingsTab
+from ui.settings_ui.character_tab import CharacterSettingsTab
+from ui.settings_ui.context import SettingsUIContext
+from ui.settings_ui.music_cover_tab import MusicCoverSettingsTab
+from ui.settings_ui.template_tab import TemplateSettingsTab
+from ui.settings_ui.tools_tab import ToolsSettingsTab
+from ui.settings_ui.window import settings_window_metrics
+
+
+def _clear_stacked(sw) -> None:
+    while sw.count():
+        w = sw.widget(0)
+        sw.removeWidget(w)
+        w.deleteLater()
+
+
+class MainWindow(QMainWindow):
+    """
+    左侧菜单：前 4 个为 topMenu（Home/Widgets/New/Save），中 2 个为 bottomMenu（Share/Adjustments），
+    Exit 关闭窗口。与 Gradio 顺序一致：API、人物、背景、模板、音乐、工具。
+    """
+
+    def __init__(
+        self,
+        ctx: SettingsUIContext,
+        parent: QWidget | None = None,
+        *,
+        width: int | None = None,
+        height: int | None = None,
+        font_pixel_size: int | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._ctx = ctx
+        self.ui = Ui_MainWindow()
+        self.ui.setupUi(self)
+        global widgets
+        widgets = self.ui
+
+        Settings.ENABLE_CUSTOM_TITLE_BAR = True
+
+        self.setWindowTitle("新世界程序 - 设置")
+        self.ui.titleRightInfo.setText("API · 人物 · 背景 · 模板 · 音乐 · 小工具")
+
+        w, h, fp, _ = settings_window_metrics(self._ctx.config_manager)
+        if width is not None and height is not None:
+            w, h = width, height
+        if font_pixel_size is not None:
+            fp = font_pixel_size
+        self.resize(w, h)
+        g = QApplication.instance().primaryScreen().geometry()
+        self.move((g.width() - w) // 2, (g.height() - h - 200))
+        self.setMinimumSize(max(400, w // 2), max(300, h // 2))
+
+        try:
+            from pyqttoast import Toast
+
+            Toast.setPositionRelativeToWidget(self)
+        except ImportError:
+            pass
+
+        # 功能页
+        self._api = ApiSettingsTab(self._ctx)
+        self._character = CharacterSettingsTab(self._ctx)
+        self._background = BackgroundSettingsTab(self._ctx)
+        self._template = TemplateSettingsTab(self._ctx)
+        self._music = MusicCoverSettingsTab(self._ctx)
+        self._tools = ToolsSettingsTab(self._ctx)
+
+        self._pages: list[QWidget] = [
+            self._api,
+            self._character,
+            self._background,
+            self._template,
+            self._music,
+            self._tools,
+        ]
+
+        self._nav_buttons: list[tuple[object, int]] = [
+            (self.ui.btn_home, 0),
+            (self.ui.btn_widgets, 1),
+            (self.ui.btn_new, 2),
+            (self.ui.btn_save, 3),
+            (self.ui.btn_share, 4),
+            (self.ui.btn_adjustments, 5),
+        ]
+
+        self.ui.btn_home.setText("API 设定")
+        self.ui.btn_widgets.setText("人物设定")
+        self.ui.btn_new.setText("背景管理")
+        self.ui.btn_save.setText("聊天模板")
+        self.ui.btn_share.setText("音乐翻唱")
+        self.ui.btn_adjustments.setText("小工具")
+        self.ui.btn_more.hide()
+
+        sw = self.ui.stackedWidget
+        _clear_stacked(sw)
+        for p in self._pages:
+            sw.addWidget(p)
+
+        self._character.character_list_changed.connect(self._template.refresh_lists)
+        self._character.character_list_changed.connect(self._tools.refresh_characters)
+        self._background.background_list_changed.connect(self._template.refresh_lists)
+
+        # Dracula 交互
+        self.ui.toggleButton.clicked.connect(lambda: UIFunctions.toggleMenu(self, True))
+        UIFunctions.uiDefinitions(self)
+
+        def open_close_left():
+            UIFunctions.toggleLeftBox(self, True)
+
+        self.ui.toggleLeftBox.clicked.connect(open_close_left)
+        self.ui.extraCloseColumnBtn.clicked.connect(open_close_left)
+
+        def open_close_right():
+            UIFunctions.toggleRightBox(self, True)
+
+        self.ui.settingsTopBtn.clicked.connect(open_close_right)
+
+        for btn, idx in self._nav_buttons:
+            btn.clicked.connect(self._make_page_handler(idx))
+
+        self.ui.btn_exit.clicked.connect(self.close)
+
+        use_custom = True
+        theme_path = _SETTINGS_UI_DIR / "themes" / "py_dracula_dark.qss"
+        if use_custom and theme_path.is_file():
+            UIFunctions.theme(self, str(theme_path), True)
+            # 演示页里的 lineEdit/table 等已随旧 stack 页删除，不再调用 setThemeHack
+
+        self.show()
+
+        sw.setCurrentIndex(0)
+        self.ui.btn_home.setStyleSheet(UIFunctions.selectMenu(self.ui.btn_home.styleSheet()))
+
+    def _deselect_all_nav(self) -> None:
+        for w in self.ui.topMenu.findChildren(QPushButton):
+            w.setStyleSheet(UIFunctions.deselectMenu(w.styleSheet()))
+        for w in self.ui.bottomMenu.findChildren(QPushButton):
+            w.setStyleSheet(UIFunctions.deselectMenu(w.styleSheet()))
+
+    def _make_page_handler(self, index: int) -> Callable[[], None]:
+        def _go() -> None:
+            self.ui.stackedWidget.setCurrentIndex(index)
+            self._deselect_all_nav()
+            b = self.sender()
+            if b is not None and isinstance(b, QPushButton):
+                b.setStyleSheet(UIFunctions.selectMenu(b.styleSheet()))
+            if self.ui.stackedWidget.currentWidget() is self._template:
+                self._template.refresh_lists()
+
+        return _go
+
+    def resizeEvent(self, event):
+        UIFunctions.resize_grips(self)
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        self.dragPos = event.globalPosition().toPoint()
+        if event.buttons() == Qt.MouseButton.LeftButton:
+            pass
+        super().mousePressEvent(event)
+
+
+# 与 window.py / webui_qt 兼容
+SettingsWindow = MainWindow
+
+
+if __name__ == "__main__":
+    # 独立调试：需从项目根目录保证 `ui.settings_ui` 可导入
+    _root = _SETTINGS_UI_DIR.parent.parent
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
+    from ui.settings_ui import create_default_context
+
+    app = QApplication(sys.argv)
+    icon = _SETTINGS_UI_DIR / "images" / "icons" / "icon_settings.png"
+    if icon.is_file():
+        app.setWindowIcon(QIcon(str(icon)))
+    ctx = create_default_context()
+    win = MainWindow(ctx)
+    sys.exit(app.exec())
