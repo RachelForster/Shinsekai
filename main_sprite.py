@@ -30,6 +30,8 @@ import pygame
 import cv2
 import numpy as np
 from opencc import OpenCC
+
+from core.dialog_tokens import is_option_history_name, is_option_history_plain
 import argparse
 import yaml
 import json
@@ -39,7 +41,8 @@ import traceback
 try:
     from live.danmuku_handler import start_bilibili_service
 except ImportError as e:
-    print(f"导入Bilibili服务失败: {e}")
+    # 早于 init_i18n，不调用 tr
+    print("Bilibili import failed:", e)
 
 CHAT_HISTORY_PATH = "./data/chat_history"
 
@@ -60,17 +63,21 @@ def load_chat_history(file_path):
     return history_manager.load_chat_history(file_path)
 
 def clear_chat_history(history_file, ui_queue, llm_manager):
+    from i18n import tr
+
     history_manager.clear_chat_history(history_file)
 
     llm_manager.clear_messages()
 
-    ui_queue.put(TTSOutputMessage(
-        audio_path="",
-        character_name="系统",
-        speech="历史记录已经清空",
-        sprite='-1',
-        is_system_message=False
-    ))
+    ui_queue.put(
+        TTSOutputMessage(
+            audio_path="",
+            character_name=tr("main_sprite.system_name"),
+            speech=tr("main_sprite.history_cleared"),
+            sprite="-1",
+            is_system_message=False,
+        )
+    )
 
 def copy_chat_history_to_clipboard():
     """将聊天记录复制到系统剪贴板，去除 HTML 标签并格式化为纯文本。"""
@@ -89,7 +96,7 @@ def replay_history_entry(window, history_entry: str):
     elif ":" in plain_text:
         name, content = plain_text.split(":", 1)
 
-    if name.strip() == "选项":
+    if is_option_history_name(name):
         option_list = [item.strip() for item in content.split("/") if item.strip()]
         window.setOptions(option_list)
         # window.setNotification("已回溯到选项，请重新选择")
@@ -101,7 +108,7 @@ def is_option_history_entry(history_entry: str) -> bool:
     if not isinstance(history_entry, str):
         return False
     plain_text = re.sub(r"<[^>]+>", "", history_entry).strip()
-    return plain_text.startswith("选项：") or plain_text.startswith("选项:")
+    return is_option_history_plain(plain_text)
 
 def is_user_history_entry(history_entry: str) -> bool:
     if not isinstance(history_entry, str):
@@ -186,9 +193,18 @@ def save_bg(bg_path, bgm_path):
 def main():
     global chat_history
     config = ConfigManager()
-    parser = argparse.ArgumentParser(description='示例脚本')
+    from i18n import init_i18n, tr as tr_i18n
+
+    init_i18n(config.config.system_config.ui_language)
+    parser = argparse.ArgumentParser(description=tr_i18n("main_sprite.arg_desc"))
     # 添加参数
-    parser.add_argument('--template', '-t', type=str, help='用户模板名称', default='komaeda_sprite')
+    parser.add_argument(
+        "--template",
+        "-t",
+        type=str,
+        help=tr_i18n("main_sprite.arg_t_help"),
+        default="komaeda_sprite",
+    )
     parser.add_argument('--voice_mode', '-v', type=str, default='gen')
     parser.add_argument('--init_sprite_path', '-isp', type=str, default='')
     parser.add_argument('--history','--his',type=str, default='')
@@ -196,7 +212,9 @@ def main():
     parser.add_argument('--llm',type=str,default="deepseek")
     parser.add_argument('--bg', type=str,default='')
     parser.add_argument('--t2i',type=str,default='ComfyUI')
-    parser.add_argument('--room_id', type=str, default='', help='bilibili live room id')
+    parser.add_argument(
+        "--room_id", type=str, default="", help=tr_i18n("main_sprite.arg_room_help")
+    )
 
     # 解析参数
     args = parser.parse_args()
@@ -214,7 +232,7 @@ def main():
                                                         )
             t2i_manager = T2IManager(t2i_adapter)
         except Exception as e:
-            print(f"T2I manager初始化失败{e}")
+            print(tr_i18n("main_sprite.print_t2i_fail", e=str(e)))
             traceback.print_exc()
 
     # 创建TTS管理器实例
@@ -232,11 +250,11 @@ def main():
     
     
     # 创建DeepSeek实例
-    print("加载用户模板...", args)
+    print(tr_i18n("main_sprite.print_load_template", a=args))
 
     messages = []
     if args.history:
-        print("加载历史记录...", args.history)
+        print(tr_i18n("main_sprite.print_load_history", path=args.history))
         messages = load_chat_history(args.history)
 
 
@@ -247,7 +265,7 @@ def main():
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
     print(llm_provider, llm_model, base_url, api_key)
     if not llm_provider:
-        print("请选择大语言模型供应商")
+        print(tr_i18n("main_sprite.err_select_llm"))
         return
     llm_adapter = LLMAdapterFactory.create_adapter(llm_provider=llm_provider, api_key=api_key, base_url=base_url, model = llm_model)
     llm_manager = LLMManager(
@@ -330,32 +348,29 @@ def main():
     if not init_sprite_path:
         init_sprite_path = './assets/system/picture/shinsekai.png'
 
-    _welcome_html = (
-        "<p style='line-height: 135%; letter-spacing: 2px;'>欢迎来到新世界程序，开始聊天吧！"
-        "这是个初始立绘和对话。输入消息，你的角色就会出现。</p>"
-    )
+    _welcome_html = tr_i18n("main_sprite.welcome_html")
     # 更新初始立绘（已从文件恢复会话时不要先刷欢迎语，否则会 hide 选项区并与恢复队列竞争）
     try:
         if not messages:
             window.setDisplayWords(_welcome_html)
             if len(getHistory()) <= 1:
-                window.setOptions(["开始"])
+                window.setOptions([tr_i18n("main_sprite.option_start")])
     except Exception:
         if not messages:
             window.setDisplayWords(_welcome_html)
-    window.setNotification("开始聊天吧……")
+    window.setNotification(tr_i18n("main_sprite.notify_chat"))
     # 连接 UI 信号到队列
     def on_message_submitted(message):
-        print("已提交：", message)
+        print(tr_i18n("main_sprite.print_submitted", message=message))
         user_input_queue.put(UserInputMessage(text=message))
-        window.setNotification("您的消息已提交，正在等待LLM处理...")
+        window.setNotification(tr_i18n("main_sprite.notify_submitted"))
     
     # 恢复最后一条消息
     if messages:
         try:
             dialog = extract_valid_dialog_from_messages(messages)
             if not dialog:
-                raise ValueError("没有可恢复的有效 assistant dialog")
+                raise ValueError(tr_i18n("main_sprite.err_no_valid_dialog"))
             # 末尾连续 sprite=-1 的系统句（旁白、选项等）从列表尾部弹出，但入队须按对话时间正序。
             # 否则先入队「选项」再入队更早的旁白时，UIWorker 里后者的 setDisplayWords 会盖住选项。
             trailing_system: list = []
@@ -386,7 +401,7 @@ def main():
                 )
         except Exception as e:
             traceback.print_exc()
-            print('最后一条消息更新失败', e)
+            print(tr_i18n("main_sprite.print_restore_fail", e=str(e)))
 
 
         try:
@@ -404,7 +419,7 @@ def main():
             if bg_path:
                 window.setBackgroundImage(bg_path)
         except Exception as e:
-            print("更新背景和bgm失败",e)
+            print(tr_i18n("main_sprite.print_bg_fail", e=str(e)))
             traceback.print_exc()
   
     window.message_submitted.connect(lambda message: on_message_submitted(message))
@@ -424,18 +439,18 @@ def main():
     )
 
     if args.room_id:
-        print("启动B站直播弹幕监听，房间ID:", args.room_id)
+        print(tr_i18n("main_sprite.print_bili_start", id=args.room_id))
         try:
             start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
         except ImportError as e:
-            print(f"导入Bilibili服务失败: {e}")
+            print(tr_i18n("main_sprite.print_bili_import", e=str(e)))
 
     # 确保在程序退出时停止所有线程
     try:
         appIcon = QIcon('./assets/system/picture/icon.png')
         app.setWindowIcon(appIcon)
     except Exception as e:
-        print("设置窗口图标失败", e)
+        print(tr_i18n("main_sprite.print_icon_fail", e=str(e)))
     app.aboutToQuit.connect(llm_worker.quit)
     app.aboutToQuit.connect(tts_worker.quit)
     app.aboutToQuit.connect(ui_worker.quit)

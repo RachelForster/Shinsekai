@@ -43,4 +43,6 @@ class DesktopToolbarMixin:
     def minimize_window(self) -> None:
         """调用 QWidget 的 showMinimized() 来最小化窗口。"""
         self.showMinimized()
-        print("窗口已最小化")
+        from i18n import tr
+
+        print(tr("toolbar.minimized"))

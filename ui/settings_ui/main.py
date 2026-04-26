@@ -61,8 +61,7 @@ class MainWindow(QMainWindow):
 
         Settings.ENABLE_CUSTOM_TITLE_BAR = True
 
-        self.setWindowTitle("新世界程序 - 设置")
-        self.ui.titleRightInfo.setText("新世界程序")
+        # 标题与侧栏文案由 apply_i18n 设置
 
         w, h, fp, _ = settings_window_metrics(self._ctx.config_manager)
         if width is not None and height is not None:
@@ -107,14 +106,9 @@ class MainWindow(QMainWindow):
             (self.ui.btn_adjustments, 5),
         ]
 
-        self.ui.btn_home.setText("API 设定")
-        self.ui.btn_widgets.setText("人物设定")
-        self.ui.btn_new.setText("背景管理")
-        self.ui.btn_save.setText("聊天模板")
-        self.ui.btn_share.setText("音乐翻唱")
-        self.ui.btn_adjustments.setText("小工具")
         self.ui.btn_more.hide()
         self.ui.version.setText("v1.6.0")
+        self.apply_i18n()
 
         sw = self.ui.stackedWidget
         _clear_stacked(sw)
@@ -154,6 +148,21 @@ class MainWindow(QMainWindow):
         sw.setCurrentIndex(0)
         self.ui.btn_home.setStyleSheet(UIFunctions.selectMenu(self.ui.btn_home.styleSheet()))
 
+    def apply_i18n(self) -> None:
+        from i18n import tr
+
+        self.setWindowTitle(tr("main.window_title"))
+        self.ui.titleRightInfo.setText(tr("main.title_right"))
+        self.ui.btn_home.setText(tr("nav.api"))
+        self.ui.btn_widgets.setText(tr("nav.character"))
+        self.ui.btn_new.setText(tr("nav.background"))
+        self.ui.btn_save.setText(tr("nav.template"))
+        self.ui.btn_share.setText(tr("nav.music"))
+        self.ui.btn_adjustments.setText(tr("nav.tools"))
+        for t in (self._api, self._character, self._background, self._template, self._music, self._tools):
+            if hasattr(t, "apply_i18n"):
+                t.apply_i18n()
+
     def _deselect_all_nav(self) -> None:
         for w in self.ui.topMenu.findChildren(QPushButton):
             w.setStyleSheet(UIFunctions.deselectMenu(w.styleSheet()))
@@ -192,8 +201,11 @@ if __name__ == "__main__":
     _root = _SETTINGS_UI_DIR.parent.parent
     if str(_root) not in sys.path:
         sys.path.insert(0, str(_root))
+    from i18n import init_i18n
+    from config.config_manager import ConfigManager
     from ui.settings_ui import create_default_context
 
+    init_i18n(ConfigManager().config.system_config.ui_language)
     app = QApplication(sys.argv)
     icon = _SETTINGS_UI_DIR / "images" / "icons" / "icon_settings.png"
     if icon.is_file():

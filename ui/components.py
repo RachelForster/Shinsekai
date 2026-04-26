@@ -199,7 +199,9 @@ class SpritePanel(QWidget):
         super().__init__(parent)
         self.panel_width = panel_width
         self.panel_height = panel_height
-        self.setFixedSize(panel_width, panel_height)
+        self.setMinimumSize(1, 1)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.resize(panel_width, panel_height)
         self.max_slots_num = max_slots_num
         
         # 尺寸参考 (用于 CrossFadeSprite 内部缩放高度)
@@ -239,6 +241,22 @@ class SpritePanel(QWidget):
             
             self.sprite_slots.append(sprite)
             sprite.hide()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        w, h = self.width(), self.height()
+        if w < 1 or h < 1:
+            return
+        self.panel_width = w
+        self.panel_height = h
+        self.center_widget.setFixedSize(w, h)
+        self.horizontal_offset_unit = w / self.max_slots_num if self.max_slots_num else 1.0
+        self.sprite_width_ref = w
+        self.sprite_height_ref = h
+        for sprite in self.sprite_slots:
+            sprite.original_width = w
+            sprite.original_height = h
+        self._reposition_sprites()
 
     def _get_or_create_slot(self, character_id: str) -> CrossFadeSprite | None:
         """

@@ -124,7 +124,7 @@ def text_edit_input(btn_font_size: str) -> str:
                 font-family: {FONT_FAMILY};
                 border: 1px solid #555;
                 border-radius: 5px;
-                padding: 20px;
+                padding: 8px 10px;
                 font-size: {btn_font_size};
             }}
         """

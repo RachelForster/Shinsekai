@@ -13,8 +13,18 @@ from typing import Any, List
 
 import pygame
 
+from i18n import tr as tr_i18n
+
 from config.config_manager import ConfigManager
 from core.app_runtime import get_app_runtime
+from core.dialog_tokens import (
+    SYSTEM_UI_SKIP,
+    match_bgm_name,
+    match_cg_name,
+    match_choice_name,
+    match_scene_name,
+    match_stat_name,
+)
 from core.handler_registry import UIOutputMessageHandler
 from core.message import TTSOutputMessage
 
@@ -35,13 +45,14 @@ def _play() -> Any:
 
 class OptionsUiHandler(UIOutputMessageHandler):
     def can_handle(self, out: TTSOutputMessage) -> bool:
-        return out.is_system_message and out.character_name == "选项"
+        return out.is_system_message and match_choice_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
         sp = out.speech or ""
+        label = tr_i18n("dialog.option_badge")
         formatted_option = (
             f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'>"
-            f"<b>选项</b>：{sp}</p>"
+            f"<b>{label}</b>：{sp}</p>"
         )
         _ui().chat_history.append(formatted_option)
         option_list = [p.strip() for p in sp.split("/") if p.strip()]
@@ -50,7 +61,7 @@ class OptionsUiHandler(UIOutputMessageHandler):
 
 class NumericUiHandler(UIOutputMessageHandler):
     def can_handle(self, out: TTSOutputMessage) -> bool:
-        return out.is_system_message and out.character_name == "数值"
+        return out.is_system_message and match_stat_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
         _ui().post_numeric_value(out.speech or "")
@@ -58,7 +69,7 @@ class NumericUiHandler(UIOutputMessageHandler):
 
 class SceneUiHandler(UIOutputMessageHandler):
     def can_handle(self, out: TTSOutputMessage) -> bool:
-        return out.is_system_message and out.character_name == "场景"
+        return out.is_system_message and match_scene_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
         try:
@@ -75,7 +86,7 @@ class SceneUiHandler(UIOutputMessageHandler):
 
 class BgmUiHandler(UIOutputMessageHandler):
     def can_handle(self, out: TTSOutputMessage) -> bool:
-        return out.is_system_message and out.character_name == "bgm"
+        return out.is_system_message and match_bgm_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
         _ui().switch_bgm(out.audio_path or "")
@@ -83,7 +94,7 @@ class BgmUiHandler(UIOutputMessageHandler):
 
 class CgUiHandler(UIOutputMessageHandler):
     def can_handle(self, out: TTSOutputMessage) -> bool:
-        return out.is_system_message and out.character_name == "CG"
+        return out.is_system_message and match_cg_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
         try:
@@ -98,12 +109,13 @@ class CgUiHandler(UIOutputMessageHandler):
 
 
 class SystemMiscUiHandler(UIOutputMessageHandler):
-    """旁白等其余 system 消息（有对话等待）。"""
-
-    _SKIPPED = frozenset({"选项", "数值", "场景", "bgm", "CG"})
+    """NARR 等其余 system 消息（有对话等待）。"""
 
     def can_handle(self, out: TTSOutputMessage) -> bool:
-        if not out.is_system_message or out.character_name in self._SKIPPED:
+        if not out.is_system_message:
+            return False
+        name = out.character_name or ""
+        if name in SYSTEM_UI_SKIP:
             return False
         return True
 

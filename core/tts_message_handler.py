@@ -12,6 +12,13 @@ from typing import List
 
 from config.config_manager import ConfigManager
 from core.app_runtime import get_app_runtime, tts_emit_to_ui_queue, tts_item_done_only
+from core.dialog_tokens import (
+    match_bgm_name,
+    match_cg_name,
+    match_cot_tts,
+    match_system_dialog_tts,
+    normalize_character_name,
+)
 from core.handler_registry import MessageHandler
 from core.message import LLMDialogMessage
 
@@ -28,21 +35,19 @@ def _cc():
 
 class ChainOfThoughtTtsHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return _cc().convert(msg.character_name) == "思维链"
+        return match_cot_tts(_cc(), msg.character_name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
         tts_item_done_only()
-        print("TTSWorker: 思维链", msg.speech)
+        print("TTSWorker: COT", msg.speech)
 
 
 class SystemDialogTtsHandler(MessageHandler):
-    _NAMES = frozenset({"选项", "数值", "旁白", "场景"})
-
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return _cc().convert(msg.character_name) in self._NAMES
+        return match_system_dialog_tts(_cc(), msg.character_name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
-        name = _cc().convert(msg.character_name)
+        name = _cc().convert(normalize_character_name(msg.character_name))
         tts_emit_to_ui_queue(
             name,
             msg.speech,
@@ -55,7 +60,7 @@ class SystemDialogTtsHandler(MessageHandler):
 
 class BgmTtsHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return msg.character_name == "bgm"
+        return match_bgm_name(msg.character_name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
@@ -74,7 +79,7 @@ class BgmTtsHandler(MessageHandler):
 
 class CgTtsHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return msg.character_name == "CG"
+        return match_cg_name(msg.character_name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
         try:

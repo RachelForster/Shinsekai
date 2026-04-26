@@ -118,6 +118,17 @@ class ConfigManager:
             self.config.system_config.model_dump(by_alias=True)
         )
         print("system_config.yaml 保存完成。")
+
+    def set_ui_language(self, code: str) -> None:
+        """更新界面语言并写入 system_config.yaml。"""
+        if self._config is None:
+            return
+        from i18n import normalize_lang
+
+        sc = self.config.system_config.model_copy(deep=True)
+        sc.ui_language = normalize_lang(code)
+        self.config.system_config = sc
+        self.save_system_config()
     
     def save_api_config_new(
         self,

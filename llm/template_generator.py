@@ -1,6 +1,16 @@
+from i18n import tr as tr_i18n
 from config.character_manager import ConfigManager
+from core.dialog_tokens import BGM, CG, CHOICE, COT, NARR, SCENE, STAT
 
 config_manager = ConfigManager()
+
+# 与配置中的背景名一致，勿翻译
+TRANSPARENT_BG = "透明背景"
+
+
+def _T(key: str, **kwargs) -> str:
+    return tr_i18n(f"template_gen.{key}", **kwargs)
+
 
 class TemplateGenerator:
     def generate_chat_template(
@@ -10,99 +20,108 @@ class TemplateGenerator:
         use_effect,
         use_cg,
         use_llm_translation,
-        use_cot=False
+        use_cot=False,
     ):
         if not selected_characters:
-            return "请至少选择一个角色！", ""
-        
-        names = ""
+            return _T("err_no_characters"), ""
 
-        # 让同样的人物生成同样的模板，就会有一样的md5了，进而会有同样的聊天历史文件。
+        # 让同样的人物生成同样的模板，就会有一样的 md5 了，进而会有同样的聊天历史文件。
         selected_characters = sorted(selected_characters)
 
-        for char_name in selected_characters:
-            names += f"{char_name}，"
+        sep = _T("name_sep")
+        names = sep.join(selected_characters) + sep
 
-        USE_EFFECT_JSON_STATEMENT =  """"effect": "角色的特效名称（可选）,选择范围在 LEAVE, SHOCKED, DISAPPOINTED, ATTENTION 内","""
-        USE_TRANSALTION_JSON_STATEMENT = """"translate": "该角色说的话的日文翻译","""
-        template = f"你需要模拟一个RPG剧情对话系统，出场人物有：{names}以及其他相关人物，请根据剧情调度人物\n"
+        effect_line = _T("json_line_effect") if use_effect else ""
+        trans_line = _T("json_line_trans") if use_llm_translation else ""
+        template = _T("preamble", names=names) + _T("json_head_top")
+        template += _T("json_speech_line", example=_T("json_speech_example"))
+        if use_effect:
+            template += effect_line
+        if use_llm_translation:
+            template += trans_line
+        template += _T("json_foot")
 
-        template += f'''
-    每次输出时，必须严格使用 JSON 格式，结构为：
-    {{
-    "dialog": [
-        {{
-        "character_name": "角色名",
-        "sprite": "str, 对应的立绘ID字符串，例如 01, 02",
-        "speech": "该角色说的中文台词",
-        {USE_EFFECT_JSON_STATEMENT if use_effect else ''}
-        {USE_TRANSALTION_JSON_STATEMENT if use_llm_translation else ''}
-        }}
-    ]
-    }}
-        '''
-        template += "\n立绘说明:\n"
+        template += _T("sprites_header")
         for char_name in selected_characters:
             char_detail = config_manager.get_character_by_name(char_name)
-            template += f"{char_name}有{len(char_detail.sprites)}张立绘：\n"
+            template += _T("sprites_count", name=char_name, n=len(char_detail.sprites))
             template += f"{char_detail.emotion_tags}\n\n"
 
-        template += "\n角色说明：\n"
+        template += _T("profile_header")
         for char_name in selected_characters:
             char_detail = config_manager.get_character_by_name(char_name)
             if char_detail.character_setting:
-                template += f"以下是{char_name}的角色设定：\n"
+                template += _T("profile_for", name=char_name)
                 character_setting = char_detail.character_setting
                 template += f"{character_setting}\n\n"
 
         if bg_name:
             bg = config_manager.get_background_by_name(bg_name)
             if bg and bg.sprites:
-                template +="场景说明：\n"
-                template += f"现在有{len(bg.sprites)}个可用场景：\n"
+                template += _T("scene_block_header")
+                template += _T("scene_count", n=len(bg.sprites))
                 template += f"{bg.bg_tags}\n\n"
 
             if bg and bg.bgm_list:
-                template += "BGM说明：\n"
-                template += f"现在有{len(bg.bgm_list)}个可用BGM：\n"
+                template += _T("bgm_block_header")
+                template += _T("bgm_count", n=len(bg.bgm_list))
                 template += f"{bg.bgm_tags}\n\n"
 
-        REQUIREMENTS = [
-            "格式严格：输出内容必须严格且仅为 JSON 格式，不得包含任何附加的解释、说明或问候语。",
-            
-            f"角色名限制：character_name 字段只能是以下之一：{names} 以及其他可能出现的人物名, 或者固定关键字：{'思维链,' if use_cot else ''} 旁白, 选项, 数值{', 场景' if bg_name else ''}{', bgm' if bg_name else ''}{', CG' if use_cg else ''}。",
-            
-            "立绘规范：sprite 字段必须填写一个两位数字代号（例如 01, 02），并根据当前台词语气和情绪自动选择最合适的立绘。",
-            "非立绘角色：当 character_name 为 旁白, 数值 或 选项 时，sprite 字段必须固定为 -1。",
-            
-            "场景切换：当 character_name 为 场景 时，sprite 填写场景编号，表示切换场景。其他字段为空。",
-            "BGM 切换：当 character_name 为 bgm 时，sprite 填写 BGM 编号，表示切换bgm。应根据当前氛围进行切换，但不得过于频繁。其他字段为空。",
+        # 保留字新代号（与 core.dialog_tokens 及 handlers 一致；旧版中文仍兼容）
+        opt_scene = (f", {SCENE}" if bg_name else "")
+        opt_bgm = (f", {BGM}" if bg_name else "")
+        opt_cg = (f", {CG}" if use_cg else "")
+        cot_part = (f"{COT}," if use_cot else "")
 
-            "台词风格：speech 字段必须是角色的中文台词，内容和表达方式必须严格符合角色的个性、说话风格和背景设定。",
-            "数组结构：所有对话和事件必须按时间顺序放入 dialog 数组中，数组中必须包含至少两个元素。",
-            "旁白用途：旁白元素用于描写场景变化、人物动作和环境气氛。",
-            
-            "选项位置：dialog 数组的最后一个元素必须是选项。",
-            "选项格式：选项内容在 speech 内，所有选项用 '/' 分隔。选项必须是用户可选择的对话或行为的纯文本描述，不得包含任何多余的描述或说明。",
-            "选项平衡：选项必须包括：一个纯粹的插科打诨/无厘头选项、一个精明/理智的选项、以及一个中庸的选项。所有选项必须与当前的剧情紧密关联，并符合人物性格。",
-            
-            "数值显示：数值元素表示当前用户状态或者角色状态数值，或者当前任务，该元素要求出现在dialog数组的前部，当 character_name 为 数值 时，speech 内使用富文本格式（如 <span style='color:xxxx;'>HP: 100</span>）。颜色应选择浅色系，符合马卡龙配色。多个数值用 <br> 分隔。",
+        need_real = bool(bg_name and bg_name != TRANSPARENT_BG)
+
+        _toks = {
+            "narr": NARR,
+            "choice": CHOICE,
+            "stat": STAT,
+            "scn": SCENE,
+            "bgm_t": BGM,
+            "cg": CG,
+            "cot": COT,
+        }
+        REQUIREMENTS: list[str] = [
+            _T("r_format"),
+            _T(
+                "r_cname",
+                names=names,
+                cot_part=cot_part,
+                opt_scene=opt_scene,
+                opt_bgm=opt_bgm,
+                opt_cg=opt_cg,
+                **_toks,
+            ),
+            _T("r_sprite"),
+            _T("r_non_sprite", **_toks),
+        ]
+        if need_real:
+            REQUIREMENTS += [_T("r_scene", **_toks), _T("r_bgm", **_toks)]
+
+        REQUIREMENTS += [
+            _T("r_speech", speech_lang_name=_T("speech_lang_name")),
+            _T("r_array"),
+            _T("r_narration", **_toks),
+            _T("r_choice_pos", **_toks),
+            _T("r_choice_format", **_toks),
+            _T("r_choice_balance", **_toks),
+            _T("r_stats", **_toks),
         ]
         if use_cg:
-            REQUIREMENTS.append("CG 生成：在要表现角色魅力、剧情关键节点或情感高潮时，将character_name 设置为CG，speech 内容必须是用于 Stable Diffusion " \
-            "生成图片的 Prompt，必须在开头加入 highres, masterpiece, 8k, bestscores 等高质量关键字，描述人数，例如1girl，并写出人物名称，例如nanami chiaki、" \
-            "人物发型发色，以及眼睛颜色、服装、表情、动作和场景。可以加入和viewer的互动，例如looking at the viewer"
-            "如果要用CG生成背景图片，请先加入质量关键词，再加入no person, pure senery, 再详细描述景物，景色。")                 
+            REQUIREMENTS.append(_T("r_cg", **_toks))
         if use_llm_translation:
-            REQUIREMENTS.append("翻译字段：translate字段必须为角色台词 speech 的日文翻译，请将角色的台词翻译为日文，而不要将角色的动作翻译出来")
+            REQUIREMENTS.append(_T("r_translate"))
         if use_effect:
-            REQUIREMENTS.append("特效使用：effect 字段为可选，值必须在 LEAVE、SHOCKED、DISAPPOINTED、ATTENTION 范围内。LEAVE是人物离场，无特效需求时，必须省略此字段。")
+            REQUIREMENTS.append(_T("r_effect"))
         if use_cot:
-            REQUIREMENTS.insert(0,"思维链：你必须在输出实际对话/旁白之前，先插入一个 `character_name` 为思维链的条目（sprite 固定为 -1），该条目不显示给玩家仅供后台记录，其 `speech` 字段必须严格按照 `<摘要>...</摘要><动机>当前各个人物真实动机：...</动机><剧情走向>...</剧情走向>` 的格式填写，三项内容缺一不可且用尖括号标签区分。")
-        template += "要求：\n"
+            REQUIREMENTS.insert(0, _T("r_cot", **_toks))
+
+        template += _T("requirements_header")
         for item in REQUIREMENTS:
-            if not (bg_name and bg_name !='透明背景') and ('场景切换' in item or 'BGM 切换' in item):
-                continue
             template += f"- {item}\n"
-        template += f"\n请开始对话, 开始时介绍下用户所处的情境和背景, {'设置初始的场景和bgm, ' if bg_name and bg_name !='透明背景' else '' } 以及在做什么事情: \n"
+        extra = _T("closing_extra_bgm") if (bg_name and bg_name != TRANSPARENT_BG) else ""
+        template += _T("closing", extra=extra)
         return template, ""

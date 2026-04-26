@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from i18n import tr as tr_i18n
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import feedback_result, message_fail, toast_info
 from ui.settings_ui.utils import path_file_list
@@ -56,80 +57,85 @@ class BackgroundSettingsTab(QWidget):
         lay = QVBoxLayout(inner)
         lay.setSpacing(10)
 
-        lay.addWidget(QLabel("<h2>背景管理</h2>"))
+        self._h2 = QLabel(tr_i18n("bg.h2"))
+        lay.addWidget(self._h2)
 
         # --- 1. 当前背景组与 .bg 文件 ---
-        box_group = QGroupBox("当前背景组与 .bg 文件")
-        bgl = QVBoxLayout(box_group)
+        self._box_group = QGroupBox(tr_i18n("bg.file_box"))
+        bgl = QVBoxLayout(self._box_group)
         self.selected_bg_group = QComboBox()
         self.selected_bg_group.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         grp_form = QFormLayout()
-        grp_form.addRow("当前背景组", self.selected_bg_group)
+        self._lbl_sel_grp = QLabel(tr_i18n("bg.row_group"))
+        grp_form.addRow(self._lbl_sel_grp, self.selected_bg_group)
         bgl.addLayout(grp_form)
         file_ops = QHBoxLayout()
-        export_bg_btn = QPushButton("导出到 ./output 文件夹")
-        export_bg_btn.clicked.connect(self._on_export)
-        del_bg_btn = QPushButton("删除背景组")
-        del_bg_btn.clicked.connect(self._on_delete_group)
-        file_ops.addWidget(export_bg_btn)
-        file_ops.addWidget(del_bg_btn)
+        self._export_bg_btn = QPushButton(tr_i18n("bg.export"))
+        self._export_bg_btn.clicked.connect(self._on_export)
+        self._del_bg_btn = QPushButton(tr_i18n("bg.delete"))
+        self._del_bg_btn.clicked.connect(self._on_delete_group)
+        file_ops.addWidget(self._export_bg_btn)
+        file_ops.addWidget(self._del_bg_btn)
         file_ops.addStretch(1)
         bgl.addLayout(file_ops)
         sep1 = QFrame()
         sep1.setFrameShape(QFrame.Shape.HLine)
         sep1.setFrameShadow(QFrame.Shadow.Sunken)
         bgl.addWidget(sep1)
-        bgl.addWidget(QLabel("从文件导入（.bg）"))
+        self._import_lbl = QLabel(tr_i18n("bg.import_lbl"))
+        bgl.addWidget(self._import_lbl)
         im_row = QHBoxLayout()
         self.import_bg_path = QLineEdit()
         self.import_bg_path.setReadOnly(True)
-        self.import_bg_path.setPlaceholderText("未选择文件")
-        bip = QPushButton("选择文件…")
-        bip.clicked.connect(self._pick_bg_file)
+        self.import_bg_path.setPlaceholderText(tr_i18n("bg.ph_no_file"))
+        self._bip = QPushButton(tr_i18n("bg.pick"))
+        self._bip.clicked.connect(self._pick_bg_file)
         im_row.addWidget(self.import_bg_path, stretch=1)
-        im_row.addWidget(bip)
+        im_row.addWidget(self._bip)
         bgl.addLayout(im_row)
-        import_bg_btn = QPushButton("从文件导入背景组")
-        import_bg_btn.clicked.connect(self._on_import)
-        bgl.addWidget(import_bg_btn)
-        lay.addWidget(box_group)
+        self._import_bg_btn = QPushButton(tr_i18n("bg.import"))
+        self._import_bg_btn.clicked.connect(self._on_import)
+        bgl.addWidget(self._import_bg_btn)
+        lay.addWidget(self._box_group)
 
         # --- 2. 名称与保存 ---
-        box_meta = QGroupBox("背景组信息")
-        mlay = QVBoxLayout(box_meta)
+        self._box_meta = QGroupBox(tr_i18n("bg.meta_box"))
+        mlay = QVBoxLayout(self._box_meta)
         edit_row = QFormLayout()
         self.bg_name = QLineEdit()
         self.bg_prefix = QLineEdit("temp")
-        edit_row.addRow("背景组名称", self.bg_name)
-        edit_row.addRow("上传数据目录名（英文）", self.bg_prefix)
+        self._f_bg_name = QLabel(tr_i18n("bg.name"))
+        self._f_bg_dir = QLabel(tr_i18n("bg.dir"))
+        edit_row.addRow(self._f_bg_name, self.bg_name)
+        edit_row.addRow(self._f_bg_dir, self.bg_prefix)
         mlay.addLayout(edit_row)
-        bg_save_btn = QPushButton("添加或保存背景组")
-        bg_save_btn.clicked.connect(self._on_save_group)
-        mlay.addWidget(bg_save_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-        lay.addWidget(box_meta)
+        self._bg_save_btn = QPushButton(tr_i18n("bg.save"))
+        self._bg_save_btn.clicked.connect(self._on_save_group)
+        mlay.addWidget(self._bg_save_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        lay.addWidget(self._box_meta)
 
         # --- 3. 背景图片与说明 ---
-        box_imgs = QGroupBox("背景图片与说明")
-        imgl = QVBoxLayout(box_imgs)
+        self._box_imgs = QGroupBox(tr_i18n("bg.img_box"))
+        imgl = QVBoxLayout(self._box_imgs)
         self._bg_img_paths: list[str] = []
         fl_row = QHBoxLayout()
         self.bg_files_display = QLineEdit()
         self.bg_files_display.setReadOnly(True)
-        self.bg_files_display.setPlaceholderText("未选择图片")
-        bpick = QPushButton("选择背景图片…")
-        bpick.clicked.connect(self._pick_bg_imgs)
+        self.bg_files_display.setPlaceholderText(tr_i18n("bg.ph_no_img"))
+        self._bpick = QPushButton(tr_i18n("bg.pick_imgs"))
+        self._bpick.clicked.connect(self._pick_bg_imgs)
         fl_row.addWidget(self.bg_files_display, stretch=1)
-        fl_row.addWidget(bpick)
+        fl_row.addWidget(self._bpick)
         imgl.addLayout(fl_row)
         img_btns = QHBoxLayout()
-        upload_bg_btn = QPushButton("上传图片")
-        upload_bg_btn.clicked.connect(self._on_upload_imgs)
-        delete_all_bg_btn = QPushButton("删除所有背景图片")
-        delete_all_bg_btn.clicked.connect(self._on_delete_all_imgs)
-        img_btns.addWidget(upload_bg_btn)
-        img_btns.addWidget(delete_all_bg_btn)
+        self._upload_bg_btn = QPushButton(tr_i18n("bg.upload"))
+        self._upload_bg_btn.clicked.connect(self._on_upload_imgs)
+        self._delete_all_bg_btn = QPushButton(tr_i18n("bg.del_all_img"))
+        self._delete_all_bg_btn.clicked.connect(self._on_delete_all_imgs)
+        img_btns.addWidget(self._upload_bg_btn)
+        img_btns.addWidget(self._delete_all_bg_btn)
         img_btns.addStretch(1)
         imgl.addLayout(img_btns)
 
@@ -143,62 +149,72 @@ class BackgroundSettingsTab(QWidget):
         self.bg_gallery.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        mid.addWidget(QLabel("已上传（点击选择后删除单张）"))
+        self._mid_lbl = QLabel(tr_i18n("bg.gal_lbl"))
+        mid.addWidget(self._mid_lbl)
         mid.addWidget(self.bg_gallery, stretch=1)
-        delete_single_bg_btn = QPushButton("删除当前选中的图片")
-        delete_single_bg_btn.clicked.connect(self._on_delete_one_img)
-        mid.addWidget(delete_single_bg_btn)
+        self._delete_single_bg_btn = QPushButton(tr_i18n("bg.del_one"))
+        self._delete_single_bg_btn.clicked.connect(self._on_delete_one_img)
+        mid.addWidget(self._delete_single_bg_btn)
         gallery_row.addLayout(mid, stretch=2)
 
         ir = QVBoxLayout()
-        ir_lbl = QLabel("背景说明（与图片顺序对应，可在上传时一并写入）")
-        ir_lbl.setWordWrap(True)
-        ir.addWidget(ir_lbl)
+        self._ir_lbl = QLabel(tr_i18n("bg.info_lbl"))
+        self._ir_lbl.setWordWrap(True)
+        ir.addWidget(self._ir_lbl)
         self.bg_info_inputs = QPlainTextEdit()
         self.bg_info_inputs.setMinimumHeight(120)
         self.bg_info_inputs.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         ir.addWidget(self.bg_info_inputs, stretch=1)
-        upload_bg_info_btn = QPushButton("保存背景说明到当前组")
-        upload_bg_info_btn.setToolTip("与旧版「上传背景信息」相同")
-        upload_bg_info_btn.clicked.connect(self._on_upload_bg_tags)
-        ir.addWidget(upload_bg_info_btn)
+        self._upload_bg_info_btn = QPushButton(tr_i18n("bg.save_info"))
+        self._upload_bg_info_btn.setToolTip(tr_i18n("bg.tt_info"))
+        self._upload_bg_info_btn.clicked.connect(self._on_upload_bg_tags)
+        ir.addWidget(self._upload_bg_info_btn)
         gallery_row.addLayout(ir, stretch=1)
         imgl.addLayout(gallery_row)
-        lay.addWidget(box_imgs)
+        lay.addWidget(self._box_imgs)
 
         # --- 4. 背景音乐 ---
-        lay.addWidget(QLabel("<h3>背景音乐</h3>"))
-        box_bgm = QGroupBox("当前组的背景音乐")
-        bgml = QVBoxLayout(box_bgm)
+        self._h3_bgm = QLabel(tr_i18n("bg.h3_bgm"))
+        lay.addWidget(self._h3_bgm)
+        self._box_bgm = QGroupBox(tr_i18n("bg.bgm_box"))
+        bgml = QVBoxLayout(self._box_bgm)
         self._bgm_upload_paths: list[str] = []
         bfm = QHBoxLayout()
         self.bgm_files_display = QLineEdit()
         self.bgm_files_display.setReadOnly(True)
-        self.bgm_files_display.setPlaceholderText("未选择音频")
-        bp = QPushButton("选择音乐…")
-        bp.clicked.connect(self._pick_bgm)
+        self.bgm_files_display.setPlaceholderText(tr_i18n("bg.ph_bgm"))
+        self._bp = QPushButton(tr_i18n("bg.pick_bgm"))
+        self._bp.clicked.connect(self._pick_bgm)
         bfm.addWidget(self.bgm_files_display, stretch=1)
-        bfm.addWidget(bp)
+        bfm.addWidget(self._bp)
         bgml.addLayout(bfm)
         bgm_up_row = QHBoxLayout()
-        upload_bgm_btn = QPushButton("上传音乐")
-        upload_bgm_btn.clicked.connect(self._on_upload_bgm)
-        delete_all_bgm_btn = QPushButton("删除所有背景音乐")
-        delete_all_bgm_btn.clicked.connect(self._on_delete_all_bgm)
-        bgm_up_row.addWidget(upload_bgm_btn)
-        bgm_up_row.addWidget(delete_all_bgm_btn)
+        self._upload_bgm_btn = QPushButton(tr_i18n("bg.up_bgm"))
+        self._upload_bgm_btn.clicked.connect(self._on_upload_bgm)
+        self._delete_all_bgm_btn = QPushButton(tr_i18n("bg.del_all_bgm"))
+        self._delete_all_bgm_btn.clicked.connect(self._on_delete_all_bgm)
+        bgm_up_row.addWidget(self._upload_bgm_btn)
+        bgm_up_row.addWidget(self._delete_all_bgm_btn)
         bgm_up_row.addStretch(1)
         bgml.addLayout(bgm_up_row)
 
         bgm_row = QHBoxLayout()
         b2 = QVBoxLayout()
-        hint = QLabel("列表：点击行试听；首列勾选后可用下方按钮批量删除。")
-        hint.setWordWrap(True)
-        b2.addWidget(hint)
+        self._table_hint = QLabel(tr_i18n("bg.table_hint"))
+        self._table_hint.setWordWrap(True)
+        b2.addWidget(self._table_hint)
         self.bgm_table = QTableWidget(0, 5)
-        self.bgm_table.setHorizontalHeaderLabels(["选", "序号", "文件名", "路径", "标签描述"])
+        self.bgm_table.setHorizontalHeaderLabels(
+            [
+                tr_i18n("bg.table.sel"),
+                tr_i18n("bg.table.idx"),
+                tr_i18n("bg.table.fname"),
+                tr_i18n("bg.table.path"),
+                tr_i18n("bg.table.tag"),
+            ]
+        )
         self.bgm_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
         )
@@ -206,29 +222,29 @@ class BackgroundSettingsTab(QWidget):
         self.bgm_table.cellClicked.connect(self._on_bgm_cell)
         b2.addWidget(self.bgm_table, stretch=1)
         b2_btns = QHBoxLayout()
-        play_btn = QPushButton("播放当前选中行")
-        play_btn.clicked.connect(self._on_play_bgm_row)
-        delete_sel_bgms = QPushButton("批量删除已勾选")
-        delete_sel_bgms.setToolTip("在表格首列勾选要删除的条目")
-        delete_sel_bgms.clicked.connect(self._on_batch_delete_bgm)
-        b2_btns.addWidget(play_btn)
-        b2_btns.addWidget(delete_sel_bgms)
+        self._play_btn = QPushButton(tr_i18n("bg.play_sel"))
+        self._play_btn.clicked.connect(self._on_play_bgm_row)
+        self._delete_sel_bgms = QPushButton(tr_i18n("bg.batch_del"))
+        self._delete_sel_bgms.setToolTip(tr_i18n("bg.tt_batch"))
+        self._delete_sel_bgms.clicked.connect(self._on_batch_delete_bgm)
+        b2_btns.addWidget(self._play_btn)
+        b2_btns.addWidget(self._delete_sel_bgms)
         b2.addLayout(b2_btns)
         bgm_row.addLayout(b2, stretch=2)
 
         b3 = QVBoxLayout()
-        b3_lbl = QLabel("各曲目的文字描述（每行对应列表中的一条）")
-        b3_lbl.setWordWrap(True)
-        b3.addWidget(b3_lbl)
+        self._b3_lbl = QLabel(tr_i18n("bg.desc_lbl"))
+        self._b3_lbl.setWordWrap(True)
+        b3.addWidget(self._b3_lbl)
         self.bgm_info_inputs = QPlainTextEdit()
         self.bgm_info_inputs.setMinimumHeight(100)
         b3.addWidget(self.bgm_info_inputs, stretch=1)
-        upload_bgm_info_btn = QPushButton("保存背景音乐描述")
-        upload_bgm_info_btn.clicked.connect(self._on_upload_bgm_info)
-        b3.addWidget(upload_bgm_info_btn)
+        self._upload_bgm_info_btn = QPushButton(tr_i18n("bg.save_bgm_desc"))
+        self._upload_bgm_info_btn.clicked.connect(self._on_upload_bgm_info)
+        b3.addWidget(self._upload_bgm_info_btn)
         bgm_row.addLayout(b3, stretch=1)
         bgml.addLayout(bgm_row)
-        lay.addWidget(box_bgm)
+        lay.addWidget(self._box_bgm)
 
         root.addWidget(scroll)
 
@@ -236,16 +252,19 @@ class BackgroundSettingsTab(QWidget):
         self._refresh_group_combo()
         self._on_group_change(self.selected_bg_group.currentText())
 
+    def _is_new_bg(self, name: str) -> bool:
+        return not name or name == tr_i18n("bg.combo_new")
+
     def _current_bg(self) -> str:
         t = self.selected_bg_group.currentText()
-        if not t or t == "新背景":
+        if self._is_new_bg(t):
             return ""
         return t
 
     def _refresh_group_combo(self, select: str | None = None) -> None:
         self.selected_bg_group.blockSignals(True)
         self.selected_bg_group.clear()
-        self.selected_bg_group.addItem("新背景")
+        self.selected_bg_group.addItem(tr_i18n("bg.combo_new"))
         for n in self._ctx.background_manager.get_background_name_list():
             self.selected_bg_group.addItem(n)
         if select:
@@ -255,7 +274,7 @@ class BackgroundSettingsTab(QWidget):
         self.selected_bg_group.blockSignals(False)
 
     def _on_group_change(self, name: str) -> None:
-        if not name or name == "新背景":
+        if self._is_new_bg(name):
             self.bg_name.clear()
             self.bg_prefix.setText("temp")
         else:
@@ -264,13 +283,15 @@ class BackgroundSettingsTab(QWidget):
                 self.bg_name.setText(bg.name)
                 self.bg_prefix.setText(bg.sprite_prefix or "temp")
         paths, tags, _ = (
-            self._ctx.background_manager.get_background_sprites(name) if name and name != "新背景" else ([], "", [])
+            self._ctx.background_manager.get_background_sprites(name)
+            if name and not self._is_new_bg(name)
+            else ([], "", [])
         )
         self._load_gallery(paths)
         self.bg_info_inputs.setPlainText(tags if isinstance(tags, str) else "")
         self._bg_img_paths.clear()
         self.bg_files_display.clear()
-        if name and name != "新背景":
+        if name and not self._is_new_bg(name):
             df, btags = self._ctx.background_manager.load_bgms_and_tags(name)
             self._fill_bgm_table(df)
             self.bgm_info_inputs.setPlainText(btags)
@@ -278,6 +299,57 @@ class BackgroundSettingsTab(QWidget):
             self.bgm_table.setRowCount(0)
             self.bgm_info_inputs.clear()
         self.bgm_table.clearSelection()
+
+    def apply_i18n(self) -> None:
+        cur = self.selected_bg_group.currentText()
+        is_new = self._is_new_bg(cur)
+        sel = tr_i18n("bg.combo_new") if is_new else cur
+        self._h2.setText(tr_i18n("bg.h2"))
+        self._h3_bgm.setText(tr_i18n("bg.h3_bgm"))
+        self._box_group.setTitle(tr_i18n("bg.file_box"))
+        self._lbl_sel_grp.setText(tr_i18n("bg.row_group"))
+        self._export_bg_btn.setText(tr_i18n("bg.export"))
+        self._del_bg_btn.setText(tr_i18n("bg.delete"))
+        self._import_lbl.setText(tr_i18n("bg.import_lbl"))
+        self.import_bg_path.setPlaceholderText(tr_i18n("bg.ph_no_file"))
+        self._bip.setText(tr_i18n("bg.pick"))
+        self._import_bg_btn.setText(tr_i18n("bg.import"))
+        self._box_meta.setTitle(tr_i18n("bg.meta_box"))
+        self._f_bg_name.setText(tr_i18n("bg.name"))
+        self._f_bg_dir.setText(tr_i18n("bg.dir"))
+        self._bg_save_btn.setText(tr_i18n("bg.save"))
+        self._box_imgs.setTitle(tr_i18n("bg.img_box"))
+        self.bg_files_display.setPlaceholderText(tr_i18n("bg.ph_no_img"))
+        self._bpick.setText(tr_i18n("bg.pick_imgs"))
+        self._upload_bg_btn.setText(tr_i18n("bg.upload"))
+        self._delete_all_bg_btn.setText(tr_i18n("bg.del_all_img"))
+        self._mid_lbl.setText(tr_i18n("bg.gal_lbl"))
+        self._delete_single_bg_btn.setText(tr_i18n("bg.del_one"))
+        self._ir_lbl.setText(tr_i18n("bg.info_lbl"))
+        self._upload_bg_info_btn.setText(tr_i18n("bg.save_info"))
+        self._upload_bg_info_btn.setToolTip(tr_i18n("bg.tt_info"))
+        self._box_bgm.setTitle(tr_i18n("bg.bgm_box"))
+        self.bgm_files_display.setPlaceholderText(tr_i18n("bg.ph_bgm"))
+        self._bp.setText(tr_i18n("bg.pick_bgm"))
+        self._upload_bgm_btn.setText(tr_i18n("bg.up_bgm"))
+        self._delete_all_bgm_btn.setText(tr_i18n("bg.del_all_bgm"))
+        self._table_hint.setText(tr_i18n("bg.table_hint"))
+        self.bgm_table.setHorizontalHeaderLabels(
+            [
+                tr_i18n("bg.table.sel"),
+                tr_i18n("bg.table.idx"),
+                tr_i18n("bg.table.fname"),
+                tr_i18n("bg.table.path"),
+                tr_i18n("bg.table.tag"),
+            ]
+        )
+        self._play_btn.setText(tr_i18n("bg.play_sel"))
+        self._delete_sel_bgms.setText(tr_i18n("bg.batch_del"))
+        self._delete_sel_bgms.setToolTip(tr_i18n("bg.tt_batch"))
+        self._b3_lbl.setText(tr_i18n("bg.desc_lbl"))
+        self._upload_bgm_info_btn.setText(tr_i18n("bg.save_bgm_desc"))
+        self._refresh_group_combo(sel)
+        self._on_group_change(self.selected_bg_group.currentText())
 
     def _load_gallery(self, paths: list) -> None:
         self.bg_gallery.clear()
@@ -354,69 +426,89 @@ class BackgroundSettingsTab(QWidget):
             return
         path = it.text()
         if not path or not Path(path).is_file():
-            message_fail(self, "背景音乐", f"文件不存在: {path}")
+            message_fail(
+                self, tr_i18n("bg.msg_title_bgm"), tr_i18n("bg.msg_missing", path=path)
+            )
             return
-        toast_info(self, "背景音乐", f"正在播放: {os.path.basename(path)}")
+        toast_info(
+            self,
+            tr_i18n("bg.msg_title_bgm"),
+            tr_i18n("bg.toast_playing", name=os.path.basename(path)),
+        )
         self._player.setSource(QUrl.fromLocalFile(str(Path(path).absolute())))
         self._player.play()
 
     def _on_export(self) -> None:
         msg = self._ctx.background_manager.export_background_file(self._current_bg())
-        feedback_result(self, "背景", msg)
+        feedback_result(self, tr_i18n("bg.msg_title"), msg)
 
     def _on_delete_group(self) -> None:
         msg, _ = self._ctx.background_manager.delete_background(self._current_bg())
-        feedback_result(self, "背景", msg)
-        self._refresh_group_combo("新背景")
+        feedback_result(self, tr_i18n("bg.msg_title"), msg)
+        self._refresh_group_combo(tr_i18n("bg.combo_new"))
         self.background_list_changed.emit()
 
     def _pick_bg_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "选择 .bg 文件", "", "Background (*.bg);;All (*)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr_i18n("bg.dlg_bg"), "", "Background (*.bg);;All (*)"
+        )
         if path:
             self.import_bg_path.setText(path)
 
     def _on_import(self) -> None:
         p = self.import_bg_path.text().strip()
         if not p:
-            message_fail(self, "背景", "请选择文件")
+            message_fail(
+                self, tr_i18n("bg.msg_title"), tr_i18n("bg.msg_select_file")
+            )
             return
         try:
             msg, _ = self._ctx.background_manager.import_background_file(p)
         except Exception as e:
-            message_fail(self, "背景", f"导入失败: {e}")
+            message_fail(
+                self, tr_i18n("bg.msg_title"), tr_i18n("bg.msg_import_fail", e=e)
+            )
             return
-        feedback_result(self, "背景", str(msg) if msg else "完成")
-        self._refresh_group_combo("新背景")
+        feedback_result(
+            self, tr_i18n("bg.msg_title"), str(msg) if msg else tr_i18n("bg.msg_done")
+        )
+        self._refresh_group_combo(tr_i18n("bg.combo_new"))
         self.background_list_changed.emit()
 
     def _on_save_group(self) -> None:
         msg, _ = self._ctx.background_manager.add_background(self.bg_name.text().strip(), self.bg_prefix.text().strip() or "temp")
-        feedback_result(self, "背景", msg)
+        feedback_result(self, tr_i18n("bg.msg_title"), msg)
         n = self.bg_name.text().strip()
         self._refresh_group_combo(n)
         self._on_group_change(n)
         self.background_list_changed.emit()
 
     def _pick_bg_imgs(self) -> None:
-        files, _ = QFileDialog.getOpenFileNames(self, "背景图片", "", "Images (*.png *.jpg *.jpeg);;All (*)")
+        files, _ = QFileDialog.getOpenFileNames(
+            self, tr_i18n("bg.dlg_imgs"), "", "Images (*.png *.jpg *.jpeg);;All (*)"
+        )
         self._bg_img_paths = list(files)
-        self.bg_files_display.setText(f"{len(self._bg_img_paths)} 个文件")
+        self.bg_files_display.setText(
+            tr_i18n("bg.msg_n_files", n=len(self._bg_img_paths))
+        )
 
     def _on_upload_imgs(self) -> None:
         if not self._bg_img_paths:
-            message_fail(self, "背景", "请选择图片")
+            message_fail(
+                self, tr_i18n("bg.msg_title"), tr_i18n("bg.msg_select_imgs")
+            )
             return
         msg, paths, tags = self._ctx.background_manager.upload_sprites(
             self._current_bg(), path_file_list(self._bg_img_paths), self.bg_info_inputs.toPlainText()
         )
-        feedback_result(self, "背景", msg)
+        feedback_result(self, tr_i18n("bg.msg_title"), msg)
         self._load_gallery(paths)
         self.bg_info_inputs.setPlainText(tags)
         self.background_list_changed.emit()
 
     def _on_delete_all_imgs(self) -> None:
         msg, paths, t = self._ctx.background_manager.delete_all_sprites(self._current_bg())
-        feedback_result(self, "背景", msg)
+        feedback_result(self, tr_i18n("bg.msg_title"), msg)
         self._load_gallery(paths)
         self.bg_info_inputs.setPlainText(t)
         self.background_list_changed.emit()
@@ -426,33 +518,39 @@ class BackgroundSettingsTab(QWidget):
         if row < 0:
             return
         msg, paths, t = self._ctx.background_manager.delete_single_sprite(self._current_bg(), row)
-        feedback_result(self, "背景", msg)
+        feedback_result(self, tr_i18n("bg.msg_title"), msg)
         self._load_gallery(paths)
         self.bg_info_inputs.setPlainText(t)
         self.background_list_changed.emit()
 
     def _on_upload_bg_tags(self) -> None:
         msg = self._ctx.background_manager.upload_bg_tags(self._current_bg(), self.bg_info_inputs.toPlainText())
-        feedback_result(self, "背景", msg)
+        feedback_result(self, tr_i18n("bg.msg_title"), msg)
 
     def _pick_bgm(self) -> None:
-        files, _ = QFileDialog.getOpenFileNames(self, "背景音乐", "", "Audio (*);;All (*)")
+        files, _ = QFileDialog.getOpenFileNames(
+            self, tr_i18n("bg.dlg_bgm"), "", "Audio (*);;All (*)"
+        )
         self._bgm_upload_paths = list(files)
-        self.bgm_files_display.setText(f"{len(self._bgm_upload_paths)} 个文件")
+        self.bgm_files_display.setText(
+            tr_i18n("bg.msg_n_files", n=len(self._bgm_upload_paths))
+        )
 
     def _on_upload_bgm(self) -> None:
         if not self._bgm_upload_paths:
-            message_fail(self, "背景音乐", "请选择音乐文件")
+            message_fail(
+                self, tr_i18n("bg.msg_title_bgm"), tr_i18n("bg.msg_select_bgm")
+            )
             return
         msg, df, btags = self._ctx.background_manager.upload_bgms(self._current_bg(), path_file_list(self._bgm_upload_paths))
-        feedback_result(self, "背景音乐", msg)
+        feedback_result(self, tr_i18n("bg.msg_title_bgm"), msg)
         self._fill_bgm_table(df)
         self.bgm_info_inputs.setPlainText(btags)
         self.background_list_changed.emit()
 
     def _on_delete_all_bgm(self) -> None:
         msg, _, _ = self._ctx.background_manager.delete_all_bgms(self._current_bg())
-        feedback_result(self, "背景音乐", msg)
+        feedback_result(self, tr_i18n("bg.msg_title_bgm"), msg)
         self.bgm_table.setRowCount(0)
         self.bgm_info_inputs.clear()
         self.background_list_changed.emit()
@@ -464,10 +562,10 @@ class BackgroundSettingsTab(QWidget):
         )
         self._fill_bgm_table(new_df)
         self.bgm_info_inputs.setPlainText(tags)
-        feedback_result(self, "背景音乐", msg)
+        feedback_result(self, tr_i18n("bg.msg_title_bgm"), msg)
         self.background_list_changed.emit()
 
     def _on_upload_bgm_info(self) -> None:
         msg = self._ctx.background_manager.upload_bgm_tags(self._current_bg(), self.bgm_info_inputs.toPlainText())
-        feedback_result(self, "背景音乐", msg)
+        feedback_result(self, tr_i18n("bg.msg_title_bgm"), msg)
         self.background_list_changed.emit()

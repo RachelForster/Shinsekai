@@ -34,6 +34,7 @@ from ui.desktop_toolbar import DesktopToolbarMixin
 from ui.workers import ImageDisplayThread, ChatWorker
 from ui.mic_button import MicButton
 from config.config_manager import ConfigManager
+from i18n import init_i18n, tr
 
 config_manager = ConfigManager()
 
@@ -70,7 +71,14 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         screen_geometry = screen.geometry()
         self.original_height = screen_geometry.height() // 4 * 3
         self.original_width = screen_geometry.width() // 4 * 3 if background_mode else self.original_height
-        self.current_background_path = None 
+        self.current_background_path = None
+        # 全尺寸图，供 resize 时重缩放，使底栏 input 与整窗共用同一底图
+        self._background_source_pixmap = None
+        # 底栏叠在立绘上时，对话/选项需避开此高度（含底边留白，在 resize 中更新）
+        self._bottom_chrome_h = 130
+        # 底栏与窗口边距：左右内缩、距底边留白（与 _layout_input_row 一致）
+        self._input_row_inset_h = 16
+        self._input_row_inset_bottom = 10
 
         self.base_font_size_px = config_manager.config.system_config.base_font_size_px
 
@@ -104,10 +112,10 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
-        # 主布局
+        # 主布局：立绘区独占整窗，底栏不占用 layout（叠在立绘上）
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(16)
+        main_layout.setSpacing(0)
         
         self.setup_background_label()        
         # 图像容器
@@ -135,12 +143,11 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         # 工具栏
         self.setup_toolbar()
         
-        # 输入框布局
-        input_layout = self.setup_input_layout()
+        # 底栏（叠在立绘上）
+        self.setup_input_layout()
         
         # 将组件添加到主布局
-        main_layout.addWidget(self.image_container)
-        main_layout.addLayout(input_layout)
+        main_layout.addWidget(self.image_container, 1)
         
         self.background_label.lower()
         self.cg_widget.lower() # 初始时，CG 在背景上方
@@ -149,6 +156,8 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.options_widget.raise_()
 
         self.setLayout(main_layout)
+        self._layout_input_row()
+        self._raise_input_and_toolbar()
 
         self.cg_widget.setGeometry(0,0,self.original_width, self.original_height)
         self.apply_font_styles()
@@ -169,13 +178,14 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.dialog_label.raise_() 
             self.options_widget.raise_()
             self.numeric_info_label.raise_()
-            self.toolbar.raise_() 
+            self._raise_input_and_toolbar() 
             
         else:
             self.sprite_panel.show()
             # 恢复 CG 到立绘之下
             self.cg_widget.lower()
             self.cg_widget.hide()
+            self._raise_input_and_toolbar()
     def show_cg_image(self, cg_path: str):
         """外部接口：显示一个CG，它会触发立绘隐藏"""
         self.cg_widget.show_cg(cg_path)
@@ -212,8 +222,10 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
 
         # Apply to input box
         self.input_box.setStyleSheet(styles.text_edit_input(self.btn_font_size))
+        self.input_box.setPlaceholderText(tr("desktop.input_placeholder"))
 
         # Apply to send button
+        self.send_btn.setText(tr("desktop.send"))
         self.send_btn.setStyleSheet(
             styles.send_button_theme(self.theme_color, self.btn_font_size)
         )
@@ -296,24 +308,28 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.sprite_panel = SpritePanel(self.original_width, self.original_height, max_slots_num=self.max_sprite_slots)
         # self.label = CrossFadeSprite(self.original_width, self.original_height)
         # self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.image_layout.addWidget(self.sprite_panel)
+        self.image_layout.addWidget(self.sprite_panel, 1)
     
     def setup_input_layout(self):
-        """初始化输入布局"""
-        input_layout = QHBoxLayout()
-        input_layout.setSpacing(10)
+        """初始化底栏；独立叠在窗口底部，使立绘区可铺满至窗口底边。"""
+        self.input_row = QWidget(self)
+        input_layout = QHBoxLayout(self.input_row)
+        # 行内边距：与窗口边距（inset）配合，底栏不显得顶满
+        input_layout.setContentsMargins(6, 5, 6, 6)
+        input_layout.setSpacing(12)
         
         # 输入框
         self.input_box = QTextEdit()
         self.input_box.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
-        self.input_box.setMaximumHeight(100)
-        self.input_box.setPlaceholderText("输入消息...")
+        self.input_box.setMinimumHeight(40)
+        self.input_box.setMaximumHeight(80)
+        self.input_box.setPlaceholderText(tr("desktop.input_placeholder"))
         self.input_box.setStyleSheet(styles.text_edit_input(self.btn_font_size))
         self.input_box.installEventFilter(self)
         # self.input_box.returnPressed.connect(self.sendMessage)
         
         # 发送按钮
-        self.send_btn = QPushButton("发送")
+        self.send_btn = QPushButton(tr("desktop.send"))
         self.send_btn.setStyleSheet(
             styles.send_button_input_bar_green(self.btn_font_size)
         )
@@ -328,8 +344,28 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         input_layout.addWidget(self.input_box)
         input_layout.addWidget(self.mic_button)
         input_layout.addWidget(self.send_btn)
-        
-        return input_layout
+
+    def _layout_input_row(self) -> None:
+        if getattr(self, "input_row", None) is None:
+            return
+        inset_h = self._input_row_inset_h
+        inset_b = self._input_row_inset_bottom
+        inner_w = max(1, int(self.width()) - 2 * inset_h)
+        # 用足够高度量 sizeHint，避免行高被算小
+        self.input_row.setGeometry(0, 0, inner_w, 200)
+        self.input_row.updateGeometry()
+        sh = int(self.input_row.sizeHint().height())
+        # 行高：不低于麦克风按钮区（50）+ 内边距，不高于 ~125（约两行半 + 按钮）
+        row_h = int(max(58, min(sh, 125)))
+        y = int(self.height()) - row_h - inset_b
+        x = inset_h
+        self.input_row.setGeometry(x, max(0, y), inner_w, row_h)
+        # 对话/选项要避开整段底栏 + 与窗口底边之间的留白
+        self._bottom_chrome_h = row_h + inset_b
+
+    def _above_chrome_y(self, block_height: int, gap: int = 4) -> int:
+        h = int(self.image_container.height()) if self.image_container.height() > 0 else int(self.height())
+        return max(0, h - self._bottom_chrome_h - gap - int(block_height))
     
     def setup_image_thread(self):
         """设置图像显示线程"""
@@ -343,7 +379,48 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.background_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.background_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        
+    def _scale_and_apply_background(self) -> None:
+        """将底图按当前窗口尺寸铺满（含底栏 input 区域）。"""
+        if (
+            self._background_source_pixmap is not None
+            and not self._background_source_pixmap.isNull()
+        ):
+            scaled = self._background_source_pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self.background_label.setPixmap(scaled)
+        self.background_label.setGeometry(0, 0, self.width(), self.height())
+        self.background_label.lower()
+
+    def _raise_input_and_toolbar(self) -> None:
+        """将输入条与工具栏置于最前（相对各自父级叠放顺序）。"""
+        if getattr(self, "input_row", None) is not None:
+            self.input_row.raise_()
+        else:
+            if getattr(self, "input_box", None) is not None:
+                self.input_box.raise_()
+            if getattr(self, "mic_button", None) is not None:
+                self.mic_button.raise_()
+            if getattr(self, "send_btn", None) is not None:
+                self.send_btn.raise_()
+        if getattr(self, "toolbar", None) is not None:
+            self.toolbar.raise_()
+            w = self.image_container.width() if self.image_container.width() else self.width()
+            self.toolbar.move(max(0, w - 200), 10)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._layout_input_row()
+        self.cg_widget.setGeometry(
+            0,
+            0,
+            max(1, self.image_container.width()),
+            max(1, self.image_container.height()),
+        )
+        self._scale_and_apply_background()
+        self._raise_input_and_toolbar()
 
     def setBackgroundImage(self, image_path: str):
         """
@@ -356,26 +433,20 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.sprite_panel.remove_all()  # 清除所有立绘显示
         if not os.path.exists(image_path):
             print(f"Background image file not found: {image_path}")
+            self._background_source_pixmap = None
             # 可以设置一个纯色背景作为 fallback
             self.background_label.setStyleSheet(styles.background_label_load_failed())
             self.background_label.setText("背景图加载失败")
+            self._raise_input_and_toolbar()
             return
 
-        # 使用 QPixmap 加载图片
         pixmap = QPixmap(image_path)
-        
-        # 动态设置样式表，使用 border-image 来实现背景填充和缩放
-        # 设置 background_label 的样式表
-        # 使用 QPixmap + setPixmap；若改用纯 QSS 可试 styles.background_label_qlabel_image
-        # 重新设置背景图片
-        scaled_pixmap = pixmap.scaled(
-            self.size(),
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self.background_label.setPixmap(scaled_pixmap)
-        self.background_label.lower()
+        self._background_source_pixmap = pixmap
+        self.background_label.setText("")
+        self.background_label.setStyleSheet("")
+        self._scale_and_apply_background()
         self.current_background_path = image_path
+        self._raise_input_and_toolbar()
 
     def update_image(self, image, character_name="", scale_rate=1.0):
         """更新显示图像"""
@@ -392,7 +463,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             print(f"UI发送消息: {message}")
             self.input_box.clear()
             self.setDisplayWords(f"<b>你</b>：{message}")
-            self.input_box.setPlaceholderText("发送成功喵，等待回复中……")
+            self.input_box.setPlaceholderText(tr("desktop.sending"))
             self.mic_button.asr_pause_requested.emit()
             
             # 创建并启动聊天工作线程
@@ -419,6 +490,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         else:
             self.numeric_info_label.show()
             self.numeric_info_label.raise_()
+            self._raise_input_and_toolbar()
 
     def setNotification(self, message):
         """设置提示词"""
@@ -436,19 +508,20 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         if text:
             self.options_widget.hide()
             self.dialog_label.setText(text)
-            container_width = self.original_width # 使用 self.original_width 作为容器宽度
+            container_width = self.image_container.width() or self.original_width
             margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
             new_width = container_width - (2 * margin_width)
 
             self.dialog_label.setFixedWidth(new_width)
             self.dialog_label.adjustSize()
-            min_height = int(self.original_height * 0.3)
-            max_height = int(self.original_height * 0.6)
+            avail_h = max(1, (self.image_container.height() or self.height()) - self._bottom_chrome_h)
+            min_height = int(avail_h * 0.3)
+            max_height = int(avail_h * 0.6)
             height = max(min_height, self.dialog_label.height())
             height = min(height, max_height)
             
-            # 2. 计算垂直位置 (保持在底部)
-            y = self.original_height - height
+            # 2. 计算垂直位置：贴在底栏上方
+            y = self._above_chrome_y(height, gap=4)
             
             # 3. 设置居中的位置和调整后的尺寸
             self.dialog_label.setGeometry(margin_width, y, new_width, height)
@@ -462,7 +535,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 self.dialog_label.geometry().bottom() - self.skip_button.height() - 10
             )
             self.skip_button.show()
-            self.toolbar.raise_()
+            self._raise_input_and_toolbar()
         else:
             self.dialog_label.hide()
             self.skip_button.hide() # 隐藏跳过按钮
@@ -527,7 +600,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             option_btn.clicked.connect(lambda text=option_text: self.option_clicked(text))
             self.options_layout.addWidget(option_btn)
 
-        container_width = self.original_width # 使用 self.original_width 作为容器宽度
+        container_width = self.image_container.width() or self.original_width
         margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
         new_width = container_width - (2 * margin_width)
         
@@ -564,8 +637,8 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         min_visible_height = max(80, estimated_height)
         final_height = max(final_height, min_visible_height)
         
-        # 6. 放置在图像标签的底部
-        y = self.original_height - final_height
+        # 6. 贴在底栏上方
+        y = self._above_chrome_y(final_height, gap=4)
         
         # 7. 设置居中的位置和最终的尺寸
         self.options_widget.setGeometry(margin_width, y, new_width, final_height)
@@ -573,7 +646,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.options_widget.show()
         # 确保在图像和其他元素上方显示 (工具栏和对话框标签除外)
         self.options_widget.raise_()
-        self.toolbar.raise_()
+        self._raise_input_and_toolbar()
 
     def mousePressEvent(self, event):
         """实现窗口拖动"""
@@ -608,6 +681,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
 
 def start_qt_app(display_queue, emotion_queue, deepseek):
     """启动PyQt应用"""
+    init_i18n(config_manager.config.system_config.ui_language)
     app = QApplication(sys.argv)
     window = DesktopAssistantWindow(display_queue, emotion_queue, deepseek)
     print("QT Window starts!!")

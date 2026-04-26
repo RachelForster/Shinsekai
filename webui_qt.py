@@ -11,11 +11,14 @@ if str(project_root) not in sys.path:
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QApplication
 
+from config.config_manager import ConfigManager
+from i18n import init_i18n
 from ui.qss import load_pydracula_dark
 from ui.settings_ui import create_default_context
 from ui.settings_ui.window import FONT_FAMILY_MS_YAHEI, SettingsWindow, settings_window_metrics
 
 def main() -> None:
+    init_i18n(ConfigManager().config.system_config.ui_language)
     app = QApplication(sys.argv)
     app.setStyleSheet(load_pydracula_dark())
     ctx = create_default_context()
