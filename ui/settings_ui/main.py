@@ -152,6 +152,8 @@ class MainWindow(QMainWindow):
         from i18n import tr
 
         self.setWindowTitle(tr("main.window_title"))
+        self.ui.titleLeftApp.setText(tr("main.title_left"))
+        self.ui.titleLeftDescription.setText(tr("main.title_description"))
         self.ui.titleRightInfo.setText(tr("main.title_right"))
         self.ui.btn_home.setText(tr("nav.api"))
         self.ui.btn_widgets.setText(tr("nav.character"))

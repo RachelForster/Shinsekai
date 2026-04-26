@@ -109,6 +109,18 @@ class TemplateSettingsTab(QWidget):
         bg_form.addRow(self._bg_lbl, self.bg_combo)
         opt.addLayout(bg_form)
 
+        self._voice_lang_lbl = QLabel(tr_i18n("template.voice_target_lang"))
+        self.voice_lang_combo = QComboBox()
+        self.voice_lang_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self._fill_voice_lang_combo()
+        self._sync_voice_lang_from_config()
+        self.voice_lang_combo.activated.connect(self._on_voice_lang_activated)
+        vlang_form = QFormLayout()
+        vlang_form.addRow(self._voice_lang_lbl, self.voice_lang_combo)
+        opt.addLayout(vlang_form)
+
         self.use_effect_yes = QRadioButton(tr_i18n("common.yes"))
         self.use_effect_no = QRadioButton(tr_i18n("common.no"))
         self.use_effect_yes.setChecked(True)
@@ -263,6 +275,18 @@ class TemplateSettingsTab(QWidget):
         self._box_gen.setTitle(tr_i18n("template.gen_box"))
         self._char_lbl.setText(tr_i18n("template.char_label"))
         self._bg_lbl.setText(tr_i18n("template.bg"))
+        self._voice_lang_lbl.setText(tr_i18n("template.voice_target_lang"))
+        cur_v = None
+        if self.voice_lang_combo.count():
+            cur_v = self.voice_lang_combo.currentData()
+        self._fill_voice_lang_combo()
+        if cur_v is not None:
+            for i in range(self.voice_lang_combo.count()):
+                if self.voice_lang_combo.itemData(i) == cur_v:
+                    self.voice_lang_combo.setCurrentIndex(i)
+                    break
+        else:
+            self._sync_voice_lang_from_config()
         ytxt, ntxt = tr_i18n("common.yes"), tr_i18n("common.no")
         self.use_effect_yes.setText(ytxt)
         self.use_effect_no.setText(ntxt)
@@ -293,6 +317,34 @@ class TemplateSettingsTab(QWidget):
         self._launch_btn.setText(tr_i18n("template.launch"))
         self._stop_btn.setText(tr_i18n("template.stop"))
 
+    def _fill_voice_lang_combo(self) -> None:
+        self.voice_lang_combo.clear()
+        for code in ("ja", "en", "zh", "yue"):
+            self.voice_lang_combo.addItem(
+                tr_i18n(f"template.voice_lang_{code}"), code
+            )
+
+    def _sync_voice_lang_from_config(self) -> None:
+        raw = (
+            getattr(
+                self._ctx.config_manager.config.system_config, "voice_language", None
+            )
+            or "ja"
+        )
+        c = (str(raw).strip() or "ja").lower()
+        for i in range(self.voice_lang_combo.count()):
+            if str(self.voice_lang_combo.itemData(i)).lower() == c:
+                self.voice_lang_combo.setCurrentIndex(i)
+                return
+        self.voice_lang_combo.setCurrentIndex(0)
+
+    def _on_voice_lang_activated(self, index: int) -> None:
+        code = self.voice_lang_combo.itemData(index)
+        if not code:
+            return
+        self._ctx.config_manager.config.system_config.voice_language = str(code)
+        self._ctx.config_manager.save_system_config()
+
     def _pick_init_sprite(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, tr_i18n("template.pick_sprite_title"), "", "Images (*.png *.jpg *.jpeg *.webp);;All (*)"
@@ -304,6 +356,10 @@ class TemplateSettingsTab(QWidget):
         return [cb.text() for cb in self._char_checks if cb.isChecked()]
 
     def _on_generate(self) -> None:
+        vcode = self.voice_lang_combo.currentData()
+        if vcode:
+            self._ctx.config_manager.config.system_config.voice_language = str(vcode)
+            self._ctx.config_manager.save_system_config()
         ue = "是" if self.use_effect_yes.isChecked() else "否"
         ut = "是" if self.use_tr_yes.isChecked() else "否"
         ucg = "是" if self.use_cg_yes.isChecked() else "否"

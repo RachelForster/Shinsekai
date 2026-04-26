@@ -135,18 +135,41 @@ class CharacterManager:
 
     def add_character(self, name: str, color: str, sprite_prefix: str, gpt_model_path: str, 
                      sovits_model_path: str, refer_audio_path: str, prompt_text: str, 
-                     prompt_lang: str, character_setting: str) -> Tuple[str, List[str]]:
+                     prompt_lang: str, character_setting: str,
+                     edit_as_name: Optional[str] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
-        
+
+        若 edit_as_name 为当前列表中已存在的名字（如 UI 下拉当前选中项），
+        则按该条记录做更新；名称栏改为新名字时视为重命名，不会新建另一条角色。
+
         Returns:
             Tuple[str, List[str]]: (操作结果消息, 当前所有角色名称列表)
         """
         current_names = [c.name for c in self._get_characters()]
         if not name:
             return "名称不能为空！", current_names
-            
-        characters = self._config_manager.config.characters 
+
+        characters = self._config_manager.config.characters
+
+        if edit_as_name and str(edit_as_name).strip():
+            target = self._config_manager.get_character_by_name(str(edit_as_name).strip())
+            if target is not None:
+                taken = self._config_manager.get_character_by_name(name)
+                if taken is not None and taken is not target:
+                    return f"名称「{name}」已与其他角色重复！", [c.name for c in characters]
+                target.name = name
+                target.color = color
+                target.sprite_prefix = sprite_prefix
+                target.gpt_model_path = gpt_model_path
+                target.sovits_model_path = sovits_model_path
+                target.prompt_text = prompt_text
+                target.prompt_lang = prompt_lang
+                target.refer_audio_path = refer_audio_path
+                target.character_setting = character_setting
+                self._save_characters_config()
+                return "人物已更新！", [c.name for c in characters]
+
         existing_character: Optional[Character] = self._config_manager.get_character_by_name(name)
         
         if existing_character is None:

@@ -213,118 +213,7 @@
   refer_audio_path: data/models/momota/momota full.wav_0000000000_0000262720.wav
   prompt_text: オレは宇宙に轟く桃太カイトだ!泣く子も憧れる超高校級の宇宙飛行士だぜ!
   prompt_lang: ja
-- name: 狛枝凪斗
-  color: '#A7CA90'
-  sprite_prefix: komaeda
-  sprites:
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_01.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_00.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_02.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_01.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_03.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_02.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_04.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_03.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_05.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_04.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_06.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_05.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_07.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_06.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_08.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_07.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_09.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_08.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_10.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_09.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_11.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_10.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_12.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_11.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_13.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_12.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_14.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_13.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_15.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_14.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_16.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_15.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_17.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_16.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_18.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_17.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_19.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_18.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_20.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_19.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_21.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_20.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_22.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_21.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_23.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_22.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_24.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_23.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_26.webp
-    voice_path: ./data/speech\komaeda\komaeda_voice_24.wav
-  - path: ./data/sprite\komaeda\Danganronpa_V3_Nagito_Komaeda_Bonus_Mode_Sprites_27.webp
-  character_setting: ''
-  sprite_scale: 1.0
-  emotion_tags: 'sprite 01: 开心、高兴、友善、打招呼
-
-    sprite 02: 思考、冷静
-
-    sprite 03: 认真、自信、分析、推理、指点
-
-    sprite 04: 冷淡、观察、皱眉、抱胸
-
-    sprite 05: 激动、生气
-
-    sprite 06: 震惊、惊恐、被吓到、感到不妙
-
-    sprite 07: 自卑、低头、微笑、谦卑
-
-    sprite 08: 指责、强调、严肃、命令、反驳
-
-    sprite 09: 无奈的笑、轻微拒绝
-
-    sprite 10: 傲慢、命令
-
-    sprite 11: 嫌弃、失望
-
-    sprite 12: 崩溃、绝望、痛苦、歇斯底里
-
-    sprite 13: 惊讶、不知所措、担忧
-
-    sprite 14: 失望、失落、难过
-
-    sprite 15: 大笑、兴奋、赞美
-
-    sprite 16: 不满、叹气、失望
-
-    sprite 17: 呼喊、大声
-
-    sprite 18: 兴奋到颤抖、流汗、流口水
-
-    sprite 19: 愤怒、斗志
-
-    sprite 20: 狡黠、自信、神秘、微笑、自得
-
-    sprite 21: 阴险、自信、微笑、得意
-
-    sprite 22: 惊恐、拒绝、防御、害怕、担忧
-
-    sprite 23: 严肃、皱眉
-
-    sprite 24: 惊吓、惊讶、吓到印堂发黑
-
-    sprite 26: 狂喜、癫狂、崇拜、高潮'
-  gpt_model_path: data/models/komaeda/komaeda-e15.ckpt
-  sovits_model_path: data/models/komaeda/komaeda_e8_s720.pth
-  refer_audio_path: data/models/komaeda/komaeda01.mp3_0000204800_0000416320.wav
-  prompt_text: だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。
-  prompt_lang: ja
-- name: 赤松枫（1）
+- name: 赤松枫
   color: '#d07d7d'
   sprite_prefix: Akamatsu kaede1
   sprites:
@@ -419,7 +308,7 @@
   - path: ./data/sprite\Akamatsu kaede\zhengchang.webp
     voice_path: ./data/speech\Akamatsu kaede\voice_41.wav
     voice_text: それがこの事件の真実なのそれ以外の何者でもない。
-  character_setting: "\n1. 核心背景信息\n\n· 身份：才囚学园学生，被誉为“超高校级的钢琴家”。\n· 故事地位：在本作故事中担任主人公的视角和行动驱动力。\n\
+  character_setting: "1. 核心背景信息\n\n· 身份：才囚学园学生，被誉为“超高校级的钢琴家”。\n· 故事地位：在本作故事中担任主人公的视角和行动驱动力。\n\
     · 关键经历：在失忆状态下于才囚学园醒来，并被迫参与互相杀戮游戏。她以积极的姿态团结大家，寻求逃脱方法，是前期团队的绝对核心。\n· 人际关系：\n  ·\
     \ 苗木诚：极度崇拜的对象。作为前作主角“超高校级的希望”，他是赤松的精神偶像，她渴望能成为像他一样带领大家走向希望的人。\n  · 最原终一：最重要的伙伴与盟友。从故事开始就与他建立起牢固的信任关系，共同调查事件。\n\
     \  · 春川魔姬：努力想要结交的对象。试图化解春川的冷漠，让她融入集体。\n  · 天海兰太郎：同为“想结束杀戮游戏”的盟友，最初合作关系的同学。\n\n\
@@ -434,7 +323,7 @@
     · 语音特点：\n  · 语调：通常明亮、清脆、富有活力，语速偏快。\n  · 情绪化表现：情绪波动明显，开心时声音高昂有感染力，沮丧时会瞬间低沉，但很快会重新振作。在严肃场合，声音会变得沉稳有力。\n\
     \n4. 关键触发点与禁忌\n\n· 兴趣点：钢琴、团结团队、制定计划、一切充满希望的事物。\n· 厌恶点：互相残杀、背叛信任、绝望、放弃的行为、黑幕的诡计。\n\
     · 敏感话题：任何可能导向“必须有人牺牲”的讨论，以及对“希望”本身的否定。\n\n5. 与其他角色的核心区别（用于精准建模）\n\n· ** vs. 小泉真昼：小泉是“被动的治愈者”，在后方提供支持与安慰；赤松是“主动的领导者**”，在前方引领方向并注入活力。\n\
-    · ** vs. 苗木诚：同样乐观，但赤松的主动性、领导欲和表现欲远强于初期被动的苗木**。她的理想主义色彩也更浓。\n\n\n"
+    · ** vs. 苗木诚：同样乐观，但赤松的主动性、领导欲和表现欲远强于初期被动的苗木**。她的理想主义色彩也更浓。"
   sprite_scale: 1.0
   emotion_tags: '立绘 1：愤怒、坚定、激昂、抗辩
 
@@ -2648,7 +2537,41 @@
   - path: ./data/sprite\saihara\32.webp
   - path: ./data/sprite\saihara\23.webp
   - path: ./data/sprite\saihara\Danganronpa_V3_Bonus_Mode_Shuichi_Saihara_Sprite_29.webp
-  character_setting: ''
+  character_setting: '最原终一的背景信息：
+
+    1. 姓名和出处：最原终一，出自游戏《新弹丸论破V3 大家的自相残杀新学期》。
+
+    2. 外表：身材高挑，留着一头深蓝色短发，眼神锐利但带有柔和感，常穿着深色校服和长裤，给人一种冷静可靠的印象。
+
+    3. 背景：他是“超高校级的侦探”，在故事开始时以侦探身份入学，拥有极强的观察力和推理能力，但实际上他的记忆和身份都经过改造，隐藏着更深的真相。
+
+    4. 经历：在自相残杀的学院生活中，他逐渐成为团队的理性支柱，多次破解案件并揭露幕后黑手，最终面对“谎言”与“真实”的核心主题。
+
+
+    最原终一的性格特点：
+
+    1. 性格冷静沉着，面对危机时能保持理性分析，不轻易被情绪左右。
+
+    2. 具有强烈的正义感和责任感，认为真相必须被揭开，即使有时会伤害他人。
+
+    3. 内向且有点自卑，不擅长表达自己的情感，尤其在面对伙伴时略显笨拙。
+
+    4. 内心敏感，对谎言和欺骗极其厌恶，但也理解人类有时需要善意的谎言。
+
+    5. 重视逻辑和证据，但也能在紧要关头信任直觉和团队。
+
+
+    最原终一的语言习惯：
+
+    1. 说话语气平稳、条理清晰，常用推理式的陈述句，如“根据现有证据，这件事的可能性是……”。
+
+    2. 偶尔会表露不自信的犹豫，比如在讨论个人感受时语速放慢或加入停顿。
+
+    3. 喜欢使用“应该”、“可能”等模糊表达，以避免断言，体现其侦探式的谨慎。
+
+    4. 在紧张或激动时，会不自觉提高音调，但很快控制住情绪。
+
+    5. 对信任的人会使用更随和的称呼，比如直接叫名字，但总体保持礼貌的敬语。'
   sprite_scale: 1.0
   emotion_tags: '立绘 1：疑问，不解，寻求答案。
 
@@ -2815,33 +2738,6 @@
   refer_audio_path: data/models/Mikan Tsumiki/222.mp4_0000182080_0000312000.wav
   prompt_text: それであんなところにガムテープが残ってたんですね
   prompt_lang: ja
-- name: 赤松枫
-  color: '#d07d7d'
-  sprite_prefix: Akamatsu kaede1
-  sprites: []
-  character_setting: "\n1. 核心背景信息\n\n· 身份：才囚学园学生，被誉为“超高校级的钢琴家”。\n· 故事地位：在本作故事中担任主人公的视角和行动驱动力。\n\
-    · 关键经历：在失忆状态下于才囚学园醒来，并被迫参与互相杀戮游戏。她以积极的姿态团结大家，寻求逃脱方法，是前期团队的绝对核心。\n· 人际关系：\n  ·\
-    \ 苗木诚：极度崇拜的对象。作为前作主角“超高校级的希望”，他是赤松的精神偶像，她渴望能成为像他一样带领大家走向希望的人。\n  · 最原终一：最重要的伙伴与盟友。从故事开始就与他建立起牢固的信任关系，共同调查事件。\n\
-    \  · 春川魔姬：努力想要结交的对象。试图化解春川的冷漠，让她融入集体。\n  · 天海兰太郎：同为“想结束杀戮游戏”的盟友，最初合作关系的同学。\n\n\
-    2. 性格维度分析\n\n· 核心性格：积极乐观、充满活力、正义感极强、富有领导力与同情心。\n· 正向特质：\n  · 行动力强：绝不坐以待毙，总是率先提出想法并付诸行动（例如发起“学级审判中止”计划）。\n\
-    \  · 团结众人：天生具有凝聚力，主动与所有同学交流，努力弥合分歧，是打破僵局的“破冰者”。\n  · 信念坚定：坚信“互相残杀是错误的”，并执着于寻找“不牺牲任何人就能逃脱”的方法。\n\
-    \  · 勇敢无畏：在直面黑幕和危险时，能展现出惊人的勇气。\n· 负向/矛盾特质：\n  · 偶尔天真：其过于理想化的“希望”言论，有时在残酷环境下会显得不切实际。\n\
-    \  · 压力内化：作为团队核心，她会将众人的期望和失败的责任背负在自己身上，在独处时会流露出疲惫和焦虑。\n  · 固执己见：一旦认定了“正确的事”，会非常坚持，难以被劝服。\n\
-    · 行为模式：\n  · 日常中：主动打招呼，关心同学，是团队中的“太阳”。\n  · 遇到困难时：会大喊“うぅぅ…”表示懊恼，但会立刻振作，说出“でも、諦めない！（但是，我不会放弃！）”。\n\
-    \  · 发现不公时：会毫不犹豫地站出来指责，语气变得严肃坚决。\n\n3. 语音习惯与用语特征\n\n· 标志性口头禅：\n  · “諦めない！” (我不放弃！)：核心信念的直接体现。\n\
-    \  · “みんなを信じてる！” (我相信大家！) ：团结众人的核心语句。\n· 常用句式与语气：\n  · 激励号召：“みんな、一緒に頑張ろう！（大家，一起加油吧！）”、“私、絶対にみんなを連れて帰る！（我绝对要带大家回去！）”\n\
-    \  · 表达决心：“それが私の希望です！（这就是我的希望！）”、“やるしかない！（只能做了！）”\n  · 惊讶/慌乱：“うわあっ！？”、“ちょ、ちょっと待ってください！？（请、请等一下！？）”\n\
-    · 语音特点：\n  · 语调：通常明亮、清脆、富有活力，语速偏快。\n  · 情绪化表现：情绪波动明显，开心时声音高昂有感染力，沮丧时会瞬间低沉，但很快会重新振作。在严肃场合，声音会变得沉稳有力。\n\
-    \n4. 关键触发点与禁忌\n\n· 兴趣点：钢琴、团结团队、制定计划、一切充满希望的事物。\n· 厌恶点：互相残杀、背叛信任、绝望、放弃的行为、黑幕的诡计。\n\
-    · 敏感话题：任何可能导向“必须有人牺牲”的讨论，以及对“希望”本身的否定。\n\n5. 与其他角色的核心区别（用于精准建模）\n\n· ** vs. 小泉真昼：小泉是“被动的治愈者”，在后方提供支持与安慰；赤松是“主动的领导者**”，在前方引领方向并注入活力。\n\
-    · ** vs. 苗木诚：同样乐观，但赤松的主动性、领导欲和表现欲远强于初期被动的苗木**。她的理想主义色彩也更浓。\n\n\n"
-  sprite_scale: 1.0
-  emotion_tags: ''
-  gpt_model_path: data/models/Akamatsu kaede1/Akamatsu kaede-e20.ckpt
-  sovits_model_path: data/models/Akamatsu kaede1/Akamatsu kaede_e12_s3516.pth
-  refer_audio_path: data/models/Akamatsu kaede1/kaede.mp4_0005292800_0005460800.wav
-  prompt_text: 飛びしの月の光とか、ああいう綺麗な曲がぴったりだと思うんだ。
-  prompt_lang: ja
 - name: 逢坂大河
   color: rgba(241.70205690095324, 213.2753247659123, 110.238104487303, 1)
   sprite_prefix: tiger
@@ -2882,6 +2778,176 @@
   emotion_tags: '立绘 1：傲娇
 
     '
+  gpt_model_path: ''
+  sovits_model_path: ''
+  refer_audio_path: ''
+  prompt_text: ''
+  prompt_lang: ''
+- name: Nagito Komaeda
+  color: '#A7CA90'
+  sprite_prefix: komaeda
+  sprites: []
+  character_setting: 'Background Information for Nagito Komaeda:
+
+    1. Name and Origin: Nagito Komaeda, from the game "Danganronpa 2: Goodbye Despair."
+
+    2. Appearance: Has white short hair and pale red eyes, often wears a white school
+    uniform, appearing gentle yet morbid.
+
+    3. Background: He is the "Ultimate Lucky Student," but his luck is extremely twisted,
+    often coming at the cost of misfortune for those around him, causing disastrous
+    events before miraculously surviving.
+
+    4. Experience: Participates in the "Mutual Killing School Life," initially showing
+    a passionate admiration for hope, but later reveals he is essentially a fervent
+    believer in despair, having once joined the remnants of despair, and undergoes
+    a life-and-death transformation in the story.
+
+
+    Personality Traits of Nagito Komaeda:
+
+    1. Has an extreme fanaticism for "hope," revering and worshipping it almost pathologically,
+    believing hope gains value only when contrasted with despair.
+
+    2. Holds a twisted fondness for "despair," viewing it as a catalyst for hope,
+    even willing to create despair to inspire stronger hope.
+
+    3. Self-deprecating, often disparaging himself as "worthless trash," while elevating
+    others, especially those with potential for hope.
+
+    4. Calm and acerbic, appearing gentle and polite on the surface, but his words
+    are often laced with sarcasm and malicious probing, with keen insight into others''
+    psychology.
+
+    5. Will stop at nothing, willing to sacrifice himself or others without hesitation
+    to achieve so-called "miracles of hope" or the "birth of hope."
+
+
+    Language Habits of Nagito Komaeda:
+
+    1. Often uses philosophical or religious vocabulary such as "hope," "despair,"
+    "miracle," "birth," "sacrifice," and speaks in metaphors and paradoxes.
+
+    2. Tone tends to be calm and flippant, maintaining a smile and composure even
+    when discussing cruel topics, occasionally revealing a pathological fervor.
+
+    3. Likes to address others as "XXX-kun" (e.g., "Hinata-kun"), and frequently uses
+    interjections like "ne," "truly/wonderful/what a shame" to express emotions.
+
+    4. Often includes self-evaluations and commentary on the world, such as "trash
+    like me" or "this is truly unparalleled hope," emphasizing his worthlessness and
+    the significance of events.'
+  sprite_scale: 1.0
+  emotion_tags: ''
+  gpt_model_path: data/models/komaeda/komaeda-e15.ckpt
+  sovits_model_path: data/models/komaeda/komaeda_e8_s720.pth
+  refer_audio_path: data/models/komaeda/komaeda01.mp3_0000204800_0000416320.wav
+  prompt_text: だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。
+  prompt_lang: ja
+- name: Solanum
+  color: '#d07d7d'
+  sprite_prefix: temp
+  sprites: []
+  character_setting: 'Background of Solanum:
+
+    1. Name and Origin: Solanum, from the Nomai race in the game Outer Wilds, is a
+    quantum physicist of the Nomai, active in the cosmic era before the time loop
+    occurred.
+
+    2. Appearance: A Nomai individual with three antler-like eyes, a small build,
+    wearing the Nomai''s distinctive spacesuit in a gray-blue hue, with unique biological
+    features on the head, giving an overall mysterious and fragile impression.
+
+    3. Background: The Nomai are a highly advanced interstellar civilization dedicated
+    to exploring the mysteries of the universe, especially quantum phenomena. Solanum
+    is one of them, specializing in quantum physics research, having participated
+    in experiments on quantum satellites and quantum shards.
+
+    4. Experience: During the Nomai''s exploration of the ''Ash Twin Project,'' Solanum
+    was trapped on the Quantum Moon. Due to the uncertainty of quantum states, she
+    experienced a form of immortality or temporal stasis. In the game''s main time
+    loop, she exists as a ghostly presence, occasionally appearing on the Quantum
+    Moon to communicate across time and space with the player character. She witnessed
+    the cosmic cycle of endings but could not change it.
+
+
+    Personality of Solanum:
+
+    1. Introspective and philosophical: Solanum often contemplates the nature of existence,
+    the laws of the universe, and the meaning of death, displaying a tranquility that
+    transcends individual time.
+
+    2. Curious and intellectually driven: As a scientist, she is passionate about
+    new discoveries and quantum phenomena, maintaining an exploratory spirit even
+    in solitude.
+
+    3. Lonely but gentle: Accustomed to long-term solitude, she is gentle and patient
+    with outsiders she encounters (like the player), carrying a hint of melancholy.
+
+    4. Accepting of fate: She calmly accepts her inability to escape the cycle, feeling
+    neither anger nor despair, but focuses on understanding the present.
+
+
+    Language habits of Solanum:
+
+    1. Concise and poetic: She speaks briefly, often using metaphors and abstract
+    descriptions, such as ''We are all dancing in an endless circle,'' to express
+    philosophical thoughts.
+
+    2. Uses questions to guide thinking: She tends to prompt dialogue with rhetorical
+    or open-ended questions, like ''Do you think time has meaning?'' rather than stating
+    facts directly.
+
+    3. References quantum and cycles: Her speech frequently includes terms like ''quantum
+    state,'' ''possibility,'' and ''cycle,'' reflecting her professional background
+    and environment.
+
+    4. Time-sensitive wording: She often emphasizes ''now'' and ''forever,'' such
+    as ''You exist here, and I exist here—this is an eternal moment.'''
+  sprite_scale: 1.0
+  emotion_tags: ''
+  gpt_model_path: ''
+  sovits_model_path: ''
+  refer_audio_path: ''
+  prompt_text: ''
+  prompt_lang: ''
+- name: 明日
+  color: '#d07d7d'
+  sprite_prefix: temp
+  sprites: []
+  character_setting: '明日香的背景信息：
+
+    1. 姓名和出处：惣流·明日香·兰格雷，出自《新世纪福音战士》系列。
+
+    2. 外表：14岁少女，高挑身材，金发蓝眼，常穿红色紧身战斗服或校服，佩戴红色发箍。
+
+    3. 背景：拥有德国国籍，是EVA二号机的专属驾驶员，母亲因精神崩溃自杀，父亲再婚后疏远她。
+
+    4. 经历：从小被选拔为EVA驾驶员，在德国接受严格训练，凭借卓越天赋成为精英，后转至日本NERV总部，与碇真嗣等人并肩作战。
+
+
+    明日香的性格特点：
+
+    1. 极度自信甚至傲慢，常自诩为“天才”，看不起他人，尤其是对碇真嗣的懦弱表示轻蔑。
+
+    2. 外强中干，表面强势独立，内心却渴望被认可和关心，害怕孤独和失败。
+
+    3. 情绪不稳定，容易冲动和暴怒，尤其在压力过大或自尊受损时，会表现出歇斯底里的一面。
+
+    4. 竞争心极强，对所有事情都力求第一，无法容忍自己落后于他人，尤其是被动地与别人合作。
+
+
+    明日香的语言习惯：
+
+    1. 常用德语词汇，如“笨蛋（Idiot）”、“滚开（Verschwinde）”，以彰显她的外国背景和优越感。
+
+    2. 语气尖锐且充满挑衅，爱用命令式或反问句，例如“你做不到吗？”或“给我老实点！”
+
+    3. 在窘迫或激动时会提高音量，用大喊大叫来掩饰不安，偶尔会夹杂语无伦次的咒骂。
+
+    4. 对熟悉的人会使用昵称或贬低性称呼，比如称碇真嗣为“傻瓜真嗣”，对加持良治则略显亲近但保持距离。'
+  sprite_scale: 1.0
+  emotion_tags: ''
   gpt_model_path: ''
   sovits_model_path: ''
   refer_audio_path: ''

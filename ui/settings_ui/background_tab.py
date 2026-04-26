@@ -31,8 +31,10 @@ from PyQt6.QtWidgets import (
 )
 
 from i18n import tr as tr_i18n
+from ui.settings_ui.ai_field_translate import translate_background_fields
+from ui.settings_ui.ai_progress import run_ai_task_with_progress
 from ui.settings_ui.context import SettingsUIContext
-from ui.settings_ui.feedback import feedback_result, message_fail, toast_info
+from ui.settings_ui.feedback import feedback_result, message_fail, toast_info, toast_success
 from ui.settings_ui.utils import path_file_list
 
 
@@ -111,6 +113,13 @@ class BackgroundSettingsTab(QWidget):
         edit_row.addRow(self._f_bg_name, self.bg_name)
         edit_row.addRow(self._f_bg_dir, self.bg_prefix)
         mlay.addLayout(edit_row)
+        tr_row = QHBoxLayout()
+        self._bg_translate_btn = QPushButton(tr_i18n("bg.ai_translate"))
+        self._bg_translate_btn.setToolTip(tr_i18n("bg.tt_ai_translate"))
+        self._bg_translate_btn.clicked.connect(self._on_ai_translate)
+        tr_row.addWidget(self._bg_translate_btn)
+        tr_row.addStretch(1)
+        mlay.addLayout(tr_row)
         self._bg_save_btn = QPushButton(tr_i18n("bg.save"))
         self._bg_save_btn.clicked.connect(self._on_save_group)
         mlay.addWidget(self._bg_save_btn, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -317,6 +326,8 @@ class BackgroundSettingsTab(QWidget):
         self._box_meta.setTitle(tr_i18n("bg.meta_box"))
         self._f_bg_name.setText(tr_i18n("bg.name"))
         self._f_bg_dir.setText(tr_i18n("bg.dir"))
+        self._bg_translate_btn.setText(tr_i18n("bg.ai_translate"))
+        self._bg_translate_btn.setToolTip(tr_i18n("bg.tt_ai_translate"))
         self._bg_save_btn.setText(tr_i18n("bg.save"))
         self._box_imgs.setTitle(tr_i18n("bg.img_box"))
         self.bg_files_display.setPlaceholderText(tr_i18n("bg.ph_no_img"))
@@ -438,6 +449,85 @@ class BackgroundSettingsTab(QWidget):
         self._player.setSource(QUrl.fromLocalFile(str(Path(path).absolute())))
         self._player.play()
 
+    def _on_ai_translate(self) -> None:
+        tags: list[str] = []
+        for r in range(self.bgm_table.rowCount()):
+            it = self.bgm_table.item(r, 4)
+            tags.append(it.text() if it else "")
+        code = str(self._ctx.config_manager.config.system_config.ui_language)
+        bg_name = self.bg_name.text().strip()
+        bg_info = self.bg_info_inputs.toPlainText()
+        bgm_info = self.bgm_info_inputs.toPlainText()
+
+        def work():
+            return translate_background_fields(
+                self._ctx.config_manager,
+                code,
+                bg_name,
+                bg_info,
+                bgm_info,
+                tags,
+            )
+
+        def on_ok(
+            res: tuple[str, str, str, str, list[str]],
+        ) -> None:
+            self._bg_translate_btn.setEnabled(True)
+            err, n, bgi, bgmi, new_tags = res
+            if err == "no_content":
+                message_fail(
+                    self, tr_i18n("bg.msg_translate_title"), tr_i18n("bg.msg_translate_empty")
+                )
+            elif err == "llm_incomplete":
+                message_fail(
+                    self, tr_i18n("bg.msg_translate_title"), tr_i18n("bg.msg_translate_llm")
+                )
+            elif err == "bad_bgm_row_tags":
+                message_fail(
+                    self,
+                    tr_i18n("bg.msg_translate_title"),
+                    tr_i18n("bg.msg_translate_tags_mismatch"),
+                )
+            elif err:
+                message_fail(
+                    self,
+                    tr_i18n("bg.msg_translate_title"),
+                    tr_i18n("bg.msg_translate_fail", detail=err),
+                )
+            else:
+                self.bg_name.setText(n)
+                self.bg_info_inputs.setPlainText(bgi)
+                self.bgm_info_inputs.setPlainText(bgmi)
+                for r in range(len(new_tags)):
+                    it = self.bgm_table.item(r, 4)
+                    if it is None:
+                        it = QTableWidgetItem()
+                        self.bgm_table.setItem(r, 4, it)
+                    it.setText(new_tags[r])
+                toast_success(
+                    self,
+                    tr_i18n("bg.msg_translate_title"),
+                    tr_i18n("bg.toast_translate_ok"),
+                )
+
+        def on_fail(msg: str) -> None:
+            self._bg_translate_btn.setEnabled(True)
+            message_fail(
+                self,
+                tr_i18n("bg.msg_translate_title"),
+                tr_i18n("bg.msg_translate_fail", detail=msg),
+            )
+
+        self._bg_translate_btn.setEnabled(False)
+        run_ai_task_with_progress(
+            self,
+            tr_i18n("common.ai_working_title"),
+            tr_i18n("common.ai_progress_translate"),
+            work,
+            on_ok,
+            on_fail,
+        )
+
     def _on_export(self) -> None:
         msg = self._ctx.background_manager.export_background_file(self._current_bg())
         feedback_result(self, tr_i18n("bg.msg_title"), msg)
@@ -476,7 +566,15 @@ class BackgroundSettingsTab(QWidget):
         self.background_list_changed.emit()
 
     def _on_save_group(self) -> None:
-        msg, _ = self._ctx.background_manager.add_background(self.bg_name.text().strip(), self.bg_prefix.text().strip() or "temp")
+        sel = self.selected_bg_group.currentText().strip()
+        edit_as: str | None = None
+        if not self._is_new_bg(sel):
+            edit_as = sel
+        msg, _ = self._ctx.background_manager.add_background(
+            self.bg_name.text().strip(),
+            self.bg_prefix.text().strip() or "temp",
+            edit_as_name=edit_as,
+        )
         feedback_result(self, tr_i18n("bg.msg_title"), msg)
         n = self.bg_name.text().strip()
         self._refresh_group_combo(n)

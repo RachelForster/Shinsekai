@@ -43,19 +43,35 @@ class BackgroundManager:
         """保存背景配置的便捷方法"""
         self._config_manager.save_background_config()
 
-    def add_background(self, name: str, sprite_prefix: str) -> Tuple[str, List[str]]:
+    def add_background(
+        self, name: str, sprite_prefix: str, edit_as_name: Optional[str] = None
+    ) -> Tuple[str, List[str]]:
         """
         添加或更新背景配置。
-        
+
+        若 edit_as_name 为当前列表中已存在的名字（如 UI 下拉当前选中项），
+        则按该条记录更新；名称栏改为新名字时视为重命名，不会新建另一组背景。
+
         Returns:
             Tuple[str, List[str]]: (操作结果消息, 当前所有背景名称列表)
         """
         current_names = [b.name for b in self._get_background_list()]
         if not name:
             return "名称不能为空！", current_names
-            
-        background_list = self._config_manager.config.background_list # 修正为 background_list
-        existing_background: Optional[Background] = self._config_manager.get_background_by_name(name) # 修正方法
+
+        background_list = self._config_manager.config.background_list
+        if edit_as_name and str(edit_as_name).strip():
+            target = self._config_manager.get_background_by_name(str(edit_as_name).strip())
+            if target is not None:
+                taken = self._config_manager.get_background_by_name(name)
+                if taken is not None and taken is not target:
+                    return f"名称「{name}」已与其他背景组重复！", [b.name for b in background_list]
+                target.name = name
+                target.sprite_prefix = sprite_prefix
+                self._save_background_config()
+                return "背景组已更新！", [b.name for b in background_list]
+
+        existing_background: Optional[Background] = self._config_manager.get_background_by_name(name)
 
         if existing_background is None:
             # 创建新的 Background 实例

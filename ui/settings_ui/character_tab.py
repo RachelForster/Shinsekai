@@ -38,6 +38,8 @@ from ui.settings_ui.feedback import (
     message_fail,
     toast_success,
 )
+from ui.settings_ui.ai_field_translate import translate_character_name_and_tags
+from ui.settings_ui.ai_progress import run_ai_task_with_progress
 from ui.settings_ui.utils import path_file_list
 
 
@@ -132,8 +134,15 @@ class CharacterSettingsTab(QWidget):
         )
         self._ai_btn = QPushButton(tr_i18n("char.ai_write"))
         self._ai_btn.clicked.connect(self._on_ai_help)
+        self._ai_translate_btn = QPushButton(tr_i18n("char.ai_translate"))
+        self._ai_translate_btn.setToolTip(tr_i18n("char.tt_ai_translate"))
+        self._ai_translate_btn.clicked.connect(self._on_ai_translate)
         right_info.addWidget(self.character_setting, stretch=1)
-        right_info.addWidget(self._ai_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        ai_row = QHBoxLayout()
+        ai_row.addWidget(self._ai_btn)
+        ai_row.addWidget(self._ai_translate_btn)
+        ai_row.addStretch(1)
+        right_info.addLayout(ai_row)
         info_row.addLayout(right_info, stretch=1)
         bi.addLayout(info_row)
         lay.addWidget(self._box_info)
@@ -158,15 +167,7 @@ class CharacterSettingsTab(QWidget):
         vf.addRow(self._v_pl, self.prompt_lang)
         lay.addWidget(self._voice_box)
 
-        # --- 4. 保存人物 + 与立绘/标注相关的总反馈 ---
-        self._box_save = QGroupBox(tr_i18n("char.save_box"))
-        bs = QVBoxLayout(self._box_save)
-        self._add_btn = QPushButton(tr_i18n("char.add_save"))
-        self._add_btn.clicked.connect(self._on_add)
-        bs.addWidget(self._add_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-        lay.addWidget(self._box_save)
-
-        # --- 5. 立绘：先上传与缩放，再「画廊+情绪」并列，最下为当前立绘语音 ---
+        # --- 4. 立绘：先上传与缩放，再「画廊+情绪」并列，最下为当前立绘语音 ---（可滚动；保存见底部栏）
         self._h2s = QLabel(tr_i18n("char.h2_sprites"))
         lay.addWidget(self._h2s)
         self._box_sprites = QGroupBox(tr_i18n("char.sprite_box"))
@@ -265,7 +266,27 @@ class CharacterSettingsTab(QWidget):
         bsp.addWidget(self._upload_voice_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(self._box_sprites)
 
-        root.addWidget(scroll)
+        scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        root.addWidget(scroll, 1)
+
+        # --- 底部固定栏：保存人物 ---
+        self._save_footer = QWidget()
+        sfl = QVBoxLayout(self._save_footer)
+        sfl.setContentsMargins(0, 4, 0, 0)
+        sfl.setSpacing(4)
+        foot_sep = QFrame()
+        foot_sep.setFrameShape(QFrame.Shape.HLine)
+        foot_sep.setFrameShadow(QFrame.Shadow.Sunken)
+        sfl.addWidget(foot_sep)
+        self._box_save = QGroupBox(tr_i18n("char.save_box"))
+        bs = QVBoxLayout(self._box_save)
+        self._add_btn = QPushButton(tr_i18n("char.add_save"))
+        self._add_btn.clicked.connect(self._on_add)
+        bs.addWidget(self._add_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        sfl.addWidget(self._box_save)
+        root.addWidget(self._save_footer, 0)
 
         self.selected_character.currentTextChanged.connect(self._on_character_change)
         self._refresh_character_combo()
@@ -291,6 +312,8 @@ class CharacterSettingsTab(QWidget):
         self._f_prefix.setText(tr_i18n("char.sprite_dir"))
         self._setting_lbl.setText(tr_i18n("char.setting_lbl"))
         self._ai_btn.setText(tr_i18n("char.ai_write"))
+        self._ai_translate_btn.setText(tr_i18n("char.ai_translate"))
+        self._ai_translate_btn.setToolTip(tr_i18n("char.tt_ai_translate"))
         self._voice_box.setTitle(tr_i18n("char.voice_box"))
         self._v_gpt.setText(tr_i18n("char.gpt_path"))
         self._v_sov.setText(tr_i18n("char.sovits_path"))
@@ -463,6 +486,10 @@ class CharacterSettingsTab(QWidget):
         self.character_list_changed.emit()
 
     def _on_add(self) -> None:
+        sel = self.selected_character.currentText().strip()
+        edit_as: str | None = None
+        if not self._is_new_char(sel):
+            edit_as = sel
         msg, _ = self._ctx.character_manager.add_character(
             self.char_name.text().strip(),
             self.char_color.text().strip() or "#d07d7d",
@@ -473,6 +500,7 @@ class CharacterSettingsTab(QWidget):
             self.prompt_text.text().strip(),
             self.prompt_lang.text().strip(),
             self.character_setting.toPlainText().strip(),
+            edit_as_name=edit_as,
         )
         feedback_result(self, "人物", msg)
         self._refresh_character_combo(self.char_name.text().strip())
@@ -487,18 +515,97 @@ class CharacterSettingsTab(QWidget):
         self.character_list_changed.emit()
 
     def _on_ai_help(self) -> None:
-        out, setting = self._ctx.character_manager.generate_character_setting(
-            self.char_name.text().strip(),
-            self.character_setting.toPlainText(),
+        name = self.char_name.text().strip()
+        setting_text = self.character_setting.toPlainText()
+
+        def work() -> tuple[str, str]:
+            return self._ctx.character_manager.generate_character_setting(name, setting_text)
+
+        def on_ok(res: tuple[str, str]) -> None:
+            self._ai_btn.setEnabled(True)
+            out, setting = res
+            self.character_setting.setPlainText(setting)
+            if is_failure_message(out):
+                message_fail(self, "AI 帮写", out)
+            else:
+                body = (out or "").strip()
+                if len(body) > 500:
+                    body = body[:500] + "…"
+                toast_success(self, "AI 帮写", body or "已更新角色设定")
+
+        def on_fail(msg: str) -> None:
+            self._ai_btn.setEnabled(True)
+            message_fail(self, "AI 帮写", msg)
+
+        self._ai_btn.setEnabled(False)
+        run_ai_task_with_progress(
+            self,
+            tr_i18n("common.ai_working_title"),
+            tr_i18n("common.ai_progress_write"),
+            work,
+            on_ok,
+            on_fail,
         )
-        self.character_setting.setPlainText(setting)
-        if is_failure_message(out):
-            message_fail(self, "AI 帮写", out)
-        else:
-            body = (out or "").strip()
-            if len(body) > 500:
-                body = body[:500] + "…"
-            toast_success(self, "AI 帮写", body or "已更新角色设定")
+
+    def _on_ai_translate(self) -> None:
+        code = str(self._ctx.config_manager.config.system_config.ui_language)
+        name = self.char_name.text().strip()
+        emo = self.emotion_inputs.toPlainText()
+        cset = self.character_setting.toPlainText()
+
+        def work() -> tuple[str, str, str, str]:
+            return translate_character_name_and_tags(
+                self._ctx.config_manager,
+                code,
+                name,
+                emo,
+                cset,
+            )
+
+        def on_ok(res: tuple[str, str, str, str]) -> None:
+            self._ai_translate_btn.setEnabled(True)
+            err, t_name, t_emo, t_setting = res
+            if err == "no_content":
+                message_fail(
+                    self, tr_i18n("char.msg_translate_title"), tr_i18n("char.msg_translate_empty")
+                )
+            elif err == "llm_incomplete":
+                message_fail(
+                    self, tr_i18n("char.msg_translate_title"), tr_i18n("char.msg_translate_llm")
+                )
+            elif err:
+                message_fail(
+                    self,
+                    tr_i18n("char.msg_translate_title"),
+                    tr_i18n("char.msg_translate_fail", detail=err),
+                )
+            else:
+                self.char_name.setText(t_name)
+                self.emotion_inputs.setPlainText(t_emo)
+                self.character_setting.setPlainText(t_setting)
+                toast_success(
+                    self,
+                    tr_i18n("char.msg_translate_title"),
+                    tr_i18n("char.toast_translate_ok"),
+                )
+
+        def on_fail(msg: str) -> None:
+            self._ai_translate_btn.setEnabled(True)
+            message_fail(
+                self,
+                tr_i18n("char.msg_translate_title"),
+                tr_i18n("char.msg_translate_fail", detail=msg),
+            )
+
+        self._ai_translate_btn.setEnabled(False)
+        run_ai_task_with_progress(
+            self,
+            tr_i18n("common.ai_working_title"),
+            tr_i18n("common.ai_progress_translate"),
+            work,
+            on_ok,
+            on_fail,
+        )
 
     def _pick_sprites(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(

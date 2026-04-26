@@ -1,4 +1,4 @@
-from i18n import tr as tr_i18n
+from i18n import normalize_lang, tr as tr_i18n
 from config.character_manager import ConfigManager
 from core.dialog_tokens import BGM, CG, CHOICE, COT, NARR, SCENE, STAT
 
@@ -10,6 +10,28 @@ TRANSPARENT_BG = "透明背景"
 
 def _T(key: str, **kwargs) -> str:
     return tr_i18n(f"template_gen.{key}", **kwargs)
+
+
+def _target_voice_key(code: str | None) -> str:
+    """将 api.yaml 中的 voice_language 归一成 template_gen.voice_target_* 文案键。"""
+    c = (str(code).strip() if code is not None else "") or "ja"
+    low = c.lower()
+    if low in ("yue", "yue_hk", "cantonese", "cht", "zh_hk"):
+        return "yue"
+    n = normalize_lang(c)
+    if n == "en":
+        return "en"
+    if n == "zh_CN":
+        return "zh"
+    return "ja"
+
+
+def _target_voice_display_name() -> str:
+    try:
+        raw = config_manager.config.system_config.voice_language
+    except Exception:
+        raw = "ja"
+    return _T(f"voice_target_{_target_voice_key(raw)}")
 
 
 class TemplateGenerator:
@@ -32,7 +54,10 @@ class TemplateGenerator:
         names = sep.join(selected_characters) + sep
 
         effect_line = _T("json_line_effect") if use_effect else ""
-        trans_line = _T("json_line_trans") if use_llm_translation else ""
+        vlang = _target_voice_display_name()
+        trans_line = (
+            _T("json_line_trans", target_voice_name=vlang) if use_llm_translation else ""
+        )
         template = _T("preamble", names=names) + _T("json_head_top")
         template += _T("json_speech_line", example=_T("json_speech_example"))
         if use_effect:
@@ -113,7 +138,7 @@ class TemplateGenerator:
         if use_cg:
             REQUIREMENTS.append(_T("r_cg", **_toks))
         if use_llm_translation:
-            REQUIREMENTS.append(_T("r_translate"))
+            REQUIREMENTS.append(_T("r_translate", target_voice_name=vlang))
         if use_effect:
             REQUIREMENTS.append(_T("r_effect"))
         if use_cot:
