@@ -39,8 +39,8 @@ def _clear_stacked(sw) -> None:
 
 class MainWindow(QMainWindow):
     """
-    左侧菜单：前 4 个为 topMenu（Home/Widgets/New/Save），中 2 个为 bottomMenu（Share/Adjustments），
-    Exit 关闭窗口。与 Gradio 顺序一致：API、人物、背景、模板、音乐、工具。
+    左侧菜单：前 4 个为 topMenu，中 2 个为 bottomMenu（Share/Adjustments），
+    与 Gradio 顺序一致：API、人物、背景、模板、音乐、工具。关闭请用窗口标题栏。
     """
 
     def __init__(
@@ -62,7 +62,7 @@ class MainWindow(QMainWindow):
         Settings.ENABLE_CUSTOM_TITLE_BAR = True
 
         self.setWindowTitle("新世界程序 - 设置")
-        self.ui.titleRightInfo.setText("API · 人物 · 背景 · 模板 · 音乐 · 小工具")
+        self.ui.titleRightInfo.setText("新世界程序")
 
         w, h, fp, _ = settings_window_metrics(self._ctx.config_manager)
         if width is not None and height is not None:
@@ -114,6 +114,7 @@ class MainWindow(QMainWindow):
         self.ui.btn_share.setText("音乐翻唱")
         self.ui.btn_adjustments.setText("小工具")
         self.ui.btn_more.hide()
+        self.ui.version.setText("v1.6.0")
 
         sw = self.ui.stackedWidget
         _clear_stacked(sw)
@@ -141,8 +142,6 @@ class MainWindow(QMainWindow):
 
         for btn, idx in self._nav_buttons:
             btn.clicked.connect(self._make_page_handler(idx))
-
-        self.ui.btn_exit.clicked.connect(self.close)
 
         use_custom = True
         theme_path = _SETTINGS_UI_DIR / "themes" / "py_dracula_dark.qss"

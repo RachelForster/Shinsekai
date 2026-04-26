@@ -551,7 +551,7 @@ class Ui_MainWindow(object):
         self.appMargins = QVBoxLayout(self.styleSheet)
         self.appMargins.setSpacing(0)
         self.appMargins.setObjectName(u"appMargins")
-        self.appMargins.setContentsMargins(10, 10, 10, 10)
+        self.appMargins.setContentsMargins(0, 0, 0, 0)
         self.bgApp = QFrame(self.styleSheet)
         self.bgApp.setObjectName(u"bgApp")
         self.bgApp.setStyleSheet(u"")
@@ -698,19 +698,6 @@ class Ui_MainWindow(object):
         self.btn_save.setStyleSheet(u"background-image: url(:/icons/images/icons/cil-save.png)")
 
         self.verticalLayout_8.addWidget(self.btn_save)
-
-        self.btn_exit = QPushButton(self.topMenu)
-        self.btn_exit.setObjectName(u"btn_exit")
-        sizePolicy.setHeightForWidth(self.btn_exit.sizePolicy().hasHeightForWidth())
-        self.btn_exit.setSizePolicy(sizePolicy)
-        self.btn_exit.setMinimumSize(QSize(0, 45))
-        self.btn_exit.setFont(font)
-        self.btn_exit.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_exit.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-        self.btn_exit.setStyleSheet(u"background-image: url(:/icons/images/icons/cil-x.png);")
-
-        self.verticalLayout_8.addWidget(self.btn_exit)
-
 
         self.verticalMenuLayout.addWidget(self.topMenu, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -1538,38 +1525,37 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"MainWindow", None))
-        self.titleLeftApp.setText(QCoreApplication.translate("MainWindow", u"PyDracula", None))
+        self.titleLeftApp.setText(QCoreApplication.translate("MainWindow", u"新世界程序", None))
         self.titleLeftDescription.setText(QCoreApplication.translate("MainWindow", u"Modern GUI / Flat Style", None))
-        self.toggleButton.setText(QCoreApplication.translate("MainWindow", u"Hide", None))
+        self.toggleButton.setText("")
         self.btn_home.setText(QCoreApplication.translate("MainWindow", u"Home", None))
         self.btn_widgets.setText(QCoreApplication.translate("MainWindow", u"Widgets", None))
         self.btn_new.setText(QCoreApplication.translate("MainWindow", u"New", None))
         self.btn_save.setText(QCoreApplication.translate("MainWindow", u"Save", None))
-        self.btn_exit.setText(QCoreApplication.translate("MainWindow", u"Exit", None))
-        self.toggleLeftBox.setText(QCoreApplication.translate("MainWindow", u"Left Box", None))
-        self.extraLabel.setText(QCoreApplication.translate("MainWindow", u"Left Box", None))
+        self.toggleLeftBox.setText(QCoreApplication.translate("MainWindow", u"小工具", None))
+        self.extraLabel.setText(QCoreApplication.translate("MainWindow", u"小工具", None))
 #if QT_CONFIG(tooltip)
-        self.extraCloseColumnBtn.setToolTip(QCoreApplication.translate("MainWindow", u"Close left box", None))
+        self.extraCloseColumnBtn.setToolTip(QCoreApplication.translate("MainWindow", u"关闭小工具", None))
 #endif // QT_CONFIG(tooltip)
         self.extraCloseColumnBtn.setText("")
-        self.btn_share.setText(QCoreApplication.translate("MainWindow", u"Share", None))
-        self.btn_adjustments.setText(QCoreApplication.translate("MainWindow", u"Adjustments", None))
+        self.btn_share.setText(QCoreApplication.translate("MainWindow", u"音乐翻唱", None))
+        self.btn_adjustments.setText(QCoreApplication.translate("MainWindow", u"小工具", None))
         self.btn_more.setText(QCoreApplication.translate("MainWindow", u"More", None))
-        self.textEdit.setHtml(QCoreApplication.translate("MainWindow", u"<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-"<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\n"
-"p, li { white-space: pre-wrap; }\n"
-"</style></head><body style=\" font-family:'Segoe UI'; font-size:10pt; font-weight:400; font-style:normal;\">\n"
-"<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:12pt; font-weight:600; color:#ff79c6;\">PyDracula</span></p>\n"
-"<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" color:#ffffff;\">An interface created using Python and PySide (support for PyQt), and with colors based on the Dracula theme created by Zeno Rocha.</span></p>\n"
-"<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-inde"
-                        "nt:0; text-indent:0px;\"><span style=\" color:#ffffff;\">MIT License</span></p>\n"
-"<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" color:#bd93f9;\">Created by: Wanderson M. Pimenta</span></p>\n"
-"<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:12pt; font-weight:600; color:#ff79c6;\">Convert UI</span></p>\n"
-"<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:9pt; color:#ffffff;\">pyside6-uic main.ui &gt; ui_main.py</span></p>\n"
-"<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:12pt; font-weight:600; color:#ff79c6;\">Convert QRC</span></p>\n"
-"<p align=\"center\" "
-                        "style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:9pt; color:#ffffff;\">pyside6-rcc resources.qrc -o resources_rc.py</span></p></body></html>", None))
-        self.titleRightInfo.setText(QCoreApplication.translate("MainWindow", u"PyDracula APP - Theme with colors based on Dracula for Python.", None))
+#         self.textEdit.setHtml(QCoreApplication.translate("MainWindow", u"<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
+# "<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\n"
+# "p, li { white-space: pre-wrap; }\n"
+# "</style></head><body style=\" font-family:'Segoe UI'; font-size:10pt; font-weight:400; font-style:normal;\">\n"
+# "<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:12pt; font-weight:600; color:#ff79c6;\">PyDracula</span></p>\n"
+# "<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" color:#ffffff;\">An interface created using Python and PySide (support for PyQt), and with colors based on the Dracula theme created by Zeno Rocha.</span></p>\n"
+# "<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-inde"
+#                         "nt:0; text-indent:0px;\"><span style=\" color:#ffffff;\">MIT License</span></p>\n"
+# "<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" color:#bd93f9;\">Created by: Wanderson M. Pimenta</span></p>\n"
+# "<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:12pt; font-weight:600; color:#ff79c6;\">Convert UI</span></p>\n"
+# "<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:9pt; color:#ffffff;\">pyside6-uic main.ui &gt; ui_main.py</span></p>\n"
+# "<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:12pt; font-weight:600; color:#ff79c6;\">Convert QRC</span></p>\n"
+# "<p align=\"center\" "
+#                         "style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:9pt; color:#ffffff;\">pyside6-rcc resources.qrc -o resources_rc.py</span></p></body></html>", None))
+        self.titleRightInfo.setText(QCoreApplication.translate("MainWindow", u"新世界程序 - AI RPG 工具", None))
 #if QT_CONFIG(tooltip)
         self.settingsTopBtn.setToolTip(QCoreApplication.translate("MainWindow", u"Settings", None))
 #endif // QT_CONFIG(tooltip)
@@ -1656,7 +1642,7 @@ class Ui_MainWindow(object):
         self.btn_message.setText(QCoreApplication.translate("MainWindow", u"Message", None))
         self.btn_print.setText(QCoreApplication.translate("MainWindow", u"Print", None))
         self.btn_logout.setText(QCoreApplication.translate("MainWindow", u"Logout", None))
-        self.creditsLabel.setText(QCoreApplication.translate("MainWindow", u"By: Wanderson M. Pimenta", None))
-        self.version.setText(QCoreApplication.translate("MainWindow", u"v1.0.3", None))
+        self.creditsLabel.setText(QCoreApplication.translate("MainWindow", u"By: 不二咲爱笑", None))
+        self.version.setText(QCoreApplication.translate("MainWindow", u"v1.6.0", None))
     # retranslateUi
 

@@ -40,9 +40,12 @@ QToolTip {
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////
 Bg App */
+#styleSheet {
+	background-color: #f8f8f2;
+}
+
 #bgApp {	
 	background-color: #f8f8f2;
-	border: 1px solid #CCC;
     color: #44475a;
 }
 
@@ -529,4 +532,16 @@ Button */
 	border: 2px solid #ff79c6;
 }
 
+/* 设置 — API 标签页 */
+QLabel#apiSettingsSubtitle {
+	color: #6272a4;
+	font-size: 11pt;
+}
+QLabel#apiSectionHint {
+	color: #6272a4;
+	font-size: 10pt;
+}
+QFrame#apiTabFooter {
+	background-color: #f0f0f0;
+}
 

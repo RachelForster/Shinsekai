@@ -224,8 +224,9 @@ class UIFunctions:
     # ///////////////////////////////////////////////////////////////
     def theme(self, file, useCustomTheme):
         if useCustomTheme:
-            str = open(file, 'r').read()
-            self.ui.styleSheet.setStyleSheet(str)
+            with open(file, encoding="utf-8") as f:
+                qss = f.read()
+            self.ui.styleSheet.setStyleSheet(qss)
 
     # START - GUI DEFINITIONS
     # ///////////////////////////////////////////////////////////////

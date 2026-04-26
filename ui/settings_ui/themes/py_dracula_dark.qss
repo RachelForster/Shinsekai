@@ -40,9 +40,13 @@ QToolTip {
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////
 Bg App */
-#bgApp {	
+/* 根与 #bgApp 同色：无边框 + 透明背景时，边距区不会透出桌面 */
+#styleSheet {
 	background-color: rgb(40, 44, 52);
-	border: 1px solid rgb(44, 49, 58);
+}
+
+#bgApp {
+	background-color: rgb(40, 44, 52);
 }
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -514,5 +518,16 @@ Button */
 	border: 2px solid rgb(43, 50, 61);
 }
 
-
+/* 设置 — API 标签页 */
+QLabel#apiSettingsSubtitle {
+	color: rgb(189, 147, 249);
+	font-size: 11pt;
+}
+QLabel#apiSectionHint {
+	color: rgb(150, 160, 180);
+	font-size: 10pt;
+}
+QFrame#apiTabFooter {
+	background-color: rgba(40, 44, 52, 0.96);
+}
 

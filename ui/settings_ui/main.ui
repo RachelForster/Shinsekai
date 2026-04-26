@@ -542,16 +542,16 @@ Button */
      <number>0</number>
     </property>
     <property name="leftMargin">
-     <number>10</number>
+     <number>0</number>
     </property>
     <property name="topMargin">
-     <number>10</number>
+     <number>0</number>
     </property>
     <property name="rightMargin">
-     <number>10</number>
+     <number>0</number>
     </property>
     <property name="bottomMargin">
-     <number>10</number>
+     <number>0</number>
     </property>
     <item>
      <widget class="QFrame" name="bgApp">
@@ -682,7 +682,7 @@ Button */
               </font>
              </property>
              <property name="text">
-              <string>PyDracula</string>
+              <string>新世界程序</string>
              </property>
              <property name="alignment">
               <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
@@ -806,7 +806,7 @@ Button */
                    <string notr="true">background-image: url(:/icons/images/icons/icon_menu.png);</string>
                   </property>
                   <property name="text">
-                   <string>Hide</string>
+                   <string/>
                   </property>
                  </widget>
                 </item>
@@ -978,42 +978,6 @@ Button */
                   </property>
                   <property name="text">
                    <string>Save</string>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QPushButton" name="btn_exit">
-                  <property name="sizePolicy">
-                   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-                    <horstretch>0</horstretch>
-                    <verstretch>0</verstretch>
-                   </sizepolicy>
-                  </property>
-                  <property name="minimumSize">
-                   <size>
-                    <width>0</width>
-                    <height>45</height>
-                   </size>
-                  </property>
-                  <property name="font">
-                   <font>
-                    <family>Segoe UI</family>
-                    <pointsize>10</pointsize>
-                    <italic>false</italic>
-                    <bold>false</bold>
-                   </font>
-                  </property>
-                  <property name="cursor">
-                   <cursorShape>PointingHandCursor</cursorShape>
-                  </property>
-                  <property name="layoutDirection">
-                   <enum>Qt::LeftToRight</enum>
-                  </property>
-                  <property name="styleSheet">
-                   <string notr="true">background-image: url(:/icons/images/icons/cil-x.png);</string>
-                  </property>
-                  <property name="text">
-                   <string>Exit</string>
                   </property>
                  </widget>
                 </item>
@@ -3000,7 +2964,7 @@ background-repeat: no-repeat;</string>
                    </font>
                   </property>
                   <property name="text">
-                   <string>By: Wanderson M. Pimenta</string>
+                   <string>By: 不二咲爱笑</string>
                   </property>
                   <property name="alignment">
                    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
@@ -3010,7 +2974,7 @@ background-repeat: no-repeat;</string>
                 <item>
                  <widget class="QLabel" name="version">
                   <property name="text">
-                   <string>v1.0.3</string>
+                   <string>v1.6.0</string>
                   </property>
                   <property name="alignment">
                    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
