@@ -12,7 +12,7 @@ from PyQt6.QtCore import *
 from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 
-from . resources_rc import *
+from ui.settings_ui.modules.resources_rc import *
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):

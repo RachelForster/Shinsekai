@@ -34,9 +34,9 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QPushButton, QSizeGrip
 
-from widgets.custom_grips.custom_grips import CustomGrip
+from ui.settings_ui.widgets.custom_grips.custom_grips import CustomGrip
 
-from .app_settings import Settings
+from ui.settings_ui.modules.app_settings import Settings
 
 
 class UIFunctions:

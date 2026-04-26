@@ -3,9 +3,8 @@ import shutil
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
 from config.schema import Character, Sprite
-from config.config_manager import ConfigManager 
-import gradio as gr 
-import yaml 
+from config.config_manager import ConfigManager
+import yaml
 
 UPLOAD_DIR = "data/sprite"
 VOICE_DIR = "data/voices"

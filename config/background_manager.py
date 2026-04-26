@@ -6,8 +6,10 @@ from config.schema import Background, Sprite # 确保导入了 Background 和 Sp
 from config.config_manager import ConfigManager
 import tools.file_util as fu
 import pandas as pd
-import gradio as gr 
-import yaml 
+import yaml
+
+# 不在此模块顶层 import gradio：设置界面（webui_qt）会 import 本类，Gradio 会拖入巨大依赖链且
+# PyInstaller 需为各子包补数据文件。旧 Gradio WebUI 仍通过本类；仅 handle_bgm_selection 在 Gradio 下使用。
 
 BACKGROUND_CONFIG_PATH = ConfigManager._BACKGOUND_CONFIG_PATH # 更正为背景配置路径
 BACKGROUND_UPLOAD_DIR = "data/backgrounds"
@@ -605,12 +607,14 @@ class BackgroundManager:
             
         return final_message, new_dataframe, remaining_tags
     
-    def handle_bgm_selection(self, evt: gr.SelectData, bgm_dataframe: pd.DataFrame):
+    def handle_bgm_selection(self, evt: Any, bgm_dataframe: pd.DataFrame):
         """
-        处理 Dataframe 行选择事件，返回选中行的路径和 Audio 组件的更新。
+        处理 Dataframe 行选择事件，返回选中行的路径和 Audio 组件的更新（仅 Gradio WebUI 使用）。
         
+        evt 在 Gradio 下为 gr.SelectData；Qt 设置端不调用本方法。
+
         Returns:
-            Tuple[str, gr.Audio.update]: (操作消息, Audio 组件更新对象)
+            Tuple[str, str]: (操作消息, 供 Audio 播放的本地路径)
         """
         if evt is None or evt.index is None:
             return "请点击 Dataframe 中的一行。", ""

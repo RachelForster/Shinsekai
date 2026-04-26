@@ -10,15 +10,15 @@ from collections.abc import Callable
 from pathlib import Path
 
 _SETTINGS_UI_DIR = Path(__file__).resolve().parent
-if str(_SETTINGS_UI_DIR) not in sys.path:
-    sys.path.insert(0, str(_SETTINGS_UI_DIR))
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 
-# Dracula 模块（需将 settings_ui 目录加入 path）
-from modules import *
+# Dracula 壳层：需与 modules/__init__ 的星号导出一致（含 Qt 与 UIFunctions 等）。勿用 `from
+# modules import *`：那依赖把 settings_ui 加进 sys.path 的顶层名 `modules`，PyInstaller
+# 分析不到，运行时报 No module named 'modules'。
+from ui.settings_ui.modules import *  # noqa: F403
 
 from ui.settings_ui.api_tab import ApiSettingsTab
 from ui.settings_ui.background_tab import BackgroundSettingsTab
@@ -85,7 +85,7 @@ class MainWindow(QMainWindow):
         self._character = CharacterSettingsTab(self._ctx)
         self._background = BackgroundSettingsTab(self._ctx)
         self._template = TemplateSettingsTab(self._ctx)
-        self._music = MusicCoverSettingsTab(self._ctx)
+        # self._music = MusicCoverSettingsTab(self._ctx)
         self._tools = ToolsSettingsTab(self._ctx)
 
         self._pages: list[QWidget] = [
@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
             self._character,
             self._background,
             self._template,
-            self._music,
+            # self._music,
             self._tools,
         ]
 
@@ -102,8 +102,8 @@ class MainWindow(QMainWindow):
             (self.ui.btn_widgets, 1),
             (self.ui.btn_new, 2),
             (self.ui.btn_save, 3),
-            (self.ui.btn_share, 4),
-            (self.ui.btn_adjustments, 5),
+            # (self.ui.btn_share, 4),
+            (self.ui.btn_adjustments, 4),
         ]
 
         self.ui.btn_more.hide()
@@ -159,9 +159,10 @@ class MainWindow(QMainWindow):
         self.ui.btn_widgets.setText(tr("nav.character"))
         self.ui.btn_new.setText(tr("nav.background"))
         self.ui.btn_save.setText(tr("nav.template"))
+        self.ui.btn_share.hide()
         self.ui.btn_share.setText(tr("nav.music"))
         self.ui.btn_adjustments.setText(tr("nav.tools"))
-        for t in (self._api, self._character, self._background, self._template, self._music, self._tools):
+        for t in (self._api, self._character, self._background, self._template, self._tools):
             if hasattr(t, "apply_i18n"):
                 t.apply_i18n()
 

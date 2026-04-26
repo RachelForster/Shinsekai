@@ -288,6 +288,7 @@
   "common": {
     "yes": "是",
     "no": "否",
+    "msg_qtmm_unavailable": "无法播放：本环境未加载 PyQt6 多媒体 (QtMultimedia)。合并多包 (MERGE) 时常见。可改「分两次、不打 --merge 单独打 Settings 与主程序」整包同目录发布，或在本机用 Python 运行。",
     "ai_working_title": "AI 处理中",
     "ai_progress_write": "正在生成角色设定，请稍候…",
     "ai_progress_translate": "正在翻译，请稍候…"

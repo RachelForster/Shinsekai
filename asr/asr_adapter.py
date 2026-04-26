@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import json
 import os
 import sys
 import threading
@@ -146,11 +147,9 @@ class RealtimeSTTAdapter(ASRAdapter):
             print("RealtimeSTT: 恢复录制...")
             self._recorder.start_recording()
             self._is_running = True
-import json
-import pyaudio
-from vosk import Model, KaldiRecognizer
+
 # Vosk 模型的路径（请根据实际下载的模型路径修改）
-VOSK_MODEL_PATH = "./assets/system/models/vosk-model-small-cn-0.22" 
+VOSK_MODEL_PATH = "./assets/system/models/vosk-model-small-cn-0.22"
 
 class VoskAdapter(ASRAdapter):
     """
@@ -158,7 +157,12 @@ class VoskAdapter(ASRAdapter):
     将 Vosk 的流式处理逻辑映射到 ASRAdapter 接口。
     """
     def __init__(self, language: str, callback: TranscriptionCallback, model_path: str = VOSK_MODEL_PATH):
-        
+        # 禁止在模块顶层 import vosk：会立刻执行其 open_dll/add_dll_directory，冻结时路径常无效。
+        import pyaudio
+        from vosk import Model, KaldiRecognizer  # noqa: E402
+
+        self._pyaudio = pyaudio
+        self._KaldiRecognizer = KaldiRecognizer
         super().__init__(language, callback)
         self.model_path = Path(model_path).absolute().as_posix()
         self._is_running = False
@@ -171,7 +175,9 @@ class VoskAdapter(ASRAdapter):
         # 音频配置
         self.samplerate = 16000
         self.chunk_size = 8192
+
         
+
         try:
             self.model = Model(model_path=self.model_path)
         except Exception as e:
@@ -182,6 +188,8 @@ class VoskAdapter(ASRAdapter):
         """在独立线程中运行的 Vosk 识别循环。"""
         if self.model is None:
             return
+        pyaudio = self._pyaudio
+        KaldiRecognizer = self._KaldiRecognizer
 
         p = pyaudio.PyAudio()
         stream = p.open(format=pyaudio.paInt16,

@@ -1,7 +1,6 @@
 numpy
 pygame
 opencv_python
-gradio
 PyQt6
 openai
 opencc-python-reimplemented
@@ -13,3 +12,7 @@ rembg
 google-genai
 tiktoken
 pyaudio
+anthropic
+PySide6
+pyyaml
+vosk

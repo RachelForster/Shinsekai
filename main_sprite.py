@@ -3,10 +3,26 @@ import os
 from pathlib import Path
 
 import sys
+
+# 打包后须在任何会触发 ConfigManager 的 import 之前设发行根 cwd（同 webui_qt）
+if getattr(sys, "frozen", False):
+    try:
+        _rel = Path(sys.executable).resolve().parent.parent
+        os.environ["EASYAI_PROJECT_ROOT"] = str(_rel)
+        os.chdir(_rel)
+    except OSError:
+        pass
+
 current_script = Path(__file__).resolve()
 project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
+
+if getattr(sys, "frozen", False):
+    from core.frozen_log import init_frozen_stdio
+
+    init_frozen_stdio("main_sprite")
+
 import llm.tools.character_tools
 from llm.llm_manager import LLMManager,LLMAdapterFactory
 from llm.history_manager import HistoryManager

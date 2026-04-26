@@ -7,7 +7,6 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QSize, QUrl, pyqtSignal
 from PyQt6.QtGui import QIcon, QPixmap
-from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -40,6 +39,7 @@ from ui.settings_ui.feedback import (
 )
 from ui.settings_ui.ai_field_translate import translate_character_name_and_tags
 from ui.settings_ui.ai_progress import run_ai_task_with_progress
+from ui.settings_ui.qt_mm import try_create_pair
 from ui.settings_ui.utils import path_file_list
 
 
@@ -49,9 +49,7 @@ class CharacterSettingsTab(QWidget):
     def __init__(self, ctx: SettingsUIContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._ctx = ctx
-        self._player = QMediaPlayer(self)
-        self._audio = QAudioOutput(self)
-        self._player.setAudioOutput(self._audio)
+        self._player, self._audio = try_create_pair(self)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -669,6 +667,11 @@ class CharacterSettingsTab(QWidget):
         p = self.sprite_voice_path.text().strip()
         if not p or not Path(p).is_file():
             message_fail(self, "播放", "无有效语音文件")
+            return
+        if not self._player:
+            message_fail(
+                self, "播放", tr_i18n("common.msg_qtmm_unavailable")
+            )
             return
         self._player.setSource(QUrl.fromLocalFile(Path(p).resolve().as_posix()))
         self._player.play()

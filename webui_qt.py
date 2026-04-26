@@ -4,10 +4,37 @@ import os
 import sys
 from pathlib import Path
 
+# 打包后：必须在任何会触发 ConfigManager / 读 ./data 的 import 之前切到「发行根」。
+# 否则从资源管理器双击时 cwd 常为 exe 所在目录（.../SettingsUI/），模块级
+# tools.generate_sprites 里 ConfigManager() 会先把 data/ 解析到 .../SettingsUI/data/，
+# 而 main() 里再 chdir 后保存会写到发行根 data/，出现读、写两套目录。
+if getattr(sys, "frozen", False):
+    try:
+        _release = Path(sys.executable).resolve().parent.parent
+        os.environ["EASYAI_PROJECT_ROOT"] = str(_release)
+        os.chdir(_release)
+        # MERGE 多包时公共 DLL/同路径资源在列表中**先**打的 exe 目录（本仓库为 main_sprite）；
+        # 仅打 Settings 时此处目录不存在。否则 Settings 进程必须在 import QtMultimedia 前
+        # 能访问 main_sprite/_internal，否则会 ModuleNotFoundError / 缺二进位。
+        _ms = _release / "main_sprite" / "_internal"
+        if _ms.is_dir():
+            p = str(_ms.resolve())
+            if p not in sys.path:
+                sys.path.insert(0, p)
+    except OSError:
+        pass
+
 current_script = Path(__file__).resolve()
 project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
+
+# QtMultimedia 在 ui.settings_ui 内惰性导入，勿在此顶层 import（MERGE 下 Settings 包常缺此子模块）
+
+if getattr(sys, "frozen", False):
+    from core.frozen_log import init_frozen_stdio
+
+    init_frozen_stdio("SettingsUI")
 
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QApplication
@@ -19,15 +46,7 @@ from ui.settings_ui import create_default_context
 from ui.settings_ui.window import FONT_FAMILY_MS_YAHEI, SettingsWindow, settings_window_metrics
 
 def main() -> None:
-    # 打包（PyInstaller onedir）：可执行文件在 dist/<发行根>/SettingsUI/ 下，与 main_sprite/ 平级，cwd 需为发行根目录以便 ./data 等相对路径与 launch_chat 一致
-    if getattr(sys, "frozen", False):
-        try:
-            rel = Path(sys.executable).resolve().parent.parent
-            os.environ["EASYAI_PROJECT_ROOT"] = str(rel)
-            os.chdir(rel)
-        except OSError:
-            pass
-
+    # 冻结时发行根与 cwd 已在模块最上方设置，勿重复 chdir，以免与已初始化的单例不一致
     init_i18n(ConfigManager().config.system_config.ui_language)
     app = QApplication(sys.argv)
     app.setStyleSheet(load_pydracula_dark())

@@ -8,7 +8,6 @@ from pathlib import Path
 import pandas as pd
 from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QPixmap
-from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -35,6 +34,7 @@ from ui.settings_ui.ai_field_translate import translate_background_fields
 from ui.settings_ui.ai_progress import run_ai_task_with_progress
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import feedback_result, message_fail, toast_info, toast_success
+from ui.settings_ui.qt_mm import try_create_pair
 from ui.settings_ui.utils import path_file_list
 
 
@@ -44,9 +44,7 @@ class BackgroundSettingsTab(QWidget):
     def __init__(self, ctx: SettingsUIContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._ctx = ctx
-        self._player = QMediaPlayer(self)
-        self._audio = QAudioOutput(self)
-        self._player.setAudioOutput(self._audio)
+        self._player, self._audio = try_create_pair(self)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -439,6 +437,11 @@ class BackgroundSettingsTab(QWidget):
         if not path or not Path(path).is_file():
             message_fail(
                 self, tr_i18n("bg.msg_title_bgm"), tr_i18n("bg.msg_missing", path=path)
+            )
+            return
+        if not self._player:
+            message_fail(
+                self, tr_i18n("bg.msg_title_bgm"), tr_i18n("common.msg_qtmm_unavailable")
             )
             return
         toast_info(

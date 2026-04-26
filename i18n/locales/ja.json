@@ -288,6 +288,7 @@
   "common": {
     "yes": "はい",
     "no": "いいえ",
+    "msg_qtmm_unavailable": "再生できません: PyQt6.QtMultimedia が利用できません。PyInstaller MERGE ビルドでよく起きます。--merge なしで Settings と本編を別 onedir にするか、通常の venv から起動してください。",
     "ai_working_title": "AI 処理中",
     "ai_progress_write": "キャラ設定を生成しています…",
     "ai_progress_translate": "翻訳しています…"

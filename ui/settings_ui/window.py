@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -42,7 +43,9 @@ from ui.settings_ui.context import SettingsUIContext
 
 
 def create_default_context() -> SettingsUIContext:
-    project_root = Path(__file__).resolve().parent.parent.parent
+    # 打包运行：webui_qt 已设 EASYAI_PROJECT_ROOT 与 cwd=发行根；勿用 __file__ 推仓库根（冻结时在 _internal 下）
+    er = os.environ.get("EASYAI_PROJECT_ROOT")
+    project_root = Path(er).resolve() if er else Path(__file__).resolve().parent.parent.parent
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     return SettingsUIContext(
