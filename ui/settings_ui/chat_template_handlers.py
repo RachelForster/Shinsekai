@@ -13,6 +13,18 @@ from ui.settings_ui.context import SettingsUIContext
 _main_chat_process = None
 
 
+def _release_root() -> Path:
+    """
+    项目根 / 发布根：开发时为仓库根；打包并运行设置界面时为 dist 下与 SettingsUI、main_sprite 同级的发行根
+   （见 scripts/build_settings_exe.py 的目录结构）。
+    """
+    if os.environ.get("EASYAI_PROJECT_ROOT"):
+        return Path(os.environ["EASYAI_PROJECT_ROOT"])
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
+
+
 def launch_chat(
     ctx: SettingsUIContext,
     template: str,
@@ -40,20 +52,37 @@ def launch_chat(
             template_hash = hashlib.md5(template.encode("utf-8")).hexdigest()
             history_file_path = Path(history_file) if history_file else Path(f"{ctx.history_dir}/{template_hash}.json")
             t2i = "ComfyUI" if use_cg == "是" else ""
-            python_path = sys.executable
-            _main_chat_process = subprocess.Popen(
-                [
-                    python_path,
-                    "main_sprite.py",
-                    "--template=_temp",
-                    f"--voice_mode={voice_mode}",
-                    f"--init_sprite_path={init_path}",
-                    f"--history={history_file_path.resolve()}",
-                    f"--bg={selected_bg}",
-                    f"--t2i={t2i}",
-                    f"--room_id={room_id}",
-                ]
-            )
+            root = _release_root()
+            args = [
+                "--template=_temp",
+                f"--voice_mode={voice_mode}",
+                f"--init_sprite_path={init_path}",
+                f"--history={history_file_path.resolve()}",
+                f"--bg={selected_bg}",
+                f"--t2i={t2i}",
+                f"--room_id={room_id}",
+            ]
+            if getattr(sys, "frozen", False):
+                ms = root / "main_sprite" / "main_sprite.exe"
+                flat = root / "main_sprite.exe"
+                if ms.is_file():
+                    _main_chat_process = subprocess.Popen(
+                        [str(ms)] + args, cwd=str(root)
+                    )
+                elif flat.is_file():
+                    _main_chat_process = subprocess.Popen(
+                        [str(flat)] + args, cwd=str(root)
+                    )
+                else:
+                    return (
+                        "启动失败: 未找到 main_sprite.exe（"
+                        f"已检查 {ms} 与 {flat}）。请按 packaging 脚本的发行目录结构部署。"
+                    )
+            else:
+                _main_chat_process = subprocess.Popen(
+                    [sys.executable, str(root / "main_sprite.py")] + args,
+                    cwd=str(root),
+                )
             return "聊天进程已启动！PID: " + str(_main_chat_process.pid)
         return "进程已经在运行中！PID: " + str(_main_chat_process.pid)
     except Exception as e:

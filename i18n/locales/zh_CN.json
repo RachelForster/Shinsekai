@@ -70,6 +70,8 @@
       "link1": "GPT-SOVITS github 源地址",
       "link2": "点击下载 GPT-SOVITS 整合包 (ModelScope)",
       "link3": "50 系显卡整合包 (ModelScope)",
+      "link4": "Genie TTS（适用于 CPU 的轻量推理，原项目）",
+      "link5": "下载 Genie TTS Server 整合包（ModelScope .7z）",
       "help": "解压后请将目录填到「TTS引擎 服务启动路径」。GPT SoVITS 建议至少 11GB 磁盘，Genie TTS 约 4GB。"
     },
     "msg": {

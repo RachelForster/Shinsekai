@@ -274,6 +274,12 @@ class ApiSettingsTab(QWidget):
                 "api.links.link3",
                 "https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604-nvidia50.7z",
             ),
+
+            ("api.links.link4", "https://github.com/High-Logic/Genie-TTS"),
+            (
+                "api.links.link5",
+                "https://www.modelscope.cn/models/twillzxy/genie-tts-server/resolve/master/Genie-TTS%20Server.7z",
+            ),
         ]
         self._res_link_labels: list[QLabel] = []
         for key, url in self._res_link_data:

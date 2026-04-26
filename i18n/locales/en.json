@@ -73,6 +73,8 @@
       "link1": "GPT-SoVITS on GitHub",
       "link2": "ModelScope: GPT-SoVITS v2pro package",
       "link3": "ModelScope: RTX 50–series bundle",
+      "link4": "Genie TTS (lightweight, for CPU; upstream: High-Logic/Genie-TTS on GitHub)",
+      "link5": "Download Genie TTS Server bundle (ModelScope .7z)",
       "help": "Extract and point “TTS / bundle path” to that folder. GPT SoVITS needs ~11GB; Genie TTS ~4GB."
     },
     "msg": {

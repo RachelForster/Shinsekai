@@ -70,6 +70,8 @@
       "link1": "GitHub: GPT-SoVITS",
       "link2": "ModelScope: GPT-SoVITS v2pro",
       "link3": "ModelScope: RTX 50 系向け",
+      "link4": "Genie TTS（CPU 向け軽量推論・原リポジトリ）",
+      "link5": "Genie TTS Server 統合包を取得（ModelScope .7z）",
       "help": "展開先を「TTS/統合包パス」に。GPT SoVITS は約 11GB、Genie TTS 約 4GB。"
     },
     "msg": {
