@@ -4,7 +4,8 @@
     "title_right": "Shinkai",
     "title_description": "AI RPG Tools",
     "title_left": "Shinkai",
-    "title_left_description": "AI RPG Tools"
+    "title_left_description": "AI RPG Tools",
+    "text_edit": "<p><b>Copyright</b><br/>© 2026 不二咲爱笑. All rights reserved.</p><p><b>Author</b><br/>不二咲爱笑</p><p><b>Acknowledgments</b><br/>UI theme based on PyDracula by Wanderson M.; thanks to the authors of open-source libraries and the community.</p>"
   },
   "nav": {
     "api": "API",
@@ -97,7 +98,11 @@
     "info_box": "Profile & setting",
     "name": "Name",
     "color": "Name color",
-    "ph_color": "#d07d7d",
+    "ph_color": "#d07d7d or rgba(208,125,125,0.6)",
+    "pick_color": "Color…",
+    "tt_pick_color": "Open the system color dialog for the name color",
+    "progress_export": "Exporting character…",
+    "progress_import": "Importing .char files…",
     "sprite_dir": "Upload directory name (ASCII)",
     "setting_lbl": "Character setting",
     "ai_write": "AI draft",

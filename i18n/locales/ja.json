@@ -1,7 +1,8 @@
 {
   "main": {
     "window_title": "新世界プログラム – 設定",
-    "title_right": "新世界プログラム"
+    "title_right": "新世界プログラム",
+    "text_edit": "<p><b>著作権</b><br/>© 2026 不二咲爱笑. 無断転載を禁じます。</p><p><b>作者</b><br/>不二咲爱笑</p><p><b>謝辞</b><br/>UI テーマに Wanderson M. 氏の PyDracula を使用しています。各種オープンソースの作者とコントリビューターに感謝します。</p>"
   },
   "nav": {
     "api": "API",
@@ -94,7 +95,11 @@
     "info_box": "プロフィールと設定文",
     "name": "名前",
     "color": "表示色",
-    "ph_color": "#d07d7d",
+    "ph_color": "#d07d7d また rgba(208,125,125,0.6)",
+    "pick_color": "色を選ぶ…",
+    "tt_pick_color": "名前表示色のカラーダイアログを開きます",
+    "progress_export": "キャラをエクスポート中…",
+    "progress_import": ".char ファイルを読み込み中…",
     "sprite_dir": "アップロード用ディレクトリ名（英字）",
     "setting_lbl": "キャラ設定",
     "ai_write": "AI で下書き",

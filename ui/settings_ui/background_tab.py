@@ -35,7 +35,7 @@ from ui.settings_ui.ai_progress import run_ai_task_with_progress
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import feedback_result, message_fail, toast_info, toast_success
 from ui.settings_ui.qt_mm import try_create_pair
-from ui.settings_ui.utils import path_file_list
+from ui.settings_ui.utils import GALLERY_THUMB_PX, path_file_list, sync_gallery_to_tag_cursor
 
 
 class BackgroundSettingsTab(QWidget):
@@ -150,9 +150,10 @@ class BackgroundSettingsTab(QWidget):
         mid = QVBoxLayout()
         self.bg_gallery = QListWidget()
         self.bg_gallery.setViewMode(QListWidget.ViewMode.IconMode)
-        self.bg_gallery.setIconSize(QSize(100, 100))
+        self.bg_gallery.setIconSize(QSize(GALLERY_THUMB_PX, GALLERY_THUMB_PX))
+        self.bg_gallery.setSpacing(8)
         self.bg_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.bg_gallery.setMinimumHeight(200)
+        self.bg_gallery.setMinimumHeight(400)
         self.bg_gallery.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -172,6 +173,9 @@ class BackgroundSettingsTab(QWidget):
         self.bg_info_inputs.setMinimumHeight(120)
         self.bg_info_inputs.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        self.bg_info_inputs.cursorPositionChanged.connect(
+            self._on_bg_tag_cursor_moved
         )
         ir.addWidget(self.bg_info_inputs, stretch=1)
         self._upload_bg_info_btn = QPushButton(tr_i18n("bg.save_info"))
@@ -296,6 +300,7 @@ class BackgroundSettingsTab(QWidget):
         )
         self._load_gallery(paths)
         self.bg_info_inputs.setPlainText(tags if isinstance(tags, str) else "")
+        sync_gallery_to_tag_cursor(self.bg_gallery, self.bg_info_inputs)
         self._bg_img_paths.clear()
         self.bg_files_display.clear()
         if name and not self._is_new_bg(name):
@@ -360,6 +365,9 @@ class BackgroundSettingsTab(QWidget):
         self._refresh_group_combo(sel)
         self._on_group_change(self.selected_bg_group.currentText())
 
+    def _on_bg_tag_cursor_moved(self) -> None:
+        sync_gallery_to_tag_cursor(self.bg_gallery, self.bg_info_inputs)
+
     def _load_gallery(self, paths: list) -> None:
         self.bg_gallery.clear()
         for p in paths:
@@ -370,8 +378,8 @@ class BackgroundSettingsTab(QWidget):
                 it = QListWidgetItem(
                     QIcon(
                         pix.scaled(
-                            100,
-                            100,
+                            GALLERY_THUMB_PX,
+                            GALLERY_THUMB_PX,
                             Qt.AspectRatioMode.KeepAspectRatio,
                             Qt.TransformationMode.SmoothTransformation,
                         )
@@ -500,6 +508,7 @@ class BackgroundSettingsTab(QWidget):
             else:
                 self.bg_name.setText(n)
                 self.bg_info_inputs.setPlainText(bgi)
+                sync_gallery_to_tag_cursor(self.bg_gallery, self.bg_info_inputs)
                 self.bgm_info_inputs.setPlainText(bgmi)
                 for r in range(len(new_tags)):
                     it = self.bgm_table.item(r, 4)
@@ -605,6 +614,7 @@ class BackgroundSettingsTab(QWidget):
         feedback_result(self, tr_i18n("bg.msg_title"), msg)
         self._load_gallery(paths)
         self.bg_info_inputs.setPlainText(tags)
+        sync_gallery_to_tag_cursor(self.bg_gallery, self.bg_info_inputs)
         self.background_list_changed.emit()
 
     def _on_delete_all_imgs(self) -> None:
@@ -612,6 +622,7 @@ class BackgroundSettingsTab(QWidget):
         feedback_result(self, tr_i18n("bg.msg_title"), msg)
         self._load_gallery(paths)
         self.bg_info_inputs.setPlainText(t)
+        sync_gallery_to_tag_cursor(self.bg_gallery, self.bg_info_inputs)
         self.background_list_changed.emit()
 
     def _on_delete_one_img(self) -> None:
@@ -622,6 +633,7 @@ class BackgroundSettingsTab(QWidget):
         feedback_result(self, tr_i18n("bg.msg_title"), msg)
         self._load_gallery(paths)
         self.bg_info_inputs.setPlainText(t)
+        sync_gallery_to_tag_cursor(self.bg_gallery, self.bg_info_inputs)
         self.background_list_changed.emit()
 
     def _on_upload_bg_tags(self) -> None:

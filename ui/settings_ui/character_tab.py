@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QSize, QUrl, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QBrush, QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
+    QColorDialog,
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
@@ -40,7 +42,82 @@ from ui.settings_ui.feedback import (
 from ui.settings_ui.ai_field_translate import translate_character_name_and_tags
 from ui.settings_ui.ai_progress import run_ai_task_with_progress
 from ui.settings_ui.qt_mm import try_create_pair
-from ui.settings_ui.utils import path_file_list
+from ui.settings_ui.utils import GALLERY_THUMB_PX, path_file_list, sync_gallery_to_tag_cursor
+
+_DEFAULT_NAME_COLOR = "#d07d7d"
+
+
+def _rgb_from_floats(rf: float, gf: float, bf: float) -> tuple[int, int, int]:
+    """将 rgb 分量转为 0~255 整数。同一括号内：若任一分量 >1 则整段按 0~255；否则按 0~1。"""
+    m = max(rf, gf, bf, 0.0)
+    if m > 1.0 + 1e-6:
+        return (
+            int(max(0, min(255, round(rf)))),
+            int(max(0, min(255, round(gf)))),
+            int(max(0, min(255, round(bf)))),
+        )
+    return (
+        int(max(0, min(255, round(rf * 255.0)))),
+        int(max(0, min(255, round(gf * 255.0)))),
+        int(max(0, min(255, round(bf * 255.0)))),
+    )
+
+
+def _parse_color_text(s: str) -> QColor:
+    """
+    解析 #RRGGBB / #AARRGGBB / 颜色名、以及 ``rgba(r,g,b,a)`` / ``rgb(r,g,b)``。
+    裸的 ``QColor("rgba(...)")`` 在 Qt 里会无效，故单独处理。
+    r/g/b 允许 **带小数**（如 217.99,…），与调色板或外部写入的浮点一致。
+    """
+    t = (s or "").strip()
+    if not t:
+        return QColor(_DEFAULT_NAME_COLOR)
+    if hasattr(QColor, "fromString"):
+        c = QColor.fromString(t)  # type: ignore[attr-defined]
+        if c.isValid():
+            return c
+    c0 = QColor(t)
+    if c0.isValid():
+        return c0
+    m = re.search(
+        r"rgba?\s*\(\s*([0-9.eE+.\- ]+)\s*,\s*([0-9.eE+.\- ]+)\s*,\s*([0-9.eE+.\- ]+)(?:\s*,\s*([0-9.eE+.\- ]+))?\s*\)",
+        t,
+        re.IGNORECASE,
+    )
+    if m:
+        try:
+            rf, gf, bf = float(m.group(1).strip()), float(
+                m.group(2).strip()
+            ), float(m.group(3).strip())
+        except ValueError:
+            return QColor(_DEFAULT_NAME_COLOR)
+        r, g, b = _rgb_from_floats(rf, gf, bf)
+        c2 = QColor(r, g, b, 255)
+        a_raw = m.group(4)
+        if a_raw is not None:
+            try:
+                av = float(a_raw.strip())
+            except ValueError:
+                return c2
+            if 0.0 <= av <= 1.0 + 1e-6:
+                c2.setAlphaF(max(0.0, min(1.0, av)))
+            else:
+                c2.setAlpha(int(max(0, min(255, round(av)))))
+        return c2
+    return QColor(_DEFAULT_NAME_COLOR)
+
+
+def _format_color_text(c: QColor) -> str:
+    """不透明度为 255 时用 #RRGGBB，否则用 rgba(整数,整数,整数,a) 与 _parse 一致且避免长小数。"""
+    if not c.isValid():
+        return _DEFAULT_NAME_COLOR
+    if c.alpha() >= 255:
+        return c.name()
+    a = c.alphaF()
+    a_s = f"{a:.3f}".rstrip("0").rstrip(".")
+    if not a_s:
+        a_s = "0"
+    return f"rgba({c.red()},{c.green()},{c.blue()},{a_s})"
 
 
 class CharacterSettingsTab(QWidget):
@@ -114,12 +191,26 @@ class CharacterSettingsTab(QWidget):
         self.char_name = QLineEdit()
         self.char_color = QLineEdit()
         self.char_color.setPlaceholderText(tr_i18n("char.ph_color"))
+        self.char_color.textChanged.connect(self._on_char_color_text_changed)
+        _color_row = QWidget()
+        _cr = QHBoxLayout(_color_row)
+        _cr.setContentsMargins(0, 0, 0, 0)
+        _cr.setSpacing(6)
+        _cr.addWidget(self.char_color, stretch=1)
+        self._color_swatch = QFrame()
+        self._color_swatch.setFixedSize(36, 24)
+        self._color_swatch.setFrameShape(QFrame.Shape.StyledPanel)
+        self._b_pick_color = QPushButton(tr_i18n("char.pick_color"))
+        self._b_pick_color.setToolTip(tr_i18n("char.tt_pick_color"))
+        self._b_pick_color.clicked.connect(self._on_pick_color)
+        _cr.addWidget(self._color_swatch, alignment=Qt.AlignmentFlag.AlignRight)
+        _cr.addWidget(self._b_pick_color)
         self.sprite_prefix = QLineEdit("temp")
         self._f_name = QLabel(tr_i18n("char.name"))
         self._f_color = QLabel(tr_i18n("char.color"))
         self._f_prefix = QLabel(tr_i18n("char.sprite_dir"))
         left_info.addRow(self._f_name, self.char_name)
-        left_info.addRow(self._f_color, self.char_color)
+        left_info.addRow(self._f_color, _color_row)
         left_info.addRow(self._f_prefix, self.sprite_prefix)
         info_row.addLayout(left_info, stretch=0)
         right_info = QVBoxLayout()
@@ -204,9 +295,10 @@ class CharacterSettingsTab(QWidget):
         sp_mid = QVBoxLayout()
         self.sprites_gallery = QListWidget()
         self.sprites_gallery.setViewMode(QListWidget.ViewMode.IconMode)
-        self.sprites_gallery.setIconSize(QSize(100, 100))
+        self.sprites_gallery.setIconSize(QSize(GALLERY_THUMB_PX, GALLERY_THUMB_PX))
+        self.sprites_gallery.setSpacing(8)
         self.sprites_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.sprites_gallery.setMinimumHeight(200)
+        self.sprites_gallery.setMinimumHeight(400)
         self.sprites_gallery.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -225,6 +317,9 @@ class CharacterSettingsTab(QWidget):
         sp_right.addWidget(self._emo_lbl)
         self.emotion_inputs = QPlainTextEdit()
         self.emotion_inputs.setMinimumHeight(150)
+        self.emotion_inputs.cursorPositionChanged.connect(
+            self._on_emotion_tag_cursor_moved
+        )
         sp_right.addWidget(self.emotion_inputs, stretch=1)
         self._tag_btn = QPushButton(tr_i18n("char.upload_tags"))
         self._tag_btn.clicked.connect(self._on_upload_tags)
@@ -307,6 +402,8 @@ class CharacterSettingsTab(QWidget):
         self.char_color.setPlaceholderText(tr_i18n("char.ph_color"))
         self._f_name.setText(tr_i18n("char.name"))
         self._f_color.setText(tr_i18n("char.color"))
+        self._b_pick_color.setText(tr_i18n("char.pick_color"))
+        self._b_pick_color.setToolTip(tr_i18n("char.tt_pick_color"))
         self._f_prefix.setText(tr_i18n("char.sprite_dir"))
         self._setting_lbl.setText(tr_i18n("char.setting_lbl"))
         self._ai_btn.setText(tr_i18n("char.ai_write"))
@@ -350,6 +447,13 @@ class CharacterSettingsTab(QWidget):
         self.selected_character.addItem(tr_i18n("char.combo_new"))
         for n in self._ctx.character_manager.get_character_name_list():
             self.selected_character.addItem(n)
+            idx = self.selected_character.count() - 1
+            ch = self._ctx.config_manager.get_character_by_name(n)
+            raw = (ch.color or _DEFAULT_NAME_COLOR) if ch else _DEFAULT_NAME_COLOR
+            q = _parse_color_text(str(raw).strip())
+            self.selected_character.setItemData(
+                idx, QBrush(q), Qt.ItemDataRole.ForegroundRole
+            )
         if select:
             idx = self.selected_character.findText(select)
             if idx >= 0:
@@ -360,14 +464,16 @@ class CharacterSettingsTab(QWidget):
         c = self._ctx.config_manager.get_character_by_name(name)
         if c is None:
             self.char_name.clear()
-            self.char_color.setText("#d07d7d")
+            self.char_color.setText(_DEFAULT_NAME_COLOR)
+            self._update_color_swatch()
             self.sprite_prefix.setText("temp")
             for w in (self.gpt_model_path, self.sovits_model_path, self.refer_audio_path, self.prompt_text, self.prompt_lang):
                 w.clear()
             self.character_setting.clear()
             return
         self.char_name.setText(c.name)
-        self.char_color.setText(c.color or "#d07d7d")
+        self.char_color.setText(c.color or _DEFAULT_NAME_COLOR)
+        self._update_color_swatch()
         self.sprite_prefix.setText(c.sprite_prefix or "temp")
         self.gpt_model_path.setText(c.gpt_model_path or "")
         self.sovits_model_path.setText(c.sovits_model_path or "")
@@ -388,7 +494,7 @@ class CharacterSettingsTab(QWidget):
         self.sprite_scale.setValue(float(ch.sprite_scale) if ch else 1.0)
         self._sprite_paths.clear()
         self.sprite_files_display.clear()
-        self.sprites_gallery.setCurrentRow(-1)
+        sync_gallery_to_tag_cursor(self.sprites_gallery, self.emotion_inputs)
         self._update_sprite_side_info()
 
     def _load_gallery(self, paths: list[str]) -> None:
@@ -401,8 +507,8 @@ class CharacterSettingsTab(QWidget):
                 it = QListWidgetItem(
                     QIcon(
                         pix.scaled(
-                            100,
-                            100,
+                            GALLERY_THUMB_PX,
+                            GALLERY_THUMB_PX,
                             Qt.AspectRatioMode.KeepAspectRatio,
                             Qt.TransformationMode.SmoothTransformation,
                         )
@@ -414,6 +520,9 @@ class CharacterSettingsTab(QWidget):
 
     def _on_sprite_row(self) -> None:
         self._update_sprite_side_info()
+
+    def _on_emotion_tag_cursor_moved(self) -> None:
+        sync_gallery_to_tag_cursor(self.sprites_gallery, self.emotion_inputs)
 
     def _selected_sprite_index(self) -> int | None:
         r = self.sprites_gallery.currentRow()
@@ -437,6 +546,37 @@ class CharacterSettingsTab(QWidget):
         self.sprite_voice_path.setText(vpath or "")
         self.sprite_voice_text.setText(vtext or "")
 
+    def _qcolor_for_char_field(self) -> QColor:
+        return _parse_color_text(self.char_color.text() or _DEFAULT_NAME_COLOR)
+
+    def _update_color_swatch(self) -> None:
+        c = _parse_color_text(self.char_color.text() or _DEFAULT_NAME_COLOR)
+        a = c.alphaF()
+        self._color_swatch.setStyleSheet(
+            f"background-color: rgba({c.red()},{c.green()},{c.blue()},{a:.3f}); "
+            f"border: 1px solid #888;"
+        )
+
+    def _on_char_color_text_changed(self, _text: str) -> None:
+        self._update_color_swatch()
+
+    def _on_pick_color(self) -> None:
+        cur = self._qcolor_for_char_field()
+        picked = QColorDialog.getColor(
+            cur,
+            self,
+            tr_i18n("char.color"),
+            QColorDialog.ColorDialogOption.ShowAlphaChannel,
+        )
+        if picked.isValid():
+            self.char_color.setText(_format_color_text(picked))
+
+    def _set_io_widgets_enabled(self, enabled: bool) -> None:
+        self._export_btn.setEnabled(enabled)
+        self._import_btn.setEnabled(enabled)
+        self._pick_files_btn.setEnabled(enabled)
+        self._b_pick_color.setEnabled(enabled)
+
     def _on_export(self) -> None:
         name = self._current_char()
         if self._is_new_char(name):
@@ -446,13 +586,29 @@ class CharacterSettingsTab(QWidget):
         if c is None:
             message_fail(self, "导出", "人物不存在")
             return
-        try:
+
+        def work() -> None:
             Path("./output").mkdir(parents=True, exist_ok=True)
             ch = CharacterConfig.parse_dic(char_data=c.__dict__)
             fu.export_character([ch], output_path=f"./output/{c.name}.char")
+
+        def on_ok(_: object) -> None:
+            self._set_io_widgets_enabled(True)
             toast_success(self, "导出", "导出成功")
-        except Exception as e:
-            message_fail(self, "导出", f"导出失败: {e}")
+
+        def on_fail(msg: str) -> None:
+            self._set_io_widgets_enabled(True)
+            message_fail(self, "导出", f"导出失败: {msg}")
+
+        self._set_io_widgets_enabled(False)
+        run_ai_task_with_progress(
+            self,
+            tr_i18n("char.export"),
+            tr_i18n("char.progress_export"),
+            work,
+            on_ok,
+            on_fail,
+        )
 
     def _pick_import_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(
@@ -465,23 +621,45 @@ class CharacterSettingsTab(QWidget):
         if not self._import_paths:
             message_fail(self, "导入", "请先选择文件")
             return
-        success = 0
-        err: list[str] = []
-        for p in self._import_paths:
-            try:
-                fu.import_character(p)
-                success += 1
-            except Exception as e:
-                err.append(f"{os.path.basename(p)}: {e}")
-        self._ctx.config_manager.reload()
-        msg = f"成功导入 {success} 个角色。"
-        if err:
-            msg += "\n" + "\n".join(err)
-            message_fail(self, "导入", msg)
-        else:
-            toast_success(self, "导入", msg)
-        self._refresh_character_combo()
-        self.character_list_changed.emit()
+        paths = list(self._import_paths)
+
+        def work() -> tuple[int, list[str]]:
+            success = 0
+            err: list[str] = []
+            for p in paths:
+                try:
+                    fu.import_character(p)
+                    success += 1
+                except Exception as e:
+                    err.append(f"{os.path.basename(p)}: {e}")
+            return success, err
+
+        def on_ok(res: object) -> None:
+            self._set_io_widgets_enabled(True)
+            success, err = res  # type: ignore[misc]
+            self._ctx.config_manager.reload()
+            msg = f"成功导入 {success} 个角色。"
+            if err:
+                msg += "\n" + "\n".join(err)
+                message_fail(self, "导入", msg)
+            else:
+                toast_success(self, "导入", msg)
+            self._refresh_character_combo()
+            self.character_list_changed.emit()
+
+        def on_fail(msg: str) -> None:
+            self._set_io_widgets_enabled(True)
+            message_fail(self, "导入", f"导入失败: {msg}")
+
+        self._set_io_widgets_enabled(False)
+        run_ai_task_with_progress(
+            self,
+            tr_i18n("char.import"),
+            tr_i18n("char.progress_import"),
+            work,
+            on_ok,
+            on_fail,
+        )
 
     def _on_add(self) -> None:
         sel = self.selected_character.currentText().strip()
@@ -490,7 +668,7 @@ class CharacterSettingsTab(QWidget):
             edit_as = sel
         msg, _ = self._ctx.character_manager.add_character(
             self.char_name.text().strip(),
-            self.char_color.text().strip() or "#d07d7d",
+            self.char_color.text().strip() or _DEFAULT_NAME_COLOR,
             self.sprite_prefix.text().strip() or "temp",
             self.gpt_model_path.text().strip(),
             self.sovits_model_path.text().strip(),
@@ -581,6 +759,7 @@ class CharacterSettingsTab(QWidget):
                 self.char_name.setText(t_name)
                 self.emotion_inputs.setPlainText(t_emo)
                 self.character_setting.setPlainText(t_setting)
+                sync_gallery_to_tag_cursor(self.sprites_gallery, self.emotion_inputs)
                 toast_success(
                     self,
                     tr_i18n("char.msg_translate_title"),
@@ -625,6 +804,7 @@ class CharacterSettingsTab(QWidget):
         feedback_result(self, "立绘", msg)
         self._load_gallery(paths)
         self.emotion_inputs.setPlainText(emo)
+        sync_gallery_to_tag_cursor(self.sprites_gallery, self.emotion_inputs)
         self._refresh_character_combo(name)
         self.character_list_changed.emit()
 
@@ -637,6 +817,7 @@ class CharacterSettingsTab(QWidget):
         feedback_result(self, "立绘", msg)
         self._load_gallery(paths)
         self.emotion_inputs.setPlainText(emo)
+        sync_gallery_to_tag_cursor(self.sprites_gallery, self.emotion_inputs)
         self.character_list_changed.emit()
 
     def _on_delete_one_sprite(self) -> None:
@@ -647,6 +828,7 @@ class CharacterSettingsTab(QWidget):
         feedback_result(self, "立绘", msg)
         self._load_gallery(paths)
         self.emotion_inputs.setPlainText(emo)
+        sync_gallery_to_tag_cursor(self.sprites_gallery, self.emotion_inputs)
         self._update_sprite_side_info()
         self.character_list_changed.emit()
 

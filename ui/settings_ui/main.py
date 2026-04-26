@@ -162,6 +162,9 @@ class MainWindow(QMainWindow):
         self.ui.btn_share.hide()
         self.ui.btn_share.setText(tr("nav.music"))
         self.ui.btn_adjustments.setText(tr("nav.tools"))
+        self.ui.textEdit.setHtml(tr("main.text_edit"))
+        self.ui.textEdit.setReadOnly(True)
+        self.ui.toggleLeftBox.setText(tr("nav.tools"))
         for t in (self._api, self._character, self._background, self._template, self._tools):
             if hasattr(t, "apply_i18n"):
                 t.apply_i18n()

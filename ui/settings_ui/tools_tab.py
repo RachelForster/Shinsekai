@@ -30,6 +30,7 @@ from i18n import tr as tr_i18n
 from tools.crop_sprite import batch_crop_upper_half
 from tools.remove_bg import batch_remove_background
 from ui.settings_ui.context import SettingsUIContext
+from ui.settings_ui.utils import GALLERY_THUMB_PX
 
 
 def _extract_prompt_from_line(line: str) -> str:
@@ -109,9 +110,10 @@ class ToolsSettingsTab(QWidget):
         col3 = QVBoxLayout()
         self.sprites_gallery = QListWidget()
         self.sprites_gallery.setViewMode(QListWidget.ViewMode.IconMode)
-        self.sprites_gallery.setIconSize(QSize(120, 120))
+        self.sprites_gallery.setIconSize(QSize(GALLERY_THUMB_PX, GALLERY_THUMB_PX))
+        self.sprites_gallery.setSpacing(8)
         self.sprites_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.sprites_gallery.setMinimumHeight(200)
+        self.sprites_gallery.setMinimumHeight(400)
         self._lbl_gallery = QLabel()
         col3.addWidget(self._lbl_gallery)
         col3.addWidget(self.sprites_gallery)
@@ -276,8 +278,8 @@ class ToolsSettingsTab(QWidget):
                     item = QListWidgetItem(
                         QIcon(
                             pix.scaled(
-                                120,
-                                120,
+                                GALLERY_THUMB_PX,
+                                GALLERY_THUMB_PX,
                                 Qt.AspectRatioMode.KeepAspectRatio,
                                 Qt.TransformationMode.SmoothTransformation,
                             )

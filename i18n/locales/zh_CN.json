@@ -1,7 +1,8 @@
 {
   "main": {
     "window_title": "新世界程序 - 设置",
-    "title_right": "新世界程序"
+    "title_right": "新世界程序",
+    "text_edit": "<p><b>版权声明</b><br/>© 2026 不二咲爱笑。保留所有权利。</p><p><b>作者</b><br/>不二咲爱笑</p><p><b>鸣谢</b><br/>界面主题基于 Wanderson M. 的 PyDracula；感谢各开源库与社区贡献者。</p>"
   },
   "nav": {
     "api": "API 设定",
@@ -94,7 +95,11 @@
     "info_box": "人物信息与角色设定",
     "name": "人物名称",
     "color": "名称显示颜色",
-    "ph_color": "#d07d7d",
+    "ph_color": "#d07d7d 或 rgba(208,125,125,0.6)",
+    "pick_color": "调色盘…",
+    "tt_pick_color": "用系统调色盘选择名称显示色",
+    "progress_export": "正在导出人物，请稍候…",
+    "progress_import": "正在导入 .char 文件，请稍候…",
     "sprite_dir": "上传数据目录名（英文）",
     "setting_lbl": "角色设定",
     "ai_write": "AI 一键帮写",
