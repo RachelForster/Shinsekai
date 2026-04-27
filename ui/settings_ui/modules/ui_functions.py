@@ -31,8 +31,8 @@ from PyQt6.QtCore import (
     QTimer,
     Qt,
 )
-from PyQt6.QtGui import QColor, QIcon
-from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QPushButton, QSizeGrip
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QPushButton, QSizeGrip
 
 from ui.settings_ui.widgets.custom_grips.custom_grips import CustomGrip
 
@@ -60,7 +60,8 @@ class UIFunctions:
             GLOBAL_STATE = False
             self.showNormal()
             self.resize(self.width()+1, self.height()+1)
-            self.ui.appMargins.setContentsMargins(10, 10, 10, 10)
+            # 与最大化一致保持 0：10px 边距在 WA_TranslucentBackground 下会变成透 desktop 的「外圈灰边」
+            self.ui.appMargins.setContentsMargins(0, 0, 0, 0)
             self.ui.maximizeRestoreAppBtn.setToolTip("Maximize")
             self.ui.maximizeRestoreAppBtn.setIcon(QIcon(u":/icons/images/icons/icon_maximize.png"))
             self.ui.frame_size_grip.show()
@@ -239,8 +240,13 @@ class UIFunctions:
 
         if Settings.ENABLE_CUSTOM_TITLE_BAR:
             #STANDARD TITLE BAR
-            self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+            self.setWindowFlags(
+                Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.Window
+                | Qt.WindowType.NoDropShadowWindowHint
+            )
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
             # MOVE WINDOW / MAXIMIZE / RESTORE
             def moveWindow(event):
@@ -268,13 +274,14 @@ class UIFunctions:
             self.ui.closeAppBtn.hide()
             self.ui.frame_size_grip.hide()
 
-        # DROP SHADOW
-        self.shadow = QGraphicsDropShadowEffect(self)
-        self.shadow.setBlurRadius(17)
-        self.shadow.setXOffset(0)
-        self.shadow.setYOffset(0)
-        self.shadow.setColor(QColor(0, 0, 0, 150))
-        self.ui.bgApp.setGraphicsEffect(self.shadow)
+        # 原 QGraphicsDropShadowEffect 在 Frameless + WA_TranslucentBackground 下，
+        # 窗体外缘易出现发灰/脏边；需要阴影立体效果时可恢复并酌情调小 blurRadius。
+        # self.shadow = QGraphicsDropShadowEffect(self)
+        # self.shadow.setBlurRadius(17)
+        # self.shadow.setXOffset(0)
+        # self.shadow.setYOffset(0)
+        # self.shadow.setColor(QColor(0, 0, 0, 150))
+        # self.ui.bgApp.setGraphicsEffect(self.shadow)
 
         # RESIZE WINDOW
         self.sizegrip = QSizeGrip(self.ui.frame_size_grip)

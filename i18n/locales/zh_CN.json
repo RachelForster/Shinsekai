@@ -68,7 +68,15 @@
         "st_extract": "正在解压…",
         "no_gpu": "未能读取 GPU 信息（可仍手动下载下方链接）",
         "err_py7": "需要 py7zr 才能解压 7z，请执行：pip install py7zr",
-        "done": "已填入 TTS 根目录（绝对路径）。请再点击页底「保存配置」写入 api.yaml：\n{path}"
+        "done": "已填入 TTS 根目录（绝对路径）。请再点击页底「保存配置」写入 api.yaml：\n{path}",
+        "inline_hint": "点击「一键下载并解压」将打开窗口，显示本机平台与显卡信息，并默认选中推荐整合包；可在下拉框中改选后再开始下载。",
+        "dlg_title": "下载 TTS 整合包",
+        "dlg_platform": "运行平台",
+        "dlg_gpu": "GPU 列表",
+        "dlg_recommend": "根据当前配置，推荐：",
+        "dlg_pick": "要下载的整合包",
+        "dlg_start": "开始下载",
+        "dlg_cancel": "关闭"
       }
     },
     "comfy": {

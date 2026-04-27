@@ -21,3 +21,4 @@ runtime/
 /assets/system/models
 /cache
 /onnx
+/data

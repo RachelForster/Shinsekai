@@ -61,7 +61,7 @@ class Ui_MainWindow(object):
 "#bgApp {	\n"
 "	background"
                         "-color: rgb(40, 44, 52);\n"
-"	border: 1px solid rgb(44, 49, 58);\n"
+"	border: none;\n"
 "}\n"
 "\n"
 "/* /////////////////////////////////////////////////////////////////////////////////////////////////\n"

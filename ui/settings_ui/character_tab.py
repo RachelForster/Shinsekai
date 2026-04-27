@@ -623,20 +623,23 @@ class CharacterSettingsTab(QWidget):
             return
         paths = list(self._import_paths)
 
-        def work() -> tuple[int, list[str]]:
+        def work() -> tuple[int, list[str], str | None]:
             success = 0
             err: list[str] = []
+            last_imported_name: str | None = None
             for p in paths:
                 try:
-                    fu.import_character(p)
+                    cfgs = fu.import_character(p)
                     success += 1
+                    if cfgs:
+                        last_imported_name = cfgs[-1].name
                 except Exception as e:
                     err.append(f"{os.path.basename(p)}: {e}")
-            return success, err
+            return success, err, last_imported_name
 
         def on_ok(res: object) -> None:
             self._set_io_widgets_enabled(True)
-            success, err = res  # type: ignore[misc]
+            success, err, last_name = res  # type: ignore[misc]
             self._ctx.config_manager.reload()
             msg = f"成功导入 {success} 个角色。"
             if err:
@@ -644,7 +647,9 @@ class CharacterSettingsTab(QWidget):
                 message_fail(self, "导入", msg)
             else:
                 toast_success(self, "导入", msg)
-            self._refresh_character_combo()
+            # 选中新导入人物：多文件时以最后一次成功导入的文件中最后一个角色为准
+            self._refresh_character_combo(last_name if last_name else None)
+            self._on_character_change(self.selected_character.currentText())
             self.character_list_changed.emit()
 
         def on_fail(msg: str) -> None:

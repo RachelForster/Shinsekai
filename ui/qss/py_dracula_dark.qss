@@ -39,9 +39,19 @@ QToolTip {
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////
 Bg App */
+/* 无边框 + WA_TranslucentBackground 时，QMainWindow / 中央区必须铺实色，否则边距或窗体边缘会透出桌面成「外圈灰边」 */
+QMainWindow {
+	background-color: rgb(40, 44, 52);
+	border: none;
+}
+#styleSheet {
+	background-color: rgb(40, 44, 52);
+	border: none;
+}
 #bgApp {	
 	background-color: rgb(40, 44, 52);
-	border: 1px solid rgb(44, 49, 58);
+	/* 原 1px 实线 + 分层窗在壁纸对比下易显成「外圈灰边」；主内容区无需再描边 */
+	border: none;
 }
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////

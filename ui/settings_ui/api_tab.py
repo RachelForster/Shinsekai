@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QDoubleSpinBox,
@@ -13,7 +14,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QProgressBar,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -29,14 +29,7 @@ from i18n import init_i18n, normalize_lang, tr as tr_i18n
 from llm.constants import LLM_BASE_URLS
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import feedback_result, message_fail
-from ui.settings_ui.tts_bundle_worker import TtsBundleDownloadWorker
-from ui.settings_ui.tts_env_probe import (
-    format_gpu_lines,
-    format_platform,
-    get_default_project_root,
-    get_gpu_list,
-    recommend_tts_bundle,
-)
+from ui.settings_ui.tts_bundle_download_dialog import TtsBundleDownloadDialog
 
 
 def _add_collapsible_block(
@@ -214,36 +207,21 @@ class ApiSettingsTab(QWidget):
         tts_w = QWidget()
         tts_lay = QVBoxLayout(tts_w)
         tts_lay.setContentsMargins(0, 0, 0, 0)
-        self._gpu_cache: list = []
-        env_fr = QFrame()
-        ev = QVBoxLayout(env_fr)
-        ev.setContentsMargins(0, 0, 0, 0)
-        self._tts_platform_lbl = QLabel()
-        self._tts_platform_lbl.setWordWrap(True)
-        self._tts_gpu_lbl = QLabel()
-        self._tts_gpu_lbl.setWordWrap(True)
-        self._tts_recommend_lbl = QLabel()
-        self._tts_recommend_lbl.setWordWrap(True)
-        self._tts_dl_status = QLabel()
-        self._tts_dl_status.setVisible(False)
-        self._tts_dl_progress = QProgressBar()
-        self._tts_dl_progress.setRange(0, 100)
-        self._tts_dl_progress.setVisible(False)
-        self._tts_dl_btn = QPushButton()
+        tts_dl_box = QWidget()
+        tts_dl_lay = QVBoxLayout(tts_dl_box)
+        tts_dl_lay.setContentsMargins(0, 0, 0, 0)
+        self._tts_dl_short_hint = QLabel(tr_i18n("api.tts.env.inline_hint"))
+        self._tts_dl_short_hint.setWordWrap(True)
+        self._tts_dl_short_hint.setObjectName("apiSectionHint")
+        self._tts_dl_btn = QPushButton(tr_i18n("api.tts.env.btn_dl"))
         self._tts_dl_btn.clicked.connect(self._on_tts_bundle_download)
-        ev.addWidget(self._tts_platform_lbl)
-        ev.addWidget(self._tts_gpu_lbl)
-        ev.addWidget(self._tts_recommend_lbl)
-        ev.addWidget(self._tts_dl_status)
-        ev.addWidget(self._tts_dl_progress)
-        tdlr = QHBoxLayout()
-        tdlr.setContentsMargins(0, 0, 0, 0)
-        tdlr.addWidget(self._tts_dl_btn)
-        tdlr.addStretch(1)
-        ev.addLayout(tdlr)
-        tts_lay.addWidget(env_fr)
-        self._tts_worker: TtsBundleDownloadWorker | None = None
-        self._fill_tts_env_panel()
+        tdlh = QHBoxLayout()
+        tdlh.setContentsMargins(0, 0, 0, 0)
+        tdlh.addWidget(self._tts_dl_btn)
+        tdlh.addStretch(1)
+        tts_dl_lay.addWidget(self._tts_dl_short_hint)
+        tts_dl_lay.addLayout(tdlh)
+        tts_lay.addWidget(tts_dl_box)
 
         self._tts_hint = QLabel(tr_i18n("api.tts.hint"))
         self._tts_hint.setWordWrap(True)
@@ -393,6 +371,8 @@ class ApiSettingsTab(QWidget):
         self._adv_l_freq.setText(tr_i18n("api.adv.l_freq"))
         self._adv_l_max.setText(tr_i18n("api.adv.l_maxctx"))
         self._tts_hint.setText(tr_i18n("api.tts.hint"))
+        self._tts_dl_short_hint.setText(tr_i18n("api.tts.env.inline_hint"))
+        self._tts_dl_btn.setText(tr_i18n("api.tts.env.btn_dl"))
         self.sovits_url.setPlaceholderText(tr_i18n("api.tts.ph_url"))
         self.gpt_sovits_api_path.setPlaceholderText(tr_i18n("api.tts.ph_path"))
         self._tts_engine.setText(tr_i18n("api.tts.engine"))
@@ -427,7 +407,9 @@ class ApiSettingsTab(QWidget):
         self._lang_combo.blockSignals(True)
         self._lang_combo.setCurrentIndex(sidx)
         self._lang_combo.blockSignals(False)
-        self._fill_tts_env_panel()
+        for w in QApplication.topLevelWidgets():
+            if isinstance(w, TtsBundleDownloadDialog) and w.isVisible():
+                w.apply_i18n()
 
     def _on_provider_change(self, name: str) -> None:
         try:
@@ -443,81 +425,13 @@ class ApiSettingsTab(QWidget):
         self.llm_model.setText(model)
         self.api_key.setText(key)
 
-    def _fill_tts_env_panel(self) -> None:
-        self._gpu_cache = get_gpu_list()
-        self._tts_platform_lbl.setText(
-            f"{tr_i18n('api.tts.env.platform')}\n{format_platform()}"
-        )
-        self._tts_gpu_lbl.setText(
-            f"{tr_i18n('api.tts.env.gpu')}\n"
-            f"{format_gpu_lines(self._gpu_cache, none_msg=tr_i18n('api.tts.env.no_gpu'))}"
-        )
-        ch = recommend_tts_bundle(self._gpu_cache)
-        self._tts_recommend_lbl.setText(
-            f"{tr_i18n('api.tts.env.recommend')}\n"
-            f"{tr_i18n(f'api.tts.env.rec_{ch.kind}')}"
-        )
-        self._tts_dl_btn.setText(tr_i18n("api.tts.env.btn_dl"))
-
-    def _on_tts_worker_status(self, s: str) -> None:
-        if s == "download":
-            self._tts_dl_status.setText(tr_i18n("api.tts.env.st_download"))
-        elif s == "extract":
-            self._tts_dl_status.setText(tr_i18n("api.tts.env.st_extract"))
-
     def _on_tts_bundle_download(self) -> None:
-        if self._tts_worker and self._tts_worker.isRunning():
-            return
-        gpus = self._gpu_cache or get_gpu_list()
-        ch = recommend_tts_bundle(gpus)
-        self._tts_dl_btn.setEnabled(False)
-        self._tts_dl_progress.setVisible(True)
-        self._tts_dl_status.setVisible(True)
-        self._tts_dl_progress.setValue(0)
-        self._on_tts_worker_status("download")
-        w = TtsBundleDownloadWorker(
-            ch.download_url,
-            ch.bundle_dir_key,
-            get_default_project_root(),
+        dlg = TtsBundleDownloadDialog(
             self,
+            gpt_sovits_api_path=self.gpt_sovits_api_path,
+            tts_provider=self.tts_provider,
         )
-        self._tts_worker = w
-        w.progress.connect(self._tts_dl_progress.setValue)
-        w.status.connect(self._on_tts_worker_status)
-        w.finished_ok.connect(self._on_tts_worker_done)
-        w.failed.connect(self._on_tts_worker_fail)
-        w.finished.connect(self._on_tts_worker_thread_finished)
-        w.start()
-
-    def _on_tts_worker_done(self, abs_path: str) -> None:
-        self.gpt_sovits_api_path.setText(abs_path)
-        gpus = self._gpu_cache or get_gpu_list()
-        ch = recommend_tts_bundle(gpus)
-        if ch.kind == "genie":
-            self.tts_provider.setCurrentText("Genie TTS")
-        else:
-            self.tts_provider.setCurrentText("GPT SoVITS")
-        feedback_result(
-            self,
-            tr_i18n("api.msg.config"),
-            tr_i18n("api.tts.env.done").format(path=abs_path),
-        )
-
-    def _on_tts_worker_fail(self, msg: str) -> None:
-        if msg == "py7zr":
-            message_fail(
-                self, tr_i18n("api.msg.config"), tr_i18n("api.tts.env.err_py7")
-            )
-        else:
-            message_fail(self, tr_i18n("api.msg.config"), msg)
-
-    def _on_tts_worker_thread_finished(self) -> None:
-        self._tts_dl_btn.setEnabled(True)
-        self._tts_dl_progress.setVisible(False)
-        self._tts_dl_status.setVisible(False)
-        if self._tts_worker is not None:
-            self._tts_worker.deleteLater()
-            self._tts_worker = None
+        dlg.exec()
 
     def _on_save(self) -> None:
         is_streaming = "是" if self.stream_yes.isChecked() else "否"

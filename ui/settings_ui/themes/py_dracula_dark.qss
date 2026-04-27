@@ -40,13 +40,19 @@ QToolTip {
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////
 Bg App */
-/* 根与 #bgApp 同色：无边框 + 透明背景时，边距区不会透出桌面 */
+/* 根与 #bgApp 同色：无边框 + WA_TranslucentBackground 时，边距区与窗体外缘不会透出桌面 */
+QMainWindow {
+	background-color: rgb(40, 44, 52);
+	border: none;
+}
 #styleSheet {
 	background-color: rgb(40, 44, 52);
+	border: none;
 }
 
 #bgApp {
 	background-color: rgb(40, 44, 52);
+	border: none;
 }
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////

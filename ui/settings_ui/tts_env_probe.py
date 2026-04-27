@@ -105,6 +105,18 @@ def recommend_tts_bundle(gpus: list[dict[str, Any]] | None) -> TtsBundleChoice:
     )
 
 
+def bundle_choice_for_kind(kind: str) -> TtsBundleChoice:
+    """与下拉项 kind 对应；未知 kind 时回退 Genie。"""
+    m: dict[str, TtsBundleChoice] = {
+        "genie": TtsBundleChoice("genie", URL_GENIE, "genie_tts_server"),
+        "gptso": TtsBundleChoice("gptso", URL_GPTSOVITS_STANDARD, "gpt_sovits_v2pro"),
+        "gptso50": TtsBundleChoice("gptso50", URL_GPTSOVITS_NVIDIA50, "gpt_sovits_nvidia50"),
+    }
+    if kind in m:
+        return m[kind]
+    return m["genie"]
+
+
 def get_default_project_root() -> Path:
     """与 ConfigManager 一致：在含 data/config 的仓库根上解析路径。"""
     p = Path(__file__).resolve()

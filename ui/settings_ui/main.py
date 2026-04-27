@@ -12,7 +12,7 @@ from pathlib import Path
 _SETTINGS_UI_DIR = Path(__file__).resolve().parent
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QShowEvent
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 
 # Dracula 壳层：需与 modules/__init__ 的星号导出一致（含 Qt 与 UIFunctions 等）。勿用 `from
@@ -186,6 +186,14 @@ class MainWindow(QMainWindow):
                 self._template.refresh_lists()
 
         return _go
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if not getattr(self, "_win_dwm_applied", False):
+            self._win_dwm_applied = True
+            from ui.win_frameless_dwm import apply_win_frameless_dwm_hacks
+
+            apply_win_frameless_dwm_hacks(self, r=40, g=44, b=52)
 
     def resizeEvent(self, event):
         UIFunctions.resize_grips(self)

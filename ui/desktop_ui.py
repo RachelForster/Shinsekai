@@ -6,7 +6,7 @@ import yaml
 import time
 from PyQt6.QtCore import QEvent, Qt, QThread, pyqtSignal, QObject, QSize, QUrl
 from PyQt6.QtWidgets import QSlider
-from PyQt6.QtGui import QFont, QImage, QPixmap, QFontMetrics
+from PyQt6.QtGui import QFont, QImage, QPixmap, QFontMetrics, QShowEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
@@ -109,8 +109,18 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def setup_ui(self):
         """初始化UI组件"""
         # 窗口设置
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Window
+            | Qt.WindowType.NoDropShadowWindowHint
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setObjectName("DesktopAssistantWindow")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        # 避免无边框+分层窗口在部分系统上出现非预期的灰边/默认底色渗出
+        self.setStyleSheet(
+            "#DesktopAssistantWindow { background: transparent; border: none; }"
+        )
         
         # 主布局：立绘区独占整窗，底栏不占用 layout（叠在立绘上）
         main_layout = QVBoxLayout()
@@ -200,15 +210,14 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         # Button font is scaled relative to the default dialog font (48px)
         self.btn_font_size = f"{str(int(self.base_font_size_px*28//48*curren_dpi//base_dpi))}px;" 
         
-        # Apply to dialog label
-        df_pixel_map = QPixmap(DIALOG_FRAME_PATH)
-        
+        # 对话气泡只用 QSS 渐变，不要再叠一层 dialog_frame 位图，否则整图会随 QLabel
+        # 拉伸，PNG 里画的装饰/灰边会看起来像「外圈多了一圈框」。
         self.dialog_label.setStyleSheet(
             styles.dialog_label_theme_applied(
                 self.font_size, self.theme_color, self.second_color
             )
         )
-        self.dialog_label.setPixmap(df_pixel_map)
+        self.dialog_label.setPixmap(QPixmap())
 
         # Apply to numeric label
         self.numeric_info_label.setStyleSheet(
@@ -393,6 +402,16 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.background_label.setPixmap(scaled)
         self.background_label.setGeometry(0, 0, self.width(), self.height())
         self.background_label.lower()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if not getattr(self, "_win_dwm_applied", False):
+            self._win_dwm_applied = True
+            from ui.win_frameless_dwm import apply_win_frameless_dwm_hacks
+
+            apply_win_frameless_dwm_hacks(
+                self, theme_color=getattr(self, "theme_color", None) or None
+            )
 
     def _raise_input_and_toolbar(self) -> None:
         """将输入条与工具栏置于最前（相对各自父级叠放顺序）。"""

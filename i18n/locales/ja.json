@@ -68,7 +68,15 @@
         "st_extract": "展開中…",
         "no_gpu": "GPU 情報を取得できません。下のリンクから手動取得可。",
         "err_py7": "7z 展開に py7zr が必要：pip install py7zr",
-        "done": "TTS ルート（絶対パス）を入力済み。ページ下の「保存」で api.yaml へ反映：\n{path}"
+        "done": "TTS ルート（絶対パス）を入力済み。ページ下の「保存」で api.yaml へ反映：\n{path}",
+        "inline_hint": "ボタンでダイアログを開き、プラットフォームと GPU を表示します。推奨パッケージが既定選択です。ドロップダウンで変更してからダウンロードを開始できます。",
+        "dlg_title": "TTS 統合包のダウンロード",
+        "dlg_platform": "動作環境",
+        "dlg_gpu": "GPU 一覧",
+        "dlg_recommend": "この環境での推奨：",
+        "dlg_pick": "ダウンロードする統合包",
+        "dlg_start": "ダウンロード開始",
+        "dlg_cancel": "閉じる"
       }
     },
     "comfy": {

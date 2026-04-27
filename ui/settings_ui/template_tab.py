@@ -45,8 +45,24 @@ class TemplateSettingsTab(QWidget):
         self._ctx = ctx
         self._path_obj = Path(ctx.template_dir_path)
         self._char_checks: list[QCheckBox] = []
+        # 在 refresh_lists / apply_i18n 重填控件时抑制自动「生成模板」，避免误触发
+        self._suppress_auto_gen = False
         self._build_ui()
+        self._wire_auto_generate_triggers()
         self.refresh_lists()
+
+    def _wire_auto_generate_triggers(self) -> None:
+        self.bg_combo.currentTextChanged.connect(self._auto_generate)
+        self.voice_lang_combo.currentIndexChanged.connect(self._auto_generate)
+        self._group_effect.buttonClicked.connect(self._auto_generate)
+        self._group_tr.buttonClicked.connect(self._auto_generate)
+        self._group_cg.buttonClicked.connect(self._auto_generate)
+        self._group_cot.buttonClicked.connect(self._auto_generate)
+
+    def _auto_generate(self, *_args: object) -> None:
+        if self._suppress_auto_gen:
+            return
+        self._on_generate()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -125,9 +141,9 @@ class TemplateSettingsTab(QWidget):
         self.use_effect_yes = QRadioButton(tr_i18n("common.yes"))
         self.use_effect_no = QRadioButton(tr_i18n("common.no"))
         self.use_effect_yes.setChecked(True)
-        ge = QButtonGroup(self)
-        ge.addButton(self.use_effect_yes)
-        ge.addButton(self.use_effect_no)
+        self._group_effect = QButtonGroup(self)
+        self._group_effect.addButton(self.use_effect_yes)
+        self._group_effect.addButton(self.use_effect_no)
         er = QHBoxLayout()
         self._lbl_fx = QLabel(tr_i18n("template.fx"))
         er.addWidget(self._lbl_fx)
@@ -139,9 +155,9 @@ class TemplateSettingsTab(QWidget):
         self.use_tr_yes = QRadioButton(tr_i18n("common.yes"))
         self.use_tr_no = QRadioButton(tr_i18n("common.no"))
         self.use_tr_yes.setChecked(True)
-        gt = QButtonGroup(self)
-        gt.addButton(self.use_tr_yes)
-        gt.addButton(self.use_tr_no)
+        self._group_tr = QButtonGroup(self)
+        self._group_tr.addButton(self.use_tr_yes)
+        self._group_tr.addButton(self.use_tr_no)
         llm_tr_row = QHBoxLayout()
         self._lbl_llm_tr = QLabel(tr_i18n("template.llm_tr"))
         llm_tr_row.addWidget(self._lbl_llm_tr)
@@ -167,9 +183,9 @@ class TemplateSettingsTab(QWidget):
         self.use_cg_yes = QRadioButton(tr_i18n("common.yes"))
         self.use_cg_no = QRadioButton(tr_i18n("common.no"))
         self.use_cg_no.setChecked(True)
-        gcg = QButtonGroup(self)
-        gcg.addButton(self.use_cg_yes)
-        gcg.addButton(self.use_cg_no)
+        self._group_cg = QButtonGroup(self)
+        self._group_cg.addButton(self.use_cg_yes)
+        self._group_cg.addButton(self.use_cg_no)
         cr = QHBoxLayout()
         self._lbl_cg = QLabel(tr_i18n("template.cg"))
         cr.addWidget(self._lbl_cg)
@@ -181,9 +197,9 @@ class TemplateSettingsTab(QWidget):
         self.use_cot_yes = QRadioButton(tr_i18n("common.yes"))
         self.use_cot_no = QRadioButton(tr_i18n("common.no"))
         self.use_cot_no.setChecked(True)
-        gcot = QButtonGroup(self)
-        gcot.addButton(self.use_cot_yes)
-        gcot.addButton(self.use_cot_no)
+        self._group_cot = QButtonGroup(self)
+        self._group_cot.addButton(self.use_cot_yes)
+        self._group_cot.addButton(self.use_cot_no)
         cotr = QHBoxLayout()
         self._lbl_cot = QLabel(tr_i18n("template.cot"))
         cotr.addWidget(self._lbl_cot)
@@ -234,10 +250,10 @@ class TemplateSettingsTab(QWidget):
         rnl.addWidget(self.history_file)
 
         self.room_id = QLineEdit(self._ctx.config_manager.config.system_config.live_room_id or "")
-        self.room_id.setPlaceholderText(tr_i18n("template.live_ph"))
-        self._live_lbl = QLabel(tr_i18n("template.live_lbl"))
-        rnl.addWidget(self._live_lbl)
-        rnl.addWidget(self.room_id)
+        # self.room_id.setPlaceholderText(tr_i18n("template.live_ph"))
+        # self._live_lbl = QLabel(tr_i18n("template.live_lbl"))
+        # rnl.addWidget(self._live_lbl)
+        # rnl.addWidget(self.room_id)
 
         lay.addWidget(self._box_run)
 
@@ -269,6 +285,13 @@ class TemplateSettingsTab(QWidget):
         root.addWidget(foot)
 
     def apply_i18n(self) -> None:
+        self._suppress_auto_gen = True
+        try:
+            self._apply_i18n_impl()
+        finally:
+            self._suppress_auto_gen = False
+
+    def _apply_i18n_impl(self) -> None:
         self._tpl_h2.setText(tr_i18n("template.h2"))
         self._tpl_intro.setText(tr_i18n("template.intro"))
         self._box_file.setTitle(tr_i18n("template.load_box"))
@@ -313,8 +336,8 @@ class TemplateSettingsTab(QWidget):
         self.init_sprite_path.setPlaceholderText(tr_i18n("template.init_sp_ph"))
         self._pick_init.setText(tr_i18n("template.browse"))
         self.history_file.setPlaceholderText(tr_i18n("template.hist_ph"))
-        self._live_lbl.setText(tr_i18n("template.live_lbl"))
-        self.room_id.setPlaceholderText(tr_i18n("template.live_ph"))
+        # self._live_lbl.setText(tr_i18n("template.live_lbl"))
+        # self.room_id.setPlaceholderText(tr_i18n("template.live_ph"))
         self._launch_btn.setText(tr_i18n("template.launch"))
         self._stop_btn.setText(tr_i18n("template.stop"))
 
@@ -423,27 +446,32 @@ class TemplateSettingsTab(QWidget):
         self.template_combo.addItems(sorted(files))
 
     def refresh_lists(self) -> None:
-        while self.char_grid.count():
-            item = self.char_grid.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
-        self._char_checks.clear()
-        names = self._ctx.character_manager.get_character_name_list()
-        cols = 3
-        for i, name in enumerate(names):
-            cb = QCheckBox(name)
-            self._char_checks.append(cb)
-            r, c = divmod(i, cols)
-            self.char_grid.addWidget(cb, r, c)
-        prev = self.bg_combo.currentText() if self.bg_combo.count() else ""
-        self.bg_combo.clear()
-        items = self._ctx.background_manager.get_background_name_list() + [TRANSPARENT_BG]
-        self.bg_combo.addItems(items)
-        if prev in items:
-            self.bg_combo.setCurrentText(prev)
-        elif prev == "透明背景":
-            self.bg_combo.setCurrentText(TRANSPARENT_BG)
-        else:
-            self.bg_combo.setCurrentText(TRANSPARENT_BG)
-        self._refresh_template_combo()
+        self._suppress_auto_gen = True
+        try:
+            while self.char_grid.count():
+                item = self.char_grid.takeAt(0)
+                w = item.widget()
+                if w:
+                    w.deleteLater()
+            self._char_checks.clear()
+            names = self._ctx.character_manager.get_character_name_list()
+            cols = 3
+            for i, name in enumerate(names):
+                cb = QCheckBox(name)
+                self._char_checks.append(cb)
+                cb.toggled.connect(self._auto_generate)
+                r, c = divmod(i, cols)
+                self.char_grid.addWidget(cb, r, c)
+            prev = self.bg_combo.currentText() if self.bg_combo.count() else ""
+            self.bg_combo.clear()
+            items = self._ctx.background_manager.get_background_name_list() + [TRANSPARENT_BG]
+            self.bg_combo.addItems(items)
+            if prev in items:
+                self.bg_combo.setCurrentText(prev)
+            elif prev == "透明背景":
+                self.bg_combo.setCurrentText(TRANSPARENT_BG)
+            else:
+                self.bg_combo.setCurrentText(TRANSPARENT_BG)
+            self._refresh_template_combo()
+        finally:
+            self._suppress_auto_gen = False
