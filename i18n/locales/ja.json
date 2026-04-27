@@ -299,6 +299,7 @@
     "ai_progress_translate": "翻訳しています…"
   },
   "template_gen": {
+    "narr_token": "NARR",
     "err_no_characters": "少なくとも1人のキャラを選んでください。",
     "name_sep": "、",
     "preamble": "RPG 形式の会話をシミュレートしてください。登場人物：{names}他、劇付き合わせで登場者を使い分けてください。\n",

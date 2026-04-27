@@ -299,6 +299,7 @@
     "ai_progress_translate": "正在翻译，请稍候…"
   },
   "template_gen": {
+    "narr_token": "旁白",
     "err_no_characters": "请至少选择一个角色！",
     "name_sep": "、",
     "preamble": "你需要模拟一个RPG剧情对话系统，出场人物有：{names}以及其他相关人物，请根据剧情调度人物\n",

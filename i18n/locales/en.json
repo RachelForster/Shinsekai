@@ -302,6 +302,7 @@
     "ai_progress_translate": "Translating…"
   },
   "template_gen": {
+    "narr_token": "NARR",
     "err_no_characters": "Select at least one character.",
     "name_sep": ", ",
     "preamble": "You are simulating an RPG-style dialog system. Cast includes: {names} and other related characters; schedule who speaks as the story requires.\n",

@@ -1,11 +1,21 @@
 from i18n import normalize_lang, tr as tr_i18n
 from config.character_manager import ConfigManager
-from core.dialog_tokens import BGM, CG, CHOICE, COT, NARR, SCENE, STAT
+from core.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 
 config_manager = ConfigManager()
 
-# 与配置中的背景名一致，勿翻译
-TRANSPARENT_BG = "透明背景"
+# 与配置中的背景名一致，勿翻译（UI 默认选此项；旧名「透明背景」仍识别）
+TRANSPARENT_BG = "透明场景"
+_TRANSPARENT_ALIAS = "透明背景"
+
+
+def is_transparent_background(name: str | None) -> bool:
+    if name is None:
+        return True
+    s = str(name).strip()
+    if not s:
+        return True
+    return s in (TRANSPARENT_BG, _TRANSPARENT_ALIAS)
 
 
 def _T(key: str, **kwargs) -> str:
@@ -32,6 +42,11 @@ def _target_voice_display_name() -> str:
     except Exception:
         raw = "ja"
     return _T(f"voice_target_{_target_voice_key(raw)}")
+
+
+def _narr_label() -> str:
+    """中文模板文案中展示「旁白」，其它语言仍用 NARR 代号。"""
+    return _T("narr_token")
 
 
 class TemplateGenerator:
@@ -80,7 +95,7 @@ class TemplateGenerator:
                 character_setting = char_detail.character_setting
                 template += f"{character_setting}\n\n"
 
-        if bg_name:
+        if bg_name and not is_transparent_background(bg_name):
             bg = config_manager.get_background_by_name(bg_name)
             if bg and bg.sprites:
                 template += _T("scene_block_header")
@@ -98,10 +113,10 @@ class TemplateGenerator:
         opt_cg = (f", {CG}" if use_cg else "")
         cot_part = (f"{COT}," if use_cot else "")
 
-        need_real = bool(bg_name and bg_name != TRANSPARENT_BG)
+        need_real = bool(bg_name) and not is_transparent_background(bg_name)
 
         _toks = {
-            "narr": NARR,
+            "narr": _narr_label(),
             "choice": CHOICE,
             "stat": STAT,
             "scn": SCENE,
@@ -147,6 +162,6 @@ class TemplateGenerator:
         template += _T("requirements_header")
         for item in REQUIREMENTS:
             template += f"- {item}\n"
-        extra = _T("closing_extra_bgm") if (bg_name and bg_name != TRANSPARENT_BG) else ""
+        extra = _T("closing_extra_bgm") if (bg_name and not is_transparent_background(bg_name)) else ""
         template += _T("closing", extra=extra)
         return template, ""

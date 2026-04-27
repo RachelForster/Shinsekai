@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from llm.template_generator import TRANSPARENT_BG
 from ui.settings_ui.chat_template_handlers import (
     generate_template,
     launch_chat,
@@ -435,6 +436,14 @@ class TemplateSettingsTab(QWidget):
             self._char_checks.append(cb)
             r, c = divmod(i, cols)
             self.char_grid.addWidget(cb, r, c)
+        prev = self.bg_combo.currentText() if self.bg_combo.count() else ""
         self.bg_combo.clear()
-        self.bg_combo.addItems(self._ctx.background_manager.get_background_name_list() + ["透明背景"])
+        items = self._ctx.background_manager.get_background_name_list() + [TRANSPARENT_BG]
+        self.bg_combo.addItems(items)
+        if prev in items:
+            self.bg_combo.setCurrentText(prev)
+        elif prev == "透明背景":
+            self.bg_combo.setCurrentText(TRANSPARENT_BG)
+        else:
+            self.bg_combo.setCurrentText(TRANSPARENT_BG)
         self._refresh_template_combo()

@@ -24,6 +24,7 @@ if getattr(sys, "frozen", False):
     init_frozen_stdio("main_sprite")
 
 import llm.tools.character_tools
+from llm.template_generator import is_transparent_background
 from llm.llm_manager import LLMManager,LLMAdapterFactory
 from llm.history_manager import HistoryManager
 from llm.text_processor import TextProcessor
@@ -318,13 +319,13 @@ def main():
     # 获取背景组
     bg_group = None
     try:
-        bg_group = None if args.bg is None or args.bg == "透明背景" else config.get_background_by_name(args.bg).sprites
+        bg_group = None if is_transparent_background(args.bg) else config.get_background_by_name(args.bg).sprites
     except Exception as e:
         pass
 
     bgm_list = []
     try:
-        bgm_list = [] if args.bg is None or args.bg == "透明背景" else config.get_background_by_name(args.bg).bgm_list
+        bgm_list = [] if is_transparent_background(args.bg) else config.get_background_by_name(args.bg).bgm_list
     except Exception as e:
         pass
     # 创建桌面助手窗口

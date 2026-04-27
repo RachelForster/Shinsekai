@@ -13,6 +13,7 @@ from ui.webui.chat_template_handlers import (
     save_template,
     stop_chat,
 )
+from llm.template_generator import TRANSPARENT_BG
 from ui.webui.context import WebUIContext
 
 
@@ -41,8 +42,9 @@ def register_template_tab(ctx: WebUIContext, character_name_list_len, background
 
                 selected_bg = gr.Radio(
                     label="选择背景",
-                    choices=ctx.background_manager.get_background_name_list()+['透明背景'],
-                    interactive=True
+                    choices=ctx.background_manager.get_background_name_list() + [TRANSPARENT_BG],
+                    value=TRANSPARENT_BG,
+                    interactive=True,
                 )
 
                 use_effect = gr.Radio(label="是否开启特殊效果（人物离场、惊讶等效果）",choices=['是','否'], value="是")
@@ -89,7 +91,11 @@ def register_template_tab(ctx: WebUIContext, character_name_list_len, background
             return gr.CheckboxGroup(choices=ctx.character_manager.get_character_name_list())
         
         def update_bg_selection():
-            return gr.Radio(choices=ctx.background_manager.get_background_name_list() + ['透明背景'], interactive=True)
+            return gr.Radio(
+                choices=ctx.background_manager.get_background_name_list() + [TRANSPARENT_BG],
+                value=TRANSPARENT_BG,
+                interactive=True,
+            )
             
         generate_btn.click(
             lambda sc, sb, ue, ut, ucg, ucot: generate_template(ctx, sc, sb, ue, ut, ucg, ucot),
