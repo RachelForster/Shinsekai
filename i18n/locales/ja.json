@@ -50,12 +50,26 @@
       "l_maxctx": "最大コンテキスト token"
     },
     "tts": {
-      "hint": "台詞不要なら空欄。API とローカル/統合パスを必要に応じて。Genie TTS＝CPU 寄り、GPT SoVITS＝GPU 寄り。統合包は下のリソース。",
+      "hint": "台詞不要なら空欄。API とローカル/統合パスを必要に応じて。Genie TTS＝CPU 寄り、GPT SoVITS＝GPU 寄り。上の一括ダウンロードが使えます。失敗した場合は手動取得し、折りたたみの「リソース」内リンクを参照してください。",
       "engine": "TTS エンジン",
       "url": "TTS サーバー URL",
       "path": "TTS/統合包パス",
       "ph_url": "例 http://127.0.0.1:9880/",
-      "ph_path": "展開先やプロジェクトのルート"
+      "ph_path": "展開先やプロジェクトのルート",
+      "env": {
+        "platform": "動作環境",
+        "gpu": "GPU 一覧（gpu_list）",
+        "recommend": "推奨統合包",
+        "rec_gptso": "GPT SoVITS v2pro（汎用 CUDA・N かつ VRAM ≥8GB かつ RTX 50 系以外）",
+        "rec_gptso50": "GPT SoVITS v2pro（NVIDIA RTX 50 系専用）",
+        "rec_genie": "Genie TTS Server（上記以外：Intel/AMD/VRAM 不足など）",
+        "btn_dl": "推奨統合包を一括ダウンロード・展開",
+        "st_download": "ダウンロード中…",
+        "st_extract": "展開中…",
+        "no_gpu": "GPU 情報を取得できません。下のリンクから手動取得可。",
+        "err_py7": "7z 展開に py7zr が必要：pip install py7zr",
+        "done": "TTS ルート（絶対パス）を入力済み。ページ下の「保存」で api.yaml へ反映：\n{path}"
+      }
     },
     "comfy": {
       "hint": "ComfyUI で画像/CG 生成。ComfyUI とワークフローが必要。初期は折りたたみ。",

@@ -16,3 +16,5 @@ anthropic
 PySide6
 pyyaml
 vosk
+gpu-list
+py7zr

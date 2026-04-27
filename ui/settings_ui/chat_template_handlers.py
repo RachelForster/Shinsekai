@@ -16,7 +16,7 @@ _main_chat_process = None
 def _release_root() -> Path:
     """
     项目根 / 发布根：开发时为仓库根；打包并运行设置界面时为 dist 下与 SettingsUI、main_sprite 同级的发行根
-   （见 scripts/build_settings_exe.py 的目录结构）。
+   （见 build_exe/build_settings_exe.py 的目录结构）。
     """
     if os.environ.get("EASYAI_PROJECT_ROOT"):
         return Path(os.environ["EASYAI_PROJECT_ROOT"])

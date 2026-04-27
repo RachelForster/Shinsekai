@@ -50,12 +50,26 @@
       "l_maxctx": "最大上下文 token"
     },
     "tts": {
-      "hint": "不念台词可留空。需要时填写 API 与本地/整合包路径。Genie TTS 偏 CPU；GPT SoVITS 偏 GPU。整合包见下方「资源与说明」链接。",
+      "hint": "不念台词可留空。需要时填写 API 与本地/整合包路径。Genie TTS 偏 CPU；GPT SoVITS 偏 GPU。可用上方「一键下载并解压」获取整合包；若一键失败，请手动下载并解压，地址见下方折叠项「资源与说明」。",
       "engine": "TTS 引擎",
       "url": "TTS 服务地址",
       "path": "TTS 服务/整合包路径",
       "ph_url": "如 http://127.0.0.1:9880/ ",
-      "ph_path": "整合包或工程根目录，按你的部署填写"
+      "ph_path": "整合包或工程根目录，按你的部署填写",
+      "env": {
+        "platform": "运行平台",
+        "gpu": "GPU 列表（gpu_list）",
+        "recommend": "推荐整合包",
+        "rec_gptso": "GPT SoVITS v2pro（通用 CUDA，N 卡 ≥8G 且非 RTX 50 系）",
+        "rec_gptso50": "GPT SoVITS v2pro（NVIDIA RTX 50 系专用包）",
+        "rec_genie": "Genie TTS Server（非上述情况：A 卡/核显/显存不足等）",
+        "btn_dl": "一键下载并解压推荐整合包",
+        "st_download": "正在下载…",
+        "st_extract": "正在解压…",
+        "no_gpu": "未能读取 GPU 信息（可仍手动下载下方链接）",
+        "err_py7": "需要 py7zr 才能解压 7z，请执行：pip install py7zr",
+        "done": "已填入 TTS 根目录（绝对路径）。请再点击页底「保存配置」写入 api.yaml：\n{path}"
+      }
     },
     "comfy": {
       "hint": "用于通过 ComfyUI 生图 / CG。需已部署 ComfyUI 并配好工作流，默认折叠以减少干扰。",

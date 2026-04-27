@@ -53,12 +53,26 @@
       "l_maxctx": "Max context tokens"
     },
     "tts": {
-      "hint": "Leave blank if you do not use lines. Set API and local/bundle path as needed. Genie TTS = CPU; GPT SoVITS = GPU. Bundles: see Resources & links below.",
+      "hint": "Leave blank if you do not use lines. Set API and local/bundle path as needed. Genie TTS = CPU; GPT SoVITS = GPU. Use the button above to download and extract; if that fails, download manually and see the collapsed section Resources & links below.",
       "engine": "TTS engine",
       "url": "TTS server URL",
       "path": "TTS / bundle path",
       "ph_url": "e.g. http://127.0.0.1:9880/",
-      "ph_path": "Root folder of your bundle or project"
+      "ph_path": "Root folder of your bundle or project",
+      "env": {
+        "platform": "Platform",
+        "gpu": "GPUs (gpu_list)",
+        "recommend": "Recommended bundle",
+        "rec_gptso": "GPT SoVITS v2pro (general; NVIDIA ≥8GB, not RTX 50 series)",
+        "rec_gptso50": "GPT SoVITS v2pro (NVIDIA RTX 50–series build)",
+        "rec_genie": "Genie TTS Server (other GPUs, under 8GB VRAM, or CPU-friendlier case)",
+        "btn_dl": "Download and extract recommended bundle",
+        "st_download": "Downloading…",
+        "st_extract": "Extracting…",
+        "no_gpu": "Could not read GPU info; you can still use links below.",
+        "err_py7": "Install py7zr to unpack: pip install py7zr",
+        "done": "TTS path set (absolute). Click Save at the bottom to write api.yaml:\n{path}"
+      }
     },
     "comfy": {
       "hint": "For ComfyUI image/CG. Deploy ComfyUI and workflows first; this block stays collapsed by default.",

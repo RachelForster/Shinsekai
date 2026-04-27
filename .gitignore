@@ -17,6 +17,7 @@ runtime/
 /ui/settings_ui/images
 /scripts
 /packaging
+/build_exe
 /assets/system/models
-/onnx
 /cache
+/onnx
