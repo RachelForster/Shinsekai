@@ -37,7 +37,8 @@ from PyQt6.QtCore import QThread, pyqtSignal, QObject
 from PyQt6.QtGui import QPixmap, QImage, QIcon
 from PyQt6.QtWidgets import QApplication
 from tts.tts_manager import TTSManager, TTSAdapterFactory
-from ui.desktop_ui import DesktopAssistantWindow
+from ui.chat_ui.chat_ui import ChatUIWindow
+from ui.chat_ui.signal_bridge import get_chat_ui_signal_bridge
 from config.character_config import CharacterConfig
 from config.config_manager import ConfigManager
 from t2i.t2i_manager import T2IAdapterFactory, T2IManager
@@ -213,6 +214,15 @@ def main():
     from i18n import init_i18n, tr as tr_i18n
 
     init_i18n(config.config.system_config.ui_language)
+
+    from core.plugin_host import (
+        collect_desktop_contributions,
+        ensure_plugins_loaded,
+        wire_user_input_plugins,
+    )
+
+    ensure_plugins_loaded(config)
+
     parser = argparse.ArgumentParser(description=tr_i18n("main_sprite.arg_desc"))
     # 添加参数
     parser.add_argument(
@@ -331,7 +341,7 @@ def main():
     # 创建桌面助手窗口
     app = QApplication([])
     ui_updates = UIUpdateManager(chat_history=chat_history, bg_group=bg_group or [])
-    window = DesktopAssistantWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True, background_mode=(bg_group!=None))
+    window = ChatUIWindow(image_queue, emotion_queue, llm_manager, sprite_mode=True, background_mode=(bg_group!=None))
     connect_to_desktop_window(ui_updates, window)
 
     set_app_runtime(
@@ -376,10 +386,14 @@ def main():
         if not messages:
             window.setDisplayWords(_welcome_html)
     window.setNotification(tr_i18n("main_sprite.notify_chat"))
-    # 连接 UI 信号到队列
+
+    emit_user_text = wire_user_input_plugins(user_input_queue)
+    window.mount_plugin_contributions(collect_desktop_contributions())
+
+    # 连接 UI 信号到队列（经插件 handle_user_input 处理器后再入队）
     def on_message_submitted(message):
         print(tr_i18n("main_sprite.print_submitted", message=message))
-        user_input_queue.put(UserInputMessage(text=message))
+        emit_user_text(message)
         window.setNotification(tr_i18n("main_sprite.notify_submitted"))
     
     # 恢复最后一条消息
@@ -439,19 +453,33 @@ def main():
             print(tr_i18n("main_sprite.print_bg_fail", e=str(e)))
             traceback.print_exc()
   
-    window.message_submitted.connect(lambda message: on_message_submitted(message))
-    window.open_chat_history_dialog.connect(lambda: window.open_history_dialog(chat_history))
-    window.change_voice_language.connect(lambda lang: tts_manager.set_language(lang) if tts_manager else None)
-    window.close_window.connect(app.quit)
-    window.clear_chat_history.connect(lambda: clear_chat_history(history_file=args.history, ui_queue=audio_path_queue, llm_manager=llm_manager))
-    window.skip_speech_signal.connect(lambda: ui_worker.skip_speech())
-    window.copy_chat_history_to_clipboard.connect(lambda: copy_chat_history_to_clipboard())
-    window.revert_chat_history.connect(
+    # 经 ChatUI 信号桥连接：与窗口内 attach_chat_ui_window 转发一致，插件可 get_chat_ui_signal_bridge() 监听同一套信号
+    _chat_bridge = get_chat_ui_signal_bridge()
+    _chat_bridge.message_submitted.connect(lambda message: on_message_submitted(message))
+    _chat_bridge.open_chat_history_dialog.connect(
+        lambda: window.open_history_dialog(chat_history)
+    )
+    _chat_bridge.change_voice_language.connect(
+        lambda lang: tts_manager.set_language(lang) if tts_manager else None
+    )
+    _chat_bridge.close_window.connect(app.quit)
+    _chat_bridge.clear_chat_history.connect(
+        lambda: clear_chat_history(
+            history_file=args.history,
+            ui_queue=audio_path_queue,
+            llm_manager=llm_manager,
+        )
+    )
+    _chat_bridge.skip_speech_signal.connect(lambda: ui_worker.skip_speech())
+    _chat_bridge.copy_chat_history_to_clipboard.connect(
+        lambda: copy_chat_history_to_clipboard()
+    )
+    _chat_bridge.revert_chat_history.connect(
         lambda index: revert_chat_history(
             user_index=index,
             llm_manager=llm_manager,
             chat_history=chat_history,
-            window=window
+            window=window,
         )
     )
 

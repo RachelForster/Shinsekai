@@ -11,9 +11,9 @@ from pathlib import Path
 
 _SETTINGS_UI_DIR = Path(__file__).resolve().parent
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QShowEvent
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QCursor, QIcon, QShowEvent
+from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QWidget
 
 # Dracula 壳层：需与 modules/__init__ 的星号导出一致（含 Qt 与 UIFunctions 等）。勿用 `from
 # modules import *`：那依赖把 settings_ui 加进 sys.path 的顶层名 `modules`，PyInstaller
@@ -28,6 +28,8 @@ from ui.settings_ui.music_cover_tab import MusicCoverSettingsTab
 from ui.settings_ui.template_tab import TemplateSettingsTab
 from ui.settings_ui.tools_tab import ToolsSettingsTab
 from ui.settings_ui.window import settings_window_metrics
+
+from core.plugin_host import collect_settings_contributions, ensure_plugins_loaded
 
 
 def _clear_stacked(sw) -> None:
@@ -80,6 +82,8 @@ class MainWindow(QMainWindow):
         except ImportError:
             pass
 
+        ensure_plugins_loaded(self._ctx.config_manager)
+
         # 功能页
         self._api = ApiSettingsTab(self._ctx)
         self._character = CharacterSettingsTab(self._ctx)
@@ -97,6 +101,10 @@ class MainWindow(QMainWindow):
             self._tools,
         ]
 
+        self._plugin_settings_contribs = collect_settings_contributions()
+        for contrib in self._plugin_settings_contribs:
+            self._pages.append(contrib.build(self._ctx))
+
         self._nav_buttons: list[tuple[object, int]] = [
             (self.ui.btn_home, 0),
             (self.ui.btn_widgets, 1),
@@ -105,6 +113,14 @@ class MainWindow(QMainWindow):
             # (self.ui.btn_share, 4),
             (self.ui.btn_adjustments, 4),
         ]
+        base_n = len(self._nav_buttons)
+        for i, contrib in enumerate(self._plugin_settings_contribs):
+            btn = QPushButton(contrib.nav_label, self.ui.topMenu)
+            btn.setMinimumSize(QSize(0, 45))
+            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+            self.ui.verticalLayout_8.addWidget(btn)
+            self._nav_buttons.append((btn, base_n + i))
 
         self.ui.btn_more.hide()
         self.ui.version.setText("v1.6.0")

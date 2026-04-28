@@ -5,10 +5,21 @@ import threading
 import pygame
 import yaml
 import time
-from PyQt6.QtCore import QEasingCurve, QRect, QTimer, Qt, QThread, pyqtSignal, QObject, QSize, QPropertyAnimation, QSequentialAnimationGroup, pyqtProperty
-from PyQt6.QtGui import QAction, QColor, QFont, QFontMetrics, QImage, QPixmap
-from PyQt6.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider, QColorDialog, QFileDialog, QMessageBox
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import (
+    QEasingCurve,
+    QRect,
+    QTimer,
+    Qt,
+    QThread,
+    Signal,
+    QObject,
+    QSize,
+    QPropertyAnimation,
+    QSequentialAnimationGroup,
+)
+from PySide6.QtGui import QAction, QColor, QFont, QFontMetrics, QImage, QPixmap
+from PySide6.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider, QColorDialog, QFileDialog, QMessageBox
+from PySide6.QtWidgets import (
     QApplication,
     QLabel,
     QWidget,
@@ -85,7 +96,7 @@ class CrossFadeSprite(QWidget):
         # 需要确保数据类型和步长正确。此处我们沿用您提供的 QImage(data, w, h, bpl, format) 构造
         bytes_per_line = width * channel  # 实际的字节数，4*width 仅适用于 RGBA8888
         
-        # 确保格式匹配：4 通道 (RGBA) 使用 QImage.Format.Format_RGBA8888（PyQt6 枚举在 Format 下）
+        # 确保格式匹配：4 通道 (RGBA) 使用 QImage.Format.Format_RGBA8888
         qimg = QImage(
             image.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888
         )
@@ -736,7 +747,7 @@ class MessageDialog(QDialog):
 
 class ClickableLabel(QLabel):
     """可点击的标签"""
-    clicked = pyqtSignal()
+    clicked = Signal()
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         try:
@@ -757,7 +768,7 @@ class ClickableLabel(QLabel):
         self.play_click_sound()
 
 class TypingLabel(ClickableLabel):
-    typingFinished = pyqtSignal()
+    typingFinished = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1114,7 +1125,7 @@ class CGWidget(QWidget):
     只用于显示全屏CG图和操作按钮的浮动Widget。
     - 负责在显示时覆盖所有下层元素（包括立绘）。
     """
-    cg_display_changed = pyqtSignal(bool) # True: CG显示, False: CG隐藏
+    cg_display_changed = Signal(bool)  # True: CG显示, False: CG隐藏
 
     def __init__(self, theme_color: str, parent=None):
         super().__init__(parent)

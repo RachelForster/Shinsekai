@@ -216,6 +216,10 @@ class TtsBundleDownloadDialog(QDialog):
             message_fail(
                 self, tr_i18n("api.msg.config"), tr_i18n("api.tts.env.err_py7")
             )
+        elif msg == "7za":
+            message_fail(
+                self, tr_i18n("api.msg.config"), tr_i18n("api.tts.env.err_7z")
+            )
         else:
             message_fail(self, tr_i18n("api.msg.config"), msg)
         self._pending_accept = False

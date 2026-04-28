@@ -67,7 +67,8 @@
         "st_download": "ダウンロード中…",
         "st_extract": "展開中…",
         "no_gpu": "GPU 情報を取得できません。下のリンクから手動取得可。",
-        "err_py7": "7z 展開に py7zr が必要：pip install py7zr",
+        "err_py7": "開発時は pip install py7zr、またはリポの build_exe に 7za.exe を置いて再試行。",
+        "err_7z": "同梱の 7za.exe が見つかりません。正規配布物を再インストールしてください。",
         "done": "TTS ルート（絶対パス）を入力済み。ページ下の「保存」で api.yaml へ反映：\n{path}",
         "inline_hint": "ボタンでダイアログを開き、プラットフォームと GPU を表示します。推奨パッケージが既定選択です。ドロップダウンで変更してからダウンロードを開始できます。",
         "dlg_title": "TTS 統合包のダウンロード",
@@ -278,6 +279,7 @@
     "stop": "チャット停止"
   },
   "tools": {
+    "tab_main": "立ち絵・一括処理",
     "h2_sprites": "<h2>立ち絵ツール</h2>",
     "gem_box": "一括で立ち絵生成（Gemini API キーが必要）",
     "gem_hint": "Gemini API キーが必要です。公式の無料 Web 版も利用できます。",

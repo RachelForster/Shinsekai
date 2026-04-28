@@ -67,7 +67,8 @@
         "st_download": "正在下载…",
         "st_extract": "正在解压…",
         "no_gpu": "未能读取 GPU 信息（可仍手动下载下方链接）",
-        "err_py7": "需要 py7zr 才能解压 7z，请执行：pip install py7zr",
+        "err_py7": "开发环境可安装：pip install py7zr；或在项目 build_exe 下放置 7za.exe 后重试。",
+        "err_7z": "未找到随安装包分发的 7za.exe。请用官方发行包重新安装，或联系维护者。",
         "done": "已填入 TTS 根目录（绝对路径）。请再点击页底「保存配置」写入 api.yaml：\n{path}",
         "inline_hint": "点击「一键下载并解压」将打开窗口，显示本机平台与显卡信息，并默认选中推荐整合包；可在下拉框中改选后再开始下载。",
         "dlg_title": "下载 TTS 整合包",
@@ -278,6 +279,7 @@
     "stop": "关闭聊天"
   },
   "tools": {
+    "tab_main": "立绘与批处理",
     "h2_sprites": "<h2>立绘处理</h2>",
     "gem_box": "批量自动生成立绘（需配置 Gemini API Key）",
     "gem_hint": "需要 Gemini API Key。也可使用官方免费界面生成。",

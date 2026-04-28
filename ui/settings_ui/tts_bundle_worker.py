@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import importlib
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -12,11 +15,51 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from ui.settings_ui.tts_env_probe import get_default_project_root
 
-# py7zr 为纯 Python 的 .7z 解压
-try:
-    import py7zr
-except ImportError:  # pragma: no cover
-    py7zr = None  # type: ignore[misc, assignment]
+_WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+
+def _load_py7zr() -> Any | None:
+    """开发环境用纯 Python 的 py7zr；生产 exe 用打包的 7za.exe。"""
+    try:
+        return importlib.import_module("py7zr")
+    except ImportError:  # pragma: no cover
+        return None
+
+
+def _seven_zip_exe() -> Path | None:
+    """生产：PyInstaller 将 build_exe/7za.exe 打进 _internal/7za/7za.exe。开发：仓库 build_exe/7za.exe。"""
+    if getattr(sys, "frozen", False):
+        meip = getattr(sys, "_MEIPASS", None)
+        if not meip:
+            return None
+        p = Path(meip) / "7za" / "7za.exe"
+        return p if p.is_file() else None
+    p = get_default_project_root() / "build_exe" / "7za.exe"
+    return p if p.is_file() else None
+
+
+def _extract_7za(exe: Path, archive: Path, out_dir: Path) -> str | None:
+    """用 7-Zip 独立程序解压。成功返回 None，失败返回短错误信息。"""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # -o 后路径末尾：7z 对目录参数要求
+    odir = str(out_dir.resolve())
+    if not odir.endswith(("/", "\\")):
+        odir = odir + ("\\" if sys.platform == "win32" else "/")
+    cmd = [str(exe), "x", "-y", f"-o{odir}", str(archive)]
+    try:
+        r = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=3600,
+            creationflags=_WIN_NO_WINDOW if sys.platform == "win32" else 0,
+        )
+    except OSError as e:  # pragma: no cover
+        return str(e)[:2000]
+    if r.returncode != 0:
+        err = (r.stderr or r.stdout or "").strip() or f"exit {r.returncode}"
+        return err[:2000]
+    return None
 
 
 def _archive_filename(url: str) -> str:
@@ -110,26 +153,42 @@ class TtsBundleDownloadWorker(QThread):
         self.progress.emit(70)
         self.status.emit("extract")
 
-        if py7zr is None:
-            self.failed.emit("py7zr")
-            return
-
-        try:
-            with py7zr.SevenZipFile(archive, "r") as z:
-                targets = _list_targets(z)
-                n = len(targets)
-                if n == 0 or n > 1000:
-                    z.extractall(path=out_dir)
-                    self.progress.emit(100)
-                else:
-                    for i, name in enumerate(targets):
-                        if self.isInterruptionRequested():
-                            return
-                        z.extract(path=out_dir, targets=[name])
-                        self.progress.emit(70 + int(30 * (i + 1) / n))
-        except Exception as e:
-            self.failed.emit(f"extract: {e}")
-            return
+        sz = _seven_zip_exe()
+        if getattr(sys, "frozen", False):
+            if sz is None:
+                self.failed.emit("7za")
+                return
+            err = _extract_7za(sz, archive, out_dir)
+            if err is not None:
+                self.failed.emit(f"extract: {err}")
+                return
+        else:
+            p7 = _load_py7zr()
+            if p7 is not None:
+                try:
+                    with p7.SevenZipFile(archive, "r") as z:
+                        targets = _list_targets(z)
+                        n = len(targets)
+                        if n == 0 or n > 1000:
+                            z.extractall(path=out_dir)
+                            self.progress.emit(100)
+                        else:
+                            for i, name in enumerate(targets):
+                                if self.isInterruptionRequested():
+                                    return
+                                z.extract(path=out_dir, targets=[name])
+                                self.progress.emit(70 + int(30 * (i + 1) / n))
+                except Exception as e:
+                    self.failed.emit(f"extract: {e}")
+                    return
+            elif sz is not None:
+                err = _extract_7za(sz, archive, out_dir)
+                if err is not None:
+                    self.failed.emit(f"extract: {err}")
+                    return
+            else:
+                self.failed.emit("py7zr")
+                return
 
         self.progress.emit(100)
         root = _resolve_extracted_root(out_dir)

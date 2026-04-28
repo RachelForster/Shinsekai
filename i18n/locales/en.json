@@ -70,7 +70,8 @@
         "st_download": "Downloading…",
         "st_extract": "Extracting…",
         "no_gpu": "Could not read GPU info; you can still use links below.",
-        "err_py7": "Install py7zr to unpack: pip install py7zr",
+        "err_py7": "For development: pip install py7zr, or place 7za.exe under the repo's build_exe folder.",
+        "err_7z": "Built-in 7za.exe is missing. Reinstall from the official release package.",
         "done": "TTS path set (absolute). Click Save at the bottom to write api.yaml:\n{path}",
         "inline_hint": "Click the button to open a dialog with platform and GPU info; the recommended bundle is pre-selected. Change the selection in the dropdown if needed, then start the download.",
         "dlg_title": "Download TTS bundle",
@@ -281,6 +282,7 @@
     "stop": "Stop chat"
   },
   "tools": {
+    "tab_main": "Sprites & batch tools",
     "h2_sprites": "<h2>Sprite tools</h2>",
     "gem_box": "Batch-generate sprites (requires Gemini API key)",
     "gem_hint": "A Gemini API key is required. You can also use the official free web UI.",

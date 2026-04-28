@@ -1,9 +1,9 @@
 import sys
 
 from anyio import sleep
-from PyQt6.QtWidgets import (QPushButton, QTextEdit)
-from PyQt6.QtGui import QIcon, QColor, QFont
-from PyQt6.QtCore import QSize, Qt, pyqtSignal, QObject
+from PySide6.QtWidgets import QPushButton, QTextEdit
+from PySide6.QtGui import QIcon, QColor, QFont
+from PySide6.QtCore import QSize, Qt, Signal, QObject
 
 # 导入您提供的适配器文件 (假设文件名为 asr_adapter.py 并在同一目录下)
 # 实际项目中，您可能需要确保 asr_adapter.py 中的所有依赖（如 RealtimeSTT, vosk, pyaudio）已安装。
@@ -17,7 +17,7 @@ class ASRSignals(QObject):
         str: 转录文本
         bool: 是否是部分结果 (True) 或最终结果 (False)
     """
-    transcription_update = pyqtSignal(str, bool)
+    transcription_update = Signal(str, bool)
 
 # --- 2. MicButton 组件 (控制器) ---
 class MicButton(QPushButton):
@@ -27,10 +27,10 @@ class MicButton(QPushButton):
     ACTIVE_COLOR = "#6377AD"  # ASR 运行时的颜色
     INACTIVE_COLOR = "#E0E0E0"  # ASR 停
     # 定义一个外部可连接的信号，用于通知 ASR 状态变化
-    asr_state_changed = pyqtSignal(bool) # True for running, False for stopped
-    asr_pause_requested = pyqtSignal()
-    asr_resume_requested = pyqtSignal()
-    send_final_transcription = pyqtSignal()
+    asr_state_changed = Signal(bool)  # True for running, False for stopped
+    asr_pause_requested = Signal()
+    asr_resume_requested = Signal()
+    send_final_transcription = Signal()
 
     def __init__(self, asr_adapter = None, parent=None):
         super().__init__(parent)

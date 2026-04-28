@@ -4,10 +4,9 @@ import numpy as np
 import threading
 import yaml
 import time
-from PyQt6.QtCore import QEvent, Qt, QThread, pyqtSignal, QObject, QSize, QUrl
-from PyQt6.QtWidgets import QSlider
-from PyQt6.QtGui import QFont, QImage, QPixmap, QFontMetrics, QShowEvent
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QEvent, Qt, Signal, QSize, QUrl
+from PySide6.QtGui import QFont, QImage, QPixmap, QFontMetrics, QShowEvent
+from PySide6.QtWidgets import (
     QApplication,
     QLabel,
     QWidget,
@@ -21,36 +20,49 @@ import os
 
 from pathlib import Path
 
-import sys
+import logging
 current_script = Path(__file__).resolve()
-project_root = current_script.parent
+project_root = current_script.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from ui import styles
-from ui.components import CGWidget, ClickableLabel, TypingLabel, SpritePanel
-from ui.desktop_menu import DesktopMenuMixin
-from ui.desktop_toolbar import DesktopToolbarMixin
-from ui.workers import ImageDisplayThread, ChatWorker
-from ui.mic_button import MicButton
+from ui.chat_ui import styles
+from ui.chat_ui.components import CGWidget, ClickableLabel, TypingLabel, SpritePanel
+from ui.chat_ui.desktop_menu import DesktopMenuMixin
+from ui.chat_ui.desktop_toolbar import DesktopToolbarMixin
+from ui.chat_ui.mic_button import MicButton
+from ui.chat_ui.workers import ChatWorker, ImageDisplayThread
 from config.config_manager import ConfigManager
 from i18n import init_i18n, tr
 
 config_manager = ConfigManager()
 
+_logger = logging.getLogger(__name__)
+
 DIALOG_FRAME_PATH = Path('./assets/system/picture/dialog_frame.png').absolute().as_posix()
-class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
+class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     """桌面助手主窗口"""
-    message_submitted = pyqtSignal(str)  # 定义信号用于发送消息
-    open_chat_history_dialog = pyqtSignal()  # 定义信号用于打开聊天历史记录对话框
-    change_voice_language = pyqtSignal(str)  # 定义信号用于更改语音的语言
-    close_window = pyqtSignal() #关闭窗口信号
-    clear_chat_history = pyqtSignal()
-    skip_speech_signal = pyqtSignal() # 跳过当前语音信号
-    llm_reply_finished = pyqtSignal() # LLM 回复完成信号
-    pause_asr_signal = pyqtSignal() # 暂停 ASR 信号
-    copy_chat_history_to_clipboard = pyqtSignal() # 复制聊天记录到剪贴板信号.
-    revert_chat_history = pyqtSignal(int) # 回溯聊天记录到指定索引
+    message_submitted = Signal(str)  # 定义信号用于发送消息
+    open_chat_history_dialog = Signal()  # 定义信号用于打开聊天历史记录对话框
+    change_voice_language = Signal(str)  # 定义信号用于更改语音的语言
+    close_window = Signal()  # 关闭窗口信号
+    clear_chat_history = Signal()
+    skip_speech_signal = Signal()  # 跳过当前语音信号
+    llm_reply_finished = Signal()  # LLM 回复完成信号
+    pause_asr_signal = Signal()  # 暂停 ASR 信号
+    copy_chat_history_to_clipboard = Signal()  # 复制聊天记录到剪贴板信号.
+    revert_chat_history = Signal(int)  # 回溯聊天记录到指定索引
+
+    option_selected = Signal(str)
+    llm_response_received = Signal(object)
+    background_image_changed = Signal(str)
+    notification_changed = Signal(str)
+    display_words_changed = Signal(str)
+    numeric_info_changed = Signal(str)
+
+    # 聊天输入框 QTextEdit：获得 / 失去焦点（见 eventFilter）
+    user_input_started = Signal()
+    user_input_ended = Signal()
 
     def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False, background_mode = False, max_sprite_slots=3):
         """初始化窗口"""
@@ -105,6 +117,10 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         # 居中显示
         self.move((screen_geometry.width() - self.original_width) // 2, 
                   (screen_geometry.height() - self.original_height - 200))
+
+        from ui.chat_ui.signal_bridge import attach_chat_ui_window
+
+        attach_chat_ui_window(self)
 
     def setup_ui(self):
         """初始化UI组件"""
@@ -465,6 +481,7 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.background_label.setStyleSheet("")
         self._scale_and_apply_background()
         self.current_background_path = image_path
+        self.background_image_changed.emit(image_path)
         self._raise_input_and_toolbar()
 
     def update_image(self, image, character_name="", scale_rate=1.0):
@@ -510,17 +527,21 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.numeric_info_label.show()
             self.numeric_info_label.raise_()
             self._raise_input_and_toolbar()
+        self.numeric_info_changed.emit(html_text)
 
     def setNotification(self, message):
         """设置提示词"""
         self.input_box.setPlaceholderText(message)
+        self.notification_changed.emit(message)
 
     def handleResponse(self, result):
         """处理聊天响应"""
         if not self.sprite_mode:
+            self.llm_response_received.emit(result)
             self.setDisplayWords(f"<p style='line-height: 135%; letter-spacing: 2px;'><b style='color: #A7CA90;'>狛枝凪斗</b>：{result['message']}</p>")
             if not self.emotion_queue.full():
                 self.emotion_queue.put(result['emotion'])
+            self.llm_reply_finished.emit()
 
     def setDisplayWords(self, text):
         """显示人物说的话"""
@@ -555,13 +576,16 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             )
             self.skip_button.show()
             self._raise_input_and_toolbar()
+            self.display_words_changed.emit(text)
         else:
             self.dialog_label.hide()
             self.skip_button.hide() # 隐藏跳过按钮
+            self.display_words_changed.emit("")
     
     def option_clicked(self, text):
         """选项按钮点击处理函数"""
         print(f"Option clicked: {text}")
+        self.option_selected.emit(text)
         self.input_box.setText(text) # 将内容添加到输入框
         self.setOptions([])          # 隐藏选项
         self.sendMessage()           # 自动发送消息
@@ -667,6 +691,43 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.options_widget.raise_()
         self._raise_input_and_toolbar()
 
+    def mount_plugin_contributions(self, contributions: list) -> None:
+        """
+        Embed widgets from :mod:`sdk` plugins. ``placement`` hints:
+        ``toolbar`` (left of existing actions), ``input_row`` (left of input),
+        anything else: child of ``image_container`` (overlay).
+        """
+        if not contributions:
+            return
+        for c in sorted(contributions, key=lambda x: x.order):
+            try:
+                w = c.build(self)
+            except Exception:
+                _logger.exception("Desktop plugin widget failed: %s", c.widget_id)
+                continue
+            pl = (c.placement or "overlay").lower()
+            if pl == "toolbar":
+                tb = getattr(self, "toolbar", None)
+                if tb is not None:
+                    lay = tb.layout()
+                    if lay is not None:
+                        lay.insertWidget(0, w)
+                        nw = max(200, lay.sizeHint().width() + 24)
+                        cap = max(320, int(self.image_container.width() * 0.55))
+                        tb.setFixedWidth(min(nw, cap))
+                        x = max(0, self.image_container.width() - tb.width())
+                        tb.move(x, 10)
+            elif pl == "input_row":
+                row = getattr(self, "input_row", None)
+                if row is not None:
+                    il = row.layout()
+                    if il is not None:
+                        il.insertWidget(0, w)
+            else:
+                w.setParent(self.image_container)
+                w.show()
+            self._raise_input_and_toolbar()
+
     def mousePressEvent(self, event):
         """实现窗口拖动"""
         if event.button() == Qt.MouseButton.LeftButton:
@@ -688,21 +749,30 @@ class DesktopAssistantWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.display_thread.wait()
         super().closeEvent(event)
         self.close_window.emit()
+        from ui.chat_ui.signal_bridge import detach_chat_ui_window
+
+        detach_chat_ui_window()
 
     def eventFilter(self, obj, event):
-        if obj == self.input_box and event.type() == QEvent.Type.KeyPress:
-            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                # 同样判断是否带有修饰键
-                if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-                    self.send_btn.click() # 你的发送函数
-                    return True # 表示事件已处理，不再向下传递（即不换行）
+        if obj == self.input_box:
+            et = event.type()
+            if et == QEvent.Type.FocusIn:
+                self.user_input_started.emit()
+            elif et == QEvent.Type.FocusOut:
+                self.user_input_ended.emit()
+            elif et == QEvent.Type.KeyPress:
+                if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                    # 同样判断是否带有修饰键
+                    if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                        self.send_btn.click()  # 你的发送函数
+                        return True  # 表示事件已处理，不再向下传递（即不换行）
         return super().eventFilter(obj, event)
 
 def start_qt_app(display_queue, emotion_queue, deepseek):
-    """启动PyQt应用"""
+    """启动 PySide6 应用（ChatUI）。"""
     init_i18n(config_manager.config.system_config.ui_language)
     app = QApplication(sys.argv)
-    window = DesktopAssistantWindow(display_queue, emotion_queue, deepseek)
-    print("QT Window starts!!")
+    window = ChatUIWindow(display_queue, emotion_queue, deepseek)
+    print("ChatUI (PySide6) window starts")
     window.show()
     sys.exit(app.exec())

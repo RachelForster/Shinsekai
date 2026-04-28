@@ -97,13 +97,17 @@ class UiOutputMessageDispatcher:
 
 
 def default_tts_handler_chain() -> TtsMessageDispatcher:
-    """延迟从 tts_message_handler 拉取，避免与 workers 的循环 import。"""
+    """插件 handler 在前，内置链在后（先匹配先处理）。"""
+    from core.plugin_host import get_plugin_tts_handlers
     from core.tts_message_handler import get_tts_handlers
 
-    return TtsMessageDispatcher(get_tts_handlers())
+    chain = list(get_plugin_tts_handlers()) + list(get_tts_handlers())
+    return TtsMessageDispatcher(chain)
 
 
 def default_ui_output_handler_chain() -> UiOutputMessageDispatcher:
+    from core.plugin_host import get_plugin_ui_handlers
     from core.ui_message_handler import get_ui_output_handlers
 
-    return UiOutputMessageDispatcher(get_ui_output_handlers())
+    chain = list(get_plugin_ui_handlers()) + list(get_ui_output_handlers())
+    return UiOutputMessageDispatcher(chain)

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import pygame
-from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QDialog, QMenu, QMessageBox
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QDialog, QMenu, QMessageBox
 
 from config.config_manager import ConfigManager
-from ui.components import (
+from ui.chat_ui.components import (
     FontSizeDialog,
     LanguageDialog,
     MessageDialog,

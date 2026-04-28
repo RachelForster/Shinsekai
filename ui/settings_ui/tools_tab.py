@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -29,6 +30,7 @@ from PyQt6.QtWidgets import (
 from i18n import tr as tr_i18n
 from tools.crop_sprite import batch_crop_upper_half
 from tools.remove_bg import batch_remove_background
+from core.plugin_host import collect_tools_tab_contributions
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.utils import GALLERY_THUMB_PX
 
@@ -56,6 +58,11 @@ class ToolsSettingsTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
+        self._tabs = QTabWidget()
+        root.addWidget(self._tabs)
+        builtin_page = QWidget()
+        builtin_layout = QVBoxLayout(builtin_page)
+        builtin_layout.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -169,10 +176,15 @@ class ToolsSettingsTab(QWidget):
         self.tool_output.setMaximumHeight(120)
         lay.addWidget(self.tool_output)
 
-        root.addWidget(scroll)
+        builtin_layout.addWidget(scroll)
+        self._tabs.addTab(builtin_page, self._t("tab_main"))
+        for contrib in collect_tools_tab_contributions():
+            self._tabs.addTab(contrib.build(self._ctx), contrib.title)
         # refresh_characters 在 apply_i18n 之后由 __init__ 调用
 
     def apply_i18n(self) -> None:
+        if getattr(self, "_tabs", None) is not None and self._tabs.count():
+            self._tabs.setTabText(0, self._t("tab_main"))
         self._h2.setText(self._t("h2_sprites"))
         self.gem_box.setTitle(self._t("gem_box"))
         self._gem_hint.setText(self._t("gem_hint"))
