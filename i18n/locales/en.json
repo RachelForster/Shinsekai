@@ -104,6 +104,13 @@
     "msg": {
       "config": "API",
       "provider_fail": "Failed to update provider: {e}"
+    },
+    "resume": {
+      "btn": "Resume last chat & launch",
+      "tip": "Uses the most recently modified *.json in the chat history folder; template prefers _temp.txt (last launch cache), otherwise the newest .txt in the templates folder. Preset voice mode, transparent background, ComfyUI off; live room ID from saved config.",
+      "title": "Launch chat",
+      "no_history": "No chat history (*.json) found. Chat in the main window at least once.",
+      "no_template": "No usable template (.txt) found. Open the Chat template tab to generate, save, or launch once."
     }
   },
   "char": {

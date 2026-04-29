@@ -53,23 +53,32 @@ class MicButton(QPushButton):
 
         self.asr_adapter.callback = signal_callback
         
+        self._window_scale = 1.0
         self._setup_ui()
         self.clicked.connect(self._toggle_asr)
 
+    def apply_window_scale(self, scale: float) -> None:
+        """随主窗口缩放更新麦克风按钮尺寸与字号。"""
+        self._window_scale = max(0.55, min(2.2, scale))
+        side = max(36, int(50 * self._window_scale))
+        r = max(8, side // 2)
+        px = max(11, int(16 * self._window_scale))
+        self.setFixedSize(QSize(side, side))
+        self.setFont(QFont("Arial", px))
+        bg = self.ACTIVE_COLOR if self._is_asr_running else self.INACTIVE_COLOR
+        self.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {bg};
+                border-radius: {r}px;
+            }}
+            """
+        )
+
     def _setup_ui(self):
         """配置按钮的样式和图标。"""
-        
-        # 使用 FontAwesome 的麦克风图标（如果系统支持或已配置 QFont）
-        # 实际项目中，更推荐使用 QIcon 加载本地图片文件 (.png, .svg)
-        self.setText("🎤") 
-        self.setFont(QFont("Arial", 16))
-        self.setFixedSize(QSize(50, 50))
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.INACTIVE_COLOR}; /* 默认灰色 */
-                border-radius: 25px;
-            }}
-        """)
+        self.setText("🎤")
+        self.apply_window_scale(1.0)
 
     def set_input_widget(self, input: QTextEdit):
         """设置接收转录结果的 QTextEdit 控件。"""

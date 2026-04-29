@@ -9,25 +9,27 @@ FONT_FAMILY = "'Microsoft YaHei', 'SimHei', 'Arial'"
 # --- 工具栏 ---
 
 
-def toolbar_host() -> str:
-    return "background-color: rgba(50, 50, 50, 150); border-radius: 20px;"
+def toolbar_host(border_radius_px: int = 20) -> str:
+    return f"background-color: rgba(50, 50, 50, 150); border-radius: {border_radius_px}px;"
 
 
-def toolbar_action_button() -> str:
-    return """
-            QPushButton {
+def toolbar_action_button(
+    font_size: str = "28px", border_radius_px: int = 24
+) -> str:
+    return f"""
+            QPushButton {{
                 background-color: rgba(255, 255, 255, 100);
                 border: 2px solid rgba(255, 255, 255, 150);
-                border-radius: 24px;
+                border-radius: {border_radius_px}px;
                 color: white;
-                font-size: 28px;
-            }
-            QPushButton:hover {
+                font-size: {font_size};
+            }}
+            QPushButton:hover {{
                 background-color: rgba(255, 255, 255, 150);
-            }
-            QPushButton:pressed {
+            }}
+            QPushButton:pressed {{
                 background-color: rgba(255, 255, 255, 200);
-            }
+            }}
         """
 
 
@@ -163,19 +165,19 @@ def send_button_input_bar_green(btn_font_size: str) -> str:
         """
 
 
-def skip_speech_button() -> str:
-    return """
-            QPushButton {
+def skip_speech_button(font_size: str = "16px") -> str:
+    return f"""
+            QPushButton {{
                 background-color: rgba(255, 255, 255, 0);
                 color: white;
                 border: none;
                 border-radius: 24px;
-                font-size: 16px;
+                font-size: {font_size};
                 font-weight: bold;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: rgba(255, 100, 100, 100);
-            }
+            }}
         """
 
 

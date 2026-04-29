@@ -46,8 +46,11 @@ class CrossFadeSprite(QWidget):
         super().__init__(parent)
         # 从外部获取原始宽高，用于缩放计算
         self.original_width = original_width
-        self.original_height = original_height 
-        self.setFixedSize(original_width, original_height)
+        self.original_height = original_height
+        self.setMinimumSize(1, 1)
+        self.setMaximumSize(original_width, original_height)
+        self._last_source_image: np.ndarray | None = None
+        self._last_character_rate = None
         self.current_character: str | None = None  # 当前显示的角色名
         
         # 布局，确保两个 QLabel 重叠
@@ -166,8 +169,11 @@ class CrossFadeSprite(QWidget):
         
         # 开始动画
         self.parallel_group.start()
-        self.resize(scaled_pixmap.width(), self.height())
-        return scaled_pixmap.width(), self.height()
+        if image.shape[0] >= 2 and image.shape[1] >= 2:
+            self._last_source_image = np.ascontiguousarray(image)
+            self._last_character_rate = character_rate
+        self.resize(scaled_pixmap.width(), self.original_height)
+        return scaled_pixmap.width(), self.original_height
 
     def _animationFinished(self):
         """动画结束后的清理工作"""
@@ -188,15 +194,43 @@ class CrossFadeSprite(QWidget):
     def setInitialSprite(self, image: np.ndarray, character_rate=None):
         """用于程序启动时第一次设置立绘，不带动画。"""
         scaled_pixmap = self._get_scaled_pixmap(image, character_rate)
-        if scaled_pixmap:
+        if scaled_pixmap and not scaled_pixmap.isNull():
             self.label_old.setPixmap(scaled_pixmap)
-    
+            if image.shape[0] >= 2 and image.shape[1] >= 2:
+                self._last_source_image = np.ascontiguousarray(image)
+                self._last_character_rate = character_rate
+            self.resize(scaled_pixmap.width(), self.original_height)
+
+    def apply_panel_resize(self, panel_w: int, panel_h: int) -> None:
+        """面板尺寸变化时更新缩放参照与已显示立绘（无边框窗口拖拽缩放）。"""
+        self.original_width = panel_w
+        self.original_height = panel_h
+        self.setMaximumSize(panel_w, panel_h)
+        if self._last_source_image is None:
+            return
+        pm = self._get_scaled_pixmap(self._last_source_image, self._last_character_rate)
+        if pm.isNull():
+            return
+        self.label_old.setPixmap(pm)
+        self.label_new.clear()
+        self.new_opacity_effect.setOpacity(0.0)
+        self.old_opacity_effect.setOpacity(1.0)
+        pg = getattr(self, "parallel_group", None)
+        if pg is not None:
+            pg.stop()
+        self.is_animating = False
+        self.resize(int(pm.width()), int(panel_h))
+
     def fadeOut(self):
         """使立绘淡出（隐藏）"""
+        self._last_source_image = None
+        self._last_character_rate = None
         self.setSprite(np.zeros((1,1,4), dtype=np.uint8), 1.0)  # 传入空图像实现淡出效果
 
     def clear(self):
         """清除立绘"""
+        self._last_source_image = None
+        self._last_character_rate = None
         self.label_old.clear()
         self.label_new.clear()
         self.current_character = None
@@ -265,8 +299,7 @@ class SpritePanel(QWidget):
         self.sprite_width_ref = w
         self.sprite_height_ref = h
         for sprite in self.sprite_slots:
-            sprite.original_width = w
-            sprite.original_height = h
+            sprite.apply_panel_resize(w, h)
         self._reposition_sprites()
 
     def _get_or_create_slot(self, character_id: str) -> CrossFadeSprite | None:

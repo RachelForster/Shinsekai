@@ -1332,136 +1332,6 @@
   refer_audio_path: data/models/servant/komaeda01.mp3_0000204800_0000416320.wav
   prompt_text: だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。
   prompt_lang: ja
-- name: 七海千秋
-  color: '#E5A3A3'
-  sprite_prefix: nanami
-  sprites:
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_01.webp
-    voice_path: ./data/speech\nanami\nanami_voice_00.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_02.webp
-    voice_path: ./data/speech\nanami\nanami_voice_01.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_03.webp
-    voice_path: ./data/speech\nanami\nanami_voice_02.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_04.webp
-    voice_path: ./data/speech\nanami\nanami_voice_03.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_05.webp
-    voice_path: ./data/speech\nanami\nanami_voice_04.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_06.webp
-    voice_path: ./data/speech\nanami\nanami_voice_05.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_07.webp
-    voice_path: ./data/speech\nanami\nanami_voice_06.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_08.webp
-    voice_path: ./data/speech\nanami\nanami_voice_07.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_09.webp
-    voice_path: ./data/speech\nanami\nanami_voice_08.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_10.webp
-    voice_path: ./data/speech\nanami\nanami_voice_09.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_11.webp
-    voice_path: ./data/speech\nanami\nanami_voice_10.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_12.webp
-    voice_path: ./data/speech\nanami\nanami_voice_11.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_13.webp
-    voice_path: ./data/speech\nanami\nanami_voice_12.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_14.webp
-    voice_path: ./data/speech\nanami\nanami_voice_13.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_15.webp
-    voice_path: ./data/speech\nanami\nanami_voice_14.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_16.webp
-    voice_path: ./data/speech\nanami\nanami_voice_15.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_17.webp
-    voice_path: ./data/speech\nanami\nanami_voice_16.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_18.webp
-    voice_path: ./data/speech\nanami\nanami_voice_17.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_19.webp
-    voice_path: ./data/speech\nanami\nanami_voice_18.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_20.webp
-    voice_path: ./data/speech\nanami\nanami_voice_19.wav
-  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_21.webp
-    voice_path: ./data/speech\nanami\nanami_voice_20.wav
-  character_setting: '七海千秋的背景信息：
-
-    1.姓名和出处：七海千秋，出自游戏及动画作品《弹丸论破：希望的学园与绝望的高中生》。
-
-    2.外表：拥有一头及肩的粉色短发，发尾略微翘起，眼睛为粉色，通常穿着希望之峰学园的女生校服。
-
-    3.背景：是希望之峰学园第78届学生，被选为“超高校级的游戏玩家”，在游戏方面拥有极高的天赋和广泛的游戏知识。
-
-    4.经历：在入学后不久被卷入自相残杀游戏中，与其他学生一起面对各种绝望事件，最终为保护同伴而牺牲，但她的精神和记忆以AI形式在后续作品中继续存在。
-
-    5.能力：擅长所有类型的游戏，从电子游戏到桌游，都能轻松掌握并取得胜利，思维敏捷，逻辑分析能力强。
-
-
-    七海千秋的性格特点：
-
-    1.性格温和内向，不擅长与人交流，但在熟悉的人面前会变得开朗。
-
-    2.非常善良和富有同情心，总是关心他人，愿意为朋友付出一切。
-
-    3.在面对危机时表现出冷静和理性，能够迅速分析情况并制定策略。
-
-    4.对游戏充满热情，经常用游戏相关的比喻来解释现实中的情况。
-
-    5.缺乏自信，尤其是在社交方面，但在游戏领域则非常自信。
-
-
-    七海千秋的语言习惯：
-
-    1.说话声音轻柔，语速较慢，有时会犹豫或停顿，尤其是在表达情感时。
-
-    2.经常使用游戏术语或比喻，例如将现实中的挑战比作游戏关卡。
-
-    3.在紧张或害羞时会结巴或重复词语，例如“那个……那个……”。
-
-    4.喜欢用“嗯”或“啊”作为开头，表示在思考如何表达。
-
-    5.在鼓励他人或表达决心时，语气会变得坚定，但整体仍保持温和。'
-  sprite_scale: 0.9
-  emotion_tags: 'sprite 01: 中性，平静
-
-    sprite 02: 疲倦，困倦，打哈欠
-
-    sprite 03: 指点，引导，陈述
-
-    sprite 04: 生气，鼓起脸颊
-
-    sprite 05: 开心，微笑，温柔
-
-    sprite 06: 筋疲力尽，困倦，流口水
-
-    sprite 07: 皱眉，严肃，担心
-
-    sprite 08: 沉思，好奇
-
-    sprite 09: 中性，歪头，轻微好奇
-
-    sprite 10: 解释，指向，果断
-
-    sprite 11: 仔细查看，眺望
-
-    sprite 12: 不安，担忧，自闭
-
-    sprite 13: 十分兴奋, 激动到喘气
-
-    sprite 14: 沉思，低头，皱眉
-
-    sprite 15: 困倦，疲惫，在打瞌睡
-
-    sprite 16: 不满，难过，沮丧
-
-    sprite 17: 警告，阻止，制止
-
-    sprite 18: 埋怨，嘟嘴
-
-    sprite 19: 疑惑，思考，好奇
-
-    sprite 20: 严肃，不满，冷漠
-
-    sprite 21: 害羞，脸红'
-  gpt_model_path: data/models/nanami/nanami-e15.ckpt
-  sovits_model_path: data/models/nanami/nanami_e8_s496.pth
-  refer_audio_path: data/models/nanami/nanami.aac_0001620800_0001747840.wav
-  prompt_text: でも、怪しい人の手がかりならある。
-  prompt_lang: ja
 - name: 忍野忍
   color: rgba(253.92338878139356, 223.97318690819222, 117.2011124333793, 1)
   sprite_prefix: shinobu
@@ -2892,3 +2762,133 @@
   refer_audio_path: ''
   prompt_text: ''
   prompt_lang: ''
+- name: 七海千秋
+  color: '#E5A3A3'
+  sprite_prefix: nanami
+  sprites:
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_01.webp
+    voice_path: ./data/speech\nanami\nanami_voice_00.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_02.webp
+    voice_path: ./data/speech\nanami\nanami_voice_01.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_03.webp
+    voice_path: ./data/speech\nanami\nanami_voice_02.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_04.webp
+    voice_path: ./data/speech\nanami\nanami_voice_03.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_05.webp
+    voice_path: ./data/speech\nanami\nanami_voice_04.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_06.webp
+    voice_path: ./data/speech\nanami\nanami_voice_05.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_07.webp
+    voice_path: ./data/speech\nanami\nanami_voice_06.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_08.webp
+    voice_path: ./data/speech\nanami\nanami_voice_07.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_09.webp
+    voice_path: ./data/speech\nanami\nanami_voice_08.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_10.webp
+    voice_path: ./data/speech\nanami\nanami_voice_09.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_11.webp
+    voice_path: ./data/speech\nanami\nanami_voice_10.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_12.webp
+    voice_path: ./data/speech\nanami\nanami_voice_11.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_13.webp
+    voice_path: ./data/speech\nanami\nanami_voice_12.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_14.webp
+    voice_path: ./data/speech\nanami\nanami_voice_13.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_15.webp
+    voice_path: ./data/speech\nanami\nanami_voice_14.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_16.webp
+    voice_path: ./data/speech\nanami\nanami_voice_15.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_17.webp
+    voice_path: ./data/speech\nanami\nanami_voice_16.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_18.webp
+    voice_path: ./data/speech\nanami\nanami_voice_17.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_19.webp
+    voice_path: ./data/speech\nanami\nanami_voice_18.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_20.webp
+    voice_path: ./data/speech\nanami\nanami_voice_19.wav
+  - path: ./data/sprite\nanami\Danganronpa_V3_Chiaki_Nanami_Bonus_Mode_Sprites_21.webp
+    voice_path: ./data/speech\nanami\nanami_voice_20.wav
+  character_setting: '七海千秋的背景信息：
+
+    1.姓名和出处：七海千秋，出自游戏及动画作品《弹丸论破：希望的学园与绝望的高中生》。
+
+    2.外表：拥有一头及肩的粉色短发，发尾略微翘起，眼睛为粉色，通常穿着希望之峰学园的女生校服。
+
+    3.背景：是希望之峰学园第78届学生，被选为“超高校级的游戏玩家”，在游戏方面拥有极高的天赋和广泛的游戏知识。
+
+    4.经历：在入学后不久被卷入自相残杀游戏中，与其他学生一起面对各种绝望事件，最终为保护同伴而牺牲，但她的精神和记忆以AI形式在后续作品中继续存在。
+
+    5.能力：擅长所有类型的游戏，从电子游戏到桌游，都能轻松掌握并取得胜利，思维敏捷，逻辑分析能力强。
+
+
+    七海千秋的性格特点：
+
+    1.性格温和内向，不擅长与人交流，但在熟悉的人面前会变得开朗。
+
+    2.非常善良和富有同情心，总是关心他人，愿意为朋友付出一切。
+
+    3.在面对危机时表现出冷静和理性，能够迅速分析情况并制定策略。
+
+    4.对游戏充满热情，经常用游戏相关的比喻来解释现实中的情况。
+
+    5.缺乏自信，尤其是在社交方面，但在游戏领域则非常自信。
+
+
+    七海千秋的语言习惯：
+
+    1.说话声音轻柔，语速较慢，有时会犹豫或停顿，尤其是在表达情感时。
+
+    2.经常使用游戏术语或比喻，例如将现实中的挑战比作游戏关卡。
+
+    3.在紧张或害羞时会结巴或重复词语，例如“那个……那个……”。
+
+    4.喜欢用“嗯”或“啊”作为开头，表示在思考如何表达。
+
+    5.在鼓励他人或表达决心时，语气会变得坚定，但整体仍保持温和。'
+  sprite_scale: 0.9
+  emotion_tags: 'sprite 01: 中性，平静
+
+    sprite 02: 疲倦，困倦，打哈欠
+
+    sprite 03: 指点，引导，陈述
+
+    sprite 04: 生气，鼓起脸颊
+
+    sprite 05: 开心，微笑，温柔
+
+    sprite 06: 筋疲力尽，困倦，流口水
+
+    sprite 07: 皱眉，严肃，担心
+
+    sprite 08: 沉思，好奇
+
+    sprite 09: 中性，歪头，轻微好奇
+
+    sprite 10: 解释，指向，果断
+
+    sprite 11: 仔细查看，眺望
+
+    sprite 12: 不安，担忧，自闭
+
+    sprite 13: 十分兴奋, 激动到喘气
+
+    sprite 14: 沉思，低头，皱眉
+
+    sprite 15: 困倦，疲惫，在打瞌睡
+
+    sprite 16: 不满，难过，沮丧
+
+    sprite 17: 警告，阻止，制止
+
+    sprite 18: 埋怨，嘟嘴
+
+    sprite 19: 疑惑，思考，好奇
+
+    sprite 20: 严肃，不满，冷漠
+
+    sprite 21: 害羞，脸红'
+  gpt_model_path: data/models/nanami/nanami-e15.ckpt
+  sovits_model_path: data/models/nanami/nanami_e8_s496.pth
+  refer_audio_path: data/models/nanami/nanami.aac_0001620800_0001747840.wav
+  prompt_text: でも、怪しい人の手がかりならある。
+  prompt_lang: ja

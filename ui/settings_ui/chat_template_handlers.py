@@ -8,9 +8,75 @@ import subprocess
 import sys
 from pathlib import Path
 
+from llm.template_generator import TRANSPARENT_BG
 from ui.settings_ui.context import SettingsUIContext
+from ui.settings_ui.feedback import is_failure_message
+from i18n import tr as tr_i18n
 
 _main_chat_process = None
+
+
+def _latest_history_json(history_dir: str) -> Path | None:
+    d = Path(history_dir)
+    if not d.is_dir():
+        return None
+    files = [p for p in d.glob("*.json") if p.is_file()]
+    if not files:
+        return None
+    return max(files, key=lambda p: p.stat().st_mtime)
+
+
+def _template_text_for_resume(ctx: SettingsUIContext) -> str | None:
+    """优先上次启动写入的 _temp.txt，否则用模板目录内最近修改的 .txt。"""
+    td = Path(ctx.template_dir_path)
+    if not td.is_dir():
+        return None
+    temp = td / "_temp.txt"
+    if temp.is_file() and temp.stat().st_size > 0:
+        try:
+            text = temp.read_text(encoding="utf-8").strip()
+            if text:
+                return text
+        except OSError:
+            pass
+    txts = [p for p in td.glob("*.txt") if p.is_file()]
+    if not txts:
+        return None
+    latest = max(txts, key=lambda p: p.stat().st_mtime)
+    try:
+        t = latest.read_text(encoding="utf-8").strip()
+        return t or None
+    except OSError:
+        return None
+
+
+def launch_chat_resume_last(
+    ctx: SettingsUIContext,
+) -> tuple[bool, str]:
+    """
+    用最近修改的聊天记录 + 可用模板启动主程序（与「聊天模板」页逻辑一致）。
+    返回 (成功, 文案)。
+    """
+    hp = _latest_history_json(ctx.history_dir)
+    if hp is None:
+        return False, tr_i18n("api.resume.no_history")
+    tpl = _template_text_for_resume(ctx)
+    if not tpl:
+        return False, tr_i18n("api.resume.no_template")
+    room_id = getattr(ctx.config_manager.config.system_config, "live_room_id", "") or ""
+    msg = launch_chat(
+        ctx,
+        tpl,
+        "预设语音模式",
+        "",
+        str(hp.resolve()),
+        TRANSPARENT_BG,
+        "否",
+        str(room_id).strip(),
+    )
+    if is_failure_message(msg):
+        return False, msg
+    return True, msg
 
 
 def _release_root() -> Path:

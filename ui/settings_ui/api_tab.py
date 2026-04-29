@@ -27,8 +27,9 @@ from PyQt6.QtWidgets import (
 
 from i18n import init_i18n, normalize_lang, tr as tr_i18n
 from llm.constants import LLM_BASE_URLS
+from ui.settings_ui.chat_template_handlers import launch_chat_resume_last
 from ui.settings_ui.context import SettingsUIContext
-from ui.settings_ui.feedback import feedback_result, message_fail
+from ui.settings_ui.feedback import feedback_result, message_fail, toast_success
 from ui.settings_ui.tts_bundle_download_dialog import TtsBundleDownloadDialog
 
 
@@ -57,6 +58,14 @@ class ApiSettingsTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
+        resume_row = QHBoxLayout()
+        self._resume_chat_btn = QPushButton(tr_i18n("api.resume.btn"))
+        self._resume_chat_btn.setToolTip(tr_i18n("api.resume.tip"))
+        self._resume_chat_btn.clicked.connect(self._on_resume_last_chat)
+        resume_row.addWidget(self._resume_chat_btn)
+        resume_row.addStretch(1)
+        root.addLayout(resume_row)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -338,6 +347,13 @@ class ApiSettingsTab(QWidget):
         fl.addLayout(save_row)
         root.addWidget(foot)
 
+    def _on_resume_last_chat(self) -> None:
+        ok, msg = launch_chat_resume_last(self._ctx)
+        if ok:
+            toast_success(self, tr_i18n("api.resume.title"), msg)
+        else:
+            message_fail(self, tr_i18n("api.resume.title"), msg)
+
     def _on_language_activated(self, index: int) -> None:
         code = self._lang_combo.itemData(index) or "zh_CN"
         self._ctx.config_manager.set_ui_language(code)
@@ -347,6 +363,8 @@ class ApiSettingsTab(QWidget):
             w.apply_i18n()
 
     def apply_i18n(self) -> None:
+        self._resume_chat_btn.setText(tr_i18n("api.resume.btn"))
+        self._resume_chat_btn.setToolTip(tr_i18n("api.resume.tip"))
         self._api_h2.setText(tr_i18n("api.h2"))
         self._api_sub.setText(tr_i18n("api.subtitle"))
         self._lang_group.setTitle(tr_i18n("lang.group"))

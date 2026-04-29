@@ -95,6 +95,11 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         screen_geometry = screen.geometry()
         self.original_height = screen_geometry.height() // 4 * 3
         self.original_width = screen_geometry.width() // 4 * 3 if background_mode else self.original_height
+        # 字体随窗口缩放：相对初始客户区面积的平方根比例，带上下限
+        self._font_scale_ref_w = max(1, int(self.original_width))
+        self._font_scale_ref_h = max(1, int(self.original_height))
+        # 对话/选项区：小于启动时透明窗初始宽度则横向上与容器同宽（无左右留白）
+        self._overlay_min_ref_width = max(1, int(self.original_width))
         self.current_background_path = None
         # 全尺寸图，供 resize 时重缩放，使底栏 input 与整窗共用同一底图
         self._background_source_pixmap = None
@@ -139,13 +144,23 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.setup_ui()
         self._install_resize_event_filters()
 
-        # 居中显示
-        self.move((screen_geometry.width() - self.original_width) // 2, 
-                  (screen_geometry.height() - self.original_height - 200))
+        # 置顶启动；初始位置在工作区内居中（不靠屏幕上沿）
+        avail = screen.availableGeometry()
+        x = avail.left() + (avail.width() - self.original_width) // 2
+        y = avail.top() + (avail.height() - self.original_height) // 2
+        self.move(x, y)
 
         from ui.chat_ui.signal_bridge import attach_chat_ui_window
 
         attach_chat_ui_window(self)
+
+    def _window_font_scale(self) -> float:
+        rw = max(1, int(getattr(self, "_font_scale_ref_w", self.original_width)))
+        rh = max(1, int(getattr(self, "_font_scale_ref_h", self.original_height)))
+        sw = self.width() / rw
+        sh = self.height() / rh
+        s = (sw * sh) ** 0.5
+        return max(0.55, min(2.2, s))
 
     def _make_state_proxy(self):
         """返回一个满足 _ChatUIStateProxy 的对象，仅暴露安全读方法。"""
@@ -197,6 +212,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.Window
             | Qt.WindowType.NoDropShadowWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setObjectName("DesktopAssistantWindow")
@@ -285,15 +301,19 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         """外部接口：显示一个CG，它会触发立绘隐藏"""
         self.cg_widget.show_cg(cg_path)
     def apply_font_styles(self):
-        """根据当前的 font_size 和 btn_font_size 更新所有UI元素的样式"""
-        # Recalculate DPI scaled sizes
+        """根据 DPI、用户基准字号与当前窗口尺寸更新所有 UI 字号与相关控件。"""
         screen = QApplication.primaryScreen()
         curren_dpi = screen.logicalDotsPerInch()
         base_dpi = 150.0
-        
-        self.font_size = f"{str(int(self.base_font_size_px*curren_dpi//base_dpi))}px;"
-        # Button font is scaled relative to the default dialog font (48px)
-        self.btn_font_size = f"{str(int(self.base_font_size_px*28//48*curren_dpi//base_dpi))}px;" 
+        win_s = self._window_font_scale()
+
+        body_px = int(self.base_font_size_px * curren_dpi / base_dpi * win_s)
+        body_px = max(10, body_px)
+        btn_px = int(self.base_font_size_px * 28 / 48 * curren_dpi / base_dpi * win_s)
+        btn_px = max(9, btn_px)
+
+        self.font_size = f"{body_px}px;"
+        self.btn_font_size = f"{btn_px}px;"
         
         # 对话气泡只用 QSS 渐变，不要再叠一层 dialog_frame 位图，否则整图会随 QLabel
         # 拉伸，PNG 里画的装饰/灰边会看起来像「外圈多了一圈框」。
@@ -332,12 +352,18 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             if widget is not None:
                 widget.setStyleSheet(opt_refresh)
 
-        # Since sizes changed, force a re-layout/adjust
+        self._layout_toolbar_geometry()
+        if getattr(self, "mic_button", None) is not None:
+            self.mic_button.apply_window_scale(win_s)
+        if getattr(self, "skip_button", None) is not None:
+            sk = max(36, int(48 * win_s))
+            self.skip_button.setFixedSize(sk, sk)
+            skip_fs = max(12, int(16 * win_s))
+            self.skip_button.setStyleSheet(styles.skip_speech_button(f"{skip_fs}px"))
+
         self.dialog_label.adjustSize()
         self.numeric_info_label.adjustSize()
-        if self.options_widget.isVisible():
-            self.setDisplayWords("Test")
-            self.setOptions(self.current_options)
+        self._relayout_overlays()
 
     def setup_numeric_label(self):
         # 1. 创建用于显示富文本的“数值组件”
@@ -460,6 +486,50 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def _above_chrome_y(self, block_height: int, gap: int = 4) -> int:
         h = int(self.image_container.height()) if self.image_container.height() > 0 else int(self.height())
         return max(0, h - self._bottom_chrome_h - gap - int(block_height))
+
+    def _overlay_margin_and_content_width(self, container_width: int) -> tuple[int, int]:
+        """水平：参照启动时窗口宽度；当前容器更窄时铺满（与可视区同宽），否则按比例留白。"""
+        cw = max(1, int(container_width))
+        ref = max(1, int(getattr(self, "_overlay_min_ref_width", self.original_width)))
+        if cw < ref:
+            return 0, cw
+        margin_width = int(cw * self.HORIZONTAL_MARGIN_PERCENT)
+        return margin_width, cw - (2 * margin_width)
+
+    def _layout_dialog_label_block(self) -> None:
+        """按当前 image_container 尺寸排对话框与跳过按钮；不改打字机状态（恢复原有 setText）。"""
+        dlg = self.dialog_label
+        sizing = getattr(dlg, "_full_text", "") or dlg.text()
+        if not sizing:
+            return
+        saved = dlg.text()
+        dlg.setText(sizing)
+        container_width = self.image_container.width() or self.original_width
+        margin_width, new_width = self._overlay_margin_and_content_width(container_width)
+        dlg.setFixedWidth(new_width)
+        dlg.adjustSize()
+        avail_h = max(1, (self.image_container.height() or self.height()) - self._bottom_chrome_h)
+        min_height = int(avail_h * 0.3)
+        max_height = int(avail_h * 0.6)
+        height = max(min_height, dlg.height())
+        height = min(height, max_height)
+        y = self._above_chrome_y(height, gap=4)
+        dlg.setGeometry(margin_width, y, new_width, height)
+        dlg.setText(saved)
+        if dlg.isVisible() and getattr(self, "skip_button", None) is not None:
+            self.skip_button.move(
+                dlg.geometry().right() - self.skip_button.width() - 20,
+                dlg.geometry().bottom() - self.skip_button.height() - 10,
+            )
+
+    def _relayout_overlays(self) -> None:
+        """窗口缩放时重算选项区 / 台词框几何。"""
+        if getattr(self, "options_widget", None) is None:
+            return
+        if self.options_widget.isVisible() and self.current_options:
+            self.setOptions(self.current_options)
+        elif self.dialog_label.isVisible():
+            self._layout_dialog_label_block()
     
     def setup_image_thread(self):
         """设置图像显示线程"""
@@ -509,9 +579,9 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             if getattr(self, "send_btn", None) is not None:
                 self.send_btn.raise_()
         if getattr(self, "toolbar", None) is not None:
+            if hasattr(self, "_layout_toolbar_geometry"):
+                self._layout_toolbar_geometry()
             self.toolbar.raise_()
-            w = self.image_container.width() if self.image_container.width() else self.width()
-            self.toolbar.move(max(0, w - 200), 10)
         for name in ("_resize_grip_bl", "_resize_grip_br"):
             g = getattr(self, name, None)
             if g is not None:
@@ -552,6 +622,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._layout_input_row()
+        self.apply_font_styles()
         self.cg_widget.setGeometry(
             0,
             0,
@@ -842,33 +913,10 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         if text:
             self.options_widget.hide()
             self.dialog_label.setText(text)
-            container_width = self.image_container.width() or self.original_width
-            margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
-            new_width = container_width - (2 * margin_width)
-
-            self.dialog_label.setFixedWidth(new_width)
-            self.dialog_label.adjustSize()
-            avail_h = max(1, (self.image_container.height() or self.height()) - self._bottom_chrome_h)
-            min_height = int(avail_h * 0.3)
-            max_height = int(avail_h * 0.6)
-            height = max(min_height, self.dialog_label.height())
-            height = min(height, max_height)
-            
-            # 2. 计算垂直位置：贴在底栏上方
-            y = self._above_chrome_y(height, gap=4)
-            
-            # 3. 设置居中的位置和调整后的尺寸
-            self.dialog_label.setGeometry(margin_width, y, new_width, height)
-
             self.dialog_label.show()
-            self.dialog_label.setDisplayWords(text) # 启动打字机效果
-            
-            # 4. 调整跳过按钮的位置
-            self.skip_button.move(
-                self.dialog_label.geometry().right() - self.skip_button.width() - 20, 
-                self.dialog_label.geometry().bottom() - self.skip_button.height() - 10
-            )
+            self.dialog_label.setDisplayWords(text)  # 先更新 _full_text 与可见片段
             self.skip_button.show()
+            self._layout_dialog_label_block()
             self._raise_input_and_toolbar()
             self.display_words_changed.emit(text)
         else:
@@ -938,8 +986,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.options_layout.addWidget(option_btn)
 
         container_width = self.image_container.width() or self.original_width
-        margin_width = int(container_width * self.HORIZONTAL_MARGIN_PERCENT)
-        new_width = container_width - (2 * margin_width)
+        margin_width, new_width = self._overlay_margin_and_content_width(container_width)
         
         # 5a. 临时设置宽度来获取正确的 sizeHint (高度)
         self.options_widget.setFixedWidth(new_width)

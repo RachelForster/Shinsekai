@@ -11,8 +11,6 @@ class DesktopToolbarMixin:
     def setup_toolbar(self) -> None:
         """初始化右上角工具栏"""
         self.toolbar = QWidget(self.image_container)
-        self.toolbar.setFixedSize(200, 48)
-        self.toolbar.move(self.original_width - 200, 10)
         self.toolbar.setStyleSheet(styles.toolbar_host())
 
         toolbar_layout = QHBoxLayout(self.toolbar)
@@ -39,6 +37,33 @@ class DesktopToolbarMixin:
         toolbar_layout.addWidget(self.settings_btn)
         toolbar_layout.addWidget(self.minimize_btn)
         toolbar_layout.addWidget(self.close_btn)
+        self._layout_toolbar_geometry()
+
+    def _layout_toolbar_geometry(self) -> None:
+        """按窗口缩放更新工具栏尺寸、字号与位置（依赖 _window_font_scale）。"""
+        if getattr(self, "toolbar", None) is None:
+            return
+        scale = self._window_font_scale()
+        btn_sz = max(32, int(48 * scale))
+        tb_h = max(36, int(48 * scale), btn_sz)
+        margins = 16 + 16
+        spacing = 8 + 8
+        min_tb_w = margins + spacing + 3 * btn_sz
+        tb_w = max(min_tb_w, int(200 * scale), 140)
+        self.toolbar.setFixedSize(tb_w, tb_h)
+
+        btn_r = max(8, btn_sz // 2)
+        t_font = f"{max(14, int(28 * scale))}px"
+        qss = styles.toolbar_action_button(t_font, btn_r)
+        host_r = max(10, min(tb_h // 2, int(20 * scale)))
+        self.toolbar.setStyleSheet(styles.toolbar_host(host_r))
+        for b in (self.settings_btn, self.minimize_btn, self.close_btn):
+            b.setFixedSize(btn_sz, btn_sz)
+            b.setStyleSheet(qss)
+        w_ic = self.image_container.width() if getattr(self, "image_container", None) else 0
+        if not w_ic:
+            w_ic = self.width()
+        self.toolbar.move(max(0, w_ic - tb_w), 10)
 
     def minimize_window(self) -> None:
         """调用 QWidget 的 showMinimized() 来最小化窗口。"""
