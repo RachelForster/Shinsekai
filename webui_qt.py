@@ -58,6 +58,7 @@ def main() -> None:
     f.setPixelSize(font_px)
     app.setFont(f)
     win = SettingsWindow(ctx, width=w, height=h, font_pixel_size=font_px)
+    # DWM：Settings 用 RGB 边框色；Chat 在 chat_ui.showEvent 使用 border_color_none（Win11 抑薄边框）
     win.show()
     sys.exit(app.exec())
 

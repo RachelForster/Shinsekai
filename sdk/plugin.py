@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from config.config_manager import ConfigManager
+    from sdk.plugin_host_context import PluginHostContext
     from sdk.register import PluginCapabilityRegistry
 
 
@@ -46,10 +46,13 @@ class PluginBase(ABC):
         self,
         register: PluginCapabilityRegistry,
         plugin_root: Path,
-        app_config: ConfigManager | None = None,
+        host: PluginHostContext,
     ) -> None:
         """
         Register plugin capabilities to ``register`` and load internal state.
+
+        ``host`` is a read-only snapshot (:class:`~sdk.plugin_host_context.PluginHostContext`).
+        It does **not** include API keys, save APIs, or a :class:`~config.config_manager.ConfigManager`.
         """
 
     def shutdown(self) -> None:

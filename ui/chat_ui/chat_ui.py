@@ -1,11 +1,22 @@
 import sys
+import ctypes
 from PIL.ImageChops import screen
 import numpy as np
 import threading
 import yaml
 import time
-from PySide6.QtCore import QEvent, Qt, Signal, QSize, QUrl
-from PySide6.QtGui import QFont, QImage, QPixmap, QFontMetrics, QShowEvent
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt, Signal, QSize, QUrl
+from PySide6.QtGui import (
+    QCursor,
+    QFont,
+    QGuiApplication,
+    QHoverEvent,
+    QImage,
+    QMouseEvent,
+    QPixmap,
+    QFontMetrics,
+    QShowEvent,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -15,6 +26,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTextEdit,
     QSizePolicy,
+    QToolTip,
 )
 import os
 
@@ -92,6 +104,17 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self._input_row_inset_h = 16
         self._input_row_inset_bottom = 10
 
+        # 无边框缩放：窗边条 + 角块；全透明分层区无法命中，依赖 _resize_grip_bl/br
+        self._resize_margin = 8
+        self._window_corner_grip_px = 28
+        self._resizing = False
+        self._resize_mask = Qt.Edge(0)
+        self._resize_start_global = QPoint()
+        self._resize_start_geom = QRect()
+        self._hover_resize_edges = Qt.Edge(0)
+        self._resize_cursor_override_active = False
+        self.drag_position = None
+
         self.base_font_size_px = config_manager.config.system_config.base_font_size_px
 
         # 设置字体大小
@@ -110,9 +133,11 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         
         # 初始大小
         self.resize(self.original_width, self.original_height)
+        self.setMinimumSize(360, 280)
 
         # 初始化UI组件
         self.setup_ui()
+        self._install_resize_event_filters()
 
         # 居中显示
         self.move((screen_geometry.width() - self.original_width) // 2, 
@@ -229,6 +254,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self._raise_input_and_toolbar()
 
         self.cg_widget.setGeometry(0,0,self.original_width, self.original_height)
+        self._setup_resize_corner_hit_widgets()
         self.apply_font_styles()
     
     def handle_cg_display_change(self, is_cg_visible: bool):
@@ -468,9 +494,8 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self._win_dwm_applied = True
             from ui.win_frameless_dwm import apply_win_frameless_dwm_hacks
 
-            apply_win_frameless_dwm_hacks(
-                self, theme_color=getattr(self, "theme_color", None) or None
-            )
+            # Win11+：DWMWA_COLOR_NONE 抑制薄边框；Win10 可能仍有一丝灰线属系统限制
+            apply_win_frameless_dwm_hacks(self, border_color_none=True)
 
     def _raise_input_and_toolbar(self) -> None:
         """将输入条与工具栏置于最前（相对各自父级叠放顺序）。"""
@@ -487,6 +512,42 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.toolbar.raise_()
             w = self.image_container.width() if self.image_container.width() else self.width()
             self.toolbar.move(max(0, w - 200), 10)
+        for name in ("_resize_grip_bl", "_resize_grip_br"):
+            g = getattr(self, name, None)
+            if g is not None:
+                g.raise_()
+
+    def _setup_resize_corner_hit_widgets(self) -> None:
+        """左下/右下：分层透明时 α=0 区域不命中；极小 α>0 叠在最上层抓落实控。"""
+        self._resize_grip_bl = QWidget(self)
+        self._resize_grip_br = QWidget(self)
+        self._resize_grip_bl.setCursor(QCursor(Qt.CursorShape.SizeBDiagCursor))
+        self._resize_grip_br.setCursor(QCursor(Qt.CursorShape.SizeFDiagCursor))
+        for gw in (self._resize_grip_bl, self._resize_grip_br):
+            gw.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            gw.setStyleSheet("background-color: rgba(0, 0, 0, 18); border: none;")
+            gw.setMouseTracking(True)
+            gw.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self._layout_resize_corner_hit_widgets()
+
+    def _layout_resize_corner_hit_widgets(self) -> None:
+        bl = getattr(self, "_resize_grip_bl", None)
+        br = getattr(self, "_resize_grip_br", None)
+        if bl is None or br is None:
+            return
+        g = int(self._window_corner_grip_px)
+        w, h = max(1, self.width()), max(1, self.height())
+        bl.setGeometry(0, max(0, h - g), g, g)
+        br.setGeometry(max(0, w - g), max(0, h - g), g, g)
+        bl.show()
+        br.show()
+
+    def _resize_edges_from_corner_hit_widget(self, obj: object) -> Qt.Edge:
+        if obj is getattr(self, "_resize_grip_bl", None):
+            return Qt.LeftEdge | Qt.BottomEdge
+        if obj is getattr(self, "_resize_grip_br", None):
+            return Qt.RightEdge | Qt.BottomEdge
+        return Qt.Edge(0)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -498,7 +559,197 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             max(1, self.image_container.height()),
         )
         self._scale_and_apply_background()
+        self._layout_resize_corner_hit_widgets()
         self._raise_input_and_toolbar()
+
+    def _install_resize_event_filters(self) -> None:
+        """子控件会吞掉边缘鼠标事件，需过滤后才能在无边框窗体上缩放。"""
+        self.installEventFilter(self)
+        for w in self.findChildren(QWidget):
+            w.installEventFilter(self)
+        self._enable_resize_hover_tracking()
+
+    def _enable_resize_hover_tracking(self) -> None:
+        """无按键移动也要收到 Hover/MouseMove，角落才会显示缩放光标。"""
+        self.setMouseTracking(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        for w in self.findChildren(QWidget):
+            w.setMouseTracking(True)
+            w.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+
+    def _update_resize_hover_cursor_at_global(self, global_pos: QPoint) -> None:
+        """按屏幕坐标更新/清除缩放光标（用于 HoverMove / 无键 MouseMove）。"""
+        if self._resizing:
+            return
+        lp = self.mapFromGlobal(global_pos)
+        if not self.rect().contains(lp):
+            self._clear_hover_resize_cursor()
+            return
+        e = self._resize_edges_for_hover(lp)
+        if e != Qt.Edge(0):
+            self._update_resize_cursor(e)
+        else:
+            self._clear_hover_resize_cursor()
+
+    def _bottom_corner_resize_edges_at(self, window_pos: QPoint) -> Qt.Edge:
+        """窗口客户区左下/右下各一小方块区域：拖曳同时改宽高。"""
+        w, h = self.width(), self.height()
+        if w <= 0 or h <= 0:
+            return Qt.Edge(0)
+        g = int(self._window_corner_grip_px)
+        le = Qt.Edge.LeftEdge
+        ri = Qt.Edge.RightEdge
+        bt = Qt.Edge.BottomEdge
+        if window_pos.x() <= g and window_pos.y() >= h - g:
+            return le | bt
+        if window_pos.x() >= w - g and window_pos.y() >= h - g:
+            return ri | bt
+        return Qt.Edge(0)
+
+    def _resize_edges_for_hover(self, window_pos: QPoint) -> Qt.Edge:
+        c = self._bottom_corner_resize_edges_at(window_pos)
+        if c != Qt.Edge(0):
+            return c
+        return self._edges_at(window_pos)
+
+    def _edges_at(self, pos: QPoint) -> Qt.Edge:
+        """窗口客户区坐标下的可缩放边（可组合为角）。"""
+        m = self._resize_margin
+        w, h = self.width(), self.height()
+        if w <= 0 or h <= 0:
+            return Qt.Edge(0)
+        edges = Qt.Edge(0)
+        if pos.x() <= m:
+            edges |= Qt.Edge.LeftEdge
+        if pos.x() >= w - m:
+            edges |= Qt.Edge.RightEdge
+        if pos.y() <= m:
+            edges |= Qt.Edge.TopEdge
+        if pos.y() >= h - m:
+            edges |= Qt.Edge.BottomEdge
+        return edges
+
+    def _cursor_for_edges(self, edges: Qt.Edge) -> QCursor:
+        le, ri = Qt.Edge.LeftEdge, Qt.Edge.RightEdge
+        tp, bt = Qt.Edge.TopEdge, Qt.Edge.BottomEdge
+        if edges in (le | tp, ri | bt):
+            return QCursor(Qt.CursorShape.SizeFDiagCursor)
+        if edges in (ri | tp, le | bt):
+            return QCursor(Qt.CursorShape.SizeBDiagCursor)
+        if edges & (le | ri):
+            return QCursor(Qt.CursorShape.SizeHorCursor)
+        if edges & (tp | bt):
+            return QCursor(Qt.CursorShape.SizeVerCursor)
+        return QCursor(Qt.CursorShape.ArrowCursor)
+
+    def _clear_hover_resize_cursor(self) -> None:
+        self._hover_resize_edges = Qt.Edge(0)
+        if self._resize_cursor_override_active:
+            QGuiApplication.restoreOverrideCursor()
+            self._resize_cursor_override_active = False
+
+    def _update_resize_cursor(self, edges: Qt.Edge) -> None:
+        if edges == self._hover_resize_edges:
+            return
+        if self._resize_cursor_override_active:
+            QGuiApplication.restoreOverrideCursor()
+            self._resize_cursor_override_active = False
+        self._hover_resize_edges = edges
+        if edges != Qt.Edge(0):
+            QGuiApplication.setOverrideCursor(self._cursor_for_edges(edges))
+            self._resize_cursor_override_active = True
+            le, ri = Qt.Edge.LeftEdge, Qt.Edge.RightEdge
+            bt = Qt.Edge.BottomEdge
+            if edges in (le | bt, ri | bt) and not getattr(
+                self, "_resize_corner_hint_shown", False
+            ):
+                self._resize_corner_hint_shown = True
+                QToolTip.showText(
+                    QCursor.pos() + QPoint(0, 18),
+                    "拖动可调整窗口大小",
+                    self,
+                    QRect(),
+                    3500,
+                )
+
+    def _begin_resize(self, edges: Qt.Edge, global_pos: QPoint) -> None:
+        self._clear_hover_resize_cursor()
+        if edges == Qt.Edge(0):
+            return
+        # 分层 + 无边框时 QWindow.startSystemResize 常无效，统一用手动几何
+        self._resizing = True
+        self._resize_mask = edges
+        self._resize_start_global = QPoint(global_pos)
+        self._resize_start_geom = QRect(self.geometry())
+        self.drag_position = None
+        self.grabMouse()
+
+    def _end_resize(self) -> None:
+        self._resizing = False
+        self._resize_mask = Qt.Edge(0)
+        if QWidget.mouseGrabber() is self:
+            self.releaseMouse()
+        self._clear_hover_resize_cursor()
+
+    def _apply_resize_step(self, global_pos: QPoint) -> None:
+        dg = global_pos - self._resize_start_global
+        g = QRect(self._resize_start_geom)
+        min_w = max(1, self.minimumWidth())
+        min_h = max(1, self.minimumHeight())
+        e = self._resize_mask
+        if e & Qt.Edge.LeftEdge:
+            new_w = g.width() - dg.x()
+            if new_w >= min_w:
+                g.setLeft(g.left() + dg.x())
+                g.setWidth(new_w)
+        if e & Qt.Edge.RightEdge:
+            g.setWidth(max(min_w, g.width() + dg.x()))
+        if e & Qt.Edge.TopEdge:
+            new_h = g.height() - dg.y()
+            if new_h >= min_h:
+                g.setTop(g.top() + dg.y())
+                g.setHeight(new_h)
+        if e & Qt.Edge.BottomEdge:
+            g.setHeight(max(min_h, g.height() + dg.y()))
+        self.setGeometry(g)
+
+    def nativeEvent(self, eventType, message):
+        """
+        Windows：分层透明窗对全透明像素按 alpha 命中易穿透桌面。
+        对客户区统一返回 HTCLIENT，缩放由 Qt startSystemResize / 手动几何完成。
+        """
+        if sys.platform != "win32":
+            return super().nativeEvent(eventType, message)
+        try:
+            et = bytes(eventType)
+        except TypeError:
+            et = eventType
+        if et != b"windows_generic_MSG" or message is None:
+            return super().nativeEvent(eventType, message)
+        addr = None
+        try:
+            addr = int(message)
+        except (TypeError, ValueError):
+            try:
+                addr = int(message.__int__())
+            except Exception:
+                return super().nativeEvent(eventType, message)
+        HTCLIENT = 1
+        WM_NCHITTEST = 0x0084
+        try:
+            from ctypes import wintypes
+
+            msg = ctypes.cast(addr, ctypes.POINTER(wintypes.MSG)).contents
+        except (TypeError, ValueError, OverflowError, ctypes.ArgumentError, OSError):
+            return super().nativeEvent(eventType, message)
+        if msg.message == WM_NCHITTEST and self.isVisible():
+            x = ctypes.c_int16(msg.lParam & 0xFFFF).value
+            y = ctypes.c_int16((msg.lParam >> 16) & 0xFFFF).value
+            gp = QPoint(int(x), int(y))
+            lp = self.mapFromGlobal(gp)
+            if self.rect().contains(lp):
+                return True, HTCLIENT
+        return super().nativeEvent(eventType, message)
 
     def setBackgroundImage(self, image_path: str):
         """
@@ -774,23 +1025,60 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             else:
                 w.setParent(self.image_container)
                 w.show()
+            w.installEventFilter(self)
+            w.setMouseTracking(True)
+            w.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
             self._raise_input_and_toolbar()
 
     def mousePressEvent(self, event):
-        """实现窗口拖动"""
+        """窗口左下/右下小块缩放手柄；其余窗边在非 Windows 上手拖；其它区域拖动弹窗。"""
         if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint()
+            corner = self._bottom_corner_resize_edges_at(pos)
+            if corner != Qt.Edge(0):
+                self._begin_resize(corner, event.globalPosition().toPoint())
+                event.accept()
+                return
+            edge = self._edges_at(pos)
+            if edge:
+                self._begin_resize(edge, event.globalPosition().toPoint())
+                event.accept()
+                return
             g = event.globalPosition().toPoint()
             self.drag_position = g - self.frameGeometry().topLeft()
             event.accept()
-    
+            return
+        super().mousePressEvent(event)
+
     def mouseMoveEvent(self, event):
-        """拖动窗口"""
-        if event.buttons() == Qt.MouseButton.LeftButton and self.drag_position:
+        if self._resizing:
+            self._apply_resize_step(event.globalPosition().toPoint())
+            event.accept()
+            return
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self.drag_position is not None
+        ):
             self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
-    
+            return
+        if event.buttons() == Qt.MouseButton.NoButton:
+            self._update_resize_hover_cursor_at_global(event.globalPosition().toPoint())
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self._resizing:
+            self._end_resize()
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_position = None
+        super().mouseReleaseEvent(event)
+
     def closeEvent(self, event):
         """关闭窗口时停止线程"""
+        if self._resizing:
+            self._end_resize()
         self.mic_button.close()
         if self.display_thread:
             self.display_thread.stop()
@@ -802,18 +1090,48 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         detach_chat_ui_window()
 
     def eventFilter(self, obj, event):
+        et = event.type()
+        if et == QEvent.Type.HoverMove and isinstance(event, QHoverEvent):
+            if not self._resizing:
+                self._update_resize_hover_cursor_at_global(event.globalPosition().toPoint())
+        elif obj is self and et in (QEvent.Type.Leave, QEvent.Type.HoverLeave):
+            self._clear_hover_resize_cursor()
         if obj == self.input_box:
-            et = event.type()
-            if et == QEvent.Type.FocusIn:
+            et_in = event.type()
+            if et_in == QEvent.Type.FocusIn:
                 self.user_input_started.emit()
-            elif et == QEvent.Type.FocusOut:
+            elif et_in == QEvent.Type.FocusOut:
                 self.user_input_ended.emit()
-            elif et == QEvent.Type.KeyPress:
+            elif et_in == QEvent.Type.KeyPress:
                 if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     # 同样判断是否带有修饰键
                     if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                         self.send_btn.click()  # 你的发送函数
                         return True  # 表示事件已处理，不再向下传递（即不换行）
+        if isinstance(event, QMouseEvent):
+            met = event.type()
+            if met == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                ge = self._resize_edges_from_corner_hit_widget(obj)
+                if ge != Qt.Edge(0) and not self._resizing:
+                    self._begin_resize(ge, event.globalPosition().toPoint())
+                    return True
+                lp = self.mapFromGlobal(event.globalPosition().toPoint())
+                ce = self._bottom_corner_resize_edges_at(lp)
+                if ce != Qt.Edge(0) and not self._resizing:
+                    self._begin_resize(ce, event.globalPosition().toPoint())
+                    return True
+                edges = self._edges_at(lp)
+                if edges and not self._resizing:
+                    self._begin_resize(edges, event.globalPosition().toPoint())
+                    return True
+            if (
+                met == QEvent.Type.MouseMove
+                and event.buttons() == Qt.MouseButton.NoButton
+                and not self._resizing
+            ):
+                self._update_resize_hover_cursor_at_global(
+                    event.globalPosition().toPoint()
+                )
         return super().eventFilter(obj, event)
 
 def start_qt_app(display_queue, emotion_queue, deepseek):

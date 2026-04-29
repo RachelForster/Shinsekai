@@ -31,6 +31,7 @@ from i18n import tr as tr_i18n
 from tools.crop_sprite import batch_crop_upper_half
 from tools.remove_bg import batch_remove_background
 from core.plugins.plugin_host import collect_tools_tab_contributions
+from sdk.plugin_host_context import PluginSettingsUIContext
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.utils import GALLERY_THUMB_PX
 
@@ -179,7 +180,8 @@ class ToolsSettingsTab(QWidget):
         builtin_layout.addWidget(scroll)
         self._tabs.addTab(builtin_page, self._t("tab_main"))
         for contrib in collect_tools_tab_contributions():
-            self._tabs.addTab(contrib.build(self._ctx), contrib.title)
+            plg = PluginSettingsUIContext.from_settings_ui_context(self._ctx)
+            self._tabs.addTab(contrib.build(plg), contrib.title)
         # refresh_characters 在 apply_i18n 之后由 __init__ 调用
 
     def apply_i18n(self) -> None:

@@ -30,6 +30,7 @@ from ui.settings_ui.tools_tab import ToolsSettingsTab
 from ui.settings_ui.window import settings_window_metrics
 
 from core.plugins.plugin_host import collect_settings_contributions, ensure_plugins_loaded
+from sdk.plugin_host_context import PluginSettingsUIContext
 
 
 def _clear_stacked(sw) -> None:
@@ -103,7 +104,8 @@ class MainWindow(QMainWindow):
 
         self._plugin_settings_contribs = collect_settings_contributions()
         for contrib in self._plugin_settings_contribs:
-            self._pages.append(contrib.build(self._ctx))
+            plg = PluginSettingsUIContext.from_settings_ui_context(self._ctx)
+            self._pages.append(contrib.build(plg))
 
         self._nav_buttons: list[tuple[object, int]] = [
             (self.ui.btn_home, 0),

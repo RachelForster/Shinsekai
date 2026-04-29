@@ -8,13 +8,22 @@ is responsible for actually inserting widgets into sidebars, tab bars, etc.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 
-if TYPE_CHECKING:
-    from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget
 
-    from ui.settings_ui.context import SettingsUIContext
-    from ui.chat_ui.context import ChatUIContext
+from sdk.plugin_host_context import PluginSettingsUIContext
+from ui.chat_ui.context import ChatUIContext
+
+__all__ = [
+    "ChatUIContext",
+    "ChatUIContribution",
+    "PluginDescriptor",
+    "PluginSettingsUIContext",
+    "QWidget",
+    "SettingsUIContribution",
+    "ToolsTabContribution",
+]
 
 
 @dataclass(frozen=True)
@@ -22,10 +31,9 @@ class SettingsUIContribution:
     """
     One extra page/section for the PyQt settings window.
 
-    ``build`` receives the same ``SettingsUIContext`` as built-in tabs
-    (config, characters, template generator, …). Return a QWidget tree rooted
-    at ``parent=None``; the host will reparent it into the stacked layout or
-    a scroll area.
+    ``build`` receives :class:`~sdk.plugin_host_context.PluginSettingsUIContext` only
+    (read-only app snapshot + paths / name lists). It does **not** receive
+    :class:`~config.config_manager.ConfigManager` or full :class:`~ui.settings_ui.context.SettingsUIContext`.
 
     ``nav_label`` is shown on the sidebar (or host may map it through i18n).
     ``page_id`` must be unique across all plugins (and ideally across the app).
@@ -33,7 +41,7 @@ class SettingsUIContribution:
 
     page_id: str
     nav_label: str
-    build: Callable[[SettingsUIContext], QWidget]
+    build: Callable[[PluginSettingsUIContext], QWidget]
     order: float = 100.0
 
 
@@ -42,12 +50,13 @@ class ToolsTabContribution:
     """
     An additional tab inside **Settings → Tools** (or host-defined tools area).
 
-    ``build`` builds the tab body. ``tab_id`` must be unique.
+    ``build`` receives :class:`~sdk.plugin_host_context.PluginSettingsUIContext` only
+    (same restricted surface as settings pages). ``tab_id`` must be unique.
     """
 
     tab_id: str
     title: str
-    build: Callable[[SettingsUIContext], QWidget]
+    build: Callable[[PluginSettingsUIContext], QWidget]
     order: float = 100.0
 
 
