@@ -122,6 +122,49 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
 
         attach_chat_ui_window(self)
 
+    def _make_state_proxy(self):
+        """返回一个满足 _ChatUIStateProxy 的对象，仅暴露安全读方法。"""
+        class _WindowStateProxy:
+            def __init__(self, window: "ChatUIWindow") -> None:
+                self._window = window
+
+            def notification_hint(self) -> str:
+                return self._window.input_box.placeholderText()
+
+            def input_draft(self) -> str:
+                return self._window.input_box.toPlainText()
+
+            def choice_options(self) -> list[str]:
+                return list(self._window.current_options)
+
+            def is_dialog_visible(self) -> bool:
+                return self._window.dialog_label.isVisible()
+
+            def is_choice_panel_visible(self) -> bool:
+                return self._window.options_widget.isVisible()
+
+            def dialog_text(self) -> str:
+                return self._window.dialog_label.text()
+
+            def background_image_path(self) -> str | None:
+                return self._window.current_background_path
+
+            def base_font_size_px(self) -> int:
+                return int(self._window.base_font_size_px)
+
+        return _WindowStateProxy(self)
+
+    def _make_ui_actions(self):
+        from ui.chat_ui.context import _ChatUIActions
+        return _ChatUIActions(
+            set_notification_hint=self.setNotification,
+            set_input_draft=self.input_box.setPlainText,
+            clear_input_draft=self.input_box.clear,
+            set_choice_options=self.setOptions,
+            set_dialog_html=self.setDisplayWords,
+            mount_plugin_widgets=self.mount_plugin_contributions,
+        )
+
     def setup_ui(self):
         """初始化UI组件"""
         # 窗口设置
@@ -334,7 +377,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         # self.label = CrossFadeSprite(self.original_width, self.original_height)
         # self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.image_layout.addWidget(self.sprite_panel, 1)
-    
+
     def setup_input_layout(self):
         """初始化底栏；独立叠在窗口底部，使立绘区可铺满至窗口底边。"""
         self.input_row = QWidget(self)

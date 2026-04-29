@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
 from i18n import tr as tr_i18n
 from tools.crop_sprite import batch_crop_upper_half
 from tools.remove_bg import batch_remove_background
-from core.plugin_host import collect_tools_tab_contributions
+from core.plugins.plugin_host import collect_tools_tab_contributions
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.utils import GALLERY_THUMB_PX
 

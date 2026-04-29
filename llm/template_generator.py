@@ -1,6 +1,6 @@
 from i18n import normalize_lang, tr as tr_i18n
 from config.character_manager import ConfigManager
-from core.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
+from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 
 config_manager = ConfigManager()
 
@@ -107,7 +107,7 @@ class TemplateGenerator:
                 template += _T("bgm_count", n=len(bg.bgm_list))
                 template += f"{bg.bgm_tags}\n\n"
 
-        # 保留字新代号（与 core.dialog_tokens 及 handlers 一致；旧版中文仍兼容）
+        # 保留字新代号（与 core.messaging.dialog_tokens 及 handlers 一致；旧版中文仍兼容）
         opt_scene = (f", {SCENE}" if bg_name else "")
         opt_bgm = (f", {BGM}" if bg_name else "")
         opt_cg = (f", {CG}" if use_cg else "")

@@ -14,14 +14,14 @@ from queue import Queue
 from typing import TYPE_CHECKING, Callable, List, Optional
 
 from config.config_manager import ConfigManager
-from core.message import UserInputMessage
+from core.messaging.message import UserInputMessage
 from llm.llm_manager import LLMAdapterFactory
 from llm.tools.tool_manager import ToolManager
 from sdk.manager import PluginManager
 from tts.tts_manager import TTSAdapterFactory
 
 if TYPE_CHECKING:
-    from core.handler_registry import MessageHandler, UIOutputMessageHandler
+    from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
     from sdk.types import (
         DesktopUIContribution,
         SettingsUIContribution,
@@ -54,7 +54,7 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
     """
     Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge LLM/TTS
     provider tables, register tools on the global ToolManager, and cache message handlers
-    for :mod:`core.handler_registry`.
+    for :mod:`core.handlers.handler_registry`.
     """
     global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
     if _loaded:
@@ -98,9 +98,9 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
 def wire_user_input_plugins(user_input_queue: Queue) -> Callable[[str], None]:
     """
     Build the user-input pipeline (plugin processors) and return ``emit_user_text``
-    for plugins that call :meth:`sdk.plugin.ShinsekaiPlugin.trigger_user_input`.
+    for plugins that call :meth:`sdk.plugin.PluginBase.trigger_user_input`.
 
-    The returned callable runs processors then enqueues :class:`~core.message.UserInputMessage`.
+    The returned callable runs processors then enqueues :class:`~core.messaging.message.UserInputMessage`.
     """
     mgr = _plugin_manager
     processors: list[Callable[[str], str | None]] = []

@@ -1,7 +1,7 @@
 """
 UI worker 用 TTS 输出消息处理器（见 handler_registry.UIOutputMessageHandler）。
 
-依赖从 core.app_runtime.get_app_runtime() 取得；对话音轨使用 ui_playback 桥接。
+依赖从 :func:`core.runtime.app_runtime.get_app_runtime` 取得；对话音轨使用 ui_playback 桥接。
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ import pygame
 from i18n import tr as tr_i18n
 
 from config.config_manager import ConfigManager
-from core.app_runtime import get_app_runtime
-from core.dialog_tokens import (
+from core.runtime.app_runtime import get_app_runtime
+from core.messaging.dialog_tokens import (
     SYSTEM_UI_SKIP,
     match_bgm_name,
     match_cg_name,
@@ -25,8 +25,8 @@ from core.dialog_tokens import (
     match_scene_name,
     match_stat_name,
 )
-from core.handler_registry import UIOutputMessageHandler
-from core.message import TTSOutputMessage
+from core.handlers.handler_registry import UIOutputMessageHandler
+from core.messaging.message import TTSOutputMessage
 
 _config = ConfigManager()
 

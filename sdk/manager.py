@@ -4,7 +4,6 @@ Plugin discovery, lifecycle, and aggregated contributions.
 
 from __future__ import annotations
 
-import importlib
 import json
 import logging
 from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sequence
@@ -13,12 +12,13 @@ from typing import TYPE_CHECKING, Type
 
 import yaml
 
-from core.handler_registry import MessageHandler, UIOutputMessageHandler
+from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
 from llm.llm_adapter import LLMAdapter
 from llm.tools.tool_manager import ToolManager
 from tts.tts_adapter import TTSAdapter
 
-from sdk.plugin import ShinsekaiPlugin
+from sdk.plugin import PluginBase
+from sdk.register import PluginRegister
 from sdk.types import (
     DesktopUIContribution,
     PluginDescriptor,
@@ -30,28 +30,6 @@ if TYPE_CHECKING:
     from config.config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
-
-
-def _import_class(entry: str) -> Type[ShinsekaiPlugin]:
-    """
-    Resolve ``package.module:ClassName`` or ``package.module`` (attribute ``Plugin``).
-    """
-    entry = entry.strip()
-    if ":" in entry:
-        mod_name, _, attr = entry.partition(":")
-        module = importlib.import_module(mod_name)
-        cls = getattr(module, attr)
-    else:
-        module = importlib.import_module(entry)
-        cls = getattr(module, "Plugin", None)
-        if cls is None:
-            raise AttributeError(
-                f"Module {entry!r} has no 'Plugin' attribute; use package.module:ClassName"
-            )
-    if not isinstance(cls, type) or not issubclass(cls, ShinsekaiPlugin):
-        raise TypeError(f"{cls!r} is not a subclass of ShinsekaiPlugin")
-    return cls
-
 
 class PluginManager:
     """
@@ -74,27 +52,32 @@ class PluginManager:
           enabled: true
     """
 
-    def __init__(self, *, plugin_data_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        plugin_data_root: Path | None = None,
+        register: PluginRegister | None = None,
+    ) -> None:
         self._plugin_data_root = (
             Path(plugin_data_root) if plugin_data_root is not None else Path("data/plugins")
         )
-        self._classes: list[Type[ShinsekaiPlugin]] = []
-        self._instances: list[ShinsekaiPlugin] = []
+        self._register = register if register is not None else PluginRegister()
+        self._capabilities = PluginRegister()
+        self._instances: list[PluginBase] = []
+        self._instantiated = False
+        self._initialized = False
 
     @property
-    def plugins(self) -> Sequence[ShinsekaiPlugin]:
+    def plugins(self) -> Sequence[PluginBase]:
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
         return tuple(self._instances)
 
-    def register_plugin_class(self, cls: Type[ShinsekaiPlugin]) -> None:
-        if not isinstance(cls, type) or not issubclass(cls, ShinsekaiPlugin):
-            raise TypeError(f"{cls!r} must be a subclass of ShinsekaiPlugin")
-        self._classes.append(cls)
+    def register_plugin_class(self, cls: Type[PluginBase]) -> None:
+        self._register.register_class(cls)
 
     def load_from_descriptors(self, descriptors: Iterable[PluginDescriptor]) -> None:
-        for d in descriptors:
-            if not d.enabled:
-                continue
-            self._classes.append(_import_class(d.entry))
+        self._register.register_descriptors(descriptors)
 
     def load_manifest_file(self, path: Path) -> None:
         text = path.read_text(encoding="utf-8")
@@ -123,100 +106,94 @@ class PluginManager:
         self.load_from_descriptors(descs)
 
     def instantiate_all(self) -> None:
-        self._instances = [cls() for cls in self._classes]
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
 
-    def load_own_config_all(self, app_config: ConfigManager | None = None) -> None:
+    def _ensure_plugins_instantiated(self) -> None:
+        if self._instantiated:
+            return
+        classes = list(self._register.iter_enabled_classes())
+        instances = [cls() for cls in classes]
+        self._instances = sorted((p for p in instances if p.enabled), key=lambda p: p.priority)
+        self._instantiated = True
+
+    def _ensure_plugins_initialized(self, app_config: ConfigManager | None = None) -> None:
+        self._ensure_plugins_instantiated()
+        if self._initialized and app_config is None:
+            return
         self._plugin_data_root.mkdir(parents=True, exist_ok=True)
-        for p in self._instances:
-            root = self._plugin_data_root / p.plugin_id.replace("/", "_")
+        # refresh runtime capability registry on initialization
+        self._capabilities = PluginRegister()
+        for plugin in self._instances:
+            root = self._plugin_data_root / plugin.plugin_id.replace("/", "_")
             root.mkdir(parents=True, exist_ok=True)
             try:
-                p.load_own_config(root, app_config=app_config)
+                plugin.initialize(self._capabilities, root, app_config=app_config)
             except Exception:
-                logger.exception("load_own_config failed for %s", p.plugin_id)
+                logger.exception("initialize failed for %s", plugin.plugin_id)
+        self._initialized = True
+
+    def load_own_config_all(self, app_config: ConfigManager | None = None) -> None:
+        self._ensure_plugins_initialized(app_config=app_config)
 
     def apply_llm_providers(
         self, target: MutableMapping[str, Type[LLMAdapter]]
     ) -> None:
-        for p in self._instances:
-            try:
-                p.customize_llm_adapter(target)
-            except Exception:
-                logger.exception("customize_llm_adapter failed for %s", p.plugin_id)
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
+        target.update(self._capabilities.llm_adapters)
 
     def apply_tts_providers(
         self, target: MutableMapping[str, Type[TTSAdapter]]
     ) -> None:
-        for p in self._instances:
-            try:
-                p.customize_tts_adapter(target)
-            except Exception:
-                logger.exception("customize_tts_adapter failed for %s", p.plugin_id)
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
+        target.update(self._capabilities.tts_adapters)
 
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
-        for p in self._instances:
-            try:
-                p.add_llm_tools(tool_manager)
-            except Exception:
-                logger.exception("add_llm_tools failed for %s", p.plugin_id)
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
+        try:
+            self._capabilities.apply_llm_tools(tool_manager)
+        except Exception:
+            logger.exception("apply_llm_tools failed")
 
     def collect_message_handlers(
         self,
     ) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:
-        tts: list[MessageHandler] = []
-        ui: list[UIOutputMessageHandler] = []
-        for p in self._instances:
-            try:
-                p.add_message_handler(tts, ui)
-            except Exception:
-                logger.exception("add_message_handler failed for %s", p.plugin_id)
-        return tts, ui
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
+        return self._capabilities.message_handlers
 
     def wire_user_input(
         self,
         emit_user_text: Callable[[str], None],
         processors: list[Callable[[str], str | None]],
     ) -> None:
-        for p in self._instances:
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
+        triggers, plugin_processors = self._capabilities.user_input_hooks
+        for trigger in triggers:
             try:
-                p.trigger_user_input(emit_user_text)
+                trigger(emit_user_text)
             except Exception:
-                logger.exception("trigger_user_input failed for %s", p.plugin_id)
-        for p in self._instances:
-            try:
-                p.handle_user_input(processors)
-            except Exception:
-                logger.exception("handle_user_input failed for %s", p.plugin_id)
+                logger.exception("trigger_user_input failed")
+        processors.extend(plugin_processors)
 
     def collect_settings_contributions(self) -> list[SettingsUIContribution]:
-        out: list[SettingsUIContribution] = []
-        for p in self._instances:
-            try:
-                p.add_settings_ui_widgets(out)
-            except Exception:
-                logger.exception("add_settings_ui_widgets failed for %s", p.plugin_id)
-        out.sort(key=lambda c: c.order)
-        return out
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
+        return self._capabilities.settings_contributions
 
     def collect_tools_tab_contributions(self) -> list[ToolsTabContribution]:
-        out: list[ToolsTabContribution] = []
-        for p in self._instances:
-            try:
-                p.add_tools_tab(out)
-            except Exception:
-                logger.exception("add_tools_tab failed for %s", p.plugin_id)
-        out.sort(key=lambda c: c.order)
-        return out
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
+        return self._capabilities.tools_tab_contributions
 
     def collect_desktop_contributions(self) -> list[DesktopUIContribution]:
-        out: list[DesktopUIContribution] = []
-        for p in self._instances:
-            try:
-                p.add_desktop_ui_widgets(out)
-            except Exception:
-                logger.exception("add_desktop_ui_widgets failed for %s", p.plugin_id)
-        out.sort(key=lambda c: c.order)
-        return out
+        self._ensure_plugins_instantiated()
+        self._ensure_plugins_initialized()
+        return self._capabilities.desktop_contributions
 
     def iter_plugin_ids(self) -> Iterator[str]:
         return (p.plugin_id for p in self._instances)

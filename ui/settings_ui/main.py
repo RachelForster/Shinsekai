@@ -29,7 +29,7 @@ from ui.settings_ui.template_tab import TemplateSettingsTab
 from ui.settings_ui.tools_tab import ToolsSettingsTab
 from ui.settings_ui.window import settings_window_metrics
 
-from core.plugin_host import collect_settings_contributions, ensure_plugins_loaded
+from core.plugins.plugin_host import collect_settings_contributions, ensure_plugins_loaded
 
 
 def _clear_stacked(sw) -> None:

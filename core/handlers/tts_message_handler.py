@@ -1,7 +1,7 @@
 """
 TTS worker 用 LLM dialog 处理器（见 handler_registry.MessageHandler）。
 
-依赖从 core.app_runtime.get_app_runtime() 取得，不引用 worker 类型。
+依赖从 :func:`core.runtime.app_runtime.get_app_runtime` 取得，不引用 worker 类型。
 """
 
 from __future__ import annotations
@@ -11,16 +11,16 @@ from pathlib import Path
 from typing import List
 
 from config.config_manager import ConfigManager
-from core.app_runtime import get_app_runtime, tts_emit_to_ui_queue, tts_item_done_only
-from core.dialog_tokens import (
+from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue, tts_item_done_only
+from core.messaging.dialog_tokens import (
     match_bgm_name,
     match_cg_name,
     match_cot_tts,
     match_system_dialog_tts,
     normalize_character_name,
 )
-from core.handler_registry import MessageHandler
-from core.message import LLMDialogMessage
+from core.handlers.handler_registry import MessageHandler
+from core.messaging.message import LLMDialogMessage
 
 _config = ConfigManager()
 

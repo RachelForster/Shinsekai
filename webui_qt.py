@@ -32,7 +32,7 @@ if str(project_root) not in sys.path:
 # QtMultimedia 在 ui.settings_ui 内惰性导入，勿在此顶层 import（MERGE 下 Settings 包常缺此子模块）
 
 if getattr(sys, "frozen", False):
-    from core.frozen_log import init_frozen_stdio
+    from core.bootstrap.frozen_log import init_frozen_stdio
 
     init_frozen_stdio("SettingsUI")
 

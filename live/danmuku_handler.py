@@ -7,7 +7,7 @@ import time
 # 假设 blivedm 已经正确安装
 import blivedm
 import blivedm.models.web as web_models
-from core.message import UserInputMessage
+from core.messaging.message import UserInputMessage
 
 # ==========================================
 # 1. 定义带有“双重逻辑”的 Handler

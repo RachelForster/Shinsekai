@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any, Callable
 if TYPE_CHECKING:
     from PyQt6.QtWidgets import QWidget
 
-    from ui.desktop_ui import DesktopAssistantWindow
     from ui.settings_ui.context import SettingsUIContext
 
 
@@ -54,18 +53,18 @@ class ToolsTabContribution:
 @dataclass(frozen=True)
 class DesktopUIContribution:
     """
-    Extra widgets for the desktop assistant window (``DesktopAssistantWindow``).
+    Extra widgets for the desktop assistant window.
 
     ``placement`` is a hint: e.g. ``"toolbar"``, ``"overlay"``, ``"input_row"``.
     The host decides how to interpret placements that it supports.
 
-    ``build`` receives the live desktop window so you can connect signals
-    (e.g. ``message_submitted``) or read layout state.
+    ``build`` receives host-provided runtime context for desktop placement.
+    The host can pass any window/controller object it wants.
     """
 
     widget_id: str
     placement: str
-    build: Callable[[DesktopAssistantWindow], QWidget]
+    build: Callable[[Any], QWidget]
     order: float = 100.0
 
 

@@ -1,7 +1,7 @@
 """
 消息处理器抽象与调度。TTS 消费 LLMDialogMessage，UI 消费 TTSOutputMessage。
 实现类通过 get_app_runtime() 取共享依赖，不依赖 worker 类型。
-具体实现见 tts_message_handler / ui_message_handler 模块。
+具体实现见 :mod:`core.handlers.tts_message_handler` / :mod:`core.handlers.ui_message_handler` 模块。
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import List
 
-from core.message import LLMDialogMessage, TTSOutputMessage
+from core.messaging.message import LLMDialogMessage, TTSOutputMessage
 
 
 class MessageHandler(ABC):
@@ -98,16 +98,16 @@ class UiOutputMessageDispatcher:
 
 def default_tts_handler_chain() -> TtsMessageDispatcher:
     """插件 handler 在前，内置链在后（先匹配先处理）。"""
-    from core.plugin_host import get_plugin_tts_handlers
-    from core.tts_message_handler import get_tts_handlers
+    from core.plugins.plugin_host import get_plugin_tts_handlers
+    from core.handlers.tts_message_handler import get_tts_handlers
 
     chain = list(get_plugin_tts_handlers()) + list(get_tts_handlers())
     return TtsMessageDispatcher(chain)
 
 
 def default_ui_output_handler_chain() -> UiOutputMessageDispatcher:
-    from core.plugin_host import get_plugin_ui_handlers
-    from core.ui_message_handler import get_ui_output_handlers
+    from core.plugins.plugin_host import get_plugin_ui_handlers
+    from core.handlers.ui_message_handler import get_ui_output_handlers
 
     chain = list(get_plugin_ui_handlers()) + list(get_ui_output_handlers())
     return UiOutputMessageDispatcher(chain)
