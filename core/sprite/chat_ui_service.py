@@ -14,7 +14,7 @@ from core.sprite.chat_history import (
     revert_chat_history,
 )
 from core.messaging.message import TTSOutputMessage
-from core.plugins.plugin_host import collect_desktop_contributions
+from core.plugins.plugin_host import collect_chat_ui_contributions
 from llm.llm_manager import LLMManager
 from ui.chat_ui.context import ChatUIContext, set_chat_ui_context
 
@@ -33,7 +33,7 @@ def install_chat_ui_context(
         submit_user_text=emit_user_text,
     )
     set_chat_ui_context(ctx)
-    ctx.apply_desktop_plugin_widgets(collect_desktop_contributions())
+    ctx.apply_chat_ui_plugin_widgets(collect_chat_ui_contributions())
     return ctx
 
 

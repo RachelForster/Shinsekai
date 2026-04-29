@@ -1,5 +1,5 @@
 """
-Shared types for plugin contributions (settings/tools/desktop UI).
+Shared types for plugin contributions (settings/tools/Chat UI).
 
 These dataclasses describe *what* a plugin wants to add. The host application
 is responsible for actually inserting widgets into sidebars, tab bars, etc.
@@ -11,9 +11,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
-    from PyQt6.QtWidgets import QWidget
+    from PySide6.QtWidgets import QWidget
 
     from ui.settings_ui.context import SettingsUIContext
+    from ui.chat_ui.context import ChatUIContext
 
 
 @dataclass(frozen=True)
@@ -51,20 +52,20 @@ class ToolsTabContribution:
 
 
 @dataclass(frozen=True)
-class DesktopUIContribution:
+class ChatUIContribution:
     """
-    Extra widgets for the desktop assistant window.
+    Extra widgets for the Chat UI window (:class:`~ui.chat_ui.chat_ui.ChatUIWindow`).
 
     ``placement`` is a hint: e.g. ``"toolbar"``, ``"overlay"``, ``"input_row"``.
     The host decides how to interpret placements that it supports.
 
-    ``build`` receives host-provided runtime context for desktop placement.
-    The host can pass any window/controller object it wants.
+    ``build`` receives :class:`~ui.chat_ui.context.ChatUIContext` for safe state access;
+    the host may also pass a window reference if the plugin documents it.
     """
 
     widget_id: str
     placement: str
-    build: Callable[[Any], QWidget]
+    build: Callable[[ChatUIContext], QWidget]
     order: float = 100.0
 
 

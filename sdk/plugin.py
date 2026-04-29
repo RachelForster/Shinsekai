@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from config.config_manager import ConfigManager
-    from sdk.register import PluginRegister
+    from sdk.register import PluginCapabilityRegistry
 
 
 class PluginBase(ABC):
@@ -18,7 +18,7 @@ class PluginBase(ABC):
     Base plugin contract.
 
     Register concrete capabilities inside :meth:`initialize` via
-    :class:`sdk.register.PluginRegister`.
+    :class:`~sdk.register.PluginCapabilityRegistry` (historical alias ``PluginRegister``).
     """
 
     @property
@@ -44,7 +44,7 @@ class PluginBase(ABC):
     @abstractmethod
     def initialize(
         self,
-        register: PluginRegister,
+        register: PluginCapabilityRegistry,
         plugin_root: Path,
         app_config: ConfigManager | None = None,
     ) -> None:

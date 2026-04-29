@@ -1,6 +1,6 @@
 """
 Host integration for :mod:`sdk` plugins: load manifest, merge factories/tools/handlers,
-and expose contributions for Settings / Tools / Desktop.
+and expose contributions for Settings / Tools / Chat UI.
 
 Call :func:`ensure_plugins_loaded` once per process after :class:`~config.config_manager.ConfigManager`
 is available (``main_sprite`` and/or Settings UI). Safe to call multiple times (idempotent).
@@ -23,7 +23,7 @@ from tts.tts_manager import TTSAdapterFactory
 if TYPE_CHECKING:
     from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
     from sdk.types import (
-        DesktopUIContribution,
+        ChatUIContribution,
         SettingsUIContribution,
         ToolsTabContribution,
     )
@@ -98,7 +98,9 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
 def wire_user_input_plugins(user_input_queue: Queue) -> Callable[[str], None]:
     """
     Build the user-input pipeline (plugin processors) and return ``emit_user_text``
-    for plugins that call :meth:`sdk.plugin.PluginBase.trigger_user_input`.
+    for code that registers hooks via :meth:`sdk.register.PluginCapabilityRegistry.register_user_input_trigger`
+    or :meth:`~sdk.register.PluginCapabilityRegistry.register_user_input_processor` inside
+    :meth:`sdk.plugin.PluginBase.initialize`.
 
     The returned callable runs processors then enqueues :class:`~core.messaging.message.UserInputMessage`.
     """
@@ -148,12 +150,12 @@ def collect_tools_tab_contributions() -> List["ToolsTabContribution"]:
         return []
 
 
-def collect_desktop_contributions() -> List["DesktopUIContribution"]:
+def collect_chat_ui_contributions() -> List["ChatUIContribution"]:
     mgr = _plugin_manager
     if mgr is None:
         return []
     try:
-        return mgr.collect_desktop_contributions()
+        return mgr.collect_chat_ui_contributions()
     except Exception:
-        logger.exception("collect_desktop_contributions failed")
+        logger.exception("collect_chat_ui_contributions failed")
         return []

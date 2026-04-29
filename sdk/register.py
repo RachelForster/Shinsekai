@@ -1,5 +1,5 @@
 """
-Plugin registration center with lazy class resolution.
+Plugin discovery (class / import paths) vs runtime capability registration (LLM, TTS, handlers, …).
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Type
 
 from sdk.plugin import PluginBase
-from sdk.types import PluginDescriptor
+from sdk.types import ChatUIContribution, PluginDescriptor
 
 from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
 from llm.llm_adapter import LLMAdapter
@@ -19,7 +19,6 @@ from tts.tts_adapter import TTSAdapter
 
 if TYPE_CHECKING:
     from sdk.types import (
-        DesktopUIContribution,
         SettingsUIContribution,
         ToolsTabContribution,
     )
@@ -37,24 +36,14 @@ class _ImportEntry:
     enabled: bool = True
 
 
-class PluginRegister:
+class PluginDiscoveryRegistry:
     """
-    Keep plugin registrations and resolve classes only when needed.
+    Collect plugin classes or import entries; resolve lazily via :meth:`iter_enabled_classes`.
     """
 
     def __init__(self) -> None:
         self._class_entries: list[_ClassEntry] = []
         self._import_entries: list[_ImportEntry] = []
-        self._llm_adapters: dict[str, Type[LLMAdapter]] = {}
-        self._tts_adapters: dict[str, Type[TTSAdapter]] = {}
-        self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
-        self._tts_handlers: list[MessageHandler] = []
-        self._ui_handlers: list[UIOutputMessageHandler] = []
-        self._user_input_triggers: list[Callable[[Callable[[str], None]], None]] = []
-        self._user_input_processors: list[Callable[[str], str | None]] = []
-        self._settings_contributions: list[SettingsUIContribution] = []
-        self._tools_tab_contributions: list[ToolsTabContribution] = []
-        self._desktop_contributions: list[DesktopUIContribution] = []
 
     def register_class(self, cls: Type[PluginBase], *, enabled: bool = True) -> None:
         if not isinstance(cls, type) or not issubclass(cls, PluginBase):
@@ -107,7 +96,23 @@ class PluginRegister:
             raise TypeError(f"{cls!r} is not a subclass of PluginBase")
         return cls
 
-    # --- capability registration API ---
+
+class PluginCapabilityRegistry:
+    """
+    Object passed to :meth:`PluginBase.initialize`; hosts read merged results via :class:`PluginManager`.
+    """
+
+    def __init__(self) -> None:
+        self._llm_adapters: dict[str, Type[LLMAdapter]] = {}
+        self._tts_adapters: dict[str, Type[TTSAdapter]] = {}
+        self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
+        self._tts_handlers: list[MessageHandler] = []
+        self._ui_handlers: list[UIOutputMessageHandler] = []
+        self._user_input_triggers: list[Callable[[Callable[[str], None]], None]] = []
+        self._user_input_processors: list[Callable[[str], str | None]] = []
+        self._settings_contributions: list[SettingsUIContribution] = []
+        self._tools_tab_contributions: list[ToolsTabContribution] = []
+        self._chat_ui_contributions: list[ChatUIContribution] = []
 
     def register_llm_adapter(self, provider: str, adapter_cls: Type[LLMAdapter]) -> None:
         self._llm_adapters[provider] = adapter_cls
@@ -144,10 +149,8 @@ class PluginRegister:
     def register_tools_tab(self, contribution: ToolsTabContribution) -> None:
         self._tools_tab_contributions.append(contribution)
 
-    def register_desktop_widget(self, contribution: DesktopUIContribution) -> None:
-        self._desktop_contributions.append(contribution)
-
-    # --- capability readers for host/manager ---
+    def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:
+        self._chat_ui_contributions.append(contribution)
 
     @property
     def llm_adapters(self) -> dict[str, Type[LLMAdapter]]:
@@ -176,9 +179,13 @@ class PluginRegister:
         return sorted(self._tools_tab_contributions, key=lambda c: c.order)
 
     @property
-    def desktop_contributions(self) -> list[DesktopUIContribution]:
-        return sorted(self._desktop_contributions, key=lambda c: c.order)
+    def chat_ui_contributions(self) -> list[ChatUIContribution]:
+        return sorted(self._chat_ui_contributions, key=lambda c: c.order)
 
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
         for registrar in self._llm_tool_registrars:
             registrar(tool_manager)
+
+
+# Backward-compatible name: plugins should type-hint this in ``initialize(register, ...)``.
+PluginRegister = PluginCapabilityRegistry

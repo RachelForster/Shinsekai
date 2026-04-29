@@ -162,7 +162,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             clear_input_draft=self.input_box.clear,
             set_choice_options=self.setOptions,
             set_dialog_html=self.setDisplayWords,
-            mount_plugin_widgets=self.mount_plugin_contributions,
+            mount_chat_ui_contributions=self.mount_chat_ui_contributions,
         )
 
     def setup_ui(self):
@@ -734,19 +734,24 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.options_widget.raise_()
         self._raise_input_and_toolbar()
 
-    def mount_plugin_contributions(self, contributions: list) -> None:
+    def mount_chat_ui_contributions(self, contributions: list) -> None:
         """
-        Embed widgets from :mod:`sdk` plugins. ``placement`` hints:
+        Embed widgets from :mod:`sdk` plugins into the Chat UI. ``placement`` hints:
         ``toolbar`` (left of existing actions), ``input_row`` (left of input),
         anything else: child of ``image_container`` (overlay).
         """
         if not contributions:
             return
+        from ui.chat_ui.context import try_get_chat_ui_context
+
+        build_arg = try_get_chat_ui_context()
+        if build_arg is None:
+            build_arg = self
         for c in sorted(contributions, key=lambda x: x.order):
             try:
-                w = c.build(self)
+                w = c.build(build_arg)
             except Exception:
-                _logger.exception("Desktop plugin widget failed: %s", c.widget_id)
+                _logger.exception("Chat UI plugin widget failed: %s", c.widget_id)
                 continue
             pl = (c.placement or "overlay").lower()
             if pl == "toolbar":

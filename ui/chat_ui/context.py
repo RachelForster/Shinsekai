@@ -46,7 +46,7 @@ class _ChatUIActions:
         "clear_input_draft",
         "set_choice_options",
         "set_dialog_html",
-        "mount_plugin_widgets",
+        "mount_chat_ui_contributions",
     )
 
     def __init__(
@@ -56,14 +56,14 @@ class _ChatUIActions:
         clear_input_draft: Callable[[], None],
         set_choice_options: Callable[[List[str]], None],
         set_dialog_html: Callable[[str], None],
-        mount_plugin_widgets: Callable[[list], None],
+        mount_chat_ui_contributions: Callable[[list], None],
     ):
         self.set_notification_hint = set_notification_hint
         self.set_input_draft = set_input_draft
         self.clear_input_draft = clear_input_draft
         self.set_choice_options = set_choice_options
         self.set_dialog_html = set_dialog_html
-        self.mount_plugin_widgets = mount_plugin_widgets
+        self.mount_chat_ui_contributions = mount_chat_ui_contributions
 
 
 class _ChatUIUpdater(QObject):
@@ -73,7 +73,7 @@ class _ChatUIUpdater(QObject):
     clear_input_draft = Signal()
     set_choice_options = Signal(object)
     set_dialog_html = Signal(str)
-    mount_plugin_widgets = Signal(object)
+    mount_chat_ui_contributions = Signal(object)
 
 
 class ChatUIContext:
@@ -110,8 +110,8 @@ class ChatUIContext:
         self._updater.set_dialog_html.connect(
             self._actions.set_dialog_html, Qt.ConnectionType.QueuedConnection
         )
-        self._updater.mount_plugin_widgets.connect(
-            lambda contrib: self._actions.mount_plugin_widgets(list(contrib)),
+        self._updater.mount_chat_ui_contributions.connect(
+            lambda contrib: self._actions.mount_chat_ui_contributions(list(contrib)),
             Qt.ConnectionType.QueuedConnection,
         )
 
@@ -181,6 +181,6 @@ class ChatUIContext:
             )
         self._submit_user_text(text)
 
-    def apply_desktop_plugin_widgets(self, contributions: list) -> None:
+    def apply_chat_ui_plugin_widgets(self, contributions: list) -> None:
         if contributions:
-            self._updater.mount_plugin_widgets.emit(contributions)
+            self._updater.mount_chat_ui_contributions.emit(contributions)
