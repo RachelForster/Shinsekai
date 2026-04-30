@@ -271,7 +271,7 @@ class VoskAdapter(ASRAdapter):
 
 
 def voice_ui_to_asr_lang(voice_ui: str) -> str:
-    """将 system_config.voice_language 映射到 ASR 语言代码。"""
+    """将 system_config.voice_language（及菜单所选）映射到 ASR / Whisper 语言代码。"""
     s = (voice_ui or "zh").strip().lower().replace("-", "_")
     if s.startswith("zh"):
         return "zh"
@@ -279,6 +279,9 @@ def voice_ui_to_asr_lang(voice_ui: str) -> str:
         return "ja"
     if s.startswith("en"):
         return "en"
+    if s in ("yue", "cantonese", "zh_yue"):
+        # Whisper 无 yue 独立码，粤语会话用 zh 识别常可接受
+        return "zh"
     return "zh"
 
 
@@ -299,6 +302,34 @@ def _resolve_whisper_device_compute(device_pref: str, compute_pref: str) -> tupl
     if dp == "cuda":
         return "cuda", cp or "float16"
     return "cpu", cp or "int8"
+
+
+def _whisper_compute_fallback_chain(device: str, preferred: str) -> list[str]:
+    """在首选 compute_type 加载失败时依次尝试（如 int8 在当前后端不可用）。"""
+    d = (device or "cpu").strip().lower()
+    p = (preferred or "").strip().lower()
+    if d == "cuda":
+        order = ("float16", "int8_float16", "int8", "float32")
+    else:
+        order = ("int8", "int8_float32", "float32")
+    out: list[str] = []
+    if p:
+        out.append(p)
+    for x in order:
+        if x not in out:
+            out.append(x)
+    return out
+
+
+def _whisper_load_recoverable_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return (
+        "int8" in msg
+        or "compute type" in msg
+        or "compute_type" in msg
+        or ("backend" in msg and "support" in msg)
+        or "efficient" in msg
+    )
 
 
 class FasterWhisperAdapter(ASRAdapter):
@@ -340,12 +371,26 @@ class FasterWhisperAdapter(ASRAdapter):
             print(f"faster-whisper 未安装：{e}。请执行 pip install faster-whisper")
             return
         dev, ct = _resolve_whisper_device_compute(self._device_pref, self._compute_pref)
-        print(f"faster-whisper: 加载模型 {self._model_size} device={dev} compute_type={ct} …")
-        try:
-            self._model = WhisperModel(self._model_size, device=dev, compute_type=ct)
-        except Exception as e:
-            print(f"faster-whisper 模型加载失败: {e}")
-            self._model = None
+        chain = _whisper_compute_fallback_chain(dev, ct)
+        last_err: Optional[BaseException] = None
+        for i, ctry in enumerate(chain):
+            print(f"faster-whisper: 加载模型 {self._model_size} device={dev} compute_type={ctry} …")
+            try:
+                self._model = WhisperModel(self._model_size, device=dev, compute_type=ctry)
+            except Exception as e:
+                last_err = e
+                if _whisper_load_recoverable_error(e) and i + 1 < len(chain):
+                    continue
+                print(f"faster-whisper 模型加载失败: {e}")
+                self._model = None
+                return
+            if ctry != ct:
+                print(
+                    f"faster-whisper: compute_type 已由 {ct!r} 调整为 {ctry!r}（当前设备/ctranslate2 不支持前者）。"
+                )
+            return
+        print(f"faster-whisper 模型加载失败: {last_err}")
+        self._model = None
 
     def _transcribe_numpy(self, audio_i16: Any) -> str:
         import numpy as np

@@ -1,11 +1,12 @@
 import sys
 import ctypes
+import base64
 from PIL.ImageChops import screen
 import numpy as np
 import threading
 import yaml
 import time
-from PySide6.QtCore import QEvent, QPoint, QRect, Qt, Signal, QSize, QUrl
+from PySide6.QtCore import QByteArray, QEvent, QPoint, QRect, Qt, Signal, QSize, QUrl
 from PySide6.QtGui import (
     QCursor,
     QFont,
@@ -144,15 +145,60 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.setup_ui()
         self._install_resize_event_filters()
 
-        # 置顶启动；初始位置在工作区内居中（不靠屏幕上沿）
+        # 默认位置：工作区内居中；若有上次保存的布局则覆盖
         avail = screen.availableGeometry()
         x = avail.left() + (avail.width() - self.original_width) // 2
         y = avail.top() + (avail.height() - self.original_height) // 2
         self.move(x, y)
+        self._restore_chat_window_geometry()
 
         from ui.chat_ui.signal_bridge import attach_chat_ui_window
 
         attach_chat_ui_window(self)
+
+    def _united_available_screen_rect(self) -> QRect:
+        united = QRect()
+        for s in QGuiApplication.screens():
+            united = united.united(s.availableGeometry())
+        return united
+
+    def _ensure_window_geometry_visible(self) -> None:
+        united = self._united_available_screen_rect()
+        if united.isNull():
+            return
+        fg = self.frameGeometry()
+        if united.contains(fg.center()):
+            return
+        c, tc = fg.center(), united.center()
+        self.move(self.x() + tc.x() - c.x(), self.y() + tc.y() - c.y())
+
+    def _restore_chat_window_geometry(self) -> None:
+        raw = (config_manager.config.system_config.chat_window_geometry_b64 or "").strip()
+        if not raw:
+            return
+        try:
+            data = base64.standard_b64decode(raw.encode("ascii"), validate=True)
+        except Exception:
+            return
+        if not data:
+            return
+        if not self.restoreGeometry(QByteArray(data)):
+            return
+        self._ensure_window_geometry_visible()
+
+    def _persist_chat_window_geometry(self) -> None:
+        try:
+            ba = self.saveGeometry()
+            if ba.isEmpty():
+                return
+            payload = bytes(ba)
+            b64 = base64.standard_b64encode(payload).decode("ascii")
+            sc = config_manager.config.system_config.model_copy(deep=True)
+            sc.chat_window_geometry_b64 = b64
+            config_manager.config.system_config = sc
+            config_manager.save_system_config()
+        except Exception as e:
+            _logger.warning("保存聊天窗口布局失败: %s", e)
 
     def _window_font_scale(self) -> float:
         rw = max(1, int(getattr(self, "_font_scale_ref_w", self.original_width)))
@@ -1126,6 +1172,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         """关闭窗口时停止线程"""
         if self._resizing:
             self._end_resize()
+        self._persist_chat_window_geometry()
         self.mic_button.close()
         if self.display_thread:
             self.display_thread.stop()

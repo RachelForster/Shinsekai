@@ -68,11 +68,18 @@ def register_api_tab(ctx: WebUIContext) -> None:
             with gr.Column():
                 _gsv_url, _gpt_sovits_work_path, _tts_provider = ctx.config_manager.get_gpt_sovits_config()
                 gr.Markdown("### TTS API 配置，如果没有可以不填，如果你想让角色读出台词，就需要配置")
-                gr.Markdown("说明：Genie TTS 适用于 CPU；GPT SoVITS 更依赖 GPU 性能。")
+                gr.Markdown("说明：Genie TTS 适用于 CPU；GPT SoVITS 更依赖 GPU 性能。选择「不使用」则不加载语音合成。")
+                _tts_choices = ["不使用", "Genie TTS", "GPT SoVITS"]
+                if _tts_provider == "none":
+                    _tts_val = "不使用"
+                elif _tts_provider == "genie-tts":
+                    _tts_val = "Genie TTS"
+                else:
+                    _tts_val = "GPT SoVITS"
                 tts_provider = gr.Dropdown(
-                    choices=["Genie TTS", "GPT SoVITS"],
+                    choices=_tts_choices,
                     label="TTS 引擎",
-                    value="Genie TTS" if _tts_provider == "genie-tts" else "GPT SoVITS",
+                    value=_tts_val,
                 )
                 gr.Markdown("#### 前提条件")
                 gr.Markdown(

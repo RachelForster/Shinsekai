@@ -53,6 +53,7 @@
     "tts": {
       "hint": "台詞不要なら空欄。API とローカル/統合パスを必要に応じて。Genie TTS＝CPU 寄り、GPT SoVITS＝GPU 寄り。上の一括ダウンロードが使えます。失敗した場合は手動取得し、折りたたみの「リソース」内リンクを参照してください。",
       "engine": "TTS エンジン",
+      "none": "使わない（テキストのみ／立ち絵のプリセット音声）",
       "url": "TTS サーバー URL",
       "path": "TTS/統合包パス",
       "ph_url": "例 http://127.0.0.1:9880/",
@@ -404,6 +405,7 @@
     "print_load_template": "テンプレ読込: {a}",
     "print_load_history": "履歴読込: {path}",
     "print_t2i_fail": "T2I 初期化失敗: {e}",
+    "print_tts_fail": "TTS 初期化失敗（テキスト／プリセット音声のみ）: {e}",
     "print_bili_import": "Bilibili 取り込み失敗: {e}",
     "print_bili_start": "bilibili 弾幕、ルーム: {id}",
     "print_submitted": "送信: {message}",

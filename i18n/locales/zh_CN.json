@@ -53,6 +53,7 @@
     "tts": {
       "hint": "不念台词可留空。需要时填写 API 与本地/整合包路径。Genie TTS 偏 CPU；GPT SoVITS 偏 GPU。可用上方「一键下载并解压」获取整合包；若一键失败，请手动下载并解压，地址见下方折叠项「资源与说明」。",
       "engine": "TTS 引擎",
+      "none": "不使用（仅文本 / 立绘预设音频）",
       "url": "TTS 服务地址",
       "path": "TTS 服务/整合包路径",
       "ph_url": "如 http://127.0.0.1:9880/ ",
@@ -404,6 +405,7 @@
     "print_load_template": "加载用户模板: {a}",
     "print_load_history": "加载历史记录: {path}",
     "print_t2i_fail": "T2I 管理器初始化失败: {e}",
+    "print_tts_fail": "TTS 引擎初始化失败（将仅使用文本/预设立绘语音）: {e}",
     "print_bili_import": "导入 Bilibili 服务失败: {e}",
     "print_bili_start": "启动 B 站直播弹幕，房间: {id}",
     "print_submitted": "已提交: {message}",

@@ -253,11 +253,14 @@ class ApiSettingsTab(QWidget):
         self._tts_hint.setObjectName("apiSectionHint")
         tts_lay.addWidget(self._tts_hint)
         self.tts_provider = QComboBox()
-        self.tts_provider.addItems(["Genie TTS", "GPT SoVITS"])
-        if _tts_provider == "genie-tts":
-            self.tts_provider.setCurrentText("Genie TTS")
-        else:
-            self.tts_provider.setCurrentText("GPT SoVITS")
+        self.tts_provider.addItem(tr_i18n("api.tts.none"), "none")
+        self.tts_provider.addItem("Genie TTS", "genie-tts")
+        self.tts_provider.addItem("GPT SoVITS", "gpt-sovits")
+        _slug = (_tts_provider or "gpt-sovits").strip().lower()
+        if _slug not in ("none", "genie-tts", "gpt-sovits"):
+            _slug = "gpt-sovits"
+        _tts_idx = self.tts_provider.findData(_slug)
+        self.tts_provider.setCurrentIndex(_tts_idx if _tts_idx >= 0 else 2)
         self.sovits_url = QLineEdit(_gsv_url)
         self.sovits_url.setPlaceholderText(tr_i18n("api.tts.ph_url"))
         self.gpt_sovits_api_path = QLineEdit(_gpt_sovits_work_path)
@@ -511,6 +514,13 @@ class ApiSettingsTab(QWidget):
         self._tts_engine.setText(tr_i18n("api.tts.engine"))
         self._tts_url.setText(tr_i18n("api.tts.url"))
         self._tts_path.setText(tr_i18n("api.tts.path"))
+        i_none = self.tts_provider.findData("none")
+        if i_none >= 0:
+            self.tts_provider.setItemText(i_none, tr_i18n("api.tts.none"))
+        _cur_tts = self.tts_provider.currentData()
+        _ti = self.tts_provider.findData(_cur_tts)
+        if _ti >= 0:
+            self.tts_provider.setCurrentIndex(_ti)
         self._c_hint.setText(tr_i18n("api.comfy.hint"))
         self.t2i_url.setPlaceholderText(tr_i18n("api.comfy.ph_t2i"))
         self._cf_t2i.setText(tr_i18n("api.comfy.t2i_url"))
@@ -603,13 +613,17 @@ class ApiSettingsTab(QWidget):
 
     def _on_save(self) -> None:
         is_streaming = "是" if self.stream_yes.isChecked() else "否"
+        tts_slug = self.tts_provider.currentData()
+        if tts_slug is None:
+            tts_slug = "gpt-sovits"
+        tts_slug = str(tts_slug).strip().lower()
         msg = self._ctx.config_manager.save_api_config_new(
             self.llm_provider.currentText(),
             self.llm_model.text().strip(),
             self.api_key.text(),
             self.base_url.text().strip(),
             is_streaming,
-            self.tts_provider.currentText(),
+            tts_slug,
             self.sovits_url.text().strip(),
             self.gpt_sovits_api_path.text().strip(),
             self.t2i_url.text().strip(),

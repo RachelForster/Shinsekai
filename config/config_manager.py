@@ -165,13 +165,21 @@ class ConfigManager:
         current_api_config.llm_provider = llm_provider
         current_api_config.llm_base_url = base_url
         current_api_config.is_streaming = (is_streaming == "是")
-        tts_provider_mapping = {
-            "GPT SoVITS": "gpt-sovits",
-            "Genie TTS": "genie-tts",
-            "gpt-sovits": "gpt-sovits",
-            "genie-tts": "genie-tts"
-        }
-        current_api_config.tts_provider = tts_provider_mapping.get(tts_provider, "gpt-sovits")
+        def _norm_tts(v: str) -> str:
+            s = (v or "").strip().lower()
+            if s in ("none", "off", "disable", "disabled", "不使用"):
+                return "none"
+            if s in ("genie-tts", "gpt-sovits"):
+                return s
+            legacy = {
+                "gpt sovits": "gpt-sovits",
+                "genie tts": "genie-tts",
+                "gpt-sovits": "gpt-sovits",
+                "genie-tts": "genie-tts",
+            }
+            return legacy.get(s, "gpt-sovits")
+
+        current_api_config.tts_provider = _norm_tts(tts_provider)
         current_api_config.gpt_sovits_url = sovits_url
         current_api_config.gpt_sovits_api_path = gpt_sovits_api_path
         current_api_config.t2i_api_url=t2i_url

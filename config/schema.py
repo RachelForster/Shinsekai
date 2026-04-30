@@ -60,7 +60,10 @@ class ApiConfig(BaseModel):
     """API 相关的配置，如 GPT-SoVITS 和 LLM 的设置"""
     gpt_sovits_api_path: DefaultIfNone[str] = Field(default='', description="GPT-SoVITS API 的工作目录")
     gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="GPT-SoVITS API 的访问 URL")
-    tts_provider: DefaultIfNone[str] = Field(default='gpt-sovits', description="TTS 提供器类型: gpt-sovits / genie-tts")
+    tts_provider: DefaultIfNone[str] = Field(
+        default="gpt-sovits",
+        description="TTS 提供器: gpt-sovits / genie-tts / none（不使用语音合成）",
+    )
     tts_speed: DefaultIfNone[float] = Field(default=1.0, description="TTS 语速 (默认值 1.0)")
 
     t2i_work_path: DefaultIfNone[str] = Field(default='', description="T2I API 的工作目录")
@@ -113,6 +116,10 @@ class SystemConfig(BaseModel):
     bgm_path: DefaultIfNone[str] = Field(default="",description="BGM 的路径")
     background_path: DefaultIfNone[str] = Field(default="",description="背景图片的路径")
     live_room_id : DefaultIfNone[str] = Field(default="", description="直播间ID，用于直播相关功能")
+    chat_window_geometry_b64: DefaultIfNone[str] = Field(
+        default="",
+        description="聊天主窗口上次关闭时的 saveGeometry Base64，留空则使用默认居中与尺寸",
+    )
 
     # 音乐翻唱流水线（YouTube/B站下载 → UVR 分离 → RVC 转换 → pydub 合成）
     music_cover_work_dir: DefaultIfNone[str] = Field(

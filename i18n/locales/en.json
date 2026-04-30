@@ -56,6 +56,7 @@
     "tts": {
       "hint": "Leave blank if you do not use lines. Set API and local/bundle path as needed. Genie TTS = CPU; GPT SoVITS = GPU. Use the button above to download and extract; if that fails, download manually and see the collapsed section Resources & links below.",
       "engine": "TTS engine",
+      "none": "Off (text only / sprite preset audio)",
       "url": "TTS server URL",
       "path": "TTS / bundle path",
       "ph_url": "e.g. http://127.0.0.1:9880/",
@@ -407,6 +408,7 @@
     "print_load_template": "Loading user template: {a}",
     "print_load_history": "Loading history: {path}",
     "print_t2i_fail": "T2I manager init failed: {e}",
+    "print_tts_fail": "TTS engine init failed (text / preset sprite audio only): {e}",
     "print_bili_import": "Bilibili import failed: {e}",
     "print_bili_start": "Bilibili live danmaku, room: {id}",
     "print_submitted": "Submitted: {message}",

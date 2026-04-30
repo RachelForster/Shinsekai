@@ -201,9 +201,11 @@ class TtsBundleDownloadDialog(QDialog):
         if not isinstance(kind, str):
             kind = "genie"
         if kind == "genie":
-            self._tts_provider.setCurrentText("Genie TTS")
+            idx = self._tts_provider.findData("genie-tts")
         else:
-            self._tts_provider.setCurrentText("GPT SoVITS")
+            idx = self._tts_provider.findData("gpt-sovits")
+        if idx >= 0:
+            self._tts_provider.setCurrentIndex(idx)
         feedback_result(
             self,
             tr_i18n("api.msg.config"),

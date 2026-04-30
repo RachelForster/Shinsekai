@@ -119,6 +119,11 @@ def launch_chat(
             history_file_path = Path(history_file) if history_file else Path(f"{ctx.history_dir}/{template_hash}.json")
             t2i = "ComfyUI" if use_cg == "是" else ""
             root = _release_root()
+            tts_slug = (
+                getattr(ctx.config_manager.config.api_config, "tts_provider", None)
+                or "gpt-sovits"
+            )
+            tts_slug = str(tts_slug).strip() or "gpt-sovits"
             args = [
                 "--template=_temp",
                 f"--voice_mode={voice_mode}",
@@ -127,6 +132,7 @@ def launch_chat(
                 f"--bg={selected_bg}",
                 f"--t2i={t2i}",
                 f"--room_id={room_id}",
+                f"--tts={tts_slug}",
             ]
             if getattr(sys, "frozen", False):
                 ms = root / "main_sprite" / "main_sprite.exe"
