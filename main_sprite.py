@@ -277,6 +277,21 @@ def main():
     app.aboutToQuit.connect(llm_worker.quit)
     app.aboutToQuit.connect(tts_worker.quit)
     app.aboutToQuit.connect(ui_worker.quit)
+    try:
+        from core.plugins.plugin_host import get_plugin_manager
+
+        mgr = get_plugin_manager()
+
+        def _shutdown_plugins() -> None:
+            if mgr is not None:
+                try:
+                    mgr.shutdown_all()
+                except Exception:
+                    pass
+
+        app.aboutToQuit.connect(_shutdown_plugins)
+    except Exception:
+        pass
     app.aboutToQuit.connect(lambda: save_chat_history(args.history, llm_manager.get_messages()))
     app.aboutToQuit.connect(
         lambda: save_bg(

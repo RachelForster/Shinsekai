@@ -92,6 +92,22 @@ class SystemConfig(BaseModel):
         description="界面语言: zh_CN / en / ja",
     )
     voice_language: DefaultIfNone[str] = Field(default='ja', description="系统语音的默认语言 (例如: ja)")
+    asr_provider: DefaultIfNone[str] = Field(
+        default="vosk",
+        description="麦克风语音识别后端：vosk | faster_whisper",
+    )
+    asr_whisper_model_size: DefaultIfNone[str] = Field(
+        default="small",
+        description="faster-whisper 模型名（如 tiny/base/small）或本地模型目录路径",
+    )
+    asr_whisper_device: DefaultIfNone[str] = Field(
+        default="auto",
+        description="faster-whisper 设备：auto | cuda | cpu",
+    )
+    asr_whisper_compute_type: DefaultIfNone[str] = Field(
+        default="",
+        description="faster-whisper compute_type，留空则按设备自动选择（如 int8、float16）",
+    )
     music_volumn: DefaultIfNone[int] =Field(default=30,description="bgm 音量")
     theme_color: DefaultIfNone[str] = Field(default='rgba(50,50,50,200)',description="主题色")
     bgm_path: DefaultIfNone[str] = Field(default="",description="BGM 的路径")
