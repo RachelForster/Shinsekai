@@ -15,6 +15,7 @@ import pygame
 
 from i18n import tr as tr_i18n
 
+from asr.asr_adapter import get_asr_log
 from config.config_manager import ConfigManager
 from core.runtime.app_runtime import get_app_runtime
 from core.messaging.dialog_tokens import (
@@ -170,6 +171,10 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 tts_sound = pygame.mixer.Sound(audio_path)
                 dc.play(tts_sound)
                 audio_played = True
+                get_asr_log().info(
+                    "CharacterDialogUiHandler: TTS playing → post_pause_asr (character=%s)",
+                    character_name,
+                )
                 ui.post_pause_asr()
                 while dc.get_busy() and ev and not ev.is_set():
                     time.sleep(0.1)
@@ -189,6 +194,11 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             if remaining > 0:
                 ev.wait(timeout=remaining)
         # sendMessage 已暂停 ASR；无 TTS / 音频失败时原先不会走到 post_llm_reply_finished，导致麦克风永久暂停。
+        get_asr_log().info(
+            "CharacterDialogUiHandler: dialog handler done "
+            "(audio_played=%s) → post_llm_reply_finished",
+            audio_played,
+        )
         ui.post_llm_reply_finished()
         rt.audio_path_queue.task_done()
 

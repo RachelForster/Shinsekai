@@ -1,11 +1,34 @@
 from i18n import normalize_lang
 from sdk.adapters import ASRAdapter, TranscriptionCallback
 import json
+import logging
 import os
 import sys
 import threading
 from pathlib import Path
 from typing import Any, Optional
+
+
+def get_asr_log() -> logging.Logger:
+    """ASR 专用 logger：默认 stderr。级别可用环境变量 EASYAI_ASR_LOG（DEBUG/INFO/WARNING）。"""
+    log = logging.getLogger("easyai.asr")
+    if log.handlers:
+        return log
+    h = logging.StreamHandler(sys.stderr)
+    h.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)s] [%(threadName)s] easyai.asr: %(message)s"
+        )
+    )
+    log.addHandler(h)
+    _name = (os.environ.get("EASYAI_ASR_LOG") or "INFO").upper()
+    _lvl = getattr(logging, _name, logging.INFO)
+    log.setLevel(_lvl if isinstance(_lvl, int) else logging.INFO)
+    log.propagate = False
+    return log
+
+
+_log = get_asr_log()
 
 
 def _realtimestt_compute_sanitize(device: str, user_pref: str) -> str:
@@ -16,8 +39,8 @@ def _realtimestt_compute_sanitize(device: str, user_pref: str) -> str:
         return "float16" if d == "cuda" else "int8"
     c = raw.lower()
     if d == "cuda" and c == "int8_float16":
-        print(
-            "RealtimeSTT: 当前 CUDA 不支持 int8_float16，已改用 float16（API 页可手动选 float16）。"
+        _log.info(
+            "RealtimeSTT: CUDA 下 int8_float16 已降级为 float16（可改 API 计算精度）"
         )
         return "float16"
     if d == "cpu" and c == "int8_float16":
@@ -98,13 +121,21 @@ class RealtimeSTTAdapter(ASRAdapter):
 
         dev = self._device_resolved(self._device_pref)
         ct = self._compute_for_recorder(dev)
-        print(
-            f"RealtimeSTT: 初始化 model={self._model_name!r} device={dev!r} compute_type={ct!r} …"
+        _log.info(
+            "RealtimeSTT setup_recorder: model=%r device=%r compute_type=%r lang=%r",
+            self._model_name,
+            dev,
+            ct,
+            (self.language or "").strip(),
         )
 
         def on_rt_update(text: str) -> None:
             t = (text or "").strip()
             if t:
+                _log.debug(
+                    "RealtimeSTT realtime partial: %s",
+                    t[:200] + ("…" if len(t) > 200 else ""),
+                )
                 self.callback(t, True)
 
         self._recorder = AudioToTextRecorder(
@@ -122,91 +153,142 @@ class RealtimeSTTAdapter(ASRAdapter):
     def _text_loop(self) -> None:
         import time
 
+        cycle = 0
         while self._is_running:
             if self._paused:
                 time.sleep(0.08)
                 continue
             rec = self._recorder
             if rec is None:
+                _log.warning("RealtimeSTT _text_loop: recorder is None, exit loop")
                 break
             try:
+                cycle += 1
+                _log.debug("RealtimeSTT text() cycle #%s start", cycle)
                 final = rec.text()
-                if not self._is_running or self._paused:
+                if not self._is_running:
+                    _log.info("RealtimeSTT text() returned but _is_running=False, stop")
+                    break
+                if self._paused:
+                    _log.debug(
+                        "RealtimeSTT text() returned while paused (len=%s), skip final",
+                        len(final or ""),
+                    )
                     continue
                 ft = (final or "").strip()
                 if ft:
+                    _log.info(
+                        "RealtimeSTT text() cycle #%s final: %s",
+                        cycle,
+                        ft[:300] + ("…" if len(ft) > 300 else ""),
+                    )
                     self.callback(ft, False)
-            except Exception as e:
+                else:
+                    _log.debug(
+                        "RealtimeSTT text() cycle #%s empty final (interrupted?)",
+                        cycle,
+                    )
+            except Exception:
                 if self._is_running:
-                    print(f"RealtimeSTT: 识别循环异常: {e}")
+                    _log.exception("RealtimeSTT _text_loop exception (cycle #%s)", cycle)
 
     def start(self) -> None:
         if self._is_running:
-            print("RealtimeSTT: 已在运行。")
+            _log.warning("RealtimeSTT start: already running")
             return
         try:
             if self._recorder is None:
                 self._setup_recorder()
         except ImportError as e:
-            print(f"RealtimeSTT 未安装：{e}。请执行 pip install realtimestt")
+            _log.error("RealtimeSTT import failed: %s (pip install realtimestt)", e)
             return
-        except Exception as e:
-            print(f"RealtimeSTT 初始化失败: {e}")
+        except Exception:
+            _log.exception("RealtimeSTT setup_recorder failed")
             self._recorder = None
             return
-        print("RealtimeSTT: 启动识别线程…")
+        _log.info("RealtimeSTT starting loop thread")
         self._is_running = True
         self._paused = False
         self._loop_thread = threading.Thread(
             target=self._text_loop, name="realtimestt_loop", daemon=True
         )
         self._loop_thread.start()
-        print("RealtimeSTT: 启动完成。")
+        _log.info("RealtimeSTT started (thread=%s)", self._loop_thread.name)
 
     def stop(self) -> None:
-        if not self._is_running:
-            print("RealtimeSTT: 未在运行。")
+        rec = self._recorder
+        loop_thread = self._loop_thread
+        if not self._is_running and rec is None:
+            _log.debug("RealtimeSTT stop: idle, skip")
             return
-        print("RealtimeSTT: 正在停止…")
+        _log.info("RealtimeSTT stopping…")
         self._is_running = False
         self._paused = False
-        rec = self._recorder
         self._recorder = None
+        self._loop_thread = None
         if rec is not None:
             try:
-                rec.abort()
-            except Exception:
-                pass
-            try:
+                # 勿先 abort：Windows 下转写为子进程，管道已断时 abort 可能阻塞
+                # was_interrupted.wait() 且加剧 poll_connection 的 BrokenPipe 刷屏。
                 rec.shutdown()
             except Exception:
-                pass
-        if self._loop_thread and self._loop_thread.is_alive():
-            self._loop_thread.join(timeout=15.0)
-        self._loop_thread = None
-        print("RealtimeSTT: 停止完成。")
+                _log.warning("RealtimeSTT stop: shutdown()", exc_info=True)
+        if loop_thread is not None and loop_thread.is_alive():
+            loop_thread.join(timeout=15.0)
+            if loop_thread.is_alive():
+                _log.warning("RealtimeSTT stop: loop thread still alive after join")
+        _log.info("RealtimeSTT stopped")
 
     def get_status(self) -> str:
         return "Running" if self._is_running else "Stopped"
 
     def pause(self) -> None:
-        # sendMessage 与 TTS 播放都会触发暂停；避免对 RealtimeSTT 连续 abort 导致无法再听音
+        # sendMessage 与 TTS 都会 pause；勿在主线程（Qt 槽）里同步 abort()——库内 was_interrupted.wait 易死锁
         if self._paused:
+            _log.debug("RealtimeSTT pause: already paused, skip")
             return
         self._paused = True
-        if self._recorder is not None:
-            try:
-                self._recorder.abort()
-            except Exception:
-                pass
+        _log.info("RealtimeSTT pause: scheduling abort on helper thread")
+        rec = self._recorder
+        if rec is not None:
+
+            def _abort_safe() -> None:
+                try:
+                    _log.debug(
+                        "RealtimeSTT abort() on %s",
+                        threading.current_thread().name,
+                    )
+                    rec.abort()
+                    _log.debug("RealtimeSTT abort() finished")
+                except Exception:
+                    _log.exception("RealtimeSTT abort() failed")
+
+            threading.Thread(
+                target=_abort_safe, daemon=True, name="realtimestt_abort"
+            ).start()
 
     def resume(self) -> None:
+        _log.info("RealtimeSTT resume: clear pause + events + listen()")
         self._paused = False
-        if self._recorder is not None:
-            try:
-                self._recorder.listen()
-            except Exception:
-                pass
+        rec = self._recorder
+        if rec is None:
+            _log.warning("RealtimeSTT resume: recorder is None")
+            return
+        for attr in ("interrupt_stop_event", "was_interrupted"):
+            ev = getattr(rec, attr, None)
+            if ev is not None:
+                try:
+                    ev.clear()
+                    _log.debug("RealtimeSTT resume: cleared %s", attr)
+                except Exception:
+                    _log.warning(
+                        "RealtimeSTT resume: clear %s failed", attr, exc_info=True
+                    )
+        try:
+            rec.listen()
+            _log.info("RealtimeSTT resume: listen() ok")
+        except Exception:
+            _log.exception("RealtimeSTT resume: listen() failed")
 
 
 # Vosk 模型的路径（请根据实际下载的模型路径修改）
@@ -242,7 +324,7 @@ class VoskAdapter(ASRAdapter):
         try:
             self.model = Model(model_path=self.model_path)
         except Exception as e:
-            print(f"Error loading Vosk model from {self.model_path}: {e}")
+            _log.error("Vosk model load failed: %s path=%s", e, self.model_path)
             self.model = None
 
     def _vosk_recognition_loop(self):
@@ -284,35 +366,35 @@ class VoskAdapter(ASRAdapter):
         stream.stop_stream()
         stream.close()
         p.terminate()
-        print("Vosk: 识别循环结束。")
+        _log.info("Vosk recognition loop ended")
 
     def start(self):
         """启动 Vosk 识别线程。"""
         if self._is_running:
-            print("Vosk: 适配器已在运行。")
+            _log.warning("Vosk start: already running")
             return
         
         if self.model is None:
-            print("Vosk: 无法启动识别，因为模型加载失败。")
+            _log.error("Vosk start: model load failed, cannot start")
             return
 
-        print("Vosk: 启动识别...")
+        _log.info("Vosk starting…")
         self._is_running = True
         import threading # 仅在需要时导入
         self._thread = threading.Thread(target=self._vosk_recognition_loop)
         self._thread.start()
-        print("Vosk: 启动完成。")
+        _log.info("Vosk started")
 
     def stop(self):
         """停止 Vosk 识别线程。"""
         if not self._is_running:
             return
 
-        print("Vosk: 正在停止...")
+        _log.info("Vosk stopping…")
         self._is_running = False
         if self._thread and self._thread.is_alive():
             self._thread.join() # 等待线程安全退出
-        print("Vosk: 停止完成。")
+        _log.info("Vosk stopped")
 
     def get_status(self) -> str:
         """获取 Vosk 的运行状态。"""
@@ -321,13 +403,13 @@ class VoskAdapter(ASRAdapter):
     def pause(self):
         """暂停 Vosk 识别。"""
         if self._is_running:
-            print("Vosk: 暂停识别...")
+            _log.info("Vosk pause")
             self._pause_event.clear()  # 设置为暂停状态
     
     def resume(self):
         """恢复 Vosk 识别。"""
         if self._is_running:
-            print("Vosk: 恢复识别...")
+            _log.info("Vosk resume")
             self._pause_event.set()  # 设置为运行状态
 
 
@@ -447,28 +529,35 @@ class FasterWhisperAdapter(ASRAdapter):
         try:
             from faster_whisper import WhisperModel
         except ImportError as e:
-            print(f"faster-whisper 未安装：{e}。请执行 pip install faster-whisper")
+            _log.error("faster-whisper not installed: %s", e)
             return
         dev, ct = _resolve_whisper_device_compute(self._device_pref, self._compute_pref)
         chain = _whisper_compute_fallback_chain(dev, ct)
         last_err: Optional[BaseException] = None
         for i, ctry in enumerate(chain):
-            print(f"faster-whisper: 加载模型 {self._model_size} device={dev} compute_type={ctry} …")
+            _log.info(
+                "faster-whisper load try model=%r device=%s compute_type=%s",
+                self._model_size,
+                dev,
+                ctry,
+            )
             try:
                 self._model = WhisperModel(self._model_size, device=dev, compute_type=ctry)
             except Exception as e:
                 last_err = e
                 if _whisper_load_recoverable_error(e) and i + 1 < len(chain):
                     continue
-                print(f"faster-whisper 模型加载失败: {e}")
+                _log.warning("faster-whisper load error: %s", e)
                 self._model = None
                 return
             if ctry != ct:
-                print(
-                    f"faster-whisper: compute_type 已由 {ct!r} 调整为 {ctry!r}（当前设备/ctranslate2 不支持前者）。"
+                _log.info(
+                    "faster-whisper compute_type adjusted %r -> %r",
+                    ct,
+                    ctry,
                 )
             return
-        print(f"faster-whisper 模型加载失败: {last_err}")
+        _log.error("faster-whisper load failed after retries: %s", last_err)
         self._model = None
 
     def _transcribe_numpy(self, audio_i16: Any) -> str:
@@ -515,6 +604,7 @@ class FasterWhisperAdapter(ASRAdapter):
             try:
                 data = stream.read(self.CHUNK, exception_on_overflow=False)
             except Exception:
+                _log.warning("faster-whisper stream.read failed, exit loop", exc_info=True)
                 break
             np16 = np.frombuffer(data, dtype=np.int16)
             rms = float(
@@ -555,46 +645,46 @@ class FasterWhisperAdapter(ASRAdapter):
             text = self._transcribe_numpy(np.concatenate(chunks))
             if text:
                 self.callback(text, False)
-        print("faster-whisper: 识别循环结束。")
+        _log.info("faster-whisper recognition loop ended")
 
     def start(self) -> None:
         if self._is_running:
-            print("faster-whisper: 已在运行。")
+            _log.warning("faster-whisper start: already running")
             return
         self._load_model()
         if self._model is None:
-            print("faster-whisper: 无法启动（模型未加载）。")
+            _log.error("faster-whisper start: model not loaded")
             return
-        print("faster-whisper: 启动识别…")
+        _log.info("faster-whisper starting thread…")
         self._is_running = True
         self._thread = threading.Thread(
             target=self._recognition_loop, name="faster_whisper_asr", daemon=True
         )
         self._thread.start()
-        print("faster-whisper: 启动完成。")
+        _log.info("faster-whisper started")
 
     def stop(self) -> None:
         if not self._is_running:
-            print("faster-whisper: 未在运行。")
+            _log.debug("faster-whisper stop: not running")
             return
-        print("faster-whisper: 正在停止…")
+        _log.info("faster-whisper stopping…")
         self._is_running = False
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=8.0)
         self._thread = None
-        print("faster-whisper: 停止完成。")
+        _log.info("faster-whisper stopped")
 
     def get_status(self) -> str:
         return "Running" if self._is_running else "Stopped"
 
     def pause(self) -> None:
         if self._is_running:
-            print("faster-whisper: 暂停识别…")
+            _log.info("faster-whisper pause")
             self._pause_event.clear()
 
     def resume(self) -> None:
         if self._is_running:
-            print("faster-whisper: 恢复识别…")
+            _log.info("faster-whisper resume")
             self._pause_event.set()
 
 
@@ -605,6 +695,14 @@ def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
     sys_cfg = ConfigManager().config.system_config
     lang = system_config_to_asr_lang(sys_cfg)
     prov = (sys_cfg.asr_provider or "vosk").strip().lower().replace("-", "_")
+    _log.info(
+        "create_default_asr_adapter: provider=%r language=%r whisper_model=%r device=%r compute=%r",
+        prov,
+        lang,
+        getattr(sys_cfg, "asr_whisper_model_size", ""),
+        getattr(sys_cfg, "asr_whisper_device", ""),
+        getattr(sys_cfg, "asr_whisper_compute_type", ""),
+    )
     if prov in ("faster_whisper", "fasterwhisper", "whisper"):
         return FasterWhisperAdapter(
             lang,

@@ -7,7 +7,10 @@ from PySide6.QtCore import QSize, Qt, Signal, QObject
 
 # 导入您提供的适配器文件 (假设文件名为 asr_adapter.py 并在同一目录下)
 # 实际项目中，您可能需要确保 asr_adapter.py 中的所有依赖（如 RealtimeSTT, vosk, pyaudio）已安装。
-from asr.asr_adapter import create_default_asr_adapter
+from asr.asr_adapter import create_default_asr_adapter, get_asr_log
+
+_log = get_asr_log()
+
 
 class ASRSignals(QObject):
     """
@@ -89,7 +92,7 @@ class MicButton(QPushButton):
         处理 ASR 线程发出的转录结果，并更新 UI。
         """
         if not hasattr(self, 'line_edit'):
-            print(f"Warning: line_edit not set. Transcription: {text}")
+            _log.warning("mic: line_edit not set, drop transcription: %s", text[:120])
             return
 
         if is_partial:
@@ -120,7 +123,8 @@ class MicButton(QPushButton):
         if self._is_asr_running:
             return
             
-        print("尝试启动 ASR...")
+        ad_name = type(self.asr_adapter).__name__
+        _log.info("mic start_asr adapter=%s", ad_name)
         try:
             # 记录当前输入框中的文本，作为转录结果的前缀
             if hasattr(self, 'line_edit'):
@@ -129,47 +133,60 @@ class MicButton(QPushButton):
             self.asr_adapter.start()
             self._is_asr_running = True
             self.asr_state_changed.emit(True)
-            print("ASR 已启动。")
-        except Exception as e:
-            print(f"ASR 启动失败: {e}")
+            _log.info("mic start_asr ok adapter=%s", ad_name)
+        except Exception:
+            _log.exception("mic start_asr failed adapter=%s", ad_name)
 
     def pause_asr(self):
         """暂停 ASR 服务。"""
         if not self._is_asr_running:
+            _log.debug("mic pause_asr: not running, skip")
             return
-        print("尝试暂停 ASR...")
+        _log.info("mic pause_asr adapter=%s", type(self.asr_adapter).__name__)
         self.asr_adapter.pause()
     
     def resume_asr(self):
         """恢复 ASR 服务。"""
         if not self._is_asr_running:
+            _log.warning(
+                "mic resume_asr: skipped (_is_asr_running=False); "
+                "mic may still look on — toggle mic off/on"
+            )
             return
-        print("尝试恢复 ASR...")
+        _log.info("mic resume_asr adapter=%s", type(self.asr_adapter).__name__)
         time.sleep(0.5)  # 等待 ASR 适配器完全暂停
         self.original_text = ''
         self.line_edit.setText(self.original_text)  # 恢复到暂停时的文本
         self.asr_adapter.resume()
+        _log.info("mic resume_asr done")
 
     def stop_asr(self):
         """停止 ASR 服务。"""
         if not self._is_asr_running:
             return
 
-        print("尝试停止 ASR...")
+        _log.info("mic stop_asr adapter=%s", type(self.asr_adapter).__name__)
         try:
             self.setStyleSheet(self.styleSheet().replace(self.ACTIVE_COLOR, self.INACTIVE_COLOR))
             self.asr_adapter.stop()
             self._is_asr_running = False
             self.asr_state_changed.emit(False)
-            print("ASR 已停止。")
-        except Exception as e:
-            print(f"ASR 停止失败: {e}")
+            _log.info("mic stop_asr ok")
+        except Exception:
+            _log.exception("mic stop_asr failed")
 
     def is_running(self) -> bool:
         """返回 ASR 服务是否在运行。"""
         return self._is_asr_running
     
     def closeEvent(self, event):
-        """确保在关闭时停止 ASR 服务。"""
-        if self._is_asr_running:
-            self.stop_asr()
+        """关闭控件时释放 ASR（RealtimeSTT 子进程须 shutdown，否则会刷 BrokenPipe）。"""
+        try:
+            if self._is_asr_running:
+                self.stop_asr()
+            else:
+                self.asr_adapter.stop()
+        except Exception:
+            _log.exception("mic closeEvent cleanup")
+        finally:
+            super().closeEvent(event)
