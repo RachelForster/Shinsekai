@@ -21,13 +21,14 @@
   },
   "api": {
     "h2": "<h2>API</h2>",
-    "subtitle": "Configure the LLM, TTS, and ComfyUI. Use <b>Save</b> at the bottom to write api.yaml.",
+    "subtitle": "Configure the LLM, TTS, voice input (mic), and ComfyUI. <b>Save</b> writes api.yaml and mic ASR fields to system_config.yaml.",
     "save": "Save",
-    "save_tip": "Write current values to project api.yaml",
+    "save_tip": "Write api.yaml and mic ASR fields in system_config.yaml",
     "tree": {
       "llm": "LLM",
       "adv": "Advanced (sampling / context)",
       "tts": "TTS",
+      "asr": "Voice input (mic)",
       "comfy": "ComfyUI (optional)",
       "resource": "Resources & links"
     },
@@ -82,6 +83,19 @@
         "dlg_start": "Start download",
         "dlg_cancel": "Close"
       }
+    },
+    "asr": {
+      "hint": "Desktop microphone dictation: Vosk (local model folder) or faster-whisper (pip install faster-whisper; weights download on first run). Recognition language follows the main window “voice language” menu. Saved to system_config.yaml; reopen the chat window to apply.",
+      "provider": "Engine",
+      "whisper_model": "Whisper model",
+      "model_custom": "Custom (local path or Hugging Face id)",
+      "device": "Device",
+      "compute_type": "Compute precision",
+      "compute_auto": "Auto (follow device)",
+      "ph_model": "e.g. small, medium, or a local model folder",
+      "ph_model_custom": "Local folder or full model id",
+      "ph_compute": "Leave empty for auto (e.g. float16 / int8)",
+      "saved_suffix": "Voice input settings saved to system_config.yaml."
     },
     "comfy": {
       "hint": "For ComfyUI image/CG. Deploy ComfyUI and workflows first; this block stays collapsed by default.",
@@ -327,6 +341,7 @@
   "common": {
     "yes": "Yes",
     "no": "No",
+    "auto": "Auto",
     "msg_qtmm_unavailable": "Cannot play audio: PyQt6.QtMultimedia is not available. This often happens with a merged PyInstaller bundle; rebuild without --merge (separate onedir for Settings and the main app) and ship both, or run from a normal Python venv.",
     "ai_working_title": "AI in progress",
     "ai_progress_write": "Generating character setting…",

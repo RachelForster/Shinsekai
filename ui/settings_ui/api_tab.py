@@ -5,6 +5,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
+    QAbstractItemView,
     QButtonGroup,
     QComboBox,
     QDoubleSpinBox,
@@ -31,6 +32,19 @@ from ui.settings_ui.chat_template_handlers import launch_chat_resume_last
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import feedback_result, message_fail, toast_success
 from ui.settings_ui.tts_bundle_download_dialog import TtsBundleDownloadDialog
+
+
+_ASR_WHISPER_MODEL_PRESETS: tuple[str, ...] = (
+    "tiny",
+    "base",
+    "small",
+    "medium",
+    "large-v1",
+    "large-v2",
+    "large-v3",
+    "distil-large-v2",
+    "distil-large-v3",
+)
 
 
 def _add_collapsible_block(
@@ -209,6 +223,8 @@ class ApiSettingsTab(QWidget):
         main_tree.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        # 主题里 QTreeView 选中行会为粉红色；此处仅作分类折叠，不需要选中高亮。
+        main_tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         _add_collapsible_block(main_tree, tr_i18n("api.tree.llm"), llm_panel, expanded=True)
         _add_collapsible_block(main_tree, tr_i18n("api.tree.adv"), adv, expanded=False)
 
@@ -256,6 +272,104 @@ class ApiSettingsTab(QWidget):
         tts_form.addRow(self._tts_path, self.gpt_sovits_api_path)
         tts_lay.addLayout(tts_form)
 
+        scfg = self._ctx.config_manager.config.system_config
+        asr_w = QWidget()
+        asr_ly = QVBoxLayout(asr_w)
+        asr_ly.setContentsMargins(0, 0, 0, 0)
+        self._asr_hint = QLabel(tr_i18n("api.asr.hint"))
+        self._asr_hint.setWordWrap(True)
+        self._asr_hint.setObjectName("apiSectionHint")
+        asr_ly.addWidget(self._asr_hint)
+        asr_form = QFormLayout()
+        asr_form.setContentsMargins(0, 0, 0, 0)
+        self._asr_provider = QComboBox()
+        self._asr_provider.addItem("Vosk", "vosk")
+        self._asr_provider.addItem("faster-whisper", "faster_whisper")
+        prov = (scfg.asr_provider or "vosk").strip().lower().replace("-", "_")
+        for i in range(self._asr_provider.count()):
+            if str(self._asr_provider.itemData(i)) == prov:
+                self._asr_provider.setCurrentIndex(i)
+                break
+        else:
+            self._asr_provider.setCurrentIndex(0)
+        self._asr_whisper_model_combo = QComboBox()
+        for mid in _ASR_WHISPER_MODEL_PRESETS:
+            self._asr_whisper_model_combo.addItem(mid, mid)
+        self._asr_whisper_model_combo.addItem(
+            tr_i18n("api.asr.model_custom"), "__custom__"
+        )
+        self._asr_whisper_model_custom = QLineEdit()
+        self._asr_whisper_model_custom.setPlaceholderText(
+            tr_i18n("api.asr.ph_model_custom")
+        )
+        self._asr_whisper_model_custom.setVisible(False)
+        _raw_model = str(scfg.asr_whisper_model_size or "small").strip()
+        _matched = False
+        for i in range(self._asr_whisper_model_combo.count()):
+            d = self._asr_whisper_model_combo.itemData(i)
+            if d is None or str(d) == "__custom__":
+                continue
+            if str(d) == _raw_model:
+                self._asr_whisper_model_combo.setCurrentIndex(i)
+                _matched = True
+                break
+        if not _matched:
+            last = self._asr_whisper_model_combo.count() - 1
+            self._asr_whisper_model_combo.setCurrentIndex(last)
+            self._asr_whisper_model_custom.setText(_raw_model)
+            self._asr_whisper_model_custom.setVisible(True)
+        self._asr_whisper_model_combo.currentIndexChanged.connect(
+            self._on_asr_whisper_model_preset_changed
+        )
+        self._asr_model_row = QWidget()
+        _mrow = QVBoxLayout(self._asr_model_row)
+        _mrow.setContentsMargins(0, 0, 0, 0)
+        _mrow.setSpacing(4)
+        _mrow.addWidget(self._asr_whisper_model_combo)
+        _mrow.addWidget(self._asr_whisper_model_custom)
+        self._asr_device = QComboBox()
+        self._asr_device.addItem(tr_i18n("common.auto"), "auto")
+        self._asr_device.addItem("CUDA", "cuda")
+        self._asr_device.addItem("CPU", "cpu")
+        dev = (scfg.asr_whisper_device or "auto").strip().lower()
+        for i in range(self._asr_device.count()):
+            if str(self._asr_device.itemData(i)) == dev:
+                self._asr_device.setCurrentIndex(i)
+                break
+        else:
+            self._asr_device.setCurrentIndex(0)
+        self._asr_compute = QComboBox()
+        _ct_saved = (scfg.asr_whisper_compute_type or "").strip()
+        for lbl, dat in (
+            (tr_i18n("api.asr.compute_auto"), ""),
+            ("int8", "int8"),
+            ("float16", "float16"),
+            ("int8_float16", "int8_float16"),
+            ("int16", "int16"),
+            ("float32", "float32"),
+        ):
+            self._asr_compute.addItem(lbl, dat)
+        _ct_idx = 0
+        for i in range(self._asr_compute.count()):
+            d = self._asr_compute.itemData(i)
+            if ("" if d is None else str(d)) == _ct_saved:
+                _ct_idx = i
+                break
+        else:
+            if _ct_saved:
+                self._asr_compute.addItem(_ct_saved, _ct_saved)
+                _ct_idx = self._asr_compute.count() - 1
+        self._asr_compute.setCurrentIndex(_ct_idx)
+        self._f_asr_provider = QLabel(tr_i18n("api.asr.provider"))
+        self._f_asr_model = QLabel(tr_i18n("api.asr.whisper_model"))
+        self._f_asr_dev = QLabel(tr_i18n("api.asr.device"))
+        self._f_asr_ct = QLabel(tr_i18n("api.asr.compute_type"))
+        asr_form.addRow(self._f_asr_provider, self._asr_provider)
+        asr_form.addRow(self._f_asr_model, self._asr_model_row)
+        asr_form.addRow(self._f_asr_dev, self._asr_device)
+        asr_form.addRow(self._f_asr_ct, self._asr_compute)
+        asr_ly.addLayout(asr_form)
+
         api = self._ctx.config_manager.config.api_config
         comfy_w = QWidget()
         cvl = QVBoxLayout(comfy_w)
@@ -284,6 +398,7 @@ class ApiSettingsTab(QWidget):
         cf.addRow(self._cf_o, self.output_node_id)
         cvl.addLayout(cf)
         _add_collapsible_block(main_tree, tr_i18n("api.tree.tts"), tts_w, expanded=True)
+        _add_collapsible_block(main_tree, tr_i18n("api.tree.asr"), asr_w, expanded=False)
         _add_collapsible_block(main_tree, tr_i18n("api.tree.comfy"), comfy_w, expanded=False)
 
         links_w = QWidget()
@@ -409,10 +524,29 @@ class ApiSettingsTab(QWidget):
         self._links_help.setText(tr_i18n("api.links.help"))
         self.stream_yes.setText(tr_i18n("common.yes"))
         self.stream_no.setText(tr_i18n("common.no"))
-        if self._main_tree and self._main_tree.topLevelItemCount() >= 5:
-            for i, k in enumerate(
-                ("tree.llm", "tree.adv", "tree.tts", "tree.comfy", "tree.resource")
-            ):
+        self._asr_hint.setText(tr_i18n("api.asr.hint"))
+        self._f_asr_provider.setText(tr_i18n("api.asr.provider"))
+        self._f_asr_model.setText(tr_i18n("api.asr.whisper_model"))
+        self._f_asr_dev.setText(tr_i18n("api.asr.device"))
+        self._f_asr_ct.setText(tr_i18n("api.asr.compute_type"))
+        lc = self._asr_whisper_model_combo.count() - 1
+        if lc >= 0:
+            self._asr_whisper_model_combo.setItemText(lc, tr_i18n("api.asr.model_custom"))
+        self._asr_whisper_model_custom.setPlaceholderText(
+            tr_i18n("api.asr.ph_model_custom")
+        )
+        self._asr_compute.setItemText(0, tr_i18n("api.asr.compute_auto"))
+        self._asr_device.setItemText(0, tr_i18n("common.auto"))
+        if self._main_tree and self._main_tree.topLevelItemCount() >= 6:
+            _tree_keys = (
+                "tree.llm",
+                "tree.adv",
+                "tree.tts",
+                "tree.asr",
+                "tree.comfy",
+                "tree.resource",
+            )
+            for i, k in enumerate(_tree_keys):
                 it = self._main_tree.topLevelItem(i)
                 if it is not None:
                     it.setText(0, tr_i18n(f"api.{k}"))
@@ -428,6 +562,22 @@ class ApiSettingsTab(QWidget):
         for w in QApplication.topLevelWidgets():
             if isinstance(w, TtsBundleDownloadDialog) and w.isVisible():
                 w.apply_i18n()
+
+    def _on_asr_whisper_model_preset_changed(self, _index: int = 0) -> None:
+        data = self._asr_whisper_model_combo.currentData()
+        is_custom = data is not None and str(data) == "__custom__"
+        self._asr_whisper_model_custom.setVisible(is_custom)
+
+    def _asr_whisper_model_config_value(self) -> str:
+        data = self._asr_whisper_model_combo.currentData()
+        if data is not None and str(data) == "__custom__":
+            t = self._asr_whisper_model_custom.text().strip()
+            return t if t else "small"
+        return str(data or "small")
+
+    def _asr_whisper_compute_config_value(self) -> str:
+        d = self._asr_compute.currentData()
+        return "" if d is None else str(d)
 
     def _on_provider_change(self, name: str) -> None:
         try:
@@ -473,4 +623,17 @@ class ApiSettingsTab(QWidget):
             self.frequency_penalty.value(),
             self.max_context_tokens.value(),
         )
+        prov = str(self._asr_provider.currentData() or "vosk")
+        dev = str(self._asr_device.currentData() or "auto")
+        sc_new = self._ctx.config_manager.config.system_config.model_copy(
+            update={
+                "asr_provider": prov,
+                "asr_whisper_model_size": self._asr_whisper_model_config_value(),
+                "asr_whisper_device": dev,
+                "asr_whisper_compute_type": self._asr_whisper_compute_config_value(),
+            }
+        )
+        self._ctx.config_manager.config.system_config = sc_new
+        self._ctx.config_manager.save_system_config()
+        msg = f"{msg}\n{tr_i18n('api.asr.saved_suffix')}"
         feedback_result(self, tr_i18n("api.msg.config"), msg)

@@ -18,13 +18,14 @@
   },
   "api": {
     "h2": "<h2>API 設定</h2>",
-    "subtitle": "LLM・TTS・ComfyUI を設定。変更後は下の「保存」で api.yaml に書き込み。",
+    "subtitle": "LLM・TTS・マイク音声入力・ComfyUI を設定。保存で api.yaml と system_config.yaml（音声入力）を更新。",
     "save": "保存",
-    "save_tip": "現在の内容を api.yaml に保存",
+    "save_tip": "api.yaml と system_config.yaml（音声入力）へ保存",
     "tree": {
       "llm": "LLM 基本",
       "adv": "高度なパラメータ",
       "tts": "TTS",
+      "asr": "音声入力（マイク）",
       "comfy": "ComfyUI（任意）",
       "resource": "リソース"
     },
@@ -79,6 +80,19 @@
         "dlg_start": "ダウンロード開始",
         "dlg_cancel": "閉じる"
       }
+    },
+    "asr": {
+      "hint": "デスクトップのマイク聞き取り：Vosk（ローカルモデル）または faster-whisper（pip install が必要、初回に重み取得）。認識言語はメインウィンドウの「音声言語」と同じ。保存で system_config.yaml に書き込み。チャット窓を開き直すと反映。",
+      "provider": "認識エンジン",
+      "whisper_model": "Whisper モデル",
+      "model_custom": "カスタム（ローカルパスまたは HF 名）",
+      "device": "推論デバイス",
+      "compute_type": "計算精度 (compute_type)",
+      "compute_auto": "自動（デバイスに合わせる）",
+      "ph_model": "例 small、medium、またはローカルモデルパス",
+      "ph_model_custom": "ローカルフォルダまたはモデル ID",
+      "ph_compute": "空欄で自動（float16 / int8 等）",
+      "saved_suffix": "音声入力設定を system_config.yaml に保存しました。"
     },
     "comfy": {
       "hint": "ComfyUI で画像/CG 生成。ComfyUI とワークフローが必要。初期は折りたたみ。",
@@ -324,6 +338,7 @@
   "common": {
     "yes": "はい",
     "no": "いいえ",
+    "auto": "自動",
     "msg_qtmm_unavailable": "再生できません: PyQt6.QtMultimedia が利用できません。PyInstaller MERGE ビルドでよく起きます。--merge なしで Settings と本編を別 onedir にするか、通常の venv から起動してください。",
     "ai_working_title": "AI 処理中",
     "ai_progress_write": "キャラ設定を生成しています…",

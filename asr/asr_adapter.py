@@ -3,7 +3,7 @@ import json
 import os
 import sys
 import threading
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 from pathlib import Path
 
 # 定义转录回调函数的类型签名
@@ -268,3 +268,225 @@ class VoskAdapter(ASRAdapter):
         if self._is_running:
             print("Vosk: 恢复识别...")
             self._pause_event.set()  # 设置为运行状态
+
+
+def voice_ui_to_asr_lang(voice_ui: str) -> str:
+    """将 system_config.voice_language 映射到 ASR 语言代码。"""
+    s = (voice_ui or "zh").strip().lower().replace("-", "_")
+    if s.startswith("zh"):
+        return "zh"
+    if s in ("ja", "jp"):
+        return "ja"
+    if s.startswith("en"):
+        return "en"
+    return "zh"
+
+
+def _resolve_whisper_device_compute(device_pref: str, compute_pref: str) -> tuple[str, str]:
+    dp = (device_pref or "auto").strip().lower()
+    cp = (compute_pref or "").strip()
+    if dp == "auto":
+        cuda_ok = False
+        try:
+            import torch
+
+            cuda_ok = bool(torch.cuda.is_available())
+        except Exception:
+            cuda_ok = False
+        if cuda_ok:
+            return "cuda", cp or "float16"
+        return "cpu", cp or "int8"
+    if dp == "cuda":
+        return "cuda", cp or "float16"
+    return "cpu", cp or "int8"
+
+
+class FasterWhisperAdapter(ASRAdapter):
+    """faster-whisper 适配器：PyAudio 采集 + 端点检测 + WhisperModel.transcribe。"""
+
+    SAMPLERATE = 16000
+    CHUNK = 1024
+    MIN_UTTER_SAMPLES = int(16000 * 0.9)
+    PARTIAL_EVERY_SAMPLES = int(16000 * 1.4)
+    SILENCE_SAMPLES_END = int(0.42 * 16000)
+
+    def __init__(
+        self,
+        language: str,
+        callback: TranscriptionCallback,
+        *,
+        model_size: str = "small",
+        device: str = "auto",
+        compute_type: str = "",
+        rms_threshold: float = 38.0,
+    ):
+        super().__init__(language, callback)
+        self._model_size = (model_size or "small").strip()
+        self._device_pref = device or "auto"
+        self._compute_pref = compute_type or ""
+        self._rms_threshold = float(rms_threshold)
+        self._model: Any = None
+        self._is_running = False
+        self._thread: Optional[threading.Thread] = None
+        self._pause_event = threading.Event()
+        self._pause_event.set()
+
+    def _load_model(self) -> None:
+        if self._model is not None:
+            return
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as e:
+            print(f"faster-whisper 未安装：{e}。请执行 pip install faster-whisper")
+            return
+        dev, ct = _resolve_whisper_device_compute(self._device_pref, self._compute_pref)
+        print(f"faster-whisper: 加载模型 {self._model_size} device={dev} compute_type={ct} …")
+        try:
+            self._model = WhisperModel(self._model_size, device=dev, compute_type=ct)
+        except Exception as e:
+            print(f"faster-whisper 模型加载失败: {e}")
+            self._model = None
+
+    def _transcribe_numpy(self, audio_i16: Any) -> str:
+        import numpy as np
+
+        if self._model is None:
+            return ""
+        audio = np.asarray(audio_i16, dtype=np.float32) / 32768.0
+        if audio.size < 256:
+            return ""
+        lang = (self.language or "").strip() or None
+        segments, _ = self._model.transcribe(
+            audio,
+            language=lang,
+            beam_size=5,
+            vad_filter=True,
+            without_timestamps=True,
+        )
+        return "".join(seg.text for seg in segments).strip()
+
+    def _recognition_loop(self) -> None:
+        import numpy as np
+        import pyaudio
+
+        p = pyaudio.PyAudio()
+        stream = p.open(
+            format=pyaudio.paInt16,
+            channels=1,
+            rate=self.SAMPLERATE,
+            input=True,
+            frames_per_buffer=self.CHUNK,
+        )
+        stream.start_stream()
+        chunks: list[Any] = []
+        silent_acc = 0
+        last_partial_total = 0
+
+        while self._is_running:
+            if not self._pause_event.is_set():
+                import time
+
+                time.sleep(0.08)
+                continue
+            try:
+                data = stream.read(self.CHUNK, exception_on_overflow=False)
+            except Exception:
+                break
+            np16 = np.frombuffer(data, dtype=np.int16)
+            rms = float(
+                np.sqrt(np.mean(np.square(np16.astype(np.float64))))
+            )
+            voice = rms >= self._rms_threshold
+
+            if voice:
+                silent_acc = 0
+                chunks.append(np16)
+                total = int(sum(len(c) for c in chunks))
+                if (
+                    total >= self.MIN_UTTER_SAMPLES
+                    and total - last_partial_total >= self.PARTIAL_EVERY_SAMPLES
+                ):
+                    text = self._transcribe_numpy(np.concatenate(chunks))
+                    if text:
+                        self.callback(text, True)
+                    last_partial_total = total
+            else:
+                if chunks:
+                    silent_acc += len(np16)
+                    if silent_acc >= self.SILENCE_SAMPLES_END:
+                        audio = np.concatenate(chunks)
+                        chunks = []
+                        last_partial_total = 0
+                        silent_acc = 0
+                        text = self._transcribe_numpy(audio)
+                        if text:
+                            self.callback(text, False)
+                else:
+                    silent_acc = 0
+
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        if chunks:
+            text = self._transcribe_numpy(np.concatenate(chunks))
+            if text:
+                self.callback(text, False)
+        print("faster-whisper: 识别循环结束。")
+
+    def start(self) -> None:
+        if self._is_running:
+            print("faster-whisper: 已在运行。")
+            return
+        self._load_model()
+        if self._model is None:
+            print("faster-whisper: 无法启动（模型未加载）。")
+            return
+        print("faster-whisper: 启动识别…")
+        self._is_running = True
+        self._thread = threading.Thread(
+            target=self._recognition_loop, name="faster_whisper_asr", daemon=True
+        )
+        self._thread.start()
+        print("faster-whisper: 启动完成。")
+
+    def stop(self) -> None:
+        if not self._is_running:
+            print("faster-whisper: 未在运行。")
+            return
+        print("faster-whisper: 正在停止…")
+        self._is_running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=8.0)
+        self._thread = None
+        print("faster-whisper: 停止完成。")
+
+    def get_status(self) -> str:
+        return "Running" if self._is_running else "Stopped"
+
+    def pause(self) -> None:
+        if self._is_running:
+            print("faster-whisper: 暂停识别…")
+            self._pause_event.clear()
+
+    def resume(self) -> None:
+        if self._is_running:
+            print("faster-whisper: 恢复识别…")
+            self._pause_event.set()
+
+
+def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
+    """按 data/config/system_config.yaml 中 asr_provider 创建默认 ASR 适配器。"""
+    from config.config_manager import ConfigManager
+
+    sys_cfg = ConfigManager().config.system_config
+    lang = voice_ui_to_asr_lang(str(sys_cfg.voice_language))
+    prov = (sys_cfg.asr_provider or "vosk").strip().lower().replace("-", "_")
+    if prov in ("faster_whisper", "fasterwhisper", "whisper"):
+        return FasterWhisperAdapter(
+            lang,
+            callback,
+            model_size=str(sys_cfg.asr_whisper_model_size or "small"),
+            device=str(sys_cfg.asr_whisper_device or "auto"),
+            compute_type=str(sys_cfg.asr_whisper_compute_type or ""),
+        )
+    return VoskAdapter(language=lang, callback=callback)

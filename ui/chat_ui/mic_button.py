@@ -7,7 +7,7 @@ from PySide6.QtCore import QSize, Qt, Signal, QObject
 
 # 导入您提供的适配器文件 (假设文件名为 asr_adapter.py 并在同一目录下)
 # 实际项目中，您可能需要确保 asr_adapter.py 中的所有依赖（如 RealtimeSTT, vosk, pyaudio）已安装。
-from asr.asr_adapter import VoskAdapter
+from asr.asr_adapter import create_default_asr_adapter
 
 class ASRSignals(QObject):
     """
@@ -36,9 +36,7 @@ class MicButton(QPushButton):
         super().__init__(parent)
         self.asr_adapter = asr_adapter
         if asr_adapter is None:
-            # 默认使用 Vosk 适配器，语言为中文
-            self.asr_adapter = VoskAdapter(
-                language="zh", callback=self._handle_transcription_update)
+            self.asr_adapter = create_default_asr_adapter(lambda _t, _p: None)
         self._is_asr_running = False
         
         # 创建信号对象并将其连接到内部回调函数

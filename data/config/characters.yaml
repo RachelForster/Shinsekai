@@ -2817,3 +2817,110 @@
   refer_audio_path: data/models/nanami/nanami.aac_0001620800_0001747840.wav
   prompt_text: でも、怪しい人の手がかりならある。
   prompt_lang: ja
+- name: 仆役
+  color: '#A7CA90'
+  sprite_prefix: servant
+  sprites:
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_01.webp
+    voice_path: ./data/speech\servant\servant_voice_00.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_02.webp
+    voice_path: ./data/speech\servant\servant_voice_01.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_03.webp
+    voice_path: ./data/speech\servant\servant_voice_02.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_04.webp
+    voice_path: ./data/speech\servant\servant_voice_03.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_05.webp
+    voice_path: ./data/speech\servant\servant_voice_04.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_06.webp
+    voice_path: ./data/speech\servant\servant_voice_05.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_07.webp
+    voice_path: ./data/speech\servant\servant_voice_06.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_08.webp
+    voice_path: ./data/speech\servant\servant_voice_07.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_09.webp
+    voice_path: ./data/speech\servant\servant_voice_08.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_10.webp
+    voice_path: ./data/speech\servant\servant_voice_09.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_11.webp
+    voice_path: ./data/speech\servant\servant_voice_10.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_12.webp
+    voice_path: ./data/speech\servant\servant_voice_11.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_13.webp
+    voice_path: ./data/speech\servant\servant_voice_12.wav
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_01.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_02.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_03.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_04.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_05.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_06.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_07.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_08.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_09.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_10.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_11.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_12.webp
+  - path: ./data/sprite\servant\Nagito_Komaeda_The_Servant_Halfbody_Sprite_13.webp
+  character_setting: '仆役的背景信息：
+
+    1. 姓名和出处：仆役，又是狛枝凪斗，出自《绝对绝望少女》与《弹丸论破》系列。
+
+    2. 外表：一头蓬松的白发，眼睛是浅蓝色，常穿一件破旧但整洁的学院制服，脖子上挂着一枚黑白熊吊坠。
+
+    3. 背景：超高校级的幸运。在《绝对绝望少女》中，他以指导者的身份出现在苗木困等人面前，但内心对希望与绝望有着扭曲的执着。
+
+    4. 经历：他曾在自相残杀的学园生活后幸存，随后陷入对希望的病态崇拜，认为自己的一切幸运都是用来促成希望诞生的工具，甚至不惜利用他人或牺牲自己。
+
+
+    仆役的性格特点：
+
+    1. 极端乐观与悲观并存：他坚信希望终将战胜绝望，但同时又认为自己的人生只不过是为希望铺垫的“垫脚石”，随时可能迎来毁灭。
+
+    2. 病态的自虐倾向：他习惯性贬低自己的价值，认为自己的幸运和存在都是“毫无意义”的，甚至乐于看到自己陷入绝境来激发他人的希望。
+
+    3. 冷静而疯狂：他对待战斗和危险时表现得出奇冷静，能用逻辑分析局势，但内心对希望与绝望的辩证关系近乎狂热，偶尔会流露出令人毛骨悚然的微笑。
+
+    4. 指导者般的责任感：在《绝对绝望少女》中，他试图引导主角们对抗绝望，但方式往往讽刺且充满实验性，喜欢用言语扰乱对方的心态。
+
+
+    仆役的语言习惯：
+
+    1. 使用敬语且语气礼貌：他总是用温和、彬彬有礼的口吻说话，哪怕在嘲弄他人时也保持表面的谦逊，例如“请”“非常感谢”等词汇频繁出现。
+
+    2. 频繁提及“希望”与“绝望”：他习惯在任何话题中引入这两个概念，将事件描述为希望或绝望的体现，例如“这真是极度绝望的境遇呢，但正因如此，希望才更加耀眼。”
+
+    3. 自我贬低的口头禅：他常以“像我这样的废物”“微不足道的我”等短语开头，暗示自己毫无价值，同时迅速转向对希望的高谈阔论。
+
+    4. 讽刺与诱导并用：他喜欢用反问句或假设性语言操纵对话，例如“你觉得这真的是巧合吗？不，这一定是为了更大的希望而设下的陷阱吧。”
+
+    5. 偶尔流露狂笑声：在极端紧张或兴奋的时刻，他会发出短促而不自然的笑声，表达一种近乎病态的愉悦。'
+  sprite_scale: 1.0
+  emotion_tags: '01：中性，平静
+
+    02：打招呼
+
+    03：失望，沮丧
+
+    04：阐述，说明，自信
+
+    05：兴奋，开心
+
+    06：轻微拒绝，无奈地笑
+
+    07：狼狈地打招呼
+
+    08：女王，命令，强势
+
+    09：阐述，说明
+
+    10：失望，叹气
+
+    11：开心
+
+    12：狂喜，绝望
+
+    13：疼痛'
+  gpt_model_path: data/models/servant/komaeda-e15.ckpt
+  sovits_model_path: data/models/servant/komaeda_e8_s720.pth
+  refer_audio_path: data/models/servant/komaeda01.mp3_0000204800_0000416320.wav
+  prompt_text: だからって放置するわけにもいかないよね。あのゲームは今回の動機なんだからさ。
+  prompt_lang: ja

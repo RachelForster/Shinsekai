@@ -18,13 +18,14 @@
   },
   "api": {
     "h2": "<h2>API 配置</h2>",
-    "subtitle": "配置大语言模型、TTS 与 ComfyUI；变更后请使用页底「保存配置」写入 api.yaml。",
+    "subtitle": "配置大语言模型、TTS、语音输入与 ComfyUI；API 相关写入 api.yaml，麦克风识别选项写入 system_config.yaml。",
     "save": "保存配置",
-    "save_tip": "将当前各栏写入项目 api.yaml",
+    "save_tip": "将 LLM/TTS/Comfy 等写入 api.yaml，语音输入写入 system_config.yaml",
     "tree": {
       "llm": "LLM 基础",
       "adv": "高级参数（采样/上下文）",
       "tts": "TTS 语音",
+      "asr": "语音输入（麦克风）",
       "comfy": "ComfyUI 生图（可选）",
       "resource": "资源与说明"
     },
@@ -79,6 +80,19 @@
         "dlg_start": "开始下载",
         "dlg_cancel": "关闭"
       }
+    },
+    "asr": {
+      "hint": "桌面助手麦克风听写：Vosk（需本地模型目录）或 faster-whisper（需 pip install faster-whisper，首次运行会下载权重）。识别语言与主窗口菜单中的「语音语言」一致。保存后写入 system_config.yaml；请重新打开聊天主窗口后生效。",
+      "provider": "识别引擎",
+      "whisper_model": "Whisper 模型",
+      "model_custom": "自定义（本地目录或 Hugging Face 名）",
+      "device": "推理设备",
+      "compute_type": "计算精度",
+      "compute_auto": "自动（跟随设备）",
+      "ph_model": "如 small、medium 或本地模型目录路径",
+      "ph_model_custom": "填写本地模型目录或完整模型 ID",
+      "ph_compute": "留空则按设备自动（如 float16 / int8）",
+      "saved_suffix": "语音输入选项已写入 system_config.yaml。"
     },
     "comfy": {
       "hint": "用于通过 ComfyUI 生图 / CG。需已部署 ComfyUI 并配好工作流，默认折叠以减少干扰。",
@@ -324,6 +338,7 @@
   "common": {
     "yes": "是",
     "no": "否",
+    "auto": "自动",
     "msg_qtmm_unavailable": "无法播放：本环境未加载 PyQt6 多媒体 (QtMultimedia)。合并多包 (MERGE) 时常见。可改「分两次、不打 --merge 单独打 Settings 与主程序」整包同目录发布，或在本机用 Python 运行。",
     "ai_working_title": "AI 处理中",
     "ai_progress_write": "正在生成角色设定，请稍候…",
