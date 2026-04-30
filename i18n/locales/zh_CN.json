@@ -83,7 +83,13 @@
       }
     },
     "asr": {
-      "hint": "桌面助手麦克风听写：Vosk（需本地模型目录）或 faster-whisper（需 pip install faster-whisper，首次运行会下载权重）。识别语言与主窗口菜单中的「语音语言」一致。保存后写入 system_config.yaml；请重新打开聊天主窗口后生效。",
+      "hint": "桌面助手麦克风听写：Vosk（本地模型）、faster-whisper 或 RealtimeSTT（流式，依赖较多：`pip install realtimestt`，含 Silero VAD 与 PyTorch；首次会下载 Whisper 权重）。下方 Whisper 模型/设备/精度对 faster-whisper 与 RealtimeSTT 共用。未指定语种时与「界面语言」一致。保存后写入 system_config.yaml；请重新打开聊天主窗口后生效。",
+      "language": "识别语言",
+      "follow_ui": "跟随界面语言",
+      "lang_en": "English",
+      "lang_zh": "中文",
+      "lang_ja": "日本語",
+      "lang_yue": "粵語",
       "provider": "识别引擎",
       "whisper_model": "Whisper 模型",
       "model_custom": "自定义（本地目录或 Hugging Face 名）",

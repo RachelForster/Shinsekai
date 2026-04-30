@@ -6,7 +6,6 @@ import traceback
 from collections.abc import Callable
 from typing import Any
 
-from asr.asr_adapter import voice_ui_to_asr_lang
 from config.config_manager import ConfigManager
 from core.sprite.chat_history import (
     clear_chat_history,
@@ -41,17 +40,9 @@ def install_chat_ui_context(
 def _on_voice_language_changed(
     window: Any, tts_manager: Any, voice_ui_lang: str
 ) -> None:
-    """菜单「语音语言」同时驱动 TTS 与麦克风 ASR（faster-whisper / vosk）。"""
+    """菜单「语音语言」仅驱动 TTS；默认识别语言跟随界面语言（见 system_config / API 页）。"""
     if tts_manager is not None:
         tts_manager.set_language(voice_ui_lang)
-    asr_code = voice_ui_to_asr_lang(voice_ui_lang)
-    try:
-        mic = getattr(window, "mic_button", None)
-        ad = getattr(mic, "asr_adapter", None) if mic is not None else None
-        if ad is not None:
-            ad.language = asr_code
-    except Exception:
-        pass
 
 
 def wire_chat_ui_bridge(

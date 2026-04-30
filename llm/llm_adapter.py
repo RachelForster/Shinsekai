@@ -1,5 +1,5 @@
 # llm_adapter.py
-from abc import ABC, abstractmethod
+from sdk.adapters import LLMAdapter
 from openai import OpenAI
 import time
 import json
@@ -14,24 +14,6 @@ def filter_supported_chat_params(adapter_name: str, kwargs: dict) -> dict:
     supported = SUPPORTED_CHAT_PARAMS.get(adapter_name, set())
     return {k: v for k, v in kwargs.items() if k in supported}
 
-class LLMAdapter(ABC):
-    """
-    Abstract Adapter for LLM services.
-    This defines the standard interface for all LLM adapters.
-    """
-    def __init__(self, **kwargs):
-        self.user_template = ''
-    
-    @abstractmethod
-    def chat(self, messages: list, stream: bool = False, **kwargs):
-        """
-        Sends a message to the LLM and returns the response.
-        """
-        pass
-
-    def set_user_template(self, template: str):
-        """Sets the system prompt/user template."""
-        self.user_template = template
 
 class DeepSeekAdapter(LLMAdapter):
     def __init__(self, api_key=None, base_url=None, model="deepseek-chat", **kwargs):

@@ -78,7 +78,11 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
     except Exception:
         logger.exception("apply_tts_providers failed")
     try:
-        mgr.apply_llm_tools(ToolManager())
+        from sdk.tool_registry import apply_registered_tools
+
+        tm = ToolManager()
+        apply_registered_tools(tm)
+        mgr.apply_llm_tools(tm)
     except Exception:
         logger.exception("apply_llm_tools failed")
     try:

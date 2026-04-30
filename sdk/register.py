@@ -13,9 +13,8 @@ from sdk.plugin import PluginBase
 from sdk.types import ChatUIContribution, PluginDescriptor
 
 from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
-from llm.llm_adapter import LLMAdapter
 from llm.tools.tool_manager import ToolManager
-from tts.tts_adapter import TTSAdapter
+from sdk.adapters import LLMAdapter, TTSAdapter
 
 if TYPE_CHECKING:
     from sdk.types import (
@@ -100,6 +99,10 @@ class PluginDiscoveryRegistry:
 class PluginCapabilityRegistry:
     """
     Object passed to :meth:`PluginBase.initialize`; hosts read merged results via :class:`PluginManager`.
+
+    **LLM tools:** prefer ``from sdk.tool_registry import tool`` and ``@tool`` on module-level functions;
+    the host calls :func:`sdk.tool_registry.apply_registered_tools` before legacy
+    :meth:`register_llm_tool` callbacks. You may still use :meth:`register_llm_tool` for imperative registration.
     """
 
     def __init__(self) -> None:

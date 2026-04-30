@@ -86,7 +86,13 @@
       }
     },
     "asr": {
-      "hint": "Desktop microphone dictation: Vosk (local model folder) or faster-whisper (pip install faster-whisper; weights download on first run). Recognition language follows the main window “voice language” menu. Saved to system_config.yaml; reopen the chat window to apply.",
+      "hint": "Mic dictation: Vosk, faster-whisper, or RealtimeSTT (streaming; heavier stack — `pip install realtimestt`, Silero VAD + PyTorch; models download on first run). The Whisper model / device / precision rows apply to both faster-whisper and RealtimeSTT. If recognition language is unset, it follows the interface language. Saves to system_config.yaml; reopen the chat window to apply.",
+      "language": "Recognition language",
+      "follow_ui": "Follow interface language",
+      "lang_en": "English",
+      "lang_zh": "Chinese",
+      "lang_ja": "Japanese",
+      "lang_yue": "Cantonese (ASR as zh)",
       "provider": "Engine",
       "whisper_model": "Whisper model",
       "model_custom": "Custom (local path or Hugging Face id)",

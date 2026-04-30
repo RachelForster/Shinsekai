@@ -174,7 +174,6 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 while dc.get_busy() and ev and not ev.is_set():
                     time.sleep(0.1)
                 time.sleep(0.2)
-                ui.post_llm_reply_finished()
             except Exception as e:
                 print(f"UIWorker: 播放音频时出错: {e}")
             finally:
@@ -189,6 +188,8 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             remaining = min_stop_time - (end_time - start_time)
             if remaining > 0:
                 ev.wait(timeout=remaining)
+        # sendMessage 已暂停 ASR；无 TTS / 音频失败时原先不会走到 post_llm_reply_finished，导致麦克风永久暂停。
+        ui.post_llm_reply_finished()
         rt.audio_path_queue.task_done()
 
     def post_process(self, out: TTSOutputMessage) -> None:

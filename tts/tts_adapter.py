@@ -1,5 +1,5 @@
 # tts_adapter.py
-from abc import ABC, abstractmethod
+from sdk.adapters import TTSAdapter
 import os
 import requests
 import threading
@@ -13,20 +13,6 @@ import subprocess
 import time
 from typing import Optional, Callable
 
-class TTSAdapter(ABC):
-    """
-    Abstract Adapter for TTS services.
-    This defines the standard interface that all TTS adapters must implement.
-    """
-    @abstractmethod
-    def generate_speech(self, text, file_path=None, **kwargs):
-        """Generates speech from text and returns the file path."""
-        pass
-
-    @abstractmethod
-    def switch_model(self, model_info):
-        """Switches the TTS model."""
-        pass
 
 class GPTSoVitsAdapter(TTSAdapter):
     """

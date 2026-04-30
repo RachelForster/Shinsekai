@@ -17,6 +17,8 @@ PySide6
 pyyaml
 vosk
 faster-whisper
+# 可选：RealtimeSTT 流式麦克风识别（API 设定中选 RealtimeSTT 时再装）
+# realtimestt
 gpu-list
 # 开发时 TTS 整合包 7z 解压（可选，也可用 build_exe/7za.exe）
 py7zr

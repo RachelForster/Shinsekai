@@ -83,7 +83,13 @@
       }
     },
     "asr": {
-      "hint": "デスクトップのマイク聞き取り：Vosk（ローカルモデル）または faster-whisper（pip install が必要、初回に重み取得）。認識言語はメインウィンドウの「音声言語」と同じ。保存で system_config.yaml に書き込み。チャット窓を開き直すと反映。",
+      "hint": "マイク聴き取り：Vosk、faster-whisper、または RealtimeSTT（ストリーミング。依存が多く `pip install realtimestt`、Silero VAD・PyTorch 等。初回に Whisper 取得）。Whisper モデル・デバイス・精度は faster-whisper と RealtimeSTT で共通。認識言語未指定時は表示言語に合わせます。保存で system_config.yaml。チャット窓を開き直して反映。",
+      "language": "認識言語",
+      "follow_ui": "表示言語に合わせる",
+      "lang_en": "English",
+      "lang_zh": "中文",
+      "lang_ja": "日本語",
+      "lang_yue": "粵語（ASR は zh 扱い）",
       "provider": "認識エンジン",
       "whisper_model": "Whisper モデル",
       "model_custom": "カスタム（ローカルパスまたは HF 名）",

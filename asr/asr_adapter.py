@@ -1,152 +1,213 @@
-from abc import ABC, abstractmethod
+from i18n import normalize_lang
+from sdk.adapters import ASRAdapter, TranscriptionCallback
 import json
 import os
 import sys
 import threading
-from typing import Any, Callable, Optional
 from pathlib import Path
+from typing import Any, Optional
 
-# 定义转录回调函数的类型签名
-TranscriptionCallback = Callable[[str, bool], None]
 
-class ASRAdapter(ABC):
-    """
-    抽象的 ASR 适配器接口 (Target)。
-    定义了所有实时语音转文字服务必须提供的标准方法。
-    """
-    
-    def __init__(self, language: str, callback: TranscriptionCallback):
-        """
-        初始化适配器。
-        
-        Args:
-            language (str): 识别语言。
-            callback (TranscriptionCallback): 用于处理实时转录结果的回调函数。
-        """
-        self.language = language
-        self.callback = callback
-    
-    @abstractmethod
-    def start(self):
-        """
-        启动实时录音和转录服务。
-        """
-        pass
+def _realtimestt_compute_sanitize(device: str, user_pref: str) -> str:
+    """RealtimeSTT 在子进程内加载模型且无回退；CUDA 上 int8_float16 常在用户环境下报错。"""
+    d = (device or "cpu").strip().lower()
+    raw = (user_pref or "").strip()
+    if not raw:
+        return "float16" if d == "cuda" else "int8"
+    c = raw.lower()
+    if d == "cuda" and c == "int8_float16":
+        print(
+            "RealtimeSTT: 当前 CUDA 不支持 int8_float16，已改用 float16（API 页可手动选 float16）。"
+        )
+        return "float16"
+    if d == "cpu" and c == "int8_float16":
+        return "int8"
+    return raw
 
-    @abstractmethod
-    def stop(self):
-        """
-        停止实时录音和转录服务。
-        """
-        pass
-
-    @abstractmethod
-    def get_status(self) -> str:
-        """
-        获取服务的当前状态（例如：'Running', 'Stopped', 'Error'）。
-        """
-        pass
-    
-    @abstractmethod
-    def pause(self):
-        """暂停识别。"""
-        pass
-
-    @abstractmethod
-    def resume(self):
-        """恢复识别。"""
-        pass
 
 class RealtimeSTTAdapter(ASRAdapter):
-    """
-    RealtimeSTT 库的适配器。
-    将 RealtimeSTT 的 AudioToTextRecorder 行为映射到 ASRAdapter 接口。
-    """
+    """RealtimeSTT（realtimepy 包名 RealtimeSTT）：VAD + faster-whisper，实时字幕 + 每句结束 final。"""
 
-    def __init__(self, language: str, callback: TranscriptionCallback, model_name: str = "small"):
+    def __init__(
+        self,
+        language: str,
+        callback: TranscriptionCallback,
+        *,
+        model_name: str = "small",
+        device: str = "auto",
+        compute_type: str = "",
+    ):
         super().__init__(language, callback)
-        # 自动定位你的虚拟环境中的 nvidia 库路径
-        venv_path = sys.prefix
-        nvidia_base = os.path.join(venv_path, r'Lib\site-packages\nvidia')
-
-        # 需要加入搜索路径的子目录
-        sub_dirs = [
-            r'cudnn\bin',
-            r'cublas\bin',
-            r'curand\bin'
-        ]
-
-        for sub in sub_dirs:
-            full_path = os.path.join(nvidia_base, sub)
-            if os.path.exists(full_path):
-                os.add_dll_directory(full_path)
-                print(f"已添加 DLL 搜索路径: {full_path}")
-
-
-        from RealtimeSTT import AudioToTextRecorder
-
-        self._recorder: Optional[AudioToTextRecorder] = None
+        self._model_name = (model_name or "small").strip()
+        self._device_pref = device or "auto"
+        self._compute_pref = compute_type or ""
+        self._recorder: Any = None
+        self._loop_thread: Optional[threading.Thread] = None
         self._is_running = False
-        self.model_name = model_name
+        self._paused = False
+        if os.name == "nt":
+            venv_path = sys.prefix
+            nvidia_base = os.path.join(venv_path, r"Lib\site-packages\nvidia")
+            for sub in (r"cudnn\bin", r"cublas\bin", r"curand\bin"):
+                full_path = os.path.join(nvidia_base, sub)
+                if os.path.exists(full_path):
+                    try:
+                        os.add_dll_directory(full_path)
+                    except (OSError, AttributeError):
+                        pass
 
-    def _setup_recorder(self):
-        """配置和创建 RealtimeSTT 录音器实例。"""
-        print(f"RealtimeSTT: 正在配置模型 {self.model_name}...")
-        
-        # 将 RealtimeSTT 的回调函数包装起来，以便传递给外部的 self.callback
-        def internal_callback(text, is_partial):
-            self.callback(text, is_partial)
-        
+    @staticmethod
+    def _device_resolved(pref: str) -> str:
+        p = (pref or "auto").strip().lower()
+        if p == "cpu":
+            return "cpu"
+        if p == "cuda":
+            try:
+                import torch
+
+                return "cuda" if torch.cuda.is_available() else "cpu"
+            except Exception:
+                return "cpu"
+        try:
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except Exception:
+            return "cpu"
+
+    def _compute_resolved(self, device: str) -> str:
+        c = (self._compute_pref or "").strip()
+        if c:
+            return c
+        return "float16" if device == "cuda" else "int8"
+
+    def _compute_for_recorder(self, device: str) -> str:
+        base = self._compute_resolved(device)
+        return _realtimestt_compute_sanitize(device, base)
+
+    def _initial_prompt_optional(self) -> Optional[str]:
+        lang = (self.language or "").strip().lower()
+        if lang.startswith("en"):
+            return "English speech."
+        if lang in ("ja", "jp"):
+            return "日本語の会話です。"
+        return None
+
+    def _setup_recorder(self) -> None:
         from RealtimeSTT import AudioToTextRecorder
-        self._recorder = AudioToTextRecorder(
-            model=self.model_name,
-            language=self.language,
-            compute_type="float16",  # 可选参数，根据需要调整
-            device="cuda",  # 可选参数，根据需要调整
-            initial_prompt="这是一段中文语音：",
-            on_realtime_transcription_update=internal_callback
+
+        dev = self._device_resolved(self._device_pref)
+        ct = self._compute_for_recorder(dev)
+        print(
+            f"RealtimeSTT: 初始化 model={self._model_name!r} device={dev!r} compute_type={ct!r} …"
         )
 
-    def start(self):
-        """启动 RealtimeSTT 录音和转录。"""
+        def on_rt_update(text: str) -> None:
+            t = (text or "").strip()
+            if t:
+                self.callback(t, True)
+
+        self._recorder = AudioToTextRecorder(
+            model=self._model_name,
+            language=(self.language or "").strip(),
+            compute_type=ct,
+            device=dev,
+            enable_realtime_transcription=True,
+            use_main_model_for_realtime=True,
+            on_realtime_transcription_update=on_rt_update,
+            spinner=False,
+            initial_prompt=self._initial_prompt_optional(),
+        )
+
+    def _text_loop(self) -> None:
+        import time
+
+        while self._is_running:
+            if self._paused:
+                time.sleep(0.08)
+                continue
+            rec = self._recorder
+            if rec is None:
+                break
+            try:
+                final = rec.text()
+                if not self._is_running or self._paused:
+                    continue
+                ft = (final or "").strip()
+                if ft:
+                    self.callback(ft, False)
+            except Exception as e:
+                if self._is_running:
+                    print(f"RealtimeSTT: 识别循环异常: {e}")
+
+    def start(self) -> None:
         if self._is_running:
             print("RealtimeSTT: 已在运行。")
             return
-            
-        if self._recorder is None:
-            self._setup_recorder()
-            
-        print("RealtimeSTT: 启动录音...")
-        self._recorder.start_recording()
+        try:
+            if self._recorder is None:
+                self._setup_recorder()
+        except ImportError as e:
+            print(f"RealtimeSTT 未安装：{e}。请执行 pip install realtimestt")
+            return
+        except Exception as e:
+            print(f"RealtimeSTT 初始化失败: {e}")
+            self._recorder = None
+            return
+        print("RealtimeSTT: 启动识别线程…")
         self._is_running = True
+        self._paused = False
+        self._loop_thread = threading.Thread(
+            target=self._text_loop, name="realtimestt_loop", daemon=True
+        )
+        self._loop_thread.start()
         print("RealtimeSTT: 启动完成。")
 
-    def stop(self):
-        """停止 RealtimeSTT 录音和转录。"""
-        if not self._is_running or self._recorder is None:
+    def stop(self) -> None:
+        if not self._is_running:
             print("RealtimeSTT: 未在运行。")
             return
-
-        print("RealtimeSTT: 正在停止...")
-        self._recorder.stop_recording()
+        print("RealtimeSTT: 正在停止…")
         self._is_running = False
+        self._paused = False
+        rec = self._recorder
+        self._recorder = None
+        if rec is not None:
+            try:
+                rec.abort()
+            except Exception:
+                pass
+            try:
+                rec.shutdown()
+            except Exception:
+                pass
+        if self._loop_thread and self._loop_thread.is_alive():
+            self._loop_thread.join(timeout=15.0)
+        self._loop_thread = None
         print("RealtimeSTT: 停止完成。")
 
     def get_status(self) -> str:
-        """获取 RealtimeSTT 的运行状态。"""
         return "Running" if self._is_running else "Stopped"
 
-    def pause(self):
-        if self._is_running and self._recorder:
-            print("RealtimeSTT: 暂停录制...")
-            self._recorder.stop_recording() # 停止录制但保留模型加载
-            self._is_running = False
+    def pause(self) -> None:
+        # sendMessage 与 TTS 播放都会触发暂停；避免对 RealtimeSTT 连续 abort 导致无法再听音
+        if self._paused:
+            return
+        self._paused = True
+        if self._recorder is not None:
+            try:
+                self._recorder.abort()
+            except Exception:
+                pass
 
-    def resume(self):
-        if not self._is_running and self._recorder:
-            print("RealtimeSTT: 恢复录制...")
-            self._recorder.start_recording()
-            self._is_running = True
+    def resume(self) -> None:
+        self._paused = False
+        if self._recorder is not None:
+            try:
+                self._recorder.listen()
+            except Exception:
+                pass
+
 
 # Vosk 模型的路径（请根据实际下载的模型路径修改）
 VOSK_MODEL_PATH = "./assets/system/models/vosk-model-small-cn-0.22"
@@ -283,6 +344,24 @@ def voice_ui_to_asr_lang(voice_ui: str) -> str:
         # Whisper 无 yue 独立码，粤语会话用 zh 识别常可接受
         return "zh"
     return "zh"
+
+
+def ui_lang_to_asr_lang(ui_lang: str | None) -> str:
+    """将 system_config.ui_language（zh_CN / en / ja）映射到 ASR 语言代码。"""
+    code = normalize_lang(ui_lang)
+    if code == "en":
+        return "en"
+    if code == "ja":
+        return "ja"
+    return "zh"
+
+
+def system_config_to_asr_lang(sys_cfg: Any) -> str:
+    """asr_language 非空则用其映射，否则与 ui_language 一致。"""
+    raw = getattr(sys_cfg, "asr_language", None)
+    if raw is not None and str(raw).strip():
+        return voice_ui_to_asr_lang(str(raw))
+    return ui_lang_to_asr_lang(str(getattr(sys_cfg, "ui_language", "") or ""))
 
 
 def _resolve_whisper_device_compute(device_pref: str, compute_pref: str) -> tuple[str, str]:
@@ -524,13 +603,21 @@ def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
     from config.config_manager import ConfigManager
 
     sys_cfg = ConfigManager().config.system_config
-    lang = voice_ui_to_asr_lang(str(sys_cfg.voice_language))
+    lang = system_config_to_asr_lang(sys_cfg)
     prov = (sys_cfg.asr_provider or "vosk").strip().lower().replace("-", "_")
     if prov in ("faster_whisper", "fasterwhisper", "whisper"):
         return FasterWhisperAdapter(
             lang,
             callback,
             model_size=str(sys_cfg.asr_whisper_model_size or "small"),
+            device=str(sys_cfg.asr_whisper_device or "auto"),
+            compute_type=str(sys_cfg.asr_whisper_compute_type or ""),
+        )
+    if prov in ("realtime_stt", "realtimestt"):
+        return RealtimeSTTAdapter(
+            lang,
+            callback,
+            model_name=str(sys_cfg.asr_whisper_model_size or "small"),
             device=str(sys_cfg.asr_whisper_device or "auto"),
             compute_type=str(sys_cfg.asr_whisper_compute_type or ""),
         )

@@ -288,6 +288,7 @@ class ApiSettingsTab(QWidget):
         self._asr_provider = QComboBox()
         self._asr_provider.addItem("Vosk", "vosk")
         self._asr_provider.addItem("faster-whisper", "faster_whisper")
+        self._asr_provider.addItem("RealtimeSTT", "realtime_stt")
         prov = (scfg.asr_provider or "vosk").strip().lower().replace("-", "_")
         for i in range(self._asr_provider.count()):
             if str(self._asr_provider.itemData(i)) == prov:
@@ -295,6 +296,20 @@ class ApiSettingsTab(QWidget):
                 break
         else:
             self._asr_provider.setCurrentIndex(0)
+        self._asr_language = QComboBox()
+        self._asr_language.addItem(tr_i18n("api.asr.follow_ui"), "")
+        self._asr_language.addItem(tr_i18n("api.asr.lang_en"), "en")
+        self._asr_language.addItem(tr_i18n("api.asr.lang_zh"), "zh")
+        self._asr_language.addItem(tr_i18n("api.asr.lang_ja"), "ja")
+        self._asr_language.addItem(tr_i18n("api.asr.lang_yue"), "yue")
+        _asr_lang_saved = str(getattr(scfg, "asr_language", "") or "").strip()
+        for i in range(self._asr_language.count()):
+            d = self._asr_language.itemData(i)
+            if ("" if d is None else str(d)) == _asr_lang_saved:
+                self._asr_language.setCurrentIndex(i)
+                break
+        else:
+            self._asr_language.setCurrentIndex(0)
         self._asr_whisper_model_combo = QComboBox()
         for mid in _ASR_WHISPER_MODEL_PRESETS:
             self._asr_whisper_model_combo.addItem(mid, mid)
@@ -364,10 +379,12 @@ class ApiSettingsTab(QWidget):
                 _ct_idx = self._asr_compute.count() - 1
         self._asr_compute.setCurrentIndex(_ct_idx)
         self._f_asr_provider = QLabel(tr_i18n("api.asr.provider"))
+        self._f_asr_language = QLabel(tr_i18n("api.asr.language"))
         self._f_asr_model = QLabel(tr_i18n("api.asr.whisper_model"))
         self._f_asr_dev = QLabel(tr_i18n("api.asr.device"))
         self._f_asr_ct = QLabel(tr_i18n("api.asr.compute_type"))
         asr_form.addRow(self._f_asr_provider, self._asr_provider)
+        asr_form.addRow(self._f_asr_language, self._asr_language)
         asr_form.addRow(self._f_asr_model, self._asr_model_row)
         asr_form.addRow(self._f_asr_dev, self._asr_device)
         asr_form.addRow(self._f_asr_ct, self._asr_compute)
@@ -536,9 +553,21 @@ class ApiSettingsTab(QWidget):
         self.stream_no.setText(tr_i18n("common.no"))
         self._asr_hint.setText(tr_i18n("api.asr.hint"))
         self._f_asr_provider.setText(tr_i18n("api.asr.provider"))
+        self._f_asr_language.setText(tr_i18n("api.asr.language"))
+        _asr_lang_cur = self._asr_language.currentData()
         self._f_asr_model.setText(tr_i18n("api.asr.whisper_model"))
         self._f_asr_dev.setText(tr_i18n("api.asr.device"))
         self._f_asr_ct.setText(tr_i18n("api.asr.compute_type"))
+        _lc_asr = self._asr_language.count()
+        if _lc_asr >= 5:
+            self._asr_language.setItemText(0, tr_i18n("api.asr.follow_ui"))
+            self._asr_language.setItemText(1, tr_i18n("api.asr.lang_en"))
+            self._asr_language.setItemText(2, tr_i18n("api.asr.lang_zh"))
+            self._asr_language.setItemText(3, tr_i18n("api.asr.lang_ja"))
+            self._asr_language.setItemText(4, tr_i18n("api.asr.lang_yue"))
+        _asr_li = self._asr_language.findData(_asr_lang_cur)
+        if _asr_li >= 0:
+            self._asr_language.setCurrentIndex(_asr_li)
         lc = self._asr_whisper_model_combo.count() - 1
         if lc >= 0:
             self._asr_whisper_model_combo.setItemText(lc, tr_i18n("api.asr.model_custom"))
@@ -639,9 +668,14 @@ class ApiSettingsTab(QWidget):
         )
         prov = str(self._asr_provider.currentData() or "vosk")
         dev = str(self._asr_device.currentData() or "auto")
+        _asr_lang_data = self._asr_language.currentData()
+        _asr_lang_val = (
+            "" if _asr_lang_data is None else str(_asr_lang_data).strip()
+        )
         sc_new = self._ctx.config_manager.config.system_config.model_copy(
             update={
                 "asr_provider": prov,
+                "asr_language": _asr_lang_val,
                 "asr_whisper_model_size": self._asr_whisper_model_config_value(),
                 "asr_whisper_device": dev,
                 "asr_whisper_compute_type": self._asr_whisper_compute_config_value(),

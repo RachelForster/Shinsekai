@@ -30,10 +30,15 @@ def set_plugin_root(root: Path) -> None:
     _plugin_root = root
 
 
-def _config_file() -> Path:
+def plugin_config_path() -> Path:
+    """插件 ``config.json`` 路径；供识屏后台与 LLM 工具共用。"""
     if _plugin_root is None:
         raise RuntimeError("moondream_vision: plugin root not set")
     return default_config_path(_plugin_root)
+
+
+def _config_file() -> Path:
+    return plugin_config_path()
 
 
 def bind_emit(emit: Callable[[str], None]) -> None:

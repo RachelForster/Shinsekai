@@ -1,6 +1,6 @@
 import sys
+import time
 
-from anyio import sleep
 from PySide6.QtWidgets import QPushButton, QTextEdit
 from PySide6.QtGui import QIcon, QColor, QFont
 from PySide6.QtCore import QSize, Qt, Signal, QObject
@@ -97,9 +97,15 @@ class MicButton(QPushButton):
             self.line_edit.setText(self.original_text + text)
         else:
             # print(f"Final transcription: {text}")
-            text = text.replace(' ', '').strip()
-            self.line_edit.setText(self.original_text + ('，' if self.original_text else '') + text)
-            self.original_text = self.line_edit.toPlainText()  # 更新 original_text 为最新的完整文本
+            text = text.replace(" ", "").strip()
+            built = self.original_text + ("，" if self.original_text else "") + text
+            cur = self.line_edit.toPlainText().strip()
+            # RealtimeSTT 等：final 常等于已刷新的整句，避免重复拼接
+            if cur and text and (cur == built.strip() or cur.endswith(text)):
+                self.original_text = self.line_edit.toPlainText()
+            else:
+                self.line_edit.setText(built)
+                self.original_text = self.line_edit.toPlainText()
             self.send_final_transcription.emit()
 
     def _toggle_asr(self):
@@ -139,7 +145,7 @@ class MicButton(QPushButton):
         if not self._is_asr_running:
             return
         print("尝试恢复 ASR...")
-        sleep(0.5)  # 等待 ASR 适配器完全暂停
+        time.sleep(0.5)  # 等待 ASR 适配器完全暂停
         self.original_text = ''
         self.line_edit.setText(self.original_text)  # 恢复到暂停时的文本
         self.asr_adapter.resume()

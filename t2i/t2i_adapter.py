@@ -1,33 +1,14 @@
 # t2i_adapter.py (ComfyUI-specific Adapter)
 import os
-import requests
+import subprocess
 import base64
 import json
 import time
-from typing import Optional, Dict, Any
-
-# Assuming T2IAdapter ABC is defined here
-# t2i_adapter.py
-from abc import ABC, abstractmethod
-import os
 import requests
 from typing import Optional, Dict, Any
-import subprocess
 
-class T2IAdapter(ABC):
-    """
-    Abstract Adapter for Text-to-Image (T2I) services.
-    This defines the standard interface that all T2I adapters must implement.
-    """
-    @abstractmethod
-    def generate_image(self, prompt: str, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
-        """Generates an image from a text prompt and returns the file path."""
-        pass
+from sdk.adapters import T2IAdapter
 
-    @abstractmethod
-    def switch_model(self, model_info: Dict[str, Any]):
-        """Switches the T2I model or configuration."""
-        pass
 
 class StableDiffusionAdapter(T2IAdapter):
     """

@@ -9,6 +9,9 @@ from sdk.types import ToolsTabContribution
 
 from plugins.moondream_vision import runtime
 
+# 注册 LLM 工具（sdk.tool_registry）
+from plugins.moondream_vision import llm_tool as _moondream_llm_tool  # noqa: F401
+
 
 class MoondreamVisionPlugin(PluginBase):
     """Moondream2 + mss：将屏幕内容识别结果作为用户消息提交。"""

@@ -13,9 +13,8 @@ from typing import TYPE_CHECKING, Type
 import yaml
 
 from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
-from llm.llm_adapter import LLMAdapter
 from llm.tools.tool_manager import ToolManager
-from tts.tts_adapter import TTSAdapter
+from sdk.adapters import LLMAdapter, TTSAdapter
 
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
