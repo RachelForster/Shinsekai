@@ -16,6 +16,19 @@ else:
     _import_err = None
 
 
+def monitor_max_side_pixels(monitor_index: int) -> int:
+    """当前 mss 监视器宽高中的较大边（像素），用于鼠标移动百分比阈值。"""
+    if mss is None:
+        return 1080
+    with mss.mss() as sct:
+        if monitor_index < 0 or monitor_index >= len(sct.monitors):
+            monitor_index = 1
+        mon = sct.monitors[monitor_index]
+        w = int(mon.get("width", 0))
+        h = int(mon.get("height", 0))
+        return max(w, h, 1)
+
+
 def _grab_screen_rgb(monitor_index: int) -> Image.Image:
     if mss is None or Image is None:
         raise RuntimeError(

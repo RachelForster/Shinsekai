@@ -22,8 +22,8 @@ class MoondreamVisionConfig:
     """差分/鼠标/窗口采样的时间间隔（秒）。"""
     diff_threshold: float = 0.018
     """缩略图变化比例阈值；越大越不敏感（约 0.003~0.35）。"""
-    mouse_move_px: int = 12
-    """鼠标移动超过该像素数视为活动。"""
+    mouse_move_percent: float = 1.1
+    """鼠标相对上次采样点位移动超过「当前监视器宽高较大边」的该百分比即视为活动（0.02~25）。"""
     interval_sec: float = 20.0
     """满足触发条件后，两次送模型推理的最短间隔（秒）。"""
     monitor_index: int = 1
@@ -34,7 +34,7 @@ class MoondreamVisionConfig:
     def clamp(self) -> None:
         self.motion_poll_sec = max(0.12, min(3.0, float(self.motion_poll_sec)))
         self.diff_threshold = max(0.003, min(0.35, float(self.diff_threshold)))
-        self.mouse_move_px = max(2, min(128, int(self.mouse_move_px)))
+        self.mouse_move_percent = max(0.02, min(25.0, float(self.mouse_move_percent)))
         self.interval_sec = max(5.0, min(600.0, float(self.interval_sec)))
         self.monitor_index = max(0, min(32, int(self.monitor_index)))
         d = (self.device or "auto").strip().lower()
@@ -49,6 +49,16 @@ class MoondreamVisionConfig:
 
 def default_config_path(plugin_root: Path) -> Path:
     return plugin_root / "config.json"
+
+
+def _load_mouse_move_percent(raw: dict) -> float:
+    """兼容旧版 mouse_move_px（按 1080p 高边比例换算为近似百分比）。"""
+    if "mouse_move_percent" in raw:
+        return float(raw["mouse_move_percent"])
+    if "mouse_move_px" in raw:
+        px = float(raw["mouse_move_px"])
+        return max(0.02, min(25.0, 100.0 * px / 1080.0))
+    return float(MoondreamVisionConfig.mouse_move_percent)
 
 
 def load_config(path: Path) -> MoondreamVisionConfig:
@@ -71,9 +81,7 @@ def load_config(path: Path) -> MoondreamVisionConfig:
             diff_threshold=float(
                 raw.get("diff_threshold", MoondreamVisionConfig.diff_threshold)
             ),
-            mouse_move_px=int(
-                raw.get("mouse_move_px", MoondreamVisionConfig.mouse_move_px)
-            ),
+            mouse_move_percent=_load_mouse_move_percent(raw),
             interval_sec=float(raw.get("interval_sec", 20)),
             monitor_index=int(raw.get("monitor_index", 1)),
             question=str(raw.get("question", MoondreamVisionConfig.question)),

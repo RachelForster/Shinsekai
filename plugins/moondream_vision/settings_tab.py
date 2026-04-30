@@ -86,6 +86,7 @@ class MoondreamVisionSettingsTab(QWidget):
             self._quantization.addItem(label, data)
         self._quantization.setToolTip(
             "INT8 / INT4 需 NVIDIA CUDA 与 bitsandbytes；与 Apple MPS / 纯 CPU 不兼容。"
+            "视觉塔 vision 不参与量化（仍为 FP），以兼容 Moondream 自定义前向；仅语言部分减压显存。"
         )
         fl.addRow("权重量化:", self._quantization)
         self._motion_poll = QDoubleSpinBox()
@@ -100,10 +101,15 @@ class MoondreamVisionSettingsTab(QWidget):
         self._diff_thr.setSingleStep(0.002)
         self._diff_thr.setToolTip("相对上次识别成功的缩略图，变化像素占比阈值")
         fl.addRow("屏幕差分阈值:", self._diff_thr)
-        self._mouse_px = QSpinBox()
-        self._mouse_px.setRange(2, 128)
-        self._mouse_px.setToolTip("鼠标相对上次位置移动超过该像素视为活动")
-        fl.addRow("鼠标移动阈值(px):", self._mouse_px)
+        self._mouse_pct = QDoubleSpinBox()
+        self._mouse_pct.setRange(0.02, 25.0)
+        self._mouse_pct.setDecimals(2)
+        self._mouse_pct.setSingleStep(0.05)
+        self._mouse_pct.setSuffix(" %")
+        self._mouse_pct.setToolTip(
+            "相对当前「显示器索引」对应画面的宽/高较大一边；移动直线距离超过该比例视为活动"
+        )
+        fl.addRow("鼠标移动阈值(% 屏):", self._mouse_pct)
         self._interval = QDoubleSpinBox()
         self._interval.setRange(5.0, 600.0)
         self._interval.setSingleStep(1.0)
@@ -155,7 +161,7 @@ class MoondreamVisionSettingsTab(QWidget):
         self._quantization.setCurrentIndex(self._quant_index(c.quantization))
         self._motion_poll.setValue(c.motion_poll_sec)
         self._diff_thr.setValue(c.diff_threshold)
-        self._mouse_px.setValue(c.mouse_move_px)
+        self._mouse_pct.setValue(c.mouse_move_percent)
         self._interval.setValue(c.interval_sec)
         self._monitor.setValue(c.monitor_index)
         self._question.setPlainText(c.question)
@@ -171,7 +177,7 @@ class MoondreamVisionSettingsTab(QWidget):
             quantization=str(self._quantization.currentData() or "none"),
             motion_poll_sec=float(self._motion_poll.value()),
             diff_threshold=float(self._diff_thr.value()),
-            mouse_move_px=int(self._mouse_px.value()),
+            mouse_move_percent=float(self._mouse_pct.value()),
             interval_sec=float(self._interval.value()),
             monitor_index=int(self._monitor.value()),
             question=self._question.toPlainText().strip() or MoondreamVisionConfig.question,

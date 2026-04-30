@@ -6,7 +6,10 @@ from dataclasses import dataclass, field
 
 from PIL import Image
 
-from plugins.moondream_vision.capture_infer import thumbnail_change_ratio
+from plugins.moondream_vision.capture_infer import (
+    monitor_max_side_pixels,
+    thumbnail_change_ratio,
+)
 from plugins.moondream_vision.config_model import MoondreamVisionConfig
 
 
@@ -112,7 +115,9 @@ class MoondreamTriggerState:
         """本采样是否应尝试推理（仍需外部冷却）。"""
         reasons: list[str] = []
         thr = float(cfg.diff_threshold)
-        mouse_px = int(cfg.mouse_move_px)
+        max_side = monitor_max_side_pixels(cfg.monitor_index)
+        pct = float(cfg.mouse_move_percent)
+        mouse_px = max(1, int(max_side * pct / 100.0))
 
         diff_ratio = 0.0
         if self._last_thumb_ref is not None:
