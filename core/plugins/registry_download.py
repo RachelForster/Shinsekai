@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import tempfile
 import zipfile
 from collections.abc import Callable
@@ -16,6 +17,40 @@ logger = logging.getLogger(__name__)
 
 _DOWNLOAD_STATE_PATH = Path("data/config/plugin_registry_downloads.json")
 _PLUGINS_DIR = Path("plugins")
+
+_WIN_RESERVED_DEVICE_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
+
+def sanitize_plugins_directory_name(raw: str, *, max_len: int = 120) -> str:
+    """
+    Make registry ``name`` safe as a single path segment under ``plugins/``.
+
+    Strips control chars and replaces Windows-forbidden filename characters.
+    """
+    s = raw.strip()
+    if not s:
+        return ""
+    invalid = '<>:"/\\|?*'
+    parts: list[str] = []
+    for ch in s:
+        if ord(ch) < 32:
+            parts.append("_")
+        elif ch in invalid:
+            parts.append("_")
+        else:
+            parts.append(ch)
+    s = "".join(parts).strip(" .")
+    if len(s) > max_len:
+        s = s[:max_len].rstrip(" .")
+    if sys.platform == "win32":
+        stem = s.rstrip(".").upper()
+        if stem in _WIN_RESERVED_DEVICE_NAMES:
+            s = f"{s}_plugin"
+    return s
 
 _DL_USER_AGENT = (
     "EasyAIDesktopAssistant/1.0 (+plugin-download; https://github.com/RachelForster/Shinsekai-Plugin-Registry)"
@@ -77,9 +112,13 @@ def download_github_repo_sources(
     timeout_sec: float = 180.0,
     progress: Callable[[int, int | None], None] | None = None,
     on_phase: Callable[[str], None] | None = None,
+    folder_name: str | None = None,
 ) -> Path:
     """
     Download ``owner/repo`` default branch (``main`` then ``master``) ZIP and extract under ``plugins/``.
+
+    If ``folder_name`` is set (registry display name), the extracted top-level directory is renamed to
+    a sanitized form so ``plugins/<name>/`` matches the catalog title.
 
     If the target folder already exists, returns its path without overwriting (idempotent).
 
@@ -131,18 +170,43 @@ def download_github_repo_sources(
     try:
         tmp_path.write_bytes(body)
         top = _archive_top_prefix(tmp_path)
-        dest = parent / top
-        if dest.is_dir():
-            logger.info("Plugin folder already exists, skipping extract: %s", dest)
-            return dest.resolve()
+        extracted_path = parent / top
+        folder_final = (
+            sanitize_plugins_directory_name(folder_name.strip())
+            if (folder_name and folder_name.strip())
+            else ""
+        )
+        target_path = parent / folder_final if folder_final else extracted_path
+
+        if folder_final and target_path.is_dir():
+            logger.info("Plugin folder already exists (catalog name): %s", target_path)
+            return target_path.resolve()
+
+        if extracted_path.is_dir():
+            if folder_final and extracted_path.resolve() != target_path.resolve():
+                if target_path.exists():
+                    raise FileExistsError(
+                        f"Cannot rename extracted folder to {target_path.name!r}: target exists"
+                    )
+                extracted_path.rename(target_path)
+                return target_path.resolve()
+            return extracted_path.resolve()
 
         if on_phase is not None:
             on_phase("extract")
         with zipfile.ZipFile(tmp_path) as zf:
             zf.extractall(parent)
-        if not dest.is_dir():
-            raise RuntimeError(f"extract finished but folder missing: {dest}")
-        return dest.resolve()
+        if not extracted_path.is_dir():
+            raise RuntimeError(f"extract finished but folder missing: {extracted_path}")
+
+        if folder_final and extracted_path.resolve() != target_path.resolve():
+            if target_path.exists():
+                raise FileExistsError(
+                    f"Cannot rename extracted folder to {target_path.name!r}: target exists"
+                )
+            extracted_path.rename(target_path)
+            return target_path.resolve()
+        return extracted_path.resolve()
     finally:
         tmp_path.unlink(missing_ok=True)
 

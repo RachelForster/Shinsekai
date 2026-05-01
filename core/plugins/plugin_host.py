@@ -253,6 +253,50 @@ def normalize_manifest_entry(entry: str) -> str:
     return f"plugins.{norm}"
 
 
+def remove_plugin_manifest_entry(entry: str, path: Path | None = None) -> bool:
+    """
+    Remove the manifest row whose ``entry`` matches (strip-wise).
+    Returns True if a row was removed and the file was written.
+    """
+    norm = entry.strip()
+    items = read_plugin_manifest_items(path)
+    kept: list[dict[str, Any]] = []
+    removed = False
+    for item in items:
+        e = item.get("entry")
+        if isinstance(e, str) and e.strip() == norm:
+            removed = True
+            continue
+        kept.append(item)
+    if not removed:
+        return False
+    write_plugin_manifest_items(kept, path)
+    return True
+
+
+def infer_plugin_package_directory(entry: str) -> Path | None:
+    """
+    Map manifest ``entry`` module path to ``plugins/<top-level-package>/``.
+
+    Example: ``plugins.whisper_asr.plugin:WhisperAsrPlugin`` → ``plugins/whisper_asr``.
+    """
+    raw = entry.strip()
+    if not raw:
+        return None
+    mod = raw.split(":", 1)[0].strip()
+    if not mod.startswith("plugins."):
+        mod = normalize_manifest_entry(mod)
+    if not mod.startswith("plugins."):
+        return None
+    rest = mod[len("plugins.") :]
+    if not rest:
+        return None
+    top = rest.split(".", 1)[0].strip()
+    if not top:
+        return None
+    return Path("plugins") / top
+
+
 def append_plugin_manifest_entry_if_missing(
     entry: str,
     *,

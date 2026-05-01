@@ -49,30 +49,58 @@ if getattr(sys, "frozen", False):
 
     init_frozen_stdio("SettingsUI")
 
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QApplication
-
-from config.config_manager import ConfigManager
-from i18n import init_i18n
-from ui.qss import load_pydracula_dark
-from ui.settings_ui import create_default_context
-from ui.settings_ui.window import FONT_FAMILY_MS_YAHEI, SettingsWindow, settings_window_metrics
 
 def main() -> None:
-    # 冻结时发行根与 cwd 已在模块最上方设置，勿重复 chdir，以免与已初始化的单例不一致
-    init_i18n(ConfigManager().config.system_config.ui_language)
+    """尽早创建 QApplication + Splash，再把 ConfigManager / 整窗 UI 链延后导入，缩短「双击后一片黑」体感。"""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QFont, QPixmap
+    from PySide6.QtWidgets import QApplication, QSplashScreen
+
     app = QApplication(sys.argv)
-    app.setStyleSheet(load_pydracula_dark())
-    ctx = create_default_context()
-    w, h, font_px, line_h = settings_window_metrics(ctx.config_manager)
-    font_px = int(font_px * 0.4)
-    line_h = int(line_h * 0.4)
-    f = QFont(FONT_FAMILY_MS_YAHEI)
-    f.setPixelSize(font_px)
-    app.setFont(f)
-    win = SettingsWindow(ctx, width=w, height=h, font_pixel_size=font_px)
-    # DWM：Settings 用 RGB 边框色；Chat 在 chat_ui.showEvent 使用 border_color_none（Win11 抑薄边框）
-    win.show()
+    pix = QPixmap(440, 120)
+    pix.fill(Qt.GlobalColor.darkGray)
+    splash = QSplashScreen(pix, Qt.WindowType.WindowStaysOnTopHint)
+    splash.showMessage(
+        "Shinsekai — 加载中…",
+        Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignBottom,
+        Qt.GlobalColor.white,
+    )
+    splash.show()
+    app.processEvents()
+
+    win = None
+    try:
+        from config.config_manager import ConfigManager
+        from i18n import init_i18n
+        from ui.qss import load_pydracula_dark
+        from ui.settings_ui import create_default_context
+        from ui.settings_ui.window import (
+            FONT_FAMILY_MS_YAHEI,
+            SettingsWindow,
+            settings_window_metrics,
+        )
+
+        # 冻结时发行根与 cwd 已在模块最上方设置，勿重复 chdir，以免与已初始化的单例不一致
+        init_i18n(ConfigManager().config.system_config.ui_language)
+        app.processEvents()
+        app.setStyleSheet(load_pydracula_dark())
+        ctx = create_default_context()
+        app.processEvents()
+        w, h, font_px, _line_h = settings_window_metrics(ctx.config_manager)
+        font_px = int(font_px * 0.4)
+        f = QFont(FONT_FAMILY_MS_YAHEI)
+        f.setPixelSize(font_px)
+        app.setFont(f)
+        win = SettingsWindow(ctx, width=w, height=h, font_pixel_size=font_px)
+        # DWM：Settings 用 RGB 边框色；Chat 在 chat_ui.showEvent 使用 border_color_none（Win11 抑薄边框）
+        win.show()
+    finally:
+        if splash is not None:
+            if win is not None:
+                splash.finish(win)
+            else:
+                splash.close()
+
     sys.exit(app.exec())
 
 

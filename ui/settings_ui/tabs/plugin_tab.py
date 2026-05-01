@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections import defaultdict
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QFont
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -35,7 +37,9 @@ from core.plugins.plugin_host import (
     collect_settings_contributions,
     collect_tools_tab_contributions,
     get_plugin_manager,
+    infer_plugin_package_directory,
     read_plugin_manifest_items,
+    remove_plugin_manifest_entry,
     set_plugin_manifest_enabled,
 )
 from core.plugins.registry_catalog import (
@@ -233,9 +237,15 @@ class _DownloadSignals(QObject):
 
 
 class _DownloadRepoTask(QRunnable):
-    def __init__(self, repo: str, sig: _DownloadSignals) -> None:
+    def __init__(
+        self,
+        repo: str,
+        catalog_display_name: str,
+        sig: _DownloadSignals,
+    ) -> None:
         super().__init__()
         self._repo = repo
+        self._catalog_display_name = catalog_display_name.strip()
         self._sig = sig
         self.setAutoDelete(True)
 
@@ -249,6 +259,7 @@ class _DownloadRepoTask(QRunnable):
                     cur, tot if tot is not None else 0
                 ),
                 on_phase=lambda phase: self._emit_extract_phase(phase),
+                folder_name=self._catalog_display_name or None,
             )
         except Exception as exc:
             self._sig.finished.emit(norm, False, format_download_error(exc), "")
@@ -567,7 +578,7 @@ class PluginSettingsTab(QWidget):
             dl_btn.setText(tr_i18n("plugins.discover_download"))
             dl_btn.setToolTip(tr_i18n("plugins.discover_download_tooltip"))
             dl_btn.clicked.connect(
-                lambda checked=False, r=rec.repo, b=dl_btn: self._start_repo_download(r, b)
+                lambda checked=False, r=rec, b=dl_btn: self._start_repo_download(r, b)
             )
             self._discover_download_buttons[repo_norm] = dl_btn
 
@@ -589,7 +600,8 @@ class PluginSettingsTab(QWidget):
         outer.addStretch(1)
         return host
 
-    def _start_repo_download(self, repo: str, btn: QPushButton) -> None:
+    def _start_repo_download(self, rec: RegistryPluginRecord, btn: QPushButton) -> None:
+        repo = rec.repo.strip()
         norm = normalize_repo_slug(repo)
         if norm in self._download_busy or not norm:
             return
@@ -608,7 +620,10 @@ class PluginSettingsTab(QWidget):
             )
         )
         dlg.show()
-        QThreadPool.globalInstance().start(_DownloadRepoTask(repo, sigs))
+        catalog_name = (rec.name or "").strip()
+        QThreadPool.globalInstance().start(
+            _DownloadRepoTask(repo, catalog_name, sigs)
+        )
 
     def _on_download_finished_with_dialog(
         self,
@@ -870,15 +885,16 @@ class PluginSettingsTab(QWidget):
         title.setFont(f)
         title_row.addWidget(title, stretch=1)
         if manifest_entry is not None and enabled_yaml is not None:
-            cb = QCheckBox(tr_i18n("plugins.enable_switch"))
-            cb.setChecked(enabled_yaml)
-            cb.setToolTip(tr_i18n("plugins.toggle_tooltip"))
-
-            def _on_toggled(checked: bool, *, ent: str = manifest_entry) -> None:
-                self._persist_manifest_toggle(ent, cb, checked)
-
-            cb.toggled.connect(_on_toggled)
-            title_row.addWidget(cb, alignment=Qt.AlignmentFlag.AlignRight)
+            st_lbl = QLabel(tr_i18n("plugins.manage_enable_status_label"))
+            st_lbl.setStyleSheet("color: palette(mid);")
+            st_val = QLabel(
+                tr_i18n("plugins.manage_status_enabled")
+                if enabled_yaml
+                else tr_i18n("plugins.manage_status_disabled")
+            )
+            st_val.setStyleSheet("color: palette(mid);")
+            title_row.addWidget(st_lbl, alignment=Qt.AlignmentFlag.AlignRight)
+            title_row.addWidget(st_val, alignment=Qt.AlignmentFlag.AlignRight)
         lay.addLayout(title_row)
         id_show = plugin_id.strip()
         name_show = (display_name.strip() or plugin_id).strip()
@@ -891,7 +907,7 @@ class PluginSettingsTab(QWidget):
         if desc_txt:
             desc_lbl = QLabel(desc_txt)
             desc_lbl.setWordWrap(True)
-            desc_lbl.setStyleSheet("color: palette(text);")
+            desc_lbl.setStyleSheet("color: palette(mid);")
             lay.addWidget(desc_lbl)
         meta_parts: list[str] = [tr_i18n("plugins.version_label", version=version)]
         auth_txt = author.strip()
@@ -901,14 +917,48 @@ class PluginSettingsTab(QWidget):
         ver_lbl.setStyleSheet("color: palette(mid);")
         ver_lbl.setWordWrap(True)
         lay.addWidget(ver_lbl)
-        btn = QPushButton(tr_i18n("plugins.open_settings"))
         has_ui = bool(settings_cs or tools_cs)
+
+        row_act = QHBoxLayout()
+        row_act.setSpacing(8)
+        btn_uninstall = QPushButton(tr_i18n("plugins.manage_uninstall"))
+        btn_toggle = QPushButton()
+        btn_cfg = QPushButton(tr_i18n("plugins.manage_view_config"))
+        dn_card = display_name.strip() or plugin_id
+
+        if manifest_entry is None:
+            btn_uninstall.setEnabled(False)
+            btn_toggle.setEnabled(False)
+            tip_na = tr_i18n("plugins.manage_no_manifest_tooltip")
+            btn_uninstall.setToolTip(tip_na)
+            btn_toggle.setToolTip(tip_na)
+        else:
+            ent_fixed = manifest_entry.strip()
+            assert enabled_yaml is not None
+
+            def _uninstall(*, ent: str = ent_fixed, name: str = dn_card) -> None:
+                self._on_manage_uninstall(ent, name)
+
+            btn_uninstall.clicked.connect(_uninstall)
+
+            if enabled_yaml:
+                btn_toggle.setText(tr_i18n("plugins.manage_disable"))
+                btn_toggle.setToolTip(tr_i18n("plugins.manage_disable_tooltip"))
+            else:
+                btn_toggle.setText(tr_i18n("plugins.manage_enable"))
+                btn_toggle.setToolTip(tr_i18n("plugins.manage_enable_tooltip"))
+
+            def _toggle(*, ent: str = ent_fixed, cur: bool = enabled_yaml) -> None:
+                self._on_manage_set_enabled(ent, not cur)
+
+            btn_toggle.clicked.connect(_toggle)
+
         if not has_ui:
-            btn.setEnabled(False)
-            btn.setToolTip(tr_i18n("plugins.no_settings_tooltip"))
+            btn_cfg.setEnabled(False)
+            btn_cfg.setToolTip(tr_i18n("plugins.no_settings_tooltip"))
         else:
 
-            def _go(
+            def _open_plg(
                 *,
                 _title: str = display_name.strip() or plugin_id,
                 _v: str = version,
@@ -917,31 +967,107 @@ class PluginSettingsTab(QWidget):
             ) -> None:
                 self._open_detail(_title, _v, _sc, _tc)
 
-            btn.clicked.connect(_go)
-        lay.addWidget(btn)
+            btn_cfg.clicked.connect(_open_plg)
+            btn_cfg.setToolTip(tr_i18n("plugins.manage_plugin_settings_tooltip"))
+        row_act.addWidget(btn_uninstall)
+        row_act.addWidget(btn_toggle)
+        row_act.addWidget(btn_cfg)
+        lay.addLayout(row_act)
+
         lay.addStretch(0)
         return box
 
-    def _persist_manifest_toggle(self, entry: str, cb: QCheckBox, checked: bool) -> None:
+    def _on_manage_uninstall(self, manifest_entry: str, display_name: str) -> None:
+        ent = manifest_entry.strip()
+        if not ent:
+            return
+        r = QMessageBox.question(
+            self,
+            tr_i18n("plugins.manage_uninstall_confirm_title"),
+            tr_i18n(
+                "plugins.manage_uninstall_confirm_body",
+                name=display_name or ent,
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if r != QMessageBox.StandardButton.Yes:
+            return
         try:
-            ok = set_plugin_manifest_enabled(entry, checked)
+            removed = remove_plugin_manifest_entry(ent)
         except OSError as exc:
-            ok = False
-            err_detail = str(exc)
-        else:
-            err_detail = ""
+            message_fail(
+                self,
+                tr_i18n("plugins.manifest_write_failed_title"),
+                str(exc),
+            )
+            return
+        if not removed:
+            message_fail(
+                self,
+                tr_i18n("plugins.manage_uninstall_fail_title"),
+                tr_i18n("plugins.manage_uninstall_manifest_miss"),
+            )
+            return
+
+        folder_note = ""
+        d = infer_plugin_package_directory(ent)
+        if d is not None and d.is_dir():
+            plugins_root = Path("plugins").resolve()
+            try:
+                tgt = d.resolve()
+            except OSError as exc:
+                folder_note = str(exc)
+            else:
+                if tgt == plugins_root:
+                    folder_note = tr_i18n("plugins.manage_uninstall_skip_folder")
+                elif plugins_root in tgt.parents:
+                    try:
+                        shutil.rmtree(tgt)
+                    except OSError as exc:
+                        folder_note = str(exc)
+                else:
+                    folder_note = tr_i18n("plugins.manage_uninstall_skip_folder")
+
+        self._refresh_cards()
+        toast_success(
+            self,
+            tr_i18n("plugins.manage_uninstall_ok_title"),
+            tr_i18n("plugins.restart_hint"),
+        )
+        if folder_note:
+            toast_info(
+                self,
+                tr_i18n("plugins.manage_uninstall_folder_note_title"),
+                folder_note,
+            )
+
+    def _on_manage_set_enabled(self, manifest_entry: str, enabled: bool) -> None:
+        ent = manifest_entry.strip()
+        if not ent:
+            return
+        try:
+            ok = set_plugin_manifest_enabled(ent, enabled)
+        except OSError as exc:
+            message_fail(
+                self,
+                tr_i18n("plugins.manifest_write_failed_title"),
+                str(exc),
+            )
+            return
         if not ok:
-            cb.blockSignals(True)
-            cb.setChecked(not checked)
-            cb.blockSignals(False)
-            body = err_detail or tr_i18n("plugins.manifest_write_failed_body")
-            message_fail(self, tr_i18n("plugins.manifest_write_failed_title"), body)
+            message_fail(
+                self,
+                tr_i18n("plugins.manifest_write_failed_title"),
+                tr_i18n("plugins.manifest_write_failed_body"),
+            )
             return
         toast_info(
             self,
             tr_i18n("plugins.manifest_saved_title"),
             tr_i18n("plugins.restart_hint"),
         )
+        self._refresh_cards()
 
     def _discard_cached_widgets_in_subtree(self, root: QWidget) -> None:
         """Drop plugin-built widgets from cache before ``deleteLater`` destroys their C++ objects."""
