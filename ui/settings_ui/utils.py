@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QAbstractItemView, QListWidget, QPlainTextEdit
+from PySide6.QtWidgets import QAbstractItemView, QListWidget, QPlainTextEdit
 
 # 立绘/背景/小工具 画廊中缩略图边长（与 QListWidget::iconSize 及 QIcon 缩放一致）
 GALLERY_THUMB_PX = 200

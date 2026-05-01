@@ -11,9 +11,9 @@ from pathlib import Path
 
 _SETTINGS_UI_DIR = Path(__file__).resolve().parent
 
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QCursor, QIcon, QShowEvent
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QWidget
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QCursor, QIcon, QShowEvent
+from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QWidget
 
 # Dracula 壳层：需与 modules/__init__ 的星号导出一致（含 Qt 与 UIFunctions 等）。勿用 `from
 # modules import *`：那依赖把 settings_ui 加进 sys.path 的顶层名 `modules`，PyInstaller

@@ -2,12 +2,12 @@
 # This file is part of EasyAI Desktop Assistant in THA mode
 # 
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject, QSize
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize
 import numpy as np
 
 class ImageDisplayThread(QThread):
     """图像显示线程，负责从队列获取图像并更新UI"""
-    update_signal = pyqtSignal(np.ndarray)
+    update_signal = Signal(np.ndarray)
     
     def __init__(self, image_queue):
         super().__init__()
@@ -30,7 +30,7 @@ class ImageDisplayThread(QThread):
 
 class ChatWorker(QThread):
     """后台聊天工作线程"""
-    response_received = pyqtSignal(dict)  # 定义信号用于传递响应
+    response_received = Signal(dict)  # 定义信号用于传递响应
 
     def __init__(self, deepseek, message):
         super().__init__()

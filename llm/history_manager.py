@@ -3,7 +3,7 @@ from typing import Optional
 from pathlib import Path
 import json
 import re
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
 class HistoryManager:
     _instance: Optional['HistoryManager'] = None

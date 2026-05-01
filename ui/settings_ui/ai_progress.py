@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from typing import Any, Callable, TypeVar
 
-from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import QApplication, QProgressDialog, QWidget
+from PySide6.QtCore import QThread, Signal
+from PySide6.QtWidgets import QApplication, QProgressDialog, QWidget
 
 T = TypeVar("T")
 
 
 class _AiWorkerThread(QThread):
-    success = pyqtSignal(object)
-    failed = pyqtSignal(str)
+    success = Signal(object)
+    failed = Signal(str)
 
     def __init__(self, fn: Callable[[], Any], parent: QWidget | None = None) -> None:
         super().__init__(parent)

@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
 from config.background_manager import BackgroundManager
 from config.character_manager import CharacterManager

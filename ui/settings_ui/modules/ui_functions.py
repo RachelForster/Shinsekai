@@ -23,7 +23,7 @@
 GLOBAL_STATE = False
 GLOBAL_TITLE_BAR = True
 
-from PyQt6.QtCore import (
+from PySide6.QtCore import (
     QEvent,
     QEasingCurve,
     QParallelAnimationGroup,
@@ -31,8 +31,8 @@ from PyQt6.QtCore import (
     QTimer,
     Qt,
 )
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QPushButton, QSizeGrip
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QPushButton, QSizeGrip
 
 from ui.settings_ui.widgets.custom_grips.custom_grips import CustomGrip
 

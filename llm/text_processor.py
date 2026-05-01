@@ -1,6 +1,6 @@
 import re
 import requests
-from PyQt6.QtGui import QTextDocument
+from PySide6.QtGui import QTextDocument
 
 
 

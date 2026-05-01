@@ -14,9 +14,9 @@
 #
 # ///////////////////////////////////////////////////////////////
 
-from PyQt6.QtCore import *
-from PyQt6.QtGui import *
-from PyQt6.QtWidgets import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
 
 class CustomGrip(QWidget):
     def __init__(self, parent, position, disable_color = False):

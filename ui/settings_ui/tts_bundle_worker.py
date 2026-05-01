@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 import requests
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from PySide6.QtCore import QObject, QThread, Signal
 
 from ui.settings_ui.tts_env_probe import get_default_project_root
 
@@ -94,10 +94,10 @@ def _list_targets(z: Any) -> list[str]:
 class TtsBundleDownloadWorker(QThread):
     """在子线程中下载到 data/tts_bundles，解压并返回 TTS 根目录绝对路径。"""
 
-    progress = pyqtSignal(int)  # 0-100
-    status = pyqtSignal(str)
-    finished_ok = pyqtSignal(str)  # 绝对路径
-    failed = pyqtSignal(str)
+    progress = Signal(int)  # 0-100
+    status = Signal(str)
+    finished_ok = Signal(str)  # 绝对路径
+    failed = Signal(str)
 
     def __init__(
         self,

@@ -28,8 +28,8 @@ from llm.text_processor import TextProcessor
 from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
 from core.runtime.ui_update_manager import UIUpdateManager, connect_to_desktop_window
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from ui.chat_ui.chat_ui import ChatUIWindow
 from config.config_manager import ConfigManager

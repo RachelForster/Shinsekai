@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtWidgets import QMessageBox, QWidget
 
 try:
     from pyqttoast import Toast, ToastPreset
