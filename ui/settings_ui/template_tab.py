@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -31,6 +33,7 @@ from ui.settings_ui.chat_template_handlers import (
     generate_template,
     launch_chat,
     load_template_from_file,
+    parse_stored_template,
     save_template,
 )
 from i18n import tr as tr_i18n
@@ -62,11 +65,21 @@ class TemplateSettingsTab(QWidget):
         self._group_tr.buttonClicked.connect(self._auto_generate)
         self._group_cg.buttonClicked.connect(self._auto_generate)
         self._group_cot.buttonClicked.connect(self._auto_generate)
+        self._group_choice.buttonClicked.connect(self._auto_generate)
+        self._group_narration.buttonClicked.connect(self._auto_generate)
+        self.max_speech_chars_spin.valueChanged.connect(self._auto_generate)
+        self.max_dialog_items_spin.valueChanged.connect(self._auto_generate)
 
     def _auto_generate(self, *_args: object) -> None:
         if self._suppress_auto_gen:
             return
         self._on_generate()
+
+    def _on_system_section_toggled(self, expanded: bool) -> None:
+        self._system_body.setVisible(expanded)
+        self._system_fold_btn.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -196,18 +209,88 @@ class TemplateSettingsTab(QWidget):
         cotr.addStretch(1)
         opt.addLayout(cotr)
 
+        self.use_choice_yes = QRadioButton(tr_i18n("common.yes"))
+        self.use_choice_no = QRadioButton(tr_i18n("common.no"))
+        self.use_choice_yes.setChecked(True)
+        self._group_choice = QButtonGroup(self)
+        self._group_choice.addButton(self.use_choice_yes)
+        self._group_choice.addButton(self.use_choice_no)
+        ch_row = QHBoxLayout()
+        self._lbl_choice_rules = QLabel(tr_i18n("template.rule_choice"))
+        ch_row.addWidget(self._lbl_choice_rules)
+        ch_row.addWidget(self.use_choice_yes)
+        ch_row.addWidget(self.use_choice_no)
+        ch_row.addStretch(1)
+        opt.addLayout(ch_row)
+
+        self.use_narration_yes = QRadioButton(tr_i18n("common.yes"))
+        self.use_narration_no = QRadioButton(tr_i18n("common.no"))
+        self.use_narration_yes.setChecked(True)
+        self._group_narration = QButtonGroup(self)
+        self._group_narration.addButton(self.use_narration_yes)
+        self._group_narration.addButton(self.use_narration_no)
+        nar_row = QHBoxLayout()
+        self._lbl_narr_rules = QLabel(tr_i18n("template.rule_narration"))
+        nar_row.addWidget(self._lbl_narr_rules)
+        nar_row.addWidget(self.use_narration_yes)
+        nar_row.addWidget(self.use_narration_no)
+        nar_row.addStretch(1)
+        opt.addLayout(nar_row)
+
+        lim_form = QFormLayout()
+        self._lbl_max_speech = QLabel(tr_i18n("template.max_speech_chars"))
+        self.max_speech_chars_spin = QSpinBox()
+        self.max_speech_chars_spin.setRange(0, 500_000)
+        self.max_speech_chars_spin.setSingleStep(10)
+        self.max_speech_chars_spin.setSpecialValueText(tr_i18n("template.limit_unlimited"))
+        lim_form.addRow(self._lbl_max_speech, self.max_speech_chars_spin)
+        self._lbl_max_dialog = QLabel(tr_i18n("template.max_dialog_items"))
+        self.max_dialog_items_spin = QSpinBox()
+        self.max_dialog_items_spin.setRange(0, 500)
+        self.max_dialog_items_spin.setSpecialValueText(tr_i18n("template.limit_unlimited"))
+        lim_form.addRow(self._lbl_max_dialog, self.max_dialog_items_spin)
+        opt.addLayout(lim_form)
+
         opt.addStretch(1)
         bgen.addLayout(opt, stretch=1)
         lay.addWidget(self._box_gen)
 
-        # --- 模板正文 ---
-        self._box_edit = QGroupBox(tr_i18n("template.edit_box"))
-        el = QVBoxLayout(self._box_edit)
+        # --- 用户情景（参与历史文件名映射）---
+        self._box_scenario = QGroupBox(tr_i18n("template.scenario_box"))
+        sl = QVBoxLayout(self._box_scenario)
+        self.scenario_output = QPlainTextEdit()
+        self.scenario_output.setPlaceholderText(tr_i18n("template.scenario_ph"))
+        self.scenario_output.setMinimumHeight(120)
+        sl.addWidget(self.scenario_output)
+        lay.addWidget(self._box_scenario)
+
+        # --- 系统生成模板（默认折叠，点击标题展开）---
+        self._box_system = QGroupBox()
+        sys_lay = QVBoxLayout(self._box_system)
+        head_row = QHBoxLayout()
+        self._system_fold_btn = QToolButton()
+        self._system_fold_btn.setCheckable(True)
+        self._system_fold_btn.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self._system_fold_btn.setText(tr_i18n("template.system_box"))
+        self._system_fold_btn.setArrowType(Qt.ArrowType.RightArrow)
+        self._system_fold_btn.setChecked(False)
+        self._system_fold_btn.toggled.connect(self._on_system_section_toggled)
+        head_row.addWidget(self._system_fold_btn)
+        head_row.addStretch(1)
+        sys_lay.addLayout(head_row)
+
+        self._system_body = QWidget()
+        el = QVBoxLayout(self._system_body)
+        el.setContentsMargins(0, 0, 0, 0)
         self.template_output = QPlainTextEdit()
-        self.template_output.setPlaceholderText(tr_i18n("template.edit_ph"))
+        self.template_output.setPlaceholderText(tr_i18n("template.system_ph"))
         self.template_output.setMinimumHeight(200)
         el.addWidget(self.template_output)
-        lay.addWidget(self._box_edit)
+        sys_lay.addWidget(self._system_body)
+        self._system_body.setVisible(False)
+        lay.addWidget(self._box_system)
 
         # --- 保存与启动前参数（启动/关闭在页底固定）---
         self._box_run = QGroupBox(tr_i18n("template.run_box"))
@@ -300,12 +383,24 @@ class TemplateSettingsTab(QWidget):
         self.use_cg_no.setText(ntxt)
         self.use_cot_yes.setText(ytxt)
         self.use_cot_no.setText(ntxt)
+        self.use_choice_yes.setText(ytxt)
+        self.use_choice_no.setText(ntxt)
+        self.use_narration_yes.setText(ytxt)
+        self.use_narration_no.setText(ntxt)
         self._lbl_fx.setText(tr_i18n("template.fx"))
         self._lbl_llm_tr.setText(tr_i18n("template.llm_tr"))
         self._lbl_cg.setText(tr_i18n("template.cg"))
         self._lbl_cot.setText(tr_i18n("template.cot"))
-        self._box_edit.setTitle(tr_i18n("template.edit_box"))
-        self.template_output.setPlaceholderText(tr_i18n("template.edit_ph"))
+        self._lbl_choice_rules.setText(tr_i18n("template.rule_choice"))
+        self._lbl_narr_rules.setText(tr_i18n("template.rule_narration"))
+        self._lbl_max_speech.setText(tr_i18n("template.max_speech_chars"))
+        self._lbl_max_dialog.setText(tr_i18n("template.max_dialog_items"))
+        self.max_speech_chars_spin.setSpecialValueText(tr_i18n("template.limit_unlimited"))
+        self.max_dialog_items_spin.setSpecialValueText(tr_i18n("template.limit_unlimited"))
+        self._box_scenario.setTitle(tr_i18n("template.scenario_box"))
+        self.scenario_output.setPlaceholderText(tr_i18n("template.scenario_ph"))
+        self._system_fold_btn.setText(tr_i18n("template.system_box"))
+        self.template_output.setPlaceholderText(tr_i18n("template.system_ph"))
         self._box_run.setTitle(tr_i18n("template.run_box"))
         self.filename_edit.setPlaceholderText(tr_i18n("template.fn_ph"))
         self._save_tpl.setText(tr_i18n("template.save_tpl"))
@@ -363,6 +458,8 @@ class TemplateSettingsTab(QWidget):
         ut = "是" if self.use_tr_yes.isChecked() else "否"
         ucg = "是" if self.use_cg_yes.isChecked() else "否"
         ucot = "是" if self.use_cot_yes.isChecked() else "否"
+        uch = "是" if self.use_choice_yes.isChecked() else "否"
+        unar = "是" if self.use_narration_yes.isChecked() else "否"
         tpl, out_fn = generate_template(
             self._ctx,
             self._selected_chars(),
@@ -371,6 +468,10 @@ class TemplateSettingsTab(QWidget):
             ut,
             ucg,
             ucot,
+            uch,
+            unar,
+            self.max_speech_chars_spin.value(),
+            self.max_dialog_items_spin.value(),
         )
         self.template_output.setPlainText(tpl)
         if out_fn:
@@ -383,15 +484,21 @@ class TemplateSettingsTab(QWidget):
         name = self.template_combo.itemText(index).strip()
         if not name:
             return
-        tpl, fn = load_template_from_file(self._ctx, name)
-        if tpl.startswith("加载失败"):
-            message_fail(self, "加载模板", tpl)
+        scen, sys_t, fn = load_template_from_file(self._ctx, name)
+        if scen.startswith("加载失败"):
+            message_fail(self, "加载模板", scen)
             return
-        self.template_output.setPlainText(tpl)
+        self.scenario_output.setPlainText(scen)
+        self.template_output.setPlainText(sys_t)
         self.filename_edit.setText(fn)
 
     def _on_save(self) -> None:
-        msg, files = save_template(self._ctx, self.template_output.toPlainText(), self.filename_edit.text().strip())
+        msg, files = save_template(
+            self._ctx,
+            self.scenario_output.toPlainText(),
+            self.template_output.toPlainText(),
+            self.filename_edit.text().strip(),
+        )
         self._refresh_template_combo(files)
         feedback_result(self, "保存模板", msg)
 
@@ -407,7 +514,12 @@ class TemplateSettingsTab(QWidget):
             "use_tr_yes": self.use_tr_yes.isChecked(),
             "use_cg_yes": self.use_cg_yes.isChecked(),
             "use_cot_yes": self.use_cot_yes.isChecked(),
-            "template_text": self.template_output.toPlainText(),
+            "use_choice_yes": self.use_choice_yes.isChecked(),
+            "use_narration_yes": self.use_narration_yes.isChecked(),
+            "max_speech_chars": self.max_speech_chars_spin.value(),
+            "max_dialog_items": self.max_dialog_items_spin.value(),
+            "scenario_text": self.scenario_output.toPlainText(),
+            "system_template_text": self.template_output.toPlainText(),
             "filename_stub": self.filename_edit.text().strip(),
             "template_file_dropdown": self.template_combo.currentText().strip(),
             "init_sprite_path": self.init_sprite_path.text().strip(),
@@ -472,9 +584,49 @@ class TemplateSettingsTab(QWidget):
             elif snap.get("use_cot_yes") is False:
                 self.use_cot_no.setChecked(True)
 
-            tt = snap.get("template_text")
-            if isinstance(tt, str):
-                self.template_output.setPlainText(tt)
+            if snap.get("use_choice_yes") is True:
+                self.use_choice_yes.setChecked(True)
+            elif snap.get("use_choice_yes") is False:
+                self.use_choice_no.setChecked(True)
+
+            if snap.get("use_narration_yes") is True:
+                self.use_narration_yes.setChecked(True)
+            elif snap.get("use_narration_yes") is False:
+                self.use_narration_no.setChecked(True)
+
+            _msc = snap.get("max_speech_chars")
+            if isinstance(_msc, int) and _msc >= 0:
+                self.max_speech_chars_spin.setValue(_msc)
+            elif isinstance(_msc, (float, str)):
+                try:
+                    self.max_speech_chars_spin.setValue(max(0, int(_msc)))
+                except ValueError:
+                    pass
+
+            _mdi = snap.get("max_dialog_items")
+            if isinstance(_mdi, int) and _mdi >= 0:
+                self.max_dialog_items_spin.setValue(_mdi)
+            elif isinstance(_mdi, (float, str)):
+                try:
+                    self.max_dialog_items_spin.setValue(max(0, int(_mdi)))
+                except ValueError:
+                    pass
+
+            st = snap.get("scenario_text")
+            sy = snap.get("system_template_text")
+            if isinstance(st, str) or isinstance(sy, str):
+                self.scenario_output.setPlainText(st if isinstance(st, str) else "")
+                self.template_output.setPlainText(sy if isinstance(sy, str) else "")
+            else:
+                tt = snap.get("template_text")
+                if isinstance(tt, str):
+                    a, b = parse_stored_template(tt)
+                    if b.strip():
+                        self.scenario_output.setPlainText(a)
+                        self.template_output.setPlainText(b)
+                    else:
+                        self.scenario_output.setPlainText(a)
+                        self.template_output.clear()
 
             fn = snap.get("filename_stub")
             if isinstance(fn, str):
@@ -505,6 +657,7 @@ class TemplateSettingsTab(QWidget):
         ucg = "是" if self.use_cg_yes.isChecked() else "否"
         msg = launch_chat(
             self._ctx,
+            self.scenario_output.toPlainText(),
             self.template_output.toPlainText(),
             self.init_sprite_path.text().strip(),
             self.history_file.text().strip(),

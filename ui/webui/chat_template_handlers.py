@@ -114,5 +114,9 @@ def generate_template(
         use_cg == "是",
         use_translation == "是",
         use_cot == "是",
+        use_choice=True,
+        use_narration=True,
+        max_speech_chars=0,
+        max_dialog_items=0,
     )
     return template, out

@@ -58,11 +58,15 @@ class TemplateGenerator:
         use_cg,
         use_llm_translation,
         use_cot=False,
+        use_choice=True,
+        use_narration=True,
+        max_speech_chars: int = 0,
+        max_dialog_items: int = 0,
     ):
         if not selected_characters:
             return _T("err_no_characters"), ""
 
-        # 让同样的人物生成同样的模板，就会有一样的 md5 了，进而会有同样的聊天历史文件。
+        # 人物排序保证生成内容稳定；聊天记录默认文件名由设置页「用户情景」哈希决定。
         selected_characters = sorted(selected_characters)
 
         sep = _T("name_sep")
@@ -124,19 +128,32 @@ class TemplateGenerator:
             "cg": CG,
             "cot": COT,
         }
+
+        fixed_roles_join = "、".join(
+            [x for x in (
+                _toks["narr"] if use_narration else None,
+                _toks["choice"] if use_choice else None,
+                _toks["stat"],
+            ) if x is not None]
+        )
+        role_clause = (" " + fixed_roles_join) if fixed_roles_join else ""
+
         REQUIREMENTS: list[str] = [
             _T("r_format"),
             _T(
                 "r_cname",
                 names=names,
                 cot_part=cot_part,
+                fixed_roles=role_clause,
                 opt_scene=opt_scene,
                 opt_bgm=opt_bgm,
                 opt_cg=opt_cg,
-                **_toks,
             ),
             _T("r_sprite"),
-            _T("r_non_sprite", **_toks),
+            _T(
+                "r_non_sprite",
+                fixed_roles_non_sprite=fixed_roles_join,
+            ),
         ]
         if need_real:
             REQUIREMENTS += [_T("r_scene", **_toks), _T("r_bgm", **_toks)]
@@ -144,12 +161,20 @@ class TemplateGenerator:
         REQUIREMENTS += [
             _T("r_speech", speech_lang_name=_T("speech_lang_name")),
             _T("r_array"),
-            _T("r_narration", **_toks),
-            _T("r_choice_pos", **_toks),
-            _T("r_choice_format", **_toks),
-            _T("r_choice_balance", **_toks),
-            _T("r_stats", **_toks),
         ]
+        if max_speech_chars > 0:
+            REQUIREMENTS.append(_T("r_speech_max_chars", n=max_speech_chars))
+        if max_dialog_items > 0:
+            REQUIREMENTS.append(_T("r_dialog_max_items", n=max_dialog_items))
+        if use_narration:
+            REQUIREMENTS.append(_T("r_narration", **_toks))
+        if use_choice:
+            REQUIREMENTS += [
+                _T("r_choice_pos", **_toks),
+                _T("r_choice_format", **_toks),
+                _T("r_choice_balance", **_toks),
+            ]
+        REQUIREMENTS.append(_T("r_stats", **_toks))
         if use_cg:
             REQUIREMENTS.append(_T("r_cg", **_toks))
         if use_llm_translation:
