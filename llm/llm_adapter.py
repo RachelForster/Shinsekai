@@ -69,21 +69,25 @@ class DeepSeekAdapter(LLMAdapter):
                 }
                 kwargs = {k: v for k, v in kwargs.items() if k not in banned}
 
+            # DeepSeek：设置了 reasoning_effort 时 thinking.type 不能为 disabled（见 API 错误提示）。
             extra_body: dict = {
                 "thinking": {
                     "type": "enabled" if self.thinking_enabled else "disabled",
                 },
             }
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                stream=stream,
-                response_format=response_format,
-                reasoning_effort=self.reasoning_effort,
-                extra_body=extra_body,
+            create_kwargs: dict = {
+                "model": self.model,
+                "messages": messages,
+                "stream": stream,
+                "response_format": response_format,
+                "extra_body": extra_body,
                 **kwargs,
-            )
+            }
+            if self.thinking_enabled:
+                create_kwargs["reasoning_effort"] = self.reasoning_effort
+
+            response = self.client.chat.completions.create(**create_kwargs)
             return response
         except Exception as e:
             print(f"DeepSeek chat error: {e}")

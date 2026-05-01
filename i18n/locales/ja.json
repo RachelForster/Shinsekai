@@ -61,6 +61,8 @@
     "discover_download_fail_body": "不明なエラー",
     "empty_manage": "プラグインの項目がありません。data/config/plugins.yaml に `- entry: …` を追加し再起動すると読み込みます。「有効」は次回起動時の読み込みを制御します。",
     "version_label": "バージョン：{version}",
+    "manage_plugin_id": "ID：{plugin_id}",
+    "manage_author": "作者：{author}",
     "open_settings": "設定",
     "no_settings_tooltip": "このプラグインは設定・ツールタブを提供していません",
     "back": "一覧に戻る",
@@ -143,7 +145,7 @@
       }
     },
     "asr": {
-      "hint": "マイク聴き取り：Vosk、faster-whisper、または RealtimeSTT（ストリーミング。依存が多く `pip install realtimestt`、Silero VAD・PyTorch 等。初回に Whisper 取得）。認識言語は全エンジン共通。Whisper モデル・デバイス・精度は faster-whisper / RealtimeSTT を選んだときのみ表示・適用。認識言語未指定時は表示言語に合わせます。保存で system_config.yaml。チャット窓を開き直して反映。",
+      "hint": "マイク聴き取り：標準は Vosk。faster-whisper / RealtimeSTT は負荷が大きいため、設定→プラグインで Whisper ASR を有効化し、`plugins/whisper_asr/requirements.txt` の依存を入れてから選んでください。認識言語は全エンジン共通。Whisper 類はプラグイン有効時のみモデル・デバイス・精度が表示されます。未指定時は表示言語に追従。保存で system_config.yaml。チャット窓を開き直して反映。プラグイン無効で Whisper を選んでいる場合は実行時 Vosk にフォールバックします。",
       "language": "認識言語",
       "follow_ui": "表示言語に合わせる",
       "lang_en": "English",

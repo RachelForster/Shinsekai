@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -32,6 +31,7 @@ from tools.crop_sprite import batch_crop_upper_half
 from tools.remove_bg import batch_remove_background
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.utils import GALLERY_THUMB_PX
+from ui.settings_ui.widgets.segmented_tab_nav import SegmentedTabNav
 
 
 def _extract_prompt_from_line(line: str) -> str:
@@ -57,7 +57,7 @@ class ToolsSettingsTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        self._tabs = QTabWidget()
+        self._tabs = SegmentedTabNav()
         root.addWidget(self._tabs)
         builtin_page = QWidget()
         builtin_layout = QVBoxLayout(builtin_page)
@@ -176,13 +176,13 @@ class ToolsSettingsTab(QWidget):
         lay.addWidget(self.tool_output)
 
         builtin_layout.addWidget(scroll)
-        self._tabs.addTab(builtin_page, self._t("tab_main"))
+        self._tabs.add_tab(builtin_page, self._t("tab_main"))
         # 插件界面统一在「插件 → 管理插件 → 插件设置」，不在此追加 Tab。
         # refresh_characters 在 apply_i18n 之后由 __init__ 调用
 
     def apply_i18n(self) -> None:
         if getattr(self, "_tabs", None) is not None and self._tabs.count():
-            self._tabs.setTabText(0, self._t("tab_main"))
+            self._tabs.set_tab_text(0, self._t("tab_main"))
         self._h2.setText(self._t("h2_sprites"))
         self.gem_box.setTitle(self._t("gem_box"))
         self._gem_hint.setText(self._t("gem_hint"))

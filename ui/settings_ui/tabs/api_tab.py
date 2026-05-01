@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -26,12 +27,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from asr.asr_adapter import (
-    FasterWhisperAdapter,
-    RealtimeSTTAdapter,
-    VoskAdapter,
-    normalize_asr_provider_storage_key,
-)
+from asr.asr_adapter import normalize_asr_provider_storage_key
+from asr.asr_manager import ASRAdapterFactory
 from i18n import init_i18n, normalize_lang, tr as tr_i18n
 from llm.constants import LLM_BASE_URLS
 from llm.llm_manager import LLMAdapterFactory
@@ -59,11 +56,46 @@ _ASR_WHISPER_MODEL_PRESETS: tuple[str, ...] = (
     "distil-large-v3",
 )
 
-_ASR_ADAPTER_FOR_EXTRA_UI = {
-    "vosk": VoskAdapter,
-    "faster_whisper": FasterWhisperAdapter,
-    "realtime_stt": RealtimeSTTAdapter,
-}
+
+def _tree_widget_item_depth(item: QTreeWidgetItem) -> int:
+    """PySide6 的 QTreeWidgetItem 无 ``depth()``，用手工向上数父节点。"""
+    d = 0
+    p = item.parent()
+    while p is not None:
+        d += 1
+        p = p.parent()
+    return d
+
+
+def _refresh_collapsible_tree_row_heights(tree: QTreeWidget) -> None:
+    """QTreeWidget.setItemWidget 不会自动按内容增高行；需刷新 sizeHint 否则表单纵向挤成一团。"""
+    vp_w = tree.viewport().width()
+    if vp_w < 60:
+        vp_w = max(tree.width() - 40, 320)
+    for ti in range(tree.topLevelItemCount()):
+        top = tree.topLevelItem(ti)
+        for ci in range(top.childCount()):
+            child = top.child(ci)
+            w = tree.itemWidget(child, 0)
+            if w is None:
+                continue
+            lay = w.layout()
+            margin = tree.indentation() * max(1, _tree_widget_item_depth(child))
+            avail_w = max(vp_w - margin - 16, 200)
+            w.setMinimumWidth(avail_w)
+            w.resize(max(avail_w, 1), 8000)
+            if lay is not None:
+                lay.invalidate()
+                lay.activate()
+            h = w.sizeHint().height()
+            if lay is not None:
+                h = max(h, lay.minimumSize().height())
+            h_final = max(int(h), 56)
+            pad = 20
+            child.setSizeHint(0, QSize(vp_w, h_final + pad))
+            w.resize(avail_w, h_final)
+            w.setMinimumHeight(h_final)
+    tree.viewport().update()
 
 
 def _add_collapsible_block(
@@ -86,10 +118,40 @@ def _add_collapsible_block(
 class ApiSettingsTab(QWidget):
     _T2I_EXTRA_ENGINE_KEY = "comfyui"
 
+    def _asr_extra_schema_map(self) -> dict[str, type]:
+        """当前进程内已合并的 ASR 后端（含插件 ``register_asr_adapter``）。"""
+        return dict(ASRAdapterFactory._adapters)
+
+    def _setup_asr_provider_combo(self, scfg) -> None:
+        self._asr_provider.clear()
+        self._asr_provider.addItem("Vosk", "vosk")
+        _labels = {"faster_whisper": "faster-whisper", "realtime_stt": "RealtimeSTT"}
+        for slug in sorted(k for k in ASRAdapterFactory._adapters.keys() if k != "vosk"):
+            self._asr_provider.addItem(_labels.get(slug, slug), slug)
+        prov = (scfg.asr_provider or "vosk").strip().lower().replace("-", "_")
+        for i in range(self._asr_provider.count()):
+            if str(self._asr_provider.itemData(i)) == prov:
+                self._asr_provider.setCurrentIndex(i)
+                break
+        else:
+            self._asr_provider.setCurrentIndex(0)
+
     def __init__(self, ctx: SettingsUIContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._ctx = ctx
         self._build_ui()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._schedule_refresh_main_tree_heights()
+
+    def _schedule_refresh_main_tree_heights(self) -> None:
+        QTimer.singleShot(0, self._apply_main_tree_row_heights)
+
+    def _apply_main_tree_row_heights(self) -> None:
+        tree = getattr(self, "_main_tree", None)
+        if tree is not None:
+            _refresh_collapsible_tree_row_heights(tree)
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -142,8 +204,14 @@ class ApiSettingsTab(QWidget):
 
         # --- 区块：LLM API ---
         llm_panel = QWidget()
-        llm_form = QFormLayout(llm_panel)
+        llm_outer = QVBoxLayout(llm_panel)
+        llm_outer.setContentsMargins(0, 0, 0, 0)
+        llm_outer.setSpacing(10)
+        llm_fields = QWidget()
+        llm_form = QFormLayout(llm_fields)
         llm_form.setContentsMargins(0, 0, 0, 0)
+        llm_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        llm_form.setVerticalSpacing(10)
         self.llm_provider = QComboBox()
         self.llm_provider.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -184,9 +252,14 @@ class ApiSettingsTab(QWidget):
         llm_form.addRow(self._f_base, self.base_url)
         llm_form.addRow(self._f_stream, stream_row)
         self._llm_extra_holder = QWidget()
+        self._llm_extra_holder.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         self._llm_extra_layout = QVBoxLayout(self._llm_extra_holder)
         self._llm_extra_layout.setContentsMargins(0, 0, 0, 0)
-        llm_form.addRow(self._llm_extra_holder)
+        self._llm_extra_layout.setSpacing(12)
+        llm_outer.addWidget(llm_fields)
+        llm_outer.addWidget(self._llm_extra_holder)
         self._llm_extra_editors: dict[str, QWidget] = {}
 
         # --- 高级 LLM：双列表单节省纵向空间 ---
@@ -246,9 +319,11 @@ class ApiSettingsTab(QWidget):
         main_tree.setAnimated(True)
         main_tree.setIndentation(18)
         main_tree.setMinimumHeight(220)
+        main_tree.setUniformRowHeights(False)
         main_tree.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        main_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         # 主题里 QTreeView 选中行会为粉红色；此处仅作分类折叠，不需要选中高亮。
         main_tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         _add_collapsible_block(main_tree, tr_i18n("api.tree.llm"), llm_panel, expanded=True)
@@ -291,44 +366,51 @@ class ApiSettingsTab(QWidget):
         self.sovits_url.setPlaceholderText(tr_i18n("api.tts.ph_url"))
         self.gpt_sovits_api_path = QLineEdit(_gpt_sovits_work_path)
         self.gpt_sovits_api_path.setPlaceholderText(tr_i18n("api.tts.ph_path"))
-        tts_form = QFormLayout()
-        tts_form.setContentsMargins(0, 0, 0, 0)
+        tts_fields = QWidget()
+        tts_inner_form = QFormLayout(tts_fields)
+        tts_inner_form.setContentsMargins(0, 0, 0, 0)
+        tts_inner_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        tts_inner_form.setVerticalSpacing(10)
         self._tts_engine = QLabel(tr_i18n("api.tts.engine"))
         self._tts_url = QLabel(tr_i18n("api.tts.url"))
         self._tts_path = QLabel(tr_i18n("api.tts.path"))
-        tts_form.addRow(self._tts_engine, self.tts_provider)
-        tts_form.addRow(self._tts_url, self.sovits_url)
-        tts_form.addRow(self._tts_path, self.gpt_sovits_api_path)
+        tts_inner_form.addRow(self._tts_engine, self.tts_provider)
+        tts_inner_form.addRow(self._tts_url, self.sovits_url)
+        tts_inner_form.addRow(self._tts_path, self.gpt_sovits_api_path)
         self._tts_extra_holder = QWidget()
+        self._tts_extra_holder.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         self._tts_extra_layout = QVBoxLayout(self._tts_extra_holder)
         self._tts_extra_layout.setContentsMargins(0, 0, 0, 0)
-        tts_form.addRow(self._tts_extra_holder)
+        self._tts_extra_layout.setSpacing(12)
         self._tts_extra_editors: dict[str, QWidget] = {}
 
-        tts_lay.addLayout(tts_form)
+        tts_lay.addWidget(tts_fields)
+        tts_lay.addWidget(self._tts_extra_holder)
 
         scfg = self._ctx.config_manager.config.system_config
         asr_w = QWidget()
         asr_ly = QVBoxLayout(asr_w)
         asr_ly.setContentsMargins(0, 0, 0, 0)
+        asr_ly.setSpacing(10)
         self._asr_hint = QLabel(tr_i18n("api.asr.hint"))
         self._asr_hint.setWordWrap(True)
         self._asr_hint.setObjectName("apiSectionHint")
         asr_ly.addWidget(self._asr_hint)
         asr_form = QFormLayout()
         asr_form.setContentsMargins(0, 0, 0, 0)
+        asr_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        asr_form.setVerticalSpacing(10)
         self._asr_provider = QComboBox()
-        self._asr_provider.addItem("Vosk", "vosk")
-        self._asr_provider.addItem("faster-whisper", "faster_whisper")
-        self._asr_provider.addItem("RealtimeSTT", "realtime_stt")
-        prov = (scfg.asr_provider or "vosk").strip().lower().replace("-", "_")
-        for i in range(self._asr_provider.count()):
-            if str(self._asr_provider.itemData(i)) == prov:
-                self._asr_provider.setCurrentIndex(i)
-                break
-        else:
-            self._asr_provider.setCurrentIndex(0)
+        self._asr_provider.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self._setup_asr_provider_combo(scfg)
         self._asr_language = QComboBox()
+        self._asr_language.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self._asr_language.addItem(tr_i18n("api.asr.follow_ui"), "")
         self._asr_language.addItem(tr_i18n("api.asr.lang_en"), "en")
         self._asr_language.addItem(tr_i18n("api.asr.lang_zh"), "zh")
@@ -343,6 +425,9 @@ class ApiSettingsTab(QWidget):
         else:
             self._asr_language.setCurrentIndex(0)
         self._asr_whisper_model_combo = QComboBox()
+        self._asr_whisper_model_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         for mid in _ASR_WHISPER_MODEL_PRESETS:
             self._asr_whisper_model_combo.addItem(mid, mid)
         self._asr_whisper_model_combo.addItem(
@@ -378,6 +463,9 @@ class ApiSettingsTab(QWidget):
         _mrow.addWidget(self._asr_whisper_model_combo)
         _mrow.addWidget(self._asr_whisper_model_custom)
         self._asr_device = QComboBox()
+        self._asr_device.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self._asr_device.addItem(tr_i18n("common.auto"), "auto")
         self._asr_device.addItem("CUDA", "cuda")
         self._asr_device.addItem("CPU", "cpu")
@@ -389,6 +477,9 @@ class ApiSettingsTab(QWidget):
         else:
             self._asr_device.setCurrentIndex(0)
         self._asr_compute = QComboBox()
+        self._asr_compute.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         _ct_saved = (scfg.asr_whisper_compute_type or "").strip()
         for lbl, dat in (
             (tr_i18n("api.asr.compute_auto"), ""),
@@ -420,28 +511,37 @@ class ApiSettingsTab(QWidget):
         self._asr_whisper_block = QWidget()
         _asr_wf = QFormLayout(self._asr_whisper_block)
         _asr_wf.setContentsMargins(0, 0, 0, 0)
+        _asr_wf.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        _asr_wf.setVerticalSpacing(10)
         _asr_wf.addRow(self._f_asr_model, self._asr_model_row)
         _asr_wf.addRow(self._f_asr_dev, self._asr_device)
         _asr_wf.addRow(self._f_asr_ct, self._asr_compute)
         asr_form.addRow(self._asr_whisper_block)
         self._asr_extra_holder = QWidget()
+        self._asr_extra_holder.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         self._asr_extra_layout = QVBoxLayout(self._asr_extra_holder)
         self._asr_extra_layout.setContentsMargins(0, 0, 0, 0)
-        asr_form.addRow(self._asr_extra_holder)
+        self._asr_extra_layout.setSpacing(12)
         self._asr_extra_editors: dict[str, QWidget] = {}
         self._update_asr_whisper_specific_visibility()
         asr_ly.addLayout(asr_form)
+        asr_ly.addWidget(self._asr_extra_holder)
 
         api = self._ctx.config_manager.config.api_config
         comfy_w = QWidget()
         cvl = QVBoxLayout(comfy_w)
         cvl.setContentsMargins(0, 0, 0, 0)
+        cvl.setSpacing(10)
         self._c_hint = QLabel(tr_i18n("api.comfy.hint"))
         self._c_hint.setWordWrap(True)
         self._c_hint.setObjectName("apiSectionHint")
         cvl.addWidget(self._c_hint)
         cf = QFormLayout()
         cf.setContentsMargins(0, 0, 0, 0)
+        cf.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        cf.setVerticalSpacing(10)
         self.t2i_url = QLineEdit(api.t2i_api_url)
         self.t2i_work_path = QLineEdit(api.t2i_work_path)
         self.t2i_default_workflow_path = QLineEdit(api.t2i_default_workflow_path)
@@ -460,8 +560,12 @@ class ApiSettingsTab(QWidget):
         cf.addRow(self._cf_o, self.output_node_id)
         cvl.addLayout(cf)
         self._t2i_extra_holder = QWidget()
+        self._t2i_extra_holder.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         self._t2i_extra_layout = QVBoxLayout(self._t2i_extra_holder)
         self._t2i_extra_layout.setContentsMargins(0, 0, 0, 0)
+        self._t2i_extra_layout.setSpacing(12)
         cvl.addWidget(self._t2i_extra_holder)
         self._t2i_extra_editors: dict[str, QWidget] = {}
         _add_collapsible_block(main_tree, tr_i18n("api.tree.tts"), tts_w, expanded=True)
@@ -503,6 +607,8 @@ class ApiSettingsTab(QWidget):
         _add_collapsible_block(main_tree, tr_i18n("api.tree.resource"), links_w)
 
         self._main_tree = main_tree
+        main_tree.itemExpanded.connect(lambda *_: self._schedule_refresh_main_tree_heights())
+        main_tree.itemCollapsed.connect(lambda *_: self._schedule_refresh_main_tree_heights())
         lay.addWidget(main_tree, stretch=1)
 
         self.llm_provider.currentTextChanged.connect(self._on_provider_change)
@@ -654,11 +760,13 @@ class ApiSettingsTab(QWidget):
         for w in QApplication.topLevelWidgets():
             if isinstance(w, TtsBundleDownloadDialog) and w.isVisible():
                 w.apply_i18n()
+        self._schedule_refresh_main_tree_heights()
 
     def _on_asr_whisper_model_preset_changed(self, _index: int = 0) -> None:
         data = self._asr_whisper_model_combo.currentData()
         is_custom = data is not None and str(data) == "__custom__"
         self._asr_whisper_model_custom.setVisible(is_custom)
+        self._schedule_refresh_main_tree_heights()
 
     def _asr_whisper_model_config_value(self) -> str:
         data = self._asr_whisper_model_combo.currentData()
@@ -701,12 +809,14 @@ class ApiSettingsTab(QWidget):
         schema = cls.get_config_schema() if cls else {}
         if not schema:
             self._llm_extra_holder.setVisible(False)
+            self._schedule_refresh_main_tree_heights()
             return
         self._llm_extra_holder.setVisible(True)
         vals = self._ctx.config_manager.get_adapter_extra_config("llm", name)
         panel, eds = build_schema_widgets(schema, vals, self._llm_extra_holder)
         self._llm_extra_layout.addWidget(panel)
         self._llm_extra_editors = eds
+        self._schedule_refresh_main_tree_heights()
 
     def _rebuild_tts_extra_panel(self) -> None:
         self._clear_extra_layout(self._tts_extra_layout)
@@ -715,17 +825,20 @@ class ApiSettingsTab(QWidget):
         slug = str(raw or "").strip().lower()
         if slug in ("none", ""):
             self._tts_extra_holder.setVisible(False)
+            self._schedule_refresh_main_tree_heights()
             return
         cls = TTSAdapterFactory._adapters.get(slug)
         schema = cls.get_config_schema() if cls else {}
         if not schema:
             self._tts_extra_holder.setVisible(False)
+            self._schedule_refresh_main_tree_heights()
             return
         self._tts_extra_holder.setVisible(True)
         vals = self._ctx.config_manager.get_adapter_extra_config("tts", slug)
         panel, eds = build_schema_widgets(schema, vals, self._tts_extra_holder)
         self._tts_extra_layout.addWidget(panel)
         self._tts_extra_editors = eds
+        self._schedule_refresh_main_tree_heights()
 
     def _rebuild_asr_extra_panel(self) -> None:
         self._clear_extra_layout(self._asr_extra_layout)
@@ -733,16 +846,18 @@ class ApiSettingsTab(QWidget):
         key = normalize_asr_provider_storage_key(
             str(self._asr_provider.currentData() or "vosk")
         )
-        cls = _ASR_ADAPTER_FOR_EXTRA_UI.get(key)
+        cls = self._asr_extra_schema_map().get(key)
         schema = cls.get_config_schema() if cls else {}
         if not schema:
             self._asr_extra_holder.setVisible(False)
+            self._schedule_refresh_main_tree_heights()
             return
         self._asr_extra_holder.setVisible(True)
         vals = self._ctx.config_manager.get_adapter_extra_config("asr", key)
         panel, eds = build_schema_widgets(schema, vals, self._asr_extra_holder)
         self._asr_extra_layout.addWidget(panel)
         self._asr_extra_editors = eds
+        self._schedule_refresh_main_tree_heights()
 
     def _rebuild_t2i_extra_panel(self) -> None:
         self._clear_extra_layout(self._t2i_extra_layout)
@@ -750,6 +865,7 @@ class ApiSettingsTab(QWidget):
         schema = ComfyUIT2IAdapter.get_config_schema()
         if not schema:
             self._t2i_extra_holder.setVisible(False)
+            self._schedule_refresh_main_tree_heights()
             return
         self._t2i_extra_holder.setVisible(True)
         vals = self._ctx.config_manager.get_adapter_extra_config(
@@ -758,6 +874,7 @@ class ApiSettingsTab(QWidget):
         panel, eds = build_schema_widgets(schema, vals, self._t2i_extra_holder)
         self._t2i_extra_layout.addWidget(panel)
         self._t2i_extra_editors = eds
+        self._schedule_refresh_main_tree_heights()
 
     def _on_tts_provider_changed(self, _index: int = 0) -> None:
         self._rebuild_tts_extra_panel()
@@ -807,7 +924,7 @@ class ApiSettingsTab(QWidget):
         asr_key = normalize_asr_provider_storage_key(
             str(self._asr_provider.currentData() or "vosk")
         )
-        asr_cls = _ASR_ADAPTER_FOR_EXTRA_UI.get(asr_key)
+        asr_cls = self._asr_extra_schema_map().get(asr_key)
         asr_schema = asr_cls.get_config_schema() if asr_cls else {}
         self._ctx.config_manager.set_adapter_extra_config(
             "asr", asr_key, read_schema_values(asr_schema, self._asr_extra_editors)

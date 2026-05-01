@@ -64,6 +64,8 @@
     "discover_download_fail_body": "Unknown error",
     "empty_manage": "No plugin entries. Add `- entry: …` to data/config/plugins.yaml, restart to load; use Enable to control loading on the next start.",
     "version_label": "Version: {version}",
+    "manage_plugin_id": "ID: {plugin_id}",
+    "manage_author": "Author: {author}",
     "open_settings": "Settings",
     "no_settings_tooltip": "This plugin provides no settings page or tools tab",
     "back": "Back to list",
@@ -146,7 +148,7 @@
       }
     },
     "asr": {
-      "hint": "Mic dictation: Vosk, faster-whisper, or RealtimeSTT (streaming; heavier stack — `pip install realtimestt`, Silero VAD + PyTorch; models download on first run). Recognition language applies to every engine. Whisper model / device / precision are shown only for faster-whisper and RealtimeSTT. If recognition language is unset, it follows the interface language. Saves to system_config.yaml; reopen the chat window to apply.",
+      "hint": "Mic dictation: Vosk is built in. faster-whisper and RealtimeSTT are heavy — enable the Whisper ASR plugin under Settings → Plugins and install deps from plugins/whisper_asr/requirements.txt before selecting them. Recognition language applies to every engine. Whisper model / device / precision appear only when a Whisper engine is selected and the plugin is enabled. If unset, recognition language follows the interface language. Saves to system_config.yaml; reopen chat to apply. If a Whisper engine is selected but the plugin is off, runtime falls back to Vosk.",
       "language": "Recognition language",
       "follow_ui": "Follow interface language",
       "lang_en": "English",

@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QAbstractItemView,
     QStackedWidget,
-    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -55,6 +54,7 @@ from sdk.types import SettingsUIContribution, ToolsTabContribution
 
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import message_fail, toast_info, toast_success
+from ui.settings_ui.widgets.segmented_tab_nav import SegmentedTabNav
 
 
 def _parse_pip_install_result_json(raw: str) -> tuple[str, str]:
@@ -165,8 +165,9 @@ class PluginSettingsTab(QWidget):
         list_page = QWidget()
         lp_lay = QVBoxLayout(list_page)
         lp_lay.setContentsMargins(0, 0, 0, 0)
-        sub_tabs = QTabWidget()
-        self._sub_tabs = sub_tabs
+
+        self._manage_discover_tabs = SegmentedTabNav()
+        self._manage_discover_tabs.currentChanged.connect(self._on_plugin_subtab_changed)
 
         manage_host = QWidget()
         mh_lay = QVBoxLayout(manage_host)
@@ -179,7 +180,7 @@ class PluginSettingsTab(QWidget):
         self._grid.setSpacing(12)
         self._manage_scroll.setWidget(self._grid_host)
         mh_lay.addWidget(self._manage_scroll)
-        sub_tabs.addTab(manage_host, tr_i18n("plugins.tab_manage"))
+        self._manage_discover_tabs.add_tab(manage_host, tr_i18n("plugins.tab_manage"))
 
         discover_host = QWidget()
         dv = QVBoxLayout(discover_host)
@@ -250,11 +251,10 @@ class PluginSettingsTab(QWidget):
         self._discover_fetch_signals.finished.connect(self._on_discover_catalog_finished)
         self._download_signals = _DownloadSignals(self)
         self._download_signals.finished.connect(self._on_repo_download_finished)
-        sub_tabs.currentChanged.connect(self._on_plugin_subtab_changed)
 
-        sub_tabs.addTab(discover_host, tr_i18n("plugins.tab_discover"))
+        self._manage_discover_tabs.add_tab(discover_host, tr_i18n("plugins.tab_discover"))
 
-        lp_lay.addWidget(sub_tabs)
+        lp_lay.addWidget(self._manage_discover_tabs, stretch=1)
         self._outer.addWidget(list_page)
 
         detail = QWidget()
@@ -281,8 +281,8 @@ class PluginSettingsTab(QWidget):
         self._refresh_cards()
 
     def apply_i18n(self) -> None:
-        self._sub_tabs.setTabText(0, tr_i18n("plugins.tab_manage"))
-        self._sub_tabs.setTabText(1, tr_i18n("plugins.tab_discover"))
+        self._manage_discover_tabs.set_tab_text(0, tr_i18n("plugins.tab_manage"))
+        self._manage_discover_tabs.set_tab_text(1, tr_i18n("plugins.tab_discover"))
         self._back_btn.setText(tr_i18n("plugins.back"))
         self._discover_refresh_btn.setText(tr_i18n("plugins.discover_refresh"))
         self._discover_registry_hint.setText(tr_i18n("plugins.discover_registry_hint_html"))
@@ -586,6 +586,9 @@ class PluginSettingsTab(QWidget):
                 list[ToolsTabContribution],
                 str | None,
                 bool | None,
+                str,
+                str,
+                str,
             ]
         ] = []
         seen_plugin_ids: set[str] = set()
@@ -605,12 +608,18 @@ class PluginSettingsTab(QWidget):
                     ver = str(plugin.plugin_version)
                     s_cs = by_settings.get(pid, [])
                     t_cs = by_tools.get(pid, [])
+                    dname = str(plugin.plugin_name).strip() or pid
+                    desc = str(plugin.plugin_description or "").strip()
+                    auth = str(plugin.plugin_author or "").strip()
                 else:
-                    pid = _display_title_for_offline_entry(entry)
+                    pid = entry.strip()
                     ver = "—"
                     s_cs = []
                     t_cs = []
-                rows.append((pid, ver, s_cs, t_cs, entry, enabled_yaml))
+                    dname = _display_title_for_offline_entry(entry)
+                    desc = ""
+                    auth = ""
+                rows.append((pid, ver, s_cs, t_cs, entry, enabled_yaml, dname, desc, auth))
         else:
             if mgr is not None:
                 for p in mgr.plugins:
@@ -624,6 +633,9 @@ class PluginSettingsTab(QWidget):
                             by_tools.get(pid, []),
                             None,
                             None,
+                            str(p.plugin_name).strip() or pid,
+                            str(p.plugin_description or "").strip(),
+                            str(p.plugin_author or "").strip(),
                         )
                     )
 
@@ -636,10 +648,10 @@ class PluginSettingsTab(QWidget):
                         if lst_s
                         else (lst_t[0].title if lst_t else key)
                     )
-                    rows.append((disp, "—", lst_s, lst_t, None, None))
+                    rows.append((disp, "—", lst_s, lst_t, None, None, disp, "", ""))
                     continue
                 if key not in seen_plugin_ids:
-                    rows.append((key, "—", lst_s, lst_t, None, None))
+                    rows.append((key, "—", lst_s, lst_t, None, None, key, "", ""))
 
         if not rows:
             tip = QLabel(tr_i18n("plugins.empty_manage"))
@@ -648,8 +660,18 @@ class PluginSettingsTab(QWidget):
             return
 
         for i, row in enumerate(rows):
-            pid, ver, s_cs, t_cs, manifest_entry, enabled_yaml = row
-            card = self._make_card(pid, ver, s_cs, t_cs, manifest_entry, enabled_yaml)
+            pid, ver, s_cs, t_cs, manifest_entry, enabled_yaml, dname, desc, auth = row
+            card = self._make_card(
+                pid,
+                ver,
+                s_cs,
+                t_cs,
+                manifest_entry,
+                enabled_yaml,
+                dname,
+                desc,
+                auth,
+            )
             r, co = divmod(i, 2)
             self._grid.addWidget(card, r, co)
 
@@ -661,13 +683,17 @@ class PluginSettingsTab(QWidget):
         tools_cs: list[ToolsTabContribution],
         manifest_entry: str | None,
         enabled_yaml: bool | None,
+        display_name: str,
+        description: str,
+        author: str,
     ) -> QFrame:
         box = QFrame()
         box.setFrameShape(QFrame.Shape.StyledPanel)
         box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         lay = QVBoxLayout(box)
+        lay.setSpacing(6)
         title_row = QHBoxLayout()
-        title = QLabel(plugin_id)
+        title = QLabel(display_name.strip() or plugin_id)
         f = title.font()
         f.setBold(True)
         title.setFont(f)
@@ -683,8 +709,26 @@ class PluginSettingsTab(QWidget):
             cb.toggled.connect(_on_toggled)
             title_row.addWidget(cb, alignment=Qt.AlignmentFlag.AlignRight)
         lay.addLayout(title_row)
-        ver_lbl = QLabel(tr_i18n("plugins.version_label", version=version))
+        id_show = plugin_id.strip()
+        name_show = (display_name.strip() or plugin_id).strip()
+        if id_show and id_show != name_show:
+            id_lbl = QLabel(tr_i18n("plugins.manage_plugin_id", plugin_id=id_show))
+            id_lbl.setStyleSheet("color: palette(mid);")
+            id_lbl.setWordWrap(True)
+            lay.addWidget(id_lbl)
+        desc_txt = description.strip()
+        if desc_txt:
+            desc_lbl = QLabel(desc_txt)
+            desc_lbl.setWordWrap(True)
+            desc_lbl.setStyleSheet("color: palette(text);")
+            lay.addWidget(desc_lbl)
+        meta_parts: list[str] = [tr_i18n("plugins.version_label", version=version)]
+        auth_txt = author.strip()
+        if auth_txt:
+            meta_parts.append(tr_i18n("plugins.manage_author", author=auth_txt))
+        ver_lbl = QLabel(" · ".join(meta_parts))
         ver_lbl.setStyleSheet("color: palette(mid);")
+        ver_lbl.setWordWrap(True)
         lay.addWidget(ver_lbl)
         btn = QPushButton(tr_i18n("plugins.open_settings"))
         has_ui = bool(settings_cs or tools_cs)
@@ -695,12 +739,12 @@ class PluginSettingsTab(QWidget):
 
             def _go(
                 *,
-                _pid: str = plugin_id,
+                _title: str = display_name.strip() or plugin_id,
                 _v: str = version,
                 _sc: list[SettingsUIContribution] = settings_cs,
                 _tc: list[ToolsTabContribution] = tools_cs,
             ) -> None:
-                self._open_detail(_pid, _v, _sc, _tc)
+                self._open_detail(_title, _v, _sc, _tc)
 
             btn.clicked.connect(_go)
         lay.addWidget(btn)
@@ -746,13 +790,13 @@ class PluginSettingsTab(QWidget):
 
     def _open_detail(
         self,
-        plugin_id: str,
+        display_title: str,
         version: str,
         settings_cs: list[SettingsUIContribution],
         tools_cs: list[ToolsTabContribution],
     ) -> None:
         self._detail_title.setText(
-            tr_i18n("plugins.detail_heading", name=plugin_id, version=version)
+            tr_i18n("plugins.detail_heading", name=display_title, version=version)
         )
         self._clear_detail_content()
         tabs_spec: list[tuple[str, QWidget]] = []
@@ -763,8 +807,8 @@ class PluginSettingsTab(QWidget):
         if len(tabs_spec) == 1:
             self._detail_stack_layout.addWidget(tabs_spec[0][1])
         elif tabs_spec:
-            tw = QTabWidget()
+            nav = SegmentedTabNav()
             for label, w in tabs_spec:
-                tw.addTab(w, label)
-            self._detail_stack_layout.addWidget(tw)
+                nav.add_tab(w, label)
+            self._detail_stack_layout.addWidget(nav)
         self._outer.setCurrentIndex(1)

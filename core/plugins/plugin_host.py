@@ -18,9 +18,11 @@ import yaml
 from config.config_manager import ConfigManager
 from core.messaging.message import UserInputMessage
 from core.plugins.plugin_requirements_install import ensure_plugin_site_packages_on_syspath
+from asr.asr_manager import ASRAdapterFactory
 from llm.llm_manager import LLMAdapterFactory
 from llm.tools.tool_manager import ToolManager
 from sdk.manager import PluginManager
+from t2i.t2i_manager import T2IAdapterFactory
 from tts.tts_manager import TTSAdapterFactory
 
 if TYPE_CHECKING:
@@ -55,8 +57,8 @@ def get_plugin_ui_handlers() -> List["UIOutputMessageHandler"]:
 
 def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager | None:
     """
-    Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge LLM/TTS
-    provider tables, register tools on the global ToolManager, and cache message handlers
+    Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge LLM/TTS/ASR/T2I
+    provider tables into the respective factories, register tools on the global ToolManager, and cache message handlers
     for :mod:`core.handlers.handler_registry`.
     """
     global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
@@ -82,6 +84,14 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
         mgr.apply_tts_providers(TTSAdapterFactory._adapters)
     except Exception:
         logger.exception("apply_tts_providers failed")
+    try:
+        mgr.apply_asr_providers(ASRAdapterFactory._adapters)
+    except Exception:
+        logger.exception("apply_asr_providers failed")
+    try:
+        mgr.apply_t2i_providers(T2IAdapterFactory._adapters)
+    except Exception:
+        logger.exception("apply_t2i_providers failed")
     try:
         from sdk.tool_registry import apply_registered_tools
 

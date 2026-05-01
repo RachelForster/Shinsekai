@@ -10,6 +10,9 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, replace
 from typing import Type
 
+from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
+from llm.tools.tool_manager import ToolManager
+from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
 from sdk.plugin import PluginBase
 from sdk.types import (
     ChatUIContribution,
@@ -112,6 +115,8 @@ class PluginCapabilityRegistry:
     def __init__(self) -> None:
         self._llm_adapters: dict[str, Type[LLMAdapter]] = {}
         self._tts_adapters: dict[str, Type[TTSAdapter]] = {}
+        self._asr_adapters: dict[str, Type[ASRAdapter]] = {}
+        self._t2i_adapters: dict[str, Type[T2IAdapter]] = {}
         self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
         self._tts_handlers: list[MessageHandler] = []
         self._ui_handlers: list[UIOutputMessageHandler] = []
@@ -127,6 +132,14 @@ class PluginCapabilityRegistry:
 
     def register_tts_adapter(self, provider: str, adapter_cls: Type[TTSAdapter]) -> None:
         self._tts_adapters[provider] = adapter_cls
+
+    def register_asr_adapter(self, provider_slug: str, adapter_cls: Type[ASRAdapter]) -> None:
+        """Register heavy / optional ASR backends (e.g. Whisper-family plugin)."""
+        self._asr_adapters[provider_slug] = adapter_cls
+
+    def register_t2i_adapter(self, provider: str, adapter_cls: Type[T2IAdapter]) -> None:
+        """Register optional T2I backends (slug 建议小写，与 ``T2IAdapterFactory.create_adapter`` 查找一致)。"""
+        self._t2i_adapters[provider.strip().lower()] = adapter_cls
 
     def register_llm_tool(self, registrar: Callable[[ToolManager], None]) -> None:
         self._llm_tool_registrars.append(registrar)
@@ -190,6 +203,14 @@ class PluginCapabilityRegistry:
     @property
     def tts_adapters(self) -> dict[str, Type[TTSAdapter]]:
         return dict(self._tts_adapters)
+
+    @property
+    def asr_adapters(self) -> dict[str, Type[ASRAdapter]]:
+        return dict(self._asr_adapters)
+
+    @property
+    def t2i_adapters(self) -> dict[str, Type[T2IAdapter]]:
+        return dict(self._t2i_adapters)
 
     @property
     def message_handlers(self) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:

@@ -32,6 +32,25 @@ class PluginBase(ABC):
         return "0.1.0"
 
     @property
+    def plugin_name(self) -> str:
+        """Human-readable title on the plugin manage screen."""
+        pid = self.plugin_id
+        tail = pid.rpartition(".")[-1]
+        if tail:
+            return tail.replace("_", " ").strip() or pid
+        return pid
+
+    @property
+    def plugin_description(self) -> str:
+        """Short description; empty hides the line on the manage card."""
+        return ""
+
+    @property
+    def plugin_author(self) -> str:
+        """Author or vendor; empty hides the author segment on the manage card."""
+        return ""
+
+    @property
     def enabled(self) -> bool:
         """Whether this plugin should be initialized."""
         return True

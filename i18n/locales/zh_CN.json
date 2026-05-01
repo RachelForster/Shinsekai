@@ -61,6 +61,8 @@
     "discover_download_fail_body": "未知错误",
     "empty_manage": "暂无插件条目。请在 data/config/plugins.yaml 中添加 `- entry: …`，保存并重启后即可加载；卡片上的「启用」控制是否在下次启动时加载该插件。",
     "version_label": "版本：{version}",
+    "manage_plugin_id": "标识：{plugin_id}",
+    "manage_author": "作者：{author}",
     "open_settings": "插件设置",
     "no_settings_tooltip": "该插件未提供设置界面或小工具页",
     "back": "返回列表",
@@ -143,7 +145,7 @@
       }
     },
     "asr": {
-      "hint": "桌面助手麦克风听写：Vosk（本地模型）、faster-whisper 或 RealtimeSTT（流式，依赖较多：`pip install realtimestt`，含 Silero VAD 与 PyTorch；首次会下载 Whisper 权重）。「识别语言」对所有引擎共用；Whisper 模型、推理设备与计算精度仅在选用 faster-whisper 或 RealtimeSTT 时显示并生效。未指定语种时与「界面语言」一致。保存后写入 system_config.yaml；请重新打开聊天主窗口后生效。",
+      "hint": "桌面助手麦克风听写：内置 Vosk（本地模型）。faster-whisper 与 RealtimeSTT 依赖较重，需在「设置 → 插件」启用 **Whisper ASR** 并按 `plugins/whisper_asr/requirements.txt` 安装依赖后再选用。「识别语言」对所有引擎共用；Whisper 模型、推理设备与计算精度仅在选用上述 Whisper 引擎且插件已启用时显示并生效。未指定语种时与「界面语言」一致。保存后写入 system_config.yaml；请重新打开聊天主窗口后生效。若已选 Whisper 引擎但未启用插件，运行时将回退为 Vosk。",
       "language": "识别语言",
       "follow_ui": "跟随界面语言",
       "lang_en": "English",

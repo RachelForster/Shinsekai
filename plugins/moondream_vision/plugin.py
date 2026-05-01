@@ -25,6 +25,14 @@ class MoondreamVisionPlugin(PluginBase):
         return "0.1.0"
 
     @property
+    def plugin_name(self) -> str:
+        return "Moondream 识屏"
+
+    @property
+    def plugin_description(self) -> str:
+        return "Moondream2 + mss：截取屏幕并由模型识别，将结果作为用户消息提交。"
+
+    @property
     def priority(self) -> int:
         return 80
 

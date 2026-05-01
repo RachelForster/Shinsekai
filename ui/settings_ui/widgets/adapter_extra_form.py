@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
+    QSizePolicy,
     QSpinBox,
     QWidget,
 )
@@ -32,8 +33,12 @@ def build_schema_widgets(
 ) -> tuple[QWidget, dict[str, QWidget]]:
     """根据 schema 创建表单；返回 (容器, 字段 key -> 编辑器 widget)。"""
     wrap = QWidget(parent)
+    wrap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
     form = QFormLayout(wrap)
     form.setContentsMargins(0, 0, 0, 0)
+    form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+    form.setVerticalSpacing(10)
     editors: dict[str, QWidget] = {}
 
     for key, meta in schema.items():
@@ -43,12 +48,17 @@ def build_schema_widgets(
         cur = values.get(key, default)
 
         lab = QLabel(label_text)
+        lab.setWordWrap(True)
+        lab.setMinimumWidth(80)
         choices = meta.get("choices")
         if isinstance(choices, (list, tuple)) and choices:
             combo = QComboBox()
             for opt in choices:
                 sopt = str(opt)
                 combo.addItem(sopt, sopt)
+            combo.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
             cur_s = str(cur if cur is not None else default)
             idx = combo.findData(cur_s)
             if idx < 0:
@@ -93,6 +103,7 @@ def build_schema_widgets(
             editors[key] = dsp
         else:
             le = QLineEdit("" if cur is None else str(cur))
+            le.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             if _truthy(meta.get("secret")):
                 le.setEchoMode(QLineEdit.EchoMode.Password)
             form.addRow(lab, le)

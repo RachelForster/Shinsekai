@@ -14,7 +14,7 @@ import yaml
 
 from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
 from llm.tools.tool_manager import ToolManager
-from sdk.adapters import LLMAdapter, TTSAdapter
+from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
 
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
@@ -45,7 +45,7 @@ class PluginManager:
     1. ``load_manifest_file`` and/or ``register_plugin_class`` / ``register_plugin_entry``
     2. ``instantiate_all()`` — build instances only
     3. ``load_own_config_all(app_config=...)`` — call ``initialize`` on each plugin
-    4. ``apply_llm_providers`` / ``apply_tts_providers`` / …
+    4. ``apply_llm_providers`` / ``apply_tts_providers`` / ``apply_asr_providers`` / ``apply_t2i_providers``
 
     **Manifest:** JSON/YAML list of :class:`~sdk.types.PluginDescriptor` dicts::
 
@@ -184,6 +184,20 @@ class PluginManager:
         self._ensure_plugins_initialized()
         if self._capabilities is not None:
             target.update(self._capabilities.tts_adapters)
+
+    def apply_asr_providers(
+        self, target: MutableMapping[str, Type[ASRAdapter]]
+    ) -> None:
+        self._ensure_plugins_initialized()
+        if self._capabilities is not None:
+            target.update(self._capabilities.asr_adapters)
+
+    def apply_t2i_providers(
+        self, target: MutableMapping[str, Type[T2IAdapter]]
+    ) -> None:
+        self._ensure_plugins_initialized()
+        if self._capabilities is not None:
+            target.update(self._capabilities.t2i_adapters)
 
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
         self._ensure_plugins_initialized()
