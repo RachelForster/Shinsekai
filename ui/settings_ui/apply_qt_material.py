@@ -7,6 +7,9 @@
 from __future__ import annotations
 
 
-def patch_qt_material_for_pyqt5() -> bool:
+def patch_qt_material_compat() -> bool:
     """兼容占位；主题见 ui.qss.load_pydracula_dark。"""
     return True
+
+
+patch_qt_material_for_pyqt5 = patch_qt_material_compat  # 旧脚本兼容别名

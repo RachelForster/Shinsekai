@@ -1,4 +1,4 @@
-"""背景管理标签页（PyQt）。"""
+"""背景管理标签页（PySide6）。"""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import os
 from pathlib import Path
 
 import pandas as pd
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize
-from PyQt6.QtGui import QIcon, QPixmap
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, QUrl, Signal, QSize
+from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -39,7 +39,7 @@ from ui.settings_ui.utils import GALLERY_THUMB_PX, path_file_list, sync_gallery_
 
 
 class BackgroundSettingsTab(QWidget):
-    background_list_changed = pyqtSignal()
+    background_list_changed = Signal()
 
     def __init__(self, ctx: SettingsUIContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)

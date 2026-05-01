@@ -1,11 +1,11 @@
-"""聊天模板标签页（PyQt）。"""
+"""聊天模板标签页（PySide6）。"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,

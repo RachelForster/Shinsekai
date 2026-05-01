@@ -1,4 +1,4 @@
-"""原 Gradio 标签页已迁移至 `ui.settings_ui`（PyQt）。此处保留兼容导入。"""
+"""原 Gradio 标签页已迁移至 `ui.settings_ui`（PySide6）。此处保留兼容导入。"""
 
 from ui.settings_ui import (
     SettingsUIContext,

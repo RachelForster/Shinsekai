@@ -1,13 +1,13 @@
-"""小工具标签页（PyQt）。"""
+"""小工具标签页（PySide6）。"""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QIcon, QPixmap
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,

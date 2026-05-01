@@ -1,4 +1,4 @@
-"""PyQt 设置界面入口（与 Gradio 的 webui.py 对应）。"""
+"""PySide6 设置界面入口（与 Gradio 的 webui.py 对应）。"""
 
 import os
 import sys
@@ -36,8 +36,8 @@ if getattr(sys, "frozen", False):
 
     init_frozen_stdio("SettingsUI")
 
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QApplication
 
 from config.config_manager import ConfigManager
 from i18n import init_i18n

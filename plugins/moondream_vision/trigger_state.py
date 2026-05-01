@@ -44,7 +44,7 @@ def _cursor_pos_any() -> tuple[int, int] | None:
     if p is not None:
         return p
     try:
-        from PyQt6.QtGui import QCursor
+        from PySide6.QtGui import QCursor
 
         q = QCursor.globalPosition()
         return int(q.x()), int(q.y())

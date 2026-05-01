@@ -29,7 +29,7 @@ __all__ = [
 @dataclass(frozen=True)
 class SettingsUIContribution:
     """
-    One extra page/section for the PyQt settings window.
+    One extra page/section for the PySide6 settings window.
 
     ``build`` receives :class:`~sdk.plugin_host_context.PluginSettingsUIContext` only
     (read-only app snapshot + paths / name lists). It does **not** receive

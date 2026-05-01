@@ -1,4 +1,4 @@
-# ChatUI 专用线程（PySide6），避免与主程序 PyQt6 的 ui.workers 混用。
+# ChatUI 专用线程（PySide6）；通用线程类见 `ui.workers`。
 
 from __future__ import annotations
 

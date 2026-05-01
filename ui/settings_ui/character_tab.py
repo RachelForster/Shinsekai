@@ -1,4 +1,4 @@
-"""人物设定标签页（PyQt）。"""
+"""人物设定标签页（PySide6）。"""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import os
 import re
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QSize, QUrl, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QIcon, QPixmap
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, QSize, QUrl, Signal
+from PySide6.QtGui import QBrush, QColor, QIcon, QPixmap
+from PySide6.QtWidgets import (
     QColorDialog,
     QComboBox,
     QDoubleSpinBox,
@@ -121,7 +121,7 @@ def _format_color_text(c: QColor) -> str:
 
 
 class CharacterSettingsTab(QWidget):
-    character_list_changed = pyqtSignal()
+    character_list_changed = Signal()
 
     def __init__(self, ctx: SettingsUIContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)

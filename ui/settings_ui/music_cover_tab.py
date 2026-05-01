@@ -1,11 +1,11 @@
-"""音乐翻唱流水线标签页（PyQt）。"""
+"""音乐翻唱流水线标签页（PySide6）。"""
 
 from __future__ import annotations
 
 import traceback
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,

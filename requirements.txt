@@ -1,7 +1,6 @@
 numpy
 pygame
 opencv_python
-PyQt6
 openai
 opencc-python-reimplemented
 pydantic

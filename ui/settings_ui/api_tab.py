@@ -1,9 +1,9 @@
-"""API 设定标签页（PyQt）。"""
+"""API 设定标签页（PySide6）。"""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
     QButtonGroup,

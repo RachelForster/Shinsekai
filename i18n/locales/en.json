@@ -363,7 +363,7 @@
     "yes": "Yes",
     "no": "No",
     "auto": "Auto",
-    "msg_qtmm_unavailable": "Cannot play audio: PyQt6.QtMultimedia is not available. This often happens with a merged PyInstaller bundle; rebuild without --merge (separate onedir for Settings and the main app) and ship both, or run from a normal Python venv.",
+    "msg_qtmm_unavailable": "Cannot play audio: PySide6.QtMultimedia is not available. This often happens with a merged PyInstaller bundle; rebuild without --merge (separate onedir for Settings and the main app) and ship both, or run from a normal Python venv.",
     "ai_working_title": "AI in progress",
     "ai_progress_write": "Generating character setting…",
     "ai_progress_translate": "Translating…"
