@@ -128,7 +128,7 @@
     },
     "resume": {
       "btn": "Resume last chat & launch",
-      "tip": "Uses the most recently modified *.json in the chat history folder; template prefers _temp.txt (last launch cache), otherwise the newest .txt in the templates folder. Preset voice mode, transparent background, ComfyUI off; live room ID from saved config.",
+      "tip": "Uses the most recently modified *.json in the chat history folder; template prefers _temp.txt (last launch cache), otherwise the newest .txt in the templates folder. Line TTS follows the API tab TTS engine setting; transparent background, ComfyUI off; live room ID from saved config.",
       "title": "Launch chat",
       "no_history": "No chat history (*.json) found. Chat in the main window at least once.",
       "no_template": "No usable template (.txt) found. Open the Chat template tab to generate, save, or launch once."
@@ -303,9 +303,6 @@
     "voice_lang_yue": "Cantonese",
     "fx": "Effects",
     "llm_tr": "LLM translation",
-    "voice": "Voice",
-    "voice_preset": "Preset voice",
-    "voice_full": "Full voice",
     "cg": "CG generation",
     "cot": "Chain-of-thought",
     "gen_btn": "Generate template",

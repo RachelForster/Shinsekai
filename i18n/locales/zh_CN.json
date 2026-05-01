@@ -125,7 +125,7 @@
     },
     "resume": {
       "btn": "加载上次聊天并启动",
-      "tip": "使用 data/chat_history 下最近修改的聊天记录；模板优先 _temp.txt（上次启动缓存），否则用模板目录内最近修改的 .txt。预设语音、透明背景、不启用 ComfyUI；直播间号沿用已保存配置。",
+      "tip": "使用 data/chat_history 下最近修改的聊天记录；模板优先 _temp.txt（上次启动缓存），否则用模板目录内最近修改的 .txt。台词是否走 TTS 以 API 设定中的语音引擎为准；透明背景、不启用 ComfyUI；直播间号沿用已保存配置。",
       "title": "启动聊天",
       "no_history": "未找到聊天记录（*.json）。请先在主窗口进行过对话。",
       "no_template": "未找到可用模板（.txt）。请先在「聊天模板」页生成、保存或启动过一次。"
@@ -300,9 +300,6 @@
     "voice_lang_yue": "粵語",
     "fx": "特殊效果",
     "llm_tr": "LLM 翻译",
-    "voice": "语音模式",
-    "voice_preset": "预设语音",
-    "voice_full": "全语音",
     "cg": "CG 生成",
     "cot": "思维链 CoT",
     "gen_btn": "根据选项生成模板",

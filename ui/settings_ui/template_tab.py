@@ -166,20 +166,6 @@ class TemplateSettingsTab(QWidget):
         llm_tr_row.addStretch(1)
         opt.addLayout(llm_tr_row)
 
-        vm_row = QHBoxLayout()
-        self._lbl_vm = QLabel(tr_i18n("template.voice"))
-        self.voice_preset = QRadioButton(tr_i18n("template.voice_preset"))
-        self.voice_full = QRadioButton(tr_i18n("template.voice_full"))
-        self.voice_preset.setChecked(True)
-        vg = QButtonGroup(self)
-        vg.addButton(self.voice_preset)
-        vg.addButton(self.voice_full)
-        vm_row.addWidget(self._lbl_vm)
-        vm_row.addWidget(self.voice_preset)
-        vm_row.addWidget(self.voice_full)
-        vm_row.addStretch(1)
-        opt.addLayout(vm_row)
-
         self.use_cg_yes = QRadioButton(tr_i18n("common.yes"))
         self.use_cg_no = QRadioButton(tr_i18n("common.no"))
         self.use_cg_no.setChecked(True)
@@ -322,9 +308,6 @@ class TemplateSettingsTab(QWidget):
         self.use_cot_no.setText(ntxt)
         self._lbl_fx.setText(tr_i18n("template.fx"))
         self._lbl_llm_tr.setText(tr_i18n("template.llm_tr"))
-        self._lbl_vm.setText(tr_i18n("template.voice"))
-        self.voice_preset.setText(tr_i18n("template.voice_preset"))
-        self.voice_full.setText(tr_i18n("template.voice_full"))
         self._lbl_cg.setText(tr_i18n("template.cg"))
         self._lbl_cot.setText(tr_i18n("template.cot"))
         self._gen_btn.setText(tr_i18n("template.gen_btn"))
@@ -419,12 +402,10 @@ class TemplateSettingsTab(QWidget):
         self.filename_edit.setText(fn)
 
     def _on_launch(self) -> None:
-        vm = "全语音模式" if self.voice_full.isChecked() else "预设语音模式"
         ucg = "是" if self.use_cg_yes.isChecked() else "否"
         msg = launch_chat(
             self._ctx,
             self.template_output.toPlainText(),
-            vm,
             self.init_sprite_path.text().strip(),
             self.history_file.text().strip(),
             self.bg_combo.currentText(),

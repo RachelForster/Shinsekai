@@ -22,9 +22,7 @@
   - Intelligent emotion-sprite matching
 
 ### Voice System
-- **Dual Mode Support**
-  - **Full Voice Mode**: Real-time voice generation for every line (requires GPT-SoVITS)
-  - **Preset Voice Mode**: Play pre-uploaded voice files
+- **TTS engine (API settings)**: With GPT SoVITS or Genie TTS selected, lines are synthesized; with “off”, only pre-attached sprite audio plays when present.
 
 ![Wellerman-Uri](https://github.com/RachelForster/Shinsekai/blob/main/assets/present_example.png)
 

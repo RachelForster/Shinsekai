@@ -67,7 +67,6 @@ def launch_chat_resume_last(
     msg = launch_chat(
         ctx,
         tpl,
-        "预设语音模式",
         "",
         str(hp.resolve()),
         TRANSPARENT_BG,
@@ -94,7 +93,6 @@ def _release_root() -> Path:
 def launch_chat(
     ctx: SettingsUIContext,
     template: str,
-    voice_mode: str,
     init_sprite_path: str,
     history_file: str,
     selected_bg: str,
@@ -108,7 +106,6 @@ def launch_chat(
         with open(dest_path, mode="+wt", encoding="utf-8") as file:
             file.write(template)
 
-        voice_mode = "gen" if voice_mode == "全语音模式" else "preset"
         init_path = init_sprite_path or ""
         history_file = history_file if history_file else ""
         ctx.config_manager.config.system_config.live_room_id = room_id
@@ -126,7 +123,6 @@ def launch_chat(
             tts_slug = str(tts_slug).strip() or "gpt-sovits"
             args = [
                 "--template=_temp",
-                f"--voice_mode={voice_mode}",
                 f"--init_sprite_path={init_path}",
                 f"--history={history_file_path.resolve()}",
                 f"--bg={selected_bg}",

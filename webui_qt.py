@@ -2,6 +2,10 @@
 
 import os
 import sys
+
+# Toast 依赖 QtPy：须在首次 import qtpy 之前指定后端。本项目全程 PySide6，固定 pyside6。
+os.environ.setdefault("QT_API", "pyside6")
+
 from pathlib import Path
 
 # 打包后：必须在任何会触发 ConfigManager / 读 ./data 的 import 之前切到「发行根」。

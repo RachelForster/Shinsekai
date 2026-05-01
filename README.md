@@ -22,9 +22,7 @@
   - 智能情绪与立绘匹配
 
 ### 语音系统
-- **双模式支持**
-  - **全语音模式**：每句台词实时生成语音（需GPT-SoVITS）
-  - **预设语音模式**：播放预先上传的语音文件
+- **TTS 引擎（API 设定）**：选择 GPT SoVITS / Genie TTS 时为台词合成语音；选择「不使用」则仅播放立绘上预先配置的音频（若有）。
 
 ![Wellerman-Uri](assets/present_example.png)
 

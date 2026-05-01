@@ -149,7 +149,7 @@ class ConfigManager:
         repetition_penalty: float,
         presence_penalty: float,
         frequency_penalty: float,
-        max_context_tokens: int
+        max_context_tokens: int,
     ) -> str:
         """
         更新内存中的 ApiConfig，并将其保存到 api.yaml。

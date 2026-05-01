@@ -273,6 +273,7 @@ class ApiSettingsTab(QWidget):
         tts_form.addRow(self._tts_engine, self.tts_provider)
         tts_form.addRow(self._tts_url, self.sovits_url)
         tts_form.addRow(self._tts_path, self.gpt_sovits_api_path)
+
         tts_lay.addLayout(tts_form)
 
         scfg = self._ctx.config_manager.config.system_config

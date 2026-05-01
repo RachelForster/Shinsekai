@@ -16,7 +16,6 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
         help=tr_i18n("main_sprite.arg_t_help"),
         default="komaeda_sprite",
     )
-    parser.add_argument("--voice_mode", "-v", type=str, default="gen")
     parser.add_argument("--init_sprite_path", "-isp", type=str, default="")
     parser.add_argument("--history", "--his", type=str, default="")
     parser.add_argument("--tts", type=str, default="")

@@ -58,13 +58,6 @@ def register_template_tab(ctx: WebUIContext, character_name_list_len, background
         filename = gr.Textbox(label="保存的文件名", interactive=True)
         save_btn=gr.Button("保存模板")
 
-        voice_mode = gr.Radio(
-            choices=["全语音模式", "预设语音模式"],
-            label="选择语音模式",
-            value="预设语音模式",
-            info="全语音模式中每句台词都生成语音，需要好的显卡、配置好GPT Sovits，预设语音模式只在立绘有语音时播放，对显卡无要求"
-        )
-
         with gr.Row():
             initial_sprite_files = gr.Files(
                 label="选择初始立绘图片（可选）",
@@ -114,10 +107,10 @@ def register_template_tab(ctx: WebUIContext, character_name_list_len, background
         )
 
         launch_btn.click(
-            lambda tpl, vm, init_sp, hist, sbg, ucg, rid: launch_chat(
-                ctx, tpl, vm, init_sp, hist, sbg, ucg, rid
+            lambda tpl, init_sp, hist, sbg, ucg, rid: launch_chat(
+                ctx, tpl, init_sp, hist, sbg, ucg, rid
             ),
-            inputs=[template_output, voice_mode, initial_sprite_files, history_file, selected_bg, use_cg, room_id],
+            inputs=[template_output, initial_sprite_files, history_file, selected_bg, use_cg, room_id],
             outputs=launch_output,
         )
 

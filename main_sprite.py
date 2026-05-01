@@ -91,23 +91,22 @@ def main():
             print(tr_i18n("main_sprite.print_t2i_fail", e=str(e)))
             traceback.print_exc()
 
-    # 创建TTS管理器实例（全语音模式且 api 未选「不使用」时，按设置或命令行的 --tts 加载引擎）
+    # TTS：仅当 API 中语音引擎不是「不使用」时加载；命令行 --tts 可覆盖引擎名（与 api.yaml 一致）
+    gsv_url, gsv_api_path, config_tts_provider = config.get_gpt_sovits_config()
+    adapter_name = (args.tts or "").strip() or config_tts_provider
     tts_manager = None
-    if args.voice_mode == "gen":
-        gsv_url, gsv_api_path, config_tts_provider = config.get_gpt_sovits_config()
-        adapter_name = (args.tts or "").strip() or config_tts_provider
-        if adapter_name and str(adapter_name).strip().lower() not in ("none",):
-            try:
-                adapter = TTSAdapterFactory.create_adapter(
-                    adapter_name=adapter_name,
-                    gpt_sovits_work_path=gsv_api_path,
-                    tts_server_url=gsv_url,
-                )
-                tts_manager = TTSManager(tts_server_url=gsv_url)
-                tts_manager.set_tts_adapter(adapter=adapter)
-            except Exception as e:
-                print(tr_i18n("main_sprite.print_tts_fail", e=str(e)))
-                traceback.print_exc()
+    if adapter_name and str(adapter_name).strip().lower() not in ("none",):
+        try:
+            adapter = TTSAdapterFactory.create_adapter(
+                adapter_name=adapter_name,
+                gpt_sovits_work_path=gsv_api_path,
+                tts_server_url=gsv_url,
+            )
+            tts_manager = TTSManager(tts_server_url=gsv_url)
+            tts_manager.set_tts_adapter(adapter=adapter)
+        except Exception as e:
+            print(tr_i18n("main_sprite.print_tts_fail", e=str(e)))
+            traceback.print_exc()
 
     # 创建DeepSeek实例
     print(tr_i18n("main_sprite.print_load_template", a=args))

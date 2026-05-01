@@ -16,7 +16,6 @@ _main_chat_process = None
 def launch_chat(
     ctx: WebUIContext,
     template: str,
-    voice_mode: str,
     init_sprite_path,
     history_file: str,
     selected_bg: str,
@@ -30,7 +29,6 @@ def launch_chat(
         with open(dest_path, mode="+wt", encoding="utf-8") as file:
             file.write(template)
 
-        voice_mode = "gen" if voice_mode == "全语音模式" else "preset"
         init_path = init_sprite_path[0] if init_sprite_path else ""
         history_file = history_file if history_file else ""
         ctx.config_manager.config.system_config.live_room_id = room_id
@@ -46,7 +44,6 @@ def launch_chat(
                     python_path,
                     "main_sprite.py",
                     "--template=_temp",
-                    f"--voice_mode={voice_mode}",
                     f"--init_sprite_path={init_path}",
                     f"--history={history_file_path.resolve()}",
                     f"--bg={selected_bg}",

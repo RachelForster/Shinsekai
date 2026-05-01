@@ -13,6 +13,8 @@ tiktoken
 pyaudio
 anthropic
 PySide6
+QtPy>=2.4.1
+pyqt-toast-notification>=1.3.3
 pyyaml
 vosk
 faster-whisper

@@ -294,7 +294,7 @@ def register_character_tab(ctx: WebUIContext, character_name_list_len, selected_
                 selected_sprite_info = gr.Textbox(label="当前选中的立绘", interactive=False)
                     
                 # 语音播放组件
-                sprite_voice_player = gr.Audio(label="立绘语音，预设语音模式直接播放，但全语音模式就可以作为参考音频", interactive=False)
+                sprite_voice_player = gr.Audio(label="立绘语音（可在 API 设定中选择是否使用 TTS 引擎合成）", interactive=False)
                     
                 # 语音上传组件
                 voice_upload = gr.Audio(

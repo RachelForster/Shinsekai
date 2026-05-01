@@ -1,6 +1,13 @@
-"""设置窗口内的操作反馈：成功用 pyqt-toast-notification，失败用 QMessageBox。"""
+"""设置窗口内的操作反馈：成功用 Toast（包名 pyqt-toast-notification，内部经 QtPy 走 PySide6），失败用 QMessageBox。
+
+须在导入 ``pyqttoast`` 之前保持 ``QT_API=pyside6``（见上方 ``setdefault``），与全工程 PySide6 一致。
+"""
 
 from __future__ import annotations
+
+import os
+
+os.environ.setdefault("QT_API", "pyside6")
 
 from PySide6.QtWidgets import QMessageBox, QWidget
 
@@ -12,6 +19,7 @@ except ImportError:  # pragma: no cover
 
 _TOAST_MS = 4500
 _TOAST_MAX_W = 420
+_TOAST_BORDER_RADIUS_PX = 12
 
 _FAIL_SUBSTR = (
     "失败",
@@ -52,6 +60,7 @@ def _show_toast(
         t.setText(text)
     t.setMaximumWidth(_TOAST_MAX_W)
     t.applyPreset(ToastPreset.SUCCESS if use_success_style else ToastPreset.INFORMATION)
+    t.setBorderRadius(_TOAST_BORDER_RADIUS_PX)
     t.show()
 
 
