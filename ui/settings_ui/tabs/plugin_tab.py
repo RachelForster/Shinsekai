@@ -1,37 +1,102 @@
-"""插件设置页：管理（卡片网格）与「发现」占位。"""
+"""插件设置页：管理插件（卡片网格）与从远程索引「发现插件」。"""
+
 
 from __future__ import annotations
 
 from collections import defaultdict
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QAbstractItemView,
     QStackedWidget,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from core.plugins.plugin_host import (
+    append_plugin_manifest_entry_if_missing,
     collect_settings_contributions,
     get_plugin_manager,
     read_plugin_manifest_items,
     set_plugin_manifest_enabled,
+)
+from core.plugins.registry_catalog import (
+    DEFAULT_REGISTRY_JSON_URL,
+    RegistryPluginRecord,
+    fetch_registry_error_message,
+    fetch_registry_plugins,
+)
+from core.plugins.registry_download import (
+    download_github_repo_sources,
+    format_download_error,
+    load_downloaded_repos,
+    mark_repo_downloaded,
+    normalize_repo_slug,
 )
 from i18n import tr as tr_i18n
 from sdk.plugin_host_context import PluginSettingsUIContext
 from sdk.types import SettingsUIContribution
 
 from ui.settings_ui.context import SettingsUIContext
-from ui.settings_ui.feedback import message_fail, toast_info
+from ui.settings_ui.feedback import message_fail, toast_info, toast_success
+
+
+class _DiscoverFetchSignals(QObject):
+    finished = Signal(list, str)
+
+
+class _DiscoverFetchTask(QRunnable):
+    """Background GET + JSON parse for plugin registry."""
+
+    def __init__(self, url: str, sig: _DiscoverFetchSignals) -> None:
+        super().__init__()
+        self._url = url
+        self._sig = sig
+        self.setAutoDelete(True)
+
+    def run(self) -> None:
+        try:
+            rows = fetch_registry_plugins(self._url)
+        except Exception as exc:
+            self._sig.finished.emit([], fetch_registry_error_message(exc))
+        else:
+            self._sig.finished.emit(rows, "")
+
+
+class _DownloadSignals(QObject):
+    """repo_norm, ok, error_message (empty if ok)."""
+
+    finished = Signal(str, bool, str)
+
+
+class _DownloadRepoTask(QRunnable):
+    def __init__(self, repo: str, sig: _DownloadSignals) -> None:
+        super().__init__()
+        self._repo = repo
+        self._sig = sig
+        self.setAutoDelete(True)
+
+    def run(self) -> None:
+        norm = normalize_repo_slug(self._repo)
+        try:
+            download_github_repo_sources(self._repo)
+        except Exception as exc:
+            self._sig.finished.emit(norm, False, format_download_error(exc))
+        else:
+            self._sig.finished.emit(norm, True, "")
 
 
 def _resolve_plugin_for_manifest_entry(entry: str, mgr: object | None):
@@ -63,7 +128,11 @@ class PluginSettingsTab(QWidget):
         self._ctx = ctx
         self._plg_ctx = PluginSettingsUIContext.from_settings_ui_context(ctx)
         self._contrib_widgets: dict[str, QWidget] = {}
-
+        self._discover_cache: list[RegistryPluginRecord] | None = None
+        self._discover_busy = False
+        self._discover_fetched_once = False
+        self._download_busy: set[str] = set()
+        self._discover_download_buttons: dict[str, QPushButton] = {}
         self._outer = QStackedWidget(self)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -90,12 +159,60 @@ class PluginSettingsTab(QWidget):
 
         discover_host = QWidget()
         dv = QVBoxLayout(discover_host)
-        dv.setContentsMargins(16, 24, 16, 24)
-        ph = QLabel(tr_i18n("plugins.discover_placeholder"))
-        ph.setWordWrap(True)
-        ph.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        dv.addWidget(ph)
-        dv.addStretch(1)
+        dv.setContentsMargins(4, 8, 4, 8)
+        toolbar = QHBoxLayout()
+        self._discover_refresh_btn = QPushButton(tr_i18n("plugins.discover_refresh"))
+        self._discover_refresh_btn.clicked.connect(self._refresh_discover_catalog)
+        toolbar.addWidget(self._discover_refresh_btn)
+        toolbar.addStretch(1)
+        dv.addLayout(toolbar)
+        self._discover_registry_hint = QLabel()
+        self._discover_registry_hint.setOpenExternalLinks(True)
+        self._discover_registry_hint.setWordWrap(True)
+        dv.addWidget(self._discover_registry_hint)
+        self._discover_status = QLabel()
+        self._discover_status.setWordWrap(True)
+        self._discover_status.setVisible(False)
+        dv.addWidget(self._discover_status)
+
+        self._discover_table_hint = QLabel()
+        self._discover_table_hint.setWordWrap(True)
+        self._discover_table_hint.setVisible(False)
+        dv.addWidget(self._discover_table_hint)
+
+        self._discover_table = QTableWidget(0, 4)
+        self._discover_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self._discover_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._discover_table.setAlternatingRowColors(True)
+        self._discover_table.setShowGrid(True)
+        self._discover_table.setWordWrap(True)
+        self._discover_table.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self._discover_table.verticalHeader().setVisible(False)
+        vh = self._discover_table.verticalHeader()
+        vh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        vh.setMinimumSectionSize(28)
+        self._discover_table.setStyleSheet(
+            "QTableWidget { gridline-color: palette(mid); }\n"
+            "QHeaderView::section { padding: 4px 8px; font-weight: bold; }\n"
+            "QTableWidget::item { padding: 4px 8px; }"
+        )
+        hh = self._discover_table.horizontalHeader()
+        hh.setStretchLastSection(False)
+        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+
+        dv.addWidget(self._discover_table, stretch=1)
+
+        self._discover_fetch_signals = _DiscoverFetchSignals(self)
+        self._discover_fetch_signals.finished.connect(self._on_discover_catalog_finished)
+        self._download_signals = _DownloadSignals(self)
+        self._download_signals.finished.connect(self._on_repo_download_finished)
+        sub_tabs.currentChanged.connect(self._on_plugin_subtab_changed)
+
         sub_tabs.addTab(discover_host, tr_i18n("plugins.tab_discover"))
 
         lp_lay.addWidget(sub_tabs)
@@ -119,13 +236,230 @@ class PluginSettingsTab(QWidget):
         self._outer.addWidget(detail)
 
         self._outer.setCurrentIndex(0)
+        self._discover_registry_hint.setText(tr_i18n("plugins.discover_registry_hint_html"))
+        self._discover_apply_table_headers()
+        self._repaint_discover_catalog_grid()
         self._refresh_cards()
 
     def apply_i18n(self) -> None:
         self._sub_tabs.setTabText(0, tr_i18n("plugins.tab_manage"))
         self._sub_tabs.setTabText(1, tr_i18n("plugins.tab_discover"))
         self._back_btn.setText(tr_i18n("plugins.back"))
+        self._discover_refresh_btn.setText(tr_i18n("plugins.discover_refresh"))
+        self._discover_registry_hint.setText(tr_i18n("plugins.discover_registry_hint_html"))
+        self._discover_apply_table_headers()
+        self._repaint_discover_catalog_grid()
         self._refresh_cards()
+
+    def _on_plugin_subtab_changed(self, index: int) -> None:
+        if index != 1 or self._discover_fetched_once or self._discover_busy:
+            return
+        self._discover_fetched_once = True
+        self._refresh_discover_catalog()
+
+    def _refresh_discover_catalog(self) -> None:
+        if self._discover_busy:
+            return
+        self._discover_busy = True
+        self._discover_refresh_btn.setEnabled(False)
+        self._discover_status.setText(tr_i18n("plugins.discover_loading"))
+        self._discover_status.setVisible(True)
+        QThreadPool.globalInstance().start(
+            _DiscoverFetchTask(DEFAULT_REGISTRY_JSON_URL, self._discover_fetch_signals)
+        )
+
+    @Slot(list, str)
+    def _on_discover_catalog_finished(self, rows: list, err: str) -> None:
+        self._discover_busy = False
+        self._discover_refresh_btn.setEnabled(True)
+        self._discover_status.clear()
+        self._discover_status.setVisible(False)
+        if err:
+            self._discover_status.setText(tr_i18n("plugins.discover_error", detail=err))
+            self._discover_status.setVisible(True)
+            message_fail(self, tr_i18n("plugins.discover_error_title"), err)
+            return
+        cast_rows = [r for r in rows if isinstance(r, RegistryPluginRecord)]
+        self._discover_cache = cast_rows
+        self._repaint_discover_catalog_grid()
+
+    def _discover_apply_table_headers(self) -> None:
+        self._discover_table.setHorizontalHeaderLabels(
+            [
+                tr_i18n("plugins.discover_col_name"),
+                tr_i18n("plugins.discover_col_author"),
+                tr_i18n("plugins.discover_col_desc"),
+                tr_i18n("plugins.discover_col_actions"),
+            ]
+        )
+
+    def _repaint_discover_catalog_grid(self) -> None:
+        self._discover_table.clearContents()
+        self._discover_table.setRowCount(0)
+        self._discover_download_buttons.clear()
+
+        if self._discover_cache is None:
+            self._discover_table_hint.setText(tr_i18n("plugins.discover_intro"))
+            self._discover_table_hint.setVisible(True)
+            return
+        if not self._discover_cache:
+            self._discover_table_hint.setText(tr_i18n("plugins.discover_empty"))
+            self._discover_table_hint.setVisible(True)
+            return
+
+        self._discover_table_hint.setVisible(False)
+        downloaded = load_downloaded_repos()
+        items = self._discover_cache
+        self._discover_table.setRowCount(len(items))
+        flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+
+        for row, rec in enumerate(items):
+            desc_full = (rec.description or tr_i18n("plugins.discover_no_description")).strip()
+
+            it_name = QTableWidgetItem(rec.name)
+            it_name.setToolTip(rec.name)
+            it_name.setFlags(flags)
+            it_name.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            self._discover_table.setItem(row, 0, it_name)
+
+            auth = rec.author or "—"
+            it_auth = QTableWidgetItem(auth)
+            it_auth.setToolTip(auth)
+            it_auth.setFlags(flags)
+            it_auth.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            self._discover_table.setItem(row, 1, it_auth)
+
+            it_desc = QTableWidgetItem(desc_full)
+            it_desc.setToolTip(desc_full)
+            it_desc.setFlags(flags)
+            it_desc.setTextAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+            self._discover_table.setItem(row, 2, it_desc)
+
+            self._discover_table.setCellWidget(
+                row,
+                3,
+                self._make_discover_actions_row(rec, downloaded),
+            )
+
+        self._discover_table.resizeRowsToContents()
+        self._discover_table.resizeColumnToContents(3)
+
+    def _make_discover_actions_row(
+        self,
+        rec: RegistryPluginRecord,
+        downloaded: set[str],
+    ) -> QWidget:
+        host = QWidget()
+        host.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Maximum)
+        outer = QVBoxLayout(host)
+        outer.setContentsMargins(4, 2, 4, 2)
+        outer.setSpacing(0)
+        outer.addStretch(1)
+
+        row = QWidget()
+        row.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Maximum)
+        lay = QHBoxLayout(row)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+
+        repo_norm = normalize_repo_slug(rec.repo) if rec.repo.strip() else ""
+        dl_btn = QPushButton()
+
+        if not rec.repo.strip():
+            dl_btn.setText(tr_i18n("plugins.discover_download"))
+            dl_btn.setEnabled(False)
+            dl_btn.setToolTip(tr_i18n("plugins.discover_no_repo_tooltip"))
+        elif repo_norm in downloaded:
+            dl_btn.setText(tr_i18n("plugins.discover_downloaded"))
+            dl_btn.setEnabled(False)
+            dl_btn.setToolTip(tr_i18n("plugins.discover_downloaded_tooltip"))
+        elif repo_norm in self._download_busy:
+            dl_btn.setText(tr_i18n("plugins.discover_downloading"))
+            dl_btn.setEnabled(False)
+        else:
+            dl_btn.setText(tr_i18n("plugins.discover_download"))
+            dl_btn.setToolTip(tr_i18n("plugins.discover_download_tooltip"))
+            dl_btn.clicked.connect(
+                lambda checked=False, r=rec.repo, b=dl_btn: self._start_repo_download(r, b)
+            )
+            self._discover_download_buttons[repo_norm] = dl_btn
+
+        lay.addWidget(dl_btn)
+
+        gh_btn = QPushButton(tr_i18n("plugins.discover_open_github_short"))
+        if rec.repo.strip():
+            gh_btn.clicked.connect(
+                lambda *, u=rec.github_url(): QDesktopServices.openUrl(QUrl(u))
+            )
+        else:
+            gh_btn.setEnabled(False)
+        lay.addWidget(gh_btn)
+
+        for b in (dl_btn, gh_btn):
+            b.setMinimumWidth(max(b.sizeHint().width() + 8, 56))
+
+        outer.addWidget(row)
+        outer.addStretch(1)
+        return host
+
+    def _start_repo_download(self, repo: str, btn: QPushButton) -> None:
+        norm = normalize_repo_slug(repo)
+        if norm in self._download_busy or not norm:
+            return
+        self._download_busy.add(norm)
+        btn.setEnabled(False)
+        btn.setText(tr_i18n("plugins.discover_downloading"))
+        QThreadPool.globalInstance().start(_DownloadRepoTask(repo, self._download_signals))
+
+    def _registry_entry_for_repo_norm(self, repo_norm: str) -> str:
+        cache = self._discover_cache
+        if not cache:
+            return ""
+        for rec in cache:
+            if normalize_repo_slug(rec.repo) == repo_norm:
+                return (rec.entry or "").strip()
+        return ""
+
+    @Slot(str, bool, str)
+    def _on_repo_download_finished(self, repo_norm: str, ok: bool, message: str) -> None:
+        self._download_busy.discard(repo_norm)
+        if ok:
+            mark_repo_downloaded(repo_norm)
+            base = tr_i18n("plugins.discover_download_ok_body")
+            entry_line = self._registry_entry_for_repo_norm(repo_norm)
+            detail = ""
+            if entry_line:
+                try:
+                    outcome = append_plugin_manifest_entry_if_missing(
+                        entry_line, enabled=True
+                    )
+                    if outcome == "added":
+                        detail = tr_i18n("plugins.manifest_auto_added")
+                    elif outcome == "exists":
+                        detail = tr_i18n("plugins.manifest_auto_exists")
+                    self._refresh_cards()
+                except OSError as exc:
+                    message_fail(
+                        self,
+                        tr_i18n("plugins.manifest_auto_fail_title"),
+                        str(exc),
+                    )
+                    detail = tr_i18n("plugins.manifest_auto_fail_hint")
+            else:
+                detail = tr_i18n("plugins.manifest_auto_skip_no_entry")
+            body = f"{base}\n\n{detail}" if detail else base
+            toast_success(
+                self,
+                tr_i18n("plugins.discover_download_ok_title"),
+                body,
+            )
+        else:
+            message_fail(
+                self,
+                tr_i18n("plugins.discover_download_fail_title"),
+                message or tr_i18n("plugins.discover_download_fail_body"),
+            )
+        self._repaint_discover_catalog_grid()
 
     def _contributions_by_plugin(self) -> dict[str, list[SettingsUIContribution]]:
         by_pid: defaultdict[str, list[SettingsUIContribution]] = defaultdict(list)

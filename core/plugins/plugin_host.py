@@ -225,3 +225,42 @@ def set_plugin_manifest_enabled(entry: str, enabled: bool, path: Path | None = N
     if changed:
         write_plugin_manifest_items(items, path)
     return changed
+
+
+def normalize_manifest_entry(entry: str) -> str:
+    """
+    Registry rows often omit the repo-local package root; downloaded plugins live under
+    ``plugins/``, so ensure ``entry`` uses the ``plugins.`` module prefix when absent.
+    """
+    norm = entry.strip()
+    if not norm:
+        return norm
+    if norm.startswith("plugins."):
+        return norm
+    return f"plugins.{norm}"
+
+
+def append_plugin_manifest_entry_if_missing(
+    entry: str,
+    *,
+    enabled: bool = True,
+    path: Path | None = None,
+) -> str:
+    """
+    Append ``- entry: …`` row if not already present (strip-wise match on entry).
+
+    ``entry`` is normalized with :func:`normalize_manifest_entry` (``plugins.`` prefix).
+
+    Returns ``"added"`` | ``"exists"`` | ``"empty"``.
+    """
+    norm = normalize_manifest_entry(entry)
+    if not norm:
+        return "empty"
+    items = read_plugin_manifest_items(path)
+    for item in items:
+        e = item.get("entry")
+        if isinstance(e, str) and e.strip() == norm:
+            return "exists"
+    items.append({"entry": norm, "enabled": bool(enabled)})
+    write_plugin_manifest_items(items, path)
+    return "added"
