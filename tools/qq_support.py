@@ -56,7 +56,17 @@ class QQWebSocketClient:
         self.target_id = target_id
         self.client_id = str(uuid.uuid4())  # 唯一客户端ID
         llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
-        llm_adapter = LLMAdapterFactory.create_adapter(llm_provider=llm_provider, api_key=api_key, base_url=base_url, model = llm_model)
+        llm_adapter = LLMAdapterFactory.create_adapter(
+            **config.merged_llm_factory_kwargs(
+                llm_provider,
+                {
+                    "llm_provider": llm_provider,
+                    "api_key": api_key,
+                    "base_url": base_url,
+                    "model": llm_model,
+                },
+            )
+        )
         self.current_msg = ''
         self.llm_manager = LLMManager(llm_adapter, user_template=USER_TEMPLATE)
 

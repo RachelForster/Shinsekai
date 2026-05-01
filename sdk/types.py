@@ -57,12 +57,17 @@ class ToolsTabContribution:
 
     ``build`` receives :class:`~sdk.plugin_host_context.PluginSettingsUIContext` only
     (same restricted surface as settings pages). ``tab_id`` must be unique.
+
+    ``plugin_id`` / ``plugin_version`` are injected by the host during
+    :meth:`~sdk.plugin.PluginBase.initialize` when omitted.
     """
 
     tab_id: str
     title: str
     build: Callable[[PluginSettingsUIContext], QWidget]
     order: float = 100.0
+    plugin_id: str | None = None
+    plugin_version: str | None = None
 
 
 @dataclass(frozen=True)

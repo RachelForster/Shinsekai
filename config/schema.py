@@ -85,6 +85,23 @@ class ApiConfig(BaseModel):
 
     hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
 
+    llm_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="LLM 适配器扩展参数：provider 名 -> 字段名 -> 值",
+    )
+    tts_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="TTS 适配器扩展参数：引擎 slug -> 字段名 -> 值",
+    )
+    asr_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="ASR 适配器扩展参数：后端 slug -> 字段名 -> 值",
+    )
+    t2i_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="T2I 适配器扩展参数：引擎名（如 comfyui） -> 字段名 -> 值",
+    )
+
 # System Config Model
 class SystemConfig(BaseModel):
     """系统相关的通用配置"""

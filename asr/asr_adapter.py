@@ -1,12 +1,19 @@
-from i18n import normalize_lang
-from sdk.adapters import ASRAdapter, TranscriptionCallback
+from __future__ import annotations
+
 import json
 import logging
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Optional
+
+from i18n import normalize_lang
+from sdk.adapters.asr import ASRAdapter, TranscriptionCallback
+
+# Vosk 模型默认路径（可按本机下载模型修改）
+VOSK_MODEL_PATH = "./assets/system/models/vosk-model-small-cn-0.22"
 
 
 def get_asr_log() -> logging.Logger:
@@ -29,6 +36,58 @@ def get_asr_log() -> logging.Logger:
 
 
 _log = get_asr_log()
+
+
+def voice_ui_to_asr_lang(voice_ui: str) -> str:
+    """将 system_config.voice_language（及菜单所选）映射到 ASR / Whisper 语言代码。"""
+    s = (voice_ui or "zh").strip().lower().replace("-", "_")
+    if s.startswith("zh"):
+        return "zh"
+    if s in ("ja", "jp"):
+        return "ja"
+    if s.startswith("en"):
+        return "en"
+    if s in ("yue", "cantonese", "zh_yue"):
+        # Whisper 无 yue 独立码，粤语会话用 zh 识别常可接受
+        return "zh"
+    return "zh"
+
+
+def ui_lang_to_asr_lang(ui_lang: str | None) -> str:
+    """将 system_config.ui_language（zh_CN / en / ja）映射到 ASR 语言代码。"""
+    code = normalize_lang(ui_lang)
+    if code == "en":
+        return "en"
+    if code == "ja":
+        return "ja"
+    return "zh"
+
+
+def system_config_to_asr_lang(sys_cfg: Any) -> str:
+    """asr_language 非空则用其映射，否则与 ui_language 一致。"""
+    raw = getattr(sys_cfg, "asr_language", None)
+    if raw is not None and str(raw).strip():
+        return voice_ui_to_asr_lang(str(raw))
+    return ui_lang_to_asr_lang(str(getattr(sys_cfg, "ui_language", "") or ""))
+
+
+def _whisper_triplet_from_sys(sys_cfg: Any) -> tuple[str, str, str]:
+    """从 system_config 读取 Whisper / RealtimeSTT 共用的模型与设备选项。"""
+    return (
+        str(getattr(sys_cfg, "asr_whisper_model_size", None) or "small"),
+        str(getattr(sys_cfg, "asr_whisper_device", None) or "auto"),
+        str(getattr(sys_cfg, "asr_whisper_compute_type", None) or ""),
+    )
+
+
+def normalize_asr_provider_storage_key(prov: str) -> str:
+    """与 API 页 ASR 下拉 userData 一致的存储键（vosk / faster_whisper / realtime_stt）。"""
+    p = (prov or "vosk").strip().lower().replace("-", "_")
+    if p in ("faster_whisper", "fasterwhisper", "whisper"):
+        return "faster_whisper"
+    if p in ("realtime_stt", "realtimestt"):
+        return "realtime_stt"
+    return "vosk"
 
 
 def _realtimestt_compute_sanitize(device: str, user_pref: str) -> str:
@@ -151,8 +210,6 @@ class RealtimeSTTAdapter(ASRAdapter):
         )
 
     def _text_loop(self) -> None:
-        import time
-
         cycle = 0
         while self._is_running:
             if self._paused:
@@ -290,23 +347,35 @@ class RealtimeSTTAdapter(ASRAdapter):
         except Exception:
             _log.exception("RealtimeSTT resume: listen() failed")
 
-
-# Vosk 模型的路径（请根据实际下载的模型路径修改）
-VOSK_MODEL_PATH = "./assets/system/models/vosk-model-small-cn-0.22"
-
 class VoskAdapter(ASRAdapter):
     """
     Vosk 库的适配器。
     将 Vosk 的流式处理逻辑映射到 ASRAdapter 接口。
     """
-    def __init__(self, language: str, callback: TranscriptionCallback, model_path: str = VOSK_MODEL_PATH):
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, dict]:
+        return {
+            "model_path": {
+                "type": "str",
+                "label": "Vosk model path",
+                "default": VOSK_MODEL_PATH,
+            }
+        }
+
+    def __init__(
+        self,
+        language: str,
+        callback: TranscriptionCallback,
+        model_path: str = VOSK_MODEL_PATH,
+    ):
+        super().__init__(language, callback)
         # 禁止在模块顶层 import vosk：会立刻执行其 open_dll/add_dll_directory，冻结时路径常无效。
         import pyaudio
         from vosk import Model, KaldiRecognizer  # noqa: E402
 
         self._pyaudio = pyaudio
         self._KaldiRecognizer = KaldiRecognizer
-        super().__init__(language, callback)
         self.model_path = Path(model_path).absolute().as_posix()
         self._is_running = False
         self._thread: Optional[threading.Thread] = None
@@ -347,7 +416,6 @@ class VoskAdapter(ASRAdapter):
         while self._is_running:
             if not self._pause_event.is_set():
                 # 如果处于暂停状态，休眠一小会，避免占用 CPU
-                import time
                 time.sleep(0.1)
                 continue
 
@@ -380,7 +448,6 @@ class VoskAdapter(ASRAdapter):
 
         _log.info("Vosk starting…")
         self._is_running = True
-        import threading # 仅在需要时导入
         self._thread = threading.Thread(target=self._vosk_recognition_loop)
         self._thread.start()
         _log.info("Vosk started")
@@ -411,39 +478,6 @@ class VoskAdapter(ASRAdapter):
         if self._is_running:
             _log.info("Vosk resume")
             self._pause_event.set()  # 设置为运行状态
-
-
-def voice_ui_to_asr_lang(voice_ui: str) -> str:
-    """将 system_config.voice_language（及菜单所选）映射到 ASR / Whisper 语言代码。"""
-    s = (voice_ui or "zh").strip().lower().replace("-", "_")
-    if s.startswith("zh"):
-        return "zh"
-    if s in ("ja", "jp"):
-        return "ja"
-    if s.startswith("en"):
-        return "en"
-    if s in ("yue", "cantonese", "zh_yue"):
-        # Whisper 无 yue 独立码，粤语会话用 zh 识别常可接受
-        return "zh"
-    return "zh"
-
-
-def ui_lang_to_asr_lang(ui_lang: str | None) -> str:
-    """将 system_config.ui_language（zh_CN / en / ja）映射到 ASR 语言代码。"""
-    code = normalize_lang(ui_lang)
-    if code == "en":
-        return "en"
-    if code == "ja":
-        return "ja"
-    return "zh"
-
-
-def system_config_to_asr_lang(sys_cfg: Any) -> str:
-    """asr_language 非空则用其映射，否则与 ui_language 一致。"""
-    raw = getattr(sys_cfg, "asr_language", None)
-    if raw is not None and str(raw).strip():
-        return voice_ui_to_asr_lang(str(raw))
-    return ui_lang_to_asr_lang(str(getattr(sys_cfg, "ui_language", "") or ""))
 
 
 def _resolve_whisper_device_compute(device_pref: str, compute_pref: str) -> tuple[str, str]:
@@ -501,6 +535,19 @@ class FasterWhisperAdapter(ASRAdapter):
     MIN_UTTER_SAMPLES = int(16000 * 0.9)
     PARTIAL_EVERY_SAMPLES = int(16000 * 1.4)
     SILENCE_SAMPLES_END = int(0.42 * 16000)
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, dict]:
+        return {
+            "rms_threshold": {
+                "type": "float",
+                "label": "RMS threshold",
+                "default": 38.0,
+                "min": 1.0,
+                "max": 500.0,
+                "step": 0.5,
+            }
+        }
 
     def __init__(
         self,
@@ -597,8 +644,6 @@ class FasterWhisperAdapter(ASRAdapter):
 
         while self._is_running:
             if not self._pause_event.is_set():
-                import time
-
                 time.sleep(0.08)
                 continue
             try:
@@ -690,33 +735,31 @@ class FasterWhisperAdapter(ASRAdapter):
 
 def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
     """按 data/config/system_config.yaml 中 asr_provider 创建默认 ASR 适配器。"""
+    from config.adapter_extra_kwargs import filter_kwargs_for_ctor
     from config.config_manager import ConfigManager
 
     sys_cfg = ConfigManager().config.system_config
     lang = system_config_to_asr_lang(sys_cfg)
     prov = (sys_cfg.asr_provider or "vosk").strip().lower().replace("-", "_")
+    storage_key = normalize_asr_provider_storage_key(prov)
+    extras = ConfigManager().get_adapter_extra_config("asr", storage_key)
+    model_sz, dev, ct = _whisper_triplet_from_sys(sys_cfg)
     _log.info(
         "create_default_asr_adapter: provider=%r language=%r whisper_model=%r device=%r compute=%r",
         prov,
         lang,
-        getattr(sys_cfg, "asr_whisper_model_size", ""),
-        getattr(sys_cfg, "asr_whisper_device", ""),
-        getattr(sys_cfg, "asr_whisper_compute_type", ""),
+        model_sz,
+        dev,
+        ct,
     )
     if prov in ("faster_whisper", "fasterwhisper", "whisper"):
-        return FasterWhisperAdapter(
-            lang,
-            callback,
-            model_size=str(sys_cfg.asr_whisper_model_size or "small"),
-            device=str(sys_cfg.asr_whisper_device or "auto"),
-            compute_type=str(sys_cfg.asr_whisper_compute_type or ""),
-        )
+        _kw = filter_kwargs_for_ctor(FasterWhisperAdapter, extras)
+        _kw.update(model_size=model_sz, device=dev, compute_type=ct)
+        return FasterWhisperAdapter(lang, callback, **_kw)
     if prov in ("realtime_stt", "realtimestt"):
-        return RealtimeSTTAdapter(
-            lang,
-            callback,
-            model_name=str(sys_cfg.asr_whisper_model_size or "small"),
-            device=str(sys_cfg.asr_whisper_device or "auto"),
-            compute_type=str(sys_cfg.asr_whisper_compute_type or ""),
-        )
-    return VoskAdapter(language=lang, callback=callback)
+        _kw = filter_kwargs_for_ctor(RealtimeSTTAdapter, extras)
+        _kw.update(model_name=model_sz, device=dev, compute_type=ct)
+        return RealtimeSTTAdapter(lang, callback, **_kw)
+    _kw = filter_kwargs_for_ctor(VoskAdapter, extras)
+    model_path = str(_kw.get("model_path") or VOSK_MODEL_PATH)
+    return VoskAdapter(language=lang, callback=callback, model_path=model_path)

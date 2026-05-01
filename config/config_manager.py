@@ -282,6 +282,88 @@ class ConfigManager:
             self.config.api_config.tts_provider
         )
 
+    def get_adapter_extra_config(self, kind: str, provider_key: str) -> Dict[str, Any]:
+        """读取某类适配器在指定 provider/slug 下的扩展配置（扁平 dict）。"""
+        pk = (provider_key or "").strip()
+        if self._config is None:
+            return {}
+        ac = self.config.api_config
+        if kind == "llm":
+            src = ac.llm_extra_configs or {}
+        elif kind == "tts":
+            src = ac.tts_extra_configs or {}
+        elif kind == "asr":
+            src = ac.asr_extra_configs or {}
+        elif kind == "t2i":
+            src = ac.t2i_extra_configs or {}
+        else:
+            return {}
+        return dict(src.get(pk, {}) or {})
+
+    def set_adapter_extra_config(self, kind: str, provider_key: str, data: Dict[str, Any]) -> None:
+        """写入扩展配置到内存中的 ApiConfig（需配合 save_api_config 或 save_api_config_new 持久化）。"""
+        if self._config is None:
+            return
+        pk = (provider_key or "").strip()
+        ac = self.config.api_config.model_copy(deep=True)
+        if kind == "llm":
+            m = dict(ac.llm_extra_configs or {})
+            m[pk] = dict(data)
+            ac.llm_extra_configs = m
+        elif kind == "tts":
+            m = dict(ac.tts_extra_configs or {})
+            m[pk] = dict(data)
+            ac.tts_extra_configs = m
+        elif kind == "asr":
+            m = dict(ac.asr_extra_configs or {})
+            m[pk] = dict(data)
+            ac.asr_extra_configs = m
+        elif kind == "t2i":
+            m = dict(ac.t2i_extra_configs or {})
+            m[pk] = dict(data)
+            ac.t2i_extra_configs = m
+        else:
+            return
+        self.config.api_config = ac
+
+    def merged_llm_factory_kwargs(self, llm_provider: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        from config.adapter_extra_kwargs import filter_kwargs_for_ctor
+        from llm.llm_manager import LLMAdapterFactory
+
+        cls = LLMAdapterFactory._adapters.get(llm_provider)
+        out = dict(base_kwargs)
+        if cls is None:
+            return out
+        extra = self.get_adapter_extra_config("llm", llm_provider)
+        out.update(filter_kwargs_for_ctor(cls, extra))
+        return out
+
+    def merged_tts_factory_kwargs(self, adapter_name: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        from config.adapter_extra_kwargs import filter_kwargs_for_ctor
+        from tts.tts_manager import TTSAdapterFactory
+
+        slug = (adapter_name or "").strip().lower()
+        cls = TTSAdapterFactory._adapters.get(slug)
+        out = dict(base_kwargs)
+        if cls is None:
+            return out
+        extra = self.get_adapter_extra_config("tts", slug)
+        out.update(filter_kwargs_for_ctor(cls, extra))
+        return out
+
+    def merged_t2i_factory_kwargs(self, adapter_name: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        from config.adapter_extra_kwargs import filter_kwargs_for_ctor
+        from t2i.t2i_manager import T2IAdapterFactory
+
+        name = (adapter_name or "").strip().lower()
+        cls = T2IAdapterFactory._adapters.get(name)
+        out = dict(base_kwargs)
+        if cls is None:
+            return out
+        extra = self.get_adapter_extra_config("t2i", name)
+        out.update(filter_kwargs_for_ctor(cls, extra))
+        return out
+
     def get_base_font_size(self) -> int:
         """获取基础字体大小"""
         return self.config.system_config.base_font_size_px

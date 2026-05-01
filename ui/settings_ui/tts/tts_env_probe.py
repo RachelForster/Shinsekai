@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import platform
 import re
+import shutil
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -54,6 +57,103 @@ def _vram_gb(info: dict[str, Any]) -> float:
         return float(info.get("vram_gb", 0) or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _needs_display_enrichment(info: dict[str, Any]) -> bool:
+    """Names missing after DXGI/WMI (common in PyInstaller); VRAM may still be valid."""
+
+    def _bad(x: object) -> bool:
+        s = str(x or "").strip().lower()
+        return not s or s in ("unknown", "generic", "?", "n/a", "na", "other")
+
+    return _bad(info.get("vendor")) or _bad(info.get("device"))
+
+
+def _nvidia_smi_query_gpus() -> list[tuple[str, float]]:
+    """Return [(gpu_name, vram_gb), ...] via driver CLI (reliable in frozen builds)."""
+    exe = shutil.which("nvidia-smi")
+    if not exe:
+        return []
+    cmd = [
+        exe,
+        "--query-gpu=name,memory.total",
+        "--format=csv,noheader,nounits",
+    ]
+    kwargs: dict[str, Any] = {
+        "args": cmd,
+        "capture_output": True,
+        "text": True,
+        "timeout": 8,
+    }
+    if sys.platform == "win32":
+        cr = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if cr:
+            kwargs["creationflags"] = cr
+    try:
+        proc = subprocess.run(**kwargs)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if proc.returncode != 0:
+        return []
+    stdout = (proc.stdout or "").strip()
+    if not stdout:
+        return []
+    rows: list[tuple[str, float]] = []
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split(",", 1)]
+        if len(parts) < 2:
+            continue
+        name, mem_s = parts[0], parts[1]
+        try:
+            mem_mib = float(re.sub(r"[^\d.]", "", mem_s) or "nan")
+        except ValueError:
+            continue
+        if mem_mib != mem_mib:
+            continue
+        rows.append((name, mem_mib / 1024.0))
+    return rows
+
+
+def _enrich_gpu_entries_with_nvidia_smi(
+    gpus: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows = _nvidia_smi_query_gpus()
+    if not rows:
+        return list(gpus)
+
+    out = [dict(g) for g in gpus]
+    need_idx = [i for i, g in enumerate(out) if _needs_display_enrichment(g)]
+    if not need_idx:
+        return out
+
+    used_nv: set[int] = set()
+    for i in need_idx:
+        vram = _vram_gb(out[i])
+        best_j: int | None = None
+        best_diff = 1e9
+        for j, (_, gb_sm) in enumerate(rows):
+            if j in used_nv:
+                continue
+            diff = abs(vram - gb_sm) if vram > 0.15 else 0.0
+            if diff < best_diff:
+                best_diff = diff
+                best_j = j
+        if best_j is None:
+            continue
+        name, gb_sm = rows[best_j]
+        if vram > 0.15 and best_diff > 2.25:
+            continue
+        if vram <= 0.15 and len(rows) > 1 and len(need_idx) > 1:
+            continue
+        used_nv.add(best_j)
+        out[i]["vendor"] = "NVIDIA"
+        out[i]["device"] = name
+        if vram <= 0.15:
+            out[i]["vram_gb"] = round(gb_sm, 2)
+    return out
 
 
 def is_rtx_50_series(device: str) -> bool:
@@ -128,12 +228,30 @@ def get_default_project_root() -> Path:
 
 def get_gpu_list() -> list[dict[str, Any]]:
     if _gpu_get_info is None:
-        return []
+        rows = _nvidia_smi_query_gpus()
+        if not rows:
+            return []
+        return [
+            {"vendor": "NVIDIA", "device": name, "vram_gb": round(gb, 2)}
+            for name, gb in rows
+        ]
     try:
         out = _gpu_get_info()
-        return out if isinstance(out, list) else []
+        gpus = out if isinstance(out, list) else []
     except Exception:  # pragma: no cover
         return []
+
+    enriched = _enrich_gpu_entries_with_nvidia_smi(gpus)
+    if gpus:
+        return enriched
+
+    rows = _nvidia_smi_query_gpus()
+    if rows:
+        return [
+            {"vendor": "NVIDIA", "device": name, "vram_gb": round(gb, 2)}
+            for name, gb in rows
+        ]
+    return []
 
 
 def format_platform() -> str:

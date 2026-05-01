@@ -7,7 +7,7 @@ import time
 import requests
 from typing import Optional, Dict, Any
 
-from sdk.adapters import T2IAdapter
+from sdk.adapters.t2i import T2IAdapter
 
 
 class StableDiffusionAdapter(T2IAdapter):

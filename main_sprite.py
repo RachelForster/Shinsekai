@@ -80,11 +80,16 @@ def main():
         try:
             t2i_adapter = T2IAdapterFactory.create_adapter(
                 adapter_name=args.t2i,
-                work_path=config.config.api_config.t2i_work_path,
-                api_url=config.config.api_config.t2i_api_url,
-                workflow_path=config.config.api_config.t2i_default_workflow_path,
-                prompt_node_id=config.config.api_config.t2i_prompt_node_id,
-                output_node_id=config.config.api_config.t2i_output_node_id,
+                **config.merged_t2i_factory_kwargs(
+                    args.t2i,
+                    {
+                        "work_path": config.config.api_config.t2i_work_path,
+                        "api_url": config.config.api_config.t2i_api_url,
+                        "workflow_path": config.config.api_config.t2i_default_workflow_path,
+                        "prompt_node_id": config.config.api_config.t2i_prompt_node_id,
+                        "output_node_id": config.config.api_config.t2i_output_node_id,
+                    },
+                ),
             )
             t2i_manager = T2IManager(t2i_adapter)
         except Exception as e:
@@ -99,8 +104,13 @@ def main():
         try:
             adapter = TTSAdapterFactory.create_adapter(
                 adapter_name=adapter_name,
-                gpt_sovits_work_path=gsv_api_path,
-                tts_server_url=gsv_url,
+                **config.merged_tts_factory_kwargs(
+                    adapter_name,
+                    {
+                        "gpt_sovits_work_path": gsv_api_path,
+                        "tts_server_url": gsv_url,
+                    },
+                ),
             )
             tts_manager = TTSManager(tts_server_url=gsv_url)
             tts_manager.set_tts_adapter(adapter=adapter)
@@ -128,10 +138,15 @@ def main():
         print(tr_i18n("main_sprite.err_select_llm"))
         return
     llm_adapter = LLMAdapterFactory.create_adapter(
-        llm_provider=llm_provider,
-        api_key=api_key,
-        base_url=base_url,
-        model=llm_model,
+        **config.merged_llm_factory_kwargs(
+            llm_provider,
+            {
+                "llm_provider": llm_provider,
+                "api_key": api_key,
+                "base_url": base_url,
+                "model": llm_model,
+            },
+        )
     )
     llm_manager = LLMManager(
         adapter=llm_adapter,

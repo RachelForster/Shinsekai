@@ -1,44 +1,19 @@
 """
 SDK for Easy AI Desktop Assistant plugins.
 
-- :class:`~sdk.plugin.PluginBase` — minimal lifecycle/meta plugin contract.
-- :class:`sdk.manager.PluginManager` — load manifests, instantiate, aggregate.
-- :class:`~sdk.register.PluginCapabilityRegistry` — capabilities passed to :meth:`~sdk.plugin.PluginBase.initialize` (alias ``PluginRegister``).
-- :class:`~sdk.register.PluginDiscoveryRegistry` — manifest / class discovery before instantiation.
-- :mod:`sdk.adapters` — abstract :class:`~sdk.adapters.LLMAdapter`, :class:`~sdk.adapters.TTSAdapter`, :class:`~sdk.adapters.ASRAdapter`, :class:`~sdk.adapters.T2IAdapter`.
-- :func:`~sdk.tool_registry.tool` — declare LLM tools without touching :class:`~llm.tools.tool_manager.ToolManager`; host calls :func:`~sdk.tool_registry.apply_registered_tools` during startup.
-- :class:`~sdk.plugin_host_context.PluginHostContext` / :class:`~sdk.plugin_host_context.PluginSettingsUIContext` — read-only host snapshots for plugins (no API keys or save APIs).
-- Contribution dataclasses in :mod:`sdk.types`.
+Developer CLI (run from this repository root)::
+
+    python -m sdk.cli --help
+
+Heavy imports (Qt, managers, …) load lazily so ``python -m sdk.cli`` works in
+minimal environments. Use explicit submodule imports when possible, e.g.
+``from sdk.plugin import PluginBase``.
 """
 
-from sdk.manager import PluginManager
-from sdk.plugin import PluginBase
-from sdk.plugin_host_context import PluginHostContext, PluginSettingsUIContext
-from sdk.register import (
-    PluginCapabilityRegistry,
-    PluginDiscoveryRegistry,
-    PluginRegister,
-)
-from sdk.types import (
-    ChatUIContribution,
-    PluginDescriptor,
-    SettingsUIContribution,
-    ToolsTabContribution,
-)
+from __future__ import annotations
 
-from sdk.adapters import (
-    ASRAdapter,
-    LLMAdapter,
-    T2IAdapter,
-    TTSAdapter,
-    TranscriptionCallback,
-)
-from sdk.tool_registry import (
-    apply_registered_tools,
-    iter_registered_tools,
-    registered_tool_entries,
-    tool,
-)
+import importlib
+from typing import Any
 
 __all__ = [
     "apply_registered_tools",
@@ -62,3 +37,38 @@ __all__ = [
     "TranscriptionCallback",
     "TTSAdapter",
 ]
+
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "PluginManager": ("sdk.manager", "PluginManager"),
+    "PluginBase": ("sdk.plugin", "PluginBase"),
+    "PluginHostContext": ("sdk.plugin_host_context", "PluginHostContext"),
+    "PluginSettingsUIContext": ("sdk.plugin_host_context", "PluginSettingsUIContext"),
+    "PluginCapabilityRegistry": ("sdk.register", "PluginCapabilityRegistry"),
+    "PluginDiscoveryRegistry": ("sdk.register", "PluginDiscoveryRegistry"),
+    "PluginRegister": ("sdk.register", "PluginRegister"),
+    "ChatUIContribution": ("sdk.types", "ChatUIContribution"),
+    "PluginDescriptor": ("sdk.types", "PluginDescriptor"),
+    "SettingsUIContribution": ("sdk.types", "SettingsUIContribution"),
+    "ToolsTabContribution": ("sdk.types", "ToolsTabContribution"),
+    "ASRAdapter": ("sdk.adapters", "ASRAdapter"),
+    "LLMAdapter": ("sdk.adapters", "LLMAdapter"),
+    "T2IAdapter": ("sdk.adapters", "T2IAdapter"),
+    "TTSAdapter": ("sdk.adapters", "TTSAdapter"),
+    "TranscriptionCallback": ("sdk.adapters", "TranscriptionCallback"),
+    "apply_registered_tools": ("sdk.tool_registry", "apply_registered_tools"),
+    "iter_registered_tools": ("sdk.tool_registry", "iter_registered_tools"),
+    "registered_tool_entries": ("sdk.tool_registry", "registered_tool_entries"),
+    "tool": ("sdk.tool_registry", "tool"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name in _LAZY_EXPORTS:
+        mod_path, attr = _LAZY_EXPORTS[name]
+        mod = importlib.import_module(mod_path)
+        return getattr(mod, attr)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(__all__)

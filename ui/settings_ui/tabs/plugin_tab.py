@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, Signal, Slot
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 from core.plugins.plugin_host import (
     append_plugin_manifest_entry_if_missing,
     collect_settings_contributions,
+    collect_tools_tab_contributions,
     get_plugin_manager,
     read_plugin_manifest_items,
     set_plugin_manifest_enabled,
@@ -39,6 +41,7 @@ from core.plugins.registry_catalog import (
     fetch_registry_error_message,
     fetch_registry_plugins,
 )
+from core.plugins.plugin_requirements_install import install_plugin_requirements_txt
 from core.plugins.registry_download import (
     download_github_repo_sources,
     format_download_error,
@@ -48,10 +51,27 @@ from core.plugins.registry_download import (
 )
 from i18n import tr as tr_i18n
 from sdk.plugin_host_context import PluginSettingsUIContext
-from sdk.types import SettingsUIContribution
+from sdk.types import SettingsUIContribution, ToolsTabContribution
 
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import message_fail, toast_info, toast_success
+
+
+def _parse_pip_install_result_json(raw: str) -> tuple[str, str]:
+    """Returns ``(code, detail_tail)`` from worker JSON; safe defaults if malformed."""
+    if not raw.strip():
+        return ("pip_skip_no_requirements", "")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return ("pip_skip_no_requirements", "")
+    if not isinstance(data, dict):
+        return ("pip_skip_no_requirements", "")
+    code = str(data.get("pip") or "").strip()
+    tail = str(data.get("detail") or "").strip()
+    if not code:
+        return ("pip_skip_no_requirements", tail)
+    return (code, tail)
 
 
 class _DiscoverFetchSignals(QObject):
@@ -77,9 +97,9 @@ class _DiscoverFetchTask(QRunnable):
 
 
 class _DownloadSignals(QObject):
-    """repo_norm, ok, error_message (empty if ok)."""
+    """repo_norm, ok, download_error (empty if ok), pip_result_json (empty if not ok)."""
 
-    finished = Signal(str, bool, str)
+    finished = Signal(str, bool, str, str)
 
 
 class _DownloadRepoTask(QRunnable):
@@ -92,11 +112,15 @@ class _DownloadRepoTask(QRunnable):
     def run(self) -> None:
         norm = normalize_repo_slug(self._repo)
         try:
-            download_github_repo_sources(self._repo)
+            dest = download_github_repo_sources(self._repo)
         except Exception as exc:
-            self._sig.finished.emit(norm, False, format_download_error(exc))
-        else:
-            self._sig.finished.emit(norm, True, "")
+            self._sig.finished.emit(norm, False, format_download_error(exc), "")
+            return
+        pip_code, pip_detail = install_plugin_requirements_txt(dest)
+        pip_payload = json.dumps(
+            {"pip": pip_code, "detail": pip_detail}, ensure_ascii=False
+        )
+        self._sig.finished.emit(norm, True, "", pip_payload)
 
 
 def _resolve_plugin_for_manifest_entry(entry: str, mgr: object | None):
@@ -196,7 +220,22 @@ class PluginSettingsTab(QWidget):
         self._discover_table.setStyleSheet(
             "QTableWidget { gridline-color: palette(mid); }\n"
             "QHeaderView::section { padding: 4px 8px; font-weight: bold; }\n"
-            "QTableWidget::item { padding: 4px 8px; }"
+            "QTableWidget::item { padding: 4px 8px; }\n"
+            "QTableWidget::item:selected,\n"
+            "QTableWidget::item:selected:active,\n"
+            "QTableWidget::item:selected:!active,\n"
+            "QTableWidget::item:selected:focus {\n"
+            "  background-color: palette(base);\n"
+            "  color: palette(text);\n"
+            "}\n"
+            "QTableWidget::item:alternate:selected,\n"
+            "QTableWidget::item:alternate:selected:active,\n"
+            "QTableWidget::item:alternate:selected:!active {\n"
+            "  background-color: palette(alternate-base);\n"
+            "  color: palette(text);\n"
+            "}\n"
+            "QTableWidget:focus { outline: none; }\n"
+            "QTableCornerButton::section { background: palette(button); }\n"
         )
         hh = self._discover_table.horizontalHeader()
         hh.setStretchLastSection(False)
@@ -420,8 +459,14 @@ class PluginSettingsTab(QWidget):
                 return (rec.entry or "").strip()
         return ""
 
-    @Slot(str, bool, str)
-    def _on_repo_download_finished(self, repo_norm: str, ok: bool, message: str) -> None:
+    @Slot(str, bool, str, str)
+    def _on_repo_download_finished(
+        self,
+        repo_norm: str,
+        ok: bool,
+        download_err: str,
+        pip_json: str,
+    ) -> None:
         self._download_busy.discard(repo_norm)
         if ok:
             mark_repo_downloaded(repo_norm)
@@ -447,17 +492,47 @@ class PluginSettingsTab(QWidget):
                     detail = tr_i18n("plugins.manifest_auto_fail_hint")
             else:
                 detail = tr_i18n("plugins.manifest_auto_skip_no_entry")
-            body = f"{base}\n\n{detail}" if detail else base
+
+            pip_code, pip_tail = _parse_pip_install_result_json(pip_json)
+            pip_bad = pip_code in (
+                "pip_failed",
+                "pip_timeout",
+                "pip_exception",
+            )
+            pip_lines: list[str] = []
+            if pip_code == "pip_ok":
+                pip_lines.append(tr_i18n("plugins.plugin_pip_ok"))
+            elif pip_code == "pip_skip_no_requirements":
+                pip_lines.append(tr_i18n("plugins.plugin_pip_skip"))
+            elif pip_bad:
+                pip_lines.append(tr_i18n("plugins.plugin_pip_fail_toast_hint"))
+
+            sections = [base]
+            if pip_lines:
+                sections.extend(pip_lines)
+            if detail:
+                sections.append(detail)
             toast_success(
                 self,
                 tr_i18n("plugins.discover_download_ok_title"),
-                body,
+                "\n\n".join(sections),
             )
+            if pip_bad:
+                dlg = tr_i18n("plugins.plugin_pip_fail_dialog_intro")
+                if pip_tail:
+                    dlg = (
+                        dlg
+                        + "\n\n"
+                        + tr_i18n("plugins.plugin_pip_detail_heading")
+                        + "\n"
+                        + pip_tail
+                    )
+                message_fail(self, tr_i18n("plugins.plugin_pip_fail_title"), dlg)
         else:
             message_fail(
                 self,
                 tr_i18n("plugins.discover_download_fail_title"),
-                message or tr_i18n("plugins.discover_download_fail_body"),
+                download_err or tr_i18n("plugins.discover_download_fail_body"),
             )
         self._repaint_discover_catalog_grid()
 
@@ -470,10 +545,25 @@ class PluginSettingsTab(QWidget):
             lst.sort(key=lambda x: x.order)
         return dict(by_pid)
 
+    def _tools_contribs_by_plugin(self) -> dict[str, list[ToolsTabContribution]]:
+        by_pid: defaultdict[str, list[ToolsTabContribution]] = defaultdict(list)
+        for c in collect_tools_tab_contributions():
+            key = c.plugin_id or f"_:{c.tab_id}"
+            by_pid[key].append(c)
+        for lst in by_pid.values():
+            lst.sort(key=lambda x: x.order)
+        return dict(by_pid)
+
     def _widget_for_contribution(self, c: SettingsUIContribution) -> QWidget:
         if c.page_id not in self._contrib_widgets:
             self._contrib_widgets[c.page_id] = c.build(self._plg_ctx)
         return self._contrib_widgets[c.page_id]
+
+    def _widget_for_tools_tab(self, c: ToolsTabContribution) -> QWidget:
+        key = f"tools_tab:{c.tab_id}"
+        if key not in self._contrib_widgets:
+            self._contrib_widgets[key] = c.build(self._plg_ctx)
+        return self._contrib_widgets[key]
 
     def _clear_grid(self) -> None:
         while self._grid.count():
@@ -485,10 +575,18 @@ class PluginSettingsTab(QWidget):
     def _refresh_cards(self) -> None:
         self._clear_grid()
         mgr = get_plugin_manager()
-        by_pid = self._contributions_by_plugin()
+        by_settings = self._contributions_by_plugin()
+        by_tools = self._tools_contribs_by_plugin()
 
         rows: list[
-            tuple[str, str, list[SettingsUIContribution], str | None, bool | None]
+            tuple[
+                str,
+                str,
+                list[SettingsUIContribution],
+                list[ToolsTabContribution],
+                str | None,
+                bool | None,
+            ]
         ] = []
         seen_plugin_ids: set[str] = set()
         manifest_items = read_plugin_manifest_items()
@@ -505,27 +603,43 @@ class PluginSettingsTab(QWidget):
                     pid = plugin.plugin_id
                     seen_plugin_ids.add(pid)
                     ver = str(plugin.plugin_version)
-                    contribs = by_pid.get(pid, [])
+                    s_cs = by_settings.get(pid, [])
+                    t_cs = by_tools.get(pid, [])
                 else:
                     pid = _display_title_for_offline_entry(entry)
                     ver = "—"
-                    contribs = []
-                rows.append((pid, ver, contribs, entry, enabled_yaml))
+                    s_cs = []
+                    t_cs = []
+                rows.append((pid, ver, s_cs, t_cs, entry, enabled_yaml))
         else:
             if mgr is not None:
                 for p in mgr.plugins:
                     pid = p.plugin_id
                     seen_plugin_ids.add(pid)
-                    rows.append((pid, str(p.plugin_version), by_pid.get(pid, []), None, None))
+                    rows.append(
+                        (
+                            pid,
+                            str(p.plugin_version),
+                            by_settings.get(pid, []),
+                            by_tools.get(pid, []),
+                            None,
+                            None,
+                        )
+                    )
 
-            for key in sorted(by_pid.keys()):
-                lst = by_pid[key]
+            for key in sorted(set(by_settings.keys()) | set(by_tools.keys())):
+                lst_s = by_settings.get(key, [])
+                lst_t = by_tools.get(key, [])
                 if key.startswith("_:"):
-                    disp = lst[0].nav_label if lst else key
-                    rows.append((disp, "—", lst, None, None))
+                    disp = (
+                        lst_s[0].nav_label
+                        if lst_s
+                        else (lst_t[0].title if lst_t else key)
+                    )
+                    rows.append((disp, "—", lst_s, lst_t, None, None))
                     continue
                 if key not in seen_plugin_ids:
-                    rows.append((key, "—", lst, None, None))
+                    rows.append((key, "—", lst_s, lst_t, None, None))
 
         if not rows:
             tip = QLabel(tr_i18n("plugins.empty_manage"))
@@ -534,8 +648,8 @@ class PluginSettingsTab(QWidget):
             return
 
         for i, row in enumerate(rows):
-            pid, ver, contribs, manifest_entry, enabled_yaml = row
-            card = self._make_card(pid, ver, contribs, manifest_entry, enabled_yaml)
+            pid, ver, s_cs, t_cs, manifest_entry, enabled_yaml = row
+            card = self._make_card(pid, ver, s_cs, t_cs, manifest_entry, enabled_yaml)
             r, co = divmod(i, 2)
             self._grid.addWidget(card, r, co)
 
@@ -543,7 +657,8 @@ class PluginSettingsTab(QWidget):
         self,
         plugin_id: str,
         version: str,
-        contribs: list[SettingsUIContribution],
+        settings_cs: list[SettingsUIContribution],
+        tools_cs: list[ToolsTabContribution],
         manifest_entry: str | None,
         enabled_yaml: bool | None,
     ) -> QFrame:
@@ -572,7 +687,8 @@ class PluginSettingsTab(QWidget):
         ver_lbl.setStyleSheet("color: palette(mid);")
         lay.addWidget(ver_lbl)
         btn = QPushButton(tr_i18n("plugins.open_settings"))
-        if not contribs:
+        has_ui = bool(settings_cs or tools_cs)
+        if not has_ui:
             btn.setEnabled(False)
             btn.setToolTip(tr_i18n("plugins.no_settings_tooltip"))
         else:
@@ -581,9 +697,10 @@ class PluginSettingsTab(QWidget):
                 *,
                 _pid: str = plugin_id,
                 _v: str = version,
-                _cs: list[SettingsUIContribution] = contribs,
+                _sc: list[SettingsUIContribution] = settings_cs,
+                _tc: list[ToolsTabContribution] = tools_cs,
             ) -> None:
-                self._open_detail(_pid, _v, _cs)
+                self._open_detail(_pid, _v, _sc, _tc)
 
             btn.clicked.connect(_go)
         lay.addWidget(btn)
@@ -611,28 +728,43 @@ class PluginSettingsTab(QWidget):
             tr_i18n("plugins.restart_hint"),
         )
 
+    def _discard_cached_widgets_in_subtree(self, root: QWidget) -> None:
+        """Drop plugin-built widgets from cache before ``deleteLater`` destroys their C++ objects."""
+        subtree: set[QWidget] = {root}
+        subtree.update(root.findChildren(QWidget))
+        drop = [k for k, v in self._contrib_widgets.items() if v in subtree]
+        for k in drop:
+            del self._contrib_widgets[k]
+
     def _clear_detail_content(self) -> None:
         while self._detail_stack_layout.count():
             item = self._detail_stack_layout.takeAt(0)
             w = item.widget()
             if w is not None:
+                self._discard_cached_widgets_in_subtree(w)
                 w.deleteLater()
 
     def _open_detail(
         self,
         plugin_id: str,
         version: str,
-        contribs: list[SettingsUIContribution],
+        settings_cs: list[SettingsUIContribution],
+        tools_cs: list[ToolsTabContribution],
     ) -> None:
         self._detail_title.setText(
             tr_i18n("plugins.detail_heading", name=plugin_id, version=version)
         )
         self._clear_detail_content()
-        if len(contribs) == 1:
-            self._detail_stack_layout.addWidget(self._widget_for_contribution(contribs[0]))
-        else:
+        tabs_spec: list[tuple[str, QWidget]] = []
+        for c in sorted(settings_cs, key=lambda x: x.order):
+            tabs_spec.append((c.nav_label, self._widget_for_contribution(c)))
+        for c in sorted(tools_cs, key=lambda x: x.order):
+            tabs_spec.append((c.title, self._widget_for_tools_tab(c)))
+        if len(tabs_spec) == 1:
+            self._detail_stack_layout.addWidget(tabs_spec[0][1])
+        elif tabs_spec:
             tw = QTabWidget()
-            for c in contribs:
-                tw.addTab(self._widget_for_contribution(c), c.nav_label)
+            for label, w in tabs_spec:
+                tw.addTab(w, label)
             self._detail_stack_layout.addWidget(tw)
         self._outer.setCurrentIndex(1)

@@ -16,23 +16,73 @@ def filter_supported_chat_params(adapter_name: str, kwargs: dict) -> dict:
 
 
 class DeepSeekAdapter(LLMAdapter):
-    def __init__(self, api_key=None, base_url=None, model="deepseek-chat", **kwargs):
+    """DeepSeek OpenAI 兼容接口；思考模式见 https://api-docs.deepseek.com/guides/thinking_mode"""
+
+    def __init__(
+        self,
+        api_key=None,
+        base_url=None,
+        model="deepseek-chat",
+        *,
+        thinking_enabled: bool = False,
+        reasoning_effort: str = "high",
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.client = OpenAI(api_key=api_key)
         self.client.base_url = base_url
         self.model = model
+        self.thinking_enabled = bool(thinking_enabled)
+        _re = str(reasoning_effort or "high").strip().lower()
+        self.reasoning_effort = _re if _re in ("high", "max") else "high"
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, dict]:
+        return {
+            "thinking_enabled": {
+                "type": "bool",
+                "label": "思考模式",
+                "default": False,
+            },
+            "reasoning_effort": {
+                "type": "str",
+                "label": "思考强度 (reasoning_effort)",
+                "default": "high",
+                "choices": ["high", "max"],
+            },
+        }
 
     def chat(self, messages: list, stream: bool = False, response_format={'type': 'json_object'}, **kwargs):
         """Sends a message to the DeepSeek LLM."""
         try:
+            kwargs = dict(kwargs)
+            kwargs.pop("reasoning_effort", None)
+            kwargs.pop("thinking_enabled", None)
             kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
-            # 使用传入的 messages 参数
+            # 思考模式下 DeepSeek 不支持 temperature / top_p / presence_penalty / frequency_penalty
+            if self.thinking_enabled:
+                banned = {
+                    "temperature",
+                    "top_p",
+                    "presence_penalty",
+                    "frequency_penalty",
+                }
+                kwargs = {k: v for k, v in kwargs.items() if k not in banned}
+
+            extra_body: dict = {
+                "thinking": {
+                    "type": "enabled" if self.thinking_enabled else "disabled",
+                },
+            }
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 stream=stream,
                 response_format=response_format,
-                **kwargs
+                reasoning_effort=self.reasoning_effort,
+                extra_body=extra_body,
+                **kwargs,
             )
             return response
         except Exception as e:

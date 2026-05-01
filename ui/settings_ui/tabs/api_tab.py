@@ -26,8 +26,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from asr.asr_adapter import (
+    FasterWhisperAdapter,
+    RealtimeSTTAdapter,
+    VoskAdapter,
+    normalize_asr_provider_storage_key,
+)
 from i18n import init_i18n, normalize_lang, tr as tr_i18n
 from llm.constants import LLM_BASE_URLS
+from llm.llm_manager import LLMAdapterFactory
+from t2i.t2i_adapter import ComfyUIT2IAdapter
+from tts.tts_manager import TTSAdapterFactory
+from ui.settings_ui.widgets.adapter_extra_form import (
+    build_schema_widgets,
+    read_schema_values,
+)
 from ui.settings_ui.services.chat_template_handlers import launch_chat_resume_last
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import feedback_result, message_fail, toast_success
@@ -45,6 +58,12 @@ _ASR_WHISPER_MODEL_PRESETS: tuple[str, ...] = (
     "distil-large-v2",
     "distil-large-v3",
 )
+
+_ASR_ADAPTER_FOR_EXTRA_UI = {
+    "vosk": VoskAdapter,
+    "faster_whisper": FasterWhisperAdapter,
+    "realtime_stt": RealtimeSTTAdapter,
+}
 
 
 def _add_collapsible_block(
@@ -65,6 +84,8 @@ def _add_collapsible_block(
 
 
 class ApiSettingsTab(QWidget):
+    _T2I_EXTRA_ENGINE_KEY = "comfyui"
+
     def __init__(self, ctx: SettingsUIContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._ctx = ctx
@@ -162,6 +183,11 @@ class ApiSettingsTab(QWidget):
         llm_form.addRow(self._f_api_key, self.api_key)
         llm_form.addRow(self._f_base, self.base_url)
         llm_form.addRow(self._f_stream, stream_row)
+        self._llm_extra_holder = QWidget()
+        self._llm_extra_layout = QVBoxLayout(self._llm_extra_holder)
+        self._llm_extra_layout.setContentsMargins(0, 0, 0, 0)
+        llm_form.addRow(self._llm_extra_holder)
+        self._llm_extra_editors: dict[str, QWidget] = {}
 
         # --- 高级 LLM：双列表单节省纵向空间 ---
         adv = QWidget()
@@ -273,6 +299,11 @@ class ApiSettingsTab(QWidget):
         tts_form.addRow(self._tts_engine, self.tts_provider)
         tts_form.addRow(self._tts_url, self.sovits_url)
         tts_form.addRow(self._tts_path, self.gpt_sovits_api_path)
+        self._tts_extra_holder = QWidget()
+        self._tts_extra_layout = QVBoxLayout(self._tts_extra_holder)
+        self._tts_extra_layout.setContentsMargins(0, 0, 0, 0)
+        tts_form.addRow(self._tts_extra_holder)
+        self._tts_extra_editors: dict[str, QWidget] = {}
 
         tts_lay.addLayout(tts_form)
 
@@ -386,9 +417,19 @@ class ApiSettingsTab(QWidget):
         self._f_asr_ct = QLabel(tr_i18n("api.asr.compute_type"))
         asr_form.addRow(self._f_asr_provider, self._asr_provider)
         asr_form.addRow(self._f_asr_language, self._asr_language)
-        asr_form.addRow(self._f_asr_model, self._asr_model_row)
-        asr_form.addRow(self._f_asr_dev, self._asr_device)
-        asr_form.addRow(self._f_asr_ct, self._asr_compute)
+        self._asr_whisper_block = QWidget()
+        _asr_wf = QFormLayout(self._asr_whisper_block)
+        _asr_wf.setContentsMargins(0, 0, 0, 0)
+        _asr_wf.addRow(self._f_asr_model, self._asr_model_row)
+        _asr_wf.addRow(self._f_asr_dev, self._asr_device)
+        _asr_wf.addRow(self._f_asr_ct, self._asr_compute)
+        asr_form.addRow(self._asr_whisper_block)
+        self._asr_extra_holder = QWidget()
+        self._asr_extra_layout = QVBoxLayout(self._asr_extra_holder)
+        self._asr_extra_layout.setContentsMargins(0, 0, 0, 0)
+        asr_form.addRow(self._asr_extra_holder)
+        self._asr_extra_editors: dict[str, QWidget] = {}
+        self._update_asr_whisper_specific_visibility()
         asr_ly.addLayout(asr_form)
 
         api = self._ctx.config_manager.config.api_config
@@ -418,6 +459,11 @@ class ApiSettingsTab(QWidget):
         cf.addRow(self._cf_p, self.prompt_node_id)
         cf.addRow(self._cf_o, self.output_node_id)
         cvl.addLayout(cf)
+        self._t2i_extra_holder = QWidget()
+        self._t2i_extra_layout = QVBoxLayout(self._t2i_extra_holder)
+        self._t2i_extra_layout.setContentsMargins(0, 0, 0, 0)
+        cvl.addWidget(self._t2i_extra_holder)
+        self._t2i_extra_editors: dict[str, QWidget] = {}
         _add_collapsible_block(main_tree, tr_i18n("api.tree.tts"), tts_w, expanded=True)
         _add_collapsible_block(main_tree, tr_i18n("api.tree.asr"), asr_w, expanded=False)
         _add_collapsible_block(main_tree, tr_i18n("api.tree.comfy"), comfy_w, expanded=False)
@@ -460,6 +506,12 @@ class ApiSettingsTab(QWidget):
         lay.addWidget(main_tree, stretch=1)
 
         self.llm_provider.currentTextChanged.connect(self._on_provider_change)
+        self.tts_provider.currentIndexChanged.connect(self._on_tts_provider_changed)
+        self._asr_provider.currentIndexChanged.connect(self._on_asr_provider_changed)
+        self._rebuild_llm_extra_panel()
+        self._rebuild_tts_extra_panel()
+        self._rebuild_asr_extra_panel()
+        self._rebuild_t2i_extra_panel()
         root.addWidget(scroll, stretch=1)
 
         foot = QFrame()
@@ -632,6 +684,94 @@ class ApiSettingsTab(QWidget):
         self.base_url.setText(base)
         self.llm_model.setText(model)
         self.api_key.setText(key)
+        self._rebuild_llm_extra_panel()
+
+    def _clear_extra_layout(self, layout: QVBoxLayout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _rebuild_llm_extra_panel(self) -> None:
+        self._clear_extra_layout(self._llm_extra_layout)
+        self._llm_extra_editors.clear()
+        name = self.llm_provider.currentText()
+        cls = LLMAdapterFactory._adapters.get(name)
+        schema = cls.get_config_schema() if cls else {}
+        if not schema:
+            self._llm_extra_holder.setVisible(False)
+            return
+        self._llm_extra_holder.setVisible(True)
+        vals = self._ctx.config_manager.get_adapter_extra_config("llm", name)
+        panel, eds = build_schema_widgets(schema, vals, self._llm_extra_holder)
+        self._llm_extra_layout.addWidget(panel)
+        self._llm_extra_editors = eds
+
+    def _rebuild_tts_extra_panel(self) -> None:
+        self._clear_extra_layout(self._tts_extra_layout)
+        self._tts_extra_editors.clear()
+        raw = self.tts_provider.currentData()
+        slug = str(raw or "").strip().lower()
+        if slug in ("none", ""):
+            self._tts_extra_holder.setVisible(False)
+            return
+        cls = TTSAdapterFactory._adapters.get(slug)
+        schema = cls.get_config_schema() if cls else {}
+        if not schema:
+            self._tts_extra_holder.setVisible(False)
+            return
+        self._tts_extra_holder.setVisible(True)
+        vals = self._ctx.config_manager.get_adapter_extra_config("tts", slug)
+        panel, eds = build_schema_widgets(schema, vals, self._tts_extra_holder)
+        self._tts_extra_layout.addWidget(panel)
+        self._tts_extra_editors = eds
+
+    def _rebuild_asr_extra_panel(self) -> None:
+        self._clear_extra_layout(self._asr_extra_layout)
+        self._asr_extra_editors.clear()
+        key = normalize_asr_provider_storage_key(
+            str(self._asr_provider.currentData() or "vosk")
+        )
+        cls = _ASR_ADAPTER_FOR_EXTRA_UI.get(key)
+        schema = cls.get_config_schema() if cls else {}
+        if not schema:
+            self._asr_extra_holder.setVisible(False)
+            return
+        self._asr_extra_holder.setVisible(True)
+        vals = self._ctx.config_manager.get_adapter_extra_config("asr", key)
+        panel, eds = build_schema_widgets(schema, vals, self._asr_extra_holder)
+        self._asr_extra_layout.addWidget(panel)
+        self._asr_extra_editors = eds
+
+    def _rebuild_t2i_extra_panel(self) -> None:
+        self._clear_extra_layout(self._t2i_extra_layout)
+        self._t2i_extra_editors.clear()
+        schema = ComfyUIT2IAdapter.get_config_schema()
+        if not schema:
+            self._t2i_extra_holder.setVisible(False)
+            return
+        self._t2i_extra_holder.setVisible(True)
+        vals = self._ctx.config_manager.get_adapter_extra_config(
+            "t2i", self._T2I_EXTRA_ENGINE_KEY
+        )
+        panel, eds = build_schema_widgets(schema, vals, self._t2i_extra_holder)
+        self._t2i_extra_layout.addWidget(panel)
+        self._t2i_extra_editors = eds
+
+    def _on_tts_provider_changed(self, _index: int = 0) -> None:
+        self._rebuild_tts_extra_panel()
+
+    def _on_asr_provider_changed(self, _index: int = 0) -> None:
+        self._update_asr_whisper_specific_visibility()
+        self._rebuild_asr_extra_panel()
+
+    def _update_asr_whisper_specific_visibility(self) -> None:
+        """Whisper 模型/设备/精度仅适用于 faster-whisper 与 RealtimeSTT。"""
+        key = normalize_asr_provider_storage_key(
+            str(self._asr_provider.currentData() or "vosk")
+        )
+        self._asr_whisper_block.setVisible(key != "vosk")
 
     def _on_tts_bundle_download(self) -> None:
         dlg = TtsBundleDownloadDialog(
@@ -647,6 +787,39 @@ class ApiSettingsTab(QWidget):
         if tts_slug is None:
             tts_slug = "gpt-sovits"
         tts_slug = str(tts_slug).strip().lower()
+        llm_prov = self.llm_provider.currentText()
+        llm_cls = LLMAdapterFactory._adapters.get(llm_prov)
+        llm_schema = llm_cls.get_config_schema() if llm_cls else {}
+        self._ctx.config_manager.set_adapter_extra_config(
+            "llm", llm_prov, read_schema_values(llm_schema, self._llm_extra_editors)
+        )
+
+        tts_cls = (
+            TTSAdapterFactory._adapters.get(tts_slug)
+            if tts_slug not in ("none", "")
+            else None
+        )
+        tts_schema = tts_cls.get_config_schema() if tts_cls else {}
+        self._ctx.config_manager.set_adapter_extra_config(
+            "tts", tts_slug, read_schema_values(tts_schema, self._tts_extra_editors)
+        )
+
+        asr_key = normalize_asr_provider_storage_key(
+            str(self._asr_provider.currentData() or "vosk")
+        )
+        asr_cls = _ASR_ADAPTER_FOR_EXTRA_UI.get(asr_key)
+        asr_schema = asr_cls.get_config_schema() if asr_cls else {}
+        self._ctx.config_manager.set_adapter_extra_config(
+            "asr", asr_key, read_schema_values(asr_schema, self._asr_extra_editors)
+        )
+
+        t2i_schema = ComfyUIT2IAdapter.get_config_schema()
+        self._ctx.config_manager.set_adapter_extra_config(
+            "t2i",
+            self._T2I_EXTRA_ENGINE_KEY,
+            read_schema_values(t2i_schema, self._t2i_extra_editors),
+        )
+
         msg = self._ctx.config_manager.save_api_config_new(
             self.llm_provider.currentText(),
             self.llm_model.text().strip(),

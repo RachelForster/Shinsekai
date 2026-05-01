@@ -1,4 +1,4 @@
-"""各子系统抽象适配器基类（具体实现位于 ``llm`` / ``tts`` / ``asr`` / ``t2i`` 包）。"""
+"""Abstract adapter bases per subsystem; concrete implementations live in ``asr``, ``t2i``, ``llm``, ``tts``."""
 
 from sdk.adapters.asr import ASRAdapter, TranscriptionCallback
 from sdk.adapters.llm import LLMAdapter

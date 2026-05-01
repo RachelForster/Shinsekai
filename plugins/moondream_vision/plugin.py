@@ -18,7 +18,7 @@ class MoondreamVisionPlugin(PluginBase):
 
     @property
     def plugin_id(self) -> str:
-        return "com.easyai.moondream_vision"
+        return "com.shinsekai.moondream_vision"
 
     @property
     def plugin_version(self) -> str:

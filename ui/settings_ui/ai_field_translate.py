@@ -38,10 +38,15 @@ def _llm_one_shot(config: ConfigManager, system: str, user: str) -> str:
     from llm.llm_manager import LLMAdapterFactory, LLMManager
 
     llm_adapter = LLMAdapterFactory.create_adapter(
-        llm_provider=llm_provider,
-        api_key=api_key,
-        base_url=llm_base_url,
-        model=llm_model,
+        **config.merged_llm_factory_kwargs(
+            llm_provider,
+            {
+                "llm_provider": llm_provider,
+                "api_key": api_key,
+                "base_url": llm_base_url,
+                "model": llm_model,
+            },
+        )
     )
     manager = LLMManager(adapter=llm_adapter, user_template=system)
     return manager.chat(user, stream=False, response_format={"type": "text"})

@@ -128,7 +128,16 @@ class PluginManager:
         if self._instantiated:
             return
         classes = list(self._discovery.iter_enabled_classes())
-        instances = [cls() for cls in classes]
+        instances: list[PluginBase] = []
+        for cls in classes:
+            try:
+                instances.append(cls())
+            except Exception:
+                logger.exception(
+                    "Skipping plugin class %s.%s (instantiate failed)",
+                    cls.__module__,
+                    cls.__qualname__,
+                )
         self._instances = sorted(
             (p for p in instances if p.enabled), key=lambda p: p.priority
         )

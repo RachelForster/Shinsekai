@@ -5,6 +5,7 @@ Plugin discovery (class / import paths) vs runtime capability registration (LLM,
 from __future__ import annotations
 
 import importlib
+import logging
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, replace
 from typing import Type
@@ -16,6 +17,8 @@ from sdk.types import (
     SettingsUIContribution,
     ToolsTabContribution,
 )
+
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class _ClassEntry:
@@ -66,7 +69,14 @@ class PluginDiscoveryRegistry:
         for import_entry in self._import_entries:
             if not import_entry.enabled:
                 continue
-            cls = self._import_class(import_entry.entry)
+            try:
+                cls = self._import_class(import_entry.entry)
+            except Exception:
+                logger.exception(
+                    "Skipping plugin manifest entry %r (import failed)",
+                    import_entry.entry,
+                )
+                continue
             key = f"{cls.__module__}:{cls.__qualname__}"
             if key in seen:
                 continue
@@ -160,6 +170,14 @@ class PluginCapabilityRegistry:
         self._settings_contributions.append(contribution)
 
     def register_tools_tab(self, contribution: ToolsTabContribution) -> None:
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
         self._tools_tab_contributions.append(contribution)
 
     def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:

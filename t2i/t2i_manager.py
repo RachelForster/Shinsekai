@@ -4,8 +4,8 @@ import queue
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-# Assuming t2i_adapter is in a module named 't2i.t2i_adapter' or similar
-from t2i.t2i_adapter import T2IAdapter, StableDiffusionAdapter,ComfyUIT2IAdapter 
+from sdk.adapters.t2i import T2IAdapter
+from t2i.t2i_adapter import ComfyUIT2IAdapter, StableDiffusionAdapter
 
 class T2IAdapterFactory:
     """

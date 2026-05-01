@@ -98,7 +98,17 @@ class CharacterManager:
             if self._llm_manager is None:
                 # 假设 LLMAdapterFactory 和 LLMManager 已定义
                 from llm.llm_manager import LLMAdapterFactory, LLMManager 
-                llm_adapter = LLMAdapterFactory.create_adapter(llm_provider=llm_provider, api_key=api_key, base_url=llm_base_url, model=llm_model)
+                llm_adapter = LLMAdapterFactory.create_adapter(
+                    **self._config_manager.merged_llm_factory_kwargs(
+                        llm_provider,
+                        {
+                            "llm_provider": llm_provider,
+                            "api_key": api_key,
+                            "base_url": llm_base_url,
+                            "model": llm_model,
+                        },
+                    )
+                )
                 self._llm_manager = LLMManager(adapter=llm_adapter, user_template=template)
                 
             self._llm_manager.set_user_template(template)

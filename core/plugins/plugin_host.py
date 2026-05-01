@@ -17,6 +17,7 @@ import yaml
 
 from config.config_manager import ConfigManager
 from core.messaging.message import UserInputMessage
+from core.plugins.plugin_requirements_install import ensure_plugin_site_packages_on_syspath
 from llm.llm_manager import LLMAdapterFactory
 from llm.tools.tool_manager import ToolManager
 from sdk.manager import PluginManager
@@ -61,6 +62,8 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
     global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
     if _loaded:
         return _plugin_manager
+
+    ensure_plugin_site_packages_on_syspath()
 
     mgr = PluginManager()
     if _MANIFEST.is_file():
