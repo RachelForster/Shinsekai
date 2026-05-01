@@ -7,6 +7,7 @@ import logging
 import os
 import tempfile
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -74,6 +75,8 @@ def download_github_repo_sources(
     *,
     plugins_parent: Path | None = None,
     timeout_sec: float = 180.0,
+    progress: Callable[[int, int | None], None] | None = None,
+    on_phase: Callable[[str], None] | None = None,
 ) -> Path:
     """
     Download ``owner/repo`` default branch (``main`` then ``master``) ZIP and extract under ``plugins/``.
@@ -96,7 +99,21 @@ def download_github_repo_sources(
         req = Request(url, headers={"User-Agent": _DL_USER_AGENT})
         try:
             with urlopen(req, timeout=timeout_sec) as resp:
-                body = resp.read()
+                total: int | None = None
+                cl = resp.headers.get("Content-Length")
+                if cl is not None and str(cl).isdigit():
+                    total = int(cl)
+                chunks: list[bytes] = []
+                read = 0
+                while True:
+                    block = resp.read(65536)
+                    if not block:
+                        break
+                    chunks.append(block)
+                    read += len(block)
+                    if progress is not None:
+                        progress(read, total)
+                body = b"".join(chunks)
             break
         except HTTPError as e:
             last_err = e
@@ -119,6 +136,8 @@ def download_github_repo_sources(
             logger.info("Plugin folder already exists, skipping extract: %s", dest)
             return dest.resolve()
 
+        if on_phase is not None:
+            on_phase("extract")
         with zipfile.ZipFile(tmp_path) as zf:
             zf.extractall(parent)
         if not dest.is_dir():

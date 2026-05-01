@@ -7,14 +7,18 @@ import json
 from collections import defaultdict
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -74,6 +78,128 @@ def _parse_pip_install_result_json(raw: str) -> tuple[str, str]:
     return (code, tail)
 
 
+def _format_byte_size(n: int) -> str:
+    if n <= 0:
+        return "0 B"
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.1f} KiB"
+    return f"{n / (1024 * 1024):.2f} MiB"
+
+
+class _DiscoverInstallProgressDialog(QDialog):
+    """发现插件：下载 ZIP + pip 时的进度与日志。"""
+
+    def __init__(self, parent: QWidget | None, repo_slug: str) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(tr_i18n("plugins.discover_install_progress_title"))
+        self.setModal(False)
+        self.resize(560, 420)
+        lay = QVBoxLayout(self)
+        repo_txt = tr_i18n("plugins.discover_install_progress_repo", repo=repo_slug)
+        self._repo_lbl = QLabel(repo_txt)
+        self._repo_lbl.setWordWrap(True)
+        lay.addWidget(self._repo_lbl)
+        self._phase_lbl = QLabel(tr_i18n("plugins.discover_phase_download"))
+        self._phase_lbl.setWordWrap(True)
+        lay.addWidget(self._phase_lbl)
+        self._bytes_lbl = QLabel("")
+        self._bytes_lbl.setStyleSheet("color: palette(mid);")
+        lay.addWidget(self._bytes_lbl)
+        self._bar = QProgressBar()
+        self._bar.setRange(0, 0)
+        lay.addWidget(self._bar)
+        log_hint = QLabel(tr_i18n("plugins.discover_install_log_hint"))
+        log_hint.setWordWrap(True)
+        log_hint.setStyleSheet("color: palette(mid);")
+        lay.addWidget(log_hint)
+        self._log = QPlainTextEdit()
+        self._log.setReadOnly(True)
+        self._log.setMaximumBlockCount(16000)
+        mono = self._log.font()
+        mono.setFamily("Consolas")
+        mono.setStyleHint(QFont.StyleHint.Monospace)
+        self._log.setFont(mono)
+        lay.addWidget(self._log, stretch=1)
+        bbox = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        bbox.rejected.connect(self.accept)
+        self._close_btn = bbox.button(QDialogButtonBox.StandardButton.Close)
+        assert self._close_btn is not None
+        self._close_btn.setEnabled(False)
+        lay.addWidget(bbox)
+        self._allow_close = False
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if not self._allow_close:
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    @Slot(str)
+    def set_phase_label(self, text: str) -> None:
+        self._phase_lbl.setText(text)
+
+    @Slot(int, int)
+    def on_download_progress(self, current: int, total: int) -> None:
+        if total and total > 0:
+            self._bar.setRange(0, total)
+            self._bar.setValue(min(current, total))
+            self._bytes_lbl.setText(
+                tr_i18n(
+                    "plugins.discover_install_progress_bytes",
+                    current=_format_byte_size(current),
+                    total=_format_byte_size(total),
+                )
+            )
+        else:
+            self._bar.setRange(0, 0)
+            self._bytes_lbl.setText(
+                tr_i18n(
+                    "plugins.discover_install_progress_bytes_unknown",
+                    current=_format_byte_size(current),
+                )
+            )
+
+    @Slot(str)
+    def append_pip_line(self, line: str) -> None:
+        self._log.appendPlainText(line)
+        self._log.verticalScrollBar().setValue(self._log.verticalScrollBar().maximum())
+
+    @Slot()
+    def on_pip_phase_started(self) -> None:
+        self._log.appendPlainText(tr_i18n("plugins.discover_install_pip_separator"))
+
+    def mark_finished(self, ok: bool, download_err: str, pip_json: str) -> None:
+        self._allow_close = True
+        self._close_btn.setEnabled(True)
+        if not ok:
+            self._phase_lbl.setText(tr_i18n("plugins.discover_install_done_fail"))
+            self._bar.setRange(0, 100)
+            self._bar.setValue(0)
+            if download_err.strip():
+                self._log.appendPlainText(
+                    tr_i18n("plugins.discover_install_download_error_heading")
+                    + "\n"
+                    + download_err.strip()
+                )
+            return
+        self._phase_lbl.setText(tr_i18n("plugins.discover_install_done_ok"))
+        self._bar.setRange(0, 100)
+        self._bar.setValue(100)
+        self._bytes_lbl.clear()
+        pip_code, detail_tail = _parse_pip_install_result_json(pip_json)
+        if pip_code == "pip_skip_no_requirements":
+            self._log.appendPlainText(tr_i18n("plugins.plugin_pip_skip"))
+        elif pip_code in ("pip_timeout", "pip_exception") and detail_tail.strip():
+            self._log.appendPlainText(
+                "\n"
+                + tr_i18n("plugins.plugin_pip_detail_heading")
+                + "\n"
+                + detail_tail.strip()
+            )
+
+
 class _DiscoverFetchSignals(QObject):
     finished = Signal(list, str)
 
@@ -97,9 +223,13 @@ class _DiscoverFetchTask(QRunnable):
 
 
 class _DownloadSignals(QObject):
-    """repo_norm, ok, download_error (empty if ok), pip_result_json (empty if not ok)."""
+    """repo_norm, ok, download_err, pip_result_json"""
 
     finished = Signal(str, bool, str, str)
+    download_progress = Signal(int, int)
+    status_message = Signal(str)
+    pip_log_line = Signal(str)
+    pip_phase_started = Signal()
 
 
 class _DownloadRepoTask(QRunnable):
@@ -111,16 +241,36 @@ class _DownloadRepoTask(QRunnable):
 
     def run(self) -> None:
         norm = normalize_repo_slug(self._repo)
+        self._sig.status_message.emit(tr_i18n("plugins.discover_phase_download"))
         try:
-            dest = download_github_repo_sources(self._repo)
+            dest = download_github_repo_sources(
+                self._repo,
+                progress=lambda cur, tot: self._sig.download_progress.emit(
+                    cur, tot if tot is not None else 0
+                ),
+                on_phase=lambda phase: self._emit_extract_phase(phase),
+            )
         except Exception as exc:
             self._sig.finished.emit(norm, False, format_download_error(exc), "")
             return
-        pip_code, pip_detail = install_plugin_requirements_txt(dest)
+        self._sig.status_message.emit(tr_i18n("plugins.discover_phase_pip"))
+        self._sig.download_progress.emit(0, 0)
+        self._sig.pip_phase_started.emit()
+
+        def _pip_line(line: str) -> None:
+            self._sig.pip_log_line.emit(line)
+
+        pip_code, pip_detail = install_plugin_requirements_txt(
+            dest, on_output_line=_pip_line
+        )
         pip_payload = json.dumps(
             {"pip": pip_code, "detail": pip_detail}, ensure_ascii=False
         )
         self._sig.finished.emit(norm, True, "", pip_payload)
+
+    def _emit_extract_phase(self, phase: str) -> None:
+        if phase == "extract":
+            self._sig.status_message.emit(tr_i18n("plugins.discover_phase_extract"))
 
 
 def _resolve_plugin_for_manifest_entry(entry: str, mgr: object | None):
@@ -249,8 +399,6 @@ class PluginSettingsTab(QWidget):
 
         self._discover_fetch_signals = _DiscoverFetchSignals(self)
         self._discover_fetch_signals.finished.connect(self._on_discover_catalog_finished)
-        self._download_signals = _DownloadSignals(self)
-        self._download_signals.finished.connect(self._on_repo_download_finished)
 
         self._manage_discover_tabs.add_tab(discover_host, tr_i18n("plugins.tab_discover"))
 
@@ -448,7 +596,30 @@ class PluginSettingsTab(QWidget):
         self._download_busy.add(norm)
         btn.setEnabled(False)
         btn.setText(tr_i18n("plugins.discover_downloading"))
-        QThreadPool.globalInstance().start(_DownloadRepoTask(repo, self._download_signals))
+        dlg = _DiscoverInstallProgressDialog(self, repo)
+        sigs = _DownloadSignals(dlg)
+        sigs.download_progress.connect(dlg.on_download_progress)
+        sigs.status_message.connect(dlg.set_phase_label)
+        sigs.pip_log_line.connect(dlg.append_pip_line)
+        sigs.pip_phase_started.connect(dlg.on_pip_phase_started)
+        sigs.finished.connect(
+            lambda rn, ok, de, pj, d=dlg: self._on_download_finished_with_dialog(
+                d, rn, ok, de, pj
+            )
+        )
+        dlg.show()
+        QThreadPool.globalInstance().start(_DownloadRepoTask(repo, sigs))
+
+    def _on_download_finished_with_dialog(
+        self,
+        dlg: _DiscoverInstallProgressDialog,
+        repo_norm: str,
+        ok: bool,
+        download_err: str,
+        pip_json: str,
+    ) -> None:
+        dlg.mark_finished(ok, download_err, pip_json)
+        self._on_repo_download_finished(repo_norm, ok, download_err, pip_json)
 
     def _registry_entry_for_repo_norm(self, repo_norm: str) -> str:
         cache = self._discover_cache
