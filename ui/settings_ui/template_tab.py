@@ -32,11 +32,14 @@ from ui.settings_ui.chat_template_handlers import (
     launch_chat,
     load_template_from_file,
     save_template,
-    stop_chat,
 )
 from i18n import tr as tr_i18n
 from ui.settings_ui.context import SettingsUIContext
-from ui.settings_ui.feedback import feedback_result, message_fail, toast_info, toast_success
+from ui.settings_ui.feedback import feedback_result, message_fail, toast_success
+from ui.settings_ui.template_tab_session import (
+    load_template_session,
+    save_template_session,
+)
 
 
 class TemplateSettingsTab(QWidget):
@@ -50,6 +53,7 @@ class TemplateSettingsTab(QWidget):
         self._build_ui()
         self._wire_auto_generate_triggers()
         self.refresh_lists()
+        # 首次进入设置时若默认停在其它页，此处不恢复；切换至模板页时由 MainWindow 调用 restore
 
     def _wire_auto_generate_triggers(self) -> None:
         self.bg_combo.currentTextChanged.connect(self._auto_generate)
@@ -88,10 +92,8 @@ class TemplateSettingsTab(QWidget):
         self.template_combo.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
+        self.template_combo.activated.connect(self._on_template_combo_activated)
         f_row.addWidget(self.template_combo, stretch=1)
-        self._load_btn = QPushButton(tr_i18n("template.load_btn"))
-        self._load_btn.clicked.connect(self._on_load)
-        f_row.addWidget(self._load_btn)
         bfl.addLayout(f_row)
         lay.addWidget(self._box_file)
 
@@ -195,9 +197,6 @@ class TemplateSettingsTab(QWidget):
         opt.addLayout(cotr)
 
         opt.addStretch(1)
-        self._gen_btn = QPushButton(tr_i18n("template.gen_btn"))
-        self._gen_btn.clicked.connect(self._on_generate)
-        opt.addWidget(self._gen_btn)
         bgen.addLayout(opt, stretch=1)
         lay.addWidget(self._box_gen)
 
@@ -245,7 +244,7 @@ class TemplateSettingsTab(QWidget):
 
         root.addWidget(scroll, stretch=1)
 
-        # 固定在页底的启动 / 关闭（不随主区域滚动）
+        # 固定在页底的启动（不随主区域滚动）
         foot = QFrame()
         foot.setObjectName("templateTabFooter")
         foot.setFrameShape(QFrame.Shape.NoFrame)
@@ -261,11 +260,7 @@ class TemplateSettingsTab(QWidget):
         self._launch_btn = QPushButton(tr_i18n("template.launch"))
         self._launch_btn.setMinimumWidth(120)
         self._launch_btn.clicked.connect(self._on_launch)
-        self._stop_btn = QPushButton(tr_i18n("template.stop"))
-        self._stop_btn.setMinimumWidth(120)
-        self._stop_btn.clicked.connect(self._on_stop)
         btn_row.addWidget(self._launch_btn)
-        btn_row.addWidget(self._stop_btn)
         btn_row.addStretch(1)
         f_lay.addLayout(btn_row)
         root.addWidget(foot)
@@ -281,7 +276,6 @@ class TemplateSettingsTab(QWidget):
         self._tpl_h2.setText(tr_i18n("template.h2"))
         self._tpl_intro.setText(tr_i18n("template.intro"))
         self._box_file.setTitle(tr_i18n("template.load_box"))
-        self._load_btn.setText(tr_i18n("template.load_btn"))
         self._box_gen.setTitle(tr_i18n("template.gen_box"))
         self._char_lbl.setText(tr_i18n("template.char_label"))
         self._bg_lbl.setText(tr_i18n("template.bg"))
@@ -310,7 +304,6 @@ class TemplateSettingsTab(QWidget):
         self._lbl_llm_tr.setText(tr_i18n("template.llm_tr"))
         self._lbl_cg.setText(tr_i18n("template.cg"))
         self._lbl_cot.setText(tr_i18n("template.cot"))
-        self._gen_btn.setText(tr_i18n("template.gen_btn"))
         self._box_edit.setTitle(tr_i18n("template.edit_box"))
         self.template_output.setPlaceholderText(tr_i18n("template.edit_ph"))
         self._box_run.setTitle(tr_i18n("template.run_box"))
@@ -322,7 +315,6 @@ class TemplateSettingsTab(QWidget):
         # self._live_lbl.setText(tr_i18n("template.live_lbl"))
         # self.room_id.setPlaceholderText(tr_i18n("template.live_ph"))
         self._launch_btn.setText(tr_i18n("template.launch"))
-        self._stop_btn.setText(tr_i18n("template.stop"))
 
     def _fill_voice_lang_combo(self) -> None:
         self.voice_lang_combo.clear()
@@ -384,15 +376,12 @@ class TemplateSettingsTab(QWidget):
         if out_fn:
             self.filename_edit.setText(out_fn)
 
-    def _on_save(self) -> None:
-        msg, files = save_template(self._ctx, self.template_output.toPlainText(), self.filename_edit.text().strip())
-        self._refresh_template_combo(files)
-        feedback_result(self, "保存模板", msg)
-
-    def _on_load(self) -> None:
-        name = self.template_combo.currentText()
+    def _on_template_combo_activated(self, index: int) -> None:
+        """用户从下拉列表选中某项时载入模板（程序化改索引不会触发 activated）。"""
+        if index < 0:
+            return
+        name = self.template_combo.itemText(index).strip()
         if not name:
-            message_fail(self, "加载模板", "请先选择模板文件")
             return
         tpl, fn = load_template_from_file(self._ctx, name)
         if tpl.startswith("加载失败"):
@@ -401,7 +390,118 @@ class TemplateSettingsTab(QWidget):
         self.template_output.setPlainText(tpl)
         self.filename_edit.setText(fn)
 
+    def _on_save(self) -> None:
+        msg, files = save_template(self._ctx, self.template_output.toPlainText(), self.filename_edit.text().strip())
+        self._refresh_template_combo(files)
+        feedback_result(self, "保存模板", msg)
+
+    def _save_launch_session(self) -> None:
+        payload = {
+            "selected_characters": self._selected_chars(),
+            "background": self.bg_combo.currentText(),
+            "voice_lang": str(self.voice_lang_combo.currentData() or "")
+            or (
+                self._ctx.config_manager.config.system_config.voice_language or "ja"
+            ),
+            "use_effect_yes": self.use_effect_yes.isChecked(),
+            "use_tr_yes": self.use_tr_yes.isChecked(),
+            "use_cg_yes": self.use_cg_yes.isChecked(),
+            "use_cot_yes": self.use_cot_yes.isChecked(),
+            "template_text": self.template_output.toPlainText(),
+            "filename_stub": self.filename_edit.text().strip(),
+            "template_file_dropdown": self.template_combo.currentText().strip(),
+            "init_sprite_path": self.init_sprite_path.text().strip(),
+            "history_file": self.history_file.text().strip(),
+            "room_id": self.room_id.text().strip(),
+        }
+        try:
+            save_template_session(self._ctx.template_dir_path, payload)
+        except OSError:
+            pass
+
+    def restore_last_launch_session(self) -> None:
+        snap = load_template_session(self._ctx.template_dir_path)
+        if not snap:
+            return
+        self._suppress_auto_gen = True
+        try:
+            chars: list[str] = snap.get("selected_characters") or []
+            if isinstance(chars, list):
+                want = {str(x) for x in chars}
+                for cb in self._char_checks:
+                    cb.setChecked(cb.text() in want)
+
+            bg = snap.get("background")
+            if isinstance(bg, str) and bg.strip():
+                # 兼容旧文案「透明背景」
+                bg_clean = TRANSPARENT_BG if bg.strip() == "透明背景" else bg.strip()
+                if self.bg_combo.findText(bg_clean) >= 0:
+                    self.bg_combo.setCurrentText(bg_clean)
+
+            vl = snap.get("voice_lang")
+            if isinstance(vl, str) and vl.strip():
+                vlow = vl.strip().lower()
+                for i in range(self.voice_lang_combo.count()):
+                    if str(self.voice_lang_combo.itemData(i) or "").lower() == vlow:
+                        self.voice_lang_combo.setCurrentIndex(i)
+                        vc = self.voice_lang_combo.itemData(i)
+                        if vc:
+                            self._ctx.config_manager.config.system_config.voice_language = (
+                                str(vc)
+                            )
+                            self._ctx.config_manager.save_system_config()
+                        break
+
+            if snap.get("use_effect_yes") is True:
+                self.use_effect_yes.setChecked(True)
+            elif snap.get("use_effect_yes") is False:
+                self.use_effect_no.setChecked(True)
+
+            if snap.get("use_tr_yes") is True:
+                self.use_tr_yes.setChecked(True)
+            elif snap.get("use_tr_yes") is False:
+                self.use_tr_no.setChecked(True)
+
+            if snap.get("use_cg_yes") is True:
+                self.use_cg_yes.setChecked(True)
+            elif snap.get("use_cg_yes") is False:
+                self.use_cg_no.setChecked(True)
+
+            if snap.get("use_cot_yes") is True:
+                self.use_cot_yes.setChecked(True)
+            elif snap.get("use_cot_yes") is False:
+                self.use_cot_no.setChecked(True)
+
+            tt = snap.get("template_text")
+            if isinstance(tt, str):
+                self.template_output.setPlainText(tt)
+
+            fn = snap.get("filename_stub")
+            if isinstance(fn, str):
+                self.filename_edit.setText(fn)
+
+            tdrop = snap.get("template_file_dropdown")
+            if isinstance(tdrop, str) and tdrop.strip():
+                name = tdrop.strip()
+                if self.template_combo.findText(name) >= 0:
+                    self.template_combo.setCurrentText(name)
+
+            isp = snap.get("init_sprite_path")
+            if isinstance(isp, str):
+                self.init_sprite_path.setText(isp)
+
+            hf = snap.get("history_file")
+            if isinstance(hf, str):
+                self.history_file.setText(hf)
+
+            rid = snap.get("room_id")
+            if isinstance(rid, str):
+                self.room_id.setText(rid)
+        finally:
+            self._suppress_auto_gen = False
+
     def _on_launch(self) -> None:
+        self._save_launch_session()
         ucg = "是" if self.use_cg_yes.isChecked() else "否"
         msg = launch_chat(
             self._ctx,
@@ -414,10 +514,6 @@ class TemplateSettingsTab(QWidget):
         )
         if msg:
             toast_success(self, "启动聊天", msg)
-
-    def _on_stop(self) -> None:
-        msg = stop_chat()
-        toast_info(self, "关闭聊天", msg)
 
     def _refresh_template_combo(self, names: list[str] | None = None) -> None:
         self.template_combo.clear()

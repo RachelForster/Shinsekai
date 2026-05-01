@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
                 b.setStyleSheet(UIFunctions.selectMenu(b.styleSheet()))
             if self.ui.stackedWidget.currentWidget() is self._template:
                 self._template.refresh_lists()
+                self._template.restore_last_launch_session()
 
         return _go
 

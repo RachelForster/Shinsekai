@@ -100,8 +100,15 @@ class MicButton(QPushButton):
             self.line_edit.setText(self.original_text + text)
         else:
             # print(f"Final transcription: {text}")
-            text = text.replace(" ", "").strip()
-            built = self.original_text + ("，" if self.original_text else "") + text
+            lang = (getattr(self.asr_adapter, "language", None) or "").strip().lower()
+            if lang.startswith("en"):
+                text = (text or "").strip()
+                sep = " "
+            else:
+                # CJK：去掉模型插入的多余空格（英文词之间不应受此处理）
+                text = (text or "").replace(" ", "").strip()
+                sep = "，"
+            built = self.original_text + (sep if self.original_text else "") + text
             cur = self.line_edit.toPlainText().strip()
             # RealtimeSTT 等：final 常等于已刷新的整句，避免重复拼接
             if cur and text and (cur == built.strip() or cur.endswith(text)):

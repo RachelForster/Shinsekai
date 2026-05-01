@@ -292,7 +292,6 @@
     "h2": "<h2>Chat template</h2>",
     "intro": "Load a file, pick characters and options to generate, then edit, save, and start chat.",
     "load_box": "Load from file",
-    "load_btn": "Load into editor",
     "gen_box": "Generate (characters & options)",
     "char_label": "Characters in chat (check one or more)",
     "bg": "Background",
@@ -305,7 +304,6 @@
     "llm_tr": "LLM translation",
     "cg": "CG generation",
     "cot": "Chain-of-thought",
-    "gen_btn": "Generate template",
     "edit_box": "Template",
     "edit_ph": "Edit, load, or generated template content",
     "run_box": "Save & chat",
@@ -317,8 +315,7 @@
     "hist_ph": "History file (optional), default ./data/chat_history/",
     "live_lbl": "Live (optional)",
     "live_ph": "Bilibili room ID (optional)",
-    "launch": "Start chat",
-    "stop": "Stop chat"
+    "launch": "Start chat"
   },
   "tools": {
     "tab_main": "Sprites & batch tools",
