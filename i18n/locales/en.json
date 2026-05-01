@@ -269,7 +269,21 @@
   "desktop": {
     "input_placeholder": "Type a message…",
     "sending": "Sent. Waiting for a reply…",
-    "send": "Send"
+    "send": "Send",
+    "menu": {
+      "history": "Chat history",
+      "clear_history": "Clear chat history",
+      "copy_history": "Copy chat history to clipboard",
+      "voice_language": "Voice language",
+      "font_size": "Font size",
+      "volume": "Volume",
+      "theme_color": "Theme color",
+      "confirm_clear_title": "Confirm",
+      "confirm_clear_body": "Clear all chat history?",
+      "notify_font_size": "Font size set to {size}px",
+      "notify_theme_color": "Theme color updated: {color}",
+      "notify_voice_language": "Voice language updated: {lang}"
+    }
   },
   "toolbar": {
     "minimized": "Window minimized"

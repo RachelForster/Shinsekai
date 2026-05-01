@@ -266,7 +266,21 @@
   "desktop": {
     "input_placeholder": "メッセージを入力…",
     "sending": "送信しました。返信待ち…",
-    "send": "送信"
+    "send": "送信",
+    "menu": {
+      "history": "チャット履歴",
+      "clear_history": "履歴を消去",
+      "copy_history": "履歴をクリップボードにコピー",
+      "voice_language": "音声の言語",
+      "font_size": "フォントサイズ",
+      "volume": "音量",
+      "theme_color": "テーマ色",
+      "confirm_clear_title": "確認",
+      "confirm_clear_body": "チャット履歴をすべて消去しますか？",
+      "notify_font_size": "フォントサイズを {size}px に変更しました",
+      "notify_theme_color": "テーマ色を更新しました：{color}",
+      "notify_voice_language": "音声の言語を変更しました：{lang}"
+    }
   },
   "toolbar": {
     "minimized": "最小化しました"

@@ -7,6 +7,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QDialog, QMenu, QMessageBox
 
 from config.config_manager import ConfigManager
+from i18n import tr
 from ui.chat_ui.components import (
     FontSizeDialog,
     LanguageDialog,
@@ -29,19 +30,19 @@ class DesktopMenuMixin:
                 config_manager.config.system_config.base_font_size_px = new_size
                 config_manager.save_system_config()
                 self.apply_font_styles()
-                self.setNotification(f"字体大小已更改为 {new_size}px")
+                self.setNotification(tr("desktop.menu.notify_font_size", size=new_size))
 
     def show_settings_menu(self) -> None:
         """显示设置下拉菜单"""
         menu = QMenu(self)
 
-        history_action = QAction("历史记录", self)
-        clear_history_action = QAction("清空历史记录", self)
-        copy_history_action = QAction("复制历史记录到剪贴板", self)
-        language_action = QAction("语音语言", self)
-        font_size_action = QAction("字体大小", self)
-        volumn_action = QAction("音量", self)
-        theme_color_action = QAction("主题色", self)
+        history_action = QAction(tr("desktop.menu.history"), self)
+        clear_history_action = QAction(tr("desktop.menu.clear_history"), self)
+        copy_history_action = QAction(tr("desktop.menu.copy_history"), self)
+        language_action = QAction(tr("desktop.menu.voice_language"), self)
+        font_size_action = QAction(tr("desktop.menu.font_size"), self)
+        volumn_action = QAction(tr("desktop.menu.volume"), self)
+        theme_color_action = QAction(tr("desktop.menu.theme_color"), self)
 
         history_action.triggered.connect(lambda: self.open_chat_history_dialog.emit())
         language_action.triggered.connect(self.show_language_settings)
@@ -74,8 +75,8 @@ class DesktopMenuMixin:
     def clear_history(self) -> None:
         reply = QMessageBox.question(
             self,
-            "确认",
-            "您确定要清除历史吗？。",
+            tr("desktop.menu.confirm_clear_title"),
+            tr("desktop.menu.confirm_clear_body"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -93,7 +94,9 @@ class DesktopMenuMixin:
             self.theme_color = dialog.get_selected_color()
             config_manager.config.system_config.theme_color = self.theme_color
             self.apply_font_styles()
-            self.setNotification("主题颜色已更改" + self.theme_color)
+            self.setNotification(
+                tr("desktop.menu.notify_theme_color", color=self.theme_color)
+            )
             config_manager.save_system_config()
 
     def show_language_settings(self) -> None:
@@ -103,16 +106,16 @@ class DesktopMenuMixin:
             selected_language = dialog.get_selected_language()
             print(f"选择的语言: {selected_language}")
             self.change_voice_language.emit(selected_language)
-            language_str = ""
-            if selected_language == "en":
-                language_str = "English"
-            elif selected_language == "zh":
-                language_str = "中文"
-            elif selected_language == "ja":
-                language_str = "日本語"
-            elif selected_language == "yue":
-                language_str = "粵語"
+            voice_labels = {
+                "en": "template.voice_lang_en",
+                "zh": "template.voice_lang_zh",
+                "ja": "template.voice_lang_ja",
+                "yue": "template.voice_lang_yue",
+            }
+            language_str = tr(voice_labels.get(selected_language, "template.voice_lang_en"))
 
             config_manager.config.system_config.voice_language = selected_language
             config_manager.save_system_config()
-            self.setNotification("语音语言已更改:" + language_str)
+            self.setNotification(
+                tr("desktop.menu.notify_voice_language", lang=language_str)
+            )
