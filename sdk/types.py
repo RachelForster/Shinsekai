@@ -37,12 +37,17 @@ class SettingsUIContribution:
 
     ``nav_label`` is shown on the sidebar (or host may map it through i18n).
     ``page_id`` must be unique across all plugins (and ideally across the app).
+
+    ``plugin_id`` / ``plugin_version`` are normally injected by the host during
+    :meth:`~sdk.plugin.PluginBase.initialize`; plugins may override explicitly when registering.
     """
 
     page_id: str
     nav_label: str
     build: Callable[[PluginSettingsUIContext], QWidget]
     order: float = 100.0
+    plugin_id: str | None = None
+    plugin_version: str | None = None
 
 
 @dataclass(frozen=True)

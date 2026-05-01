@@ -1,3 +1,28 @@
+# EasyAIDesktopAssistant — `ui/settings_ui`
+
+本目录为 **PySide6 设置窗口**（原 Gradio WebUI 迁移）。根目录文件按职责分层如下：
+
+| 路径 | 说明 |
+|------|------|
+| `main.py` | 主窗口装配：`Ui_MainWindow`、侧栏与 stacked 页面挂载 |
+| `window.py` | 对外入口：`SettingsWindow`、`create_default_context`、窗口度量 |
+| `context.py` | `SettingsUIContext` / `WebUIContext`，注入 ConfigManager 与各业务路径 |
+| `feedback.py` | Toast / `QMessageBox` 反馈封装 |
+| `utils.py` | 画廊路径、缩略图尺寸等共用工具 |
+| `qt_mm.py` | QtMultimedia 惰性封装 |
+| `ai_progress.py` / `ai_field_translate.py` | AI 进度条与字段翻译辅助 |
+| `apply_qt_material.py` | 主题材质应用 |
+| **`tabs/`** | 各设置页：`ApiSettingsTab`、`CharacterSettingsTab`、`BackgroundSettingsTab`、`TemplateSettingsTab`、`ToolsSettingsTab`、`MusicCoverSettingsTab` |
+| **`services/`** | 无 Qt 或弱耦合逻辑：聊天模板读写与启动（`chat_template_handlers`）、模板页会话快照（`template_tab_session`） |
+| **`tts/`** | TTS 离线包下载对话框、后台线程、运行环境探测 |
+| **`modules/`** | PyDracula 壳：编译后的 `main.ui`、`resources_rc`、`UIFunctions` 等 |
+| **`widgets/`** | 自定义控件（如窗口缩放 grip） |
+| **`themes/`** | `.qss` / Python 主题定义 |
+
+以下为原版 PyDracula 模板说明（捐赠链接、编译命令等），与上层应用共存：
+
+---
+
 # PyDracula - Modern GUI (PySide6)
 # 
 

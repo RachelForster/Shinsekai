@@ -11,7 +11,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from queue import Queue
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
+
+import yaml
 
 from config.config_manager import ConfigManager
 from core.messaging.message import UserInputMessage
@@ -163,3 +165,63 @@ def collect_chat_ui_contributions() -> List["ChatUIContribution"]:
     except Exception:
         logger.exception("collect_chat_ui_contributions failed")
         return []
+
+
+def read_plugin_manifest_items(path: Path | None = None) -> list[dict[str, Any]]:
+    """
+    Return manifest rows as mutable dicts (shallow copy each), preserving list order.
+    Only includes dict items with a non-empty string ``entry``.
+    """
+    p = path if path is not None else _MANIFEST
+    if not p.is_file():
+        return []
+    try:
+        raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to parse plugin manifest %s", p)
+        return []
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        entry = item.get("entry")
+        if not isinstance(entry, str) or not entry.strip():
+            continue
+        out.append(dict(item))
+    return out
+
+
+def write_plugin_manifest_items(items: list[dict[str, Any]], path: Path | None = None) -> None:
+    """Overwrite manifest with ``items`` (YAML list of mappings)."""
+    p = path if path is not None else _MANIFEST
+    p.parent.mkdir(parents=True, exist_ok=True)
+    text = yaml.safe_dump(
+        items,
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+    )
+    p.write_text(text, encoding="utf-8")
+
+
+def set_plugin_manifest_enabled(entry: str, enabled: bool, path: Path | None = None) -> bool:
+    """
+    Set ``enabled`` on the manifest row whose ``entry`` matches (strip-wise).
+    Returns True if a row was updated and the file was written.
+    """
+    items = read_plugin_manifest_items(path)
+    norm = entry.strip()
+    changed = False
+    for item in items:
+        e = item.get("entry")
+        if isinstance(e, str) and e.strip() == norm:
+            item["enabled"] = bool(enabled)
+            changed = True
+            break
+    if changed:
+        write_plugin_manifest_items(items, path)
+    return changed

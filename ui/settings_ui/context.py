@@ -22,5 +22,5 @@ class SettingsUIContext:
     history_dir: str
 
 
-# 与旧 WebUI 命名兼容，供 chat_template_handlers 等使用
+# 与旧 WebUI 命名兼容，供 services.chat_template_handlers 等使用
 WebUIContext = SettingsUIContext

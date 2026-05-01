@@ -6,22 +6,16 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Type
+from dataclasses import dataclass, replace
+from typing import Type
 
 from sdk.plugin import PluginBase
-from sdk.types import ChatUIContribution, PluginDescriptor
-
-from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
-from llm.tools.tool_manager import ToolManager
-from sdk.adapters import LLMAdapter, TTSAdapter
-
-if TYPE_CHECKING:
-    from sdk.types import (
-        SettingsUIContribution,
-        ToolsTabContribution,
-    )
-
+from sdk.types import (
+    ChatUIContribution,
+    PluginDescriptor,
+    SettingsUIContribution,
+    ToolsTabContribution,
+)
 
 @dataclass(frozen=True)
 class _ClassEntry:
@@ -114,6 +108,7 @@ class PluginCapabilityRegistry:
         self._user_input_triggers: list[Callable[[Callable[[str], None]], None]] = []
         self._user_input_processors: list[Callable[[str], str | None]] = []
         self._settings_contributions: list[SettingsUIContribution] = []
+        self._settings_ui_plugin_ctx: tuple[str, str] | None = None
         self._tools_tab_contributions: list[ToolsTabContribution] = []
         self._chat_ui_contributions: list[ChatUIContribution] = []
 
@@ -146,7 +141,22 @@ class PluginCapabilityRegistry:
     def register_user_input_processor(self, processor: Callable[[str], str | None]) -> None:
         self._user_input_processors.append(processor)
 
+    def set_settings_ui_plugin_context(self, plugin_id: str, plugin_version: str) -> None:
+        """Host-only: while a plugin's ``initialize`` runs, attach id/version to settings contributions."""
+        self._settings_ui_plugin_ctx = (plugin_id, plugin_version)
+
+    def clear_settings_ui_plugin_context(self) -> None:
+        self._settings_ui_plugin_ctx = None
+
     def register_settings_ui(self, contribution: SettingsUIContribution) -> None:
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
         self._settings_contributions.append(contribution)
 
     def register_tools_tab(self, contribution: ToolsTabContribution) -> None:

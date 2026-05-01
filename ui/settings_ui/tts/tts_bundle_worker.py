@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlparse
 import requests
 from PySide6.QtCore import QObject, QThread, Signal
 
-from ui.settings_ui.tts_env_probe import get_default_project_root
+from ui.settings_ui.tts.tts_env_probe import get_default_project_root
 
 _WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 

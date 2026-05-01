@@ -28,10 +28,10 @@ from PySide6.QtWidgets import (
 
 from i18n import init_i18n, normalize_lang, tr as tr_i18n
 from llm.constants import LLM_BASE_URLS
-from ui.settings_ui.chat_template_handlers import launch_chat_resume_last
+from ui.settings_ui.services.chat_template_handlers import launch_chat_resume_last
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import feedback_result, message_fail, toast_success
-from ui.settings_ui.tts_bundle_download_dialog import TtsBundleDownloadDialog
+from ui.settings_ui.tts.tts_bundle_download_dialog import TtsBundleDownloadDialog
 
 
 _ASR_WHISPER_MODEL_PRESETS: tuple[str, ...] = (

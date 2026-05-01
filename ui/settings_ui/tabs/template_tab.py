@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from llm.template_generator import TRANSPARENT_BG
-from ui.settings_ui.chat_template_handlers import (
+from ui.settings_ui.services.chat_template_handlers import (
     generate_template,
     launch_chat,
     load_template_from_file,
@@ -39,7 +39,7 @@ from ui.settings_ui.chat_template_handlers import (
 from i18n import tr as tr_i18n
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import feedback_result, message_fail, toast_success
-from ui.settings_ui.template_tab_session import (
+from ui.settings_ui.services.template_tab_session import (
     load_template_session,
     save_template_session,
 )

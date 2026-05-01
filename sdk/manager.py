@@ -146,9 +146,16 @@ class PluginManager:
             root = self._plugin_data_root / plugin.plugin_id.replace("/", "_")
             root.mkdir(parents=True, exist_ok=True)
             try:
+                assert self._capabilities is not None
+                self._capabilities.set_settings_ui_plugin_context(
+                    plugin.plugin_id, plugin.plugin_version
+                )
                 plugin.initialize(self._capabilities, root, host)
             except Exception:
                 logger.exception("initialize failed for %s", plugin.plugin_id)
+            finally:
+                if self._capabilities is not None:
+                    self._capabilities.clear_settings_ui_plugin_context()
         self._initialized = True
 
     def load_own_config_all(self, app_config: ConfigManager | None = None) -> None:

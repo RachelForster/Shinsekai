@@ -20,17 +20,16 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QWidget
 # 分析不到，运行时报 No module named 'modules'。
 from ui.settings_ui.modules import *  # noqa: F403
 
-from ui.settings_ui.api_tab import ApiSettingsTab
-from ui.settings_ui.background_tab import BackgroundSettingsTab
-from ui.settings_ui.character_tab import CharacterSettingsTab
+from ui.settings_ui.tabs.api_tab import ApiSettingsTab
+from ui.settings_ui.tabs.background_tab import BackgroundSettingsTab
+from ui.settings_ui.tabs.character_tab import CharacterSettingsTab
+from ui.settings_ui.tabs.plugin_tab import PluginSettingsTab
+from ui.settings_ui.tabs.template_tab import TemplateSettingsTab
+from ui.settings_ui.tabs.tools_tab import ToolsSettingsTab
 from ui.settings_ui.context import SettingsUIContext
-from ui.settings_ui.music_cover_tab import MusicCoverSettingsTab
-from ui.settings_ui.template_tab import TemplateSettingsTab
-from ui.settings_ui.tools_tab import ToolsSettingsTab
 from ui.settings_ui.window import settings_window_metrics
 
-from core.plugins.plugin_host import collect_settings_contributions, ensure_plugins_loaded
-from sdk.plugin_host_context import PluginSettingsUIContext
+from core.plugins.plugin_host import ensure_plugins_loaded
 
 
 def _clear_stacked(sw) -> None:
@@ -40,10 +39,23 @@ def _clear_stacked(sw) -> None:
         w.deleteLater()
 
 
+def _install_plugins_top_nav_button(ui: Ui_MainWindow) -> None:
+    """在左侧主菜单中加入「插件」，与 API / 人物 / 背景 / 模板同级。"""
+    btn = QPushButton(ui.topMenu)
+    btn.setObjectName("btn_plugins")
+    btn.setMinimumSize(QSize(0, 45))
+    btn.setFont(ui.btn_save.font())
+    btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+    btn.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+    btn.setStyleSheet("background-image: url(:/icons/images/icons/cil-view-module.png);")
+    ui.verticalLayout_8.addWidget(btn)
+    ui.btn_plugins = btn
+
+
 class MainWindow(QMainWindow):
     """
-    左侧菜单：前 4 个为 topMenu，中 2 个为 bottomMenu（Share/Adjustments），
-    与 Gradio 顺序一致：API、人物、背景、模板、音乐、工具。关闭请用窗口标题栏。
+    左侧主菜单（topMenu）：API、人物、背景、模板、插件；
+    折叠栏 extraTopMenu：工具（Adjustments）；底部 toggleLeftBox 等。
     """
 
     def __init__(
@@ -63,6 +75,8 @@ class MainWindow(QMainWindow):
         widgets = self.ui
 
         Settings.ENABLE_CUSTOM_TITLE_BAR = True
+
+        _install_plugins_top_nav_button(self.ui)
 
         # 标题与侧栏文案由 apply_i18n 设置
 
@@ -92,37 +106,26 @@ class MainWindow(QMainWindow):
         self._template = TemplateSettingsTab(self._ctx)
         # self._music = MusicCoverSettingsTab(self._ctx)
         self._tools = ToolsSettingsTab(self._ctx)
+        self._plugins = PluginSettingsTab(self._ctx)
 
         self._pages: list[QWidget] = [
             self._api,
             self._character,
             self._background,
             self._template,
-            # self._music,
+            self._plugins,
             self._tools,
         ]
-
-        self._plugin_settings_contribs = collect_settings_contributions()
-        for contrib in self._plugin_settings_contribs:
-            plg = PluginSettingsUIContext.from_settings_ui_context(self._ctx)
-            self._pages.append(contrib.build(plg))
 
         self._nav_buttons: list[tuple[object, int]] = [
             (self.ui.btn_home, 0),
             (self.ui.btn_widgets, 1),
             (self.ui.btn_new, 2),
             (self.ui.btn_save, 3),
-            # (self.ui.btn_share, 4),
-            (self.ui.btn_adjustments, 4),
+            (self.ui.btn_plugins, 4),
+            (self.ui.btn_adjustments, 5),
         ]
-        base_n = len(self._nav_buttons)
-        for i, contrib in enumerate(self._plugin_settings_contribs):
-            btn = QPushButton(contrib.nav_label, self.ui.topMenu)
-            btn.setMinimumSize(QSize(0, 45))
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-            self.ui.verticalLayout_8.addWidget(btn)
-            self._nav_buttons.append((btn, base_n + i))
+        self.ui.btn_share.hide()
 
         self.ui.btn_more.hide()
         self.ui.version.setText("v1.6.0")
@@ -177,18 +180,26 @@ class MainWindow(QMainWindow):
         self.ui.btn_widgets.setText(tr("nav.character"))
         self.ui.btn_new.setText(tr("nav.background"))
         self.ui.btn_save.setText(tr("nav.template"))
-        self.ui.btn_share.hide()
-        self.ui.btn_share.setText(tr("nav.music"))
+        self.ui.btn_plugins.setText(tr("nav.plugins"))
         self.ui.btn_adjustments.setText(tr("nav.tools"))
         self.ui.textEdit.setHtml(tr("main.text_edit"))
         self.ui.textEdit.setReadOnly(True)
         self.ui.toggleLeftBox.setText(tr("nav.tools"))
-        for t in (self._api, self._character, self._background, self._template, self._tools):
+        for t in (
+            self._api,
+            self._character,
+            self._background,
+            self._template,
+            self._plugins,
+            self._tools,
+        ):
             if hasattr(t, "apply_i18n"):
                 t.apply_i18n()
 
     def _deselect_all_nav(self) -> None:
         for w in self.ui.topMenu.findChildren(QPushButton):
+            w.setStyleSheet(UIFunctions.deselectMenu(w.styleSheet()))
+        for w in self.ui.extraTopMenu.findChildren(QPushButton):
             w.setStyleSheet(UIFunctions.deselectMenu(w.styleSheet()))
         for w in self.ui.bottomMenu.findChildren(QPushButton):
             w.setStyleSheet(UIFunctions.deselectMenu(w.styleSheet()))

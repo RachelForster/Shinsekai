@@ -10,7 +10,25 @@
     "background": "背景管理",
     "template": "聊天模板",
     "music": "音乐翻唱",
-    "tools": "小工具"
+    "tools": "小工具",
+    "plugins": "插件"
+  },
+  "plugins": {
+    "tab_manage": "管理插件",
+    "tab_discover": "发现插件",
+    "discover_placeholder": "浏览与安装扩展的能力尚未接入，敬请期待。",
+    "empty_manage": "暂无插件条目。请在 data/config/plugins.yaml 中添加 `- entry: …`，保存并重启后即可加载；卡片上的「启用」控制是否在下次启动时加载该插件。",
+    "version_label": "版本：{version}",
+    "open_settings": "插件设置",
+    "no_settings_tooltip": "该插件未提供设置界面",
+    "back": "返回列表",
+    "detail_heading": "{name} · v{version}",
+    "enable_switch": "启用",
+    "toggle_tooltip": "对应清单里的 enabled；当前仍为本次启动已加载的状态，完全生效请重启应用。",
+    "manifest_saved_title": "已保存",
+    "restart_hint": "已写入 data/config/plugins.yaml，重启应用后生效。",
+    "manifest_write_failed_title": "保存失败",
+    "manifest_write_failed_body": "无法写入插件清单文件。"
   },
   "lang": {
     "group": "界面语言",

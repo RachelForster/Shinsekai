@@ -10,7 +10,25 @@
     "background": "背景",
     "template": "チャットテンプレート",
     "music": "音楽カバー",
-    "tools": "ツール"
+    "tools": "ツール",
+    "plugins": "プラグイン"
+  },
+  "plugins": {
+    "tab_manage": "管理",
+    "tab_discover": "発見",
+    "discover_placeholder": "拡張機能の閲覧・インストールは未対応です。",
+    "empty_manage": "プラグインの項目がありません。data/config/plugins.yaml に `- entry: …` を追加し再起動すると読み込みます。「有効」は次回起動時の読み込みを制御します。",
+    "version_label": "バージョン：{version}",
+    "open_settings": "設定",
+    "no_settings_tooltip": "このプラグインは設定画面を提供していません",
+    "back": "一覧に戻る",
+    "detail_heading": "{name} · v{version}",
+    "enable_switch": "有効",
+    "toggle_tooltip": "マニフェストの enabled に対応。既に読み込まれた分は再起動までそのままです。",
+    "manifest_saved_title": "保存しました",
+    "restart_hint": "data/config/plugins.yaml に書き込み済みです。アプリを再起動すると反映されます。",
+    "manifest_write_failed_title": "保存に失敗",
+    "manifest_write_failed_body": "プラグインマニフェストを書き込めませんでした。"
   },
   "lang": {
     "group": "表示言語",

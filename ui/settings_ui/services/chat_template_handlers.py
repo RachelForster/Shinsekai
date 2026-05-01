@@ -164,7 +164,7 @@ def _release_root() -> Path:
         return Path(os.environ["EASYAI_PROJECT_ROOT"])
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent.parent
-    return Path(__file__).resolve().parent.parent.parent
+    return Path(__file__).resolve().parent.parent.parent.parent
 
 
 def launch_chat(

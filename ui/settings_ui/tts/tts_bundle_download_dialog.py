@@ -19,8 +19,8 @@ from PySide6.QtWidgets import (
 
 from i18n import tr as tr_i18n
 from ui.settings_ui.feedback import feedback_result, message_fail
-from ui.settings_ui.tts_bundle_worker import TtsBundleDownloadWorker
-from ui.settings_ui.tts_env_probe import (
+from ui.settings_ui.tts.tts_bundle_worker import TtsBundleDownloadWorker
+from ui.settings_ui.tts.tts_env_probe import (
     bundle_choice_for_kind,
     format_gpu_lines,
     format_platform,

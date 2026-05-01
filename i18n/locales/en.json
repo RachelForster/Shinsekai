@@ -13,7 +13,25 @@
     "background": "Backgrounds",
     "template": "Chat template",
     "music": "Music cover",
-    "tools": "Tools"
+    "tools": "Tools",
+    "plugins": "Plugins"
+  },
+  "plugins": {
+    "tab_manage": "Installed",
+    "tab_discover": "Discover",
+    "discover_placeholder": "Browse and install extensions is not wired yet.",
+    "empty_manage": "No plugin entries. Add `- entry: …` to data/config/plugins.yaml, restart to load; use Enable to control loading on the next start.",
+    "version_label": "Version: {version}",
+    "open_settings": "Settings",
+    "no_settings_tooltip": "This plugin does not provide a settings UI",
+    "back": "Back to list",
+    "detail_heading": "{name} · v{version}",
+    "enable_switch": "Enable",
+    "toggle_tooltip": "Maps to enabled in the manifest; already-loaded plugins stay active until you restart.",
+    "manifest_saved_title": "Saved",
+    "restart_hint": "Written to data/config/plugins.yaml. Restart the app to apply.",
+    "manifest_write_failed_title": "Save failed",
+    "manifest_write_failed_body": "Could not write the plugin manifest."
   },
   "lang": {
     "group": "Interface language",
