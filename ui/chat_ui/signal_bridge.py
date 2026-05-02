@@ -22,7 +22,22 @@ ChatUI 信号桥：把 :class:`~ui.chat_ui.chat_ui.ChatUIWindow` 及其关键子
 - 对话框：``dialog_typing_finished``、``dialog_area_clicked``（气泡可点击区域）
 - 立绘帧：``sprite_frame_updated``（``numpy.ndarray``，无图像线程时不触发）
 
-**用法**
+**插件用法**
+
+通过 :class:`~sdk.chat_ui_context.ChatUIContext` 的 ``on_*`` 注册回调（不推荐直接
+``get_chat_ui_signal_bridge().connect``，以免与宿主/多插件连接语义纠缠）：
+
+.. code-block:: python
+
+    from sdk.chat_ui_context import try_get_chat_ui_context
+
+    ctx = try_get_chat_ui_context()
+    if ctx:
+        unsub = ctx.on_message_submitted(lambda text: ...)
+
+宿主导线仍使用 :func:`get_chat_ui_signal_bridge` 与窗口 :func:`attach_chat_ui_window` 转发。
+
+**旧式直接连桥（仅高级 / 调试）**
 
 .. code-block:: python
 
@@ -30,7 +45,6 @@ ChatUI 信号桥：把 :class:`~ui.chat_ui.chat_ui.ChatUIWindow` 及其关键子
 
     bridge = get_chat_ui_signal_bridge()
     bridge.message_submitted.connect(lambda text: ...)
-    bridge.mic_transcription_update.connect(lambda t, partial: ...)
 
 窗口 ``__init__`` 结束时会 :func:`attach_chat_ui_window`；关闭时在 ``closeEvent`` 中
 :func:`detach_chat_ui_window`。

@@ -1,4 +1,4 @@
-"""Bind :class:`~ui.chat_ui.context.ChatUIContext` and wire the signal bridge for main_sprite."""
+"""Bind :class:`~sdk.chat_ui_context.ChatUIContext` and wire the signal bridge for main_sprite."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from core.sprite.chat_history import (
 from core.messaging.message import TTSOutputMessage
 from core.plugins.plugin_host import collect_chat_ui_contributions
 from llm.llm_manager import LLMManager
-from ui.chat_ui.context import ChatUIContext, set_chat_ui_context
+from sdk.chat_ui_context import ChatUIContext, set_chat_ui_context
 
 
 def install_chat_ui_context(
@@ -71,25 +71,24 @@ def wire_chat_ui_bridge(
         emit_user_text(message)
         ctx.set_notification_hint(_tr("main_sprite.notify_submitted"))
 
-    bridge = ctx.signals
-    bridge.message_submitted.connect(on_message_submitted)
-    bridge.open_chat_history_dialog.connect(
+    ctx.on_message_submitted(on_message_submitted)
+    ctx.on_open_chat_history_dialog(
         lambda: window.open_history_dialog(chat_history)
     )
-    bridge.change_voice_language.connect(
+    ctx.on_change_voice_language(
         lambda lang: _on_voice_language_changed(window, tts_manager, lang)
     )
-    bridge.close_window.connect(app.quit)
-    bridge.clear_chat_history.connect(
+    ctx.on_close_window(app.quit)
+    ctx.on_clear_chat_history(
         lambda: clear_chat_history(
             history_file=history_file,
             ui_queue=audio_path_queue,
             llm_manager=llm_manager,
         )
     )
-    bridge.skip_speech_signal.connect(lambda: ui_worker.skip_speech())
-    bridge.copy_chat_history_to_clipboard.connect(copy_chat_history_to_clipboard)
-    bridge.revert_chat_history.connect(
+    ctx.on_skip_speech_signal(lambda: ui_worker.skip_speech())
+    ctx.on_copy_chat_history_to_clipboard(copy_chat_history_to_clipboard)
+    ctx.on_revert_chat_history(
         lambda index: revert_chat_history(
             user_index=index,
             llm_manager=llm_manager,

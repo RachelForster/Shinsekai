@@ -244,7 +244,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         return _WindowStateProxy(self)
 
     def _make_ui_actions(self):
-        from ui.chat_ui.context import _ChatUIActions
+        from sdk.chat_ui_context import _ChatUIActions
         return _ChatUIActions(
             set_notification_hint=self.setNotification,
             set_busy_bar=self.setBusyBar,
@@ -1211,7 +1211,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         """
         if not contributions:
             return
-        from ui.chat_ui.context import try_get_chat_ui_context
+        from sdk.chat_ui_context import try_get_chat_ui_context
 
         build_arg = try_get_chat_ui_context()
         if build_arg is None:

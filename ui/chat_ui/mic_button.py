@@ -160,7 +160,7 @@ class MicButton(QPushButton):
     def _mic_busy_show(self, text: str, duration_seconds: float = 0.0) -> None:
         """经 ChatUIContext 显示底料加载条（无 context 时忽略）；刷新事件循环以便随后同步加载时条能画出。"""
         try:
-            from ui.chat_ui.context import try_get_chat_ui_context
+            from sdk.chat_ui_context import try_get_chat_ui_context
 
             ctx = try_get_chat_ui_context()
             if ctx is not None:
@@ -171,7 +171,7 @@ class MicButton(QPushButton):
 
     def _mic_busy_hide(self) -> None:
         try:
-            from ui.chat_ui.context import try_get_chat_ui_context
+            from sdk.chat_ui_context import try_get_chat_ui_context
 
             ctx = try_get_chat_ui_context()
             if ctx is not None:

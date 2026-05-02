@@ -13,7 +13,7 @@ from typing import Any, Callable
 from PySide6.QtWidgets import QWidget
 
 from sdk.plugin_host_context import PluginSettingsUIContext
-from ui.chat_ui.context import ChatUIContext
+from sdk.chat_ui_context import ChatUIContext
 
 __all__ = [
     "ChatUIContext",
@@ -78,8 +78,9 @@ class ChatUIContribution:
     ``placement`` is a hint: e.g. ``"toolbar"``, ``"overlay"``, ``"input_row"``.
     The host decides how to interpret placements that it supports.
 
-    ``build`` receives :class:`~ui.chat_ui.context.ChatUIContext` for safe state access;
-    the host may also pass a window reference if the plugin documents it.
+    ``build`` receives :class:`~sdk.chat_ui_context.ChatUIContext` for safe state access
+    and event subscription via ``on_*`` callbacks (not raw Qt signals).
+    The host may also pass a window reference if the plugin documents it.
     """
 
     widget_id: str
