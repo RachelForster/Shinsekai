@@ -19,15 +19,15 @@ if getattr(sys, "frozen", False):
         os.environ["EASYAI_PROJECT_ROOT"] = str(_release)
         os.chdir(_release)
         # Windows：扩展模块依赖的 Qt/shiboken DLL 不在 sys.path 里解析，须加入 DLL 搜索路径。
-        # MERGE 时多数 Qt 二进位落在先打的 main_sprite/_internal，仅有 sys.path 会导致
+        # MERGE 时多数 Qt 二进位落在先打的 main/_internal，仅有 sys.path 会导致
         # 「DLL load failed while importing Shiboken / 找不到指定的模块」。
         _internal_here = _exe_dir / "_internal"
         if sys.platform == "win32":
             if _internal_here.is_dir():
                 os.add_dll_directory(str(_internal_here.resolve()))
-        # MERGE 多包时公共 DLL/同路径资源在列表中**先**打的 exe 目录（本仓库为 main_sprite）；
+        # MERGE 多包时公共 DLL/同路径资源在列表中**先**打的 exe 目录（本仓库为 main）；
         # 仅打 Settings 时此处目录不存在。否则 Settings 须在 import PySide6 前能访问该目录。
-        _ms = _release / "main_sprite" / "_internal"
+        _ms = _release / "main" / "_internal"
         if _ms.is_dir():
             p = str(_ms.resolve())
             if p not in sys.path:

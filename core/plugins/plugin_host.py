@@ -3,7 +3,7 @@ Host integration for :mod:`sdk` plugins: load manifest, merge factories/tools/ha
 and expose contributions for Settings / Tools / Chat UI.
 
 Call :func:`ensure_plugins_loaded` once per process after :class:`~config.config_manager.ConfigManager`
-is available (``main_sprite`` and/or Settings UI). Safe to call multiple times (idempotent).
+is available (``main`` entry and/or Settings UI). Safe to call multiple times (idempotent).
 """
 
 from __future__ import annotations
@@ -17,7 +17,10 @@ import yaml
 
 from config.config_manager import ConfigManager
 from core.messaging.message import UserInputMessage
-from core.plugins.plugin_requirements_install import ensure_plugin_site_packages_on_syspath
+from core.plugins.plugin_requirements_install import (
+    ensure_plugin_site_packages_on_syspath,
+    ensure_plugins_namespace_on_syspath,
+)
 from asr.asr_manager import ASRAdapterFactory
 from llm.llm_manager import LLMAdapterFactory
 from llm.tools.tool_manager import ToolManager
@@ -65,6 +68,7 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
     if _loaded:
         return _plugin_manager
 
+    ensure_plugins_namespace_on_syspath()
     ensure_plugin_site_packages_on_syspath()
 
     mgr = PluginManager()

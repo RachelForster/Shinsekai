@@ -1,1 +1,1 @@
-"""Chat history, ChatUI wiring, and main_sprite CLI helpers."""
+"""Chat history, ChatUI wiring, and main CLI helpers."""

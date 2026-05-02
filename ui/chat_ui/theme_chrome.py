@@ -3,7 +3,7 @@
 
 禁止写入会影响布局/尺寸的声明（width/height、font-size 等），具体见 :func:`sanitize_chrome_declarations`。
 
-桌面助手进程（``main_sprite`` / ``start_qt_app``）会使用 Fusion 风格以便 QSS 圆角等在 Windows 上可靠生效，见 :mod:`ui.chat_ui.qss_fusion`。
+桌面助手进程（``main`` / ``start_qt_app``）会使用 Fusion 风格以便 QSS 圆角等在 Windows 上可靠生效，见 :mod:`ui.chat_ui.qss_fusion`。
 """
 
 from __future__ import annotations

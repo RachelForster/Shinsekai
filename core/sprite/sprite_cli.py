@@ -1,4 +1,4 @@
-"""Command-line argument parsing for main_sprite."""
+"""Command-line argument parsing for the desktop chat entry (main)."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from typing import Any
 
 
 def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=tr_i18n("main_sprite.arg_desc"))
+    parser = argparse.ArgumentParser(description=tr_i18n("main.arg_desc"))
     parser.add_argument(
         "--template",
         "-t",
         type=str,
-        help=tr_i18n("main_sprite.arg_t_help"),
+        help=tr_i18n("main.arg_t_help"),
         default="komaeda_sprite",
     )
     parser.add_argument("--init_sprite_path", "-isp", type=str, default="")
@@ -26,7 +26,7 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
         "--room_id",
         type=str,
         default="",
-        help=tr_i18n("main_sprite.arg_room_help"),
+        help=tr_i18n("main.arg_room_help"),
     )
     return parser
 

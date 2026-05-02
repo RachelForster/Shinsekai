@@ -28,8 +28,13 @@ class MoondreamVisionConfig:
     """满足触发条件后，两次送模型推理的最短间隔（秒）。"""
     monitor_index: int = 1
     """mss 显示器序号：1 为主屏，0 为虚拟全屏组合。"""
-    question: str = "用一两句话描述当前屏幕上对聊天助手最有用的可见内容。"
-    message_prefix: str = "[屏幕识别] "
+    question: str = ""
+    """可选：不设分事件提示时作统一提问；设了分事件后仅当某类未填时用内置英文。"""
+    question_screen_diff: str = ""
+    question_mouse: str = ""
+    question_new_window: str = ""
+    question_foreground: str = ""
+    message_prefix: str = "[Screen] "
 
     def clamp(self) -> None:
         self.motion_poll_sec = max(0.12, min(3.0, float(self.motion_poll_sec)))
@@ -84,7 +89,24 @@ def load_config(path: Path) -> MoondreamVisionConfig:
             mouse_move_percent=_load_mouse_move_percent(raw),
             interval_sec=float(raw.get("interval_sec", 20)),
             monitor_index=int(raw.get("monitor_index", 1)),
-            question=str(raw.get("question", MoondreamVisionConfig.question)),
+            question=str(raw.get("question", "") or ""),
+            question_screen_diff=str(
+                raw.get("question_screen_diff", MoondreamVisionConfig.question_screen_diff)
+                or ""
+            ),
+            question_mouse=str(
+                raw.get("question_mouse", MoondreamVisionConfig.question_mouse) or ""
+            ),
+            question_new_window=str(
+                raw.get("question_new_window", MoondreamVisionConfig.question_new_window)
+                or ""
+            ),
+            question_foreground=str(
+                raw.get(
+                    "question_foreground", MoondreamVisionConfig.question_foreground
+                )
+                or ""
+            ),
             message_prefix=str(
                 raw.get("message_prefix", MoondreamVisionConfig.message_prefix)
             ),

@@ -4,6 +4,7 @@ import importlib
 import io
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from PIL import Image
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 _model: Any = None
 _model_key: tuple[str, str, str, str, str, str] | None = None
 _lock = threading.Lock()
+
+# 所有 load + infer 仅在此时上执行，避免占用 Qt 主线程或 LLMWorker 的 QThread。
+_infer_executor: ThreadPoolExecutor | None = None
+_infer_exec_lock = threading.Lock()
 
 # Moondream2 的 vision 用自定义 F.linear；bitsandbytes 量化后权重为 int8，与 float 激活在 F.linear 里不兼容，须跳过量化。
 _MOONDREAM_BNB_SKIP_MODULES: tuple[str, ...] = ("vision",)
@@ -246,14 +251,28 @@ def get_model(cfg: MoondreamVisionConfig) -> Any:
         return _model
 
 
-def infer_screen_png(png: bytes, question: str, cfg: MoondreamVisionConfig) -> str:
+def _ensure_infer_executor() -> ThreadPoolExecutor:
+    global _infer_executor
+    with _infer_exec_lock:
+        if _infer_executor is None:
+            _infer_executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="moondream_infer",
+            )
+        return _infer_executor
+
+
+def _infer_screen_png_worker(
+    png: bytes, question: str, cfg: MoondreamVisionConfig
+) -> str:
+    """在专用线程中执行：get_model + query（可能含首次下载权重）。"""
     from contextlib import nullcontext
 
     import torch
 
     model = get_model(cfg)
     image = Image.open(io.BytesIO(png)).convert("RGB")
-    text_q = (question or "").strip() or "简要描述画面内容。"
+    text_q = (question or "").strip() or "Briefly describe the visible screen in English for a chat assistant."
     dev = next(model.parameters()).device
     if dev.type == "cuda":
         amp_ctx = torch.autocast(device_type="cuda", enabled=False)
@@ -274,7 +293,14 @@ def infer_screen_png(png: bytes, question: str, cfg: MoondreamVisionConfig) -> s
     return str(out)[:4000]
 
 
-def unload_model() -> None:
+def infer_screen_png(png: bytes, question: str, cfg: MoondreamVisionConfig) -> str:
+    """将加载与推理派发到单线程池，调用方线程（含 UI / QThread）仅等待结果。"""
+    ex = _ensure_infer_executor()
+    fut = ex.submit(_infer_screen_png_worker, png, question, cfg)
+    return fut.result()
+
+
+def _release_weights_sync() -> None:
     global _model, _model_key
     with _lock:
         _model = None
@@ -286,3 +312,17 @@ def unload_model() -> None:
             torch.cuda.empty_cache()
     except Exception:
         pass
+
+
+def unload_model() -> None:
+    """在推理线程上释放权重，避免与正在执行的 infer 竞态。"""
+    ex: ThreadPoolExecutor | None = None
+    with _infer_exec_lock:
+        ex = _infer_executor
+    if ex is not None:
+        try:
+            ex.submit(_release_weights_sync).result(timeout=120.0)
+        except Exception:
+            logger.exception("Moondream: 提交释放权重任务失败或超时")
+    else:
+        _release_weights_sync()

@@ -12,7 +12,9 @@ from plugins.moondream_vision.config_model import (
     load_config,
 )
 from plugins.moondream_vision.local_infer import infer_screen_png, unload_model
+from plugins.moondream_vision.prompts import question_for_triggers
 from plugins.moondream_vision.trigger_state import MoondreamTriggerState
+from plugins.moondream_vision.ui_busy import moondream_busy
 
 logger = logging.getLogger(__name__)
 
@@ -109,13 +111,15 @@ def _restart_worker() -> None:
                 if now - last_infer_monotonic < float(c.interval_sec):
                     continue
 
-                png = grab_screen_png(c.monitor_index)
-                text = infer_screen_png(png, c.question, c)
-                msg = f"{c.message_prefix}{text}".strip()
-                if msg:
-                    emit(msg)
-                state.on_infer_done(thumb)
-                last_infer_monotonic = time.monotonic()
+                with moondream_busy():
+                    png = grab_screen_png(c.monitor_index)
+                    q = question_for_triggers(c, reasons)
+                    text = infer_screen_png(png, q, c)
+                    msg = f"{c.message_prefix}{text}".strip()
+                    if msg:
+                        emit(msg)
+                    state.on_infer_done(thumb)
+                    last_infer_monotonic = time.monotonic()
                 logger.info(
                     "Moondream 已触发识屏（%s）",
                     ",".join(reasons) if reasons else "?",

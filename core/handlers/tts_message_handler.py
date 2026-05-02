@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List
 
 from config.config_manager import ConfigManager
-from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
+from core.handlers.handler_registry import MessageHandler
 from core.messaging.dialog_tokens import (
     match_bgm_name,
     match_cg_name,
@@ -19,14 +19,29 @@ from core.messaging.dialog_tokens import (
     match_system_dialog_tts,
     normalize_character_name,
 )
-from core.handlers.handler_registry import MessageHandler
 from core.messaging.message import LLMDialogMessage
+from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
+from i18n import tr as tr_i18n
 
 _config = ConfigManager()
 
 
 def get_character_by_name(name: str):
     return _config.get_character_by_name(name)
+
+
+def _post_tts_busy(text: str) -> None:
+    try:
+        get_app_runtime().ui_update_manager.post_busy_bar(text, 0.0)
+    except Exception:
+        pass
+
+
+def _hide_tts_busy() -> None:
+    try:
+        get_app_runtime().ui_update_manager.hide_busy_bar()
+    except Exception:
+        pass
 
 
 def _cc():
@@ -89,6 +104,7 @@ class CgTtsHandler(MessageHandler):
         return match_cg_name(msg.character_name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
+        _post_tts_busy(tr_i18n("desktop.tts_busy_cg"))
         try:
             cg_path = get_app_runtime().t2i_manager.t2i(prompt=msg.speech, prompt_processor=None)
             tts_emit_to_ui_queue(
@@ -97,6 +113,8 @@ class CgTtsHandler(MessageHandler):
         except Exception as e:
             print(f"生成CG失败，{e}")
             traceback.print_exc()
+        finally:
+            _hide_tts_busy()
 
 
 class DefaultCharacterTtsHandler(MessageHandler):
@@ -121,39 +139,43 @@ class DefaultCharacterTtsHandler(MessageHandler):
             speech_text = rt.text_processor.remove_parentheses(translate)
         audio_path = ""
         if rt.tts_manager:
-            model_info = {
-                "character_name": name_s,
-                "sovits_model_path": Path(character_config.sovits_model_path).resolve().as_posix(),
-                "gpt_model_path": Path(character_config.gpt_model_path).resolve().as_posix(),
-            }
-            rt.tts_manager.switch_model(model_info)
-            print("TTSWorker: 使用模型", name_s, model_info)
+            _post_tts_busy(tr_i18n("desktop.tts_busy_synthesizing", name=name_s))
             try:
-                sprite_id = int(sprite) - 1
-                if sprite_id < 0 or sprite_id >= len(character_config.sprites):
-                    raise IndexError("Sprite ID out of range")
-            except (ValueError, IndexError):
-                print(f"无效或缺失的立绘编号: {sprite}. 使用默认立绘。")
-                sprite_id = -1
-            ref_audio_path = Path(character_config.refer_audio_path).resolve().as_posix()
-            prompt_text = character_config.prompt_text
-            try:
-                sprite_data = character_config.sprites[sprite_id]
-                if sprite_data.get("voice_text", None):
-                    ref_audio_path = Path(sprite_data.get("voice_path")).resolve().as_posix()
-                    prompt_text = sprite_data.get("voice_text")
-            except Exception:
-                print("没有立绘")
-            if text_processor:
-                speech_text = text_processor.remove_parentheses(speech_text)
-            audio_path = rt.tts_manager.generate_tts(
-                speech_text,
-                text_processor=text_processor,
-                ref_audio_path=ref_audio_path,
-                prompt_text=prompt_text,
-                prompt_lang=character_config.prompt_lang,
-                character_name=name_s,
-            )
+                model_info = {
+                    "character_name": name_s,
+                    "sovits_model_path": Path(character_config.sovits_model_path).resolve().as_posix(),
+                    "gpt_model_path": Path(character_config.gpt_model_path).resolve().as_posix(),
+                }
+                rt.tts_manager.switch_model(model_info)
+                print("TTSWorker: 使用模型", name_s, model_info)
+                try:
+                    sprite_id = int(sprite) - 1
+                    if sprite_id < 0 or sprite_id >= len(character_config.sprites):
+                        raise IndexError("Sprite ID out of range")
+                except (ValueError, IndexError):
+                    print(f"无效或缺失的立绘编号: {sprite}. 使用默认立绘。")
+                    sprite_id = -1
+                ref_audio_path = Path(character_config.refer_audio_path).resolve().as_posix()
+                prompt_text = character_config.prompt_text
+                try:
+                    sprite_data = character_config.sprites[sprite_id]
+                    if sprite_data.get("voice_text", None):
+                        ref_audio_path = Path(sprite_data.get("voice_path")).resolve().as_posix()
+                        prompt_text = sprite_data.get("voice_text")
+                except Exception:
+                    print("没有立绘")
+                if text_processor:
+                    speech_text = text_processor.remove_parentheses(speech_text)
+                audio_path = rt.tts_manager.generate_tts(
+                    speech_text,
+                    text_processor=text_processor,
+                    ref_audio_path=ref_audio_path,
+                    prompt_text=prompt_text,
+                    prompt_lang=character_config.prompt_lang,
+                    character_name=name_s,
+                )
+            finally:
+                _hide_tts_busy()
         else:
             audio_path = character_config.sprites[int(sprite) - 1].get("voice_path", "")
         tts_emit_to_ui_queue(

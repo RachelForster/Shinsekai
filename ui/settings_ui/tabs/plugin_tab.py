@@ -38,6 +38,7 @@ from core.plugins.plugin_host import (
     collect_tools_tab_contributions,
     get_plugin_manager,
     infer_plugin_package_directory,
+    normalize_manifest_entry,
     read_plugin_manifest_items,
     remove_plugin_manifest_entry,
     set_plugin_manifest_enabled,
@@ -55,6 +56,8 @@ from core.plugins.registry_download import (
     load_downloaded_repos,
     mark_repo_downloaded,
     normalize_repo_slug,
+    unmark_repo_downloaded,
+    unmark_repo_for_manifest_entry,
 )
 from i18n import tr as tr_i18n
 from sdk.plugin_host_context import PluginSettingsUIContext
@@ -660,72 +663,78 @@ class PluginSettingsTab(QWidget):
         pip_json: str,
     ) -> None:
         self._download_busy.discard(repo_norm)
-        if ok:
-            mark_repo_downloaded(repo_norm)
-            base = tr_i18n("plugins.discover_download_ok_body")
-            entry_line = self._registry_entry_for_repo_norm(repo_norm)
-            detail = ""
-            if entry_line:
-                try:
-                    outcome = append_plugin_manifest_entry_if_missing(
-                        entry_line, enabled=True
-                    )
-                    if outcome == "added":
-                        detail = tr_i18n("plugins.manifest_auto_added")
-                    elif outcome == "exists":
-                        detail = tr_i18n("plugins.manifest_auto_exists")
-                    self._refresh_cards()
-                except OSError as exc:
-                    message_fail(
-                        self,
-                        tr_i18n("plugins.manifest_auto_fail_title"),
-                        str(exc),
-                    )
-                    detail = tr_i18n("plugins.manifest_auto_fail_hint")
-            else:
-                detail = tr_i18n("plugins.manifest_auto_skip_no_entry")
-
-            pip_code, pip_tail = _parse_pip_install_result_json(pip_json)
-            pip_bad = pip_code in (
-                "pip_failed",
-                "pip_timeout",
-                "pip_exception",
-            )
-            pip_lines: list[str] = []
-            if pip_code == "pip_ok":
-                pip_lines.append(tr_i18n("plugins.plugin_pip_ok"))
-            elif pip_code == "pip_skip_no_requirements":
-                pip_lines.append(tr_i18n("plugins.plugin_pip_skip"))
-            elif pip_bad:
-                pip_lines.append(tr_i18n("plugins.plugin_pip_fail_toast_hint"))
-
-            sections = [base]
-            if pip_lines:
-                sections.extend(pip_lines)
-            if detail:
-                sections.append(detail)
-            toast_success(
-                self,
-                tr_i18n("plugins.discover_download_ok_title"),
-                "\n\n".join(sections),
-            )
-            if pip_bad:
-                dlg = tr_i18n("plugins.plugin_pip_fail_dialog_intro")
-                if pip_tail:
-                    dlg = (
-                        dlg
-                        + "\n\n"
-                        + tr_i18n("plugins.plugin_pip_detail_heading")
-                        + "\n"
-                        + pip_tail
-                    )
-                message_fail(self, tr_i18n("plugins.plugin_pip_fail_title"), dlg)
-        else:
+        if not ok:
             message_fail(
                 self,
                 tr_i18n("plugins.discover_download_fail_title"),
                 download_err or tr_i18n("plugins.discover_download_fail_body"),
             )
+            self._repaint_discover_catalog_grid()
+            return
+
+        pip_code, pip_tail = _parse_pip_install_result_json(pip_json)
+        pip_bad = pip_code in (
+            "pip_failed",
+            "pip_timeout",
+            "pip_exception",
+        )
+        if pip_bad:
+            dlg = tr_i18n("plugins.plugin_pip_fail_dialog_intro")
+            if pip_tail:
+                dlg = (
+                    dlg
+                    + "\n\n"
+                    + tr_i18n("plugins.plugin_pip_detail_heading")
+                    + "\n"
+                    + pip_tail
+                )
+            message_fail(self, tr_i18n("plugins.plugin_pip_fail_title"), dlg)
+            self._repaint_discover_catalog_grid()
+            return
+
+        mark_repo_downloaded(
+            repo_norm,
+            manifest_entry=entry_line if entry_line else None,
+        )
+        base = tr_i18n("plugins.discover_download_ok_body")
+        entry_line = self._registry_entry_for_repo_norm(repo_norm)
+        detail = ""
+        if entry_line:
+            try:
+                outcome = append_plugin_manifest_entry_if_missing(
+                    entry_line, enabled=True
+                )
+                if outcome == "added":
+                    detail = tr_i18n("plugins.manifest_auto_added")
+                elif outcome == "exists":
+                    detail = tr_i18n("plugins.manifest_auto_exists")
+                self._refresh_cards()
+            except OSError as exc:
+                message_fail(
+                    self,
+                    tr_i18n("plugins.manifest_auto_fail_title"),
+                    str(exc),
+                )
+                detail = tr_i18n("plugins.manifest_auto_fail_hint")
+        else:
+            detail = tr_i18n("plugins.manifest_auto_skip_no_entry")
+
+        pip_lines: list[str] = []
+        if pip_code == "pip_ok":
+            pip_lines.append(tr_i18n("plugins.plugin_pip_ok"))
+        elif pip_code == "pip_skip_no_requirements":
+            pip_lines.append(tr_i18n("plugins.plugin_pip_skip"))
+
+        sections = [base]
+        if pip_lines:
+            sections.extend(pip_lines)
+        if detail:
+            sections.append(detail)
+        toast_success(
+            self,
+            tr_i18n("plugins.discover_download_ok_title"),
+            "\n\n".join(sections),
+        )
         self._repaint_discover_catalog_grid()
 
     def _contributions_by_plugin(self) -> dict[str, list[SettingsUIContribution]]:
@@ -1016,6 +1025,8 @@ class PluginSettingsTab(QWidget):
             )
             return
 
+        self._unmark_downloaded_repo_for_manifest_entry(ent)
+
         folder_note = ""
         d = infer_plugin_package_directory(ent)
         if d is not None and d.is_dir():
@@ -1036,6 +1047,7 @@ class PluginSettingsTab(QWidget):
                     folder_note = tr_i18n("plugins.manage_uninstall_skip_folder")
 
         self._refresh_cards()
+        self._repaint_discover_catalog_grid()
         toast_success(
             self,
             tr_i18n("plugins.manage_uninstall_ok_title"),
@@ -1047,6 +1059,21 @@ class PluginSettingsTab(QWidget):
                 tr_i18n("plugins.manage_uninstall_folder_note_title"),
                 folder_note,
             )
+
+    def _unmark_downloaded_repo_for_manifest_entry(self, manifest_entry: str) -> None:
+        if unmark_repo_for_manifest_entry(manifest_entry):
+            return
+        ent = normalize_manifest_entry(manifest_entry.strip())
+        if not ent:
+            return
+        cache = self._discover_cache
+        if not cache:
+            return
+        for rec in cache:
+            re = (rec.entry or "").strip()
+            if re and normalize_manifest_entry(re) == ent:
+                unmark_repo_downloaded(rec.repo)
+                break
 
     def _on_manage_set_enabled(self, manifest_entry: str, enabled: bool) -> None:
         ent = manifest_entry.strip()

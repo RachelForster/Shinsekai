@@ -42,7 +42,7 @@ def launch_chat(
             _main_chat_process = subprocess.Popen(
                 [
                     python_path,
-                    "main_sprite.py",
+                    "main.py",
                     "--template=_temp",
                     f"--init_sprite_path={init_path}",
                     f"--history={history_file_path.resolve()}",

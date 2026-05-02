@@ -19,7 +19,7 @@ if str(project_root) not in sys.path:
 if getattr(sys, "frozen", False):
     from core.bootstrap.frozen_log import init_frozen_stdio
 
-    init_frozen_stdio("main_sprite")
+    init_frozen_stdio("main")
 
 import llm.tools.character_tools
 import llm.tools.memory_tools
@@ -96,7 +96,7 @@ def main():
             )
             t2i_manager = T2IManager(t2i_adapter)
         except Exception as e:
-            print(tr_i18n("main_sprite.print_t2i_fail", e=str(e)))
+            print(tr_i18n("main.print_t2i_fail", e=str(e)))
             traceback.print_exc()
 
     # TTS：仅当 API 中语音引擎不是「不使用」时加载；命令行 --tts 可覆盖引擎名（与 api.yaml 一致）
@@ -118,15 +118,15 @@ def main():
             tts_manager = TTSManager(tts_server_url=gsv_url)
             tts_manager.set_tts_adapter(adapter=adapter)
         except Exception as e:
-            print(tr_i18n("main_sprite.print_tts_fail", e=str(e)))
+            print(tr_i18n("main.print_tts_fail", e=str(e)))
             traceback.print_exc()
 
     # 创建DeepSeek实例
-    print(tr_i18n("main_sprite.print_load_template", a=args))
+    print(tr_i18n("main.print_load_template", a=args))
 
     messages = []
     if args.history:
-        print(tr_i18n("main_sprite.print_load_history", path=args.history))
+        print(tr_i18n("main.print_load_history", path=args.history))
         messages = load_chat_history(args.history)
 
     user_template = ""
@@ -138,7 +138,7 @@ def main():
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
     print(llm_provider, llm_model, base_url, api_key)
     if not llm_provider:
-        print(tr_i18n("main_sprite.err_select_llm"))
+        print(tr_i18n("main.err_select_llm"))
         return
     llm_adapter = LLMAdapterFactory.create_adapter(
         **config.merged_llm_factory_kwargs(
@@ -246,11 +246,11 @@ def main():
         init_sprite_path = "./assets/system/picture/shinsekai.png"
 
     if system_config_to_asr_lang(config.config.system_config) == "zh":
-        _welcome_html = tr_in_bundle("main_sprite.welcome_html", "zh_CN")
-        _option_start = tr_in_bundle("main_sprite.option_start", "zh_CN")
+        _welcome_html = tr_in_bundle("main.welcome_html", "zh_CN")
+        _option_start = tr_in_bundle("main.option_start", "zh_CN")
     else:
-        _welcome_html = tr_i18n("main_sprite.welcome_html")
-        _option_start = tr_i18n("main_sprite.option_start")
+        _welcome_html = tr_i18n("main.welcome_html")
+        _option_start = tr_i18n("main.option_start")
     # 更新初始立绘（已从文件恢复会话时不要先刷欢迎语，否则会 hide 选项区并与恢复队列竞争）
     try:
         if not messages:
@@ -260,7 +260,7 @@ def main():
     except Exception:
         if not messages:
             window.setDisplayWords(_welcome_html)
-    window.setNotification(tr_i18n("main_sprite.notify_chat"))
+    window.setNotification(tr_i18n("main.notify_chat"))
 
     emit_user_text = wire_user_input_plugins(user_input_queue)
 
@@ -289,18 +289,18 @@ def main():
     )
 
     if args.room_id:
-        print(tr_i18n("main_sprite.print_bili_start", id=args.room_id))
+        print(tr_i18n("main.print_bili_start", id=args.room_id))
         try:
             start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
         except ImportError as e:
-            print(tr_i18n("main_sprite.print_bili_import", e=str(e)))
+            print(tr_i18n("main.print_bili_import", e=str(e)))
 
     # 确保在程序退出时停止所有线程
     try:
         appIcon = QIcon("./assets/system/picture/icon.png")
         app.setWindowIcon(appIcon)
     except Exception as e:
-        print(tr_i18n("main_sprite.print_icon_fail", e=str(e)))
+        print(tr_i18n("main.print_icon_fail", e=str(e)))
 
     app.aboutToQuit.connect(llm_worker.quit)
     app.aboutToQuit.connect(tts_worker.quit)

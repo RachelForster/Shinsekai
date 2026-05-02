@@ -1,4 +1,4 @@
-"""Bind :class:`~sdk.chat_ui_context.ChatUIContext` and wire the signal bridge for main_sprite."""
+"""Bind :class:`~sdk.chat_ui_context.ChatUIContext` and wire the signal bridge for the desktop chat entry (main)."""
 
 from __future__ import annotations
 
@@ -67,9 +67,9 @@ def wire_chat_ui_bridge(
         return tr_i18n(key)
 
     def on_message_submitted(message: str) -> None:
-        print(_tr("main_sprite.print_submitted", message=message))
+        print(_tr("main.print_submitted", message=message))
         emit_user_text(message)
-        ctx.set_notification_hint(_tr("main_sprite.notify_submitted"))
+        ctx.set_notification_hint(_tr("main.notify_submitted"))
 
     ctx.on_message_submitted(on_message_submitted)
     ctx.on_open_chat_history_dialog(
@@ -118,7 +118,7 @@ def restore_session_ui(
     try:
         dialog = extract_valid_dialog_from_messages(messages)
         if not dialog:
-            raise ValueError(_tr("main_sprite.err_no_valid_dialog"))
+            raise ValueError(_tr("main.err_no_valid_dialog"))
         trailing_system: list = []
         while dialog and (
             dialog[-1].get("sprite", "-1") == "-1" or dialog[-1].get("sprite", "-1") == -1
@@ -146,7 +146,7 @@ def restore_session_ui(
             )
     except Exception as e:
         traceback.print_exc()
-        print(_tr("main_sprite.print_restore_fail", e=str(e)))
+        print(_tr("main.print_restore_fail", e=str(e)))
 
     try:
         bgm_path = config.config.system_config.bgm_path
@@ -163,5 +163,5 @@ def restore_session_ui(
         if bg_path:
             window.setBackgroundImage(bg_path)
     except Exception as e:
-        print(_tr("main_sprite.print_bg_fail", e=str(e)))
+        print(_tr("main.print_bg_fail", e=str(e)))
         traceback.print_exc()

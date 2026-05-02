@@ -60,6 +60,7 @@ class HistoryManager:
             return
         history_path = Path(file_path)
         try:
+            history_path.parent.mkdir(parents=True, exist_ok=True)
             with open(history_path, 'w', encoding='utf-8') as f:
                 json.dump(history, f, ensure_ascii=False, indent=4)
             print(f"聊天记录已保存到 {history_path}")

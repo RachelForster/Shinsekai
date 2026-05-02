@@ -47,10 +47,12 @@ class MoondreamVisionSettingsTab(QWidget):
             "使用 mss 截屏，通过 Hugging Face Transformers 加载本地缓存的 Moondream2（vikhyatk/moondream2），"
             "满足「屏幕相对上次识别有明显变化 / 鼠标移动 / （Windows）新开或切换前台窗口」时才会截屏送模型；"
             "并受下方「最短推理间隔」限制，避免过于频繁。\n\n"
-            "请先安装插件依赖：\n"
+            "自动识屏时按触发类型使用英文内置提示词（可在下方逐项覆盖）；多条件同时满足时优先级为："
+            "屏幕差分 > 前台切换 > 新窗口 > 鼠标移动。\n\n"
+            "请先安装插件依赖：\n，如果你要用gpu加速，请先安装和你cuda版本对应的torch和bitsandbytes，比如cuda12.4对应torch2.1.0和bitsandbytes0.43.1"
             "pip install -r plugins/moondream_vision/requirements.txt\n\n"
             "首次启用后首次推理会从网络下载模型到 HF 缓存（可填「缓存目录」重定向）。\n\n"
-            "INT8 / INT4：使用 bitsandbytes，需 NVIDIA GPU + CUDA；INT4 为 NF4 方案。"
+            "INT8 / INT4：使用 bitsandbytes，需 NVIDIA GPU + CUDA；INT4 为 NF4 方案。比较快速但准确率下降一丢丢"
         )
         hint.setWordWrap(True)
         lay.addWidget(hint)
@@ -120,10 +122,41 @@ class MoondreamVisionSettingsTab(QWidget):
         self._monitor.setRange(0, 16)
         self._monitor.setToolTip("mss：0=所有显示器合成；1 通常为第一块物理屏")
         fl.addRow("显示器索引:", self._monitor)
+
+        pq = QGroupBox("英文提示词（按触发类型，可留空用内置）")
+        pql = QFormLayout(pq)
+        self._q_screen_diff = QTextEdit()
+        self._q_screen_diff.setMaximumHeight(72)
+        self._q_screen_diff.setPlaceholderText(
+            "screen_diff: screen thumbnail changed a lot since last successful capture"
+        )
+        pql.addRow("屏幕差分 · screen_diff:", self._q_screen_diff)
+        self._q_foreground = QTextEdit()
+        self._q_foreground.setMaximumHeight(72)
+        self._q_foreground.setPlaceholderText(
+            "foreground: focused window changed (Windows)"
+        )
+        pql.addRow("前台切换 · foreground:", self._q_foreground)
+        self._q_new_window = QTextEdit()
+        self._q_new_window.setMaximumHeight(72)
+        self._q_new_window.setPlaceholderText(
+            "new_window: new top-level window opened"
+        )
+        pql.addRow("新窗口 · new_window:", self._q_new_window)
+        self._q_mouse = QTextEdit()
+        self._q_mouse.setMaximumHeight(72)
+        self._q_mouse.setPlaceholderText(
+            "mouse: user moved mouse beyond threshold"
+        )
+        pql.addRow("鼠标移动 · mouse:", self._q_mouse)
         self._question = QTextEdit()
-        self._question.setMaximumHeight(90)
-        self._question.setPlaceholderText("发给视觉模型的提问")
-        fl.addRow("识别提问:", self._question)
+        self._question.setMaximumHeight(60)
+        self._question.setPlaceholderText(
+            "Legacy: one English prompt for ALL triggers only if the four fields above are all empty"
+        )
+        pql.addRow("统一提问（可选）:", self._question)
+        fl.addRow(pq)
+
         self._prefix = QLineEdit()
         self._prefix.setPlaceholderText("发到聊天里的前缀")
         fl.addRow("消息前缀:", self._prefix)
@@ -164,6 +197,10 @@ class MoondreamVisionSettingsTab(QWidget):
         self._mouse_pct.setValue(c.mouse_move_percent)
         self._interval.setValue(c.interval_sec)
         self._monitor.setValue(c.monitor_index)
+        self._q_screen_diff.setPlainText(c.question_screen_diff)
+        self._q_foreground.setPlainText(c.question_foreground)
+        self._q_new_window.setPlainText(c.question_new_window)
+        self._q_mouse.setPlainText(c.question_mouse)
         self._question.setPlainText(c.question)
         self._prefix.setText(c.message_prefix)
 
@@ -180,7 +217,11 @@ class MoondreamVisionSettingsTab(QWidget):
             mouse_move_percent=float(self._mouse_pct.value()),
             interval_sec=float(self._interval.value()),
             monitor_index=int(self._monitor.value()),
-            question=self._question.toPlainText().strip() or MoondreamVisionConfig.question,
+            question=self._question.toPlainText().strip(),
+            question_screen_diff=self._q_screen_diff.toPlainText().strip(),
+            question_foreground=self._q_foreground.toPlainText().strip(),
+            question_new_window=self._q_new_window.toPlainText().strip(),
+            question_mouse=self._q_mouse.toPlainText().strip(),
             message_prefix=self._prefix.text(),
         )
         c.clamp()

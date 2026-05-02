@@ -14,8 +14,6 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
-
-_DOWNLOAD_STATE_PATH = Path("data/config/plugin_registry_downloads.json")
 _PLUGINS_DIR = Path("plugins")
 
 _WIN_RESERVED_DEVICE_NAMES = frozenset(
@@ -62,31 +60,116 @@ def normalize_repo_slug(repo: str) -> str:
     return "/".join(parts).lower()
 
 
-def load_downloaded_repos() -> set[str]:
-    """Normalized ``owner/repo`` keys marked as downloaded by this app."""
+def normalize_manifest_entry(entry: str) -> str:
+    """
+    Align with :func:`core.plugins.plugin_host.normalize_manifest_entry`:
+    ensure ``plugins.`` prefix for module paths used under ``plugins/``.
+    """
+    norm = entry.strip()
+    if not norm:
+        return norm
+    if norm.startswith("plugins."):
+        return norm
+    return f"plugins.{norm}"
+
+
+def _load_download_state() -> tuple[list[str], dict[str, str]]:
+    """Load persisted repos (sorted) and manifest-entry -> repo slug mapping."""
     if not _DOWNLOAD_STATE_PATH.is_file():
-        return set()
+        return [], {}
     try:
         raw = json.loads(_DOWNLOAD_STATE_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         logger.warning("Could not read plugin download state: %s", _DOWNLOAD_STATE_PATH)
-        return set()
-    if isinstance(raw, dict) and isinstance(raw.get("repos"), list):
-        return {normalize_repo_slug(str(x)) for x in raw["repos"]}
+        return [], {}
     if isinstance(raw, list):
-        return {normalize_repo_slug(str(x)) for x in raw}
-    return set()
+        repos_set = {normalize_repo_slug(str(x)) for x in raw if str(x).strip()}
+        return sorted(repos_set), {}
+    if not isinstance(raw, dict):
+        return [], {}
+    repos_raw = raw.get("repos", [])
+    er_raw = raw.get("entry_repo", {})
+    repos_set: set[str] = set()
+    if isinstance(repos_raw, list):
+        for x in repos_raw:
+            s = normalize_repo_slug(str(x))
+            if s:
+                repos_set.add(s)
+    entry_repo: dict[str, str] = {}
+    if isinstance(er_raw, dict):
+        for k, v in er_raw.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                continue
+            ks, vs = k.strip(), v.strip()
+            if not ks or not vs:
+                continue
+            nk = normalize_manifest_entry(ks)
+            nv = normalize_repo_slug(vs)
+            if nk and nv:
+                entry_repo[nk] = nv
+    return sorted(repos_set), entry_repo
 
 
-def mark_repo_downloaded(repo: str) -> None:
+def _write_download_state(repos: list[str], entry_repo: dict[str, str]) -> None:
+    _DOWNLOAD_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"repos": repos, "entry_repo": entry_repo}
+    _DOWNLOAD_STATE_PATH.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+def load_downloaded_repos() -> set[str]:
+    """Normalized ``owner/repo`` keys marked as downloaded by this app."""
+    repos, _ = _load_download_state()
+    return set(repos)
+
+
+def mark_repo_downloaded(repo: str, *, manifest_entry: str | None = None) -> None:
     slug = normalize_repo_slug(repo)
     if not slug:
         return
-    repos = load_downloaded_repos()
-    repos.add(slug)
-    _DOWNLOAD_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"repos": sorted(repos)}
-    _DOWNLOAD_STATE_PATH.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    repos_list, er = _load_download_state()
+    repos_set = set(repos_list)
+    repos_set.add(slug)
+    er = dict(er)
+    me = (manifest_entry or "").strip()
+    if me:
+        er[normalize_manifest_entry(me)] = slug
+    _write_download_state(sorted(repos_set), er)
+
+
+def unmark_repo_downloaded(repo: str) -> None:
+    """Remove ``owner/repo`` and any manifest entries pointing at it."""
+    slug = normalize_repo_slug(repo)
+    if not slug:
+        return
+    repos_list, er = _load_download_state()
+    er = {k: v for k, v in er.items() if normalize_repo_slug(v) != slug}
+    repos_set = set(repos_list)
+    repos_set.discard(slug)
+    _write_download_state(sorted(repos_set), er)
+
+
+def unmark_repo_for_manifest_entry(entry: str) -> bool:
+    """
+    Drop the download-registry mapping for this manifest ``entry`` and unlist the repo if unused.
+
+    Returns True if the state file was updated.
+    """
+    norm_e = normalize_manifest_entry(entry.strip())
+    if not norm_e:
+        return False
+    repos_list, er = _load_download_state()
+    if norm_e not in er:
+        return False
+    er = dict(er)
+    slug = normalize_repo_slug(er.pop(norm_e))
+    others = {normalize_repo_slug(v) for v in er.values()}
+    repos_set = set(repos_list)
+    if slug not in others:
+        repos_set.discard(slug)
+    _write_download_state(sorted(repos_set), er)
+    return True
 
 
 def _github_archive_zip_url(repo_slug: str, branch: str) -> str:

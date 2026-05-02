@@ -157,7 +157,7 @@ def launch_chat_resume_last(
 
 def _release_root() -> Path:
     """
-    项目根 / 发布根：开发时为仓库根；打包并运行设置界面时为 dist 下与 SettingsUI、main_sprite 同级的发行根
+    项目根 / 发布根：开发时为仓库根；打包并运行设置界面时为 dist 下与 SettingsUI、main 同级的发行根
    （见 build_exe/build_settings_exe.py 的目录结构）。
     """
     if os.environ.get("EASYAI_PROJECT_ROOT"):
@@ -207,6 +207,7 @@ def launch_chat(
         if _main_chat_process is None or _main_chat_process.poll() is not None:
             template_hash = _history_id_from_scenario(user_scenario, system_template)
             history_file_path = Path(history_file) if history_file else Path(f"{ctx.history_dir}/{template_hash}.json")
+            history_file_path.parent.mkdir(parents=True, exist_ok=True)
             t2i = "ComfyUI" if use_cg == "是" else ""
             root = _release_root()
             tts_slug = (
@@ -224,8 +225,8 @@ def launch_chat(
                 f"--tts={tts_slug}",
             ]
             if getattr(sys, "frozen", False):
-                ms = root / "main_sprite" / "main_sprite.exe"
-                flat = root / "main_sprite.exe"
+                ms = root / "main" / "main.exe"
+                flat = root / "main.exe"
                 if ms.is_file():
                     _main_chat_process = subprocess.Popen(
                         [str(ms)] + args, cwd=str(root)
@@ -236,12 +237,12 @@ def launch_chat(
                     )
                 else:
                     return (
-                        "启动失败: 未找到 main_sprite.exe（"
+                        "启动失败: 未找到 main.exe（"
                         f"已检查 {ms} 与 {flat}）。请按 packaging 脚本的发行目录结构部署。"
                     )
             else:
                 _main_chat_process = subprocess.Popen(
-                    [sys.executable, str(root / "main_sprite.py")] + args,
+                    [sys.executable, str(root / "main.py")] + args,
                     cwd=str(root),
                 )
             return "聊天进程已启动！PID: " + str(_main_chat_process.pid)

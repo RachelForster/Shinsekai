@@ -1,4 +1,4 @@
-"""Chat history state and helpers used by main_sprite and UI workers."""
+"""Chat history state and helpers used by main and UI workers."""
 
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ def clear_chat_history(history_file: str, ui_queue: Any, llm_manager: Any) -> No
     ui_queue.put(
         TTSOutputMessage(
             audio_path="",
-            character_name=tr("main_sprite.system_name"),
-            speech=tr("main_sprite.history_cleared"),
+            character_name=tr("main.system_name"),
+            speech=tr("main.history_cleared"),
             sprite="-1",
             is_system_message=False,
         )
