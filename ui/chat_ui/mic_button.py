@@ -1,13 +1,14 @@
 import sys
 import time
 
-from PySide6.QtWidgets import QPushButton, QTextEdit
+from PySide6.QtWidgets import QApplication, QPushButton, QTextEdit
 from PySide6.QtGui import QIcon, QColor, QFont
 from PySide6.QtCore import QSize, Qt, Signal, QObject
 
 # 导入您提供的适配器文件 (假设文件名为 asr_adapter.py 并在同一目录下)
 # 实际项目中，您可能需要确保 asr_adapter.py 中的所有依赖（如 RealtimeSTT, vosk, pyaudio）已安装。
 from asr.asr_adapter import create_default_asr_adapter, get_asr_log
+from i18n import tr
 
 _log = get_asr_log()
 
@@ -37,26 +38,53 @@ class MicButton(QPushButton):
 
     def __init__(self, asr_adapter = None, parent=None):
         super().__init__(parent)
+        # 默认不在此构造时创建适配器：Vosk 等在 __init__ 里同步加载模型会长时间阻塞且早于 ChatUIContext。
+        # 首次开麦时在 UI 上显示「模型加载」并由 _ensure_asr_adapter 创建。
         self.asr_adapter = asr_adapter
-        if asr_adapter is None:
-            self.asr_adapter = create_default_asr_adapter(lambda _t, _p: None)
         self._is_asr_running = False
-        
-        # 创建信号对象并将其连接到内部回调函数
+
         self.asr_signals = ASRSignals()
         self.asr_signals.transcription_update.connect(self._handle_transcription_update)
         self.asr_pause_requested.connect(self.pause_asr)
         self.asr_resume_requested.connect(self.resume_asr)
 
-        # 重新配置 ASR 适配器的回调，使其通过信号发送结果到 UI 线程
-        def signal_callback(text: str, is_partial: bool):
-            self.asr_signals.transcription_update.emit(text, is_partial)
+        if self.asr_adapter is not None:
+            self.asr_adapter.callback = self._signal_callback
 
-        self.asr_adapter.callback = signal_callback
-        
         self._window_scale = 1.0
         self._setup_ui()
         self.clicked.connect(self._toggle_asr)
+
+    def _signal_callback(self, text: str, is_partial: bool) -> None:
+        self.asr_signals.transcription_update.emit(text, is_partial)
+
+    def _ensure_asr_adapter(self) -> None:
+        """首次使用时创建默认 ASR（含同步加载模型）；已注入适配器时无效。"""
+        if self.asr_adapter is not None:
+            return
+        self.asr_adapter = create_default_asr_adapter(self._signal_callback)
+
+    def _mic_busy_show(self, text: str, duration_seconds: float = 0.0) -> None:
+        """经 ChatUIContext 显示底料加载条（无 context 时忽略）；刷新事件循环以便随后同步加载时条能画出。"""
+        try:
+            from ui.chat_ui.context import try_get_chat_ui_context
+
+            ctx = try_get_chat_ui_context()
+            if ctx is not None:
+                ctx.set_busy_bar(text, duration_seconds)
+        except Exception:
+            pass
+        QApplication.processEvents()
+
+    def _mic_busy_hide(self) -> None:
+        try:
+            from ui.chat_ui.context import try_get_chat_ui_context
+
+            ctx = try_get_chat_ui_context()
+            if ctx is not None:
+                ctx.hide_busy_bar()
+        except Exception:
+            pass
 
     def apply_window_scale(self, scale: float) -> None:
         """随主窗口缩放更新麦克风按钮尺寸与字号。"""
@@ -123,13 +151,19 @@ class MicButton(QPushButton):
         if self._is_asr_running:
             self.stop_asr()
         else:
-            self.start_asr()
+            self._mic_busy_show(tr("desktop.mic_loading_model"), 0.0)
+            try:
+                self._ensure_asr_adapter()
+                self.start_asr()
+            finally:
+                self._mic_busy_hide()
 
     def start_asr(self):
         """启动 ASR 服务。"""
         if self._is_asr_running:
             return
-            
+        self._ensure_asr_adapter()
+
         ad_name = type(self.asr_adapter).__name__
         _log.info("mic start_asr adapter=%s", ad_name)
         try:
@@ -189,7 +223,9 @@ class MicButton(QPushButton):
     def closeEvent(self, event):
         """关闭控件时释放 ASR（RealtimeSTT 子进程须 shutdown，否则会刷 BrokenPipe）。"""
         try:
-            if self._is_asr_running:
+            if self.asr_adapter is None:
+                pass
+            elif self._is_asr_running:
                 self.stop_asr()
             else:
                 self.asr_adapter.stop()

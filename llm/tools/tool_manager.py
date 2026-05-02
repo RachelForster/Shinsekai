@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any, Callable, Dict, List
 
+
 class ToolManager:
     _instance = None
 
@@ -41,6 +42,22 @@ class ToolManager:
         if annotation is str:
             return "string"
         return "string"
+
+    def _normalize_mcp_input_schema(self, schema: Any) -> Dict[str, Any]:
+        """将 MCP ``inputSchema`` 规范为 OpenAI 工具 ``parameters`` 形态（object）。"""
+        if not schema or not isinstance(schema, dict):
+            return {"type": "object", "properties": {}, "required": []}
+        if schema.get("type") == "object":
+            return {
+                "type": "object",
+                "properties": dict(schema.get("properties") or {}),
+                "required": list(schema.get("required") or []),
+            }
+        return {
+            "type": "object",
+            "properties": {"value": schema},
+            "required": ["value"],
+        }
 
     def register_function(
         self,
@@ -91,6 +108,63 @@ class ToolManager:
         self._drop_tool(tool_name)
         self._tools_definitions.append(definition)
         self._functions[tool_name] = func
+
+    def register_mcp_tools(
+        self,
+        tools: List[Dict[str, Any]],
+        *,
+        invoke: Callable[[str, Dict[str, Any]], Any],
+        name_prefix: str = "",
+    ) -> None:
+        """
+        注册来自 MCP ``tools/list`` 的工具条目（``name`` / ``description`` / ``inputSchema``）。
+
+        ``invoke`` 在 LLM 选中某工具时调用：``invoke(registered_name, arguments_dict)``，
+        返回值由 :meth:`execute` 以 JSON 序列化；请返回可 JSON 编码的对象或字符串。
+
+        ``name_prefix`` 用于隔离多套 MCP 工具，避免与内置工具名冲突。
+        """
+        prefix = name_prefix.strip()
+        for raw in tools:
+            if not isinstance(raw, dict):
+                self.logger.warning("register_mcp_tools: skip non-dict item %r", raw)
+                continue
+            name = raw.get("name")
+            if not isinstance(name, str) or not name.strip():
+                self.logger.warning("register_mcp_tools: skip tool without name: %r", raw)
+                continue
+            tool_name = f"{prefix}{name.strip()}"
+            desc_raw = raw.get("description")
+            doc = (
+                str(desc_raw).strip()
+                if isinstance(desc_raw, str)
+                else "No description provided."
+            )
+            schema = raw.get("inputSchema")
+            if schema is None and isinstance(raw.get("parameters"), dict):
+                schema = raw.get("parameters")
+
+            parameters = self._normalize_mcp_input_schema(schema)
+            definition = {
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "description": doc,
+                    "parameters": parameters,
+                },
+            }
+
+            def _make_runner(
+                registered: str, inv: Callable[[str, Dict[str, Any]], Any]
+            ) -> Callable[..., Any]:
+                def _run(**kwargs: Any) -> Any:
+                    return inv(registered, kwargs)
+
+                return _run
+
+            self._drop_tool(tool_name)
+            self._tools_definitions.append(definition)
+            self._functions[tool_name] = _make_runner(tool_name, invoke)
 
     def tool(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """

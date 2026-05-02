@@ -42,6 +42,7 @@ class _ChatUIActions:
     """由宿主在绑定时填充，ChatUIContext 的更新操作最终调用这些回调。"""
     __slots__ = (
         "set_notification_hint",
+        "set_busy_bar",
         "set_input_draft",
         "clear_input_draft",
         "set_choice_options",
@@ -52,6 +53,7 @@ class _ChatUIActions:
     def __init__(
         self,
         set_notification_hint: Callable[[str], None],
+        set_busy_bar: Callable[[str, float], None],
         set_input_draft: Callable[[str], None],
         clear_input_draft: Callable[[], None],
         set_choice_options: Callable[[List[str]], None],
@@ -59,6 +61,7 @@ class _ChatUIActions:
         mount_chat_ui_contributions: Callable[[list], None],
     ):
         self.set_notification_hint = set_notification_hint
+        self.set_busy_bar = set_busy_bar
         self.set_input_draft = set_input_draft
         self.clear_input_draft = clear_input_draft
         self.set_choice_options = set_choice_options
@@ -69,6 +72,7 @@ class _ChatUIActions:
 class _ChatUIUpdater(QObject):
     """只负责在主线程触发更新，不再包含任何窗口逻辑。"""
     set_notification_hint = Signal(str)
+    set_busy_bar = Signal(str, float)
     set_input_draft = Signal(str)
     clear_input_draft = Signal()
     set_choice_options = Signal(object)
@@ -96,6 +100,9 @@ class ChatUIContext:
         # 信号连接到 ui_actions 中的回调，线程安全
         self._updater.set_notification_hint.connect(
             self._actions.set_notification_hint, Qt.ConnectionType.QueuedConnection
+        )
+        self._updater.set_busy_bar.connect(
+            self._actions.set_busy_bar, Qt.ConnectionType.QueuedConnection
         )
         self._updater.set_input_draft.connect(
             self._actions.set_input_draft, Qt.ConnectionType.QueuedConnection
@@ -161,6 +168,13 @@ class ChatUIContext:
     # --- 更新（通过信号 → ui_actions）---
     def set_notification_hint(self, message: str) -> None:
         self._updater.set_notification_hint.emit(message)
+
+    def set_busy_bar(self, text: str, duration_seconds: float = 3.0) -> None:
+        """与 :meth:`~ui.chat_ui.chat_ui.ChatUIWindow.setBusyBar` 一致；空文案等价于隐藏。"""
+        self._updater.set_busy_bar.emit(text, float(duration_seconds))
+
+    def hide_busy_bar(self) -> None:
+        self._updater.set_busy_bar.emit("", 0.0)
 
     def set_input_draft(self, text: str) -> None:
         self._updater.set_input_draft.emit(text)

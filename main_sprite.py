@@ -64,7 +64,8 @@ cc = OpenCC("t2s")  # 繁体到简体转换器
 
 def main():
     config = ConfigManager()
-    from i18n import init_i18n, tr as tr_i18n
+    from i18n import init_i18n, tr as tr_i18n, tr_in_bundle
+    from asr.asr_adapter import system_config_to_asr_lang
 
     init_i18n(config.config.system_config.ui_language)
 
@@ -241,13 +242,18 @@ def main():
     if not init_sprite_path:
         init_sprite_path = "./assets/system/picture/shinsekai.png"
 
-    _welcome_html = tr_i18n("main_sprite.welcome_html")
+    if system_config_to_asr_lang(config.config.system_config) == "zh":
+        _welcome_html = tr_in_bundle("main_sprite.welcome_html", "zh_CN")
+        _option_start = tr_in_bundle("main_sprite.option_start", "zh_CN")
+    else:
+        _welcome_html = tr_i18n("main_sprite.welcome_html")
+        _option_start = tr_i18n("main_sprite.option_start")
     # 更新初始立绘（已从文件恢复会话时不要先刷欢迎语，否则会 hide 选项区并与恢复队列竞争）
     try:
         if not messages:
             window.setDisplayWords(_welcome_html)
             if len(get_history()) <= 1:
-                window.setOptions([tr_i18n("main_sprite.option_start")])
+                window.setOptions([_option_start])
     except Exception:
         if not messages:
             window.setDisplayWords(_welcome_html)

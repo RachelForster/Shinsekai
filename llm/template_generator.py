@@ -1,6 +1,9 @@
+from typing import Any
+
 from i18n import normalize_lang, tr as tr_i18n
 from config.character_manager import ConfigManager
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
+from llm.tools.tool_manager import ToolManager
 
 config_manager = ConfigManager()
 
@@ -20,6 +23,61 @@ def is_transparent_background(name: str | None) -> bool:
 
 def _T(key: str, **kwargs) -> str:
     return tr_i18n(f"template_gen.{key}", **kwargs)
+
+
+def _summarize_tool_parameters(parameters: Any) -> str:
+    if not parameters or not isinstance(parameters, dict):
+        return ""
+    props = parameters.get("properties")
+    if not isinstance(props, dict) or not props:
+        return ""
+    raw_req = parameters.get("required")
+    required: set[str] = (
+        {str(x) for x in raw_req} if isinstance(raw_req, list) else set()
+    )
+    parts: list[str] = []
+    for key in sorted(props.keys()):
+        spec = props.get(key)
+        if isinstance(spec, dict):
+            ptype = str(spec.get("type", "string"))
+        else:
+            ptype = "string"
+        mark = "*" if str(key) in required else ""
+        parts.append(f"{key}{mark}: {ptype}")
+    summary = ", ".join(parts)
+    if len(summary) > 320:
+        summary = summary[:317] + "..."
+    return summary
+
+
+def _format_llm_tools_block() -> str:
+    definitions = ToolManager().get_definitions()
+    if not definitions:
+        return ""
+    lines: list[str] = [
+        _T("tools_header"),
+        _T("tools_intro"),
+        "",
+    ]
+    for entry in definitions:
+        if not isinstance(entry, dict) or entry.get("type") != "function":
+            continue
+        fn = entry.get("function")
+        if not isinstance(fn, dict):
+            continue
+        name = str(fn.get("name") or "").strip()
+        if not name:
+            continue
+        desc = str(fn.get("description") or "").strip()
+        if not desc:
+            desc = _T("tools_no_desc")
+        param_summ = _summarize_tool_parameters(fn.get("parameters"))
+        item = _T("tools_item", name=name, description=desc)
+        if param_summ:
+            item += _T("tools_param_summary", summary=param_summ)
+        lines.append(item)
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _target_voice_key(code: str | None) -> str:
@@ -183,6 +241,10 @@ class TemplateGenerator:
             REQUIREMENTS.append(_T("r_effect"))
         if use_cot:
             REQUIREMENTS.insert(0, _T("r_cot", **_toks))
+
+        tools_block = _format_llm_tools_block()
+        if tools_block:
+            template += tools_block
 
         template += _T("requirements_header")
         for item in REQUIREMENTS:

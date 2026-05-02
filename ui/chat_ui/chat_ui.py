@@ -44,6 +44,7 @@ from ui.chat_ui.components import CGWidget, ClickableLabel, TypingLabel, SpriteP
 from ui.chat_ui.desktop_menu import DesktopMenuMixin
 from ui.chat_ui.desktop_toolbar import DesktopToolbarMixin
 from ui.chat_ui.mic_button import MicButton
+from ui.chat_ui.busy_bar import BusyBar
 from ui.chat_ui.workers import ChatWorker, ImageDisplayThread
 from config.config_manager import ConfigManager
 from i18n import init_i18n, tr
@@ -244,6 +245,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         from ui.chat_ui.context import _ChatUIActions
         return _ChatUIActions(
             set_notification_hint=self.setNotification,
+            set_busy_bar=self.setBusyBar,
             set_input_draft=self.input_box.setPlainText,
             clear_input_draft=self.input_box.clear,
             set_choice_options=self.setOptions,
@@ -301,6 +303,8 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         
         # 底栏（叠在立绘上）
         self.setup_input_layout()
+        self._busy_bar = BusyBar(self)
+        self._busy_bar.hide()
         
         # 将组件添加到主布局
         main_layout.addWidget(self.image_container, 1)
@@ -401,6 +405,8 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self._layout_toolbar_geometry()
         if getattr(self, "mic_button", None) is not None:
             self.mic_button.apply_window_scale(win_s)
+        if getattr(self, "_busy_bar", None) is not None:
+            self._busy_bar.apply_theme_font(self.font_size)
         if getattr(self, "skip_button", None) is not None:
             sk = max(36, int(48 * win_s))
             self.skip_button.setFixedSize(sk, sk)
@@ -525,9 +531,32 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         row_h = int(max(58, min(sh, 125)))
         y = int(self.height()) - row_h - inset_b
         x = inset_h
-        self.input_row.setGeometry(x, max(0, y), inner_w, row_h)
+        y_row = max(0, y)
+        self.input_row.setGeometry(x, y_row, inner_w, row_h)
+        self._last_input_row_y = y_row
+        self._last_input_row_h = row_h
+        self._last_input_inner_w = inner_w
+        self._last_input_x = x
+        self._layout_busy_bar()
         # 对话/选项要避开整段底栏 + 与窗口底边之间的留白
         self._bottom_chrome_h = row_h + inset_b
+
+    def _layout_busy_bar(self) -> None:
+        """底栏输入条正上方的加载条位置（与 ``_layout_input_row`` 共用几何）。"""
+        bb = getattr(self, "_busy_bar", None)
+        if bb is None:
+            return
+        if not hasattr(self, "_last_input_row_y"):
+            return
+        inner_w = self._last_input_inner_w
+        x = self._last_input_x
+        y_input = self._last_input_row_y
+        gap = 6
+        bb.setFixedWidth(inner_w)
+        bb.adjustSize()
+        bh = max(38, int(bb.sizeHint().height()))
+        y_bb = max(0, y_input - gap - bh)
+        bb.setGeometry(x, y_bb, inner_w, bh)
 
     def _above_chrome_y(self, block_height: int, gap: int = 4) -> int:
         h = int(self.image_container.height()) if self.image_container.height() > 0 else int(self.height())
@@ -615,6 +644,8 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
 
     def _raise_input_and_toolbar(self) -> None:
         """将输入条与工具栏置于最前（相对各自父级叠放顺序）。"""
+        if getattr(self, "_busy_bar", None) is not None:
+            self._busy_bar.raise_()
         if getattr(self, "input_row", None) is not None:
             self.input_row.raise_()
         else:
@@ -939,6 +970,22 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.numeric_info_label.raise_()
             self._raise_input_and_toolbar()
         self.numeric_info_changed.emit(html_text)
+
+    def setBusyBar(self, text: str, duration_seconds: float = 3.0) -> None:
+        """
+        显示底栏加载条（文案 + 不确定进度条）。
+        duration_seconds > 0 时自动隐藏；<= 0 时保持直到传入空字符串。
+        工作线程请用 UIUpdateManager.post_busy_bar / hide_busy_bar。
+        """
+        bb = getattr(self, "_busy_bar", None)
+        if bb is None:
+            return
+        if not (text or "").strip():
+            bb.hide_bar()
+            return
+        self._layout_busy_bar()
+        bb.show_with((text or "").strip(), duration_seconds)
+        self._raise_input_and_toolbar()
 
     def setNotification(self, message):
         """设置提示词"""

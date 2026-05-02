@@ -17,6 +17,7 @@ from typing import Any
 __all__ = [
     "SUPPORTED_LANGS",
     "tr",
+    "tr_in_bundle",
     "init_i18n",
     "current_language",
     "normalize_lang",
@@ -58,6 +59,23 @@ def _resolve(key: str, lang: str) -> str | None:
 def tr(key: str, **kwargs: Any) -> str:
     """取当前语言；缺失则回退到英文再回退到 key。"""
     s = _resolve(key, _current) or _resolve(key, "en")
+    if s is None or s == "":
+        s = key
+    if kwargs:
+        try:
+            s = s.format(**kwargs)
+        except (KeyError, ValueError):
+            pass
+    return s
+
+
+def tr_in_bundle(key: str, bundle: str, **kwargs: Any) -> str:
+    """从指定语言包取文案（如 ``zh_CN``），不改变当前界面语言。缺失则回退英文再 key。"""
+    if not _bundles:
+        for code in SUPPORTED_LANGS:
+            _bundles[code] = _load_json(code)
+    code = bundle if bundle in SUPPORTED_LANGS else normalize_lang(bundle)
+    s = _resolve(key, code) or _resolve(key, "en")
     if s is None or s == "":
         s = key
     if kwargs:

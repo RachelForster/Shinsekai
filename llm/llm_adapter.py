@@ -5,8 +5,22 @@ import time
 import json
 
 SUPPORTED_CHAT_PARAMS = {
-    "DeepSeekAdapter": {"temperature", "presence_penalty", "frequency_penalty", "max_tokens"},
-    "OpenAIAdapter": {"temperature", "presence_penalty", "frequency_penalty", "max_tokens"},
+    "DeepSeekAdapter": {
+        "temperature",
+        "presence_penalty",
+        "frequency_penalty",
+        "max_tokens",
+        "tools",
+        "tool_choice",
+    },
+    "OpenAIAdapter": {
+        "temperature",
+        "presence_penalty",
+        "frequency_penalty",
+        "max_tokens",
+        "tools",
+        "tool_choice",
+    },
     "ClaudeAdapter": {"temperature", "max_tokens"},
 }
 
@@ -76,14 +90,17 @@ class DeepSeekAdapter(LLMAdapter):
                 },
             }
 
+            # 与 OpenAI 一致：启用 tools 时不要传 response_format=json_object，否则易抑制 tool_calls。
+            use_tools = bool(kwargs.get("tools"))
             create_kwargs: dict = {
                 "model": self.model,
                 "messages": messages,
                 "stream": stream,
-                "response_format": response_format,
                 "extra_body": extra_body,
                 **kwargs,
             }
+            if not use_tools:
+                create_kwargs["response_format"] = response_format
             if self.thinking_enabled:
                 create_kwargs["reasoning_effort"] = self.reasoning_effort
 
@@ -104,14 +121,16 @@ class OpenAIAdapter(LLMAdapter):
         """Sends a message to the OpenAI LLM."""
         try:
             kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
-            # 使用传入的 messages 参数
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                stream=stream,
-                response_format=response_format,
-                **kwargs
-            )
+            use_tools = bool(kwargs.get("tools"))
+            create_kwargs = {
+                "model": self.model,
+                "messages": messages,
+                "stream": stream,
+                **kwargs,
+            }
+            if not use_tools:
+                create_kwargs["response_format"] = response_format
+            response = self.client.chat.completions.create(**create_kwargs)
             return response
         except Exception as e:
             print(f"OpenAI chat error: {e}")

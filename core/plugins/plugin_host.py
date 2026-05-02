@@ -98,6 +98,17 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
         tm = ToolManager()
         apply_registered_tools(tm)
         mgr.apply_llm_tools(tm)
+        try:
+            from llm.tools.mcp_tool_setup import register_mcp_tools_from_config
+
+            register_mcp_tools_from_config(tm)
+        except ImportError:
+            logger.info(
+                "MCP tools skipped: install optional dependency 'mcp' to enable "
+                "data/config/mcp.yaml"
+            )
+        except Exception:
+            logger.exception("register_mcp_tools_from_config failed")
     except Exception:
         logger.exception("apply_llm_tools failed")
     try:

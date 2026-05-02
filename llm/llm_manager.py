@@ -7,11 +7,27 @@ import logging
 from typing import List, Dict, Any, Optional, Generator, Union
 import logging
 
+from core.runtime.app_runtime import try_get_app_runtime
+from i18n import tr
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 from llm.compact_manager import CompactManager
 from llm.tools.tool_manager import ToolManager
 
 tool_manager = ToolManager()
+logger = logging.getLogger(__name__)
+
+
+def _notify_tool_call_hint(tool_name: str) -> None:
+    """桌面主程序已注册 AppRuntime 时，将当前调用的工具名显示在输入框占位提示上。"""
+    rt = try_get_app_runtime()
+    if rt is None:
+        return
+    try:
+        rt.ui_update_manager.post_notification(
+            tr("main_sprite.notify_tool_calling", name=tool_name)
+        )
+    except Exception:
+        pass
 
 class LLMAdapterFactory:
     """Factory for creating different LLMAdapter instances."""
@@ -107,52 +123,6 @@ class LLMManager:
         else:
             print("Error: new_messages must be a list.")
             
-    # def chat(self, message, stream=False, response_format = {'type':'json_object'}, auto_compact: bool = True):
-    #     """
-    #     Delegates the chat request to the current LLM adapter.
-        
-    #     Args:
-    #         message: 用户消息
-    #         stream: 是否使用流式响应
-    #         response_format: 响应格式
-    #         auto_compact: 是否自动压缩记忆
-    #     """
-    #     # 添加用户消息
-    #     self.add_message("user", message)
-        
-    #     # 获取当前消息列表
-    #     current_messages = self.get_messages()
-        
-    #     # 如果需要自动压缩，检查并压缩消息
-    #     if auto_compact:
-    #         try:
-    #             compacted_messages = self.compact_manager.auto_compact_if_needed(current_messages)
-    #             if compacted_messages != current_messages:
-    #                 self.logger.info("Messages were compacted")
-    #                 self.set_messages(compacted_messages)
-    #         except Exception as e:
-    #             self.logger.error(f"Auto-compaction failed: {e}")
-        
-    #     # 传递消息列表给LLM适配器
-    #     response = self.llm_adapter.chat(self.get_messages(), stream, response_format, tools=self.tools_definitions)
-        
-    #     # 如果不是流式响应，处理并添加助手消息
-    #     if not stream and response:
-    #         try:
-    #             # 获取不同适配器的响应内容
-    #             if isinstance(self.llm_adapter, (DeepSeekAdapter, OpenAIAdapter)):
-    #                 new_message = response.choices[0].message.content
-    #             elif isinstance(self.llm_adapter, GeminiAdapter):
-    #                 new_message = response.text
-    #             elif isinstance(self.llm_adapter, ClaudeAdapter):
-    #                 new_message = response.content[0].text
-                
-    #             self.add_message("assistant", new_message) # 添加助手消息
-    #             self.logger.info(f"Assistant's response added: {new_message[:100]}...")
-    #             return new_message
-    #         except Exception as e:
-    #             self.logger.error(f"Failed to process or add assistant message: {e}")
-    #     return response
     
     def chat(self, user_input: Optional[str], stream: bool = True, **kwargs) -> Union[Generator, str]:
         """
@@ -178,6 +148,8 @@ class LLMManager:
         )
         if response_stream is None: return
 
+        # self.logger.info(f"Tools definitions: {tools_defs}")
+        
         full_tool_calls = {}
         has_tool_use = False
         collected_content = ""
@@ -227,8 +199,8 @@ class LLMManager:
                     if isinstance(func_args, str):
                         if not func_args.strip():
                             func_args = "{}"  # 修正为空 JSON 对象字符串
-                    
-                    # 2. 执行工具
+
+                    _notify_tool_call_hint(func_name)
                     result = tool_manager.execute(func_name, func_args)
                     
                     # 3. 确保结果不为空且为字符串（以便 LLM 接收）
@@ -282,8 +254,8 @@ class LLMManager:
                     if isinstance(func_args, str):
                         if not func_args.strip():
                             func_args = "{}"  # 修正为空 JSON 对象字符串
-                    
-                    # 2. 执行工具
+
+                    _notify_tool_call_hint(func_name)
                     result = tool_manager.execute(func_name, func_args)
                     
                     # 3. 确保结果不为空且为字符串（以便 LLM 接收）

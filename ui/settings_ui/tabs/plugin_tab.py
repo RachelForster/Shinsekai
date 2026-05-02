@@ -62,6 +62,7 @@ from sdk.types import SettingsUIContribution, ToolsTabContribution
 
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import message_fail, toast_info, toast_success
+from ui.settings_ui.tabs.plugin_mcp_tab import PluginMcpTab
 from ui.settings_ui.widgets.segmented_tab_nav import SegmentedTabNav
 
 
@@ -413,6 +414,9 @@ class PluginSettingsTab(QWidget):
 
         self._manage_discover_tabs.add_tab(discover_host, tr_i18n("plugins.tab_discover"))
 
+        self._plugin_mcp_tab = PluginMcpTab(self._ctx, self)
+        self._manage_discover_tabs.add_tab(self._plugin_mcp_tab, tr_i18n("plugins.tab_mcp"))
+
         lp_lay.addWidget(self._manage_discover_tabs, stretch=1)
         self._outer.addWidget(list_page)
 
@@ -442,6 +446,8 @@ class PluginSettingsTab(QWidget):
     def apply_i18n(self) -> None:
         self._manage_discover_tabs.set_tab_text(0, tr_i18n("plugins.tab_manage"))
         self._manage_discover_tabs.set_tab_text(1, tr_i18n("plugins.tab_discover"))
+        self._manage_discover_tabs.set_tab_text(2, tr_i18n("plugins.tab_mcp"))
+        self._plugin_mcp_tab.apply_i18n()
         self._back_btn.setText(tr_i18n("plugins.back"))
         self._discover_refresh_btn.setText(tr_i18n("plugins.discover_refresh"))
         self._discover_registry_hint.setText(tr_i18n("plugins.discover_registry_hint_html"))
