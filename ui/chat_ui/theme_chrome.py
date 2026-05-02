@@ -17,8 +17,25 @@ from typing import Any
 # ui/chat_ui/theme_chrome.py -> 项目根
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-_cached_key: tuple[str, float] | None = None
+_cached_key: tuple[str, str, float] | None = None
 _cached_theme: ChatChromeTheme | None = None
+
+# 设置 UI 等可指向临时 JSON，便于不覆盖 ``data/chat_ui_theme.json`` 的实时预览。
+_preview_path: Path | None = None
+
+
+def set_chat_chrome_theme_preview_path(path: str | Path | None) -> None:
+    """
+    指定聊天外观预览用 JSON 路径；``None`` 表示恢复为配置中的正式路径。
+    调用会清空主题缓存。
+    """
+    global _preview_path, _cached_key, _cached_theme
+    if path is None or str(path).strip() == "":
+        _preview_path = None
+    else:
+        _preview_path = Path(path).expanduser().resolve()
+    _cached_key = None
+    _cached_theme = None
 
 
 def clear_chat_chrome_theme_cache() -> None:
@@ -55,12 +72,39 @@ _FORBIDDEN_DECL = re.compile(
 )
 
 
+def _normalize_file_urls_in_qss_fragment(fragment: str) -> str:
+    """
+    Qt 在 Windows 上解析 ``url("file:///C:/...")`` 常会失败并打出
+    ``Could not create pixmap from file:\\\\C:\\...``。
+    改为 ``url("C:/...")``（仅盘符路径）。
+    """
+    if "file:" not in fragment.lower():
+        return fragment
+
+    def repl(m: re.Match[str]) -> str:
+        inner = m.group(1).strip()
+        if len(inner) >= 2 and inner[0] in "\"'":
+            if inner[-1] == inner[0]:
+                inner = inner[1:-1]
+        if not inner.lower().startswith("file:"):
+            return m.group(0)
+        path_part = re.sub(r"(?i)^file:///+", "", inner)
+        path_part = path_part.lstrip("/")
+        if not re.match(r"^[a-zA-Z]:", path_part):
+            return m.group(0)
+        posix = path_part.replace("\\", "/")
+        return f'url("{posix}")'
+
+    return re.sub(r"(?i)url\s*\(\s*([^)]+)\)", repl, fragment)
+
+
 def sanitize_chrome_declarations(fragment: str) -> str:
     """
     从用户提供的 QSS 片段中剔除禁止属性，返回可安全拼接的声明串（无外层花括号）。
     """
     if not fragment or not str(fragment).strip():
         return ""
+    fragment = _normalize_file_urls_in_qss_fragment(str(fragment))
     parts: list[str] = []
     for raw in str(fragment).split(";"):
         piece = raw.strip()
@@ -175,13 +219,21 @@ def _parse_theme_file(path: Path) -> ChatChromeTheme:
 def get_chat_chrome_theme(system_chat_ui_theme_path: str = "") -> ChatChromeTheme:
     """
     读取主题 JSON（带缓存：路径 + mtime）。文件不存在则返回空主题。
+    若已设置 :func:`set_chat_chrome_theme_preview_path` 且该文件存在，则优先读预览文件。
     """
     global _cached_key, _cached_theme
-    path = resolve_theme_path(system_chat_ui_theme_path)
+    path: Path
+    cache_tag: str
+    if _preview_path is not None and _preview_path.is_file():
+        path = _preview_path
+        cache_tag = "preview"
+    else:
+        path = resolve_theme_path(system_chat_ui_theme_path)
+        cache_tag = "normal"
     if not path.is_file():
         return ChatChromeTheme()
     mtime = path.stat().st_mtime
-    key = (str(path.resolve()), mtime)
+    key = (cache_tag, str(path.resolve()), mtime)
     if _cached_theme is not None and _cached_key == key:
         return _cached_theme
     try:

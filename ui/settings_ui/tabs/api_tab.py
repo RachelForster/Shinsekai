@@ -29,7 +29,8 @@ from PySide6.QtWidgets import (
 
 from asr.asr_adapter import normalize_asr_provider_storage_key
 from asr.asr_manager import ASRAdapterFactory
-from i18n import init_i18n, normalize_lang, tr as tr_i18n
+from i18n import init_i18n, tr as tr_i18n
+from sdk.lang import normalize_lang
 from llm.constants import LLM_BASE_URLS
 from llm.llm_manager import LLMAdapterFactory
 from t2i.t2i_adapter import ComfyUIT2IAdapter

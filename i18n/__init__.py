@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from sdk.lang import SUPPORTED_LANGS, normalize_lang
+
 __all__ = [
     "SUPPORTED_LANGS",
     "tr",
@@ -22,8 +24,6 @@ __all__ = [
     "current_language",
     "normalize_lang",
 ]
-
-SUPPORTED_LANGS: tuple[str, ...] = ("zh_CN", "en", "ja")
 
 _bundles: dict[str, dict[str, Any]] = {}
 _current: str = "zh_CN"
@@ -88,22 +88,6 @@ def tr_in_bundle(key: str, bundle: str, **kwargs: Any) -> str:
 
 def current_language() -> str:
     return _current
-
-
-def normalize_lang(code: str | None) -> str:
-    if not code:
-        return "zh_CN"
-    c = str(code).strip().replace("-", "_")
-    low = c.lower()
-    if low in ("zh", "zh_cn", "chinese", "cmn", "hans"):
-        return "zh_CN"
-    if low in ("en", "eng", "english"):
-        return "en"
-    if low in ("ja", "jp", "jpn", "japanese"):
-        return "ja"
-    if c in SUPPORTED_LANGS:
-        return c
-    return "zh_CN"
 
 
 def init_i18n(lang: str | None) -> str:

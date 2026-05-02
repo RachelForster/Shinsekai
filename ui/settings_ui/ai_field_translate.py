@@ -7,7 +7,7 @@ import re
 from typing import Any, Tuple
 
 from config.config_manager import ConfigManager
-from i18n import normalize_lang
+from sdk.lang import normalize_lang
 
 
 def _target_language_phrase(ui_lang_code: str) -> str:

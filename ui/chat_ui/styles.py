@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import re
+
 from ui.chat_ui.theme_chrome import (
     extract_border_radius_from_chrome,
     sanitize_chrome_declarations,
@@ -67,6 +69,11 @@ def dialog_label_initial(font_size: str, dialog_frame_path: str) -> str:
         """
 
 
+def _chrome_has_background_image(extra: str) -> bool:
+    """chrome 中含 background-image 时，勿再写 background 渐变，否则 Qt 会盖住印花。"""
+    return bool(re.search(r"(?i)background-image\s*:", extra or ""))
+
+
 def dialog_label_theme_applied(
     font_size: str,
     theme_color: str,
@@ -74,6 +81,14 @@ def dialog_label_theme_applied(
     chrome_extra: str = "",
 ) -> str:
     cx = _chrome_x(chrome_extra)
+    if _chrome_has_background_image(chrome_extra):
+        grad = ""
+    else:
+        grad = f"""background: qlineargradient(
+                    x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0   {theme_color},
+                    stop: 1   {second_color}
+                );"""
     return f"""
             QLabel {{
                 background-color: rgba(50, 50, 50, 200);
@@ -85,11 +100,7 @@ def dialog_label_theme_applied(
                 border-bottom-left-radius: 0;
                 line-height: 200%;
                 letter-spacing: 2px;
-                background: qlineargradient(
-                    x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0   {theme_color},
-                    stop: 1   {second_color}
-                );
+                {grad}
                 {cx}
             }}
         """
@@ -117,6 +128,14 @@ def numeric_info_label_theme_applied(
     chrome_extra: str = "",
 ) -> str:
     cx = _chrome_x(chrome_extra)
+    if _chrome_has_background_image(chrome_extra):
+        grad = ""
+    else:
+        grad = f"""background: qlineargradient(
+                    x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0   {theme_color},
+                    stop: 1   {second_color}
+                );"""
     return f"""
             QLabel {{
                 background-color: rgba(0, 0, 0, 100);
@@ -128,11 +147,7 @@ def numeric_info_label_theme_applied(
                 color: white;
                 border-image: url({dialog_frame_border_url}) 15 15 15 15 stretch;
                 border-width: 15px;
-                background: qlineargradient(
-                    x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0   {theme_color},
-                    stop: 1   {second_color}
-                );
+                {grad}
                 {cx}
             }}
         """
@@ -275,6 +290,14 @@ def option_choice_button(
 ) -> str:
     cx = _chrome_x(chrome_extra)
     hx = _chrome_x(chrome_hover_extra)
+    if _chrome_has_background_image(chrome_extra):
+        grad = ""
+    else:
+        grad = f"""background: qlineargradient(
+                        x1: 0, y1: 0, x2: 1, y2: 0,
+                        stop: 0   {theme_color},
+                        stop: 1   {second_color}
+                    );"""
     return f"""
                 QLabel {{
                     background-color: rgba(255, 255, 255, 50);
@@ -284,11 +307,7 @@ def option_choice_button(
                     text-align: left;
                     font-size: {font_size};
                     min-height: 40px;
-                    background: qlineargradient(
-                        x1: 0, y1: 0, x2: 1, y2: 0,
-                        stop: 0   {theme_color},
-                        stop: 1   {second_color}
-                    );
+                    {grad}
                     {cx}
                 }}
                 QLabel:hover {{

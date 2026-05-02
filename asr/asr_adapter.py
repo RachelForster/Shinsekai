@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from i18n import normalize_lang
+from sdk.lang import normalize_lang
 from sdk.adapters.asr import ASRAdapter, TranscriptionCallback
 
 # Vosk 模型默认路径（可按本机下载模型修改）

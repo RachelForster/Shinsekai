@@ -1,6 +1,7 @@
 from typing import Any
 
-from i18n import normalize_lang, tr as tr_i18n
+from i18n import tr as tr_i18n
+from sdk.lang import normalize_lang
 from config.character_manager import ConfigManager
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 from llm.tools.tool_manager import ToolManager

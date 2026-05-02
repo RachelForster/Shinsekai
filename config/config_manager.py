@@ -123,7 +123,7 @@ class ConfigManager:
         """更新界面语言并写入 system_config.yaml。"""
         if self._config is None:
             return
-        from i18n import normalize_lang
+        from sdk.lang import normalize_lang
 
         sc = self.config.system_config.model_copy(deep=True)
         sc.ui_language = normalize_lang(code)

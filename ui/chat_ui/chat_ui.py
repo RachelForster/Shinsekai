@@ -445,6 +445,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def setup_numeric_label(self):
         # 1. 创建用于显示富文本的“数值组件”
         self.numeric_info_label = QLabel(self.image_container) # 以 self.label (图像容器) 为父组件
+        self.numeric_info_label.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         # 允许显示富文本（HTML 格式）
         self.numeric_info_label.setTextFormat(Qt.TextFormat.RichText) 
         # 设置初始文本（示例）
@@ -466,6 +467,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def setup_dialog_label(self):
         """初始化对话框标签"""
         self.dialog_label = TypingLabel()
+        self.dialog_label.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.dialog_label.clicked.connect(lambda: self.skip_speech_signal.emit()) 
         self.dialog_label.setTextFormat(Qt.TextFormat.RichText)
         self.dialog_label.setAlignment(
@@ -488,6 +490,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def setup_options_widget(self):
         """初始化选项容器，与对话框标签位置相同"""
         self.options_widget = QWidget()
+        self.options_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         ch = get_chat_chrome_theme(
             config_manager.config.system_config.chat_ui_theme_path
         )
@@ -524,6 +527,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             config_manager.config.system_config.chat_ui_theme_path
         )
         self.input_box = QTextEdit()
+        self.input_box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.input_box.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         self.input_box.setMinimumHeight(40)
         self.input_box.setMaximumHeight(80)

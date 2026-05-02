@@ -22,6 +22,7 @@ if getattr(sys, "frozen", False):
     init_frozen_stdio("main_sprite")
 
 import llm.tools.character_tools
+import llm.tools.memory_tools
 from llm.template_generator import is_transparent_background
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
