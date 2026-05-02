@@ -1,9 +1,42 @@
 import traceback
-from typing import Optional
+from typing import Any, Optional
 from pathlib import Path
 import json
 import re
 from PySide6.QtWidgets import QApplication
+
+
+def parse_assistant_dialog_content(content: Any) -> list:
+    """
+    将 assistant 消息的 content 解析为 dialog 列表。
+    支持纯 JSON，以及模型输出的 ```json ... ``` 围栏。
+    """
+    if content is None:
+        return []
+    t = str(content).strip()
+    if not t:
+        return []
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z0-9]*\s*", "", t)
+        t = re.sub(r"\s*```$", "", t, flags=re.DOTALL)
+    t = t.strip()
+    parsed = None
+    try:
+        parsed = json.loads(t)
+    except json.JSONDecodeError:
+        i, j = t.find("{"), t.rfind("}")
+        if i >= 0 and j > i:
+            try:
+                parsed = json.loads(t[i : j + 1])
+            except json.JSONDecodeError:
+                return []
+        else:
+            return []
+    if not isinstance(parsed, dict):
+        return []
+    dialog = parsed.get("dialog", [])
+    return dialog if isinstance(dialog, list) else []
+
 
 class HistoryManager:
     _instance: Optional['HistoryManager'] = None
@@ -60,9 +93,8 @@ class HistoryManager:
                     if not content:
                         # 工具调用中间态可能写入空 assistant，跳过即可
                         continue
-                    parsed = json.loads(content)
-                    dialog = parsed.get('dialog', [])
-                    if not isinstance(dialog, list):
+                    dialog = parse_assistant_dialog_content(content)
+                    if not dialog:
                         continue
                     for item in dialog:
                         self.chat_history.append(f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>{item['character_name']}</b>: {item['speech']}</p>")

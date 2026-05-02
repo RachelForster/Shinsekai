@@ -32,6 +32,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from ui.chat_ui.chat_ui import ChatUIWindow
+from ui.chat_ui.qss_fusion import ensure_fusion_style
 from config.config_manager import ConfigManager
 from t2i.t2i_manager import T2IAdapterFactory, T2IManager
 import pygame
@@ -201,6 +202,7 @@ def main():
         pass
     # 创建桌面助手窗口
     app = QApplication([])
+    ensure_fusion_style(app)
     ui_updates = UIUpdateManager(chat_history=chat_history, bg_group=bg_group or [])
     window = ChatUIWindow(
         image_queue,

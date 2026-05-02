@@ -1,10 +1,22 @@
 """
 桌面助手主窗口等 UI 的 QSS 集中定义；动态色值与字号通过参数传入。
+
+可由 ``data/chat_ui_theme.json`` 提供额外声明（见 :mod:`ui.chat_ui.theme_chrome`）。
 """
 
 from __future__ import annotations
 
+from ui.chat_ui.theme_chrome import (
+    extract_border_radius_from_chrome,
+    sanitize_chrome_declarations,
+)
+
 FONT_FAMILY = "'Microsoft YaHei', 'SimHei', 'Arial'"
+
+
+def _chrome_x(extra: str) -> str:
+    s = sanitize_chrome_declarations(extra)
+    return f"\n                {s}" if s else ""
 
 # --- 工具栏 ---
 
@@ -56,8 +68,12 @@ def dialog_label_initial(font_size: str, dialog_frame_path: str) -> str:
 
 
 def dialog_label_theme_applied(
-    font_size: str, theme_color: str, second_color: str
+    font_size: str,
+    theme_color: str,
+    second_color: str,
+    chrome_extra: str = "",
 ) -> str:
+    cx = _chrome_x(chrome_extra)
     return f"""
             QLabel {{
                 background-color: rgba(50, 50, 50, 200);
@@ -74,6 +90,7 @@ def dialog_label_theme_applied(
                     stop: 0   {theme_color},
                     stop: 1   {second_color}
                 );
+                {cx}
             }}
         """
 
@@ -97,7 +114,9 @@ def numeric_info_label_theme_applied(
     theme_color: str,
     second_color: str,
     dialog_frame_border_url: str,
+    chrome_extra: str = "",
 ) -> str:
+    cx = _chrome_x(chrome_extra)
     return f"""
             QLabel {{
                 background-color: rgba(0, 0, 0, 100);
@@ -114,11 +133,13 @@ def numeric_info_label_theme_applied(
                     stop: 0   {theme_color},
                     stop: 1   {second_color}
                 );
+                {cx}
             }}
         """
 
 
-def text_edit_input(btn_font_size: str) -> str:
+def text_edit_input(btn_font_size: str, chrome_extra: str = "") -> str:
+    cx = _chrome_x(chrome_extra)
     return f"""
             QTextEdit {{
                 background-color: rgba(50, 50, 50, 200);
@@ -128,39 +149,70 @@ def text_edit_input(btn_font_size: str) -> str:
                 border-radius: 5px;
                 padding: 8px 10px;
                 font-size: {btn_font_size};
+                {cx}
             }}
         """
 
 
-def send_button_theme(theme_color: str, btn_font_size: str) -> str:
-    return f"""
-            QPushButton {{
-                background-color: {theme_color};
+def send_button_theme(
+    theme_color: str, btn_font_size: str, chrome_extra: str = ""
+) -> str:
+    raw = sanitize_chrome_declarations(chrome_extra)
+    rest, user_r = extract_border_radius_from_chrome(raw)
+    cx = f"\n                {rest}" if rest.strip() else ""
+    radius = user_r if user_r else "10px"
+    rtail = f"\n                border-radius: {radius};"
+    common = f"""
                 font-family: {FONT_FAMILY};
                 color: white;
                 border: none;
-                border-radius: 10px;
+                outline: none;
                 padding: 20px;
-                font-size: {btn_font_size}
+                font-size: {btn_font_size};
+                {cx}{rtail}"""
+    return f"""
+            QPushButton {{
+                background-color: {theme_color};
+                {common}
             }}
             QPushButton:hover {{
                 background-color: rgba(50, 50, 50, 200);
+                {common}
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(45, 45, 45, 230);
+                {common}
             }}
         """
 
 
-def send_button_input_bar_green(btn_font_size: str) -> str:
+def send_button_input_bar_green(
+    btn_font_size: str, chrome_extra: str = ""
+) -> str:
+    raw = sanitize_chrome_declarations(chrome_extra)
+    rest, user_r = extract_border_radius_from_chrome(raw)
+    cx = f"\n                {rest}" if rest.strip() else ""
+    radius = user_r if user_r else "10px"
+    rtail = f"\n                border-radius: {radius};"
+    common = f"""
+                color: white;
+                border: none;
+                outline: none;
+                padding: 10px;
+                font-size: {btn_font_size};
+                {cx}{rtail}"""
     return f"""
             QPushButton {{
                 background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 10px;
-                padding: 10px;
-                font-size: {btn_font_size}
+                {common}
             }}
             QPushButton:hover {{
                 background-color: #45a049;
+                {common}
+            }}
+            QPushButton:pressed {{
+                background-color: #3d8b40;
+                {common}
             }}
         """
 
@@ -181,7 +233,8 @@ def skip_speech_button(font_size: str = "16px") -> str:
         """
 
 
-def options_widget_container() -> str:
+def options_widget_container(chrome_extra: str = "") -> str:
+    cx = _chrome_x(chrome_extra)
     return f"""
             QWidget {{
                 background-color: rgba(50, 50, 50, 200);
@@ -189,6 +242,7 @@ def options_widget_container() -> str:
                 border-bottom-left-radius: 0;
                 border-bottom-right-radius: 0;
                 font-family: {FONT_FAMILY};
+                {cx}
             }}
         """
 
@@ -216,7 +270,11 @@ def option_choice_button(
     theme_color: str,
     second_color: str,
     low_opacity_theme: str,
+    chrome_extra: str = "",
+    chrome_hover_extra: str = "",
 ) -> str:
+    cx = _chrome_x(chrome_extra)
+    hx = _chrome_x(chrome_hover_extra)
     return f"""
                 QLabel {{
                     background-color: rgba(255, 255, 255, 50);
@@ -231,12 +289,14 @@ def option_choice_button(
                         stop: 0   {theme_color},
                         stop: 1   {second_color}
                     );
+                    {cx}
                 }}
                 QLabel:hover {{
                 background-color: {low_opacity_theme};
                 border-bottom: 5px solid {theme_color};
                 color: white;
                 padding: 9px 20px 11px 20px;
+                {hx}
             }}
 
             QLabel:pressed {{

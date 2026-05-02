@@ -84,6 +84,14 @@ def match_cot_tts(cc, name: str) -> bool:
     return _cc_match(cc, name, COT_ALIASES)
 
 
+def match_cot_name(name: str) -> bool:
+    """UI 侧：是否与 COT / 思维链 等思维链角色匹配（无 OpenCC 时再比一次原始串）。"""
+    t = normalize_character_name(name)
+    if t in COT_ALIASES:
+        return True
+    return (name or "").strip() in COT_ALIASES
+
+
 def match_system_dialog_tts(cc, name: str) -> bool:
     cfn = _as_convert(cc)
     s = normalize_character_name(name)

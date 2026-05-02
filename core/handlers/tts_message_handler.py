@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List
 
 from config.config_manager import ConfigManager
-from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue, tts_item_done_only
+from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
 from core.messaging.dialog_tokens import (
     match_bgm_name,
     match_cg_name,
@@ -38,8 +38,15 @@ class ChainOfThoughtTtsHandler(MessageHandler):
         return match_cot_tts(_cc(), msg.character_name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
-        tts_item_done_only()
-        print("TTSWorker: COT", msg.speech)
+        name = _cc().convert(normalize_character_name(msg.character_name))
+        tts_emit_to_ui_queue(
+            name,
+            msg.speech or "",
+            str(msg.sprite if msg.sprite is not None else "-1"),
+            "",
+            is_system_message=True,
+            effect=msg.effect or "",
+        )
 
 
 class SystemDialogTtsHandler(MessageHandler):

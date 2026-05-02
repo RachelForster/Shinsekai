@@ -6,6 +6,7 @@ UI worker 用 TTS 输出消息处理器（见 handler_registry.UIOutputMessageHa
 
 from __future__ import annotations
 
+import re
 import time
 import traceback
 from pathlib import Path
@@ -23,6 +24,7 @@ from core.messaging.dialog_tokens import (
     match_bgm_name,
     match_cg_name,
     match_choice_name,
+    match_cot_name,
     match_scene_name,
     match_stat_name,
 )
@@ -44,11 +46,34 @@ def _play() -> Any:
     return get_app_runtime().ui_playback
 
 
+def _busy_preview_cot(raw: str, max_len: int = 200) -> str:
+    """去掉 COT 里类似 <摘要> 的标签，压成单行用于 busy bar。"""
+    s = re.sub(r"<[^>]+>", " ", raw or "")
+    s = re.sub(r"\s+", " ", s).strip()
+    if len(s) > max_len:
+        s = s[: max_len - 1] + "…"
+    return s
+
+
+class ChainOfThoughtUiHandler(UIOutputMessageHandler):
+    """思维链（COT）仅更新底栏 busy bar，不进入对白/ TTS。"""
+
+    def can_handle(self, out: TTSOutputMessage) -> bool:
+        return out.is_system_message and match_cot_name(out.character_name or "")
+
+    def handle(self, out: TTSOutputMessage) -> None:
+        preview = _busy_preview_cot(out.speech or "")
+        label = tr_i18n("desktop.cot_busy_prefix")
+        text = f"{label} · {preview}" if preview else label
+        _ui().post_busy_bar(text, 0.0)
+
+
 class OptionsUiHandler(UIOutputMessageHandler):
     def can_handle(self, out: TTSOutputMessage) -> bool:
         return out.is_system_message and match_choice_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
+        _ui().hide_busy_bar()
         sp = out.speech or ""
         label = tr_i18n("dialog.option_badge")
         formatted_option = (
@@ -65,6 +90,7 @@ class NumericUiHandler(UIOutputMessageHandler):
         return out.is_system_message and match_stat_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
+        _ui().hide_busy_bar()
         _ui().post_numeric_value(out.speech or "")
 
 
@@ -73,6 +99,7 @@ class SceneUiHandler(UIOutputMessageHandler):
         return out.is_system_message and match_scene_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
+        _ui().hide_busy_bar()
         try:
             idx = int(out.sprite) - 1
             bg = _ui().bg_group
@@ -90,6 +117,7 @@ class BgmUiHandler(UIOutputMessageHandler):
         return out.is_system_message and match_bgm_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
+        _ui().hide_busy_bar()
         _ui().switch_bgm(out.audio_path or "")
 
 
@@ -98,6 +126,7 @@ class CgUiHandler(UIOutputMessageHandler):
         return out.is_system_message and match_cg_name(out.character_name or "")
 
     def handle(self, out: TTSOutputMessage) -> None:
+        _ui().hide_busy_bar()
         try:
             path = out.audio_path or ""
             if "no person" in (out.speech or ""):
@@ -121,6 +150,7 @@ class SystemMiscUiHandler(UIOutputMessageHandler):
         return True
 
     def handle(self, out: TTSOutputMessage) -> None:
+        _ui().hide_busy_bar()
         _ui().update_dialog(out.character_name, out.speech or "", "#84C2D5")
         ev = _play().task_done_requested
         if ev and not ev.is_set():
@@ -135,6 +165,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
     def handle(self, out: TTSOutputMessage) -> None:
         rt = get_app_runtime()
         ui = rt.ui_update_manager
+        ui.hide_busy_bar()
         ch = _play()
         character_name = out.character_name
         speech = out.speech or ""
@@ -217,6 +248,7 @@ def get_ui_output_handlers() -> List[UIOutputMessageHandler]:
         SceneUiHandler(),
         BgmUiHandler(),
         CgUiHandler(),
+        ChainOfThoughtUiHandler(),
         SystemMiscUiHandler(),
         CharacterDialogUiHandler(),
     ]

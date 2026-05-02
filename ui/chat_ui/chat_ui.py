@@ -44,7 +44,9 @@ from ui.chat_ui.components import CGWidget, ClickableLabel, TypingLabel, SpriteP
 from ui.chat_ui.desktop_menu import DesktopMenuMixin
 from ui.chat_ui.desktop_toolbar import DesktopToolbarMixin
 from ui.chat_ui.mic_button import MicButton
+from ui.chat_ui.rounded_chrome_button import ChromeSendButton
 from ui.chat_ui.busy_bar import BusyBar
+from ui.chat_ui.theme_chrome import get_chat_chrome_theme
 from ui.chat_ui.workers import ChatWorker, ImageDisplayThread
 from config.config_manager import ConfigManager
 from i18n import init_i18n, tr
@@ -350,6 +352,13 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def show_cg_image(self, cg_path: str):
         """外部接口：显示一个CG，它会触发立绘隐藏"""
         self.cg_widget.show_cg(cg_path)
+    def _send_btn_font_px(self) -> int:
+        try:
+            raw = str(self.btn_font_size).replace("px", "").replace(";", "").strip()
+            return max(9, int(raw))
+        except (ValueError, TypeError):
+            return 14
+
     def apply_font_styles(self):
         """根据 DPI、用户基准字号与当前窗口尺寸更新所有 UI 字号与相关控件。"""
         screen = QApplication.primaryScreen()
@@ -364,12 +373,18 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
 
         self.font_size = f"{body_px}px;"
         self.btn_font_size = f"{btn_px}px;"
-        
+        ch = get_chat_chrome_theme(
+            config_manager.config.system_config.chat_ui_theme_path
+        )
+
         # 对话气泡只用 QSS 渐变，不要再叠一层 dialog_frame 位图，否则整图会随 QLabel
         # 拉伸，PNG 里画的装饰/灰边会看起来像「外圈多了一圈框」。
         self.dialog_label.setStyleSheet(
             styles.dialog_label_theme_applied(
-                self.font_size, self.theme_color, self.second_color
+                self.font_size,
+                self.theme_color,
+                self.second_color,
+                chrome_extra=ch.dialog_label_extra,
             )
         )
         self.dialog_label.setPixmap(QPixmap())
@@ -381,32 +396,42 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 self.theme_color,
                 self.second_color,
                 QUrl.fromLocalFile(DIALOG_FRAME_PATH).toString(),
+                chrome_extra=ch.numeric_label_extra,
             )
         )
 
         # Apply to input box
-        self.input_box.setStyleSheet(styles.text_edit_input(self.btn_font_size))
+        self.input_box.setStyleSheet(
+            styles.text_edit_input(self.btn_font_size, chrome_extra=ch.input_bar_extra)
+        )
         self.input_box.setPlaceholderText(tr("desktop.input_placeholder"))
 
-        # Apply to send button
+        # Apply to send button（圆角由 QPainter 绘制，见 ChromeSendButton）
         self.send_btn.setText(tr("desktop.send"))
-        self.send_btn.setStyleSheet(
-            styles.send_button_theme(self.theme_color, self.btn_font_size)
+        fp = self._send_btn_font_px()
+        self.send_btn.apply_visual(
+            ch.send_button_extra,
+            self.theme_color,
+            "#FFFFFF",
+            default_corner_px=10,
+            font_px=fp,
         )
 
-        # Re-apply styles to any existing options (if visible/available)
-        opt_refresh = styles.option_row_list_refresh(self.font_size)
-        for i in range(self.options_layout.count()):
-            item = self.options_layout.itemAt(i)
-            widget = item.widget()
-            if widget is not None:
-                widget.setStyleSheet(opt_refresh)
+        self.options_widget.setStyleSheet(
+            styles.options_widget_container(ch.options_container_extra)
+        )
+
+        # 选项区须带主题渐变；勿用 option_row_list_refresh，否则会冲掉 setOptions 里的主题色
+        self._refresh_option_choice_styles()
 
         self._layout_toolbar_geometry()
         if getattr(self, "mic_button", None) is not None:
-            self.mic_button.apply_window_scale(win_s)
+            self.mic_button.apply_window_scale(win_s, ch)
         if getattr(self, "_busy_bar", None) is not None:
+            self._busy_bar.set_label_chrome_extra(ch.busy_bar_label_extra)
             self._busy_bar.apply_theme_font(self.font_size)
+        if getattr(self, "cg_widget", None) is not None:
+            self.cg_widget.set_theme_color(self.theme_color)
         if getattr(self, "skip_button", None) is not None:
             sk = max(36, int(48 * win_s))
             self.skip_button.setFixedSize(sk, sk)
@@ -463,9 +488,13 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def setup_options_widget(self):
         """初始化选项容器，与对话框标签位置相同"""
         self.options_widget = QWidget()
-        
+        ch = get_chat_chrome_theme(
+            config_manager.config.system_config.chat_ui_theme_path
+        )
         # 设置容器的基本样式，与dialog_label相似
-        self.options_widget.setStyleSheet(styles.options_widget_container())
+        self.options_widget.setStyleSheet(
+            styles.options_widget_container(ch.options_container_extra)
+        )
         
         self.options_layout = QVBoxLayout(self.options_widget)
         self.options_layout.setContentsMargins(15, 15, 15, 15) # 稍微大一点的边距
@@ -491,19 +520,28 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         input_layout.setSpacing(12)
         
         # 输入框
+        ch0 = get_chat_chrome_theme(
+            config_manager.config.system_config.chat_ui_theme_path
+        )
         self.input_box = QTextEdit()
         self.input_box.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         self.input_box.setMinimumHeight(40)
         self.input_box.setMaximumHeight(80)
         self.input_box.setPlaceholderText(tr("desktop.input_placeholder"))
-        self.input_box.setStyleSheet(styles.text_edit_input(self.btn_font_size))
+        self.input_box.setStyleSheet(
+            styles.text_edit_input(self.btn_font_size, chrome_extra=ch0.input_bar_extra)
+        )
         self.input_box.installEventFilter(self)
         # self.input_box.returnPressed.connect(self.sendMessage)
         
-        # 发送按钮
-        self.send_btn = QPushButton(tr("desktop.send"))
-        self.send_btn.setStyleSheet(
-            styles.send_button_input_bar_green(self.btn_font_size)
+        # 发送按钮（圆角由 QPainter 绘制）
+        self.send_btn = ChromeSendButton(tr("desktop.send"))
+        self.send_btn.apply_visual(
+            ch0.send_button_extra,
+            "#4CAF50",
+            "#FFFFFF",
+            default_corner_px=10,
+            font_px=self._send_btn_font_px(),
         )
         self.send_btn.clicked.connect(self.sendMessage)
 
@@ -542,7 +580,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self._bottom_chrome_h = row_h + inset_b
 
     def _layout_busy_bar(self) -> None:
-        """底栏输入条正上方的加载条位置（与 ``_layout_input_row`` 共用几何）。"""
+        """底栏输入条正上方；宽度与输入行一致（与窗口左右 inset 内的可视区同宽）。"""
         bb = getattr(self, "_busy_bar", None)
         if bb is None:
             return
@@ -551,12 +589,13 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         inner_w = self._last_input_inner_w
         x = self._last_input_x
         y_input = self._last_input_row_y
-        gap = 6
-        bb.setFixedWidth(inner_w)
-        bb.adjustSize()
-        bh = max(38, int(bb.sizeHint().height()))
+        gap = 4
+        bb_w = max(1, inner_w)
+        x_bb = x
+        bb.setFixedWidth(bb_w)
+        bh = bb.height_for_bar_width(bb_w)
         y_bb = max(0, y_input - gap - bh)
-        bb.setGeometry(x, y_bb, inner_w, bh)
+        bb.setGeometry(x_bb, y_bb, bb_w, bh)
 
     def _above_chrome_y(self, block_height: int, gap: int = 4) -> int:
         h = int(self.image_container.height()) if self.image_container.height() > 0 else int(self.height())
@@ -643,9 +682,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             apply_win_frameless_dwm_hacks(self, border_color_none=True)
 
     def _raise_input_and_toolbar(self) -> None:
-        """将输入条与工具栏置于最前（相对各自父级叠放顺序）。"""
-        if getattr(self, "_busy_bar", None) is not None:
-            self._busy_bar.raise_()
+        """将输入条、工具栏与调节角置于前；若 busy bar 正在显示则最后抬到最上层。"""
         if getattr(self, "input_row", None) is not None:
             self.input_row.raise_()
         else:
@@ -663,6 +700,9 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             g = getattr(self, name, None)
             if g is not None:
                 g.raise_()
+        bb = getattr(self, "_busy_bar", None)
+        if bb is not None and bb.isVisible():
+            bb.raise_()
 
     def _setup_resize_corner_hit_widgets(self) -> None:
         """左下/右下：分层透明时 α=0 区域不命中；极小 α>0 叠在最上层抓落实控。"""
@@ -983,8 +1023,9 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         if not (text or "").strip():
             bb.hide_bar()
             return
-        self._layout_busy_bar()
+        # 先更新文案再算高度，否则 heightForWidth 仍按旧文本排版
         bb.show_with((text or "").strip(), duration_seconds)
+        self._layout_busy_bar()
         self._raise_input_and_toolbar()
 
     def setNotification(self, message):
@@ -1024,7 +1065,41 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.input_box.setText(text) # 将内容添加到输入框
         self.setOptions([])          # 隐藏选项
         self.sendMessage()           # 自动发送消息
-    
+
+    def _low_opacity_theme_accent(self) -> str:
+        """与 setOptions 中 hover 晕光一致：由当前主题色推导低透明度 rgba。"""
+        try:
+            content = self.theme_color.strip().replace("rgba(", "").replace(")", "")
+            r, g, b, _a = map(int, content.split(","))
+            return f"rgba({r}, {g}, {b}, 50)"
+        except Exception:
+            return "rgba(50, 50, 50, 25)"
+
+    def _refresh_option_choice_styles(self) -> None:
+        """字体/DPI/主题色变化时，保留选项列表内容仅重刷 QSS（与 setOptions 同一套主题样式）。"""
+        layout = getattr(self, "options_layout", None)
+        if layout is None or layout.count() == 0:
+            return
+        ch = get_chat_chrome_theme(
+            config_manager.config.system_config.chat_ui_theme_path
+        )
+        low = self._low_opacity_theme_accent()
+        qss = styles.option_choice_button(
+            self.font_size,
+            self.theme_color,
+            self.second_color,
+            low,
+            chrome_extra=ch.option_row_extra,
+            chrome_hover_extra=ch.option_row_hover_extra,
+        )
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.setStyleSheet(qss)
+
     def setOptions(self, optionList: list[str]):
         """
         在dialog label相同的地方显示一组半透明选项按钮，并隐藏dialog label。
@@ -1048,13 +1123,10 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.options_widget.hide()
             return
 
-        try:
-            content = self.theme_color.strip().replace('rgba(', '').replace(')', '')
-            r, g, b, a = map(int, content.split(','))
-        # 创建一个非常低的透明度版本 (例如 10%) 作为背景柔和光晕
-            low_opacity_theme = f"rgba({r}, {g}, {b}, 50)" 
-        except Exception:
-            low_opacity_theme = "rgba(50, 50, 50, 25)"
+        low_opacity_theme = self._low_opacity_theme_accent()
+        ch_opt = get_chat_chrome_theme(
+            config_manager.config.system_config.chat_ui_theme_path
+        )
 
         # 4. 添加新按钮
         for option_text in optionList:
@@ -1071,6 +1143,8 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                     self.theme_color,
                     self.second_color,
                     low_opacity_theme,
+                    chrome_extra=ch_opt.option_row_extra,
+                    chrome_hover_extra=ch_opt.option_row_hover_extra,
                 )
             )
             
@@ -1277,8 +1351,11 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
 
 def start_qt_app(display_queue, emotion_queue, deepseek):
     """启动 PySide6 应用（ChatUI）。"""
+    from ui.chat_ui.qss_fusion import ensure_fusion_style
+
     init_i18n(config_manager.config.system_config.ui_language)
     app = QApplication(sys.argv)
+    ensure_fusion_style(app)
     window = ChatUIWindow(display_queue, emotion_queue, deepseek)
     print("ChatUI (PySide6) window starts")
     window.show()

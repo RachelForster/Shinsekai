@@ -141,6 +141,10 @@ class SystemConfig(BaseModel):
         default="",
         description="聊天主窗口上次关闭时的 saveGeometry Base64，留空则使用默认居中与尺寸",
     )
+    chat_ui_theme_path: DefaultIfNone[str] = Field(
+        default="",
+        description="聊天主窗外观补丁 JSON 路径，留空则使用 data/chat_ui_theme.json（若存在）",
+    )
 
     # 音乐翻唱流水线（YouTube/B站下载 → UVR 分离 → RVC 转换 → pydub 合成）
     music_cover_work_dir: DefaultIfNone[str] = Field(

@@ -1188,17 +1188,8 @@ class CGWidget(QWidget):
         
         self.hide() # 初始隐藏
 
-    def setup_cg_toolbar(self):
-        """设置 CG 模式下的操作按钮工具栏"""
-        self.cg_toolbar = QWidget(self) # 以自身为父组件
-        self.cg_toolbar.setStyleSheet("background-color: transparent;")
-        
-        toolbar_layout = QHBoxLayout(self.cg_toolbar)
-        toolbar_layout.setContentsMargins(15, 15, 15, 15)
-        toolbar_layout.setSpacing(10)
-        toolbar_layout.addStretch(1)
-
-        button_style = f"""
+    def _cg_toolbar_button_stylesheet(self) -> str:
+        return f"""
             QPushButton {{
                 background-color: rgba(50, 50, 50, 150);
                 border: 2px solid {self.theme_color};
@@ -1211,6 +1202,27 @@ class CGWidget(QWidget):
                 background-color: rgba(50, 50, 50, 200);
             }}
         """
+
+    def set_theme_color(self, theme_color: str) -> None:
+        """与主窗设置里的主题色同步。"""
+        self.theme_color = theme_color
+        if getattr(self, "save_cg_btn", None) is None:
+            return
+        bs = self._cg_toolbar_button_stylesheet()
+        self.save_cg_btn.setStyleSheet(bs)
+        self.close_cg_btn.setStyleSheet(bs)
+
+    def setup_cg_toolbar(self):
+        """设置 CG 模式下的操作按钮工具栏"""
+        self.cg_toolbar = QWidget(self) # 以自身为父组件
+        self.cg_toolbar.setStyleSheet("background-color: transparent;")
+        
+        toolbar_layout = QHBoxLayout(self.cg_toolbar)
+        toolbar_layout.setContentsMargins(15, 15, 15, 15)
+        toolbar_layout.setSpacing(10)
+        toolbar_layout.addStretch(1)
+
+        button_style = self._cg_toolbar_button_stylesheet()
 
         self.save_cg_btn = QPushButton("💾 保存")
         self.save_cg_btn.setStyleSheet(button_style)

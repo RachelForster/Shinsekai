@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
-from llm.history_manager import HistoryManager
+from llm.history_manager import HistoryManager, parse_assistant_dialog_content
 
 from core.messaging.dialog_tokens import is_option_history_name, is_option_history_plain
 from core.messaging.message import TTSOutputMessage
@@ -96,15 +95,9 @@ def extract_valid_dialog_from_messages(messages: list) -> list:
         if message.get("role") != "assistant":
             continue
         content = message.get("content", "")
-        if not content:
-            continue
-        try:
-            parsed = json.loads(content)
-            dialog = parsed.get("dialog", [])
-            if isinstance(dialog, list) and dialog:
-                return dialog
-        except Exception:
-            continue
+        dialog = parse_assistant_dialog_content(content)
+        if dialog:
+            return dialog
     return []
 
 

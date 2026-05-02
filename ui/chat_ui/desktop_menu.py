@@ -65,7 +65,9 @@ class DesktopMenuMixin:
         )
 
     def show_volumn_settings(self) -> None:
-        dialog = VolumeDialog(config_manager.config.system_config.music_volumn)
+        dialog = VolumeDialog(
+            config_manager.config.system_config.music_volumn, self
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             selected_volumn = dialog.get_new_volume()
             config_manager.config.system_config.music_volumn = selected_volumn
@@ -89,7 +91,8 @@ class DesktopMenuMixin:
             self.revert_chat_history.emit(dialog.selected_revert_user_index)
 
     def show_theme_color_dialog(self) -> None:
-        dialog = ThemeColorDialog(self.theme_color)
+        # 主窗带 WindowStaysOnTopHint；无 parent 的对话框会叠在主窗后面
+        dialog = ThemeColorDialog(self.theme_color, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.theme_color = dialog.get_selected_color()
             config_manager.config.system_config.theme_color = self.theme_color

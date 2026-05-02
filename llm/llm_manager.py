@@ -23,8 +23,9 @@ def _notify_tool_call_hint(tool_name: str) -> None:
     if rt is None:
         return
     try:
-        rt.ui_update_manager.post_notification(
-            tr("main_sprite.notify_tool_calling", name=tool_name)
+        rt.ui_update_manager.post_busy_bar(
+            tr("main_sprite.notify_tool_calling", name=tool_name),
+            4.0
         )
     except Exception:
         pass
