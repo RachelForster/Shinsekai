@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 _PLUGINS_DIR = Path("plugins")
+_DOWNLOAD_STATE_PATH = Path("data/config/plugin_registry_downloads.json")
 
 _WIN_RESERVED_DEVICE_NAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL"}

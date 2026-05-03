@@ -692,12 +692,12 @@ class PluginSettingsTab(QWidget):
             self._repaint_discover_catalog_grid()
             return
 
+        entry_line = self._registry_entry_for_repo_norm(repo_norm)
         mark_repo_downloaded(
             repo_norm,
             manifest_entry=entry_line if entry_line else None,
         )
         base = tr_i18n("plugins.discover_download_ok_body")
-        entry_line = self._registry_entry_for_repo_norm(repo_norm)
         detail = ""
         if entry_line:
             try:
