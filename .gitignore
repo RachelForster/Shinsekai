@@ -3,6 +3,8 @@ data/models
 data/sprite
 llm/__pycache__
 runtime/
+!core/runtime
+!core/runtime/**
 /__pycache__
 *.pyc
 /data
