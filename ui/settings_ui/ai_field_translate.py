@@ -49,7 +49,9 @@ def _llm_one_shot(config: ConfigManager, system: str, user: str) -> str:
         )
     )
     manager = LLMManager(adapter=llm_adapter, user_template=system)
-    return manager.chat(user, stream=False, response_format={"type": "text"})
+    return manager.chat(
+        user, stream=False, response_format={"type": "text"}, include_local_time=False
+    )
 
 
 def translate_character_name_and_tags(

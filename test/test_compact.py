@@ -59,7 +59,9 @@ def test_compact_functionality():
         
         # 添加消息并检查token数量
         for i, message in enumerate(test_messages):
-            response = llm_manager.chat(message, auto_compact=True)
+            response = llm_manager.chat(
+                message, auto_compact=True, include_local_time=False
+            )
             status = llm_manager.get_compaction_status()
             print(f"  消息{i+1}: {message[:30]}... | Tokens: {status['token_count']} | 使用率: {status['percentage_used']:.1f}%")
             

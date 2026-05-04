@@ -114,7 +114,12 @@ class CharacterManager:
             self._llm_manager.set_user_template(template)
             
             # 假设 chat 方法返回生成的文本
-            new_setting_text = self._llm_manager.chat(f"补充信息：{setting},请输出结果：", stream=False, response_format={"type": "text"})
+            new_setting_text = self._llm_manager.chat(
+                f"补充信息：{setting},请输出结果：",
+                stream=False,
+                response_format={"type": "text"},
+                include_local_time=False,
+            )
             
             # 更新 Character 实例并保存
             character.character_setting = new_setting_text

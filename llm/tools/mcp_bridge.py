@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from contextlib import AsyncExitStack
@@ -12,6 +13,19 @@ from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 logger = logging.getLogger(__name__)
+
+
+def _mcp_teardown_exc_is_benign(exc: BaseException) -> bool:
+    """SSE/ClientSession 关闭时 anyio 常抛出 CancelledError / ExceptionGroup / cancel scope RuntimeError。"""
+    if isinstance(exc, asyncio.CancelledError):
+        return True
+    if isinstance(exc, RuntimeError):
+        msg = str(exc).lower()
+        return "cancel scope" in msg
+    sub = getattr(exc, "exceptions", None)
+    if isinstance(sub, tuple) and sub:
+        return all(_mcp_teardown_exc_is_benign(s) for s in sub)
+    return False
 
 
 class MCPBridge:
@@ -120,8 +134,14 @@ class MCPBridge:
         if stack is not None:
             try:
                 await stack.__aexit__(None, None, None)
-            except Exception:  # pragma: no cover - defensive cleanup
-                logger.exception("MCPBridge.close")
+            except BaseException as exc:
+                if _mcp_teardown_exc_is_benign(exc):
+                    logger.warning(
+                        "MCPBridge.close: 已忽略连接 teardown 时的预期噪声: %s",
+                        type(exc).__name__,
+                    )
+                else:
+                    logger.exception("MCPBridge.close")
 
     async def __aenter__(self) -> MCPBridge:
         return self

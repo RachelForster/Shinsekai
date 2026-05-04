@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import concurrent.futures
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Any, Coroutine, TypeVar
+from typing import Any, TypeVar
 
 from llm.tools.mcp_config_file import (
     DEFAULT_MCP_CONFIG_PATH as _DEFAULT_CONFIG_PATH,
@@ -28,6 +30,16 @@ _mcp_loop: asyncio.AbstractEventLoop | None = None
 _mcp_thread: threading.Thread | None = None
 _loop_lock = threading.Lock()
 _active_bridges: list[Any] = []
+
+# MCPBridge 使用 AsyncExitStack + mcp SSE 内部的 anyio TaskGroup；CancelScope 必须在「进入时的同一
+# asyncio 任务」里退出。注册结束后若用 run_coroutine_threadsafe 再起新任务去 close，会触发
+# 「Attempted to exit cancel scope in a different task than it was entered in」。因此所有长生命周期
+# 连接的建立与关闭都派发到下面这个专用 owner 任务上顺序执行。
+_mcp_owner_queue: asyncio.Queue[
+    tuple[Callable[[], Coroutine[Any, Any, Any]], concurrent.futures.Future[Any]]
+] | None = None
+_mcp_owner_task: asyncio.Task[None] | None = None
+_owner_lock = threading.Lock()
 
 
 def _ensure_mcp_loop() -> asyncio.AbstractEventLoop:
@@ -69,6 +81,54 @@ def run_mcp_coro(coro: Coroutine[Any, Any, T], *, timeout: float = 300.0) -> T:
     return fut.result(timeout=timeout)
 
 
+async def _mcp_owner_worker() -> None:
+    assert _mcp_owner_queue is not None
+    while True:
+        make_coro, cfut = await _mcp_owner_queue.get()
+        try:
+            val = await make_coro()
+            if not cfut.done():
+                cfut.set_result(val)
+        except BaseException as e:
+            if not cfut.done():
+                cfut.set_exception(e)
+
+
+def _ensure_mcp_owner_worker(loop: asyncio.AbstractEventLoop) -> None:
+    global _mcp_owner_queue, _mcp_owner_task
+    with _owner_lock:
+        if _mcp_owner_task is not None and not _mcp_owner_task.done():
+            return
+
+        async def _bootstrap() -> None:
+            global _mcp_owner_queue, _mcp_owner_task
+            _mcp_owner_queue = asyncio.Queue()
+            _mcp_owner_task = asyncio.create_task(_mcp_owner_worker())
+
+        # create_task 必须在 loop 线程里执行
+        asyncio.run_coroutine_threadsafe(_bootstrap(), loop).result(timeout=30.0)
+
+
+def run_mcp_coro_on_bridge_owner(
+    make_coro: Callable[[], Coroutine[Any, Any, T]],
+    *,
+    timeout: float = 300.0,
+) -> T:
+    """在「长连接 owner」任务上运行协程：与 MCPBridge 的 connect/close 成对，避免 anyio cancel scope 跨任务。"""
+    loop = _ensure_mcp_loop()
+    _ensure_mcp_owner_worker(loop)
+    assert _mcp_owner_queue is not None
+    cfut: concurrent.futures.Future[T] = concurrent.futures.Future()
+
+    async def _enqueue() -> None:
+        await _mcp_owner_queue.put((make_coro, cfut))
+
+    asyncio.run_coroutine_threadsafe(_enqueue(), loop).result(
+        timeout=min(60.0, max(1.0, timeout))
+    )
+    return cfut.result(timeout=timeout)
+
+
 def _mcp_tool_to_dict(tool_obj: Any) -> dict[str, Any]:
     if isinstance(tool_obj, dict):
         return dict(tool_obj)
@@ -100,11 +160,13 @@ def _normalize_env(raw: Any) -> dict[str, str] | None:
 
 
 async def _async_close_all_bridges() -> None:
-    for b in list(_active_bridges):
+    # 后进先关，减轻 anyio CancelScope 在首条连接 teardown 后的栈错位；中间让出事件循环。
+    for b in reversed(list(_active_bridges)):
         try:
             await b.close()
         except Exception:
             logger.exception("MCP bridge close")
+        await asyncio.sleep(0)
     _active_bridges.clear()
 
 
@@ -112,7 +174,11 @@ def close_all_mcp_bridges_sync(*, timeout: float = 60.0) -> None:
     if not _active_bridges:
         return
     try:
-        run_mcp_coro(_async_close_all_bridges(), timeout=timeout)
+
+        def _make_close() -> Coroutine[Any, Any, None]:
+            return _async_close_all_bridges()
+
+        run_mcp_coro_on_bridge_owner(_make_close, timeout=timeout)
     except Exception:
         logger.exception("close_all_mcp_bridges_sync")
 
@@ -243,8 +309,15 @@ async def _register_one_server(
                 f"Tool {registered_name!r} does not match prefix {name_prefix!r}"
             )
         short = registered_name[len(name_prefix) :] if name_prefix else registered_name
+
+        def _make_call() -> Coroutine[Any, Any, str]:
+            async def _do() -> str:
+                return await bridge.call_tool(short, arguments or {})
+
+            return _do()
+
         try:
-            text = run_mcp_coro(bridge.call_tool(short, arguments), timeout=timeout)
+            text = run_mcp_coro_on_bridge_owner(_make_call, timeout=timeout)
         except Exception as exc:
             logger.exception("MCP call_tool failed: %s", short)
             return {"error": str(exc), "tool": short}
@@ -286,21 +359,27 @@ def register_mcp_tools_from_config(
 
     default_timeout = float(cfg.get("default_call_timeout", 300))
 
-    async def _run_all() -> None:
-        for i, entry in enumerate(servers):
-            if not isinstance(entry, dict):
-                continue
-            if entry.get("enabled") is False:
-                continue
-            try:
-                await _register_one_server(
-                    tm, entry, default_timeout=default_timeout
-                )
-            except Exception:
-                logger.exception("MCP server #%d failed", i)
+    def _make_register() -> Coroutine[Any, Any, None]:
+        async def _run_all() -> None:
+            for i, entry in enumerate(servers):
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("enabled") is False:
+                    continue
+                try:
+                    await _register_one_server(
+                        tm, entry, default_timeout=default_timeout
+                    )
+                except Exception:
+                    logger.exception("MCP server #%d failed", i)
+
+        return _run_all()
 
     try:
-        run_mcp_coro(_run_all(), timeout=max(600.0, default_timeout * 4))
+        run_mcp_coro_on_bridge_owner(
+            _make_register,
+            timeout=max(600.0, default_timeout * 4),
+        )
     except Exception:
         logger.exception("MCP tool registration aborted")
 

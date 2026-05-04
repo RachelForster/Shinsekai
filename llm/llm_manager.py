@@ -1,6 +1,7 @@
 
 from asyncio import Queue
 import json
+from datetime import datetime
 from threading import Thread
 from openai import OpenAI
 import logging
@@ -15,6 +16,12 @@ from llm.tools.tool_manager import ToolManager
 
 tool_manager = ToolManager()
 logger = logging.getLogger(__name__)
+
+
+def _prefix_user_text_with_local_time(text: str) -> str:
+    """为发送给模型的用户正文加上本机本地时间（供模型感知「何时」发送）。"""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return f"[本地时间 {ts}]\n{text}"
 
 
 def _notify_tool_call_hint(tool_name: str) -> None:
@@ -128,8 +135,14 @@ class LLMManager:
     def chat(self, user_input: Optional[str], stream: bool = True, **kwargs) -> Union[Generator, str]:
         """
         统一入口：根据 stream 参数决定调用流式还是同步私有方法。
+
+        ``include_local_time``（默认 True）：为本次 user 消息追加本机日期时间前缀，再写入对话历史。
+        翻译、设定生成等非聊天调用请传 ``include_local_time=False``。
         """
+        include_local_time = bool(kwargs.pop("include_local_time", True))
         if user_input:
+            if include_local_time:
+                user_input = _prefix_user_text_with_local_time(user_input)
             self.add_message("user", user_input)
 
         if stream:
