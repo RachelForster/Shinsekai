@@ -99,7 +99,7 @@
     "app_update_version_unknown": "現在のバージョン：不明",
     "app_update_version_fmt": "現在のバージョン：{version}",
     "app_update_warn_title": "上書き更新の確認",
-    "app_update_warn_body": "GitHub のソース ZIP をダウンロードし、現在のインストール先にマージします（.git・venv 等は除外）。元に戻せません。続行しますか？",
+    "app_update_warn_body": "GitHub のソース ZIP をダウンロードし、現在のインストール先にマージします（.git・data・plugins 等は除外）。元に戻せません。続行しますか？",
     "app_update_progress_title": "本体プログラムの更新",
     "app_update_phase_merge": "インストール先にマージしています…",
     "app_update_no_pip_log": "本体更新では pip は実行していません。必要な依存は手動でインストールしてください。",

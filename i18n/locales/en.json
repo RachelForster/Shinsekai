@@ -102,7 +102,7 @@
     "app_update_version_unknown": "Current version: unknown",
     "app_update_version_fmt": "Current version: {version}",
     "app_update_warn_title": "Overwrite update?",
-    "app_update_warn_body": "This will download a GitHub source archive and merge it into the current install directory (skipping .git, venv, etc.). This cannot be undone automatically. Continue?",
+    "app_update_warn_body": "This will download a GitHub source archive and merge it into the current install directory (skipping data, plugins, etc.). This cannot be undone automatically. Continue?",
     "app_update_progress_title": "Update application",
     "app_update_phase_merge": "Merging into install directory…",
     "app_update_no_pip_log": "App update did not run pip; install dependencies manually if needed.",

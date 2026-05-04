@@ -93,7 +93,7 @@ def fetch_recent_tag_names(slug: str, *, limit: int = 30, timeout_sec: float = 2
     slug = normalize_repo_slug_str(slug)
     if slug.count("/") < 1:
         return []
-    url = f"https://api.github.com/repos/{slug}/tags?per_page={min(limit, 100)}"
+    url = f"https://api.github.com/repos/{slug}/tags?per_page={min(limit, 10)}"
     try:
         data = _api_get_json(url, timeout_sec=timeout_sec)
     except (HTTPError, URLError, OSError, json.JSONDecodeError) as e:
@@ -155,13 +155,21 @@ def _zip_top_folder_name(zip_path: Path) -> str:
         return top
 
 
-def merge_source_tree_into(dest_root: Path, source_top: Path) -> None:
+def merge_source_tree_into(
+    dest_root: Path,
+    source_top: Path,
+    *,
+    also_skip_top_level: frozenset[str] = frozenset(),
+) -> None:
     """
     将 source_top 下的条目合并进 dest_root：文件覆盖拷贝，跳过常见依赖与 VCS 目录。
+
+    ``also_skip_top_level``：在归档根下按「首段路径名」整棵跳过的目录名（不区分大小写），
+    用于主程序更新时保留本机 ``plugins/``、``data/`` 等。
     """
     skip_root = frozenset(
         {".git", "venv", ".venv", "__pycache__", "node_modules", ".cursor", "dist", "build", ".idea"}
-    )
+    ) | {n.casefold() for n in also_skip_top_level}
 
     dest_root.mkdir(parents=True, exist_ok=True)
     if not source_top.is_dir():
@@ -170,10 +178,14 @@ def merge_source_tree_into(dest_root: Path, source_top: Path) -> None:
     for root, dirs, files in os.walk(source_top, followlinks=False):
         rel = Path(root).relative_to(source_top)
         parts = rel.parts if rel.parts != (".",) else ()
-        if parts and parts[0] in skip_root:
+        if parts and parts[0].casefold() in skip_root:
             dirs.clear()
             continue
-        dirs[:] = [d for d in dirs if d not in skip_root and not d.endswith(".egg-info")]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d.casefold() not in skip_root and not d.endswith(".egg-info")
+        ]
         rp = "_".join(parts) if parts else ""
         if ".git" in parts or rp.startswith(".git"):
             dirs.clear()
@@ -263,7 +275,7 @@ def download_zip_extract_top_folder(
 
 
 def overwrite_merge_app_tree(slug: str, ref_kind: RefKindApi, tag_name: str, *, progress, on_phase) -> None:
-    """下载指定 ref 并把归档根目录内容合并覆盖到当前工程根目录。"""
+    """下载指定 ref 并把归档根目录内容合并覆盖到当前工程根目录（不覆盖本机 ``plugins/``、``data/``）。"""
     rr = resolve_ref_for_download(slug, ref_kind, tag_name)
     td, extracted = download_zip_extract_top_folder(
         slug,
@@ -274,7 +286,11 @@ def overwrite_merge_app_tree(slug: str, ref_kind: RefKindApi, tag_name: str, *, 
     )
     try:
         dest = resolve_project_root()
-        merge_source_tree_into(dest, extracted)
+        merge_source_tree_into(
+            dest,
+            extracted,
+            also_skip_top_level=frozenset({"plugins", "data"}),
+        )
     finally:
         shutil.rmtree(td, ignore_errors=True)
 

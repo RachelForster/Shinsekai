@@ -99,7 +99,7 @@
     "app_update_version_unknown": "当前版本：未知",
     "app_update_version_fmt": "当前版本：{version}",
     "app_update_warn_title": "确认覆盖更新",
-    "app_update_warn_body": "将从 GitHub 下载源码归档并合并覆盖到当前程序目录（会跳过 .git、venv 等目录）。此操作不可自动撤销，是否继续？",
+    "app_update_warn_body": "将从 GitHub 下载源码归档并合并覆盖到当前程序目录（会跳过 plugins、data 等目录）。此操作不可自动撤销，是否继续？",
     "app_update_progress_title": "更新主程序",
     "app_update_phase_merge": "正在合并到程序目录…",
     "app_update_no_pip_log": "主程序更新未执行 pip；依赖请自行在环境中安装。",
