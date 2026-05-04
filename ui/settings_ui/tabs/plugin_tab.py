@@ -8,9 +8,10 @@ import shutil
 from collections import defaultdict
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, Signal, Slot, QEventLoop
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QFont
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -51,7 +52,6 @@ from core.plugins.registry_catalog import (
 )
 from core.plugins.plugin_requirements_install import install_plugin_requirements_txt
 from core.plugins.registry_download import (
-    download_github_repo_sources,
     format_download_error,
     load_downloaded_repos,
     mark_repo_downloaded,
@@ -59,6 +59,15 @@ from core.plugins.registry_download import (
     unmark_repo_downloaded,
     unmark_repo_for_manifest_entry,
 )
+from core.plugins.github_bundle_update import (
+    default_app_github_repo_slug,
+    fetch_recent_tag_names,
+    install_github_plugin_under_plugins,
+    overwrite_merge_app_tree,
+    read_local_version,
+    resolve_project_root,
+)
+
 from i18n import tr as tr_i18n
 from sdk.plugin_host_context import PluginSettingsUIContext
 from sdk.types import SettingsUIContribution, ToolsTabContribution
@@ -99,9 +108,15 @@ def _format_byte_size(n: int) -> str:
 class _DiscoverInstallProgressDialog(QDialog):
     """发现插件：下载 ZIP + pip 时的进度与日志。"""
 
-    def __init__(self, parent: QWidget | None, repo_slug: str) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None,
+        repo_slug: str,
+        *,
+        window_title_key: str = "plugins.discover_install_progress_title",
+    ) -> None:
         super().__init__(parent)
-        self.setWindowTitle(tr_i18n("plugins.discover_install_progress_title"))
+        self.setWindowTitle(tr_i18n(window_title_key))
         self.setModal(False)
         self.resize(560, 420)
         lay = QVBoxLayout(self)
@@ -197,7 +212,9 @@ class _DiscoverInstallProgressDialog(QDialog):
         self._bar.setValue(100)
         self._bytes_lbl.clear()
         pip_code, detail_tail = _parse_pip_install_result_json(pip_json)
-        if pip_code == "pip_skip_no_requirements":
+        if pip_code == "app_update_skip_pip":
+            self._log.appendPlainText(tr_i18n("plugins.app_update_no_pip_log"))
+        elif pip_code == "pip_skip_no_requirements":
             self._log.appendPlainText(tr_i18n("plugins.plugin_pip_skip"))
         elif pip_code in ("pip_timeout", "pip_exception") and detail_tail.strip():
             self._log.appendPlainText(
@@ -240,30 +257,121 @@ class _DownloadSignals(QObject):
     pip_phase_started = Signal()
 
 
+class _TagListFetchSignals(QObject):
+    done = Signal(list)
+    fail = Signal(str)
+
+
+class _TagListFetchTask(QRunnable):
+    def __init__(self, slug: str, sig: _TagListFetchSignals) -> None:
+        super().__init__()
+        self._slug = slug
+        self._sig = sig
+        self.setAutoDelete(True)
+
+    def run(self) -> None:
+        try:
+            self._sig.done.emit(fetch_recent_tag_names(self._slug))
+        except Exception as exc:
+            self._sig.fail.emit(format_download_error(exc))
+
+
+def _blocking_fetch_tag_names(slug: str) -> list[str]:
+    sig = _TagListFetchSignals()
+    loop = QEventLoop()
+    out: list[str] = []
+
+    def ok(rows: object) -> None:
+        nonlocal out
+        if isinstance(rows, list):
+            out = [str(x).strip() for x in rows if str(x).strip()]
+        loop.quit()
+
+    def _bad(_msg: str) -> None:
+        loop.quit()
+
+    sig.done.connect(ok)
+    sig.fail.connect(_bad)
+    QThreadPool.globalInstance().start(_TagListFetchTask(slug, sig))
+    loop.exec()
+    return out
+
+
+class _PickRepoRefDialog(QDialog):
+    def __init__(
+        self,
+        parent: QWidget | None,
+        *,
+        repo_slug: str,
+        tag_names: list[str],
+        title_i18n: str = "plugins.repo_ref_pick_title",
+        repo_hint_i18n: str = "plugins.repo_ref_pick_repo",
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(tr_i18n(title_i18n))
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel(tr_i18n(repo_hint_i18n, repo=repo_slug)))
+        self._combo = QComboBox()
+        self._combo.addItem(tr_i18n("plugins.repo_ref_latest"), "latest")
+        self._combo.addItem(tr_i18n("plugins.repo_ref_head"), "head")
+        for t in tag_names:
+            self._combo.addItem(t, f"tag:{t}")
+        self._combo.setCurrentIndex(0)
+        lay.addWidget(self._combo)
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+
+    def ref_choice(self) -> tuple[str, str]:
+        d = str(self._combo.currentData() or "latest")
+        if d == "latest":
+            return "latest", ""
+        if d == "head":
+            return "head", ""
+        if d.startswith("tag:"):
+            return "tag", d[4:]
+        return "latest", ""
+
+
 class _DownloadRepoTask(QRunnable):
     def __init__(
         self,
         repo: str,
         catalog_display_name: str,
         sig: _DownloadSignals,
+        *,
+        ref_kind: str,
+        tag_name: str,
+        overwrite: bool,
     ) -> None:
         super().__init__()
         self._repo = repo
         self._catalog_display_name = catalog_display_name.strip()
         self._sig = sig
+        self._ref_kind = ref_kind if ref_kind in ("latest", "head", "tag") else "latest"
+        self._tag_name = tag_name.strip()
+        self._overwrite = overwrite
         self.setAutoDelete(True)
 
     def run(self) -> None:
         norm = normalize_repo_slug(self._repo)
         self._sig.status_message.emit(tr_i18n("plugins.discover_phase_download"))
+        plugins_dir = resolve_project_root() / "plugins"
         try:
-            dest = download_github_repo_sources(
+            dest = install_github_plugin_under_plugins(
                 self._repo,
+                catalog_display_name=self._catalog_display_name,
+                ref_kind=self._ref_kind,  # type: ignore[arg-type]
+                tag_name=self._tag_name,
+                overwrite=self._overwrite,
+                plugins_parent=plugins_dir,
                 progress=lambda cur, tot: self._sig.download_progress.emit(
                     cur, tot if tot is not None else 0
                 ),
                 on_phase=lambda phase: self._emit_extract_phase(phase),
-                folder_name=self._catalog_display_name or None,
             )
         except Exception as exc:
             self._sig.finished.emit(norm, False, format_download_error(exc), "")
@@ -287,6 +395,48 @@ class _DownloadRepoTask(QRunnable):
         if phase == "extract":
             self._sig.status_message.emit(tr_i18n("plugins.discover_phase_extract"))
 
+
+class _AppSelfUpdateTask(QRunnable):
+    """主程序源码树 GitHub ZIP 合并覆盖（无 pip）。"""
+
+    def __init__(
+        self,
+        slug: str,
+        ref_kind: str,
+        tag_name: str,
+        sig: _DownloadSignals,
+    ) -> None:
+        super().__init__()
+        self._slug = slug.strip()
+        self._ref_kind = ref_kind if ref_kind in ("latest", "head", "tag") else "latest"
+        self._tag_name = tag_name.strip()
+        self._sig = sig
+        self.setAutoDelete(True)
+
+    def run(self) -> None:
+        self._sig.status_message.emit(tr_i18n("plugins.discover_phase_download"))
+        try:
+            overwrite_merge_app_tree(
+                self._slug,
+                self._ref_kind,  # type: ignore[arg-type]
+                self._tag_name,
+                progress=lambda cur, tot: self._sig.download_progress.emit(
+                    cur, tot if tot is not None else 0
+                ),
+                on_phase=lambda phase: self._emit_extract_phase(phase),
+            )
+        except Exception as exc:
+            self._sig.finished.emit("", False, format_download_error(exc), "")
+            return
+        pip_payload = json.dumps(
+            {"pip": "app_update_skip_pip", "detail": ""},
+            ensure_ascii=False,
+        )
+        self._sig.finished.emit("", True, "", pip_payload)
+
+    def _emit_extract_phase(self, phase: str) -> None:
+        if phase == "extract":
+            self._sig.status_message.emit(tr_i18n("plugins.app_update_phase_merge"))
 
 def _resolve_plugin_for_manifest_entry(entry: str, mgr: object | None):
     if mgr is None:
@@ -322,6 +472,7 @@ class PluginSettingsTab(QWidget):
         self._discover_fetched_once = False
         self._download_busy: set[str] = set()
         self._discover_download_buttons: dict[str, QPushButton] = {}
+        self._app_update_busy = False
         self._outer = QStackedWidget(self)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -353,8 +504,13 @@ class PluginSettingsTab(QWidget):
         toolbar = QHBoxLayout()
         self._discover_refresh_btn = QPushButton(tr_i18n("plugins.discover_refresh"))
         self._discover_refresh_btn.clicked.connect(self._refresh_discover_catalog)
+        self._app_update_btn = QPushButton(tr_i18n("plugins.app_self_update_btn"))
+        self._app_update_btn.clicked.connect(self._on_app_self_update)
+        self._discover_version_lbl = QLabel()
         toolbar.addWidget(self._discover_refresh_btn)
+        toolbar.addWidget(self._app_update_btn)
         toolbar.addStretch(1)
+        toolbar.addWidget(self._discover_version_lbl)
         dv.addLayout(toolbar)
         self._discover_registry_hint = QLabel()
         self._discover_registry_hint.setOpenExternalLinks(True)
@@ -445,6 +601,7 @@ class PluginSettingsTab(QWidget):
         self._discover_apply_table_headers()
         self._repaint_discover_catalog_grid()
         self._refresh_cards()
+        self._refresh_discover_version_badge()
 
     def apply_i18n(self) -> None:
         self._manage_discover_tabs.set_tab_text(0, tr_i18n("plugins.tab_manage"))
@@ -453,6 +610,8 @@ class PluginSettingsTab(QWidget):
         self._plugin_mcp_tab.apply_i18n()
         self._back_btn.setText(tr_i18n("plugins.back"))
         self._discover_refresh_btn.setText(tr_i18n("plugins.discover_refresh"))
+        self._app_update_btn.setText(tr_i18n("plugins.app_self_update_btn"))
+        self._refresh_discover_version_badge()
         self._discover_registry_hint.setText(tr_i18n("plugins.discover_registry_hint_html"))
         self._discover_apply_table_headers()
         self._repaint_discover_catalog_grid()
@@ -498,6 +657,95 @@ class PluginSettingsTab(QWidget):
                 tr_i18n("plugins.discover_col_desc"),
                 tr_i18n("plugins.discover_col_actions"),
             ]
+        )
+
+    def _refresh_discover_version_badge(self) -> None:
+        v = read_local_version(resolve_project_root()).strip()
+        if not v:
+            self._discover_version_lbl.setText(tr_i18n("plugins.app_update_version_unknown"))
+        else:
+            self._discover_version_lbl.setText(
+                tr_i18n("plugins.app_update_version_fmt", version=v)
+            )
+
+    def _on_app_self_update(self) -> None:
+        if self._app_update_busy:
+            return
+        slug = default_app_github_repo_slug().strip()
+        if not slug or slug.count("/") < 1:
+            message_fail(
+                self,
+                tr_i18n("plugins.app_update_fail_title"),
+                tr_i18n("plugins.app_update_bad_repo_body"),
+            )
+            return
+        warn = QMessageBox.warning(
+            self,
+            tr_i18n("plugins.app_update_warn_title"),
+            tr_i18n("plugins.app_update_warn_body"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if warn != QMessageBox.StandardButton.Yes:
+            return
+        tags = _blocking_fetch_tag_names(normalize_repo_slug(slug))
+        dlg_pick = _PickRepoRefDialog(
+            self,
+            repo_slug=slug,
+            tag_names=tags,
+            title_i18n="plugins.repo_ref_pick_title_app",
+            repo_hint_i18n="plugins.repo_ref_pick_repo",
+        )
+        if dlg_pick.exec() != QDialog.DialogCode.Accepted:
+            return
+        rk, tg = dlg_pick.ref_choice()
+        if rk == "tag" and not tg.strip():
+            message_fail(
+                self,
+                tr_i18n("plugins.repo_ref_tag_invalid_title"),
+                tr_i18n("plugins.repo_ref_tag_invalid_body"),
+            )
+            return
+        self._app_update_busy = True
+        dlg = _DiscoverInstallProgressDialog(
+            self,
+            slug,
+            window_title_key="plugins.app_update_progress_title",
+        )
+        sigs = _DownloadSignals(dlg)
+        sigs.download_progress.connect(dlg.on_download_progress)
+        sigs.status_message.connect(dlg.set_phase_label)
+        sigs.pip_log_line.connect(dlg.append_pip_line)
+        sigs.pip_phase_started.connect(dlg.on_pip_phase_started)
+        sigs.finished.connect(
+            lambda rn, ok, de, pj, d=dlg: self._on_app_self_update_finished(
+                d, ok, de, pj
+            )
+        )
+        dlg.show()
+        QThreadPool.globalInstance().start(_AppSelfUpdateTask(slug, rk, tg, sigs))
+
+    def _on_app_self_update_finished(
+        self,
+        dlg: _DiscoverInstallProgressDialog,
+        ok: bool,
+        download_err: str,
+        pip_json: str,
+    ) -> None:
+        self._app_update_busy = False
+        dlg.mark_finished(ok, download_err, pip_json)
+        if not ok:
+            message_fail(
+                self,
+                tr_i18n("plugins.app_update_fail_title"),
+                download_err or tr_i18n("plugins.discover_download_fail_body"),
+            )
+            return
+        self._refresh_discover_version_badge()
+        toast_success(
+            self,
+            tr_i18n("plugins.app_update_ok_title"),
+            tr_i18n("plugins.app_update_ok_body"),
         )
 
     def _repaint_discover_catalog_grid(self) -> None:
@@ -576,18 +824,25 @@ class PluginSettingsTab(QWidget):
             dl_btn.setText(tr_i18n("plugins.discover_download"))
             dl_btn.setEnabled(False)
             dl_btn.setToolTip(tr_i18n("plugins.discover_no_repo_tooltip"))
-        elif repo_norm in downloaded:
-            dl_btn.setText(tr_i18n("plugins.discover_downloaded"))
-            dl_btn.setEnabled(False)
-            dl_btn.setToolTip(tr_i18n("plugins.discover_downloaded_tooltip"))
         elif repo_norm in self._download_busy:
             dl_btn.setText(tr_i18n("plugins.discover_downloading"))
             dl_btn.setEnabled(False)
+        elif repo_norm in downloaded:
+            dl_btn.setText(tr_i18n("plugins.discover_update"))
+            dl_btn.setToolTip(tr_i18n("plugins.discover_update_tooltip"))
+            dl_btn.clicked.connect(
+                lambda checked=False, r=rec, b=dl_btn: self._start_repo_download(
+                    r, b, overwrite=True
+                )
+            )
+            self._discover_download_buttons[repo_norm] = dl_btn
         else:
             dl_btn.setText(tr_i18n("plugins.discover_download"))
             dl_btn.setToolTip(tr_i18n("plugins.discover_download_tooltip"))
             dl_btn.clicked.connect(
-                lambda checked=False, r=rec, b=dl_btn: self._start_repo_download(r, b)
+                lambda checked=False, r=rec, b=dl_btn: self._start_repo_download(
+                    r, b, overwrite=False
+                )
             )
             self._discover_download_buttons[repo_norm] = dl_btn
 
@@ -609,10 +864,24 @@ class PluginSettingsTab(QWidget):
         outer.addStretch(1)
         return host
 
-    def _start_repo_download(self, rec: RegistryPluginRecord, btn: QPushButton) -> None:
+    def _start_repo_download(
+        self, rec: RegistryPluginRecord, btn: QPushButton, *, overwrite: bool
+    ) -> None:
         repo = rec.repo.strip()
         norm = normalize_repo_slug(repo)
         if norm in self._download_busy or not norm:
+            return
+        tags = _blocking_fetch_tag_names(norm)
+        dlg_pick = _PickRepoRefDialog(self, repo_slug=repo, tag_names=tags)
+        if dlg_pick.exec() != QDialog.DialogCode.Accepted:
+            return
+        rk, tg = dlg_pick.ref_choice()
+        if rk == "tag" and not tg.strip():
+            message_fail(
+                self,
+                tr_i18n("plugins.repo_ref_tag_invalid_title"),
+                tr_i18n("plugins.repo_ref_tag_invalid_body"),
+            )
             return
         self._download_busy.add(norm)
         btn.setEnabled(False)
@@ -631,7 +900,14 @@ class PluginSettingsTab(QWidget):
         dlg.show()
         catalog_name = (rec.name or "").strip()
         QThreadPool.globalInstance().start(
-            _DownloadRepoTask(repo, catalog_name, sigs)
+            _DownloadRepoTask(
+                repo,
+                catalog_name,
+                sigs,
+                ref_kind=rk,
+                tag_name=tg,
+                overwrite=overwrite,
+            )
         )
 
     def _on_download_finished_with_dialog(
