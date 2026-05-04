@@ -140,6 +140,7 @@ class ConfigManager:
         tts_provider: str,
         sovits_url: str,
         gpt_sovits_api_path: str,
+        t2i_provider: str,
         t2i_url: str,
         t2i_work_path: str,
         t2i_default_workflow_path: str,
@@ -169,17 +170,30 @@ class ConfigManager:
             s = (v or "").strip().lower()
             if s in ("none", "off", "disable", "disabled", "不使用"):
                 return "none"
-            if s in ("genie-tts", "gpt-sovits"):
-                return s
             legacy = {
                 "gpt sovits": "gpt-sovits",
                 "genie tts": "genie-tts",
-                "gpt-sovits": "gpt-sovits",
-                "genie-tts": "genie-tts",
             }
-            return legacy.get(s, "gpt-sovits")
+            return legacy.get(s, (v or "").strip().lower())
 
         current_api_config.tts_provider = _norm_tts(tts_provider)
+
+        def _norm_t2i_provider(v: str) -> str:
+            s = (v or "").strip()
+            if not s:
+                return "comfyui"
+            try:
+                from t2i.t2i_manager import T2IAdapterFactory
+
+                lowered = s.lower()
+                for k in T2IAdapterFactory._adapters:
+                    if k.lower() == lowered:
+                        return k
+            except Exception:
+                pass
+            return s
+
+        current_api_config.t2i_provider = _norm_t2i_provider(t2i_provider)
         current_api_config.gpt_sovits_url = sovits_url
         current_api_config.gpt_sovits_api_path = gpt_sovits_api_path
         current_api_config.t2i_api_url=t2i_url

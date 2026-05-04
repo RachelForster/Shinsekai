@@ -66,6 +66,10 @@ class ApiConfig(BaseModel):
     )
     tts_speed: DefaultIfNone[float] = Field(default=1.0, description="TTS 语速 (默认值 1.0)")
 
+    t2i_provider: DefaultIfNone[str] = Field(
+        default="comfyui",
+        description="T2I 引擎标识（与 T2IAdapterFactory 注册名一致，含插件）",
+    )
     t2i_work_path: DefaultIfNone[str] = Field(default='', description="T2I API 的工作目录")
     t2i_api_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='http://127.0.0.1:8188', description="T2I API 的访问 URL")
     t2i_default_workflow_path: DefaultIfNone[str] = Field(default='', description="T2I API 默认工作流路径")

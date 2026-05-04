@@ -276,6 +276,7 @@
     },
     "comfy": {
       "hint": "For ComfyUI image/CG. Deploy ComfyUI and workflows first; this block stays collapsed by default.",
+      "engine": "Image engine (T2I)",
       "ph_t2i": "e.g. http://127.0.0.1:8188",
       "t2i_url": "ComfyUI API URL",
       "t2i_dir": "ComfyUI app folder",
@@ -442,6 +443,7 @@
     "send": "Send",
     "mic_loading_model": "Loading speech recognition model…",
     "cot_busy_prefix": "Chain of thought",
+    "thinking_busy_prefix": "Thinking",
     "tts_busy_synthesizing": "Synthesizing speech ({name})…",
     "tts_busy_cg": "Generating CG…",
     "menu": {

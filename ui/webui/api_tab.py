@@ -91,6 +91,11 @@ def register_api_tab(ctx: WebUIContext) -> None:
 
                 sovits_url = gr.Textbox(label="TTS引擎 API 调用地址", value=_gsv_url)
                 gpt_sovits_api_path = gr.Textbox(label="TTS引擎 服务启动路径", value=_gpt_sovits_work_path)
+                t2i_provider = gr.Textbox(
+                    label="",
+                    value=ctx.config_manager.config.api_config.t2i_provider or "comfyui",
+                    visible=False,
+                )
 
                 gr.Markdown("### ComfyUI 配置")
                 with gr.Accordion("如果没有可以不填，这是用来生成CG的", open=False):
@@ -165,6 +170,7 @@ def register_api_tab(ctx: WebUIContext) -> None:
                 tts_provider,
                 sovits_url,
                 gpt_sovits_api_path,
+                t2i_provider,
                 t2i_url,
                 t2i_work_path,
                 t2i_default_workflow_path,

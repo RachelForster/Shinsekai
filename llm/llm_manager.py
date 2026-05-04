@@ -1,12 +1,12 @@
 
 from asyncio import Queue
 import json
+import logging
 from datetime import datetime
 from threading import Thread
+from typing import Any, Dict, Generator, List, Optional, Union
+
 from openai import OpenAI
-import logging
-from typing import List, Dict, Any, Optional, Generator, Union
-import logging
 
 from core.runtime.app_runtime import try_get_app_runtime
 from i18n import tr
@@ -17,6 +17,9 @@ from llm.tools.tool_manager import ToolManager
 tool_manager = ToolManager()
 logger = logging.getLogger(__name__)
 
+
+# 流式输出中非正文的片段（供 LLMWorker 显示思考过程，且不混入 JSON 解析缓冲区）
+STREAM_REASONING_DELTA_KEY = "reasoning_delta"
 
 def _prefix_user_text_with_local_time(text: str) -> str:
     """为发送给模型的用户正文加上本机本地时间（供模型感知「何时」发送）。"""
@@ -36,6 +39,18 @@ def _notify_tool_call_hint(tool_name: str) -> None:
         )
     except Exception:
         pass
+
+
+def _deepseek_reasoning_message_kwargs(adapter: LLMAdapter, reasoning_text: str) -> dict[str, str]:
+    """DeepSeek 思考模式 + 含 tool_calls 的 assistant 轮次必须把 reasoning_content 一并写回消息。"""
+    if not (reasoning_text or "").strip():
+        return {}
+    if not isinstance(adapter, DeepSeekAdapter):
+        return {}
+    if not getattr(adapter, "thinking_enabled", False):
+        return {}
+    return {"reasoning_content": reasoning_text}
+
 
 class LLMAdapterFactory:
     """Factory for creating different LLMAdapter instances."""
@@ -119,6 +134,13 @@ class LLMManager:
     def clear_messages(self):
         self.messages = [{"role": "system", "content": self.user_template}]
 
+    def _persist_plain_assistant_turn(self, content: str, reasoning: str) -> None:
+        """无 tool_calls 的一轮：把 assistant 正文与（若存在）思考写入历史，供下游 API 与存档。"""
+        extra = _deepseek_reasoning_message_kwargs(self.llm_adapter, reasoning)
+        if not (content or "").strip() and not extra:
+            return
+        self.add_message("assistant", content or "", **extra)
+
     def get_messages(self):
         """Returns the current list of messages."""
         return self.messages
@@ -152,7 +174,7 @@ class LLMManager:
 
     # llm_manager.py 修正核心片段
 
-    def _chat_with_tools_stream(self, **kwargs) -> Generator[str, None, None]:
+    def _chat_with_tools_stream(self, **kwargs) -> Generator[Union[str, dict[str, str]], None, None]:
         tools_defs = tool_manager.get_definitions()
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
@@ -167,6 +189,7 @@ class LLMManager:
         full_tool_calls = {}
         has_tool_use = False
         collected_content = ""
+        collected_reasoning = ""
 
         if isinstance(self.llm_adapter, ClaudeAdapter):
             with response_stream as stream:
@@ -189,6 +212,10 @@ class LLMManager:
                         if tc.index not in full_tool_calls: full_tool_calls[tc.index] = tc
                         if tc.function and tc.function.arguments:
                             full_tool_calls[tc.index].function.arguments += tc.function.arguments
+                r_part = getattr(delta, "reasoning_content", None)
+                if r_part:
+                    collected_reasoning += r_part
+                    yield {STREAM_REASONING_DELTA_KEY: r_part}
                 if hasattr(delta, 'content') and delta.content:
                     yield delta.content
                     collected_content += delta.content
@@ -202,8 +229,9 @@ class LLMManager:
                 t_args = tc["input"] if isinstance(tc, dict) else tc.function.arguments
                 formatted_calls.append({"id": t_id, "type": "function", "function": {"name": t_name, "arguments": t_args}})
 
-            # --- 关键：必须先添加 Assistant 消息 ---
-            self.add_message("assistant", collected_content, tool_calls=formatted_calls)
+            # --- 关键：必须先添加 Assistant 消息（DeepSeek 思考模式须含 reasoning_content） ---
+            assistant_kw = _deepseek_reasoning_message_kwargs(self.llm_adapter, collected_reasoning)
+            self.add_message("assistant", collected_content, tool_calls=formatted_calls, **assistant_kw)
 
             # --- 然后添加 Tool 结果消息 ---
             for call in formatted_calls:
@@ -229,6 +257,8 @@ class LLMManager:
                 self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
             
             yield from self._chat_with_tools_stream(**kwargs)
+        else:
+            self._persist_plain_assistant_turn(collected_content, collected_reasoning)
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
         tools_defs = tool_manager.get_definitions()
@@ -242,6 +272,7 @@ class LLMManager:
 
         content = ""
         tool_calls = []
+        reasoning = ""
 
         if isinstance(self.llm_adapter, ClaudeAdapter):
             for block in response.content:
@@ -251,6 +282,7 @@ class LLMManager:
             message = response.choices[0].message
             content = message.content or ""
             tool_calls = getattr(message, 'tool_calls', []) or []
+            reasoning = getattr(message, "reasoning_content", None) or ""
 
         if tool_calls:
             formatted_calls = []
@@ -260,7 +292,8 @@ class LLMManager:
                 formatted_calls.append({"id": tc.id, "type": "function", "function": {"name": t_name, "arguments": t_args}})
 
             # --- 关键：先 Assistant 再 Tool ---
-            self.add_message("assistant", content, tool_calls=formatted_calls)
+            assistant_sync_kw = _deepseek_reasoning_message_kwargs(self.llm_adapter, reasoning)
+            self.add_message("assistant", content, tool_calls=formatted_calls, **assistant_sync_kw)
             for call in formatted_calls:
                 try:
                     func_name = call['function']['name']
@@ -285,4 +318,5 @@ class LLMManager:
 
             return self._chat_with_tools_sync(**kwargs)
         else:
+            self._persist_plain_assistant_turn(content, reasoning)
             return content

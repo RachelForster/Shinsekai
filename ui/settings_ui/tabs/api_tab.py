@@ -33,7 +33,7 @@ from i18n import init_i18n, tr as tr_i18n
 from sdk.lang import normalize_lang
 from llm.constants import LLM_BASE_URLS
 from llm.llm_manager import LLMAdapterFactory
-from t2i.t2i_adapter import ComfyUIT2IAdapter
+from t2i.t2i_manager import T2IAdapterFactory
 from tts.tts_manager import TTSAdapterFactory
 from ui.settings_ui.widgets.adapter_extra_form import (
     build_schema_widgets,
@@ -56,6 +56,114 @@ _ASR_WHISPER_MODEL_PRESETS: tuple[str, ...] = (
     "distil-large-v2",
     "distil-large-v3",
 )
+
+
+def _llm_provider_combo_display_order() -> list[str]:
+    """
+    LLM 下拉项 = :class:`~llm.llm_manager.LLMAdapterFactory` 合并后的全部 provider（含插件
+    ``register_llm_adapter``）。仅对同时出现在 ``LLM_BASE_URLS`` 的条目保留常用顺序，其余按名排序。
+    """
+    adapters = dict(LLMAdapterFactory._adapters)
+    out: list[str] = []
+    for k in LLM_BASE_URLS.keys():
+        if k in adapters:
+            out.append(k)
+    for k in sorted(adapters.keys()):
+        if k not in out:
+            out.append(k)
+    return out
+
+
+_TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
+    ("genie-tts", "Genie TTS"),
+    ("gpt-sovits", "GPT SoVITS"),
+    ("index-tts", "IndexTTS"),
+    ("cosyvoice", "CosyVoice"),
+)
+
+
+def _tts_canonical_slug(saved: str | None) -> str:
+    s = (saved or "").strip().lower()
+    if s in ("none", "off", "disable", "disabled", ""):
+        return "none"
+    for k in TTSAdapterFactory._adapters:
+        if k.lower() == s:
+            return k
+    return (saved or "").strip().lower() or "none"
+
+
+def _fill_tts_provider_combo(combo: QComboBox, saved_tts: str) -> None:
+    combo.clear()
+    combo.addItem(tr_i18n("api.tts.none"), "none")
+    adapters = dict(TTSAdapterFactory._adapters)
+    by_lower = {k.lower(): k for k in adapters}
+    seen: set[str] = set()
+    for slug, label in _TTS_LABEL_PREFS:
+        sl = slug.lower()
+        if sl in by_lower:
+            ck = by_lower[sl]
+            combo.addItem(label, ck)
+            seen.add(ck)
+    for ck in sorted(adapters.keys(), key=str.lower):
+        if ck not in seen:
+            combo.addItem(str(ck).replace("-", " ").title(), ck)
+    canon = _tts_canonical_slug(saved_tts)
+    if canon == "none":
+        ix = combo.findData("none")
+        combo.setCurrentIndex(max(0, ix))
+        return
+    ix = combo.findData(canon)
+    if ix >= 0:
+        combo.setCurrentIndex(ix)
+    else:
+        combo.addItem(canon, canon)
+        combo.setCurrentIndex(combo.count() - 1)
+
+
+_PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion")
+
+
+def _t2i_engine_ordered_keys() -> list[str]:
+    adapters = dict(T2IAdapterFactory._adapters)
+    by_lower = {k.lower(): k for k in adapters}
+    out: list[str] = []
+    for pl in _PREFERRED_T2I_KEYS_LOWER:
+        if pl in by_lower:
+            out.append(by_lower[pl])
+    for k in sorted(adapters.keys(), key=str.lower):
+        if k not in out:
+            out.append(k)
+    return out
+
+
+def _t2i_engine_combo_label(canonical_key: str) -> str:
+    fixed = {"comfyui": "ComfyUI", "stable diffusion": "Stable Diffusion"}
+    lk = canonical_key.lower()
+    for k, lab in fixed.items():
+        if k == lk:
+            return lab
+    return canonical_key.replace("-", " ").title()
+
+
+def _t2i_engine_key_from_saved(saved: str | None) -> str:
+    s = (saved or "").strip().lower()
+    for k in T2IAdapterFactory._adapters:
+        if k.lower() == s:
+            return k
+    return "comfyui"
+
+
+def _fill_t2i_engine_combo(combo: QComboBox, saved: str) -> None:
+    combo.clear()
+    want = _t2i_engine_key_from_saved(saved)
+    for ck in _t2i_engine_ordered_keys():
+        combo.addItem(_t2i_engine_combo_label(ck), ck)
+    ix = combo.findData(want)
+    if ix >= 0:
+        combo.setCurrentIndex(ix)
+    else:
+        combo.addItem(_t2i_engine_combo_label(want), want)
+        combo.setCurrentIndex(combo.count() - 1)
 
 
 def _tree_widget_item_depth(item: QTreeWidgetItem) -> int:
@@ -117,8 +225,6 @@ def _add_collapsible_block(
 
 
 class ApiSettingsTab(QWidget):
-    _T2I_EXTRA_ENGINE_KEY = "comfyui"
-
     def _asr_extra_schema_map(self) -> dict[str, type]:
         """当前进程内已合并的 ASR 后端（含插件 ``register_asr_adapter``）。"""
         return dict(ASRAdapterFactory._adapters)
@@ -217,7 +323,7 @@ class ApiSettingsTab(QWidget):
         self.llm_provider.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
-        self.llm_provider.addItems(list(LLM_BASE_URLS.keys()))
+        self.llm_provider.addItems(_llm_provider_combo_display_order())
         idx = self.llm_provider.findText(_provider)
         if idx >= 0:
             self.llm_provider.setCurrentIndex(idx)
@@ -355,14 +461,10 @@ class ApiSettingsTab(QWidget):
         self._tts_hint.setObjectName("apiSectionHint")
         tts_lay.addWidget(self._tts_hint)
         self.tts_provider = QComboBox()
-        self.tts_provider.addItem(tr_i18n("api.tts.none"), "none")
-        self.tts_provider.addItem("Genie TTS", "genie-tts")
-        self.tts_provider.addItem("GPT SoVITS", "gpt-sovits")
-        _slug = (_tts_provider or "gpt-sovits").strip().lower()
-        if _slug not in ("none", "genie-tts", "gpt-sovits"):
-            _slug = "gpt-sovits"
-        _tts_idx = self.tts_provider.findData(_slug)
-        self.tts_provider.setCurrentIndex(_tts_idx if _tts_idx >= 0 else 2)
+        self.tts_provider.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        _fill_tts_provider_combo(self.tts_provider, _tts_provider)
         self.sovits_url = QLineEdit(_gsv_url)
         self.sovits_url.setPlaceholderText(tr_i18n("api.tts.ph_url"))
         self.gpt_sovits_api_path = QLineEdit(_gpt_sovits_work_path)
@@ -543,6 +645,14 @@ class ApiSettingsTab(QWidget):
         cf.setContentsMargins(0, 0, 0, 0)
         cf.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         cf.setVerticalSpacing(10)
+        self.t2i_engine = QComboBox()
+        self.t2i_engine.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        _fill_t2i_engine_combo(
+            self.t2i_engine, getattr(api, "t2i_provider", None) or "comfyui"
+        )
+        self._f_t2i_engine = QLabel(tr_i18n("api.comfy.engine"))
         self.t2i_url = QLineEdit(api.t2i_api_url)
         self.t2i_work_path = QLineEdit(api.t2i_work_path)
         self.t2i_default_workflow_path = QLineEdit(api.t2i_default_workflow_path)
@@ -554,6 +664,7 @@ class ApiSettingsTab(QWidget):
         self._cf_wf = QLabel(tr_i18n("api.comfy.workflow"))
         self._cf_p = QLabel(tr_i18n("api.comfy.prompt_id"))
         self._cf_o = QLabel(tr_i18n("api.comfy.out_id"))
+        cf.addRow(self._f_t2i_engine, self.t2i_engine)
         cf.addRow(self._cf_t2i, self.t2i_url)
         cf.addRow(self._cf_dir, self.t2i_work_path)
         cf.addRow(self._cf_wf, self.t2i_default_workflow_path)
@@ -614,6 +725,7 @@ class ApiSettingsTab(QWidget):
 
         self.llm_provider.currentTextChanged.connect(self._on_provider_change)
         self.tts_provider.currentIndexChanged.connect(self._on_tts_provider_changed)
+        self.t2i_engine.currentIndexChanged.connect(self._on_t2i_engine_changed)
         self._asr_provider.currentIndexChanged.connect(self._on_asr_provider_changed)
         self._rebuild_llm_extra_panel()
         self._rebuild_tts_extra_panel()
@@ -699,6 +811,7 @@ class ApiSettingsTab(QWidget):
         if _ti >= 0:
             self.tts_provider.setCurrentIndex(_ti)
         self._c_hint.setText(tr_i18n("api.comfy.hint"))
+        self._f_t2i_engine.setText(tr_i18n("api.comfy.engine"))
         self.t2i_url.setPlaceholderText(tr_i18n("api.comfy.ph_t2i"))
         self._cf_t2i.setText(tr_i18n("api.comfy.t2i_url"))
         self._cf_dir.setText(tr_i18n("api.comfy.t2i_dir"))
@@ -863,19 +976,26 @@ class ApiSettingsTab(QWidget):
     def _rebuild_t2i_extra_panel(self) -> None:
         self._clear_extra_layout(self._t2i_extra_layout)
         self._t2i_extra_editors.clear()
-        schema = ComfyUIT2IAdapter.get_config_schema()
+        key = self._current_t2i_engine_key()
+        cls = T2IAdapterFactory._adapters.get(key.lower())
+        schema = cls.get_config_schema() if cls else {}
         if not schema:
             self._t2i_extra_holder.setVisible(False)
             self._schedule_refresh_main_tree_heights()
             return
         self._t2i_extra_holder.setVisible(True)
-        vals = self._ctx.config_manager.get_adapter_extra_config(
-            "t2i", self._T2I_EXTRA_ENGINE_KEY
-        )
+        vals = self._ctx.config_manager.get_adapter_extra_config("t2i", key)
         panel, eds = build_schema_widgets(schema, vals, self._t2i_extra_holder)
         self._t2i_extra_layout.addWidget(panel)
         self._t2i_extra_editors = eds
         self._schedule_refresh_main_tree_heights()
+
+    def _current_t2i_engine_key(self) -> str:
+        d = self.t2i_engine.currentData()
+        return str(d) if d is not None else "comfyui"
+
+    def _on_t2i_engine_changed(self, _index: int = 0) -> None:
+        self._rebuild_t2i_extra_panel()
 
     def _on_tts_provider_changed(self, _index: int = 0) -> None:
         self._rebuild_tts_extra_panel()
@@ -931,11 +1051,11 @@ class ApiSettingsTab(QWidget):
             "asr", asr_key, read_schema_values(asr_schema, self._asr_extra_editors)
         )
 
-        t2i_schema = ComfyUIT2IAdapter.get_config_schema()
+        t2i_key = self._current_t2i_engine_key()
+        t2i_cls = T2IAdapterFactory._adapters.get(t2i_key.lower())
+        t2i_schema = t2i_cls.get_config_schema() if t2i_cls else {}
         self._ctx.config_manager.set_adapter_extra_config(
-            "t2i",
-            self._T2I_EXTRA_ENGINE_KEY,
-            read_schema_values(t2i_schema, self._t2i_extra_editors),
+            "t2i", t2i_key, read_schema_values(t2i_schema, self._t2i_extra_editors)
         )
 
         msg = self._ctx.config_manager.save_api_config_new(
@@ -947,6 +1067,7 @@ class ApiSettingsTab(QWidget):
             tts_slug,
             self.sovits_url.text().strip(),
             self.gpt_sovits_api_path.text().strip(),
+            self._current_t2i_engine_key(),
             self.t2i_url.text().strip(),
             self.t2i_work_path.text().strip(),
             self.t2i_default_workflow_path.text().strip(),

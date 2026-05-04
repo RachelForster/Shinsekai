@@ -80,11 +80,17 @@ def main():
     # T2I manager
     t2i_manager = None
     if args.t2i:
+        raw = (args.t2i or "").strip()
+        adapter_pick = (
+            (config.config.api_config.t2i_provider or "comfyui").strip()
+            if raw.lower() == "comfyui"
+            else raw
+        )
         try:
             t2i_adapter = T2IAdapterFactory.create_adapter(
-                adapter_name=args.t2i,
+                adapter_name=adapter_pick,
                 **config.merged_t2i_factory_kwargs(
-                    args.t2i,
+                    adapter_pick,
                     {
                         "work_path": config.config.api_config.t2i_work_path,
                         "api_url": config.config.api_config.t2i_api_url,

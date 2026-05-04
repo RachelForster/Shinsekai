@@ -1,12 +1,16 @@
+import re
 import time
 import traceback
 from queue import Queue
 from pathlib import Path
 from typing import Optional
 
+from i18n import tr
+
 from PySide6.QtCore import QThread
 
 # 假设以下依赖文件已在项目路径中
+from llm.llm_manager import STREAM_REASONING_DELTA_KEY
 from llm.tools.tool_manager import ToolManager
 import threading
 import pygame
@@ -48,6 +52,16 @@ def getCharacter(name: str):
     if rt is not None:
         return rt.config.get_character_by_name(name)
     return ConfigManager().get_character_by_name(name)
+
+
+def _busy_preview_reasoning(raw: str, max_len: int = 200) -> str:
+    """压成单行摘要供底栏显示（与 ui_message_handler 中 COT 预览一致）。"""
+    s = re.sub(r"<[^>]+>", " ", raw or "")
+    s = re.sub(r"\s+", " ", s).strip()
+    if len(s) > max_len:
+        s = s[: max_len - 1] + "…"
+    return s
+
 
 class LLMWorker(BaseWorker):
     def __init__(
@@ -94,13 +108,24 @@ class LLMWorker(BaseWorker):
                     response_stream = [raw_response]
 
                 parser = LlmResponseStreamParser()
+                reasoning_shown = ""
+
                 for chunk in response_stream:
-                    chunk_message = chunk if isinstance(chunk, str) else str(chunk) if chunk is not None else ""
+                    if isinstance(chunk, dict) and STREAM_REASONING_DELTA_KEY in chunk:
+                        reasoning_shown += chunk[STREAM_REASONING_DELTA_KEY]
+                        preview = _busy_preview_reasoning(reasoning_shown)
+                        label = tr("desktop.thinking_busy_prefix")
+                        bar_text = f"{label} · {preview}" if preview else label
+                        self.ui_update_manager.post_busy_bar(bar_text, 0.0)
+                        continue
+                    chunk_message = (
+                        chunk if isinstance(chunk, str) else str(chunk) if chunk is not None else ""
+                    )
                     for llm_dialog in parser.feed(chunk_message):
                         self.tts_queue.put(llm_dialog)
 
-                # 3. 记录历史与状态清理
-                self.llm_manager.add_message("assistant", parser.accumulated_text)           
+                if reasoning_shown:
+                    self.ui_update_manager.hide_busy_bar()
                 self.user_input_queue.task_done()
 
             except Exception as e:

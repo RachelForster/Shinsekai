@@ -273,6 +273,7 @@
     },
     "comfy": {
       "hint": "用于通过 ComfyUI 生图 / CG。需已部署 ComfyUI 并配好工作流，默认折叠以减少干扰。",
+      "engine": "生图引擎（T2I）",
       "ph_t2i": "如 http://127.0.0.1:8188",
       "t2i_url": "ComfyUI API 地址",
       "t2i_dir": "ComfyUI 程序目录",
@@ -439,6 +440,7 @@
     "send": "发送",
     "mic_loading_model": "语音识别模型正在加载…",
     "cot_busy_prefix": "思维链",
+    "thinking_busy_prefix": "思考",
     "tts_busy_synthesizing": "正在为「{name}」合成语音…",
     "tts_busy_cg": "正在生成 CG…",
     "menu": {

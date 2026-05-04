@@ -273,6 +273,7 @@
     },
     "comfy": {
       "hint": "ComfyUI で画像/CG 生成。ComfyUI とワークフローが必要。初期は折りたたみ。",
+      "engine": "画像エンジン（T2I）",
       "ph_t2i": "例 http://127.0.0.1:8188",
       "t2i_url": "ComfyUI API アドレス",
       "t2i_dir": "ComfyUI 本体フォルダ",
@@ -439,6 +440,7 @@
     "send": "送信",
     "mic_loading_model": "音声認識モデルを読み込み中…",
     "cot_busy_prefix": "推論",
+    "thinking_busy_prefix": "思考",
     "tts_busy_synthesizing": "「{name}」の音声を合成中…",
     "tts_busy_cg": "CG を生成中…",
     "menu": {
