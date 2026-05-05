@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
         widgets = self.ui
 
         Settings.ENABLE_CUSTOM_TITLE_BAR = True
+        self.ui.version.setText(f"v{self._ctx.config_manager.version}")
 
         _install_plugins_top_nav_button(self.ui)
 
@@ -128,7 +129,6 @@ class MainWindow(QMainWindow):
         self.ui.btn_share.hide()
 
         self.ui.btn_more.hide()
-        self.ui.version.setText("v1.6.0")
         self.apply_i18n()
 
         sw = self.ui.stackedWidget
