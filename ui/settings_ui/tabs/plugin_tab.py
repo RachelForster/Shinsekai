@@ -1244,10 +1244,10 @@ class PluginSettingsTab(QWidget):
 
             btn_toggle.clicked.connect(_toggle)
 
-        if not has_ui:
-            btn_cfg.setEnabled(False)
-            btn_cfg.setToolTip(tr_i18n("plugins.no_settings_tooltip"))
-        else:
+        row_act.addWidget(btn_uninstall)
+        row_act.addWidget(btn_toggle)
+
+        if has_ui:
 
             def _open_plg(
                 *,
@@ -1260,9 +1260,8 @@ class PluginSettingsTab(QWidget):
 
             btn_cfg.clicked.connect(_open_plg)
             btn_cfg.setToolTip(tr_i18n("plugins.manage_plugin_settings_tooltip"))
-        row_act.addWidget(btn_uninstall)
-        row_act.addWidget(btn_toggle)
-        row_act.addWidget(btn_cfg)
+            row_act.addWidget(btn_cfg)
+        # else: btn_cfg is never shown — plugin has no UI contribution
         lay.addLayout(row_act)
 
         lay.addStretch(0)
