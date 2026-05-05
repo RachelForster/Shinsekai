@@ -164,14 +164,12 @@ class TTSWorker(BaseWorker):
     def run(self):
         while self.running:
             character_name = "未知"
-            speech = "未知"
             item: Optional[LLMDialogMessage] = None
             try:
                 item = self.tts_queue.get()
                 if item is None:
                     break
                 character_name = item.character_name
-                speech = item.speech
                 self.tts_message_dispatcher.dispatch(item)
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")
@@ -179,8 +177,8 @@ class TTSWorker(BaseWorker):
                 if item is not None:
                     self.put_data(
                         get_app_runtime().opencc.convert(item.character_name),
-                        speech,
-                        "-1",
+                        item.speech,
+                        str(item.sprite) if item.sprite is not None else "-1",
                         "",
                         is_system_message=False,
                         effect=item.effect,

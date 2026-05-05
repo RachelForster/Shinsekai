@@ -182,8 +182,17 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         is_final = out.is_final_segment
         is_continuation = not speech  # 非首段，仅播放音频
 
+        character_config = get_character_by_name(character_name)
+        if character_config:
+            try:
+                if self._last_character != character_name or self._last_sprite != sprite_id:
+                    ui.update_sprite(character_name, int(sprite_id) - 1)
+                    self._last_character = character_name
+                    self._last_sprite = sprite_id
+            except (ValueError, TypeError, IndexError) as e:
+                print(f"UIWorker: 立绘更新跳过（索引或数据无效）: {e}")
+
         if not is_continuation:
-            character_config = get_character_by_name(character_name)
             fallback_color = "#84C2D5"
             if not character_config:
                 print(f"UIWorker: 未找到角色配置「{character_name}」，跳过立绘；仅在有台词时用占位颜色显示")
@@ -191,14 +200,6 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             if speech:
                 color = character_config.color if character_config else fallback_color
                 ui.update_dialog(character_name, speech, color, is_system=False)
-            if character_config:
-                try:
-                    if self._last_character != character_name or self._last_sprite != sprite_id:
-                        ui.update_sprite(character_name, int(sprite_id) - 1)
-                        self._last_character = character_name
-                        self._last_sprite = sprite_id
-                except (ValueError, TypeError, IndexError) as e:
-                    print(f"UIWorker: 立绘更新跳过（索引或数据无效）: {e}")
             ui.resolve_effect(
                 effect=effect, args={"character_name": character_name}, after_dialog=False
             )
