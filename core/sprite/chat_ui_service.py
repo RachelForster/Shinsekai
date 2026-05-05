@@ -135,13 +135,15 @@ def restore_session_ui(
                 )
             )
         if dialog:
+            _last = dialog[-1]
             audio_path_queue.put(
                 TTSOutputMessage(
                     audio_path="",
-                    character_name=dialog[-1].get("character_name", ""),
-                    speech="",
-                    sprite=dialog[-1].get("sprite", "-1"),
+                    character_name=_last.get("character_name", ""),
+                    speech=_last.get("speech", ""),
+                    sprite=_last.get("sprite", "-1"),
                     is_system_message=False,
+                    timeout=0,
                 )
             )
     except Exception as e:
