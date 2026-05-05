@@ -217,6 +217,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
                             sprite=_sprite_str if _is_first else _sprite_str,
                             effect=msg.effect if _is_first else "",
                             is_final_segment=_is_last,
+                            timeout=None if _is_first else 0,
                         ))
                     rt.tts_queue.task_done()
                     return  # already emitted per-sentence, skip final tts_emit_to_ui_queue

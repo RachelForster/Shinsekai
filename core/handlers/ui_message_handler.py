@@ -203,7 +203,8 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 effect=effect, args={"character_name": character_name}, after_dialog=False
             )
 
-        min_stop_time = len(speech) // 8
+        _tmo = out.timeout
+        min_stop_time = _tmo if (_tmo is not None and _tmo > 0) else len(speech) // 8
         start_time = time.perf_counter()
         audio_played = False
         ch.current_audio_path = audio_path

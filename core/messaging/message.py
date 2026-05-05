@@ -33,3 +33,4 @@ class TTSOutputMessage(BaseModel):
     effect: Optional[str] = Field("", description="应用的特效名称")
     is_system_message: bool = Field(False, description="是否是系统通知或非对话消息")
     is_final_segment: bool = Field(True, description="是否是多段TTS中的最后一段，默认为True")
+    timeout: Optional[float] = Field(None, description="可选的等待时间（秒），指定后覆盖基于文本长度的自动计算")
