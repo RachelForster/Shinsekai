@@ -27,6 +27,15 @@ class LLMAdapter(ABC):
         """Metadata for adapter-specific options; empty ``{}`` means none."""
         return {}
 
+    @classmethod
+    def get_unsupported_chat_params(cls, provider: str) -> set[str]:
+        """Return params that this adapter class cannot send to *provider*.
+
+        Called before every ``chat()`` in OpenAIAdapter. Subclasses may override to
+        strip provider-incompatible keys (e.g. Gemini does not accept penalty params
+        over the OpenAI-compatible bridge)."""
+        return set()
+
     @abstractmethod
     def chat(self, messages: list, stream: bool = False, **kwargs):
         pass

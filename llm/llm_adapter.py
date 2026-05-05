@@ -116,11 +116,24 @@ class OpenAIAdapter(LLMAdapter):
         self.client = OpenAI(api_key=api_key)
         self.client.base_url = base_url
         self.model = model
-    
+
+    @classmethod
+    def get_unsupported_chat_params(cls, provider: str) -> set[str]:
+        if provider == "Gemini":
+            return {"frequency_penalty", "presence_penalty"}
+        return set()
+
     def chat(self, messages: list, stream: bool = False, response_format={'type': 'json_object'}, **kwargs):
         """Sends a message to the OpenAI LLM."""
         try:
             kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
+            # 各提供商在 OpenAI 兼容通道下可能不支持某些参数
+            from config.config_manager import ConfigManager
+            _unsupported = self.get_unsupported_chat_params(
+                ConfigManager().config.api_config.llm_provider or ""
+            )
+            if _unsupported:
+                kwargs = {k: v for k, v in kwargs.items() if k not in _unsupported}
             use_tools = bool(kwargs.get("tools"))
             create_kwargs = {
                 "model": self.model,
