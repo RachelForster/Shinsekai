@@ -159,6 +159,11 @@ class SystemMiscUiHandler(UIOutputMessageHandler):
 
 
 class CharacterDialogUiHandler(UIOutputMessageHandler):
+    def __init__(self):
+        super().__init__()
+        self._last_character = None
+        self._last_sprite = None
+
     def can_handle(self, out: TTSOutputMessage) -> bool:
         return not out.is_system_message
 
@@ -174,22 +179,30 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         if audio_path:
             audio_path = Path(audio_path).as_posix()
         effect = out.effect
-        character_config = get_character_by_name(character_name)
-        fallback_color = "#84C2D5"
-        if not character_config:
-            print(f"UIWorker: 未找到角色配置「{character_name}」，跳过立绘；仅在有台词时用占位颜色显示")
-        ui.post_notification(f"{character_name}正在回复……")
-        if speech:
-            color = character_config.color if character_config else fallback_color
-            ui.update_dialog(character_name, speech, color, is_system=False)
-        if character_config:
-            try:
-                ui.update_sprite(character_name, int(sprite_id) - 1)
-            except (ValueError, TypeError, IndexError) as e:
-                print(f"UIWorker: 立绘更新跳过（索引或数据无效）: {e}")
-        ui.resolve_effect(
-            effect=effect, args={"character_name": character_name}, after_dialog=False
-        )
+        is_final = out.is_final_segment
+        is_continuation = not speech  # 非首段，仅播放音频
+
+        if not is_continuation:
+            character_config = get_character_by_name(character_name)
+            fallback_color = "#84C2D5"
+            if not character_config:
+                print(f"UIWorker: 未找到角色配置「{character_name}」，跳过立绘；仅在有台词时用占位颜色显示")
+            ui.post_notification(f"{character_name}正在回复……")
+            if speech:
+                color = character_config.color if character_config else fallback_color
+                ui.update_dialog(character_name, speech, color, is_system=False)
+            if character_config:
+                try:
+                    if self._last_character != character_name or self._last_sprite != sprite_id:
+                        ui.update_sprite(character_name, int(sprite_id) - 1)
+                        self._last_character = character_name
+                        self._last_sprite = sprite_id
+                except (ValueError, TypeError, IndexError) as e:
+                    print(f"UIWorker: 立绘更新跳过（索引或数据无效）: {e}")
+            ui.resolve_effect(
+                effect=effect, args={"character_name": character_name}, after_dialog=False
+            )
+
         min_stop_time = len(speech) // 8
         start_time = time.perf_counter()
         audio_played = False
@@ -224,16 +237,19 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             remaining = min_stop_time - (end_time - start_time)
             if remaining > 0:
                 ev.wait(timeout=remaining)
-        # sendMessage 已暂停 ASR；无 TTS / 音频失败时原先不会走到 post_llm_reply_finished，导致麦克风永久暂停。
-        get_asr_log().info(
-            "CharacterDialogUiHandler: dialog handler done "
-            "(audio_played=%s) → post_llm_reply_finished",
-            audio_played,
-        )
-        ui.post_llm_reply_finished()
+        if is_final:
+            # sendMessage 已暂停 ASR；无 TTS / 音频失败时原先不会走到 post_llm_reply_finished，导致麦克风永久暂停。
+            get_asr_log().info(
+                "CharacterDialogUiHandler: dialog handler done "
+                "(audio_played=%s) → post_llm_reply_finished",
+                audio_played,
+            )
+            ui.post_llm_reply_finished()
         rt.audio_path_queue.task_done()
 
     def post_process(self, out: TTSOutputMessage) -> None:
+        if not out.is_final_segment:
+            return
         get_app_runtime().ui_update_manager.resolve_effect(
             effect=out.effect,
             args={"character_name": out.character_name},

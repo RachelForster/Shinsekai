@@ -362,6 +362,7 @@
     "ref_audio": "Reference audio",
     "ref_text": "Reference line text",
     "prompt_lang": "Language (en/ja/zh)",
+    "speech_speed_lbl": "TTS Speed",
     "save_box": "Save profile",
     "add_save": "Add or save",
     "sprite_box": "Sprites",

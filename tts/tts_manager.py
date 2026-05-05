@@ -67,7 +67,7 @@ class TTSManager:
         """Allows switching the TTS adapter at runtime."""
         self.tts_adapter = adapter
 
-    def generate_tts(self, text, text_processor=None, ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None):
+    def generate_tts(self, text, text_processor=None, ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None, speed_factor=None):
         """Generates TTS audio using the currently set adapter."""
         print("Generating speech")
         
@@ -97,7 +97,8 @@ class TTSManager:
             prompt_text=prompt_text,
             prompt_lang=prompt_lang,
             text_lang=self.voice_language,
-            character_name=character_name
+            character_name=character_name,
+            speed_factor=speed_factor,
         )
 
     def set_language(self, language):

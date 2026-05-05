@@ -6,6 +6,7 @@ TTS worker 用 LLM dialog 处理器（见 handler_registry.MessageHandler）。
 
 from __future__ import annotations
 
+import re
 import traceback
 from pathlib import Path
 from typing import List
@@ -19,7 +20,7 @@ from core.messaging.dialog_tokens import (
     match_system_dialog_tts,
     normalize_character_name,
 )
-from core.messaging.message import LLMDialogMessage
+from core.messaging.message import LLMDialogMessage, TTSOutputMessage
 from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
 from i18n import tr as tr_i18n
 
@@ -166,14 +167,59 @@ class DefaultCharacterTtsHandler(MessageHandler):
                     print("没有立绘")
                 if text_processor:
                     speech_text = text_processor.remove_parentheses(speech_text)
-                audio_path = rt.tts_manager.generate_tts(
-                    speech_text,
-                    text_processor=text_processor,
-                    ref_audio_path=ref_audio_path,
-                    prompt_text=prompt_text,
-                    prompt_lang=character_config.prompt_lang,
-                    character_name=name_s,
-                )
+
+                # Split by punctuation, then merge so each segment ≤ 15 chars
+                _pieces = re.split(r'(?<=[。！？，、；：\.!\?,;:])', speech_text)
+                _pieces = [s.strip() for s in _pieces if s.strip()]
+                _max_seg = 15
+                _sentences: list[str] = []
+                _cur = ""
+                for _p in _pieces:
+                    if not _cur:
+                        _cur = _p
+                    elif len(_cur) + len(_p) <= _max_seg:
+                        _cur += _p
+                    else:
+                        _sentences.append(_cur)
+                        _cur = _p
+                if _cur:
+                    _sentences.append(_cur)
+
+                _speed = character_config.speech_speed
+                if len(_sentences) <= 1:
+                    audio_path = rt.tts_manager.generate_tts(
+                        speech_text,
+                        text_processor=text_processor,
+                        ref_audio_path=ref_audio_path,
+                        prompt_text=prompt_text,
+                        prompt_lang=character_config.prompt_lang,
+                        character_name=name_s,
+                        speed_factor=_speed,
+                    )
+                else:
+                    _sprite_str = str(sprite)
+                    for _i, _sent in enumerate(_sentences):
+                        _path = rt.tts_manager.generate_tts(
+                            _sent,
+                            text_processor=text_processor,
+                            ref_audio_path=ref_audio_path,
+                            prompt_text=prompt_text,
+                            prompt_lang=character_config.prompt_lang,
+                            character_name=name_s,
+                            speed_factor=_speed,
+                        )
+                        _is_first = _i == 0
+                        _is_last = _i == len(_sentences) - 1
+                        rt.audio_path_queue.put(TTSOutputMessage(
+                            audio_path=_path or "",
+                            character_name=name_s,
+                            speech=speech if _is_first else "",
+                            sprite=_sprite_str if _is_first else _sprite_str,
+                            effect=msg.effect if _is_first else "",
+                            is_final_segment=_is_last,
+                        ))
+                    rt.tts_queue.task_done()
+                    return  # already emitted per-sentence, skip final tts_emit_to_ui_queue
             finally:
                 _hide_tts_busy()
         else:

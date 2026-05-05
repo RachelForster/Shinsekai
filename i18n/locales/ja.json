@@ -359,6 +359,7 @@
     "ref_audio": "参照音声",
     "ref_text": "参照テキスト",
     "prompt_lang": "言語 (en/ja/zh)",
+    "speech_speed_lbl": "TTS 速度",
     "save_box": "プロフィールを保存",
     "add_save": "追加/保存",
     "sprite_box": "立ち絵",

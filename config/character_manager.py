@@ -147,9 +147,10 @@ class CharacterManager:
             return f"保存失败: {str(e)}"
 
 
-    def add_character(self, name: str, color: str, sprite_prefix: str, gpt_model_path: str, 
-                     sovits_model_path: str, refer_audio_path: str, prompt_text: str, 
+    def add_character(self, name: str, color: str, sprite_prefix: str, gpt_model_path: str,
+                     sovits_model_path: str, refer_audio_path: str, prompt_text: str,
                      prompt_lang: str, character_setting: str,
+                     speech_speed: float = 1.0,
                      edit_as_name: Optional[str] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
@@ -181,6 +182,7 @@ class CharacterManager:
                 target.prompt_lang = prompt_lang
                 target.refer_audio_path = refer_audio_path
                 target.character_setting = character_setting
+                target.speech_speed = speech_speed
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
 
@@ -201,6 +203,7 @@ class CharacterManager:
                 sprite_scale=1.0,
                 emotion_tags="",
                 character_setting=character_setting,
+                speech_speed=speech_speed,
             )    
             characters.append(new_character)
             self._save_characters_config()
@@ -216,6 +219,7 @@ class CharacterManager:
             existing_character.prompt_lang = prompt_lang
             existing_character.refer_audio_path = refer_audio_path
             existing_character.character_setting = character_setting
+            existing_character.speech_speed = speech_speed
 
             self._save_characters_config()
             return "人物已更新！", [c.name for c in characters]

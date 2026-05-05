@@ -31,8 +31,8 @@ def register_character_tab(ctx: WebUIContext, character_name_list_len, selected_
                 def update_character_information(selected_character):
                     character = ctx.config_manager.get_character_by_name(selected_character)
                     if character == None:
-                        return "","","","","","","","",""
-                    return character.name, character.color, character.sprite_prefix, character.gpt_model_path, character.sovits_model_path, character.refer_audio_path, character.prompt_text, character.prompt_lang, character.character_setting
+                        return "","","","","","","","","",1.0
+                    return character.name, character.color, character.sprite_prefix, character.gpt_model_path, character.sovits_model_path, character.refer_audio_path, character.prompt_text, character.prompt_lang, character.character_setting, float(character.speech_speed) if character.speech_speed else 1.0
                     
             with gr.Column():
                 gr.Markdown("#### 从文件导入")
@@ -96,6 +96,7 @@ def register_character_tab(ctx: WebUIContext, character_name_list_len, selected_
                 refer_audio_path = gr.Textbox(label="参考音频路径")
                 prompt_text = gr.Textbox(label="参考音频的文字内容")
                 prompt_lang = gr.Textbox(label="参考音频的语言, 英语填en，日语填ja，中文填zh")
+                speech_speed = gr.Slider(minimum=0.1, maximum=5.0, value=1.0, step=0.05, label="TTS 语速")
                 add_btn = gr.Button("添加或保存人物设置")
                 add_output = gr.Textbox(label="操作结果")
 
@@ -104,7 +105,7 @@ def register_character_tab(ctx: WebUIContext, character_name_list_len, selected_
             ctx.character_manager.add_character,
             inputs=[
                 char_name, char_color, sprite_prefix, gpt_model_path,
-                sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting
+                sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting, speech_speed
             ],
             outputs=[
                 add_output
@@ -132,10 +133,10 @@ def register_character_tab(ctx: WebUIContext, character_name_list_len, selected_
             inputs=None,
             outputs=selected_character
         ).then(
-            lambda: ("","","","","","","","",""),
+            lambda: ("","","","","","","","","",1.0),
             inputs=None,
             outputs=[char_name, char_color, sprite_prefix, gpt_model_path,
-                      sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting]
+                      sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting, speech_speed]
         ).then(
             lambda : len(ctx.character_manager.get_character_name_list()),
             inputs=[],
@@ -147,7 +148,7 @@ def register_character_tab(ctx: WebUIContext, character_name_list_len, selected_
             inputs=[selected_character],
             outputs=[
                 char_name, char_color, sprite_prefix, gpt_model_path,
-                sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting
+                sovits_model_path, refer_audio_path, prompt_text, prompt_lang, character_setting, speech_speed
             ]
         )
 

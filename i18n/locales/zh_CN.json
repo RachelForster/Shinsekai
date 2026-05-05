@@ -359,6 +359,7 @@
     "ref_audio": "参考音频路径",
     "ref_text": "参考音频文字内容",
     "prompt_lang": "语言 (en/ja/zh)",
+    "speech_speed_lbl": "TTS 语速",
     "save_box": "保存人物档案",
     "add_save": "添加或保存人物设置",
     "sprite_box": "立绘管理",
