@@ -52,6 +52,87 @@ def _deepseek_reasoning_message_kwargs(adapter: LLMAdapter, reasoning_text: str)
     return {"reasoning_content": reasoning_text}
 
 
+def _extract_tool_call_raw_extras(tc_dict: dict) -> dict:
+    """Extract provider-specific fields from a raw tool-call dict that the SDK drops.
+
+    Returns keys ready to merge into the formatted tool call dict.
+    Gemini nests thought_signature as ``extra_content.google.thought_signature``,
+    and expects it sent back the same way."""
+    extras: dict = {}
+    ec = tc_dict.get("extra_content")
+    if isinstance(ec, str) and ec.strip():
+        try:
+            import json as _json
+            ec = _json.loads(ec)
+        except Exception:
+            pass
+    if isinstance(ec, dict):
+        extras["extra_content"] = ec
+    return extras
+
+
+def _tool_call_extras(tc, raw_tc_extra: dict | None = None) -> dict:
+    """Extract provider-specific extra fields (e.g. extra_content for Gemini).
+
+    Returns a dict to merge into the formatted call (shallow update)."""
+    extras: dict = {}
+
+    if isinstance(tc, dict):
+        extras.update(_extract_tool_call_raw_extras(tc))
+        if raw_tc_extra:
+            extras.update(_extract_tool_call_raw_extras(raw_tc_extra))
+        return extras
+
+    # --- object path (OpenAI SDK) ---
+    _raw = {}
+    try:
+        _raw = tc.to_dict() if callable(getattr(tc, "to_dict", None)) else {}
+    except Exception:
+        pass
+    if not _raw:
+        try:
+            _raw = getattr(tc, "model_extra", None) or {}
+        except Exception:
+            pass
+    if not _raw:
+        try:
+            _raw = {k: v for k, v in tc.__dict__.items() if not k.startswith("_")}
+        except Exception:
+            pass
+    extras.update(_extract_tool_call_raw_extras(_raw))
+    if raw_tc_extra:
+        extras.update(_extract_tool_call_raw_extras(raw_tc_extra))
+    return extras
+
+
+def _raw_response_tool_call_extras(response) -> list[dict]:
+    """Parse the raw HTTP response body to extract per-tool-call extra fields.
+
+    Returns a list parallel to ``response.choices[0].message.tool_calls``."""
+    out: list[dict] = []
+    raw_text = ""
+    for _meth in ("to_json", "model_dump_json"):
+        _fn = getattr(response, _meth, None)
+        if callable(_fn):
+            try:
+                raw_text = _fn()
+                if raw_text:
+                    break
+            except Exception:
+                pass
+    if not raw_text:
+        return out
+    try:
+        raw_data = json.loads(raw_text)
+        for tc in raw_data.get("choices", [{}])[0].get("message", {}).get("tool_calls", []):
+            out.append(_extract_tool_call_raw_extras(tc))
+        if out and any(e for e in out):
+            logger.info(f"_raw_response_tool_call_extras: found extras for {sum(1 for e in out if e)} tool call(s)")
+    except Exception as e:
+        logger.warning(f"_raw_response_tool_call_extras: failed to parse raw response: {e}")
+    return out
+
+
 class LLMAdapterFactory:
     """Factory for creating different LLMAdapter instances."""
     _adapters = {
@@ -176,10 +257,18 @@ class LLMManager:
 
     def _chat_with_tools_stream(self, **kwargs) -> Generator[Union[str, dict[str, str]], None, None]:
         tools_defs = tool_manager.get_definitions()
+
+        # Gemini's OpenAI-compatible streaming endpoint omits thought_signature from
+        # tool call deltas. Fall back to non-streaming so the field is preserved.
+        from config.config_manager import ConfigManager
+        if tools_defs and ConfigManager().config.api_config.llm_provider == "Gemini":
+            yield from self._chat_with_tools_sync(**kwargs)
+            return
+
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
         response_stream = self.llm_adapter.chat(
-            messages=self.get_messages(), stream=True, 
+            messages=self.get_messages(), stream=True,
             tools=tools_defs if tools_defs else None, **merged_kwargs
         )
         if response_stream is None: return
@@ -209,8 +298,9 @@ class LLMManager:
                 if hasattr(delta, 'tool_calls') and delta.tool_calls:
                     has_tool_use = True
                     for tc in delta.tool_calls:
-                        if tc.index not in full_tool_calls: full_tool_calls[tc.index] = tc
-                        if tc.function and tc.function.arguments:
+                        if tc.index not in full_tool_calls:
+                            full_tool_calls[tc.index] = tc
+                        elif tc.function and tc.function.arguments:
                             full_tool_calls[tc.index].function.arguments += tc.function.arguments
                 r_part = getattr(delta, "reasoning_content", None)
                 if r_part:
@@ -227,7 +317,12 @@ class LLMManager:
                 t_id = tc["id"] if isinstance(tc, dict) else tc.id
                 t_name = tc["name"] if isinstance(tc, dict) else tc.function.name
                 t_args = tc["input"] if isinstance(tc, dict) else tc.function.arguments
-                formatted_calls.append({"id": t_id, "type": "function", "function": {"name": t_name, "arguments": t_args}})
+                call = {"id": t_id, "type": "function", "function": {"name": t_name, "arguments": t_args}}
+                _extra = _tool_call_extras(tc)
+                if _extra:
+                    call["function"].update(_extra.pop("function", {}))
+                    call.update(_extra)
+                formatted_calls.append(call)
 
             # --- 关键：必须先添加 Assistant 消息（DeepSeek 思考模式须含 reasoning_content） ---
             assistant_kw = _deepseek_reasoning_message_kwargs(self.llm_adapter, collected_reasoning)
@@ -285,11 +380,20 @@ class LLMManager:
             reasoning = getattr(message, "reasoning_content", None) or ""
 
         if tool_calls:
+            # Gemini 的 thought_signature 会被 OpenAI SDK Pydantic 模型丢弃，
+            # 从原始 HTTP 响应体中捞出补齐
+            _raw_extras = _raw_response_tool_call_extras(response)
             formatted_calls = []
-            for tc in tool_calls:
+            for i, tc in enumerate(tool_calls):
                 t_name = tc.function.name if hasattr(tc, 'function') else tc.name
                 t_args = tc.function.arguments if hasattr(tc, 'function') else tc.input
-                formatted_calls.append({"id": tc.id, "type": "function", "function": {"name": t_name, "arguments": t_args}})
+                call = {"id": tc.id, "type": "function", "function": {"name": t_name, "arguments": t_args}}
+                _raw_extra = _raw_extras[i] if i < len(_raw_extras) else None
+                _extra = _tool_call_extras(tc, _raw_extra)
+                if _extra:
+                    call["function"].update(_extra.pop("function", {}))
+                    call.update(_extra)
+                formatted_calls.append(call)
 
             # --- 关键：先 Assistant 再 Tool ---
             assistant_sync_kw = _deepseek_reasoning_message_kwargs(self.llm_adapter, reasoning)

@@ -28,3 +28,4 @@ runtime/
 /plugins
 /plugins
 /data
+.claude/settings.local.json
