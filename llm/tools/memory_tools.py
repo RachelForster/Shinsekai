@@ -65,25 +65,24 @@ def _build_mem0_config() -> dict[str, Any]:
         }
 
     # ── Embedder ──
-    # 只有 ChatGPT 有可靠的 OpenAI embedding API；其他供应商一律本地 HuggingFace
+    # ChatGPT 用 OpenAI embedding；其他供应商用本地 HuggingFace 英文模型
     _embedding_dims = 384
     if _provider_lower == "chatgpt" and api_key:
+        _embedding_dims = 1536
         embedder_config: dict[str, Any] = {
             "provider": "openai",
             "config": {
                 "model": "text-embedding-3-small",
-                "embedding_dims": 1536,
+                "embedding_dims": _embedding_dims,
                 "api_key": api_key,
             },
         }
-        _embedding_dims = 1536
     else:
         embedder_config = {
             "provider": "huggingface",
             "config": {
                 "model": "sentence-transformers/all-MiniLM-L6-v2",
                 "embedding_dims": _embedding_dims,
-                "device": "cpu",
             },
         }
 
@@ -147,12 +146,19 @@ def memory_search(
     agent_id = _resolve_agent_id(character_name)
     try:
         mem = _get_mem0()
-        results = mem.search(q, user_id=agent_id, limit=limit)
+        results = mem.search(q, filters={"user_id": agent_id}, limit=limit)
+        # mem0 新版返回 {"results": [...]} 结构
+        if isinstance(results, dict) and "results" in results:
+            mems = results["results"]
+        elif isinstance(results, list):
+            mems = results
+        else:
+            mems = []
         return {
             "agent_id": agent_id,
             "query": q,
-            "count": len(results),
-            "memories": results,
+            "count": len(mems),
+            "memories": mems,
         }
     except Exception as e:
         logger.exception("memory_search 失败")
@@ -194,9 +200,10 @@ def memory_forget(memory_id: str) -> dict[str, Any]:
 @tool(
     name="memory_search",
     description=(
-        "从长期记忆库中按关键词检索与指定人物相关的记忆（偏好、事实、约定等）。"
-        "回答涉及跨会话/跨轮次信息时应先调用。"
-        "参数 query：检索语句；character_name：要查的人物名（可选，默认 user）；limit：最多返回条数（默认 10）。"
+        "Search YOUR memory. "
+        "character_name: YOUR OWN full name from dialog (the character who is speaking). "
+        "When you are playing a character, use that character's name. "
+        "query: English keywords. Call BEFORE using cross-session info."
     ),
 )
 def _tool_memory_search(
@@ -210,8 +217,11 @@ def _tool_memory_search(
 @tool(
     name="memory_remember",
     description=(
-        "将一条重要信息存入长期记忆。content：要保存的事实/偏好/约定；"
-        "character_name：属于哪个人物（可选，默认 user）。"
+        "Save a fact to YOUR memory. "
+        "character_name: YOUR OWN full name from dialog (the character who is speaking). "
+        "When you are playing 狛枝凪斗, use '狛枝凪斗', NOT 'user'. "
+        "content: the fact IN ENGLISH. "
+        "Only use character_name='user' for facts about the human user, not about yourself."
     ),
 )
 def _tool_memory_remember(
@@ -224,7 +234,7 @@ def _tool_memory_remember(
 @tool(
     name="memory_forget",
     description=(
-        "删除一条长期记忆。memory_id 来自 memory_search 返回的 id。"
+        "Delete a memory entry. memory_id comes from a memory_search result's id field."
     ),
 )
 def _tool_memory_forget(memory_id: str) -> dict[str, Any]:

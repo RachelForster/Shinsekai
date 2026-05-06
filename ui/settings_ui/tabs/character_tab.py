@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
+    QProgressDialog,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -750,14 +751,24 @@ class CharacterSettingsTab(QWidget):
 
     def _on_mem_refresh(self) -> None:
         agent_id = self._current_mem_agent_id()
+        dlg = QProgressDialog(
+            tr_i18n("char.mem_loading", name=agent_id), "", 0, 0, self
+        )
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setMinimumDuration(500)
+        dlg.setCancelButton(None)
+        dlg.show()
         try:
-            from llm.tools.memory_tools import memory_search
-            res = memory_search("", character_name=agent_id, limit=200)
+            from llm.tools.memory_tools import _get_mem0
+            mem = _get_mem0()
+            raw = mem.get_all(filters={"user_id": agent_id}, limit=200)
+            mems = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
         except Exception as e:
+            dlg.close()
             self._mem_table.setRowCount(0)
             self._mem_count_lbl.setText(tr_i18n("char.mem_err", err=str(e)))
             return
-        mems = res.get("memories", []) if isinstance(res, dict) else []
+        dlg.close()
         count = len(mems)
         self._mem_table.setRowCount(count)
         for i, m in enumerate(mems):
@@ -785,12 +796,21 @@ class CharacterSettingsTab(QWidget):
         if not text:
             return
         agent_id = self._current_mem_agent_id()
+        dlg = QProgressDialog(
+            tr_i18n("char.mem_saving", name=agent_id), "", 0, 0, self
+        )
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setMinimumDuration(300)
+        dlg.setCancelButton(None)
+        dlg.show()
         try:
             from llm.tools.memory_tools import memory_remember
             memory_remember(text, character_name=agent_id)
         except Exception as e:
+            dlg.close()
             toast_info(self, tr_i18n("char.mem_add"), str(e))
             return
+        dlg.close()
         self._mem_input.clear()
         self._on_mem_refresh()
 

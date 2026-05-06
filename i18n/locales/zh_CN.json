@@ -392,6 +392,8 @@
     "mem_add": "添加记忆",
     "mem_del": "删除",
     "mem_err": "加载记忆失败: {err}",
+    "mem_loading": "正在加载「{name}」的记忆…",
+    "mem_saving": "正在保存「{name}」的记忆…",
     "dlg_import": "导入 .char",
     "dlg_sprites": "立绘图片",
     "dlg_voice": "语音文件"

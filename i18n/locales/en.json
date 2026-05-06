@@ -395,6 +395,8 @@
     "mem_add": "Add",
     "mem_del": "Delete",
     "mem_err": "Failed to load memories: {err}",
+    "mem_loading": "Loading memories for \"{name}\"...",
+    "mem_saving": "Saving memory for \"{name}\"...",
     "dlg_import": "Import .char",
     "dlg_sprites": "Sprite images",
     "dlg_voice": "Audio"

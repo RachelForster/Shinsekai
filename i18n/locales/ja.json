@@ -392,6 +392,8 @@
     "mem_add": "追加",
     "mem_del": "削除",
     "mem_err": "記憶の読み込みに失敗: {err}",
+    "mem_loading": "「{name}」の記憶を読み込み中…",
+    "mem_saving": "「{name}」の記憶を保存中…",
     "dlg_import": ".char を取り込み",
     "dlg_sprites": "立ち絵画像",
     "dlg_voice": "音声"
