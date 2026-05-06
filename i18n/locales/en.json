@@ -476,6 +476,7 @@
       "font_size": "Font size",
       "volume": "Volume",
       "theme_color": "Theme color",
+      "pin_top": "Always on Top",
       "confirm_clear_title": "Confirm",
       "confirm_clear_body": "Clear all chat history?",
       "notify_font_size": "Font size set to {size}px",

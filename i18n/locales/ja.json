@@ -473,6 +473,7 @@
       "font_size": "フォントサイズ",
       "volume": "音量",
       "theme_color": "テーマ色",
+      "pin_top": "最前面に表示",
       "confirm_clear_title": "確認",
       "confirm_clear_body": "チャット履歴をすべて消去しますか？",
       "notify_font_size": "フォントサイズを {size}px に変更しました",

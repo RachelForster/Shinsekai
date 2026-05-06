@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pygame
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QDialog, QMenu, QMessageBox
 
@@ -43,6 +44,9 @@ class DesktopMenuMixin:
         font_size_action = QAction(tr("desktop.menu.font_size"), self)
         volumn_action = QAction(tr("desktop.menu.volume"), self)
         theme_color_action = QAction(tr("desktop.menu.theme_color"), self)
+        pin_top_action = QAction(tr("desktop.menu.pin_top"), self)
+        pin_top_action.setCheckable(True)
+        pin_top_action.setChecked(bool(self.windowFlags() & Qt.WindowStaysOnTopHint))
 
         history_action.triggered.connect(lambda: self.open_chat_history_dialog.emit())
         language_action.triggered.connect(self.show_language_settings)
@@ -51,6 +55,7 @@ class DesktopMenuMixin:
         volumn_action.triggered.connect(self.show_volumn_settings)
         theme_color_action.triggered.connect(self.show_theme_color_dialog)
         copy_history_action.triggered.connect(self.copy_chat_history_to_clipboard)
+        pin_top_action.triggered.connect(self._toggle_pin_top)
 
         menu.addAction(history_action)
         menu.addAction(clear_history_action)
@@ -59,6 +64,8 @@ class DesktopMenuMixin:
         menu.addAction(font_size_action)
         menu.addAction(volumn_action)
         menu.addAction(theme_color_action)
+        menu.addSeparator()
+        menu.addAction(pin_top_action)
 
         menu.exec(
             self.settings_btn.mapToGlobal(self.settings_btn.rect().bottomLeft())
@@ -73,6 +80,14 @@ class DesktopMenuMixin:
             config_manager.config.system_config.music_volumn = selected_volumn
             config_manager.save_system_config()
             pygame.mixer.music.set_volume(selected_volumn / 100)
+
+    def _toggle_pin_top(self, checked: bool) -> None:
+        """切换窗口置顶状态。"""
+        if checked:
+            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        else:
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+        self.show()  # 改 flags 后必须 show 才能生效
 
     def clear_history(self) -> None:
         reply = QMessageBox.question(

@@ -473,6 +473,7 @@
       "font_size": "字体大小",
       "volume": "音量",
       "theme_color": "主题色",
+      "pin_top": "窗口置顶",
       "confirm_clear_title": "确认",
       "confirm_clear_body": "确定要清空所有聊天记录吗？",
       "notify_font_size": "字体大小已更改为 {size}px",
