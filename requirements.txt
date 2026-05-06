@@ -20,3 +20,4 @@ pyyaml
 vosk
 gpu-list
 py7zr
+mem0ai

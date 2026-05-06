@@ -397,7 +397,7 @@ class _DownloadRepoTask(QRunnable):
 
 
 class _AppSelfUpdateTask(QRunnable):
-    """主程序源码树 GitHub ZIP 合并覆盖（无 pip）。"""
+    """主程序源码树 GitHub ZIP 合并覆盖 + pip install 项目依赖。"""
 
     def __init__(
         self,
@@ -428,9 +428,21 @@ class _AppSelfUpdateTask(QRunnable):
         except Exception as exc:
             self._sig.finished.emit("", False, format_download_error(exc), "")
             return
+
+        self._sig.status_message.emit(tr_i18n("plugins.discover_phase_pip"))
+        self._sig.pip_phase_started.emit()
+
+        def _pip_line(line: str) -> None:
+            self._sig.pip_log_line.emit(line)
+
+        from core.plugins.plugin_requirements_install import install_plugin_requirements_txt
+
+        project_root = resolve_project_root()
+        pip_code, pip_detail = install_plugin_requirements_txt(
+            project_root, on_output_line=_pip_line
+        )
         pip_payload = json.dumps(
-            {"pip": "app_update_skip_pip", "detail": ""},
-            ensure_ascii=False,
+            {"pip": pip_code, "detail": pip_detail}, ensure_ascii=False
         )
         self._sig.finished.emit("", True, "", pip_payload)
 

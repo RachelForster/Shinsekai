@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QSize, QUrl, Signal
 from PySide6.QtGui import QBrush, QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QColorDialog,
     QComboBox,
     QDoubleSpinBox,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -25,6 +27,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +37,7 @@ import tools.file_util as fu
 from config.character_config import CharacterConfig
 from i18n import tr as tr_i18n
 from ui.settings_ui.context import SettingsUIContext
+from ui.settings_ui.feedback import toast_info
 from ui.settings_ui.feedback import (
     feedback_result,
     is_failure_message,
@@ -364,6 +369,40 @@ class CharacterSettingsTab(QWidget):
         self._upload_voice_btn.clicked.connect(self._on_upload_voice)
         bsp.addWidget(self._upload_voice_btn, alignment=Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(self._box_sprites)
+
+        # --- 5. 角色长期记忆（mem0）---
+        self._mem_box = QGroupBox(tr_i18n("char.mem_box"))
+        mv = QVBoxLayout(self._mem_box)
+        mem_toolbar = QHBoxLayout()
+        self._mem_refresh_btn = QPushButton(tr_i18n("char.mem_refresh"))
+        self._mem_refresh_btn.clicked.connect(self._on_mem_refresh)
+        mem_toolbar.addWidget(self._mem_refresh_btn)
+        mem_toolbar.addStretch(1)
+        self._mem_count_lbl = QLabel("")
+        mem_toolbar.addWidget(self._mem_count_lbl)
+        mv.addLayout(mem_toolbar)
+        self._mem_table = QTableWidget(0, 3)
+        self._mem_table.setHorizontalHeaderLabels(
+            [tr_i18n("char.mem_col_content"), tr_i18n("char.mem_col_id"), ""]
+        )
+        hh = self._mem_table.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self._mem_table.setColumnWidth(2, 64)
+        self._mem_table.verticalHeader().setVisible(False)
+        self._mem_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._mem_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        mv.addWidget(self._mem_table)
+        add_row = QHBoxLayout()
+        self._mem_input = QLineEdit()
+        self._mem_input.setPlaceholderText(tr_i18n("char.mem_ph"))
+        self._mem_add_btn = QPushButton(tr_i18n("char.mem_add"))
+        self._mem_add_btn.clicked.connect(self._on_mem_add)
+        add_row.addWidget(self._mem_input, stretch=1)
+        add_row.addWidget(self._mem_add_btn)
+        mv.addLayout(add_row)
+        lay.addWidget(self._mem_box)
 
         scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -702,6 +741,67 @@ class CharacterSettingsTab(QWidget):
         self._refresh_character_combo(tr_i18n("char.combo_new"))
         self._on_character_change(tr_i18n("char.combo_new"))
         self.character_list_changed.emit()
+
+    # ── 长期记忆管理 ──────────────────────────────────────────────
+
+    def _current_mem_agent_id(self) -> str:
+        name = self.char_name.text().strip()
+        return name if name else "user"
+
+    def _on_mem_refresh(self) -> None:
+        agent_id = self._current_mem_agent_id()
+        try:
+            from llm.tools.memory_tools import memory_search
+            res = memory_search("", character_name=agent_id, limit=200)
+        except Exception as e:
+            self._mem_table.setRowCount(0)
+            self._mem_count_lbl.setText(tr_i18n("char.mem_err", err=str(e)))
+            return
+        mems = res.get("memories", []) if isinstance(res, dict) else []
+        count = len(mems)
+        self._mem_table.setRowCount(count)
+        for i, m in enumerate(mems):
+            content = str(m.get("memory", "") if isinstance(m, dict) else m)
+            mem_id = str(m.get("id", "")) if isinstance(m, dict) else ""
+            it_c = QTableWidgetItem(content)
+            it_c.setToolTip(content)
+            it_c.setFlags(it_c.flags() & ~Qt.ItemIsEditable)
+            self._mem_table.setItem(i, 0, it_c)
+            it_id = QTableWidgetItem(mem_id)
+            it_id.setToolTip(mem_id)
+            it_id.setFlags(it_id.flags() & ~Qt.ItemIsEditable)
+            self._mem_table.setItem(i, 1, it_id)
+            del_btn = QPushButton(tr_i18n("char.mem_del"))
+            del_btn.clicked.connect(
+                lambda checked=False, mid=mem_id: self._on_mem_delete(mid)
+            )
+            self._mem_table.setCellWidget(i, 2, del_btn)
+        self._mem_count_lbl.setText(
+            tr_i18n("char.mem_count", n=count) if count else ""
+        )
+
+    def _on_mem_add(self) -> None:
+        text = self._mem_input.text().strip()
+        if not text:
+            return
+        agent_id = self._current_mem_agent_id()
+        try:
+            from llm.tools.memory_tools import memory_remember
+            memory_remember(text, character_name=agent_id)
+        except Exception as e:
+            toast_info(self, tr_i18n("char.mem_add"), str(e))
+            return
+        self._mem_input.clear()
+        self._on_mem_refresh()
+
+    def _on_mem_delete(self, memory_id: str) -> None:
+        try:
+            from llm.tools.memory_tools import memory_forget
+            memory_forget(memory_id)
+        except Exception as e:
+            toast_info(self, tr_i18n("char.mem_del"), str(e))
+            return
+        self._on_mem_refresh()
 
     def _on_ai_help(self) -> None:
         name = self.char_name.text().strip()
