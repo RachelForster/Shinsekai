@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List
 
 from config.config_manager import ConfigManager
-from core.handlers.handler_registry import MessageHandler
+from sdk.handlers import MessageHandler
 from core.messaging.dialog_tokens import (
     match_bgm_name,
     match_cg_name,
@@ -20,7 +20,7 @@ from core.messaging.dialog_tokens import (
     match_system_dialog_tts,
     normalize_character_name,
 )
-from core.messaging.message import LLMDialogMessage, TTSOutputMessage
+from sdk.messages import LLMDialogMessage, TTSOutputMessage
 from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
 from i18n import tr as tr_i18n
 
@@ -51,14 +51,14 @@ def _cc():
 
 class ChainOfThoughtTtsHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return match_cot_tts(_cc(), msg.character_name)
+        return match_cot_tts(_cc(), msg.name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
-        name = _cc().convert(normalize_character_name(msg.character_name))
+        disp_name = _cc().convert(normalize_character_name(msg.name))
         tts_emit_to_ui_queue(
-            name,
-            msg.speech or "",
-            str(msg.sprite if msg.sprite is not None else "-1"),
+            disp_name,
+            msg.text or "",
+            str(msg.asset_id if msg.asset_id is not None else "-1"),
             "",
             is_system_message=True,
             effect=msg.effect or "",
@@ -67,14 +67,14 @@ class ChainOfThoughtTtsHandler(MessageHandler):
 
 class SystemDialogTtsHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return match_system_dialog_tts(_cc(), msg.character_name)
+        return match_system_dialog_tts(_cc(), msg.name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
-        name = _cc().convert(normalize_character_name(msg.character_name))
+        disp_name = _cc().convert(normalize_character_name(msg.name))
         tts_emit_to_ui_queue(
-            name,
-            msg.speech,
-            str(msg.sprite),
+            disp_name,
+            msg.text,
+            str(msg.asset_id),
             "",
             is_system_message=True,
             effect=msg.effect,
@@ -83,33 +83,33 @@ class SystemDialogTtsHandler(MessageHandler):
 
 class BgmTtsHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return match_bgm_name(msg.character_name)
+        return match_bgm_name(msg.name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
         bgm_path = ""
         try:
-            sid = int(msg.sprite) - 1
+            sid = int(msg.asset_id) - 1
             bgm_path = rt.bgm_list[sid]
         except Exception as e:
             print("无法得到bgm path", e)
             traceback.print_exc()
         finally:
             tts_emit_to_ui_queue(
-                "bgm", "", str(msg.sprite), bgm_path, is_system_message=True, effect=msg.effect
+                "bgm", "", str(msg.asset_id), bgm_path, is_system_message=True, effect=msg.effect
             )
 
 
 class CgTtsHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return match_cg_name(msg.character_name)
+        return match_cg_name(msg.name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
         _post_tts_busy(tr_i18n("desktop.tts_busy_cg"))
         try:
-            cg_path = get_app_runtime().t2i_manager.t2i(prompt=msg.speech, prompt_processor=None)
+            cg_path = get_app_runtime().t2i_manager.t2i(prompt=msg.text, prompt_processor=None)
             tts_emit_to_ui_queue(
-                msg.character_name, msg.speech, "-1", cg_path, is_system_message=True
+                msg.name, msg.text, "-1", cg_path, is_system_message=True
             )
         except Exception as e:
             print(f"生成CG失败，{e}")
@@ -126,13 +126,13 @@ class DefaultCharacterTtsHandler(MessageHandler):
 
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
-        name_s = _cc().convert(msg.character_name)
+        name_s = _cc().convert(msg.name)
         character_config = get_character_by_name(name_s)
         if character_config is None:
             raise ValueError(f"未找到角色配置: {name_s}")
         translate = msg.translate
-        speech = msg.speech
-        sprite = msg.sprite
+        speech = msg.text
+        asset_id = msg.asset_id
         text_processor = rt.text_processor
         speech_text = speech
         if translate:
@@ -150,11 +150,11 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 rt.tts_manager.switch_model(model_info)
                 print("TTSWorker: 使用模型", name_s, model_info)
                 try:
-                    sprite_id = int(sprite) - 1
+                    sprite_id = int(asset_id) - 1
                     if sprite_id < 0 or sprite_id >= len(character_config.sprites):
                         raise IndexError("Sprite ID out of range")
                 except (ValueError, IndexError):
-                    print(f"无效或缺失的立绘编号: {sprite}. 使用默认立绘。")
+                    print(f"无效或缺失的立绘编号: {asset_id}. 使用默认立绘。")
                     sprite_id = -1
                 ref_audio_path = Path(character_config.refer_audio_path).resolve().as_posix()
                 prompt_text = character_config.prompt_text
@@ -197,7 +197,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
                         speed_factor=_speed,
                     )
                 else:
-                    _sprite_str = str(sprite)
+                    _asset_str = str(asset_id)
                     for _i, _sent in enumerate(_sentences):
                         _path = rt.tts_manager.generate_tts(
                             _sent,
@@ -212,9 +212,9 @@ class DefaultCharacterTtsHandler(MessageHandler):
                         _is_last = _i == len(_sentences) - 1
                         rt.audio_path_queue.put(TTSOutputMessage(
                             audio_path=_path or "",
-                            character_name=name_s,
-                            speech=speech if _is_first else "",
-                            sprite=_sprite_str if _is_first else _sprite_str,
+                            name=name_s,
+                            text=speech if _is_first else "",
+                            asset_id=_asset_str if _is_first else _asset_str,
                             effect=msg.effect if _is_first else "",
                             is_final_segment=_is_last,
                             timeout=None if _is_first else 0,
@@ -224,9 +224,9 @@ class DefaultCharacterTtsHandler(MessageHandler):
             finally:
                 _hide_tts_busy()
         else:
-            audio_path = character_config.sprites[int(sprite) - 1].get("voice_path", "")
+            audio_path = character_config.sprites[int(asset_id) - 1].get("voice_path", "")
         tts_emit_to_ui_queue(
-            name_s, speech, str(sprite), audio_path, is_system_message=False, effect=msg.effect
+            name_s, speech, str(asset_id), audio_path, is_system_message=False, effect=msg.effect
         )
 
 

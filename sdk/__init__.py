@@ -8,6 +8,17 @@ Developer CLI (run from this repository root)::
 Heavy imports (Qt, managers, …) load lazily so ``python -m sdk.cli`` works in
 minimal environments. Use explicit submodule imports when possible, e.g.
 ``from sdk.plugin import PluginBase``.
+
+Quick reference
+---------------
+- :mod:`sdk.messages` — 队列消息模型 (UserInputMessage, LLMDialogMessage, TTSOutputMessage)
+- :mod:`sdk.handlers` — 抽象处理器基类 (MessageHandler, UIOutputMessageHandler)
+- :mod:`sdk.adapters` — 适配器抽象 (LLMAdapter, ASRAdapter, TTSAdapter, T2IAdapter)
+- :mod:`sdk.plugin` — 插件入口 (PluginBase)
+- :mod:`sdk.types` — 贡献声明 (SettingsUIContribution, ToolsTabContribution, ChatUIContribution)
+- :mod:`sdk.tool_registry` — LLM 工具注册 (@tool 装饰器)
+- :mod:`sdk.register` — 能力注册表 (PluginCapabilityRegistry)
+- :mod:`sdk.manager` — 插件管理器 (PluginManager)
 """
 
 from __future__ import annotations
@@ -23,6 +34,9 @@ __all__ = [
     "get_chat_ui_context",
     "iter_registered_tools",
     "LLMAdapter",
+    "LLMDialogMessage",
+    "MessageHandler",
+    "PluginBase",
     "PluginCapabilityRegistry",
     "PluginDescriptor",
     "PluginDiscoveryRegistry",
@@ -32,19 +46,35 @@ __all__ = [
     "PluginSettingsUIContext",
     "registered_tool_entries",
     "SettingsUIContribution",
-    "PluginBase",
     "T2IAdapter",
+    "TTSAdapter",
+    "TTSOutputMessage",
     "tool",
     "ToolsTabContribution",
     "TranscriptionCallback",
-    "TTSAdapter",
-    "try_get_chat_ui_context",
-    "set_chat_ui_context",
+    "UIOutputMessageHandler",
+    "UserInputMessage",
     "normalize_lang",
+    "set_chat_ui_context",
     "SUPPORTED_LANGS",
+    "try_get_chat_ui_context",
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    # ── adapters ──
+    "ASRAdapter": ("sdk.adapters", "ASRAdapter"),
+    "LLMAdapter": ("sdk.adapters", "LLMAdapter"),
+    "T2IAdapter": ("sdk.adapters", "T2IAdapter"),
+    "TTSAdapter": ("sdk.adapters", "TTSAdapter"),
+    "TranscriptionCallback": ("sdk.adapters", "TranscriptionCallback"),
+    # ── messages ──
+    "LLMDialogMessage": ("sdk.messages", "LLMDialogMessage"),
+    "TTSOutputMessage": ("sdk.messages", "TTSOutputMessage"),
+    "UserInputMessage": ("sdk.messages", "UserInputMessage"),
+    # ── handlers ──
+    "MessageHandler": ("sdk.handlers", "MessageHandler"),
+    "UIOutputMessageHandler": ("sdk.handlers", "UIOutputMessageHandler"),
+    # ── plugin ──
     "PluginManager": ("sdk.manager", "PluginManager"),
     "PluginBase": ("sdk.plugin", "PluginBase"),
     "PluginHostContext": ("sdk.plugin_host_context", "PluginHostContext"),
@@ -52,23 +82,21 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "PluginCapabilityRegistry": ("sdk.register", "PluginCapabilityRegistry"),
     "PluginDiscoveryRegistry": ("sdk.register", "PluginDiscoveryRegistry"),
     "PluginRegister": ("sdk.register", "PluginRegister"),
+    # ── types ──
     "ChatUIContribution": ("sdk.types", "ChatUIContribution"),
     "ChatUIContext": ("sdk.chat_ui_context", "ChatUIContext"),
     "PluginDescriptor": ("sdk.types", "PluginDescriptor"),
     "SettingsUIContribution": ("sdk.types", "SettingsUIContribution"),
     "ToolsTabContribution": ("sdk.types", "ToolsTabContribution"),
-    "ASRAdapter": ("sdk.adapters", "ASRAdapter"),
-    "LLMAdapter": ("sdk.adapters", "LLMAdapter"),
-    "T2IAdapter": ("sdk.adapters", "T2IAdapter"),
     "get_chat_ui_context": ("sdk.chat_ui_context", "get_chat_ui_context"),
-    "TTSAdapter": ("sdk.adapters", "TTSAdapter"),
-    "TranscriptionCallback": ("sdk.adapters", "TranscriptionCallback"),
+    "set_chat_ui_context": ("sdk.chat_ui_context", "set_chat_ui_context"),
+    "try_get_chat_ui_context": ("sdk.chat_ui_context", "try_get_chat_ui_context"),
+    # ── tools ──
     "apply_registered_tools": ("sdk.tool_registry", "apply_registered_tools"),
     "iter_registered_tools": ("sdk.tool_registry", "iter_registered_tools"),
     "registered_tool_entries": ("sdk.tool_registry", "registered_tool_entries"),
-    "set_chat_ui_context": ("sdk.chat_ui_context", "set_chat_ui_context"),
     "tool": ("sdk.tool_registry", "tool"),
-    "try_get_chat_ui_context": ("sdk.chat_ui_context", "try_get_chat_ui_context"),
+    # ── lang ──
     "normalize_lang": ("sdk.lang", "normalize_lang"),
     "SUPPORTED_LANGS": ("sdk.lang", "SUPPORTED_LANGS"),
 }

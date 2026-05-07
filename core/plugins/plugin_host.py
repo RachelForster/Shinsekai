@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 import yaml
 
 from config.config_manager import ConfigManager
-from core.messaging.message import UserInputMessage
+from sdk.messages import UserInputMessage
 from core.plugins.plugin_requirements_install import (
     ensure_plugin_site_packages_on_syspath,
     ensure_plugins_namespace_on_syspath,
@@ -29,7 +29,7 @@ from t2i.t2i_manager import T2IAdapterFactory
 from tts.tts_manager import TTSAdapterFactory
 
 if TYPE_CHECKING:
-    from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
+    from sdk.handlers import MessageHandler, UIOutputMessageHandler
     from sdk.types import (
         ChatUIContribution,
         SettingsUIContribution,

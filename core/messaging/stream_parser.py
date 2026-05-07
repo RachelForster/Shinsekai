@@ -3,7 +3,7 @@
 import json
 from typing import Iterator
 
-from .message import LLMDialogMessage
+from sdk.messages import LLMDialogMessage
 
 
 class LlmResponseStreamParser:

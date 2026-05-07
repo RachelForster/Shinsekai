@@ -22,7 +22,7 @@ if str(project_root) not in sys.path:
 
 # 导入 ConfigManager 和 Pydantic 消息模型
 from config.config_manager import ConfigManager
-from core.messaging.message import UserInputMessage, LLMDialogMessage, TTSOutputMessage
+from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from core.runtime.app_runtime import get_app_runtime, try_get_app_runtime, tts_emit_to_ui_queue
 from core.messaging.stream_parser import LlmResponseStreamParser
 from core.handlers.handler_registry import default_tts_handler_chain, default_ui_output_handler_chain
@@ -163,22 +163,20 @@ class TTSWorker(BaseWorker):
 
     def run(self):
         while self.running:
-            character_name = "未知"
             item: Optional[LLMDialogMessage] = None
             try:
                 item = self.tts_queue.get()
                 if item is None:
                     break
-                character_name = item.character_name
                 self.tts_message_dispatcher.dispatch(item)
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")
                 traceback.print_exc()
                 if item is not None:
                     self.put_data(
-                        get_app_runtime().opencc.convert(item.character_name),
-                        item.speech,
-                        str(item.sprite) if item.sprite is not None else "-1",
+                        get_app_runtime().opencc.convert(item.name),
+                        item.text,
+                        str(item.asset_id) if item.asset_id is not None else "-1",
                         "",
                         is_system_message=False,
                         effect=item.effect,
@@ -240,15 +238,11 @@ class UIWorker(QThread):
 
     def run(self):
         while self.running:
-            character_name = ""
-            speech = ""
             try:
                 self.task_done_requested.clear()
                 output_data: TTSOutputMessage = self.audio_path_queue.get()
                 if output_data is None:
                     break
-                character_name = output_data.character_name
-                speech = output_data.speech or ""
                 self.ui_out_dispatcher.dispatch(output_data)
             except Exception as e:
                 traceback.print_exc()
@@ -258,6 +252,7 @@ class UIWorker(QThread):
                 except Exception:
                     pass
                 if not self.task_done_requested.is_set():
-                    wait = max(len(speech) / 10, 0.3) if speech else 0.3
+                    _text = getattr(output_data, "text", "") or ""
+                    wait = max(len(_text) / 10, 0.3) if _text else 0.3
                     self.task_done_requested.wait(timeout=wait)
                 self.audio_path_queue.task_done()

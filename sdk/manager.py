@@ -12,8 +12,7 @@ from typing import TYPE_CHECKING, Type
 
 import yaml
 
-from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
-from llm.tools.tool_manager import ToolManager
+from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
 
 from sdk.plugin import PluginBase
@@ -28,6 +27,7 @@ from sdk.types import (
 
 if TYPE_CHECKING:
     from config.config_manager import ConfigManager
+    from llm.tools.tool_manager import ToolManager
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ from typing import Any
 from llm.history_manager import HistoryManager, parse_assistant_dialog_content
 
 from core.messaging.dialog_tokens import is_option_history_name, is_option_history_plain
-from core.messaging.message import TTSOutputMessage
+from sdk.messages import TTSOutputMessage
 
 CHAT_HISTORY_PATH = "./data/chat_history"
 

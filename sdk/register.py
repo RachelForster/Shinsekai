@@ -8,11 +8,13 @@ import importlib
 import logging
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, replace
-from typing import Type
+from typing import TYPE_CHECKING, Type
 
-from core.handlers.handler_registry import MessageHandler, UIOutputMessageHandler
-from llm.tools.tool_manager import ToolManager
+from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
+
+if TYPE_CHECKING:
+    from llm.tools.tool_manager import ToolManager
 from sdk.plugin import PluginBase
 from sdk.types import (
     ChatUIContribution,

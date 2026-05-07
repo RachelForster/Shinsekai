@@ -64,15 +64,15 @@ def tts_emit_to_ui_queue(
     """
     与 TTSWorker.put_data 相同：将一条 TTS 结果送入 UI 队列，并对 LLM 侧 tts_queue 执行 task_done。
     """
-    from core.messaging.message import TTSOutputMessage
+    from sdk.messages import TTSOutputMessage
 
     rt = get_app_runtime()
     audio_path = audio_path or ""
     out = TTSOutputMessage(
         audio_path=audio_path,
-        character_name=character_name,
-        sprite=sprite,
-        speech=speech,
+        name=character_name,
+        asset_id=sprite,
+        text=speech,
         is_system_message=is_system_message,
         effect=effect,
     )
