@@ -24,14 +24,27 @@ class GPTSoVitsAdapter(TTSAdapter):
         self.sovits_model_path = ''
         self.gpt_model_path = ''
         self.gpt_sovits_work_path = gpt_sovits_work_path
+        self._server_process = None
 
         # Consider the user's input mistake
         if self.gpt_sovits_work_path.endswith(".py"):
             self.gpt_sovits_work_path = Path(self.gpt_sovits_work_path).parent.as_posix()
-        
+
 
         # Load the model and start the server process here
         self._start_server_process()
+
+    def stop_server(self) -> None:
+        if self._server_process is not None:
+            try:
+                self._server_process.terminate()
+                self._server_process.wait(timeout=5)
+            except Exception:
+                try:
+                    self._server_process.kill()
+                except Exception:
+                    pass
+            self._server_process = None
 
     def _start_server_process(self):
         """
@@ -55,7 +68,7 @@ class GPTSoVitsAdapter(TTSAdapter):
         api_path = os.path.join(os_path, "api_v2.py")
         
         # Use subprocess.Popen to start the server in the background
-        subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
+        self._server_process = subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
         print("GPT-SoVITS server starting...")
 
     def generate_speech(self, text, file_path=None, **kwargs):
@@ -133,11 +146,24 @@ class IndexTTSAdapter(TTSAdapter):
     def __init__(self, index_server_url="http://localhost:9880/", index_server_work_path = None):
         self.index_server_url = index_server_url
         self.current_model = None
+        self._server_process = None
 
         self.gpt_sovits_work_path = index_server_work_path
 
         # Load the model and start the server process here
         self._start_server_process()
+
+    def stop_server(self) -> None:
+        if self._server_process is not None:
+            try:
+                self._server_process.terminate()
+                self._server_process.wait(timeout=5)
+            except Exception:
+                try:
+                    self._server_process.kill()
+                except Exception:
+                    pass
+            self._server_process = None
 
     def _start_server_process(self):
         """
@@ -161,7 +187,7 @@ class IndexTTSAdapter(TTSAdapter):
         api_path = os.path.join(os_path, "api_v2.py")
         
         # Use subprocess.Popen to start the server in the background
-        subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
+        self._server_process = subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
         print("GPT-SoVITS server starting...")
     
     def generate_speech(self, text, file_path=None, **kwargs):
@@ -270,7 +296,20 @@ class GenieTTSAdapter(TTSAdapter):
         self.onnx_model_dir = None
         self.loaded_character_name = None
         self.reference_audio_key = None
+        self._server_process = None
         self._start_server_process()
+
+    def stop_server(self) -> None:
+        if self._server_process is not None:
+            try:
+                self._server_process.terminate()
+                self._server_process.wait(timeout=5)
+            except Exception:
+                try:
+                    self._server_process.kill()
+                except Exception:
+                    pass
+            self._server_process = None
 
     @staticmethod
     def _encode_name(name: str) -> str:
@@ -418,7 +457,7 @@ class GenieTTSAdapter(TTSAdapter):
             print(f"Genie TTS start.py not found: {start_script_path}")
             return
 
-        subprocess.Popen([embedded_python_path, start_script_path], cwd=os_path)
+        self._server_process = subprocess.Popen([embedded_python_path, start_script_path], cwd=os_path)
         print("Genie TTS server starting...")
         for _ in range(20):
             time.sleep(0.5)

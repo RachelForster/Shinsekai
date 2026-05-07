@@ -43,9 +43,12 @@ class BaseWorker(QThread):
         pass
 
     def stop(self):
-        """停止 Worker 线程的优雅方法"""
+        """停止 Worker 线程并等待结束（最多 3 秒）。"""
         self.running = False
-        # QThread 的停止通常在主应用退出时由 app.aboutToQuit.connect(worker.quit) 处理
+        if not self.wait(3000):
+            print(f"警告: {type(self).__name__} 线程未在 3 秒内退出，强制终止")
+            self.terminate()
+            self.wait()
 
 def getCharacter(name: str):
     rt = try_get_app_runtime()
@@ -132,12 +135,14 @@ class LLMWorker(BaseWorker):
                 traceback.print_exc()
                 self.user_input_queue.task_done()
                 
-    def quit(self):
-        """确保在退出前能解锁队列"""
+    def stop(self):
+        """停止 Worker 线程并等待结束。"""
         self.running = False
-        # 放置一个 None 到队列中，以防 worker 阻塞在 get() 上
-        self.user_input_queue.put(None)
-        super().quit()
+        self.user_input_queue.put(None)  # 解锁 get() 阻塞
+        if not self.wait(3000):
+            print(f"警告: LLMWorker 线程未在 3 秒内退出，强制终止")
+            self.terminate()
+            self.wait()
 
 
 class TTSWorker(BaseWorker):
@@ -182,12 +187,14 @@ class TTSWorker(BaseWorker):
                         effect=item.effect,
                     )
 
-    def quit(self):
-        """确保在退出前能解锁队列"""
+    def stop(self):
+        """停止 Worker 线程并等待结束。"""
         self.running = False
-        # 放置一个 None 到队列中，以防 worker 阻塞在 get() 上
         self.tts_queue.put(None)
-        super().quit()
+        if not self.wait(3000):
+            print(f"警告: TTSWorker 线程未在 3 秒内退出，强制终止")
+            self.terminate()
+            self.wait()
 
 class UIWorker(QThread):
     def __init__(self, input_queue: Queue[TTSOutputMessage], parent=None):

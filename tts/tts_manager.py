@@ -186,6 +186,8 @@ class TTSManager:
         subprocess.Popen([embeded_python_path, path], cwd=os_path)
 
     def shutdown(self):
-        """Shuts down the queue and worker thread."""
+        """Shuts down the queue, worker thread, and TTS server process."""
         self.task_queue.put(None)
         self.worker_thread.join()
+        if hasattr(self.tts_adapter, "stop_server"):
+            self.tts_adapter.stop_server()

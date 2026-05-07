@@ -308,9 +308,7 @@ def main():
     except Exception as e:
         print(tr_i18n("main.print_icon_fail", e=str(e)))
 
-    app.aboutToQuit.connect(llm_worker.quit)
-    app.aboutToQuit.connect(tts_worker.quit)
-    app.aboutToQuit.connect(ui_worker.quit)
+    # 关闭顺序：插件 → TTS 服务器 → Worker 线程 → 保存数据
     try:
         from core.plugins.plugin_host import get_plugin_manager
 
@@ -326,7 +324,11 @@ def main():
         app.aboutToQuit.connect(_shutdown_plugins)
     except Exception:
         pass
+    app.aboutToQuit.connect(lambda: tts_manager and tts_manager.shutdown())
     app.aboutToQuit.connect(lambda: save_chat_history(args.history, llm_manager.get_messages()))
+    app.aboutToQuit.connect(llm_worker.stop)
+    app.aboutToQuit.connect(tts_worker.stop)
+    app.aboutToQuit.connect(ui_worker.stop)
     app.aboutToQuit.connect(
         lambda: save_bg(
             bg_path=window.current_background_path,
