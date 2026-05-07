@@ -175,7 +175,7 @@ def memory_remember(
     agent_id = _resolve_agent_id(character_name)
     try:
         mem = _get_mem0()
-        mem.add(text, user_id=agent_id)
+        mem.add(text, user_id=agent_id, infer=False)
         return {"ok": True, "agent_id": agent_id, "content": text}
     except Exception as e:
         logger.exception("memory_remember 失败")
