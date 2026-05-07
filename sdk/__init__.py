@@ -46,6 +46,7 @@ __all__ = [
     "PluginSettingsUIContext",
     "registered_tool_entries",
     "SettingsUIContribution",
+    "stopwatch",
     "T2IAdapter",
     "TTSAdapter",
     "TTSOutputMessage",
@@ -96,6 +97,8 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "iter_registered_tools": ("sdk.tool_registry", "iter_registered_tools"),
     "registered_tool_entries": ("sdk.tool_registry", "registered_tool_entries"),
     "tool": ("sdk.tool_registry", "tool"),
+    # ── logging ──
+    "stopwatch": ("sdk.logging", "stopwatch"),
     # ── lang ──
     "normalize_lang": ("sdk.lang", "normalize_lang"),
     "SUPPORTED_LANGS": ("sdk.lang", "SUPPORTED_LANGS"),

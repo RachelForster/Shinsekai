@@ -182,6 +182,10 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         is_final = out.is_final_segment
         is_continuation = not speech  # 非首段，仅播放音频
 
+        if not is_continuation:
+            from sdk.logging.timing import tracker
+            tracker.stop_cross("e2e")
+
         character_config = get_character_by_name(character_name)
         if character_config:
             try:

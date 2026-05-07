@@ -168,16 +168,19 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 if text_processor:
                     speech_text = text_processor.remove_parentheses(speech_text)
 
-                # Split by punctuation, then merge so each segment ≤ 15 chars
+                # Split by punctuation, then merge into TTS segments.
+                # First segment may be longer (~25 chars) so its audio outlasts
+                # the generation time of subsequent segments, reducing gaps.
                 _pieces = re.split(r'(?<=[。！？，、；：\.!\?,;:])', speech_text)
                 _pieces = [s.strip() for s in _pieces if s.strip()]
-                _max_seg = 15
+                _first_max, _rest_max = 25, 15
                 _sentences: list[str] = []
                 _cur = ""
                 for _p in _pieces:
+                    _lim = _first_max if not _sentences else _rest_max
                     if not _cur:
                         _cur = _p
-                    elif len(_cur) + len(_p) <= _max_seg:
+                    elif len(_cur) + len(_p) <= _lim:
                         _cur += _p
                     else:
                         _sentences.append(_cur)
@@ -226,7 +229,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
         else:
             audio_path = character_config.sprites[int(asset_id) - 1].get("voice_path", "")
         tts_emit_to_ui_queue(
-            name_s, speech, str(asset_id), audio_path, is_system_message=False, effect=msg.effect
+            name_s, speech, str(asset_id), audio_path, is_system_message=False, effect=msg.effect,
         )
 
 

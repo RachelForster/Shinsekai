@@ -28,7 +28,8 @@ def get_asr_log() -> logging.Logger:
         )
     )
     log.addHandler(h)
-    _name = (os.environ.get("EASYAI_ASR_LOG") or "INFO").upper()
+    # _name = (os.environ.get("EASYAI_ASR_LOG") or "INFO").upper()
+    _name = 'ERROR'
     _lvl = getattr(logging, _name, logging.INFO)
     log.setLevel(_lvl if isinstance(_lvl, int) else logging.INFO)
     log.propagate = False

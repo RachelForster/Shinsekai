@@ -1,11 +1,11 @@
 import re
-import time
 import traceback
 from queue import Queue
 from pathlib import Path
 from typing import Optional
 
 from i18n import tr
+from sdk.logging.timing import tracker
 
 from PySide6.QtCore import QThread
 
@@ -88,17 +88,17 @@ class LLMWorker(BaseWorker):
                     break
                 
                 print(f"LLMWorker: 开始处理消息: {message.text}")
+                tracker.start_cross("e2e")
                 self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
 
                 # 将用户消息添加到历史 (以 UI 格式和 LLM 格式分别处理)
                 formatted_user_message = f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message.text}</p>"
                 self.ui_update_manager.chat_history.append(formatted_user_message)
-                
-                start_time = time.perf_counter()
-                
+
                 # 统一获取响应流
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
-                raw_response = self.llm_manager.chat(message.text, stream=is_streaming)
+                with tracker.track("LLM chat total"):
+                    raw_response = self.llm_manager.chat(message.text, stream=is_streaming)
 
                 # 如果不是流式，将其包装成一个列表，使下文的 for 循环可以统一处理
                 if is_streaming:
@@ -110,22 +110,21 @@ class LLMWorker(BaseWorker):
                 parser = LlmResponseStreamParser()
                 reasoning_shown = ""
 
-                for chunk in response_stream:
-                    if isinstance(chunk, dict) and STREAM_REASONING_DELTA_KEY in chunk:
-                        reasoning_shown += chunk[STREAM_REASONING_DELTA_KEY]
-                        preview = _busy_preview_reasoning(reasoning_shown)
-                        label = tr("desktop.thinking_busy_prefix")
-                        bar_text = f"{label} · {preview}" if preview else label
-                        self.ui_update_manager.post_busy_bar(bar_text, 0.0)
-                        continue
-                    chunk_message = (
-                        chunk if isinstance(chunk, str) else str(chunk) if chunk is not None else ""
-                    )
-                    for llm_dialog in parser.feed(chunk_message):
-                        self.tts_queue.put(llm_dialog)
+                with tracker.track("LLM stream parse"):
+                    for chunk in response_stream:
+                        if isinstance(chunk, dict) and STREAM_REASONING_DELTA_KEY in chunk:
+                            reasoning_shown += chunk[STREAM_REASONING_DELTA_KEY]
+                            preview = _busy_preview_reasoning(reasoning_shown)
+                            label = tr("desktop.thinking_busy_prefix")
+                            bar_text = f"{label} · {preview}" if preview else label
+                            self.ui_update_manager.post_busy_bar(bar_text, 0.0)
+                            continue
+                        chunk_message = (
+                            chunk if isinstance(chunk, str) else str(chunk) if chunk is not None else ""
+                        )
+                        for llm_dialog in parser.feed(chunk_message):
+                            self.tts_queue.put(llm_dialog)
 
-                if reasoning_shown:
-                    self.ui_update_manager.hide_busy_bar()
                 self.user_input_queue.task_done()
 
             except Exception as e:
@@ -168,7 +167,8 @@ class TTSWorker(BaseWorker):
                 item = self.tts_queue.get()
                 if item is None:
                     break
-                self.tts_message_dispatcher.dispatch(item)
+                with tracker.track("TTS dispatch"):
+                    self.tts_message_dispatcher.dispatch(item)
             except Exception as e:
                 print(f"TTSWorker: 任务处理失败: {e}")
                 traceback.print_exc()
