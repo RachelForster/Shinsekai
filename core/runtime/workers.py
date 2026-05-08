@@ -263,3 +263,13 @@ class UIWorker(QThread):
                     wait = max(len(_text) / 10, 0.3) if _text else 0.3
                     self.task_done_requested.wait(timeout=wait)
                 self.audio_path_queue.task_done()
+
+    def stop(self):
+        """停止 UIWorker 线程并等待结束。"""
+        self.running = False
+        self.task_done_requested.set()
+        self.audio_path_queue.put(None)
+        if not self.wait(3000):
+            print(f"警告: UIWorker 线程未在 3 秒内退出，强制终止")
+            self.terminate()
+            self.wait()

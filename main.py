@@ -123,6 +123,8 @@ def main():
             )
             tts_manager = TTSManager(tts_server_url=gsv_url)
             tts_manager.set_tts_adapter(adapter=adapter)
+            _voice_lang = str(config.config.system_config.voice_language or "ja").strip() or "ja"
+            tts_manager.set_language(_voice_lang)
         except Exception as e:
             print(tr_i18n("main.print_tts_fail", e=str(e)))
             traceback.print_exc()

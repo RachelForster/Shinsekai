@@ -95,6 +95,19 @@ def _target_voice_key(code: str | None) -> str:
     return "ja"
 
 
+def _ui_voice_same_lang() -> bool:
+    """UI 语言和语音目标语言相同时返回 True（无需翻译）。"""
+    try:
+        ui = str(config_manager.config.system_config.ui_language or "")
+        voice = str(config_manager.config.system_config.voice_language or "ja")
+    except Exception:
+        return False
+    # 比较语种前缀：zh_CN vs zh → 都是中文
+    ui_main = ui.split("_")[0].lower()
+    voice_main = _target_voice_key(voice)
+    return ui_main == voice_main
+
+
 def _target_voice_display_name() -> str:
     try:
         raw = config_manager.config.system_config.voice_language
@@ -133,6 +146,8 @@ class TemplateGenerator:
 
         effect_line = _T("json_line_effect") if use_effect else ""
         vlang = _target_voice_display_name()
+        if use_llm_translation and _ui_voice_same_lang():
+            use_llm_translation = False
         trans_line = (
             _T("json_line_trans", target_voice_name=vlang) if use_llm_translation else ""
         )

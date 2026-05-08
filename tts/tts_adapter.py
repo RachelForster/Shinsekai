@@ -516,6 +516,7 @@ class GenieTTSAdapter(TTSAdapter):
         ref_audio_path = kwargs.get('ref_audio_path')
         audio_text = kwargs.get('prompt_text')
         audio_lang = kwargs.get('prompt_lang') or kwargs.get('text_lang') or "zh"
+        print(f"Genie TTS generate_speech called with character='{self.character_name}', audio_lang='{audio_lang}'")
         reference_audio_key = f"{ref_audio_path}|{audio_text}|{audio_lang}"
         encoded_character_name = self._encode_name(self.character_name)
 
