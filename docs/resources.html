@@ -100,6 +100,21 @@
   #loading { text-align: center; padding: 60px; color: var(--muted); }
   #error { text-align: center; padding: 60px; color: var(--pink-deep); display: none; }
 
+  .pagination {
+    display: flex; justify-content: center; align-items: center; gap: 8px;
+    margin-top: 20px; flex-wrap: wrap;
+  }
+  .pagination button {
+    background: #fff; border: 2px solid var(--card-border);
+    padding: 6px 14px; border-radius: 16px; cursor: pointer;
+    color: var(--pink-deep); font-size: 0.9em; font-weight: 600;
+    transition: all 0.2s;
+  }
+  .pagination button:hover:not(:disabled) { border-color: var(--pink); background: #fff0f5; }
+  .pagination button:disabled { opacity: 0.4; cursor: default; }
+  .pagination button.active { background: var(--pink); color: #fff; border-color: var(--pink); }
+  .pagination .page-info { color: var(--muted); font-size: 0.9em; margin: 0 8px; }
+
   footer {
     text-align: center; color: var(--muted); font-size: 0.85em;
     margin-top: 48px; padding: 24px 0;
@@ -150,6 +165,8 @@
   <tbody id="tbody"></tbody>
 </table>
 
+<div class="pagination" id="pagination"></div>
+
 <footer>
   <p><span data-i18n="footer_text">资源由社区贡献</span> &nbsp;·&nbsp; <a href="https://github.com/RachelForster/Shinsekai-Resource-Update">GitHub</a></p>
 </footer>
@@ -180,7 +197,10 @@ var L = {
     count: '共 {n} 项',
     dl_btn: '下载',
     footer_text: '资源由社区贡献',
-    no_uploader: '—'
+    no_uploader: '—',
+    page_prev: '上一页',
+    page_next: '下一页',
+    page_info: '第 {page} / {total} 页'
   },
   en: {
     title: 'Resources',
@@ -203,7 +223,10 @@ var L = {
     count: '{n} items',
     dl_btn: 'Download',
     footer_text: 'Resources contributed by the community',
-    no_uploader: '—'
+    no_uploader: '—',
+    page_prev: 'Previous',
+    page_next: 'Next',
+    page_info: 'Page {page} / {total}'
   }
 };
 
@@ -244,11 +267,24 @@ setLang(saved);
 // ── Data loading ────────────────────────────────────────────────
 var allItems = [];
 window._allItems = allItems;
+var currentPage = 1;
+var pageSize = 20;
 
-function render(filtered) {
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function renderPage(filtered) {
+  var total = Math.ceil(filtered.length / pageSize) || 1;
+  if (currentPage > total) currentPage = total;
+  var start = (currentPage - 1) * pageSize;
+  var pageItems = filtered.slice(start, start + pageSize);
+
   var tbody = document.getElementById('tbody');
   tbody.innerHTML = '';
-  filtered.forEach(function (item) {
+  pageItems.forEach(function (item) {
     var tr = document.createElement('tr');
     tr.innerHTML =
       '<td><strong>' + esc(item.name) + '</strong></td>' +
@@ -261,13 +297,23 @@ function render(filtered) {
   });
   document.getElementById('count').textContent = t('count', {n: filtered.length});
   document.getElementById('table').style.display = '';
+  renderPagination(total);
 }
 
-function esc(s) {
-  var d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
+function renderPagination(total) {
+  var pg = document.getElementById('pagination');
+  if (total <= 1) { pg.innerHTML = ''; return; }
+  var html = '';
+  html += '<button ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="goPage(' + (currentPage - 1) + ')">' + t('page_prev') + '</button>';
+  for (var i = 1; i <= total; i++) {
+    html += '<button class="' + (i === currentPage ? 'active' : '') + '" onclick="goPage(' + i + ')">' + i + '</button>';
+  }
+  html += '<button ' + (currentPage === total ? 'disabled' : '') + ' onclick="goPage(' + (currentPage + 1) + ')">' + t('page_next') + '</button>';
+  html += '<span class="page-info">' + t('page_info', {page: currentPage, total: total}) + '</span>';
+  pg.innerHTML = html;
 }
+
+function goPage(n) { currentPage = n; doFilter(); }
 
 function doFilter() {
   var kw = document.getElementById('search').value.trim().toLowerCase();
@@ -278,11 +324,11 @@ function doFilter() {
     if (kw && item.name.toLowerCase().indexOf(kw) === -1) return false;
     return true;
   });
-  render(filtered);
+  renderPage(filtered);
 }
 
-document.getElementById('search').addEventListener('input', doFilter);
-document.getElementById('type-filter').addEventListener('change', doFilter);
+document.getElementById('search').addEventListener('input', function () { currentPage = 1; doFilter(); });
+document.getElementById('type-filter').addEventListener('change', function () { currentPage = 1; doFilter(); });
 
 var params = new URLSearchParams(window.location.search);
 var urlType = params.get('type');
