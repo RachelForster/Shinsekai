@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>资源下载 — Shinsekai</title>
+<style>
+  :root {
+    --sakura: #ffb7c5;
+    --pink: #f0a0c0;
+    --pink-deep: #d4788e;
+    --text: #4a2a38;
+    --muted: #9a6a7c;
+    --card-bg: rgba(255, 255, 255, 0.7);
+    --card-border: rgba(212, 120, 142, 0.2);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+    background: linear-gradient(170deg, #fff0f5 0%, #ffe4ec 28%, #ffd6e4 52%, #ffe8f0 76%, #fff0f5 100%);
+    color: var(--text);
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(circle at 10% 15%, rgba(255, 183, 197, 0.4) 0%, transparent 50%),
+      radial-gradient(circle at 90% 55%, rgba(240, 160, 192, 0.35) 0%, transparent 55%);
+  }
+
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; position: relative; z-index: 1; }
+
+  header { text-align: center; padding: 40px 0 36px; }
+  header h1 {
+    font-size: 2.4em; letter-spacing: 3px; margin-bottom: 8px;
+    background: linear-gradient(135deg, #e8789a, #d4788e, #c0607a);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 800;
+  }
+  header a { color: var(--muted); text-decoration: none; font-size: 0.95em; }
+  header a:hover { color: var(--pink-deep); }
+
+  .toolbar {
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 14px; padding: 20px 24px; margin-bottom: 24px;
+    backdrop-filter: blur(8px); display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  }
+  .toolbar label { font-weight: 600; color: var(--pink-deep); white-space: nowrap; }
+  .toolbar select, .toolbar input {
+    padding: 8px 14px; border: 2px solid var(--card-border); border-radius: 20px;
+    background: #fff; color: var(--text); font-size: 0.95em; outline: none;
+    transition: border-color 0.2s;
+  }
+  .toolbar select:focus, .toolbar input:focus { border-color: var(--pink); }
+  .toolbar input { flex: 1; min-width: 180px; }
+  .toolbar .count { color: var(--muted); font-size: 0.9em; margin-left: auto; white-space: nowrap; }
+
+  table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 14px; overflow: hidden; backdrop-filter: blur(8px);
+  }
+  thead th {
+    background: rgba(240, 160, 192, 0.15); color: var(--pink-deep);
+    padding: 14px 16px; text-align: left; font-size: 0.9em; font-weight: 700;
+    border-bottom: 2px solid var(--pink);
+  }
+  tbody td {
+    padding: 12px 16px; border-bottom: 1px solid rgba(212, 120, 142, 0.1);
+    font-size: 0.93em;
+  }
+  tbody tr:hover { background: rgba(255, 183, 197, 0.12); }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .btn-dl {
+    display: inline-block; background: var(--pink); color: #fff;
+    padding: 5px 16px; border-radius: 16px; text-decoration: none;
+    font-size: 0.85em; font-weight: 600; transition: background 0.2s;
+  }
+  .btn-dl:hover { background: var(--pink-deep); }
+
+  #loading { text-align: center; padding: 60px; color: var(--muted); }
+  #error { text-align: center; padding: 60px; color: var(--pink-deep); display: none; }
+
+  footer {
+    text-align: center; color: var(--muted); font-size: 0.85em;
+    margin-top: 48px; padding: 24px 0;
+    border-top: 1px solid rgba(212, 120, 142, 0.15);
+  }
+  footer a { color: var(--pink-deep); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>资源下载</h1>
+  <a href="./">← 返回首页</a>
+</header>
+
+<div class="toolbar">
+  <label for="type-filter">类型：</label>
+  <select id="type-filter">
+    <option value="all">全部</option>
+    <option value="character">角色包</option>
+    <option value="background">背景包</option>
+  </select>
+  <input type="text" id="search" placeholder="搜索名称…">
+  <span class="count" id="count"></span>
+</div>
+
+<div id="loading">🌸 正在加载资源列表…</div>
+<div id="error">加载失败，请稍后重试。</div>
+
+<table id="table" style="display:none">
+  <thead>
+    <tr>
+      <th>名称</th>
+      <th>类型</th>
+      <th>上传者</th>
+      <th>更新时间</th>
+      <th>下载</th>
+    </tr>
+  </thead>
+  <tbody id="tbody"></tbody>
+</table>
+
+<footer>
+  <p>资源由社区贡献 &nbsp;·&nbsp; <a href="https://github.com/RachelForster/Shinsekai-Resource-Update">GitHub 仓库</a></p>
+</footer>
+
+</div>
+
+<script>
+(async function () {
+  var loading = document.getElementById('loading');
+  var error = document.getElementById('error');
+  var table = document.getElementById('table');
+  var tbody = document.getElementById('tbody');
+  var search = document.getElementById('search');
+  var typeFilter = document.getElementById('type-filter');
+  var countEl = document.getElementById('count');
+
+  var allItems = [];
+
+  function render(filtered) {
+    tbody.innerHTML = '';
+    filtered.forEach(function (item) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><strong>' + esc(item.name) + '</strong></td>' +
+        '<td>' + esc(item._type === 'background' ? '背景包' : '角色包') + '</td>' +
+        '<td>' + (item.uploader ? esc(item.uploader) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+        '<td>' + esc(item.time || '') + '</td>' +
+        '<td><a class="btn-dl" href="' + esc(item.url) + '" target="_blank">下载</a></td>';
+      tbody.appendChild(tr);
+    });
+    countEl.textContent = '共 ' + filtered.length + ' 项';
+    table.style.display = '';
+  }
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function doFilter() {
+    var kw = search.value.trim().toLowerCase();
+    var type = typeFilter.value;
+    var filtered = allItems.filter(function (item) {
+      if (type === 'character' && item._type !== 'character') return false;
+      if (type === 'background' && item._type !== 'background') return false;
+      if (kw && item.name.toLowerCase().indexOf(kw) === -1) return false;
+      return true;
+    });
+    render(filtered);
+  }
+
+  search.addEventListener('input', doFilter);
+  typeFilter.addEventListener('change', doFilter);
+
+  try {
+    var charsResp = await fetch('https://raw.githubusercontent.com/RachelForster/Shinsekai-Resource-Update/main/characters.json');
+    var bgsResp = await fetch('https://raw.githubusercontent.com/RachelForster/Shinsekai-Resource-Update/main/backgrounds.json');
+
+    var chars = charsResp.ok ? await charsResp.json() : [];
+    var bgs = bgsResp.ok ? await bgsResp.json() : [];
+
+    chars.forEach(function (c) { c._type = 'character'; });
+    bgs.forEach(function (b) { b._type = 'background'; });
+
+    allItems = chars.concat(bgs);
+    allItems.sort(function (a, b) { return (b.time || '').localeCompare(a.time || ''); });
+
+    loading.style.display = 'none';
+    doFilter();
+  } catch (e) {
+    loading.style.display = 'none';
+    error.style.display = '';
+  }
+})();
+</script>
+</body>
+</html>
