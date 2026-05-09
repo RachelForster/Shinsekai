@@ -71,7 +71,13 @@
   }
   .toolbar select:focus, .toolbar input:focus { border-color: var(--pink); }
   .toolbar input { flex: 1; min-width: 180px; }
-  .toolbar .count { color: var(--muted); font-size: 0.9em; margin-left: auto; white-space: nowrap; }
+  .toolbar .count { color: var(--muted); font-size: 0.9em; white-space: nowrap; }
+  .toolbar-upload {
+    color: #fff; background: var(--pink-deep); padding: 6px 16px; border-radius: 16px;
+    text-decoration: none; font-size: 0.85em; font-weight: 600; white-space: nowrap;
+    transition: background 0.2s;
+  }
+  .toolbar-upload:hover { background: #c0607a; }
 
   table {
     width: 100%; border-collapse: separate; border-spacing: 0;
@@ -145,6 +151,8 @@
     <option value="background" data-i18n="filter_bg">背景包</option>
   </select>
   <input type="text" id="search" data-i18n-placeholder="search_ph" placeholder="搜索名称…">
+  <a href="https://wj.qq.com/s2/26613318/4fd2/" target="_blank" class="toolbar-upload" data-i18n="upload_char">上传角色</a>
+  <a href="https://wj.qq.com/s2/26616089/b61a/" target="_blank" class="toolbar-upload" data-i18n="upload_bg">上传背景</a>
   <span class="count" id="count"></span>
 </div>
 
@@ -198,6 +206,8 @@ var L = {
     dl_btn: '下载',
     footer_text: '资源由社区贡献',
     no_uploader: '—',
+    upload_char: '上传角色',
+    upload_bg: '上传背景',
     page_prev: '上一页',
     page_next: '下一页',
     page_info: '第 {page} / {total} 页'
@@ -224,6 +234,8 @@ var L = {
     dl_btn: 'Download',
     footer_text: 'Resources contributed by the community',
     no_uploader: '—',
+    upload_char: 'Upload Char',
+    upload_bg: 'Upload BG',
     page_prev: 'Previous',
     page_next: 'Next',
     page_info: 'Page {page} / {total}'
