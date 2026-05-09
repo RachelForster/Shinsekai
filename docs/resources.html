@@ -143,6 +143,7 @@
       <th data-i18n="col_type">类型</th>
       <th data-i18n="col_uploader">上传者</th>
       <th data-i18n="col_time">更新时间</th>
+      <th data-i18n="col_pass">密码</th>
       <th data-i18n="col_dl">下载</th>
     </tr>
   </thead>
@@ -172,6 +173,7 @@ var L = {
     col_type: '类型',
     col_uploader: '上传者',
     col_time: '更新时间',
+    col_pass: '密码',
     col_dl: '下载',
     type_char: '角色包',
     type_bg: '背景包',
@@ -194,6 +196,7 @@ var L = {
     col_type: 'Type',
     col_uploader: 'Uploader',
     col_time: 'Updated',
+    col_pass: 'Password',
     col_dl: 'Download',
     type_char: 'Character',
     type_bg: 'Background',
@@ -252,6 +255,7 @@ function render(filtered) {
       '<td>' + esc(item._type === 'background' ? t('type_bg') : t('type_char')) + '</td>' +
       '<td>' + (item.uploader ? esc(item.uploader) : '<span style="color:var(--muted)">' + t('no_uploader') + '</span>') + '</td>' +
       '<td>' + esc(item.time || '') + '</td>' +
+      '<td>' + (item.password ? '<code>' + esc(item.password) + '</code>' : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td><a class="btn-dl" href="' + esc(item.url) + '" target="_blank">' + t('dl_btn') + '</a></td>';
     tbody.appendChild(tr);
   });
