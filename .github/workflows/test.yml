@@ -27,7 +27,7 @@ jobs:
             libegl1 libxkbcommon0 libxcb-cursor0 libxcb-icccm4 \
             libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
             libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
-            libglib2.0-0 libportaudio2
+            libglib2.0-0 libportaudio2 portaudio19-dev
 
       - name: Install Python dependencies
         run: |
