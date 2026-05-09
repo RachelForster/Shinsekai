@@ -50,9 +50,9 @@ class TestFilterKwargsForCtor:
         result = filter_kwargs_for_ctor(dict, {})
         assert result == {}
 
-    def test_no_init_returns_empty(self):
-        """Class without __init__ should not raise."""
+    def test_no_init_inherits_object_kwargs(self):
+        """Class without own __init__ inherits object.__init__(**kwargs), passes all."""
         class NoInit:
             pass
         result = filter_kwargs_for_ctor(NoInit, {"x": 1})
-        assert result == {}
+        assert result == {"x": 1}  # inherits **kwargs from object
