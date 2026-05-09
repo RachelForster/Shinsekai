@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  schedule:
+    - cron: "0 9 1,15 * *"
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libegl1 libxkbcommon0 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+            libglib2.0-0 libportaudio2 portaudio19-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip -q
+          pip install -r requirements.txt -q
+          pip install pytest pytest-qt pytest-mock pytest-env -q
+
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONIOENCODING: utf-8
+        run: python -m pytest -v --tb=short --strict-markers -p no:warnings
+
+      - name: Create Release
+        env:
+          TAG: v$(date +%Y.%m.%d)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          generate_release_notes: true
+          prerelease: true
