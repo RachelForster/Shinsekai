@@ -399,7 +399,9 @@
     "mem_saving": "Saving memory for \"{name}\"...",
     "dlg_import": "Import .char",
     "dlg_sprites": "Sprite images",
-    "dlg_voice": "Audio"
+    "dlg_voice": "Audio",
+    "community_btn": "Browse Community Characters",
+    "upload_btn": "Upload Character Pack"
   },
   "bg": {
     "h2": "<h2>Backgrounds</h2>",
@@ -465,7 +467,9 @@
     "msg_select_file": "Choose a file",
     "msg_select_imgs": "Choose images",
     "msg_select_bgm": "Choose audio",
-    "msg_import_fail": "Import failed: {e}"
+    "msg_import_fail": "Import failed: {e}",
+    "community_btn": "Browse Community Backgrounds",
+    "upload_btn": "Upload Background Pack"
   },
   "dialog": {
     "option_badge": "Options"

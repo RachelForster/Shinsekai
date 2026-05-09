@@ -396,7 +396,9 @@
     "mem_saving": "「{name}」の記憶を保存中…",
     "dlg_import": ".char を取り込み",
     "dlg_sprites": "立ち絵画像",
-    "dlg_voice": "音声"
+    "dlg_voice": "音声",
+    "community_btn": "コミュニティキャラクターを探す",
+    "upload_btn": "キャラクターをアップロード"
   },
   "bg": {
     "h2": "<h2>背景管理</h2>",
@@ -462,7 +464,9 @@
     "msg_select_file": "ファイルを選んでください",
     "msg_select_imgs": "画像を選んでください",
     "msg_select_bgm": "音楽を選んでください",
-    "msg_import_fail": "取り込み失敗: {e}"
+    "msg_import_fail": "取り込み失敗: {e}",
+    "community_btn": "コミュニティ背景を探す",
+    "upload_btn": "背景をアップロード"
   },
   "dialog": {
     "option_badge": "选项"

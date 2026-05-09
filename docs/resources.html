@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>资源下载 — Shinsekai</title>
+<title>Resources — Shinsekai</title>
 <style>
   :root {
     --sakura: #ffb7c5;
@@ -35,14 +35,28 @@
 
   .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; position: relative; z-index: 1; }
 
-  header { text-align: center; padding: 40px 0 36px; }
+  header { text-align: center; padding: 40px 0 36px; position: relative; }
   header h1 {
     font-size: 2.4em; letter-spacing: 3px; margin-bottom: 8px;
     background: linear-gradient(135deg, #e8789a, #d4788e, #c0607a);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 800;
   }
-  header a { color: var(--muted); text-decoration: none; font-size: 0.95em; }
+  header .top-links { margin-top: 6px; }
+  header a { color: var(--muted); text-decoration: none; font-size: 0.95em; margin: 0 8px; }
   header a:hover { color: var(--pink-deep); }
+
+  .lang-switch {
+    position: absolute; top: 0; right: 0;
+    display: flex; gap: 4px;
+  }
+  .lang-switch button {
+    background: none; border: 1px solid var(--card-border);
+    padding: 4px 12px; border-radius: 12px; cursor: pointer;
+    color: var(--muted); font-size: 0.85em; transition: all 0.2s;
+  }
+  .lang-switch button.active {
+    background: var(--pink); color: #fff; border-color: var(--pink);
+  }
 
   .toolbar {
     background: var(--card-bg); border: 1px solid var(--card-border);
@@ -98,105 +112,192 @@
 <div class="container">
 
 <header>
-  <h1>资源下载</h1>
-  <a href="./">← 返回首页</a>
+  <div class="lang-switch">
+    <button id="lang-zh" onclick="setLang('zh')">中</button>
+    <button id="lang-en" onclick="setLang('en')">EN</button>
+  </div>
+  <h1 data-i18n="title">资源下载</h1>
+  <div class="top-links">
+    <a href="./" data-i18n="back_home">← 返回首页</a>
+  </div>
 </header>
 
 <div class="toolbar">
-  <label for="type-filter">类型：</label>
+  <label for="type-filter" data-i18n="filter_label">类型：</label>
   <select id="type-filter">
-    <option value="all">全部</option>
-    <option value="character">角色包</option>
-    <option value="background">背景包</option>
+    <option value="all" data-i18n="filter_all">全部</option>
+    <option value="character" data-i18n="filter_char">角色包</option>
+    <option value="background" data-i18n="filter_bg">背景包</option>
   </select>
-  <input type="text" id="search" placeholder="搜索名称…">
+  <input type="text" id="search" data-i18n-placeholder="search_ph" placeholder="搜索名称…">
   <span class="count" id="count"></span>
 </div>
 
-<div id="loading">🌸 正在加载资源列表…</div>
-<div id="error">加载失败，请稍后重试。</div>
+<div id="loading" data-i18n="loading">🌸 正在加载资源列表…</div>
+<div id="error" data-i18n="error" style="display:none">加载失败，请稍后重试。</div>
 
 <table id="table" style="display:none">
   <thead>
     <tr>
-      <th>名称</th>
-      <th>类型</th>
-      <th>上传者</th>
-      <th>更新时间</th>
-      <th>下载</th>
+      <th data-i18n="col_name">名称</th>
+      <th data-i18n="col_type">类型</th>
+      <th data-i18n="col_uploader">上传者</th>
+      <th data-i18n="col_time">更新时间</th>
+      <th data-i18n="col_dl">下载</th>
     </tr>
   </thead>
   <tbody id="tbody"></tbody>
 </table>
 
 <footer>
-  <p>资源由社区贡献 &nbsp;·&nbsp; <a href="https://github.com/RachelForster/Shinsekai-Resource-Update">GitHub 仓库</a></p>
+  <p><span data-i18n="footer_text">资源由社区贡献</span> &nbsp;·&nbsp; <a href="https://github.com/RachelForster/Shinsekai-Resource-Update">GitHub</a></p>
 </footer>
 
 </div>
 
 <script>
+// ── i18n ────────────────────────────────────────────────────────
+var L = {
+  zh: {
+    title: '资源下载',
+    back_home: '← 返回首页',
+    filter_label: '类型：',
+    filter_all: '全部',
+    filter_char: '角色包',
+    filter_bg: '背景包',
+    search_ph: '搜索名称…',
+    loading: '🌸 正在加载资源列表…',
+    error: '加载失败，请稍后重试。',
+    col_name: '名称',
+    col_type: '类型',
+    col_uploader: '上传者',
+    col_time: '更新时间',
+    col_dl: '下载',
+    type_char: '角色包',
+    type_bg: '背景包',
+    count: '共 {n} 项',
+    dl_btn: '下载',
+    footer_text: '资源由社区贡献',
+    no_uploader: '—'
+  },
+  en: {
+    title: 'Resources',
+    back_home: '← Back to Home',
+    filter_label: 'Type: ',
+    filter_all: 'All',
+    filter_char: 'Characters',
+    filter_bg: 'Backgrounds',
+    search_ph: 'Search by name…',
+    loading: '🌸 Loading resources…',
+    error: 'Failed to load. Please try again later.',
+    col_name: 'Name',
+    col_type: 'Type',
+    col_uploader: 'Uploader',
+    col_time: 'Updated',
+    col_dl: 'Download',
+    type_char: 'Character',
+    type_bg: 'Background',
+    count: '{n} items',
+    dl_btn: 'Download',
+    footer_text: 'Resources contributed by the community',
+    no_uploader: '—'
+  }
+};
+
+var lang = 'zh';
+
+function t(key, vars) {
+  var s = (L[lang] && L[lang][key]) ? L[lang][key] : (L.en[key] || key);
+  if (vars) {
+    Object.keys(vars).forEach(function (k) { s = s.replace('{' + k + '}', vars[k]); });
+  }
+  return s;
+}
+
+function setLang(l) {
+  lang = l;
+  localStorage.setItem('shinsekai-resources-lang', l);
+  document.getElementById('lang-zh').className = l === 'zh' ? 'active' : '';
+  document.getElementById('lang-en').className = l === 'en' ? 'active' : '';
+  document.documentElement.lang = l === 'en' ? 'en' : 'zh-CN';
+
+  // Update all data-i18n elements
+  document.querySelectorAll('[data-i18n]').forEach(function (el) {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  // Update data-i18n-placeholder elements
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {
+    el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+  });
+  // Re-render table to update type labels and button text
+  if (window._allItems) doFilter();
+}
+
+// Restore saved language or detect from browser
+var saved = localStorage.getItem('shinsekai-resources-lang');
+if (!saved) { saved = navigator.language.startsWith('zh') ? 'zh' : 'en'; }
+setLang(saved);
+
+// ── Data loading ────────────────────────────────────────────────
+var allItems = [];
+window._allItems = allItems;
+
+function render(filtered) {
+  var tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  filtered.forEach(function (item) {
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><strong>' + esc(item.name) + '</strong></td>' +
+      '<td>' + esc(item._type === 'background' ? t('type_bg') : t('type_char')) + '</td>' +
+      '<td>' + (item.uploader ? esc(item.uploader) : '<span style="color:var(--muted)">' + t('no_uploader') + '</span>') + '</td>' +
+      '<td>' + esc(item.time || '') + '</td>' +
+      '<td><a class="btn-dl" href="' + esc(item.url) + '" target="_blank">' + t('dl_btn') + '</a></td>';
+    tbody.appendChild(tr);
+  });
+  document.getElementById('count').textContent = t('count', {n: filtered.length});
+  document.getElementById('table').style.display = '';
+}
+
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function doFilter() {
+  var kw = document.getElementById('search').value.trim().toLowerCase();
+  var type = document.getElementById('type-filter').value;
+  var filtered = allItems.filter(function (item) {
+    if (type === 'character' && item._type !== 'character') return false;
+    if (type === 'background' && item._type !== 'background') return false;
+    if (kw && item.name.toLowerCase().indexOf(kw) === -1) return false;
+    return true;
+  });
+  render(filtered);
+}
+
+document.getElementById('search').addEventListener('input', doFilter);
+document.getElementById('type-filter').addEventListener('change', doFilter);
+
+var params = new URLSearchParams(window.location.search);
+var urlType = params.get('type');
+if (urlType === 'character' || urlType === 'background') {
+  document.getElementById('type-filter').value = urlType;
+}
+
 (async function () {
   var loading = document.getElementById('loading');
   var error = document.getElementById('error');
-  var table = document.getElementById('table');
-  var tbody = document.getElementById('tbody');
-  var search = document.getElementById('search');
-  var typeFilter = document.getElementById('type-filter');
-  var countEl = document.getElementById('count');
-
-  var allItems = [];
-
-  function render(filtered) {
-    tbody.innerHTML = '';
-    filtered.forEach(function (item) {
-      var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td><strong>' + esc(item.name) + '</strong></td>' +
-        '<td>' + esc(item._type === 'background' ? '背景包' : '角色包') + '</td>' +
-        '<td>' + (item.uploader ? esc(item.uploader) : '<span style="color:var(--muted)">—</span>') + '</td>' +
-        '<td>' + esc(item.time || '') + '</td>' +
-        '<td><a class="btn-dl" href="' + esc(item.url) + '" target="_blank">下载</a></td>';
-      tbody.appendChild(tr);
-    });
-    countEl.textContent = '共 ' + filtered.length + ' 项';
-    table.style.display = '';
-  }
-
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-  }
-
-  function doFilter() {
-    var kw = search.value.trim().toLowerCase();
-    var type = typeFilter.value;
-    var filtered = allItems.filter(function (item) {
-      if (type === 'character' && item._type !== 'character') return false;
-      if (type === 'background' && item._type !== 'background') return false;
-      if (kw && item.name.toLowerCase().indexOf(kw) === -1) return false;
-      return true;
-    });
-    render(filtered);
-  }
-
-  search.addEventListener('input', doFilter);
-  typeFilter.addEventListener('change', doFilter);
-
   try {
     var charsResp = await fetch('https://raw.githubusercontent.com/RachelForster/Shinsekai-Resource-Update/main/characters.json');
     var bgsResp = await fetch('https://raw.githubusercontent.com/RachelForster/Shinsekai-Resource-Update/main/backgrounds.json');
-
     var chars = charsResp.ok ? await charsResp.json() : [];
     var bgs = bgsResp.ok ? await bgsResp.json() : [];
-
     chars.forEach(function (c) { c._type = 'character'; });
     bgs.forEach(function (b) { b._type = 'background'; });
-
     allItems = chars.concat(bgs);
     allItems.sort(function (a, b) { return (b.time || '').localeCompare(a.time || ''); });
-
     loading.style.display = 'none';
     doFilter();
   } catch (e) {

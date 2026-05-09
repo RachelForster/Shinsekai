@@ -1,402 +1,420 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Shinsekai — AI 桌面角色扮演助手</title>
-  <style>
-    :root {
-      --sakura: #ffb7c5;
-      --pink: #f0a0c0;
-      --pink-deep: #d4788e;
-      --text: #4a2a38;
-      --muted: #9a6a7c;
-      --card-bg: rgba(255, 255, 255, 0.7);
-      --card-border: rgba(212, 120, 142, 0.2);
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shinsekai — AI Desktop Roleplay Assistant</title>
+<style>
+  :root {
+    --sakura: #ffb7c5;
+    --pink: #f0a0c0;
+    --pink-deep: #d4788e;
+    --text: #4a2a38;
+    --muted: #9a6a7c;
+    --card-bg: rgba(255, 255, 255, 0.7);
+    --card-border: rgba(212, 120, 142, 0.2);
+  }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
-      background: linear-gradient(170deg, #fff0f5 0%, #ffe4ec 28%, #ffd6e4 52%, #ffe8f0 76%, #fff0f5 100%);
-      color: var(--text);
-      line-height: 1.7;
-      min-height: 100vh;
-    }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+    background: linear-gradient(170deg, #fff0f5 0%, #ffe4ec 28%, #ffd6e4 52%, #ffe8f0 76%, #fff0f5 100%);
+    color: var(--text);
+    line-height: 1.7;
+    min-height: 100vh;
+  }
 
-    body::before {
-      content: '';
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      pointer-events: none;
-      z-index: 0;
-      background:
-        radial-gradient(circle at 10% 15%, rgba(255, 183, 197, 0.45) 0%, transparent 50%),
-        radial-gradient(circle at 90% 55%, rgba(240, 160, 192, 0.4) 0%, transparent 55%),
-        radial-gradient(circle at 50% 82%, rgba(255, 200, 215, 0.35) 0%, transparent 45%),
-        radial-gradient(circle at 72% 8%, rgba(255, 183, 197, 0.4) 0%, transparent 40%);
-    }
+  body::before {
+    content: '';
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(circle at 10% 15%, rgba(255, 183, 197, 0.45) 0%, transparent 50%),
+      radial-gradient(circle at 90% 55%, rgba(240, 160, 192, 0.4) 0%, transparent 55%),
+      radial-gradient(circle at 50% 82%, rgba(255, 200, 215, 0.35) 0%, transparent 45%),
+      radial-gradient(circle at 72% 8%, rgba(255, 183, 197, 0.4) 0%, transparent 40%);
+  }
 
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 40px 24px;
-      position: relative;
-      z-index: 1;
-    }
+  .container { max-width: 800px; margin: 0 auto; padding: 40px 24px; position: relative; z-index: 1; }
 
-    header {
-      text-align: center;
-      padding: 60px 0 48px;
-      position: relative;
-    }
+  header { text-align: center; padding: 60px 0 48px; position: relative; }
+  header::after {
+    content: '🌸'; position: absolute; bottom: 0; left: 50%;
+    transform: translateX(-50%); font-size: 1.5em;
+  }
+  header h1 {
+    font-size: 2.6em; letter-spacing: 4px; margin-bottom: 14px;
+    background: linear-gradient(135deg, #e8789a 0%, #d4788e 50%, #c0607a 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 800;
+  }
+  header p { color: var(--muted); font-size: 1.1em; max-width: 560px; margin: 0 auto; line-height: 1.8; }
 
-    header::after {
-      content: '🌸';
-      position: absolute;
-      bottom: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 1.5em;
-    }
+  .lang-switch { display: flex; gap: 4px; justify-content: flex-end; margin-bottom: 12px; }
+  .lang-switch button {
+    background: none; border: 1px solid var(--card-border);
+    padding: 4px 12px; border-radius: 12px; cursor: pointer;
+    color: var(--muted); font-size: 0.85em; transition: all 0.2s;
+  }
+  .lang-switch button.active { background: var(--pink); color: #fff; border-color: var(--pink); }
 
-    header h1 {
-      font-size: 2.6em;
-      letter-spacing: 4px;
-      margin-bottom: 14px;
-      background: linear-gradient(135deg, #e8789a 0%, #d4788e 50%, #c0607a 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      font-weight: 800;
-    }
+  .download-card {
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 16px; padding: 32px 36px; text-align: center; margin-bottom: 40px;
+    backdrop-filter: blur(12px); position: relative; overflow: hidden;
+  }
+  .download-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, transparent, var(--sakura), var(--pink-deep), var(--sakura), transparent);
+  }
+  .download-card .version { color: var(--muted); font-size: 0.95em; margin-bottom: 10px; }
+  .download-card .btn {
+    display: inline-block; background: linear-gradient(135deg, var(--pink-deep), var(--pink));
+    color: #fff; padding: 14px 40px; border-radius: 24px; text-decoration: none;
+    font-size: 1.05em; font-weight: 600; margin: 8px 6px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 20px rgba(212, 120, 142, 0.3);
+  }
+  .download-card .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(212, 120, 142, 0.45); }
+  .download-card .btn-alt {
+    background: #fff; border: 2px solid var(--pink); color: var(--pink-deep); box-shadow: none;
+  }
+  .download-card .btn-alt:hover { background: #fff0f5; box-shadow: 0 0 20px rgba(212, 120, 142, 0.2); }
+  .download-card .assets { margin-top: 22px; text-align: left; display: inline-block; }
+  .download-card .assets a { color: var(--pink-deep); text-decoration: none; display: block; padding: 4px 0; font-size: 0.9em; }
+  .download-card .assets a:hover { text-decoration: underline; }
 
-    header p {
-      color: var(--muted);
-      font-size: 1.1em;
-      max-width: 560px;
-      margin: 0 auto;
-      line-height: 1.8;
-    }
+  section {
+    margin-bottom: 40px; background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 14px; padding: 28px 32px; backdrop-filter: blur(8px);
+  }
+  section h2 {
+    font-size: 1.3em; margin-bottom: 18px; padding-bottom: 10px;
+    border-bottom: 2px solid var(--pink); display: inline-block; color: var(--pink-deep);
+  }
+  section ol, section ul { padding-left: 24px; color: var(--muted); }
+  section li { margin-bottom: 10px; }
+  section li strong { color: var(--text); }
+  section a { color: var(--pink-deep); text-decoration: none; }
+  section a:hover { text-decoration: underline; }
+  section code {
+    background: rgba(240, 160, 192, 0.15); padding: 2px 8px;
+    border-radius: 4px; font-size: 0.92em; color: var(--pink-deep);
+  }
+  pre {
+    background: rgba(240, 160, 192, 0.1); border: 1px solid var(--card-border);
+    padding: 16px 20px; border-radius: 10px; overflow-x: auto; font-size: 0.9em; margin: 12px 0;
+  }
+  pre code { background: none; padding: 0; color: var(--text); }
 
-    .download-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
-      padding: 32px 36px;
-      text-align: center;
-      margin-bottom: 40px;
-      backdrop-filter: blur(12px);
-      position: relative;
-      overflow: hidden;
-    }
+  footer {
+    text-align: center; color: var(--muted); font-size: 0.85em;
+    margin-top: 60px; padding: 28px 0; border-top: 1px solid rgba(212, 120, 142, 0.15);
+  }
+  footer a { color: var(--pink-deep); text-decoration: none; }
 
-    .download-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, transparent, var(--sakura), var(--pink-deep), var(--sakura), transparent);
-    }
+  #loading { color: var(--muted); font-size: 0.95em; }
+  #error { color: var(--pink-deep); display: none; }
 
-    .download-card .version {
-      color: var(--muted);
-      font-size: 0.95em;
-      margin-bottom: 10px;
-    }
-
-    .download-card .btn {
-      display: inline-block;
-      background: linear-gradient(135deg, var(--pink-deep), var(--pink));
-      color: #fff;
-      padding: 14px 40px;
-      border-radius: 24px;
-      text-decoration: none;
-      font-size: 1.05em;
-      font-weight: 600;
-      margin: 8px 6px;
-      transition: transform 0.2s, box-shadow 0.2s;
-      box-shadow: 0 4px 20px rgba(212, 120, 142, 0.3);
-    }
-
-    .download-card .btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 28px rgba(212, 120, 142, 0.45);
-    }
-
-    .download-card .btn-alt {
-      background: #fff;
-      border: 2px solid var(--pink);
-      color: var(--pink-deep);
-      box-shadow: none;
-    }
-
-    .download-card .btn-alt:hover {
-      background: #fff0f5;
-      box-shadow: 0 0 20px rgba(212, 120, 142, 0.2);
-    }
-
-    .download-card .assets {
-      margin-top: 22px;
-      text-align: left;
-      display: inline-block;
-    }
-
-    .download-card .assets a {
-      color: var(--pink-deep);
-      text-decoration: none;
-      display: block;
-      padding: 4px 0;
-      font-size: 0.9em;
-    }
-
-    .download-card .assets a:hover {
-      text-decoration: underline;
-    }
-
-    section {
-      margin-bottom: 40px;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      padding: 28px 32px;
-      backdrop-filter: blur(8px);
-    }
-
-    section h2 {
-      font-size: 1.3em;
-      margin-bottom: 18px;
-      padding-bottom: 10px;
-      border-bottom: 2px solid var(--pink);
-      display: inline-block;
-      color: var(--pink-deep);
-    }
-
-    section ol,
-    section ul {
-      padding-left: 24px;
-      color: var(--muted);
-    }
-
-    section li {
-      margin-bottom: 10px;
-    }
-
-    section li strong {
-      color: var(--text);
-    }
-
-    section a {
-      color: var(--pink-deep);
-      text-decoration: none;
-    }
-
-    section a:hover {
-      text-decoration: underline;
-    }
-
-    section code {
-      background: rgba(240, 160, 192, 0.15);
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 0.92em;
-      color: var(--pink-deep);
-    }
-
-    pre {
-      background: rgba(240, 160, 192, 0.1);
-      border: 1px solid var(--card-border);
-      padding: 16px 20px;
-      border-radius: 10px;
-      overflow-x: auto;
-      font-size: 0.9em;
-      margin: 12px 0;
-    }
-
-    pre code {
-      background: none;
-      padding: 0;
-      color: var(--text);
-    }
-
-    footer {
-      text-align: center;
-      color: var(--muted);
-      font-size: 0.85em;
-      margin-top: 60px;
-      padding: 28px 0;
-      border-top: 1px solid rgba(212, 120, 142, 0.15);
-    }
-
-    footer a {
-      color: var(--pink-deep);
-      text-decoration: none;
-    }
-
-    #loading {
-      color: var(--muted);
-      font-size: 0.95em;
-    }
-
-    #error {
-      color: var(--pink-deep);
-      display: none;
-    }
-  </style>
+  .resource-banner {
+    text-align: center; margin-bottom: 24px;
+  }
+  .resource-banner a {
+    display: inline-block; background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 12px; padding: 12px 28px; color: var(--pink-deep);
+    text-decoration: none; font-weight: 600; backdrop-filter: blur(8px);
+  }
+</style>
 </head>
-
 <body>
-  <div class="container">
-
-    <header>
-      <h1>新世界 Shinsekai</h1>
-      <p>用大语言模型驱动角色对白，立绘与情绪联动<br>可接入语音合成、语音识别与视觉工具扩展</p>
-    </header>
-
-    <div class="download-card">
-      <div id="loading">🌸 正在获取最新版本…</div>
-      <div id="error">无法获取版本信息，请前往 <a href="https://github.com/RachelForster/Shinsekai/releases"
-          style="color:var(--pink-deep)">Releases</a> 手动下载。</div>
-      <div id="release-info" style="display:none">
-        <div class="version" id="version-text"></div>
-        <a id="dl-source" class="btn" href="#">下载源码 (zip)</a>
-        <a id="dl-tar" class="btn btn-alt" href="#">下载源码 (tar.gz)</a>
-        <div class="assets" id="assets-list"></div>
-        <p style="margin-top:14px;color:var(--muted);font-size:0.85em">
-          或浏览 <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--pink-deep)">全部版本</a>
-        </p>
-      </div>
-    </div>
-
-    <p style="text-align:center;margin-bottom:24px">
-      <a href="./resources.html" style="display:inline-block;background:var(--card-bg);border:1px solid var(--card-border);border-radius:12px;padding:12px 28px;color:var(--pink-deep);text-decoration:none;font-weight:600;backdrop-filter:blur(8px)">📦 浏览社区角色包 & 背景包资源</a>
-    </p>
-
-    <section>
-      <h2>快速上手（整合包 · 无需技术背景）</h2>
-      <ol>
-        <li><strong>下载整合包</strong>（任选其一）：
-          <p style="margin:10px 0">
-            <a href="https://pan.baidu.com/s/1tYbMkv5Ehe7plnCfUgMe8w?pwd=qozo" style="display:inline-block;background:var(--pink);color:#fff;padding:8px 20px;border-radius:20px;text-decoration:none;margin:4px 6px">百度网盘</a>
-            <a href="https://pan.quark.cn/s/e89a6222fbf7?pwd=cAuy" style="display:inline-block;background:var(--pink);color:#fff;padding:8px 20px;border-radius:20px;text-decoration:none;margin:4px 6px">夸克网盘</a>
-          </p>
-        </li>
-        <li><strong>解压</strong>下载的文件，<strong>注意路径里不要有中文</strong>（比如直接放在 D 盘根目录）</li>
-        <li>双击 <code>Install.bat</code> 等待安装完成</li>
-        <li>双击 <code>start.bat</code> 打开设置页面</li>
-        <li>在 <strong>API 设定</strong> 中配置 LLM 供应商和 Key，保存</li>
-        <li>在 <strong>角色管理</strong> 中导入角色包（<code>.char</code> 文件）</li>
-        <li>打开 <strong>聊天模板</strong>，选择角色，生成模板</li>
-        <li>点击 <strong>启动聊天</strong>，开始对话</li>
-      </ol>
-      <p style="margin-top:12px;color:var(--muted);font-size:0.9em">
-        🔄 更新软件：设置页面 → <strong>插件</strong> → <strong>发现插件</strong> → <strong>更新软件</strong>，即可升级到最新版
-      </p>
-      <p style="margin-top:6px;color:var(--muted);font-size:0.9em">
-        📖 详细图文教程：<a href="https://www.yuque.com/xiaoyang-id9po/mr7rgk/xiqacv39l027w9o0">新世界程序使用指南（语雀）</a>
-      </p>
-    </section>
-
-    <section>
-      <h2>开发者安装（源码）</h2>
-      <ol>
-        <li><strong>下载</strong>上方最新版源码并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code></li>
-        <li><strong>创建环境</strong>（推荐 Python 3.10）：
-          <pre><code>conda create -n shinsekai python=3.10
-conda activate shinsekai
-pip install -r requirements.txt</code></pre>
-        </li>
-        <li><strong>启动设置界面</strong>：
-          <pre><code>python webui_qt.py</code></pre>
-        </li>
-        <li><strong>配置 API</strong> — 在 <strong>API 设定</strong> 中填写 LLM 供应商、Key 与模型</li>
-        <li><strong>导入角色</strong> — <strong>角色管理</strong> 中导入 <code>.char</code> 角色包</li>
-        <li><strong>启动聊天</strong> — 点击到模版页面，选择人物，启动聊天按钮，开始对话</li>
-      </ol>
-    </section>
-
-    <section>
-      <h2>核心能力</h2>
-      <ul>
-        <li>多 LLM 支持 — DeepSeek / OpenAI / Claude / Gemini 等</li>
-        <li>TTS 语音合成 — GPT-SoVITS / Genie TTS </li>
-        <li>ASR 语音识别 — Vosk / Faster Whisper / RealtimeSTT</li>
-        <li>文生图 — ComfyUI / Stable Diffusion</li>
-        <li>插件系统 — 扩展适配器、工具、UI 组件</li>
-        <li>MCP 协议 — 接入外部工具与检索服务</li>
-        <li>立绘情绪联动 · 聊天历史回溯 · BGM / CG 播放</li>
-      </ul>
-    </section>
-
-    <section>
-      <h2>文档</h2>
-      <ul>
-        <li><a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">图形界面使用指南</a>
-        </li>
-        <li><a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">插件开发者指南</a>
-        </li>
-        <li><a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a></li>
-        <li><a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">插件索引仓库</a></li>
-      </ul>
-    </section>
-
-    <footer>
-      <p>&copy; 2026 不二咲爱笑 &nbsp;·&nbsp; <a href="https://github.com/RachelForster/Shinsekai">GitHub</a> &nbsp;·&nbsp;
-        MIT License</p>
-    </footer>
-
+<div class="container">
+  <div class="lang-switch">
+    <button id="lang-zh" onclick="setLang('zh')">中</button>
+    <button id="lang-en" onclick="setLang('en')">EN</button>
   </div>
 
-  <script>
-    (async function () {
-      var loading = document.getElementById('loading');
-      var error = document.getElementById('error');
-      var info = document.getElementById('release-info');
+  <header>
+    <h1>新世界 Shinsekai</h1>
+    <p><span data-i18n="subtitle_line1">用大语言模型驱动角色对白，立绘与情绪联动</span><br><span data-i18n="subtitle_line2">可接入语音合成、语音识别与视觉工具扩展</span></p>
+  </header>
 
-      try {
-        var resp = await fetch('https://api.github.com/repos/RachelForster/Shinsekai/releases/latest');
-        if (!resp.ok) throw new Error('API error');
-        var release = await resp.json();
+  <div class="download-card">
+    <div id="loading">🌸 <span data-i18n="loading_release">正在获取最新版本…</span></div>
+    <div id="error" style="display:none"><span data-i18n="error_release">无法获取版本信息，请前往</span> <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--pink-deep)">Releases</a> <span data-i18n="error_release_manual">手动下载。</span></div>
+    <div id="release-info" style="display:none">
+      <div class="version" id="version-text"></div>
+      <a id="dl-source" class="btn" href="#" data-i18n="dl_zip">下载源码 (zip)</a>
+      <a id="dl-tar" class="btn btn-alt" href="#" data-i18n="dl_tar">下载源码 (tar.gz)</a>
+      <div class="assets" id="assets-list"></div>
+      <p style="margin-top:14px;color:var(--muted);font-size:0.85em">
+        <span data-i18n="or_browse">或浏览</span> <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--pink-deep)" data-i18n="all_versions">全部版本</a>
+      </p>
+    </div>
+  </div>
 
-        document.getElementById('version-text').textContent =
-          '🌸 ' + release.tag_name + ' · ' + new Date(release.published_at).toLocaleDateString('zh-CN');
+  <div class="resource-banner">
+    <a href="./resources.html" data-i18n="community_resources">📦 浏览社区角色包 & 背景包资源</a>
+  </div>
 
-        document.getElementById('dl-source').href = release.zipball_url;
-        document.getElementById('dl-tar').href = release.tarball_url;
+  <section>
+    <h2 data-i18n="quick_start_title">快速上手（整合包 · 无需技术背景）</h2>
+    <ol>
+      <li><strong data-i18n="qs_step1">下载整合包</strong><span data-i18n="qs_step1_pick">（任选其一）</span>：
+        <p style="margin:10px 0">
+          <a href="https://pan.baidu.com/s/1tYbMkv5Ehe7plnCfUgMe8w?pwd=qozo" style="display:inline-block;background:var(--pink);color:#fff;padding:8px 20px;border-radius:20px;text-decoration:none;margin:4px 6px" data-i18n="baidu_pan">百度网盘</a>
+          <a href="https://pan.quark.cn/s/e89a6222fbf7?pwd=cAuy" style="display:inline-block;background:var(--pink);color:#fff;padding:8px 20px;border-radius:20px;text-decoration:none;margin:4px 6px" data-i18n="quark_pan">夸克网盘</a>
+        </p>
+      </li>
+      <li data-i18n_html="qs_step2"><strong>解压</strong>下载的文件，<strong>注意路径里不要有中文</strong>（比如直接放在 D 盘根目录）</li>
+      <li data-i18n_html="qs_step3">双击 <code>Install.bat</code> 等待安装完成</li>
+      <li data-i18n_html="qs_step4">双击 <code>start.bat</code> 打开设置页面</li>
+      <li data-i18n_html="qs_step5">在 <strong>API 设定</strong> 中配置 LLM 供应商和 Key，保存</li>
+      <li data-i18n_html="qs_step6">在 <strong>角色管理</strong> 中导入角色包（<code>.char</code> 文件）</li>
+      <li data-i18n_html="qs_step7">打开 <strong>聊天模板</strong>，选择角色，生成模板</li>
+      <li data-i18n_html="qs_step8">点击 <strong>启动聊天</strong>，开始对话</li>
+    </ol>
+    <p style="margin-top:12px;color:var(--muted);font-size:0.9em" data-i18n_html="qs_update">
+      🔄 更新软件：设置页面 → <strong>插件</strong> → <strong>发现插件</strong> → <strong>更新软件</strong>，即可升级到最新版
+    </p>
+    <p style="margin-top:6px;color:var(--muted);font-size:0.9em">
+      📖 <span data-i18n="qs_guide_prefix">详细图文教程：</span><a href="https://www.yuque.com/xiaoyang-id9po/mr7rgk/xiqacv39l027w9o0" data-i18n="qs_guide_link">新世界程序使用指南（语雀）</a>
+    </p>
+  </section>
 
-        var list = document.getElementById('assets-list');
-        if (release.assets && release.assets.length > 0) {
-          list.innerHTML = '<p style="margin-top:6px;color:var(--muted)">附加文件：</p>';
-          release.assets.forEach(function (a) {
-            var size = (a.size / 1024 / 1024).toFixed(1);
-            list.innerHTML +=
-              '<a href="' + a.browser_download_url + '">' + a.name + '</a>' +
-              '<span style="color:var(--muted);font-size:0.8em"> (' + size + ' MB)</span>';
-          });
-        }
+  <section>
+    <h2 data-i18n="dev_title">开发者安装（源码）</h2>
+    <ol>
+      <li data-i18n_html="dev_step1"><strong>下载</strong>上方最新版源码并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code></li>
+      <li><strong data-i18n="dev_step2_title">创建环境</strong><span data-i18n="dev_step2_desc">（推荐 Python 3.10）</span>：
+        <pre><code>conda create -n shinsekai python=3.10
+conda activate shinsekai
+pip install -r requirements.txt</code></pre>
+      </li>
+      <li><strong data-i18n="dev_step3">启动设置界面</strong>：
+        <pre><code>python webui_qt.py</code></pre>
+      </li>
+      <li data-i18n_html="dev_step4">在 <strong>API 设定</strong> 中填写 LLM 供应商、Key 与模型</li>
+      <li data-i18n_html="dev_step5">在 <strong>角色管理</strong> 中导入 <code>.char</code> 角色包</li>
+      <li data-i18n_html="dev_step6">打开 <strong>聊天模板</strong>，选择角色，生成模板，<strong>启动聊天</strong></li>
+    </ol>
+  </section>
 
-        loading.style.display = 'none';
-        info.style.display = 'block';
-} catch (e) {
-        document.getElementById('version-text').textContent = '🌸 最新源码';
-        document.getElementById('dl-source').href = 'https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip';
-        document.getElementById('dl-tar').href = 'https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz';
-        loading.style.display = 'none';
-        info.style.display = 'block';
-      }
-    })();
-  </script>
+  <section>
+    <h2 data-i18n="features_title">核心能力</h2>
+    <ul data-i18n_list="features">
+      <li>多 LLM 支持 — DeepSeek / OpenAI / Claude / Gemini 等</li>
+      <li>TTS 语音合成 — GPT-SoVITS / Genie TTS</li>
+      <li>ASR 语音识别 — Vosk / Faster Whisper / RealtimeSTT</li>
+      <li>文生图 — ComfyUI / Stable Diffusion</li>
+      <li>插件系统 — 扩展适配器、工具、UI 组件</li>
+      <li>MCP 协议 — 接入外部工具与检索服务</li>
+      <li>立绘情绪联动 · 聊天历史回溯 · BGM / CG 播放</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 data-i18n="docs_title">文档</h2>
+    <ul data-i18n_list="docs">
+      <li><a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">图形界面使用指南</a></li>
+      <li><a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">插件开发者指南</a></li>
+      <li><a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a></li>
+      <li><a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">插件索引仓库</a></li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>&copy; 2026 不二咲爱笑 &nbsp;·&nbsp; <a href="https://github.com/RachelForster/Shinsekai">GitHub</a> &nbsp;·&nbsp; MIT License</p>
+  </footer>
+</div>
+
+<script>
+// ── i18n ─────────────────────────────────────────────────────────────────────
+var L = {
+  zh: {
+    subtitle_line1: '用大语言模型驱动角色对白，立绘与情绪联动',
+    subtitle_line2: '可接入语音合成、语音识别与视觉工具扩展',
+    loading_release: '正在获取最新版本…',
+    error_release: '无法获取版本信息，请前往',
+    error_release_manual: '手动下载。',
+    dl_zip: '下载源码 (zip)',
+    dl_tar: '下载源码 (tar.gz)',
+    or_browse: '或浏览',
+    all_versions: '全部版本',
+    fallback_version: '🌸 最新源码',
+    extra_files: '附加文件：',
+    community_resources: '📦 浏览社区角色包 & 背景包资源',
+    quick_start_title: '快速上手（整合包 · 无需技术背景）',
+    qs_step1: '下载整合包',
+    qs_step1_pick: '（任选其一）',
+    qs_step2: '<strong>解压</strong>下载的文件，<strong>注意路径里不要有中文</strong>（比如直接放在 D 盘根目录）',
+    qs_step3: '双击 <code>Install.bat</code> 等待安装完成',
+    qs_step4: '双击 <code>start.bat</code> 打开设置页面',
+    qs_step5: '在 <strong>API 设定</strong> 中配置 LLM 供应商和 Key，保存',
+    qs_step6: '在 <strong>角色管理</strong> 中导入角色包（<code>.char</code> 文件）',
+    qs_step7: '打开 <strong>聊天模板</strong>，选择角色，生成模板',
+    qs_step8: '点击 <strong>启动聊天</strong>，开始对话',
+    qs_update: '🔄 更新软件：设置页面 → <strong>插件</strong> → <strong>发现插件</strong> → <strong>更新软件</strong>，即可升级到最新版',
+    qs_guide_prefix: '详细图文教程：',
+    qs_guide_link: '新世界程序使用指南（语雀）',
+    dev_title: '开发者安装（源码）',
+    dev_step1: '<strong>下载</strong>上方最新版源码并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code>',
+    dev_step2_title: '创建环境',
+    dev_step2_desc: '（推荐 Python 3.10）',
+    dev_step3: '启动设置界面',
+    dev_step4: '在 <strong>API 设定</strong> 中填写 LLM 供应商、Key 与模型',
+    dev_step5: '在 <strong>角色管理</strong> 中导入 <code>.char</code> 角色包',
+    dev_step6: '打开 <strong>聊天模板</strong>，选择角色，生成模板，<strong>启动聊天</strong>',
+    features_title: '核心能力',
+    features: [
+      '多 LLM 支持 — DeepSeek / OpenAI / Claude / Gemini 等',
+      'TTS 语音合成 — GPT-SoVITS / Genie TTS',
+      'ASR 语音识别 — Vosk / Faster Whisper / RealtimeSTT',
+      '文生图 — ComfyUI / Stable Diffusion',
+      '插件系统 — 扩展适配器、工具、UI 组件',
+      'MCP 协议 — 接入外部工具与检索服务',
+      '立绘情绪联动 · 聊天历史回溯 · BGM / CG 播放'
+    ],
+    docs_title: '文档',
+    docs: [
+      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">图形界面使用指南</a>',
+      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">插件开发者指南</a>',
+      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a>',
+      '<a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">插件索引仓库</a>'
+    ],
+    baidu_pan: '百度网盘',
+    quark_pan: '夸克网盘'
+  },
+  en: {
+    subtitle_line1: 'LLM-powered character dialogue with live2d-style sprite & emotion联动',
+    subtitle_line2: 'TTS · ASR · T2I · plugins — all configurable locally',
+    loading_release: 'Fetching latest release…',
+    error_release: 'Unable to fetch release info. Please visit',
+    error_release_manual: 'to download manually.',
+    dl_zip: 'Download Source (zip)',
+    dl_tar: 'Download Source (tar.gz)',
+    or_browse: 'or browse',
+    all_versions: 'all releases',
+    fallback_version: '🌸 Latest Source',
+    extra_files: 'Assets:',
+    community_resources: '📦 Browse Community Character & Background Packs',
+    quick_start_title: 'Quick Start (All-in-One Bundle · No Tech Skills Needed)',
+    qs_step1: 'Download the bundle',
+    qs_step1_pick: '(pick one)',
+    qs_step2: '<strong>Extract</strong> the downloaded file. <strong>Make sure the path contains no Chinese characters</strong> (e.g. extract to D:\\ root)',
+    qs_step3: 'Double-click <code>Install.bat</code> and wait for it to finish',
+    qs_step4: 'Double-click <code>start.bat</code> to open the Settings window',
+    qs_step5: 'In <strong>API Settings</strong>, configure your LLM provider and API key, then save',
+    qs_step6: 'In <strong>Character Manager</strong>, import a character pack (<code>.char</code> file)',
+    qs_step7: 'Open <strong>Chat Templates</strong>, select characters, and generate a template',
+    qs_step8: 'Click <strong>Launch Chat</strong> to start the conversation',
+    qs_update: '🔄 To update: Settings → <strong>Plugins</strong> → <strong>Discover</strong> → <strong>Update Software</strong>',
+    qs_guide_prefix: 'Detailed guide: ',
+    qs_guide_link: 'Shinsekai User Guide (Yuque)',
+    dev_title: 'Developer Setup (Source)',
+    dev_step1: '<strong>Download</strong> the latest source above, or <code>git clone https://github.com/RachelForster/Shinsekai</code>',
+    dev_step2_title: 'Create environment',
+    dev_step2_desc: ' (Python 3.10 recommended)',
+    dev_step3: 'Launch Settings',
+    dev_step4: 'Fill in your LLM provider, key and model under <strong>API Settings</strong>',
+    dev_step5: 'Import a <code>.char</code> character pack in <strong>Character Manager</strong>',
+    dev_step6: 'Open <strong>Chat Templates</strong>, pick characters, generate, then <strong>Launch Chat</strong>',
+    features_title: 'Features',
+    features: [
+      'Multi-LLM — DeepSeek / OpenAI / Claude / Gemini & more',
+      'TTS — GPT-SoVITS / Genie TTS',
+      'ASR — Vosk / Faster Whisper / RealtimeSTT',
+      'T2I — ComfyUI / Stable Diffusion',
+      'Plugin system — extend adapters, tools & UI',
+      'MCP protocol — connect external tools & services',
+      'Sprite emotion sync · Chat history · BGM / CG playback'
+    ],
+    docs_title: 'Docs',
+    docs: [
+      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">GUI User Guide (Chinese)</a>',
+      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">Plugin Developer Guide</a>',
+      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a>',
+      '<a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">Plugin Registry</a>'
+    ],
+    baidu_pan: 'Baidu Pan',
+    quark_pan: 'Quark Pan'
+  }
+};
+
+var lang = 'zh';
+
+function t(key, vars) {
+  var s = (L[lang] && L[lang][key] != null) ? L[lang][key] : (L.en[key] || key);
+  if (vars) {
+    Object.keys(vars).forEach(function (k) { s = s.replace('{' + k + '}', vars[k]); });
+  }
+  return s;
+}
+
+function setLang(l) {
+  lang = l;
+  localStorage.setItem('shinsekai-lang', l);
+  document.getElementById('lang-zh').className = l === 'zh' ? 'active' : '';
+  document.getElementById('lang-en').className = l === 'en' ? 'active' : '';
+  document.documentElement.lang = l === 'en' ? 'en' : 'zh-CN';
+  applyI18n();
+}
+
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(function (el) {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  document.querySelectorAll('[data-i18n_html]').forEach(function (el) {
+    el.innerHTML = t(el.getAttribute('data-i18n_html'));
+  });
+  document.querySelectorAll('[data-i18n_list]').forEach(function (el) {
+    var items = t(el.getAttribute('data-i18n_list'));
+    if (Array.isArray(items)) {
+      el.innerHTML = items.map(function (item) { return '<li>' + item + '</li>'; }).join('');
+    }
+  });
+}
+
+var saved = localStorage.getItem('shinsekai-lang');
+if (!saved) { saved = navigator.language.startsWith('zh') ? 'zh' : 'en'; }
+setLang(saved);
+
+// ── Release fetching ─────────────────────────────────────────────────────────
+(async function () {
+  var loading = document.getElementById('loading');
+  var info = document.getElementById('release-info');
+
+  try {
+    var resp = await fetch('https://api.github.com/repos/RachelForster/Shinsekai/releases/latest');
+    if (!resp.ok) throw new Error('no release');
+    var release = await resp.json();
+
+    document.getElementById('version-text').textContent =
+      '🌸 ' + release.tag_name + ' · ' + new Date(release.published_at).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US');
+
+    document.getElementById('dl-source').href = release.zipball_url;
+    document.getElementById('dl-tar').href = release.tarball_url;
+
+    var list = document.getElementById('assets-list');
+    if (release.assets && release.assets.length > 0) {
+      list.innerHTML = '<p style="margin-top:6px;color:var(--muted)">' + t('extra_files') + '</p>';
+      release.assets.forEach(function (a) {
+        var size = (a.size / 1024 / 1024).toFixed(1);
+        list.innerHTML +=
+          '<a href="' + a.browser_download_url + '">' + a.name + '</a>' +
+          '<span style="color:var(--muted);font-size:0.8em"> (' + size + ' MB)</span>';
+      });
+    }
+
+    loading.style.display = 'none';
+    info.style.display = 'block';
+  } catch (e) {
+    document.getElementById('version-text').textContent = t('fallback_version');
+    document.getElementById('dl-source').href = 'https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip';
+    document.getElementById('dl-tar').href = 'https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz';
+    loading.style.display = 'none';
+    info.style.display = 'block';
+  }
+})();
+</script>
 </body>
-
 </html>

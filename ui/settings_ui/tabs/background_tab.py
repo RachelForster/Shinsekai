@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 from PySide6.QtCore import Qt, QUrl, Signal, QSize
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -98,6 +99,25 @@ class BackgroundSettingsTab(QWidget):
         self._import_bg_btn = QPushButton(tr_i18n("bg.import"))
         self._import_bg_btn.clicked.connect(self._on_import)
         bgl.addWidget(self._import_bg_btn)
+        community_row = QHBoxLayout()
+        self._community_bg_btn = QPushButton(tr_i18n("bg.community_btn"))
+        self._community_bg_btn.setToolTip(tr_i18n("bg.community_btn"))
+        self._community_bg_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://rachelforster.github.io/Shinsekai/resources.html?type=background")
+            )
+        )
+        self._upload_bg_btn = QPushButton(tr_i18n("bg.upload_btn"))
+        self._upload_bg_btn.setToolTip(tr_i18n("bg.upload_btn"))
+        self._upload_bg_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://wj.qq.com/s2/26613318/4fd2/")
+            )
+        )
+        community_row.addWidget(self._community_bg_btn)
+        community_row.addWidget(self._upload_bg_btn)
+        community_row.addStretch(1)
+        bgl.addLayout(community_row)
         lay.addWidget(self._box_group)
 
         # --- 2. 名称与保存 ---

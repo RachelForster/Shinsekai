@@ -396,7 +396,9 @@
     "mem_saving": "正在保存「{name}」的记忆…",
     "dlg_import": "导入 .char",
     "dlg_sprites": "立绘图片",
-    "dlg_voice": "语音文件"
+    "dlg_voice": "语音文件",
+    "community_btn": "获取社区角色包",
+    "upload_btn": "上传角色包"
   },
   "bg": {
     "h2": "<h2>背景管理</h2>",
@@ -462,7 +464,9 @@
     "msg_select_file": "请选择文件",
     "msg_select_imgs": "请选择图片",
     "msg_select_bgm": "请选择音乐文件",
-    "msg_import_fail": "导入失败: {e}"
+    "msg_import_fail": "导入失败: {e}",
+    "community_btn": "获取社区背景包",
+    "upload_btn": "上传背景包"
   },
   "dialog": {
     "option_badge": "选项"

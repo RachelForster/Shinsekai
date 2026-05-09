@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSize, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QBrush, QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -187,6 +188,25 @@ class CharacterSettingsTab(QWidget):
         self._import_btn = QPushButton(tr_i18n("char.import"))
         self._import_btn.clicked.connect(self._on_import)
         bl.addWidget(self._import_btn)
+        community_row = QHBoxLayout()
+        self._community_btn = QPushButton(tr_i18n("char.community_btn"))
+        self._community_btn.setToolTip(tr_i18n("char.community_btn"))
+        self._community_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://rachelforster.github.io/Shinsekai/resources.html?type=character")
+            )
+        )
+        self._upload_btn = QPushButton(tr_i18n("char.upload_btn"))
+        self._upload_btn.setToolTip(tr_i18n("char.upload_btn"))
+        self._upload_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://wj.qq.com/s2/26613318/4fd2/")
+            )
+        )
+        community_row.addWidget(self._community_btn)
+        community_row.addWidget(self._upload_btn)
+        community_row.addStretch(1)
+        bl.addLayout(community_row)
         lay.addWidget(self._box_files)
 
         # --- 2. 人物信息（表单 + 设定长文本）---
