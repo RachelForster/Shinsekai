@@ -1,0 +1,12 @@
+- name: TestChar
+  color: "#ff6b6b"
+  sprite_prefix: test_char
+  character_setting: "You are a helpful test character."
+  sprite_scale: 1.0
+  emotion_tags: "happy:0, sad:1, angry:2"
+  speech_speed: 1.0
+
+- name: Narrator
+  color: "#cccccc"
+  sprite_prefix: narrator
+  character_setting: "You are the narrator."

@@ -100,7 +100,7 @@ class T2IManager:
                 break
             try:
                 if task['type'] == 'generate':
-                    self.generate_t2i(task['prompt'], task['prompt_processor'], **task['kwargs'])
+                    self.t2i(task['prompt'], task['prompt_processor'], **task['kwargs'])
                 # Add other task types (e.g., 'inpaint', 'upscale') here
             except Exception as e:
                 print(f"T2I task failed: {e}")

@@ -1,0 +1,5 @@
+[
+  {"character_name": "TestChar", "speech": "Hello, world!", "sprite": "0"},
+  {"character_name": "NARR", "speech": "The sun rises over the horizon.", "sprite": "-1"},
+  {"character_name": "TestChar", "speech": "How are you today?", "sprite": "1"}
+]

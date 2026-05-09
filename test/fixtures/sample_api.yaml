@@ -1,0 +1,17 @@
+# Sample API config for tests
+llm_provider: Deepseek
+llm_api_key:
+  Deepseek: sk-test-sample-key
+llm_base_url: https://api.deepseek.com
+llm_model:
+  Deepseek: deepseek-chat
+is_streaming: true
+temperature: 0.7
+repetition_penalty: 1.0
+presence_penalty: 0.0
+frequency_penalty: 0.0
+max_context_tokens: 128000
+tts_provider: gpt-sovits
+t2i_provider: comfyui
+gpt_sovits_url: http://127.0.0.1:9880
+gpt_sovits_api_path: data/tts_bundles
