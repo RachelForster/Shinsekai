@@ -6,29 +6,24 @@
 <title>Shinsekai — AI 桌面角色扮演助手</title>
 <style>
   :root {
-    --pink-light: #ffe0ec;
-    --pink: #f8a4c8;
-    --pink-deep: #e8789a;
     --sakura: #ffb7c5;
-    --bg: #1c1018;
-    --card: rgba(255, 255, 255, 0.06);
-    --card-border: rgba(255, 183, 197, 0.15);
-    --text: #f0e0e8;
-    --muted: #c0a0b0;
-    --accent: #f8a4c8;
-    --accent-glow: rgba(248, 164, 200, 0.3);
+    --pink: #f0a0c0;
+    --pink-deep: #d4788e;
+    --text: #4a2a38;
+    --muted: #9a6a7c;
+    --card-bg: rgba(255, 255, 255, 0.7);
+    --card-border: rgba(212, 120, 142, 0.2);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
-    background: linear-gradient(160deg, #1c1018 0%, #2d1528 30%, #1c1018 60%, #261420 100%);
+    background: linear-gradient(170deg, #fff0f5 0%, #ffe4ec 28%, #ffd6e4 52%, #ffe8f0 76%, #fff0f5 100%);
     color: var(--text);
     line-height: 1.7;
     min-height: 100vh;
   }
 
-  /* floating sakura petals */
   body::before {
     content: '';
     position: fixed;
@@ -36,10 +31,10 @@
     pointer-events: none;
     z-index: 0;
     background:
-      radial-gradient(circle at 15% 20%, var(--accent-glow) 0%, transparent 50%),
-      radial-gradient(circle at 85% 60%, rgba(232, 120, 154, 0.2) 0%, transparent 50%),
-      radial-gradient(circle at 50% 85%, rgba(255, 183, 197, 0.15) 0%, transparent 40%),
-      radial-gradient(circle at 70% 10%, rgba(248, 164, 200, 0.15) 0%, transparent 35%);
+      radial-gradient(circle at 10% 15%, rgba(255, 183, 197, 0.45) 0%, transparent 50%),
+      radial-gradient(circle at 90% 55%, rgba(240, 160, 192, 0.4) 0%, transparent 55%),
+      radial-gradient(circle at 50% 82%, rgba(255, 200, 215, 0.35) 0%, transparent 45%),
+      radial-gradient(circle at 72% 8%, rgba(255, 183, 197, 0.4) 0%, transparent 40%);
   }
 
   .container { max-width: 800px; margin: 0 auto; padding: 40px 24px; position: relative; z-index: 1; }
@@ -55,14 +50,13 @@
     bottom: 0;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 1.4em;
-    opacity: 0.6;
+    font-size: 1.5em;
   }
   header h1 {
     font-size: 2.6em;
     letter-spacing: 4px;
     margin-bottom: 14px;
-    background: linear-gradient(135deg, #ffc8da 0%, #f8a4c8 30%, #e8789a 60%, #ffb7c5 100%);
+    background: linear-gradient(135deg, #e8789a 0%, #d4788e 50%, #c0607a 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -76,9 +70,8 @@
     line-height: 1.8;
   }
 
-  /* ----- download card ----- */
   .download-card {
-    background: var(--card);
+    background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 16px;
     padding: 32px 36px;
@@ -111,21 +104,21 @@
     font-weight: 600;
     margin: 8px 6px;
     transition: transform 0.2s, box-shadow 0.2s;
-    box-shadow: 0 4px 20px var(--accent-glow);
+    box-shadow: 0 4px 20px rgba(212, 120, 142, 0.3);
   }
   .download-card .btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 28px rgba(248, 164, 200, 0.45);
+    box-shadow: 0 6px 28px rgba(212, 120, 142, 0.45);
   }
   .download-card .btn-alt {
-    background: transparent;
+    background: #fff;
     border: 2px solid var(--pink);
-    color: var(--pink);
+    color: var(--pink-deep);
     box-shadow: none;
   }
   .download-card .btn-alt:hover {
-    background: rgba(248, 164, 200, 0.1);
-    box-shadow: 0 0 20px var(--accent-glow);
+    background: #fff0f5;
+    box-shadow: 0 0 20px rgba(212, 120, 142, 0.2);
   }
   .download-card .assets {
     margin-top: 22px;
@@ -133,18 +126,17 @@
     display: inline-block;
   }
   .download-card .assets a {
-    color: var(--sakura);
+    color: var(--pink-deep);
     text-decoration: none;
     display: block;
     padding: 4px 0;
     font-size: 0.9em;
   }
-  .download-card .assets a:hover { color: var(--pink); text-decoration: underline; }
+  .download-card .assets a:hover { text-decoration: underline; }
 
-  /* ----- sections ----- */
   section {
     margin-bottom: 40px;
-    background: var(--card);
+    background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 14px;
     padding: 28px 32px;
@@ -154,27 +146,24 @@
     font-size: 1.3em;
     margin-bottom: 18px;
     padding-bottom: 10px;
-    border-bottom: 2px solid var(--pink-deep);
+    border-bottom: 2px solid var(--pink);
     display: inline-block;
-    background: linear-gradient(90deg, var(--sakura), var(--pink));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--pink-deep);
   }
   section ol, section ul { padding-left: 24px; color: var(--muted); }
   section li { margin-bottom: 10px; }
   section li strong { color: var(--text); }
-  section a { color: var(--sakura); text-decoration: none; }
+  section a { color: var(--pink-deep); text-decoration: none; }
   section a:hover { text-decoration: underline; }
   section code {
-    background: rgba(255, 183, 197, 0.12);
+    background: rgba(240, 160, 192, 0.15);
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 0.92em;
-    color: var(--sakura);
+    color: var(--pink-deep);
   }
   pre {
-    background: rgba(0,0,0,0.3);
+    background: rgba(240, 160, 192, 0.1);
     border: 1px solid var(--card-border);
     padding: 16px 20px;
     border-radius: 10px;
@@ -184,16 +173,15 @@
   }
   pre code { background: none; padding: 0; color: var(--text); }
 
-  /* ----- footer ----- */
   footer {
     text-align: center;
     color: var(--muted);
     font-size: 0.85em;
     margin-top: 60px;
     padding: 28px 0;
-    border-top: 1px solid rgba(255, 183, 197, 0.1);
+    border-top: 1px solid rgba(212, 120, 142, 0.15);
   }
-  footer a { color: var(--sakura); text-decoration: none; }
+  footer a { color: var(--pink-deep); text-decoration: none; }
 
   #loading { color: var(--muted); font-size: 0.95em; }
   #error { color: var(--pink-deep); display: none; }
@@ -209,14 +197,14 @@
 
 <div class="download-card">
   <div id="loading">🌸 正在获取最新版本…</div>
-  <div id="error">无法获取版本信息，请前往 <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--sakura)">Releases</a> 手动下载。</div>
+  <div id="error">无法获取版本信息，请前往 <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--pink-deep)">Releases</a> 手动下载。</div>
   <div id="release-info" style="display:none">
     <div class="version" id="version-text"></div>
     <a id="dl-source" class="btn" href="#">下载源码 (zip)</a>
     <a id="dl-tar" class="btn btn-alt" href="#">下载源码 (tar.gz)</a>
     <div class="assets" id="assets-list"></div>
     <p style="margin-top:14px;color:var(--muted);font-size:0.85em">
-      或浏览 <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--sakura)">全部版本</a>
+      或浏览 <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--pink-deep)">全部版本</a>
     </p>
   </div>
 </div>
@@ -268,14 +256,14 @@ pip install -r requirements.txt</code></pre>
 
 <script>
 (async function() {
-  const loading = document.getElementById('loading');
-  const error = document.getElementById('error');
-  const info = document.getElementById('release-info');
+  var loading = document.getElementById('loading');
+  var error = document.getElementById('error');
+  var info = document.getElementById('release-info');
 
   try {
-    const resp = await fetch('https://api.github.com/repos/RachelForster/Shinsekai/releases/latest');
+    var resp = await fetch('https://api.github.com/repos/RachelForster/Shinsekai/releases/latest');
     if (!resp.ok) throw new Error('API error');
-    const release = await resp.json();
+    var release = await resp.json();
 
     document.getElementById('version-text').textContent =
       '🌸 ' + release.tag_name + ' · ' + new Date(release.published_at).toLocaleDateString('zh-CN');
@@ -283,14 +271,14 @@ pip install -r requirements.txt</code></pre>
     document.getElementById('dl-source').href = release.zipball_url;
     document.getElementById('dl-tar').href = release.tarball_url;
 
-    const list = document.getElementById('assets-list');
+    var list = document.getElementById('assets-list');
     if (release.assets && release.assets.length > 0) {
       list.innerHTML = '<p style="margin-top:6px;color:var(--muted)">附加文件：</p>';
-      release.assets.forEach(a => {
-        const size = (a.size / 1024 / 1024).toFixed(1);
+      release.assets.forEach(function(a) {
+        var size = (a.size / 1024 / 1024).toFixed(1);
         list.innerHTML +=
-          `<a href="${a.browser_download_url}">${a.name}</a>` +
-          `<span style="color:var(--muted);font-size:0.8em"> (${size} MB)</span>`;
+          '<a href="' + a.browser_download_url + '">' + a.name + '</a>' +
+          '<span style="color:var(--muted);font-size:0.8em"> (' + size + ' MB)</span>';
       });
     }
 
