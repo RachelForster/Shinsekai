@@ -827,6 +827,9 @@ class TypingLabel(ClickableLabel):
         """
         开始逐字显示文本。
         """
+        import time as _time, re
+        # _perf = logging.getLogger("shinsekai.perf")
+        _t0 = _time.perf_counter()
         if not text:
             self.hide()
             return
@@ -834,15 +837,31 @@ class TypingLabel(ClickableLabel):
         # 1. 初始化打字状态
         if self._is_typing:
             self.typing_timer.stop() # 如果正在打字，先停止
-        
+
         self._full_text = text
-        self._current_char_index = text.find('：')  # 从名字后开始打字
+        # Find where visible text starts: after Chinese colon, or after <p> tag opening
+        start = text.find('：')
+        if start >= 0:
+            start += 1  # skip the Chinese colon
+        else:
+            m = re.search(r'<p[^>]*>', text)
+            if m:
+                start = m.end()  # skip <p ...>
+            else:
+                start = 0
+        self._current_char_index = start
         self._is_typing = True
 
         self.setText(text[:self._current_char_index])
-        
+        # If starting from 0, show first char immediately
+        if start == 0 and len(text) > 0:
+            self._current_char_index = 1
+            self.setText(text[:1])
+
         # 5. 启动打字机
         self.typing_timer.start(self.typing_delay)
+        print("[perf]","TypingLabel.setDisplayWords done | start=%d len=%d | %.1fms",
+                    start, len(text), (_time.perf_counter() - _t0) * 1000)
 
 
     def _type_next_character(self):

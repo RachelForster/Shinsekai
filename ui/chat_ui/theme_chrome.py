@@ -60,6 +60,11 @@ class ChatChromeTheme:
     mic_inactive_background: str | None = None
     mic_active_background: str | None = None
     mic_extra_qss: str = ""
+    # Dialog layout
+    dialog_offset_y: int = 0
+    dialog_width_pct: int = 80
+    dialog_padding: int = 40
+    options_gap: int = 10
 
 
 def project_root() -> Path:
@@ -213,6 +218,10 @@ def _parse_theme_file(path: Path) -> ChatChromeTheme:
         mic_inactive_background=mic_i,
         mic_active_background=mic_a,
         mic_extra_qss=mic_x,
+        dialog_offset_y=raw.get("dialog_offset_y", 0),
+        dialog_width_pct=raw.get("dialog_width_pct", 80),
+        dialog_padding=raw.get("dialog_padding", 40),
+        options_gap=raw.get("options_gap", 10),
     )
 
 
