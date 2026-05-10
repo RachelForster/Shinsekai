@@ -342,7 +342,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.dialog_label.raise_()
             self.name_label.raise_()
             self.options_widget.raise_()
-            self.numeric_info_label.raise_()
+            self.numeric_info_label.lower()  # below sprite layer
             self._raise_input_and_toolbar() 
             
         else:
@@ -1045,7 +1045,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.numeric_info_label.hide()
         else:
             self.numeric_info_label.show()
-            self.numeric_info_label.raise_()
+            self.numeric_info_label.lower()  # below sprite layer
             self._raise_input_and_toolbar()
         self.numeric_info_changed.emit(html_text)
 
@@ -1107,7 +1107,8 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 self.name_label.hide()
 
             self.options_widget.hide()
-            # Pre-set _full_text so layout can measure without showing full text
+            # Temporarily show full text for layout measurement, then typewriter overwrites
+            self.dialog_label.setText(text)
             self.dialog_label._full_text = text
             self.dialog_label.show()
             self.skip_button.show()

@@ -273,6 +273,17 @@ def main():
 
     emit_user_text = wire_user_input_plugins(user_input_queue)
 
+    # Update system_config with current session's bg/bgm so restore doesn't use stale values
+    sc = config.config.system_config.model_copy(deep=True)
+    if bg_group:
+        sc.bgm_path = bgm_list[0] if bgm_list else ""
+        sc.background_path = bg_group[0].get("path", "") if bg_group else ""
+    else:
+        sc.bgm_path = ""
+        sc.background_path = ""
+    config.config.system_config = sc
+    config.save_system_config()
+
     chat_ui_ctx = install_chat_ui_context(window, emit_user_text=emit_user_text)
 
     restore_session_ui(
