@@ -4,7 +4,7 @@ import time
 
 from PySide6.QtWidgets import QApplication, QPushButton, QTextEdit
 from PySide6.QtGui import QIcon, QColor, QFont, QPainter, QPainterPath, QPen
-from PySide6.QtCore import QRectF, QSize, Qt, Signal, QObject
+from PySide6.QtCore import QRectF, QSize, Qt, Signal, QObject, QTimer
 
 # 导入您提供的适配器文件 (假设文件名为 asr_adapter.py 并在同一目录下)
 # 实际项目中，您可能需要确保 asr_adapter.py 中的所有依赖（如 RealtimeSTT, vosk, pyaudio）已安装。
@@ -81,6 +81,13 @@ class MicButton(QPushButton):
         self._lazy_init_cancel_requested = False
         self._mic_closed = False
 
+        # Loading ring animation
+        self._loading_ring = False
+        self._loading_angle = 0
+        self._loading_timer = QTimer(self)
+        self._loading_timer.timeout.connect(self._tick_loading)
+        self._loading_timer.setInterval(30)
+
         self._start_notifier = _AsrStartNotifier(self)
         self._start_notifier.start_finished.connect(
             self._on_asr_start_finished,
@@ -130,6 +137,7 @@ class MicButton(QPushButton):
         ).start()
 
     def _on_lazy_adapter_ready(self, gen: int, adapter) -> None:
+        self._hide_loading_ring()
         self._lazy_init_running = False
         if gen != self._lazy_init_generation:
             try:
@@ -147,6 +155,7 @@ class MicButton(QPushButton):
         self.start_asr()
 
     def _on_lazy_adapter_failed(self, gen: int, exc: BaseException) -> None:
+        self._hide_loading_ring()
         if gen != self._lazy_init_generation:
             return
         self._lazy_init_running = False
@@ -226,6 +235,20 @@ class MicButton(QPushButton):
         p.setFont(self.font())
         p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
 
+        # Loading ring animation (inside button bounds, not clipped)
+        if self._loading_ring:
+            ring_r = min(w, h) / 2.0 - 4
+            cx, cy = w / 2.0, h / 2.0
+            span = 100
+            ring_pen = QPen(QColor(self._mic_palette_active), 2.5)
+            ring_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            p.setPen(ring_pen)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawArc(
+                QRectF(cx - ring_r, cy - ring_r, ring_r * 2, ring_r * 2),
+                int(self._loading_angle * 16), int(span * 16)
+            )
+
     def apply_window_scale(
         self, scale: float, chrome: ChatChromeTheme | None = None
     ) -> None:
@@ -249,6 +272,19 @@ class MicButton(QPushButton):
             else self._mic_palette_inactive
         )
         self._apply_mic_stylesheet(bg)
+
+    def _tick_loading(self):
+        self._loading_angle = (self._loading_angle + 12) % 360
+        self.update()
+
+    def _show_loading_ring(self):
+        self._loading_ring = True
+        self._loading_timer.start()
+
+    def _hide_loading_ring(self):
+        self._loading_ring = False
+        self._loading_timer.stop()
+        self.update()
 
     def _setup_ui(self):
         """配置按钮的样式和图标。"""
@@ -297,12 +333,14 @@ class MicButton(QPushButton):
         if self._start_worker_busy:
             self._start_generation += 1
             self._start_cancel_requested = True
+            self._hide_loading_ring()
             self._mic_busy_hide()
             return
         if self._lazy_init_running:
             self._lazy_init_generation += 1
             self._lazy_init_cancel_requested = True
             self._lazy_init_running = False
+            self._hide_loading_ring()
             self._mic_busy_hide()
             return
         if self._is_asr_running:
@@ -311,6 +349,7 @@ class MicButton(QPushButton):
         self._lazy_init_cancel_requested = False
         if self.asr_adapter is None:
             self._mic_busy_show(tr("desktop.mic_loading_model"), 0.0)
+            self._show_loading_ring()
             self._lazy_init_running = True
             self._spawn_lazy_init_thread()
             return
@@ -330,6 +369,7 @@ class MicButton(QPushButton):
             self.original_text = self.line_edit.toPlainText()
 
         self._mic_busy_show(tr("desktop.mic_loading_model"), 0.0)
+        self._show_loading_ring()
         self._start_worker_busy = True
         self._start_generation += 1
         gen = self._start_generation
@@ -351,6 +391,7 @@ class MicButton(QPushButton):
         ).start()
 
     def _on_asr_start_finished(self, gen: int, ad) -> None:
+        self._hide_loading_ring()
         self._start_worker_busy = False
         if gen != self._start_generation:
             try:
@@ -384,6 +425,7 @@ class MicButton(QPushButton):
             self._mic_busy_hide()
 
     def _on_asr_start_failed(self, gen: int, ad, exc: BaseException) -> None:
+        self._hide_loading_ring()
         self._start_worker_busy = False
         if gen != self._start_generation:
             try:
