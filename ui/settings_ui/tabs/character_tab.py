@@ -274,18 +274,24 @@ class CharacterSettingsTab(QWidget):
         self.speech_speed.setRange(0.1, 5.0)
         self.speech_speed.setSingleStep(0.05)
         self.speech_speed.setValue(1.0)
+        self.speech_volume = QDoubleSpinBox()
+        self.speech_volume.setRange(0.0, 2.0)
+        self.speech_volume.setSingleStep(0.1)
+        self.speech_volume.setValue(1.0)
         self._v_gpt = QLabel(tr_i18n("char.gpt_path"))
         self._v_sov = QLabel(tr_i18n("char.sovits_path"))
         self._v_ref = QLabel(tr_i18n("char.ref_audio"))
         self._v_pt = QLabel(tr_i18n("char.ref_text"))
         self._v_pl = QLabel(tr_i18n("char.prompt_lang"))
         self._v_sp = QLabel(tr_i18n("char.speech_speed_lbl"))
+        self._v_vol = QLabel(tr_i18n("char.speech_volume_lbl"))
         vf.addRow(self._v_gpt, self.gpt_model_path)
         vf.addRow(self._v_sov, self.sovits_model_path)
         vf.addRow(self._v_ref, self.refer_audio_path)
         vf.addRow(self._v_pt, self.prompt_text)
         vf.addRow(self._v_pl, self.prompt_lang)
         vf.addRow(self._v_sp, self.speech_speed)
+        vf.addRow(self._v_vol, self.speech_volume)
         lay.addWidget(self._voice_box)
 
         # --- 4. 立绘：先上传与缩放，再「画廊+情绪」并列，最下为当前立绘语音 ---（可滚动；保存见底部栏）
@@ -547,6 +553,7 @@ class CharacterSettingsTab(QWidget):
         self.prompt_text.setText(c.prompt_text or "")
         self.prompt_lang.setText(c.prompt_lang or "")
         self.speech_speed.setValue(float(c.speech_speed) if c.speech_speed else 1.0)
+        self.speech_volume.setValue(float(c.speech_volume) if c.speech_volume else 1.0)
         self.character_setting.setPlainText(c.character_setting or "")
 
     def _on_character_change(self, name: str) -> None:
@@ -749,6 +756,7 @@ class CharacterSettingsTab(QWidget):
             self.prompt_lang.text().strip(),
             self.character_setting.toPlainText().strip(),
             speech_speed=self.speech_speed.value(),
+            speech_volume=self.speech_volume.value(),
             edit_as_name=edit_as,
         )
         feedback_result(self, "人物", msg)

@@ -360,6 +360,7 @@
     "ref_text": "参考音频文字内容",
     "prompt_lang": "语言 (en/ja/zh)",
     "speech_speed_lbl": "TTS 语速",
+    "speech_volume_lbl": "TTS 语音音量",
     "save_box": "保存人物档案",
     "add_save": "添加或保存人物设置",
     "sprite_box": "立绘管理",
@@ -533,7 +534,9 @@
     "hist_ph": "历史 JSON 路径（可选）；留空则使用 ./data/chat_history/<情景哈希>.json",
     "live_lbl": "直播（可选）",
     "live_ph": "bilibili 房间 ID（可选）",
-    "launch": "启动聊天"
+    "launch": "启动聊天",
+    "quick_restart": "快速重开",
+    "quick_restart_confirm": "将清空当前聊天记录并重新开始，确定吗？"
   },
   "tools": {
     "tab_main": "立绘与批处理",

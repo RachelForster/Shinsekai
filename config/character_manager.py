@@ -151,6 +151,7 @@ class CharacterManager:
                      sovits_model_path: str, refer_audio_path: str, prompt_text: str,
                      prompt_lang: str, character_setting: str,
                      speech_speed: float = 1.0,
+                     speech_volume: float = 1.0,
                      edit_as_name: Optional[str] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
@@ -183,6 +184,7 @@ class CharacterManager:
                 target.refer_audio_path = refer_audio_path
                 target.character_setting = character_setting
                 target.speech_speed = speech_speed
+                target.speech_volume = speech_volume
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
 
@@ -204,7 +206,8 @@ class CharacterManager:
                 emotion_tags="",
                 character_setting=character_setting,
                 speech_speed=speech_speed,
-            )    
+                speech_volume=speech_volume,
+            )
             characters.append(new_character)
             self._save_characters_config()
             return "人物已添加！", [c.name for c in characters]

@@ -219,6 +219,11 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         if dc and audio_path and Path(audio_path).exists():
             try:
                 tts_sound = pygame.mixer.Sound(audio_path)
+                # Apply character volume
+                vol = 1.0
+                if character_config:
+                    vol = float(getattr(character_config, 'speech_volume', 1.0) or 1.0)
+                tts_sound.set_volume(vol)
                 dc.play(tts_sound)
                 audio_played = True
                 get_asr_log().info(

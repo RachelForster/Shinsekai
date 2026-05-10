@@ -344,6 +344,10 @@ class TemplateSettingsTab(QWidget):
         self._launch_btn.setMinimumWidth(120)
         self._launch_btn.clicked.connect(self._on_launch)
         btn_row.addWidget(self._launch_btn)
+        self._restart_btn = QPushButton(tr_i18n("template.quick_restart"))
+        self._restart_btn.setMinimumWidth(120)
+        self._restart_btn.clicked.connect(self._on_quick_restart)
+        btn_row.addWidget(self._restart_btn)
         btn_row.addStretch(1)
         f_lay.addLayout(btn_row)
         root.addWidget(foot)
@@ -410,6 +414,7 @@ class TemplateSettingsTab(QWidget):
         # self._live_lbl.setText(tr_i18n("template.live_lbl"))
         # self.room_id.setPlaceholderText(tr_i18n("template.live_ph"))
         self._launch_btn.setText(tr_i18n("template.launch"))
+        self._restart_btn.setText(tr_i18n("template.quick_restart"))
 
     def _fill_voice_lang_combo(self) -> None:
         self.voice_lang_combo.clear()
@@ -661,6 +666,42 @@ class TemplateSettingsTab(QWidget):
             self.template_output.toPlainText(),
             self.init_sprite_path.text().strip(),
             self.history_file.text().strip(),
+            self.bg_combo.currentText(),
+            ucg,
+            self.room_id.text().strip(),
+        )
+        if msg:
+            toast_success(self, "启动聊天", msg)
+
+    def _on_quick_restart(self) -> None:
+        """清空聊天记录并启动新的聊天。"""
+        from PySide6.QtWidgets import QMessageBox
+        result = QMessageBox.question(
+            self,
+            tr_i18n("template.quick_restart"),
+            tr_i18n("template.quick_restart_confirm"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if result != QMessageBox.Yes:
+            return
+        self._save_launch_session()
+        # Clear history file
+        hf = self.history_file.text().strip()
+        if hf:
+            hp = Path(hf)
+            if hp.exists():
+                try:
+                    hp.unlink()
+                except OSError:
+                    pass
+        ucg = "是" if self.use_cg_yes.isChecked() else "否"
+        msg = launch_chat(
+            self._ctx,
+            self.scenario_output.toPlainText(),
+            self.template_output.toPlainText(),
+            self.init_sprite_path.text().strip(),
+            "",  # empty history
             self.bg_combo.currentText(),
             ucg,
             self.room_id.text().strip(),

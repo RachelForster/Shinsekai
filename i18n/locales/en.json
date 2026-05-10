@@ -363,6 +363,7 @@
     "ref_text": "Reference line text",
     "prompt_lang": "Language (en/ja/zh)",
     "speech_speed_lbl": "TTS Speed",
+    "speech_volume_lbl": "TTS Volume",
     "save_box": "Save profile",
     "add_save": "Add or save",
     "sprite_box": "Sprites",
@@ -536,7 +537,9 @@
     "hist_ph": "History JSON path (optional); empty uses ./data/chat_history/<scenario_hash>.json",
     "live_lbl": "Live (optional)",
     "live_ph": "Bilibili room ID (optional)",
-    "launch": "Start chat"
+    "launch": "Start chat",
+    "quick_restart": "Quick Restart",
+    "quick_restart_confirm": "This will clear all chat history and start fresh. Are you sure?"
   },
   "tools": {
     "tab_main": "Sprites & batch tools",

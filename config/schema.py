@@ -46,6 +46,7 @@ class Character(BaseModel):
     prompt_text: Optional[str] = Field('', description="角色的初始 Prompt/台词 (可选)")
     prompt_lang: Optional[str] = Field('', description="Prompt 语言，例如: ja (可选)")
     speech_speed: DefaultIfNone[float] = Field(default=1.0, description="角色TTS语速倍率 (默认值 1.0)")
+    speech_volume: DefaultIfNone[float] = Field(default=1.0, description="角色TTS语音音量 (0.0-2.0, 默认 1.0)")
 
 class Background(BaseModel):
     """单个背景配置的实体模型"""

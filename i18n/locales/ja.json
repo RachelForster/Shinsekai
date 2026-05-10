@@ -360,6 +360,7 @@
     "ref_text": "参照テキスト",
     "prompt_lang": "言語 (en/ja/zh)",
     "speech_speed_lbl": "TTS 速度",
+    "speech_volume_lbl": "TTS 音量",
     "save_box": "プロフィールを保存",
     "add_save": "追加/保存",
     "sprite_box": "立ち絵",
@@ -533,7 +534,9 @@
     "hist_ph": "履歴 JSON（任意）；空欄なら ./data/chat_history/<情景ハッシュ>.json",
     "live_lbl": "配信（任意）",
     "live_ph": "bilibili ルームID（任意）",
-    "launch": "チャット開始"
+    "launch": "チャット開始",
+    "quick_restart": "クイック再起動",
+    "quick_restart_confirm": "チャット履歴を消去して最初から始めます。よろしいですか？"
   },
   "tools": {
     "tab_main": "立ち絵・一括処理",
