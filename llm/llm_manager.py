@@ -174,7 +174,9 @@ class LLMManager:
         self.compact_manager = CompactManager(adapter, max_tokens, compact_threshold)
         self.generation_config = generation_config or {}
         self.set_user_template(user_template)
-        self.tools_definitions = tool_manager.get_definitions()  # 获取工具定义列表
+        self.tools_definitions = tool_manager.get_definitions(groups="default")  # 初始仅 default 组
+        self._active_tool_groups: list = ["default"]  # LRU: most recent first
+        self._max_active_groups = 5
         self.tools_manager = tool_manager
         
         # 设置日志
@@ -256,7 +258,7 @@ class LLMManager:
     # llm_manager.py 修正核心片段
 
     def _chat_with_tools_stream(self, **kwargs) -> Generator[Union[str, dict[str, str]], None, None]:
-        tools_defs = tool_manager.get_definitions()
+        tools_defs = tool_manager.get_definitions(groups=self._active_tool_groups)
 
         # Gemini's OpenAI-compatible streaming endpoint omits thought_signature from
         # tool call deltas. Fall back to non-streaming so the field is preserved.
@@ -339,7 +341,23 @@ class LLMManager:
 
                     _notify_tool_call_hint(func_name)
                     result = tool_manager.execute(func_name, func_args)
-                    
+
+                    # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
+                    if func_name == "search_tools":
+                        try:
+                            parsed = json.loads(func_args) if isinstance(func_args, str) else func_args
+                            kw = (parsed.get("keyword") or "").strip().lower()
+                            if kw:
+                                for g in tool_manager.get_groups():
+                                    if kw in g.lower():
+                                        if g in self._active_tool_groups:
+                                            self._active_tool_groups.remove(g)
+                                        self._active_tool_groups.insert(0, g)
+                                        if len(self._active_tool_groups) > self._max_active_groups:
+                                            self._active_tool_groups = self._active_tool_groups[:self._max_active_groups]
+                        except Exception:
+                            pass
+
                     # 3. 确保结果不为空且为字符串（以便 LLM 接收）
                     if result is None:
                         result = json.dumps({"status": "success", "result": "no return value"})
@@ -356,7 +374,7 @@ class LLMManager:
             self._persist_plain_assistant_turn(collected_content, collected_reasoning)
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
-        tools_defs = tool_manager.get_definitions()
+        tools_defs = tool_manager.get_definitions(groups=self._active_tool_groups)
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
         response = self.llm_adapter.chat(
@@ -408,7 +426,23 @@ class LLMManager:
 
                     _notify_tool_call_hint(func_name)
                     result = tool_manager.execute(func_name, func_args)
-                    
+
+                    # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
+                    if func_name == "search_tools":
+                        try:
+                            parsed = json.loads(func_args) if isinstance(func_args, str) else func_args
+                            kw = (parsed.get("keyword") or "").strip().lower()
+                            if kw:
+                                for g in tool_manager.get_groups():
+                                    if kw in g.lower():
+                                        if g in self._active_tool_groups:
+                                            self._active_tool_groups.remove(g)
+                                        self._active_tool_groups.insert(0, g)
+                                        if len(self._active_tool_groups) > self._max_active_groups:
+                                            self._active_tool_groups = self._active_tool_groups[:self._max_active_groups]
+                        except Exception:
+                            pass
+
                     # 3. 确保结果不为空且为字符串（以便 LLM 接收）
                     if result is None:
                         result = json.dumps({"status": "success", "result": "no return value"})

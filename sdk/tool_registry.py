@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-# (callable, openapi_name_override | None, description_override | None)
-_Entries: list[tuple[Callable[..., Any], str | None, str | None]] = []
+# (callable, name_override | None, description_override | None, group | None)
+_Entries: list[tuple[Callable[..., Any], str | None, str | None, str | None]] = []
 
 
 def tool(
@@ -25,16 +25,18 @@ def tool(
     *,
     name: str | None = None,
     description: str | None = None,
+    group: str | None = None,
 ) -> F | Callable[[F], F]:
     """
     将函数登记到全局表，供宿主注入 ToolManager。
 
     - ``@tool`` 或 ``@tool()``：使用函数名与 docstring。
     - ``@tool(name="my_tool", description="...")``：覆盖对外暴露的名称与说明。
+    - ``group``：工具分组（"character" / "memory" / "mcp" 等），默认 "default"。
     """
 
     def _decorator(fn: F) -> F:
-        _Entries.append((fn, name, description))
+        _Entries.append((fn, name, description, group or "default"))
         return fn
 
     if func is None:
@@ -42,12 +44,12 @@ def tool(
     return _decorator(func)
 
 
-def iter_registered_tools() -> Iterator[tuple[Callable[..., Any], str | None, str | None]]:
-    """只读遍历已登记的 ``(func, name_override, description_override)``（注册顺序）。"""
+def iter_registered_tools() -> Iterator[tuple[Callable[..., Any], str | None, str | None, str | None]]:
+    """只读遍历已登记的 ``(func, name_override, description_override, group)``（注册顺序）。"""
     yield from tuple(_Entries)
 
 
-def registered_tool_entries() -> Sequence[tuple[Callable[..., Any], str | None, str | None]]:
+def registered_tool_entries() -> Sequence[tuple[Callable[..., Any], str | None, str | None, str | None]]:
     """返回当前登记快照（元组，避免调用方误改内部列表）。"""
     return tuple(_Entries)
 
@@ -59,5 +61,5 @@ def apply_registered_tools(tool_manager: ToolManager) -> None:
     应在插件 ``register_llm_tool`` 回调执行之前调用，以便插件仍可通过回调追加工具。
     重复的工具名以后注册者为准（:meth:`ToolManager.register_function` 会先移除同名项）。
     """
-    for fn, nm, desc in _Entries:
-        tool_manager.register_function(fn, name=nm, description=desc)
+    for fn, nm, desc, group in _Entries:
+        tool_manager.register_function(fn, name=nm, description=desc, group=group)

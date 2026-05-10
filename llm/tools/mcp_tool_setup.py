@@ -323,10 +323,12 @@ async def _register_one_server(
             return {"error": str(exc), "tool": short}
         return {"result": text}
 
+    grp = str(entry.get("group") or "mcp").strip()
     tm.register_mcp_tools(
         tool_dicts,
         invoke=_invoke,
         name_prefix=name_prefix,
+        group=grp,
     )
     for td in tool_dicts:
         n = td.get("name")

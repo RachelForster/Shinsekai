@@ -199,6 +199,7 @@ def memory_forget(memory_id: str) -> dict[str, Any]:
 
 @tool(
     name="memory_search",
+    group="memory",
     description=(
         "Search YOUR memory. "
         "character_name: YOUR OWN full name from dialog (the character who is speaking). "
@@ -216,6 +217,7 @@ def _tool_memory_search(
 
 @tool(
     name="memory_remember",
+    group="memory",
     description=(
         "Save a fact to YOUR memory. "
         "character_name: YOUR OWN full name from dialog (the character who is speaking). "
@@ -233,6 +235,7 @@ def _tool_memory_remember(
 
 @tool(
     name="memory_forget",
+    group="memory",
     description=(
         "Delete a memory entry. memory_id comes from a memory_search result's id field."
     ),

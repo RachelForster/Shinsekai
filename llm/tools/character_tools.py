@@ -4,7 +4,7 @@ from config.config_manager import ConfigManager
 config_manager = ConfigManager()
 
 
-@tool
+@tool(group="character")
 def get_character_info(character_name: str = ""):
     """
     获取特定角色的详细背景设定、性格特点及立绘id和对应的情绪标注。
@@ -26,7 +26,7 @@ def get_character_info(character_name: str = ""):
     }
 
 
-@tool
+@tool(group="character")
 def get_available_character_name_list():
     """
     获取所有可用角色名字的列表。

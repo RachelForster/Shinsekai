@@ -19,6 +19,7 @@ class ToolManager:
             return
         self._tools_definitions: List[Dict[str, Any]] = []
         self._functions: Dict[str, Callable[..., Any]] = {}
+        self._tool_groups: Dict[str, str] = {}  # tool_name -> group
         self.logger = logging.getLogger("ToolManager")
         self._initialized = True
 
@@ -29,6 +30,7 @@ class ToolManager:
             if d.get("function", {}).get("name") != tool_name
         ]
         self._functions.pop(tool_name, None)
+        self._tool_groups.pop(tool_name, None)
 
     def _schema_type_for_param(self, annotation: Any) -> str:
         if annotation is inspect.Parameter.empty:
@@ -65,10 +67,12 @@ class ToolManager:
         *,
         name: str | None = None,
         description: str | None = None,
+        group: str | None = None,
     ) -> None:
         """
         将可调用对象注册为 LLM 工具（OpenAI 风格 function schema）。
         同名工具会先被移除再注册，便于热重载或覆盖。
+        ``group`` 为工具分组（"character" / "memory" / "mcp" 等），默认 "default"。
         """
         tool_name = (name or func.__name__).strip()
         if not tool_name:
@@ -108,6 +112,7 @@ class ToolManager:
         self._drop_tool(tool_name)
         self._tools_definitions.append(definition)
         self._functions[tool_name] = func
+        self._tool_groups[tool_name] = group or "default"
 
     def register_mcp_tools(
         self,
@@ -115,6 +120,7 @@ class ToolManager:
         *,
         invoke: Callable[[str, Dict[str, Any]], Any],
         name_prefix: str = "",
+        group: str = "mcp",
     ) -> None:
         """
         注册来自 MCP ``tools/list`` 的工具条目（``name`` / ``description`` / ``inputSchema``）。
@@ -123,8 +129,10 @@ class ToolManager:
         返回值由 :meth:`execute` 以 JSON 序列化；请返回可 JSON 编码的对象或字符串。
 
         ``name_prefix`` 用于隔离多套 MCP 工具，避免与内置工具名冲突。
+        ``group`` 为 MCP 工具分组，默认 "mcp"。
         """
         prefix = name_prefix.strip()
+        grp = (group or "mcp").strip()
         for raw in tools:
             if not isinstance(raw, dict):
                 self.logger.warning("register_mcp_tools: skip non-dict item %r", raw)
@@ -165,22 +173,60 @@ class ToolManager:
             self._drop_tool(tool_name)
             self._tools_definitions.append(definition)
             self._functions[tool_name] = _make_runner(tool_name, invoke)
+            self._tool_groups[tool_name] = grp
 
-    def tool(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def tool(self, func: Callable[..., Any] = None, *, group: str | None = None) -> Callable[..., Any]:
         """
-        装饰器：@tool_manager.tool
+        装饰器：@tool_manager.tool 或 @tool_manager.tool(group="character")
         利用单例特性，将函数注册到当前实例（与 :func:`register_function` 等价）。
         """
-        self.register_function(func)
+        def _decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            self.register_function(fn, group=group)
+            @functools.wraps(fn)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                return fn(*args, **kwargs)
+            return wrapper
+        if func is None:
+            return _decorator
+        return _decorator(func)
 
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return func(*args, **kwargs)
+    def get_definitions(self, groups: str | List[str] | None = None) -> List[Dict[str, Any]]:
+        """Return tool definitions, optionally filtered by group(s)."""
+        if groups is None:
+            return self._tools_definitions
+        if isinstance(groups, str):
+            groups = [groups]
+        return [
+            d for d in self._tools_definitions
+            if self._tool_groups.get(d["function"]["name"], "default") in groups
+        ]
 
-        return wrapper
+    def search_tools(self, keyword: str) -> List[Dict[str, Any]]:
+        """Search tools by keyword in name, description, or group."""
+        kw = keyword.strip().lower()
+        if not kw:
+            return []
+        results = []
+        for d in self._tools_definitions:
+            fn = d["function"]
+            name = fn.get("name", "").lower()
+            desc = fn.get("description", "").lower()
+            grp = self._tool_groups.get(fn["name"], "default").lower()
+            if kw in name or kw in desc or kw == grp:
+                results.append({
+                    "name": fn["name"],
+                    "group": self._tool_groups.get(fn["name"], "default"),
+                    "description": fn.get("description", ""),
+                })
+        return results
 
-    def get_definitions(self) -> List[Dict[str, Any]]:
-        return self._tools_definitions
+    def get_tool_group(self, tool_name: str) -> str:
+        """Return the group name for a tool."""
+        return self._tool_groups.get(tool_name, "default")
+
+    def get_groups(self) -> List[str]:
+        """Return list of all registered groups."""
+        return list(sorted(set(self._tool_groups.values())))
 
     def execute(self, name: str, arguments_json: str) -> str:
         self.logger.info("Executing tool: %s with arguments: %s", name, arguments_json)

@@ -627,6 +627,7 @@
     "tools_header": "\n可调用工具（由模型通过 function / tool 调用接口使用，名称须完全一致）：\n",
     "tools_intro": "在遵守上文 JSON 剧情输出格式的前提下，可在适当时机调用工具获取信息或执行操作；调用方式以当前 LLM 提供商的工具协议为准。",
     "tools_no_desc": "（无说明）",
+    "tools_other_groups": "\n其他可用工具组：{groups}。用 search_tools(keyword) 按关键词搜索后即可调用该组工具。",
     "tools_item": "- **{name}**：{description}",
     "tools_param_summary": "（参数：{summary}；带 * 者为必填）",
     "closing": "\n请开始对话, 开始时介绍下用户所处的情境和背景, {extra} 以及在做什么事情: \n",

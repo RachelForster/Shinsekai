@@ -627,6 +627,7 @@
     "tools_header": "\n呼び出し可能なツール（モデルの function / tool 呼び出しで使用。名前は完全一致）：\n",
     "tools_intro": "上記の JSON 会話形式を守る範囲で、必要に応じてツールを呼び出してよい。手順は利用中の LLM プロバイダに従う。",
     "tools_no_desc": "（説明なし）",
+    "tools_other_groups": "\n他の利用可能なツールグループ: {groups}。search_tools(keyword) で検索して有効化できます。",
     "tools_item": "- **{name}**：{description}",
     "tools_param_summary": "（引数：{summary}；* は必須）",
     "closing": "\n会話を開始。状況とユーザーの行動を説明し{extra}続けてください：\n",
