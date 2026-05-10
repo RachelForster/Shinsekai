@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-# (callable, name_override | None, description_override | None, group | None)
-_Entries: list[tuple[Callable[..., Any], str | None, str | None, str | None]] = []
+# (callable, name_override | None, description_override | None, group | None, risk | None)
+_Entries: list[tuple[Callable[..., Any], str | None, str | None, str | None, str | None]] = []
 
 
 def tool(
@@ -26,17 +26,19 @@ def tool(
     name: str | None = None,
     description: str | None = None,
     group: str | None = None,
+    risk: str = "low",
 ) -> F | Callable[[F], F]:
     """
     将函数登记到全局表，供宿主注入 ToolManager。
 
     - ``@tool`` 或 ``@tool()``：使用函数名与 docstring。
-    - ``@tool(name="my_tool", description="...")``：覆盖对外暴露的名称与说明。
-    - ``group``：工具分组（"character" / "memory" / "mcp" 等），默认 "default"。
+    - ``@tool(name=..., description=...)``：覆盖对外暴露的名称与说明。
+    - ``group``：工具分组，默认 "default"。
+    - ``risk``：风险等级 "low" / "medium" / "high"，默认 "low"。
     """
 
     def _decorator(fn: F) -> F:
-        _Entries.append((fn, name, description, group or "default"))
+        _Entries.append((fn, name, description, group or "default", risk or "low"))
         return fn
 
     if func is None:
@@ -44,22 +46,19 @@ def tool(
     return _decorator(func)
 
 
-def iter_registered_tools() -> Iterator[tuple[Callable[..., Any], str | None, str | None, str | None]]:
-    """只读遍历已登记的 ``(func, name_override, description_override, group)``（注册顺序）。"""
+def iter_registered_tools() -> Iterator[tuple[Callable[..., Any], str | None, str | None, str | None, str | None]]:
+    """只读遍历已登记的 ``(func, name, description, group, risk)``（注册顺序）。"""
     yield from tuple(_Entries)
 
 
-def registered_tool_entries() -> Sequence[tuple[Callable[..., Any], str | None, str | None, str | None]]:
-    """返回当前登记快照（元组，避免调用方误改内部列表）。"""
+def registered_tool_entries() -> Sequence[tuple[Callable[..., Any], str | None, str | None, str | None, str | None]]:
+    """返回当前登记快照。"""
     return tuple(_Entries)
 
 
 def apply_registered_tools(tool_manager: ToolManager) -> None:
     """
     将 :func:`tool` 收集到的函数注册到 ``tool_manager``。
-
-    应在插件 ``register_llm_tool`` 回调执行之前调用，以便插件仍可通过回调追加工具。
-    重复的工具名以后注册者为准（:meth:`ToolManager.register_function` 会先移除同名项）。
     """
-    for fn, nm, desc, group in _Entries:
-        tool_manager.register_function(fn, name=nm, description=desc, group=group)
+    for fn, nm, desc, group, risk in _Entries:
+        tool_manager.register_function(fn, name=nm, description=desc, group=group, risk=risk)

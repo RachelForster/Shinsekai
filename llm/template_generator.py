@@ -10,6 +10,7 @@ from llm.tools.tool_manager import ToolManager
 import llm.tools.character_tools  # noqa: F401
 import llm.tools.memory_tools    # noqa: F401
 import llm.tools.tool_search      # noqa: F401
+import llm.tools.file_tools       # noqa: F401
 
 config_manager = ConfigManager()
 

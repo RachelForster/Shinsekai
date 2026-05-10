@@ -2,6 +2,7 @@
 from asyncio import Queue
 import json
 import logging
+import threading
 from datetime import datetime
 from threading import Thread
 from typing import Any, Dict, Generator, List, Optional, Union
@@ -183,6 +184,48 @@ class LLMManager:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
+    def _confirm_risky_tool(self, tool_name: str, risk: str, args_str: str) -> bool:
+        """Request user confirmation for a risky tool. Returns True if confirmed."""
+        if risk == "low":
+            return True
+        try:
+            from core.runtime.app_runtime import try_get_app_runtime
+            rt = try_get_app_runtime()
+            if rt is None:
+                return risk != "high"
+            ui = rt.ui_update_manager
+            # Parse arguments for a readable summary
+            detail = ""
+            try:
+                args_obj = json.loads(args_str) if isinstance(args_str, str) else args_str
+                if isinstance(args_obj, dict):
+                    parts = []
+                    for k, v in args_obj.items():
+                        if k in ("content", "keyword"):
+                            s = str(v)[:60]
+                            parts.append(f"{k}={s}")
+                        else:
+                            parts.append(f"{k}={v}")
+                    detail = " · ".join(parts[:6])
+            except Exception:
+                detail = args_str[:120] if args_str else ""
+            summary = f"{tool_name}" + (f"\n{detail}" if detail else "")
+            event = threading.Event()
+            confirm_result: list[bool] = []
+            if not hasattr(rt, '_pending_confirm'):
+                rt._pending_confirm = {}
+            rt._pending_confirm[tool_name] = (event, confirm_result)
+            warn = "⚠️" if risk == "high" else "⚡"
+            ui.post_options([f"{warn} 确认 {summary}", "取消"])
+            resolved = event.wait(timeout=30.0)
+            rt._pending_confirm.pop(tool_name, None)
+            if not resolved:
+                ui.post_notification(f"工具 {tool_name} 超时未确认，已取消")
+                return False
+            return bool(confirm_result and confirm_result[0])
+        except Exception:
+            return risk != "high"
+
     def set_adapter(self, adapter: LLMAdapter):
         """
         Sets the current LLM adapter. This is how you switch providers.
@@ -340,6 +383,12 @@ class LLMManager:
                             func_args = "{}"  # 修正为空 JSON 对象字符串
 
                     _notify_tool_call_hint(func_name)
+                    risk = tool_manager.get_tool_risk(func_name)
+                    if risk in ("medium", "high"):
+                        if not self._confirm_risky_tool(func_name, risk, func_args):
+                            result = json.dumps({"cancelled": True, "reason": f"User denied {func_name}"})
+                            self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
+                            continue
                     result = tool_manager.execute(func_name, func_args)
 
                     # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
@@ -425,6 +474,12 @@ class LLMManager:
                             func_args = "{}"  # 修正为空 JSON 对象字符串
 
                     _notify_tool_call_hint(func_name)
+                    risk = tool_manager.get_tool_risk(func_name)
+                    if risk in ("medium", "high"):
+                        if not self._confirm_risky_tool(func_name, risk, func_args):
+                            result = json.dumps({"cancelled": True, "reason": f"User denied {func_name}"})
+                            self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
+                            continue
                     result = tool_manager.execute(func_name, func_args)
 
                     # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表

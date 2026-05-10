@@ -21,7 +21,7 @@ class TestToolDecoratorGroup:
         """@tool without group should get 'default'."""
         import llm.tools.tool_search  # ensures @tool decorator fires
         found = False
-        for fn, nm, desc, grp in iter_registered_tools():
+        for fn, nm, desc, grp, risk in iter_registered_tools():
             if (nm or fn.__name__) == "search_tools":
                 assert grp == "default"
                 found = True

@@ -24,6 +24,7 @@ if getattr(sys, "frozen", False):
 import llm.tools.character_tools
 import llm.tools.memory_tools
 import llm.tools.tool_search
+import llm.tools.file_tools
 from llm.template_generator import is_transparent_background
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor

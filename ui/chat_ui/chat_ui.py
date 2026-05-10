@@ -1126,6 +1126,16 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     def option_clicked(self, text):
         """选项按钮点击处理函数"""
         print(f"Option clicked: {text}")
+        # Check for pending tool confirmation first
+        from core.runtime.app_runtime import try_get_app_runtime
+        rt = try_get_app_runtime()
+        if rt is not None and hasattr(rt, '_pending_confirm') and rt._pending_confirm:
+            confirmed = "取消" not in text and "cancel" not in text.lower()
+            for tool_name, (event, result_list) in list(rt._pending_confirm.items()):
+                result_list.append(confirmed)
+                event.set()
+            self.setOptions([])
+            return
         self.option_selected.emit(text)
         self.input_box.setText(text) # 将内容添加到输入框
         self.setOptions([])          # 隐藏选项

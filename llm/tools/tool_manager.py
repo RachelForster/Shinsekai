@@ -20,6 +20,7 @@ class ToolManager:
         self._tools_definitions: List[Dict[str, Any]] = []
         self._functions: Dict[str, Callable[..., Any]] = {}
         self._tool_groups: Dict[str, str] = {}  # tool_name -> group
+        self._tool_risks: Dict[str, str] = {}   # tool_name -> risk (low/medium/high)
         self.logger = logging.getLogger("ToolManager")
         self._initialized = True
 
@@ -31,6 +32,7 @@ class ToolManager:
         ]
         self._functions.pop(tool_name, None)
         self._tool_groups.pop(tool_name, None)
+        self._tool_risks.pop(tool_name, None)
 
     def _schema_type_for_param(self, annotation: Any) -> str:
         if annotation is inspect.Parameter.empty:
@@ -68,11 +70,13 @@ class ToolManager:
         name: str | None = None,
         description: str | None = None,
         group: str | None = None,
+        risk: str = "low",
     ) -> None:
         """
         将可调用对象注册为 LLM 工具（OpenAI 风格 function schema）。
         同名工具会先被移除再注册，便于热重载或覆盖。
         ``group`` 为工具分组（"character" / "memory" / "mcp" 等），默认 "default"。
+        ``risk`` 为风险等级："low"（无风险）/ "medium"（中等）/ "high"（高危，需确认）。
         """
         tool_name = (name or func.__name__).strip()
         if not tool_name:
@@ -113,6 +117,7 @@ class ToolManager:
         self._tools_definitions.append(definition)
         self._functions[tool_name] = func
         self._tool_groups[tool_name] = group or "default"
+        self._tool_risks[tool_name] = risk or "low"
 
     def register_mcp_tools(
         self,
@@ -175,13 +180,13 @@ class ToolManager:
             self._functions[tool_name] = _make_runner(tool_name, invoke)
             self._tool_groups[tool_name] = grp
 
-    def tool(self, func: Callable[..., Any] = None, *, group: str | None = None) -> Callable[..., Any]:
+    def tool(self, func: Callable[..., Any] = None, *, group: str | None = None, risk: str = "low") -> Callable[..., Any]:
         """
-        装饰器：@tool_manager.tool 或 @tool_manager.tool(group="character")
-        利用单例特性，将函数注册到当前实例（与 :func:`register_function` 等价）。
+        装饰器：@tool_manager.tool(group="character", risk="low")
+        利用单例特性，将函数注册到当前实例。
         """
         def _decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-            self.register_function(fn, group=group)
+            self.register_function(fn, group=group, risk=risk)
             @functools.wraps(fn)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 return fn(*args, **kwargs)
@@ -223,6 +228,10 @@ class ToolManager:
     def get_tool_group(self, tool_name: str) -> str:
         """Return the group name for a tool."""
         return self._tool_groups.get(tool_name, "default")
+
+    def get_tool_risk(self, tool_name: str) -> str:
+        """Return the risk level for a tool (low/medium/high)."""
+        return self._tool_risks.get(tool_name, "low")
 
     def get_groups(self) -> List[str]:
         """Return list of all registered groups."""
