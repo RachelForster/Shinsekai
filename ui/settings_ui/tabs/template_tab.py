@@ -676,6 +676,7 @@ class TemplateSettingsTab(QWidget):
     def _on_quick_restart(self) -> None:
         """清空聊天记录并启动新的聊天。"""
         from PySide6.QtWidgets import QMessageBox
+        from ui.settings_ui.services.chat_template_handlers import _history_id_from_scenario
         result = QMessageBox.question(
             self,
             tr_i18n("template.quick_restart"),
@@ -686,7 +687,7 @@ class TemplateSettingsTab(QWidget):
         if result != QMessageBox.Yes:
             return
         self._save_launch_session()
-        # Clear history file
+        # Clear explicit history file
         hf = self.history_file.text().strip()
         if hf:
             hp = Path(hf)
@@ -695,11 +696,21 @@ class TemplateSettingsTab(QWidget):
                     hp.unlink()
                 except OSError:
                     pass
+        # Also clear the default hash-based history file
+        scenario = self.scenario_output.toPlainText()
+        tmpl = self.template_output.toPlainText()
+        default_hash = _history_id_from_scenario(scenario, tmpl)
+        default_hp = Path(self._ctx.history_dir) / f"{default_hash}.json"
+        if default_hp.exists():
+            try:
+                default_hp.unlink()
+            except OSError:
+                pass
         ucg = "是" if self.use_cg_yes.isChecked() else "否"
         msg = launch_chat(
             self._ctx,
-            self.scenario_output.toPlainText(),
-            self.template_output.toPlainText(),
+            scenario,
+            tmpl,
             self.init_sprite_path.text().strip(),
             "",  # empty history
             self.bg_combo.currentText(),
