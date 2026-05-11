@@ -20,11 +20,15 @@ class CharacterManager:
     
     # 私有属性，用于缓存 LLM Manager 实例
     _llm_manager: Optional[Any] = None 
+    # 记录当前缓存的 LLM adapter 参数；设置页改模型或 API 后用它判断是否需要重建。
+    _llm_config_signature: Optional[Tuple[Tuple[str, str], ...]] = None
     _config_manager: ConfigManager
     
     def __init__(self):
         """初始化 CharacterManager，获取 ConfigManager 单例。"""
         self._config_manager = ConfigManager()
+        self._llm_manager = None
+        self._llm_config_signature = None
 
     def _get_characters(self) -> List[Character]:
         """获取当前的 Character 列表"""
@@ -94,22 +98,31 @@ class CharacterManager:
             
             if not llm_provider or not api_key or not llm_model:
                 return "LLM 配置不完整，请先设定大语言模型供应商、模型和 API Key。", setting
-                
-            if self._llm_manager is None:
-                # 假设 LLMAdapterFactory 和 LLMManager 已定义
-                from llm.llm_manager import LLMAdapterFactory, LLMManager 
+
+            from llm.llm_manager import LLMAdapterFactory, LLMManager
+
+            llm_factory_kwargs = self._config_manager.merged_llm_factory_kwargs(
+                llm_provider,
+                {
+                    "llm_provider": llm_provider,
+                    "api_key": api_key,
+                    "base_url": llm_base_url,
+                    "model": llm_model,
+                },
+            )
+            # 用最终传给 adapter 的参数做签名，覆盖 provider 默认值和用户在设置页的覆盖项。
+            # 这样角色页复用 CharacterManager 时，也能感知模型、API Key、Base URL 等变更。
+            llm_config_signature = tuple(
+                sorted((str(k), repr(v)) for k, v in llm_factory_kwargs.items())
+            )
+
+            # 配置没变就复用已有 LLMManager；配置变了才重建 adapter，避免继续请求旧模型。
+            if self._llm_manager is None or self._llm_config_signature != llm_config_signature:
                 llm_adapter = LLMAdapterFactory.create_adapter(
-                    **self._config_manager.merged_llm_factory_kwargs(
-                        llm_provider,
-                        {
-                            "llm_provider": llm_provider,
-                            "api_key": api_key,
-                            "base_url": llm_base_url,
-                            "model": llm_model,
-                        },
-                    )
+                    **llm_factory_kwargs
                 )
                 self._llm_manager = LLMManager(adapter=llm_adapter, user_template=template)
+                self._llm_config_signature = llm_config_signature
                 
             self._llm_manager.set_user_template(template)
             
