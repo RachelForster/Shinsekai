@@ -123,8 +123,10 @@ class UIUpdateManager(QObject):
             character_config = get_character_by_name(character_name)
             if character_config is None:
                 raise ValueError(f"未找到角色配置: {character_name}")
-            image_path = Path(character_config.sprites[sprite_id]["path"]).as_posix()
-            cv_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+            image_path = str(Path(character_config.sprites[sprite_id]["path"]))
+            # cv2.imread 不支持中文路径，改用 np.fromfile + cv2.imdecode
+            img_data = np.fromfile(image_path, dtype=np.uint8)
+            cv_image = cv2.imdecode(img_data, cv2.IMREAD_UNCHANGED)
             if cv_image is not None:
                 if cv_image.shape[2] == 3:
                     cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)

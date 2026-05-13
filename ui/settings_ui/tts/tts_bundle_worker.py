@@ -153,14 +153,15 @@ class TtsBundleDownloadWorker(QThread):
         self.progress.emit(70)
         self.status.emit("extract")
 
+        _archive_str = str(archive.resolve())
         sz = _seven_zip_exe()
         if getattr(sys, "frozen", False):
             if sz is None:
-                self.failed.emit("7za")
+                self.failed.emit(f"7za||{_archive_str}")
                 return
             err = _extract_7za(sz, archive, out_dir)
             if err is not None:
-                self.failed.emit(f"extract: {err}")
+                self.failed.emit(f"extract: {err}||{_archive_str}")
                 return
         else:
             p7 = _load_py7zr()
@@ -179,15 +180,15 @@ class TtsBundleDownloadWorker(QThread):
                                 z.extract(path=out_dir, targets=[name])
                                 self.progress.emit(70 + int(30 * (i + 1) / n))
                 except Exception as e:
-                    self.failed.emit(f"extract: {e}")
+                    self.failed.emit(f"extract: {e}||{_archive_str}")
                     return
             elif sz is not None:
                 err = _extract_7za(sz, archive, out_dir)
                 if err is not None:
-                    self.failed.emit(f"extract: {err}")
+                    self.failed.emit(f"extract: {err}||{_archive_str}")
                     return
             else:
-                self.failed.emit("py7zr")
+                self.failed.emit(f"py7zr||{_archive_str}")
                 return
 
         self.progress.emit(100)

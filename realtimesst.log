@@ -6187,3 +6187,1502 @@
 2026-05-10 15:51:52.425 - RealTimeSTT: realtimestt - DEBUG - Terminating reader process
 2026-05-10 15:51:55.728 - RealTimeSTT: realtimestt - DEBUG - Terminating transcription process
 2026-05-10 15:51:55.728 - RealTimeSTT: realtimestt - DEBUG - Finishing realtime thread
+2026-05-10 20:07:28.431 - RealTimeSTT: realtimestt - INFO - Starting RealTimeSTT
+2026-05-10 20:07:28.439 - RealTimeSTT: realtimestt - INFO - Initializing audio recording (creating pyAudio input stream, sample rate: 16000 buffer size: 512
+2026-05-10 20:07:28.442 - RealTimeSTT: realtimestt - INFO - Initializing WebRTC voice with Sensitivity 3
+2026-05-10 20:07:28.442 - RealTimeSTT: realtimestt - DEBUG - WebRTC VAD voice activity detection engine initialized successfully
+2026-05-10 20:07:29.143 - RealTimeSTT: realtimestt - DEBUG - Silero VAD voice activity detection engine initialized successfully
+2026-05-10 20:07:29.144 - RealTimeSTT: realtimestt - DEBUG - Starting realtime worker
+2026-05-10 20:07:29.144 - RealTimeSTT: realtimestt - DEBUG - Waiting for main transcription model to start
+2026-05-10 20:07:36.709 - RealTimeSTT: realtimestt - DEBUG - Main transcription model ready
+2026-05-10 20:07:36.710 - RealTimeSTT: realtimestt - DEBUG - RealtimeSTT initialization completed successfully
+2026-05-10 20:07:36.710 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:07:36.710 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:07:36.710 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:08:03.981 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:08:03.981 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:08:03.981 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:08:03.981 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:08:03.987 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:08:04.071 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:04.071 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 見!
+2026-05-10 20:08:04.188 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:08:04.268 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:04.268 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 吃汗
+2026-05-10 20:08:04.389 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:08:04.471 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:04.471 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 吃汗
+2026-05-10 20:08:05.131 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:08:05.133 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 34816
+2026-05-10 20:08:05.133 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:08:05.133 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:08:05.133 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:08:05.150 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:08:05.239 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:08:05.240 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.11 seconds
+2026-05-10 20:08:05.240 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:08:05.240 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:08:05.240 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:08:05.262 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:08:05.262 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:08:05.262 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:08:25.643 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:08:25.699 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:08:25.699 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:08:45.772 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:08:45.772 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:08:45.772 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:08:45.772 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:08:45.778 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:08:46.026 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:46.027 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 嗯嗯
+2026-05-10 20:08:46.027 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:08:46.104 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:46.104 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我...
+2026-05-10 20:08:46.228 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 24064
+2026-05-10 20:08:46.335 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:46.335 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我去
+2026-05-10 20:08:46.428 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 27136
+2026-05-10 20:08:46.530 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:46.530 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你
+2026-05-10 20:08:46.630 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 30208
+2026-05-10 20:08:46.718 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:46.718 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的
+2026-05-10 20:08:46.830 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 33280
+2026-05-10 20:08:46.919 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:46.919 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的
+2026-05-10 20:08:47.031 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 36352
+2026-05-10 20:08:47.119 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:47.119 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的开发
+2026-05-10 20:08:47.233 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:08:47.360 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:47.360 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的开发
+2026-05-10 20:08:47.565 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:08:47.684 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:08:47.684 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的开发主
+2026-05-10 20:08:48.272 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:08:48.272 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 56320
+2026-05-10 20:08:48.272 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:08:48.272 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:08:48.272 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:08:48.298 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:08:48.399 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:08:48.401 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:08:48.402 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.13 seconds
+2026-05-10 20:08:48.402 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:08:48.402 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:08:48.402 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:08:48.422 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:08:48.422 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:08:48.422 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:09:05.290 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:09:05.317 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:09:05.317 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:09:09.158 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:09:09.158 - RealTimeSTT: realtimestt - DEBUG - Finishing recording thread
+2026-05-10 20:09:09.158 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:09:09.163 - RealTimeSTT: realtimestt - DEBUG - Terminating reader process
+2026-05-10 20:09:09.928 - RealTimeSTT: realtimestt - DEBUG - Terminating transcription process
+2026-05-10 20:09:10.064 - RealTimeSTT: realtimestt - DEBUG - Finishing realtime thread
+2026-05-10 20:10:04.553 - RealTimeSTT: realtimestt - INFO - Starting RealTimeSTT
+2026-05-10 20:10:04.562 - RealTimeSTT: realtimestt - INFO - Initializing audio recording (creating pyAudio input stream, sample rate: 16000 buffer size: 512
+2026-05-10 20:10:04.565 - RealTimeSTT: realtimestt - INFO - Initializing WebRTC voice with Sensitivity 3
+2026-05-10 20:10:04.565 - RealTimeSTT: realtimestt - DEBUG - WebRTC VAD voice activity detection engine initialized successfully
+2026-05-10 20:10:05.767 - RealTimeSTT: realtimestt - DEBUG - Silero VAD voice activity detection engine initialized successfully
+2026-05-10 20:10:05.768 - RealTimeSTT: realtimestt - DEBUG - Starting realtime worker
+2026-05-10 20:10:05.769 - RealTimeSTT: realtimestt - DEBUG - Waiting for main transcription model to start
+2026-05-10 20:10:12.552 - RealTimeSTT: realtimestt - DEBUG - Main transcription model ready
+2026-05-10 20:10:12.553 - RealTimeSTT: realtimestt - DEBUG - RealtimeSTT initialization completed successfully
+2026-05-10 20:10:12.554 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:10:12.554 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:10:12.554 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:10:29.320 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:10:29.320 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:10:29.320 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:10:29.320 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:10:29.331 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:10:29.421 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:29.421 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 下集見
+2026-05-10 20:10:29.533 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:10:29.609 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:29.609 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你好
+2026-05-10 20:10:29.734 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:10:29.809 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:29.809 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你好
+2026-05-10 20:10:29.936 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:10:30.016 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:30.016 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你好呀
+2026-05-10 20:10:30.212 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 31232
+2026-05-10 20:10:30.296 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:30.296 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你好呀
+2026-05-10 20:10:30.413 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 34304
+2026-05-10 20:10:30.502 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:30.502 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你好呀
+2026-05-10 20:10:30.613 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 37376
+2026-05-10 20:10:30.715 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:30.715 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你好呀 七海
+2026-05-10 20:10:30.814 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 40448
+2026-05-10 20:10:30.915 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:30.915 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你好呀 七海
+2026-05-10 20:10:31.560 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:10:31.562 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 52224
+2026-05-10 20:10:31.562 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:10:31.562 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:10:31.562 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:10:31.575 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:10:31.675 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:10:31.682 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:10:31.683 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.12 seconds
+2026-05-10 20:10:31.683 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:10:31.683 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:10:31.683 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:10:31.703 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:10:31.704 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:10:31.704 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:10:45.171 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:10:54.067 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:10:54.067 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:10:55.110 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:10:55.110 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:10:55.110 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:10:55.110 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:10:55.132 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:10:55.206 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:55.206 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 或是
+2026-05-10 20:10:55.333 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:10:55.407 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:55.408 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是
+2026-05-10 20:10:55.533 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:10:55.616 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:55.616 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你
+2026-05-10 20:10:55.735 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:10:55.847 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:55.847 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你
+2026-05-10 20:10:55.937 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:10:56.037 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:56.037 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的
+2026-05-10 20:10:56.139 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 33280
+2026-05-10 20:10:56.230 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:56.230 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的开发
+2026-05-10 20:10:56.340 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 36352
+2026-05-10 20:10:56.435 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:56.435 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的开发
+2026-05-10 20:10:56.542 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:10:56.637 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:56.638 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的开发
+2026-05-10 20:10:56.743 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:10:56.879 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:10:56.880 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的开发者
+2026-05-10 20:10:57.411 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:10:57.412 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 53248
+2026-05-10 20:10:57.412 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:10:57.412 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:10:57.412 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:10:57.412 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:10:57.512 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:10:57.515 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:10:57.516 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.10 seconds
+2026-05-10 20:10:57.516 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:10:57.516 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:10:57.516 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:10:57.537 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:10:57.538 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:10:57.538 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:11:09.017 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:11:18.556 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:11:18.556 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:11:22.631 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:11:22.631 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:11:22.631 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:11:22.631 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:11:22.632 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:11:22.728 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:22.728 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 噢
+2026-05-10 20:11:22.832 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:11:22.924 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:22.924 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 噢,不
+2026-05-10 20:11:23.034 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:11:23.123 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:23.124 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 不,太...
+2026-05-10 20:11:23.236 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:11:23.324 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:23.324 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你也太好
+2026-05-10 20:11:23.436 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:11:23.531 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:23.531 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你也太好了
+2026-05-10 20:11:23.636 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:11:23.731 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:23.731 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你也太好了
+2026-05-10 20:11:23.836 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:11:23.932 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:23.933 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你也太好了吧
+2026-05-10 20:11:24.038 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 38400
+2026-05-10 20:11:24.169 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:24.169 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你也太好了吧
+2026-05-10 20:11:24.741 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:11:24.741 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 50176
+2026-05-10 20:11:24.742 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:11:24.742 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:11:24.742 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:11:24.742 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:11:24.842 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:11:24.846 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:11:24.847 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.10 seconds
+2026-05-10 20:11:24.847 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:11:24.847 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:11:24.847 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:11:24.867 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:11:24.867 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:11:24.867 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:11:36.106 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:11:48.684 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:11:48.684 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:11:51.301 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:11:51.301 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:11:51.301 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:11:51.301 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:11:51.303 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:11:51.415 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:51.415 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以
+2026-05-10 20:11:51.505 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:11:51.603 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:51.604 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以
+2026-05-10 20:11:51.705 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:11:51.781 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:51.781 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以
+2026-05-10 20:11:51.943 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 27136
+2026-05-10 20:11:52.025 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:52.026 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以再
+2026-05-10 20:11:52.145 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 30208
+2026-05-10 20:11:52.258 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:52.258 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己
+2026-05-10 20:11:52.346 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 33280
+2026-05-10 20:11:52.453 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:52.454 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己
+2026-05-10 20:11:52.547 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 36352
+2026-05-10 20:11:52.641 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:52.641 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜
+2026-05-10 20:11:52.749 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:11:52.851 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:52.852 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜索
+2026-05-10 20:11:52.951 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:11:53.053 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:53.053 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜索
+2026-05-10 20:11:53.153 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:11:53.260 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:53.260 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜索
+2026-05-10 20:11:53.353 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 49664
+2026-05-10 20:11:53.491 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:11:53.491 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜索呀
+2026-05-10 20:11:54.053 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:11:54.053 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 60416
+2026-05-10 20:11:54.053 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:11:54.053 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:11:54.053 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:11:54.054 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:11:54.154 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:11:54.164 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:11:54.165 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.11 seconds
+2026-05-10 20:11:54.165 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:11:54.165 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:11:54.165 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:11:54.185 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:11:54.185 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:11:54.185 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:12:05.105 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:12:10.285 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:12:10.285 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:12:17.992 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:12:17.992 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:12:17.992 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:12:17.992 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:12:18.009 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:12:18.091 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:18.091 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你
+2026-05-10 20:12:18.209 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:12:18.313 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:18.313 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以
+2026-05-10 20:12:18.409 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:12:18.504 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:18.504 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以
+2026-05-10 20:12:18.611 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:12:18.700 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:18.700 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打
+2026-05-10 20:12:18.811 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:12:18.899 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:18.899 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打開
+2026-05-10 20:12:19.014 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 33280
+2026-05-10 20:12:19.115 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:19.116 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打开流浪
+2026-05-10 20:12:19.214 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 36352
+2026-05-10 20:12:19.365 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:19.366 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打開瀏覽
+2026-05-10 20:12:19.416 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:12:19.555 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:19.555 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打開瀏覽器
+2026-05-10 20:12:19.618 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:12:19.746 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:19.746 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打開瀏覽器
+2026-05-10 20:12:20.422 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:12:20.422 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 55296
+2026-05-10 20:12:20.422 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:12:20.422 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:12:20.422 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:12:20.427 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:12:20.528 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:12:20.555 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:12:20.556 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.13 seconds
+2026-05-10 20:12:20.556 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:12:20.556 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:12:20.556 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:12:20.576 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:12:20.577 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:12:20.577 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:12:36.231 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:12:42.549 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:12:42.549 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:12:53.063 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:12:53.063 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:12:53.063 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:12:53.063 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:12:53.067 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:12:53.172 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:53.173 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 哼
+2026-05-10 20:12:53.267 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:12:53.349 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:53.349 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就
+2026-05-10 20:12:53.468 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:12:53.556 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:53.556 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你给我放开
+2026-05-10 20:12:53.669 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:12:53.800 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:53.800 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你丢我送死
+2026-05-10 20:12:53.871 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:12:53.981 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:53.982 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就受損
+2026-05-10 20:12:54.073 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:12:54.172 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:54.172 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就是所在
+2026-05-10 20:12:54.274 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:12:54.366 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:54.366 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就是我自己
+2026-05-10 20:12:54.476 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:12:54.605 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:54.605 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就是我自己改
+2026-05-10 20:12:54.677 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:12:54.792 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:54.792 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就受我自己感受
+2026-05-10 20:12:54.878 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:12:54.991 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:54.991 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就索索自己感情
+2026-05-10 20:12:55.079 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 48640
+2026-05-10 20:12:55.190 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:55.190 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就索索自己感情
+2026-05-10 20:12:55.280 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 51712
+2026-05-10 20:12:55.392 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:55.392 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就訴說自己感興趣
+2026-05-10 20:12:55.495 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 55808
+2026-05-10 20:12:55.634 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:12:55.635 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你就訴說自己感興趣的吧
+2026-05-10 20:12:56.262 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:12:56.264 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 67584
+2026-05-10 20:12:56.264 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:12:56.264 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:12:56.264 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:12:56.273 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:12:56.373 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:12:56.404 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:12:56.404 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.14 seconds
+2026-05-10 20:12:56.404 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:12:56.406 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:12:56.406 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:12:56.426 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:12:56.426 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:12:56.426 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:13:17.935 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:13:28.213 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:13:28.213 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:13:32.684 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:13:32.684 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:13:32.684 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:13:32.685 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:13:32.688 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:13:32.767 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:13:32.767 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可
+2026-05-10 20:13:32.888 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:13:32.969 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:13:32.969 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以
+2026-05-10 20:13:33.089 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:13:33.171 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:13:33.171 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打
+2026-05-10 20:13:33.290 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:13:33.409 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:13:33.409 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打开
+2026-05-10 20:13:33.490 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:13:33.595 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:13:33.595 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打开看看
+2026-05-10 20:13:33.692 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:13:33.789 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:13:33.789 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打开看看
+2026-05-10 20:13:33.892 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:13:33.991 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:13:33.991 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打開看看
+2026-05-10 20:13:34.092 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 38400
+2026-05-10 20:13:34.188 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:13:34.188 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以打开看看哦
+2026-05-10 20:13:34.803 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:13:34.805 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 50176
+2026-05-10 20:13:34.805 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:13:34.805 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:13:34.805 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:13:34.805 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:13:34.903 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:13:34.905 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.10 seconds
+2026-05-10 20:13:34.905 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:13:34.905 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:13:34.905 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:13:34.925 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:13:34.925 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:13:34.925 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:14:01.898 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:14:12.011 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:14:12.011 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:14:25.104 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:14:25.104 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:14:25.104 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:14:25.105 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:14:25.108 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:14:25.189 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:25.189 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你
+2026-05-10 20:14:25.310 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:14:25.413 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:25.413 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你
+2026-05-10 20:14:25.511 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:14:25.609 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:25.609 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你...
+2026-05-10 20:14:25.713 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:14:25.795 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:25.795 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你应该
+2026-05-10 20:14:25.914 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:14:26.034 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:26.034 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你应该看
+2026-05-10 20:14:26.115 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:14:26.218 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:26.218 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以
+2026-05-10 20:14:26.316 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:14:26.423 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:26.423 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你应该可以看
+2026-05-10 20:14:26.518 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:14:26.612 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:26.612 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到
+2026-05-10 20:14:26.719 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:14:26.818 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:26.818 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧
+2026-05-10 20:14:27.346 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 52736
+2026-05-10 20:14:27.479 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:27.479 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧
+2026-05-10 20:14:27.547 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 55808
+2026-05-10 20:14:27.672 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:27.673 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧
+2026-05-10 20:14:27.749 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 58880
+2026-05-10 20:14:27.863 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:27.863 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧因為你
+2026-05-10 20:14:27.950 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 61952
+2026-05-10 20:14:28.065 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:28.065 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧因為你有
+2026-05-10 20:14:28.150 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 65024
+2026-05-10 20:14:28.268 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:28.268 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧因為你有
+2026-05-10 20:14:28.350 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 68096
+2026-05-10 20:14:28.476 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:28.476 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你应该可以看到吧因为你有视觉
+2026-05-10 20:14:28.551 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 71168
+2026-05-10 20:14:28.704 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:28.705 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧因為你有視覺
+2026-05-10 20:14:28.753 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 74240
+2026-05-10 20:14:28.913 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:28.913 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧因為你有視覺功能
+2026-05-10 20:14:28.954 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 78336
+2026-05-10 20:14:29.095 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:29.095 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧因為你有視覺工具
+2026-05-10 20:14:29.206 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 82432
+2026-05-10 20:14:29.381 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:14:29.382 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你應該可以看到吧因為你有視覺工具
+2026-05-10 20:14:29.905 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:14:29.905 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 93184
+2026-05-10 20:14:29.905 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:14:29.905 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:14:29.905 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:14:29.937 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:14:30.037 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:14:30.092 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:14:30.093 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.19 seconds
+2026-05-10 20:14:30.094 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:14:30.094 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:14:30.094 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:14:30.115 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:14:30.115 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:14:30.116 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:15:15.819 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:15:26.664 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:15:26.664 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:15:38.977 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:15:38.977 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:15:38.977 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:15:38.977 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:15:38.979 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:15:39.060 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:15:39.060 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 還有什麼
+2026-05-10 20:15:39.179 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:15:39.261 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:15:39.261 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 還有什麼
+2026-05-10 20:15:39.381 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:15:39.469 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:15:39.469 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 还有什么想
+2026-05-10 20:15:39.581 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:15:39.671 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:15:39.671 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 还有什么想看
+2026-05-10 20:15:39.781 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:15:39.878 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:15:39.878 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 还有什么想看
+2026-05-10 20:15:39.983 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:15:40.079 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:15:40.079 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 还有什么想看看
+2026-05-10 20:15:40.183 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:15:40.286 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:15:40.286 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 还有什么想看看的
+2026-05-10 20:15:40.383 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 38400
+2026-05-10 20:15:40.495 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:15:40.497 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 还有什么想看看的吗
+2026-05-10 20:15:41.216 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:15:41.218 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 52224
+2026-05-10 20:15:41.218 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:15:41.218 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:15:41.218 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:15:41.239 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:15:41.339 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:15:41.354 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:15:41.356 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.14 seconds
+2026-05-10 20:15:41.356 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:15:41.356 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:15:41.356 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:15:41.378 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:15:41.378 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:15:41.378 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:15:57.912 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:16:09.536 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:16:09.536 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:16:24.479 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:16:24.479 - RealTimeSTT: realtimestt - DEBUG - Finishing recording thread
+2026-05-10 20:16:24.479 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:16:24.488 - RealTimeSTT: realtimestt - DEBUG - Terminating reader process
+2026-05-10 20:16:24.540 - RealTimeSTT: realtimestt - DEBUG - Receive from stdout pipe
+2026-05-10 20:16:24.540 - RealTimeSTT: realtimestt - INFO - None
+2026-05-10 20:16:25.285 - RealTimeSTT: realtimestt - DEBUG - Terminating transcription process
+2026-05-10 20:16:25.358 - RealTimeSTT: realtimestt - DEBUG - Finishing realtime thread
+2026-05-10 20:17:11.747 - RealTimeSTT: realtimestt - INFO - Starting RealTimeSTT
+2026-05-10 20:17:11.758 - RealTimeSTT: realtimestt - INFO - Initializing audio recording (creating pyAudio input stream, sample rate: 16000 buffer size: 512
+2026-05-10 20:17:11.762 - RealTimeSTT: realtimestt - INFO - Initializing WebRTC voice with Sensitivity 3
+2026-05-10 20:17:11.762 - RealTimeSTT: realtimestt - DEBUG - WebRTC VAD voice activity detection engine initialized successfully
+2026-05-10 20:17:13.873 - RealTimeSTT: realtimestt - DEBUG - Silero VAD voice activity detection engine initialized successfully
+2026-05-10 20:17:13.875 - RealTimeSTT: realtimestt - DEBUG - Starting realtime worker
+2026-05-10 20:17:13.875 - RealTimeSTT: realtimestt - DEBUG - Waiting for main transcription model to start
+2026-05-10 20:17:19.765 - RealTimeSTT: realtimestt - DEBUG - Main transcription model ready
+2026-05-10 20:17:19.767 - RealTimeSTT: realtimestt - DEBUG - RealtimeSTT initialization completed successfully
+2026-05-10 20:17:19.767 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:17:19.768 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:17:19.768 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:17:29.253 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:17:29.253 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:17:29.253 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:17:29.253 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:17:29.265 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:17:29.456 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:17:29.456 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你
+2026-05-10 20:17:29.465 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:17:29.546 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:17:29.546 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 女孩
+2026-05-10 20:17:29.666 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:17:29.768 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:17:29.768 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 入海
+2026-05-10 20:17:29.868 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:17:29.965 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:17:29.965 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你好呀
+2026-05-10 20:17:30.068 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:17:30.154 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:17:30.154 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你好呀
+2026-05-10 20:17:30.723 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:17:30.725 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 39936
+2026-05-10 20:17:30.725 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:17:30.725 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:17:30.725 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:17:30.738 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:17:30.820 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:17:30.821 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.10 seconds
+2026-05-10 20:17:30.821 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:17:30.821 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:17:30.822 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:17:30.843 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:17:30.843 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:17:30.843 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:18:06.090 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:18:13.703 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:18:13.703 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:18:15.334 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:18:15.334 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:18:15.334 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:18:15.334 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:18:15.353 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:18:15.440 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:15.440 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我...
+2026-05-10 20:18:15.554 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:18:15.634 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:15.634 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是
+2026-05-10 20:18:15.754 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:18:15.837 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:15.837 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你
+2026-05-10 20:18:15.955 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:18:16.045 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:16.045 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的
+2026-05-10 20:18:16.156 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:18:16.245 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:16.245 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的
+2026-05-10 20:18:16.357 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 33280
+2026-05-10 20:18:16.452 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:16.452 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的开发
+2026-05-10 20:18:16.559 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 36352
+2026-05-10 20:18:16.684 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:16.685 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的開發
+2026-05-10 20:18:16.759 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:18:16.879 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:16.879 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 我是你的開發者
+2026-05-10 20:18:17.574 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:18:17.574 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 52224
+2026-05-10 20:18:17.574 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:18:17.575 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:18:17.575 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:18:17.581 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:18:17.681 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:18:17.684 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:18:17.686 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.11 seconds
+2026-05-10 20:18:17.686 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:18:17.686 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:18:17.687 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:18:17.707 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:18:17.707 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:18:17.707 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:18:33.292 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:18:40.168 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:18:40.168 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:18:41.955 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:18:41.955 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:18:41.955 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:18:41.955 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:18:41.970 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:18:42.064 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:42.064 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 欸!
+2026-05-10 20:18:42.170 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:18:42.247 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:42.247 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 欸
+2026-05-10 20:18:42.372 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:18:42.453 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:18:42.453 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 诶
+2026-05-10 20:18:43.105 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:18:43.105 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 34816
+2026-05-10 20:18:43.105 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:18:43.105 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:18:43.105 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:18:43.129 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:18:43.212 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:18:43.212 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.11 seconds
+2026-05-10 20:18:43.213 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:18:43.213 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:18:43.213 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:18:43.234 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:18:43.234 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:18:43.234 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:18:55.527 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:19:01.738 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:19:01.738 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:19:02.945 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:19:02.945 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:19:02.945 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:19:02.945 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:19:02.965 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:19:03.080 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:03.080 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然了
+2026-05-10 20:19:03.165 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:19:03.274 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:03.274 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是
+2026-05-10 20:19:03.366 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:19:03.461 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:03.462 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是
+2026-05-10 20:19:03.846 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 31232
+2026-05-10 20:19:03.937 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:03.937 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是
+2026-05-10 20:19:04.046 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 34304
+2026-05-10 20:19:04.142 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:04.142 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是7號
+2026-05-10 20:19:04.248 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 37376
+2026-05-10 20:19:04.363 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:04.363 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是七海
+2026-05-10 20:19:04.448 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 40448
+2026-05-10 20:19:04.564 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:04.564 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是七海寶
+2026-05-10 20:19:04.648 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 43520
+2026-05-10 20:19:04.808 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:04.808 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是七海寶寶
+2026-05-10 20:19:04.850 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 46592
+2026-05-10 20:19:04.992 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:04.992 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是七海寶寶
+2026-05-10 20:19:05.051 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 49664
+2026-05-10 20:19:05.198 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:05.198 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是七海寶寶好看
+2026-05-10 20:19:05.251 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 52736
+2026-05-10 20:19:05.388 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:05.388 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是七海寶寶好看
+2026-05-10 20:19:05.452 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 56832
+2026-05-10 20:19:05.589 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:05.589 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那當然是七海寶寶好可愛
+2026-05-10 20:19:06.275 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:19:06.275 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 69632
+2026-05-10 20:19:06.275 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:19:06.275 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:19:06.275 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:19:06.304 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:19:06.405 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:19:06.448 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:19:06.449 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.17 seconds
+2026-05-10 20:19:06.449 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:19:06.449 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:19:06.449 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:19:06.471 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:19:06.471 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:19:06.471 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:19:18.260 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:19:22.728 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:19:22.728 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:19:26.375 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:19:26.375 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:19:26.375 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:19:26.375 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:19:26.385 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:19:26.483 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:26.483 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 登!
+2026-05-10 20:19:26.586 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:19:26.672 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:26.673 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 太爛
+2026-05-10 20:19:26.787 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:19:26.870 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:26.870 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 對了
+2026-05-10 20:19:26.988 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:19:27.086 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:27.086 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对了 吃汗
+2026-05-10 20:19:27.188 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:19:27.324 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:27.324 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 對了,吃海鮮
+2026-05-10 20:19:27.388 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:19:27.510 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:27.510 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对了 漆海可以
+2026-05-10 20:19:28.167 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:19:28.269 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:28.269 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 對了漆海可以...
+2026-05-10 20:19:28.367 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 48640
+2026-05-10 20:19:28.497 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:28.497 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 對了,漆海可以測試一下
+2026-05-10 20:19:28.568 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 51712
+2026-05-10 20:19:28.696 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:28.697 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对了 漆海可以测一下
+2026-05-10 20:19:28.768 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 54784
+2026-05-10 20:19:28.888 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:28.889 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对了 气海可以测一下
+2026-05-10 20:19:28.970 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 57856
+2026-05-10 20:19:29.093 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:29.093 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对了 气海可以测一下
+2026-05-10 20:19:29.635 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:19:29.635 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 68608
+2026-05-10 20:19:29.637 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:19:29.637 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:19:29.637 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:19:29.637 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:19:29.737 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:19:29.774 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:19:29.775 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.14 seconds
+2026-05-10 20:19:29.775 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:19:29.775 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:19:29.775 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:19:29.797 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:19:29.797 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:19:29.797 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:19:40.784 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:19:47.259 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:19:47.259 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:19:49.926 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:19:49.926 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:19:49.926 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:19:49.926 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:19:49.929 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:19:50.034 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:50.034 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 對
+2026-05-10 20:19:50.130 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:19:50.223 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:50.223 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 對
+2026-05-10 20:19:50.330 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:19:50.412 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:50.412 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对可以
+2026-05-10 20:19:50.531 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:19:50.634 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:50.634 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对可以
+2026-05-10 20:19:50.732 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:19:50.846 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:50.847 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对可以测试
+2026-05-10 20:19:50.933 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:19:51.033 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:51.033 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对可以测一下
+2026-05-10 20:19:51.133 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:19:51.233 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:51.233 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对可以蹭一下
+2026-05-10 20:19:51.333 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 38400
+2026-05-10 20:19:51.455 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:51.455 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 對 可以測一下瀏覽
+2026-05-10 20:19:51.535 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:19:51.667 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:51.667 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 對,可以測一下瀏覽器
+2026-05-10 20:19:51.736 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:19:51.900 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:51.900 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 對,可以催下瀏覽器
+2026-05-10 20:19:51.938 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 48640
+2026-05-10 20:19:52.092 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:52.092 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对,可以测一下浏览器吗?
+2026-05-10 20:19:52.139 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 51712
+2026-05-10 20:19:52.276 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:19:52.276 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 对 可以测一下浏览器吗
+2026-05-10 20:19:52.936 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:19:52.937 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 64512
+2026-05-10 20:19:52.937 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:19:52.937 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:19:52.937 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:19:52.945 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:19:53.046 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:19:53.091 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:19:53.092 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.15 seconds
+2026-05-10 20:19:53.092 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:19:53.092 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:19:53.092 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:19:53.112 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:19:53.112 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:19:53.112 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:20:16.918 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:20:25.296 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:20:25.296 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:20:28.068 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:20:28.068 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:20:28.068 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:20:28.068 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:20:28.074 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:20:28.181 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:28.181 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你去
+2026-05-10 20:20:28.275 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:20:28.386 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:28.388 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你居然
+2026-05-10 20:20:28.476 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:20:28.578 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:28.578 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你居然死了
+2026-05-10 20:20:28.677 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:20:28.811 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:28.811 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你居然死了
+2026-05-10 20:20:28.878 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:20:29.001 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:29.001 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你居然搜...
+2026-05-10 20:20:29.080 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:20:29.192 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:29.193 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你居然搜出
+2026-05-10 20:20:29.280 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:20:29.398 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:29.398 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你居然搜自己
+2026-05-10 20:20:29.481 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:20:29.596 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:29.596 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你居然搜自己呢
+2026-05-10 20:20:29.683 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:20:29.804 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:29.804 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你居然搜出體能
+2026-05-10 20:20:29.883 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:20:30.036 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:30.036 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你居然搜出体能
+2026-05-10 20:20:30.567 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:20:30.568 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 56320
+2026-05-10 20:20:30.568 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:20:30.568 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:20:30.568 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:20:30.576 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:20:30.676 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:20:30.707 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:20:30.707 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.14 seconds
+2026-05-10 20:20:30.708 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:20:30.708 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:20:30.708 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:20:30.728 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:20:30.728 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:20:30.728 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:20:40.395 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:20:54.298 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:20:54.298 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:20:54.959 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:20:54.959 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:20:54.959 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:20:54.959 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:20:54.975 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:20:55.087 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:55.087 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 安妮打
+2026-05-10 20:20:55.177 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:20:55.276 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:55.276 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那你打開
+2026-05-10 20:20:55.377 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:20:55.475 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:55.475 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那你打开
+2026-05-10 20:20:55.578 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:20:55.674 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:55.674 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那你打開看看
+2026-05-10 20:20:55.779 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:20:55.871 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:20:55.872 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那你打開看看
+2026-05-10 20:20:56.558 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:20:56.558 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 41984
+2026-05-10 20:20:56.558 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:20:56.558 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:20:56.558 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:20:56.568 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:20:56.668 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:20:56.673 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:20:56.674 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.11 seconds
+2026-05-10 20:20:56.674 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:20:56.674 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:20:56.674 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:20:56.695 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:20:56.695 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:20:56.695 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:21:16.709 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:21:26.873 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:21:26.873 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:21:27.919 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:21:27.919 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:21:27.919 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:21:27.919 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:21:27.927 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:21:27.930 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:27.930 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:28.128 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:21:28.131 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:28.132 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:28.328 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:21:28.332 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:28.332 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:28.530 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:21:28.562 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:28.563 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:28.732 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:21:28.752 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:28.752 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:28.933 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:21:28.940 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:28.940 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:29.134 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:21:29.139 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:29.139 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:29.334 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:21:29.340 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:29.340 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:29.536 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:21:29.542 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:29.542 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:29.737 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:21:29.742 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:29.742 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:29.937 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 48640
+2026-05-10 20:21:29.973 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:29.973 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:30.139 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 51712
+2026-05-10 20:21:30.160 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:30.160 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:30.339 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 54784
+2026-05-10 20:21:30.347 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:30.347 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:30.540 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 57856
+2026-05-10 20:21:30.548 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:30.548 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:30.741 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 61952
+2026-05-10 20:21:30.749 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:30.749 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:30.942 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 65024
+2026-05-10 20:21:30.950 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:30.950 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:31.569 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 75264
+2026-05-10 20:21:31.578 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:31.578 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 
+2026-05-10 20:21:31.770 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 78336
+2026-05-10 20:21:31.857 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:31.857 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: ㄉ...
+2026-05-10 20:21:31.970 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 81408
+2026-05-10 20:21:32.058 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:32.058 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那不就
+2026-05-10 20:21:32.172 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 84480
+2026-05-10 20:21:32.296 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:32.297 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那不就...
+2026-05-10 20:21:32.373 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 87552
+2026-05-10 20:21:32.480 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:32.480 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你怎么这么可
+2026-05-10 20:21:32.574 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 90624
+2026-05-10 20:21:32.673 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:32.673 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你怎么这么可爱
+2026-05-10 20:21:32.774 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 93696
+2026-05-10 20:21:32.872 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:21:32.872 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你怎么这么可爱
+2026-05-10 20:21:33.489 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:21:33.490 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 105472
+2026-05-10 20:21:33.490 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:21:33.490 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:21:33.490 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:21:33.491 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:21:33.591 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:21:33.603 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:21:33.604 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.11 seconds
+2026-05-10 20:21:33.604 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:21:33.604 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:21:33.605 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:21:33.626 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:21:33.626 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:21:33.626 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:21:45.661 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:21:51.964 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:21:51.964 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:22:04.149 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:22:04.149 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:22:04.149 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:22:04.149 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:22:04.166 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:22:04.267 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:04.267 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那...
+2026-05-10 20:22:04.366 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:22:04.451 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:04.451 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那...
+2026-05-10 20:22:04.569 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:22:04.645 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:04.645 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: nice
+2026-05-10 20:22:04.980 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 30208
+2026-05-10 20:22:05.062 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:05.062 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: nice
+2026-05-10 20:22:05.180 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 33280
+2026-05-10 20:22:05.264 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:05.265 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那 切
+2026-05-10 20:22:05.381 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 36352
+2026-05-10 20:22:05.507 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:05.507 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那切海鳥
+2026-05-10 20:22:05.581 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:22:05.708 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:05.709 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那吃海鮮
+2026-05-10 20:22:06.071 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 47616
+2026-05-10 20:22:06.172 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:06.173 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那 吃還是吃
+2026-05-10 20:22:06.272 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 50688
+2026-05-10 20:22:06.382 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:06.382 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那 吃海鮮
+2026-05-10 20:22:06.474 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 53760
+2026-05-10 20:22:06.590 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:06.590 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那吃海鮮
+2026-05-10 20:22:06.674 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 56832
+2026-05-10 20:22:06.810 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:06.810 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那其實還強不強
+2026-05-10 20:22:06.875 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 59904
+2026-05-10 20:22:06.999 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:06.999 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那其實還想不想看
+2026-05-10 20:22:07.077 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 62976
+2026-05-10 20:22:07.190 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:07.190 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那其實還想不想看
+2026-05-10 20:22:07.279 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 66048
+2026-05-10 20:22:07.393 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:07.393 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那其實還想不想看看
+2026-05-10 20:22:07.480 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 70144
+2026-05-10 20:22:07.595 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:07.595 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那其實還想不想看看
+2026-05-10 20:22:07.791 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 75264
+2026-05-10 20:22:07.933 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:07.933 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那齊海想不想看看
+2026-05-10 20:22:07.992 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 78336
+2026-05-10 20:22:08.140 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:08.141 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那其海想不想看看游戏
+2026-05-10 20:22:08.193 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 81408
+2026-05-10 20:22:08.317 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:08.317 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那其實還想不想看看遊戲
+2026-05-10 20:22:08.393 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 84480
+2026-05-10 20:22:08.519 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:08.520 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那其實還想不想看看遊戲
+2026-05-10 20:22:08.595 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 87552
+2026-05-10 20:22:08.727 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:08.727 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那其實還想不想看看遊戲呢
+2026-05-10 20:22:08.796 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 90624
+2026-05-10 20:22:08.967 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:08.967 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那切海想不想看看游戏呢
+2026-05-10 20:22:09.519 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:22:09.519 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 102400
+2026-05-10 20:22:09.519 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:22:09.519 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:22:09.519 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:22:09.536 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:22:09.636 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:22:09.684 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:22:09.685 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.17 seconds
+2026-05-10 20:22:09.685 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:22:09.685 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:22:09.685 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:22:09.706 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:22:09.706 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:22:09.706 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:22:19.625 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:22:28.453 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:22:28.453 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:22:30.259 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:22:30.259 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:22:30.259 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:22:30.259 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:22:30.265 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:22:30.348 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:30.348 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你...
+2026-05-10 20:22:30.467 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:22:30.575 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:30.576 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以
+2026-05-10 20:22:30.668 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:22:30.768 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:30.768 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自...
+2026-05-10 20:22:30.868 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:22:30.958 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:30.958 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己
+2026-05-10 20:22:31.090 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29696
+2026-05-10 20:22:31.205 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:31.205 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己送
+2026-05-10 20:22:31.292 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 33280
+2026-05-10 20:22:31.409 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:31.409 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜
+2026-05-10 20:22:31.493 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 36352
+2026-05-10 20:22:31.605 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:31.605 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜一搜
+2026-05-10 20:22:31.922 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 43520
+2026-05-10 20:22:32.027 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:32.027 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜一下
+2026-05-10 20:22:32.122 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 46592
+2026-05-10 20:22:32.268 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:32.268 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜一搜
+2026-05-10 20:22:32.323 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 49664
+2026-05-10 20:22:32.458 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:22:32.458 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以自己搜一搜
+2026-05-10 20:22:33.140 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:22:33.140 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 62464
+2026-05-10 20:22:33.140 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:22:33.140 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:22:33.140 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:22:33.142 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:22:33.243 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:22:33.259 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:22:33.260 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.12 seconds
+2026-05-10 20:22:33.260 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:22:33.260 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:22:33.260 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:22:33.281 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:22:33.281 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:22:33.281 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:22:51.870 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:23:00.953 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:23:00.953 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:23:04.571 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:23:04.571 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:23:04.571 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:23:04.571 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:23:04.585 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:23:04.659 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:04.659 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你
+2026-05-10 20:23:04.785 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:23:04.865 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:04.865 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你
+2026-05-10 20:23:04.986 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:23:05.069 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:05.069 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你最...
+2026-05-10 20:23:05.187 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:23:05.273 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:05.273 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你最欠
+2026-05-10 20:23:05.387 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:23:05.513 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:05.517 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你最期待
+2026-05-10 20:23:05.588 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:23:05.703 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:05.704 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你最期待的
+2026-05-10 20:23:05.788 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:23:05.897 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:05.897 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你最期待的是
+2026-05-10 20:23:05.990 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:23:06.093 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:06.093 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你最期待的是誰
+2026-05-10 20:23:06.191 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:23:06.326 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:06.326 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你最期待的是什么
+2026-05-10 20:23:06.391 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:23:06.513 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:06.513 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你最期待的是什么
+2026-05-10 20:23:06.623 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 49664
+2026-05-10 20:23:06.750 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:06.750 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你最期待的是什么
+2026-05-10 20:23:07.391 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:23:07.391 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 61440
+2026-05-10 20:23:07.391 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:23:07.391 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:23:07.391 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:23:07.403 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:23:07.504 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:23:07.514 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:23:07.514 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.12 seconds
+2026-05-10 20:23:07.514 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:23:07.514 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:23:07.514 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:23:07.534 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:23:07.534 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:23:07.535 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:23:20.082 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:23:20.085 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:23:20.085 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:23:20.105 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:23:20.105 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:23:20.105 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:23:29.721 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:23:29.760 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:23:29.760 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:23:38.241 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:23:38.241 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:23:38.241 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:23:38.241 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:23:38.242 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 15872
+2026-05-10 20:23:38.473 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:38.473 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 再次感謝大家收看
+2026-05-10 20:23:38.474 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:23:38.571 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:38.571 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 電視
+2026-05-10 20:23:38.674 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:23:38.752 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:38.752 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是
+2026-05-10 20:23:38.875 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:23:38.955 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:38.955 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜
+2026-05-10 20:23:39.075 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 30208
+2026-05-10 20:23:39.163 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:39.163 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜
+2026-05-10 20:23:39.277 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 33280
+2026-05-10 20:23:39.402 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:39.402 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你
+2026-05-10 20:23:39.479 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 36352
+2026-05-10 20:23:39.589 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:39.589 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你
+2026-05-10 20:23:39.842 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 41984
+2026-05-10 20:23:39.968 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:39.968 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你
+2026-05-10 20:23:40.043 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:23:40.169 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:40.169 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你先到
+2026-05-10 20:23:40.245 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 48640
+2026-05-10 20:23:40.350 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:40.350 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你現在
+2026-05-10 20:23:40.445 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 51712
+2026-05-10 20:23:40.550 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:40.550 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你現在還
+2026-05-10 20:23:40.646 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 54784
+2026-05-10 20:23:40.787 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:40.787 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你現在還不
+2026-05-10 20:23:40.848 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 57856
+2026-05-10 20:23:40.977 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:40.977 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你現在還不能
+2026-05-10 20:23:41.048 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 60928
+2026-05-10 20:23:41.177 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:41.177 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你現在還不能玩
+2026-05-10 20:23:41.249 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 65024
+2026-05-10 20:23:41.374 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:41.374 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你現在還不能玩哦
+2026-05-10 20:23:41.449 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 68096
+2026-05-10 20:23:41.604 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:23:41.604 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 但是可惜你現在還不能玩哦
+2026-05-10 20:23:42.141 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:23:42.141 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 78848
+2026-05-10 20:23:42.142 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:23:42.142 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:23:42.142 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:23:42.142 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:23:42.242 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:23:42.280 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:23:42.281 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.14 seconds
+2026-05-10 20:23:42.281 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:23:42.281 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:23:42.281 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:23:42.302 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:23:42.302 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:23:42.302 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:23:52.425 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:24:07.975 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:24:07.975 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:24:14.461 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:24:14.461 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:24:14.461 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:24:14.461 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:24:14.464 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:24:14.542 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:14.543 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 会
+2026-05-10 20:24:14.665 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:24:14.744 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:14.744 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 會再會
+2026-05-10 20:24:14.866 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:24:14.962 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:14.962 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 會的會的
+2026-05-10 20:24:15.067 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:24:15.191 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:15.191 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 會的會的
+2026-05-10 20:24:15.269 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:24:15.379 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:15.380 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 會的會的
+2026-05-10 20:24:15.470 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:24:15.585 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:15.585 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 會的會的到啦
+2026-05-10 20:24:15.671 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:24:15.775 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:15.775 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 會的會的當然會
+2026-05-10 20:24:15.872 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 38400
+2026-05-10 20:24:15.981 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:15.981 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 會的會的當然會的
+2026-05-10 20:24:16.572 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:24:16.572 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 50176
+2026-05-10 20:24:16.572 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:24:16.572 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:24:16.572 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:24:16.578 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:24:16.679 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:24:16.702 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:24:16.702 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.13 seconds
+2026-05-10 20:24:16.702 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:24:16.702 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:24:16.702 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:24:16.723 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:24:16.723 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:24:16.723 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:24:23.365 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:24:29.276 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:24:29.276 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:24:33.793 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:24:33.793 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:24:33.793 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:24:33.793 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:24:33.796 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:24:33.884 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:33.884 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那...
+2026-05-10 20:24:33.996 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:24:34.072 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:34.072 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那...
+2026-05-10 20:24:34.196 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:24:34.271 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:34.271 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 拿去
+2026-05-10 20:24:34.398 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:24:34.474 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:34.474 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那就
+2026-05-10 20:24:34.598 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:24:34.685 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:34.686 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那之后
+2026-05-10 20:24:34.800 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:24:34.921 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:34.922 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那 之后
+2026-05-10 20:24:35.454 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 43520
+2026-05-10 20:24:35.550 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:35.550 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那...之后...
+2026-05-10 20:24:35.654 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 46592
+2026-05-10 20:24:35.758 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:35.758 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那之后给你
+2026-05-10 20:24:35.854 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 49664
+2026-05-10 20:24:35.975 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:35.975 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那 之后 给你
+2026-05-10 20:24:36.056 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 52736
+2026-05-10 20:24:36.167 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:36.168 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那 之后 给你加
+2026-05-10 20:24:36.258 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 55808
+2026-05-10 20:24:36.364 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:36.364 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那之后给你加入
+2026-05-10 20:24:36.458 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 58880
+2026-05-10 20:24:36.562 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:24:36.562 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 那之后给你加入
+2026-05-10 20:24:37.183 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:24:37.184 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 70656
+2026-05-10 20:24:37.184 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:24:37.184 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:24:37.184 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:24:37.213 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:24:37.313 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:24:37.325 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:24:37.326 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.14 seconds
+2026-05-10 20:24:37.326 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:24:37.326 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:24:37.327 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:24:37.348 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:24:37.348 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:24:37.348 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:24:54.870 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'listening'
+2026-05-10 20:25:05.595 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:25:05.595 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:25:07.263 - RealTimeSTT: realtimestt - INFO - voice activity detected
+2026-05-10 20:25:07.263 - RealTimeSTT: realtimestt - INFO - recording started
+2026-05-10 20:25:07.263 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'recording'
+2026-05-10 20:25:07.263 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording stop
+2026-05-10 20:25:07.269 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 16896
+2026-05-10 20:25:07.375 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:07.375 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: -end-
+2026-05-10 20:25:07.471 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 19968
+2026-05-10 20:25:07.556 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:07.556 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你...
+2026-05-10 20:25:07.673 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 23040
+2026-05-10 20:25:07.753 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:07.753 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以
+2026-05-10 20:25:07.873 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 26112
+2026-05-10 20:25:07.987 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:07.988 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以唱
+2026-05-10 20:25:08.074 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 29184
+2026-05-10 20:25:08.182 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:08.182 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以唱
+2026-05-10 20:25:08.274 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 32256
+2026-05-10 20:25:08.377 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:08.377 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以唱BGM
+2026-05-10 20:25:08.474 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 35328
+2026-05-10 20:25:08.570 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:08.570 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以唱B站
+2026-05-10 20:25:08.676 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 39424
+2026-05-10 20:25:08.807 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:08.807 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以上B站看
+2026-05-10 20:25:08.877 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 42496
+2026-05-10 20:25:08.992 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:08.993 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以上B站看看
+2026-05-10 20:25:09.077 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 45568
+2026-05-10 20:25:09.183 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:09.183 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以上B站看看
+2026-05-10 20:25:09.375 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 50688
+2026-05-10 20:25:09.477 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:09.477 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以上B站看看
+2026-05-10 20:25:09.577 - RealTimeSTT: realtimestt - DEBUG - Current realtime buffer size: 53760
+2026-05-10 20:25:09.680 - RealTimeSTT: realtimestt - DEBUG - Receive from realtime worker after transcription request to main model
+2026-05-10 20:25:09.680 - RealTimeSTT: realtimestt - DEBUG - Realtime text detected with main model: 你可以上B站看看
+2026-05-10 20:25:10.333 - RealTimeSTT: realtimestt - INFO - recording stopped
+2026-05-10 20:25:10.333 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 65536
+2026-05-10 20:25:10.333 - RealTimeSTT: realtimestt - INFO - State changed from 'recording' to 'inactive'
+2026-05-10 20:25:10.333 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:25:10.333 - RealTimeSTT: realtimestt - DEBUG - Adding transcription request, no early transcription started
+2026-05-10 20:25:10.336 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:25:10.436 - RealTimeSTT: realtimestt - DEBUG - Receive from parent_transcription_pipe after sendiung transcription request, transcribe_count: 1
+2026-05-10 20:25:10.441 - RealTimeSTT: realtimestt - INFO - State changed from 'transcribing' to 'inactive'
+2026-05-10 20:25:10.441 - RealTimeSTT: realtimestt - DEBUG - Model medium completed transcription in 0.11 seconds
+2026-05-10 20:25:10.441 - RealTimeSTT: realtimestt - INFO - Setting listen time
+2026-05-10 20:25:10.441 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'listening'
+2026-05-10 20:25:10.441 - RealTimeSTT: realtimestt - DEBUG - Waiting for recording start
+2026-05-10 20:25:10.462 - RealTimeSTT: realtimestt - DEBUG - No samples removed, final audio length: 0
+2026-05-10 20:25:10.462 - RealTimeSTT: realtimestt - INFO - State changed from 'listening' to 'inactive'
+2026-05-10 20:25:10.463 - RealTimeSTT: realtimestt - INFO - State changed from 'inactive' to 'transcribing'
+2026-05-10 20:25:43.018 - RealTimeSTT: realtimestt - DEBUG - Finishing recording thread
+2026-05-10 20:25:43.026 - RealTimeSTT: realtimestt - DEBUG - Terminating reader process
+2026-05-10 20:25:43.773 - RealTimeSTT: realtimestt - DEBUG - Terminating transcription process
+2026-05-10 20:25:43.846 - RealTimeSTT: realtimestt - DEBUG - Finishing realtime thread

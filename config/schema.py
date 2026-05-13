@@ -62,7 +62,7 @@ class Background(BaseModel):
 class ApiConfig(BaseModel):
     """API 相关的配置，如 GPT-SoVITS 和 LLM 的设置"""
     gpt_sovits_api_path: DefaultIfNone[str] = Field(default='', description="GPT-SoVITS API 的工作目录")
-    gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="GPT-SoVITS API 的访问 URL")
+    gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='http://127.0.0.1:9880', description="GPT-SoVITS API 的访问 URL")
     tts_provider: DefaultIfNone[str] = Field(
         default="gpt-sovits",
         description="TTS 提供器: gpt-sovits / genie-tts / none（不使用语音合成）",

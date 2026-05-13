@@ -264,6 +264,7 @@
         "no_gpu": "GPU 情報を取得できません。下のリンクから手動取得可。",
         "err_py7": "開発時は pip install py7zr、またはリポの build_exe に 7za.exe を置いて再試行。",
         "err_7z": "同梱の 7za.exe が見つかりません。正規配布物を再インストールしてください。",
+        "extract_manual": "ダウンロードしたファイルを手動で解凍してください：\n{archive}",
         "done": "TTS ルート（絶対パス）を入力済み。ページ下の「保存」で api.yaml へ反映：\n{path}",
         "inline_hint": "ボタンでダイアログを開き、プラットフォームと GPU を表示します。推奨パッケージが既定選択です。ドロップダウンで変更してからダウンロードを開始できます。",
         "dlg_title": "TTS 統合包のダウンロード",
@@ -315,7 +316,9 @@
     },
     "msg": {
       "config": "API 設定",
-      "provider_fail": "プロバイダー更新に失敗: {e}"
+      "provider_fail": "プロバイダー更新に失敗: {e}",
+      "thinking_unsupported": "deepseek-v4-flash / deepseek-chat は思考モード非対応",
+      "validation_title": "入力チェック"
     },
     "resume": {
       "btn": "最後のチャットを読み込んで起動",
@@ -352,6 +355,7 @@
     "ai_write": "AI で下書き",
     "ai_translate": "AI 一括翻訳",
     "tt_ai_translate": "キャラ名・キャラ設定文・立ち絵の情緒/キーワード注釈を、現在の表示言語に訳します",
+    "msg_validation_title": "入力チェック",
     "msg_translate_title": "AI 翻訳",
     "msg_translate_empty": "名前・設定文・立ち絵タグのいずれかを入力してから再試行してください。",
     "msg_translate_llm": "先に「API/モデル」で LLM プロバイダ・モデル・API キーを設定してください。",

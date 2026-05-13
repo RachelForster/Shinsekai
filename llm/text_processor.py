@@ -20,6 +20,7 @@ class TextProcessor:
             return 'en'
         return 'ja'
 
+    # deprecated
     def get_emotion_from_text(self, text): 
         """从文本中提取情感状态，例如回复里开头的{emotion: NEUTRAL}"""
         pattern = r'^\(emotion:\s*(NEUTRAL|HAPPY|ANGRY|SAD|SURPRISED|SLEEPY|RELAXED)\)'
@@ -29,6 +30,7 @@ class TextProcessor:
         else:
             return 'NEUTRAL'
 
+    # deprecated
     def html_to_plain_qt(self, html):
         """使用 Qt 的 QTextDocument 转换，处理富文本文字"""
         doc = QTextDocument()
@@ -42,6 +44,7 @@ class TextProcessor:
         text = re.sub(r'\*.*?\*', '', text, flags=re.DOTALL)
         return text.strip()
 
+    # use replace_names instead of this
     def replace_watashi(self, text):
         '''把watashi 换为boku'''
         replacements = {
@@ -52,6 +55,7 @@ class TextProcessor:
         for pattern, repl in replacements.items():
             text = re.sub(pattern, repl, text)
         return text
+
     def replace_names(self, text):
         """替换文本中的角色名为对应的日语名"""
         for name, japanese_name in name_map.items():

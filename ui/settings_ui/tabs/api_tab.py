@@ -749,6 +749,7 @@ class ApiSettingsTab(QWidget):
         lay.addWidget(main_tree, stretch=1)
 
         self.llm_provider.currentTextChanged.connect(self._on_provider_change)
+        self.llm_model.textChanged.connect(self._on_model_text_changed)
         self.tts_provider.currentIndexChanged.connect(self._on_tts_provider_changed)
         self.t2i_engine.currentIndexChanged.connect(self._on_t2i_engine_changed)
         self._asr_provider.currentIndexChanged.connect(self._on_asr_provider_changed)
@@ -932,6 +933,26 @@ class ApiSettingsTab(QWidget):
         self.llm_model.setText(model)
         self.api_key.setText(key)
         self._rebuild_llm_extra_panel()
+        self._update_thinking_ui()
+
+    _NO_THINKING_MODELS = frozenset({"deepseek-v4-flash", "deepseek-chat"})
+
+    def _on_model_text_changed(self, text: str) -> None:
+        self._update_thinking_ui()
+
+    def _update_thinking_ui(self) -> None:
+        """deepseek-v4-flash / deepseek-chat 不支持思考模式，禁用控件并取消勾选。"""
+        model = self.llm_model.text().strip().lower()
+        w = self._llm_extra_editors.get("thinking_enabled")
+        if w is None or not isinstance(w, (QCheckBox,)):
+            return
+        if model in self._NO_THINKING_MODELS:
+            w.setChecked(False)
+            w.setEnabled(False)
+            w.setToolTip(tr_i18n("api.msg.thinking_unsupported"))
+        else:
+            w.setEnabled(True)
+            w.setToolTip("")
 
     def _clear_extra_layout(self, layout: QVBoxLayout) -> None:
         while layout.count():
@@ -955,6 +976,7 @@ class ApiSettingsTab(QWidget):
         panel, eds = build_schema_widgets(schema, vals, self._llm_extra_holder)
         self._llm_extra_layout.addWidget(panel)
         self._llm_extra_editors = eds
+        self._update_thinking_ui()
         self._schedule_refresh_main_tree_heights()
 
     def _rebuild_tts_extra_panel(self) -> None:
@@ -1045,11 +1067,36 @@ class ApiSettingsTab(QWidget):
         dlg.exec()
 
     def _on_save(self) -> None:
-        is_streaming = "是" if self.stream_yes.isChecked() else "否"
+        from sdk.ui.validators import not_empty, no_quotes, validate_or_block, valid_url, dir_exists
+        if not validate_or_block(
+            not_empty(self.base_url.text().strip(), tr_i18n("api.form.base_url")),
+            no_quotes(self.base_url.text().strip(), tr_i18n("api.form.base_url")),
+            not_empty(self.api_key.text().strip(), tr_i18n("api.form.api_key")),
+            not_empty(self.llm_model.text().strip(), tr_i18n("api.form.model_id")),
+            title=tr_i18n("api.msg.validation_title"),
+            parent=self,
+        ):
+            return
+
         tts_slug = self.tts_provider.currentData()
         if tts_slug is None:
             tts_slug = "gpt-sovits"
         tts_slug = str(tts_slug).strip().lower()
+
+        if tts_slug in ("gpt-sovits", "genie-tts"):
+            if not validate_or_block(
+                not_empty(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
+                no_quotes(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
+                valid_url(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
+                not_empty(self.gpt_sovits_api_path.text().strip(), tr_i18n("api.tts.path")),
+                no_quotes(self.gpt_sovits_api_path.text().strip(), tr_i18n("api.tts.path")),
+                dir_exists(self.gpt_sovits_api_path.text().strip(), tr_i18n("api.tts.path")),
+                title=tr_i18n("api.msg.validation_title"),
+                parent=self,
+            ):
+                return
+
+        is_streaming = "是" if self.stream_yes.isChecked() else "否"
         llm_prov = self.llm_provider.currentText()
         llm_cls = LLMAdapterFactory._adapters.get(llm_prov)
         llm_schema = llm_cls.get_config_schema() if llm_cls else {}

@@ -214,16 +214,18 @@ class TtsBundleDownloadDialog(QDialog):
         self._pending_accept = True
 
     def _on_worker_fail(self, msg: str) -> None:
-        if msg == "py7zr":
-            message_fail(
-                self, tr_i18n("api.msg.config"), tr_i18n("api.tts.env.err_py7")
-            )
-        elif msg == "7za":
-            message_fail(
-                self, tr_i18n("api.msg.config"), tr_i18n("api.tts.env.err_7z")
-            )
+        _archive_path = ""
+        if "||" in msg:
+            msg, _archive_path = msg.split("||", 1)
+        if msg in ("py7zr", "7za"):
+            _text = tr_i18n(f"api.tts.env.err_{msg}")
         else:
-            message_fail(self, tr_i18n("api.msg.config"), msg)
+            _text = msg
+        if _archive_path:
+            _text += "\n\n" + tr_i18n("api.tts.env.extract_manual").format(
+                archive=_archive_path
+            )
+        message_fail(self, tr_i18n("api.msg.config"), _text)
         self._pending_accept = False
         self._set_busy(False)
 

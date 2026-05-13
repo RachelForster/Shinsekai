@@ -267,6 +267,7 @@
         "no_gpu": "Could not read GPU info; you can still use links below.",
         "err_py7": "For development: pip install py7zr, or place 7za.exe under the repo's build_exe folder.",
         "err_7z": "Built-in 7za.exe is missing. Reinstall from the official release package.",
+        "extract_manual": "Please extract the downloaded file manually:\n{archive}",
         "done": "TTS path set (absolute). Click Save at the bottom to write api.yaml:\n{path}",
         "inline_hint": "Click the button to open a dialog with platform and GPU info; the recommended bundle is pre-selected. Change the selection in the dropdown if needed, then start the download.",
         "dlg_title": "Download TTS bundle",
@@ -318,7 +319,9 @@
     },
     "msg": {
       "config": "API",
-      "provider_fail": "Failed to update provider: {e}"
+      "provider_fail": "Failed to update provider: {e}",
+      "thinking_unsupported": "deepseek-v4-flash / deepseek-chat don't support thinking mode",
+      "validation_title": "Validation"
     },
     "resume": {
       "btn": "Resume last chat & launch",
@@ -355,6 +358,7 @@
     "ai_write": "AI draft",
     "ai_translate": "AI translate",
     "tt_ai_translate": "Translate the character name, long-form setting, and sprite emotion/keyword tags to the current UI language",
+    "msg_validation_title": "Validation",
     "msg_translate_title": "AI translate",
     "msg_translate_empty": "Enter a name, character setting, or sprite tags to translate first.",
     "msg_translate_llm": "Configure the LLM provider, model, and API key in API / Models first.",

@@ -754,6 +754,37 @@ class CharacterSettingsTab(QWidget):
         edit_as: str | None = None
         if not self._is_new_char(sel):
             edit_as = sel
+
+        from sdk.ui.validators import file_exists, not_empty, ascii_only, no_quotes, audio_duration_between, check_all, warn_if_invalid
+
+        def _ends_with(v: str, ext: str, label: str) -> tuple[bool, str]:
+            if not v:
+                return True, ""
+            if not v.lower().endswith(ext):
+                return False, f"{label}: 文件后缀应为 {ext}"
+            return True, ""
+
+        _spr = self.sprite_prefix.text().strip()
+        _gpt = self.gpt_model_path.text().strip()
+        _sovits = self.sovits_model_path.text().strip()
+        _ref = self.refer_audio_path.text().strip()
+        ok, errors = check_all(
+            not_empty(_spr, tr_i18n("char.sprite_dir")),
+            ascii_only(_spr, tr_i18n("char.sprite_dir")),
+            no_quotes(_gpt, tr_i18n("char.gpt_path")),
+            file_exists(_gpt, tr_i18n("char.gpt_path")),
+            _ends_with(_gpt, ".ckpt", tr_i18n("char.gpt_path")),
+            no_quotes(_sovits, tr_i18n("char.sovits_path")),
+            file_exists(_sovits, tr_i18n("char.sovits_path")),
+            _ends_with(_sovits, ".pth", tr_i18n("char.sovits_path")),
+            no_quotes(_ref, tr_i18n("char.ref_audio")),
+            file_exists(_ref, tr_i18n("char.ref_audio")),
+            audio_duration_between(_ref, 3.0, 10.0, tr_i18n("char.ref_audio")),
+        )
+        if not ok:
+            warn_if_invalid(ok, errors, title=tr_i18n("char.msg_validation_title"), parent=self)
+            return
+
         _pron_map = {}
         _raw_map = self.pronunciation_map_edit.toPlainText().strip()
         if _raw_map:
