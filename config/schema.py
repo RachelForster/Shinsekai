@@ -68,6 +68,9 @@ class ApiConfig(BaseModel):
     )
     tts_speed: DefaultIfNone[float] = Field(default=1.0, description="TTS 语速 (默认值 1.0)")
 
+    tts_split_enabled: DefaultIfNone[bool] = Field(default=False, description="是否启用TTS分句发送")
+    tts_max_sentence_length: DefaultIfNone[int] = Field(default=15, description="TTS分句最大长度（字符数）")
+
     t2i_provider: DefaultIfNone[str] = Field(
         default="comfyui",
         description="T2I 引擎标识（与 T2IAdapterFactory 注册名一致，含插件）",

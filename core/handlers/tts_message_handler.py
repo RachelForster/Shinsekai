@@ -168,28 +168,29 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 if text_processor:
                     speech_text = text_processor.remove_parentheses(speech_text)
 
-                # Split by punctuation, then merge into TTS segments.
-                # First segment may be longer (~25 chars) so its audio outlasts
-                # the generation time of subsequent segments, reducing gaps.
-                _pieces = re.split(r'(?<=[。！？，、；：\.!\?,;:])', speech_text)
-                _pieces = [s.strip() for s in _pieces if s.strip()]
-                _first_max, _rest_max = 25, 15
+                # 根据配置决定是否分句发送
+                _api_cfg = _config.config.api_config
+                _split_enabled = getattr(_api_cfg, "tts_split_enabled", False)
+                _max_len = getattr(_api_cfg, "tts_max_sentence_length", 15)
+
                 _sentences: list[str] = []
-                _cur = ""
-                for _p in _pieces:
-                    _lim = _first_max if not _sentences else _rest_max
-                    if not _cur:
-                        _cur = _p
-                    elif len(_cur) + len(_p) <= _lim:
-                        _cur += _p
-                    else:
+                if _split_enabled:
+                    _pieces = re.split(r'(?<=[。！？，、；：\.!\?,;:])', speech_text)
+                    _pieces = [s.strip() for s in _pieces if s.strip()]
+                    _cur = ""
+                    for _p in _pieces:
+                        if not _cur:
+                            _cur = _p
+                        elif len(_cur) + len(_p) <= _max_len:
+                            _cur += _p
+                        else:
+                            _sentences.append(_cur)
+                            _cur = _p
+                    if _cur:
                         _sentences.append(_cur)
-                        _cur = _p
-                if _cur:
-                    _sentences.append(_cur)
 
                 _speed = character_config.speech_speed
-                if len(_sentences) <= 1:
+                if not _sentences or len(_sentences) <= 1:
                     audio_path = rt.tts_manager.generate_tts(
                         speech_text,
                         text_processor=text_processor,

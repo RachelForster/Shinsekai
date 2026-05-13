@@ -250,6 +250,8 @@
       "none": "Off (text only / sprite preset audio)",
       "url": "TTS server URL",
       "path": "TTS / bundle path",
+      "split_enabled": "Enable sentence splitting",
+      "max_sentence_length": "Max sentence length (chars)",
       "ph_url": "e.g. http://127.0.0.1:9880/",
       "ph_path": "Root folder of your bundle or project",
       "env": {

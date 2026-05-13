@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QFrame,
+    QCheckBox,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -480,6 +481,30 @@ class ApiSettingsTab(QWidget):
         tts_inner_form.addRow(self._tts_engine, self.tts_provider)
         tts_inner_form.addRow(self._tts_url, self.sovits_url)
         tts_inner_form.addRow(self._tts_path, self.gpt_sovits_api_path)
+        # TTS 分句开关
+        api_cfg = self._ctx.config_manager.config.api_config
+        self.tts_split_enabled = QCheckBox(tr_i18n("api.tts.split_enabled"))
+        self.tts_split_enabled.setChecked(getattr(api_cfg, "tts_split_enabled", False))
+        self.tts_max_sentence_length = QSpinBox()
+        self.tts_max_sentence_length.setRange(5, 100)
+        self.tts_max_sentence_length.setValue(getattr(api_cfg, "tts_max_sentence_length", 15))
+        self.tts_max_sentence_length.setToolTip(tr_i18n("api.tts.max_sentence_length"))
+        self._tts_split_len_label = QLabel(tr_i18n("api.tts.max_sentence_length"))
+        tts_split_row = QHBoxLayout()
+        tts_split_row.setContentsMargins(0, 0, 0, 0)
+        tts_split_row.addWidget(self.tts_split_enabled)
+        tts_split_row.addWidget(self._tts_split_len_label)
+        tts_split_row.addWidget(self.tts_max_sentence_length)
+        tts_split_row.addStretch(1)
+        tts_split_w = QWidget()
+        tts_split_w.setLayout(tts_split_row)
+        tts_inner_form.addRow(tts_split_w)
+
+        def _toggle_split_visibility(checked):
+            self._tts_split_len_label.setVisible(checked)
+            self.tts_max_sentence_length.setVisible(checked)
+        self.tts_split_enabled.toggled.connect(_toggle_split_visibility)
+        _toggle_split_visibility(self.tts_split_enabled.isChecked())
         self._tts_extra_holder = QWidget()
         self._tts_extra_holder.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
@@ -1078,6 +1103,8 @@ class ApiSettingsTab(QWidget):
             self.presence_penalty.value(),
             self.frequency_penalty.value(),
             self.max_context_tokens.value(),
+            self.tts_split_enabled.isChecked(),
+            self.tts_max_sentence_length.value(),
         )
         prov = str(self._asr_provider.currentData() or "vosk")
         dev = str(self._asr_device.currentData() or "auto")

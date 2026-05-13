@@ -161,6 +161,8 @@ class ConfigManager:
         presence_penalty: float,
         frequency_penalty: float,
         max_context_tokens: int,
+        tts_split_enabled: bool = False,
+        tts_max_sentence_length: int = 15,
     ) -> str:
         """
         更新内存中的 ApiConfig，并将其保存到 api.yaml。
@@ -216,6 +218,8 @@ class ConfigManager:
         current_api_config.presence_penalty = float(presence_penalty)
         current_api_config.frequency_penalty = float(frequency_penalty)
         current_api_config.max_context_tokens = int(max_context_tokens)
+        current_api_config.tts_split_enabled = bool(tts_split_enabled)
+        current_api_config.tts_max_sentence_length = int(tts_max_sentence_length)
         self.config.api_config = current_api_config
 
         
