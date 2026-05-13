@@ -94,12 +94,21 @@ jobs:
         if: matrix.platform != 'windows-x64'
         shell: bash
         run: |
-          gh release download 20221002 \
-            -R indygreg/python-build-standalone \
-            -p 'cpython-3.10.8+*x86_64-apple-darwin*.tar.gz' \
-            -O python-standalone.tar.gz
-        env:
-          GH_TOKEN: ${{ github.token }}
+          ASSET_URL=$(curl -sS --connect-timeout 15 --max-time 30 \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/repos/indygreg/python-build-standalone/releases/tags/20221002" \
+            | python3 -c "
+          import sys, json
+          assets = json.load(sys.stdin)['assets']
+          for a in assets:
+              name = a['name']
+              if 'x86_64-apple-darwin' in name and name.endswith('.tar.gz'):
+                  print(a['browser_download_url'])
+                  break
+          ")
+          echo "Downloading: $ASSET_URL"
+          curl -fL --connect-timeout 15 --max-time 600 -o python-standalone.tar.gz "$ASSET_URL"
 
       - name: Extract Python to runtime/
         shell: bash
@@ -142,7 +151,9 @@ jobs:
         if: matrix.platform != 'windows-x64'
         shell: bash
         run: |
-          zip -r "${{ matrix.artifact }}" . -x '.git/*' '*.pyc' '__pycache__/*'
+          zip -rq "${{ matrix.artifact }}" . \
+            -x '.git/*' '*.pyc' '__pycache__/*' \
+            'data/tts_bundles/*' '*.egg-info/*' '*.dist-info/*'
 
       - name: Upload bundle to release
         uses: softprops/action-gh-release@v2
