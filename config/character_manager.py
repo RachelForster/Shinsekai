@@ -165,6 +165,7 @@ class CharacterManager:
                      prompt_lang: str, character_setting: str,
                      speech_speed: float = 1.0,
                      speech_volume: float = 1.0,
+                     pronunciation_map: dict = None,
                      edit_as_name: Optional[str] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
@@ -198,6 +199,8 @@ class CharacterManager:
                 target.character_setting = character_setting
                 target.speech_speed = speech_speed
                 target.speech_volume = speech_volume
+                if pronunciation_map is not None:
+                    target.pronunciation_map = pronunciation_map
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
 
@@ -220,6 +223,7 @@ class CharacterManager:
                 character_setting=character_setting,
                 speech_speed=speech_speed,
                 speech_volume=speech_volume,
+                pronunciation_map=pronunciation_map or {},
             )
             characters.append(new_character)
             self._save_characters_config()
@@ -236,6 +240,9 @@ class CharacterManager:
             existing_character.refer_audio_path = refer_audio_path
             existing_character.character_setting = character_setting
             existing_character.speech_speed = speech_speed
+            existing_character.speech_volume = speech_volume
+            if pronunciation_map is not None:
+                existing_character.pronunciation_map = pronunciation_map
 
             self._save_characters_config()
             return "人物已更新！", [c.name for c in characters]

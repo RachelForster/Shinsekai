@@ -346,6 +346,8 @@
     "progress_export": "正在导出人物，请稍候…",
     "progress_import": "正在导入 .char 文件，请稍候…",
     "sprite_dir": "上传数据目录名（英文）",
+    "pron_map": "读音映射",
+    "ph_pron_map": "中文名=日语读音，每行一组\n例：日向创=ヒナタ ハジメ",
     "setting_lbl": "角色设定",
     "ai_write": "AI 一键帮写",
     "ai_translate": "AI 一键翻译",

@@ -60,7 +60,8 @@ try:
     from live.danmuku_handler import start_bilibili_service
 except ImportError as e:
     # 早于 init_i18n，不调用 tr
-    print("Bilibili import failed:", e)
+    # print("Bilibili import failed:", e)
+    pass
 
 voice_lang = "ja"
 cc = OpenCC("t2s")  # 繁体到简体转换器
@@ -131,7 +132,6 @@ def main():
             print(tr_i18n("main.print_tts_fail", e=str(e)))
             traceback.print_exc()
 
-    # 创建DeepSeek实例
     print(tr_i18n("main.print_load_template", a=args))
 
     messages = []
@@ -145,6 +145,7 @@ def main():
     ) as f:
         user_template = f.read()
 
+    # Init LLMManager before UI, so that handlers can access it via get_app_runtime().llm_manager
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
     print(llm_provider, llm_model, base_url, api_key)
     if not llm_provider:
@@ -177,7 +178,7 @@ def main():
     if messages:
         llm_manager.set_messages(messages)
 
-    # 创建图像队列和情感队列
+    # Legacy flow
     image_queue = Queue()
     emotion_queue = Queue()
 
@@ -190,6 +191,13 @@ def main():
     audio_path_queue = Queue()
 
     text_processor = TextProcessor()
+
+    # 将角色读音映射注入 text_processor.name_map
+    for _char in config.config.characters:
+        _pm = getattr(_char, "pronunciation_map", None)
+        if _pm:
+            from llm.text_processor import name_map
+            name_map.update(_pm)
 
     # 获取背景组
     bg_group = None
@@ -211,7 +219,8 @@ def main():
         )
     except Exception:
         pass
-    # 创建桌面助手窗口
+    
+    # Init UI and connect to runtime
     app = QApplication([])
     ensure_fusion_style(app)
     ui_updates = UIUpdateManager(chat_history=chat_history, bg_group=bg_group or [])
@@ -314,7 +323,8 @@ def main():
         try:
             start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
         except ImportError as e:
-            print(tr_i18n("main.print_bili_import", e=str(e)))
+            # print(tr_i18n("main.print_bili_import", e=str(e)))
+            pass
 
     # 确保在程序退出时停止所有线程
     try:

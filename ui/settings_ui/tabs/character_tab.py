@@ -238,6 +238,12 @@ class CharacterSettingsTab(QWidget):
         left_info.addRow(self._f_name, self.char_name)
         left_info.addRow(self._f_color, _color_row)
         left_info.addRow(self._f_prefix, self.sprite_prefix)
+        # 读音映射
+        self.pronunciation_map_edit = QPlainTextEdit()
+        self.pronunciation_map_edit.setPlaceholderText(tr_i18n("char.ph_pron_map"))
+        self.pronunciation_map_edit.setMaximumHeight(80)
+        self._f_pron_map = QLabel(tr_i18n("char.pron_map"))
+        left_info.addRow(self._f_pron_map, self.pronunciation_map_edit)
         info_row.addLayout(left_info, stretch=0)
         right_info = QVBoxLayout()
         self._setting_lbl = QLabel(tr_i18n("char.setting_lbl"))
@@ -542,6 +548,7 @@ class CharacterSettingsTab(QWidget):
             for w in (self.gpt_model_path, self.sovits_model_path, self.refer_audio_path, self.prompt_text, self.prompt_lang):
                 w.clear()
             self.character_setting.clear()
+            self.pronunciation_map_edit.clear()
             return
         self.char_name.setText(c.name)
         self.char_color.setText(c.color or _DEFAULT_NAME_COLOR)
@@ -555,6 +562,8 @@ class CharacterSettingsTab(QWidget):
         self.speech_speed.setValue(float(c.speech_speed) if c.speech_speed else 1.0)
         self.speech_volume.setValue(float(c.speech_volume) if c.speech_volume else 1.0)
         self.character_setting.setPlainText(c.character_setting or "")
+        _pm = getattr(c, "pronunciation_map", None) or {}
+        self.pronunciation_map_edit.setPlainText("\n".join(f"{k}={v}" for k, v in _pm.items()))
 
     def _on_character_change(self, name: str) -> None:
         if self._is_new_char(name):
@@ -745,6 +754,17 @@ class CharacterSettingsTab(QWidget):
         edit_as: str | None = None
         if not self._is_new_char(sel):
             edit_as = sel
+        _pron_map = {}
+        _raw_map = self.pronunciation_map_edit.toPlainText().strip()
+        if _raw_map:
+            for _line in _raw_map.splitlines():
+                _line = _line.strip()
+                if "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    _k = _k.strip()
+                    _v = _v.strip()
+                    if _k and _v:
+                        _pron_map[_k] = _v
         msg, _ = self._ctx.character_manager.add_character(
             self.char_name.text().strip(),
             self.char_color.text().strip() or _DEFAULT_NAME_COLOR,
@@ -757,6 +777,7 @@ class CharacterSettingsTab(QWidget):
             self.character_setting.toPlainText().strip(),
             speech_speed=self.speech_speed.value(),
             speech_volume=self.speech_volume.value(),
+            pronunciation_map=_pron_map,
             edit_as_name=edit_as,
         )
         feedback_result(self, "人物", msg)

@@ -346,6 +346,8 @@
     "progress_export": "キャラをエクスポート中…",
     "progress_import": ".char ファイルを読み込み中…",
     "sprite_dir": "アップロード用ディレクトリ名（英字）",
+    "pron_map": "読み方マッピング",
+    "ph_pron_map": "名前=読み方、1行1組\n例：日向創=ヒナタ ハジメ",
     "setting_lbl": "キャラ設定",
     "ai_write": "AI で下書き",
     "ai_translate": "AI 一括翻訳",

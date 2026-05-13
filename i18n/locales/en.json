@@ -349,6 +349,8 @@
     "progress_export": "Exporting character…",
     "progress_import": "Importing .char files…",
     "sprite_dir": "Upload directory name (ASCII)",
+    "pron_map": "Pronunciation map",
+    "ph_pron_map": "name=reading, one per line\ne.g. Hinata=ヒナタ ハジメ",
     "setting_lbl": "Character setting",
     "ai_write": "AI draft",
     "ai_translate": "AI translate",

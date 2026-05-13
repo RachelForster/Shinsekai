@@ -138,6 +138,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
         if translate:
             text_processor = None
             speech_text = rt.text_processor.remove_parentheses(translate)
+            speech_text = rt.text_processor.replace_names(speech_text)
         audio_path = ""
         if rt.tts_manager:
             _post_tts_busy(tr_i18n("desktop.tts_busy_synthesizing", name=name_s))

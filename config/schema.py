@@ -47,6 +47,7 @@ class Character(BaseModel):
     prompt_lang: Optional[str] = Field('', description="Prompt 语言，例如: ja (可选)")
     speech_speed: DefaultIfNone[float] = Field(default=1.0, description="角色TTS语速倍率 (默认值 1.0)")
     speech_volume: DefaultIfNone[float] = Field(default=1.0, description="角色TTS语音音量 (0.0-2.0, 默认 1.0)")
+    pronunciation_map: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="角色名 → 日语读音映射（用于 TTS 发音替换）")
 
 class Background(BaseModel):
     """单个背景配置的实体模型"""

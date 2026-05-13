@@ -2,75 +2,7 @@ import re
 import requests
 from PySide6.QtGui import QTextDocument
 
-
-
 name_map = {
-    # 主角组
-    "日向创": "ヒナタ ハジメ",      # Hinata Hajime
-    "日向": "ヒナタ",
-    
-    # 主要角色
-    "狛枝凪斗": "コマエダ ナギト",  # Komaeda Nagito
-    "狛枝": "コマエダ",
-    "凪斗": "ナギト",
-    
-    "七海千秋": "ナナミ チアキ",    # Nanami Chiaki
-    "七海": "ナナミ",
-    
-    # 超高校级学生们
-    "田中眼蛇梦": "タナカ グンダム",  # Tanaka Gundam
-    "田中": "タナカ",
-    
-    "澪田唯吹": "ミオダ イブキ",    # Mioda Ibuki
-    "澪田": "ミオダ",
-    
-    "西园寺日寄子": "サイオンジ ヒヨコ",  # Saionji Hiyoko
-    "西园寺": "サイオンジ",
-    
-    "九头龙冬彦": "クズリュウ フユヒコ",  # Kuzuryu Fuyuhiko
-    "九头龙": "クズリュウ",
-    
-    "左右田和一": "ソウダ カズイチ",    # Soda Kazuichi
-    "左右田": "ソウダ",
-    
-    "边古山佩子": "ペコヤマ ペコ",     # Pekoyama Peko (片假名)
-    "边古山": "ペコヤマ",
-    
-    "小泉真昼": "コイズミ マヒル",    # Koizumi Mahiru
-    "小泉": "コイズミ",
-    
-    "十神白夜": "トガミ ビャクヤ",    # Togami Byakuya
-    "十神": "トガミ",
-    
-    "罪木蜜柑": "ツミキ ミカン",      # Tsumiki Mikan
-    "罪木": "ツミキ",
-    
-    "花村辉辉": "ハナムラ テルテル",   # Hanamura Teruteru
-    "花村": "ハナムラ",
-    
-    "贰大猫丸": "ニダイ ネコマル",     # Nidai Nekomaru
-    "贰大": "ニダイ",
-    
-    "终里赤音": "オワリ アカネ",      # Owari Akane
-    "终里": "オワリ",
-    
-    "索尼娅": "ソニア",               # Sonia Nevermind (片假名)
-    "索尼娅·内瓦曼德": "ソニア・ネバーマインド",
-
-     # 创作者
-    "小高和刚": "コダカ カズタカ",    # Kodaka Kazutaka
-    "小高": "コダカ",
-
-    "神座出流": "カムクラ イズル",  # Kamukura Izuru
-    "神座": "カムクラ",
-
-    "江之岛盾子": "エノシマ ジュンコ",  # Enoshima Junko
-    "盾子": "ジュンコ",
-
-    "王马小吉": "オウマ コウキ",    # Oma Kokichi
-    "王马": "オウマ",
-
-    "兔兔美": "ウサミ"
 }
 
 class TextProcessor:
