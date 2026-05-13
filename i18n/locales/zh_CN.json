@@ -146,6 +146,7 @@
     "discover_install_log_hint": "pip 输出（实时）：",
     "discover_install_pip_separator": "\n── pip ──\n",
     "discover_install_done_ok": "已完成下载与安装步骤",
+    "discover_install_restart_hint": "🔄 请重启程序以使插件生效",
     "discover_install_done_fail": "下载或安装未完成",
     "discover_install_download_error_heading": "【下载错误】",
     "discover_download_tooltip": "从 GitHub 拉取 main/master 源码 ZIP，解压到 plugins/；若有 requirements.txt 则自动 pip 安装依赖；索引含 entry 时写入 plugins.yaml（整合包依赖装入 data/plugin_site_packages）",

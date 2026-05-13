@@ -149,6 +149,7 @@
     "discover_install_log_hint": "pip output (live):",
     "discover_install_pip_separator": "\n── pip ──\n",
     "discover_install_done_ok": "Download and install steps finished",
+    "discover_install_restart_hint": "🔄 Please restart the program for the plugin to take effect",
     "discover_install_done_fail": "Download or install did not complete",
     "discover_install_download_error_heading": "[Download error]",
     "discover_download_tooltip": "Fetch main/master ZIP from GitHub into plugins/; run pip on requirements.txt when present; append catalog entry to plugins.yaml when provided (frozen builds use data/plugin_site_packages)",

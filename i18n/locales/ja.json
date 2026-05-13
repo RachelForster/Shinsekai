@@ -146,6 +146,7 @@
     "discover_install_log_hint": "pip 出力（リアルタイム）：",
     "discover_install_pip_separator": "\n── pip ──\n",
     "discover_install_done_ok": "ダウンロードとインストール手順が完了しました",
+    "discover_install_restart_hint": "🔄 プラグインを有効にするためにプログラムを再起動してください",
     "discover_install_done_fail": "ダウンロードまたはインストールが完了しませんでした",
     "discover_install_download_error_heading": "【ダウンロードエラー】",
     "discover_download_tooltip": "GitHub の main/master ZIP を plugins/ に展開し、requirements.txt があれば pip で依存関係を入れます。インデックスに entry があれば plugins.yaml に追記します（配布版は data/plugin_site_packages）",

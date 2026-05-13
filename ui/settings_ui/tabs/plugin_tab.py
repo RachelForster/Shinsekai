@@ -211,6 +211,9 @@ class _DiscoverInstallProgressDialog(QDialog):
         self._bar.setRange(0, 100)
         self._bar.setValue(100)
         self._bytes_lbl.clear()
+        self._log.appendPlainText(
+            "\n" + tr_i18n("plugins.discover_install_restart_hint") + "\n"
+        )
         pip_code, detail_tail = _parse_pip_install_result_json(pip_json)
         if pip_code == "app_update_skip_pip":
             self._log.appendPlainText(tr_i18n("plugins.app_update_no_pip_log"))
