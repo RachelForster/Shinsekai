@@ -117,7 +117,14 @@ jobs:
         run: |
           ./runtime/bin/python3 -m pip install --upgrade pip -q
 
-      - name: Create bundle archive
+      - name: Create bundle archive (Windows)
+        if: matrix.platform == 'windows-x64'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path * -DestinationPath "${{ matrix.artifact }}" -Force
+
+      - name: Create bundle archive (macOS)
+        if: matrix.platform != 'windows-x64'
         shell: bash
         run: |
           zip -r "${{ matrix.artifact }}" . -x '.git/*' '*.pyc' '__pycache__/*'
