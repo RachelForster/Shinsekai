@@ -113,8 +113,10 @@ class DeepSeekAdapter(LLMAdapter):
 class OpenAIAdapter(LLMAdapter):
     def __init__(self, api_key=None, base_url=None, model="gpt-3.5-turbo", **kwargs):
         super().__init__(**kwargs)
-        self.client = OpenAI(api_key=api_key)
-        self.client.base_url = base_url
+        if base_url:
+            self.client = OpenAI(api_key=api_key, base_url=base_url)
+        else:
+            self.client = OpenAI(api_key=api_key)
         self.model = model
 
     @classmethod
@@ -141,12 +143,17 @@ class OpenAIAdapter(LLMAdapter):
                 "stream": stream,
                 **kwargs,
             }
+            # 兼容旧版 max_tokens 参数：新版 OpenAI 模型（o1/o3/o4 等）要求使用 max_completion_tokens
+            if "max_tokens" in create_kwargs and "max_completion_tokens" not in create_kwargs:
+                create_kwargs["max_completion_tokens"] = create_kwargs.pop("max_tokens")
             if not use_tools:
                 create_kwargs["response_format"] = response_format
             response = self.client.chat.completions.create(**create_kwargs)
             return response
         except Exception as e:
-            print(f"OpenAI chat error: {e}")
+            import traceback
+            print(f"OpenAI chat error[{type(e).__name__}]: {e}")
+            traceback.print_exc()
             return None
 
 class GeminiAdapter(LLMAdapter):
