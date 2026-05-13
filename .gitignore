@@ -17,7 +17,6 @@ runtime/
 /ui/settings_ui/__pycache__
 /ui/settings_ui/.gitignore
 /ui/settings_ui/images
-/scripts
 /packaging
 /build_exe
 /assets/system/models
