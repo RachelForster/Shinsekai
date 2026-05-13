@@ -78,41 +78,51 @@ jobs:
           - os: macos-latest
             platform: macos-arm64
             artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-macos-arm64.zip
-            embed_url: https://github.com/indygreg/python-build-standalone/releases/download/20221002/cpython-3.10.8+20221002-aarch64-apple-darwin-install_only.tar.gz
-            embed_archive: python-standalone.tar.gz
-            pth_file: ""
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download embedded Python 3.10.8
+      - name: Setup Python 3.10 (Windows download embeddable)
+        if: matrix.platform == 'windows-x64'
         shell: bash
         run: |
-          curl -L -o "${{ matrix.embed_archive }}" "${{ matrix.embed_url }}"
+          curl -fL -o python-embed.zip "https://www.python.org/ftp/python/3.10.8/python-3.10.8-embed-amd64.zip"
+
+      - name: Setup Python 3.10 (macOS via python-build-standalone)
+        if: matrix.platform != 'windows-x64'
+        shell: bash
+        run: |
+          gh release download 20221002 \
+            -R indygreg/python-build-standalone \
+            -p 'cpython-3.10.8+*aarch64-apple-darwin*.tar.gz' \
+            -O python-standalone.tar.gz
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Extract Python to runtime/
         shell: bash
         run: |
           rm -rf runtime
-          mkdir -p runtime
           if [[ "${{ matrix.platform }}" == "windows-x64" ]]; then
-            unzip -q "${{ matrix.embed_archive }}" -d runtime/
+            mkdir -p runtime
+            unzip -q python-embed.zip -d runtime/
           else
-            tar -xzf "${{ matrix.embed_archive }}" -C runtime/ --strip-components=1
+            mkdir -p runtime
+            tar -xzf python-standalone.tar.gz -C runtime/ --strip-components=1
           fi
 
       - name: Setup pip and modify _pth (Windows)
         if: matrix.platform == 'windows-x64'
         shell: bash
         run: |
-          curl -L -o runtime/get-pip.py https://bootstrap.pypa.io/get-pip.py
+          curl -fL -o runtime/get-pip.py https://bootstrap.pypa.io/get-pip.py
           ./runtime/python.exe runtime/get-pip.py --no-warn-script-location
-          sed -i 's/^#import site/import site/' "runtime/${{ matrix.pth_file }}"
+          sed -i 's/^#import site/import site/' runtime/python310._pth
 
       - name: Setup pip (macOS)
-        if: matrix.platform == 'macos'
+        if: matrix.platform != 'windows-x64'
         shell: bash
         run: |
           ./runtime/bin/python3 -m pip install --upgrade pip -q
