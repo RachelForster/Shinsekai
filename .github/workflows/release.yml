@@ -75,9 +75,9 @@ jobs:
             embed_url: https://www.python.org/ftp/python/3.10.8/python-3.10.8-embed-amd64.zip
             embed_archive: python-embed.zip
             pth_file: python310._pth
-          - os: macos-latest
-            platform: macos-arm64
-            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-macos-arm64.zip
+          - os: macos-13
+            platform: macos-x64
+            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-macos-x64.zip
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -96,7 +96,7 @@ jobs:
         run: |
           gh release download 20221002 \
             -R indygreg/python-build-standalone \
-            -p 'cpython-3.10.8+*aarch64-apple-darwin*.tar.gz' \
+            -p 'cpython-3.10.8+*x86_64-apple-darwin*.tar.gz' \
             -O python-standalone.tar.gz
         env:
           GH_TOKEN: ${{ github.token }}
@@ -126,6 +126,11 @@ jobs:
         shell: bash
         run: |
           ./runtime/bin/python3 -m pip install --upgrade pip -q
+
+      - name: Make scripts executable (macOS)
+        if: matrix.platform != 'windows-x64'
+        shell: bash
+        run: chmod +x scripts/install.sh scripts/start.sh
 
       - name: Create bundle archive (Windows)
         if: matrix.platform == 'windows-x64'
