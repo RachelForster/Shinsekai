@@ -96,16 +96,23 @@ jobs:
         run: |
           ASSET_URL=$(curl -sS --connect-timeout 15 --max-time 30 \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            "https://api.github.com/repos/indygreg/python-build-standalone/releases/tags/20221002" \
+            "https://api.github.com/repos/indygreg/python-build-standalone/releases" \
             | python3 -c "
           import sys, json
-          assets = json.load(sys.stdin)['assets']
-          for a in assets:
-              name = a['name']
-              if 'aarch64-apple-darwin' in name and name.endswith('.tar.gz'):
-                  print(a['browser_download_url'])
-                  break
+          releases = json.load(sys.stdin)
+          if not isinstance(releases, list):
+              # rate-limited or error
+              err = releases.get('message', 'unknown error')
+              raise SystemExit(f'GitHub API error: {err}')
+          for rel in releases:
+              tag = rel.get('tag_name', '')
+              if tag == '20221002':
+                  for a in rel.get('assets', []):
+                      n = a.get('name', '')
+                      if 'aarch64-apple-darwin' in n and n.endswith('.tar.gz'):
+                          print(a['browser_download_url'])
+                          raise SystemExit(0)
+          raise SystemExit('no matching asset found')
           ")
           echo "Downloading: $ASSET_URL"
           curl -fL --connect-timeout 15 --max-time 600 -o python-standalone.tar.gz "$ASSET_URL"
