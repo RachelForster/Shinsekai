@@ -75,9 +75,9 @@ jobs:
             embed_url: https://www.python.org/ftp/python/3.10.8/python-3.10.8-embed-amd64.zip
             embed_archive: python-embed.zip
             pth_file: python310._pth
-          - os: macos-13
-            platform: macos-x64
-            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-macos-x64.zip
+          - os: macos-latest
+            platform: macos-arm64
+            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-macos-arm64.zip
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -103,7 +103,7 @@ jobs:
           assets = json.load(sys.stdin)['assets']
           for a in assets:
               name = a['name']
-              if 'x86_64-apple-darwin' in name and name.endswith('.tar.gz'):
+              if 'aarch64-apple-darwin' in name and name.endswith('.tar.gz'):
                   print(a['browser_download_url'])
                   break
           ")
