@@ -6,10 +6,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  tag:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      TAG: ${{ steps.gen.outputs.TAG }}
+    steps:
+      - name: Generate tag
+        id: gen
+        run: |
+          TAG="v$(date +%Y.%m.%d)"
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+  test:
+    needs: tag
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -38,12 +48,82 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: python -m pytest -v --tb=short --strict-markers -p no:warnings
 
+  release:
+    needs: [tag, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Create Release
-        env:
-          TAG: v$(date +%Y.%m.%d)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG }}
-          name: ${{ env.TAG }}
+          tag_name: ${{ needs.tag.outputs.TAG }}
+          name: ${{ needs.tag.outputs.TAG }}
           generate_release_notes: true
           prerelease: true
+
+  bundle:
+    needs: [tag, test]
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-windows-x64.zip
+            embed_url: https://www.python.org/ftp/python/3.10.8/python-3.10.8-embed-amd64.zip
+            embed_archive: python-embed.zip
+            pth_file: python310._pth
+          - os: macos-latest
+            platform: macos-arm64
+            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-macos-arm64.zip
+            embed_url: https://github.com/indygreg/python-build-standalone/releases/download/20221002/cpython-3.10.8+20221002-aarch64-apple-darwin-install_only.tar.gz
+            embed_archive: python-standalone.tar.gz
+            pth_file: ""
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download embedded Python 3.10.8
+        shell: bash
+        run: |
+          curl -L -o "${{ matrix.embed_archive }}" "${{ matrix.embed_url }}"
+
+      - name: Extract Python to runtime/
+        shell: bash
+        run: |
+          rm -rf runtime
+          mkdir -p runtime
+          if [[ "${{ matrix.platform }}" == "windows-x64" ]]; then
+            unzip -q "${{ matrix.embed_archive }}" -d runtime/
+          else
+            tar -xzf "${{ matrix.embed_archive }}" -C runtime/ --strip-components=1
+          fi
+
+      - name: Setup pip and modify _pth (Windows)
+        if: matrix.platform == 'windows-x64'
+        shell: bash
+        run: |
+          curl -L -o runtime/get-pip.py https://bootstrap.pypa.io/get-pip.py
+          ./runtime/python.exe runtime/get-pip.py --no-warn-script-location
+          sed -i 's/^#import site/import site/' "runtime/${{ matrix.pth_file }}"
+
+      - name: Setup pip (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          ./runtime/bin/python3 -m pip install --upgrade pip -q
+
+      - name: Create bundle archive
+        shell: bash
+        run: |
+          zip -r "${{ matrix.artifact }}" . -x '.git/*' '*.pyc' '__pycache__/*'
+
+      - name: Upload bundle to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.TAG }}
+          files: ${{ matrix.artifact }}
