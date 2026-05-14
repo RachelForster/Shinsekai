@@ -5,20 +5,26 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from llm.history_manager import HistoryManager, parse_assistant_dialog_content
-
 from core.messaging.dialog_tokens import is_option_history_name, is_option_history_plain
 from sdk.messages import TTSOutputMessage
 
 CHAT_HISTORY_PATH = "./data/chat_history"
 
 chat_history: list[Any] = []
-history_manager = HistoryManager(chat_history)
+_history_manager = None
+
+
+def _get_history_manager():
+    global _history_manager
+    if _history_manager is None:
+        from llm.history_manager import HistoryManager
+        _history_manager = HistoryManager(chat_history)
+    return _history_manager
 
 
 def get_history() -> list[Any]:
     """获取聊天历史记录。"""
-    return history_manager.get_history()
+    return _get_history_manager().get_history()
 
 
 def getHistory() -> list[Any]:
@@ -28,17 +34,17 @@ def getHistory() -> list[Any]:
 
 def save_chat_history(file_path: str, history: Any) -> None:
     """根据提供的文件名保存聊天记录到 JSON 文件。"""
-    history_manager.save_chat_history(file_path, history)
+    _get_history_manager().save_chat_history(file_path, history)
 
 
 def load_chat_history(file_path: str) -> Any:
-    return history_manager.load_chat_history(file_path)
+    return _get_history_manager().load_chat_history(file_path)
 
 
 def clear_chat_history(history_file: str, ui_queue: Any, llm_manager: Any) -> None:
     from i18n import tr
 
-    history_manager.clear_chat_history(history_file)
+    _get_history_manager().clear_chat_history(history_file)
     llm_manager.clear_messages()
     ui_queue.put(
         TTSOutputMessage(
@@ -53,7 +59,7 @@ def clear_chat_history(history_file: str, ui_queue: Any, llm_manager: Any) -> No
 
 def copy_chat_history_to_clipboard() -> None:
     """将聊天记录复制到系统剪贴板，去除 HTML 标签并格式化为纯文本。"""
-    history_manager.copy_chat_history_to_clipboard()
+    _get_history_manager().copy_chat_history_to_clipboard()
 
 
 def replay_history_entry(window: Any, history_entry: str) -> None:
@@ -89,11 +95,37 @@ def is_user_history_entry(history_entry: str) -> bool:
     return "你</b>" in history_entry or "你</b>：" in history_entry or "你</b>:" in history_entry
 
 
+def pop_last_assistant_turn(chat_history: list, messages: list) -> str:
+    """从 chat_history 和 messages 尾部移除最近一次问答（含 assistant 回复与最后一条 user）。
+
+    返回被移除的用户消息文本（用于 reroll），若无则返回空字符串。
+    此函数为纯逻辑，不依赖 Qt / UI。
+    """
+    last_user = ""
+    # 找到最后一条用户消息
+    for entry in reversed(chat_history):
+        if is_user_history_entry(entry):
+            last_user = entry
+            break
+    # 从 chat_history 尾部删除：先删 assistant，再删最后一条 user
+    while chat_history and not is_user_history_entry(chat_history[-1]):
+        chat_history.pop()
+    if chat_history and is_user_history_entry(chat_history[-1]):
+        chat_history.pop()
+    # 同步 messages 列表：先删 assistant，再删最后一条 user
+    while messages and messages[-1].get("role") != "user":
+        messages.pop()
+    if messages and messages[-1].get("role") == "user":
+        messages.pop()
+    return last_user
+
+
 def extract_valid_dialog_from_messages(messages: list) -> list:
     """从历史消息中提取最后一条可用 assistant dialog。"""
     for message in reversed(messages):
         if message.get("role") != "assistant":
             continue
+        from llm.history_manager import parse_assistant_dialog_content
         content = message.get("content", "")
         dialog = parse_assistant_dialog_content(content)
         if dialog:

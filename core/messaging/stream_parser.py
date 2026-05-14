@@ -18,6 +18,17 @@ class LlmResponseStreamParser:
     def __init__(self) -> None:
         self._buffer = ""
         self.accumulated_text = ""
+        self.parse_failures = 0
+        self.last_error: str = ""
+
+    @property
+    def has_errors(self) -> bool:
+        return self.parse_failures > 0
+
+    @property
+    def unparsed_remainder(self) -> str:
+        """流结束后缓冲区里残留的内容（截短便于展示）。"""
+        return self._buffer[:200].strip()
 
     def feed(self, chunk: str) -> Iterator[LLMDialogMessage]:
         """将新到达的文本并入缓冲区，并对其中已完整的 JSON 逐条 yield。"""
@@ -39,8 +50,12 @@ class LlmResponseStreamParser:
                 self._buffer = self._buffer[end_index:].strip()
                 yield msg
             except json.JSONDecodeError:
+                self.parse_failures += 1
+                _snippet = json_str[:120].replace("\n", " ")
+                self.last_error = f"JSON 解析失败 ({_snippet}…)"
                 self._buffer = self._buffer[end_index:].strip()
             except Exception as e:
-                print(f"处理失败: {e}")
+                self.parse_failures += 1
+                self.last_error = str(e)[:200]
                 self._buffer = self._buffer[end_index:].strip()
                 break

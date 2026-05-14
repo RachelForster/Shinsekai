@@ -171,6 +171,11 @@ class ChatUIContext:
     ) -> Callable[[], None]:
         return _wire_handler(self._bridge.message_submitted, handler)
 
+    def on_reroll_requested(
+        self, handler: Callable[[], None]
+    ) -> Callable[[], None]:
+        return _wire_handler(self._bridge.reroll_requested, handler)
+
     def on_open_chat_history_dialog(
         self, handler: Callable[[], None]
     ) -> Callable[[], None]:

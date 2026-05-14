@@ -59,6 +59,7 @@ DIALOG_FRAME_PATH = Path('./assets/system/picture/dialog_frame.png').absolute().
 class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     """桌面助手主窗口"""
     message_submitted = Signal(str)  # 定义信号用于发送消息
+    reroll_requested = Signal()  # 重 roll 本次回复
     open_chat_history_dialog = Signal()  # 定义信号用于打开聊天历史记录对话框
     change_voice_language = Signal(str)  # 定义信号用于更改语音的语言
     close_window = Signal()  # 关闭窗口信号
@@ -107,6 +108,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.current_background_path = None
         # 全尺寸图，供 resize 时重缩放，使底栏 input 与整窗共用同一底图
         self._background_source_pixmap = None
+        self._last_user_message = ""
         # 底栏叠在立绘上时，对话/选项需避开此高度（含底边留白，在 resize 中更新）
         self._bottom_chrome_h = 130
         # 底栏与窗口边距：左右内缩、距底边留白（与 _layout_input_row 一致）
@@ -508,6 +510,33 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         # 4. 连接按钮到跳过信号
         self.skip_button.hide()
 
+        # 重试按钮 — 对话框外右上方
+        self._reroll_btn = QPushButton("↻")
+        self._reroll_btn.setParent(self.image_container)
+        self._reroll_btn.setToolTip(tr("desktop.reroll_tt"))
+        self._reroll_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reroll_btn.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._reroll_btn.setFixedSize(32, 32)
+        self._reroll_btn.setStyleSheet(
+            "QPushButton {"
+            "  background: rgba(40,40,40,180);"
+            "  border: none;"
+            "  border-radius: 16px;"
+            "  color: rgba(255,255,255,0.8);"
+            "  font-size: 16px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: rgba(60,60,60,230);"
+            "  color: #fff;"
+            "}"
+            "QPushButton:disabled {"
+            "  background: rgba(40,40,40,100);"
+            "  color: rgba(255,255,255,0.3);"
+            "}"
+        )
+        self._reroll_btn.clicked.connect(self._on_reroll)
+        self._reroll_btn.hide()
+
     def setup_options_widget(self):
         """初始化选项容器，与对话框标签位置相同"""
         self.options_widget = QWidget()
@@ -575,7 +604,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.llm_reply_finished.connect(self.mic_button.resume_asr)
         self.pause_asr_signal.connect(self.mic_button.pause_asr)
         self.mic_button.send_final_transcription.connect(self.sendMessage)
-        
+
         input_layout.addWidget(self.input_box)
         input_layout.addWidget(self.mic_button)
         input_layout.addWidget(self.send_btn)
@@ -668,11 +697,20 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             name_y = max(0, y - nl.height() - 3)
             nl.setGeometry(margin_width, name_y, new_width, nl.height())
 
-        if dlg.isVisible() and getattr(self, "skip_button", None) is not None:
-            self.skip_button.move(
-                dlg.geometry().right() - self.skip_button.width() - 20,
-                dlg.geometry().bottom() - self.skip_button.height() - 10,
-            )
+        if dlg.isVisible():
+            if getattr(self, "skip_button", None) is not None:
+                self.skip_button.move(
+                    dlg.geometry().right() - self.skip_button.width() - 20,
+                    dlg.geometry().bottom() - self.skip_button.height() - 10,
+                )
+            if getattr(self, "_reroll_btn", None) is not None:
+                rb = self._reroll_btn
+                rb.move(
+                    dlg.geometry().right() - rb.width() - 4,
+                    dlg.geometry().top() - rb.height() - 6,
+                )
+                rb.raise_()
+                rb.show()
 
     def _relayout_overlays(self) -> None:
         """窗口缩放时重算选项区 / 台词框几何。"""
@@ -1016,12 +1054,15 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         """发送消息函数"""
         message = self.input_box.toPlainText().strip()
         if message:
+            self._last_user_message = message
+            if hasattr(self, "_reroll_btn") and self._reroll_btn is not None:
+                self._reroll_btn.hide()
             print(f"UI发送消息: {message}")
             self.input_box.clear()
             self.setDisplayWords(f"<b>你</b>：{message}")
             self.input_box.setPlaceholderText(tr("desktop.sending"))
             self.mic_button.asr_pause_requested.emit()
-            
+
             # 创建并启动聊天工作线程
             if self.sprite_mode is False:
                 self.chat_worker = ChatWorker(self.deepseek, message)
@@ -1029,6 +1070,27 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 self.chat_worker.start()
 
             self.message_submitted.emit(message)  # 发出消息提交信号
+
+    def _on_reroll(self):
+        msg = getattr(self, "_last_user_message", "")
+        print(f"[reroll] _on_reroll called, last_msg={msg[:40] if msg else '(empty)'}")
+        if msg:
+            self.setDisplayWords(f"<b>你</b>：{msg}")
+            self._reroll_btn.hide()
+            self.send_btn.setEnabled(False)
+            self._reroll_btn.setEnabled(False)
+            self.reroll_requested.emit()
+            self.llm_reply_finished.connect(self._on_reroll_reenable)
+        else:
+            print("[reroll] no last message, skipping")
+
+    def _on_reroll_reenable(self):
+        self.send_btn.setEnabled(True)
+        self._reroll_btn.setEnabled(True)
+        try:
+            self.llm_reply_finished.disconnect(self._on_reroll_reenable)
+        except (TypeError, RuntimeError):
+            pass
     
     def update_numeric_info(self, html_text: str):
         """

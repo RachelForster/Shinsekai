@@ -71,7 +71,20 @@ def wire_chat_ui_bridge(
         emit_user_text(message)
         ctx.set_notification_hint(_tr("main.notify_submitted"))
 
+    def on_reroll() -> None:
+        from core.sprite.chat_history import pop_last_assistant_turn
+        messages = llm_manager.get_messages()
+        print(f"[reroll] chat_history before pop: {len(chat_history)} entries, messages: {len(messages)} entries")
+        pop_last_assistant_turn(chat_history, messages)
+        print(f"[reroll] chat_history after pop: {len(chat_history)} entries, messages: {len(messages)} entries")
+        last_msg = getattr(window, "_last_user_message", "")
+        print(f"[reroll] resending: {last_msg[:40] if last_msg else '(empty)'}")
+        if last_msg:
+            emit_user_text(last_msg)
+        ctx.set_notification_hint(_tr("main.notify_reroll"))
+
     ctx.on_message_submitted(on_message_submitted)
+    ctx.on_reroll_requested(on_reroll)
     ctx.on_open_chat_history_dialog(
         lambda: window.open_history_dialog(chat_history)
     )

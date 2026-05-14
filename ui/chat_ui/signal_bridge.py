@@ -73,6 +73,7 @@ class ChatUISignalBridge(QObject):
 
     # --- ChatUIWindow ---
     message_submitted = Signal(str)
+    reroll_requested = Signal()
     open_chat_history_dialog = Signal()
     change_voice_language = Signal(str)
     close_window = Signal()
@@ -238,6 +239,7 @@ def attach_chat_ui_window(window: object) -> None:
     b = get_chat_ui_signal_bridge()
 
     _connect_window_signal(window, b, "message_submitted", _relay1_str)
+    _connect_window_signal(window, b, "reroll_requested", _relay0)
     _connect_window_signal(window, b, "open_chat_history_dialog", _relay0)
     _connect_window_signal(window, b, "change_voice_language", _relay1_str)
     _connect_window_signal(window, b, "close_window", _relay0)

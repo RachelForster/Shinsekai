@@ -112,6 +112,7 @@ class LLMWorker(BaseWorker):
 
                 parser = LlmResponseStreamParser()
                 reasoning_shown = ""
+                message_count = 0
 
                 with tracker.track("LLM stream parse"):
                     for chunk in response_stream:
@@ -126,7 +127,22 @@ class LLMWorker(BaseWorker):
                             chunk if isinstance(chunk, str) else str(chunk) if chunk is not None else ""
                         )
                         for llm_dialog in parser.feed(chunk_message):
+                            message_count += 1
                             self.tts_queue.put(llm_dialog)
+
+                if message_count == 0:
+                    _msg = tr("desktop.llm_parse_empty")
+                    if parser.has_errors:
+                        _msg += "\n" + parser.last_error
+                    elif parser.unparsed_remainder:
+                        _msg += "\n" + tr("desktop.llm_parse_remainder", text=parser.unparsed_remainder)
+                    self.ui_update_manager.post_busy_bar(_msg, 0.0)
+                    tts_emit_to_ui_queue(
+                        "system", _msg, "-1", "", is_system_message=True, effect="",
+                    )
+                elif parser.has_errors:
+                    _warn = tr("desktop.llm_parse_partial", n=parser.parse_failures)
+                    print(f"LLMWorker: {_warn}")
 
                 self.user_input_queue.task_done()
 

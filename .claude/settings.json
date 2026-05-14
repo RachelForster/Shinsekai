@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(C:/Users/67458/.conda/envs/eaiv/python.exe -c ' *)",
-      "Bash(\"C:/Users/67458/.conda/envs/eaiv/python.exe\" -m pytest test/unit/managers/test_tool_groups.py -v --tb=short)"
+      "Bash(\"C:/Users/67458/.conda/envs/eaiv/python.exe\" -m pytest test/unit/managers/test_tool_groups.py -v --tb=short)",
+      "Bash(python -m pytest test/unit/test_chat_history.py -v --tb=short)",
+      "Bash(./runtime/python.exe -m pytest test/unit/test_chat_history.py -v --tb=short)"
     ]
   }
 }
