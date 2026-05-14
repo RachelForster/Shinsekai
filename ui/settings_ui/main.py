@@ -11,9 +11,9 @@ from pathlib import Path
 
 _SETTINGS_UI_DIR = Path(__file__).resolve().parent
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import QObject, Qt, QSize, QThread, QTimer, Signal
 from PySide6.QtGui import QCursor, QIcon, QShowEvent
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QPushButton, QWidget
 
 # Dracula 壳层：需与 modules/__init__ 的星号导出一致（含 Qt 与 UIFunctions 等）。勿用 `from
 # modules import *`：那依赖把 settings_ui 加进 sys.path 的顶层名 `modules`，PyInstaller
@@ -168,6 +168,74 @@ class MainWindow(QMainWindow):
 
         sw.setCurrentIndex(0)
         self.ui.btn_home.setStyleSheet(UIFunctions.selectMenu(self.ui.btn_home.styleSheet()))
+
+        # 启动后 2 秒在后台检测新版本
+        QTimer.singleShot(2000, self._check_for_updates)
+
+    def _check_for_updates(self) -> None:
+        """后台线程拉取最新版本号，超时 10s 静默跳过。"""
+        from i18n import tr
+
+        class _VersionWorker(QObject):
+            finished = Signal(object)
+
+            def run(self):
+                try:
+                    from core.plugins.github_bundle_update import fetch_latest_release_tag
+                    tag = fetch_latest_release_tag("RachelForster/Shinsekai", timeout_sec=10.0)
+                    self.finished.emit(tag)
+                except Exception:
+                    self.finished.emit(None)
+
+        self._version_thread = QThread(self)
+        self._version_worker = _VersionWorker()
+        self._version_worker.moveToThread(self._version_thread)
+        self._version_worker.finished.connect(self._on_version_check_result)
+        self._version_thread.started.connect(self._version_worker.run)
+        self._version_worker.finished.connect(self._version_thread.quit)
+        self._version_worker.finished.connect(self._version_worker.deleteLater)
+        self._version_thread.finished.connect(self._version_thread.deleteLater)
+
+        # 超时计时器：10 秒后强制中断
+        self._version_timeout = QTimer(self)
+        self._version_timeout.setSingleShot(True)
+        self._version_timeout.timeout.connect(self._on_version_check_timeout)
+        self._version_timeout.start(10000)
+
+        self._version_thread.start()
+
+    def _on_version_check_timeout(self) -> None:
+        if getattr(self, "_version_thread", None) and self._version_thread.isRunning():
+            self._version_thread.quit()
+            self._version_thread.wait(1000)
+
+    def _on_version_check_result(self, remote_tag: object) -> None:
+        from i18n import tr
+
+        if getattr(self, "_version_timeout", None):
+            self._version_timeout.stop()
+
+        if not isinstance(remote_tag, str) or not remote_tag.strip():
+            return
+
+        remote = remote_tag.strip().lstrip("v")
+        local = str(getattr(self._ctx.config_manager, "version", "")).strip().lstrip("v")
+        if not remote or remote == local:
+            return
+
+        msg = tr("main.update_available").format(remote=remote, local=local)
+        detail = tr("main.update_available_detail")
+        reply = QMessageBox.question(
+            self,
+            tr("main.update_title"),
+            f"{msg}\n\n{detail}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+            QDesktopServices.openUrl(QUrl("https://github.com/RachelForster/Shinsekai/releases"))
 
     def apply_i18n(self) -> None:
         from i18n import tr
