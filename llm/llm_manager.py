@@ -287,6 +287,9 @@ class LLMManager:
         ``include_local_time``（默认 True）：为本次 user 消息追加本机日期时间前缀，再写入对话历史。
         翻译、设定生成等非聊天调用请传 ``include_local_time=False``。
         """
+        # 清理孤立的 tool_calls（必须在加 user 消息之前，否则占位 tool 回执会插在 user 后面）
+        self._strip_orphaned_tool_calls()
+
         include_local_time = bool(kwargs.pop("include_local_time", True))
         if user_input:
             if include_local_time:
@@ -297,6 +300,71 @@ class LLMManager:
             return self._chat_with_tools_stream(**kwargs)
         else:
             return self._chat_with_tools_sync(**kwargs)
+
+    def _strip_orphaned_tool_calls(self) -> None:
+        """清理不完整的 tool call 对：删孤立的 tool，补缺失的回执。"""
+        strip_orphaned_tool_calls(self.get_messages())
+
+
+def strip_orphaned_tool_calls(msgs: list) -> None:
+    """纯函数版本，便于测试。清理不完整的 tool call 对。"""
+    if not msgs:
+        return
+
+    # 1. 找出孤立的 tool 消息（没有紧邻的 assistant 包含其 tool_call_id，或中间有 user 插入）
+    orphan_tool_indices: list[int] = []
+    for i, m in enumerate(msgs):
+        if m.get("role") != "tool":
+            continue
+        tc_id = m.get("tool_call_id", "")
+        ok = False
+        for j in range(i - 1, -1, -1):
+            r = msgs[j].get("role", "")
+            if r == "user":
+                break
+            if r == "assistant" and msgs[j].get("tool_calls"):
+                if any(tc.get("id") == tc_id for tc in msgs[j]["tool_calls"]):
+                    ok = True
+                break
+        if not ok:
+            orphan_tool_indices.append(i)
+
+    # 2. 删孤立的 tool 消息（从后往前）
+    for i in reversed(orphan_tool_indices):
+        del msgs[i]
+
+    # 3. 重建索引，收集 assistant(tool_calls)
+    pending_calls: dict[int, list[dict]] = {}
+    for i, m in enumerate(msgs):
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            pending_calls[i] = [
+                {"id": tc.get("id", ""), "name": tc.get("function", {}).get("name", "")}
+                for tc in m["tool_calls"]
+            ]
+
+    # 4. 补上缺失的 tool 回执
+    inserts: list[tuple[int, dict]] = []
+    for ai, calls in pending_calls.items():
+        seen_ids: set[str] = set()
+        insert_at = ai + 1
+        for j in range(ai + 1, len(msgs)):
+            r = msgs[j].get("role", "")
+            if r == "user":
+                break
+            if r == "tool":
+                seen_ids.add(msgs[j].get("tool_call_id", ""))
+                insert_at = j + 1
+        for tc in calls:
+            if tc["id"] not in seen_ids:
+                inserts.append((insert_at, {
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "name": tc["name"],
+                    "content": json.dumps({"error": "工具调用失败，请尝试其他方式"}),
+                }))
+                insert_at += 1
+    for pos, msg in sorted(inserts, key=lambda x: x[0], reverse=True):
+        msgs.insert(pos, msg)
 
     # llm_manager.py 修正核心片段
 

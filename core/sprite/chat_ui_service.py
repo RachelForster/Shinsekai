@@ -74,11 +74,10 @@ def wire_chat_ui_bridge(
     def on_reroll() -> None:
         from core.sprite.chat_history import pop_last_assistant_turn
         messages = llm_manager.get_messages()
-        print(f"[reroll] chat_history before pop: {len(chat_history)} entries, messages: {len(messages)} entries")
+        # 先清理中断的 tool_calls，再 pop 最近一次问答
+        llm_manager._strip_orphaned_tool_calls()
         pop_last_assistant_turn(chat_history, messages)
-        print(f"[reroll] chat_history after pop: {len(chat_history)} entries, messages: {len(messages)} entries")
         last_msg = getattr(window, "_last_user_message", "")
-        print(f"[reroll] resending: {last_msg[:40] if last_msg else '(empty)'}")
         if last_msg:
             emit_user_text(last_msg)
         ctx.set_notification_hint(_tr("main.notify_reroll"))
@@ -91,7 +90,23 @@ def wire_chat_ui_bridge(
     ctx.on_change_voice_language(
         lambda lang: _on_voice_language_changed(window, tts_manager, lang)
     )
-    ctx.on_close_window(app.quit)
+    def _on_chat_ui_close() -> None:
+        # 如果最后一条消息是 assistant 带 tool_calls 但无 tool 回执，补上「用户中断」
+        msgs = llm_manager.get_messages()
+        if msgs:
+            last = msgs[-1]
+            if last.get("role") == "assistant" and last.get("tool_calls"):
+                import json as _json
+                for tc in last["tool_calls"]:
+                    msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tc.get("id", ""),
+                        "name": tc.get("function", {}).get("name", ""),
+                        "content": _json.dumps({"error": "用户中断"}),
+                    })
+        app.quit()
+
+    ctx.on_close_window(_on_chat_ui_close)
     ctx.on_clear_chat_history(
         lambda: clear_chat_history(
             history_file=history_file,

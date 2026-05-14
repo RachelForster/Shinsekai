@@ -137,9 +137,12 @@ class LLMWorker(BaseWorker):
                     elif parser.unparsed_remainder:
                         _msg += "\n" + tr("desktop.llm_parse_remainder", text=parser.unparsed_remainder)
                     self.ui_update_manager.post_busy_bar(_msg, 0.0)
-                    tts_emit_to_ui_queue(
-                        "system", _msg, "-1", "", is_system_message=True, effect="",
-                    )
+                    # 直接投 UI 消息，不调 tts_queue.task_done（因为没 put 过 TTS 任务）
+                    from sdk.messages import TTSOutputMessage
+                    get_app_runtime().audio_path_queue.put(TTSOutputMessage(
+                        audio_path="", name="system", asset_id="-1",
+                        text=_msg, is_system_message=True, effect="",
+                    ))
                 elif parser.has_errors:
                     _warn = tr("desktop.llm_parse_partial", n=parser.parse_failures)
                     print(f"LLMWorker: {_warn}")
@@ -149,6 +152,16 @@ class LLMWorker(BaseWorker):
             except Exception as e:
                 print(f"LLMWorker: 任务处理失败: {e}")
                 traceback.print_exc()
+                # 异常时也直接投 UI 消息，不走 tts_queue.task_done
+                try:
+                    from sdk.messages import TTSOutputMessage
+                    _err = tr("desktop.llm_parse_empty") + f"\n{e}"
+                    get_app_runtime().audio_path_queue.put(TTSOutputMessage(
+                        audio_path="", name="system", asset_id="-1",
+                        text=_err, is_system_message=True, effect="",
+                    ))
+                except Exception:
+                    pass
                 self.user_input_queue.task_done()
                 
     def stop(self):
