@@ -602,6 +602,7 @@ class CharacterSettingsTab(QWidget):
                 self.sprites_gallery.addItem(it)
 
     def _on_sprite_row(self) -> None:
+        self.voice_upload_path.clear()
         self._update_sprite_side_info()
 
     def _on_emotion_tag_cursor_moved(self) -> None:
@@ -1018,6 +1019,7 @@ class CharacterSettingsTab(QWidget):
         self._load_gallery(paths)
         self.emotion_inputs.setPlainText(emo)
         sync_gallery_to_tag_cursor(self.sprites_gallery, self.emotion_inputs)
+        self._update_sprite_side_info()
         self._refresh_character_combo(name)
         self.character_list_changed.emit()
 
@@ -1031,6 +1033,7 @@ class CharacterSettingsTab(QWidget):
         self._load_gallery(paths)
         self.emotion_inputs.setPlainText(emo)
         sync_gallery_to_tag_cursor(self.sprites_gallery, self.emotion_inputs)
+        self._update_sprite_side_info()
         self.character_list_changed.emit()
 
     def _on_delete_one_sprite(self) -> None:
@@ -1084,7 +1087,8 @@ class CharacterSettingsTab(QWidget):
             self._current_char(), idx, vfile, self.sprite_voice_text.text()
         )
         feedback_result(self, "语音", msg)
+        self._update_sprite_side_info()
         if vpath:
             self.sprite_voice_path.setText(vpath)
-        self._update_sprite_side_info()
+        self.voice_upload_path.clear()
         self.character_list_changed.emit()
