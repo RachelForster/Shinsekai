@@ -99,7 +99,7 @@ jobs:
           ASSET_URL=$(curl -sS --connect-timeout 15 --max-time 30 \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/indygreg/python-build-standalone/releases" \
+            "https://api.github.com/repos/astral-sh/python-build-standalone/releases" \
             | python3 -c "
           import sys, json
           releases = json.load(sys.stdin)
