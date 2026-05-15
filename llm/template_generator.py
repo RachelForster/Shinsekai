@@ -146,6 +146,7 @@ class TemplateGenerator:
         use_cot=False,
         use_choice=True,
         use_narration=True,
+        use_stat=True,
         max_speech_chars: int = 0,
         max_dialog_items: int = 0,
     ):
@@ -221,7 +222,7 @@ class TemplateGenerator:
             [x for x in (
                 _toks["narr"] if use_narration else None,
                 _toks["choice"] if use_choice else None,
-                _toks["stat"],
+                _toks["stat"] if use_stat else None,
             ) if x is not None]
         )
         role_clause = (" " + fixed_roles_join) if fixed_roles_join else ""
@@ -262,7 +263,8 @@ class TemplateGenerator:
                 _T("r_choice_format", **_toks),
                 _T("r_choice_balance", **_toks),
             ]
-        REQUIREMENTS.append(_T("r_stats", **_toks))
+        if use_stat:
+            REQUIREMENTS.append(_T("r_stats", **_toks))
         if use_cg:
             REQUIREMENTS.append(_T("r_cg", **_toks))
         if use_llm_translation:

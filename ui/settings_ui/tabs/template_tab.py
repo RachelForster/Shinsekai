@@ -67,6 +67,7 @@ class TemplateSettingsTab(QWidget):
         self._group_cot.buttonClicked.connect(self._auto_generate)
         self._group_choice.buttonClicked.connect(self._auto_generate)
         self._group_narration.buttonClicked.connect(self._auto_generate)
+        self._group_stat.buttonClicked.connect(self._auto_generate)
         self.max_speech_chars_spin.valueChanged.connect(self._auto_generate)
         self.max_dialog_items_spin.valueChanged.connect(self._auto_generate)
 
@@ -237,6 +238,20 @@ class TemplateSettingsTab(QWidget):
         nar_row.addStretch(1)
         opt.addLayout(nar_row)
 
+        self.use_stat_yes = QRadioButton(tr_i18n("common.yes"))
+        self.use_stat_no = QRadioButton(tr_i18n("common.no"))
+        self.use_stat_yes.setChecked(True)
+        self._group_stat = QButtonGroup(self)
+        self._group_stat.addButton(self.use_stat_yes)
+        self._group_stat.addButton(self.use_stat_no)
+        stat_row = QHBoxLayout()
+        self._lbl_stat_rules = QLabel(tr_i18n("template.rule_stat"))
+        stat_row.addWidget(self._lbl_stat_rules)
+        stat_row.addWidget(self.use_stat_yes)
+        stat_row.addWidget(self.use_stat_no)
+        stat_row.addStretch(1)
+        opt.addLayout(stat_row)
+
         lim_form = QFormLayout()
         self._lbl_max_speech = QLabel(tr_i18n("template.max_speech_chars"))
         self.max_speech_chars_spin = QSpinBox()
@@ -391,12 +406,15 @@ class TemplateSettingsTab(QWidget):
         self.use_choice_no.setText(ntxt)
         self.use_narration_yes.setText(ytxt)
         self.use_narration_no.setText(ntxt)
+        self.use_stat_yes.setText(ytxt)
+        self.use_stat_no.setText(ntxt)
         self._lbl_fx.setText(tr_i18n("template.fx"))
         self._lbl_llm_tr.setText(tr_i18n("template.llm_tr"))
         self._lbl_cg.setText(tr_i18n("template.cg"))
         self._lbl_cot.setText(tr_i18n("template.cot"))
         self._lbl_choice_rules.setText(tr_i18n("template.rule_choice"))
         self._lbl_narr_rules.setText(tr_i18n("template.rule_narration"))
+        self._lbl_stat_rules.setText(tr_i18n("template.rule_stat"))
         self._lbl_max_speech.setText(tr_i18n("template.max_speech_chars"))
         self._lbl_max_dialog.setText(tr_i18n("template.max_dialog_items"))
         self.max_speech_chars_spin.setSpecialValueText(tr_i18n("template.limit_unlimited"))
@@ -465,6 +483,7 @@ class TemplateSettingsTab(QWidget):
         ucot = "是" if self.use_cot_yes.isChecked() else "否"
         uch = "是" if self.use_choice_yes.isChecked() else "否"
         unar = "是" if self.use_narration_yes.isChecked() else "否"
+        ustat = "是" if self.use_stat_yes.isChecked() else "否"
         tpl, out_fn = generate_template(
             self._ctx,
             self._selected_chars(),
@@ -475,6 +494,7 @@ class TemplateSettingsTab(QWidget):
             ucot,
             uch,
             unar,
+            ustat,
             self.max_speech_chars_spin.value(),
             self.max_dialog_items_spin.value(),
         )
@@ -521,6 +541,7 @@ class TemplateSettingsTab(QWidget):
             "use_cot_yes": self.use_cot_yes.isChecked(),
             "use_choice_yes": self.use_choice_yes.isChecked(),
             "use_narration_yes": self.use_narration_yes.isChecked(),
+            "use_stat_yes": self.use_stat_yes.isChecked(),
             "max_speech_chars": self.max_speech_chars_spin.value(),
             "max_dialog_items": self.max_dialog_items_spin.value(),
             "scenario_text": self.scenario_output.toPlainText(),
@@ -598,6 +619,11 @@ class TemplateSettingsTab(QWidget):
                 self.use_narration_yes.setChecked(True)
             elif snap.get("use_narration_yes") is False:
                 self.use_narration_no.setChecked(True)
+
+            if snap.get("use_stat_yes") is True:
+                self.use_stat_yes.setChecked(True)
+            elif snap.get("use_stat_yes") is False:
+                self.use_stat_no.setChecked(True)
 
             _msc = snap.get("max_speech_chars")
             if isinstance(_msc, int) and _msc >= 0:

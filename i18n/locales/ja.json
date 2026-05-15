@@ -536,6 +536,7 @@
     "cot": "思考の連鎖（CoT）",
     "rule_choice": "テンプレ規約：選択肢（CHOICE）",
     "rule_narration": "テンプレ規約：ナレーション（NARR）",
+    "rule_stat": "テンプレ規約：ステータスパネル（STAT）",
     "max_speech_chars": "1 返答あたり speech の最大文字数",
     "max_dialog_items": "1 返答あたり dialog 要素の最大数",
     "limit_unlimited": "制限なし",

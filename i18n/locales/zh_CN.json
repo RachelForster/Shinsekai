@@ -536,6 +536,7 @@
     "cot": "思维链 CoT",
     "rule_choice": "模板规则：选项（CHOICE）",
     "rule_narration": "模板规则：旁白（NARR）",
+    "rule_stat": "模板规则：数值面板（STAT）",
     "max_speech_chars": "单次回复 speech 最多字数",
     "max_dialog_items": "单次回复 dialog 最多条数",
     "limit_unlimited": "不限制",

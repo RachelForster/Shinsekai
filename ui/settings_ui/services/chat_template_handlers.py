@@ -307,6 +307,7 @@ def generate_template(
     use_cot: str,
     use_choice: str,
     use_narration: str,
+    use_stat: str,
     max_speech_chars: int,
     max_dialog_items: int,
 ) -> tuple[str, str]:
@@ -319,6 +320,7 @@ def generate_template(
         use_cot == "是",
         use_choice == "是",
         use_narration == "是",
+        use_stat == "是",
         max_speech_chars=max(0, int(max_speech_chars)),
         max_dialog_items=max(0, int(max_dialog_items)),
     )

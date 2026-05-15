@@ -539,6 +539,7 @@
     "cot": "Chain-of-thought",
     "rule_choice": "Template rules: choices (CHOICE)",
     "rule_narration": "Template rules: narration (NARR)",
+    "rule_stat": "Template rules: stat panel (STAT)",
     "max_speech_chars": "Max characters per speech field",
     "max_dialog_items": "Max dialog items per reply",
     "limit_unlimited": "No limit",
