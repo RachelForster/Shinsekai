@@ -96,25 +96,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ASSET_URL=$(curl -sS --connect-timeout 15 --max-time 30 \
+          RELEASES_URL="https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/20221002"
+          echo "Fetching release metadata: $RELEASES_URL"
+          RESP=$(curl -sS --connect-timeout 15 --max-time 30 \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/astral-sh/python-build-standalone/releases" \
-            | python3 -c "
+            "$RELEASES_URL")
+          if [ -z "$RESP" ]; then
+            echo "ERROR: empty response from GitHub API"
+            exit 1
+          fi
+          ASSET_URL=$(echo "$RESP" | python3 -c "
           import sys, json
-          releases = json.load(sys.stdin)
-          if not isinstance(releases, list):
-              # rate-limited or error
-              err = releases.get('message', 'unknown error')
+          rel = json.load(sys.stdin)
+          if not isinstance(rel, dict):
+              err = rel.get('message', 'unknown error')
               raise SystemExit(f'GitHub API error: {err}')
-          for rel in releases:
-              tag = rel.get('tag_name', '')
-              if tag == '20221002':
-                  for a in rel.get('assets', []):
-                      n = a.get('name', '')
-                      if 'aarch64-apple-darwin' in n and n.endswith('.tar.gz'):
-                          print(a['browser_download_url'])
-                          raise SystemExit(0)
+          for a in rel.get('assets', []):
+              n = a.get('name', '')
+              if 'aarch64-apple-darwin' in n and n.endswith('.tar.gz'):
+                  print(a['browser_download_url'])
+                  raise SystemExit(0)
           raise SystemExit('no matching asset found')
           ")
           echo "Downloading: $ASSET_URL"
