@@ -93,9 +93,12 @@ jobs:
       - name: Setup Python 3.10 (macOS via python-build-standalone)
         if: matrix.platform != 'windows-x64'
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ASSET_URL=$(curl -sS --connect-timeout 15 --max-time 30 \
             -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
             "https://api.github.com/repos/indygreg/python-build-standalone/releases" \
             | python3 -c "
           import sys, json
