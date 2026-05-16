@@ -648,6 +648,7 @@ class PluginMcpTab(QWidget):
                 "sse": "sse",
                 "stdio": "stdio",
                 "streamablehttp": "streamable_http",
+                "streamable_http": "streamable_http",
                 "streamable-http": "streamable_http",
                 "http": "streamable_http",
             }
