@@ -1,4 +1,4 @@
-"""MCP 客户端桥接：SSE 与 stdio 传输，基于官方 ``mcp`` Python SDK。"""
+"""MCP 客户端桥接：SSE / stdio / streamable HTTP 传输，基于官方 ``mcp`` Python SDK。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamablehttp_client
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,23 @@ class MCPBridge:
             )
             transport = stdio_client(params)
             read, write = await stack.enter_async_context(transport)
+            session_cm = ClientSession(read, write)
+            self.session = await stack.enter_async_context(session_cm)
+            await self.session.initialize()
+        except Exception:
+            await self.close()
+            raise
+
+    async def connect_streamable_http(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        """连接基于 Streamable HTTP 的 MCP 服务（MCP 规范统一传输层）。"""
+        stack = await self._ensure_fresh_stack()
+        try:
+            transport = streamablehttp_client(url=url, headers=headers)
+            read, write, _ = await stack.enter_async_context(transport)
             session_cm = ClientSession(read, write)
             self.session = await stack.enter_async_context(session_cm)
             await self.session.initialize()

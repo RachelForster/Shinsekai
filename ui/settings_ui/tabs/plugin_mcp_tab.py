@@ -85,6 +85,7 @@ class _McpServerEditDialog(QDialog):
         self._timeout.setValue(0)
         self._transport = QComboBox()
         self._transport.addItem("SSE", "sse")
+        self._transport.addItem("Streamable HTTP", "streamable_http")
         self._transport.addItem("stdio", "stdio")
         idx = 0 if transport_default.strip().lower() != "stdio" else 1
         self._transport.setCurrentIndex(idx)
@@ -101,14 +102,29 @@ class _McpServerEditDialog(QDialog):
         self._args_json.setMaximumBlockCount(50)
         self._args_json.setFixedHeight(64)
 
+        self._group = QLineEdit()
+        self._group.setPlaceholderText("mcp")
+
+        self._env_json = QPlainTextEdit()
+        self._env_json.setPlaceholderText('{"API_KEY": "sk-xxx"}')
+        self._env_json.setMaximumBlockCount(100)
+        self._env_json.setFixedHeight(64)
+
         form.addRow(self._enabled)
         form.addRow(tr_i18n("plugins.mcp_prefix"), self._prefix)
         form.addRow(tr_i18n("plugins.mcp_call_timeout"), self._timeout)
         form.addRow(tr_i18n("plugins.mcp_transport"), self._transport)
-        form.addRow(tr_i18n("plugins.mcp_sse_url"), self._url)
-        form.addRow(tr_i18n("plugins.mcp_sse_headers_json"), self._headers_json)
-        form.addRow(tr_i18n("plugins.mcp_stdio_command"), self._command)
-        form.addRow(tr_i18n("plugins.mcp_stdio_args_json"), self._args_json)
+        form.addRow(tr_i18n("plugins.mcp_group"), self._group)
+        self._lbl_url = QLabel(tr_i18n("plugins.mcp_sse_url"))
+        form.addRow(self._lbl_url, self._url)
+        self._lbl_headers = QLabel(tr_i18n("plugins.mcp_sse_headers_json"))
+        form.addRow(self._lbl_headers, self._headers_json)
+        self._lbl_command = QLabel(tr_i18n("plugins.mcp_stdio_command"))
+        form.addRow(self._lbl_command, self._command)
+        self._lbl_args = QLabel(tr_i18n("plugins.mcp_stdio_args_json"))
+        form.addRow(self._lbl_args, self._args_json)
+        self._lbl_env = QLabel(tr_i18n("plugins.mcp_stdio_env_json"))
+        form.addRow(self._lbl_env, self._env_json)
         root.addLayout(form)
 
         self._transport.currentIndexChanged.connect(self._sync_transport_ui)
@@ -125,11 +141,13 @@ class _McpServerEditDialog(QDialog):
             self._fill_from_entry(entry)
 
     def _sync_transport_ui(self) -> None:
-        is_sse = self._transport.currentData() == "sse"
-        self._url.setVisible(is_sse)
-        self._headers_json.setVisible(is_sse)
-        self._command.setVisible(not is_sse)
-        self._args_json.setVisible(not is_sse)
+        transport = self._transport.currentData()
+        is_http = transport in ("sse", "streamable_http")
+        is_stdio = transport == "stdio"
+        for w in (self._lbl_url, self._url, self._lbl_headers, self._headers_json):
+            w.setVisible(is_http)
+        for w in (self._lbl_command, self._command, self._lbl_args, self._args_json, self._lbl_env, self._env_json):
+            w.setVisible(is_stdio)
 
     def _fill_from_entry(self, entry: dict) -> None:
         self._enabled.setChecked(entry.get("enabled") is not False)
@@ -143,7 +161,12 @@ class _McpServerEditDialog(QDialog):
         else:
             self._timeout.setValue(0)
         tr = str(entry.get("transport") or "sse").strip().lower()
-        self._transport.setCurrentIndex(1 if tr == "stdio" else 0)
+        if tr == "stdio":
+            self._transport.setCurrentIndex(2)
+        elif tr == "streamable_http":
+            self._transport.setCurrentIndex(1)
+        else:
+            self._transport.setCurrentIndex(0)
         self._url.setText(str(entry.get("url") or ""))
         hdr = entry.get("headers")
         if isinstance(hdr, dict) and hdr:
@@ -155,6 +178,7 @@ class _McpServerEditDialog(QDialog):
                 self._headers_json.setPlainText("{}")
         else:
             self._headers_json.setPlainText("{}")
+        self._group.setText(str(entry.get("group") or ""))
         self._command.setText(str(entry.get("command") or ""))
         args = entry.get("args")
         if isinstance(args, list) and args:
@@ -166,6 +190,16 @@ class _McpServerEditDialog(QDialog):
                 self._args_json.setPlainText("[]")
         else:
             self._args_json.setPlainText("[]")
+        env = entry.get("env")
+        if isinstance(env, dict) and env:
+            try:
+                self._env_json.setPlainText(
+                    json.dumps(env, ensure_ascii=False, indent=2)
+                )
+            except Exception:
+                self._env_json.setPlainText("{}")
+        else:
+            self._env_json.setPlainText("{}")
 
     def _try_accept(self) -> None:
         try:
@@ -186,9 +220,12 @@ class _McpServerEditDialog(QDialog):
             "name_prefix": self._prefix.text().strip(),
             "transport": transport,
         }
+        group = self._group.text().strip()
+        if group:
+            row["group"] = group
         if self._timeout.value() > 0:
             row["call_timeout"] = float(self._timeout.value())
-        if transport == "sse":
+        if transport in ("sse", "streamable_http"):
             url = self._url.text().strip()
             if not url:
                 raise ValueError(tr_i18n("plugins.mcp_err_need_url"))
@@ -222,6 +259,17 @@ class _McpServerEditDialog(QDialog):
                 row["args"] = [str(x) for x in parsed]
             else:
                 row["args"] = []
+            raw_env = self._env_json.toPlainText().strip()
+            if raw_env:
+                try:
+                    parsed = json.loads(raw_env)
+                except json.JSONDecodeError as e:
+                    raise ValueError(
+                        tr_i18n("plugins.mcp_err_env_json", detail=str(e))
+                    ) from e
+                if not isinstance(parsed, dict):
+                    raise ValueError(tr_i18n("plugins.mcp_err_env_object"))
+                row["env"] = {str(k): str(v) for k, v in parsed.items()}
         return row
 
     def get_result(self) -> dict:
@@ -302,12 +350,9 @@ class PluginMcpTab(QWidget):
         self._server_group = srv_box
         sb_lay = QVBoxLayout(srv_box)
         toolbar = QHBoxLayout()
-        self._btn_add_sse = QPushButton()
-        self._btn_add_sse.clicked.connect(lambda: self._add_server("sse"))
-        toolbar.addWidget(self._btn_add_sse)
-        self._btn_add_stdio = QPushButton()
-        self._btn_add_stdio.clicked.connect(lambda: self._add_server("stdio"))
-        toolbar.addWidget(self._btn_add_stdio)
+        self._btn_add = QPushButton()
+        self._btn_add.clicked.connect(lambda: self._add_server("sse"))
+        toolbar.addWidget(self._btn_add)
         self._btn_save = QPushButton()
         self._btn_save.clicked.connect(self._on_save)
         toolbar.addWidget(self._btn_save)
@@ -374,8 +419,7 @@ class PluginMcpTab(QWidget):
         self._hint.setText(tr_i18n("plugins.mcp_hint_html"))
         self._global_enabled.setText(tr_i18n("plugins.mcp_global_enable"))
         self._server_group.setTitle(tr_i18n("plugins.mcp_servers_group"))
-        self._btn_add_sse.setText(tr_i18n("plugins.mcp_add_sse"))
-        self._btn_add_stdio.setText(tr_i18n("plugins.mcp_add_stdio"))
+        self._btn_add.setText(tr_i18n("plugins.mcp_add_server"))
         self._btn_save.setText(tr_i18n("plugins.mcp_save_apply"))
         self._btn_open_file.setText(tr_i18n("plugins.mcp_open_yaml"))
         self._tools_group.setTitle(tr_i18n("plugins.mcp_tools_group"))
@@ -409,8 +453,7 @@ class PluginMcpTab(QWidget):
 
     def _on_global_toggled(self, checked: bool) -> None:
         self._server_table.setEnabled(checked)
-        self._btn_add_sse.setEnabled(checked)
-        self._btn_add_stdio.setEnabled(checked)
+        self._btn_add.setEnabled(checked)
         self._btn_refresh_tools.setEnabled(checked)
         self._tools_table.setEnabled(checked)
 
