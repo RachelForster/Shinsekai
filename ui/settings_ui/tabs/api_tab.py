@@ -526,6 +526,12 @@ class ApiSettingsTab(QWidget):
         self._asr_hint.setWordWrap(True)
         self._asr_hint.setObjectName("apiSectionHint")
         asr_ly.addWidget(self._asr_hint)
+        self._vosk_hint = QLabel(tr_i18n("api.asr.vosk_hint"))
+        self._vosk_hint.setWordWrap(True)
+        self._vosk_hint.setOpenExternalLinks(True)
+        self._vosk_hint.setObjectName("apiSectionHint")
+        self._vosk_hint.setVisible(True)
+        asr_ly.addWidget(self._vosk_hint)
         asr_form = QFormLayout()
         asr_form.setContentsMargins(0, 0, 0, 0)
         asr_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
@@ -851,6 +857,7 @@ class ApiSettingsTab(QWidget):
         self.stream_yes.setText(tr_i18n("common.yes"))
         self.stream_no.setText(tr_i18n("common.no"))
         self._asr_hint.setText(tr_i18n("api.asr.hint"))
+        self._vosk_hint.setText(tr_i18n("api.asr.vosk_hint"))
         self._f_asr_provider.setText(tr_i18n("api.asr.provider"))
         self._f_asr_language.setText(tr_i18n("api.asr.language"))
         _asr_lang_cur = self._asr_language.currentData()
@@ -1056,7 +1063,9 @@ class ApiSettingsTab(QWidget):
         key = normalize_asr_provider_storage_key(
             str(self._asr_provider.currentData() or "vosk")
         )
-        self._asr_whisper_block.setVisible(key != "vosk")
+        is_vosk = key == "vosk"
+        self._asr_whisper_block.setVisible(not is_vosk)
+        self._vosk_hint.setVisible(is_vosk)
 
     def _on_tts_bundle_download(self) -> None:
         dlg = TtsBundleDownloadDialog(

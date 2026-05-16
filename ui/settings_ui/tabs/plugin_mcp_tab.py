@@ -359,6 +359,9 @@ class PluginMcpTab(QWidget):
         self._btn_open_file = QPushButton()
         self._btn_open_file.clicked.connect(self._on_open_yaml)
         toolbar.addWidget(self._btn_open_file)
+        self._btn_import_json = QPushButton()
+        self._btn_import_json.clicked.connect(self._on_import_json)
+        toolbar.addWidget(self._btn_import_json)
         toolbar.addStretch(1)
         sb_lay.addLayout(toolbar)
 
@@ -422,6 +425,7 @@ class PluginMcpTab(QWidget):
         self._btn_add.setText(tr_i18n("plugins.mcp_add_server"))
         self._btn_save.setText(tr_i18n("plugins.mcp_save_apply"))
         self._btn_open_file.setText(tr_i18n("plugins.mcp_open_yaml"))
+        self._btn_import_json.setText(tr_i18n("plugins.mcp_import_json"))
         self._tools_group.setTitle(tr_i18n("plugins.mcp_tools_group"))
         self._btn_refresh_tools.setText(tr_i18n("plugins.mcp_refresh_tools"))
         self._tools_intro.setText(tr_i18n("plugins.mcp_tools_intro"))
@@ -597,6 +601,92 @@ class PluginMcpTab(QWidget):
         if not p.is_file():
             write_mcp_config(default_mcp_config(), self._config_path)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(p)))
+
+    def _on_import_json(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle(tr_i18n("plugins.mcp_import_json_title"))
+        dlg.resize(520, 360)
+        lay = QVBoxLayout(dlg)
+        hint = QLabel(tr_i18n("plugins.mcp_import_json_hint"))
+        hint.setWordWrap(True)
+        lay.addWidget(hint)
+        editor = QPlainTextEdit()
+        editor.setPlaceholderText(
+            '{\n  "mcpServers": {\n    "name": {\n      "type": "sse",\n      "url": "https://..."\n    }\n  }\n}'
+        )
+        lay.addWidget(editor, stretch=1)
+        bbox = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        bbox.accepted.connect(dlg.accept)
+        bbox.rejected.connect(dlg.reject)
+        lay.addWidget(bbox)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        raw = editor.toPlainText().strip()
+        if not raw:
+            return
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            message_fail(self, tr_i18n("plugins.mcp_import_fail_title"), str(e))
+            return
+        servers = data.get("mcpServers") or {}
+        if not isinstance(servers, dict) or not servers:
+            message_fail(
+                self,
+                tr_i18n("plugins.mcp_import_fail_title"),
+                tr_i18n("plugins.mcp_import_no_servers"),
+            )
+            return
+        added = 0
+        for name, cfg in servers.items():
+            if not isinstance(cfg, dict):
+                continue
+            mcp_type = str(cfg.get("type") or cfg.get("transport") or "sse").strip().lower()
+            transport_map = {
+                "sse": "sse",
+                "stdio": "stdio",
+                "streamablehttp": "streamable_http",
+                "streamable-http": "streamable_http",
+                "http": "streamable_http",
+            }
+            transport = transport_map.get(mcp_type, "sse")
+            entry: dict = {
+                "enabled": True,
+                "name_prefix": str(name).strip() + "_",
+                "transport": transport,
+            }
+            grp = cfg.get("group")
+            if isinstance(grp, str) and grp.strip():
+                entry["group"] = grp.strip()
+            ct = cfg.get("call_timeout") or cfg.get("timeout")
+            if ct is not None:
+                try:
+                    entry["call_timeout"] = float(ct)
+                except (TypeError, ValueError):
+                    pass
+            if transport in ("sse", "streamable_http"):
+                entry["url"] = str(cfg.get("url") or "").strip()
+                h = cfg.get("headers")
+                if isinstance(h, dict) and h:
+                    entry["headers"] = {str(k): str(v) for k, v in h.items()}
+            else:
+                entry["command"] = str(cfg.get("command") or "").strip()
+                a = cfg.get("args")
+                if isinstance(a, list):
+                    entry["args"] = [str(x) for x in a]
+                e = cfg.get("env")
+                if isinstance(e, dict) and e:
+                    entry["env"] = {str(k): str(v) for k, v in e.items()}
+            self._servers.append(entry)
+            added += 1
+        self._render_server_table()
+        toast_success(
+            self,
+            tr_i18n("plugins.mcp_import_ok_title"),
+            tr_i18n("plugins.mcp_import_ok_body", n=added),
+        )
 
     def _on_refresh_tools(self) -> None:
         if self._busy:
