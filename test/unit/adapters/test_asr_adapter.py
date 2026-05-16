@@ -127,8 +127,8 @@ class TestNormalizeAsrProviderKey:
         assert normalize_asr_provider_storage_key("realtime_stt") == "realtime_stt"
         assert normalize_asr_provider_storage_key("realtimestt") == "realtime_stt"
 
-    def test_unknown_defaults_to_vosk(self):
-        assert normalize_asr_provider_storage_key("unknown_xyz") == "vosk"
+    def test_unknown_plugin_slug_is_preserved(self):
+        assert normalize_asr_provider_storage_key("funasr_wss") == "funasr_wss"
 
 
 class TestWhisperTriplet:

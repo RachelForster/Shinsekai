@@ -7,6 +7,8 @@ runtime/
 !core/runtime/**
 /__pycache__
 *.pyc
+*.pyo
+*.pyd
 /data
 /out
 /output
@@ -23,8 +25,17 @@ runtime/
 /cache
 /onnx
 /data
+/funasr-runtime-resources/
 /plugins
 /plugins
 /plugins
+!/plugins/
+/plugins/*
+!/plugins/__init__.py
+!/plugins/funasr_wss/
+!/plugins/funasr_wss/**
+/venv/
+/venv314/
+/.venv/
 /data
 .claude/settings.local.json
