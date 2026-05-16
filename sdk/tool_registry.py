@@ -16,6 +16,31 @@ if TYPE_CHECKING:
 
 F = TypeVar("F", bound=Callable[..., Any])
 
+
+class ToolNotReady(Exception):
+    """工具所需的模型 / 资源尚未就绪，正在后台加载。
+
+    工具函数直接 ``raise ToolNotReady("正在加载...")``，
+    由 :class:`~llm.tools.tool_executor.ToolExecutor` 统一捕获，
+    转为 ``{"status":"loading","message":"..."}`` 响应并设置冷却期。
+
+    用法::
+
+        from sdk.tool_registry import tool, ToolNotReady
+
+        @tool(name="my_tool", group="vision")
+        def my_tool(...):
+            if not tool_ready():
+                start_loading()
+                raise ToolNotReady("视觉模型正在加载，请稍候…")
+            ...
+    """
+
+    def __init__(self, message: str = "") -> None:
+        super().__init__(message)
+        self.message = message
+
+
 # (callable, name_override | None, description_override | None, group | None, risk | None)
 _Entries: list[tuple[Callable[..., Any], str | None, str | None, str | None, str | None]] = []
 
@@ -62,3 +87,25 @@ def apply_registered_tools(tool_manager: ToolManager) -> None:
     """
     for fn, nm, desc, group, risk in _Entries:
         tool_manager.register_function(fn, name=nm, description=desc, group=group, risk=risk)
+
+
+# ── 模型就绪通知（插件 → 宿主）──────────────────────────────────────────
+
+_on_tool_ready: Callable[[str, str], None] | None = None
+
+
+def set_tool_ready_callback(cb: Callable[[str, str], None]) -> None:
+    """宿主在启动时调用，注入模型就绪的处理逻辑（清除冷却、推送聊天通知等）。"""
+    global _on_tool_ready
+    _on_tool_ready = cb
+
+
+def notify_tool_ready(group: str, message: str = "") -> None:
+    """插件在模型后台加载完成后调用。
+
+    宿主收到后通常会：
+    - 清除该 ``group`` 的冷却期
+    - 向聊天 UI 推送一条系统通知
+    """
+    if _on_tool_ready is not None:
+        _on_tool_ready(group, message)

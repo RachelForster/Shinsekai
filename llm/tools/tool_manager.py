@@ -4,6 +4,8 @@ import json
 import logging
 from typing import Any, Callable, Dict, List
 
+from sdk.tool_registry import ToolNotReady
+
 
 class ToolManager:
     _instance = None
@@ -246,6 +248,8 @@ class ToolManager:
             args = json.loads(arguments_json)
             result = self._functions[name](**args)
             return json.dumps(result, ensure_ascii=False)
+        except ToolNotReady:
+            raise  # 向上抛给 ToolExecutor 统一处理
         except Exception as e:
             self.logger.error("Error executing tool '%s': %s", name, e)
             return json.dumps({"error": str(e)})

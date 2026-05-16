@@ -14,9 +14,31 @@ from i18n import tr
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 from llm.compact_manager import CompactManager
 from llm.tools.tool_manager import ToolManager
+from llm.tools.tool_executor import ToolExecutor
 
 tool_manager = ToolManager()
+tool_executor = ToolExecutor(tool_manager)
 logger = logging.getLogger(__name__)
+
+# 模型后台加载完成时：清除冷却 + 推送聊天通知
+def _on_tool_ready(group: str, message: str) -> None:
+    tool_executor.clear_cooldown(group)
+    if message:
+        try:
+            from core.runtime.app_runtime import try_get_app_runtime, tts_emit_to_ui_queue
+            if try_get_app_runtime() is not None:
+                tts_emit_to_ui_queue(
+                    character_name="",
+                    speech=message,
+                    sprite="",
+                    audio_path="",
+                    is_system_message=True,
+                )
+        except Exception:
+            pass
+
+from sdk.tool_registry import set_tool_ready_callback
+set_tool_ready_callback(_on_tool_ready)
 
 
 # 流式输出中非正文的片段（供 LLMWorker 显示思考过程，且不混入 JSON 解析缓冲区）
@@ -240,6 +262,7 @@ class LLMManager:
         self._active_tool_groups: list = ["default"]  # LRU: most recent first
         self._max_active_groups = 5
         self.tools_manager = tool_manager
+        self.tool_executor = tool_executor
         
         # 设置日志
         logging.basicConfig(level=logging.INFO)
@@ -451,13 +474,10 @@ class LLMManager:
                             func_args = "{}"  # 修正为空 JSON 对象字符串
 
                     _notify_tool_call_hint(func_name)
-                    risk = tool_manager.get_tool_risk(func_name)
-                    if risk in ("medium", "high"):
-                        if not self._confirm_risky_tool(func_name, risk, func_args):
-                            result = json.dumps({"cancelled": True, "reason": f"User denied {func_name}"})
-                            self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
-                            continue
-                    result = tool_manager.execute(func_name, func_args)
+                    result = self.tool_executor.execute(
+                        func_name, func_args,
+                        risk_confirm=self._confirm_risky_tool,
+                    )
 
                     # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
                     if func_name == "search_tools":
@@ -485,7 +505,7 @@ class LLMManager:
                     self.logger.error(f"Tool execution failed: {e}")
                     result = json.dumps({"error": str(e)})
                 self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
-            
+
             yield from self._chat_with_tools_stream(**kwargs)
         else:
             self._persist_plain_assistant_turn(collected_content, collected_reasoning)
@@ -542,13 +562,10 @@ class LLMManager:
                             func_args = "{}"  # 修正为空 JSON 对象字符串
 
                     _notify_tool_call_hint(func_name)
-                    risk = tool_manager.get_tool_risk(func_name)
-                    if risk in ("medium", "high"):
-                        if not self._confirm_risky_tool(func_name, risk, func_args):
-                            result = json.dumps({"cancelled": True, "reason": f"User denied {func_name}"})
-                            self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
-                            continue
-                    result = tool_manager.execute(func_name, func_args)
+                    result = self.tool_executor.execute(
+                        func_name, func_args,
+                        risk_confirm=self._confirm_risky_tool,
+                    )
 
                     # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
                     if func_name == "search_tools":

@@ -3,6 +3,11 @@ mem0 长期记忆 — 每个角色的记忆用 agent_id=character_name 隔离，
 LLM / Embedding / 向量库配置从项目 ConfigManager 自动派生。
 
 安装: pip install mem0ai
+
+模型加载策略：
+首次调用任意记忆工具时，在后台线程启动 mem0 / embedding 模型加载，
+同步返回 ``{"status": "loading"}`` 给 LLM（不阻塞聊天）。
+LLM 收到此状态后应稍后重试；加载完成后工具正常返回结果。
 """
 
 from __future__ import annotations
@@ -10,16 +15,43 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
 from config.config_manager import ConfigManager
-from sdk.tool_registry import tool
+from sdk.tool_registry import ToolNotReady, tool
 
 logger = logging.getLogger(__name__)
 
 _mem0: Any = None
+_mem0_loading = False
+_loading_started_at: float = 0.0
 _lock = threading.Lock()
+
+_LOADING_FIRST_MSG = (
+    "记忆系统正在后台初始化（embedding + 向量库），首次约需 2-5 分钟，后续约 10-30 秒。"
+    "请直接告诉用户「记忆系统正在初始化，请稍等片刻」，不要重复调用本工具。"
+)
+
+
+def _loading_status_message() -> str:
+    """动态生成加载状态消息，包含已等待时长。"""
+    if _loading_started_at > 0:
+        elapsed = int(time.time() - _loading_started_at)
+        if elapsed < 60:
+            return (
+                f"记忆系统仍在加载中（已等待 {elapsed} 秒）。"
+                "请直接告诉用户「记忆系统正在初始化，预计还需 1-4 分钟」，不要重复调用本工具。"
+            )
+        else:
+            minutes = elapsed // 60
+            seconds = elapsed % 60
+            return (
+                f"记忆系统仍在加载中（已等待 {minutes} 分 {seconds} 秒），"
+                "还在下载/加载模型。请告诉用户再等 1-2 分钟，不要重复调用本工具。"
+            )
+    return _LOADING_FIRST_MSG
 
 
 def _build_mem0_config() -> dict[str, Any]:
@@ -108,25 +140,79 @@ def _build_mem0_config() -> dict[str, Any]:
     }
 
 
+def _start_mem0_loading() -> None:
+    """在后台线程启动 mem0 初始化，不阻塞调用方。"""
+    global _mem0_loading, _loading_started_at
+    with _lock:
+        if _mem0 is not None or _mem0_loading:
+            return
+        _mem0_loading = True
+        _loading_started_at = time.time()
+
+    def _load() -> None:
+        global _mem0, _mem0_loading
+        try:
+            print("[mem0] 后台线程开始加载…")
+            from mem0 import Memory
+            config = _build_mem0_config()
+            print(f"[mem0] llm.provider={config['llm']['provider']} embedder.provider={config['embedder']['provider']}")
+            logger.info(
+                "mem0 后台初始化: llm.provider=%s embedder.provider=%s",
+                config["llm"]["provider"],
+                config["embedder"]["provider"],
+            )
+            print("[mem0] 正在初始化 Memory.from_config（首次会下载 embedding 模型）…")
+            mem = Memory.from_config(config)
+            with _lock:
+                _mem0 = mem
+            print("[mem0] 后台加载完成，记忆系统已就绪")
+            logger.info("mem0 后台加载完成")
+        except Exception:
+            print("[mem0] 后台加载失败！详见日志")
+            logger.exception("mem0 后台加载失败")
+        else:
+            # 加载成功 → 通知宿主清除冷却 + 推送聊天通知
+            try:
+                from sdk.tool_registry import notify_tool_ready
+                notify_tool_ready("memory", "记忆系统已就绪，可以继续使用。")
+            except Exception:
+                logger.exception("mem0 就绪通知失败")
+        finally:
+            with _lock:
+                _mem0_loading = False
+
+    print("[mem0] 启动后台加载线程…")
+    t = threading.Thread(target=_load, name="mem0-loader", daemon=True)
+    t.start()
+    logger.info("mem0 后台加载线程已启动")
+
+
 def _get_mem0() -> Any:
-    """惰性初始化 mem0 Memory 实例。"""
+    """获取 mem0 实例（阻塞直到加载完成）。
+
+    供 settings UI 等可接受等待的环境使用。
+    工具调用请使用 :func:`_ensure_mem0` 以避免阻塞聊天。
+    """
     global _mem0
     if _mem0 is not None:
         return _mem0
-    with _lock:
-        if _mem0 is not None:
-            return _mem0
-        from mem0 import Memory
 
-        config = _build_mem0_config()
-        logger.info(
-            "mem0 初始化: llm.provider=%s embedder.provider=%s",
-            config["llm"]["provider"],
-            config["embedder"]["provider"],
-        )
-        _mem0 = Memory.from_config(config)
-        logger.info("mem0 已就绪")
+    _start_mem0_loading()
+
+    while _mem0 is None and _mem0_loading:
+        time.sleep(0.5)
+
+    if _mem0 is None:
+        raise RuntimeError("mem0 加载失败")
+    return _mem0
+
+
+def _ensure_mem0() -> Any:
+    """确保 mem0 可用：已就绪则返回实例；否则启动后台加载并抛出 ToolNotReady。"""
+    if _mem0 is not None:
         return _mem0
+    _start_mem0_loading()
+    raise ToolNotReady(_loading_status_message())
 
 
 def _resolve_agent_id(character_name: str | None) -> str:
@@ -143,9 +229,9 @@ def memory_search(
     q = (query or "").strip()
     if not q:
         return {"error": "query 不能为空"}
+    mem = _ensure_mem0()
     agent_id = _resolve_agent_id(character_name)
     try:
-        mem = _get_mem0()
         results = mem.search(q, filters={"user_id": agent_id}, limit=limit)
         # mem0 新版返回 {"results": [...]} 结构
         if isinstance(results, dict) and "results" in results:
@@ -172,9 +258,9 @@ def memory_remember(
     text = (content or "").strip()
     if not text:
         return {"error": "content 不能为空"}
+    mem = _ensure_mem0()
     agent_id = _resolve_agent_id(character_name)
     try:
-        mem = _get_mem0()
         mem.add(text, user_id=agent_id, infer=False)
         return {"ok": True, "agent_id": agent_id, "content": text}
     except Exception as e:
@@ -186,8 +272,8 @@ def memory_forget(memory_id: str) -> dict[str, Any]:
     mid = (memory_id or "").strip()
     if not mid:
         return {"error": "memory_id 不能为空"}
+    mem = _ensure_mem0()
     try:
-        mem = _get_mem0()
         mem.delete(mid)
         return {"ok": True, "memory_id": mid}
     except Exception as e:
@@ -204,7 +290,9 @@ def memory_forget(memory_id: str) -> dict[str, Any]:
         "Search YOUR memory. "
         "character_name: YOUR OWN full name from dialog (the character who is speaking). "
         "When you are playing a character, use that character's name. "
-        "query: English keywords. Call BEFORE using cross-session info."
+        "query: English keywords. Call BEFORE using cross-session info. "
+        "NOTE: first call may return status:'loading' (model initializing, 2-5 min). "
+        "If you get status:'loading', follow the message instruction — do NOT retry this tool or any memory_* tool."
     ),
 )
 def _tool_memory_search(
@@ -223,7 +311,8 @@ def _tool_memory_search(
         "character_name: YOUR OWN full name from dialog (the character who is speaking). "
         "When you are playing 狛枝凪斗, use '狛枝凪斗', NOT 'user'. "
         "content: the fact IN ENGLISH. "
-        "Only use character_name='user' for facts about the human user, not about yourself."
+        "Only use character_name='user' for facts about the human user, not about yourself. "
+        "NOTE: first call may return status:'loading'. If so, follow the message — do NOT retry any memory_* tool."
     ),
 )
 def _tool_memory_remember(
@@ -237,7 +326,8 @@ def _tool_memory_remember(
     name="memory_forget",
     group="memory",
     description=(
-        "Delete a memory entry. memory_id comes from a memory_search result's id field."
+        "Delete a memory entry. memory_id comes from a memory_search result's id field. "
+        "NOTE: first call may return status:'loading'. If so, follow the message — do NOT retry any memory_* tool."
     ),
 )
 def _tool_memory_forget(memory_id: str) -> dict[str, Any]:

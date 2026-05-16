@@ -217,6 +217,64 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 
 ---
 
+### Slow model loading tools: `ToolNotReady`
+
+When your `@tool` depends on a model that loads **slowly** (downloading weights, warming up GPU), don't block the LLM thread — raise `ToolNotReady`. The host's `ToolExecutor` catches it, converts it to a structured loading response, and sets a **cooldown** so the LLM won't hammer the tool.
+
+```python
+from sdk.tool_registry import ToolNotReady, tool
+
+_model = None
+_loading = False
+
+
+@tool(name="my_vision_tool", group="vision",
+      description="Describe what's on screen using a local model.")
+def my_vision_tool(question: str) -> dict:
+    global _model, _loading
+
+    if _model is None:
+        if not _loading:
+            _loading = True
+            threading.Thread(target=_download_and_load_model, daemon=True).start()
+        raise ToolNotReady(
+            "视觉模型正在下载/加载中（首次约 2-10 分钟）。"
+            "请直接告诉用户稍等，不要重复调用本工具。"
+        )
+
+    return {"answer": _model.infer(question)}
+```
+
+**What happens when you raise `ToolNotReady`:**
+
+1. `ToolExecutor` catches the exception → returns `{"status": "loading", "message": "..."}` to the LLM.
+2. `ToolExecutor` sets a **group-level cooldown** (default: 300 s for `"memory"`, 600 s for `"vision"`, 120 s for other groups).
+3. While the group is on cooldown, **any** tool in the same group returns a cooldown message immediately — the function body is never called.
+
+**Customising cooldown per group:**
+
+```python
+from llm.tools.tool_executor import tool_executor
+
+tool_executor.set_group_cooldown("my_group", 180.0)  # 3 minutes
+```
+
+**Tool description notes** — tell the LLM what to expect:
+
+```python
+@tool(
+    name="my_vision_tool",
+    group="vision",
+    description=(
+        "Analyse the screen. "
+        "NOTE: first call may return status:'loading' (model downloading, 2-10 min). "
+        "If you get status:'loading', follow the message — do NOT retry any tool in the same group."
+    ),
+)
+```
+
+---
+
 ### `register_message_handler(tts_handler=..., ui_handler=...)`
 
 Extend the TTS pipeline (`MessageHandler` for `LLMDialogMessage`) and/or UI output (`UIOutputMessageHandler` for `TTSOutputMessage`). First handler with `can_handle` wins.
