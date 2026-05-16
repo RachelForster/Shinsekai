@@ -235,11 +235,32 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                 if source_sprite_dir.is_dir():
                     shutil.copytree(source_sprite_dir, dest_sprite_dir, dirs_exist_ok=True)
 
+                # 修复 sprite path：指向导入机器上的实际路径
+                sprites = char_data.get('sprites') or []
+                for s in sprites:
+                    if isinstance(s, dict):
+                        old_path = Path(str(s.get('path', '')))
+                        new_path = dest_sprite_dir / old_path.name
+                        try:
+                            s['path'] = str(new_path.relative_to(Path.cwd()))
+                        except ValueError:
+                            s['path'] = new_path.as_posix()
+
                 # 恢复语音文件（使用新的sprite_prefix）
                 source_speech_dir = temp_dir / 'speech' / original_sprite_prefix
                 dest_speech_dir = SPEECH_DIR / new_sprite_prefix
                 if source_speech_dir.is_dir():
                     shutil.copytree(source_speech_dir, dest_speech_dir, dirs_exist_ok=True)
+
+                # 修复 voice_path：指向导入机器上的实际路径
+                for s in sprites:
+                    if isinstance(s, dict) and s.get('voice_path'):
+                        old_vp = Path(str(s['voice_path']))
+                        new_vp = dest_speech_dir / old_vp.name
+                        try:
+                            s['voice_path'] = str(new_vp.relative_to(Path.cwd()))
+                        except ValueError:
+                            s['voice_path'] = new_vp.as_posix()
             
             # 恢复模型文件并更新路径
             model_paths = {
