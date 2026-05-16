@@ -105,7 +105,7 @@ class MCPBridge:
             session_cm = ClientSession(read, write)
             self.session = await stack.enter_async_context(session_cm)
             await self.session.initialize()
-        except Exception;
+        except Exception:
             await self.close()
             raise
 
