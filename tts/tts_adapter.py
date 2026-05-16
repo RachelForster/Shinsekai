@@ -20,7 +20,7 @@ class GPTSoVitsAdapter(TTSAdapter):
     It adapts the GPT-SoVITS API to the standard TTSAdapter interface.
     """
     def __init__(self, tts_server_url="http://127.0.0.1:9880/", gpt_sovits_work_path = None):
-        self.tts_server_url = tts_server_url
+        self.tts_server_url = tts_server_url.rstrip("/") + "/"
         self.sovits_model_path = ''
         self.gpt_model_path = ''
         self.gpt_sovits_work_path = gpt_sovits_work_path
