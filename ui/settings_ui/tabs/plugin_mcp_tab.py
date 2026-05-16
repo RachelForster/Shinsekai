@@ -85,8 +85,15 @@ class _McpServerEditDialog(QDialog):
         self._timeout.setValue(0)
         self._transport = QComboBox()
         self._transport.addItem("SSE", "sse")
+        self._transport.addItem("Streamable HTTP", "streamable_http")
         self._transport.addItem("stdio", "stdio")
-        idx = 0 if transport_default.strip().lower() != "stdio" else 1
+        _td = transport_default.strip().lower()
+        if _td == "streamable_http":
+            idx = 1
+        else __td == "stdio":
+            idx = 2
+        else
+            idx = 0
         self._transport.setCurrentIndex(idx)
 
         self._url = QLineEdit()
@@ -125,11 +132,13 @@ class _McpServerEditDialog(QDialog):
             self._fill_from_entry(entry)
 
     def _sync_transport_ui(self) -> None:
-        is_sse = self._transport.currentData() == "sse"
-        self._url.setVisible(is_sse)
-        self._headers_json.setVisible(is_sse)
-        self._command.setVisible(not is_sse)
-        self._args_json.setVisible(not is_sse)
+        t = self._transport.currentData()
+        is_http = t in ("sse", "streamable_http")
+        is_stdio = t == "stdio"
+        self._url.setVisible(is_http)
+        self._headers_json.setVisible(is_http)
+        self._command.setVisible(is_stdio)
+        self._args_json.setVisible(is_stdio)
 
     def _fill_from_entry(self, entry: dict) -> None:
         self._enabled.setChecked(entry.get("enabled") is not False)
@@ -143,7 +152,12 @@ class _McpServerEditDialog(QDialog):
         else:
             self._timeout.setValue(0)
         tr = str(entry.get("transport") or "sse").strip().lower()
-        self._transport.setCurrentIndex(1 if tr == "stdio" else 0)
+        if tr == "streamable_http":
+            self._transport.setCurrentIndex(1)
+        elif tr == "stdio":
+            self._transport.setCurrentIndex(2)
+        else:
+            self._transport.setCurrentIndex(0)
         self._url.setText(str(entry.get("url") or ""))
         hdr = entry.get("headers")
         if isinstance(hdr, dict) and hdr:
@@ -188,7 +202,7 @@ class _McpServerEditDialog(QDialog):
         }
         if self._timeout.value() > 0:
             row["call_timeout"] = float(self._timeout.value())
-        if transport == "sse":
+        if transport in ("sse", "streamable_http"):
             url = self._url.text().strip()
             if not url:
                 raise ValueError(tr_i18n("plugins.mcp_err_need_url"))
@@ -308,6 +322,9 @@ class PluginMcpTab(QWidget):
         self._btn_add_stdio = QPushButton()
         self._btn_add_stdio.clicked.connect(lambda: self._add_server("stdio"))
         toolbar.addWidget(self._btn_add_stdio)
+        self._btn_add_streamable_http = QPushButton()
+        self._btn_add_streamable_http.clicked.connect(lambda: self._add_server("streamable_http"))
+        toolbar.addWidget(self._btn_add_streamable_http)
         self._btn_save = QPushButton()
         self._btn_save.clicked.connect(self._on_save)
         toolbar.addWidget(self._btn_save)
@@ -376,6 +393,7 @@ class PluginMcpTab(QWidget):
         self._server_group.setTitle(tr_i18n("plugins.mcp_servers_group"))
         self._btn_add_sse.setText(tr_i18n("plugins.mcp_add_sse"))
         self._btn_add_stdio.setText(tr_i18n("plugins.mcp_add_stdio"))
+        self._btn_add_streamable_http.setText(tr_i18n("plugins.mcp_add_streamable_http"))
         self._btn_save.setText(tr_i18n("plugins.mcp_save_apply"))
         self._btn_open_file.setText(tr_i18n("plugins.mcp_open_yaml"))
         self._tools_group.setTitle(tr_i18n("plugins.mcp_tools_group"))
@@ -411,6 +429,7 @@ class PluginMcpTab(QWidget):
         self._server_table.setEnabled(checked)
         self._btn_add_sse.setEnabled(checked)
         self._btn_add_stdio.setEnabled(checked)
+        self._btn_add_streamable_http.setEnabled(checked)
         self._btn_refresh_tools.setEnabled(checked)
         self._tools_table.setEnabled(checked)
 

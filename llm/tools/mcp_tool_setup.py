@@ -203,6 +203,15 @@ async def _async_probe_tools(servers: list[Any]) -> list[dict[str, Any]]:
                     headers = None
                 bridge = MCPBridge()
                 await bridge.connect_sse(url, headers)
+            elif transport == "streamable_http":
+                url = str(entry.get("url") or "").strip()
+                if not url:
+                    continue
+                headers = entry.get("headers")
+                if headers is not None and not isinstance(headers, dict):
+                    headers = None
+                bridge = MCPBridge()
+                await bridge.connect_streamable_http(url, headers)
             elif transport == "stdio":
                 command = str(entry.get("command") or "").strip()
                 if not command:
@@ -282,6 +291,14 @@ async def _register_one_server(
         if headers is not None and not isinstance(headers, dict):
             headers = None
         await bridge.connect_sse(url, headers)
+    elif transport == "streamable_http":
+        url = str(entry.get("url") or "").strip()
+        if not url:
+            raise ValueError("MCP streamable_http server missing 'url'")
+        headers = entry.get("headers")
+        if headers is not None and not isinstance(headers, dict):
+            headers = None
+        await bridge.connect_streamable_http(url, headers)
     elif transport == "stdio":
         command = str(entry.get("command") or "").strip()
         if not command:
