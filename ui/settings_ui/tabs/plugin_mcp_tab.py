@@ -90,7 +90,7 @@ class _McpServerEditDialog(QDialog):
         _td = transport_default.strip().lower()
         if _td == "streamable_http":
             idx = 1
-        else __td == "stdio":
+        else _td == "stdio":
             idx = 2
         else
             idx = 0
