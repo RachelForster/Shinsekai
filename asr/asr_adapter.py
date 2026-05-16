@@ -82,13 +82,17 @@ def _whisper_triplet_from_sys(sys_cfg: Any) -> tuple[str, str, str]:
 
 
 def normalize_asr_provider_storage_key(prov: str) -> str:
-    """与 API 页 ASR 下拉 userData 一致的存储键（vosk / faster_whisper / realtime_stt）。"""
+    """与 API 页 ASR 下拉 userData 一致的存储键。
+
+    内置兼容键会归一化到既有 slug；其他插件 provider 则保持其标准化后的原值，
+    以便 ``register_asr_adapter("my_plugin_asr", ...)`` 这类扩展后端能被正确选择。
+    """
     p = (prov or "vosk").strip().lower().replace("-", "_")
     if p in ("faster_whisper", "fasterwhisper", "whisper"):
         return "faster_whisper"
     if p in ("realtime_stt", "realtimestt"):
         return "realtime_stt"
-    return "vosk"
+    return p or "vosk"
 
 
 class VoskAdapter(ASRAdapter):
