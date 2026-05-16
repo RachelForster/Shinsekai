@@ -11,10 +11,13 @@ jobs:
     outputs:
       TAG: ${{ steps.gen.outputs.TAG }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Generate tag
         id: gen
         run: |
-          TAG="v$(date +%Y.%m.%d)"
+          VER=$(head -1 VERSION | sed 's/-dev//' | sed 's/^v//')
+          TAG="v${VER}"
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
 
   test:
@@ -151,7 +154,20 @@ jobs:
       - name: Make scripts executable (macOS)
         if: matrix.platform != 'windows-x64'
         shell: bash
-        run: chmod +x scripts/install.sh scripts/start.sh
+        run: chmod +x scripts/install.sh scripts/start.sh scripts/install.command scripts/start.command
+
+      - name: Tidy macOS bundle layout
+        if: matrix.platform != 'windows-x64'
+        shell: bash
+        run: |
+          cp scripts/install.command install.command
+          cp scripts/start.command start.command
+          rm -f install.bat start.bat
+
+      - name: Tidy Windows bundle layout
+        if: matrix.platform == 'windows-x64'
+        shell: bash
+        run: rm -f install.command start.command
 
       - name: Create bundle archive (Windows)
         if: matrix.platform == 'windows-x64'

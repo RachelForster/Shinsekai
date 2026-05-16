@@ -55,13 +55,20 @@ git clone https://github.com/RachelForster/Shinsekai
 cd Shinsekai
 ```
 
-**整合包：** 从 [Releases](https://github.com/RachelForster/Shinsekai/releases) 下载解压；内置 `install.bat` / `start.bat`。
+**整合包：** 从 [Releases](https://github.com/RachelForster/Shinsekai/releases) 下载解压。
+
+| 平台 | 安装 | 启动 |
+|------|------|------|
+| Windows | 双击 `install.bat` | 双击 `start.bat` |
+| macOS | 双击 `install.command` | 双击 `start.command` |
+
+> **macOS 首次运行**：如果双击提示「无法验证开发者」，请右键（或 Ctrl+点击）文件 → **打开**，在弹出的对话框中再次点 **打开** 即可。或者前往 **系统设置 → 隐私与安全性** 中允许。
 
 ### 2. 安装依赖
 
-整合包用户：双击 `install.bat`。
+**整合包用户**：双击对应平台的安装脚本即可。
 
-开发者建议 Python 3.10 虚拟环境：
+**开发者** 建议 Python 3.10 虚拟环境：
 
 ```bash
 conda create -n shinsekai python=3.10
@@ -71,7 +78,12 @@ pip install -r requirements.txt
 
 ### 3. 打开设置界面
 
-整合包：`start.bat`。源码：
+| 平台 | 操作 |
+|------|------|
+| Windows | 双击 `start.bat` |
+| macOS | 双击 `start.command` |
+
+源码用户：
 
 ```bash
 python webui_qt.py
