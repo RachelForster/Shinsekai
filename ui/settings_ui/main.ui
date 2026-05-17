@@ -59,6 +59,31 @@ QToolTip {
 }
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////
+Menu */
+QMenu {
+	color: rgb(221, 221, 221);
+	background-color: rgb(33, 37, 43);
+	border: 1px solid rgb(44, 49, 58);
+	padding: 4px;
+}
+QMenu::item {
+	background-color: transparent;
+	padding: 6px 24px;
+}
+QMenu::item:selected {
+	color: rgb(255, 255, 255);
+	background-color: rgb(64, 71, 88);
+}
+QMenu::item:disabled {
+	color: rgb(113, 126, 149);
+}
+QMenu::separator {
+	height: 1px;
+	background-color: rgb(52, 59, 72);
+	margin: 4px 8px;
+}
+
+/* /////////////////////////////////////////////////////////////////////////////////////////////////
 Bg App */
 #bgApp {	
 	background-color: rgb(40, 44, 52);
@@ -448,8 +473,11 @@ QComboBox::drop-down {
 QComboBox QAbstractItemView {
 	color: rgb(255, 121, 198);	
 	background-color: rgb(33, 37, 43);
+	border: 1px solid rgb(44, 49, 58);
+	outline: 0px;
 	padding: 10px;
 	selection-background-color: rgb(39, 44, 54);
+	selection-color: rgb(255, 255, 255);
 }
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////

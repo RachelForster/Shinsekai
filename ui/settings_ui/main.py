@@ -316,9 +316,11 @@ if __name__ == "__main__":
     from i18n import init_i18n
     from config.config_manager import ConfigManager
     from ui.settings_ui import create_default_context
+    from ui.qss import apply_pydracula_dark
 
     init_i18n(ConfigManager().config.system_config.ui_language)
     app = QApplication(sys.argv)
+    apply_pydracula_dark(app)
     icon = _SETTINGS_UI_DIR / "images" / "icons" / "icon_settings.png"
     if icon.is_file():
         app.setWindowIcon(QIcon(str(icon)))
