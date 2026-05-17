@@ -245,6 +245,8 @@
       "base_url": "Base URL",
       "stream": "Streaming (SSE)",
       "ph_model": "e.g. gpt-4o, deepseek-chat — per provider",
+      "model_fetch_tip": "Fetch available models",
+      "model_fetching": "Fetching available models...",
       "ph_key": "Key may change when you switch provider",
       "ph_base": "OpenAI-compatible URL, often ending in /v1"
     },
@@ -337,6 +339,10 @@
       "config": "API",
       "provider_fail": "Failed to update provider: {e}",
       "thinking_unsupported": "deepseek-v4-flash / deepseek-chat don't support thinking mode",
+      "model_fetch_missing": "Fill in the LLM base URL and API key first.",
+      "model_fetch_empty": "No available models were returned.",
+      "model_fetch_done": "Fetched {count} models.",
+      "model_fetch_failed": "Failed to fetch models: {e}",
       "validation_title": "Validation"
     },
     "resume": {

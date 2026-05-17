@@ -242,6 +242,8 @@
       "base_url": "ベース URL",
       "stream": "ストリーミング (SSE)",
       "ph_model": "例: gpt-4o, deepseek-chat（プロバイダーに従う）",
+      "model_fetch_tip": "利用可能なモデルを取得",
+      "model_fetching": "利用可能なモデルを取得中...",
       "ph_key": "プロバイダー切替でキーが変わる場合あり",
       "ph_base": "OpenAI 互換 URL（多くは /v1 まで）"
     },
@@ -334,6 +336,10 @@
       "config": "API 設定",
       "provider_fail": "プロバイダー更新に失敗: {e}",
       "thinking_unsupported": "deepseek-v4-flash / deepseek-chat は思考モード非対応",
+      "model_fetch_missing": "LLM のベース URL と API キーを先に入力してください。",
+      "model_fetch_empty": "利用可能なモデルを取得できませんでした。",
+      "model_fetch_done": "{count} 件のモデルを取得しました。",
+      "model_fetch_failed": "モデル一覧の取得に失敗しました：{e}",
       "validation_title": "入力チェック"
     },
     "resume": {

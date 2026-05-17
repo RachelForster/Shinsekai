@@ -298,6 +298,9 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
 
     def mousePressEvent(self, event):
+        if QApplication.activeModalWidget() is not None:
+            super().mousePressEvent(event)
+            return
         self.dragPos = event.globalPosition().toPoint()
         if event.buttons() == Qt.MouseButton.LeftButton:
             pass
