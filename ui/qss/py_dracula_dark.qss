@@ -505,19 +505,22 @@ QComboBox::drop-down {
  }
 QComboBox QListView,
 QComboBox QAbstractItemView {
-	color: rgb(255, 121, 198);	
+	color: rgb(221, 221, 221);
 	background-color: rgb(33, 37, 43);
 	border: 1px solid rgb(44, 49, 58);
 	outline: 0px;
 	padding: 10px;
-	selection-background-color: rgb(39, 44, 54);
-	selection-color: rgb(255, 255, 255);
+	selection-background-color: rgb(64, 71, 88);
+	selection-color: rgb(221, 221, 221);
 }
 QComboBox QAbstractItemView::item {
 	background-color: rgb(33, 37, 43);
 }
+QComboBox QListView::item:hover,
+QComboBox QListView::item:selected,
+QComboBox QAbstractItemView::item:hover,
 QComboBox QAbstractItemView::item:selected {
-	color: rgb(255, 255, 255);
+	color: rgb(221, 221, 221);
 	background-color: rgb(64, 71, 88);
 }
 
