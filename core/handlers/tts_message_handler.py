@@ -22,7 +22,11 @@ from core.messaging.dialog_tokens import (
     normalize_character_name,
 )
 from sdk.messages import LLMDialogMessage, TTSOutputMessage
-from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
+from core.runtime.app_runtime import (
+    get_app_runtime,
+    tts_emit_to_ui_queue,
+    tts_item_done_only,
+)
 from i18n import tr as tr_i18n
 
 _config = ConfigManager()
@@ -124,6 +128,30 @@ def _cc():
     return get_app_runtime().opencc
 
 
+def _ensure_t2i_manager():
+    rt = get_app_runtime()
+    if rt.t2i_manager is not None:
+        return rt.t2i_manager
+
+    from t2i.t2i_manager import T2IAdapterFactory, T2IManager
+
+    api = rt.config.config.api_config
+    adapter_name = str(api.t2i_provider or "comfyui")
+    base_kwargs = {
+        "work_path": api.t2i_work_path,
+        "api_url": api.t2i_api_url,
+        "workflow_path": api.t2i_default_workflow_path,
+        "prompt_node_id": api.t2i_prompt_node_id,
+        "output_node_id": api.t2i_output_node_id,
+    }
+    adapter = T2IAdapterFactory.create_adapter(
+        adapter_name=adapter_name,
+        **rt.config.merged_t2i_factory_kwargs(adapter_name, base_kwargs),
+    )
+    rt.t2i_manager = T2IManager(adapter)
+    return rt.t2i_manager
+
+
 class ChainOfThoughtTtsHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return match_cot_tts(_cc(), msg.name)
@@ -181,22 +209,38 @@ class CgTtsHandler(MessageHandler):
 
     def handle(self, msg: LLMDialogMessage) -> None:
         _post_tts_busy(tr_i18n("desktop.tts_busy_cg"))
+        emitted = False
         try:
-            rt = get_app_runtime()
-            if rt.t2i_manager is None:
-                print("CG skipped: T2I manager is not enabled.")
-                return
-            cg_path = rt.t2i_manager.t2i(
-                prompt=msg.text,
+            manager = _ensure_t2i_manager()
+            prompt = (msg.text or "").strip()
+            if not prompt:
+                raise ValueError("CG prompt is empty.")
+            cg_path = manager.t2i(
+                prompt=prompt,
                 prompt_processor=None,
                 image_size="landscape",
             )
+            if not cg_path:
+                raise RuntimeError("T2I returned no image path.")
             tts_emit_to_ui_queue(
-                msg.name, msg.text, "-1", cg_path, is_system_message=True
+                msg.name, prompt, "-1", cg_path, is_system_message=True
             )
+            emitted = True
         except Exception as e:
             print(f"生成CG失败，{e}")
             traceback.print_exc()
+            try:
+                tts_emit_to_ui_queue(
+                    "system",
+                    tr_i18n("desktop.cg_generate_failed", error=str(e)),
+                    "-1",
+                    "",
+                    is_system_message=True,
+                )
+                emitted = True
+            except Exception:
+                if not emitted:
+                    tts_item_done_only()
         finally:
             _hide_tts_busy()
 

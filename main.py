@@ -240,6 +240,7 @@ def main():
         sprite_mode=True,
         background_mode=(bg_group is not None),
     )
+    window.current_history_file = args.history or ""
     connect_to_desktop_window(ui_updates, window)
 
     set_app_runtime(
@@ -358,6 +359,20 @@ def main():
         app.aboutToQuit.connect(_shutdown_plugins)
     except Exception:
         pass
+    def _save_auto_chat_slot() -> None:
+        try:
+            from core.sprite.save_slots import save_auto_slot
+
+            save_auto_slot(
+                llm_manager.get_messages(),
+                background_path=window.current_background_path,
+                bgm_path=ui_updates.current_bgm_path,
+                history_file=args.history or "",
+            )
+        except Exception as e:
+            print(tr_i18n("main.print_auto_save_fail", e=str(e)))
+
+    app.aboutToQuit.connect(_save_auto_chat_slot)
     app.aboutToQuit.connect(lambda: tts_manager and tts_manager.shutdown())
     app.aboutToQuit.connect(lambda: save_chat_history(args.history, llm_manager.get_messages()))
     app.aboutToQuit.connect(llm_worker.stop)

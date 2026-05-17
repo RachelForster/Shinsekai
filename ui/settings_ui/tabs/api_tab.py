@@ -34,7 +34,19 @@ from i18n import init_i18n, tr as tr_i18n
 from sdk.lang import normalize_lang
 from llm.constants import LLM_BASE_URLS
 from llm.llm_manager import LLMAdapterFactory
+from llm.provider_switcher import (
+    get_active_llm_api_profile,
+    list_llm_api_profiles,
+    save_llm_api_profile,
+    switch_llm_api_profile,
+)
 from t2i.t2i_manager import T2IAdapterFactory
+from t2i.provider_switcher import (
+    get_active_t2i_api_profile,
+    list_t2i_api_profiles,
+    save_t2i_api_profile,
+    switch_t2i_api_profile,
+)
 from tts.tts_manager import TTSAdapterFactory
 from ui.settings_ui.widgets.adapter_extra_form import (
     build_schema_widgets,
@@ -354,7 +366,29 @@ class ApiSettingsTab(QWidget):
         self._f_api_key = QLabel(tr_i18n("api.form.api_key"))
         self._f_base = QLabel(tr_i18n("api.form.base_url"))
         self._f_stream = QLabel(tr_i18n("api.form.stream"))
+        self.llm_api_profile = QComboBox()
+        self.llm_api_profile.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self.llm_api_profile_name = QLineEdit()
+        self.llm_api_profile_name.setPlaceholderText(
+            tr_i18n("api.form.ph_profile_name")
+        )
+        self._llm_profile_apply = QPushButton(tr_i18n("api.form.profile_apply"))
+        self._llm_profile_save = QPushButton(tr_i18n("api.form.profile_save"))
+        llm_profile_btns = QWidget()
+        llm_profile_btns_lay = QHBoxLayout(llm_profile_btns)
+        llm_profile_btns_lay.setContentsMargins(0, 0, 0, 0)
+        llm_profile_btns_lay.addWidget(self._llm_profile_apply)
+        llm_profile_btns_lay.addWidget(self._llm_profile_save)
+        llm_profile_btns_lay.addStretch(1)
+        self._refresh_llm_api_profile_combo()
+        self._f_llm_profile = QLabel(tr_i18n("api.form.profile"))
+        self._f_llm_profile_name = QLabel(tr_i18n("api.form.profile_name"))
         llm_form.addRow(self._f_llm_provider, self.llm_provider)
+        llm_form.addRow(self._f_llm_profile, self.llm_api_profile)
+        llm_form.addRow(self._f_llm_profile_name, self.llm_api_profile_name)
+        llm_form.addRow(llm_profile_btns)
         llm_form.addRow(self._f_model, self.llm_model)
         llm_form.addRow(self._f_api_key, self.api_key)
         llm_form.addRow(self._f_base, self.base_url)
@@ -690,12 +724,34 @@ class ApiSettingsTab(QWidget):
         self.prompt_node_id = QLineEdit(api.t2i_prompt_node_id)
         self.output_node_id = QLineEdit(api.t2i_output_node_id)
         self.t2i_url.setPlaceholderText(tr_i18n("api.comfy.ph_t2i"))
+        self.t2i_api_profile = QComboBox()
+        self.t2i_api_profile.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self.t2i_api_profile_name = QLineEdit()
+        self.t2i_api_profile_name.setPlaceholderText(
+            tr_i18n("api.comfy.ph_profile_name")
+        )
+        self._t2i_profile_apply = QPushButton(tr_i18n("api.comfy.profile_apply"))
+        self._t2i_profile_save = QPushButton(tr_i18n("api.comfy.profile_save"))
+        profile_btns = QWidget()
+        profile_btns_lay = QHBoxLayout(profile_btns)
+        profile_btns_lay.setContentsMargins(0, 0, 0, 0)
+        profile_btns_lay.addWidget(self._t2i_profile_apply)
+        profile_btns_lay.addWidget(self._t2i_profile_save)
+        profile_btns_lay.addStretch(1)
+        self._refresh_t2i_api_profile_combo()
         self._cf_t2i = QLabel(tr_i18n("api.comfy.t2i_url"))
         self._cf_dir = QLabel(tr_i18n("api.comfy.t2i_dir"))
         self._cf_wf = QLabel(tr_i18n("api.comfy.workflow"))
         self._cf_p = QLabel(tr_i18n("api.comfy.prompt_id"))
         self._cf_o = QLabel(tr_i18n("api.comfy.out_id"))
+        self._cf_profile = QLabel(tr_i18n("api.comfy.profile"))
+        self._cf_profile_name = QLabel(tr_i18n("api.comfy.profile_name"))
         cf.addRow(self._f_t2i_engine, self.t2i_engine)
+        cf.addRow(self._cf_profile, self.t2i_api_profile)
+        cf.addRow(self._cf_profile_name, self.t2i_api_profile_name)
+        cf.addRow(profile_btns)
         cf.addRow(self._cf_t2i, self.t2i_url)
         cf.addRow(self._cf_dir, self.t2i_work_path)
         cf.addRow(self._cf_wf, self.t2i_default_workflow_path)
@@ -756,8 +812,18 @@ class ApiSettingsTab(QWidget):
 
         self.llm_provider.currentTextChanged.connect(self._on_provider_change)
         self.llm_model.textChanged.connect(self._on_model_text_changed)
+        self.llm_api_profile.currentIndexChanged.connect(
+            self._on_llm_api_profile_selected
+        )
+        self._llm_profile_apply.clicked.connect(self._on_llm_api_profile_apply)
+        self._llm_profile_save.clicked.connect(self._on_llm_api_profile_save)
         self.tts_provider.currentIndexChanged.connect(self._on_tts_provider_changed)
         self.t2i_engine.currentIndexChanged.connect(self._on_t2i_engine_changed)
+        self.t2i_api_profile.currentIndexChanged.connect(
+            self._on_t2i_api_profile_selected
+        )
+        self._t2i_profile_apply.clicked.connect(self._on_t2i_api_profile_apply)
+        self._t2i_profile_save.clicked.connect(self._on_t2i_api_profile_save)
         self._asr_provider.currentIndexChanged.connect(self._on_asr_provider_changed)
         self._rebuild_llm_extra_panel()
         self._rebuild_tts_extra_panel()
@@ -815,6 +881,13 @@ class ApiSettingsTab(QWidget):
         self._f_api_key.setText(tr_i18n("api.form.api_key"))
         self._f_base.setText(tr_i18n("api.form.base_url"))
         self._f_stream.setText(tr_i18n("api.form.stream"))
+        self._f_llm_profile.setText(tr_i18n("api.form.profile"))
+        self._f_llm_profile_name.setText(tr_i18n("api.form.profile_name"))
+        self.llm_api_profile_name.setPlaceholderText(
+            tr_i18n("api.form.ph_profile_name")
+        )
+        self._llm_profile_apply.setText(tr_i18n("api.form.profile_apply"))
+        self._llm_profile_save.setText(tr_i18n("api.form.profile_save"))
         self.llm_model.setPlaceholderText(tr_i18n("api.form.ph_model"))
         self.api_key.setPlaceholderText(tr_i18n("api.form.ph_key"))
         self.base_url.setPlaceholderText(tr_i18n("api.form.ph_base"))
@@ -850,6 +923,13 @@ class ApiSettingsTab(QWidget):
         self._cf_wf.setText(tr_i18n("api.comfy.workflow"))
         self._cf_p.setText(tr_i18n("api.comfy.prompt_id"))
         self._cf_o.setText(tr_i18n("api.comfy.out_id"))
+        self._cf_profile.setText(tr_i18n("api.comfy.profile"))
+        self._cf_profile_name.setText(tr_i18n("api.comfy.profile_name"))
+        self.t2i_api_profile_name.setPlaceholderText(
+            tr_i18n("api.comfy.ph_profile_name")
+        )
+        self._t2i_profile_apply.setText(tr_i18n("api.comfy.profile_apply"))
+        self._t2i_profile_save.setText(tr_i18n("api.comfy.profile_save"))
         self._links_title.setText(tr_i18n("api.links.title"))
         for lb, (key, url) in zip(self._res_link_labels, self._res_link_data, strict=True):
             lb.setText(f'<a href="{url}">{tr_i18n(key)}</a>')
@@ -925,6 +1005,118 @@ class ApiSettingsTab(QWidget):
     def _asr_whisper_compute_config_value(self) -> str:
         d = self._asr_compute.currentData()
         return "" if d is None else str(d)
+
+    def _refresh_llm_api_profile_combo(self, active: str | None = None) -> None:
+        profiles = list_llm_api_profiles()
+        active = active if active is not None else get_active_llm_api_profile()
+        self.llm_api_profile.blockSignals(True)
+        self.llm_api_profile.clear()
+        if not profiles:
+            self.llm_api_profile.addItem(tr_i18n("api.form.profile_empty"), "")
+        else:
+            for name in profiles:
+                self.llm_api_profile.addItem(name, name)
+            ix = self.llm_api_profile.findData(active)
+            self.llm_api_profile.setCurrentIndex(ix if ix >= 0 else 0)
+        self.llm_api_profile.blockSignals(False)
+        current = self.llm_api_profile.currentData()
+        if current:
+            self.llm_api_profile_name.setText(str(current))
+
+    def _on_llm_api_profile_selected(self, _index: int = 0) -> None:
+        current = self.llm_api_profile.currentData()
+        if current:
+            self.llm_api_profile_name.setText(str(current))
+
+    def _current_llm_profile_config(self) -> dict:
+        provider = self.llm_provider.currentText()
+        llm_cls = LLMAdapterFactory._adapters.get(provider)
+        schema = llm_cls.get_config_schema() if llm_cls else {}
+        return {
+            "provider": provider,
+            "base_url": self.base_url.text().strip(),
+            "model": self.llm_model.text().strip(),
+            "api_key": self.api_key.text(),
+            "is_streaming": self.stream_yes.isChecked(),
+            "temperature": self.temperature.value(),
+            "repetition_penalty": self.repetition_penalty.value(),
+            "presence_penalty": self.presence_penalty.value(),
+            "frequency_penalty": self.frequency_penalty.value(),
+            "max_context_tokens": self.max_context_tokens.value(),
+            "extra_config": read_schema_values(schema, self._llm_extra_editors),
+        }
+
+    def _reload_llm_fields_from_config(self) -> None:
+        api = self._ctx.config_manager.config.api_config
+        provider = str(api.llm_provider or "")
+        self.llm_provider.blockSignals(True)
+        ix = self.llm_provider.findText(provider)
+        if ix < 0 and provider:
+            self.llm_provider.addItem(provider)
+            ix = self.llm_provider.findText(provider)
+        if ix >= 0:
+            self.llm_provider.setCurrentIndex(ix)
+        self.llm_provider.blockSignals(False)
+        model = (api.llm_model or {}).get(provider, "")
+        key = (api.llm_api_key or {}).get(provider, "")
+        self.base_url.setText(str(api.llm_base_url or ""))
+        self.llm_model.setText(str(model or ""))
+        self.api_key.setText(str(key or ""))
+        if bool(api.is_streaming):
+            self.stream_yes.setChecked(True)
+        else:
+            self.stream_no.setChecked(True)
+        self.temperature.setValue(float(api.temperature))
+        self.repetition_penalty.setValue(float(api.repetition_penalty))
+        self.presence_penalty.setValue(float(api.presence_penalty))
+        self.frequency_penalty.setValue(float(api.frequency_penalty))
+        self.max_context_tokens.setValue(int(api.max_context_tokens))
+        self._rebuild_llm_extra_panel()
+        self._refresh_llm_api_profile_combo(
+            getattr(api, "llm_active_api_profile", "") or None
+        )
+
+    def _on_llm_api_profile_apply(self) -> None:
+        profile = self.llm_api_profile.currentData()
+        if not profile:
+            message_fail(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.form.profile_empty"),
+            )
+            return
+        try:
+            active = switch_llm_api_profile(str(profile))
+            self._ctx.config_manager.reload()
+            self._reload_llm_fields_from_config()
+            feedback_result(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.form.profile_applied", name=active),
+            )
+        except Exception as e:
+            message_fail(self, tr_i18n("api.msg.config"), str(e))
+
+    def _on_llm_api_profile_save(self) -> None:
+        name = self.llm_api_profile_name.text().strip()
+        if not name:
+            message_fail(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.form.profile_name_required"),
+            )
+            return
+        try:
+            active = save_llm_api_profile(name, self._current_llm_profile_config())
+            self._ctx.config_manager.reload()
+            self._reload_llm_fields_from_config()
+            feedback_result(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.form.profile_saved", name=active),
+            )
+        except Exception as e:
+            message_fail(self, tr_i18n("api.msg.config"), str(e))
 
     def _on_provider_change(self, name: str) -> None:
         try:
@@ -1050,6 +1242,107 @@ class ApiSettingsTab(QWidget):
 
     def _on_t2i_engine_changed(self, _index: int = 0) -> None:
         self._rebuild_t2i_extra_panel()
+
+    def _refresh_t2i_api_profile_combo(self, active: str | None = None) -> None:
+        profiles = list_t2i_api_profiles()
+        active = active if active is not None else get_active_t2i_api_profile()
+        self.t2i_api_profile.blockSignals(True)
+        self.t2i_api_profile.clear()
+        if not profiles:
+            self.t2i_api_profile.addItem(tr_i18n("api.comfy.profile_empty"), "")
+        else:
+            for name in profiles:
+                self.t2i_api_profile.addItem(name, name)
+            ix = self.t2i_api_profile.findData(active)
+            self.t2i_api_profile.setCurrentIndex(ix if ix >= 0 else 0)
+        self.t2i_api_profile.blockSignals(False)
+        current = self.t2i_api_profile.currentData()
+        if current:
+            self.t2i_api_profile_name.setText(str(current))
+
+    def _on_t2i_api_profile_selected(self, _index: int = 0) -> None:
+        current = self.t2i_api_profile.currentData()
+        if current:
+            self.t2i_api_profile_name.setText(str(current))
+
+    def _current_t2i_profile_config(self) -> dict:
+        key = self._current_t2i_engine_key()
+        cls = T2IAdapterFactory._adapters.get(key.lower())
+        schema = cls.get_config_schema() if cls else {}
+        values = read_schema_values(schema, self._t2i_extra_editors)
+        values["api_url"] = self.t2i_url.text().strip()
+        return values
+
+    def _reload_t2i_fields_from_config(self) -> None:
+        api = self._ctx.config_manager.config.api_config
+        self.t2i_engine.blockSignals(True)
+        _fill_t2i_engine_combo(
+            self.t2i_engine, getattr(api, "t2i_provider", None) or "comfyui"
+        )
+        self.t2i_engine.blockSignals(False)
+        self.t2i_url.setText(str(api.t2i_api_url or ""))
+        self.t2i_work_path.setText(str(api.t2i_work_path or ""))
+        self.t2i_default_workflow_path.setText(
+            str(api.t2i_default_workflow_path or "")
+        )
+        self.prompt_node_id.setText(str(api.t2i_prompt_node_id or ""))
+        self.output_node_id.setText(str(api.t2i_output_node_id or ""))
+        self._rebuild_t2i_extra_panel()
+        self._refresh_t2i_api_profile_combo(
+            getattr(api, "t2i_active_api_profile", "") or None
+        )
+
+    def _on_t2i_api_profile_apply(self) -> None:
+        profile = self.t2i_api_profile.currentData()
+        if not profile:
+            message_fail(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.comfy.profile_empty"),
+            )
+            return
+        try:
+            active = switch_t2i_api_profile(str(profile))
+            self._ctx.config_manager.reload()
+            self._reload_t2i_fields_from_config()
+            feedback_result(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.comfy.profile_applied", name=active),
+            )
+        except Exception as e:
+            message_fail(self, tr_i18n("api.msg.config"), str(e))
+
+    def _on_t2i_api_profile_save(self) -> None:
+        if self._current_t2i_engine_key().lower() not in (
+            "openai-image",
+            "newapi-image",
+        ):
+            message_fail(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.comfy.profile_need_api_engine"),
+            )
+            return
+        name = self.t2i_api_profile_name.text().strip()
+        if not name:
+            message_fail(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.comfy.profile_name_required"),
+            )
+            return
+        try:
+            active = save_t2i_api_profile(name, self._current_t2i_profile_config())
+            self._ctx.config_manager.reload()
+            self._reload_t2i_fields_from_config()
+            feedback_result(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.comfy.profile_saved", name=active),
+            )
+        except Exception as e:
+            message_fail(self, tr_i18n("api.msg.config"), str(e))
 
     def _on_tts_provider_changed(self, _index: int = 0) -> None:
         self._rebuild_tts_extra_panel()

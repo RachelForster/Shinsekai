@@ -99,6 +99,14 @@ class ApiConfig(BaseModel):
         default_factory=dict,
         description="LLM 适配器扩展参数：provider 名 -> 字段名 -> 值",
     )
+    llm_active_api_profile: DefaultIfNone[str] = Field(
+        default="",
+        description="当前选中的对话 API 预设名称",
+    )
+    llm_api_profiles: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="对话 API 预设：名称 -> provider/base_url/api_key/model/extra_config 等",
+    )
     tts_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
         default_factory=dict,
         description="TTS 适配器扩展参数：引擎 slug -> 字段名 -> 值",
@@ -110,6 +118,14 @@ class ApiConfig(BaseModel):
     t2i_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
         default_factory=dict,
         description="T2I 适配器扩展参数：引擎名（如 comfyui） -> 字段名 -> 值",
+    )
+    t2i_active_api_profile: DefaultIfNone[str] = Field(
+        default="",
+        description="当前选中的远程生图 API 预设名称",
+    )
+    t2i_api_profiles: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="远程生图 API 预设：名称 -> api_url/api_key/model/size/quality 等",
     )
 
 # System Config Model

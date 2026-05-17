@@ -6,6 +6,7 @@ import numpy as np
 import threading
 import yaml
 import time
+import re
 from PySide6.QtCore import QByteArray, QEvent, QPoint, QRect, Qt, Signal, QSize, QUrl
 from PySide6.QtGui import (
     QCursor,
@@ -28,6 +29,8 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QSizePolicy,
     QToolTip,
+    QInputDialog,
+    QMessageBox,
 )
 import os
 
@@ -428,6 +431,16 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             default_corner_px=10,
             font_px=fp,
         )
+        if getattr(self, "draw_cg_btn", None) is not None:
+            self.draw_cg_btn.setText(tr("desktop.draw_cg"))
+            self.draw_cg_btn.setToolTip(tr("desktop.draw_cg_tt"))
+            self.draw_cg_btn.apply_visual(
+                ch.send_button_extra,
+                "#2F80ED",
+                "#FFFFFF",
+                default_corner_px=10,
+                font_px=fp,
+            )
 
         self.options_widget.setStyleSheet(
             styles.options_widget_container(ch.options_container_extra)
@@ -599,6 +612,17 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         )
         self.send_btn.clicked.connect(self.sendMessage)
 
+        self.draw_cg_btn = ChromeSendButton(tr("desktop.draw_cg"))
+        self.draw_cg_btn.setToolTip(tr("desktop.draw_cg_tt"))
+        self.draw_cg_btn.apply_visual(
+            ch0.send_button_extra,
+            "#2F80ED",
+            "#FFFFFF",
+            default_corner_px=10,
+            font_px=self._send_btn_font_px(),
+        )
+        self.draw_cg_btn.clicked.connect(self._on_manual_cg)
+
         self.mic_button = MicButton(None)
         self.mic_button.set_input_widget(self.input_box)
         self.llm_reply_finished.connect(self.mic_button.resume_asr)
@@ -606,6 +630,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.mic_button.send_final_transcription.connect(self.sendMessage)
 
         input_layout.addWidget(self.input_box)
+        input_layout.addWidget(self.draw_cg_btn)
         input_layout.addWidget(self.mic_button)
         input_layout.addWidget(self.send_btn)
 
@@ -1070,6 +1095,50 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 self.chat_worker.start()
 
             self.message_submitted.emit(message)  # 发出消息提交信号
+
+    def _manual_cg_seed_text(self) -> str:
+        draft = self.input_box.toPlainText().strip()
+        if draft:
+            return draft
+        dialog_text = getattr(self.dialog_label, "_full_text", "") or self.dialog_label.text()
+        dialog_text = re.sub(r"<[^>]+>", " ", str(dialog_text or ""))
+        dialog_text = re.sub(r"\s+", " ", dialog_text).strip()
+        return dialog_text
+
+    def _on_manual_cg(self):
+        seed = self._manual_cg_seed_text()
+        prompt, ok = QInputDialog.getMultiLineText(
+            self,
+            tr("desktop.draw_cg_title"),
+            tr("desktop.draw_cg_prompt"),
+            seed,
+        )
+        if not ok:
+            return
+        prompt = prompt.strip()
+        if not prompt:
+            QMessageBox.warning(
+                self,
+                tr("desktop.draw_cg_title"),
+                tr("desktop.draw_cg_empty"),
+            )
+            return
+        try:
+            from core.runtime.app_runtime import try_get_app_runtime
+            from sdk.messages import LLMDialogMessage
+
+            rt = try_get_app_runtime()
+            if rt is None or rt.tts_queue is None:
+                raise RuntimeError(tr("desktop.draw_cg_no_runtime"))
+            rt.tts_queue.put(LLMDialogMessage(name="CG", text=prompt, asset_id="-1"))
+            self.setBusyBar(tr("desktop.tts_busy_cg"), 0.0)
+            self.setNotification(tr("desktop.draw_cg_submitted"))
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                tr("desktop.draw_cg_failed_title"),
+                tr("desktop.draw_cg_failed_body", error=str(e)),
+            )
 
     def _on_reroll(self):
         msg = getattr(self, "_last_user_message", "")

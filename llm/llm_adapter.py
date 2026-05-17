@@ -119,11 +119,16 @@ class OpenAIAdapter(LLMAdapter):
             self.client = OpenAI(api_key=api_key)
         self.model = model
 
-    @classmethod
-    def get_unsupported_chat_params(cls, provider: str) -> set[str]:
+    def _is_claude_compatible_model(self) -> bool:
+        return str(self.model or "").strip().lower().startswith("claude-")
+
+    def get_unsupported_chat_params(self, provider: str) -> set[str]:
+        unsupported = set()
         if provider == "Gemini":
-            return {"frequency_penalty", "presence_penalty"}
-        return set()
+            unsupported.update({"frequency_penalty", "presence_penalty"})
+        if self._is_claude_compatible_model():
+            unsupported.update({"frequency_penalty", "presence_penalty"})
+        return unsupported
 
     def chat(self, messages: list, stream: bool = False, response_format={'type': 'json_object'}, **kwargs):
         """Sends a message to the OpenAI LLM."""
@@ -145,8 +150,9 @@ class OpenAIAdapter(LLMAdapter):
             }
             # 兼容旧版 max_tokens 参数：新版 OpenAI 模型（o1/o3/o4 等）要求使用 max_completion_tokens
             if "max_tokens" in create_kwargs and "max_completion_tokens" not in create_kwargs:
-                create_kwargs["max_completion_tokens"] = create_kwargs.pop("max_tokens")
-            if not use_tools:
+                if not self._is_claude_compatible_model():
+                    create_kwargs["max_completion_tokens"] = create_kwargs.pop("max_tokens")
+            if not use_tools and not self._is_claude_compatible_model():
                 create_kwargs["response_format"] = response_format
             response = self.client.chat.completions.create(**create_kwargs)
             return response
