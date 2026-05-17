@@ -389,7 +389,7 @@ def register_mcp_tools_from_config(
                     await _register_one_server(
                         tm, entry, default_timeout=default_timeout
                     )
-                except Exception:
+                except BaseException:
                     logger.exception("MCP server #%d failed", i)
 
         return _run_all()

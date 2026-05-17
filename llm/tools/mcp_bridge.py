@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
+from asyncio.exceptions import CancelledError
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def _mcp_teardown_exc_is_benign(exc: BaseException) -> bool:
     """SSE/ClientSession 关闭时 anyio 常抛出 CancelledError / ExceptionGroup / cancel scope RuntimeError。"""
-    if isinstance(exc, asyncio.CancelledError):
+    if isinstance(exc, CancelledError):
         return True
     if isinstance(exc, RuntimeError):
         msg = str(exc).lower()
@@ -67,7 +67,7 @@ class MCPBridge:
             session_cm = ClientSession(read, write)
             self.session = await stack.enter_async_context(session_cm)
             await self.session.initialize()
-        except Exception:
+        except (Exception, CancelledError):
             await self.close()
             raise
 
@@ -88,7 +88,7 @@ class MCPBridge:
             session_cm = ClientSession(read, write)
             self.session = await stack.enter_async_context(session_cm)
             await self.session.initialize()
-        except Exception:
+        except (Exception, CancelledError):
             await self.close()
             raise
 
@@ -105,7 +105,7 @@ class MCPBridge:
             session_cm = ClientSession(read, write)
             self.session = await stack.enter_async_context(session_cm)
             await self.session.initialize()
-        except Exception:
+        except (Exception, CancelledError):
             await self.close()
             raise
 
@@ -152,14 +152,10 @@ class MCPBridge:
         if stack is not None:
             try:
                 await stack.__aexit__(None, None, None)
-            except BaseException as exc:
-                if _mcp_teardown_exc_is_benign(exc):
-                    logger.warning(
-                        "MCPBridge.close: 已忽略连接 teardown 时的预期噪声: %s",
-                        type(exc).__name__,
-                    )
-                else:
-                    logger.exception("MCPBridge.close")
+            except BaseException:
+                logger.debug(
+                    "MCPBridge.close: teardown error (original error already propagated)",
+                )
 
     async def __aenter__(self) -> MCPBridge:
         return self
