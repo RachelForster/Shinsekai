@@ -39,6 +39,71 @@ QToolTip {
 }
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////
+Menu */
+QMenu {
+	color: rgb(221, 221, 221);
+	background-color: rgb(33, 37, 43);
+	border: 1px solid rgb(44, 49, 58);
+	padding: 4px;
+}
+QMenu::item {
+	background-color: transparent;
+	padding: 6px 24px;
+}
+QMenu::item:selected {
+	color: rgb(255, 255, 255);
+	background-color: rgb(64, 71, 88);
+}
+QMenu::item:disabled {
+	color: rgb(113, 126, 149);
+}
+QMenu::separator {
+	height: 1px;
+	background-color: rgb(52, 59, 72);
+	margin: 4px 8px;
+}
+
+/* /////////////////////////////////////////////////////////////////////////////////////////////////
+Dialog */
+QDialog, QMessageBox {
+	color: rgb(221, 221, 221);
+	background-color: rgb(40, 44, 52);
+}
+QDialog QLabel, QMessageBox QLabel {
+	color: rgb(221, 221, 221);
+	background-color: transparent;
+}
+QDialog QPushButton, QMessageBox QPushButton {
+	color: rgb(221, 221, 221);
+	background-color: rgb(52, 59, 72);
+	border: 1px solid rgb(64, 71, 88);
+	border-radius: 5px;
+	padding: 6px 14px;
+}
+QDialog QPushButton:hover, QMessageBox QPushButton:hover {
+	background-color: rgb(64, 71, 88);
+}
+QDialog QPushButton:pressed, QMessageBox QPushButton:pressed {
+	background-color: rgb(33, 37, 43);
+}
+
+/* /////////////////////////////////////////////////////////////////////////////////////////////////
+Item views */
+QAbstractItemView {
+	color: rgb(221, 221, 221);
+	background-color: rgb(33, 37, 43);
+	alternate-background-color: rgb(40, 44, 52);
+	border: 1px solid rgb(44, 49, 58);
+	outline: 0px;
+	selection-background-color: rgb(64, 71, 88);
+	selection-color: rgb(255, 255, 255);
+}
+QAbstractItemView::item:selected {
+	color: rgb(255, 255, 255);
+	background-color: rgb(64, 71, 88);
+}
+
+/* /////////////////////////////////////////////////////////////////////////////////////////////////
 Bg App */
 /* 根与 #bgApp 同色：无边框 + WA_TranslucentBackground 时，边距区与窗体外缘不会透出桌面 */
 QMainWindow {
@@ -414,10 +479,15 @@ QRadioButton::indicator:checked {
 ComboBox */
 QComboBox{
 	background-color: rgb(27, 29, 35);
+	color: rgb(221, 221, 221);
 	border-radius: 5px;
 	border: 2px solid rgb(33, 37, 43);
 	padding: 5px;
 	padding-left: 10px;
+}
+QComboBox:disabled{
+	color: rgb(113, 126, 149);
+	background-color: rgb(33, 37, 43);
 }
 QComboBox:hover{
 	border: 2px solid rgb(64, 71, 88);
@@ -435,11 +505,25 @@ QComboBox::drop-down {
 	background-position: center;
 	background-repeat: no-reperat;
  }
+QComboBox QListView,
 QComboBox QAbstractItemView {
-	color: rgb(255, 121, 198);	
+	color: rgb(221, 221, 221);
 	background-color: rgb(33, 37, 43);
+	border: 1px solid rgb(44, 49, 58);
+	outline: 0px;
 	padding: 10px;
-	selection-background-color: rgb(39, 44, 54);
+	selection-background-color: rgb(64, 71, 88);
+	selection-color: rgb(221, 221, 221);
+}
+QComboBox QAbstractItemView::item {
+	background-color: rgb(33, 37, 43);
+}
+QComboBox QListView::item:hover,
+QComboBox QListView::item:selected,
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected {
+	color: rgb(221, 221, 221);
+	background-color: rgb(64, 71, 88);
 }
 
 /* /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -536,4 +620,3 @@ QLabel#apiSectionHint {
 QFrame#apiTabFooter {
 	background-color: rgba(40, 44, 52, 0.96);
 }
-

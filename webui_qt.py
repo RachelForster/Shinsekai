@@ -55,8 +55,10 @@ def main() -> None:
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QFont, QPixmap
     from PySide6.QtWidgets import QApplication, QSplashScreen
+    from ui.qss import apply_pydracula_dark
 
     app = QApplication(sys.argv)
+    apply_pydracula_dark(app)
     pix = QPixmap(440, 120)
     pix.fill(Qt.GlobalColor.darkGray)
     splash = QSplashScreen(pix, Qt.WindowType.WindowStaysOnTopHint)
@@ -72,7 +74,6 @@ def main() -> None:
     try:
         from config.config_manager import ConfigManager
         from i18n import init_i18n
-        from ui.qss import load_pydracula_dark
         from ui.settings_ui import create_default_context
         from ui.settings_ui.window import (
             FONT_FAMILY_MS_YAHEI,
@@ -83,7 +84,6 @@ def main() -> None:
         # 冻结时发行根与 cwd 已在模块最上方设置，勿重复 chdir，以免与已初始化的单例不一致
         init_i18n(ConfigManager().config.system_config.ui_language)
         app.processEvents()
-        app.setStyleSheet(load_pydracula_dark())
         ctx = create_default_context()
         app.processEvents()
         w, h, font_px, _line_h = settings_window_metrics(ctx.config_manager)
