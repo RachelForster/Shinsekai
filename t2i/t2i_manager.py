@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from sdk.adapters.t2i import T2IAdapter
-from t2i.t2i_adapter import ComfyUIT2IAdapter, StableDiffusionAdapter
+from t2i.t2i_adapter import ComfyUIT2IAdapter, OpenAIImageAdapter, StableDiffusionAdapter
 
 class T2IAdapterFactory:
     """
@@ -14,6 +14,8 @@ class T2IAdapterFactory:
     _adapters = {
         'stable diffusion': StableDiffusionAdapter,
         'comfyui': ComfyUIT2IAdapter,
+        'openai-image': OpenAIImageAdapter,
+        'newapi-image': OpenAIImageAdapter,
     }
 
     @staticmethod

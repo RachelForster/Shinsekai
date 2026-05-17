@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pygame
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QDialog, QMenu, QMessageBox
 
 from config.config_manager import ConfigManager
@@ -64,6 +64,26 @@ class DesktopMenuMixin:
         menu.addAction(font_size_action)
         menu.addAction(volumn_action)
         menu.addAction(theme_color_action)
+        drawing_menu = menu.addMenu(tr("desktop.menu.drawing_engine"))
+        drawing_group = QActionGroup(self)
+        drawing_group.setExclusive(True)
+        current_t2i = (
+            str(config_manager.config.api_config.t2i_provider or "").strip().lower()
+        )
+        local_drawing_action = QAction(tr("desktop.menu.drawing_local"), self)
+        api_drawing_action = QAction(tr("desktop.menu.drawing_api"), self)
+        for action in (local_drawing_action, api_drawing_action):
+            action.setCheckable(True)
+            drawing_group.addAction(action)
+            drawing_menu.addAction(action)
+        local_drawing_action.setChecked(current_t2i in ("comfyui", "local"))
+        api_drawing_action.setChecked(current_t2i in ("openai-image", "newapi-image", "api"))
+        local_drawing_action.triggered.connect(
+            lambda _checked=False: self._switch_drawing_provider("local")
+        )
+        api_drawing_action.triggered.connect(
+            lambda _checked=False: self._switch_drawing_provider("api")
+        )
         menu.addSeparator()
         menu.addAction(pin_top_action)
 
@@ -88,6 +108,53 @@ class DesktopMenuMixin:
         else:
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
         self.show()  # 改 flags 后必须 show 才能生效
+
+    def _switch_drawing_provider(self, provider: str) -> None:
+        """切换绘画后端，并尽量让当前会话立刻生效。"""
+        try:
+            from core.runtime.app_runtime import try_get_app_runtime
+            from t2i.provider_switcher import switch_t2i_provider
+            from t2i.t2i_manager import T2IAdapterFactory, T2IManager
+
+            canonical = switch_t2i_provider(provider)
+            config_manager._load_all_configs()
+            api = config_manager.config.api_config
+            base_kwargs = {
+                "work_path": api.t2i_work_path,
+                "api_url": api.t2i_api_url,
+                "workflow_path": api.t2i_default_workflow_path,
+                "prompt_node_id": api.t2i_prompt_node_id,
+                "output_node_id": api.t2i_output_node_id,
+            }
+            adapter = T2IAdapterFactory.create_adapter(
+                adapter_name=api.t2i_provider,
+                **config_manager.merged_t2i_factory_kwargs(
+                    api.t2i_provider, base_kwargs
+                ),
+            )
+            rt = try_get_app_runtime()
+            if rt is not None:
+                if rt.t2i_manager is None:
+                    rt.t2i_manager = T2IManager(adapter)
+                else:
+                    rt.t2i_manager.set_t2i_adapter(adapter)
+            label_key = (
+                "desktop.menu.drawing_local"
+                if canonical == "comfyui"
+                else "desktop.menu.drawing_api"
+            )
+            self.setNotification(
+                tr(
+                    "desktop.menu.notify_drawing_engine",
+                    engine=tr(label_key),
+                )
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                tr("desktop.menu.drawing_switch_failed_title"),
+                tr("desktop.menu.drawing_switch_failed_body", error=str(e)),
+            )
 
     def clear_history(self) -> None:
         reply = QMessageBox.question(

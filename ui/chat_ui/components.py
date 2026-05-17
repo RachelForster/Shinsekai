@@ -5,6 +5,7 @@ import threading
 import pygame
 import yaml
 import time
+from datetime import datetime
 from PySide6.QtCore import (
     QEasingCurve,
     QRect,
@@ -1318,8 +1319,22 @@ class CGWidget(QWidget):
         self.cg_label.clear()
         self.cg_display_changed.emit(False)
 
+    @staticmethod
+    def _unique_cg_save_path(save_dir: str) -> str:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+        base_name = f"Shinsekai_CG_{stamp}"
+        candidate = os.path.join(save_dir, f"{base_name}.png")
+        if not os.path.exists(candidate):
+            return candidate
+
+        for idx in range(2, 1000):
+            candidate = os.path.join(save_dir, f"{base_name}_{idx:02d}.png")
+            if not os.path.exists(candidate):
+                return candidate
+        return os.path.join(save_dir, f"{base_name}_{int(time.time() * 1000)}.png")
+
     def save_current_cg(self):
-        """保存当前显示的 CG 图像（占位符）"""
+        """保存当前显示的 CG 图像。"""
         if self.current_cg_pixmap is None:
             print("No CG image is currently displayed to save.")
             return
@@ -1333,13 +1348,9 @@ class CGWidget(QWidget):
         )
 
         if save_dir:
-            # 2. 生成带时间戳的唯一文件名
-            file_name = "CG.png" # 默认使用 PNG 格式
+            full_path = self._unique_cg_save_path(save_dir)
             
-            # 3. 组合完整的文件路径
-            full_path = os.path.join(save_dir, file_name)
-            
-            # 4. 尝试保存 QPixmap
+            # 尝试保存 QPixmap
             # 注意：保存操作默认是异步的，但对于本地文件保存通常即时完成
             success = self.current_cg_pixmap.save(full_path, "PNG")
 

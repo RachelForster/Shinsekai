@@ -5,6 +5,19 @@ import subprocess
 from tts.tts_adapter import TTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter, CosyVoiceAdapter, GenieTTSAdapter
 from pathlib import Path
 
+def _normalize_voice_language(language):
+    value = str(language or "ja").strip().lower().replace("-", "_")
+    if value in ("zh_cn",):
+        return "zh_CN"
+    if value in ("zh", "cn", "chinese", "中文"):
+        return "zh"
+    if value in ("ja", "ja_jp", "jp", "japanese", "日语", "日本語"):
+        return "ja"
+    if value in ("en", "en_us", "en_gb", "english", "英语"):
+        return "en"
+    return value or "ja"
+
+
 class TTSAdapterFactory:
     """
     Factory for creating different TTSAdapter instances.
@@ -67,7 +80,17 @@ class TTSManager:
         """Allows switching the TTS adapter at runtime."""
         self.tts_adapter = adapter
 
-    def generate_tts(self, text, text_processor=None, ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None, speed_factor=None):
+    def generate_tts(
+        self,
+        text,
+        text_processor=None,
+        ref_audio_path=None,
+        prompt_text=None,
+        prompt_lang=None,
+        character_name=None,
+        speed_factor=None,
+        aux_ref_audio_paths=None,
+    ):
         """Generates TTS audio using the currently set adapter."""
         print("Generating speech")
         
@@ -94,6 +117,7 @@ class TTSManager:
             text=text,
             file_path=file_path,
             ref_audio_path=ref_audio_path,
+            aux_ref_audio_paths=aux_ref_audio_paths or [],
             prompt_text=prompt_text,
             prompt_lang=prompt_lang,
             text_lang=self.voice_language,
@@ -103,7 +127,7 @@ class TTSManager:
 
     def set_language(self, language):
         """Sets the voice language."""
-        self.voice_language = language
+        self.voice_language = _normalize_voice_language(language)
 
     def switch_model(self, model_info):
         """Switches the TTS model via the adapter."""

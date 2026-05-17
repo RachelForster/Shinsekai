@@ -521,12 +521,18 @@
       "font_size": "Font size",
       "volume": "Volume",
       "theme_color": "Theme color",
+      "drawing_engine": "Drawing Engine",
+      "drawing_local": "Local ComfyUI",
+      "drawing_api": "API GPT Image",
       "pin_top": "Always on Top",
       "confirm_clear_title": "Confirm",
       "confirm_clear_body": "Clear all chat history?",
       "notify_font_size": "Font size set to {size}px",
       "notify_theme_color": "Theme color updated: {color}",
-      "notify_voice_language": "Voice language updated: {lang}"
+      "notify_voice_language": "Voice language updated: {lang}",
+      "notify_drawing_engine": "Drawing engine switched: {engine}",
+      "drawing_switch_failed_title": "Drawing Switch Failed",
+      "drawing_switch_failed_body": "Could not switch drawing engine: {error}"
     }
   },
   "toolbar": {

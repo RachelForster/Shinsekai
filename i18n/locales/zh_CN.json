@@ -518,12 +518,18 @@
       "font_size": "字体大小",
       "volume": "音量",
       "theme_color": "主题色",
+      "drawing_engine": "绘画引擎",
+      "drawing_local": "本地 ComfyUI",
+      "drawing_api": "API GPT Image",
       "pin_top": "窗口置顶",
       "confirm_clear_title": "确认",
       "confirm_clear_body": "确定要清空所有聊天记录吗？",
       "notify_font_size": "字体大小已更改为 {size}px",
       "notify_theme_color": "主题颜色已更改：{color}",
-      "notify_voice_language": "语音语言已更改：{lang}"
+      "notify_voice_language": "语音语言已更改：{lang}",
+      "notify_drawing_engine": "绘画引擎已切换：{engine}",
+      "drawing_switch_failed_title": "切换绘画引擎失败",
+      "drawing_switch_failed_body": "无法切换绘画引擎：{error}"
     }
   },
   "toolbar": {

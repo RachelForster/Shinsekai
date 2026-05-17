@@ -8,10 +8,20 @@ import base64
 import math
 import wave
 import array
+import re
+import sys
 from pathlib import Path
 import subprocess
 import time
 from typing import Optional, Callable
+
+
+def _coerce_bool(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 class GPTSoVitsAdapter(TTSAdapter):
@@ -19,20 +29,133 @@ class GPTSoVitsAdapter(TTSAdapter):
     Adapter for the GPT-SoVITS TTS service.
     It adapts the GPT-SoVITS API to the standard TTSAdapter interface.
     """
-    def __init__(self, tts_server_url="http://127.0.0.1:9880/", gpt_sovits_work_path = None):
-        self.tts_server_url = tts_server_url.rstrip("/") + "/"
+    def __init__(
+        self,
+        tts_server_url="http://127.0.0.1:9880/",
+        gpt_sovits_work_path=None,
+        top_k: int = 15,
+        top_p: float = 1,
+        temperature: float = 1,
+        repetition_penalty: float = 1.35,
+        sample_steps: int = 32,
+        batch_threshold: float = 0.75,
+        fragment_interval: float = 0.3,
+        text_split_method: str = "cut5",
+        parallel_infer: bool = False,
+        split_bucket: bool = False,
+        super_sampling: bool = True,
+        clarity_filter_enabled: bool = True,
+        clarity_boost: float = 0.35,
+        normalize_peak: float = 0.92,
+        timeout_seconds: int = 180,
+        **kwargs,
+    ):
+        self.tts_server_url = str(tts_server_url or "http://127.0.0.1:9880/")
+        if not self.tts_server_url.endswith("/"):
+            self.tts_server_url += "/"
         self.sovits_model_path = ''
         self.gpt_model_path = ''
-        self.gpt_sovits_work_path = gpt_sovits_work_path
+        self.gpt_sovits_work_path = str(gpt_sovits_work_path) if gpt_sovits_work_path else None
         self._server_process = None
+        self.top_k = int(top_k or 15)
+        self.top_p = float(top_p or 1)
+        self.temperature = float(temperature or 1)
+        self.repetition_penalty = float(repetition_penalty or 1.35)
+        self.sample_steps = int(sample_steps or 32)
+        self.batch_threshold = float(batch_threshold or 0.75)
+        self.fragment_interval = float(fragment_interval or 0.3)
+        self.text_split_method = str(text_split_method or "cut5")
+        self.parallel_infer = _coerce_bool(parallel_infer, False)
+        self.split_bucket = _coerce_bool(split_bucket, False)
+        self.super_sampling = _coerce_bool(super_sampling, True)
+        self.clarity_filter_enabled = _coerce_bool(clarity_filter_enabled, True)
+        self.clarity_boost = max(0.0, min(1.0, float(clarity_boost or 0.35)))
+        self.normalize_peak = max(0.1, min(0.99, float(normalize_peak or 0.92)))
+        self.timeout_seconds = int(timeout_seconds or 180)
 
         # Consider the user's input mistake
-        if self.gpt_sovits_work_path.endswith(".py"):
+        if self.gpt_sovits_work_path and self.gpt_sovits_work_path.endswith(".py"):
             self.gpt_sovits_work_path = Path(self.gpt_sovits_work_path).parent.as_posix()
 
 
         # Load the model and start the server process here
         self._start_server_process()
+
+    @classmethod
+    def get_config_schema(cls) -> dict:
+        return {
+            "top_k": {"type": "int", "label": "Top K", "default": 15, "min": 1, "max": 100},
+            "top_p": {"type": "float", "label": "Top P", "default": 1, "min": 0.1, "max": 1.0},
+            "temperature": {"type": "float", "label": "Temperature", "default": 1, "min": 0.1, "max": 2.0},
+            "repetition_penalty": {
+                "type": "float",
+                "label": "Repetition penalty",
+                "default": 1.35,
+                "min": 0.8,
+                "max": 2.0,
+            },
+            "sample_steps": {"type": "int", "label": "Sample steps", "default": 32, "min": 4, "max": 64},
+            "batch_threshold": {
+                "type": "float",
+                "label": "Batch threshold",
+                "default": 0.75,
+                "min": 0.1,
+                "max": 1.0,
+            },
+            "fragment_interval": {
+                "type": "float",
+                "label": "Fragment interval",
+                "default": 0.3,
+                "min": 0.0,
+                "max": 1.0,
+            },
+            "text_split_method": {
+                "type": "str",
+                "label": "Text split method",
+                "default": "cut5",
+            },
+            "timeout_seconds": {
+                "type": "int",
+                "label": "Timeout seconds",
+                "default": 180,
+                "min": 30,
+                "max": 600,
+            },
+            "parallel_infer": {
+                "type": "bool",
+                "label": "Parallel infer",
+                "default": False,
+            },
+            "split_bucket": {
+                "type": "bool",
+                "label": "Split bucket",
+                "default": False,
+            },
+            "super_sampling": {
+                "type": "bool",
+                "label": "Super sampling",
+                "default": True,
+            },
+            "clarity_filter_enabled": {
+                "type": "bool",
+                "label": "Clarity filter",
+                "default": True,
+            },
+            "clarity_boost": {
+                "type": "float",
+                "label": "Clarity boost",
+                "default": 0.35,
+                "min": 0.0,
+                "max": 1.0,
+            },
+            "normalize_peak": {
+                "type": "float",
+                "label": "Normalize peak",
+                "default": 0.92,
+                "min": 0.1,
+                "max": 0.99,
+            },
+        }
 
     def stop_server(self) -> None:
         if self._server_process is not None:
@@ -46,19 +169,31 @@ class GPTSoVitsAdapter(TTSAdapter):
                     pass
             self._server_process = None
 
+    def _server_is_reachable(self) -> bool:
+        try:
+            response = requests.get(self.tts_server_url + "docs", timeout=2)
+            return response.status_code < 500
+        except requests.exceptions.RequestException:
+            return False
+
+    def _wait_for_server(self, timeout_seconds: int = 90) -> bool:
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            if self._server_is_reachable():
+                return True
+            time.sleep(1)
+        return False
+
     def _start_server_process(self):
         """
         Starts the GPT-SoVITS server process if it's not running.
         This is now the adapter's responsibility.
         """
-        try:
-            # You might want to add a check here to see if the process is already running
-            response = requests.get(self.tts_server_url)
-            if response.status_code == 200:
-                print("GPT-SoVITS server is already running.")
-                return
-        except requests.exceptions.ConnectionError:
-            print("GPT-SoVITS server not found, attempting to start...")
+        if self._server_is_reachable():
+            print("GPT-SoVITS server is already running.")
+            return
+
+        print("GPT-SoVITS server not found, attempting to start...")
 
         if self.gpt_sovits_work_path is None:
             return
@@ -70,27 +205,100 @@ class GPTSoVitsAdapter(TTSAdapter):
         # Use subprocess.Popen to start the server in the background
         self._server_process = subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
         print("GPT-SoVITS server starting...")
+        if self._wait_for_server():
+            print("GPT-SoVITS server is ready.")
+        else:
+            print("GPT-SoVITS server is still starting; first speech may need a moment.")
+
+    def _post_process_wav(self, file_path: str) -> None:
+        if not self.clarity_filter_enabled or not str(file_path).lower().endswith(".wav"):
+            return
+        try:
+            with wave.open(file_path, "rb") as source:
+                params = source.getparams()
+                channels = source.getnchannels()
+                sample_width = source.getsampwidth()
+                frames = source.readframes(source.getnframes())
+
+            if sample_width != 2 or not frames:
+                return
+
+            samples = array.array("h")
+            samples.frombytes(frames)
+            if sys.byteorder == "big":
+                samples.byteswap()
+
+            processed = array.array("h")
+            lowpass = [0.0] * max(1, channels)
+            alpha = 0.10
+            boost = self.clarity_boost
+            for index, sample in enumerate(samples):
+                channel = index % channels
+                lowpass[channel] = lowpass[channel] + alpha * (float(sample) - lowpass[channel])
+                high_band = float(sample) - lowpass[channel]
+                value = float(sample) + boost * high_band
+                processed.append(max(-32768, min(32767, int(value))))
+
+            peak = max((abs(sample) for sample in processed), default=0)
+            target_peak = int(32767 * self.normalize_peak)
+            if peak > 0 and target_peak > 0:
+                gain = min(1.8, target_peak / peak)
+                processed = array.array(
+                    "h",
+                    (max(-32768, min(32767, int(sample * gain))) for sample in processed),
+                )
+
+            if sys.byteorder == "big":
+                processed.byteswap()
+
+            with wave.open(file_path, "wb") as output:
+                output.setparams(params)
+                output.writeframes(processed.tobytes())
+        except Exception as exc:
+            print(f"GPT-SoVITS WAV clarity post-process skipped: {exc}")
 
     def generate_speech(self, text, file_path=None, **kwargs):
         """
         Generates TTS audio using the GPT-SoVITS API.
         The kwargs dictionary can include parameters like ref_audio_path, prompt_text, etc.
         """
+        text = str(text or "").strip()
+        if not re.search(r"[A-Za-z0-9\u3040-\u30ff\u3400-\u9fff]", text):
+            print("GPT-SoVITS TTS skipped: text has no speakable content.")
+            return None
 
         # Parameters for the GPT-SoVITS API call
         params = {
             "ref_audio_path": kwargs.get("ref_audio_path", ""),
+            "aux_ref_audio_paths": kwargs.get("aux_ref_audio_paths") or [],
             "prompt_text": kwargs.get("prompt_text", ""),
             "prompt_lang": kwargs.get("prompt_lang", ""),
             "text": text,
             "text_lang": kwargs.get("text_lang", "ja"),
-            "text_split_method": "cut5",
+            "text_split_method": kwargs.get("text_split_method", self.text_split_method),
             "batch_size": 1,
-            "speed_factor": kwargs.get("speed_factor", 1.4),
+            "batch_threshold": kwargs.get("batch_threshold", self.batch_threshold),
+            "split_bucket": kwargs.get("split_bucket", self.split_bucket),
+            "speed_factor": kwargs.get("speed_factor", 1.0),
+            "fragment_interval": kwargs.get("fragment_interval", self.fragment_interval),
+            "seed": kwargs.get("seed", -1),
+            "media_type": "wav",
+            "streaming_mode": False,
+            "parallel_infer": kwargs.get("parallel_infer", self.parallel_infer),
+            "top_k": kwargs.get("top_k", self.top_k),
+            "top_p": kwargs.get("top_p", self.top_p),
+            "temperature": kwargs.get("temperature", self.temperature),
+            "repetition_penalty": kwargs.get("repetition_penalty", self.repetition_penalty),
+            "sample_steps": kwargs.get("sample_steps", self.sample_steps),
+            "super_sampling": kwargs.get("super_sampling", self.super_sampling),
         }
 
         try:
-            response = requests.post(self.tts_server_url + "tts", json=params)
+            response = requests.post(
+                self.tts_server_url + "tts",
+                json=params,
+                timeout=self.timeout_seconds,
+            )
             response.raise_for_status() # Raise an exception for bad status codes
 
             if not file_path:
@@ -100,6 +308,7 @@ class GPTSoVitsAdapter(TTSAdapter):
 
             with open(file_path, 'wb') as f:
                 f.write(response.content)
+            self._post_process_wav(file_path)
 
             return os.path.abspath(file_path)
         except Exception as e:

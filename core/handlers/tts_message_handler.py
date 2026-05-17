@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import traceback
+import wave
 from pathlib import Path
 from typing import List
 
@@ -25,10 +26,84 @@ from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
 from i18n import tr as tr_i18n
 
 _config = ConfigManager()
+_GPT_SOVITS_REF_MIN_SECONDS = 3.0
+_GPT_SOVITS_REF_MAX_SECONDS = 10.0
+_GPT_SOVITS_REF_TARGET_SECONDS = 3.4
+_USE_SPRITE_REF_AUDIO_FOR_GPT_SOVITS = False
 
 
 def get_character_by_name(name: str):
     return _config.get_character_by_name(name)
+
+
+def _sprite_value(sprite_data, key: str, default=None):
+    if isinstance(sprite_data, dict):
+        return sprite_data.get(key, default)
+    return getattr(sprite_data, key, default)
+
+
+def _wav_duration_seconds(path: Path) -> float | None:
+    try:
+        with wave.open(str(path), "rb") as wav_file:
+            return wav_file.getnframes() / wav_file.getframerate()
+    except Exception:
+        return None
+
+
+def _has_speakable_text(text: str) -> bool:
+    return bool(re.search(r"[A-Za-z0-9\u3040-\u30ff\u3400-\u9fff]", str(text or "")))
+
+
+def _prepare_gpt_sovits_ref_audio(path: Path) -> Path | None:
+    duration = _wav_duration_seconds(path)
+    if duration is None:
+        return path
+    if _GPT_SOVITS_REF_MIN_SECONDS <= duration <= _GPT_SOVITS_REF_MAX_SECONDS:
+        return path
+    if duration <= 0 or duration > _GPT_SOVITS_REF_MIN_SECONDS:
+        return None
+
+    cache_dir = Path("cache/tts_refs")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    output_path = cache_dir / f"{path.stem}_gpt_sovits_ref.wav"
+    cached_duration = _wav_duration_seconds(output_path)
+    if cached_duration and _GPT_SOVITS_REF_MIN_SECONDS <= cached_duration <= _GPT_SOVITS_REF_MAX_SECONDS:
+        return output_path.resolve()
+
+    try:
+        with wave.open(str(path), "rb") as source:
+            channels = source.getnchannels()
+            sample_width = source.getsampwidth()
+            frame_rate = source.getframerate()
+            frames_per_clip = source.getnframes()
+            clip_frames = source.readframes(frames_per_clip)
+
+        silence_frames = max(1, int(frame_rate * 0.08))
+        silence = b"\x00" * silence_frames * channels * sample_width
+        target_frames = int(frame_rate * _GPT_SOVITS_REF_TARGET_SECONDS)
+        max_frames = int(frame_rate * _GPT_SOVITS_REF_MAX_SECONDS)
+
+        chunks: list[bytes] = []
+        total_frames = 0
+        while total_frames < target_frames and total_frames + frames_per_clip <= max_frames:
+            chunks.append(clip_frames)
+            total_frames += frames_per_clip
+            if total_frames < target_frames and total_frames + silence_frames <= max_frames:
+                chunks.append(silence)
+                total_frames += silence_frames
+
+        if total_frames < int(frame_rate * _GPT_SOVITS_REF_MIN_SECONDS):
+            return None
+
+        with wave.open(str(output_path), "wb") as output:
+            output.setnchannels(channels)
+            output.setsampwidth(sample_width)
+            output.setframerate(frame_rate)
+            output.writeframes(b"".join(chunks))
+        return output_path.resolve()
+    except Exception as exc:
+        print(f"立绘参考音频缓存生成失败: {path} ({exc})")
+        return None
 
 
 def _post_tts_busy(text: str) -> None:
@@ -107,7 +182,15 @@ class CgTtsHandler(MessageHandler):
     def handle(self, msg: LLMDialogMessage) -> None:
         _post_tts_busy(tr_i18n("desktop.tts_busy_cg"))
         try:
-            cg_path = get_app_runtime().t2i_manager.t2i(prompt=msg.text, prompt_processor=None)
+            rt = get_app_runtime()
+            if rt.t2i_manager is None:
+                print("CG skipped: T2I manager is not enabled.")
+                return
+            cg_path = rt.t2i_manager.t2i(
+                prompt=msg.text,
+                prompt_processor=None,
+                image_size="landscape",
+            )
             tts_emit_to_ui_queue(
                 msg.name, msg.text, "-1", cg_path, is_system_message=True
             )
@@ -130,7 +213,8 @@ class DefaultCharacterTtsHandler(MessageHandler):
         character_config = get_character_by_name(name_s)
         if character_config is None:
             raise ValueError(f"未找到角色配置: {name_s}")
-        translate = msg.translate
+        voice_lang = str(_config.config.system_config.voice_language or "ja").strip().lower()
+        translate = msg.translate if voice_lang.startswith("ja") else ""
         speech = msg.text
         asset_id = msg.asset_id
         text_processor = rt.text_processor
@@ -159,11 +243,30 @@ class DefaultCharacterTtsHandler(MessageHandler):
                     sprite_id = -1
                 ref_audio_path = Path(character_config.refer_audio_path).resolve().as_posix()
                 prompt_text = character_config.prompt_text
+                aux_ref_audio_paths: list[str] = []
                 try:
-                    sprite_data = character_config.sprites[sprite_id]
-                    if sprite_data.get("voice_text", None):
-                        ref_audio_path = Path(sprite_data.get("voice_path")).resolve().as_posix()
-                        prompt_text = sprite_data.get("voice_text")
+                    if _USE_SPRITE_REF_AUDIO_FOR_GPT_SOVITS and sprite_id >= 0:
+                        sprite_data = character_config.sprites[sprite_id]
+                        sprite_voice_path = _sprite_value(sprite_data, "voice_path")
+                        sprite_voice_text = _sprite_value(sprite_data, "voice_text", "")
+                        if sprite_voice_path:
+                            sprite_ref_audio = Path(sprite_voice_path).resolve()
+                            if sprite_ref_audio.exists():
+                                prepared_ref_audio = _prepare_gpt_sovits_ref_audio(sprite_ref_audio)
+                                if prepared_ref_audio:
+                                    sprite_prompt_text = (sprite_voice_text or "").strip()
+                                    if sprite_prompt_text:
+                                        ref_audio_path = prepared_ref_audio.as_posix()
+                                        prompt_text = sprite_prompt_text
+                                    else:
+                                        aux_ref_audio_paths.append(prepared_ref_audio.as_posix())
+                                else:
+                                    print(
+                                        "立绘参考音频时长不适合 GPT-SoVITS 主参考，"
+                                        f"已使用默认参考: {sprite_voice_path}"
+                                    )
+                            else:
+                                print(f"立绘参考音频不存在: {sprite_voice_path}")
                 except Exception:
                     print("没有立绘")
                 if text_processor:
@@ -191,11 +294,15 @@ class DefaultCharacterTtsHandler(MessageHandler):
                         _sentences.append(_cur)
 
                 _speed = character_config.speech_speed
-                if not _sentences or len(_sentences) <= 1:
+                if not _has_speakable_text(speech_text):
+                    print("TTSWorker: 跳过无可读文本的语音片段。")
+                    audio_path = ""
+                elif not _sentences or len(_sentences) <= 1:
                     audio_path = rt.tts_manager.generate_tts(
                         speech_text,
                         text_processor=text_processor,
                         ref_audio_path=ref_audio_path,
+                        aux_ref_audio_paths=aux_ref_audio_paths,
                         prompt_text=prompt_text,
                         prompt_lang=character_config.prompt_lang,
                         character_name=name_s,
@@ -204,15 +311,19 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 else:
                     _asset_str = str(asset_id)
                     for _i, _sent in enumerate(_sentences):
-                        _path = rt.tts_manager.generate_tts(
-                            _sent,
-                            text_processor=text_processor,
-                            ref_audio_path=ref_audio_path,
-                            prompt_text=prompt_text,
-                            prompt_lang=character_config.prompt_lang,
-                            character_name=name_s,
-                            speed_factor=_speed,
-                        )
+                        if _has_speakable_text(_sent):
+                            _path = rt.tts_manager.generate_tts(
+                                _sent,
+                                text_processor=text_processor,
+                                ref_audio_path=ref_audio_path,
+                                aux_ref_audio_paths=aux_ref_audio_paths,
+                                prompt_text=prompt_text,
+                                prompt_lang=character_config.prompt_lang,
+                                character_name=name_s,
+                                speed_factor=_speed,
+                            )
+                        else:
+                            _path = ""
                         _is_first = _i == 0
                         _is_last = _i == len(_sentences) - 1
                         rt.audio_path_queue.put(TTSOutputMessage(
@@ -229,7 +340,8 @@ class DefaultCharacterTtsHandler(MessageHandler):
             finally:
                 _hide_tts_busy()
         else:
-            audio_path = character_config.sprites[int(asset_id) - 1].get("voice_path", "")
+            sprite_data = character_config.sprites[int(asset_id) - 1]
+            audio_path = _sprite_value(sprite_data, "voice_path", "")
         tts_emit_to_ui_queue(
             name_s, speech, str(asset_id), audio_path, is_system_message=False, effect=msg.effect,
         )
