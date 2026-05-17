@@ -47,8 +47,11 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
                 'prompt_lang': config.prompt_lang,
                 'sprite_scale': config.sprite_scale,
                 'sprites': config.sprites,
-                'emotion_tags':config.emotion_tags,
-                'character_setting': config.character_setting
+                'emotion_tags': config.emotion_tags,
+                'character_setting': config.character_setting,
+                'speech_speed': getattr(config, 'speech_speed', 1.0),
+                'speech_volume': getattr(config, 'speech_volume', 1.0),
+                'pronunciation_map': getattr(config, 'pronunciation_map', None) or {},
             }
 
             # 处理绝对路径的模型和参考音频
@@ -57,12 +60,12 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
                 'sovits_model_path': config.sovits_model_path,
                 'refer_audio_path': config.refer_audio_path
             }
-            
+
             for key, abs_path in model_paths.items():
                 if abs_path and os.path.exists(abs_path):
                     file_path = Path(abs_path)
                     new_relative_path = Path('models') / file_path.name
-                    
+
                     # 将模型的原始绝对路径记录到清单中
                     manifest_data['original_paths'][file_path.name] = str(file_path)
 
@@ -70,22 +73,30 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
                     destination_path = temp_dir / new_relative_path
                     destination_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(file_path, destination_path)
-                    
+
                     # 更新YAML数据中的路径为相对路径
                     char_data[key] = str(new_relative_path)
                 else:
                     char_data[key] = None
 
-            # 处理立绘和语音文件
+            # 处理立绘文件
             if config.sprite_prefix:
                 sprite_source_dir = SPRITE_DIR / config.sprite_prefix
                 if sprite_source_dir.is_dir():
                     shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix, dirs_exist_ok=True)
-                
-                # 复制语音文件
-                voice_source_dir = SPEECH_DIR / config.sprite_prefix
-                if voice_source_dir.is_dir():
-                    shutil.copytree(voice_source_dir, temp_dir / 'speech' / config.sprite_prefix, dirs_exist_ok=True)
+
+            # 重写 sprite path 为仅文件名（导入时按文件名匹配重建路径）
+            sprites = char_data.get('sprites') or []
+            for s in sprites if isinstance(sprites, list) else []:
+                if isinstance(s, dict):
+                    old_p = Path(str(s.get('path', '')))
+                    s['path'] = old_p.name
+
+            # 复制语音文件
+            if config.sprite_prefix:
+                voice_src_dir = SPEECH_DIR / config.sprite_prefix
+                if voice_src_dir.is_dir():
+                    shutil.copytree(voice_src_dir, temp_dir / 'speech' / config.sprite_prefix, dirs_exist_ok=True)
 
             character_data_list.append(char_data)
 
@@ -252,11 +263,16 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                 if source_speech_dir.is_dir():
                     shutil.copytree(source_speech_dir, dest_speech_dir, dirs_exist_ok=True)
 
-                # 修复 voice_path：指向导入机器上的实际路径
+                # 恢复语音文件
+                source_speech_dir = temp_dir / 'speech' / original_sprite_prefix
+                if source_speech_dir.is_dir():
+                    shutil.copytree(source_speech_dir, SPEECH_DIR / new_sprite_prefix, dirs_exist_ok=True)
+
+                # 修复 voice_path：指向 SPEECH_DIR
                 for s in sprites:
                     if isinstance(s, dict) and s.get('voice_path'):
                         old_vp = Path(str(s['voice_path']))
-                        new_vp = dest_speech_dir / old_vp.name
+                        new_vp = SPEECH_DIR / new_sprite_prefix / old_vp.name
                         try:
                             s['voice_path'] = str(new_vp.relative_to(Path.cwd()))
                         except ValueError:

@@ -1,6 +1,9 @@
-"""Unit tests for character import: sprite paths must be rewritten to the import machine."""
+"""Comprehensive tests for character export/import: sprite paths, voice files, fields."""
 
+import contextlib
 import json
+import os
+import shutil
 import tempfile
 import zipfile
 from pathlib import Path
@@ -12,126 +15,346 @@ import yaml
 from tools import file_util
 
 
-@pytest.fixture
-def char_zip_with_sprites():
-    """Create a minimal .char ZIP with character.yaml + sprite/ + speech/ files."""
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        export_root = root / "export"
-        export_root.mkdir()
+# ── helpers ────────────────────────────────────────────────────────────────
 
-        # ── character.yaml ──
-        char_data = {
-            "name": "TestChar",
-            "color": "#ffffff",
-            "sprite_prefix": "test_prefix",
-            "sprites": [
-                {
-                    "path": "data/sprites/test_prefix/happy.png",
-                    "voice_path": "data/speech/test_prefix/happy.wav",
-                    "voice_text": "hello",
-                },
-                {
-                    "path": "data/sprites/test_prefix/sad.png",
-                },
-            ],
-            "emotion_tags": "1: happy\n2: sad",
-            "character_setting": "A test character.",
-            "sprite_scale": 1.0,
-        }
-        yaml_path = export_root / "character.yaml"
-        yaml_path.write_text(
-            yaml.dump([char_data], allow_unicode=True), encoding="utf-8"
-        )
-
-        # ── mock sprite images ──
-        sprite_dir = export_root / "sprites" / "test_prefix"
-        sprite_dir.mkdir(parents=True)
-        (sprite_dir / "happy.png").write_text("fake png")
-        (sprite_dir / "sad.png").write_text("fake png")
-
-        # ── mock speech files ──
-        speech_dir = export_root / "speech" / "test_prefix"
-        speech_dir.mkdir(parents=True)
-        (speech_dir / "happy.wav").write_text("fake wav")
-
-        # ── zip it up ──
-        zip_path = root / "test_char.char"
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for f in export_root.rglob("*"):
-                if f.is_file():
-                    zf.write(f, f.relative_to(export_root))
-
-        yield zip_path
+def _make_export_zip(root: Path, char_data: dict, *,
+                     sprites: dict[str, str] | None = None,
+                     speeches: dict[str, str] | None = None) -> Path:
+    """Create a minimal .char ZIP simulating what export_character produces."""
+    export = root / "export"
+    export.mkdir()
+    (export / "character.yaml").write_text(
+        yaml.dump([char_data], allow_unicode=True), encoding="utf-8"
+    )
+    prefix = char_data.get("sprite_prefix", "pfx")
+    if sprites:
+        d = export / "sprites" / prefix
+        d.mkdir(parents=True)
+        for name, content in sprites.items():
+            (d / name).write_text(content)
+    if speeches:
+        d = export / "speech" / prefix
+        d.mkdir(parents=True)
+        for name, content in speeches.items():
+            (d / name).write_text(content)
+    zip_path = root / "test.char"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in export.rglob("*"):
+            if f.is_file():
+                zf.write(f, f.relative_to(export))
+    return zip_path
 
 
-class TestImportSpritePaths:
-    def test_sprite_paths_rewritten_after_import(self, char_zip_with_sprites, tmp_path):
-        """Imported sprites must point to the local data/sprite/{prefix}/ dir."""
-        dest_data = tmp_path / "data"
-        dest_sprite = dest_data / "sprite"
-        dest_speech = dest_data / "speech"
-        dest_config = dest_data / "config"
-        dest_config.mkdir(parents=True)
-        characters_yaml = dest_config / "characters.yaml"
-        characters_yaml.write_text("[]", encoding="utf-8")
+@contextlib.contextmanager
+def _mock_dirs(dest_root: Path):
+    """Mock file_util globals to use a temp destination."""
+    d = dest_root / "data"
+    cfg = d / "config"
+    cfg.mkdir(parents=True)
+    cy = cfg / "characters.yaml"
+    cy.write_text("[]", encoding="utf-8")
+    patches = [
+        mock.patch.object(file_util, "SPRITE_DIR", d / "sprite"),
+        mock.patch.object(file_util, "SPEECH_DIR", d / "speech"),
+        mock.patch.object(file_util, "MODEL_DIR", d / "models"),
+        mock.patch.object(file_util, "CONFIG_DIR", cfg),
+        mock.patch.object(file_util, "CHARACTERS_CONFIG_PATH", cy),
+    ]
+    for p in patches:
+        p.start()
+    try:
+        yield
+    finally:
+        for p in patches:
+            p.stop()
 
-        # Mock global paths
-        with (
-            mock.patch.object(file_util, "SPRITE_DIR", dest_sprite),
-            mock.patch.object(file_util, "SPEECH_DIR", dest_speech),
-            mock.patch.object(file_util, "MODEL_DIR", dest_data / "models"),
-            mock.patch.object(file_util, "CONFIG_DIR", dest_config),
-            mock.patch.object(
-                file_util, "CHARACTERS_CONFIG_PATH", characters_yaml
-            ),
-        ):
-            result = file_util.import_character(str(char_zip_with_sprites))
-            assert len(result) == 1
-            imported = result[0]
 
-            # Verify sprite paths point to local destination
-            sprite_paths = [
-                s["path"] if isinstance(s, dict) else s.path
-                for s in imported.sprites
-            ]
-            for p in sprite_paths:
-                assert "test_prefix" in str(p)
-                real = Path(p) if Path(p).is_absolute() else dest_data.parent / p
-                assert real.is_file(), f"Sprite file missing: {p}"
+# ── base data ───────────────────────────────────────────────────────────────
 
-            # Verify voice path
-            voice_paths = [
-                s.get("voice_path") if isinstance(s, dict) else getattr(s, "voice_path", None)
-                for s in imported.sprites
-            ]
-            for vp in voice_paths:
-                if vp:
-                    real = Path(vp) if Path(vp).is_absolute() else dest_data.parent / vp
-                    assert real.is_file(), f"Voice file missing: {vp}"
+BASIC_CHAR = {
+    "name": "Alice",
+    "color": "#ff0000",
+    "sprite_prefix": "alice",
+    "sprite_scale": 1.5,
+    "speech_speed": 1.2,
+    "speech_volume": 0.8,
+    "pronunciation_map": {"Alice": "アリス"},
+    "sprites": [
+        {"path": "smile.png", "voice_path": "greet.wav", "voice_text": "hello"},
+        {"path": "angry.png"},
+    ],
+    "emotion_tags": "1: smile\n2: angry",
+    "character_setting": "A girl.",
+    "prompt_text": "hi",
+    "prompt_lang": "ja",
+    "gpt_model_path": None,
+    "sovits_model_path": None,
+    "refer_audio_path": None,
+}
 
-    def test_sprite_files_actually_copied(self, char_zip_with_sprites, tmp_path):
-        """The physical sprite/speech files must exist at the destination."""
-        dest_data = tmp_path / "data"
-        dest_sprite = dest_data / "sprite"
-        dest_speech = dest_data / "speech"
-        dest_config = dest_data / "config"
-        dest_config.mkdir(parents=True)
-        characters_yaml = dest_config / "characters.yaml"
-        characters_yaml.write_text("[]", encoding="utf-8")
 
-        with (
-            mock.patch.object(file_util, "SPRITE_DIR", dest_sprite),
-            mock.patch.object(file_util, "SPEECH_DIR", dest_speech),
-            mock.patch.object(file_util, "MODEL_DIR", dest_data / "models"),
-            mock.patch.object(file_util, "CONFIG_DIR", dest_config),
-            mock.patch.object(
-                file_util, "CHARACTERS_CONFIG_PATH", characters_yaml
-            ),
-        ):
-            file_util.import_character(str(char_zip_with_sprites))
+# ── Import tests ────────────────────────────────────────────────────────────
 
-        # Check files exist on disk
-        assert (dest_sprite / "test_prefix" / "happy.png").is_file()
-        assert (dest_sprite / "test_prefix" / "sad.png").is_file()
-        assert (dest_speech / "test_prefix" / "happy.wav").is_file()
+class TestImport:
+    def test_sprite_paths_rewritten(self, tmp_path):
+        """Imported sprite paths point to the local data/sprite/{prefix}/ dir."""
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), BASIC_CHAR,
+                                 sprites={"smile.png": "png", "angry.png": "png"},
+                                 speeches={"greet.wav": "wav"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        c = result[0]
+        for s in c.sprites:
+            p = Path(s["path"])
+            assert "alice" in str(p)
+            assert p.is_file(), f"missing: {p}"
+
+    def test_voice_restored_to_speech_dir(self, tmp_path):
+        """Voice files land in data/speech/{prefix}/."""
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), BASIC_CHAR,
+                                 sprites={"smile.png": "png"},
+                                 speeches={"greet.wav": "wav"})
+            with _mock_dirs(tmp_path):
+                file_util.import_character(str(z))
+                assert (file_util.SPEECH_DIR / "alice" / "greet.wav").is_file()
+
+    def test_voice_path_points_correctly(self, tmp_path):
+        """voice_path in the sprite data points to the restored file."""
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), BASIC_CHAR,
+                                 sprites={"smile.png": "png"},
+                                 speeches={"greet.wav": "wav"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        vp = result[0].sprites[0].get("voice_path")
+        assert vp
+        assert Path(vp).is_file()
+
+    def test_fields_preserved(self, tmp_path):
+        """Name, sprite_scale, emotion_tags, voice_text etc. survive import."""
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), BASIC_CHAR,
+                                 sprites={"smile.png": "png", "angry.png": "png"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        c = result[0]
+        assert c.name == "Alice"
+        assert c.sprite_scale == 1.5
+        assert c.emotion_tags == "1: smile\n2: angry"
+        assert c.character_setting == "A girl."
+        assert c.prompt_lang == "ja"
+        assert len(c.sprites) == 2
+        assert c.sprites[0]["voice_text"] == "hello"
+        assert "angry.png" in c.sprites[1]["path"]
+
+    def test_name_conflict_renames(self, tmp_path):
+        """Duplicate name gets a suffix like 'Alice（1）'."""
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), BASIC_CHAR,
+                                 sprites={"smile.png": "png"})
+            with _mock_dirs(tmp_path):
+                # Write pre-existing Alice into the mocked characters.yaml
+                file_util.CHARACTERS_CONFIG_PATH.write_text(yaml.dump(
+                    [{"name": "Alice", "color": "#000", "sprite_prefix": "x"}],
+                    allow_unicode=True,
+                ), encoding="utf-8")
+                result = file_util.import_character(str(z))
+                assert result[0].name != "Alice"
+                assert "Alice" in result[0].name
+
+    def test_sprite_prefix_conflict_renames(self, tmp_path):
+        """Duplicate prefix gets a suffix; files go to the new directory."""
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), BASIC_CHAR,
+                                 sprites={"smile.png": "png"})
+            with _mock_dirs(tmp_path):
+                # Write pre-existing alice prefix into mocked config
+                file_util.CHARACTERS_CONFIG_PATH.write_text(yaml.dump(
+                    [{"name": "Bob", "color": "#000", "sprite_prefix": "alice"}],
+                    allow_unicode=True,
+                ), encoding="utf-8")
+                result = file_util.import_character(str(z))
+                c = result[0]
+                assert c.sprite_prefix != "alice"
+                assert "alice" in c.sprite_prefix
+                assert (file_util.SPRITE_DIR / c.sprite_prefix / "smile.png").is_file()
+
+    def test_import_without_sprites(self, tmp_path):
+        """Character with empty sprites imports without errors."""
+        data = dict(BASIC_CHAR, sprites=[])
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), data)
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        assert result[0].sprites == []
+
+    def test_import_without_voice(self, tmp_path):
+        """Character with sprites but no speech dir imports fine."""
+        data = dict(BASIC_CHAR, sprites=[{"path": "only.png"}])
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), data,
+                                 sprites={"only.png": "png"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        assert len(result[0].sprites) == 1
+        assert Path(result[0].sprites[0]["path"]).is_file()
+
+
+# ── Export tests ────────────────────────────────────────────────────────────
+
+class TestExport:
+    def test_sprite_paths_are_filenames_only(self, tmp_path):
+        """Export rewrites sprite paths to just the filename."""
+        with _mock_dirs(tmp_path):
+            out = _run_export(BASIC_CHAR, tmp_path)
+        with zipfile.ZipFile(out, "r") as zf:
+            yaml_data = yaml.safe_load(zf.read("character.yaml"))
+        sprites = yaml_data[0]["sprites"]
+        assert sprites[0]["path"] == "smile.png"
+        assert sprites[1]["path"] == "angry.png"
+
+    def test_missing_fields_included(self, tmp_path):
+        """pronunciation_map, speech_speed, speech_volume must be in YAML."""
+        with _mock_dirs(tmp_path):
+            out = _run_export(BASIC_CHAR, tmp_path)
+        with zipfile.ZipFile(out, "r") as zf:
+            yaml_data = yaml.safe_load(zf.read("character.yaml"))
+        c = yaml_data[0]
+        assert c["speech_speed"] == 1.2
+        assert c["speech_volume"] == 0.8
+        assert c["pronunciation_map"] == {"Alice": "アリス"}
+
+    def test_sprite_files_in_zip(self, tmp_path):
+        """Sprite PNG files are inside the ZIP."""
+        with _mock_dirs(tmp_path):
+            # create dummy files under the mocked sprite dir
+            sm = file_util.SPRITE_DIR / "alice"
+            sm.mkdir(parents=True)
+            (sm / "smile.png").write_text("fake")
+            (sm / "angry.png").write_text("fake")
+            out = str(tmp_path / "out.char")
+            _run_export(BASIC_CHAR, tmp_path, output=out)
+        with zipfile.ZipFile(out, "r") as zf:
+            names = [n.replace("\\", "/") for n in zf.namelist()]
+        assert any("alice/smile.png" in n for n in names)
+        assert any("alice/angry.png" in n for n in names)
+
+    def test_voice_files_in_zip(self, tmp_path):
+        """Speech files are inside the ZIP."""
+        with _mock_dirs(tmp_path):
+            sp = file_util.SPEECH_DIR / "alice"
+            sp.mkdir(parents=True)
+            (sp / "greet.wav").write_text("fake")
+            out = str(tmp_path / "out.char")
+            _run_export(BASIC_CHAR, tmp_path, output=out)
+        with zipfile.ZipFile(out, "r") as zf:
+            names = [n.replace("\\", "/") for n in zf.namelist()]
+        assert any("alice/greet.wav" in n for n in names)
+
+    def test_manifest_json_created(self, tmp_path):
+        """Export produces a manifest.json."""
+        with _mock_dirs(tmp_path):
+            out = _run_export(BASIC_CHAR, tmp_path)
+        with zipfile.ZipFile(out, "r") as zf:
+            manifest = json.loads(zf.read("manifest.json"))
+        assert "original_paths" in manifest
+
+
+def _run_export(char_data: dict, tmp_path: Path, output: str | None = None) -> str:
+    """Export a CharacterConfig and return the path."""
+    from config.character_config import CharacterConfig
+    cc = CharacterConfig.parse_dic(char_data=char_data)
+    out = output or str(tmp_path / "out.char")
+    file_util.export_character([cc], out)
+    return out
+
+
+# ── Backward compat ─────────────────────────────────────────────────────────
+
+class TestBackwardCompat:
+    """Old export formats (full paths in sprite.path) must still import correctly."""
+
+    def test_old_relative_paths(self, tmp_path):
+        """Sprite paths like 'data/sprites/alice/smile.png' from old exports."""
+        old = dict(BASIC_CHAR)
+        old["sprites"] = [
+            {"path": "data/sprites/alice/smile.png",
+             "voice_path": "data/speech/alice/greet.wav", "voice_text": "hi"},
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), old,
+                                 sprites={"smile.png": "png"},
+                                 speeches={"greet.wav": "wav"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        c = result[0]
+        assert Path(c.sprites[0]["path"]).is_file()
+        vp = c.sprites[0].get("voice_path")
+        assert vp and Path(vp).is_file()
+
+    def test_old_absolute_paths(self, tmp_path):
+        """Sprite paths like 'C:\\...\\data\\sprites\\alice\\smile.png' from old exports."""
+        old = dict(BASIC_CHAR)
+        fake_abs = str(Path("C:/somewhere/data/sprites/alice/smile.png"))
+        old["sprites"] = [{"path": fake_abs}]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), old,
+                                 sprites={"smile.png": "png"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        assert Path(result[0].sprites[0]["path"]).is_file()
+
+    def test_old_voice_from_voices_dir(self, tmp_path):
+        """voice_path pointing to 'data/voices/...' (old upload_voice dir)."""
+        old = dict(BASIC_CHAR)
+        old["sprites"] = [
+            {"path": "smile.png",
+             "voice_path": "data/voices/alice/greet.wav", "voice_text": "hi"},
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), old,
+                                 sprites={"smile.png": "png"},
+                                 speeches={"greet.wav": "wav"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        vp = result[0].sprites[0].get("voice_path")
+        assert vp and Path(vp).is_file()
+        # Should be restored to speech/ not voices/
+        assert "speech" in str(vp).replace("\\", "/")
+
+
+# ── Round-trip ──────────────────────────────────────────────────────────────
+
+class TestRoundTrip:
+    def test_export_then_import(self, tmp_path):
+        """Export a character, then import it back; data must match."""
+        from config.character_config import CharacterConfig
+
+        with _mock_dirs(tmp_path):
+            # create real files under mocked dirs
+            sm = file_util.SPRITE_DIR / "alice"
+            sp = file_util.SPEECH_DIR / "alice"
+            sm.mkdir(parents=True)
+            sp.mkdir(parents=True)
+            (sm / "smile.png").write_text("png1")
+            (sm / "angry.png").write_text("png2")
+            (sp / "greet.wav").write_text("wav1")
+
+            cc = CharacterConfig.parse_dic(char_data=BASIC_CHAR)
+            out = str(tmp_path / "roundtrip.char")
+            file_util.export_character([cc], out)
+
+            # Import to same mocked destination
+            result = file_util.import_character(out)
+
+            c = result[0]
+            assert c.name == "Alice"
+            assert c.sprite_prefix == "alice"
+            assert c.sprite_scale == 1.5
+            assert len(c.sprites) == 2
+            assert (file_util.SPRITE_DIR / "alice" / "smile.png").is_file()
+            assert (file_util.SPEECH_DIR / "alice" / "greet.wav").is_file()
+            vp = c.sprites[0].get("voice_path")
+            assert vp and Path(vp).is_file()

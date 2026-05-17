@@ -7,7 +7,7 @@ from config.config_manager import ConfigManager
 import yaml
 
 UPLOAD_DIR = "data/sprite"
-VOICE_DIR = "data/voices"
+VOICE_DIR = "data/speech"
 MODEL_DIR = "data/models"
 CHARACTER_CONFIG_PATH = ConfigManager._CHARACTERS_CONFIG_PATH 
 
