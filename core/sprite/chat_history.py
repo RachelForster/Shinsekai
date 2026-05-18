@@ -41,6 +41,10 @@ def load_chat_history(file_path: str) -> Any:
     return _get_history_manager().load_chat_history(file_path)
 
 
+def rebuild_chat_history(messages: list) -> Any:
+    return _get_history_manager().rebuild_chat_history(messages)
+
+
 def clear_chat_history(history_file: str, ui_queue: Any, llm_manager: Any) -> None:
     from i18n import tr
 
