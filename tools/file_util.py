@@ -45,6 +45,27 @@ def _safe_package_basename(path: str | os.PathLike | None, field_name: str) -> s
     return _safe_package_relpath(path, field_name).name
 
 
+def _safe_package_basename_or_legacy_absolute(
+    path: str | os.PathLike | None, field_name: str
+) -> str:
+    """Return a safe package filename, accepting old host-absolute YAML paths."""
+    raw = str(path or "").replace("\\", "/").strip()
+    if not raw:
+        raise ValueError(f"{field_name} must not be empty")
+    if "\x00" in raw:
+        raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
+
+    is_legacy_absolute = raw.startswith("/") or _WINDOWS_DRIVE_RE.match(raw)
+    if not is_legacy_absolute:
+        return _safe_package_basename(raw, field_name)
+
+    tail = raw[2:] if _WINDOWS_DRIVE_RE.match(raw) else raw
+    parts = tail.lstrip("/").split("/")
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
+    return parts[-1]
+
+
 def _safe_package_name(value: str | os.PathLike | None, field_name: str) -> str:
     raw = str(value or "").replace("\\", "/").strip()
     if not raw:
@@ -65,6 +86,23 @@ def _safe_extract_zip(zf: zipfile.ZipFile, target_dir: Path) -> None:
         if member:
             _safe_package_relpath(member, "zip member")
     zf.extractall(target_dir)
+
+
+def _sanitize_background_package_paths(bg_data: dict) -> None:
+    sprites = bg_data.get('sprites') or []
+    if isinstance(sprites, list):
+        for sprite_entry in sprites:
+            if isinstance(sprite_entry, dict) and sprite_entry.get('path'):
+                sprite_entry['path'] = _safe_package_basename_or_legacy_absolute(
+                    sprite_entry['path'], "background sprite path"
+                )
+
+    bgm_list = bg_data.get('bgm_list')
+    if isinstance(bgm_list, list):
+        bg_data['bgm_list'] = [
+            _safe_package_basename_or_legacy_absolute(path, "background bgm path")
+            for path in bgm_list
+        ]
 
 def export_character(character_configs: list[CharacterConfig], output_path: str):
     """
@@ -412,9 +450,7 @@ def export_background(background_configs: List[Background], output_path: str = '
                 if bgm_source_dir.is_dir():
                     shutil.copytree(bgm_source_dir, temp_dir / 'bgm' / config.sprite_prefix, dirs_exist_ok=True)
                     
-            # 导出时，bgm_list 和 sprites 中的 path 仍然是系统路径，
-            # 导入时需要处理，这里保持原样，因为数据结构中没有像字符导出那样处理模型路径。
-            # Pydantic 模型导出为字典时，FilePath 会被正确转换为字符串路径。
+            _sanitize_background_package_paths(bg_data)
             
             background_data_list.append(bg_data)
 
@@ -526,7 +562,7 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
                     # 路径是相对路径，需要重新构建新的绝对或相对路径
                     if 'path' in sprite_entry:
                         # 假设 path 存储的是文件名或相对于原始前缀的路径
-                        filename = _safe_package_basename(
+                        filename = _safe_package_basename_or_legacy_absolute(
                             sprite_entry['path'], "background sprite path"
                         )
                         new_path = Path(BACKGROUND_UPLOAD_DIR) / new_sprite_prefix / filename
@@ -536,7 +572,7 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
             if 'bgm_list' in bg_data:
                 new_bgm_list = []
                 for path in bg_data['bgm_list']:
-                    filename = _safe_package_basename(path, "background bgm path")
+                    filename = _safe_package_basename_or_legacy_absolute(path, "background bgm path")
                     new_path = Path(BGM_UPLOAD_DIR) / new_sprite_prefix / filename
                     new_bgm_list.append(new_path.as_posix())
                 bg_data['bgm_list'] = new_bgm_list

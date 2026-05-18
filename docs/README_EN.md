@@ -71,6 +71,8 @@ conda activate shinsekai
 pip install -r requirements.txt
 ```
 
+Linux source users may also run `./install-linux.sh`. If a Python 3.10 non-`base` conda environment is active, the script installs dependencies into that environment; otherwise it prefers `uv` to create `.venv`, and falls back to a system `python3.10`.
+
 ### 3. Open Settings
 
 Bundle: `start.bat`. From source:
@@ -78,6 +80,8 @@ Bundle: `start.bat`. From source:
 ```bash
 python webui_qt.py
 ```
+
+On Linux source checkouts, `./start-linux.sh` uses the active non-`base` conda environment first, then `.venv`, then system `python3.10`.
 
 ### 4. First conversation
 
