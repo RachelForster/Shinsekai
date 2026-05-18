@@ -408,6 +408,7 @@
     "ph_vtext": "セリフ / 参照用テキスト",
     "pick_voice": "音声を選択…",
     "upload_voice": "この立ち絵に音声",
+    "delete_voice": "立ち絵の音声を削除",
     "mem_box": "長期記憶 (mem0)",
     "mem_refresh": "記憶を更新",
     "mem_count": "{n} 件",

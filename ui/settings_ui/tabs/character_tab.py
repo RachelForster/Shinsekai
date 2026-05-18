@@ -50,6 +50,7 @@ from ui.settings_ui.ai_field_translate import translate_character_name_and_tags
 from ui.settings_ui.ai_progress import run_ai_task_with_progress
 from ui.settings_ui.qt_mm import try_create_pair
 from ui.settings_ui.utils import GALLERY_THUMB_PX, path_file_list, sync_gallery_to_tag_cursor
+from sdk.ui.validators import audio_duration_between
 
 _DEFAULT_NAME_COLOR = "#d07d7d"
 
@@ -383,13 +384,20 @@ class CharacterSettingsTab(QWidget):
         bsp.addWidget(self.selected_sprite_info)
         self._play_v = QPushButton(tr_i18n("char.play_voice"))
         self._play_v.clicked.connect(self._on_play_voice)
-        bsp.addWidget(self._play_v, alignment=Qt.AlignmentFlag.AlignLeft)
+        self._del_voice_btn = QPushButton(tr_i18n("char.delete_voice"))
+        self._del_voice_btn.clicked.connect(self._on_delete_voice)
+        voice_btn_row = QHBoxLayout()
+        voice_btn_row.addWidget(self._play_v)
+        voice_btn_row.addWidget(self._del_voice_btn)
+        voice_btn_row.addStretch(1)
+        bsp.addLayout(voice_btn_row)
         self.sprite_voice_path = QLineEdit()
         self.sprite_voice_path.setPlaceholderText(tr_i18n("char.ph_vpath"))
         self.sprite_voice_path.setReadOnly(True)
         bsp.addWidget(self.sprite_voice_path)
         self.sprite_voice_text = QLineEdit()
         self.sprite_voice_text.setPlaceholderText(tr_i18n("char.ph_vtext"))
+        self.sprite_voice_text.editingFinished.connect(self._on_save_voice_text)
         bsp.addWidget(self.sprite_voice_text)
         vr = QHBoxLayout()
         self.voice_upload_path = QLineEdit()
@@ -1074,6 +1082,32 @@ class CharacterSettingsTab(QWidget):
         self._player.setSource(QUrl.fromLocalFile(Path(p).resolve().as_posix()))
         self._player.play()
 
+    def _on_delete_voice(self) -> None:
+        idx = self._selected_sprite_index()
+        if idx is None:
+            message_fail(self, "语音", "请先选择立绘")
+            return
+        name = self._current_char()
+        msg = self._ctx.character_manager.delete_sprite_voice(name, idx)
+        feedback_result(self, "语音", msg)
+        self._update_sprite_side_info()
+        self.character_list_changed.emit()
+
+    def _on_save_voice_text(self) -> None:
+        idx = self._selected_sprite_index()
+        if idx is None:
+            return
+        name = self._current_char()
+        voice_text = self.sprite_voice_text.text().strip()
+        self._ctx.character_manager.save_sprite_voice_text(name, idx, voice_text)
+
+        if voice_text:
+            vpath = self.sprite_voice_path.text().strip()
+            if vpath and Path(vpath).is_file():
+                ok, err = audio_duration_between(vpath, 3.0, 10.0, tr_i18n("char.dlg_voice"))
+                if not ok:
+                    message_fail(self, "语音", err)
+
     def _on_upload_voice(self) -> None:
         vfile = self.voice_upload_path.text().strip()
         if not vfile:
@@ -1083,8 +1117,16 @@ class CharacterSettingsTab(QWidget):
         if idx is None:
             message_fail(self, "语音", "请先选择立绘")
             return
+
+        voice_text = self.sprite_voice_text.text().strip()
+        if voice_text:
+            ok, err = audio_duration_between(vfile, 3.0, 10.0, tr_i18n("char.dlg_voice"))
+            if not ok:
+                message_fail(self, "语音", err)
+                return
+
         msg, vpath = self._ctx.character_manager.upload_voice(
-            self._current_char(), idx, vfile, self.sprite_voice_text.text()
+            self._current_char(), idx, vfile, voice_text
         )
         feedback_result(self, "语音", msg)
         self._update_sprite_side_info()

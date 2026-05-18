@@ -531,6 +531,54 @@ class CharacterManager:
 
         return voice_path, voice_text
 
+    def save_sprite_voice_text(self, character_name: str, sprite_index: int, voice_text: str) -> str:
+        """单独保存立绘的语音文字，不需要重新上传音频。"""
+        if not character_name:
+            return "请先选择角色！"
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}"
+        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
+            return "立绘不存在！"
+
+        sprite_data = character.sprites[sprite_index]
+        if isinstance(sprite_data, Sprite):
+            sprite_data.voice_text = voice_text if voice_text else None
+        else:
+            sprite_data["voice_text"] = voice_text if voice_text else None
+
+        self._config_manager.save_characters_config()
+        return "语音文字已保存"
+
+    def delete_sprite_voice(self, character_name: str, sprite_index: int) -> str:
+        """删除指定立绘的语音文件和引用。"""
+        if not character_name:
+            return "请先选择角色！"
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}"
+        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
+            return "立绘不存在！"
+
+        sprite_data = character.sprites[sprite_index]
+        if isinstance(sprite_data, Sprite):
+            voice_path = sprite_data.voice_path
+            sprite_data.voice_path = None
+            sprite_data.voice_text = None
+        else:
+            voice_path = sprite_data.get("voice_path", None)
+            sprite_data["voice_path"] = None
+            sprite_data["voice_text"] = None
+
+        self._config_manager.save_characters_config()
+
+        if voice_path and os.path.isfile(voice_path):
+            try:
+                os.remove(voice_path)
+            except OSError:
+                pass
+
+        return f"已删除立绘 {sprite_index + 1} 的语音"
 
     def get_character_sprites(self, character_name: str) -> Tuple[List[str], str, List[Any]]:
         """

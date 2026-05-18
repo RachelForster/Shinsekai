@@ -110,18 +110,34 @@ def ascii_only(value: str | None, label: str = "") -> tuple[bool, str]:
 
 def audio_duration_between(path: str | None, lo: float, hi: float,
                           label: str = "") -> tuple[bool, str]:
-    """音频时长必须在 [lo, hi] 秒区间内，空值跳过（使用标准库 wave，仅支持 WAV）。"""
+    """音频时长必须在 [lo, hi] 秒区间内，空值跳过（支持 WAV/MP3/OGG）。"""
     if not path:
         return True, ""
-    try:
-        import wave
-        with wave.open(path, "rb") as wf:
-            dur = wf.getnframes() / wf.getframerate()
-        if lo <= dur <= hi:
-            return True, ""
-        return False, _msg(f"音频时长 {dur:.1f}s，需要 {lo}–{hi}s", label)
-    except Exception as e:
-        return False, _msg(f"无法读取音频: {e}", label)
+    dur = _audio_duration(path)
+    if dur is None:
+        return False, _msg(f"无法读取音频文件", label)
+    if lo <= dur <= hi:
+        return True, ""
+    return False, _msg(f"音频时长 {dur:.1f}s，需要 {lo}–{hi}s", label)
+
+
+def _audio_duration(path: str) -> float | None:
+    """获取音频时长（秒），WAV 用标准库，MP3/OGG 用 pydub。"""
+    ext = Path(path).suffix.lower()
+    if ext == ".wav":
+        try:
+            import wave
+            with wave.open(path, "rb") as wf:
+                return wf.getnframes() / wf.getframerate()
+        except Exception:
+            return None
+    else:
+        try:
+            from pydub import AudioSegment
+            audio = AudioSegment.from_file(path)
+            return len(audio) / 1000.0
+        except Exception:
+            return None
 
 
 def no_quotes(value: str | None, label: str = "") -> tuple[bool, str]:

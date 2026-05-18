@@ -411,6 +411,7 @@
     "ph_vtext": "Line text / reference",
     "pick_voice": "Choose audio…",
     "upload_voice": "Upload voice to sprite",
+    "delete_voice": "Delete sprite voice",
     "mem_box": "Long-term Memory (mem0)",
     "mem_refresh": "Refresh Memories",
     "mem_count": "{n} memories",

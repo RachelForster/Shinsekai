@@ -408,6 +408,7 @@
     "ph_vtext": "立绘语音内容 / 参考语音需填写文字",
     "pick_voice": "选择语音…",
     "upload_voice": "上传语音到当前立绘",
+    "delete_voice": "删除当前立绘语音",
     "mem_box": "长期记忆 (mem0)",
     "mem_refresh": "刷新记忆",
     "mem_count": "{n} 条记忆",
