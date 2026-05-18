@@ -247,6 +247,17 @@
       "ph_key": "切换供应商时可能自动带出新 Key",
       "ph_base": "OpenAI 兼容地址，以 /v1 结尾等"
     },
+    "capability": {
+      "text": "文本",
+      "vision": "视觉",
+      "file": "文件",
+      "audio": "音频",
+      "video": "视频",
+      "image_out": "生图",
+      "unknown": "未知",
+      "no_access": "无权限",
+      "not_found": "不存在"
+    },
     "adv": {
       "help": "各厂商对采样参数支持不同：OpenAI/Deepseek/豆包/通义等一般支持 temperature、presence、frequency；Claude 常用仅 temperature；Gemini 视兼容情况；repetition_penalty 若不支持会忽略。",
       "tt_temp": "0～2，越高越发散",

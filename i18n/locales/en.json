@@ -250,6 +250,17 @@
       "ph_key": "Key may change when you switch provider",
       "ph_base": "OpenAI-compatible URL, often ending in /v1"
     },
+    "capability": {
+      "text": "Text",
+      "vision": "Vision",
+      "file": "File",
+      "audio": "Audio",
+      "video": "Video",
+      "image_out": "Image out",
+      "unknown": "Unknown",
+      "no_access": "No access",
+      "not_found": "Not found"
+    },
     "adv": {
       "help": "Sampling support varies: OpenAI/Deepseek/Doubao etc. support temperature, presence, frequency; Claude often only temperature; Gemini depends; repetition_penalty may be ignored.",
       "tt_temp": "0–2, higher = more random",
