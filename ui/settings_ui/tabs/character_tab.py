@@ -612,6 +612,27 @@ class CharacterSettingsTab(QWidget):
     def _on_sprite_row(self) -> None:
         self.voice_upload_path.clear()
         self._update_sprite_side_info()
+        self._highlight_emotion_tag_line()
+
+    def _highlight_emotion_tag_line(self) -> None:
+        idx = self._selected_sprite_index()
+        if idx is None:
+            return
+        doc = self.emotion_inputs.document()
+        if idx >= doc.blockCount():
+            return
+        block = doc.findBlockByNumber(idx)
+        cursor = self.emotion_inputs.textCursor()
+        cursor.setPosition(block.position())
+        cursor.movePosition(
+            cursor.MoveOperation.Right,
+            cursor.MoveMode.KeepAnchor,
+            block.length(),
+        )
+        self.emotion_inputs.blockSignals(True)
+        self.emotion_inputs.setTextCursor(cursor)
+        self.emotion_inputs.blockSignals(False)
+        self.emotion_inputs.ensureCursorVisible()
 
     def _on_emotion_tag_cursor_moved(self) -> None:
         sync_gallery_to_tag_cursor(self.sprites_gallery, self.emotion_inputs)
