@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -25,6 +26,10 @@ _USER_AGENT_APP = (
 )
 
 RefKindApi = Literal["latest", "head", "tag"]
+
+
+_DEV_VERSION_TOKEN_RE = re.compile(r"(?:^|[^0-9a-z])dev[0-9]*(?:$|[^0-9a-z])")
+_RELEASE_VERSION_RE = re.compile(r"^\d+(?:\.\d+)*$")
 
 
 def default_app_github_repo_slug() -> str:
@@ -64,6 +69,55 @@ def read_local_version(project_root: Path | None = None) -> str:
         return txt
     except OSError:
         return ""
+
+
+def normalize_version_label(raw: str) -> str:
+    """Normalize display/comparison labels such as ``v1.2.3`` -> ``1.2.3``."""
+    return str(raw or "").strip().lstrip("vV").strip()
+
+
+def is_development_version(version: str) -> bool:
+    """Return True for local development builds that should not auto-prompt updates."""
+    normalized = normalize_version_label(version).lower()
+    if not normalized:
+        return False
+    return normalized == "dev" or bool(_DEV_VERSION_TOKEN_RE.search(normalized))
+
+
+def _release_version_tuple(version: str) -> tuple[int, ...] | None:
+    normalized = normalize_version_label(version)
+    if not _RELEASE_VERSION_RE.fullmatch(normalized):
+        return None
+    return tuple(int(part) for part in normalized.split("."))
+
+
+def _compare_release_versions(left: tuple[int, ...], right: tuple[int, ...]) -> int:
+    width = max(len(left), len(right))
+    lhs = left + (0,) * (width - len(left))
+    rhs = right + (0,) * (width - len(right))
+    return (lhs > rhs) - (lhs < rhs)
+
+
+def should_prompt_for_app_update(local_version: str, remote_tag: str) -> bool:
+    """
+    Decide whether startup should show the app update prompt.
+
+    Development versions intentionally opt out of automatic release prompts:
+    ``1.6.7-dev`` represents source/dev mode, not an older stable install.
+    """
+    local = normalize_version_label(local_version)
+    remote = normalize_version_label(remote_tag)
+    if not local or not remote:
+        return False
+    if is_development_version(local):
+        return False
+    if local == remote:
+        return False
+    local_tuple = _release_version_tuple(local)
+    remote_tuple = _release_version_tuple(remote)
+    if local_tuple is not None and remote_tuple is not None:
+        return _compare_release_versions(remote_tuple, local_tuple) > 0
+    return remote != local
 
 
 def _api_get_json(url: str, *, timeout_sec: float = 20.0) -> Any:
