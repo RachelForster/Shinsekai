@@ -43,6 +43,41 @@ set_tool_ready_callback(_on_tool_ready)
 
 # 流式输出中非正文的片段（供 LLMWorker 显示思考过程，且不混入 JSON 解析缓冲区）
 STREAM_REASONING_DELTA_KEY = "reasoning_delta"
+_ASSISTANT_HISTORY_RUNTIME_FIELDS = {"sprite", "asset_id", "translate", "effect"}
+
+
+def _strip_assistant_history_runtime_fields(content: str) -> str:
+    """Remove runtime-only dialog fields before persisting assistant content."""
+    if not isinstance(content, str) or not content.strip():
+        return content
+
+    text = content.strip()
+    if text.startswith("```"):
+        import re
+
+        text = re.sub(r"^```[a-zA-Z0-9]*\s*", "", text)
+        text = re.sub(r"\s*```$", "", text, flags=re.DOTALL).strip()
+
+    try:
+        parsed = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        return content
+
+    def clean(value):
+        if isinstance(value, dict):
+            return {
+                key: clean(item)
+                for key, item in value.items()
+                if key not in _ASSISTANT_HISTORY_RUNTIME_FIELDS
+            }
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        return value
+
+    cleaned = clean(parsed)
+    if cleaned == parsed:
+        return content
+    return json.dumps(cleaned, ensure_ascii=False)
 
 def _prefix_user_text_with_local_time(text: str) -> str:
     """为发送给模型的用户正文加上本机本地时间（供模型感知「何时」发送）。"""
@@ -349,7 +384,7 @@ class LLMManager:
         extra = _deepseek_reasoning_message_kwargs(self.llm_adapter, reasoning)
         if not (content or "").strip() and not extra:
             return
-        self.add_message("assistant", content or "", **extra)
+        self.add_message("assistant", _strip_assistant_history_runtime_fields(content or ""), **extra)
 
     def get_messages(self):
         """Returns the current list of messages."""
@@ -462,7 +497,12 @@ class LLMManager:
 
             # --- 关键：必须先添加 Assistant 消息（DeepSeek 思考模式须含 reasoning_content） ---
             assistant_kw = _deepseek_reasoning_message_kwargs(self.llm_adapter, collected_reasoning)
-            self.add_message("assistant", collected_content, tool_calls=formatted_calls, **assistant_kw)
+            self.add_message(
+                "assistant",
+                _strip_assistant_history_runtime_fields(collected_content),
+                tool_calls=formatted_calls,
+                **assistant_kw,
+            )
 
             # --- 然后添加 Tool 结果消息 ---
             for call in formatted_calls:
@@ -552,7 +592,12 @@ class LLMManager:
 
             # --- 关键：先 Assistant 再 Tool ---
             assistant_sync_kw = _deepseek_reasoning_message_kwargs(self.llm_adapter, reasoning)
-            self.add_message("assistant", content, tool_calls=formatted_calls, **assistant_sync_kw)
+            self.add_message(
+                "assistant",
+                _strip_assistant_history_runtime_fields(content),
+                tool_calls=formatted_calls,
+                **assistant_sync_kw,
+            )
             for call in formatted_calls:
                 try:
                     func_name = call['function']['name']

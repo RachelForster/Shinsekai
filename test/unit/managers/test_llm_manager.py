@@ -41,6 +41,62 @@ class TestLLMManagerMessageManagement:
         mgr.add_message("assistant", "content", tool_calls=[{"id": "1", "type": "function", "function": {"name": "test", "arguments": "{}"}}])
         assert "tool_calls" in mgr.messages[-1]
 
+    def test_persist_assistant_strips_runtime_dialog_fields(self, mock_llm_adapter):
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+        content = json.dumps(
+            {
+                "character_name": "Alice",
+                "speech": "Hello",
+                "sprite": "2",
+                "translate": "こんにちは",
+                "effect": "shake",
+            },
+            ensure_ascii=False,
+        )
+
+        mgr._persist_plain_assistant_turn(content, "")
+
+        saved = json.loads(mgr.messages[-1]["content"])
+        assert saved == {"character_name": "Alice", "speech": "Hello"}
+
+    def test_persist_assistant_strips_runtime_fields_from_dialog_list(self, mock_llm_adapter):
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+        content = json.dumps(
+            {
+                "dialog": [
+                    {
+                        "character_name": "Alice",
+                        "speech": "Hello",
+                        "sprite": "2",
+                        "translate": "こんにちは",
+                    },
+                    {
+                        "character_name": "Bob",
+                        "speech": "Hi",
+                        "asset_id": "3",
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        )
+
+        mgr._persist_plain_assistant_turn(content, "")
+
+        saved = json.loads(mgr.messages[-1]["content"])
+        assert saved == {
+            "dialog": [
+                {"character_name": "Alice", "speech": "Hello"},
+                {"character_name": "Bob", "speech": "Hi"},
+            ]
+        }
+
+    def test_persist_assistant_leaves_plain_text_unchanged(self, mock_llm_adapter):
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+
+        mgr._persist_plain_assistant_turn("plain assistant text", "")
+
+        assert mgr.messages[-1]["content"] == "plain assistant text"
+
     def test_clear_messages_keeps_system(self, mock_llm_adapter):
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="Keep me")
         mgr.add_message("user", "Hello")
