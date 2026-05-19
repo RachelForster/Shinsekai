@@ -224,7 +224,6 @@ class DefaultCharacterTtsHandler(MessageHandler):
                             is_final_segment=_is_last,
                             timeout=None if _is_first else 0,
                         ))
-                    rt.tts_queue.task_done()
                     return  # already emitted per-sentence, skip final tts_emit_to_ui_queue
             finally:
                 _hide_tts_busy()
