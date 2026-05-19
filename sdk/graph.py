@@ -278,9 +278,10 @@ class DagBuilder:
         import yaml
 
         text = path_or_text
-        p = Path(path_or_text)
-        if p.is_file():
-            text = p.read_text(encoding="utf-8")
+        if "\n" not in path_or_text and "\r" not in path_or_text:
+            p = Path(path_or_text)
+            if p.is_file():
+                text = p.read_text(encoding="utf-8")
         data = yaml.safe_load(text)
         if not isinstance(data, dict):
             raise ValueError("YAML must be a dict with 'nodes' and 'edges'")

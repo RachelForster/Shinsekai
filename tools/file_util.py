@@ -117,13 +117,16 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
         
         folder_path = Path(output_path).parent.resolve()
         
-        system = platform.system()
-        if system == 'Windows':
-            os.startfile(folder_path)
-        elif system == 'Darwin':  # macOS
-            subprocess.Popen(['open', folder_path])
-        elif system == 'Linux':
-            subprocess.Popen(['xdg-open', folder_path])
+        try:
+            system = platform.system()
+            if system == 'Windows':
+                os.startfile(folder_path)
+            elif system == 'Darwin':  # macOS
+                subprocess.Popen(['open', folder_path])
+            elif system == 'Linux':
+                subprocess.Popen(['xdg-open', folder_path])
+        except Exception as e:
+            print(f"Failed to open export folder {folder_path}: {e}")
 
         print(f"人物成功导出到: {output_path}")
 
