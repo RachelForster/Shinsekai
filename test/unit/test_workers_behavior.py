@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 
-from core.runtime.app_runtime import AppRuntime, set_app_runtime
+from core.runtime.app_runtime import AppRuntime, get_app_runtime, set_app_runtime
 from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
 from sdk.messages import LLMDialogMessage, TTSOutputMessage, UserInputMessage
 
@@ -46,7 +46,22 @@ class FakeEvent:
         return self._set
 
 
-def _set_runtime(*, tts_queue=None, audio_path_queue=None, ui_manager=None) -> AppRuntime:
+@pytest.fixture(autouse=True)
+def _isolate_app_runtime() -> None:
+    """Save/restore the module-level app runtime so tests don't leak."""
+    from core.runtime import app_runtime as _mod
+
+    saved = getattr(_mod, "_runtime", None)
+    _mod._runtime = None
+    yield
+    _mod._runtime = saved
+
+
+def _make_app_runtime(
+    tts_queue: Queue | None = None,
+    audio_path_queue: Queue | None = None,
+    ui_manager: MagicMock | None = None,
+) -> AppRuntime:
     runtime = AppRuntime(
         config=MagicMock(),
         ui_update_manager=ui_manager or MagicMock(chat_history=[]),
@@ -65,6 +80,7 @@ def _set_runtime(*, tts_queue=None, audio_path_queue=None, ui_manager=None) -> A
 
 
 def test_workers_keep_original_queue_attributes_and_bind_ports() -> None:
+    _make_app_runtime()
     user_input_queue = Queue()
     tts_queue = Queue()
     audio_path_queue = Queue()
@@ -87,13 +103,15 @@ def test_workers_keep_original_queue_attributes_and_bind_ports() -> None:
     assert ui_worker.inq(UIWorker.PORT_TTS_OUTPUT) is audio_path_queue
 
 
-def test_llm_worker_run_uses_original_queues_and_marks_input_done(monkeypatch) -> None:
+def test_llm_worker_run_uses_original_queues_and_marks_input_done(
+    monkeypatch,
+) -> None:
     user_input_queue = CountingQueue()
     tts_queue = CountingQueue()
     user_input_queue.put(UserInputMessage(text="hello"))
     user_input_queue.put(None)
 
-    runtime = _set_runtime()
+    runtime = _make_app_runtime()
     runtime.config.config.api_config.is_streaming = False
     runtime.llm_manager.chat.return_value = (
         '{"character_name":"Alice","speech":"Hi","sprite":"0"}'
@@ -115,12 +133,14 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(monkeypatch) -
     runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
 
 
-def test_tts_worker_exception_path_uses_original_put_data_fallback(monkeypatch) -> None:
+def test_tts_worker_exception_path_uses_original_put_data_fallback(
+    monkeypatch,
+) -> None:
     tts_queue = CountingQueue()
     audio_path_queue = CountingQueue()
     tts_queue.put(LLMDialogMessage(name="Alice", text="broken", asset_id="2", effect="shake"))
     tts_queue.put(None)
-    _set_runtime(tts_queue=tts_queue, audio_path_queue=audio_path_queue)
+    _make_app_runtime(tts_queue=tts_queue, audio_path_queue=audio_path_queue)
 
     worker = TTSWorker(tts_queue, audio_path_queue)
     monkeypatch.setattr(worker, "_init_app", lambda: None)
@@ -142,7 +162,7 @@ def test_tts_worker_exception_path_uses_original_put_data_fallback(monkeypatch) 
 
 def test_ui_worker_skip_speech_is_noop_when_queue_empty() -> None:
     audio_path_queue = Queue()
-    _set_runtime(audio_path_queue=audio_path_queue)
+    _make_app_runtime(audio_path_queue=audio_path_queue)
     worker = UIWorker(audio_path_queue)
     worker.task_done_requested = FakeEvent()
     worker.current_audio_path = "current.wav"
@@ -155,7 +175,9 @@ def test_ui_worker_skip_speech_is_noop_when_queue_empty() -> None:
     assert worker.task_done_requested.set_calls == 0
 
 
-def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(monkeypatch) -> None:
+def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(
+    monkeypatch,
+) -> None:
     audio_path_queue = CountingQueue()
     audio_path_queue.put(
         TTSOutputMessage(
@@ -168,7 +190,7 @@ def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(monkeypatc
     )
     audio_path_queue.put(None)
     ui_manager = MagicMock()
-    _set_runtime(audio_path_queue=audio_path_queue, ui_manager=ui_manager)
+    _make_app_runtime(audio_path_queue=audio_path_queue, ui_manager=ui_manager)
 
     worker = UIWorker(audio_path_queue)
     fake_event = FakeEvent()
