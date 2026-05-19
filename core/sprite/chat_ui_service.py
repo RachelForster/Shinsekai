@@ -22,7 +22,7 @@ from sdk.chat_ui_context import ChatUIContext, set_chat_ui_context
 def install_chat_ui_context(
     window: Any,
     *,
-    emit_user_text: Callable[[str], None],
+    emit_user_text: Callable[[str], None] | None,
 ) -> ChatUIContext:
     """Create context from window factories, register globals, apply desktop plugin widgets."""
     state_proxy = window._make_state_proxy()
@@ -50,7 +50,7 @@ def wire_chat_ui_bridge(
     *,
     window: Any,
     app: Any,
-    emit_user_text: Callable[[str], None],
+    emit_user_text: Callable[[str], None] | None,
     chat_history: list,
     history_file: str,
     llm_manager: LLMManager,
@@ -68,6 +68,9 @@ def wire_chat_ui_bridge(
 
     def on_message_submitted(message: str) -> None:
         print(_tr("main.print_submitted", message=message))
+        if emit_user_text is None:
+            ctx.set_notification_hint(_tr("main.notify_chat"))
+            return
         emit_user_text(message)
         ctx.set_notification_hint(_tr("main.notify_submitted"))
 
@@ -78,7 +81,7 @@ def wire_chat_ui_bridge(
         llm_manager._strip_orphaned_tool_calls()
         pop_last_assistant_turn(chat_history, messages)
         last_msg = getattr(window, "_last_user_message", "")
-        if last_msg:
+        if last_msg and emit_user_text is not None:
             emit_user_text(last_msg)
         ctx.set_notification_hint(_tr("main.notify_reroll"))
 
@@ -107,14 +110,16 @@ def wire_chat_ui_bridge(
         app.quit()
 
     ctx.on_close_window(_on_chat_ui_close)
-    ctx.on_clear_chat_history(
-        lambda: clear_chat_history(
-            history_file=history_file,
-            ui_queue=audio_path_queue,
-            llm_manager=llm_manager,
+    if audio_path_queue is not None:
+        ctx.on_clear_chat_history(
+            lambda: clear_chat_history(
+                history_file=history_file,
+                ui_queue=audio_path_queue,
+                llm_manager=llm_manager,
+            )
         )
-    )
-    ctx.on_skip_speech_signal(lambda: ui_worker.skip_speech())
+    if ui_worker is not None and hasattr(ui_worker, "skip_speech"):
+        ctx.on_skip_speech_signal(lambda: ui_worker.skip_speech())
     ctx.on_copy_chat_history_to_clipboard(copy_chat_history_to_clipboard)
     ctx.on_revert_chat_history(
         lambda index: revert_chat_history(
