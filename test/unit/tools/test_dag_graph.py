@@ -102,6 +102,12 @@ class RuleNode(PassiveNoPortsNode):
         return value == self.accepted
 
 
+class StrictConfigNode(PassiveNoPortsNode):
+    def __init__(self, name: str, accepted: str = "yes"):
+        super().__init__(name)
+        self.accepted = accepted
+
+
 class RuleRouterNode(DagNode):
     def __init__(self, name: str, rule_node: str):
         super().__init__(name)
@@ -421,6 +427,25 @@ exports:
 
         assert [node.name for node in nodes] == ["router"]
         assert dag.resolve_export("accepted").get(timeout=0.2) == "yes"
+
+    def test_yaml_unknown_node_param_fails_instead_of_dropping_all_params(self):
+        dag_yaml = """
+nodes:
+  - name: strict
+    type: test.unit.tools.test_dag_graph.StrictConfigNode
+    accepted: "no"
+    typo: true
+edges: []
+exports:
+  strict:
+    node: strict
+    direction: node
+"""
+        from sdk.graph import Dag
+
+        dag = Dag(queue_factory=Queue)
+        with pytest.raises(ValueError, match="Cannot instantiate"):
+            dag.load_yaml(dag_yaml)
 
 class TestRuntimeWorkflow:
     def test_build_runtime_workflow_uses_only_selected_yaml(self, tmp_path):

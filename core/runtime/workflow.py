@@ -2,12 +2,47 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import os
+from pathlib import Path
 from queue import Queue
 from typing import Any
 
 from sdk.graph import Dag
 
 DEFAULT_WORKFLOW_PATH = "assets/system/workflow/default.yaml"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _project_root() -> Path:
+    env_root = os.environ.get("EASYAI_PROJECT_ROOT")
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    return PROJECT_ROOT
+
+
+def resolve_workflow_path(workflow_path: str | None = None) -> str:
+    selected = (workflow_path or "").strip()
+    if not selected:
+        default_path = _project_root() / DEFAULT_WORKFLOW_PATH
+        if default_path.is_file():
+            return default_path.as_posix()
+        selected = DEFAULT_WORKFLOW_PATH
+
+    p = Path(selected).expanduser()
+    if p.is_absolute():
+        if not p.is_file():
+            raise FileNotFoundError(f"Workflow file not found: {p}")
+        return p.as_posix()
+
+    cwd_path = p.resolve()
+    if cwd_path.is_file():
+        return cwd_path.as_posix()
+
+    project_path = (_project_root() / p).resolve()
+    if project_path.is_file():
+        return project_path.as_posix()
+
+    raise FileNotFoundError(f"Workflow file not found: {selected}")
 
 
 @dataclass
@@ -59,9 +94,7 @@ def build_runtime_workflow(
     """Build the host runtime DAG and resolve its named exports."""
 
     dag = Dag(queue_factory=queue_factory)
-    selected_workflow = (workflow_path or "").strip()
-
-    selected_workflow = selected_workflow or DEFAULT_WORKFLOW_PATH
+    selected_workflow = resolve_workflow_path(workflow_path)
     dag.load_yaml(selected_workflow)
 
     dag.build()

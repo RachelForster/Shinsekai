@@ -24,9 +24,9 @@ exports:
     port: llm_output
     direction: input
   chat.audio_output:
-    node: ui_worker
+    node: tts_worker
     port: tts_output
-    direction: input
+    direction: output
   chat.ui_worker:
     node: ui_worker
     direction: node

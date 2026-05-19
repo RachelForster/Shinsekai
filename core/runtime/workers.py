@@ -1,6 +1,7 @@
 import re
 import traceback
 from pathlib import Path
+import threading
 from typing import Optional
 
 from i18n import tr
@@ -8,14 +9,36 @@ from sdk.logging.timing import tracker
 
 from queue import Queue
 
-from PySide6.QtCore import QThread
+try:
+    from PySide6.QtCore import QThread
+except ImportError:
+    class QThread:
+        """Small QThread-compatible fallback for non-Qt headless workflows."""
+
+        def __init__(self, parent=None) -> None:
+            self._thread: threading.Thread | None = None
+
+        def start(self) -> None:
+            if self.isRunning():
+                return
+            self._thread = threading.Thread(target=self.run, daemon=True)
+            self._thread.start()
+
+        def isRunning(self) -> bool:
+            return self._thread is not None and self._thread.is_alive()
+
+        def wait(self, timeout: int | None = None) -> bool:
+            if self._thread is None:
+                return True
+            timeout_seconds = None if timeout is None else timeout / 1000
+            self._thread.join(timeout_seconds)
+            return not self._thread.is_alive()
 
 from sdk.graph import DagNode, Port
 
 # 假设以下依赖文件已在项目路径中
 from llm.llm_manager import STREAM_REASONING_DELTA_KEY
 from llm.tools.tool_manager import ToolManager
-import threading
 import pygame
 import sys
 current_script = Path(__file__).resolve()
@@ -108,9 +131,12 @@ class LLMWorker(QThreadDagNode):
 
     def run(self):
         self._init_app()
-        while self.running:
+        while True:
+            message: UserInputMessage | None = None
+            got_message = False
             try:
-                message: UserInputMessage = self.user_input_queue.get()
+                message = self.user_input_queue.get()
+                got_message = True
                 if message is None:
                     break
 
@@ -166,8 +192,6 @@ class LLMWorker(QThreadDagNode):
                     _warn = tr("desktop.llm_parse_partial", n=parser.parse_failures)
                     print(f"LLMWorker: {_warn}")
 
-                self.user_input_queue.task_done()
-
             except Exception as e:
                 print(f"LLMWorker: 任务处理失败: {e}")
                 traceback.print_exc()
@@ -180,7 +204,9 @@ class LLMWorker(QThreadDagNode):
                     ))
                 except Exception:
                     pass
-                self.user_input_queue.task_done()
+            finally:
+                if got_message:
+                    self.user_input_queue.task_done()
 
     def stop(self):
         self.running = False
@@ -234,10 +260,12 @@ class TTSWorker(QThreadDagNode):
 
     def run(self):
         self._init_app()
-        while self.running:
+        while True:
             item: Optional[LLMDialogMessage] = None
+            got_item = False
             try:
                 item = self.tts_queue.get()
+                got_item = True
                 if item is None:
                     break
                 with tracker.track("TTS dispatch"):
@@ -254,6 +282,9 @@ class TTSWorker(QThreadDagNode):
                         is_system_message=False,
                         effect=item.effect,
                     )
+            finally:
+                if got_item:
+                    self.tts_queue.task_done()
 
     def stop(self):
         self.running = False
@@ -322,10 +353,13 @@ class UIWorker(QThreadDagNode):
 
     def run(self):
         self._init_app()
-        while self.running:
+        while True:
+            output_data: Optional[TTSOutputMessage] = None
+            got_output = False
             try:
                 self.task_done_requested.clear()
-                output_data: TTSOutputMessage = self.audio_path_queue.get()
+                output_data = self.audio_path_queue.get()
+                got_output = True
                 if output_data is None:
                     break
                 self.ui_out_dispatcher.dispatch(output_data)
@@ -340,7 +374,9 @@ class UIWorker(QThreadDagNode):
                     _text = getattr(output_data, "text", "") or ""
                     wait = max(len(_text) / 10, 0.3) if _text else 0.3
                     self.task_done_requested.wait(timeout=wait)
-                self.audio_path_queue.task_done()
+            finally:
+                if got_output:
+                    self.audio_path_queue.task_done()
 
     def stop(self):
         self.running = False

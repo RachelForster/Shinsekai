@@ -2,10 +2,43 @@ import os
 from pathlib import Path
 import sys
 
+
+def _has_runtime_assets(path: Path) -> bool:
+    return (path / "assets").exists() or (path / "data").exists()
+
+
+def _resolve_frozen_project_root() -> Path:
+    exe_dir = Path(sys.executable).resolve().parent
+    candidates: list[Path] = []
+    env_root = os.environ.get("EASYAI_PROJECT_ROOT")
+    if env_root:
+        candidates.append(Path(env_root))
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass))
+    candidates.extend(
+        [
+            exe_dir,
+            exe_dir.parent,
+            exe_dir.parent / "Resources",
+            exe_dir.parent.parent,
+            exe_dir.parent.parent / "Resources",
+        ]
+    )
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if _has_runtime_assets(resolved):
+            return resolved
+    return exe_dir.parent if exe_dir.name.lower() == "main" else exe_dir
+
+
 # 打包后须在任何会触发 ConfigManager 的 import 之前设发行根 cwd（同 webui_qt）
 if getattr(sys, "frozen", False):
     try:
-        _rel = Path(sys.executable).resolve().parent.parent
+        _rel = _resolve_frozen_project_root()
         os.environ["EASYAI_PROJECT_ROOT"] = str(_rel)
         os.chdir(_rel)
     except OSError:
@@ -45,12 +78,8 @@ from core.sprite.chat_history import (
     save_bg,
     save_chat_history,
 )
-from core.sprite.chat_ui_service import (
-    install_chat_ui_context,
-    restore_session_ui,
-    wire_chat_ui_bridge,
-)
 from core.sprite.sprite_cli import parse_sprite_args
+start_bilibili_service = None
 try:
     from live.danmuku_handler import start_bilibili_service
 except ImportError as e:
@@ -231,6 +260,9 @@ def main():
     tts_queue = chat_handles.tts_queue
     _um = chat_handles.ui_worker
 
+    if not args.headless and user_input_queue is None:
+        raise RuntimeError("Desktop workflow must export 'chat.input' to accept user messages")
+
     if args.headless:
         from core.runtime.ui_update_manager import HeadlessUIUpdateManager
 
@@ -250,6 +282,9 @@ def main():
                 opencc=cc,
             )
         )
+        if args.room_id and user_input_queue is not None and start_bilibili_service is not None:
+            print(tr_i18n("main.print_bili_start", id=args.room_id))
+            start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
         workflow.start()
         print(f"Workflow started: {args.workflow or 'default'}")
         try:
@@ -269,6 +304,11 @@ def main():
 
     # Init UI and connect to runtime
     from core.runtime.ui_update_manager import UIUpdateManager, connect_to_desktop_window
+    from core.sprite.chat_ui_service import (
+        install_chat_ui_context,
+        restore_session_ui,
+        wire_chat_ui_bridge,
+    )
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
     from ui.chat_ui.chat_ui import ChatUIWindow
@@ -369,16 +409,12 @@ def main():
 
     if args.room_id:
         print(tr_i18n("main.print_bili_start", id=args.room_id))
-        if user_input_queue is not None:
-            try:
-                start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
-            except ImportError as e:
-                # print(tr_i18n("main.print_bili_import", e=str(e)))
-                pass
+        if user_input_queue is not None and start_bilibili_service is not None:
+            start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
 
     # 确保在程序退出时停止所有线程
     try:
-        appIcon = QIcon("./assets/system/picture/icon.png")
+        appIcon = QIcon("./assets/system/picture/Icon.png")
         app.setWindowIcon(appIcon)
     except Exception as e:
         print(tr_i18n("main.print_icon_fail", e=str(e)))

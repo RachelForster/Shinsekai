@@ -58,6 +58,7 @@ handler_registry.default_ui_output_handler_chain = lambda: SimpleNamespace(
 sys.modules.setdefault("core.handlers.handler_registry", handler_registry)
 
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
+from core.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
 from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
 from sdk.messages import LLMDialogMessage, TTSOutputMessage, UserInputMessage
 
@@ -137,6 +138,19 @@ def test_workers_keep_original_queue_attributes_and_bind_ports() -> None:
     assert ui_worker.inq(UIWorker.PORT_TTS_OUTPUT) is audio_path_queue
 
 
+def test_default_workflow_exports_tts_output_queue_for_host_ui_messages(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    workflow = build_runtime_workflow()
+    handles = get_chat_workflow_handles(workflow)
+    tts_worker = workflow.dag.get_node("tts_worker")
+    ui_worker = workflow.dag.get_node("ui_worker")
+
+    assert handles.audio_queue is tts_worker.outq(TTSWorker.PORT_TTS_OUTPUT)
+    assert handles.audio_queue is ui_worker.inq(UIWorker.PORT_TTS_OUTPUT)
+
+
 def test_llm_worker_run_uses_original_queues_and_marks_input_done(monkeypatch) -> None:
     user_input_queue = CountingQueue()
     tts_queue = CountingQueue()
@@ -160,7 +174,7 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(monkeypatch) -
     assert isinstance(output, LLMDialogMessage)
     assert output.name == "Alice"
     assert output.text == "Hi"
-    assert user_input_queue.task_done_calls == 1
+    assert user_input_queue.task_done_calls == 2
     runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
 
 
@@ -185,7 +199,24 @@ def test_tts_worker_exception_path_uses_original_put_data_fallback(monkeypatch) 
     assert output.text == "broken"
     assert output.asset_id == "2"
     assert output.effect == "shake"
-    assert tts_queue.task_done_calls == 1
+    assert tts_queue.task_done_calls == 2
+
+
+def test_tts_worker_marks_input_done_when_handler_suppresses_output(monkeypatch) -> None:
+    tts_queue = CountingQueue()
+    audio_path_queue = CountingQueue()
+    tts_queue.put(LLMDialogMessage(name="Alice", text="handled", asset_id="2", effect=""))
+    tts_queue.put(None)
+    _set_runtime(tts_queue=tts_queue, audio_path_queue=audio_path_queue)
+
+    worker = TTSWorker(tts_queue, audio_path_queue)
+    monkeypatch.setattr(worker, "_init_app", lambda: None)
+    worker.tts_message_dispatcher = SimpleNamespace(dispatch=MagicMock(return_value=None))
+
+    worker.run()
+
+    assert audio_path_queue.empty()
+    assert tts_queue.task_done_calls == 2
 
 
 def test_ui_worker_skip_speech_is_noop_when_queue_empty() -> None:
@@ -201,6 +232,30 @@ def test_ui_worker_skip_speech_is_noop_when_queue_empty() -> None:
     worker.dialog_channel.stop.assert_not_called()
     assert worker.current_audio_path == "current.wav"
     assert worker.task_done_requested.set_calls == 0
+
+
+def test_ui_worker_marks_audio_done_after_successful_dispatch(monkeypatch) -> None:
+    audio_path_queue = CountingQueue()
+    audio_path_queue.put(
+        TTSOutputMessage(
+            audio_path="",
+            name="Alice",
+            text="ok",
+            asset_id="-1",
+            effect="",
+        )
+    )
+    audio_path_queue.put(None)
+    _set_runtime(audio_path_queue=audio_path_queue)
+
+    worker = UIWorker(audio_path_queue)
+    monkeypatch.setattr(worker, "_init_app", lambda: None)
+    worker.ui_out_dispatcher = SimpleNamespace(dispatch=MagicMock(return_value=None))
+
+    worker.run()
+
+    worker.ui_out_dispatcher.dispatch.assert_called_once()
+    assert audio_path_queue.task_done_calls == 2
 
 
 def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(monkeypatch) -> None:
@@ -231,4 +286,4 @@ def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(monkeypatc
 
     ui_manager.post_notification.assert_called_once()
     assert fake_event.wait_calls == [1.0]
-    assert audio_path_queue.task_done_calls == 1
+    assert audio_path_queue.task_done_calls == 2

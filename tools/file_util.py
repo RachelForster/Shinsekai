@@ -3,7 +3,7 @@ import shutil
 import zipfile
 import yaml
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from config.character_config import CharacterConfig
 from config.schema import Background
 from config.config_manager import ConfigManager
@@ -21,6 +21,57 @@ CHARACTERS_CONFIG_PATH = CONFIG_DIR / 'characters.yaml'
 BACKGROUND_CONFIG_PATH = CONFIG_DIR / 'background.yaml'
 BACKGROUND_UPLOAD_DIR = BASE_DATA_PATH / 'backgrounds'
 BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
+
+
+def _safe_path_segment(value: object, field_name: str) -> str:
+    raw = "" if value is None else str(value).strip()
+    if not raw:
+        return ""
+    windows_path = PureWindowsPath(raw)
+    posix_path = PurePosixPath(raw)
+    if windows_path.is_absolute() or windows_path.drive or posix_path.is_absolute():
+        raise ValueError(f"{field_name} 不能是绝对路径: {raw}")
+    parts = raw.replace("\\", "/").split("/")
+    if len(parts) != 1 or any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"{field_name} 必须是单段安全目录名: {raw}")
+    return raw
+
+
+def _safe_archive_relative_path(value: object, field_name: str) -> Path:
+    raw = "" if value is None else str(value).strip()
+    if not raw:
+        raise ValueError(f"{field_name} 不能为空")
+    windows_path = PureWindowsPath(raw)
+    posix_path = PurePosixPath(raw.replace("\\", "/"))
+    if windows_path.is_absolute() or windows_path.drive or posix_path.is_absolute():
+        raise ValueError(f"{field_name} 不能是绝对路径: {raw}")
+    if any(part in ("", ".", "..") for part in posix_path.parts):
+        raise ValueError(f"{field_name} 不能包含路径穿越: {raw}")
+    return Path(*posix_path.parts)
+
+
+def _safe_extract_zip(zf: zipfile.ZipFile, target_dir: Path) -> None:
+    root = target_dir.resolve()
+    for member in zf.infolist():
+        name = member.filename
+        _safe_archive_relative_path(name, "zip member")
+        dest = (target_dir / name).resolve()
+        if dest != root and root not in dest.parents:
+            raise ValueError(f"压缩包成员路径越界: {name}")
+    zf.extractall(target_dir)
+
+
+def _open_folder_best_effort(folder_path: Path) -> None:
+    try:
+        system = platform.system()
+        if system == 'Windows':
+            os.startfile(folder_path)
+        elif system == 'Darwin':  # macOS
+            subprocess.Popen(['open', str(folder_path)])
+        elif system == 'Linux':
+            subprocess.Popen(['xdg-open', str(folder_path)])
+    except Exception as e:
+        print(f"Failed to open export folder {folder_path}: {e}")
 
 def export_character(character_configs: list[CharacterConfig], output_path: str):
     """
@@ -117,16 +168,7 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
         
         folder_path = Path(output_path).parent.resolve()
         
-        try:
-            system = platform.system()
-            if system == 'Windows':
-                os.startfile(folder_path)
-            elif system == 'Darwin':  # macOS
-                subprocess.Popen(['open', folder_path])
-            elif system == 'Linux':
-                subprocess.Popen(['xdg-open', folder_path])
-        except Exception as e:
-            print(f"Failed to open export folder {folder_path}: {e}")
+        _open_folder_best_effort(folder_path)
 
         print(f"人物成功导出到: {output_path}")
 
@@ -200,7 +242,7 @@ def import_character(input_path: str) -> list[CharacterConfig]:
     try:
         # 解压 .cha 文件到临时目录
         with zipfile.ZipFile(input_path, 'r') as zf:
-            zf.extractall(temp_dir)
+            _safe_extract_zip(zf, temp_dir)
 
         # 读取YAML配置文件
         with open(temp_dir / 'character.yaml', 'r', encoding='utf-8') as f:
@@ -226,7 +268,11 @@ def import_character(input_path: str) -> list[CharacterConfig]:
 
         for char_data in yaml_data:
             original_name = char_data.get('name', '')
-            original_sprite_prefix = char_data.get('sprite_prefix', '')
+            original_sprite_prefix = _safe_path_segment(
+                char_data.get('sprite_prefix', ''),
+                'sprite_prefix',
+            )
+            char_data['sprite_prefix'] = original_sprite_prefix
             
             # 解决名称冲突
             new_name = _resolve_name_conflict(original_name, imported_names)
@@ -290,10 +336,11 @@ def import_character(input_path: str) -> list[CharacterConfig]:
             
             for key, path in model_paths.items():
                 if path:  # 确保路径不为空
-                    source_model_path = temp_dir / path
+                    safe_model_path = _safe_archive_relative_path(path, key)
+                    source_model_path = temp_dir / safe_model_path
                     dest_model_dir = MODEL_DIR / new_sprite_prefix
                     dest_model_dir.mkdir(parents=True, exist_ok=True)
-                    dest_model_path = dest_model_dir / Path(path).name
+                    dest_model_path = dest_model_dir / safe_model_path.name
                     if source_model_path.exists():  # 确保源文件存在
                         shutil.copy2(source_model_path, dest_model_path)
                         char_data[key] = dest_model_path.as_posix()  # 更新为相对路径
@@ -382,14 +429,7 @@ def export_background(background_configs: List[Background], output_path: str = '
         
         folder_path = Path(output_path).parent.resolve()
         
-        # 尝试打开导出目录
-        system = platform.system()
-        if system == 'Windows':
-            subprocess.Popen(['explorer', str(folder_path)])
-        elif system == 'Darwin':  # macOS
-            subprocess.Popen(['open', str(folder_path)])
-        elif system == 'Linux':
-            subprocess.Popen(['xdg-open', str(folder_path)])
+        _open_folder_best_effort(folder_path)
 
         print(f"背景包成功导出到: {output_path}")
 
@@ -420,7 +460,7 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
     try:
         # 解压 .bg 文件到临时目录
         with zipfile.ZipFile(input_path, 'r') as zf:
-            zf.extractall(temp_dir)
+            _safe_extract_zip(zf, temp_dir)
 
         # 读取YAML配置文件
         with open(temp_dir / 'background.yaml', 'r', encoding='utf-8') as f:
@@ -439,7 +479,11 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
 
         for bg_data in yaml_data:
             original_name = bg_data.get('name', '')
-            original_sprite_prefix = bg_data.get('sprite_prefix', '')
+            original_sprite_prefix = _safe_path_segment(
+                bg_data.get('sprite_prefix', ''),
+                'sprite_prefix',
+            )
+            bg_data['sprite_prefix'] = original_sprite_prefix
             
             # 解决名称冲突
             new_name = _resolve_name_conflict(original_name, imported_names)

@@ -94,6 +94,7 @@ exports:
 - `nodes` instantiate classes by dotted import path. Any keys other than `name` and `type` are passed to the node constructor.
 - `edges` connect an output port to an input port with a shared queue.
 - `exports` expose queues or node handles to the host.
+- Desktop chat workflows should export `chat.input` from the LLM entry input queue and `chat.audio_output` from the queue where `TTSOutputMessage` enters the display pipeline. If you insert nodes after TTS, export `chat.audio_output` from the producer side (`tts_worker` output), not the final `ui_worker` input, so host-generated UI messages still traverse your intermediate nodes.
 
 `DagNode` is passive by default. Its sync lifecycle hooks (`start` / `stop`) and async lifecycle hooks (`astart` / `astop`) do nothing unless your subclass overrides them. Queue-driven nodes should own their execution loop in lifecycle hooks. Passive helper nodes should expose normal Python methods and be called by another node or by the host.
 

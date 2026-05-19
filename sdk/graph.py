@@ -8,6 +8,7 @@ unless a subclass chooses to own execution.
 from __future__ import annotations
 
 import importlib
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -219,26 +220,37 @@ class DagBuilder:
 
     @staticmethod
     def _make_node(node_cls: type, name: str, params: dict[str, Any]) -> DagNode:
-        attempts = (
-            lambda: node_cls(name=name, **params),
-            lambda: node_cls(name, **params),
-            lambda: node_cls(**params),
-            lambda: node_cls(name=name),
-            lambda: node_cls(name),
-            lambda: node_cls(),
-        )
-        last_error: TypeError | None = None
-        for attempt in attempts:
+        def _accepts(args: tuple[Any, ...], kwargs: dict[str, Any]) -> bool:
             try:
-                node = attempt()
-            except TypeError as exc:
-                last_error = exc
+                inspect.signature(node_cls).bind(*args, **kwargs)
+            except (TypeError, ValueError):
+                return False
+            return True
+
+        if params:
+            candidates = (
+                ((), {"name": name, **params}),
+                ((name,), params),
+                ((), params),
+            )
+        else:
+            candidates = (
+                ((), {"name": name}),
+                ((name,), {}),
+                ((), {}),
+            )
+
+        for args, kwargs in candidates:
+            if not _accepts(args, kwargs):
                 continue
+            node = node_cls(*args, **kwargs)
             if isinstance(node, DagNode):
                 return node
             raise TypeError(f"{node_cls!r} did not create a DagNode")
-        assert last_error is not None
-        raise last_error
+        raise TypeError(
+            f"{node_cls!r} cannot be constructed from workflow node "
+            f"{name!r} with params {sorted(params)}"
+        )
 
     def to_yaml(self, path: str | None = None) -> str:
         import yaml
@@ -256,7 +268,11 @@ class DagBuilder:
             except Exception as e:
                 raise ValueError(f"Cannot import {dotted}: {e}") from e
             node_name = nd["name"]
-            params = {k: v for k, v in nd.items() if k not in {"name", "type"}}
+            params = {
+                k: v
+                for k, v in nd.items()
+                if k not in {"name", "type", "inputs", "outputs"}
+            }
             try:
                 node = self._make_node(node_cls, node_name, params)
             except Exception as e:
