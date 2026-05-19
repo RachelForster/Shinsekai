@@ -488,6 +488,115 @@ exports:
         with pytest.raises(TypeError, match="internal bug: boom"):
             DagBuilder._make_node(BuggyNode, "bomb", {"fail_on": "boom"})
 
+class TestTopologyValidation:
+    def test_cycle_detection_two_nodes(self):
+        """x -> y -> x cycle is rejected at build time."""
+        a = EchoNode("x")
+        b = EchoNode("y")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(a).add_node(b)
+        builder.connect("x", "out", "y", "in")
+        builder.connect("y", "out", "x", "in")
+
+        with pytest.raises(ValueError, match="Cycle detected"):
+            builder.build()
+
+    def test_cycle_detection_three_nodes(self):
+        """A -> B -> C -> A cycle is rejected."""
+        a = EchoNode("A")
+        b = EchoNode("B")
+        c = EchoNode("C")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(a).add_node(b).add_node(c)
+        builder.connect("A", "out", "B", "in")
+        builder.connect("B", "out", "C", "in")
+        builder.connect("C", "out", "A", "in")
+
+        with pytest.raises(ValueError, match="Cycle detected"):
+            builder.build()
+
+    def test_self_loop_rejected(self):
+        """Node connecting to itself is a cycle."""
+        a = EchoNode("x")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(a)
+        builder.connect("x", "out", "x", "in")
+
+        with pytest.raises(ValueError, match="Cycle detected"):
+            builder.build()
+
+    def test_fan_out_rejected(self):
+        """One output to multiple downstream inputs is rejected."""
+        a = EchoNode("src")
+        b = SinkNode("dst1")
+        c = SinkNode("dst2")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(a).add_node(b).add_node(c)
+        builder.connect("src", "out", "dst1", "in")
+        builder.connect("src", "out", "dst2", "in")
+
+        with pytest.raises(ValueError, match="Fan-out not supported"):
+            builder.build()
+
+    def test_fan_in_rejected(self):
+        """Multiple upstream outputs to one input is rejected."""
+        a = EchoNode("src1")
+        b = EchoNode("src2")
+        c = SinkNode("dst")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(a).add_node(b).add_node(c)
+        builder.connect("src1", "out", "dst", "in")
+        builder.connect("src2", "out", "dst", "in")
+
+        with pytest.raises(ValueError, match="Fan-in not supported"):
+            builder.build()
+
+    def test_valid_chain_still_passes(self):
+        """A clean linear chain still builds successfully."""
+        a = EchoNode("A")
+        b = EchoNode("B")
+        c = SinkNode("C")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(a).add_node(b).add_node(c)
+        builder.connect("A", "out", "B", "in")
+        builder.connect("B", "out", "C", "in")
+        builder.build()  # must not raise
+
+    def test_diamond_topology_rejected(self):
+        """A -> B, A -> C is fan-out and should be rejected."""
+        a = EchoNode("A")
+        b = EchoNode("B")
+        c = SinkNode("C")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(a).add_node(b).add_node(c)
+        builder.connect("A", "out", "B", "in")
+        builder.connect("A", "out", "C", "in")
+
+        with pytest.raises(ValueError, match="Fan-out not supported"):
+            builder.build()
+
+    def test_merge_topology_rejected(self):
+        """A -> C, B -> C is fan-in and should be rejected."""
+        a = EchoNode("A")
+        b = EchoNode("B")
+        c = SinkNode("C")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(a).add_node(b).add_node(c)
+        builder.connect("A", "out", "C", "in")
+        builder.connect("B", "out", "C", "in")
+
+        with pytest.raises(ValueError, match="Fan-in not supported"):
+            builder.build()
+
+
 class TestRuntimeWorkflow:
     def test_build_runtime_workflow_uses_only_selected_yaml(self, tmp_path):
         first = tmp_path / "first.yaml"

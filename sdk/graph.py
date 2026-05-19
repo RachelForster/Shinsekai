@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+from collections import defaultdict, deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -170,10 +171,73 @@ class DagBuilder:
         for node in self._nodes.values():
             node.configure(self._nodes)
 
+    def _validate_topology(self) -> None:
+        """Reject cycles, fan-out, and fan-in before binding queues."""
+
+        # --- cycle detection (DFS) ---
+        adjacency: dict[str, list[str]] = defaultdict(list)
+        for e in self._edges:
+            adjacency[e.src_node].append(e.dst_node)
+
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color: dict[str, int] = {name: WHITE for name in self._nodes}
+
+        def _dfs(node: str, path: list[str]) -> None:
+            color[node] = GRAY
+            path.append(node)
+            for neighbor in adjacency.get(node, []):
+                if color[neighbor] == GRAY:
+                    cycle = path[path.index(neighbor):] + [neighbor]
+                    raise ValueError(
+                        f"Cycle detected in workflow DAG: "
+                        + " → ".join(cycle)
+                    )
+                if color[neighbor] == WHITE:
+                    _dfs(neighbor, path)
+            path.pop()
+            color[node] = BLACK
+
+        for node_name in self._nodes:
+            if color[node_name] == WHITE:
+                _dfs(node_name, [])
+
+        # --- fan-out check: one output port → at most one downstream ---
+        out_fan: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for e in self._edges:
+            key = (e.src_node, e.src_port)
+            out_fan[key].append(f"{e.dst_node}.{e.dst_port}")
+        for (src, port), targets in out_fan.items():
+            if len(targets) > 1:
+                raise ValueError(
+                    f"Fan-out not supported: output {src}.{port} "
+                    f"is connected to multiple downstream ports: {', '.join(targets)}"
+                )
+
+        # --- fan-in check: one input port ← at most one upstream ---
+        in_fan: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for e in self._edges:
+            key = (e.dst_node, e.dst_port)
+            in_fan[key].append(f"{e.src_node}.{e.src_port}")
+        for (dst, port), sources in in_fan.items():
+            if len(sources) > 1:
+                raise ValueError(
+                    f"Fan-in not supported: input {dst}.{port} "
+                    f"is fed by multiple upstream ports: {', '.join(sources)}"
+                )
+
+    def build(self) -> list[DagNode]:
+        if self._queue_factory is None:
+            raise RuntimeError("queue_factory not set")
+
+        for node in self._nodes.values():
+            node.configure(self._nodes)
+
         pending_edges = self._pending_edges
         self._pending_edges = []
         for spec in pending_edges:
             self.connect(spec.src, spec.src_port, spec.dst, spec.dst_port)
+
+        self._validate_topology()
 
         queues: dict[tuple[str, str], Any] = {}
         for e in self._edges:
