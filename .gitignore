@@ -14,6 +14,8 @@ runtime/
 /dist
 /logs
 /temp_export_*
+/.pytest_cache
+/.tmp_pytest_*
 /ui/settings_ui/__pycache__
 /ui/settings_ui/.gitignore
 /ui/settings_ui/images

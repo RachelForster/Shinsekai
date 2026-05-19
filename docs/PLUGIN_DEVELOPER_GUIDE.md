@@ -31,6 +31,8 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_settings_ui`          | Extra Settings sidebar page                                |
 | `register_tools_tab`            | Extra tab under **Settings → Tools**                       |
 | `register_chat_ui_widget`       | Chat window widget + placement hint                        |
+| `register_dag_yaml`             | Workflow YAML path (reserved — not yet wired into UX)      |
+| `register_dag_node`             | DAG node candidates for plugin tooling                     |
 
 
 **Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
@@ -57,6 +59,84 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 
 
 Prefer these over raw Qt signals on internal windows.
+
+### Runtime workflows
+
+Runtime workflows are declared as YAML and loaded through `core.runtime.workflow`.
+The host runs exactly one workflow at a time:
+
+- If the user passes `--workflow path/to/workflow.yaml`, only that YAML is loaded.
+- If no workflow is selected, the host loads `assets/system/workflow/default.yaml`.
+  In headless mode (``--headless``) the default is `assets/system/workflow/headless.yaml`,
+  which omits UIWorker and avoids pygame/Qt window dependencies.
+- Plugin workflow YAML files are selectable candidates; they are not merged into the default workflow automatically.
+  (Workflow selection UX is not yet wired — ``register_dag_yaml`` paths are reserved for future use.)
+
+A workflow YAML has three top-level sections:
+
+```yaml
+nodes:
+  - name: rule
+    type: plugins.my_plugin.workflow.RuleNode
+    params:
+      accepted: "yes"
+  - name: router
+    type: plugins.my_plugin.workflow.RouterNode
+    params:
+      rule_node: rule
+edges:
+  - src: router
+    src_port: accepted
+    dst: sink
+    dst_port: in
+exports:
+  chat.input:
+    node: router
+    port: in
+    direction: input
+```
+
+- `nodes` instantiate classes by dotted import path. The ``params`` dict under each node
+  maps directly to the node class constructor kwargs.
+- `edges` connect an output port to an input port with a shared queue.
+- `exports` expose queues or node handles to the host.
+
+`DagNode` is passive by default. Its sync lifecycle hooks (`start` / `stop`) and async lifecycle hooks (`astart` / `astop`) do nothing unless your subclass overrides them. Queue-driven nodes should own their execution loop in lifecycle hooks. Passive helper nodes should expose normal Python methods and be called by another node or by the host.
+
+To reference another node from YAML, pass its name as a constructor parameter and resolve it in `configure(nodes)`:
+
+```python
+from sdk.graph import DagNode, Port
+
+
+class RuleNode(DagNode):
+    def inputs(self):
+        return {}
+
+    def outputs(self):
+        return {}
+
+    def accepts(self, value: str) -> bool:
+        return value == "yes"
+
+
+class RouterNode(DagNode):
+    def __init__(self, name: str, rule_node: str):
+        super().__init__(name)
+        self.rule_node_name = rule_node
+        self.rule = None
+
+    def inputs(self):
+        return {"in": Port("in")}
+
+    def outputs(self):
+        return {"accepted": Port("accepted"), "rejected": Port("rejected")}
+
+    def configure(self, nodes):
+        self.rule = nodes[self.rule_node_name]
+```
+
+Important boundary: `edges` only wire queues. A passive node is not executed just because it appears in YAML. Something must call its methods, or it must implement its own lifecycle.
 
 ### Adapter classes: schemas and “extra” kwargs
 

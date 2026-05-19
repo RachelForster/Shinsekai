@@ -65,6 +65,15 @@ def _make_runtime_for_workers(mock_llm_adapter=None, **overrides):
     return rt
 
 
+def _wait_for_unfinished_tasks(q: Queue, expected: int = 0, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if q.unfinished_tasks == expected:
+            return True
+        time.sleep(0.01)
+    return q.unfinished_tasks == expected
+
+
 # ---------------------------------------------------------------------------
 # LLMWorker
 # ---------------------------------------------------------------------------
@@ -239,9 +248,78 @@ class TestTTSWorker:
         assert isinstance(out, TTSOutputMessage)
         assert out.name == "NARR"
         assert out.is_system_message is True
+        assert _wait_for_unfinished_tasks(rt.tts_queue)
 
         worker.stop()
         worker.wait(3000)
+
+    def test_worker_marks_tts_task_done_on_dispatch_error(self, qtbot):
+        mock_llm = MockLLMAdapter(responses=[""])
+        rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
+        set_app_runtime(rt)
+
+        worker = TTSWorker(
+            input_queue=rt.tts_queue,
+            output_queue=rt.audio_path_queue,
+        )
+        worker.tts_message_dispatcher = MagicMock()
+        worker.tts_message_dispatcher.dispatch.side_effect = RuntimeError("boom")
+        worker.start()
+
+        rt.tts_queue.put(LLMDialogMessage(name="TestChar", text="Failure path", asset_id="-1"))
+
+        assert _wait_for_unfinished_tasks(rt.tts_queue)
+        worker.stop()
+        worker.wait(3000)
+
+
+class TestUIWorker:
+    def test_worker_marks_audio_task_done_after_dispatch(self, qtbot):
+        mock_llm = MockLLMAdapter(responses=[""])
+        rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
+        set_app_runtime(rt)
+
+        worker = UIWorker(rt.audio_path_queue)
+        worker.ui_out_dispatcher = MagicMock()
+
+        out = TTSOutputMessage(
+            audio_path="",
+            name="NARR",
+            text="Displayed",
+            asset_id="-1",
+            is_system_message=True,
+        )
+        rt.audio_path_queue.put(out)
+        rt.audio_path_queue.put(None)
+
+        worker.run()
+
+        worker.ui_out_dispatcher.dispatch.assert_called_once_with(out)
+        assert rt.audio_path_queue.unfinished_tasks == 0
+
+    def test_worker_marks_audio_task_done_on_dispatch_error(self, qtbot):
+        mock_llm = MockLLMAdapter(responses=[""])
+        rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
+        set_app_runtime(rt)
+
+        worker = UIWorker(rt.audio_path_queue)
+        worker.ui_out_dispatcher = MagicMock()
+        worker.ui_out_dispatcher.dispatch.side_effect = RuntimeError("boom")
+
+        out = TTSOutputMessage(
+            audio_path="",
+            name="NARR",
+            text="",
+            asset_id="-1",
+            is_system_message=True,
+        )
+        rt.audio_path_queue.put(out)
+        rt.audio_path_queue.put(None)
+
+        worker.run()
+
+        worker.ui_out_dispatcher.dispatch.assert_called_once_with(out)
+        assert rt.audio_path_queue.unfinished_tasks == 0
 
 
 # ---------------------------------------------------------------------------

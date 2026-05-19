@@ -13,7 +13,23 @@ from typing import Any, Dict, List, MutableSequence, Optional
 import cv2
 import numpy as np
 import pygame
-from PySide6.QtCore import QObject, Signal
+
+try:
+    from PySide6.QtCore import QObject, Signal
+except ImportError:
+    class QObject:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+    class _NoopSignal:
+        def connect(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def emit(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+    def Signal(*args: Any, **kwargs: Any) -> _NoopSignal:
+        return _NoopSignal()
 
 from config.config_manager import ConfigManager
 
@@ -29,6 +45,80 @@ _config_manager = ConfigManager()
 
 def get_character_by_name(name: str):
     return _config_manager.get_character_by_name(name)
+
+
+def _format_dialog_html(name: str, speech: str, color: str, is_system: bool) -> str:
+    separator = "\uff1a"
+    if is_system:
+        return (
+            f"<p style='line-height: 135%; letter-spacing: 2px; color:{color};'>"
+            f"<b>{name}</b>{separator}{speech}</p>"
+        )
+    return (
+        f"<p style='line-height: 135%; letter-spacing: 2px;'>"
+        f"<b style='color:{color};'>{name}</b>{separator}{speech}</p>"
+    )
+
+
+class HeadlessUIUpdateManager:
+    """Console/no-op UI facade for workflows that run without a desktop window."""
+
+    def __init__(self, chat_history: Optional[MutableSequence[str]] = None) -> None:
+        self.chat_history: MutableSequence[str] = (
+            chat_history if chat_history is not None else []
+        )
+        self.current_bgm_path: Optional[str] = None
+        self.bg_group: List = []
+
+    def post_notification(self, text: str) -> None:
+        if text:
+            print(text)
+
+    def post_busy_bar(self, text: str, timeout: float = 0.0) -> None:
+        if text:
+            print(text)
+
+    def hide_busy_bar(self) -> None:
+        pass
+
+    def post_options(self, option_list: List[str]) -> None:
+        if option_list:
+            print(" / ".join(str(x) for x in option_list))
+
+    def post_numeric_value(self, text: str) -> None:
+        if text:
+            print(text)
+
+    def post_background(self, path: str) -> None:
+        if path:
+            print(f"background: {path}")
+
+    def post_cg(self, path: str) -> None:
+        if path:
+            print(f"cg: {path}")
+
+    def post_llm_reply_finished(self) -> None:
+        pass
+
+    def post_pause_asr(self) -> None:
+        pass
+
+    def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
+        formatted = _format_dialog_html(name, speech, color, is_system)
+        if str(speech or "").strip() or str(name or "").strip():
+            self.chat_history.append(formatted)
+            print(f"{name}: {speech}" if name else str(speech or ""))
+
+    def update_sprite(self, character_name: str, sprite_id: int) -> None:
+        pass
+
+    def switch_bgm(self, new_bgm_path: str) -> None:
+        self.current_bgm_path = new_bgm_path or None
+        if new_bgm_path:
+            print(f"bgm: {new_bgm_path}")
+
+    def resolve_effect(self, *args: Any, **kwargs: Any) -> None:
+        pass
 
 
 class UIUpdateManager(QObject):
