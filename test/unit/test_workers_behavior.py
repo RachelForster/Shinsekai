@@ -1,61 +1,11 @@
 from __future__ import annotations
 
-import sys
-import types
 from queue import Queue
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
-
-class _FakeQThread:
-    def __init__(self, parent=None) -> None:
-        self.parent = parent
-        self._is_running = False
-
-    def start(self) -> None:
-        self._is_running = True
-
-    def isRunning(self) -> bool:
-        return self._is_running
-
-    def wait(self, timeout: int | None = None) -> bool:
-        self._is_running = False
-        return True
-
-
-if "PySide6.QtCore" not in sys.modules:
-    pyside6 = types.ModuleType("PySide6")
-    qtcore = types.ModuleType("PySide6.QtCore")
-    qtcore.QThread = _FakeQThread
-    pyside6.QtCore = qtcore
-    sys.modules["PySide6"] = pyside6
-    sys.modules["PySide6.QtCore"] = qtcore
-
-if "pygame" not in sys.modules:
-    pygame = types.ModuleType("pygame")
-    pygame.mixer = SimpleNamespace()
-    sys.modules["pygame"] = pygame
-
-llm_manager = types.ModuleType("llm.llm_manager")
-llm_manager.STREAM_REASONING_DELTA_KEY = "reasoning_delta"
-sys.modules.setdefault("llm.llm_manager", llm_manager)
-
-tool_manager = types.ModuleType("llm.tools.tool_manager")
-tool_manager.ToolManager = MagicMock
-sys.modules.setdefault("llm.tools.tool_manager", tool_manager)
-
-handler_registry = types.ModuleType("core.handlers.handler_registry")
-handler_registry.default_tts_handler_chain = lambda: SimpleNamespace(
-    init_handlers=lambda: None,
-    dispatch=lambda item: None,
-)
-handler_registry.default_ui_output_handler_chain = lambda: SimpleNamespace(
-    init_handlers=lambda: None,
-    dispatch=lambda item: None,
-)
-sys.modules.setdefault("core.handlers.handler_registry", handler_registry)
 
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
 from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
@@ -160,7 +110,8 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(monkeypatch) -
     assert isinstance(output, LLMDialogMessage)
     assert output.name == "Alice"
     assert output.text == "Hi"
-    assert user_input_queue.task_done_calls == 1
+    assert user_input_queue.task_done_calls == 2
+    assert user_input_queue.unfinished_tasks == 0
     runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
 
 
@@ -185,7 +136,8 @@ def test_tts_worker_exception_path_uses_original_put_data_fallback(monkeypatch) 
     assert output.text == "broken"
     assert output.asset_id == "2"
     assert output.effect == "shake"
-    assert tts_queue.task_done_calls == 1
+    assert tts_queue.task_done_calls == 2
+    assert tts_queue.unfinished_tasks == 0
 
 
 def test_ui_worker_skip_speech_is_noop_when_queue_empty() -> None:
@@ -231,4 +183,5 @@ def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(monkeypatc
 
     ui_manager.post_notification.assert_called_once()
     assert fake_event.wait_calls == [1.0]
-    assert audio_path_queue.task_done_calls == 1
+    assert audio_path_queue.task_done_calls == 2
+    assert audio_path_queue.unfinished_tasks == 0
