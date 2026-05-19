@@ -372,12 +372,12 @@ class ConfigManager:
 
         slug = (adapter_name or "").strip().lower()
         cls = TTSAdapterFactory._adapters.get(slug)
-        out = dict(base_kwargs)
         if cls is None:
-            return out
+            return dict(base_kwargs)
+        merged = dict(base_kwargs)
         extra = self.get_adapter_extra_config("tts", slug)
-        out.update(filter_kwargs_for_ctor(cls, extra))
-        return out
+        merged.update(extra)
+        return filter_kwargs_for_ctor(cls, merged)
 
     def merged_t2i_factory_kwargs(self, adapter_name: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         from config.adapter_extra_kwargs import filter_kwargs_for_ctor

@@ -52,6 +52,16 @@ def get_plugin_manager() -> PluginManager | None:
     return _plugin_manager
 
 
+def shutdown_plugins() -> None:
+    mgr = _plugin_manager
+    if mgr is None:
+        return
+    try:
+        mgr.shutdown_all()
+    except Exception:
+        logger.exception("plugin shutdown failed")
+
+
 def get_plugin_tts_handlers() -> List["MessageHandler"]:
     return list(_plugin_tts_handlers)
 

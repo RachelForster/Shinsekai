@@ -1,6 +1,7 @@
 """Unit tests for TTS message handlers — can_handle, dispatch routing."""
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from sdk.messages import LLMDialogMessage
@@ -11,6 +12,7 @@ from core.handlers.tts_message_handler import (
     CgTtsHandler,
     get_tts_handlers,
 )
+from i18n import init_i18n
 
 
 class TestDefaultCharacterTtsHandler:
@@ -19,6 +21,55 @@ class TestDefaultCharacterTtsHandler:
         handler = DefaultCharacterTtsHandler()
         msg = LLMDialogMessage(name="TestChar", text="Hello", asset_id="0")
         assert handler.can_handle(msg) is True
+
+    def test_disabled_tts_negative_asset_id_does_not_use_negative_sprite_index(
+        self, mock_app_runtime, monkeypatch
+    ):
+        character = SimpleNamespace(
+            sprites=[
+                {"voice_path": "first.wav"},
+                {"voice_path": "second.wav"},
+            ],
+            refer_audio_path="ref.wav",
+            prompt_text="prompt",
+            prompt_lang="ja",
+            sovits_model_path="sovits.pth",
+            gpt_model_path="gpt.ckpt",
+            speech_speed=1.0,
+        )
+        monkeypatch.setattr(
+            "core.handlers.tts_message_handler.get_character_by_name",
+            lambda name: character,
+        )
+        handler = DefaultCharacterTtsHandler()
+
+        handler.handle(LLMDialogMessage(name="TestChar", text="Hi", asset_id="-1"))
+
+        out = mock_app_runtime.audio_path_queue.get_nowait()
+        assert out.audio_path == ""
+        assert out.text == "Hi"
+
+    def test_disabled_tts_invalid_asset_id_still_emits_text(self, mock_app_runtime, monkeypatch):
+        character = SimpleNamespace(
+            sprites=[{"voice_path": "voice.wav"}],
+            refer_audio_path="ref.wav",
+            prompt_text="prompt",
+            prompt_lang="ja",
+            sovits_model_path="sovits.pth",
+            gpt_model_path="gpt.ckpt",
+            speech_speed=1.0,
+        )
+        monkeypatch.setattr(
+            "core.handlers.tts_message_handler.get_character_by_name",
+            lambda name: character,
+        )
+        handler = DefaultCharacterTtsHandler()
+
+        handler.handle(LLMDialogMessage(name="TestChar", text="Hi", asset_id="abc"))
+
+        out = mock_app_runtime.audio_path_queue.get_nowait()
+        assert out.audio_path == ""
+        assert out.text == "Hi"
 
 
 class TestSpecializedHandlers:
@@ -31,6 +82,31 @@ class TestSpecializedHandlers:
         handler = CgTtsHandler()
         msg = LLMDialogMessage(name="CG", text="...", asset_id="0")
         assert handler.can_handle(msg) is True
+
+    def test_cg_handler_emits_visible_message_when_t2i_disabled(self, mock_app_runtime):
+        init_i18n("zh_CN")
+        handler = CgTtsHandler()
+        msg = LLMDialogMessage(name="CG", text="draw a tree", asset_id="-1")
+
+        handler.handle(msg)
+
+        out = mock_app_runtime.audio_path_queue.get_nowait()
+        assert out.is_system_message is True
+        assert out.name == "CG"
+        assert "draw a tree" in out.text
+
+    def test_cg_handler_emits_visible_message_when_t2i_fails(self, mock_app_runtime):
+        init_i18n("zh_CN")
+        mock_app_runtime.t2i_manager = SimpleNamespace(
+            t2i=MagicMock(side_effect=RuntimeError("boom"))
+        )
+        handler = CgTtsHandler()
+
+        handler.handle(LLMDialogMessage(name="CG", text="draw", asset_id="-1"))
+
+        out = mock_app_runtime.audio_path_queue.get_nowait()
+        assert out.is_system_message is True
+        assert "boom" in out.text
 
     def test_handler_chain_has_default_last(self):
         handlers = list(get_tts_handlers())

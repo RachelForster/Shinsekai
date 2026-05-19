@@ -9,7 +9,7 @@ from queue import Queue
 
 import pytest
 
-from core.runtime.workflow import build_runtime_workflow
+from core.runtime.workflow import build_runtime_workflow, require_desktop_chat_workflow
 from sdk.graph import (
     DagBuilder,
     DagNode,
@@ -100,6 +100,12 @@ class RuleNode(PassiveNoPortsNode):
 
     def accepts(self, value: str) -> bool:
         return value == self.accepted
+
+
+class StrictConfigNode(PassiveNoPortsNode):
+    def __init__(self, name: str, accepted: str = "yes"):
+        super().__init__(name)
+        self.accepted = accepted
 
 
 class RuleRouterNode(DagNode):
@@ -308,6 +314,20 @@ class TestDagBuilder:
 
         assert c.received == ["[B][A]data"]
 
+    def test_fanout_requires_explicit_broadcast_node(self):
+        src = EchoNode("src")
+        dst_a = SinkNode("dst_a")
+        dst_b = SinkNode("dst_b")
+
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(src).add_node(dst_a).add_node(dst_b)
+        builder.connect("src", "out", "dst_a", "in")
+        builder.connect("src", "out", "dst_b", "in")
+
+        with pytest.raises(ValueError, match="fan-out is not supported"):
+            builder.build()
+
 
 class TestDagSerialization:
     def test_to_dict_round_trip(self):
@@ -422,6 +442,25 @@ exports:
         assert [node.name for node in nodes] == ["router"]
         assert dag.resolve_export("accepted").get(timeout=0.2) == "yes"
 
+    def test_yaml_unknown_node_param_fails_instead_of_dropping_all_params(self):
+        dag_yaml = """
+nodes:
+  - name: strict
+    type: test.unit.tools.test_dag_graph.StrictConfigNode
+    accepted: "no"
+    typo: true
+edges: []
+exports:
+  strict:
+    node: strict
+    direction: node
+"""
+        from sdk.graph import Dag
+
+        dag = Dag(queue_factory=Queue)
+        with pytest.raises(ValueError, match="Cannot instantiate"):
+            dag.load_yaml(dag_yaml)
+
 class TestRuntimeWorkflow:
     def test_build_runtime_workflow_uses_only_selected_yaml(self, tmp_path):
         first = tmp_path / "first.yaml"
@@ -430,7 +469,7 @@ class TestRuntimeWorkflow:
             """
 nodes:
   - name: first
-    type: test.unit.tools.test_dag_graph.EchoNode
+    type: core.runtime.workers.LLMWorker
 edges: []
 exports:
   selected:
@@ -443,7 +482,7 @@ exports:
             """
 nodes:
   - name: second
-    type: test.unit.tools.test_dag_graph.EchoNode
+    type: core.runtime.workers.LLMWorker
 edges: []
 exports:
   selected:
@@ -462,3 +501,143 @@ exports:
         assert workflow.require_export("selected").name == "second"
         with pytest.raises(KeyError):
             workflow.dag.get_node("first")
+
+    def test_desktop_chat_workflow_requires_all_exports(self, tmp_path):
+        workflow_path = tmp_path / "missing.yaml"
+        workflow_path.write_text(
+            """
+nodes:
+  - name: llm_worker
+    type: core.runtime.workers.LLMWorker
+edges: []
+exports:
+  chat.input:
+    node: llm_worker
+    port: user_input
+    direction: input
+""",
+            encoding="utf-8",
+        )
+
+        workflow = build_runtime_workflow(
+            workflow_path=str(workflow_path),
+            queue_factory=Queue,
+        )
+
+        with pytest.raises(RuntimeError, match="chat.tts_input"):
+            require_desktop_chat_workflow(workflow)
+
+    def test_runtime_workflow_rejects_unregistered_node_type_before_import(self, tmp_path):
+        workflow_path = tmp_path / "unsafe.yaml"
+        workflow_path.write_text(
+            """
+nodes:
+  - name: unsafe
+    type: os.system
+edges: []
+exports:
+  unsafe:
+    node: unsafe
+    direction: node
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="not allowed"):
+            build_runtime_workflow(workflow_path=str(workflow_path), queue_factory=Queue)
+
+    def test_desktop_chat_workflow_requires_llm_to_tts_edge(self, tmp_path):
+        workflow_path = tmp_path / "disconnected.yaml"
+        workflow_path.write_text(
+            """
+nodes:
+  - name: llm_worker
+    type: core.runtime.workers.LLMWorker
+  - name: tts_worker
+    type: core.runtime.workers.TTSWorker
+  - name: ui_worker
+    type: core.runtime.workers.UIWorker
+edges:
+  - src: tts_worker
+    src_port: tts_output
+    dst: ui_worker
+    dst_port: tts_output
+exports:
+  chat.input:
+    node: llm_worker
+    port: user_input
+    direction: input
+  chat.tts_input:
+    node: tts_worker
+    port: llm_output
+    direction: input
+  chat.audio_output:
+    node: tts_worker
+    port: tts_output
+    direction: output
+  chat.ui_worker:
+    node: ui_worker
+    direction: node
+""",
+            encoding="utf-8",
+        )
+
+        workflow = build_runtime_workflow(
+            workflow_path=str(workflow_path),
+            queue_factory=Queue,
+        )
+
+        with pytest.raises(RuntimeError, match="LLMWorker\\.llm_output"):
+            require_desktop_chat_workflow(workflow)
+
+    def test_desktop_chat_workflow_requires_export_direction(self, tmp_path):
+        workflow_path = tmp_path / "wrong_direction.yaml"
+        workflow_path.write_text(
+            """
+nodes:
+  - name: llm_worker
+    type: core.runtime.workers.LLMWorker
+  - name: tts_worker
+    type: core.runtime.workers.TTSWorker
+  - name: ui_worker
+    type: core.runtime.workers.UIWorker
+edges:
+  - src: llm_worker
+    src_port: llm_output
+    dst: tts_worker
+    dst_port: llm_output
+  - src: tts_worker
+    src_port: tts_output
+    dst: ui_worker
+    dst_port: tts_output
+exports:
+  chat.input:
+    node: llm_worker
+    direction: node
+  chat.tts_input:
+    node: tts_worker
+    port: llm_output
+    direction: input
+  chat.audio_output:
+    node: tts_worker
+    port: tts_output
+    direction: output
+  chat.ui_worker:
+    node: ui_worker
+    direction: node
+""",
+            encoding="utf-8",
+        )
+
+        workflow = build_runtime_workflow(
+            workflow_path=str(workflow_path),
+            queue_factory=Queue,
+        )
+
+        with pytest.raises(RuntimeError, match="chat\\.input.*direction"):
+            require_desktop_chat_workflow(workflow)
+
+    def test_default_workflow_satisfies_desktop_contract(self):
+        workflow = build_runtime_workflow(queue_factory=Queue)
+
+        require_desktop_chat_workflow(workflow)

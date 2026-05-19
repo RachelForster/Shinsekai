@@ -16,6 +16,7 @@ from typing import Any, TypeVar
 
 from llm.tools.mcp_config_file import (
     DEFAULT_MCP_CONFIG_PATH as _DEFAULT_CONFIG_PATH,
+    normalize_mcp_stdio_entry,
     read_mcp_config,
 )
 from llm.tools.tool_manager import ToolManager
@@ -153,12 +154,6 @@ def _mcp_tool_to_dict(tool_obj: Any) -> dict[str, Any]:
     return out
 
 
-def _normalize_env(raw: Any) -> dict[str, str] | None:
-    if not raw or not isinstance(raw, dict):
-        return None
-    return {str(k): str(v) for k, v in raw.items()}
-
-
 async def _async_close_all_bridges() -> None:
     # 后进先关，减轻 anyio CancelScope 在首条连接 teardown 后的栈错位；中间让出事件循环。
     for b in reversed(list(_active_bridges)):
@@ -213,14 +208,9 @@ async def _async_probe_tools(servers: list[Any]) -> list[dict[str, Any]]:
                 bridge = MCPBridge()
                 await bridge.connect_streamable_http(url, headers)
             elif transport == "stdio":
-                command = str(entry.get("command") or "").strip()
-                if not command:
-                    continue
-                args_raw = entry.get("args")
-                args = [str(x) for x in args_raw] if isinstance(args_raw, list) else []
-                env = _normalize_env(entry.get("env"))
+                stdio = normalize_mcp_stdio_entry(entry)
                 bridge = MCPBridge()
-                await bridge.connect_stdio(command, args, env)
+                await bridge.connect_stdio(stdio.command, stdio.args, stdio.env)
             else:
                 continue
             for t in await bridge.list_tools():
@@ -300,13 +290,8 @@ async def _register_one_server(
             headers = None
         await bridge.connect_streamable_http(url, headers)
     elif transport == "stdio":
-        command = str(entry.get("command") or "").strip()
-        if not command:
-            raise ValueError("MCP stdio server missing 'command'")
-        args_raw = entry.get("args")
-        args = [str(x) for x in args_raw] if isinstance(args_raw, list) else []
-        env = _normalize_env(entry.get("env"))
-        await bridge.connect_stdio(command, args, env)
+        stdio = normalize_mcp_stdio_entry(entry)
+        await bridge.connect_stdio(stdio.command, stdio.args, stdio.env)
     else:
         raise ValueError(f"Unknown MCP transport: {transport!r}")
 

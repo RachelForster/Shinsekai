@@ -128,6 +128,7 @@ class ToolManager:
         invoke: Callable[[str, Dict[str, Any]], Any],
         name_prefix: str = "",
         group: str = "mcp",
+        risk: str = "medium",
     ) -> None:
         """
         注册来自 MCP ``tools/list`` 的工具条目（``name`` / ``description`` / ``inputSchema``）。
@@ -137,6 +138,8 @@ class ToolManager:
 
         ``name_prefix`` 用于隔离多套 MCP 工具，避免与内置工具名冲突。
         ``group`` 为 MCP 工具分组，默认 "mcp"。
+        ``risk`` 为 MCP 工具风险等级，默认 "medium"，因为 stdio/SSE MCP server
+        是外部工具边界，不能按内置低风险工具处理。
         """
         prefix = name_prefix.strip()
         grp = (group or "mcp").strip()
@@ -181,6 +184,7 @@ class ToolManager:
             self._tools_definitions.append(definition)
             self._functions[tool_name] = _make_runner(tool_name, invoke)
             self._tool_groups[tool_name] = grp
+            self._tool_risks[tool_name] = risk or "medium"
 
     def tool(self, func: Callable[..., Any] = None, *, group: str | None = None, risk: str = "low") -> Callable[..., Any]:
         """
@@ -223,6 +227,7 @@ class ToolManager:
                 results.append({
                     "name": fn["name"],
                     "group": self._tool_groups.get(fn["name"], "default"),
+                    "risk": self._tool_risks.get(fn["name"], "low"),
                     "description": fn.get("description", ""),
                 })
         return results

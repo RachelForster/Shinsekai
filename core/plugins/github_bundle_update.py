@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import tempfile
-import zipfile
 from pathlib import Path
 from typing import Any, Callable, Literal
 
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from core.plugins.archive_safety import (
+    safe_extract_zip_single_top,
+    validate_zip_single_top_folder,
+)
 from core.plugins.registry_download import sanitize_plugins_directory_name
 
 logger = logging.getLogger(__name__)
@@ -24,7 +29,11 @@ _USER_AGENT_APP = (
     "EasyAIDesktopAssistant/1.0 (+bundle-update; https://github.com/RachelForster/Shinsekai)"
 )
 
-RefKindApi = Literal["latest", "head", "tag"]
+RefKindApi = Literal["latest", "head", "tag", "commit"]
+
+
+class ArchiveDigestMismatchError(ValueError):
+    """Raised when downloaded archive bytes do not match trusted metadata."""
 
 
 def default_app_github_repo_slug() -> str:
@@ -113,13 +122,18 @@ def fetch_recent_tag_names(slug: str, *, limit: int = 30, timeout_sec: float = 2
 def github_archive_zip_url(slug: str, *, ref_heads_or_tags: str, ref_name: str) -> str:
     base = normalize_repo_slug_str(slug)
     rot = ref_heads_or_tags.strip().lower()
-    if rot not in ("heads", "tags"):
-        raise ValueError("ref_heads_or_tags must be heads or tags")
+    if rot not in ("heads", "tags", "commit"):
+        raise ValueError("ref_heads_or_tags must be heads, tags, or commit")
     name = ref_name.strip().strip("/")
     if not name:
         raise ValueError("empty ref_name")
     from urllib.parse import quote
 
+    if rot == "commit":
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", name):
+            raise ValueError("commit ref must be a 40-character hex SHA")
+        q = quote(name.lower(), safe="")
+        return f"https://github.com/{base}/archive/{q}.zip"
     q = quote(name, safe="")
     return f"https://github.com/{base}/archive/refs/{rot}/{q}.zip"
 
@@ -144,15 +158,27 @@ def stream_download_zip(url: str, *, timeout_sec: float = 300.0, progress: Calla
     return b"".join(chunks)
 
 
+def normalize_archive_sha256(raw: str | None) -> str:
+    digest = (raw or "").strip().lower()
+    if not digest:
+        return ""
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("archive_sha256 must be a 64-character hex digest")
+    return digest
+
+
+def verify_archive_sha256(body: bytes, expected_sha256: str | None) -> str:
+    expected = normalize_archive_sha256(expected_sha256)
+    actual = hashlib.sha256(body).hexdigest()
+    if expected and actual != expected:
+        raise ArchiveDigestMismatchError(
+            f"archive sha256 mismatch: expected {expected}, got {actual}"
+        )
+    return actual
+
+
 def _zip_top_folder_name(zip_path: Path) -> str:
-    with zipfile.ZipFile(zip_path) as zf:
-        names = [n for n in zf.namelist() if n and not n.endswith("/")]
-        if not names:
-            raise ValueError("empty archive")
-        top = names[0].split("/")[0]
-        if not top:
-            raise ValueError("invalid archive layout")
-        return top
+    return validate_zip_single_top_folder(zip_path)
 
 
 def merge_source_tree_into(
@@ -206,6 +232,11 @@ def resolve_ref_for_download(slug: str, ref_kind: RefKindApi, tag_name: str) -> 
     latest：优先 GitHub Releases 最新 tag；无 release 则用 heads/main→master。
     """
     slug = normalize_repo_slug_str(slug)
+    if ref_kind == "commit":
+        sha = tag_name.strip()
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+            raise ValueError("missing or invalid commit SHA for ref_kind commit")
+        return "commit", sha.lower()
     if ref_kind == "tag":
         t = tag_name.strip()
         if not t:
@@ -247,34 +278,46 @@ def download_zip_extract_top_folder(
     progress: Callable[[int, int | None], None] | None = None,
     on_phase: Callable[[str], None] | None = None,
     timeout_sec: float = 300.0,
+    expected_archive_sha256: str | None = None,
 ) -> tuple[Path, Path]:
     """
     下载并解压归档到临时目录，返回 ``(temporary_parent, extracted_top_folder)``。
     调用方负责善后删除 temporary_parent。
     """
     slug = normalize_repo_slug_str(slug)
+    expected_digest = normalize_archive_sha256(expected_archive_sha256)
     url = github_archive_zip_url(slug, ref_heads_or_tags=ref_heads_or_tags, ref_name=ref_name)
     body = stream_download_zip(url, timeout_sec=timeout_sec, progress=progress)
+    verify_archive_sha256(body, expected_digest)
 
     td = Path(tempfile.mkdtemp(prefix="ghzip_"))
     zip_path = td / "_src.zip"
-    zip_path.write_bytes(body)
-    top_name = _zip_top_folder_name(zip_path)
-    if on_phase is not None:
-        on_phase("extract")
-    extract_into = td / "_out"
-    extract_into.mkdir()
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(extract_into)
-    zip_path.unlink(missing_ok=True)
-    extracted_top = extract_into / top_name
-    if not extracted_top.is_dir():
+    try:
+        zip_path.write_bytes(body)
+        top_name = _zip_top_folder_name(zip_path)
+        if on_phase is not None:
+            on_phase("extract")
+        extract_into = td / "_out"
+        extract_into.mkdir()
+        extracted_top = safe_extract_zip_single_top(zip_path, extract_into)
+        zip_path.unlink(missing_ok=True)
+        if extracted_top.name != top_name or not extracted_top.is_dir():
+            raise RuntimeError(f"extract missing top folder {top_name}")
+        return td, extracted_top
+    except Exception:
         shutil.rmtree(td, ignore_errors=True)
-        raise RuntimeError(f"extract missing top folder {top_name}")
-    return td, extracted_top
+        raise
 
 
-def overwrite_merge_app_tree(slug: str, ref_kind: RefKindApi, tag_name: str, *, progress, on_phase) -> None:
+def overwrite_merge_app_tree(
+    slug: str,
+    ref_kind: RefKindApi,
+    tag_name: str,
+    *,
+    progress,
+    on_phase,
+    expected_archive_sha256: str | None = None,
+) -> None:
     """下载指定 ref 并把归档根目录内容合并覆盖到当前工程根目录（不覆盖本机 ``plugins/``、``data/``）。"""
     rr = resolve_ref_for_download(slug, ref_kind, tag_name)
     td, extracted = download_zip_extract_top_folder(
@@ -283,6 +326,7 @@ def overwrite_merge_app_tree(slug: str, ref_kind: RefKindApi, tag_name: str, *, 
         ref_name=rr[1],
         progress=progress,
         on_phase=on_phase,
+        expected_archive_sha256=expected_archive_sha256,
     )
     try:
         dest = resolve_project_root()
@@ -305,6 +349,7 @@ def install_github_plugin_under_plugins(
     plugins_parent: Path | None,
     progress: Callable[[int, int | None], None] | None = None,
     on_phase: Callable[[str], None] | None = None,
+    expected_archive_sha256: str | None = None,
 ) -> Path:
     """
     将 GitHub 归档解压到 plugins/。
@@ -319,6 +364,7 @@ def install_github_plugin_under_plugins(
         progress=progress,
         on_phase=on_phase,
         timeout_sec=300.0,
+        expected_archive_sha256=expected_archive_sha256,
     )
     try:
         parent = Path(plugins_parent) if plugins_parent is not None else Path("plugins")

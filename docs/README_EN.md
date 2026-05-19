@@ -9,7 +9,7 @@ A desktop assistant for **visual-novel / otome / story-driven RPG** play: let a 
 ## Why Shinsekai
 
 - **One pipeline for performance**: templates, session history, sprite swaps and moods, TTS/ASR, and input plumbing are wired so you spend less time context-switching between tools.  
-- **Two-window design**: the **Settings** app (`webui.py` / bundle) holds API, characters, and plugins; the **chat** window stays focused on dialogue and stage direction.  
+- **Two-window design**: the **Settings** app (`webui_qt.py` / bundle) holds API, characters, and plugins; the **chat** window stays focused on dialogue and stage direction.
 - **Swap models and engines**: connect mainstream LLMs and OpenAI-compatible endpoints under **API settings**; **TTS** spans GPT-SoVITS, Genie TTS, CosyVoice, and lighter stacks without a discrete GPU; **image gen** can target ComfyUI-style backends on the same page.  
 - **Listen and speak**: optional mic **ASR** (e.g. Vosk; more via **plugins**) and line **TTS**, or turn synthesis off and rely on per-sprite bundled audio only.  
 - **More than plain chat**: built-in / plugin **LLM tools** plus **MCP** bring search, automation, and other services into the same turn.  
@@ -71,6 +71,8 @@ conda activate shinsekai
 pip install -r requirements.txt
 ```
 
+> **macOS source install**: `requirements.txt` includes the microphone ASR dependency `pyaudio`. If installation fails with a missing `portaudio.h`, run `brew install portaudio` first, then reinstall the requirements.
+
 ### 3. Open Settings
 
 Bundle: `start.bat`. From source:
@@ -96,9 +98,10 @@ For synthesized dialogue audio, deploy [GPT-SoVITS](https://github.com/RVC-Boss/
 
 List plugins in **`data/config/plugins.yaml`**; source lives under **`plugins/<package>/`**. The host merges **LLM / TTS / ASR / T2I** adapters, **tools**, and contributions to **Settings**, the **tools area**, and the **chat window**.
 
-- **UI**: Settings → **Plugins** — enable/disable, discover & download from the index, run `pip install -r requirements.txt` with the same interpreter as the app.  
+- **UI**: Settings → **Plugins** — enable/disable, discover & download from the index; if a plugin has `requirements.txt`, the UI reports it for manual install instead of running pip automatically after download.
+- **Registry provenance:** catalog rows may provide `commit_sha` to pin the downloaded commit and `archive_sha256` to verify the archive bytes; mismatches abort before extraction/install.
 - **Index:** [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)  
-- **Scaffold:** `python -m sdk.cli create --package your_plugin_name`  
+- **Scaffold:** `python -m sdk.cli create your_plugin_name` (the older `--package your_plugin_name` form remains supported)
 - **Developer guide:** [PLUGIN_DEVELOPER_GUIDE.md](PLUGIN_DEVELOPER_GUIDE.md)
 
 Restart the app after changing the manifest so plugins reload.
@@ -112,6 +115,7 @@ Expose [MCP](https://modelcontextprotocol.io/) servers to the **in-process LLM t
 1. Install: `pip install mcp`  
 2. Configure **`data/config/mcp.yaml`**, or use Settings → **Plugins** → **MCP** for a visual editor.  
 3. **Save & apply** reconnects servers and registers remote tools for the current process (use a name **prefix** per server to avoid clashes).
+4. stdio starts local processes: commands must be trusted absolute executables or built-in allowed launchers, and save/refresh asks for confirmation first.
 
 Independent of the plugin system: you can wire external capabilities through YAML alone—no `PluginBase` required.
 

@@ -17,7 +17,14 @@ from sdk.cli.scaffold import package_to_class_suffix, validate_package_name, wri
 
 
 def _cmd_create(ns: argparse.Namespace) -> int:
-    package = validate_package_name(ns.package)
+    raw_package = (ns.package or ns.package_option or "").strip()
+    if ns.package and ns.package_option and ns.package != ns.package_option:
+        print("create: pass either positional package or --package, not both", file=sys.stderr)
+        return 2
+    if not raw_package:
+        print("create: missing package name", file=sys.stderr)
+        return 2
+    package = validate_package_name(raw_package)
     plugin_id = (ns.plugin_id or "").strip() or f"com.example.{package}"
     display_name = (ns.display_name or "").strip() or package.replace("_", " ").title()
     root = Path(ns.root).resolve()
@@ -108,7 +115,13 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_c = sub.add_parser("create", help="Scaffold plugins/<package>/ (PluginBase + README)")
-    p_c.add_argument("package", help="Snake_case package name, e.g. my_screen_tool")
+    p_c.add_argument("package", nargs="?", help="Snake_case package name, e.g. my_screen_tool")
+    p_c.add_argument(
+        "--package",
+        dest="package_option",
+        default="",
+        help="Deprecated alias for the positional package name",
+    )
     p_c.add_argument(
         "--root",
         type=Path,

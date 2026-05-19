@@ -8,6 +8,7 @@ unless a subclass chooses to own execution.
 from __future__ import annotations
 
 import importlib
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -107,15 +108,22 @@ class EdgeSpec:
 
 
 class DagBuilder:
-    def __init__(self) -> None:
+    def __init__(self, *, allowed_node_types: set[str] | None = None) -> None:
         self._nodes: dict[str, DagNode] = {}
         self._edges: list[Edge] = []
         self._pending_edges: list[EdgeSpec] = []
         self._queue_factory: Callable[[], Any] | None = None
         self._exports: dict[str, dict[str, Any]] = {}
+        self._allowed_node_types = allowed_node_types
 
     def set_queue_factory(self, factory: Callable[[], Any]) -> Self:
         self._queue_factory = factory
+        return self
+
+    def allow_node_type(self, dotted: str) -> Self:
+        if self._allowed_node_types is None:
+            self._allowed_node_types = set()
+        self._allowed_node_types.add(dotted)
         return self
 
     def add_node(self, node: DagNode) -> Self:
@@ -156,6 +164,17 @@ class DagBuilder:
         self._pending_edges = []
         for spec in pending_edges:
             self.connect(spec.src, spec.src_port, spec.dst, spec.dst_port)
+
+        fanout: dict[tuple[str, str], int] = {}
+        for e in self._edges:
+            key = (e.src_node, e.src_port)
+            fanout[key] = fanout.get(key, 0) + 1
+        for (node_name, port_name), count in fanout.items():
+            if count > 1:
+                raise ValueError(
+                    f"Node '{node_name}' output port '{port_name}' fan-out is not supported; "
+                    "insert an explicit broadcast node instead"
+                )
 
         queues: dict[tuple[str, str], Any] = {}
         for e in self._edges:
@@ -208,37 +227,49 @@ class DagBuilder:
             "exports": dict(self._exports),
         }
 
-    @staticmethod
-    def _import_class(dotted: str) -> type:
+    def _import_class(self, dotted: str) -> type:
         parts = dotted.rsplit(".", 1)
         if len(parts) != 2:
             raise ValueError(f"Cannot parse dotted class name: {dotted}")
+        if self._allowed_node_types is not None and dotted not in self._allowed_node_types:
+            raise ValueError(f"Workflow node type is not allowed: {dotted}")
         mod, cls_name = parts
         module = importlib.import_module(mod)
         return getattr(module, cls_name)
 
     @staticmethod
     def _make_node(node_cls: type, name: str, params: dict[str, Any]) -> DagNode:
-        attempts = (
-            lambda: node_cls(name=name, **params),
-            lambda: node_cls(name, **params),
-            lambda: node_cls(**params),
-            lambda: node_cls(name=name),
-            lambda: node_cls(name),
-            lambda: node_cls(),
-        )
-        last_error: TypeError | None = None
-        for attempt in attempts:
+        def _accepts(args: tuple[Any, ...], kwargs: dict[str, Any]) -> bool:
             try:
-                node = attempt()
-            except TypeError as exc:
-                last_error = exc
+                inspect.signature(node_cls).bind(*args, **kwargs)
+            except (TypeError, ValueError):
+                return False
+            return True
+
+        if params:
+            candidates = (
+                ((), {"name": name, **params}),
+                ((name,), params),
+                ((), params),
+            )
+        else:
+            candidates = (
+                ((), {"name": name}),
+                ((name,), {}),
+                ((), {}),
+            )
+
+        for args, kwargs in candidates:
+            if not _accepts(args, kwargs):
                 continue
+            node = node_cls(*args, **kwargs)
             if isinstance(node, DagNode):
                 return node
             raise TypeError(f"{node_cls!r} did not create a DagNode")
-        assert last_error is not None
-        raise last_error
+        raise TypeError(
+            f"{node_cls!r} cannot be constructed from workflow node "
+            f"{name!r} with params {sorted(params)}"
+        )
 
     def to_yaml(self, path: str | None = None) -> str:
         import yaml
@@ -256,7 +287,11 @@ class DagBuilder:
             except Exception as e:
                 raise ValueError(f"Cannot import {dotted}: {e}") from e
             node_name = nd["name"]
-            params = {k: v for k, v in nd.items() if k not in {"name", "type"}}
+            params = {
+                k: v
+                for k, v in nd.items()
+                if k not in {"name", "type", "inputs", "outputs"}
+            }
             try:
                 node = self._make_node(node_cls, node_name, params)
             except Exception as e:
@@ -288,16 +323,28 @@ class DagBuilder:
         self.load_dict(data)
 
     @classmethod
-    def from_dict(cls, data: dict, *, queue_factory=None) -> "DagBuilder":
-        builder = cls()
+    def from_dict(
+        cls,
+        data: dict,
+        *,
+        queue_factory=None,
+        allowed_node_types: set[str] | None = None,
+    ) -> "DagBuilder":
+        builder = cls(allowed_node_types=allowed_node_types)
         if queue_factory:
             builder.set_queue_factory(queue_factory)
         builder.load_dict(data)
         return builder
 
     @classmethod
-    def from_yaml(cls, path_or_text: str, *, queue_factory=None) -> "DagBuilder":
-        builder = cls()
+    def from_yaml(
+        cls,
+        path_or_text: str,
+        *,
+        queue_factory=None,
+        allowed_node_types: set[str] | None = None,
+    ) -> "DagBuilder":
+        builder = cls(allowed_node_types=allowed_node_types)
         if queue_factory:
             builder.set_queue_factory(queue_factory)
         builder.load_yaml(path_or_text)
@@ -305,8 +352,8 @@ class DagBuilder:
 
 
 class Dag:
-    def __init__(self, *, queue_factory=None):
-        self._builder = DagBuilder()
+    def __init__(self, *, queue_factory=None, allowed_node_types: set[str] | None = None):
+        self._builder = DagBuilder(allowed_node_types=allowed_node_types)
         if queue_factory:
             self._builder.set_queue_factory(queue_factory)
         self._nodes: list[DagNode] = []

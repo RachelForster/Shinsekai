@@ -50,7 +50,6 @@ from core.plugins.registry_catalog import (
     fetch_registry_error_message,
     fetch_registry_plugins,
 )
-from core.plugins.plugin_requirements_install import install_plugin_requirements_txt
 from core.plugins.registry_download import (
     format_download_error,
     load_downloaded_repos,
@@ -95,6 +94,24 @@ def _parse_pip_install_result_json(raw: str) -> tuple[str, str]:
     return (code, tail)
 
 
+def _parse_download_dest_name(raw: str) -> str:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    dest = str(data.get("dest") or "").strip()
+    return Path(dest).name if dest else ""
+
+
+def _manifest_entry_matches_dest_name(entry: str, dest_name: str) -> bool:
+    if not entry.strip() or not dest_name.strip():
+        return False
+    inferred = infer_plugin_package_directory(entry)
+    return inferred is not None and inferred.name == dest_name.strip()
+
+
 def _format_byte_size(n: int) -> str:
     if n <= 0:
         return "0 B"
@@ -106,7 +123,7 @@ def _format_byte_size(n: int) -> str:
 
 
 class _DiscoverInstallProgressDialog(QDialog):
-    """发现插件：下载 ZIP + pip 时的进度与日志。"""
+    """发现插件/主程序更新：下载、解压和依赖状态进度。"""
 
     def __init__(
         self,
@@ -217,6 +234,8 @@ class _DiscoverInstallProgressDialog(QDialog):
         pip_code, detail_tail = _parse_pip_install_result_json(pip_json)
         if pip_code == "app_update_skip_pip":
             self._log.appendPlainText(tr_i18n("plugins.app_update_no_pip_log"))
+        elif pip_code == "pip_skip_manual_required":
+            self._log.appendPlainText(tr_i18n("plugins.plugin_pip_manual_required"))
         elif pip_code == "pip_skip_no_requirements":
             self._log.appendPlainText(tr_i18n("plugins.plugin_pip_skip"))
         elif pip_code in ("pip_timeout", "pip_exception") and detail_tail.strip():
@@ -349,14 +368,18 @@ class _DownloadRepoTask(QRunnable):
         ref_kind: str,
         tag_name: str,
         overwrite: bool,
+        archive_sha256: str = "",
     ) -> None:
         super().__init__()
         self._repo = repo
         self._catalog_display_name = catalog_display_name.strip()
         self._sig = sig
-        self._ref_kind = ref_kind if ref_kind in ("latest", "head", "tag") else "latest"
+        self._ref_kind = (
+            ref_kind if ref_kind in ("latest", "head", "tag", "commit") else "latest"
+        )
         self._tag_name = tag_name.strip()
         self._overwrite = overwrite
+        self._archive_sha256 = archive_sha256.strip()
         self.setAutoDelete(True)
 
     def run(self) -> None:
@@ -375,22 +398,21 @@ class _DownloadRepoTask(QRunnable):
                     cur, tot if tot is not None else 0
                 ),
                 on_phase=lambda phase: self._emit_extract_phase(phase),
+                expected_archive_sha256=self._archive_sha256,
             )
         except Exception as exc:
             self._sig.finished.emit(norm, False, format_download_error(exc), "")
             return
-        self._sig.status_message.emit(tr_i18n("plugins.discover_phase_pip"))
+        self._sig.status_message.emit(tr_i18n("plugins.discover_phase_requirements"))
         self._sig.download_progress.emit(0, 0)
-        self._sig.pip_phase_started.emit()
-
-        def _pip_line(line: str) -> None:
-            self._sig.pip_log_line.emit(line)
-
-        pip_code, pip_detail = install_plugin_requirements_txt(
-            dest, on_output_line=_pip_line
-        )
+        req = dest / "requirements.txt"
+        if req.is_file():
+            pip_code, pip_detail = "pip_skip_manual_required", str(req)
+        else:
+            pip_code, pip_detail = "pip_skip_no_requirements", ""
         pip_payload = json.dumps(
-            {"pip": pip_code, "detail": pip_detail}, ensure_ascii=False
+            {"pip": pip_code, "detail": pip_detail, "dest": str(dest)},
+            ensure_ascii=False,
         )
         self._sig.finished.emit(norm, True, "", pip_payload)
 
@@ -400,7 +422,7 @@ class _DownloadRepoTask(QRunnable):
 
 
 class _AppSelfUpdateTask(QRunnable):
-    """主程序源码树 GitHub ZIP 合并覆盖 + pip install 项目依赖。"""
+    """主程序源码树 GitHub ZIP 合并覆盖；依赖安装需用户手动确认后执行。"""
 
     def __init__(
         self,
@@ -432,20 +454,9 @@ class _AppSelfUpdateTask(QRunnable):
             self._sig.finished.emit("", False, format_download_error(exc), "")
             return
 
-        self._sig.status_message.emit(tr_i18n("plugins.discover_phase_pip"))
-        self._sig.pip_phase_started.emit()
-
-        def _pip_line(line: str) -> None:
-            self._sig.pip_log_line.emit(line)
-
-        from core.plugins.plugin_requirements_install import install_plugin_requirements_txt
-
-        project_root = resolve_project_root()
-        pip_code, pip_detail = install_plugin_requirements_txt(
-            project_root, on_output_line=_pip_line
-        )
         pip_payload = json.dumps(
-            {"pip": pip_code, "detail": pip_detail}, ensure_ascii=False
+            {"pip": "app_update_skip_pip", "detail": ""},
+            ensure_ascii=False,
         )
         self._sig.finished.emit("", True, "", pip_payload)
 
@@ -886,11 +897,14 @@ class PluginSettingsTab(QWidget):
         norm = normalize_repo_slug(repo)
         if norm in self._download_busy or not norm:
             return
-        tags = _blocking_fetch_tag_names(norm)
-        dlg_pick = _PickRepoRefDialog(self, repo_slug=repo, tag_names=tags)
-        if dlg_pick.exec() != QDialog.DialogCode.Accepted:
-            return
-        rk, tg = dlg_pick.ref_choice()
+        if rec.commit_sha:
+            rk, tg = "commit", rec.commit_sha
+        else:
+            tags = _blocking_fetch_tag_names(norm)
+            dlg_pick = _PickRepoRefDialog(self, repo_slug=repo, tag_names=tags)
+            if dlg_pick.exec() != QDialog.DialogCode.Accepted:
+                return
+            rk, tg = dlg_pick.ref_choice()
         if rk == "tag" and not tg.strip():
             message_fail(
                 self,
@@ -922,6 +936,7 @@ class PluginSettingsTab(QWidget):
                 ref_kind=rk,
                 tag_name=tg,
                 overwrite=overwrite,
+                archive_sha256=rec.archive_sha256,
             )
         )
 
@@ -984,35 +999,50 @@ class PluginSettingsTab(QWidget):
             return
 
         entry_line = self._registry_entry_for_repo_norm(repo_norm)
+        dest_name = _parse_download_dest_name(pip_json)
+        entry_matches_dest = (
+            _manifest_entry_matches_dest_name(entry_line, dest_name)
+            if entry_line
+            else False
+        )
         mark_repo_downloaded(
             repo_norm,
-            manifest_entry=entry_line if entry_line else None,
+            manifest_entry=entry_line if entry_matches_dest else None,
         )
         base = tr_i18n("plugins.discover_download_ok_body")
         detail = ""
         if entry_line:
-            try:
-                outcome = append_plugin_manifest_entry_if_missing(
-                    entry_line, enabled=True
+            if not entry_matches_dest:
+                detail = tr_i18n(
+                    "plugins.manifest_auto_entry_mismatch",
+                    entry=entry_line,
+                    folder=dest_name or "?",
                 )
-                if outcome == "added":
-                    detail = tr_i18n("plugins.manifest_auto_added")
-                elif outcome == "exists":
-                    detail = tr_i18n("plugins.manifest_auto_exists")
-                self._refresh_cards()
-            except OSError as exc:
-                message_fail(
-                    self,
-                    tr_i18n("plugins.manifest_auto_fail_title"),
-                    str(exc),
-                )
-                detail = tr_i18n("plugins.manifest_auto_fail_hint")
+            else:
+                try:
+                    outcome = append_plugin_manifest_entry_if_missing(
+                        entry_line, enabled=False
+                    )
+                    if outcome == "added":
+                        detail = tr_i18n("plugins.manifest_auto_added")
+                    elif outcome == "exists":
+                        detail = tr_i18n("plugins.manifest_auto_exists")
+                    self._refresh_cards()
+                except OSError as exc:
+                    message_fail(
+                        self,
+                        tr_i18n("plugins.manifest_auto_fail_title"),
+                        str(exc),
+                    )
+                    detail = tr_i18n("plugins.manifest_auto_fail_hint")
         else:
             detail = tr_i18n("plugins.manifest_auto_skip_no_entry")
 
         pip_lines: list[str] = []
         if pip_code == "pip_ok":
             pip_lines.append(tr_i18n("plugins.plugin_pip_ok"))
+        elif pip_code == "pip_skip_manual_required":
+            pip_lines.append(tr_i18n("plugins.plugin_pip_manual_required"))
         elif pip_code == "pip_skip_no_requirements":
             pip_lines.append(tr_i18n("plugins.plugin_pip_skip"))
 

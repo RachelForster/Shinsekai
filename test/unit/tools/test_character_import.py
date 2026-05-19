@@ -201,6 +201,47 @@ class TestImport:
         assert len(result[0].sprites) == 1
         assert Path(result[0].sprites[0]["path"]).is_file()
 
+    def test_rejects_path_traversal_sprite_prefix(self, tmp_path):
+        """A .cha package cannot write outside data dirs via sprite_prefix."""
+        data = dict(BASIC_CHAR, sprite_prefix="../../pwned", sprites=[])
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), data)
+            with _mock_dirs(tmp_path):
+                with pytest.raises(ValueError, match="sprite_prefix"):
+                    file_util.import_character(str(z))
+        assert not (tmp_path / "pwned").exists()
+
+    def test_rejects_path_traversal_model_path(self, tmp_path):
+        """Model paths must stay inside the imported archive."""
+        data = dict(BASIC_CHAR, sprites=[], gpt_model_path="../../outside.bin")
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), data)
+            with _mock_dirs(tmp_path):
+                with pytest.raises(ValueError, match="gpt_model_path"):
+                    file_util.import_character(str(z))
+
+    def test_rejects_zip_slip_member(self, tmp_path):
+        """Archive member names are validated before extraction."""
+        z = tmp_path / "evil.char"
+        with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("../escape.txt", "x")
+            zf.writestr("character.yaml", yaml.dump([BASIC_CHAR], allow_unicode=True))
+        with _mock_dirs(tmp_path):
+            with pytest.raises(ValueError, match="zip member"):
+                file_util.import_character(str(z))
+        assert not (tmp_path / "escape.txt").exists()
+
+    def test_rejects_zip_bomb_like_member(self, tmp_path):
+        """Highly compressed members are rejected before extraction."""
+        z = tmp_path / "bomb.char"
+        with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("character.yaml", yaml.dump([BASIC_CHAR], allow_unicode=True))
+            zf.writestr("sprites/alice/bomb.txt", "0" * (1024 * 1024))
+        with _mock_dirs(tmp_path):
+            with pytest.raises(ValueError, match="压缩率"):
+                file_util.import_character(str(z))
+        assert not (file_util.SPRITE_DIR / "alice" / "bomb.txt").exists()
+
 
 # ── Export tests ────────────────────────────────────────────────────────────
 

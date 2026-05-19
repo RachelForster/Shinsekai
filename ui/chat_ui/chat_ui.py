@@ -6,7 +6,7 @@ import numpy as np
 import threading
 import yaml
 import time
-from PySide6.QtCore import QByteArray, QEvent, QPoint, QRect, Qt, Signal, QSize, QUrl, QTimer
+from PySide6.QtCore import QByteArray, QEvent, QPoint, QRect, Qt, Signal, QSize, QUrl
 from PySide6.QtGui import (
     QCursor,
     QFont,
@@ -1449,8 +1449,8 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self._persist_chat_window_geometry()
         self.setEnabled(False)
         self.hide()
+        self._finish_close()
         event.accept()
-        QTimer.singleShot(0, self._finish_close)
         return
 
     def _finish_close(self):

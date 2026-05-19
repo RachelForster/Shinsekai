@@ -27,6 +27,24 @@ if [ ! -f "requirements.txt" ]; then
     exit 1
 fi
 
+if [[ "$(uname -s)" == "Darwin" ]] && grep -Eq '^pyaudio([<>= ]|$)' requirements.txt; then
+    PORTAUDIO_FOUND=0
+    if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists portaudio; then
+        PORTAUDIO_FOUND=1
+    fi
+    for header in /opt/homebrew/include/portaudio.h /usr/local/include/portaudio.h /opt/local/include/portaudio.h; do
+        if [ -f "$header" ]; then
+            PORTAUDIO_FOUND=1
+        fi
+    done
+    if [ "$PORTAUDIO_FOUND" -eq 0 ]; then
+        echo "Error: PyAudio requires PortAudio headers on macOS."
+        echo "Install them first, for example:"
+        echo "  brew install portaudio"
+        exit 1
+    fi
+fi
+
 echo "Installing dependencies..."
 echo ""
 

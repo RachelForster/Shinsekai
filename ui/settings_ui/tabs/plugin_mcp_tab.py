@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import tempfile
 from pathlib import Path
 
@@ -35,7 +36,9 @@ from i18n import tr as tr_i18n
 from llm.tools.mcp_config_file import (
     DEFAULT_MCP_CONFIG_PATH,
     default_mcp_config,
+    normalize_mcp_stdio_entry,
     read_mcp_config,
+    validate_mcp_stdio_servers,
     write_mcp_config,
 )
 from llm.tools.mcp_tool_setup import (
@@ -87,7 +90,7 @@ class _McpServerEditDialog(QDialog):
         self._transport.addItem("SSE", "sse")
         self._transport.addItem("Streamable HTTP", "streamable_http")
         self._transport.addItem("stdio", "stdio")
-        idx = 0 if transport_default.strip().lower() != "stdio" else 1
+        idx = 2 if transport_default.strip().lower() == "stdio" else 0
         self._transport.setCurrentIndex(idx)
 
         self._url = QLineEdit()
@@ -270,6 +273,7 @@ class _McpServerEditDialog(QDialog):
                 if not isinstance(parsed, dict):
                     raise ValueError(tr_i18n("plugins.mcp_err_env_object"))
                 row["env"] = {str(k): str(v) for k, v in parsed.items()}
+            normalize_mcp_stdio_entry(row)
         return row
 
     def get_result(self) -> dict:
@@ -561,8 +565,56 @@ class PluginMcpTab(QWidget):
             "servers": list(self._servers),
         }
 
+    def _stdio_activation_lines(self, data: dict) -> list[str]:
+        if data.get("enabled") is False:
+            return []
+        lines: list[str] = []
+        servers = data.get("servers")
+        if not isinstance(servers, list):
+            return []
+        for i, entry in enumerate(servers):
+            if not isinstance(entry, dict) or entry.get("enabled") is False:
+                continue
+            if str(entry.get("transport") or "").strip().lower() != "stdio":
+                continue
+            stdio = normalize_mcp_stdio_entry(entry)
+            raw_args = list(stdio.args[:6])
+            if len(stdio.args) > 6:
+                raw_args.append("...")
+            label = str(entry.get("name_prefix") or f"#{i + 1}").strip()
+            cmd = shlex.join([Path(stdio.command).name, *raw_args])
+            lines.append(f"- {label}: {cmd}")
+        return lines
+
+    def _confirm_stdio_activation(self, data: dict) -> bool:
+        lines = self._stdio_activation_lines(data)
+        if not lines:
+            return True
+        r = QMessageBox.warning(
+            self,
+            tr_i18n("plugins.mcp_stdio_confirm_title"),
+            tr_i18n(
+                "plugins.mcp_stdio_confirm_body",
+                commands="\n".join(lines),
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return r == QMessageBox.StandardButton.Yes
+
     def _on_save(self) -> None:
         data = self._collect_payload()
+        try:
+            validate_mcp_stdio_servers(data)
+        except ValueError as e:
+            message_fail(
+                self,
+                tr_i18n("plugins.mcp_validate_title"),
+                str(e),
+            )
+            return
+        if not self._confirm_stdio_activation(data):
+            return
         try:
             write_mcp_config(data, self._config_path)
         except Exception as e:
@@ -692,6 +744,18 @@ class PluginMcpTab(QWidget):
     def _on_refresh_tools(self) -> None:
         if self._busy:
             return
+        data = self._collect_payload()
+        try:
+            validate_mcp_stdio_servers(data)
+        except ValueError as e:
+            message_fail(
+                self,
+                tr_i18n("plugins.mcp_validate_title"),
+                str(e),
+            )
+            return
+        if not self._confirm_stdio_activation(data):
+            return
         try:
             __import__("mcp")
         except ImportError:
@@ -705,7 +769,7 @@ class PluginMcpTab(QWidget):
         self._btn_refresh_tools.setEnabled(False)
         self._tools_status.setText(tr_i18n("plugins.mcp_preview_loading"))
         QThreadPool.globalInstance().start(
-            _PreviewTask(self._collect_payload(), self._preview_signals)
+            _PreviewTask(data, self._preview_signals)
         )
 
     @Slot(list)

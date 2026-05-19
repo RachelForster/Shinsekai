@@ -30,6 +30,8 @@ class RegistryPluginRecord:
     repo: str
     description: str
     entry: str
+    commit_sha: str = ""
+    archive_sha256: str = ""
 
     def github_url(self) -> str:
         slug = self.repo.strip().strip("/")
@@ -41,10 +43,34 @@ def _relax_json_trailing_commas(text: str) -> str:
     return re.sub(r",(\s*[}\]])", r"\1", text.strip())
 
 
+def _as_str(value: Any) -> str:
+    return value if isinstance(value, str) else str(value)
+
+
+def _normalize_commit_sha(raw: Any, *, index: int) -> str:
+    value = _as_str(raw).strip() if raw is not None else ""
+    if not value:
+        return ""
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", value):
+        raise ValueError(f"registry[{index}] commit_sha must be a 40-character hex SHA")
+    return value.lower()
+
+
+def _normalize_archive_sha256(raw: Any, *, index: int) -> str:
+    value = _as_str(raw).strip() if raw is not None else ""
+    if not value:
+        return ""
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", value):
+        raise ValueError(f"registry[{index}] archive_sha256 must be a 64-character hex digest")
+    return value.lower()
+
+
 def parse_registry_plugins(raw: Any) -> list[RegistryPluginRecord]:
     """
     Validate and normalize API payload: must be a JSON array of objects with string fields.
     Missing optional fields become empty strings.
+    Rows with malformed optional provenance metadata are skipped instead of
+    weakening verification for that row or failing the whole catalog.
     """
     if not isinstance(raw, list):
         raise ValueError("registry root must be a JSON array")
@@ -52,21 +78,11 @@ def parse_registry_plugins(raw: Any) -> list[RegistryPluginRecord]:
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
             raise ValueError(f"registry[{i}] must be an object")
-        name = item.get("name", "")
-        author = item.get("author", "")
-        repo = item.get("repo", "")
-        description = item.get("description", "")
-        entry = item.get("entry", "")
-        if not isinstance(name, str):
-            name = str(name)
-        if not isinstance(author, str):
-            author = str(author)
-        if not isinstance(repo, str):
-            repo = str(repo)
-        if not isinstance(description, str):
-            description = str(description)
-        if not isinstance(entry, str):
-            entry = str(entry)
+        name = _as_str(item.get("name", ""))
+        author = _as_str(item.get("author", ""))
+        repo = _as_str(item.get("repo", ""))
+        description = _as_str(item.get("description", ""))
+        entry = _as_str(item.get("entry", ""))
         name, author, repo, description, entry = (
             name.strip(),
             author.strip(),
@@ -74,6 +90,15 @@ def parse_registry_plugins(raw: Any) -> list[RegistryPluginRecord]:
             description.strip(),
             entry.strip(),
         )
+        try:
+            commit_sha = _normalize_commit_sha(item.get("commit_sha", ""), index=i)
+            archive_sha256 = _normalize_archive_sha256(
+                item.get("archive_sha256", ""),
+                index=i,
+            )
+        except ValueError:
+            logger.warning("skipping registry[%s] with invalid provenance metadata", i)
+            continue
         if not name and not repo:
             raise ValueError(f"registry[{i}] needs at least name or repo")
         out.append(
@@ -83,6 +108,8 @@ def parse_registry_plugins(raw: Any) -> list[RegistryPluginRecord]:
                 repo=repo,
                 description=description,
                 entry=entry,
+                commit_sha=commit_sha,
+                archive_sha256=archive_sha256,
             )
         )
     return out

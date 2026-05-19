@@ -394,3 +394,7 @@ class TestWorkerUIPipeline:
         llm_worker.wait(3000)
         tts_worker.wait(3000)
         ui_worker.wait(3000)
+
+        assert rt.user_input_queue.unfinished_tasks == 0
+        assert rt.tts_queue.unfinished_tasks == 0
+        assert rt.audio_path_queue.unfinished_tasks == 0
