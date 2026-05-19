@@ -221,8 +221,13 @@ def main():
     except Exception:
         pass
 
+    if args.headless and not (args.workflow or "").strip():
+        headless_workflow = "assets/system/workflow/headless.yaml"
+    else:
+        headless_workflow = None
+
     workflow = build_runtime_workflow(
-        workflow_path=args.workflow or None,
+        workflow_path=args.workflow or headless_workflow,
         queue_factory=Queue,
     )
     chat_handles = get_chat_workflow_handles(workflow)

@@ -216,10 +216,14 @@ class PluginCapabilityRegistry:
         self._dag_node_factories.append((factory, skip_default))
 
     def register_dag_yaml(self, path: str) -> None:
-        """Register a selectable workflow YAML path.
+        """Register a workflow YAML path (reserved for future workflow selection UX).
 
-        The host records the path as a candidate. It is only loaded when the
-        user selects it, not merged into the default workflow automatically.
+        .. note::
+            This API is **reserved** and not yet active.  Plugin-registered
+            workflow YAML paths are collected but are not consumed by the
+            runtime builder, CLI, or Settings UI yet.  Plugins that call this
+            method today will have their paths stored, but users have no
+            mechanism to select them at runtime.
         """
         self._dag_yaml_paths.append(path)
 

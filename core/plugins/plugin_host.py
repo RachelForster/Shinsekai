@@ -65,6 +65,7 @@ def get_plugin_dag_node_factories() -> list[tuple[Callable[[], list], bool]]:
 
 
 def get_plugin_dag_yaml_paths() -> list[str]:
+    """Return plugin-registered workflow YAML paths (reserved — not yet wired into UX)."""
     return list(_plugin_dag_yaml_paths)
 
 

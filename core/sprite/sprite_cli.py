@@ -31,7 +31,12 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
     parser.add_argument(
         "--headless",
         action="store_true",
-        help="Run the selected workflow without creating the desktop UI.",
+        help=(
+            "Run without the desktop window. "
+            "Defaults to assets/system/workflow/headless.yaml "
+            "(LLM→TTS→headless sink; no pygame audio). "
+            "Override with --workflow to supply a custom workflow."
+        ),
     )
     parser.add_argument(
         "--room_id",
