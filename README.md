@@ -135,6 +135,18 @@ python webui_qt.py
 
 ---
 
+## 参与贡献
+
+**请先开 Issue 再提交 PR。** 未事先沟通的大规模 PR（例如往 `scripts/` 堆几千行不相干代码）会被直接关闭。
+
+所有细节见 [CONTRIBUTING.md](CONTRIBUTING.md)，要点：
+
+- **先讨论再动手** — Issue 里说清楚要做什么、为什么，等 maintainer 确认后再写代码。
+- **PR 别贪大** — 一个 PR 只解决一件事；几百行以上的改动几乎必然需要拆分。
+- **别乱放文件** — 新脚本放功能目录下，别往 `scripts/`、`assets/` 等顶层目录 dump。
+
+---
+
 ## 文档与链接
 
 | 内容 | 链接 |
@@ -145,4 +157,4 @@ python webui_qt.py
 | 插件开发者指南 | [docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md) |
 | 本仓库 | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
 
-欢迎 Issue / PR；若二次分发角色与语音资源，请遵守对应作者许可。
+欢迎参与，请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。若二次分发角色与语音资源，请遵守对应作者许可。
