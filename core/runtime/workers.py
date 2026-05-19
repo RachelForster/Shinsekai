@@ -109,8 +109,10 @@ class LLMWorker(QThreadDagNode):
     def run(self):
         self._init_app()
         while self.running:
+            got_item = False
             try:
                 message: UserInputMessage = self.user_input_queue.get()
+                got_item = True
                 if message is None:
                     break
 
@@ -166,8 +168,6 @@ class LLMWorker(QThreadDagNode):
                     _warn = tr("desktop.llm_parse_partial", n=parser.parse_failures)
                     print(f"LLMWorker: {_warn}")
 
-                self.user_input_queue.task_done()
-
             except Exception as e:
                 print(f"LLMWorker: 任务处理失败: {e}")
                 traceback.print_exc()
@@ -180,7 +180,9 @@ class LLMWorker(QThreadDagNode):
                     ))
                 except Exception:
                     pass
-                self.user_input_queue.task_done()
+            finally:
+                if got_item:
+                    self.user_input_queue.task_done()
 
     def stop(self):
         self.running = False
@@ -236,8 +238,10 @@ class TTSWorker(QThreadDagNode):
         self._init_app()
         while self.running:
             item: Optional[LLMDialogMessage] = None
+            got_item = False
             try:
                 item = self.tts_queue.get()
+                got_item = True
                 if item is None:
                     break
                 with tracker.track("TTS dispatch"):
@@ -254,6 +258,9 @@ class TTSWorker(QThreadDagNode):
                         is_system_message=False,
                         effect=item.effect,
                     )
+            finally:
+                if got_item:
+                    self.tts_queue.task_done()
 
     def stop(self):
         self.running = False
@@ -323,9 +330,12 @@ class UIWorker(QThreadDagNode):
     def run(self):
         self._init_app()
         while self.running:
+            output_data: Optional[TTSOutputMessage] = None
+            got_item = False
             try:
                 self.task_done_requested.clear()
-                output_data: TTSOutputMessage = self.audio_path_queue.get()
+                output_data = self.audio_path_queue.get()
+                got_item = True
                 if output_data is None:
                     break
                 self.ui_out_dispatcher.dispatch(output_data)
@@ -340,7 +350,9 @@ class UIWorker(QThreadDagNode):
                     _text = getattr(output_data, "text", "") or ""
                     wait = max(len(_text) / 10, 0.3) if _text else 0.3
                     self.task_done_requested.wait(timeout=wait)
-                self.audio_path_queue.task_done()
+            finally:
+                if got_item:
+                    self.audio_path_queue.task_done()
 
     def stop(self):
         self.running = False
