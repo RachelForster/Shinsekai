@@ -231,6 +231,17 @@ class TestImport:
                 file_util.import_character(str(z))
         assert not (tmp_path / "escape.txt").exists()
 
+    def test_rejects_zip_bomb_like_member(self, tmp_path):
+        """Highly compressed members are rejected before extraction."""
+        z = tmp_path / "bomb.char"
+        with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("character.yaml", yaml.dump([BASIC_CHAR], allow_unicode=True))
+            zf.writestr("sprites/alice/bomb.txt", "0" * (1024 * 1024))
+        with _mock_dirs(tmp_path):
+            with pytest.raises(ValueError, match="压缩率"):
+                file_util.import_character(str(z))
+        assert not (file_util.SPRITE_DIR / "alice" / "bomb.txt").exists()
+
 
 # ── Export tests ────────────────────────────────────────────────────────────
 

@@ -37,6 +37,9 @@ _SENSITIVE_FILE_NAMES = {
 _SENSITIVE_PROJECT_RELATIVE_DIRS = {
     Path("data/config"),
 }
+_MAX_ARCHIVE_MEMBER_SIZE = 256 * 1024 * 1024
+_MAX_ARCHIVE_TOTAL_SIZE = 1024 * 1024 * 1024
+_MAX_ARCHIVE_COMPRESSION_RATIO = 100.0
 
 
 def _resolve(path_str: str) -> Path:
@@ -96,6 +99,13 @@ def _sensitive_error(path: Path) -> dict[str, Any]:
     }
 
 
+def _first_sensitive_path(*paths: Path) -> Path | None:
+    for path in paths:
+        if _is_sensitive_path(path):
+            return path
+    return None
+
+
 def _iter_files_safe(base: Path, pattern: str) -> Iterator[Path]:
     for root, dirs, files in os.walk(base):
         root_path = Path(root)
@@ -137,16 +147,31 @@ def _safe_archive_destination(dest: Path, relative_path: Path) -> Path:
 
 
 def _safe_extract_zip(zf: zipfile.ZipFile, dest: Path) -> None:
+    total = 0
     for member in zf.infolist():
         relative_path = _safe_archive_relative_path(member.filename)
         _safe_archive_destination(dest, relative_path)
         mode = (member.external_attr >> 16) & 0o170000
-        if mode == stat.S_IFLNK:
-            raise ValueError(f"Archive links are not supported: {member.filename!r}")
+        if mode and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+            raise ValueError(f"Unsupported archive member type: {member.filename!r}")
+        if member.is_dir():
+            continue
+        if member.file_size > _MAX_ARCHIVE_MEMBER_SIZE:
+            raise ValueError(f"Archive member too large: {member.filename!r}")
+        total += member.file_size
+        if total > _MAX_ARCHIVE_TOTAL_SIZE:
+            raise ValueError("Archive uncompressed size is too large")
+        if member.compress_size == 0 and member.file_size > 0:
+            raise ValueError(f"Archive member has invalid compressed size: {member.filename!r}")
+        if member.compress_size > 0:
+            ratio = member.file_size / member.compress_size
+            if ratio > _MAX_ARCHIVE_COMPRESSION_RATIO:
+                raise ValueError(f"Archive member compression ratio is too high: {member.filename!r}")
     zf.extractall(dest)
 
 
 def _safe_extract_tar(tf: tarfile.TarFile, dest: Path) -> None:
+    total = 0
     for member in tf.getmembers():
         relative_path = _safe_archive_relative_path(member.name)
         _safe_archive_destination(dest, relative_path)
@@ -154,6 +179,13 @@ def _safe_extract_tar(tf: tarfile.TarFile, dest: Path) -> None:
             raise ValueError(f"Archive links are not supported: {member.name!r}")
         if not (member.isfile() or member.isdir()):
             raise ValueError(f"Unsupported archive member type: {member.name!r}")
+        if member.isdir():
+            continue
+        if member.size > _MAX_ARCHIVE_MEMBER_SIZE:
+            raise ValueError(f"Archive member too large: {member.name!r}")
+        total += member.size
+        if total > _MAX_ARCHIVE_TOTAL_SIZE:
+            raise ValueError("Archive uncompressed size is too large")
     tf.extractall(dest)
 
 
@@ -321,6 +353,9 @@ def file_move(source: str, dest: str) -> dict[str, Any]:
     dst = _resolve(dest)
     if not src.exists():
         return {"error": f"Source not found: {src}"}
+    sensitive = _first_sensitive_path(src, dst)
+    if sensitive is not None:
+        return _sensitive_error(sensitive)
     try:
         shutil.move(str(src), str(dst))
         return {"moved": str(src), "to": str(dst)}
@@ -335,6 +370,9 @@ def file_copy(source: str, dest: str) -> dict[str, Any]:
     dst = _resolve(dest)
     if not src.is_file():
         return {"error": f"Source file not found: {src}"}
+    sensitive = _first_sensitive_path(src, dst)
+    if sensitive is not None:
+        return _sensitive_error(sensitive)
     try:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(src), str(dst))
@@ -349,13 +387,16 @@ def file_delete(path: str) -> dict[str, Any]:
     p = _resolve(path)
     if not p.exists():
         return {"error": f"Path not found: {p}"}
+    if _is_sensitive_path(p):
+        return _sensitive_error(p)
     try:
         if p.is_dir():
             p.rmdir()
             return {"deleted": str(p), "type": "directory"}
         else:
+            size = p.stat().st_size
             p.unlink()
-            return {"deleted": str(p), "type": "file", "size_human": _human_size(p.stat().st_size)}
+            return {"deleted": str(p), "type": "file", "size_human": _human_size(size)}
     except Exception as e:
         return {"error": str(e), "path": str(p)}
 
@@ -368,6 +409,9 @@ def file_extract(archive_path: str, extract_to: str = "") -> dict[str, Any]:
     if not p.is_file():
         return {"error": f"Archive not found: {p}"}
     dest = _resolve(extract_to) if extract_to else p.parent / p.stem
+    sensitive = _first_sensitive_path(p, dest)
+    if sensitive is not None:
+        return _sensitive_error(sensitive)
     dest.mkdir(parents=True, exist_ok=True)
     try:
         name_low = p.name.lower()
@@ -394,6 +438,8 @@ def file_extract(archive_path: str, extract_to: str = "") -> dict[str, Any]:
                   "path: file path. content: text content to write.")
 def file_write(path: str, content: str) -> dict[str, Any]:
     p = _resolve(path)
+    if _is_sensitive_path(p):
+        return _sensitive_error(p)
     existed = p.exists()
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -409,6 +455,8 @@ def file_write(path: str, content: str) -> dict[str, Any]:
                   "path: file path. content: text to append.")
 def file_append(path: str, content: str) -> dict[str, Any]:
     p = _resolve(path)
+    if _is_sensitive_path(p):
+        return _sensitive_error(p)
     existed = p.exists()
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -426,6 +474,8 @@ def file_mkdir(path: str) -> dict[str, Any]:
     p = _resolve(path)
     if p.exists():
         return {"error": f"Path already exists: {p}"}
+    if _is_sensitive_path(p):
+        return _sensitive_error(p)
     try:
         p.mkdir(parents=True, exist_ok=False)
         return {"created": str(p)}

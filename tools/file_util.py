@@ -10,6 +10,7 @@ from config.config_manager import ConfigManager
 from typing import List
 import platform
 import subprocess
+import stat
 
 # 定义项目的基础数据路径
 BASE_DATA_PATH = Path('./data')
@@ -21,6 +22,9 @@ CHARACTERS_CONFIG_PATH = CONFIG_DIR / 'characters.yaml'
 BACKGROUND_CONFIG_PATH = CONFIG_DIR / 'background.yaml'
 BACKGROUND_UPLOAD_DIR = BASE_DATA_PATH / 'backgrounds'
 BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
+MAX_IMPORT_ZIP_MEMBER_SIZE = 256 * 1024 * 1024
+MAX_IMPORT_ZIP_TOTAL_SIZE = 1024 * 1024 * 1024
+MAX_IMPORT_ZIP_COMPRESSION_RATIO = 100.0
 
 
 def _safe_path_segment(value: object, field_name: str) -> str:
@@ -52,12 +56,30 @@ def _safe_archive_relative_path(value: object, field_name: str) -> Path:
 
 def _safe_extract_zip(zf: zipfile.ZipFile, target_dir: Path) -> None:
     root = target_dir.resolve()
+    total = 0
     for member in zf.infolist():
         name = member.filename
         _safe_archive_relative_path(name, "zip member")
         dest = (target_dir / name).resolve()
         if dest != root and root not in dest.parents:
             raise ValueError(f"压缩包成员路径越界: {name}")
+        mode = (member.external_attr >> 16) & 0xFFFF
+        file_type = stat.S_IFMT(mode) if mode else 0
+        if file_type and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+            raise ValueError(f"压缩包成员类型不支持: {name}")
+        if member.is_dir():
+            continue
+        if member.file_size > MAX_IMPORT_ZIP_MEMBER_SIZE:
+            raise ValueError(f"压缩包成员过大: {name}")
+        total += member.file_size
+        if total > MAX_IMPORT_ZIP_TOTAL_SIZE:
+            raise ValueError("压缩包解压后总大小过大")
+        if member.compress_size == 0 and member.file_size > 0:
+            raise ValueError(f"压缩包成员压缩大小无效: {name}")
+        if member.compress_size > 0:
+            ratio = member.file_size / member.compress_size
+            if ratio > MAX_IMPORT_ZIP_COMPRESSION_RATIO:
+                raise ValueError(f"压缩包成员压缩率异常: {name}")
     zf.extractall(target_dir)
 
 
