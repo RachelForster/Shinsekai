@@ -55,15 +55,18 @@ def _safe_package_basename_or_legacy_absolute(
     if "\x00" in raw:
         raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
 
-    is_legacy_absolute = raw.startswith("/") or _WINDOWS_DRIVE_RE.match(raw)
+    has_windows_drive = _WINDOWS_DRIVE_RE.match(raw)
+    is_legacy_absolute = raw.startswith("/") or (
+        has_windows_drive and raw[2:3] == "/"
+    )
     if not is_legacy_absolute:
         return _safe_package_basename(raw, field_name)
 
-    tail = raw[2:] if _WINDOWS_DRIVE_RE.match(raw) else raw
+    tail = raw[3:] if has_windows_drive else raw
     parts = tail.lstrip("/").split("/")
     if not parts or any(part in ("", ".", "..") for part in parts):
         raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
-    return parts[-1]
+    return _safe_package_name(parts[-1], field_name)
 
 
 def _safe_package_name(value: str | os.PathLike | None, field_name: str) -> str:
@@ -167,12 +170,27 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
                 if sprite_source_dir.is_dir():
                     shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix, dirs_exist_ok=True)
 
-            # 重写 sprite path 为仅文件名（导入时按文件名匹配重建路径）
+            # 重写 sprite/voice path 为仅文件名（导入时按文件名匹配重建路径）
             sprites = char_data.get('sprites') or []
+            normalized_sprites = []
             for s in sprites if isinstance(sprites, list) else []:
                 if isinstance(s, dict):
-                    old_p = Path(str(s.get('path', '')))
-                    s['path'] = old_p.name
+                    sprite_data = dict(s)
+                    if sprite_data.get('path'):
+                        sprite_data['path'] = _safe_package_basename_or_legacy_absolute(
+                            sprite_data['path'], "sprite path"
+                        )
+                    else:
+                        sprite_data['path'] = ""
+                    if sprite_data.get('voice_path'):
+                        sprite_data['voice_path'] = _safe_package_basename_or_legacy_absolute(
+                            sprite_data['voice_path'], "voice_path"
+                        )
+                    normalized_sprites.append(sprite_data)
+                else:
+                    normalized_sprites.append(s)
+            if isinstance(sprites, list):
+                char_data['sprites'] = normalized_sprites
 
             # 复制语音文件
             if config.sprite_prefix:
@@ -326,28 +344,34 @@ def import_character(input_path: str) -> list[CharacterConfig]:
             if new_name != original_name or new_sprite_prefix != original_sprite_prefix:
                 print(f"检测到冲突，已将 '{original_name}' ({original_sprite_prefix}) 重命名为 '{new_name}' ({new_sprite_prefix})")
             
+            sprites = char_data.get('sprites') or []
+            dest_sprite_dir = SPRITE_DIR / new_sprite_prefix
+            dest_speech_dir = SPEECH_DIR / new_sprite_prefix
+
             # 恢复立绘文件（使用新的sprite_prefix）
             if new_sprite_prefix:
                 source_sprite_dir = temp_dir / 'sprites' / original_sprite_prefix
-                dest_sprite_dir = SPRITE_DIR / new_sprite_prefix
                 if source_sprite_dir.is_dir():
                     shutil.copytree(source_sprite_dir, dest_sprite_dir, dirs_exist_ok=True)
 
-                # 修复 sprite path：指向导入机器上的实际路径
-                sprites = char_data.get('sprites') or []
-                for s in sprites:
-                    if isinstance(s, dict):
-                        new_path = dest_sprite_dir / _safe_package_basename(
-                            s.get('path', ''), "sprite path"
-                        )
+            # 修复 sprite path：指向导入机器上的实际路径；无 prefix 时至少去掉宿主机路径。
+            for s in sprites:
+                if isinstance(s, dict):
+                    filename = _safe_package_basename_or_legacy_absolute(
+                        s.get('path', ''), "sprite path"
+                    )
+                    if new_sprite_prefix:
+                        new_path = dest_sprite_dir / filename
                         try:
                             s['path'] = str(new_path.relative_to(Path.cwd()))
                         except ValueError:
                             s['path'] = new_path.as_posix()
+                    else:
+                        s['path'] = filename
 
+            if new_sprite_prefix:
                 # 恢复语音文件（使用新的sprite_prefix）
                 source_speech_dir = temp_dir / 'speech' / original_sprite_prefix
-                dest_speech_dir = SPEECH_DIR / new_sprite_prefix
                 if source_speech_dir.is_dir():
                     shutil.copytree(source_speech_dir, dest_speech_dir, dirs_exist_ok=True)
 
@@ -356,18 +380,20 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                 if source_speech_dir.is_dir():
                     shutil.copytree(source_speech_dir, SPEECH_DIR / new_sprite_prefix, dirs_exist_ok=True)
 
-                # 修复 voice_path：指向 SPEECH_DIR
-                for s in sprites:
-                    if isinstance(s, dict) and s.get('voice_path'):
-                        new_vp = (
-                            SPEECH_DIR
-                            / new_sprite_prefix
-                            / _safe_package_basename(s['voice_path'], "voice_path")
-                        )
+            # 修复 voice_path：指向 SPEECH_DIR；无 prefix 时至少去掉宿主机路径。
+            for s in sprites:
+                if isinstance(s, dict) and s.get('voice_path'):
+                    filename = _safe_package_basename_or_legacy_absolute(
+                        s['voice_path'], "voice_path"
+                    )
+                    if new_sprite_prefix:
+                        new_vp = dest_speech_dir / filename
                         try:
                             s['voice_path'] = str(new_vp.relative_to(Path.cwd()))
                         except ValueError:
                             s['voice_path'] = new_vp.as_posix()
+                    else:
+                        s['voice_path'] = filename
             
             # 恢复模型文件并更新路径
             model_paths = {
