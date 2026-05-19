@@ -28,6 +28,33 @@ class TestTTSAdapterFactoryRegistry:
         finally:
             del TTSAdapterFactory._adapters["mock-tts"]
 
+    def test_factory_filters_irrelevant_kwargs_for_cosyvoice(self):
+        adapter = TTSAdapterFactory.create_adapter(
+            "cosyvoice",
+            api_key="test-key",
+            tts_server_url="http://ignored.local",
+            gpt_sovits_work_path="/ignored",
+        )
+
+        assert adapter.api_key == "test-key"
+
+    def test_factory_filters_irrelevant_kwargs_for_index_tts(self, monkeypatch):
+        class _Resp:
+            status_code = 200
+
+        monkeypatch.setattr("tts.tts_adapter.requests.get", lambda *a, **k: _Resp())
+
+        adapter = TTSAdapterFactory.create_adapter(
+            "index-tts",
+            index_server_url="http://index.local/",
+            index_server_work_path="/tmp/index",
+            tts_server_url="http://ignored.local",
+            gpt_sovits_work_path="/ignored",
+        )
+
+        assert adapter.index_server_url == "http://index.local/"
+        assert adapter.gpt_sovits_work_path == "/tmp/index"
+
 
 class TestTTSManagerWithMock:
     def test_set_adapter(self, mock_tts_adapter):

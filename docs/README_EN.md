@@ -98,7 +98,7 @@ For synthesized dialogue audio, deploy [GPT-SoVITS](https://github.com/RVC-Boss/
 
 List plugins in **`data/config/plugins.yaml`**; source lives under **`plugins/<package>/`**. The host merges **LLM / TTS / ASR / T2I** adapters, **tools**, and contributions to **Settings**, the **tools area**, and the **chat window**.
 
-- **UI**: Settings → **Plugins** — enable/disable, discover & download from the index, run `pip install -r requirements.txt` with the same interpreter as the app.  
+- **UI**: Settings → **Plugins** — enable/disable, discover & download from the index; if a plugin has `requirements.txt`, the UI reports it for manual install instead of running pip automatically after download.
 - **Index:** [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)  
 - **Scaffold:** `python -m sdk.cli create your_plugin_name` (the older `--package your_plugin_name` form remains supported)
 - **Developer guide:** [PLUGIN_DEVELOPER_GUIDE.md](PLUGIN_DEVELOPER_GUIDE.md)
@@ -114,6 +114,7 @@ Expose [MCP](https://modelcontextprotocol.io/) servers to the **in-process LLM t
 1. Install: `pip install mcp`  
 2. Configure **`data/config/mcp.yaml`**, or use Settings → **Plugins** → **MCP** for a visual editor.  
 3. **Save & apply** reconnects servers and registers remote tools for the current process (use a name **prefix** per server to avoid clashes).
+4. stdio starts local processes: commands must be trusted absolute executables or built-in allowed launchers, and save/refresh asks for confirmation first.
 
 Independent of the plugin system: you can wire external capabilities through YAML alone—no `PluginBase` required.
 

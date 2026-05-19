@@ -13,6 +13,8 @@ from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 
+from llm.tools.mcp_config_file import normalize_mcp_stdio_command
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,10 +80,11 @@ class MCPBridge:
         env: dict[str, str] | None = None,
     ) -> None:
         """连接本地子进程 stdio MCP 服务。"""
+        stdio = normalize_mcp_stdio_command(command, args, env)
         stack = await self._ensure_fresh_stack()
         try:
             params = StdioServerParameters(
-                command=command, args=list(args or []), env=env
+                command=stdio.command, args=stdio.args, env=stdio.env
             )
             transport = stdio_client(params)
             read, write = await stack.enter_async_context(transport)

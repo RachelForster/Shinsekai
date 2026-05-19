@@ -8,13 +8,16 @@ import os
 import shutil
 import sys
 import tempfile
-import zipfile
 from pathlib import Path
 from typing import Any, Callable, Literal
 
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from core.plugins.archive_safety import (
+    safe_extract_zip_single_top,
+    validate_zip_single_top_folder,
+)
 from core.plugins.registry_download import sanitize_plugins_directory_name
 
 logger = logging.getLogger(__name__)
@@ -145,14 +148,7 @@ def stream_download_zip(url: str, *, timeout_sec: float = 300.0, progress: Calla
 
 
 def _zip_top_folder_name(zip_path: Path) -> str:
-    with zipfile.ZipFile(zip_path) as zf:
-        names = [n for n in zf.namelist() if n and not n.endswith("/")]
-        if not names:
-            raise ValueError("empty archive")
-        top = names[0].split("/")[0]
-        if not top:
-            raise ValueError("invalid archive layout")
-        return top
+    return validate_zip_single_top_folder(zip_path)
 
 
 def merge_source_tree_into(
@@ -258,20 +254,21 @@ def download_zip_extract_top_folder(
 
     td = Path(tempfile.mkdtemp(prefix="ghzip_"))
     zip_path = td / "_src.zip"
-    zip_path.write_bytes(body)
-    top_name = _zip_top_folder_name(zip_path)
-    if on_phase is not None:
-        on_phase("extract")
-    extract_into = td / "_out"
-    extract_into.mkdir()
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(extract_into)
-    zip_path.unlink(missing_ok=True)
-    extracted_top = extract_into / top_name
-    if not extracted_top.is_dir():
+    try:
+        zip_path.write_bytes(body)
+        top_name = _zip_top_folder_name(zip_path)
+        if on_phase is not None:
+            on_phase("extract")
+        extract_into = td / "_out"
+        extract_into.mkdir()
+        extracted_top = safe_extract_zip_single_top(zip_path, extract_into)
+        zip_path.unlink(missing_ok=True)
+        if extracted_top.name != top_name or not extracted_top.is_dir():
+            raise RuntimeError(f"extract missing top folder {top_name}")
+        return td, extracted_top
+    except Exception:
         shutil.rmtree(td, ignore_errors=True)
-        raise RuntimeError(f"extract missing top folder {top_name}")
-    return td, extracted_top
+        raise
 
 
 def overwrite_merge_app_tree(slug: str, ref_kind: RefKindApi, tag_name: str, *, progress, on_phase) -> None:

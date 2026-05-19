@@ -469,7 +469,7 @@ class TestRuntimeWorkflow:
             """
 nodes:
   - name: first
-    type: test.unit.tools.test_dag_graph.EchoNode
+    type: core.runtime.workers.LLMWorker
 edges: []
 exports:
   selected:
@@ -482,7 +482,7 @@ exports:
             """
 nodes:
   - name: second
-    type: test.unit.tools.test_dag_graph.EchoNode
+    type: core.runtime.workers.LLMWorker
 edges: []
 exports:
   selected:
@@ -525,6 +525,116 @@ exports:
         )
 
         with pytest.raises(RuntimeError, match="chat.tts_input"):
+            require_desktop_chat_workflow(workflow)
+
+    def test_runtime_workflow_rejects_unregistered_node_type_before_import(self, tmp_path):
+        workflow_path = tmp_path / "unsafe.yaml"
+        workflow_path.write_text(
+            """
+nodes:
+  - name: unsafe
+    type: os.system
+edges: []
+exports:
+  unsafe:
+    node: unsafe
+    direction: node
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="not allowed"):
+            build_runtime_workflow(workflow_path=str(workflow_path), queue_factory=Queue)
+
+    def test_desktop_chat_workflow_requires_llm_to_tts_edge(self, tmp_path):
+        workflow_path = tmp_path / "disconnected.yaml"
+        workflow_path.write_text(
+            """
+nodes:
+  - name: llm_worker
+    type: core.runtime.workers.LLMWorker
+  - name: tts_worker
+    type: core.runtime.workers.TTSWorker
+  - name: ui_worker
+    type: core.runtime.workers.UIWorker
+edges:
+  - src: tts_worker
+    src_port: tts_output
+    dst: ui_worker
+    dst_port: tts_output
+exports:
+  chat.input:
+    node: llm_worker
+    port: user_input
+    direction: input
+  chat.tts_input:
+    node: tts_worker
+    port: llm_output
+    direction: input
+  chat.audio_output:
+    node: tts_worker
+    port: tts_output
+    direction: output
+  chat.ui_worker:
+    node: ui_worker
+    direction: node
+""",
+            encoding="utf-8",
+        )
+
+        workflow = build_runtime_workflow(
+            workflow_path=str(workflow_path),
+            queue_factory=Queue,
+        )
+
+        with pytest.raises(RuntimeError, match="LLMWorker\\.llm_output"):
+            require_desktop_chat_workflow(workflow)
+
+    def test_desktop_chat_workflow_requires_export_direction(self, tmp_path):
+        workflow_path = tmp_path / "wrong_direction.yaml"
+        workflow_path.write_text(
+            """
+nodes:
+  - name: llm_worker
+    type: core.runtime.workers.LLMWorker
+  - name: tts_worker
+    type: core.runtime.workers.TTSWorker
+  - name: ui_worker
+    type: core.runtime.workers.UIWorker
+edges:
+  - src: llm_worker
+    src_port: llm_output
+    dst: tts_worker
+    dst_port: llm_output
+  - src: tts_worker
+    src_port: tts_output
+    dst: ui_worker
+    dst_port: tts_output
+exports:
+  chat.input:
+    node: llm_worker
+    direction: node
+  chat.tts_input:
+    node: tts_worker
+    port: llm_output
+    direction: input
+  chat.audio_output:
+    node: tts_worker
+    port: tts_output
+    direction: output
+  chat.ui_worker:
+    node: ui_worker
+    direction: node
+""",
+            encoding="utf-8",
+        )
+
+        workflow = build_runtime_workflow(
+            workflow_path=str(workflow_path),
+            queue_factory=Queue,
+        )
+
+        with pytest.raises(RuntimeError, match="chat\\.input.*direction"):
             require_desktop_chat_workflow(workflow)
 
     def test_default_workflow_satisfies_desktop_contract(self):

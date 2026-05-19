@@ -49,6 +49,34 @@ def _cc():
     return get_app_runtime().opencc
 
 
+def _sprite_value(sprite, key: str, default: str = "") -> str:
+    if isinstance(sprite, dict):
+        return str(sprite.get(key) or default)
+    return str(getattr(sprite, key, default) or default)
+
+
+def _resolve_sprite_index(asset_id: str | int | None, sprites: list) -> int | None:
+    try:
+        raw_id = int(asset_id) if asset_id is not None else -1
+    except (TypeError, ValueError):
+        return None
+    if raw_id < 0 or not sprites:
+        return None
+    idx = raw_id - 1
+    if idx == -1:
+        idx = len(sprites) - 1
+    if idx < 0 or idx >= len(sprites):
+        return None
+    return idx
+
+
+def _sprite_voice_path(asset_id: str | int | None, sprites: list) -> str:
+    idx = _resolve_sprite_index(asset_id, sprites)
+    if idx is None:
+        return ""
+    return _sprite_value(sprites[idx], "voice_path")
+
+
 class ChainOfThoughtTtsHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return match_cot_tts(_cc(), msg.name)
@@ -107,13 +135,30 @@ class CgTtsHandler(MessageHandler):
     def handle(self, msg: LLMDialogMessage) -> None:
         _post_tts_busy(tr_i18n("desktop.tts_busy_cg"))
         try:
-            cg_path = get_app_runtime().t2i_manager.t2i(prompt=msg.text, prompt_processor=None)
+            rt = get_app_runtime()
+            if rt.t2i_manager is None:
+                tts_emit_to_ui_queue(
+                    "CG",
+                    tr_i18n("desktop.cg_unavailable", prompt=msg.text or ""),
+                    "-1",
+                    "",
+                    is_system_message=True,
+                )
+                return
+            cg_path = rt.t2i_manager.t2i(prompt=msg.text, prompt_processor=None)
             tts_emit_to_ui_queue(
                 msg.name, msg.text, "-1", cg_path, is_system_message=True
             )
         except Exception as e:
             print(f"生成CG失败，{e}")
             traceback.print_exc()
+            tts_emit_to_ui_queue(
+                "CG",
+                tr_i18n("desktop.cg_failed", error=str(e)),
+                "-1",
+                "",
+                is_system_message=True,
+            )
         finally:
             _hide_tts_busy()
 
@@ -150,22 +195,17 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 }
                 rt.tts_manager.switch_model(model_info)
                 print("TTSWorker: 使用模型", name_s, model_info)
-                try:
-                    sprite_id = int(asset_id) - 1
-                    if sprite_id < 0 or sprite_id >= len(character_config.sprites):
-                        raise IndexError("Sprite ID out of range")
-                except (ValueError, IndexError):
+                sprite_id = _resolve_sprite_index(asset_id, character_config.sprites)
+                if sprite_id is None:
                     print(f"无效或缺失的立绘编号: {asset_id}. 使用默认立绘。")
-                    sprite_id = -1
                 ref_audio_path = Path(character_config.refer_audio_path).resolve().as_posix()
                 prompt_text = character_config.prompt_text
-                try:
+                if sprite_id is not None:
                     sprite_data = character_config.sprites[sprite_id]
-                    if sprite_data.get("voice_text", None):
-                        ref_audio_path = Path(sprite_data.get("voice_path")).resolve().as_posix()
-                        prompt_text = sprite_data.get("voice_text")
-                except Exception:
-                    print("没有立绘")
+                    voice_text = _sprite_value(sprite_data, "voice_text")
+                    if voice_text:
+                        ref_audio_path = Path(_sprite_value(sprite_data, "voice_path")).resolve().as_posix()
+                        prompt_text = voice_text
                 if text_processor:
                     speech_text = text_processor.remove_parentheses(speech_text)
 
@@ -228,7 +268,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
             finally:
                 _hide_tts_busy()
         else:
-            audio_path = character_config.sprites[int(asset_id) - 1].get("voice_path", "")
+            audio_path = _sprite_voice_path(asset_id, character_config.sprites)
         tts_emit_to_ui_queue(
             name_s, speech, str(asset_id), audio_path, is_system_message=False, effect=msg.effect,
         )

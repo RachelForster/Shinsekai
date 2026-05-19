@@ -4,6 +4,7 @@ import queue
 import subprocess
 from tts.tts_adapter import TTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter, CosyVoiceAdapter, GenieTTSAdapter
 from pathlib import Path
+from config.adapter_extra_kwargs import filter_kwargs_for_ctor
 
 class TTSAdapterFactory:
     """
@@ -38,7 +39,7 @@ class TTSAdapterFactory:
         
         try:
             # Instantiate the correct adapter class with the provided kwargs
-            return adapter_class(**kwargs)
+            return adapter_class(**filter_kwargs_for_ctor(adapter_class, kwargs))
         except TypeError as e:
             print(f"Error creating adapter '{adapter_name}'. Check the required arguments.")
             raise e

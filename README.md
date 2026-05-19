@@ -116,7 +116,7 @@ python webui_qt.py
 
 用 **`data/config/plugins.yaml`** 登记插件；源码放在 **`plugins/<包名>/`**。宿主会合并 **LLM / TTS / ASR / T2I** 适配器、**工具**、**Settings / 工具箱 / 聊天窗** 等贡献。
 
-- **图形界面**：Settings → **插件**：启用/禁用、从索引发现与下载、`pip install` 依赖（与当前解释器一致）。  
+- **图形界面**：Settings → **插件**：启用/禁用、从索引发现与下载；若插件含 `requirements.txt`，界面只提示手动安装，不在下载后自动执行 pip。
 - **索引仓库**：[Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)  
 - **脚手架**：`python -m sdk.cli create your_plugin_name`（旧写法 `--package your_plugin_name` 仍兼容）
 - **设计说明**（英文）：[docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md)
@@ -132,6 +132,7 @@ python webui_qt.py
 1. 安装：`pip install mcp`  
 2. 配置：**`data/config/mcp.yaml`**，或在 Settings → **插件** → **MCP** 子页可视化编辑。  
 3. **保存并应用** 会重连服务并把远端工具注册到当前会话（可用前缀避免工具名冲突）。
+4. stdio 会启动本机进程：命令必须是受信任的绝对可执行路径或内置允许的启动器；保存/刷新前会二次确认。
 
 与插件系统独立：不写插件也能通过 YAML 接外部能力。
 

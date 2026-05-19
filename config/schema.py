@@ -65,7 +65,7 @@ class ApiConfig(BaseModel):
     gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='http://127.0.0.1:9880', description="GPT-SoVITS API 的访问 URL")
     tts_provider: DefaultIfNone[str] = Field(
         default="gpt-sovits",
-        description="TTS 提供器: gpt-sovits / genie-tts / none（不使用语音合成）",
+        description="TTS 提供器: gpt-sovits / genie-tts / index-tts / cosyvoice / none（不使用语音合成）",
     )
     tts_speed: DefaultIfNone[float] = Field(default=1.0, description="TTS 语速 (默认值 1.0)")
 

@@ -108,15 +108,22 @@ class EdgeSpec:
 
 
 class DagBuilder:
-    def __init__(self) -> None:
+    def __init__(self, *, allowed_node_types: set[str] | None = None) -> None:
         self._nodes: dict[str, DagNode] = {}
         self._edges: list[Edge] = []
         self._pending_edges: list[EdgeSpec] = []
         self._queue_factory: Callable[[], Any] | None = None
         self._exports: dict[str, dict[str, Any]] = {}
+        self._allowed_node_types = allowed_node_types
 
     def set_queue_factory(self, factory: Callable[[], Any]) -> Self:
         self._queue_factory = factory
+        return self
+
+    def allow_node_type(self, dotted: str) -> Self:
+        if self._allowed_node_types is None:
+            self._allowed_node_types = set()
+        self._allowed_node_types.add(dotted)
         return self
 
     def add_node(self, node: DagNode) -> Self:
@@ -220,11 +227,12 @@ class DagBuilder:
             "exports": dict(self._exports),
         }
 
-    @staticmethod
-    def _import_class(dotted: str) -> type:
+    def _import_class(self, dotted: str) -> type:
         parts = dotted.rsplit(".", 1)
         if len(parts) != 2:
             raise ValueError(f"Cannot parse dotted class name: {dotted}")
+        if self._allowed_node_types is not None and dotted not in self._allowed_node_types:
+            raise ValueError(f"Workflow node type is not allowed: {dotted}")
         mod, cls_name = parts
         module = importlib.import_module(mod)
         return getattr(module, cls_name)
@@ -315,16 +323,28 @@ class DagBuilder:
         self.load_dict(data)
 
     @classmethod
-    def from_dict(cls, data: dict, *, queue_factory=None) -> "DagBuilder":
-        builder = cls()
+    def from_dict(
+        cls,
+        data: dict,
+        *,
+        queue_factory=None,
+        allowed_node_types: set[str] | None = None,
+    ) -> "DagBuilder":
+        builder = cls(allowed_node_types=allowed_node_types)
         if queue_factory:
             builder.set_queue_factory(queue_factory)
         builder.load_dict(data)
         return builder
 
     @classmethod
-    def from_yaml(cls, path_or_text: str, *, queue_factory=None) -> "DagBuilder":
-        builder = cls()
+    def from_yaml(
+        cls,
+        path_or_text: str,
+        *,
+        queue_factory=None,
+        allowed_node_types: set[str] | None = None,
+    ) -> "DagBuilder":
+        builder = cls(allowed_node_types=allowed_node_types)
         if queue_factory:
             builder.set_queue_factory(queue_factory)
         builder.load_yaml(path_or_text)
@@ -332,8 +352,8 @@ class DagBuilder:
 
 
 class Dag:
-    def __init__(self, *, queue_factory=None):
-        self._builder = DagBuilder()
+    def __init__(self, *, queue_factory=None, allowed_node_types: set[str] | None = None):
+        self._builder = DagBuilder(allowed_node_types=allowed_node_types)
         if queue_factory:
             self._builder.set_queue_factory(queue_factory)
         self._nodes: list[DagNode] = []

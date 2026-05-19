@@ -7,11 +7,15 @@ import logging
 import os
 import sys
 import tempfile
-import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from core.plugins.archive_safety import (
+    safe_extract_zip_single_top,
+    validate_zip_single_top_folder,
+)
 
 logger = logging.getLogger(__name__)
 _PLUGINS_DIR = Path("plugins")
@@ -179,14 +183,7 @@ def _github_archive_zip_url(repo_slug: str, branch: str) -> str:
 
 
 def _archive_top_prefix(zip_path: Path) -> str:
-    with zipfile.ZipFile(zip_path) as zf:
-        names = [n for n in zf.namelist() if n and not n.endswith("/")]
-        if not names:
-            raise ValueError("empty archive")
-        top = names[0].split("/")[0]
-        if not top:
-            raise ValueError("invalid archive layout")
-        return top
+    return validate_zip_single_top_folder(zip_path)
 
 
 def download_github_repo_sources(
@@ -278,9 +275,8 @@ def download_github_repo_sources(
 
         if on_phase is not None:
             on_phase("extract")
-        with zipfile.ZipFile(tmp_path) as zf:
-            zf.extractall(parent)
-        if not extracted_path.is_dir():
+        extracted = safe_extract_zip_single_top(tmp_path, parent)
+        if extracted != extracted_path or not extracted_path.is_dir():
             raise RuntimeError(f"extract finished but folder missing: {extracted_path}")
 
         if folder_final and extracted_path.resolve() != target_path.resolve():
