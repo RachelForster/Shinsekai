@@ -174,7 +174,11 @@ class MainWindow(QMainWindow):
 
     def _check_for_updates(self) -> None:
         """后台线程拉取最新版本号，超时 10s 静默跳过。"""
-        from i18n import tr
+        from core.plugins.github_bundle_update import is_development_version
+
+        local = str(getattr(self._ctx.config_manager, "version", "")).strip()
+        if is_development_version(local):
+            return
 
         class _VersionWorker(QObject):
             finished = Signal(object)
@@ -211,6 +215,10 @@ class MainWindow(QMainWindow):
 
     def _on_version_check_result(self, remote_tag: object) -> None:
         from i18n import tr
+        from core.plugins.github_bundle_update import (
+            normalize_version_label,
+            should_prompt_for_app_update,
+        )
 
         if getattr(self, "_version_timeout", None):
             self._version_timeout.stop()
@@ -218,10 +226,11 @@ class MainWindow(QMainWindow):
         if not isinstance(remote_tag, str) or not remote_tag.strip():
             return
 
-        remote = remote_tag.strip().lstrip("v")
-        local = str(getattr(self._ctx.config_manager, "version", "")).strip().lstrip("v")
-        if not remote or remote == local:
+        local_raw = str(getattr(self._ctx.config_manager, "version", "")).strip()
+        if not should_prompt_for_app_update(local_raw, remote_tag):
             return
+        remote = normalize_version_label(remote_tag)
+        local = normalize_version_label(local_raw)
 
         msg = tr("main.update_available").format(remote=remote, local=local)
         detail = tr("main.update_available_detail")
@@ -298,6 +307,9 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
 
     def mousePressEvent(self, event):
+        if QApplication.activeModalWidget() is not None:
+            super().mousePressEvent(event)
+            return
         self.dragPos = event.globalPosition().toPoint()
         if event.buttons() == Qt.MouseButton.LeftButton:
             pass

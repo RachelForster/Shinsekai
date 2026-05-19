@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, QTimer
+import hashlib
+import json
+from pathlib import Path
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+
+from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -22,6 +32,9 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QStyle,
+    QStyleOptionViewItem,
+    QStyledItemDelegate,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -42,7 +55,12 @@ from ui.settings_ui.widgets.adapter_extra_form import (
 )
 from ui.settings_ui.services.chat_template_handlers import launch_chat_resume_last
 from ui.settings_ui.context import SettingsUIContext
-from ui.settings_ui.feedback import feedback_result, message_fail, toast_success
+from ui.settings_ui.feedback import (
+    feedback_result,
+    message_fail,
+    message_info,
+    toast_success,
+)
 from ui.settings_ui.tts.tts_bundle_download_dialog import TtsBundleDownloadDialog
 
 
@@ -57,6 +75,1378 @@ _ASR_WHISPER_MODEL_PRESETS: tuple[str, ...] = (
     "distil-large-v2",
     "distil-large-v3",
 )
+_TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
+    ("genie-tts", "Genie TTS"),
+    ("gpt-sovits", "GPT SoVITS"),
+    ("index-tts", "IndexTTS"),
+    ("cosyvoice", "CosyVoice"),
+)
+_PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion")
+_MODEL_REQUEST_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0 Safari/537.36 Shinsekai/1.0"
+)
+_OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+_LLM_CAPABILITY_CACHE_PATH = Path("data/config/llm_model_capabilities.json")
+_LLM_CAPABILITY_CACHE_VERSION = 2
+_LLM_CAPABILITY_FETCH_TIMEOUT_SEC = 10.0
+_OPENROUTER_CACHE_TTL_SEC = 24 * 60 * 60
+_PROBE_STABLE_CACHE_TTL_SEC = 7 * 24 * 60 * 60
+_PROBE_NO_ACCESS_CACHE_TTL_SEC = 60 * 60
+_TRANSPARENT_PNG_1X1_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+    "/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+)
+_OPENROUTER_PROVIDER_HINTS: dict[str, tuple[str, ...]] = {
+    "chatgpt": ("openai",),
+    "openai": ("openai",),
+    "deepseek": ("deepseek",),
+    "gemini": ("google",),
+    "claude": ("anthropic",),
+    "豆包": ("bytedance",),
+    "通义千问": ("qwen", "alibaba"),
+    "qwen": ("qwen",),
+}
+_TEXT_ONLY_PROBE_MARKERS = (
+    "image_url",
+    "image input",
+    "image content",
+    "vision",
+    "multimodal",
+    "multi-modal",
+    "content must be a string",
+    "expected a string",
+    "got an array",
+    "unsupported content",
+    "invalid content type",
+)
+_NO_ACCESS_PROBE_MARKERS = (
+    "auth_unavailable",
+    "no auth available",
+    "do not have access",
+    "does not have access",
+    "not available for your account",
+    "account is not authorized",
+    "permission denied",
+    "insufficient permissions",
+    "not supported when using",
+)
+_IMAGE_ONLY_PROBE_MARKERS = (
+    "only supported on /v1/images/",
+    "only supported on /images/",
+    "only supports /v1/images/",
+    "only supports /images/",
+    "images/generations",
+    "images/edits",
+)
+_IMAGE_ONLY_MODEL_ID_MARKERS = (
+    "dall-e",
+    "dalle",
+    "flux",
+    "gpt-image",
+    "imagen",
+    "imagegeneration@",
+    "imagetext@",
+    "midjourney",
+    "qwen-image",
+    "sdxl",
+    "stable-diffusion",
+)
+_IMAGE_ONLY_MODEL_ID_PATTERNS = (
+    "-image-preview",
+    "-preview-image-generation",
+    "-image-generation",
+    "_image_preview",
+    "_image_generation",
+)
+_UNCERTAIN_PROBE_STATUS = frozenset(
+    {"unknown", "network", "unsupported_probe", "timeout"}
+)
+_LLM_CAPABILITY_ROLE = Qt.ItemDataRole.UserRole + 1
+_COMBO_POPUP_HOVER_DELEGATE_ATTR = "_pydracula_combo_popup_hover_delegate"
+_LLM_CAPABILITY_BADGE_BG_ALPHA = 188
+_LLM_CAPABILITY_BADGE_BORDER_ALPHA = 225
+_LLM_CAPABILITY_BADGE_COLORS: dict[str, tuple[str, str, str]] = {
+    "text": ("#3b6ea8", "#8be9fd", "#f8f8f2"),
+    "vision": ("#bd93f9", "#d6b8ff", "#241633"),
+    "file": ("#8be9fd", "#a7f0ff", "#12323a"),
+    "audio": ("#ff79c6", "#ffa3d8", "#3d1730"),
+    "video": ("#ffb86c", "#ffd39b", "#3a260e"),
+    "image_out": ("#50fa7b", "#8aff9f", "#103218"),
+    "unknown": ("#44475a", "#6272a4", "#f8f8f2"),
+    "no_access": ("#ff5555", "#ff8a8a", "#3a1010"),
+    "not_found": ("#6272a4", "#7b8fc0", "#f8f8f2"),
+}
+_LLM_CAPABILITY_TAG_DISPLAY: dict[str, bool] = {
+    "text": True,
+    "vision": False,
+    "file": False,
+    "audio": False,
+    "video": False,
+    "image_out": False,
+    "no_access": False,
+    "not_found": False,
+    "unknown": True,
+}
+_LLM_MODEL_FETCH_MODE_QSS = """
+QComboBox::drop-down {
+    width: 0px;
+    border: none;
+}
+QComboBox::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+"""
+_LLM_MODEL_FETCH_BUTTON_QSS = """
+QPushButton#llmModelInlineFetchButton {
+    background-color: rgba(98, 114, 164, 190);
+    border: 1px solid rgba(189, 147, 249, 190);
+    border-radius: 5px;
+    color: rgb(248, 248, 242);
+    font-weight: 600;
+    padding: 2px 8px;
+}
+QPushButton#llmModelInlineFetchButton:hover {
+    background-color: rgba(117, 134, 185, 210);
+}
+QPushButton#llmModelInlineFetchButton:pressed {
+    background-color: rgba(80, 92, 132, 220);
+}
+QPushButton#llmModelInlineFetchButton:disabled {
+    background-color: rgba(64, 71, 88, 150);
+    border-color: rgba(98, 114, 164, 150);
+    color: rgba(221, 221, 221, 170);
+}
+"""
+
+
+@dataclass(frozen=True)
+class _LLMModelsRequestSpec:
+    url: str
+    headers: dict[str, str]
+
+
+@dataclass(frozen=True)
+class _LLMModelCapability:
+    tags: tuple[str, ...]
+    source: str = ""
+    status: str = ""
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class _LLMModelOption:
+    model_id: str
+    capability: _LLMModelCapability | None = None
+
+
+@dataclass(frozen=True)
+class _OpenRouterModelCapabilityEntry:
+    model_id: str
+    keys: frozenset[str]
+    capability: _LLMModelCapability
+
+
+@dataclass
+class _LLMCapabilityCache:
+    openrouter_entries: list[_OpenRouterModelCapabilityEntry]
+    openrouter_fetched_at: float
+    probe: dict[str, tuple[_LLMModelCapability, float]]
+
+
+class _LLMModelFetchError(RuntimeError):
+    def __init__(self, message: str, detail: str = "") -> None:
+        super().__init__(message)
+        self.detail = detail
+
+
+def _llm_model_request_common_headers() -> dict[str, str]:
+    return {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "User-Agent": _MODEL_REQUEST_USER_AGENT,
+    }
+
+
+def _badge_qcolor(hex_color: str, alpha: int) -> QColor:
+    color = QColor(hex_color)
+    color.setAlpha(alpha)
+    return color
+
+
+def _llm_capability_label_for_tag(tag: str) -> str:
+    key = f"api.capability.{tag}"
+    label = tr_i18n(key)
+    return label if label != key else tr_i18n("api.capability.unknown")
+
+
+def _llm_capability_tag_visible(tag: str) -> bool:
+    return _LLM_CAPABILITY_TAG_DISPLAY.get(tag, True)
+
+
+def _llm_capability_tags(
+    cap: _LLMModelCapability | None, *, visible_only: bool = True
+) -> tuple[str, ...]:
+    if cap is None:
+        return ()
+    return tuple(
+        tag
+        for tag in cap.tags
+        if tag and (not visible_only or _llm_capability_tag_visible(tag))
+    )
+
+
+def _ordered_unique_tags(tags: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    out: list[str] = []
+    for tag in tags:
+        tag = str(tag or "").strip()
+        if tag and tag not in out:
+            out.append(tag)
+    return tuple(out)
+
+
+def _ensure_text_tag_for_multimodal_chat(tags: tuple[str, ...]) -> tuple[str, ...]:
+    if "text" in tags or "image_out" in tags:
+        return tags
+    if any(tag in tags for tag in ("vision", "file", "audio", "video")):
+        return ("text", *tags)
+    return tags
+
+
+class _LLMModelCapabilityDelegate(QStyledItemDelegate):
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
+        item_option = QStyleOptionViewItem(option)
+        self.initStyleOption(item_option, index)
+        model_text = item_option.text
+        cap = index.data(_LLM_CAPABILITY_ROLE)
+        tags = _llm_capability_tags(
+            cap if isinstance(cap, _LLMModelCapability) else None
+        )
+        labels = [_llm_capability_label_for_tag(tag) for tag in tags]
+        item_option.text = ""
+
+        if item_option.state & (
+            QStyle.StateFlag.State_MouseOver | QStyle.StateFlag.State_Selected
+        ):
+            item_option.state |= QStyle.StateFlag.State_Selected
+            item_option.palette.setColor(
+                QPalette.ColorRole.Highlight, QColor(64, 71, 88)
+            )
+            item_option.palette.setColor(
+                QPalette.ColorRole.HighlightedText, QColor(221, 221, 221)
+            )
+
+        widget = item_option.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(
+            QStyle.ControlElement.CE_ItemViewItem, item_option, painter, widget
+        )
+        text_rect = style.subElementRect(
+            QStyle.SubElement.SE_ItemViewItemText, item_option, widget
+        )
+
+        painter.save()
+        fm = item_option.fontMetrics
+        selected = bool(item_option.state & QStyle.StateFlag.State_Selected)
+        painter.setPen(
+            item_option.palette.color(
+                QPalette.ColorRole.HighlightedText
+                if selected
+                else QPalette.ColorRole.Text
+            )
+        )
+
+        badge_specs: list[tuple[str, str, int]] = []
+        for tag, label in zip(tags, labels, strict=True):
+            badge_specs.append((tag, label, fm.horizontalAdvance(label) + 18))
+        badge_gap = 6
+        badge_total = sum(spec[2] for spec in badge_specs)
+        if badge_specs:
+            badge_total += badge_gap * (len(badge_specs) - 1)
+
+        text_gap = 12 if badge_specs else 0
+        model_rect = QRect(text_rect)
+        model_rect.setWidth(max(0, text_rect.width() - badge_total - text_gap))
+        painter.drawText(
+            model_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            fm.elidedText(model_text, Qt.TextElideMode.ElideRight, model_rect.width()),
+        )
+
+        if badge_specs:
+            badge_h = min(20, max(16, text_rect.height() - 4))
+            x = text_rect.right() - badge_total + 1
+            y = text_rect.y() + max(0, (text_rect.height() - badge_h) // 2)
+            for tag, label, width in badge_specs:
+                bg, border, fg = _LLM_CAPABILITY_BADGE_COLORS.get(
+                    tag, _LLM_CAPABILITY_BADGE_COLORS["unknown"]
+                )
+                rect = QRect(x, y, width, badge_h)
+                painter.setPen(
+                    _badge_qcolor(border, _LLM_CAPABILITY_BADGE_BORDER_ALPHA)
+                )
+                painter.setBrush(_badge_qcolor(bg, _LLM_CAPABILITY_BADGE_BG_ALPHA))
+                painter.drawRoundedRect(rect, 5, 5)
+                painter.setPen(QColor(fg))
+                painter.drawText(
+                    rect,
+                    Qt.AlignmentFlag.AlignCenter,
+                    label,
+                )
+                x += width + badge_gap
+        painter.restore()
+
+    def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:
+        size = super().sizeHint(option, index)
+        return QSize(size.width(), max(size.height(), 30))
+
+
+class _LLMModelLineEdit(QLineEdit):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._capability_tags: tuple[str, ...] = ()
+        self._action_reserved_width = 0
+        self._base_text_margins = self.textMargins()
+
+    def set_capability_tags(self, tags: tuple[str, ...]) -> None:
+        self._capability_tags = tuple(tag for tag in tags if tag)
+        self._sync_text_margins()
+        self.update()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._sync_text_margins()
+
+    def set_action_reserved_width(self, width: int) -> None:
+        clean_width = max(0, int(width))
+        if self._action_reserved_width == clean_width:
+            return
+        self._action_reserved_width = clean_width
+        self._sync_text_margins()
+        self.update()
+
+    def _badge_specs(self) -> list[tuple[str, str, int]]:
+        fm = self.fontMetrics()
+        specs: list[tuple[str, str, int]] = []
+        for tag in self._capability_tags:
+            label = _llm_capability_label_for_tag(tag)
+            specs.append((tag, label, fm.horizontalAdvance(label) + 18))
+        return specs
+
+    def _badge_total_width(self) -> int:
+        specs = self._badge_specs()
+        if not specs:
+            return 0
+        return sum(spec[2] for spec in specs) + 6 * (len(specs) - 1)
+
+    def _sync_text_margins(self) -> None:
+        base = self._base_text_margins
+        right = base.right()
+        badge_width = self._badge_total_width()
+        if badge_width:
+            right += badge_width + 14
+        if self._action_reserved_width:
+            right += self._action_reserved_width + 10
+        self.setTextMargins(base.left(), base.top(), right, base.bottom())
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        specs = self._badge_specs()
+        if not specs:
+            return
+
+        badge_gap = 6
+        badge_total = sum(spec[2] for spec in specs) + badge_gap * (len(specs) - 1)
+        badge_h = min(20, max(16, self.height() - 8))
+        action_gap = (
+            self._action_reserved_width + 10 if self._action_reserved_width else 0
+        )
+        x = self.width() - badge_total - action_gap - 8
+        y = max(0, (self.height() - badge_h) // 2)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        for tag, label, width in specs:
+            bg, border, fg = _LLM_CAPABILITY_BADGE_COLORS.get(
+                tag, _LLM_CAPABILITY_BADGE_COLORS["unknown"]
+            )
+            rect = QRect(x, y, width, badge_h)
+            painter.setPen(_badge_qcolor(border, _LLM_CAPABILITY_BADGE_BORDER_ALPHA))
+            painter.setBrush(_badge_qcolor(bg, _LLM_CAPABILITY_BADGE_BG_ALPHA))
+            painter.drawRoundedRect(rect, 5, 5)
+            painter.setPen(QColor(fg))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+            x += width + badge_gap
+
+
+def _llm_model_provider_kind(provider: str, base_url: str) -> str:
+    low_provider = (provider or "").strip().lower()
+    low_base = (base_url or "").strip().lower()
+    if "gemini" in low_provider or "generativelanguage.googleapis.com" in low_base:
+        return "gemini"
+    if "deepseek" in low_provider or "api.deepseek.com" in low_base:
+        return "deepseek"
+    if (
+        low_provider == "claude"
+        or "claude" in low_provider
+        or "anthropic.com" in low_base
+    ):
+        return "anthropic"
+    if (
+        "dashscope.aliyuncs.com" in low_base
+        or "通义" in low_provider
+        or "qwen" in low_provider
+        or "dashscope" in low_provider
+    ):
+        return "dashscope"
+    return "openai_compatible"
+
+
+def _base_url_required(base_url: str) -> str:
+    base = (base_url or "").strip()
+    if not base:
+        raise ValueError(tr_i18n("api.msg.model_fetch_missing"))
+    return base
+
+
+def _openai_compatible_models_endpoint_url(base_url: str) -> str:
+    base = _base_url_required(base_url)
+    if base.rstrip("/").lower().endswith("/models"):
+        return base.rstrip("/")
+    return f"{base.rstrip('/')}/models"
+
+
+def _gemini_models_endpoint_url(base_url: str, api_key: str) -> str:
+    base = _base_url_required(base_url).rstrip("/")
+    low_base = base.lower()
+    if "generativelanguage.googleapis.com" not in low_base:
+        return _openai_compatible_models_endpoint_url(base)
+    marker = "/openai"
+    marker_ix = low_base.rfind(marker)
+    if marker_ix >= 0:
+        base = base[:marker_ix]
+    if not base.lower().endswith("/v1beta"):
+        base = "https://generativelanguage.googleapis.com/v1beta"
+    query = urllib.parse.urlencode({"key": (api_key or "").strip()})
+    return f"{base.rstrip('/')}/models?{query}"
+
+
+def _deepseek_models_endpoint_url(base_url: str) -> str:
+    base = _base_url_required(base_url).rstrip("/")
+    if "api.deepseek.com" in base.lower() and base.lower().endswith("/v1"):
+        base = base[:-3]
+    return _openai_compatible_models_endpoint_url(base)
+
+
+def _dashscope_models_endpoint_url(base_url: str) -> str:
+    base = _base_url_required(base_url).rstrip("/")
+    low_base = base.lower()
+    query = urllib.parse.urlencode(
+        {
+            "page_no": 1,
+            "page_size": 100,
+            "version": "v1.0",
+            "model_source": "base",
+        }
+    )
+    if low_base.endswith("/compatible-mode/v1"):
+        base = base[: -len("/compatible-mode/v1")] + "/api/v1"
+    if low_base.endswith("/api/v1") or base.lower().endswith("/api/v1"):
+        return f"{base}/deployments/models?{query}"
+    return _openai_compatible_models_endpoint_url(base)
+
+
+def _llm_models_endpoint_url(
+    base_url: str, provider: str = "", api_key: str = ""
+) -> str:
+    kind = _llm_model_provider_kind(provider, base_url)
+    if kind == "gemini":
+        return _gemini_models_endpoint_url(base_url, api_key)
+    if kind == "deepseek":
+        return _deepseek_models_endpoint_url(base_url)
+    if kind == "dashscope":
+        return _dashscope_models_endpoint_url(base_url)
+    return _openai_compatible_models_endpoint_url(base_url)
+
+
+def _llm_models_request_headers(
+    provider: str, base_url: str, api_key: str
+) -> dict[str, str]:
+    key = (api_key or "").strip()
+    if not key:
+        raise ValueError(tr_i18n("api.msg.model_fetch_missing"))
+    headers = _llm_model_request_common_headers()
+    kind = _llm_model_provider_kind(provider, base_url)
+    if (
+        kind == "gemini"
+        and "generativelanguage.googleapis.com" in (base_url or "").lower()
+    ):
+        return headers
+    if kind == "anthropic":
+        headers["x-api-key"] = key
+        headers["anthropic-version"] = "2023-06-01"
+        headers["Content-Type"] = "application/json"
+    else:
+        headers["Authorization"] = f"Bearer {key}"
+        if kind == "dashscope":
+            headers["Content-Type"] = "application/json"
+    return headers
+
+
+def _iter_llm_model_items(payload: object):
+    if isinstance(payload, list):
+        yield from payload
+        return
+    if not isinstance(payload, dict):
+        return
+    for key in ("data", "models", "items", "deployments"):
+        raw_items = payload.get(key)
+        if isinstance(raw_items, list):
+            yield from raw_items
+        elif isinstance(raw_items, dict):
+            yield from _iter_llm_model_items(raw_items)
+    for key in ("output", "result"):
+        raw_group = payload.get(key)
+        if isinstance(raw_group, (dict, list)):
+            yield from _iter_llm_model_items(raw_group)
+
+
+def _llm_model_item_supports_chat(item: dict) -> bool:
+    actions = item.get("supportedGenerationMethods") or item.get("supportedActions")
+    if isinstance(actions, list):
+        normalized = {str(action).strip().lower() for action in actions}
+        return bool({"generatecontent", "chat.completions", "chat"} & normalized)
+
+    endpoints = item.get("supported_endpoint_types") or item.get(
+        "supportedEndpointTypes"
+    )
+    if isinstance(endpoints, list):
+        normalized = {str(endpoint).strip().lower() for endpoint in endpoints}
+        if any("chat" in endpoint or endpoint == "responses" for endpoint in normalized):
+            return True
+        if any("image" in endpoint for endpoint in normalized):
+            return False
+    return True
+
+
+def _llm_model_id_is_image_only(model_id: str) -> bool:
+    low = (model_id or "").strip().removeprefix("models/").lower()
+    if any(marker in low for marker in _IMAGE_ONLY_MODEL_ID_MARKERS):
+        return True
+    if any(pattern in low for pattern in _IMAGE_ONLY_MODEL_ID_PATTERNS):
+        return True
+    parts = [part for part in low.replace("_", "-").replace(".", "-").split("-") if part]
+    return "image" in parts and (
+        "generation" in parts or "preview" in parts or low.startswith("gemini-")
+    )
+
+
+def _llm_capability_is_image_only(cap: _LLMModelCapability | None) -> bool:
+    if cap is None:
+        return False
+    tags = set(_llm_capability_tags(cap, visible_only=False))
+    return cap.status == "image_only" or tags == {"image_out"}
+
+
+def _llm_model_id_from_item(item: object) -> str:
+    if isinstance(item, str):
+        model_id = item.strip()
+        return "" if _llm_model_id_is_image_only(model_id) else model_id
+    if not isinstance(item, dict):
+        return ""
+    if not _llm_model_item_supports_chat(item):
+        return ""
+    for key in (
+        "id",
+        "model",
+        "model_id",
+        "modelId",
+        "model_name",
+        "modelName",
+        "name",
+        "deployed_model",
+        "base_model",
+    ):
+        model_id = str(item.get(key) or "").strip()
+        if model_id:
+            if model_id.startswith("models/"):
+                model_id = model_id.split("/", 1)[1].strip()
+            return "" if _llm_model_id_is_image_only(model_id) else model_id
+    return ""
+
+
+def _extract_llm_model_ids(payload: object) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in _iter_llm_model_items(payload):
+        model_id = _llm_model_id_from_item(item)
+        if model_id and model_id not in seen:
+            seen.add(model_id)
+            out.append(model_id)
+    return out
+
+
+def _llm_models_request_spec(
+    provider: str, base_url: str, api_key: str
+) -> _LLMModelsRequestSpec:
+    return _LLMModelsRequestSpec(
+        url=_llm_models_endpoint_url(base_url, provider, api_key),
+        headers=_llm_models_request_headers(provider, base_url, api_key),
+    )
+
+
+def _summarize_http_error(e: urllib.error.HTTPError, detail: str) -> str:
+    reason = str(e.reason or "").strip()
+    if detail:
+        try:
+            payload = json.loads(detail)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            error_obj = payload.get("error")
+            if isinstance(error_obj, dict):
+                error_message = error_obj.get("message")
+                error_type = error_obj.get("type")
+                error_code = error_obj.get("code")
+            else:
+                error_message = error_obj
+                error_type = None
+                error_code = None
+            title = str(payload.get("title") or payload.get("error_name") or "").strip()
+            code = str(
+                payload.get("error_code") or payload.get("code") or error_code or ""
+            ).strip()
+            name = str(payload.get("error_name") or error_type or "").strip()
+            message = str(
+                payload.get("message") or payload.get("detail") or error_message or ""
+            ).strip()
+            bits = [bit for bit in (title, name, code, message) if bit]
+            if bits:
+                return f"HTTP {e.code}: {'; '.join(bits)}"
+    return f"HTTP {e.code}: {reason or detail or 'request failed'}"
+
+
+def _fetch_llm_model_ids(
+    provider: str,
+    base_url: str,
+    api_key: str,
+    *,
+    timeout_sec: float = 20.0,
+) -> list[str]:
+    spec = _llm_models_request_spec(provider, base_url, api_key)
+    req = urllib.request.Request(
+        spec.url,
+        headers=spec.headers,
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace").strip()
+        raise _LLMModelFetchError(_summarize_http_error(e, detail), detail) from e
+    except urllib.error.URLError as e:
+        raise _LLMModelFetchError(str(e.reason or e)) from e
+    except json.JSONDecodeError as e:
+        raise _LLMModelFetchError(f"Invalid JSON response: {e}") from e
+    return _extract_llm_model_ids(payload)
+
+
+def _modalities_to_set(raw: object) -> set[str]:
+    if isinstance(raw, list):
+        return {str(v).strip().lower() for v in raw if str(v).strip()}
+    if isinstance(raw, str) and raw.strip():
+        return {
+            part.strip().lower()
+            for part in raw.replace("+", ",").replace("->", ",").split(",")
+            if part.strip()
+        }
+    return set()
+
+
+def _capability_from_modalities(
+    input_modalities: object, output_modalities: object, *, source: str
+) -> _LLMModelCapability | None:
+    inputs = _modalities_to_set(input_modalities)
+    outputs = _modalities_to_set(output_modalities)
+    tags: list[str] = []
+    if "text" in outputs:
+        tags.append("text")
+    if "image" in inputs:
+        tags.append("vision")
+    if "file" in inputs:
+        tags.append("file")
+    if "audio" in inputs:
+        tags.append("audio")
+    if "video" in inputs:
+        tags.append("video")
+    if "image" in outputs:
+        tags.append("image_out")
+    if not tags and "text" in inputs:
+        tags.append("text")
+    if not tags:
+        return None
+    clean_tags = _ensure_text_tag_for_multimodal_chat(_ordered_unique_tags(tags))
+    return _LLMModelCapability(clean_tags, source=source, status="ok")
+
+
+def _model_match_key(value: str) -> str:
+    return str(value or "").strip().removeprefix("models/").lower()
+
+
+def _model_match_key_variants(model_id: str) -> set[str]:
+    key = _model_match_key(model_id)
+    variants = {key} if key else set()
+    if "/" in key:
+        variants.add(key.rsplit("/", 1)[-1])
+    for item in list(variants):
+        if ":" in item:
+            variants.add(item.split(":", 1)[0])
+    return {v for v in variants if v}
+
+
+def _openrouter_entry_from_item(
+    item: object,
+) -> _OpenRouterModelCapabilityEntry | None:
+    if not isinstance(item, dict):
+        return None
+    model_id = str(item.get("id") or item.get("canonical_slug") or "").strip()
+    if not model_id:
+        return None
+    arch = item.get("architecture")
+    arch = arch if isinstance(arch, dict) else {}
+    input_modalities = arch.get("input_modalities")
+    output_modalities = arch.get("output_modalities")
+    if input_modalities is None and output_modalities is None:
+        modality = str(arch.get("modality") or "")
+        if "->" in modality:
+            input_modalities, output_modalities = modality.split("->", 1)
+    cap = _capability_from_modalities(
+        input_modalities,
+        output_modalities,
+        source="openrouter",
+    )
+    if cap is None:
+        return None
+    keys: set[str] = set()
+    for key in ("id", "canonical_slug"):
+        val = str(item.get(key) or "").strip()
+        if val:
+            keys.update(_model_match_key_variants(val))
+    return _OpenRouterModelCapabilityEntry(
+        model_id=model_id, keys=frozenset(keys), capability=cap
+    )
+
+
+def _fetch_openrouter_capability_entries(
+    *, timeout_sec: float = 4.0
+) -> list[_OpenRouterModelCapabilityEntry]:
+    req = urllib.request.Request(
+        _OPENROUTER_MODELS_URL,
+        headers=_llm_model_request_common_headers(),
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        OSError,
+        json.JSONDecodeError,
+    ):
+        return []
+    raw_items = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(raw_items, list):
+        return []
+    out: list[_OpenRouterModelCapabilityEntry] = []
+    for item in raw_items:
+        entry = _openrouter_entry_from_item(item)
+        if entry is not None:
+            out.append(entry)
+    return out
+
+
+def _unique_capability(
+    entries: list[_OpenRouterModelCapabilityEntry],
+) -> _LLMModelCapability | None:
+    by_model: dict[str, _LLMModelCapability] = {}
+    for entry in entries:
+        by_model[entry.model_id] = entry.capability
+    if len(by_model) != 1:
+        return None
+    return next(iter(by_model.values()))
+
+
+def _provider_openrouter_hints(provider: str) -> tuple[str, ...]:
+    low = (provider or "").strip().lower()
+    if low in _OPENROUTER_PROVIDER_HINTS:
+        return _OPENROUTER_PROVIDER_HINTS[low]
+    for key, hints in _OPENROUTER_PROVIDER_HINTS.items():
+        if key in low:
+            return hints
+    return ()
+
+
+def _match_openrouter_capability(
+    model_id: str,
+    provider: str,
+    entries: list[_OpenRouterModelCapabilityEntry],
+) -> _LLMModelCapability | None:
+    variants = _model_match_key_variants(model_id)
+    if not variants:
+        return None
+
+    exact = [entry for entry in entries if variants & entry.keys]
+    cap = _unique_capability(exact)
+    if cap is not None:
+        return cap
+
+    hinted: list[_OpenRouterModelCapabilityEntry] = []
+    for hint in _provider_openrouter_hints(provider):
+        hint = hint.strip().lower()
+        hinted.extend(
+            entry
+            for entry in entries
+            if any(f"{hint}/{variant}" in entry.keys for variant in variants)
+        )
+    cap = _unique_capability(hinted)
+    if cap is not None:
+        return cap
+
+    suffix_matches = [
+        entry
+        for entry in entries
+        if any(
+            _model_match_key(entry.model_id).endswith(f"/{variant}")
+            or _model_match_key(entry.model_id).endswith(f"/{variant}:free")
+            for variant in variants
+        )
+    ]
+    return _unique_capability(suffix_matches)
+
+
+def _api_key_fingerprint(api_key: str) -> str:
+    key = (api_key or "").strip()
+    if not key:
+        return "no-key"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+
+
+def _llm_probe_cache_key(
+    provider: str, base_url: str, api_key: str, model_id: str
+) -> str:
+    probe_url = _chat_completions_probe_url(provider, base_url)
+    return "|".join(
+        (
+            (provider or "").strip().lower(),
+            (base_url or "").strip().rstrip("/").lower(),
+            probe_url.strip().rstrip("/").lower(),
+            _api_key_fingerprint(api_key),
+            (model_id or "").strip().lower(),
+        )
+    )
+
+
+def _capability_from_cache_value(
+    value: object, *, default_source: str = "cache"
+) -> tuple[_LLMModelCapability | None, float]:
+    if not isinstance(value, dict):
+        return None, 0.0
+    tags = value.get("tags")
+    if not isinstance(tags, list):
+        return None, 0.0
+    clean_tags = tuple(str(tag).strip() for tag in tags if str(tag).strip())
+    if not clean_tags:
+        return None, 0.0
+
+    source = str(value.get("source") or default_source)
+    status = str(value.get("status") or "")
+    detail = str(value.get("detail") or "")
+    if source == "probe" and status == "unknown":
+        low_detail = detail.lower()
+        if any(marker in low_detail for marker in _NO_ACCESS_PROBE_MARKERS):
+            clean_tags = ("no_access",)
+            status = "no_access"
+        elif any(marker in low_detail for marker in _IMAGE_ONLY_PROBE_MARKERS):
+            clean_tags = ("image_out",)
+            status = "image_only"
+    clean_tags = _ensure_text_tag_for_multimodal_chat(clean_tags)
+    try:
+        updated_at = float(value.get("updated_at") or 0.0)
+    except (TypeError, ValueError):
+        updated_at = 0.0
+    return (
+        _LLMModelCapability(
+            clean_tags,
+            source=source,
+            status=status,
+            detail=detail,
+        ),
+        updated_at,
+    )
+
+
+def _openrouter_entries_from_cache(
+    payload: object,
+) -> tuple[list[_OpenRouterModelCapabilityEntry], float]:
+    if not isinstance(payload, dict):
+        return [], 0.0
+    try:
+        fetched_at = float(payload.get("fetched_at") or 0.0)
+    except (TypeError, ValueError):
+        fetched_at = 0.0
+    raw_entries = payload.get("entries")
+    if not isinstance(raw_entries, list):
+        return [], fetched_at
+
+    entries: list[_OpenRouterModelCapabilityEntry] = []
+    for item in raw_entries:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("model_id") or "").strip()
+        raw_keys = item.get("keys")
+        keys = (
+            frozenset(str(key).strip() for key in raw_keys if str(key).strip())
+            if isinstance(raw_keys, list)
+            else frozenset()
+        )
+        cap, _updated_at = _capability_from_cache_value(
+            item, default_source="openrouter"
+        )
+        if model_id and keys and cap is not None:
+            entries.append(
+                _OpenRouterModelCapabilityEntry(
+                    model_id=model_id,
+                    keys=keys,
+                    capability=_LLMModelCapability(
+                        cap.tags,
+                        source="openrouter",
+                        status=cap.status or "ok",
+                        detail=cap.detail,
+                    ),
+                )
+            )
+    return entries, fetched_at
+
+
+def _serialize_openrouter_entry(entry: _OpenRouterModelCapabilityEntry) -> dict:
+    return {
+        "model_id": entry.model_id,
+        "keys": sorted(entry.keys),
+        "tags": list(entry.capability.tags),
+        "source": "openrouter",
+        "status": entry.capability.status or "ok",
+        "detail": entry.capability.detail,
+    }
+
+
+def _serialize_capability(cap: _LLMModelCapability, updated_at: float) -> dict:
+    return {
+        "tags": list(cap.tags),
+        "source": cap.source,
+        "status": cap.status,
+        "detail": cap.detail,
+        "updated_at": updated_at,
+    }
+
+
+def _read_llm_capability_cache() -> _LLMCapabilityCache:
+    if not _LLM_CAPABILITY_CACHE_PATH.is_file():
+        return _LLMCapabilityCache([], 0.0, {})
+    try:
+        raw = json.loads(_LLM_CAPABILITY_CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _LLMCapabilityCache([], 0.0, {})
+    if not isinstance(raw, dict):
+        return _LLMCapabilityCache([], 0.0, {})
+
+    openrouter_entries, openrouter_fetched_at = _openrouter_entries_from_cache(
+        raw.get("openrouter")
+    )
+
+    probe: dict[str, tuple[_LLMModelCapability, float]] = {}
+    probe_payload = raw.get("probe")
+    probe_entries = (
+        probe_payload.get("entries") if isinstance(probe_payload, dict) else None
+    )
+    if isinstance(probe_entries, dict):
+        for key, value in probe_entries.items():
+            if not isinstance(key, str):
+                continue
+            cap, updated_at = _capability_from_cache_value(
+                value, default_source="probe"
+            )
+            if cap is not None:
+                probe[key] = (cap, updated_at)
+
+    return _LLMCapabilityCache(openrouter_entries, openrouter_fetched_at, probe)
+
+
+def _write_llm_capability_cache(cache: _LLMCapabilityCache) -> None:
+    try:
+        _LLM_CAPABILITY_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": _LLM_CAPABILITY_CACHE_VERSION,
+            "openrouter": {
+                "fetched_at": cache.openrouter_fetched_at,
+                "entries": [
+                    _serialize_openrouter_entry(entry)
+                    for entry in cache.openrouter_entries
+                ],
+            },
+            "probe": {
+                "entries": {
+                    key: _serialize_capability(cap, updated_at)
+                    for key, (cap, updated_at) in sorted(cache.probe.items())
+                }
+            },
+        }
+        _LLM_CAPABILITY_CACHE_PATH.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+
+
+def _probe_cache_ttl(cap: _LLMModelCapability) -> float:
+    if cap.status == "no_access":
+        return _PROBE_NO_ACCESS_CACHE_TTL_SEC
+    return _PROBE_STABLE_CACHE_TTL_SEC
+
+
+def _probe_cache_entry_valid(
+    entry: tuple[_LLMModelCapability, float] | None, *, now: float
+) -> _LLMModelCapability | None:
+    if entry is None:
+        return None
+    cap, updated_at = entry
+    if cap.status in _UNCERTAIN_PROBE_STATUS:
+        return None
+    if updated_at <= 0:
+        return None
+    if now - updated_at > _probe_cache_ttl(cap):
+        return None
+    return cap
+
+
+def _should_cache_probe_capability(cap: _LLMModelCapability) -> bool:
+    return cap.status not in _UNCERTAIN_PROBE_STATUS
+
+
+def _unknown_llm_model_capability(status: str = "unknown") -> _LLMModelCapability:
+    return _LLMModelCapability(("unknown",), source=status, status=status)
+
+
+def _refresh_openrouter_cache_if_needed(
+    cache: _LLMCapabilityCache, *, now: float
+) -> bool:
+    if (
+        cache.openrouter_entries
+        and now - cache.openrouter_fetched_at <= _OPENROUTER_CACHE_TTL_SEC
+    ):
+        return False
+    entries = _fetch_openrouter_capability_entries()
+    if not entries:
+        return False
+    cache.openrouter_entries = entries
+    cache.openrouter_fetched_at = now
+    return True
+
+
+def _lookup_probe_cache(
+    cache: _LLMCapabilityCache,
+    provider: str,
+    base_url: str,
+    api_key: str,
+    model_id: str,
+    *,
+    now: float,
+) -> _LLMModelCapability | None:
+    cap = _probe_cache_entry_valid(
+        cache.probe.get(_llm_probe_cache_key(provider, base_url, api_key, model_id)),
+        now=now,
+    )
+    if cap is not None:
+        return cap
+    return None
+
+
+def _store_probe_cache(
+    cache: _LLMCapabilityCache,
+    provider: str,
+    base_url: str,
+    api_key: str,
+    model_id: str,
+    cap: _LLMModelCapability,
+    *,
+    now: float,
+) -> None:
+    if not _should_cache_probe_capability(cap):
+        return
+    cache.probe[_llm_probe_cache_key(provider, base_url, api_key, model_id)] = (
+        cap,
+        now,
+    )
+
+
+def _chat_completions_probe_url(provider: str, base_url: str) -> str:
+    base = _base_url_required(base_url).rstrip("/")
+    low = base.lower()
+    if low.endswith("/models"):
+        base = base[: -len("/models")]
+        low = base.lower()
+    kind = _llm_model_provider_kind(provider, base)
+    if kind == "dashscope" and "dashscope.aliyuncs.com" in low:
+        if low.endswith("/api/v1/deployments"):
+            base = base[: -len("/api/v1/deployments")] + "/compatible-mode/v1"
+            low = base.lower()
+        elif low.endswith("/api/v1/chat/completions"):
+            base = base[: -len("/api/v1/chat/completions")] + "/compatible-mode/v1"
+            low = base.lower()
+        elif low.endswith("/api/v1"):
+            base = base[: -len("/api/v1")] + "/compatible-mode/v1"
+            low = base.lower()
+    elif kind == "gemini" and "generativelanguage.googleapis.com" in low:
+        if low.endswith("/v1beta") or low.endswith("/v1"):
+            base = f"{base}/openai"
+            low = base.lower()
+    if low.endswith("/chat/completions"):
+        return base
+    return f"{base}/chat/completions"
+
+
+def _llm_probe_headers(provider: str, base_url: str, api_key: str) -> dict[str, str]:
+    key = (api_key or "").strip()
+    if not key:
+        raise ValueError(tr_i18n("api.msg.model_fetch_missing"))
+    headers = _llm_model_request_common_headers()
+    headers["Content-Type"] = "application/json"
+    kind = _llm_model_provider_kind(provider, base_url)
+    if kind == "anthropic":
+        headers["x-api-key"] = key
+        headers["anthropic-version"] = "2023-06-01"
+    else:
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
+
+
+def _probe_payload(model_id: str, *, token_field: str) -> bytes:
+    payload = {
+        "model": model_id,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "."},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": (
+                                "data:image/png;base64,"
+                                f"{_TRANSPARENT_PNG_1X1_B64}"
+                            )
+                        },
+                    },
+                ],
+            }
+        ],
+        token_field: 1,
+    }
+    return json.dumps(payload).encode("utf-8")
+
+
+def _probe_error_suggests_token_field_retry(detail: str) -> bool:
+    low = (detail or "").lower()
+    return "max_tokens" in low and "max_completion_tokens" in low
+
+
+def _classify_probe_http_error(
+    status_code: int, detail: str
+) -> _LLMModelCapability:
+    low = (detail or "").lower()
+    if status_code in (401, 403) or any(
+        marker in low for marker in _NO_ACCESS_PROBE_MARKERS
+    ):
+        return _LLMModelCapability(
+            ("no_access",), source="probe", status="no_access", detail=detail
+        )
+    if any(marker in low for marker in _IMAGE_ONLY_PROBE_MARKERS):
+        return _LLMModelCapability(
+            ("image_out",), source="probe", status="image_only", detail=detail
+        )
+    if status_code == 404:
+        return _LLMModelCapability(
+            ("not_found",), source="probe", status="not_found", detail=detail
+        )
+    if status_code in (400, 422) and any(
+        marker in low for marker in _TEXT_ONLY_PROBE_MARKERS
+    ):
+        return _LLMModelCapability(
+            ("text",), source="probe", status="text_only", detail=detail
+        )
+    return _LLMModelCapability(
+        ("unknown",), source="probe", status="unknown", detail=detail
+    )
+
+
+def _probe_llm_model_capability(
+    provider: str,
+    base_url: str,
+    api_key: str,
+    model_id: str,
+    *,
+    timeout_sec: float = 12.0,
+    deadline_monotonic: float | None = None,
+) -> _LLMModelCapability:
+    if _llm_model_provider_kind(provider, base_url) == "anthropic":
+        return _unknown_llm_model_capability("unsupported_probe")
+    url = _chat_completions_probe_url(provider, base_url)
+    headers = _llm_probe_headers(provider, base_url, api_key)
+
+    for token_field in ("max_tokens", "max_completion_tokens"):
+        request_timeout = timeout_sec
+        if deadline_monotonic is not None:
+            remaining = deadline_monotonic - time.monotonic()
+            if remaining <= 0:
+                return _unknown_llm_model_capability("timeout")
+            request_timeout = min(timeout_sec, max(0.1, remaining))
+        req = urllib.request.Request(
+            url,
+            data=_probe_payload(model_id, token_field=token_field),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=request_timeout) as resp:
+                resp.read(1024)
+            return _LLMModelCapability(
+                ("text", "vision"), source="probe", status="ok"
+            )
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace").strip()
+            if token_field == "max_tokens" and _probe_error_suggests_token_field_retry(
+                detail
+            ):
+                continue
+            return _classify_probe_http_error(int(e.code), detail)
+        except urllib.error.URLError as e:
+            return _LLMModelCapability(
+                ("unknown",),
+                source="probe",
+                status="network",
+                detail=str(e.reason or e),
+            )
+        except OSError as e:
+            return _LLMModelCapability(
+                ("unknown",), source="probe", status="network", detail=str(e)
+            )
+    return _unknown_llm_model_capability()
+
+
+def _fetch_llm_model_options(
+    provider: str,
+    base_url: str,
+    api_key: str,
+    *,
+    detect_capability: bool = False,
+) -> list[_LLMModelOption]:
+    models = _fetch_llm_model_ids(provider, base_url, api_key)
+    if not detect_capability:
+        return [_LLMModelOption(model_id) for model_id in models]
+
+    now = time.time()
+    capability_deadline = time.monotonic() + _LLM_CAPABILITY_FETCH_TIMEOUT_SEC
+    cache = _read_llm_capability_cache()
+    cache_changed = _refresh_openrouter_cache_if_needed(cache, now=now)
+    out: list[_LLMModelOption] = []
+    for model_id in models:
+        cap = _match_openrouter_capability(
+            model_id, provider, cache.openrouter_entries
+        )
+        if cap is None:
+            cap = _lookup_probe_cache(
+                cache,
+                provider,
+                base_url,
+                api_key,
+                model_id,
+                now=now,
+            )
+        if cap is None:
+            remaining = capability_deadline - time.monotonic()
+            if remaining <= 0:
+                cap = _unknown_llm_model_capability("timeout")
+            else:
+                cap = _probe_llm_model_capability(
+                    provider,
+                    base_url,
+                    api_key,
+                    model_id,
+                    timeout_sec=min(12.0, remaining),
+                    deadline_monotonic=capability_deadline,
+                )
+            if _should_cache_probe_capability(cap):
+                _store_probe_cache(
+                    cache,
+                    provider,
+                    base_url,
+                    api_key,
+                    model_id,
+                    cap,
+                    now=now,
+                )
+                cache_changed = True
+        if cap is None:
+            cap = _unknown_llm_model_capability()
+        if _llm_capability_is_image_only(cap):
+            continue
+        if not _llm_capability_tags(cap):
+            continue
+        out.append(_LLMModelOption(model_id, cap))
+    if cache_changed:
+        _write_llm_capability_cache(cache)
+    return out
+
+
+class _LLMModelDiscoveryWorker(QObject):
+    finished = Signal(list)
+    failed = Signal(str, str)
+
+    def __init__(
+        self,
+        provider: str,
+        base_url: str,
+        api_key: str,
+        *,
+        detect_capability: bool = False,
+    ) -> None:
+        super().__init__()
+        self._provider = provider
+        self._base_url = base_url
+        self._api_key = api_key
+        self._detect_capability = bool(detect_capability)
+
+    def run(self) -> None:
+        try:
+            self.finished.emit(
+                _fetch_llm_model_options(
+                    self._provider,
+                    self._base_url,
+                    self._api_key,
+                    detect_capability=self._detect_capability,
+                )
+            )
+        except _LLMModelFetchError as e:
+            self.failed.emit(str(e), e.detail)
+        except Exception as e:
+            self.failed.emit(str(e), "")
 
 
 def _llm_provider_combo_display_order() -> list[str]:
@@ -73,14 +1463,6 @@ def _llm_provider_combo_display_order() -> list[str]:
         if k not in out:
             out.append(k)
     return out
-
-
-_TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
-    ("genie-tts", "Genie TTS"),
-    ("gpt-sovits", "GPT SoVITS"),
-    ("index-tts", "IndexTTS"),
-    ("cosyvoice", "CosyVoice"),
-)
 
 
 def _tts_canonical_slug(saved: str | None) -> str:
@@ -119,9 +1501,6 @@ def _fill_tts_provider_combo(combo: QComboBox, saved_tts: str) -> None:
     else:
         combo.addItem(canon, canon)
         combo.setCurrentIndex(combo.count() - 1)
-
-
-_PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion")
 
 
 def _t2i_engine_ordered_keys() -> list[str]:
@@ -247,11 +1626,30 @@ class ApiSettingsTab(QWidget):
     def __init__(self, ctx: SettingsUIContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._ctx = ctx
+        self._llm_model_thread: QThread | None = None
+        self._llm_model_worker: _LLMModelDiscoveryWorker | None = None
+        self._llm_model_active_fetch_key: tuple[str, str, str] | None = None
+        self._llm_model_fetched_key: tuple[str, str, str] | None = None
         self._build_ui()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._schedule_refresh_main_tree_heights()
+
+    def eventFilter(self, obj, event) -> bool:
+        if (
+            hasattr(self, "llm_model")
+            and obj is self.llm_model
+            and event.type()
+            in {
+                QEvent.Type.Resize,
+                QEvent.Type.Show,
+                QEvent.Type.LayoutRequest,
+                QEvent.Type.Polish,
+            }
+        ):
+            QTimer.singleShot(0, self._position_llm_model_fetch_button)
+        return super().eventFilter(obj, event)
 
     def _schedule_refresh_main_tree_heights(self) -> None:
         QTimer.singleShot(0, self._apply_main_tree_row_heights)
@@ -328,8 +1726,38 @@ class ApiSettingsTab(QWidget):
         idx = self.llm_provider.findText(_provider)
         if idx >= 0:
             self.llm_provider.setCurrentIndex(idx)
-        self.llm_model = QLineEdit(_model)
-        self.llm_model.setPlaceholderText(tr_i18n("api.form.ph_model"))
+        self.llm_model = QComboBox()
+        self.llm_model.setEditable(True)
+        self._llm_model_line_edit = _LLMModelLineEdit(self.llm_model)
+        self.llm_model.setLineEdit(self._llm_model_line_edit)
+        self.llm_model.installEventFilter(self)
+        self.llm_model.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.llm_model.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self._llm_model_delegate = _LLMModelCapabilityDelegate(self.llm_model.view())
+        self.llm_model.view().setItemDelegate(self._llm_model_delegate)
+        setattr(
+            self.llm_model.view(),
+            _COMBO_POPUP_HOVER_DELEGATE_ATTR,
+            self._llm_model_delegate,
+        )
+        if _model:
+            self.llm_model.addItem(_model, _model)
+        self.llm_model.setEditText(_model)
+        self._llm_model_line_edit.setPlaceholderText(tr_i18n("api.form.ph_model"))
+        self._llm_model_fetch_btn = QPushButton()
+        self._llm_model_fetch_btn.setObjectName("llmModelInlineFetchButton")
+        self._llm_model_fetch_btn.setParent(self.llm_model)
+        self._llm_model_fetch_btn.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        )
+        self._llm_model_fetch_btn.setText(tr_i18n("api.form.model_fetch_tip"))
+        self._llm_model_fetch_btn.setToolTip(tr_i18n("api.form.model_fetch_tip"))
+        self._llm_model_fetch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._llm_model_fetch_btn.setStyleSheet(_LLM_MODEL_FETCH_BUTTON_QSS)
+        self._llm_model_fetch_btn.clicked.connect(self._on_fetch_llm_models)
+        self._set_llm_model_fetch_button_visible(True)
         self.api_key = QLineEdit(_api_key)
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key.setPlaceholderText(tr_i18n("api.form.ph_key"))
@@ -350,14 +1778,14 @@ class ApiSettingsTab(QWidget):
         sr.addWidget(self.stream_yes)
         sr.addWidget(self.stream_no)
         self._f_llm_provider = QLabel(tr_i18n("api.form.llm_provider"))
-        self._f_model = QLabel(tr_i18n("api.form.model_id"))
-        self._f_api_key = QLabel(tr_i18n("api.form.api_key"))
         self._f_base = QLabel(tr_i18n("api.form.base_url"))
+        self._f_api_key = QLabel(tr_i18n("api.form.api_key"))
+        self._f_model = QLabel(tr_i18n("api.form.model_id"))
         self._f_stream = QLabel(tr_i18n("api.form.stream"))
         llm_form.addRow(self._f_llm_provider, self.llm_provider)
-        llm_form.addRow(self._f_model, self.llm_model)
-        llm_form.addRow(self._f_api_key, self.api_key)
         llm_form.addRow(self._f_base, self.base_url)
+        llm_form.addRow(self._f_api_key, self.api_key)
+        llm_form.addRow(self._f_model, self.llm_model)
         llm_form.addRow(self._f_stream, stream_row)
         self._llm_extra_holder = QWidget()
         self._llm_extra_holder.setSizePolicy(
@@ -755,7 +2183,12 @@ class ApiSettingsTab(QWidget):
         lay.addWidget(main_tree, stretch=1)
 
         self.llm_provider.currentTextChanged.connect(self._on_provider_change)
-        self.llm_model.textChanged.connect(self._on_model_text_changed)
+        self.llm_model.editTextChanged.connect(self._on_model_text_changed)
+        self.llm_model.currentIndexChanged.connect(
+            self._refresh_llm_selected_capability_badges
+        )
+        self.base_url.textChanged.connect(self._on_llm_connection_fields_changed)
+        self.api_key.textChanged.connect(self._on_llm_connection_fields_changed)
         self.tts_provider.currentIndexChanged.connect(self._on_tts_provider_changed)
         self.t2i_engine.currentIndexChanged.connect(self._on_t2i_engine_changed)
         self._asr_provider.currentIndexChanged.connect(self._on_asr_provider_changed)
@@ -815,7 +2248,14 @@ class ApiSettingsTab(QWidget):
         self._f_api_key.setText(tr_i18n("api.form.api_key"))
         self._f_base.setText(tr_i18n("api.form.base_url"))
         self._f_stream.setText(tr_i18n("api.form.stream"))
-        self.llm_model.setPlaceholderText(tr_i18n("api.form.ph_model"))
+        if self.llm_model.lineEdit() is not None:
+            self.llm_model.lineEdit().setPlaceholderText(tr_i18n("api.form.ph_model"))
+        model_fetching = self._llm_model_thread is not None
+        fetch_text = self._llm_model_fetch_button_text(model_fetching)
+        self._llm_model_fetch_btn.setText(fetch_text)
+        self._llm_model_fetch_btn.setToolTip(fetch_text)
+        self._refresh_llm_model_display_labels()
+        QTimer.singleShot(0, self._position_llm_model_fetch_button)
         self.api_key.setPlaceholderText(tr_i18n("api.form.ph_key"))
         self.base_url.setPlaceholderText(tr_i18n("api.form.ph_base"))
         self._adv_help.setText(tr_i18n("api.adv.help"))
@@ -909,6 +2349,135 @@ class ApiSettingsTab(QWidget):
                 w.apply_i18n()
         self._schedule_refresh_main_tree_heights()
 
+    def _llm_model_text(self) -> str:
+        text = self.llm_model.currentText().strip()
+        idx = self.llm_model.currentIndex()
+        if idx >= 0 and text == self.llm_model.itemText(idx):
+            data = self.llm_model.itemData(idx)
+            if isinstance(data, str) and data.strip():
+                return data.strip()
+        text_idx = self.llm_model.findText(text)
+        if text_idx >= 0:
+            data = self.llm_model.itemData(text_idx)
+            if isinstance(data, str) and data.strip():
+                return data.strip()
+        return text
+
+    def _refresh_llm_model_display_labels(self) -> None:
+        view = self.llm_model.view()
+        if view is not None and view.viewport() is not None:
+            view.viewport().update()
+        self._refresh_llm_selected_capability_badges()
+
+    def _current_llm_model_capability(self) -> _LLMModelCapability | None:
+        text = self.llm_model.currentText().strip()
+        idx = self.llm_model.currentIndex()
+        if idx >= 0 and text == self.llm_model.itemText(idx):
+            cap = self.llm_model.itemData(idx, _LLM_CAPABILITY_ROLE)
+            return cap if isinstance(cap, _LLMModelCapability) else None
+        text_idx = self.llm_model.findText(text)
+        if text_idx >= 0:
+            cap = self.llm_model.itemData(text_idx, _LLM_CAPABILITY_ROLE)
+            return cap if isinstance(cap, _LLMModelCapability) else None
+        return None
+
+    def _refresh_llm_selected_capability_badges(self, *_args) -> None:
+        cap = self._current_llm_model_capability()
+        tags = _llm_capability_tags(cap)
+        line_edit = self.llm_model.lineEdit() if hasattr(self, "llm_model") else None
+        if isinstance(line_edit, _LLMModelLineEdit):
+            line_edit.set_capability_tags(tags)
+
+    def _position_llm_model_fetch_button(self) -> None:
+        btn = getattr(self, "_llm_model_fetch_btn", None)
+        combo = getattr(self, "llm_model", None)
+        if btn is None or combo is None or not btn.isVisible():
+            return
+        btn.adjustSize()
+        hint = btn.sizeHint()
+        width = min(max(34, hint.width()), max(34, combo.width() - 8))
+        height = min(max(22, hint.height()), max(22, combo.height() - 6))
+        x = max(2, combo.width() - width - 4)
+        y = max(0, (combo.height() - height) // 2)
+        btn.setGeometry(x, y, width, height)
+        btn.raise_()
+        line_edit = combo.lineEdit()
+        if isinstance(line_edit, _LLMModelLineEdit):
+            line_edit.set_action_reserved_width(width)
+
+    def _set_llm_model_fetch_button_visible(self, visible: bool) -> None:
+        self._llm_model_fetch_btn.setVisible(visible)
+        self.llm_model.setStyleSheet(_LLM_MODEL_FETCH_MODE_QSS if visible else "")
+        line_edit = self.llm_model.lineEdit()
+        if isinstance(line_edit, _LLMModelLineEdit):
+            width = self._llm_model_fetch_btn.sizeHint().width() if visible else 0
+            line_edit.set_action_reserved_width(width)
+        QTimer.singleShot(0, self._position_llm_model_fetch_button)
+
+    def _current_llm_model_fetch_key(self) -> tuple[str, str, str]:
+        return (
+            self.llm_provider.currentText().strip(),
+            self.base_url.text().strip(),
+            self.api_key.text().strip(),
+        )
+
+    def _reset_llm_model_fetch_state(self) -> None:
+        self._llm_model_fetched_key = None
+        current = self._llm_model_text()
+        self.llm_model.blockSignals(True)
+        self.llm_model.clear()
+        if current:
+            self.llm_model.addItem(current, current)
+            self.llm_model.setEditText(current)
+        self.llm_model.blockSignals(False)
+        self._refresh_llm_selected_capability_badges()
+        self._set_llm_model_fetch_button_visible(True)
+        self._set_llm_model_fetching(self._llm_model_thread is not None)
+
+    def _on_llm_connection_fields_changed(self, *_args) -> None:
+        self._reset_llm_model_fetch_state()
+
+    def _set_llm_model_text(self, model: str) -> None:
+        text = (model or "").strip()
+        if not text:
+            self.llm_model.setEditText("")
+            return
+        data_idx = self.llm_model.findData(text)
+        if data_idx >= 0:
+            self.llm_model.setCurrentIndex(data_idx)
+            return
+        text_idx = self.llm_model.findText(text)
+        if text_idx >= 0:
+            self.llm_model.setCurrentIndex(text_idx)
+            return
+        self.llm_model.addItem(text, text)
+        self.llm_model.setEditText(text)
+
+    def _set_llm_model_candidates(self, models: list[str | _LLMModelOption]) -> None:
+        current = self._llm_model_text()
+        self.llm_model.blockSignals(True)
+        self.llm_model.clear()
+        for item in models:
+            if isinstance(item, _LLMModelOption):
+                self.llm_model.addItem(item.model_id, item.model_id)
+                row = self.llm_model.count() - 1
+                self.llm_model.setItemData(row, item.capability, _LLM_CAPABILITY_ROLE)
+            else:
+                model_id = str(item or "").strip()
+                if model_id:
+                    self.llm_model.addItem(model_id, model_id)
+        if current:
+            data_idx = self.llm_model.findData(current)
+            if data_idx >= 0:
+                self.llm_model.setCurrentIndex(data_idx)
+            else:
+                self.llm_model.setEditText(current)
+        elif models:
+            self.llm_model.setCurrentIndex(0)
+        self.llm_model.blockSignals(False)
+        self._refresh_llm_model_display_labels()
+        self._on_model_text_changed(self._llm_model_text())
+
     def _on_asr_whisper_model_preset_changed(self, _index: int = 0) -> None:
         data = self._asr_whisper_model_combo.currentData()
         is_custom = data is not None and str(data) == "__custom__"
@@ -930,6 +2499,7 @@ class ApiSettingsTab(QWidget):
         try:
             base, model, key = self._ctx.config_manager.update_llm_info(name)
         except Exception as e:
+            self._reset_llm_model_fetch_state()
             message_fail(
                 self,
                 tr_i18n("api.msg.config"),
@@ -937,8 +2507,11 @@ class ApiSettingsTab(QWidget):
             )
             return
         self.base_url.setText(base)
-        self.llm_model.setText(model)
+        self.llm_model.clear()
+        self._set_llm_model_text(model)
+        self._refresh_llm_selected_capability_badges()
         self.api_key.setText(key)
+        self._reset_llm_model_fetch_state()
         self._rebuild_llm_extra_panel()
         self._update_thinking_ui()
 
@@ -946,10 +2519,104 @@ class ApiSettingsTab(QWidget):
 
     def _on_model_text_changed(self, text: str) -> None:
         self._update_thinking_ui()
+        self._refresh_llm_selected_capability_badges()
+
+    def _llm_model_fetch_button_text(self, fetching: bool) -> str:
+        if not fetching:
+            return tr_i18n("api.form.model_fetch_tip")
+        return tr_i18n("api.form.model_fetching")
+
+    def _set_llm_model_fetching(self, fetching: bool) -> None:
+        self._llm_model_fetch_btn.setEnabled(not fetching)
+        fetch_text = self._llm_model_fetch_button_text(fetching)
+        self._llm_model_fetch_btn.setText(fetch_text)
+        self._llm_model_fetch_btn.setToolTip(fetch_text)
+        QTimer.singleShot(0, self._position_llm_model_fetch_button)
+
+    def _on_fetch_llm_models(self) -> None:
+        provider = self.llm_provider.currentText().strip()
+        base_url = self.base_url.text().strip()
+        api_key = self.api_key.text().strip()
+        if not base_url or not api_key:
+            message_fail(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.msg.model_fetch_missing"),
+            )
+            return
+        if self._llm_model_thread is not None:
+            return
+
+        fetch_key = self._current_llm_model_fetch_key()
+        self._llm_model_active_fetch_key = fetch_key
+        self._set_llm_model_fetching(True)
+        thread = QThread(self)
+        worker = _LLMModelDiscoveryWorker(
+            provider,
+            base_url,
+            api_key,
+            detect_capability=True,
+        )
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_llm_models_fetched)
+        worker.failed.connect(self._on_llm_models_fetch_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        thread.finished.connect(self._on_llm_models_fetch_thread_finished)
+        thread.finished.connect(thread.deleteLater)
+        self._llm_model_thread = thread
+        self._llm_model_worker = worker
+        thread.start()
+
+    def _on_llm_models_fetched(self, models: list[str | _LLMModelOption]) -> None:
+        fetch_key = self._llm_model_active_fetch_key
+        if fetch_key != self._current_llm_model_fetch_key():
+            return
+        if not models:
+            self._llm_model_fetched_key = None
+            self._set_llm_model_fetch_button_visible(True)
+            message_fail(
+                self,
+                tr_i18n("api.msg.config"),
+                tr_i18n("api.msg.model_fetch_empty"),
+            )
+            return
+        self._llm_model_fetched_key = fetch_key
+        self._set_llm_model_candidates(models)
+        self._set_llm_model_fetch_button_visible(False)
+        message_info(
+            self,
+            tr_i18n("api.msg.config"),
+            tr_i18n("api.msg.model_fetch_done").format(count=len(models)),
+        )
+
+    def _on_llm_models_fetch_failed(self, error: str, detail: str = "") -> None:
+        if self._llm_model_active_fetch_key != self._current_llm_model_fetch_key():
+            return
+        self._llm_model_fetched_key = None
+        self._set_llm_model_fetch_button_visible(True)
+        message_fail(
+            self,
+            tr_i18n("api.msg.config"),
+            tr_i18n("api.msg.model_fetch_failed").format(e=error),
+            details=detail,
+        )
+
+    def _on_llm_models_fetch_thread_finished(self) -> None:
+        self._llm_model_thread = None
+        self._llm_model_worker = None
+        self._llm_model_active_fetch_key = None
+        self._set_llm_model_fetching(False)
+        self._set_llm_model_fetch_button_visible(
+            self._llm_model_fetched_key != self._current_llm_model_fetch_key()
+        )
 
     def _update_thinking_ui(self) -> None:
         """deepseek-v4-flash / deepseek-chat 不支持思考模式，禁用控件并取消勾选。"""
-        model = self.llm_model.text().strip().lower()
+        model = self._llm_model_text().lower()
         w = self._llm_extra_editors.get("thinking_enabled")
         if w is None or not isinstance(w, (QCheckBox,)):
             return
@@ -1081,7 +2748,7 @@ class ApiSettingsTab(QWidget):
             not_empty(self.base_url.text().strip(), tr_i18n("api.form.base_url")),
             no_quotes(self.base_url.text().strip(), tr_i18n("api.form.base_url")),
             not_empty(self.api_key.text().strip(), tr_i18n("api.form.api_key")),
-            not_empty(self.llm_model.text().strip(), tr_i18n("api.form.model_id")),
+            not_empty(self._llm_model_text(), tr_i18n("api.form.model_id")),
             title=tr_i18n("api.msg.validation_title"),
             parent=self,
         ):
@@ -1141,7 +2808,7 @@ class ApiSettingsTab(QWidget):
 
         msg = self._ctx.config_manager.save_api_config_new(
             self.llm_provider.currentText(),
-            self.llm_model.text().strip(),
+            self._llm_model_text(),
             self.api_key.text(),
             self.base_url.text().strip(),
             is_streaming,

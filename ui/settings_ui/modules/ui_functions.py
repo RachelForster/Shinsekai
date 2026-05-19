@@ -32,7 +32,7 @@ from PySide6.QtCore import (
     Qt,
 )
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QPushButton, QSizeGrip
+from PySide6.QtWidgets import QApplication, QPushButton, QSizeGrip
 
 from ui.settings_ui.widgets.custom_grips.custom_grips import CustomGrip
 
@@ -250,6 +250,9 @@ class UIFunctions:
 
             # MOVE WINDOW / MAXIMIZE / RESTORE
             def moveWindow(event):
+                if QApplication.activeModalWidget() is not None:
+                    event.ignore()
+                    return
                 # IF MAXIMIZED CHANGE TO NORMAL
                 if UIFunctions.returStatus(self):
                     UIFunctions.maximize_restore(self)

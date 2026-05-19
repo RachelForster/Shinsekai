@@ -6,6 +6,19 @@ from config.schema import AppConfig, Character, ApiConfig, SystemConfig, Backgro
 from llm.constants import LLM_BASE_URLS
 import traceback
 
+
+def _llm_default_base_url(llm_provider: str) -> str:
+    """Return the built-in base URL for a provider, accepting minor case drift."""
+    provider = (llm_provider or "").strip()
+    if provider in LLM_BASE_URLS:
+        return LLM_BASE_URLS[provider]
+    provider_lower = provider.lower()
+    for name, base_url in LLM_BASE_URLS.items():
+        if name.lower() == provider_lower:
+            return base_url
+    return ""
+
+
 class ConfigManager:
     """
     配置管理器：负责加载、保存和管理应用的全局配置。
@@ -241,7 +254,7 @@ class ConfigManager:
 
         api_config = self.config.api_config
         
-        base_url = LLM_BASE_URLS.get(llm_provider,"")
+        base_url = _llm_default_base_url(llm_provider)
         
         # 从字典中获取对应提供商的模型和 API Key
         llm_model = api_config.llm_model.get(llm_provider, "")
@@ -300,7 +313,9 @@ class ConfigManager:
         llm_provider = self.config.api_config.llm_provider
         api_key = self.config.api_config.llm_api_key.get(llm_provider,"")
         model = self.config.api_config.llm_model.get(llm_provider,"")
-        base_url = self.config.api_config.llm_base_url
+        base_url = str(self.config.api_config.llm_base_url or "").strip()
+        if not base_url:
+            base_url = _llm_default_base_url(llm_provider)
         return llm_provider, model, base_url, api_key
 
     def get_gpt_sovits_config(self):

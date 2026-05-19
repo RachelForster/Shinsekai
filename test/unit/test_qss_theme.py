@@ -5,7 +5,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QRect
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -13,12 +13,17 @@ from PySide6.QtWidgets import (
     QDialog,
     QMenu,
     QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QFrame,
     QStyle,
     QStyleOptionViewItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from ui.qss import apply_pydracula_dark, load_pydracula_dark
+from ui.settings_ui.feedback import _ThemedMessageDialog
 
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -132,3 +137,73 @@ def test_settings_theme_combobox_popup_items_have_hover_highlight():
     )
 
     _assert_combobox_popup_hover_highlight(qss)
+
+
+def _assert_messagebox_detail_text_uses_dark_palette(qss: str):
+    assert "QMessageBox QTextEdit" in qss
+    assert "QMessageBox QPlainTextEdit" in qss
+    assert "background-color: rgb(27, 29, 35);" in qss
+
+
+def test_pydracula_messagebox_detail_text_uses_dark_palette():
+    _assert_messagebox_detail_text_uses_dark_palette(load_pydracula_dark())
+
+
+def test_settings_theme_messagebox_detail_text_uses_dark_palette():
+    qss = (_ROOT / "ui" / "settings_ui" / "themes" / "py_dracula_dark.qss").read_text(
+        encoding="utf-8"
+    )
+
+    _assert_messagebox_detail_text_uses_dark_palette(qss)
+
+
+def _parent_with_window_color(color: QColor) -> QWidget:
+    parent = QWidget()
+    palette = parent.palette()
+    palette.setColor(QPalette.ColorRole.Window, color)
+    parent.setPalette(palette)
+    return parent
+
+
+def test_themed_info_dialog_uses_frameless_modal_dark_frame():
+    QApplication.instance() or QApplication([])
+    parent = _parent_with_window_color(QColor(40, 44, 52))
+    dialog = _ThemedMessageDialog(
+        parent, QMessageBox.Icon.Information, "API", "已获取 3 个模型。"
+    )
+
+    assert dialog.windowModality() == Qt.WindowModality.WindowModal
+    assert dialog.windowFlags() & Qt.WindowType.FramelessWindowHint
+    assert "QFrame#themedMessageDialogFrame" in dialog.styleSheet()
+    assert "background-color: rgb(40, 44, 52);" in dialog.styleSheet()
+    assert dialog.findChild(QFrame, "themedMessageDialogFrame") is not None
+    assert dialog.findChild(QPushButton).text() == "OK"
+
+
+def test_themed_info_dialog_uses_light_frame_from_palette():
+    QApplication.instance() or QApplication([])
+    parent = _parent_with_window_color(QColor(248, 248, 242))
+    dialog = _ThemedMessageDialog(
+        parent, QMessageBox.Icon.Information, "API", "Fetched 3 models."
+    )
+
+    assert "background-color: #f8f8f2;" in dialog.styleSheet()
+    assert "background-color: #6272a4;" in dialog.styleSheet()
+
+
+def test_themed_warning_dialog_keeps_details_inside_frameless_frame():
+    QApplication.instance() or QApplication([])
+    parent = _parent_with_window_color(QColor(40, 44, 52))
+    dialog = _ThemedMessageDialog(
+        parent,
+        QMessageBox.Icon.Warning,
+        "API",
+        "获取模型列表失败：HTTP 403: Error 1010",
+        details='{"error_code":1010,"error_name":"browser_signature_banned"}',
+    )
+
+    assert dialog.windowModality() == Qt.WindowModality.WindowModal
+    assert dialog.windowFlags() & Qt.WindowType.FramelessWindowHint
+    detail_edit = dialog.findChild(QPlainTextEdit, "themedMessageDialogDetails")
+    assert detail_edit is not None
+    assert "browser_signature_banned" in detail_edit.toPlainText()
