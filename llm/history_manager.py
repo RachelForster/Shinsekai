@@ -79,11 +79,18 @@ class HistoryManager:
         if history_path.exists():
             try:
                 with open(history_path, 'r', encoding='utf-8') as f:
-                    messages = json.load(f)
+                    raw = json.load(f)
+                messages = raw.get("messages", []) if isinstance(raw, dict) else raw
+                if not isinstance(messages, list):
+                    messages = []
                 print(f"聊天记录已从 {history_path} 加载。")
             except Exception as e:
                 print(f"加载聊天记录失败: {e}")
 
+        return self.rebuild_chat_history(messages)
+
+    def rebuild_chat_history(self, messages):
+        """用 LLM messages 重建侧边历史展示列表。"""
         self.chat_history.clear()
         try:
             for message in messages:
