@@ -44,6 +44,8 @@ _loaded: bool = False
 _plugin_manager: PluginManager | None = None
 _plugin_tts_handlers: List["MessageHandler"] = []
 _plugin_ui_handlers: List["UIOutputMessageHandler"] = []
+_plugin_dag_node_factories: list[tuple[Callable[[], list], bool]] = []
+_plugin_dag_yaml_paths: list[str] = []
 
 
 def get_plugin_manager() -> PluginManager | None:
@@ -58,13 +60,21 @@ def get_plugin_ui_handlers() -> List["UIOutputMessageHandler"]:
     return list(_plugin_ui_handlers)
 
 
+def get_plugin_dag_node_factories() -> list[tuple[Callable[[], list], bool]]:
+    return list(_plugin_dag_node_factories)
+
+
+def get_plugin_dag_yaml_paths() -> list[str]:
+    return list(_plugin_dag_yaml_paths)
+
+
 def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager | None:
     """
     Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge LLM/TTS/ASR/T2I
     provider tables into the respective factories, register tools on the global ToolManager, and cache message handlers
     for :mod:`core.handlers.handler_registry`.
     """
-    global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
+    global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers, _plugin_dag_node_factories, _plugin_dag_yaml_paths
     if _loaded:
         return _plugin_manager
 
@@ -123,6 +133,16 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
         logger.exception("collect_message_handlers failed")
         _plugin_tts_handlers = []
         _plugin_ui_handlers = []
+    try:
+        _plugin_dag_node_factories = mgr.collect_dag_node_factories()
+    except Exception:
+        logger.exception("collect_dag_node_factories failed")
+        _plugin_dag_node_factories = []
+    try:
+        _plugin_dag_yaml_paths = mgr.collect_dag_yaml_paths()
+    except Exception:
+        logger.exception("collect_dag_yaml_paths failed")
+        _plugin_dag_yaml_paths = []
 
     _plugin_manager = mgr
     _loaded = True
