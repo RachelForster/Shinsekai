@@ -6,7 +6,7 @@ import numpy as np
 import threading
 import yaml
 import time
-from PySide6.QtCore import QByteArray, QEvent, QPoint, QRect, Qt, Signal, QSize, QUrl
+from PySide6.QtCore import QByteArray, QEvent, QPoint, QRect, Qt, Signal, QSize, QUrl, QTimer
 from PySide6.QtGui import (
     QCursor,
     QFont,
@@ -106,6 +106,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         # 对话/选项区：小于启动时透明窗初始宽度则横向上与容器同宽（无左右留白）
         self._overlay_min_ref_width = max(1, int(self.original_width))
         self.current_background_path = None
+        self._close_started = False
         # 全尺寸图，供 resize 时重缩放，使底栏 input 与整窗共用同一底图
         self._background_source_pixmap = None
         self._last_user_message = ""
@@ -1439,15 +1440,28 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         super().mouseReleaseEvent(event)
 
     def closeEvent(self, event):
-        """关闭窗口时停止线程"""
+        if self._close_started:
+            event.accept()
+            return
+        self._close_started = True
         if self._resizing:
             self._end_resize()
         self._persist_chat_window_geometry()
-        self.mic_button.close()
+        self.setEnabled(False)
+        self.hide()
+        event.accept()
+        QTimer.singleShot(0, self._finish_close)
+        return
+
+    def _finish_close(self):
+        try:
+            self.mic_button.close()
+        except Exception:
+            _logger.exception("mic close cleanup")
         if self.display_thread:
             self.display_thread.stop()
-            self.display_thread.wait()
-        super().closeEvent(event)
+            if not self.display_thread.wait(1000):
+                _logger.warning("display thread did not stop within 1s")
         self.close_window.emit()
         from ui.chat_ui.signal_bridge import detach_chat_ui_window
 
