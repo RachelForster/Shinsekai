@@ -16,6 +16,7 @@ def _tool_search_tools(keyword: str = "") -> list[dict]:
     if not keyword or not keyword.strip():
         return [{"name": d["function"]["name"],
                  "group": tm.get_tool_group(d["function"]["name"]),
+                 "risk": tm.get_tool_risk(d["function"]["name"]),
                  "description": d["function"]["description"]}
                 for d in tm.get_definitions()]
     return tm.search_tools(keyword)

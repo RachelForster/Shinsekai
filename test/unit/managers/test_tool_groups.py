@@ -13,6 +13,7 @@ def _reset_tm():
     tm._tools_definitions.clear()
     tm._functions.clear()
     tm._tool_groups.clear()
+    tm._tool_risks.clear()
     return tm
 
 
@@ -154,6 +155,7 @@ class TestSearchTools:
         results = tm.search_tools("memory")
         assert len(results) >= 1
         assert any(r["name"] == "mem_search" for r in results)
+        assert all("risk" in r for r in results)
 
     def test_search_by_description(self):
         tm = _reset_tm()
@@ -212,6 +214,7 @@ class TestMCPToolsGroup:
         ]
         tm.register_mcp_tools(mcp_tools, invoke=mock_invoke)
         assert tm.get_tool_group("generic") == "mcp"
+        assert tm.get_tool_risk("generic") == "medium"
 
     def test_register_mcp_with_prefix(self):
         tm = _reset_tm()
