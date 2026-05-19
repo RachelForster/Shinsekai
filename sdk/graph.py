@@ -59,6 +59,23 @@ class DagNode:
         """Resolve references to other workflow nodes after YAML load."""
         pass
 
+    def to_config(self) -> dict[str, Any]:
+        """Return constructor kwargs needed to recreate this node.
+
+        Subclasses with extra constructor parameters MUST override this
+        so that YAML round-trip (save/load) preserves their state.
+        """
+        return {}
+
+    @classmethod
+    def from_config(cls, name: str, params: dict[str, Any]) -> "DagNode":
+        """Create a node from a serialized config dict.
+
+        By default this calls ``cls(name=name, **params)``.  Subclasses
+        may override when argument mapping is non-trivial.
+        """
+        return cls(name=name, **params)
+
     def start(self) -> None:
         """Start node work if it owns execution. Passive nodes do nothing."""
         pass
@@ -191,6 +208,7 @@ class DagBuilder:
                 {
                     "name": n.name,
                     "type": type(n).__module__ + "." + type(n).__qualname__,
+                    "params": n.to_config(),
                     "inputs": list(n.inputs().keys()),
                     "outputs": list(n.outputs().keys()),
                 }
@@ -219,13 +237,12 @@ class DagBuilder:
 
     @staticmethod
     def _make_node(node_cls: type, name: str, params: dict[str, Any]) -> DagNode:
+        if hasattr(node_cls, "from_config") and node_cls.from_config is not DagNode.from_config:
+            return node_cls.from_config(name, params)
         attempts = (
             lambda: node_cls(name=name, **params),
             lambda: node_cls(name, **params),
             lambda: node_cls(**params),
-            lambda: node_cls(name=name),
-            lambda: node_cls(name),
-            lambda: node_cls(),
         )
         last_error: TypeError | None = None
         for attempt in attempts:
@@ -256,7 +273,7 @@ class DagBuilder:
             except Exception as e:
                 raise ValueError(f"Cannot import {dotted}: {e}") from e
             node_name = nd["name"]
-            params = {k: v for k, v in nd.items() if k not in {"name", "type"}}
+            params = nd.get("params", {})
             try:
                 node = self._make_node(node_cls, node_name, params)
             except Exception as e:
