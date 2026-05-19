@@ -9,7 +9,7 @@ A desktop assistant for **visual-novel / otome / story-driven RPG** play: let a 
 ## Why Shinsekai
 
 - **One pipeline for performance**: templates, session history, sprite swaps and moods, TTS/ASR, and input plumbing are wired so you spend less time context-switching between tools.  
-- **Two-window design**: the **Settings** app (`webui.py` / bundle) holds API, characters, and plugins; the **chat** window stays focused on dialogue and stage direction.  
+- **Two-window design**: the **Settings** app (`webui_qt.py` / bundle) holds API, characters, and plugins; the **chat** window stays focused on dialogue and stage direction.
 - **Swap models and engines**: connect mainstream LLMs and OpenAI-compatible endpoints under **API settings**; **TTS** spans GPT-SoVITS, Genie TTS, CosyVoice, and lighter stacks without a discrete GPU; **image gen** can target ComfyUI-style backends on the same page.  
 - **Listen and speak**: optional mic **ASR** (e.g. Vosk; more via **plugins**) and line **TTS**, or turn synthesis off and rely on per-sprite bundled audio only.  
 - **More than plain chat**: built-in / plugin **LLM tools** plus **MCP** bring search, automation, and other services into the same turn.  
@@ -71,6 +71,8 @@ conda activate shinsekai
 pip install -r requirements.txt
 ```
 
+> **macOS source install**: `requirements.txt` includes the microphone ASR dependency `pyaudio`. If installation fails with a missing `portaudio.h`, run `brew install portaudio` first, then reinstall the requirements.
+
 ### 3. Open Settings
 
 Bundle: `start.bat`. From source:
@@ -98,7 +100,7 @@ List plugins in **`data/config/plugins.yaml`**; source lives under **`plugins/<p
 
 - **UI**: Settings → **Plugins** — enable/disable, discover & download from the index, run `pip install -r requirements.txt` with the same interpreter as the app.  
 - **Index:** [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)  
-- **Scaffold:** `python -m sdk.cli create --package your_plugin_name`  
+- **Scaffold:** `python -m sdk.cli create your_plugin_name` (the older `--package your_plugin_name` form remains supported)
 - **Developer guide:** [PLUGIN_DEVELOPER_GUIDE.md](PLUGIN_DEVELOPER_GUIDE.md)
 
 Restart the app after changing the manifest so plugins reload.

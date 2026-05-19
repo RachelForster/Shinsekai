@@ -9,7 +9,7 @@
 ## 为什么用它
 
 - **角色演出一条龙**：聊天模板、会话历史、立绘切图与情绪、TTS/ASR 与输入管线在同一套工作流里衔接，减少到处换工具。  
-- **双窗分工**：**设置中心**（`webui.py` / 整合包）集中管 API、角色、插件；**聊天主窗**专责对白与演出，思路清晰。  
+- **双窗分工**：**设置中心**（`webui_qt.py` / 整合包）集中管 API、角色、插件；**聊天主窗**专责对白与演出，思路清晰。
 - **多模型、可换引擎**：在 **API 设定** 对接常见 LLM 与 OpenAI 兼容端点；**TTS** 含 GPT-SoVITS、Genie TTS 等，无独显也可选轻量方案；**文生图**可接 ComfyUI 等工作流（同页配置）。  
 - **听懂与说出口**：麦克风 **ASR**（如 Vosk；更多后端可装**插件**）与台词 **TTS** 可选开关，适配「只打字」「只朗读立绘音频」等多种玩法。  
 - **模型不仅会聊天**：内置/插件 **LLM 工具**（如角色与世界书相关能力）+ **MCP** 接入外部服务，把检索、自动化等能力收进同一次对话。  
@@ -76,6 +76,8 @@ conda activate shinsekai
 pip install -r requirements.txt
 ```
 
+> **macOS 源码安装**：`requirements.txt` 包含麦克风 ASR 依赖 `pyaudio`。如安装时报 `portaudio.h` 缺失，请先执行 `brew install portaudio`，再重新安装依赖。
+
 ### 3. 打开设置界面
 
 | 平台 | 操作 |
@@ -116,7 +118,7 @@ python webui_qt.py
 
 - **图形界面**：Settings → **插件**：启用/禁用、从索引发现与下载、`pip install` 依赖（与当前解释器一致）。  
 - **索引仓库**：[Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)  
-- **脚手架**：`python -m sdk.cli create --package your_plugin_name`  
+- **脚手架**：`python -m sdk.cli create your_plugin_name`（旧写法 `--package your_plugin_name` 仍兼容）
 - **设计说明**（英文）：[docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md)
 
 修改清单后请 **重启应用** 以加载插件。

@@ -48,7 +48,7 @@ if str(project_root) not in sys.path:
 
 # 导入 ConfigManager 和 Pydantic 消息模型
 from config.config_manager import ConfigManager
-from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
+from sdk.messages import UserInputMessage, LLMDialogMessage, LLMTurnEndMessage, TTSOutputMessage
 from core.runtime.app_runtime import get_app_runtime, try_get_app_runtime, tts_emit_to_ui_queue
 from core.messaging.stream_parser import LlmResponseStreamParser
 from core.handlers.handler_registry import default_tts_handler_chain, default_ui_output_handler_chain
@@ -129,17 +129,31 @@ class LLMWorker(QThreadDagNode):
     def outputs(self) -> dict[str, Port]:
         return {self.PORT_LLM_OUTPUT: Port(self.PORT_LLM_OUTPUT)}
 
+    def _enqueue_turn_end(self) -> None:
+        try:
+            self.tts_queue.put(LLMTurnEndMessage())
+        except Exception:
+            try:
+                get_app_runtime().audio_path_queue.put(TTSOutputMessage(
+                    audio_path="", name="system", asset_id="-1",
+                    text="", is_system_message=True, is_turn_end=True,
+                ))
+            except Exception:
+                pass
+
     def run(self):
         self._init_app()
         while True:
             message: UserInputMessage | None = None
             got_message = False
+            turn_started = False
             try:
                 message = self.user_input_queue.get()
                 got_message = True
                 if message is None:
                     break
 
+                turn_started = True
                 print(f"LLMWorker: 开始处理消息: {message.text}")
                 tracker.start_cross("e2e")
                 self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
@@ -191,6 +205,8 @@ class LLMWorker(QThreadDagNode):
                 elif parser.has_errors:
                     _warn = tr("desktop.llm_parse_partial", n=parser.parse_failures)
                     print(f"LLMWorker: {_warn}")
+                self._enqueue_turn_end()
+                turn_started = False
 
             except Exception as e:
                 print(f"LLMWorker: 任务处理失败: {e}")
@@ -204,6 +220,8 @@ class LLMWorker(QThreadDagNode):
                     ))
                 except Exception:
                     pass
+                if turn_started:
+                    self._enqueue_turn_end()
             finally:
                 if got_message:
                     self.user_input_queue.task_done()
@@ -261,13 +279,23 @@ class TTSWorker(QThreadDagNode):
     def run(self):
         self._init_app()
         while True:
-            item: Optional[LLMDialogMessage] = None
+            item: Optional[LLMDialogMessage | LLMTurnEndMessage] = None
             got_item = False
             try:
                 item = self.tts_queue.get()
                 got_item = True
                 if item is None:
                     break
+                if isinstance(item, LLMTurnEndMessage):
+                    self.audio_path_queue.put(TTSOutputMessage(
+                        audio_path="",
+                        name="system",
+                        asset_id="-1",
+                        text="",
+                        is_system_message=True,
+                        is_turn_end=True,
+                    ))
+                    continue
                 with tracker.track("TTS dispatch"):
                     self.tts_message_dispatcher.dispatch(item)
             except Exception as e:
@@ -362,6 +390,18 @@ class UIWorker(QThreadDagNode):
                 got_output = True
                 if output_data is None:
                     break
+                if output_data.is_turn_end:
+                    try:
+                        self.ui_update_manager.hide_busy_bar()
+                    except Exception:
+                        pass
+                    try:
+                        from asr.asr_adapter import get_asr_log
+                        get_asr_log().info("UIWorker: turn end → post_llm_reply_finished")
+                    except Exception:
+                        pass
+                    self.ui_update_manager.post_llm_reply_finished()
+                    continue
                 self.ui_out_dispatcher.dispatch(output_data)
             except Exception as e:
                 traceback.print_exc()

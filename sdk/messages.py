@@ -29,6 +29,12 @@ class LLMDialogMessage(BaseModel):
     effect: Optional[str] = Field("", description="特效名称")
 
 
+class LLMTurnEndMessage(BaseModel):
+    """LLM 已完成当前用户输入对应的一整轮输出。"""
+
+    kind: str = Field("turn_end", description="内部队列哨兵类型")
+
+
 class TTSOutputMessage(BaseModel):
     """TTS Worker 处理后输出的 UI 队列消息 (audio_path_queue)。"""
 
@@ -41,4 +47,5 @@ class TTSOutputMessage(BaseModel):
     effect: Optional[str] = Field("", description="特效名称")
     is_system_message: bool = Field(False, description="是否是系统通知或非对话消息")
     is_final_segment: bool = Field(True, description="是否是多段TTS中的最后一段")
+    is_turn_end: bool = Field(False, description="是否是一整轮回复结束哨兵")
     timeout: Optional[float] = Field(None, description="可选的等待时间（秒）")

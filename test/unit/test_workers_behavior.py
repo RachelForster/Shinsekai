@@ -9,6 +9,15 @@ from unittest.mock import MagicMock
 import pytest
 
 
+_FAKE_MODULE_NAMES: list[str] = []
+
+
+def _install_fake_module(name: str, module: types.ModuleType) -> None:
+    if name not in sys.modules:
+        sys.modules[name] = module
+        _FAKE_MODULE_NAMES.append(name)
+
+
 class _FakeQThread:
     def __init__(self, parent=None) -> None:
         self.parent = parent
@@ -30,21 +39,21 @@ if "PySide6.QtCore" not in sys.modules:
     qtcore = types.ModuleType("PySide6.QtCore")
     qtcore.QThread = _FakeQThread
     pyside6.QtCore = qtcore
-    sys.modules["PySide6"] = pyside6
-    sys.modules["PySide6.QtCore"] = qtcore
+    _install_fake_module("PySide6", pyside6)
+    _install_fake_module("PySide6.QtCore", qtcore)
 
 if "pygame" not in sys.modules:
     pygame = types.ModuleType("pygame")
     pygame.mixer = SimpleNamespace()
-    sys.modules["pygame"] = pygame
+    _install_fake_module("pygame", pygame)
 
 llm_manager = types.ModuleType("llm.llm_manager")
 llm_manager.STREAM_REASONING_DELTA_KEY = "reasoning_delta"
-sys.modules.setdefault("llm.llm_manager", llm_manager)
+_install_fake_module("llm.llm_manager", llm_manager)
 
 tool_manager = types.ModuleType("llm.tools.tool_manager")
 tool_manager.ToolManager = MagicMock
-sys.modules.setdefault("llm.tools.tool_manager", tool_manager)
+_install_fake_module("llm.tools.tool_manager", tool_manager)
 
 handler_registry = types.ModuleType("core.handlers.handler_registry")
 handler_registry.default_tts_handler_chain = lambda: SimpleNamespace(
@@ -55,12 +64,15 @@ handler_registry.default_ui_output_handler_chain = lambda: SimpleNamespace(
     init_handlers=lambda: None,
     dispatch=lambda item: None,
 )
-sys.modules.setdefault("core.handlers.handler_registry", handler_registry)
+_install_fake_module("core.handlers.handler_registry", handler_registry)
 
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
 from core.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
 from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
-from sdk.messages import LLMDialogMessage, TTSOutputMessage, UserInputMessage
+from sdk.messages import LLMDialogMessage, LLMTurnEndMessage, TTSOutputMessage, UserInputMessage
+
+for _module_name in _FAKE_MODULE_NAMES:
+    sys.modules.pop(_module_name, None)
 
 
 pytestmark = pytest.mark.unit
@@ -138,6 +150,12 @@ def test_workers_keep_original_queue_attributes_and_bind_ports() -> None:
     assert ui_worker.inq(UIWorker.PORT_TTS_OUTPUT) is audio_path_queue
 
 
+def test_worker_import_stubs_do_not_leak_to_later_tests() -> None:
+    from llm.llm_manager import LLMManager
+
+    assert LLMManager.__name__ == "LLMManager"
+
+
 def test_default_workflow_exports_tts_output_queue_for_host_ui_messages(
     tmp_path, monkeypatch
 ) -> None:
@@ -174,6 +192,7 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(monkeypatch) -
     assert isinstance(output, LLMDialogMessage)
     assert output.name == "Alice"
     assert output.text == "Hi"
+    assert isinstance(tts_queue.get_nowait(), LLMTurnEndMessage)
     assert user_input_queue.task_done_calls == 2
     runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
 
@@ -219,6 +238,24 @@ def test_tts_worker_marks_input_done_when_handler_suppresses_output(monkeypatch)
     assert tts_queue.task_done_calls == 2
 
 
+def test_tts_worker_forwards_turn_end_to_ui_queue(monkeypatch) -> None:
+    tts_queue = CountingQueue()
+    audio_path_queue = CountingQueue()
+    tts_queue.put(LLMTurnEndMessage())
+    tts_queue.put(None)
+    _set_runtime(tts_queue=tts_queue, audio_path_queue=audio_path_queue)
+
+    worker = TTSWorker(tts_queue, audio_path_queue)
+    monkeypatch.setattr(worker, "_init_app", lambda: None)
+
+    worker.run()
+
+    output = audio_path_queue.get_nowait()
+    assert isinstance(output, TTSOutputMessage)
+    assert output.is_turn_end is True
+    assert tts_queue.task_done_calls == 2
+
+
 def test_ui_worker_skip_speech_is_noop_when_queue_empty() -> None:
     audio_path_queue = Queue()
     _set_runtime(audio_path_queue=audio_path_queue)
@@ -255,6 +292,34 @@ def test_ui_worker_marks_audio_done_after_successful_dispatch(monkeypatch) -> No
     worker.run()
 
     worker.ui_out_dispatcher.dispatch.assert_called_once()
+    assert audio_path_queue.task_done_calls == 2
+
+
+def test_ui_worker_turn_end_posts_reply_finished_without_dispatch(monkeypatch) -> None:
+    audio_path_queue = CountingQueue()
+    audio_path_queue.put(
+        TTSOutputMessage(
+            audio_path="",
+            name="system",
+            text="",
+            asset_id="-1",
+            is_system_message=True,
+            is_turn_end=True,
+        )
+    )
+    audio_path_queue.put(None)
+    ui_manager = MagicMock()
+    _set_runtime(audio_path_queue=audio_path_queue, ui_manager=ui_manager)
+
+    worker = UIWorker(audio_path_queue)
+    monkeypatch.setattr(worker, "_init_app", lambda: None)
+    worker.ui_update_manager = ui_manager
+    worker.ui_out_dispatcher = SimpleNamespace(dispatch=MagicMock(return_value=None))
+
+    worker.run()
+
+    worker.ui_out_dispatcher.dispatch.assert_not_called()
+    ui_manager.post_llm_reply_finished.assert_called_once()
     assert audio_path_queue.task_done_calls == 2
 
 

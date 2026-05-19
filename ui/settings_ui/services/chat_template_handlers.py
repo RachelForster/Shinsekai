@@ -7,7 +7,7 @@ import json
 import os
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from llm.template_generator import TRANSPARENT_BG
 from ui.settings_ui.context import SettingsUIContext
@@ -43,6 +43,31 @@ def parse_stored_template(raw: str) -> tuple[str, str]:
             pass
     t = text.strip()
     return (t, "") if t else ("", "")
+
+
+def _resolve_template_file(template_dir_path: str, filename: str, *, must_exist: bool = False) -> tuple[Path, str]:
+    raw = str(filename or "").strip()
+    if not raw:
+        raise ValueError("模板文件名不能为空")
+    normalized = raw.replace("\\", "/")
+    posix_path = PurePosixPath(normalized)
+    windows_path = PureWindowsPath(raw)
+    if (
+        posix_path.is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or len(posix_path.parts) != 1
+        or any(part in ("", ".", "..") for part in posix_path.parts)
+    ):
+        raise ValueError(f"非法模板文件名: {raw}")
+    safe_name = posix_path.name if posix_path.name.endswith(".txt") else f"{posix_path.name}.txt"
+    root = Path(template_dir_path).resolve()
+    target = (root / safe_name).resolve()
+    if target.parent != root:
+        raise ValueError(f"模板路径越界: {raw}")
+    if must_exist and not target.is_file():
+        raise FileNotFoundError(f"模板不存在: {safe_name}")
+    return target, safe_name
 
 
 def compose_for_llm(scenario: str, system: str) -> str:
@@ -266,8 +291,7 @@ def stop_chat() -> str:
 def load_template_from_file(ctx: SettingsUIContext, file_path: str) -> tuple[str, str, str]:
     """返回 (情景, 系统模板, 文件名)。失败时首段为以「加载失败」开头的错误文案。"""
     try:
-        file_name = file_path
-        full_path = os.path.join(ctx.template_dir_path, file_path)
+        full_path, file_name = _resolve_template_file(ctx.template_dir_path, file_path, must_exist=True)
         with open(full_path, "r", encoding="utf-8") as f:
             raw = f.read()
         s, t = parse_stored_template(raw)
@@ -284,10 +308,7 @@ def save_template(
     if filename == "":
         return "保存文件名不能为空！", template_files
     try:
-        if filename.endswith(".txt"):
-            dest_path = os.path.join(ctx.template_dir_path, filename)
-        else:
-            dest_path = os.path.join(ctx.template_dir_path, f"{filename}.txt")
+        dest_path, _ = _resolve_template_file(ctx.template_dir_path, filename)
         with open(dest_path, mode="+wt", encoding="utf-8") as file:
             file.write(compose_stored_template(scenario, system))
         path_obj = Path(ctx.template_dir_path)

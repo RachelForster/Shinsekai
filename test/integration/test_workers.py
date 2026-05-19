@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
+from sdk.messages import UserInputMessage, LLMDialogMessage, LLMTurnEndMessage, TTSOutputMessage
 from test.mocks import MockLLMAdapter
 
 # QThread workers
@@ -65,6 +65,15 @@ def _make_runtime_for_workers(mock_llm_adapter=None, **overrides):
     return rt
 
 
+def _next_llm_dialog(queue: Queue, timeout: float = 5) -> LLMDialogMessage:
+    deadline = time.monotonic() + timeout
+    while True:
+        item = queue.get(timeout=max(0.01, deadline - time.monotonic()))
+        if isinstance(item, LLMDialogMessage):
+            return item
+        assert isinstance(item, LLMTurnEndMessage)
+
+
 # ---------------------------------------------------------------------------
 # LLMWorker
 # ---------------------------------------------------------------------------
@@ -90,7 +99,7 @@ class TestLLMWorker:
 
         # Wait for output in tts_queue (poll with timeout)
         try:
-            result = rt.tts_queue.get(timeout=5)
+            result = _next_llm_dialog(rt.tts_queue)
         except Exception:
             worker.stop()
             worker.wait(3000)
@@ -154,7 +163,7 @@ class TestLLMWorker:
         rt.user_input_queue.put(UserInputMessage(text="Stream test"))
 
         try:
-            result = rt.tts_queue.get(timeout=5)
+            result = _next_llm_dialog(rt.tts_queue)
         except Exception:
             worker.stop()
             worker.wait(3000)
@@ -182,12 +191,14 @@ class TestLLMWorker:
         worker.start()
 
         rt.user_input_queue.put(UserInputMessage(text="Q1"))
-        r1 = rt.tts_queue.get(timeout=5)
+        r1 = _next_llm_dialog(rt.tts_queue)
         assert r1.name == "A"
+        assert isinstance(rt.tts_queue.get(timeout=5), LLMTurnEndMessage)
 
         rt.user_input_queue.put(UserInputMessage(text="Q2"))
-        r2 = rt.tts_queue.get(timeout=5)
+        r2 = _next_llm_dialog(rt.tts_queue)
         assert r2.name == "B"
+        assert isinstance(rt.tts_queue.get(timeout=5), LLMTurnEndMessage)
 
         worker.stop()
         worker.wait(3000)

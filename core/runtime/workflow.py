@@ -79,6 +79,14 @@ class ChatWorkflowHandles:
     ui_worker: Any | None = None
 
 
+DESKTOP_CHAT_REQUIRED_EXPORTS = (
+    "chat.input",
+    "chat.tts_input",
+    "chat.audio_output",
+    "chat.ui_worker",
+)
+
+
 def _resolve_exports(dag: Dag) -> dict[str, Any]:
     exports: dict[str, Any] = {}
     for name in dag.export_specs():
@@ -113,3 +121,16 @@ def get_chat_workflow_handles(workflow: RuntimeWorkflow) -> ChatWorkflowHandles:
         audio_queue=workflow.get_export("chat.audio_output"),
         ui_worker=workflow.get_export("chat.ui_worker"),
     )
+
+
+def require_desktop_chat_workflow(workflow: RuntimeWorkflow) -> None:
+    missing = [
+        name
+        for name in DESKTOP_CHAT_REQUIRED_EXPORTS
+        if workflow.get_export(name) is None
+    ]
+    if missing:
+        raise RuntimeError(
+            f"Desktop workflow {workflow.workflow_path!r} is missing required "
+            f"exports: {', '.join(missing)}"
+        )

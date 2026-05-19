@@ -13,7 +13,8 @@ import tarfile
 import mimetypes
 import subprocess
 import platform
-from pathlib import Path
+import stat
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from sdk.tool_registry import tool
@@ -34,6 +35,50 @@ def _safe(name: str, base: Path) -> Path | None:
     if not p.exists():
         return None
     return p
+
+
+def _safe_archive_relative_path(value: str) -> Path:
+    raw = str(value or "").strip().replace("\\", "/")
+    posix_path = PurePosixPath(raw)
+    windows_path = PureWindowsPath(value)
+    if (
+        not raw
+        or posix_path.is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or any(part in ("", ".", "..") for part in posix_path.parts)
+    ):
+        raise ValueError(f"Unsafe archive member path: {value!r}")
+    return Path(*posix_path.parts)
+
+
+def _safe_archive_destination(dest: Path, relative_path: Path) -> Path:
+    root = dest.resolve()
+    target = (dest / relative_path).resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"Archive member escapes destination: {relative_path}")
+    return target
+
+
+def _safe_extract_zip(zf: zipfile.ZipFile, dest: Path) -> None:
+    for member in zf.infolist():
+        relative_path = _safe_archive_relative_path(member.filename)
+        _safe_archive_destination(dest, relative_path)
+        mode = (member.external_attr >> 16) & 0o170000
+        if mode == stat.S_IFLNK:
+            raise ValueError(f"Archive links are not supported: {member.filename!r}")
+    zf.extractall(dest)
+
+
+def _safe_extract_tar(tf: tarfile.TarFile, dest: Path) -> None:
+    for member in tf.getmembers():
+        relative_path = _safe_archive_relative_path(member.name)
+        _safe_archive_destination(dest, relative_path)
+        if member.issym() or member.islnk():
+            raise ValueError(f"Archive links are not supported: {member.name!r}")
+        if not (member.isfile() or member.isdir()):
+            raise ValueError(f"Unsupported archive member type: {member.name!r}")
+    tf.extractall(dest)
 
 
 # ── Read-only tools ──────────────────────────────────────────────────
@@ -231,7 +276,7 @@ def file_delete(path: str) -> dict[str, Any]:
         return {"error": str(e), "path": str(p)}
 
 
-@tool(name="file_extract", group="file",
+@tool(name="file_extract", group="file", risk="high",
       description="Extract a zip or tar.gz archive to a directory. "
                   "archive_path: the compressed file. extract_to: target directory (defaults to same folder).")
 def file_extract(archive_path: str, extract_to: str = "") -> dict[str, Any]:
@@ -244,13 +289,13 @@ def file_extract(archive_path: str, extract_to: str = "") -> dict[str, Any]:
         name_low = p.name.lower()
         if name_low.endswith(".zip"):
             with zipfile.ZipFile(p, "r") as zf:
-                zf.extractall(dest)
+                _safe_extract_zip(zf, dest)
         elif name_low.endswith((".tar.gz", ".tgz")):
             with tarfile.open(p, "r:gz") as tf:
-                tf.extractall(dest)
+                _safe_extract_tar(tf, dest)
         elif name_low.endswith(".tar"):
             with tarfile.open(p, "r:") as tf:
-                tf.extractall(dest)
+                _safe_extract_tar(tf, dest)
         else:
             return {"error": f"Unsupported archive format: {p.name}"}
         # Count extracted files

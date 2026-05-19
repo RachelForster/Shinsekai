@@ -62,7 +62,11 @@ from llm.template_generator import is_transparent_background
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
-from core.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
+from core.runtime.workflow import (
+    build_runtime_workflow,
+    get_chat_workflow_handles,
+    require_desktop_chat_workflow,
+)
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from config.config_manager import ConfigManager
 from t2i.t2i_manager import T2IAdapterFactory, T2IManager
@@ -93,11 +97,9 @@ cc = OpenCC("t2s")  # 繁体到简体转换器
 
 def _shutdown_plugins() -> None:
     try:
-        from core.plugins.plugin_host import get_plugin_manager
+        from core.plugins.plugin_host import shutdown_plugins
 
-        mgr = get_plugin_manager()
-        if mgr is not None:
-            mgr.shutdown_all()
+        shutdown_plugins()
     except Exception:
         pass
 
@@ -182,7 +184,11 @@ def main():
 
     # Init LLMManager before UI, so that handlers can access it via get_app_runtime().llm_manager
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
-    print(llm_provider, llm_model, base_url, api_key)
+    key_state = "set" if api_key else "empty"
+    print(
+        f"LLM config loaded: provider={llm_provider}, "
+        f"model={llm_model}, base_url={base_url}, api_key={key_state}"
+    )
     if not llm_provider:
         print(tr_i18n("main.err_select_llm"))
         return
@@ -254,14 +260,13 @@ def main():
         workflow_path=args.workflow or None,
         queue_factory=Queue,
     )
+    if not args.headless:
+        require_desktop_chat_workflow(workflow)
     chat_handles = get_chat_workflow_handles(workflow)
     user_input_queue = chat_handles.input_queue
     audio_path_queue = chat_handles.audio_queue
     tts_queue = chat_handles.tts_queue
     _um = chat_handles.ui_worker
-
-    if not args.headless and user_input_queue is None:
-        raise RuntimeError("Desktop workflow must export 'chat.input' to accept user messages")
 
     if args.headless:
         from core.runtime.ui_update_manager import HeadlessUIUpdateManager
@@ -299,6 +304,8 @@ def main():
             _shutdown_plugins()
             if tts_manager:
                 tts_manager.shutdown()
+            if t2i_manager:
+                t2i_manager.shutdown()
             save_chat_history(args.history, llm_manager.get_messages())
         return
 
@@ -423,6 +430,7 @@ def main():
     app.aboutToQuit.connect(workflow.stop)
     app.aboutToQuit.connect(_shutdown_plugins)
     app.aboutToQuit.connect(lambda: tts_manager and tts_manager.shutdown())
+    app.aboutToQuit.connect(lambda: t2i_manager and t2i_manager.shutdown())
     app.aboutToQuit.connect(lambda: save_chat_history(args.history, llm_manager.get_messages()))
     app.aboutToQuit.connect(
         lambda: save_bg(

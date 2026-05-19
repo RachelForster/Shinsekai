@@ -58,6 +58,12 @@ def main() -> None:
     from ui.qss import apply_pydracula_dark
 
     app = QApplication(sys.argv)
+    try:
+        from core.plugins.plugin_host import shutdown_plugins
+
+        app.aboutToQuit.connect(shutdown_plugins)
+    except Exception:
+        pass
     apply_pydracula_dark(app)
     pix = QPixmap(440, 120)
     pix.fill(Qt.GlobalColor.darkGray)

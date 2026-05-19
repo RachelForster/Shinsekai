@@ -9,7 +9,7 @@ from queue import Queue
 
 import pytest
 
-from core.runtime.workflow import build_runtime_workflow
+from core.runtime.workflow import build_runtime_workflow, require_desktop_chat_workflow
 from sdk.graph import (
     DagBuilder,
     DagNode,
@@ -314,6 +314,20 @@ class TestDagBuilder:
 
         assert c.received == ["[B][A]data"]
 
+    def test_fanout_requires_explicit_broadcast_node(self):
+        src = EchoNode("src")
+        dst_a = SinkNode("dst_a")
+        dst_b = SinkNode("dst_b")
+
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(src).add_node(dst_a).add_node(dst_b)
+        builder.connect("src", "out", "dst_a", "in")
+        builder.connect("src", "out", "dst_b", "in")
+
+        with pytest.raises(ValueError, match="fan-out is not supported"):
+            builder.build()
+
 
 class TestDagSerialization:
     def test_to_dict_round_trip(self):
@@ -487,3 +501,33 @@ exports:
         assert workflow.require_export("selected").name == "second"
         with pytest.raises(KeyError):
             workflow.dag.get_node("first")
+
+    def test_desktop_chat_workflow_requires_all_exports(self, tmp_path):
+        workflow_path = tmp_path / "missing.yaml"
+        workflow_path.write_text(
+            """
+nodes:
+  - name: llm_worker
+    type: core.runtime.workers.LLMWorker
+edges: []
+exports:
+  chat.input:
+    node: llm_worker
+    port: user_input
+    direction: input
+""",
+            encoding="utf-8",
+        )
+
+        workflow = build_runtime_workflow(
+            workflow_path=str(workflow_path),
+            queue_factory=Queue,
+        )
+
+        with pytest.raises(RuntimeError, match="chat.tts_input"):
+            require_desktop_chat_workflow(workflow)
+
+    def test_default_workflow_satisfies_desktop_contract(self):
+        workflow = build_runtime_workflow(queue_factory=Queue)
+
+        require_desktop_chat_workflow(workflow)

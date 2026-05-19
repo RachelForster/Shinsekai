@@ -158,6 +158,17 @@ class DagBuilder:
         for spec in pending_edges:
             self.connect(spec.src, spec.src_port, spec.dst, spec.dst_port)
 
+        fanout: dict[tuple[str, str], int] = {}
+        for e in self._edges:
+            key = (e.src_node, e.src_port)
+            fanout[key] = fanout.get(key, 0) + 1
+        for (node_name, port_name), count in fanout.items():
+            if count > 1:
+                raise ValueError(
+                    f"Node '{node_name}' output port '{port_name}' fan-out is not supported; "
+                    "insert an explicit broadcast node instead"
+                )
+
         queues: dict[tuple[str, str], Any] = {}
         for e in self._edges:
             key = (e.src_node, e.src_port)
