@@ -23,6 +23,17 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
     parser.add_argument("--bg", type=str, default="")
     parser.add_argument("--t2i", type=str, default="ComfyUI")
     parser.add_argument(
+        "--workflow",
+        type=str,
+        default="",
+        help="Path to the workflow YAML to run. Defaults to the built-in desktop workflow.",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run the selected workflow without creating the desktop UI.",
+    )
+    parser.add_argument(
         "--room_id",
         type=str,
         default="",
