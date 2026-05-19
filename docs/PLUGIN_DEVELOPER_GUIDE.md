@@ -31,7 +31,7 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_settings_ui`          | Extra Settings sidebar page                                |
 | `register_tools_tab`            | Extra tab under **Settings → Tools**                       |
 | `register_chat_ui_widget`       | Chat window widget + placement hint                        |
-| `register_dag_yaml`             | Selectable workflow YAML path                              |
+| `register_dag_yaml`             | Workflow YAML path (reserved — not yet wired into UX)      |
 | `register_dag_node`             | DAG node candidates for plugin tooling                     |
 
 
@@ -67,7 +67,10 @@ The host runs exactly one workflow at a time:
 
 - If the user passes `--workflow path/to/workflow.yaml`, only that YAML is loaded.
 - If no workflow is selected, the host loads `assets/system/workflow/default.yaml`.
+  In headless mode (``--headless``) the default is `assets/system/workflow/headless.yaml`,
+  which omits UIWorker and avoids pygame/Qt window dependencies.
 - Plugin workflow YAML files are selectable candidates; they are not merged into the default workflow automatically.
+  (Workflow selection UX is not yet wired — ``register_dag_yaml`` paths are reserved for future use.)
 
 A workflow YAML has three top-level sections:
 
@@ -75,10 +78,12 @@ A workflow YAML has three top-level sections:
 nodes:
   - name: rule
     type: plugins.my_plugin.workflow.RuleNode
-    accepted: "yes"
+    params:
+      accepted: "yes"
   - name: router
     type: plugins.my_plugin.workflow.RouterNode
-    rule_node: rule
+    params:
+      rule_node: rule
 edges:
   - src: router
     src_port: accepted
@@ -91,7 +96,8 @@ exports:
     direction: input
 ```
 
-- `nodes` instantiate classes by dotted import path. Any keys other than `name` and `type` are passed to the node constructor.
+- `nodes` instantiate classes by dotted import path. The ``params`` dict under each node
+  maps directly to the node class constructor kwargs.
 - `edges` connect an output port to an input port with a shared queue.
 - `exports` expose queues or node handles to the host.
 
