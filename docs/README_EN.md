@@ -99,6 +99,7 @@ For synthesized dialogue audio, deploy [GPT-SoVITS](https://github.com/RVC-Boss/
 List plugins in **`data/config/plugins.yaml`**; source lives under **`plugins/<package>/`**. The host merges **LLM / TTS / ASR / T2I** adapters, **tools**, and contributions to **Settings**, the **tools area**, and the **chat window**.
 
 - **UI**: Settings → **Plugins** — enable/disable, discover & download from the index; if a plugin has `requirements.txt`, the UI reports it for manual install instead of running pip automatically after download.
+- **Registry provenance:** catalog rows may provide `commit_sha` to pin the downloaded commit and `archive_sha256` to verify the archive bytes; mismatches abort before extraction/install.
 - **Index:** [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)  
 - **Scaffold:** `python -m sdk.cli create your_plugin_name` (the older `--package your_plugin_name` form remains supported)
 - **Developer guide:** [PLUGIN_DEVELOPER_GUIDE.md](PLUGIN_DEVELOPER_GUIDE.md)

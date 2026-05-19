@@ -117,6 +117,7 @@ python webui_qt.py
 用 **`data/config/plugins.yaml`** 登记插件；源码放在 **`plugins/<包名>/`**。宿主会合并 **LLM / TTS / ASR / T2I** 适配器、**工具**、**Settings / 工具箱 / 聊天窗** 等贡献。
 
 - **图形界面**：Settings → **插件**：启用/禁用、从索引发现与下载；若插件含 `requirements.txt`，界面只提示手动安装，不在下载后自动执行 pip。
+- **索引安全元数据**：插件索引可提供 `commit_sha` 固定下载提交，并提供 `archive_sha256` 校验下载归档；校验失败会拒绝解压与安装。
 - **索引仓库**：[Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)  
 - **脚手架**：`python -m sdk.cli create your_plugin_name`（旧写法 `--package your_plugin_name` 仍兼容）
 - **设计说明**（英文）：[docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md)

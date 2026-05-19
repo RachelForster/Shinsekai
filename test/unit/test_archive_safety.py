@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import io
+import hashlib
+import shutil
 import stat
 import zipfile
 
 import pytest
 
 from core.plugins.archive_safety import UnsafeArchiveError, safe_extract_zip_single_top
-from core.plugins.github_bundle_update import download_zip_extract_top_folder
+from core.plugins.github_bundle_update import (
+    ArchiveDigestMismatchError,
+    download_zip_extract_top_folder,
+    github_archive_zip_url,
+    resolve_ref_for_download,
+)
 
 
 pytestmark = pytest.mark.unit
@@ -89,4 +96,75 @@ def test_github_archive_download_uses_safe_extraction(tmp_path, monkeypatch) -> 
             "owner/repo",
             ref_heads_or_tags="heads",
             ref_name="main",
+        )
+
+
+def test_github_archive_download_accepts_matching_sha256(monkeypatch) -> None:
+    body = _zip_bytes({"repo-main/file.txt": "ok"})
+    digest = hashlib.sha256(body).hexdigest()
+    monkeypatch.setattr(
+        "core.plugins.github_bundle_update.stream_download_zip",
+        lambda *args, **kwargs: body,
+    )
+
+    tmp_parent, extracted = download_zip_extract_top_folder(
+        "owner/repo",
+        ref_heads_or_tags="heads",
+        ref_name="main",
+        expected_archive_sha256=digest,
+    )
+
+    try:
+        assert (extracted / "file.txt").read_text(encoding="utf-8") == "ok"
+    finally:
+        shutil.rmtree(tmp_parent, ignore_errors=True)
+
+
+def test_github_archive_commit_ref_uses_pinned_archive_url() -> None:
+    sha = "A" * 40
+
+    assert resolve_ref_for_download("owner/repo", "commit", sha) == ("commit", "a" * 40)
+    assert github_archive_zip_url(
+        "owner/repo",
+        ref_heads_or_tags="commit",
+        ref_name=sha,
+    ) == f"https://github.com/owner/repo/archive/{sha.lower()}.zip"
+
+
+def test_github_archive_commit_ref_rejects_non_sha() -> None:
+    with pytest.raises(ValueError, match="commit SHA"):
+        resolve_ref_for_download("owner/repo", "commit", "main")
+
+
+def test_github_archive_invalid_sha256_fails_before_download(monkeypatch) -> None:
+    def _unexpected_download(*args, **kwargs):
+        raise AssertionError("download should not start for malformed archive_sha256")
+
+    monkeypatch.setattr(
+        "core.plugins.github_bundle_update.stream_download_zip",
+        _unexpected_download,
+    )
+
+    with pytest.raises(ValueError, match="archive_sha256"):
+        download_zip_extract_top_folder(
+            "owner/repo",
+            ref_heads_or_tags="heads",
+            ref_name="main",
+            expected_archive_sha256="not-a-digest",
+        )
+
+
+def test_github_archive_download_rejects_mismatched_sha256(monkeypatch) -> None:
+    body = _zip_bytes({"repo-main/file.txt": "ok"})
+    monkeypatch.setattr(
+        "core.plugins.github_bundle_update.stream_download_zip",
+        lambda *args, **kwargs: body,
+    )
+
+    with pytest.raises(ArchiveDigestMismatchError, match="sha256 mismatch"):
+        download_zip_extract_top_folder(
+            "owner/repo",
+            ref_heads_or_tags="heads",
+            ref_name="main",
+            expected_archive_sha256="0" * 64,
         )

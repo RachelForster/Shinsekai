@@ -368,14 +368,18 @@ class _DownloadRepoTask(QRunnable):
         ref_kind: str,
         tag_name: str,
         overwrite: bool,
+        archive_sha256: str = "",
     ) -> None:
         super().__init__()
         self._repo = repo
         self._catalog_display_name = catalog_display_name.strip()
         self._sig = sig
-        self._ref_kind = ref_kind if ref_kind in ("latest", "head", "tag") else "latest"
+        self._ref_kind = (
+            ref_kind if ref_kind in ("latest", "head", "tag", "commit") else "latest"
+        )
         self._tag_name = tag_name.strip()
         self._overwrite = overwrite
+        self._archive_sha256 = archive_sha256.strip()
         self.setAutoDelete(True)
 
     def run(self) -> None:
@@ -394,6 +398,7 @@ class _DownloadRepoTask(QRunnable):
                     cur, tot if tot is not None else 0
                 ),
                 on_phase=lambda phase: self._emit_extract_phase(phase),
+                expected_archive_sha256=self._archive_sha256,
             )
         except Exception as exc:
             self._sig.finished.emit(norm, False, format_download_error(exc), "")
@@ -892,11 +897,14 @@ class PluginSettingsTab(QWidget):
         norm = normalize_repo_slug(repo)
         if norm in self._download_busy or not norm:
             return
-        tags = _blocking_fetch_tag_names(norm)
-        dlg_pick = _PickRepoRefDialog(self, repo_slug=repo, tag_names=tags)
-        if dlg_pick.exec() != QDialog.DialogCode.Accepted:
-            return
-        rk, tg = dlg_pick.ref_choice()
+        if rec.commit_sha:
+            rk, tg = "commit", rec.commit_sha
+        else:
+            tags = _blocking_fetch_tag_names(norm)
+            dlg_pick = _PickRepoRefDialog(self, repo_slug=repo, tag_names=tags)
+            if dlg_pick.exec() != QDialog.DialogCode.Accepted:
+                return
+            rk, tg = dlg_pick.ref_choice()
         if rk == "tag" and not tg.strip():
             message_fail(
                 self,
@@ -928,6 +936,7 @@ class PluginSettingsTab(QWidget):
                 ref_kind=rk,
                 tag_name=tg,
                 overwrite=overwrite,
+                archive_sha256=rec.archive_sha256,
             )
         )
 
