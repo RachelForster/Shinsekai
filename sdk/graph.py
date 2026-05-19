@@ -8,6 +8,7 @@ unless a subclass chooses to own execution.
 from __future__ import annotations
 
 import importlib
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -239,23 +240,26 @@ class DagBuilder:
     def _make_node(node_cls: type, name: str, params: dict[str, Any]) -> DagNode:
         if hasattr(node_cls, "from_config") and node_cls.from_config is not DagNode.from_config:
             return node_cls.from_config(name, params)
-        attempts = (
-            lambda: node_cls(name=name, **params),
-            lambda: node_cls(name, **params),
-            lambda: node_cls(**params),
+
+        sig = inspect.signature(node_cls.__init__)
+        param_names = {
+            p.name
+            for p in sig.parameters.values()
+            if p.kind
+            not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+        }
+        has_var_kwargs = any(
+            p.kind == p.VAR_KEYWORD for p in sig.parameters.values()
         )
-        last_error: TypeError | None = None
-        for attempt in attempts:
-            try:
-                node = attempt()
-            except TypeError as exc:
-                last_error = exc
-                continue
-            if isinstance(node, DagNode):
-                return node
+
+        if "name" in param_names or has_var_kwargs:
+            node = node_cls(name=name, **params)
+        else:
+            node = node_cls(**params)
+
+        if not isinstance(node, DagNode):
             raise TypeError(f"{node_cls!r} did not create a DagNode")
-        assert last_error is not None
-        raise last_error
+        return node
 
     def to_yaml(self, path: str | None = None) -> str:
         import yaml

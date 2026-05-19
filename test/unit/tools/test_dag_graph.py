@@ -468,6 +468,26 @@ exports:
         assert rule2.accepted == "no"
         assert router2.rule_node_name == "rule"
 
+    def test_make_node_propagates_internal_typeerror(self):
+        """Constructor-internal TypeError must surface, not be silently retried."""
+
+        class BuggyNode(DagNode):
+            def __init__(self, name: str, fail_on: str = ""):
+                super().__init__(name)
+                if fail_on:
+                    raise TypeError(f"internal bug: {fail_on}")
+
+            def inputs(self):
+                return {}
+
+            def outputs(self):
+                return {}
+
+        from sdk.graph import DagBuilder
+
+        with pytest.raises(TypeError, match="internal bug: boom"):
+            DagBuilder._make_node(BuggyNode, "bomb", {"fail_on": "boom"})
+
 class TestRuntimeWorkflow:
     def test_build_runtime_workflow_uses_only_selected_yaml(self, tmp_path):
         first = tmp_path / "first.yaml"
