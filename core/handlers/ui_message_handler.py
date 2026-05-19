@@ -256,7 +256,6 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 audio_played,
             )
             ui.post_llm_reply_finished()
-        rt.audio_path_queue.task_done()
 
     def post_process(self, out: TTSOutputMessage) -> None:
         if not out.is_final_segment:
