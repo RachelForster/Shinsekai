@@ -83,10 +83,12 @@ class LLMWorker(BaseWorker):
 
     def run(self):
         while self.running:
+            got_item = False
             try:
                 # 从用户输入队列中获取任务，阻塞等待
                 # 期望获取的是 UserInputMessage 实例
                 message: UserInputMessage = self.user_input_queue.get()
+                got_item = True
                 if message is None:
                     break
                 
@@ -147,8 +149,6 @@ class LLMWorker(BaseWorker):
                     _warn = tr("desktop.llm_parse_partial", n=parser.parse_failures)
                     print(f"LLMWorker: {_warn}")
 
-                self.user_input_queue.task_done()
-
             except Exception as e:
                 print(f"LLMWorker: 任务处理失败: {e}")
                 traceback.print_exc()
@@ -162,7 +162,9 @@ class LLMWorker(BaseWorker):
                     ))
                 except Exception:
                     pass
-                self.user_input_queue.task_done()
+            finally:
+                if got_item:
+                    self.user_input_queue.task_done()
                 
     def stop(self):
         """停止 Worker 线程并等待结束。"""
@@ -197,8 +199,10 @@ class TTSWorker(BaseWorker):
     def run(self):
         while self.running:
             item: Optional[LLMDialogMessage] = None
+            got_item = False
             try:
                 item = self.tts_queue.get()
+                got_item = True
                 if item is None:
                     break
                 with tracker.track("TTS dispatch"):
@@ -215,6 +219,9 @@ class TTSWorker(BaseWorker):
                         is_system_message=False,
                         effect=item.effect,
                     )
+            finally:
+                if got_item:
+                    self.tts_queue.task_done()
 
     def stop(self):
         """停止 Worker 线程并等待结束。"""
@@ -274,9 +281,12 @@ class UIWorker(QThread):
 
     def run(self):
         while self.running:
+            output_data: Optional[TTSOutputMessage] = None
+            got_item = False
             try:
                 self.task_done_requested.clear()
-                output_data: TTSOutputMessage = self.audio_path_queue.get()
+                output_data = self.audio_path_queue.get()
+                got_item = True
                 if output_data is None:
                     break
                 self.ui_out_dispatcher.dispatch(output_data)
@@ -291,7 +301,9 @@ class UIWorker(QThread):
                     _text = getattr(output_data, "text", "") or ""
                     wait = max(len(_text) / 10, 0.3) if _text else 0.3
                     self.task_done_requested.wait(timeout=wait)
-                self.audio_path_queue.task_done()
+            finally:
+                if got_item:
+                    self.audio_path_queue.task_done()
 
     def stop(self):
         """停止 UIWorker 线程并等待结束。"""

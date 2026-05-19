@@ -61,9 +61,7 @@ def tts_emit_to_ui_queue(
     is_system_message: bool = False,
     effect: str = "",
 ) -> None:
-    """
-    与 TTSWorker.put_data 相同：将一条 TTS 结果送入 UI 队列，并对 LLM 侧 tts_queue 执行 task_done。
-    """
+    """Emit one TTS result to the UI queue."""
     from sdk.messages import TTSOutputMessage
 
     rt = get_app_runtime()
@@ -77,9 +75,3 @@ def tts_emit_to_ui_queue(
         effect=effect,
     )
     rt.audio_path_queue.put(out)
-    rt.tts_queue.task_done()
-
-
-def tts_item_done_only() -> None:
-    """仅消费 LLM->TTS 队列的一条任务（不产出 UI 包），如思维链丢弃。"""
-    get_app_runtime().tts_queue.task_done()
