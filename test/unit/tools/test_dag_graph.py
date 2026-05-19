@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from queue import Queue
+from typing import Any
 
 import pytest
 
@@ -101,6 +102,13 @@ class RuleNode(PassiveNoPortsNode):
     def accepts(self, value: str) -> bool:
         return value == self.accepted
 
+    def to_config(self):
+        return {"accepted": self.accepted}
+
+    @classmethod
+    def from_config(cls, name: str, params: dict[str, Any]) -> "RuleNode":
+        return cls(name=name, **params)
+
 
 class RuleRouterNode(DagNode):
     def __init__(self, name: str, rule_node: str):
@@ -113,6 +121,13 @@ class RuleRouterNode(DagNode):
 
     def outputs(self):
         return {"accepted": Port("accepted"), "rejected": Port("rejected")}
+
+    def to_config(self):
+        return {"rule_node": self.rule_node_name}
+
+    @classmethod
+    def from_config(cls, name: str, params: dict[str, Any]) -> "RuleRouterNode":
+        return cls(name=name, **params)
 
     def configure(self, nodes):
         rule = nodes.get(self.rule_node_name)
@@ -311,7 +326,7 @@ class TestDagBuilder:
 
 class TestDagSerialization:
     def test_to_dict_round_trip(self):
-        """to_dict produces valid structure that from_dict can reload."""
+        """to_dict produces valid structure with params field."""
         a = EchoNode("A")
         b = SinkNode("B")
         builder = DagBuilder()
@@ -327,6 +342,9 @@ class TestDagSerialization:
         assert len(data["edges"]) == 1
         assert data["edges"][0]["src"] == "A"
         assert data["edges"][0]["src_port"] == "out"
+        for node in data["nodes"]:
+            assert "params" in node
+            assert isinstance(node["params"], dict)
 
     def test_to_yaml_writes_file(self, tmp_path):
         """to_yaml writes a YAML file with full dotted type paths."""
@@ -395,10 +413,12 @@ exports:
 nodes:
   - name: rule
     type: test.unit.tools.test_dag_graph.RuleNode
-    accepted: "yes"
+    params:
+      accepted: "yes"
   - name: router
     type: test.unit.tools.test_dag_graph.RuleRouterNode
-    rule_node: rule
+    params:
+      rule_node: rule
 edges: []
 exports:
   input:
@@ -421,6 +441,32 @@ exports:
 
         assert [node.name for node in nodes] == ["router"]
         assert dag.resolve_export("accepted").get(timeout=0.2) == "yes"
+
+    def test_params_round_trip_via_to_dict(self):
+        """to_dict preserves constructor params, from_dict restores them."""
+        rule = RuleNode("rule", accepted="no")
+        router = RuleRouterNode("router", rule_node="rule")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(rule).add_node(router)
+        builder._exports["router_in"] = {"node": "router", "port": "in", "direction": "input"}
+        builder._exports["rule_node_ref"] = {"node": "rule", "direction": "node"}
+        builder.build()
+
+        data = builder.to_dict()
+        rule_data = next(n for n in data["nodes"] if n["name"] == "rule")
+        router_data = next(n for n in data["nodes"] if n["name"] == "router")
+
+        assert rule_data["params"] == {"accepted": "no"}
+        assert router_data["params"] == {"rule_node": "rule"}
+
+        builder2 = DagBuilder.from_dict(data, queue_factory=Queue)
+        rule2 = builder2._nodes["rule"]
+        router2 = builder2._nodes["router"]
+        assert isinstance(rule2, RuleNode)
+        assert isinstance(router2, RuleRouterNode)
+        assert rule2.accepted == "no"
+        assert router2.rule_node_name == "rule"
 
 class TestRuntimeWorkflow:
     def test_build_runtime_workflow_uses_only_selected_yaml(self, tmp_path):
