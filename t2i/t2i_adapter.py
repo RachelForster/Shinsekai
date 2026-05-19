@@ -2,12 +2,59 @@
 import os
 import subprocess
 import base64
+import copy
 import json
+import secrets
+import threading
 import time
 import requests
 from typing import Optional, Dict, Any
 
 from sdk.adapters.t2i import T2IAdapter
+
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _parse_size(size: Any, fallback: str) -> tuple[int, int]:
+    text = str(size or fallback).strip().lower().replace(" ", "")
+    try:
+        width_text, height_text = text.split("x", 1)
+        return max(64, int(width_text)), max(64, int(height_text))
+    except Exception:
+        width_text, height_text = fallback.lower().split("x", 1)
+        return int(width_text), int(height_text)
+
+
+def _infer_image_size(
+    prompt: str,
+    *,
+    square_size: str,
+    portrait_size: str,
+    landscape_size: str,
+    explicit_size: Optional[Any] = None,
+) -> str:
+    if explicit_size:
+        named_size = str(explicit_size).strip().lower()
+        if named_size in {"landscape", "wide", "horizontal", "cg"}:
+            return landscape_size
+        if named_size in {"portrait", "vertical", "character", "sprite"}:
+            return portrait_size
+        if named_size in {"square", "default"}:
+            return square_size
+        return str(explicit_size)
+
+    text = str(prompt or "").lower()
+    if any(marker in text for marker in ("1girl", "1boy", "portrait", "character", "角色", "人物", "立绘")):
+        return portrait_size
+    if any(marker in text for marker in ("landscape", "scenery", "background", "room", "street", "背景", "风景", "场景")):
+        return landscape_size
+    return square_size
 
 
 class StableDiffusionAdapter(T2IAdapter):
@@ -98,7 +145,18 @@ class ComfyUIT2IAdapter(T2IAdapter):
                  work_path: str = "",
                  workflow_path: str = "path/to/default_workflow.json",
                  prompt_node_id: str = "6", # Common ID for the CLIPTextEncode (Prompt) node in SD workflows
-                 output_node_id: str = "17"):# Common ID for the SaveImage node
+                 output_node_id: str = "17", # Common ID for the SaveImage node
+                 auto_start: bool = False,
+                 auto_size: bool = True,
+                 square_size: str = "768x768",
+                 portrait_size: str = "576x896",
+                 landscape_size: str = "832x512",
+                 size_node_id: str = "",
+                 width_input_name: str = "width",
+                 height_input_name: str = "height",
+                 seed_node_id: str = "",
+                 seed_input_name: str = "seed",
+                 timeout_seconds: int = 60):
         """
         初始化 ComfyUI Adapter。
 
@@ -113,8 +171,88 @@ class ComfyUIT2IAdapter(T2IAdapter):
         self.prompt_node_id = prompt_node_id
         self.output_node_id = output_node_id
         self.work_path = work_path
+        self.auto_start = _coerce_bool(auto_start, False)
+        self.auto_size = _coerce_bool(auto_size, True)
+        self.square_size = str(square_size or "768x768")
+        self.portrait_size = str(portrait_size or "576x896")
+        self.landscape_size = str(landscape_size or "832x512")
+        self.size_node_id = str(size_node_id or "")
+        self.width_input_name = str(width_input_name or "width")
+        self.height_input_name = str(height_input_name or "height")
+        self.seed_node_id = str(seed_node_id or "")
+        self.seed_input_name = str(seed_input_name or "seed")
+        try:
+            self.timeout_seconds = max(2, int(timeout_seconds))
+        except Exception:
+            self.timeout_seconds = 60
         self.workflow_template = self._load_workflow_template()
-        self._start_server_process()
+        if self.auto_start:
+            self._start_server_process_async()
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, dict]:
+        return {
+            "auto_start": {
+                "type": "bool",
+                "label": "Auto-start ComfyUI when adapter loads",
+                "default": False,
+            },
+            "auto_size": {
+                "type": "bool",
+                "label": "Auto choose size by prompt",
+                "default": True,
+            },
+            "square_size": {
+                "type": "str",
+                "label": "Square latent size",
+                "default": "768x768",
+            },
+            "portrait_size": {
+                "type": "str",
+                "label": "Portrait latent size",
+                "default": "576x896",
+            },
+            "landscape_size": {
+                "type": "str",
+                "label": "Landscape latent size",
+                "default": "832x512",
+            },
+            "size_node_id": {
+                "type": "str",
+                "label": "Optional size node ID",
+                "default": "",
+            },
+            "width_input_name": {
+                "type": "str",
+                "label": "Width input name",
+                "default": "width",
+            },
+            "height_input_name": {
+                "type": "str",
+                "label": "Height input name",
+                "default": "height",
+            },
+            "seed_node_id": {
+                "type": "str",
+                "label": "Optional seed node ID",
+                "default": "",
+            },
+            "seed_input_name": {
+                "type": "str",
+                "label": "Seed input name",
+                "default": "seed",
+            },
+            "timeout_seconds": {
+                "type": "int",
+                "label": "Generation timeout seconds",
+                "default": 60,
+                "min": 2,
+                "max": 600,
+            },
+        }
+
+    def _start_server_process_async(self):
+        threading.Thread(target=self._start_server_process, daemon=True).start()
 
     def _start_server_process(self):
         """
@@ -123,7 +261,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
         """
         try:
             # You might want to add a check here to see if the process is already running
-            response = requests.get(self.api_url)
+            response = requests.get(self.api_url, timeout=3)
             if response.status_code == 200:
                 print("ComfyUI server is already running.")
                 return
@@ -150,6 +288,67 @@ class ComfyUIT2IAdapter(T2IAdapter):
             print(f"Error loading ComfyUI workflow template from {self.workflow_path}: {e}")
             raise
 
+    def _resolve_size(self, prompt: str, explicit_size: Optional[Any] = None) -> str:
+        if explicit_size or self.auto_size:
+            return _infer_image_size(
+                prompt,
+                square_size=self.square_size,
+                portrait_size=self.portrait_size,
+                landscape_size=self.landscape_size,
+                explicit_size=explicit_size,
+            )
+        return self.square_size
+
+    def _inject_size(
+        self,
+        prompt_workflow: Dict[str, Any],
+        prompt: str,
+        explicit_size: Optional[Any] = None,
+    ) -> None:
+        width, height = _parse_size(
+            self._resolve_size(prompt, explicit_size),
+            fallback=self.square_size,
+        )
+
+        candidate_ids: list[str] = []
+        if self.size_node_id:
+            candidate_ids.append(self.size_node_id)
+        candidate_ids.extend(
+            node_id
+            for node_id, node in prompt_workflow.items()
+            if isinstance(node, dict)
+            and isinstance(node.get("inputs"), dict)
+            and self.width_input_name in node["inputs"]
+            and self.height_input_name in node["inputs"]
+            and node_id not in candidate_ids
+        )
+
+        for node_id in candidate_ids:
+            node = prompt_workflow.get(node_id)
+            if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+                continue
+            node["inputs"][self.width_input_name] = width
+            node["inputs"][self.height_input_name] = height
+
+    def _inject_seed(self, prompt_workflow: Dict[str, Any], seed: Optional[Any] = None) -> None:
+        try:
+            seed_value = int(seed) if seed is not None else secrets.randbelow(2**48)
+        except Exception:
+            seed_value = secrets.randbelow(2**48)
+
+        candidate_ids = [self.seed_node_id] if self.seed_node_id else list(prompt_workflow.keys())
+        for node_id in candidate_ids:
+            node = prompt_workflow.get(node_id)
+            if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+                continue
+            inputs = node["inputs"]
+            if self.seed_input_name in inputs:
+                inputs[self.seed_input_name] = seed_value
+            elif not self.seed_node_id:
+                for key in ("seed", "noise_seed"):
+                    if key in inputs:
+                        inputs[key] = seed_value
+
     def generate_image(self, prompt: str, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
         """
         生成图像。通过修改工作流中的 prompt 节点并提交执行。
@@ -166,7 +365,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
             return None
 
         # 1. 深度复制模板以避免修改原始结构
-        prompt_workflow = self.workflow_template.copy()
+        prompt_workflow = copy.deepcopy(self.workflow_template)
         
         # 2. 注入主 Prompt
         # 假设 CLIPTextEncode 节点 (ID: self.prompt_node_id) 的输入是 index 1
@@ -176,6 +375,13 @@ class ComfyUIT2IAdapter(T2IAdapter):
             print(f"Error: Prompt node ID '{self.prompt_node_id}' not found in workflow.")
             return None
 
+        self._inject_size(
+            prompt_workflow,
+            prompt=prompt,
+            explicit_size=kwargs.get("size") or kwargs.get("image_size"),
+        )
+        self._inject_seed(prompt_workflow, kwargs.get("seed"))
+
         payload = {
             "prompt": prompt_workflow,
             "client_id": str(time.time()), # 简单的唯一标识符
@@ -183,7 +389,11 @@ class ComfyUIT2IAdapter(T2IAdapter):
         }
 
         try:
-            response = requests.post(self.api_url + self.PROMPT_ENDPOINT, json=payload)
+            response = requests.post(
+                self.api_url + self.PROMPT_ENDPOINT,
+                json=payload,
+                timeout=self.timeout_seconds,
+            )
             response.raise_for_status()
             prompt_data = response.json()
             prompt_id = prompt_data.get("prompt_id")
@@ -201,11 +411,14 @@ class ComfyUIT2IAdapter(T2IAdapter):
 
     def _wait_for_and_get_image(self, prompt_id: str, file_path: Optional[str]) -> Optional[str]:
         """轮询历史记录以查找生成的图像文件。"""
-        # 简单轮询，最多等待 60 秒
-        for _ in range(30): 
+        # 简单轮询，最多等待 timeout_seconds 秒
+        for _ in range(max(1, self.timeout_seconds // 2)):
             time.sleep(2)
             try:
-                history_response = requests.get(f"{self.api_url}{self.HISTORY_ENDPOINT}/{prompt_id}")
+                history_response = requests.get(
+                    f"{self.api_url}{self.HISTORY_ENDPOINT}/{prompt_id}",
+                    timeout=self.timeout_seconds,
+                )
                 history_response.raise_for_status()
                 history_data = history_response.json()
 
@@ -225,7 +438,10 @@ class ComfyUIT2IAdapter(T2IAdapter):
                                      f"type=output")
                         
                         # 下载图像
-                        image_response = requests.get(image_url)
+                        image_response = requests.get(
+                            image_url,
+                            timeout=self.timeout_seconds,
+                        )
                         image_response.raise_for_status()
                         
                         if not file_path:
