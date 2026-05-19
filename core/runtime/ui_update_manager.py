@@ -47,6 +47,19 @@ def get_character_by_name(name: str):
     return _config_manager.get_character_by_name(name)
 
 
+def _format_dialog_html(name: str, speech: str, color: str, is_system: bool) -> str:
+    separator = "\uff1a"
+    if is_system:
+        return (
+            f"<p style='line-height: 135%; letter-spacing: 2px; color:{color};'>"
+            f"<b>{name}</b>{separator}{speech}</p>"
+        )
+    return (
+        f"<p style='line-height: 135%; letter-spacing: 2px;'>"
+        f"<b style='color:{color};'>{name}</b>{separator}{speech}</p>"
+    )
+
+
 class HeadlessUIUpdateManager:
     """Console/no-op UI facade for workflows that run without a desktop window."""
 
@@ -91,10 +104,10 @@ class HeadlessUIUpdateManager:
         pass
 
     def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
-        line = f"{name}: {speech}" if name else str(speech or "")
-        if line.strip():
-            self.chat_history.append(line)
-            print(line)
+        formatted = _format_dialog_html(name, speech, color, is_system)
+        if str(speech or "").strip() or str(name or "").strip():
+            self.chat_history.append(formatted)
+            print(f"{name}: {speech}" if name else str(speech or ""))
 
     def update_sprite(self, character_name: str, sprite_id: int) -> None:
         pass

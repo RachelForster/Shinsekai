@@ -28,14 +28,9 @@ import llm.tools.file_tools
 from llm.template_generator import is_transparent_background
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
-from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
-from core.runtime.ui_update_manager import UIUpdateManager, connect_to_desktop_window
-from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QIcon
+from core.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
 from tts.tts_manager import TTSManager, TTSAdapterFactory
-from ui.chat_ui.chat_ui import ChatUIWindow
-from ui.chat_ui.qss_fusion import ensure_fusion_style
 from config.config_manager import ConfigManager
 from t2i.t2i_manager import T2IAdapterFactory, T2IManager
 import pygame
@@ -65,6 +60,17 @@ except ImportError as e:
 
 voice_lang = "ja"
 cc = OpenCC("t2s")  # 繁体到简体转换器
+
+
+def _shutdown_plugins() -> None:
+    try:
+        from core.plugins.plugin_host import get_plugin_manager
+
+        mgr = get_plugin_manager()
+        if mgr is not None:
+            mgr.shutdown_all()
+    except Exception:
+        pass
 
 
 def main():
@@ -182,13 +188,8 @@ def main():
     image_queue = Queue()
     emotion_queue = Queue()
 
-    # 初始化 Pygame
-    pygame.mixer.init()
-
-    # 创建三个消息队列
-    user_input_queue = Queue()
-    tts_queue = Queue()
-    audio_path_queue = Queue()
+    if not args.headless:
+        pygame.mixer.init()
 
     text_processor = TextProcessor()
 
@@ -219,8 +220,60 @@ def main():
         )
     except Exception:
         pass
-    
+
+    workflow = build_runtime_workflow(
+        workflow_path=args.workflow or None,
+        queue_factory=Queue,
+    )
+    chat_handles = get_chat_workflow_handles(workflow)
+    user_input_queue = chat_handles.input_queue
+    audio_path_queue = chat_handles.audio_queue
+    tts_queue = chat_handles.tts_queue
+    _um = chat_handles.ui_worker
+
+    if args.headless:
+        from core.runtime.ui_update_manager import HeadlessUIUpdateManager
+
+        ui_updates = HeadlessUIUpdateManager(chat_history=chat_history)
+        set_app_runtime(
+            AppRuntime(
+                config=config,
+                ui_update_manager=ui_updates,
+                llm_manager=llm_manager,
+                tts_manager=tts_manager,
+                t2i_manager=t2i_manager,
+                bgm_list=bgm_list,
+                user_input_queue=user_input_queue,
+                tts_queue=tts_queue,
+                audio_path_queue=audio_path_queue,
+                text_processor=text_processor,
+                opencc=cc,
+            )
+        )
+        workflow.start()
+        print(f"Workflow started: {args.workflow or 'default'}")
+        try:
+            import time
+
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            workflow.stop()
+            _shutdown_plugins()
+            if tts_manager:
+                tts_manager.shutdown()
+            save_chat_history(args.history, llm_manager.get_messages())
+        return
+
     # Init UI and connect to runtime
+    from core.runtime.ui_update_manager import UIUpdateManager, connect_to_desktop_window
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QApplication
+    from ui.chat_ui.chat_ui import ChatUIWindow
+    from ui.chat_ui.qss_fusion import ensure_fusion_style
+
     app = QApplication([])
     ensure_fusion_style(app)
     ui_updates = UIUpdateManager(chat_history=chat_history, bg_group=bg_group or [])
@@ -249,15 +302,7 @@ def main():
         )
     )
 
-    # 创建并启动 Worker 线程（队列显式连接流水线，其馀从 app_runtime 注入）
-    ui_worker = UIWorker(audio_path_queue)
-    ui_worker.start()
-
-    tts_worker = TTSWorker(tts_queue, audio_path_queue)
-    tts_worker.start()
-
-    llm_worker = LLMWorker(user_input_queue, tts_queue)
-    llm_worker.start()
+    workflow.start()
 
     init_sprite_path = args.init_sprite_path
     print(init_sprite_path)
@@ -281,7 +326,10 @@ def main():
             window.setDisplayWords(_welcome_html)
     window.setNotification(tr_i18n("main.notify_chat"))
 
-    emit_user_text = wire_user_input_plugins(user_input_queue)
+    if user_input_queue is not None:
+        emit_user_text = wire_user_input_plugins(user_input_queue)
+    else:
+        emit_user_text = None
 
     # Update system_config with current session's bg/bgm so restore doesn't use stale values
     sc = config.config.system_config.model_copy(deep=True)
@@ -296,13 +344,14 @@ def main():
 
     chat_ui_ctx = install_chat_ui_context(window, emit_user_text=emit_user_text)
 
-    restore_session_ui(
-        messages,
-        audio_path_queue=audio_path_queue,
-        window=window,
-        config=config,
-        tr_i18n=tr_i18n,
-    )
+    if audio_path_queue is not None:
+        restore_session_ui(
+            messages,
+            audio_path_queue=audio_path_queue,
+            window=window,
+            config=config,
+            tr_i18n=tr_i18n,
+        )
 
     wire_chat_ui_bridge(
         chat_ui_ctx,
@@ -314,17 +363,18 @@ def main():
         llm_manager=llm_manager,
         audio_path_queue=audio_path_queue,
         tts_manager=tts_manager,
-        ui_worker=ui_worker,
+        ui_worker=_um,
         tr_i18n=tr_i18n,
     )
 
     if args.room_id:
         print(tr_i18n("main.print_bili_start", id=args.room_id))
-        try:
-            start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
-        except ImportError as e:
-            # print(tr_i18n("main.print_bili_import", e=str(e)))
-            pass
+        if user_input_queue is not None:
+            try:
+                start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
+            except ImportError as e:
+                # print(tr_i18n("main.print_bili_import", e=str(e)))
+                pass
 
     # 确保在程序退出时停止所有线程
     try:
@@ -334,26 +384,10 @@ def main():
         print(tr_i18n("main.print_icon_fail", e=str(e)))
 
     # 关闭顺序：插件 → TTS 服务器 → Worker 线程 → 保存数据
-    try:
-        from core.plugins.plugin_host import get_plugin_manager
-
-        mgr = get_plugin_manager()
-
-        def _shutdown_plugins() -> None:
-            if mgr is not None:
-                try:
-                    mgr.shutdown_all()
-                except Exception:
-                    pass
-
-        app.aboutToQuit.connect(_shutdown_plugins)
-    except Exception:
-        pass
+    app.aboutToQuit.connect(workflow.stop)
+    app.aboutToQuit.connect(_shutdown_plugins)
     app.aboutToQuit.connect(lambda: tts_manager and tts_manager.shutdown())
     app.aboutToQuit.connect(lambda: save_chat_history(args.history, llm_manager.get_messages()))
-    app.aboutToQuit.connect(llm_worker.stop)
-    app.aboutToQuit.connect(tts_worker.stop)
-    app.aboutToQuit.connect(ui_worker.stop)
     app.aboutToQuit.connect(
         lambda: save_bg(
             bg_path=window.current_background_path,
