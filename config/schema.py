@@ -25,6 +25,8 @@ class Sprite(BaseModel):
     path: FilePath = Field(..., description="立绘图片的文件路径")
     voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
+    animation_manifest: Optional[str] = Field(None, description="真实帧立绘动画 manifest 路径 (可选)")
+    animation_state: Optional[str] = Field(None, description="manifest 中要播放的动画状态名；为空时默认 idle")
 
 class Character(BaseModel):
     """单个角色配置的实体模型"""

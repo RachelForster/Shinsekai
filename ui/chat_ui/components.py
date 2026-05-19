@@ -15,7 +15,7 @@ from PySide6.QtCore import (
     QObject,
     QSize,
     QPropertyAnimation,
-    QSequentialAnimationGroup,
+    QParallelAnimationGroup,
 )
 from PySide6.QtGui import QAction, QColor, QFont, QFontMetrics, QImage, QPixmap
 from PySide6.QtWidgets import QGraphicsColorizeEffect, QGridLayout, QSlider, QColorDialog, QFileDialog, QMessageBox
@@ -38,6 +38,8 @@ from PySide6.QtWidgets import (
 )
 import os
 
+from core.sprite.animated_sprite import SpriteAnimationFrames
+
 
 # 交叉渐变立绘组件
 # 交叉渐变立绘组件
@@ -50,7 +52,15 @@ class CrossFadeSprite(QWidget):
         self.setMinimumSize(1, 1)
         self.setMaximumSize(original_width, original_height)
         self._last_source_image: np.ndarray | None = None
+        self._last_source_animation: SpriteAnimationFrames | None = None
         self._last_character_rate = None
+        self._animation_frames: list[QPixmap] = []
+        self._animation_durations_ms: list[int] = []
+        self._animation_index = 0
+        self._pending_animation: tuple[list[QPixmap], list[int], SpriteAnimationFrames] | None = None
+        self._animation_timer = QTimer(self)
+        self._animation_timer.setSingleShot(True)
+        self._animation_timer.timeout.connect(self._advance_animation_frame)
         self.current_character: str | None = None  # 当前显示的角色名
         
         # 布局，确保两个 QLabel 重叠
@@ -87,6 +97,42 @@ class CrossFadeSprite(QWidget):
         # 动画和状态
         self.fade_duration = 300  # 渐变持续时间 (毫秒)
         self.is_animating = False
+
+    def _stop_frame_animation(self) -> None:
+        self._animation_timer.stop()
+        self._animation_frames = []
+        self._animation_durations_ms = []
+        self._animation_index = 0
+        self._pending_animation = None
+
+    def _stop_transition_animation(self) -> None:
+        pg = getattr(self, "parallel_group", None)
+        if pg is not None:
+            pg.stop()
+        self.old_opacity_effect.setOpacity(1.0)
+        self.new_opacity_effect.setOpacity(0.0)
+
+    def _start_frame_animation(
+        self,
+        pixmaps: list[QPixmap],
+        durations_ms: list[int],
+        source_animation: SpriteAnimationFrames,
+    ) -> None:
+        self._animation_frames = pixmaps
+        self._animation_durations_ms = durations_ms
+        self._animation_index = 0
+        self._last_source_animation = source_animation
+        if self._animation_frames:
+            self.label_old.setPixmap(self._animation_frames[0])
+        if len(self._animation_frames) > 1:
+            self._animation_timer.start(self._animation_durations_ms[0])
+
+    def _advance_animation_frame(self) -> None:
+        if len(self._animation_frames) <= 1:
+            return
+        self._animation_index = (self._animation_index + 1) % len(self._animation_frames)
+        self.label_old.setPixmap(self._animation_frames[self._animation_index])
+        self._animation_timer.start(self._animation_durations_ms[self._animation_index])
 
     def _get_scaled_pixmap(self, image: np.ndarray, character_rate=None) -> QPixmap:
         """
@@ -129,6 +175,19 @@ class CrossFadeSprite(QWidget):
         )
         return scaled_pixmap
 
+    def _get_scaled_animation_pixmaps(
+        self,
+        animation: SpriteAnimationFrames,
+        character_rate=None,
+    ) -> list[QPixmap]:
+        pixmaps: list[QPixmap] = []
+        for frame in animation.frames:
+            pixmap = self._get_scaled_pixmap(frame, character_rate)
+            if pixmap.isNull():
+                return []
+            pixmaps.append(pixmap)
+        return pixmaps
+
     def setSprite(self, image: np.ndarray, character_rate=None):
         """
         加载新立绘并开始交叉渐变动画。
@@ -141,6 +200,10 @@ class CrossFadeSprite(QWidget):
         if scaled_pixmap.isNull():
             print("错误：无法生成有效的 QPixmap。")
             return 0, 0
+
+        self._stop_frame_animation()
+        self._stop_transition_animation()
+        self._last_source_animation = None
             
         # 1. 将新立绘设置到 '新' 标签上
         self.label_new.setPixmap(scaled_pixmap)
@@ -160,8 +223,7 @@ class CrossFadeSprite(QWidget):
         anim_fade_in.setStartValue(0.0)
         anim_fade_in.setEndValue(1.0)
 
-        # QSequentialAnimationGroup 用于同时播放两个动画
-        self.parallel_group = QSequentialAnimationGroup(self)
+        self.parallel_group = QParallelAnimationGroup(self)
         self.parallel_group.addAnimation(anim_fade_out)
         self.parallel_group.addAnimation(anim_fade_in)
         
@@ -174,6 +236,40 @@ class CrossFadeSprite(QWidget):
             self._last_character_rate = character_rate
         self.resize(scaled_pixmap.width(), self.original_height)
         return scaled_pixmap.width(), self.original_height
+
+    def setAnimation(self, animation: SpriteAnimationFrames, character_rate=None):
+        """加载真实帧立绘动画并开始逐帧播放。"""
+        scaled_pixmaps = self._get_scaled_animation_pixmaps(animation, character_rate)
+        if not scaled_pixmaps:
+            print("错误：无法生成有效的动画 QPixmap。")
+            return 0, 0
+
+        self._animation_timer.stop()
+        self._stop_transition_animation()
+        self._pending_animation = (scaled_pixmaps, list(animation.durations_ms), animation)
+        self._last_source_image = None
+        self._last_character_rate = character_rate
+
+        self.label_new.setPixmap(scaled_pixmaps[0])
+        self.is_animating = True
+
+        anim_fade_out = QPropertyAnimation(self.old_opacity_effect, b"opacity")
+        anim_fade_out.setDuration(self.fade_duration)
+        anim_fade_out.setStartValue(1.0)
+        anim_fade_out.setEndValue(0.0)
+
+        anim_fade_in = QPropertyAnimation(self.new_opacity_effect, b"opacity")
+        anim_fade_in.setDuration(self.fade_duration)
+        anim_fade_in.setStartValue(0.0)
+        anim_fade_in.setEndValue(1.0)
+
+        self.parallel_group = QParallelAnimationGroup(self)
+        self.parallel_group.addAnimation(anim_fade_out)
+        self.parallel_group.addAnimation(anim_fade_in)
+        self.parallel_group.finished.connect(self._animationFinished)
+        self.parallel_group.start()
+        self.resize(scaled_pixmaps[0].width(), self.original_height)
+        return scaled_pixmaps[0].width(), self.original_height
 
     def _animationFinished(self):
         """动画结束后的清理工作"""
@@ -190,9 +286,16 @@ class CrossFadeSprite(QWidget):
         self.new_opacity_effect.setOpacity(0.0)
         
         self.is_animating = False
+        if self._pending_animation is not None:
+            pixmaps, durations_ms, source_animation = self._pending_animation
+            self._pending_animation = None
+            self._start_frame_animation(pixmaps, durations_ms, source_animation)
 
     def setInitialSprite(self, image: np.ndarray, character_rate=None):
         """用于程序启动时第一次设置立绘，不带动画。"""
+        self._stop_frame_animation()
+        self._stop_transition_animation()
+        self._last_source_animation = None
         scaled_pixmap = self._get_scaled_pixmap(image, character_rate)
         if scaled_pixmap and not scaled_pixmap.isNull():
             self.label_old.setPixmap(scaled_pixmap)
@@ -206,6 +309,29 @@ class CrossFadeSprite(QWidget):
         self.original_width = panel_w
         self.original_height = panel_h
         self.setMaximumSize(panel_w, panel_h)
+        if self._last_source_animation is not None:
+            animation = self._last_source_animation
+            pixmaps = self._get_scaled_animation_pixmaps(animation, self._last_character_rate)
+            if not pixmaps:
+                return
+            frame_index = min(self._animation_index, len(pixmaps) - 1)
+            self._animation_timer.stop()
+            self._animation_frames = pixmaps
+            self._animation_durations_ms = list(animation.durations_ms)
+            self._animation_index = frame_index
+            self.label_old.setPixmap(pixmaps[frame_index])
+            self.label_new.clear()
+            self.new_opacity_effect.setOpacity(0.0)
+            self.old_opacity_effect.setOpacity(1.0)
+            pg = getattr(self, "parallel_group", None)
+            if pg is not None:
+                pg.stop()
+            self.is_animating = False
+            self.resize(int(pixmaps[frame_index].width()), int(panel_h))
+            if len(pixmaps) > 1:
+                self._animation_timer.start(self._animation_durations_ms[frame_index])
+            return
+
         if self._last_source_image is None:
             return
         pm = self._get_scaled_pixmap(self._last_source_image, self._last_character_rate)
@@ -224,13 +350,17 @@ class CrossFadeSprite(QWidget):
     def fadeOut(self):
         """使立绘淡出（隐藏）"""
         self._last_source_image = None
+        self._last_source_animation = None
         self._last_character_rate = None
+        self._stop_frame_animation()
         self.setSprite(np.zeros((1,1,4), dtype=np.uint8), 1.0)  # 传入空图像实现淡出效果
 
     def clear(self):
         """清除立绘"""
         self._last_source_image = None
+        self._last_source_animation = None
         self._last_character_rate = None
+        self._stop_frame_animation()
         self.label_old.clear()
         self.label_new.clear()
         self.current_character = None
@@ -413,6 +543,33 @@ class SpritePanel(QWidget):
         # 4. 显示和层级
         sprite.show()
         sprite.raise_() # 确保新登场或切换的立绘在最前面
+
+    def switch_sprite_animation(
+        self,
+        character_id: str,
+        animation: SpriteAnimationFrames,
+        character_rate=None,
+    ):
+        """
+        设置真实帧立绘动画并显示。
+        """
+        sprite = self._get_or_create_slot(character_id)
+        if sprite is None:
+            return
+
+        w, h = sprite.setAnimation(animation, character_rate)
+        if w == 0 or h == 0:
+            return
+
+        slot_index = self.sprite_lru[character_id]
+        target_center_x = self.horizontal_offset_unit * (slot_index)
+        x_pos = target_center_x - (w / 2)
+        y_pos = 0
+        sprite.setGeometry(int(x_pos), int(y_pos), int(w), int(h))
+
+        self._reposition_sprites()
+        sprite.show()
+        sprite.raise_()
 
     def remove(self, character_id: str):
         """

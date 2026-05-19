@@ -1050,6 +1050,10 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         else:
              self.sprite_panel.switch_sprite(character_name, image, scale_rate)
 
+    def update_sprite_animation(self, animation, character_name="", scale_rate=1.0):
+        """更新显示真实帧立绘动画。"""
+        self.sprite_panel.switch_sprite_animation(character_name, animation, scale_rate)
+
     def sendMessage(self):
         """发送消息函数"""
         message = self.input_box.toPlainText().strip()

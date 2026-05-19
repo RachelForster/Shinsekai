@@ -16,6 +16,8 @@ import pygame
 from PySide6.QtCore import QObject, Signal
 
 from config.config_manager import ConfigManager
+from config.schema import Sprite
+from core.sprite.animated_sprite import load_sprite_animation
 
 SOUND_EFFECT_CHANNEL_ID = 6
 SOUND_EFFECTS_PATH = {
@@ -33,6 +35,7 @@ def get_character_by_name(name: str):
 
 class UIUpdateManager(QObject):
     update_sprite_signal = Signal(np.ndarray, str, float)  # 图像, 角色名, 缩放
+    update_sprite_animation_signal = Signal(object, str, float)  # SpriteAnimationFrames, 角色名, 缩放
     update_dialog_signal = Signal(str)
     update_notification_signal = Signal(str)
     update_busy_bar_signal = Signal(str, float)  # 文案, 显示秒数（<=0 则不定时隐藏）；空文案表示关闭
@@ -58,6 +61,9 @@ class UIUpdateManager(QObject):
 
     def post_sprite_update(self, image: np.ndarray, character_name: str, scale: float) -> None:
         self.update_sprite_signal.emit(image, character_name, scale)
+
+    def post_sprite_animation_update(self, animation: object, character_name: str, scale: float) -> None:
+        self.update_sprite_animation_signal.emit(animation, character_name, scale)
 
     def post_dialog(self, formatted_html: str) -> None:
         self.update_dialog_signal.emit(formatted_html)
@@ -123,7 +129,18 @@ class UIUpdateManager(QObject):
             character_config = get_character_by_name(character_name)
             if character_config is None:
                 raise ValueError(f"未找到角色配置: {character_name}")
-            image_path = str(Path(character_config.sprites[sprite_id]["path"]))
+            sprite_data = character_config.sprites[sprite_id]
+            animation_manifest = _sprite_value(sprite_data, "animation_manifest", None)
+            if animation_manifest:
+                animation_state = _sprite_value(sprite_data, "animation_state", "idle") or "idle"
+                try:
+                    animation = load_sprite_animation(str(animation_manifest), str(animation_state))
+                    self.post_sprite_animation_update(animation, character_name, character_config.sprite_scale)
+                    return
+                except Exception as animation_error:
+                    print(f"UIUpdateManager: 动画立绘加载失败，回退到静态图: {animation_error}")
+
+            image_path = str(Path(_sprite_value(sprite_data, "path", "")))
             # cv2.imread 不支持中文路径，改用 np.fromfile + cv2.imdecode
             img_data = np.fromfile(image_path, dtype=np.uint8)
             cv_image = cv2.imdecode(img_data, cv2.IMREAD_UNCHANGED)
@@ -199,6 +216,7 @@ class UIUpdateManager(QObject):
 def connect_to_desktop_window(ui: UIUpdateManager, window: Any) -> None:
     """将 worker 侧 UI 更新信号全部接到主窗口上的对应槽（原 main_sprite 中分散的连接）。"""
     ui.update_sprite_signal.connect(window.update_image)
+    ui.update_sprite_animation_signal.connect(window.update_sprite_animation)
     ui.update_dialog_signal.connect(window.setDisplayWords)
     ui.update_notification_signal.connect(window.setNotification)
     ui.update_busy_bar_signal.connect(window.setBusyBar)
@@ -209,3 +227,11 @@ def connect_to_desktop_window(ui: UIUpdateManager, window: Any) -> None:
     # 与主窗口均为 PySide6 Signal 时可直连中继。
     ui.llm_reply_finished_signal.connect(window.llm_reply_finished)
     ui.pause_asr_signal.connect(window.pause_asr_signal)
+
+
+def _sprite_value(sprite_data: Sprite | dict, key: str, default: Any = None) -> Any:
+    if isinstance(sprite_data, Sprite):
+        return getattr(sprite_data, key, default)
+    if isinstance(sprite_data, dict):
+        return sprite_data.get(key, default)
+    return default

@@ -31,6 +31,15 @@ class TestSprite:
         assert s.voice_path is not None
         assert s.voice_text == "hello"
 
+    def test_sprite_can_reference_animation_manifest(self, tmp_path):
+        img = tmp_path / "fallback.png"
+        img.write_text("fake")
+        manifest = tmp_path / "animation-manifest.json"
+        manifest.write_text("{}", encoding="utf-8")
+        s = Sprite(path=str(img), animation_manifest=str(manifest), animation_state="waving")
+        assert s.animation_manifest is not None
+        assert s.animation_state == "waving"
+
     def test_path_required(self):
         with pytest.raises(ValidationError):
             Sprite()
