@@ -1,5 +1,6 @@
 """End-to-end DAG graph test: build, bind ports, pump messages, YAML round-trip."""
 
+import asyncio
 import tempfile
 import threading
 import time
@@ -8,7 +9,13 @@ from queue import Queue
 
 import pytest
 
-from sdk.graph import DagBuilder, DagNode, EdgeSpec, Port
+from core.runtime.workflow import build_runtime_workflow
+from sdk.graph import (
+    DagBuilder,
+    DagNode,
+    EdgeSpec,
+    Port,
+)
 
 
 class EchoNode(DagNode):
@@ -78,6 +85,72 @@ class SinkNode(DagNode):
             self._thread.join(timeout=3)
 
 
+class PassiveNoPortsNode(DagNode):
+    def inputs(self):
+        return {}
+
+    def outputs(self):
+        return {}
+
+
+class RuleNode(PassiveNoPortsNode):
+    def __init__(self, name: str, accepted: str = "yes"):
+        super().__init__(name)
+        self.accepted = accepted
+
+    def accepts(self, value: str) -> bool:
+        return value == self.accepted
+
+
+class RuleRouterNode(DagNode):
+    def __init__(self, name: str, rule_node: str):
+        super().__init__(name)
+        self.rule_node_name = rule_node
+        self.rule: RuleNode | None = None
+
+    def inputs(self):
+        return {"in": Port("in")}
+
+    def outputs(self):
+        return {"accepted": Port("accepted"), "rejected": Port("rejected")}
+
+    def configure(self, nodes):
+        rule = nodes.get(self.rule_node_name)
+        if not isinstance(rule, RuleNode):
+            raise ValueError(f"Unknown rule node: {self.rule_node_name}")
+        self.rule = rule
+
+    def start(self):
+        item = self.inq("in").get()
+        assert self.rule is not None
+        if self.rule.accepts(item):
+            self.outq("accepted").put(item)
+        else:
+            self.outq("rejected").put(item)
+        self.inq("in").task_done()
+
+
+class AsyncLifecycleNode(PassiveNoPortsNode):
+    def __init__(self, name: str):
+        super().__init__(name)
+        self.events: list[str] = []
+
+    async def astart(self):
+        await asyncio.sleep(0)
+        self.events.append("start")
+
+    async def astop(self):
+        await asyncio.sleep(0)
+        self.events.append("stop")
+
+
+class StopOrderNode(PassiveNoPortsNode):
+    events: list[str] = []
+
+    def stop(self):
+        self.events.append(self.name)
+
+
 class TestDagBuilder:
     def test_two_node_pipeline(self):
         """A -> B: message flows through."""
@@ -117,6 +190,61 @@ class TestDagBuilder:
         builder.add_node(a)
         nodes = builder.build()
         assert nodes == []
+
+    def test_passive_node_lifecycle_is_noop(self):
+        """Passive nodes can participate as exports without owning a thread."""
+        node = PassiveNoPortsNode("passive")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(node)
+        builder._exports["passive"] = {"node": "passive", "direction": "node"}
+        nodes = builder.build()
+
+        assert nodes == [node]
+        node.start()
+        node.stop()
+
+    def test_async_lifecycle_hooks(self):
+        node = AsyncLifecycleNode("async_node")
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(node)
+        builder._exports["async_node"] = {"node": "async_node", "direction": "node"}
+        nodes = builder.build()
+
+        from sdk.graph import Dag
+
+        dag = Dag(queue_factory=Queue)
+        dag.add_node(node)
+        dag._builder._exports["async_node"] = {"node": "async_node", "direction": "node"}
+        dag.build()
+        asyncio.run(dag.astart())
+        asyncio.run(dag.astop())
+
+        assert nodes == [node]
+        assert node.events == ["start", "stop"]
+
+    def test_stop_order_matches_start_order(self):
+        StopOrderNode.events = []
+        src = StopOrderNode("src")
+        dst = StopOrderNode("dst")
+
+        builder = DagBuilder()
+        builder.set_queue_factory(Queue)
+        builder.add_node(src).add_node(dst)
+        builder._exports["src"] = {"node": "src", "direction": "node"}
+        builder._exports["dst"] = {"node": "dst", "direction": "node"}
+
+        from sdk.graph import Dag
+
+        dag = Dag(queue_factory=Queue)
+        dag.add_node(src).add_node(dst)
+        dag._builder._exports["src"] = {"node": "src", "direction": "node"}
+        dag._builder._exports["dst"] = {"node": "dst", "direction": "node"}
+        dag.build()
+        dag.stop()
+
+        assert StopOrderNode.events == ["src", "dst"]
 
     def test_external_edges(self):
         """Plugin-provided EdgeSpecs are resolved at build time."""
@@ -261,3 +389,76 @@ exports:
         assert [node.name for node in nodes] == ["src"]
         assert dag.resolve_export("chat.input") is dag.inq("src", "in")
         assert dag.resolve_export("chat.node").name == "src"
+
+    def test_yaml_node_reference_via_configure(self):
+        dag_yaml = """
+nodes:
+  - name: rule
+    type: test.unit.tools.test_dag_graph.RuleNode
+    accepted: "yes"
+  - name: router
+    type: test.unit.tools.test_dag_graph.RuleRouterNode
+    rule_node: rule
+edges: []
+exports:
+  input:
+    node: router
+    port: in
+    direction: input
+  accepted:
+    node: router
+    port: accepted
+    direction: output
+"""
+        from sdk.graph import Dag
+
+        dag = Dag(queue_factory=Queue)
+        dag.load_yaml(dag_yaml)
+        nodes = dag.build()
+
+        dag.resolve_export("input").put("yes")
+        dag.start()
+
+        assert [node.name for node in nodes] == ["router"]
+        assert dag.resolve_export("accepted").get(timeout=0.2) == "yes"
+
+class TestRuntimeWorkflow:
+    def test_build_runtime_workflow_uses_only_selected_yaml(self, tmp_path):
+        first = tmp_path / "first.yaml"
+        second = tmp_path / "second.yaml"
+        first.write_text(
+            """
+nodes:
+  - name: first
+    type: test.unit.tools.test_dag_graph.EchoNode
+edges: []
+exports:
+  selected:
+    node: first
+    direction: node
+""",
+            encoding="utf-8",
+        )
+        second.write_text(
+            """
+nodes:
+  - name: second
+    type: test.unit.tools.test_dag_graph.EchoNode
+edges: []
+exports:
+  selected:
+    node: second
+    direction: node
+""",
+            encoding="utf-8",
+        )
+
+        workflow = build_runtime_workflow(
+            workflow_path=str(second),
+            queue_factory=Queue,
+        )
+
+        assert workflow.workflow_path == str(second)
+        assert workflow.require_export("selected").name == "second"
+        with pytest.raises(KeyError):
+            workflow.dag.get_node("first")
