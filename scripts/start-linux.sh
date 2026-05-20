@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
 
 load_dotenv() {
   local env_file="$1"
@@ -72,7 +73,7 @@ elif [[ -x "$VENV_PYTHON" ]]; then
 elif PYTHON310="$(command -v python3.10 2>/dev/null)"; then
   PYTHON="$PYTHON310"
 else
-  die "no supported Python found; activate a non-base Python 3.10 conda environment, run ./install-linux.sh to create .venv, or install python3.10"
+  die "no supported Python found; activate a non-base Python 3.10 conda environment, run ./scripts/install-linux.sh to create .venv, or install python3.10"
 fi
 
 require_python310 "$PYTHON"

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
 
 die() {
   echo "Error: $*" >&2
@@ -49,4 +50,4 @@ fi
 
 mkdir -p data/config data/sprite data/speech data/models data/chat_history data/character_templates
 
-echo "Install complete. Run ./start-linux.sh"
+echo "Install complete. Run ./scripts/start-linux.sh"

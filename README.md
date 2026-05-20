@@ -61,7 +61,7 @@ cd Shinsekai
 |------|------|------|
 | Windows | 双击 `install.bat` | 双击 `start.bat` |
 | macOS | 双击 `install.command` | 双击 `start.command` |
-| Linux | `./install-linux.sh` | `./start-linux.sh` |
+| Linux | `./scripts/install-linux.sh` | `./scripts/start-linux.sh` |
 
 > **macOS 首次运行**：如果双击提示「无法验证开发者」，请右键（或 Ctrl+点击）文件 → **打开**，在弹出的对话框中再次点 **打开** 即可。或者前往 **系统设置 → 隐私与安全性** 中允许。
 
@@ -77,7 +77,7 @@ conda activate shinsekai
 pip install -r requirements.txt
 ```
 
-Linux 源码用户也可以运行 `./install-linux.sh`。如果已激活 Python 3.10 的非 `base` conda 环境，脚本会直接在当前环境安装依赖；否则会优先用 `uv` 创建 `.venv`，没有 `uv` 时需要系统提供 `python3.10`。
+Linux 源码用户也可以运行 `./scripts/install-linux.sh`。如果已激活 Python 3.10 的非 `base` conda 环境，脚本会直接在当前环境安装依赖；否则会优先用 `uv` 创建 `.venv`，没有 `uv` 时需要系统提供 `python3.10`。
 
 ### 3. 打开设置界面
 
@@ -85,7 +85,7 @@ Linux 源码用户也可以运行 `./install-linux.sh`。如果已激活 Python 
 |------|------|
 | Windows | 双击 `start.bat` |
 | macOS | 双击 `start.command` |
-| Linux | `./start-linux.sh` |
+| Linux | `./scripts/start-linux.sh` |
 
 源码用户：
 

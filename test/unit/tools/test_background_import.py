@@ -51,7 +51,8 @@ def test_export_background_writes_package_filenames(tmp_path, monkeypatch):
     assert data[0]["bgm_list"] == ["theme.mp3"]
 
 
-def test_import_background_accepts_legacy_absolute_yaml_paths(tmp_path, monkeypatch):
+def test_import_background_accepts_legacy_export_with_absolute_asset_paths(tmp_path, monkeypatch):
+    """Old .bg exports may keep host absolute paths; import should restore by basename."""
     background_dir, bgm_dir = _mock_background_dirs(tmp_path, monkeypatch)
     prefix = "legacy"
     package = tmp_path / "legacy.bg"
