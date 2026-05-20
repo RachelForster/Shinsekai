@@ -194,7 +194,7 @@ class CharacterSettingsTab(QWidget):
         self._community_btn.setToolTip(tr_i18n("char.community_btn"))
         self._community_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(
-                QUrl("https://rachelforster.github.io/Shinsekai/resources.html?type=character")
+                QUrl("https://shinsekai.end0rph1n.icu/resources?type=character")
             )
         )
         self._upload_btn = QPushButton(tr_i18n("char.upload_btn"))

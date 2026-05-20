@@ -82,7 +82,7 @@ python webui_qt.py
 ### 4. First conversation
 
 1. Open **API settings**, configure your LLM (e.g. DeepSeek or any OpenAI-compatible endpoint), and save.  
-2. Under **Character management**, import a pack (example: [nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char); more packs at [Community Resources](https://rachelforster.github.io/Shinsekai/resources.html)).  
+2. Under **Character management**, import a pack (example: [nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char); more packs at [Community Resources](https://shinsekai.end0rph1n.icu/resources)).  
 3. Open **Chat template**, select the character, and generate a template.  
 4. Click **Start chat**; send messages in the main window and watch sprites and replies.
 

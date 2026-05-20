@@ -92,7 +92,7 @@ python webui_qt.py
 ### 4. 第一次对话
 
 1. 在 **API 设定** 中填写 LLM（例如 DeepSeek / OpenAI 兼容端点），保存。  
-2. 在 **角色管理** 导入角色包（示例：[nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char)；更多角色包见 [社区资源](https://rachelforster.github.io/Shinsekai/resources.html)）。  
+2. 在 **角色管理** 导入角色包（示例：[nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char)；更多角色包见 [社区资源](https://shinsekai.end0rph1n.icu/resources)）。  
 3. 打开 **聊天模板**，勾选角色并生成模板。  
 4. **启动聊天**，即可在主窗口发消息、看立绘与回复。
 
