@@ -117,6 +117,18 @@ Independent of the plugin system: you can wire external capabilities through YAM
 
 ---
 
+## Contributing
+
+We welcome community contributions and want the process to be pleasant for everyone. [CONTRIBUTING.md](../CONTRIBUTING.md) has the full details; here are a few conventions:
+
+- **Open an issue first.** Share what you'd like to do and why before you start coding. This avoids the frustration of writing code that doesn't match the project's direction. A maintainer will respond and confirm the approach.
+- **One PR, one thing.** Small, focused PRs are much easier to review than a single massive one. If your change grows past a few hundred lines, it can probably be split into a few incremental PRs.
+- **Put files in the right place.** Keep new scripts alongside the module they support, rather than in top-level directories like `scripts/`. This helps everyone stay organized.
+
+Not sure how to structure your PR? Open an issue and ask — we're happy to help.
+
+---
+
 ## Docs & links
 
 | Topic | Link |
@@ -126,4 +138,4 @@ Independent of the plugin system: you can wire external capabilities through YAM
 | Plugin developer guide | [PLUGIN_DEVELOPER_GUIDE.md](PLUGIN_DEVELOPER_GUIDE.md) |
 | Repository | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
 
-Issues and PRs are welcome. If you redistribute character or voice assets, follow each author’s license.
+Issues and PRs are welcome — please read [CONTRIBUTING.md](../CONTRIBUTING.md) first. If you redistribute character or voice assets, follow each author’s license.

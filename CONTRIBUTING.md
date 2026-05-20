@@ -1,21 +1,25 @@
 # Contributing to Shinsekai
 
-Thanks for your interest in contributing. To keep things manageable, please follow these rules.
+Thanks for your interest in contributing. We're happy you're here.
 
 ## Before you code
 
-1. **Open an issue first.** Describe what you want to do and why. Wait for maintainer acknowledgment before starting work. Unsolicited PRs without a prior issue may be closed without review.
+1. **Open an issue first.** Tell us what you want to do and why. This avoids the disappointment of writing code that doesn't fit the project direction. Wait for a maintainer to respond before starting — we usually reply quickly.
 
-2. **Keep scope small.** A PR should address one concern. If your change exceeds a few hundred lines, it almost certainly needs to be split up or discussed further.
+2. **Keep it focused.** One PR, one concern. If your change grows beyond a few hundred lines, it's likely a good candidate for splitting into smaller, reviewable pieces. If you're unsure how to split it, mention it in the issue and we'll help.
 
 ## Pull request guidelines
 
-- Each PR must be linked to an existing issue.
-- Do not dump unrelated files into top-level directories (e.g., `scripts/`, `assets/`). New scripts belong under a feature-specific directory or alongside the module they support.
-- Follow the existing code style. Add related unit tests, and run `pytest` before pushing.
-- If you add a new dependency, explain why it is necessary in the issue.
+- Link each PR to an existing issue in the description.
+- Place new scripts alongside the module they support, rather than in top-level directories like `scripts/` or `assets/`. This keeps the repo organized for everyone.
+- Follow the existing code style. Include relevant unit tests, and run `pytest` before pushing.
+- If you add a new dependency, briefly explain why it's needed in the issue.
 
 ## After merging
 
-- Delete your branch (the maintainer will handle this if you don't have permission).
-- Close the linked issue if it was not auto-closed.
+- Your branch can be deleted (the maintainer will handle this if you don't have permission).
+- Close the linked issue if GitHub didn't auto-close it.
+
+---
+
+If anything in this guide is unclear, feel free to open an issue and ask. We'd rather have that conversation than see you struggle with the process.
