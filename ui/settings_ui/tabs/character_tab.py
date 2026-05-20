@@ -194,14 +194,14 @@ class CharacterSettingsTab(QWidget):
         self._community_btn.setToolTip(tr_i18n("char.community_btn"))
         self._community_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(
-                QUrl("https://shinsekai.end0rph1n.icu/resources?type=character")
+                QUrl("https://shinsekai.end0rph1n.icu/resources")
             )
         )
         self._upload_btn = QPushButton(tr_i18n("char.upload_btn"))
         self._upload_btn.setToolTip(tr_i18n("char.upload_btn"))
         self._upload_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(
-                QUrl("https://wj.qq.com/s2/26613318/4fd2/")
+                QUrl("https://shinsekai.end0rph1n.icu/resources")
             )
         )
         community_row.addWidget(self._community_btn)
