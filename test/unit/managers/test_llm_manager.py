@@ -81,6 +81,54 @@ class TestLLMManagerMessageManagement:
         assert any("历史" in m.get("content", "") for m in mgr.messages)
         assert mgr.messages[-1]["content"].startswith("answer 19")
 
+    def test_set_messages_drops_loaded_tool_payloads(self, mock_llm_adapter):
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+        history = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "read a file"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "file_read", "arguments": "{}"},
+                }],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_1",
+                "name": "file_read",
+                "content": "x" * 10000,
+            },
+            {
+                "role": "assistant",
+                "content": "I found the answer.",
+                "tool_calls": [{
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {"name": "memory_search", "arguments": "{}"},
+                }],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_2",
+                "name": "memory_search",
+                "content": "y" * 10000,
+            },
+        ]
+
+        mgr.set_messages(history)
+
+        assert mock_llm_adapter.call_history == []
+        assert all(message.get("role") != "tool" for message in mgr.messages)
+        assert all("tool_calls" not in message for message in mgr.messages)
+        assert [message["content"] for message in mgr.messages] == [
+            "System prompt",
+            "read a file",
+            "I found the answer.",
+        ]
+
     def test_set_adapter_switches_and_resets(self, mock_llm_adapter):
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
         mgr.add_message("user", "Hello")

@@ -413,6 +413,22 @@ class LLMManager:
             recent_message_limit=self.history_recent_messages,
         )
 
+    def _drop_loaded_tool_payloads(self) -> None:
+        """Remove historical tool payloads before they become prompt history."""
+        pruned_messages: list[dict] = []
+        for message in self.messages:
+            if message.get("role") == "tool":
+                continue
+            if message.get("role") == "assistant" and message.get("tool_calls"):
+                message = dict(message)
+                message.pop("tool_calls", None)
+                content = str(message.get("content") or "")
+                reasoning = str(message.get("reasoning_content") or "")
+                if not content.strip() and not reasoning.strip():
+                    continue
+            pruned_messages.append(message)
+        self.messages = pruned_messages
+
     def _estimate_context_tokens(self, tools_defs: list[dict] | None) -> dict[str, int]:
         messages = self.get_messages()
         system_messages = [m for m in messages if m.get("role") == "system"]
@@ -497,6 +513,7 @@ class LLMManager:
         """Sets the conversation history to a new list of messages."""
         if isinstance(new_messages, list):
             self.messages = list(new_messages)
+            self._drop_loaded_tool_payloads()
             self._strip_orphaned_tool_calls()
             self.messages = self._trim_loaded_history_if_needed(self.messages)
             self.compact_manager.set_token_count(self.compact_manager.count_tokens(self.messages))
