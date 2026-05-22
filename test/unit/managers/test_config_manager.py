@@ -44,3 +44,44 @@ def test_get_llm_api_config_keeps_saved_base_url():
     _, _, base_url, _ = manager.get_llm_api_config()
 
     assert base_url == "https://proxy.example.com/v1"
+
+
+def test_save_api_config_new_persists_token_budget_settings():
+    manager = _config_manager_with_api()
+    saved = {}
+    manager._save_single_config = lambda _path, data: saved.update(data)
+
+    manager.save_api_config_new(
+        "Deepseek",
+        "deepseek-chat",
+        "sk-test",
+        "https://api.deepseek.com/v1",
+        "是",
+        "none",
+        "",
+        "",
+        "comfyui",
+        "http://127.0.0.1:8188",
+        "",
+        "",
+        "6",
+        "9",
+        0.7,
+        1.0,
+        0.0,
+        0.0,
+        128000,
+        compact_threshold=0.45,
+        compact_target_ratio=0.25,
+        history_recent_messages=12,
+        max_tool_result_chars=4000,
+        max_active_tool_groups=2,
+    )
+
+    assert manager.config.api_config.compact_threshold == 0.45
+    assert manager.config.api_config.compact_target_ratio == 0.25
+    assert manager.config.api_config.history_recent_messages == 12
+    assert manager.config.api_config.max_tool_result_chars == 4000
+    assert manager.config.api_config.max_active_tool_groups == 2
+    assert saved["compact_threshold"] == 0.45
+    assert saved["max_active_tool_groups"] == 2

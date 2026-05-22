@@ -249,20 +249,40 @@ class LLMManager:
         adapter: LLMAdapter,
         user_template='',
         max_tokens: int = 128000,
-        compact_threshold: float = 0.9,
+        compact_threshold: float = 0.4,
+        compact_target_ratio: float = 0.3,
+        history_recent_messages: int = 20,
+        max_tool_result_chars: int = 6000,
+        max_active_tool_groups: int = 3,
         generation_config: Optional[Dict[str, Any]] = None
     ):
         self.llm_adapter = adapter
         self.messages = []
         self.user_template = user_template
-        self.compact_manager = CompactManager(adapter, max_tokens, compact_threshold)
+        self.max_context_tokens = int(max_tokens)
+        self.history_recent_messages = max(1, int(history_recent_messages))
+        self.max_tool_result_chars = max(1, int(max_tool_result_chars))
+        self.compact_manager = CompactManager(
+            adapter,
+            self.max_context_tokens,
+            compact_threshold,
+            compact_target_ratio=compact_target_ratio,
+            recent_message_limit=self.history_recent_messages,
+        )
         self.generation_config = generation_config or {}
         self.set_user_template(user_template)
         self.tools_definitions = tool_manager.get_definitions(groups="default")  # 初始仅 default 组
         self._active_tool_groups: list = ["default"]  # LRU: most recent first
-        self._max_active_groups = 5
+        self._max_active_groups = max(1, int(max_active_tool_groups))
         self.tools_manager = tool_manager
         self.tool_executor = tool_executor
+        self.last_token_estimate = {
+            "system_prompt_tokens": 0,
+            "history_tokens": 0,
+            "tool_definition_tokens": 0,
+            "estimated_total_tokens": 0,
+        }
+        self._chat_depth = 0
         
         # 设置日志
         logging.basicConfig(level=logging.INFO)
@@ -330,6 +350,8 @@ class LLMManager:
         通用消息添加方法。
         集成了 Auto-Compact 逻辑：每当消息增加，自动检查并压缩。
         """
+        if role == "tool":
+            content = self._prepare_tool_result_for_history(content)
         msg = {"role": role, "content": content}
         msg.update(kwargs)
         self.messages.append(msg)
@@ -337,12 +359,128 @@ class LLMManager:
         # --- Auto-Compact 逻辑 ---
         # 自动调用 compact_manager 检查 token 是否超限并执行压缩
         compacted_messages = self.compact_manager.auto_compact_if_needed(self.messages)
-        if len(compacted_messages) < len(self.messages):
-            self.logger.info(f"Auto-compact triggered: Reduced messages from {len(self.messages)} to {len(compacted_messages)}")
+        if compacted_messages is not self.messages:
+            before_tokens = self.compact_manager.count_tokens(self.messages)
+            after_tokens = self.compact_manager.count_tokens(compacted_messages)
+            self.logger.info(
+                "Auto-compact triggered: messages %s -> %s, tokens %s -> %s",
+                len(self.messages),
+                len(compacted_messages),
+                before_tokens,
+                after_tokens,
+            )
             self.messages = compacted_messages
 
     def clear_messages(self):
         self.messages = [{"role": "system", "content": self.user_template}]
+
+    def _prepare_tool_result_for_history(self, result: Any) -> str:
+        """Bound tool output before it becomes permanent prompt history."""
+        if result is None:
+            text = json.dumps({"status": "success", "result": "no return value"}, ensure_ascii=False)
+        elif isinstance(result, str):
+            text = result
+        else:
+            text = json.dumps(result, ensure_ascii=False, default=str)
+
+        if len(text) <= self.max_tool_result_chars:
+            return text
+
+        return json.dumps(
+            {
+                "truncated": True,
+                "original_chars": len(text),
+                "preview": text[: self.max_tool_result_chars],
+            },
+            ensure_ascii=False,
+        )
+
+    def _history_load_budget(self) -> int | None:
+        if self.max_context_tokens <= 0:
+            return None
+        threshold_budget = int(self.max_context_tokens * self.compact_manager.compact_threshold)
+        return min(threshold_budget, 30000)
+
+    def _trim_loaded_history_if_needed(self, messages: list[dict]) -> list[dict]:
+        budget = self._history_load_budget()
+        if budget is None:
+            return messages
+        if self.compact_manager.count_tokens(messages) <= budget:
+            return messages
+        return self.compact_manager.trim_messages_to_budget(
+            messages,
+            token_budget=budget,
+            recent_message_limit=self.history_recent_messages,
+        )
+
+    def _estimate_context_tokens(self, tools_defs: list[dict] | None) -> dict[str, int]:
+        messages = self.get_messages()
+        system_messages = [m for m in messages if m.get("role") == "system"]
+        history_messages = [m for m in messages if m.get("role") != "system"]
+        tool_definition_tokens = 0
+        if tools_defs:
+            tool_definition_tokens = self.compact_manager.count_text_tokens(
+                json.dumps(tools_defs, ensure_ascii=False, separators=(",", ":"), default=str)
+            )
+        estimate = {
+            "system_prompt_tokens": self.compact_manager.count_tokens(system_messages),
+            "history_tokens": self.compact_manager.count_tokens(history_messages),
+            "tool_definition_tokens": tool_definition_tokens,
+        }
+        estimate["estimated_total_tokens"] = sum(estimate.values())
+        self.last_token_estimate = estimate
+        self.logger.info(
+            "Context token estimate: system=%s history=%s tools=%s total=%s",
+            estimate["system_prompt_tokens"],
+            estimate["history_tokens"],
+            estimate["tool_definition_tokens"],
+            estimate["estimated_total_tokens"],
+        )
+        return estimate
+
+    def get_context_token_estimate(self) -> dict[str, int]:
+        return dict(self.last_token_estimate)
+
+    def _reset_active_tool_groups(self) -> None:
+        self._active_tool_groups = ["default"]
+
+    def _activate_tool_group(self, group: str) -> None:
+        if not group:
+            return
+        if group in self._active_tool_groups:
+            self._active_tool_groups.remove(group)
+        self._active_tool_groups.insert(0, group)
+        if "default" not in self._active_tool_groups:
+            self._active_tool_groups.append("default")
+        if len(self._active_tool_groups) > self._max_active_groups:
+            if "default" in self._active_tool_groups and self._max_active_groups > 1:
+                non_default = [g for g in self._active_tool_groups if g != "default"]
+                self._active_tool_groups = non_default[: self._max_active_groups - 1] + ["default"]
+            else:
+                self._active_tool_groups = self._active_tool_groups[: self._max_active_groups]
+
+    def _activate_tool_group_from_search(self, func_args: Any) -> None:
+        try:
+            parsed = json.loads(func_args) if isinstance(func_args, str) else func_args
+            kw = (parsed.get("keyword") or "").strip().lower() if isinstance(parsed, dict) else ""
+            if not kw:
+                return
+            for group in tool_manager.get_groups():
+                if kw in group.lower():
+                    self._activate_tool_group(group)
+        except Exception:
+            pass
+
+    def _finish_chat_scope(self) -> None:
+        self._chat_depth = max(0, self._chat_depth - 1)
+        if self._chat_depth == 0:
+            self._reset_active_tool_groups()
+
+    def _stream_with_chat_scope(self, stream: Generator[Union[str, dict[str, str]], None, None]):
+        try:
+            yield from stream
+        finally:
+            self._finish_chat_scope()
 
     def _persist_plain_assistant_turn(self, content: str, reasoning: str) -> None:
         """无 tool_calls 的一轮：把 assistant 正文与（若存在）思考写入历史，供下游 API 与存档。"""
@@ -358,7 +496,10 @@ class LLMManager:
     def set_messages(self, new_messages: list):
         """Sets the conversation history to a new list of messages."""
         if isinstance(new_messages, list):
-            self.messages = new_messages
+            self.messages = list(new_messages)
+            self._strip_orphaned_tool_calls()
+            self.messages = self._trim_loaded_history_if_needed(self.messages)
+            self.compact_manager.set_token_count(self.compact_manager.count_tokens(self.messages))
             print("Chat history has been updated.")
         else:
             print("Error: new_messages must be a list.")
@@ -371,19 +512,23 @@ class LLMManager:
         ``include_local_time``（默认 True）：为本次 user 消息追加本机日期时间前缀，再写入对话历史。
         翻译、设定生成等非聊天调用请传 ``include_local_time=False``。
         """
+        self._chat_depth += 1
         # 清理孤立的 tool_calls（必须在加 user 消息之前，否则占位 tool 回执会插在 user 后面）
         self._strip_orphaned_tool_calls()
 
-        include_local_time = bool(kwargs.pop("include_local_time", True))
-        if user_input:
-            if include_local_time:
-                user_input = _prefix_user_text_with_local_time(user_input)
-            self.add_message("user", user_input)
+        try:
+            include_local_time = bool(kwargs.pop("include_local_time", True))
+            if user_input:
+                if include_local_time:
+                    user_input = _prefix_user_text_with_local_time(user_input)
+                self.add_message("user", user_input)
 
-        if stream:
-            return self._chat_with_tools_stream(**kwargs)
-        else:
+            if stream:
+                return self._stream_with_chat_scope(self._chat_with_tools_stream(**kwargs))
             return self._chat_with_tools_sync(**kwargs)
+        finally:
+            if not stream:
+                self._finish_chat_scope()
 
     def _strip_orphaned_tool_calls(self) -> None:
         """清理不完整的 tool call 对：删孤立的 tool，补缺失的回执。"""
@@ -403,6 +548,7 @@ class LLMManager:
 
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
+        self._estimate_context_tokens(tools_defs)
         response_stream = self.llm_adapter.chat(
             messages=self.get_messages(), stream=True,
             tools=tools_defs if tools_defs else None, **merged_kwargs
@@ -483,19 +629,7 @@ class LLMManager:
 
                     # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
                     if func_name == "search_tools":
-                        try:
-                            parsed = json.loads(func_args) if isinstance(func_args, str) else func_args
-                            kw = (parsed.get("keyword") or "").strip().lower()
-                            if kw:
-                                for g in tool_manager.get_groups():
-                                    if kw in g.lower():
-                                        if g in self._active_tool_groups:
-                                            self._active_tool_groups.remove(g)
-                                        self._active_tool_groups.insert(0, g)
-                                        if len(self._active_tool_groups) > self._max_active_groups:
-                                            self._active_tool_groups = self._active_tool_groups[:self._max_active_groups]
-                        except Exception:
-                            pass
+                        self._activate_tool_group_from_search(func_args)
 
                     # 3. 确保结果不为空且为字符串（以便 LLM 接收）
                     if result is None:
@@ -516,6 +650,7 @@ class LLMManager:
         tools_defs = tool_manager.get_definitions(groups=self._active_tool_groups)
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
+        self._estimate_context_tokens(tools_defs)
         response = self.llm_adapter.chat(
             messages=self.get_messages(), stream=False,
             tools=tools_defs if tools_defs else None, **merged_kwargs
@@ -571,19 +706,7 @@ class LLMManager:
 
                     # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
                     if func_name == "search_tools":
-                        try:
-                            parsed = json.loads(func_args) if isinstance(func_args, str) else func_args
-                            kw = (parsed.get("keyword") or "").strip().lower()
-                            if kw:
-                                for g in tool_manager.get_groups():
-                                    if kw in g.lower():
-                                        if g in self._active_tool_groups:
-                                            self._active_tool_groups.remove(g)
-                                        self._active_tool_groups.insert(0, g)
-                                        if len(self._active_tool_groups) > self._max_active_groups:
-                                            self._active_tool_groups = self._active_tool_groups[:self._max_active_groups]
-                        except Exception:
-                            pass
+                        self._activate_tool_group_from_search(func_args)
 
                     # 3. 确保结果不为空且为字符串（以便 LLM 接收）
                     if result is None:

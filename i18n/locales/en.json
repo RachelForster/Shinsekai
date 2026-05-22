@@ -263,14 +263,24 @@
     },
     "adv": {
       "help": "Sampling support varies: OpenAI/Deepseek/Doubao etc. support temperature, presence, frequency; Claude often only temperature; Gemini depends; repetition_penalty may be ignored.",
-      "tt_temp": "0–2, higher = more random",
+      "tt_temp": "0-2, higher = more random",
       "tt_rep": "Ignored on backends that do not support it",
       "tt_maxctx": "0 may mean unlimited (backend-dependent)",
+      "tt_compact_threshold": "Run history compaction when estimated history reaches this context ratio",
+      "tt_compact_target": "Target context ratio after compaction",
+      "tt_history_recent": "Recent messages kept when loading or compacting history",
+      "tt_tool_result": "Maximum characters stored from one tool result",
+      "tt_tool_groups": "Maximum active tool groups sent with one request",
       "l_temp": "temperature",
       "l_rep": "repetition_penalty",
       "l_presence": "presence_penalty",
       "l_freq": "frequency_penalty",
-      "l_maxctx": "Max context tokens"
+      "l_maxctx": "Max context tokens",
+      "l_compact_threshold": "Compact threshold",
+      "l_compact_target": "Compact target",
+      "l_history_recent": "Recent history messages",
+      "l_tool_result": "Tool result chars",
+      "l_tool_groups": "Active tool groups"
     },
     "tts": {
       "hint": "Leave blank if you do not use lines. Set API and local/bundle path as needed. Genie TTS = CPU; GPT SoVITS = GPU. Use the button above to download and extract; if that fails, download manually and see the collapsed section Resources & links below.",

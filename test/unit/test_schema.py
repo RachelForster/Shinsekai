@@ -74,6 +74,11 @@ class TestApiConfig:
         assert ac.temperature == 0.7
         assert ac.tts_provider == "gpt-sovits"
         assert ac.t2i_provider == "comfyui"
+        assert ac.compact_threshold == 0.4
+        assert ac.compact_target_ratio == 0.3
+        assert ac.history_recent_messages == 20
+        assert ac.max_tool_result_chars == 6000
+        assert ac.max_active_tool_groups == 3
 
     def test_custom_provider(self):
         ac = ApiConfig(llm_provider="ChatGPT", llm_api_key={"ChatGPT": "sk-xxx"}, llm_model={"ChatGPT": "gpt-4"})

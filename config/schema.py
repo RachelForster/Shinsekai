@@ -92,6 +92,11 @@ class ApiConfig(BaseModel):
     presence_penalty: DefaultIfNone[float] = Field(default=0.0, description="存在惩罚")
     frequency_penalty: DefaultIfNone[float] = Field(default=0.0, description="频率惩罚")
     max_context_tokens: DefaultIfNone[int] = Field(default=128000, description="最大上下文 token")
+    compact_threshold: DefaultIfNone[float] = Field(default=0.4, description="触发历史压缩的上下文占比")
+    compact_target_ratio: DefaultIfNone[float] = Field(default=0.3, description="历史压缩后的目标上下文占比")
+    history_recent_messages: DefaultIfNone[int] = Field(default=20, description="压缩或加载历史时保留的最近消息数")
+    max_tool_result_chars: DefaultIfNone[int] = Field(default=6000, description="写入历史的单次工具结果最大字符数")
+    max_active_tool_groups: DefaultIfNone[int] = Field(default=3, description="同时启用的工具组数量上限")
 
     hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
 

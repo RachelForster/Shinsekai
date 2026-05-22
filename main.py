@@ -172,6 +172,11 @@ def main():
         adapter=llm_adapter,
         user_template=user_template,
         max_tokens=int(config.config.api_config.max_context_tokens),
+        compact_threshold=float(config.config.api_config.compact_threshold),
+        compact_target_ratio=float(config.config.api_config.compact_target_ratio),
+        history_recent_messages=int(config.config.api_config.history_recent_messages),
+        max_tool_result_chars=int(config.config.api_config.max_tool_result_chars),
+        max_active_tool_groups=int(config.config.api_config.max_active_tool_groups),
         generation_config={
             "temperature": float(config.config.api_config.temperature),
             "repetition_penalty": float(config.config.api_config.repetition_penalty),
