@@ -308,6 +308,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         
         # 底栏（叠在立绘上）
         self.setup_input_layout()
+        self.setup_context_token_label()
         self._busy_bar = BusyBar(self)
         self._busy_bar.hide()
         
@@ -651,6 +652,43 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         bh = bb.height_for_bar_width(bb_w)
         y_bb = max(0, y_input - gap - bh)
         bb.setGeometry(x_bb, y_bb, bb_w, bh)
+        self._layout_context_token_label()
+
+    def setup_context_token_label(self) -> None:
+        self.context_token_label = QLabel(self)
+        self.context_token_label.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.context_token_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.context_token_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.context_token_label.setStyleSheet(
+            "QLabel {"
+            " color: rgba(255,255,255,120);"
+            " background: rgba(0,0,0,55);"
+            " border: 1px solid rgba(255,255,255,24);"
+            " border-radius: 4px;"
+            " padding: 2px 6px;"
+            " font-size: 11px;"
+            "}"
+        )
+        self.context_token_label.hide()
+
+    def _layout_context_token_label(self) -> None:
+        label = getattr(self, "context_token_label", None)
+        if label is None or not label.isVisible():
+            return
+        if not hasattr(self, "_last_input_row_y"):
+            return
+        inner_w = self._last_input_inner_w
+        label.setMaximumWidth(max(1, inner_w))
+        label.adjustSize()
+        lw = min(label.sizeHint().width(), inner_w)
+        lh = label.sizeHint().height()
+        x = self._last_input_x + max(0, inner_w - lw)
+        y_anchor = self._last_input_row_y
+        bb = getattr(self, "_busy_bar", None)
+        if bb is not None and bb.isVisible():
+            y_anchor = min(y_anchor, bb.geometry().top())
+        y = max(0, y_anchor - lh - 3)
+        label.setGeometry(x, y, lw, lh)
 
     def _above_chrome_y(self, block_height: int, gap: int = 4) -> int:
         h = int(self.image_container.height()) if self.image_container.height() > 0 else int(self.height())
@@ -773,6 +811,9 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             if hasattr(self, "_layout_toolbar_geometry"):
                 self._layout_toolbar_geometry()
             self.toolbar.raise_()
+        token_label = getattr(self, "context_token_label", None)
+        if token_label is not None and token_label.isVisible():
+            token_label.raise_()
         for name in ("_resize_grip_bl", "_resize_grip_br"):
             g = getattr(self, name, None)
             if g is not None:
@@ -1123,10 +1164,25 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             return
         if not (text or "").strip():
             bb.hide_bar()
+            self._layout_context_token_label()
             return
         # 先更新文案再算高度，否则 heightForWidth 仍按旧文本排版
         bb.show_with((text or "").strip(), duration_seconds)
         self._layout_busy_bar()
+        self._raise_input_and_toolbar()
+
+    def setContextTokenEstimate(self, text: str) -> None:
+        label = getattr(self, "context_token_label", None)
+        if label is None:
+            return
+        text = (text or "").strip()
+        if not text:
+            label.hide()
+            return
+        label.setText(text)
+        label.setToolTip(text)
+        label.show()
+        self._layout_context_token_label()
         self._raise_input_and_toolbar()
 
     def setNotification(self, message):

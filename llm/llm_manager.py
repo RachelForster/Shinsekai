@@ -452,10 +452,22 @@ class LLMManager:
             estimate["tool_definition_tokens"],
             estimate["estimated_total_tokens"],
         )
+        self._post_context_token_estimate(estimate)
         return estimate
 
     def get_context_token_estimate(self) -> dict[str, int]:
         return dict(self.last_token_estimate)
+
+    def _post_context_token_estimate(self, estimate: dict[str, int]) -> None:
+        rt = try_get_app_runtime()
+        ui = getattr(rt, "ui_update_manager", None) if rt is not None else None
+        post = getattr(ui, "post_context_token_estimate", None)
+        if post is None:
+            return
+        try:
+            post(estimate)
+        except Exception:
+            self.logger.debug("Failed to post context token estimate to UI", exc_info=True)
 
     def _reset_active_tool_groups(self) -> None:
         self._active_tool_groups = ["default"]

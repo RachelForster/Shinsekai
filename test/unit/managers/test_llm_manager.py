@@ -430,6 +430,18 @@ class TestLLMManagerToolCalling:
         assert "estimated_total_tokens" in estimate
         assert mgr._active_tool_groups == ["default"]
 
+    def test_chat_posts_token_estimate_to_runtime_ui(self, mock_app_runtime):
+        mgr = mock_app_runtime.llm_manager
+
+        mgr.chat("Hello", stream=False, include_local_time=False)
+
+        mock_app_runtime.ui_update_manager.post_context_token_estimate.assert_called_once()
+        estimate = mock_app_runtime.ui_update_manager.post_context_token_estimate.call_args.args[0]
+        assert "system_prompt_tokens" in estimate
+        assert "history_tokens" in estimate
+        assert "tool_definition_tokens" in estimate
+        assert "estimated_total_tokens" in estimate
+
     def test_chat_resets_tool_groups_stream_after_consumed(self, mock_llm_adapter):
         mock_llm_adapter.responses = ["Response."]
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="System")

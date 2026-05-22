@@ -47,6 +47,29 @@ def get_character_by_name(name: str):
     return _config_manager.get_character_by_name(name)
 
 
+def _format_token_count(value: Any) -> str:
+    try:
+        count = max(0, int(value or 0))
+    except (TypeError, ValueError):
+        count = 0
+    if count >= 1_000_000:
+        return f"{count / 1_000_000:.1f}m"
+    if count >= 1_000:
+        return f"{count / 1_000:.1f}k"
+    return str(count)
+
+
+def format_context_token_estimate(estimate: Dict[str, Any]) -> str:
+    """Compact one-line token budget status for the desktop overlay."""
+    return (
+        "tokens "
+        f"sys {_format_token_count(estimate.get('system_prompt_tokens'))} | "
+        f"hist {_format_token_count(estimate.get('history_tokens'))} | "
+        f"tools {_format_token_count(estimate.get('tool_definition_tokens'))} | "
+        f"total {_format_token_count(estimate.get('estimated_total_tokens'))}"
+    )
+
+
 def _format_dialog_html(name: str, speech: str, color: str, is_system: bool) -> str:
     separator = "\uff1a"
     if is_system:
@@ -89,6 +112,9 @@ class HeadlessUIUpdateManager:
         if text:
             print(text)
 
+    def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
+        pass
+
     def post_background(self, path: str) -> None:
         if path:
             print(f"background: {path}")
@@ -128,6 +154,7 @@ class UIUpdateManager(QObject):
     update_busy_bar_signal = Signal(str, float)  # 文案, 显示秒数（<=0 则不定时隐藏）；空文案表示关闭
     update_option_signal = Signal(list)
     update_value_signal = Signal(str)
+    update_context_token_estimate_signal = Signal(str)
     update_bg = Signal(str)
     update_cg = Signal(str)
     llm_reply_finished_signal = Signal()
@@ -167,6 +194,9 @@ class UIUpdateManager(QObject):
 
     def post_numeric_value(self, text: str) -> None:
         self.update_value_signal.emit(text)
+
+    def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
+        self.update_context_token_estimate_signal.emit(format_context_token_estimate(estimate))
 
     def post_background(self, path: str) -> None:
         self.update_bg.emit(path)
@@ -294,6 +324,7 @@ def connect_to_desktop_window(ui: UIUpdateManager, window: Any) -> None:
     ui.update_busy_bar_signal.connect(window.setBusyBar)
     ui.update_option_signal.connect(window.setOptions)
     ui.update_value_signal.connect(window.update_numeric_info)
+    ui.update_context_token_estimate_signal.connect(window.setContextTokenEstimate)
     ui.update_bg.connect(window.setBackgroundImage)
     ui.update_cg.connect(window.show_cg_image)
     # 与主窗口均为 PySide6 Signal 时可直连中继。
