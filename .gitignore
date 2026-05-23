@@ -30,3 +30,10 @@ runtime/
 /plugins
 /data
 .claude/settings.local.json
+/.venv
+/.uv-cache
+/temp_import_*
+.env
+.env.*
+!.env.example
+!.env.local.example

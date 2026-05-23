@@ -3,7 +3,8 @@ import shutil
 import zipfile
 import yaml
 import json
-from pathlib import Path
+import re
+from pathlib import Path, PurePosixPath
 from config.character_config import CharacterConfig
 from config.schema import Background
 from config.config_manager import ConfigManager
@@ -21,6 +22,90 @@ CHARACTERS_CONFIG_PATH = CONFIG_DIR / 'characters.yaml'
 BACKGROUND_CONFIG_PATH = CONFIG_DIR / 'background.yaml'
 BACKGROUND_UPLOAD_DIR = BASE_DATA_PATH / 'backgrounds'
 BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
+
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
+
+
+def _safe_package_relpath(path: str | os.PathLike | None, field_name: str) -> Path:
+    """Interpret package paths written on Windows or POSIX as safe relative paths."""
+    raw = str(path or "").replace("\\", "/").strip()
+    while raw.startswith("./"):
+        raw = raw[2:]
+    if not raw:
+        raise ValueError(f"{field_name} must not be empty")
+    if "\x00" in raw or raw.startswith("/") or _WINDOWS_DRIVE_RE.match(raw):
+        raise ValueError(f"{field_name} must be a relative package path: {path!r}")
+    if any(part in ("", ".", "..") for part in raw.split("/")):
+        raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
+    rel = PurePosixPath(raw)
+    return Path(*rel.parts)
+
+
+def _safe_package_basename(path: str | os.PathLike | None, field_name: str) -> str:
+    return _safe_package_relpath(path, field_name).name
+
+
+def _safe_package_basename_or_legacy_absolute(
+    path: str | os.PathLike | None, field_name: str
+) -> str:
+    """Return a safe package filename, accepting old host-absolute YAML paths."""
+    raw = str(path or "").replace("\\", "/").strip()
+    if not raw:
+        raise ValueError(f"{field_name} must not be empty")
+    if "\x00" in raw:
+        raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
+
+    has_windows_drive = _WINDOWS_DRIVE_RE.match(raw)
+    is_legacy_absolute = raw.startswith("/") or (
+        has_windows_drive and raw[2:3] == "/"
+    )
+    if not is_legacy_absolute:
+        return _safe_package_basename(raw, field_name)
+
+    tail = raw[3:] if has_windows_drive else raw
+    parts = tail.lstrip("/").split("/")
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
+    return _safe_package_name(parts[-1], field_name)
+
+
+def _safe_package_name(value: str | os.PathLike | None, field_name: str) -> str:
+    raw = str(value or "").replace("\\", "/").strip()
+    if not raw:
+        return ""
+    if (
+        "\x00" in raw
+        or "/" in raw
+        or raw in (".", "..")
+        or _WINDOWS_DRIVE_RE.match(raw)
+    ):
+        raise ValueError(f"{field_name} must be a plain package name: {value!r}")
+    return raw
+
+
+def _safe_extract_zip(zf: zipfile.ZipFile, target_dir: Path) -> None:
+    for info in zf.infolist():
+        member = str(info.filename or "").replace("\\", "/").rstrip("/")
+        if member:
+            _safe_package_relpath(member, "zip member")
+    zf.extractall(target_dir)
+
+
+def _sanitize_background_package_paths(bg_data: dict) -> None:
+    sprites = bg_data.get('sprites') or []
+    if isinstance(sprites, list):
+        for sprite_entry in sprites:
+            if isinstance(sprite_entry, dict) and sprite_entry.get('path'):
+                sprite_entry['path'] = _safe_package_basename_or_legacy_absolute(
+                    sprite_entry['path'], "background sprite path"
+                )
+
+    bgm_list = bg_data.get('bgm_list')
+    if isinstance(bgm_list, list):
+        bg_data['bgm_list'] = [
+            _safe_package_basename_or_legacy_absolute(path, "background bgm path")
+            for path in bgm_list
+        ]
 
 def export_character(character_configs: list[CharacterConfig], output_path: str):
     """
@@ -85,12 +170,27 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
                 if sprite_source_dir.is_dir():
                     shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix, dirs_exist_ok=True)
 
-            # 重写 sprite path 为仅文件名（导入时按文件名匹配重建路径）
+            # 重写 sprite/voice path 为仅文件名（导入时按文件名匹配重建路径）
             sprites = char_data.get('sprites') or []
+            normalized_sprites = []
             for s in sprites if isinstance(sprites, list) else []:
                 if isinstance(s, dict):
-                    old_p = Path(str(s.get('path', '')))
-                    s['path'] = old_p.name
+                    sprite_data = dict(s)
+                    if sprite_data.get('path'):
+                        sprite_data['path'] = _safe_package_basename_or_legacy_absolute(
+                            sprite_data['path'], "sprite path"
+                        )
+                    else:
+                        sprite_data['path'] = ""
+                    if sprite_data.get('voice_path'):
+                        sprite_data['voice_path'] = _safe_package_basename_or_legacy_absolute(
+                            sprite_data['voice_path'], "voice_path"
+                        )
+                    normalized_sprites.append(sprite_data)
+                else:
+                    normalized_sprites.append(s)
+            if isinstance(sprites, list):
+                char_data['sprites'] = normalized_sprites
 
             # 复制语音文件
             if config.sprite_prefix:
@@ -200,7 +300,7 @@ def import_character(input_path: str) -> list[CharacterConfig]:
     try:
         # 解压 .cha 文件到临时目录
         with zipfile.ZipFile(input_path, 'r') as zf:
-            zf.extractall(temp_dir)
+            _safe_extract_zip(zf, temp_dir)
 
         # 读取YAML配置文件
         with open(temp_dir / 'character.yaml', 'r', encoding='utf-8') as f:
@@ -226,7 +326,9 @@ def import_character(input_path: str) -> list[CharacterConfig]:
 
         for char_data in yaml_data:
             original_name = char_data.get('name', '')
-            original_sprite_prefix = char_data.get('sprite_prefix', '')
+            original_sprite_prefix = _safe_package_name(
+                char_data.get('sprite_prefix', ''), "sprite_prefix"
+            )
             
             # 解决名称冲突
             new_name = _resolve_name_conflict(original_name, imported_names)
@@ -242,27 +344,34 @@ def import_character(input_path: str) -> list[CharacterConfig]:
             if new_name != original_name or new_sprite_prefix != original_sprite_prefix:
                 print(f"检测到冲突，已将 '{original_name}' ({original_sprite_prefix}) 重命名为 '{new_name}' ({new_sprite_prefix})")
             
+            sprites = char_data.get('sprites') or []
+            dest_sprite_dir = SPRITE_DIR / new_sprite_prefix
+            dest_speech_dir = SPEECH_DIR / new_sprite_prefix
+
             # 恢复立绘文件（使用新的sprite_prefix）
             if new_sprite_prefix:
                 source_sprite_dir = temp_dir / 'sprites' / original_sprite_prefix
-                dest_sprite_dir = SPRITE_DIR / new_sprite_prefix
                 if source_sprite_dir.is_dir():
                     shutil.copytree(source_sprite_dir, dest_sprite_dir, dirs_exist_ok=True)
 
-                # 修复 sprite path：指向导入机器上的实际路径
-                sprites = char_data.get('sprites') or []
-                for s in sprites:
-                    if isinstance(s, dict):
-                        old_path = Path(str(s.get('path', '')))
-                        new_path = dest_sprite_dir / old_path.name
+            # 修复 sprite path：指向导入机器上的实际路径；无 prefix 时至少去掉宿主机路径。
+            for s in sprites:
+                if isinstance(s, dict):
+                    filename = _safe_package_basename_or_legacy_absolute(
+                        s.get('path', ''), "sprite path"
+                    )
+                    if new_sprite_prefix:
+                        new_path = dest_sprite_dir / filename
                         try:
                             s['path'] = str(new_path.relative_to(Path.cwd()))
                         except ValueError:
                             s['path'] = new_path.as_posix()
+                    else:
+                        s['path'] = filename
 
+            if new_sprite_prefix:
                 # 恢复语音文件（使用新的sprite_prefix）
                 source_speech_dir = temp_dir / 'speech' / original_sprite_prefix
-                dest_speech_dir = SPEECH_DIR / new_sprite_prefix
                 if source_speech_dir.is_dir():
                     shutil.copytree(source_speech_dir, dest_speech_dir, dirs_exist_ok=True)
 
@@ -271,15 +380,20 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                 if source_speech_dir.is_dir():
                     shutil.copytree(source_speech_dir, SPEECH_DIR / new_sprite_prefix, dirs_exist_ok=True)
 
-                # 修复 voice_path：指向 SPEECH_DIR
-                for s in sprites:
-                    if isinstance(s, dict) and s.get('voice_path'):
-                        old_vp = Path(str(s['voice_path']))
-                        new_vp = SPEECH_DIR / new_sprite_prefix / old_vp.name
+            # 修复 voice_path：指向 SPEECH_DIR；无 prefix 时至少去掉宿主机路径。
+            for s in sprites:
+                if isinstance(s, dict) and s.get('voice_path'):
+                    filename = _safe_package_basename_or_legacy_absolute(
+                        s['voice_path'], "voice_path"
+                    )
+                    if new_sprite_prefix:
+                        new_vp = dest_speech_dir / filename
                         try:
                             s['voice_path'] = str(new_vp.relative_to(Path.cwd()))
                         except ValueError:
                             s['voice_path'] = new_vp.as_posix()
+                    else:
+                        s['voice_path'] = filename
             
             # 恢复模型文件并更新路径
             model_paths = {
@@ -290,10 +404,10 @@ def import_character(input_path: str) -> list[CharacterConfig]:
             
             for key, path in model_paths.items():
                 if path:  # 确保路径不为空
-                    source_model_path = temp_dir / path
+                    source_model_path = temp_dir / _safe_package_relpath(path, key)
                     dest_model_dir = MODEL_DIR / new_sprite_prefix
                     dest_model_dir.mkdir(parents=True, exist_ok=True)
-                    dest_model_path = dest_model_dir / Path(path).name
+                    dest_model_path = dest_model_dir / _safe_package_basename(path, key)
                     if source_model_path.exists():  # 确保源文件存在
                         shutil.copy2(source_model_path, dest_model_path)
                         char_data[key] = dest_model_path.as_posix()  # 更新为相对路径
@@ -362,9 +476,7 @@ def export_background(background_configs: List[Background], output_path: str = '
                 if bgm_source_dir.is_dir():
                     shutil.copytree(bgm_source_dir, temp_dir / 'bgm' / config.sprite_prefix, dirs_exist_ok=True)
                     
-            # 导出时，bgm_list 和 sprites 中的 path 仍然是系统路径，
-            # 导入时需要处理，这里保持原样，因为数据结构中没有像字符导出那样处理模型路径。
-            # Pydantic 模型导出为字典时，FilePath 会被正确转换为字符串路径。
+            _sanitize_background_package_paths(bg_data)
             
             background_data_list.append(bg_data)
 
@@ -420,7 +532,7 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
     try:
         # 解压 .bg 文件到临时目录
         with zipfile.ZipFile(input_path, 'r') as zf:
-            zf.extractall(temp_dir)
+            _safe_extract_zip(zf, temp_dir)
 
         # 读取YAML配置文件
         with open(temp_dir / 'background.yaml', 'r', encoding='utf-8') as f:
@@ -439,7 +551,9 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
 
         for bg_data in yaml_data:
             original_name = bg_data.get('name', '')
-            original_sprite_prefix = bg_data.get('sprite_prefix', '')
+            original_sprite_prefix = _safe_package_name(
+                bg_data.get('sprite_prefix', ''), "background sprite_prefix"
+            )
             
             # 解决名称冲突
             new_name = _resolve_name_conflict(original_name, imported_names)
@@ -474,7 +588,9 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
                     # 路径是相对路径，需要重新构建新的绝对或相对路径
                     if 'path' in sprite_entry:
                         # 假设 path 存储的是文件名或相对于原始前缀的路径
-                        filename = Path(sprite_entry['path']).name
+                        filename = _safe_package_basename_or_legacy_absolute(
+                            sprite_entry['path'], "background sprite path"
+                        )
                         new_path = Path(BACKGROUND_UPLOAD_DIR) / new_sprite_prefix / filename
                         sprite_entry['path'] = new_path.as_posix()
 
@@ -482,7 +598,7 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
             if 'bgm_list' in bg_data:
                 new_bgm_list = []
                 for path in bg_data['bgm_list']:
-                    filename = Path(path).name
+                    filename = _safe_package_basename_or_legacy_absolute(path, "background bgm path")
                     new_path = Path(BGM_UPLOAD_DIR) / new_sprite_prefix / filename
                     new_bgm_list.append(new_path.as_posix())
                 bg_data['bgm_list'] = new_bgm_list

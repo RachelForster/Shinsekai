@@ -215,6 +215,22 @@ class TestExport:
         assert sprites[0]["path"] == "smile.png"
         assert sprites[1]["path"] == "angry.png"
 
+    def test_voice_paths_are_filenames_only_without_mutating_config(self, tmp_path):
+        """Export rewrites YAML voice paths without changing the source config."""
+        voice_path = str((tmp_path / "data" / "speech" / "alice" / "greet.wav").resolve())
+        data = dict(BASIC_CHAR)
+        data["sprites"] = [
+            {"path": "smile.png", "voice_path": voice_path, "voice_text": "hello"},
+        ]
+
+        with _mock_dirs(tmp_path):
+            out = _run_export(data, tmp_path)
+        with zipfile.ZipFile(out, "r") as zf:
+            yaml_data = yaml.safe_load(zf.read("character.yaml"))
+
+        assert yaml_data[0]["sprites"][0]["voice_path"] == "greet.wav"
+        assert data["sprites"][0]["voice_path"] == voice_path
+
     def test_missing_fields_included(self, tmp_path):
         """pronunciation_map, speech_speed, speech_volume must be in YAML."""
         with _mock_dirs(tmp_path):
@@ -305,6 +321,107 @@ class TestBackwardCompat:
             with _mock_dirs(tmp_path):
                 result = file_util.import_character(str(z))
         assert Path(result[0].sprites[0]["path"]).is_file()
+
+    def test_old_posix_absolute_sprite_path(self, tmp_path):
+        """Sprite paths like '/opt/app/data/sprite/alice/smile.png' from old exports."""
+        old = dict(BASIC_CHAR)
+        old["sprites"] = [{"path": "/opt/app/data/sprite/alice/smile.png"}]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), old,
+                                 sprites={"smile.png": "png"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        assert Path(result[0].sprites[0]["path"]).is_file()
+
+    def test_old_absolute_voice_path(self, tmp_path):
+        """voice_path with a legacy absolute host path resolves to restored speech."""
+        old = dict(BASIC_CHAR)
+        old["sprites"] = [
+            {"path": "smile.png",
+             "voice_path": "C:\\somewhere\\data\\speech\\alice\\greet.wav",
+             "voice_text": "hi"},
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), old,
+                                 sprites={"smile.png": "png"},
+                                 speeches={"greet.wav": "wav"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        vp = result[0].sprites[0].get("voice_path")
+        assert vp and Path(vp).is_file()
+        assert Path(vp).name == "greet.wav"
+
+    @pytest.mark.parametrize(
+        ("field", "bad_path"),
+        [
+            ("path", "../evil.png"),
+            ("path", "bad\0.png"),
+            ("path", "/tmp/C:evil.png"),
+            ("voice_path", "../evil.wav"),
+            ("voice_path", "/opt/app/../evil.wav"),
+            ("voice_path", "C:\\tmp\\C:evil.wav"),
+        ],
+    )
+    def test_rejects_unsafe_sprite_or_voice_paths(self, tmp_path, field, bad_path):
+        """Relaxed legacy paths must still reject traversal and NUL bytes."""
+        old = dict(BASIC_CHAR)
+        sprite = {"path": "smile.png"}
+        sprite[field] = bad_path
+        old["sprites"] = [sprite]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), old,
+                                 sprites={"smile.png": "png"})
+            with _mock_dirs(tmp_path), pytest.raises(ValueError):
+                file_util.import_character(str(z))
+
+    def test_empty_prefix_drops_legacy_absolute_host_paths(self, tmp_path):
+        """Characters without a prefix still must not keep host absolute paths."""
+        old = dict(BASIC_CHAR)
+        old["sprite_prefix"] = ""
+        old["sprites"] = [
+            {
+                "path": "/opt/app/data/sprite/alice/smile.png",
+                "voice_path": "C:\\somewhere\\data\\speech\\alice\\greet.wav",
+                "voice_text": "hi",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), old,
+                                 sprites={"smile.png": "png"},
+                                 speeches={"greet.wav": "wav"})
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+        sprite = result[0].sprites[0]
+        assert sprite["path"] == "smile.png"
+        assert sprite["voice_path"] == "greet.wav"
+
+    def test_legacy_absolute_paths_follow_renamed_sprite_prefix(self, tmp_path):
+        """Legacy paths are rebuilt under the conflict-resolved prefix."""
+        old = dict(BASIC_CHAR)
+        old["sprites"] = [
+            {
+                "path": "C:\\somewhere\\data\\sprite\\alice\\smile.png",
+                "voice_path": "C:\\somewhere\\data\\speech\\alice\\greet.wav",
+                "voice_text": "hi",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(Path(td), old,
+                                 sprites={"smile.png": "png"},
+                                 speeches={"greet.wav": "wav"})
+            with _mock_dirs(tmp_path):
+                file_util.CHARACTERS_CONFIG_PATH.write_text(yaml.dump(
+                    [{"name": "Bob", "color": "#000", "sprite_prefix": "alice"}],
+                    allow_unicode=True,
+                ), encoding="utf-8")
+                result = file_util.import_character(str(z))
+
+        c = result[0]
+        assert c.sprite_prefix != "alice"
+        assert Path(c.sprites[0]["path"]).parent.name == c.sprite_prefix
+        assert Path(c.sprites[0]["voice_path"]).parent.name == c.sprite_prefix
+        assert Path(c.sprites[0]["path"]).is_file()
+        assert Path(c.sprites[0]["voice_path"]).is_file()
 
     def test_old_voice_from_voices_dir(self, tmp_path):
         """voice_path pointing to 'data/voices/...' (old upload_voice dir)."""
