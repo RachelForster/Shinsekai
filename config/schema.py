@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator
+from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator, model_validator
 from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar
 
@@ -17,6 +17,19 @@ T = TypeVar('T')
 # 注意：该 Annotated 类型应包裹原始类型，并且只能用于设置了默认值的字段。
 DefaultIfNone = Annotated[T, BeforeValidator(default_if_none)]
 # -------------------------------------------------------------
+
+COMPACT_TARGET_RATIO_MIN_GAP = 0.05
+
+
+def clamp_compact_target_ratio(compact_threshold: float, compact_target_ratio: float) -> float:
+    """Keep compaction target safely below the trigger threshold."""
+    try:
+        threshold = float(compact_threshold)
+        target = float(compact_target_ratio)
+    except (TypeError, ValueError):
+        return compact_target_ratio
+    max_target = max(0.0, threshold - COMPACT_TARGET_RATIO_MIN_GAP)
+    return round(min(target, max_target), 6)
 
 
 # Character Config Models
@@ -116,6 +129,14 @@ class ApiConfig(BaseModel):
         default_factory=dict,
         description="T2I 适配器扩展参数：引擎名（如 comfyui） -> 字段名 -> 值",
     )
+
+    @model_validator(mode="after")
+    def _clamp_compact_ratios(self):
+        self.compact_target_ratio = clamp_compact_target_ratio(
+            self.compact_threshold,
+            self.compact_target_ratio,
+        )
+        return self
 
 # System Config Model
 class SystemConfig(BaseModel):

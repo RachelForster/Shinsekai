@@ -84,4 +84,39 @@ def test_save_api_config_new_persists_token_budget_settings():
     assert manager.config.api_config.max_tool_result_chars == 4000
     assert manager.config.api_config.max_active_tool_groups == 2
     assert saved["compact_threshold"] == 0.45
+    assert saved["compact_target_ratio"] == 0.25
     assert saved["max_active_tool_groups"] == 2
+
+
+def test_save_api_config_new_clamps_compact_target_below_threshold():
+    manager = _config_manager_with_api()
+    saved = {}
+    manager._save_single_config = lambda _path, data: saved.update(data)
+
+    manager.save_api_config_new(
+        "Deepseek",
+        "deepseek-chat",
+        "sk-test",
+        "https://api.deepseek.com/v1",
+        "是",
+        "none",
+        "",
+        "",
+        "comfyui",
+        "http://127.0.0.1:8188",
+        "",
+        "",
+        "6",
+        "9",
+        0.7,
+        1.0,
+        0.0,
+        0.0,
+        128000,
+        compact_threshold=0.4,
+        compact_target_ratio=0.4,
+    )
+
+    assert manager.config.api_config.compact_threshold == 0.4
+    assert manager.config.api_config.compact_target_ratio == 0.35
+    assert saved["compact_target_ratio"] == 0.35

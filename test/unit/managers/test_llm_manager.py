@@ -81,7 +81,7 @@ class TestLLMManagerMessageManagement:
         assert any("历史" in m.get("content", "") for m in mgr.messages)
         assert mgr.messages[-1]["content"].startswith("answer 19")
 
-    def test_set_messages_drops_loaded_tool_payloads(self, mock_llm_adapter):
+    def test_set_messages_preserves_loaded_tool_payloads(self, mock_llm_adapter):
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
         history = [
             {"role": "system", "content": "System prompt"},
@@ -121,13 +121,7 @@ class TestLLMManagerMessageManagement:
         mgr.set_messages(history)
 
         assert mock_llm_adapter.call_history == []
-        assert all(message.get("role") != "tool" for message in mgr.messages)
-        assert all("tool_calls" not in message for message in mgr.messages)
-        assert [message["content"] for message in mgr.messages] == [
-            "System prompt",
-            "read a file",
-            "I found the answer.",
-        ]
+        assert mgr.messages == history
 
     def test_set_adapter_switches_and_resets(self, mock_llm_adapter):
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
@@ -149,6 +143,26 @@ class TestLLMManagerCompact:
         assert mgr.compact_manager.compact_target_ratio == 0.3
         assert mgr.compact_manager.recent_message_limit == 20
         assert mgr._max_active_groups == 3
+
+    def test_history_load_budget_caps_at_50k(self, mock_llm_adapter):
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            max_tokens=200000,
+            compact_threshold=0.4,
+        )
+
+        assert mgr._history_load_budget() == 50000
+
+    def test_compact_target_ratio_is_clamped_below_threshold(self, mock_llm_adapter):
+        cm = CompactManager(
+            mock_llm_adapter,
+            max_tokens=100000,
+            compact_threshold=0.4,
+            compact_target_ratio=0.39,
+        )
+
+        assert cm.compact_target_ratio == 0.35
 
     def test_auto_compact_triggers_when_threshold_exceeded(self, mock_llm_adapter):
         """With low threshold and high token count, auto-compact fires on add_message."""
@@ -414,7 +428,9 @@ class TestLLMManagerToolCalling:
 
         assert parsed["truncated"] is True
         assert parsed["original_chars"] == 200
-        assert len(parsed["preview"]) <= 80
+        assert parsed["omitted_chars"] == 120
+        assert parsed["head"] == "x" * 40
+        assert parsed["tail"] == "x" * 40
 
     def test_chat_records_token_estimate_and_resets_tool_groups_sync(self, mock_llm_adapter):
         mock_llm_adapter.responses = ["Response."]

@@ -1831,7 +1831,7 @@ class ApiSettingsTab(QWidget):
         self.max_context_tokens.setValue(int(ac.max_context_tokens))
         self.max_context_tokens.setToolTip(tr_i18n("api.adv.tt_maxctx"))
         self.compact_threshold = QDoubleSpinBox()
-        self.compact_threshold.setRange(0.05, 0.95)
+        self.compact_threshold.setRange(0.10, 0.95)
         self.compact_threshold.setSingleStep(0.05)
         self.compact_threshold.setValue(float(ac.compact_threshold))
         self.compact_threshold.setToolTip(tr_i18n("api.adv.tt_compact_threshold"))
@@ -1840,6 +1840,8 @@ class ApiSettingsTab(QWidget):
         self.compact_target_ratio.setSingleStep(0.05)
         self.compact_target_ratio.setValue(float(ac.compact_target_ratio))
         self.compact_target_ratio.setToolTip(tr_i18n("api.adv.tt_compact_target"))
+        self.compact_threshold.valueChanged.connect(self._sync_compact_target_bounds)
+        self._sync_compact_target_bounds()
         self.history_recent_messages = QSpinBox()
         self.history_recent_messages.setRange(1, 200)
         self.history_recent_messages.setValue(int(ac.history_recent_messages))
@@ -2250,6 +2252,14 @@ class ApiSettingsTab(QWidget):
         save_row.addStretch(1)
         fl.addLayout(save_row)
         root.addWidget(foot)
+
+    def _sync_compact_target_bounds(self):
+        if not hasattr(self, "compact_threshold") or not hasattr(self, "compact_target_ratio"):
+            return
+        max_target = max(0.05, float(self.compact_threshold.value()) - 0.05)
+        self.compact_target_ratio.setMaximum(max_target)
+        if self.compact_target_ratio.value() > max_target:
+            self.compact_target_ratio.setValue(max_target)
 
     def _on_resume_last_chat(self) -> None:
         ok, msg = launch_chat_resume_last(self._ctx)

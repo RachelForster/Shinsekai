@@ -675,13 +675,34 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         label = getattr(self, "context_token_label", None)
         if label is None or not label.isVisible():
             return
+        label.setMaximumWidth(max(1, self.width() - 2 * self._input_row_inset_h))
+        label.adjustSize()
+        lw = min(label.sizeHint().width(), max(1, self.width() - 2 * self._input_row_inset_h))
+        lh = label.sizeHint().height()
+
+        dlg = getattr(self, "dialog_label", None)
+        if dlg is not None and dlg.isVisible() and not dlg.geometry().isNull():
+            dlg_geo = dlg.geometry()
+            dlg_top_left = self.image_container.mapTo(self, dlg_geo.topLeft())
+            dlg_right = dlg_top_left.x() + dlg_geo.width()
+            dlg_top = dlg_top_left.y()
+            gap = 4
+            rb = getattr(self, "_reroll_btn", None)
+            if rb is not None and rb.isVisible():
+                rb_top_left = self.image_container.mapTo(self, rb.geometry().topLeft())
+                x = rb_top_left.x() - lw - gap
+                y = rb_top_left.y() + max(0, (rb.height() - lh) // 2)
+            else:
+                x = dlg_right - lw
+                y = dlg_top - lh - 6
+            x = max(0, min(x, self.width() - lw))
+            y = max(0, y)
+            label.setGeometry(x, y, lw, lh)
+            return
+
         if not hasattr(self, "_last_input_row_y"):
             return
         inner_w = self._last_input_inner_w
-        label.setMaximumWidth(max(1, inner_w))
-        label.adjustSize()
-        lw = min(label.sizeHint().width(), inner_w)
-        lh = label.sizeHint().height()
         x = self._last_input_x + max(0, inner_w - lw)
         y_anchor = self._last_input_row_y
         bb = getattr(self, "_busy_bar", None)
@@ -750,6 +771,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 )
                 rb.raise_()
                 rb.show()
+            self._layout_context_token_label()
 
     def _relayout_overlays(self) -> None:
         """窗口缩放时重算选项区 / 台词框几何。"""

@@ -5,6 +5,8 @@ import tiktoken
 from typing import List, Dict, Any
 import logging
 
+from config.schema import clamp_compact_target_ratio
+
 logger = logging.getLogger(__name__)
 
 class CompactManager:
@@ -35,7 +37,10 @@ class CompactManager:
         self.llm_adapter = llm_adapter
         self.max_tokens = max_tokens
         self.compact_threshold = compact_threshold
-        self.compact_target_ratio = compact_target_ratio
+        self.compact_target_ratio = clamp_compact_target_ratio(
+            self.compact_threshold,
+            compact_target_ratio,
+        )
         self.recent_message_limit = max(1, int(recent_message_limit))
         self.compact_summary_max_tokens = max(128, int(compact_summary_max_tokens))
         self.num_tokens = 0

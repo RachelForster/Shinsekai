@@ -208,6 +208,8 @@ class TestUISignalFlow:
             max_sprite_slots=1,
         )
         qtbot.addWidget(window)
+        window.show()
+        qtbot.waitExposed(window)
 
         ui = UIUpdateManager(chat_history=[], bg_group=[])
         connect_to_desktop_window(ui, window)
@@ -233,7 +235,7 @@ class TestUISignalFlow:
 
         # Verify the UI received them — window state updated
         assert window.current_options == ["Option A", "Option B"]
-        assert window.context_token_label.isVisible()
+        assert not window.context_token_label.isHidden()
         assert window.context_token_label.text() == "tokens sys 1.2k | hist 3.4k | tools 560 | total 5.2k"
 
     def test_dialog_update_signal_to_window(self, qtbot):

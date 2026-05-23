@@ -386,11 +386,18 @@ class LLMManager:
         if len(text) <= self.max_tool_result_chars:
             return text
 
+        head_chars = max(1, self.max_tool_result_chars // 2)
+        tail_chars = max(0, self.max_tool_result_chars - head_chars)
+        head = text[:head_chars]
+        tail = text[-tail_chars:] if tail_chars else ""
+        omitted_chars = max(0, len(text) - len(head) - len(tail))
         return json.dumps(
             {
                 "truncated": True,
                 "original_chars": len(text),
-                "preview": text[: self.max_tool_result_chars],
+                "omitted_chars": omitted_chars,
+                "head": head,
+                "tail": tail,
             },
             ensure_ascii=False,
         )
@@ -399,7 +406,7 @@ class LLMManager:
         if self.max_context_tokens <= 0:
             return None
         threshold_budget = int(self.max_context_tokens * self.compact_manager.compact_threshold)
-        return min(threshold_budget, 30000)
+        return min(threshold_budget, 50000)
 
     def _trim_loaded_history_if_needed(self, messages: list[dict]) -> list[dict]:
         budget = self._history_load_budget()
@@ -412,22 +419,6 @@ class LLMManager:
             token_budget=budget,
             recent_message_limit=self.history_recent_messages,
         )
-
-    def _drop_loaded_tool_payloads(self) -> None:
-        """Remove historical tool payloads before they become prompt history."""
-        pruned_messages: list[dict] = []
-        for message in self.messages:
-            if message.get("role") == "tool":
-                continue
-            if message.get("role") == "assistant" and message.get("tool_calls"):
-                message = dict(message)
-                message.pop("tool_calls", None)
-                content = str(message.get("content") or "")
-                reasoning = str(message.get("reasoning_content") or "")
-                if not content.strip() and not reasoning.strip():
-                    continue
-            pruned_messages.append(message)
-        self.messages = pruned_messages
 
     def _estimate_context_tokens(self, tools_defs: list[dict] | None) -> dict[str, int]:
         messages = self.get_messages()
@@ -525,7 +516,6 @@ class LLMManager:
         """Sets the conversation history to a new list of messages."""
         if isinstance(new_messages, list):
             self.messages = list(new_messages)
-            self._drop_loaded_tool_payloads()
             self._strip_orphaned_tool_calls()
             self.messages = self._trim_loaded_history_if_needed(self.messages)
             self.compact_manager.set_token_count(self.compact_manager.count_tokens(self.messages))

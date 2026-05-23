@@ -2,7 +2,14 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from pydantic import ValidationError
-from config.schema import AppConfig, Character, ApiConfig, SystemConfig, Background
+from config.schema import (
+    AppConfig,
+    Character,
+    ApiConfig,
+    SystemConfig,
+    Background,
+    clamp_compact_target_ratio,
+)
 from llm.constants import LLM_BASE_URLS
 import traceback
 
@@ -239,7 +246,10 @@ class ConfigManager:
         current_api_config.tts_split_enabled = bool(tts_split_enabled)
         current_api_config.tts_max_sentence_length = int(tts_max_sentence_length)
         current_api_config.compact_threshold = float(compact_threshold)
-        current_api_config.compact_target_ratio = float(compact_target_ratio)
+        current_api_config.compact_target_ratio = clamp_compact_target_ratio(
+            current_api_config.compact_threshold,
+            compact_target_ratio,
+        )
         current_api_config.history_recent_messages = int(history_recent_messages)
         current_api_config.max_tool_result_chars = int(max_tool_result_chars)
         current_api_config.max_active_tool_groups = int(max_active_tool_groups)

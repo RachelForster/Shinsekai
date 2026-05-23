@@ -85,6 +85,11 @@ class TestApiConfig:
         assert ac.llm_provider == "ChatGPT"
         assert ac.llm_api_key["ChatGPT"] == "sk-xxx"
 
+    def test_compact_target_ratio_is_clamped_below_threshold(self):
+        ac = ApiConfig(compact_threshold=0.4, compact_target_ratio=0.39)
+
+        assert ac.compact_target_ratio == pytest.approx(0.35)
+
 
 class TestAppConfig:
     def test_valid_app_config(self, sample_app_config):
