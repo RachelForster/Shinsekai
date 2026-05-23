@@ -333,6 +333,8 @@ if __name__ == "__main__":
     init_i18n(ConfigManager().config.system_config.ui_language)
     app = QApplication(sys.argv)
     apply_pydracula_dark(app)
+    from ui.event_filters import install_no_wheel_filter
+    install_no_wheel_filter(app)
     icon = _SETTINGS_UI_DIR / "images" / "icons" / "icon_settings.png"
     if icon.is_file():
         app.setWindowIcon(QIcon(str(icon)))

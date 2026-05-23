@@ -1519,6 +1519,8 @@ def start_qt_app(display_queue, emotion_queue, deepseek):
     init_i18n(config_manager.config.system_config.ui_language)
     app = QApplication(sys.argv)
     ensure_fusion_style(app)
+    from ui.event_filters import install_no_wheel_filter
+    install_no_wheel_filter(app)
     window = ChatUIWindow(display_queue, emotion_queue, deepseek)
     print("ChatUI (PySide6) window starts")
     window.show()

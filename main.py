@@ -289,6 +289,8 @@ def main():
 
     app = QApplication([])
     ensure_fusion_style(app)
+    from ui.event_filters import install_no_wheel_filter
+    install_no_wheel_filter(app)
     ui_updates = UIUpdateManager(chat_history=chat_history, bg_group=bg_group or [])
     window = ChatUIWindow(
         image_queue,

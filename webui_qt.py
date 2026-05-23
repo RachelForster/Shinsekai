@@ -59,6 +59,8 @@ def main() -> None:
 
     app = QApplication(sys.argv)
     apply_pydracula_dark(app)
+    from ui.event_filters import install_no_wheel_filter
+    install_no_wheel_filter(app)
     pix = QPixmap(440, 120)
     pix.fill(Qt.GlobalColor.darkGray)
     splash = QSplashScreen(pix, Qt.WindowType.WindowStaysOnTopHint)
