@@ -603,7 +603,7 @@ class LLMManager:
                             full_tool_calls[tc.index] = tc
                         elif tc.function and tc.function.arguments:
                             if full_tool_calls[tc.index].function.arguments is None:
-                                full_tool_calls[tc.index].arguments = ""
+                                full_tool_calls[tc.index].function.arguments = ""
                             full_tool_calls[tc.index].function.arguments += tc.function.arguments
                 r_part = getattr(delta, "reasoning_content", None)
                 if r_part:
