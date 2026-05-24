@@ -85,6 +85,9 @@ class TTSManager:
         if not ref_audio_path:
             print("No reference audio provided")
             return ''
+        if self.tts_adapter is None:
+            print("No TTS adapter configured")
+            return ''
 
         # The adapter handles the specifics of the TTS generation
         file_path = str(self.audio_cache_dir / f"{self.index % self.cache_num}.wav")

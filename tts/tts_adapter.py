@@ -5,6 +5,7 @@ import requests
 import threading
 import queue
 import base64
+import json
 import math
 import wave
 import array
@@ -299,6 +300,52 @@ class GenieTTSAdapter(TTSAdapter):
         self._server_process = None
         self._start_server_process()
 
+    @staticmethod
+    def _normalize_language(language: str | None) -> str:
+        raw = str(language or "").strip().lower().replace("_", "-")
+        if raw in {"ja", "jp", "jpn", "japanese"}:
+            return "jp"
+        if raw in {"zh-cn", "zh-hans", "cn", "chinese", "yue"}:
+            return "zh"
+        if raw in {"ko", "kr", "kor", "korean"}:
+            return "kr"
+        if raw in {"en-us", "en-gb", "eng", "english"}:
+            return "en"
+        return raw or "zh"
+
+    def _endpoint_url(self, endpoint: str) -> str:
+        return self.tts_server_url + endpoint.strip("/")
+
+    def _post_json_candidates(self, endpoints, payload, *, timeout=20, stream=False):
+        errors = []
+        candidates = [endpoint.strip("/") for endpoint in endpoints if str(endpoint or "").strip("/")]
+        for index, endpoint in enumerate(candidates):
+            url = self._endpoint_url(endpoint)
+            try:
+                response = requests.post(url, json=payload, stream=stream, timeout=timeout)
+            except requests.RequestException as exc:
+                errors.append(f"{endpoint}: {exc}")
+                continue
+
+            if response.status_code == 404 and index + 1 < len(candidates):
+                errors.append(f"{endpoint}: HTTP 404")
+                response.close()
+                continue
+
+            try:
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                detail = ""
+                try:
+                    detail = response.text.strip()
+                except Exception:
+                    detail = ""
+                response.close()
+                suffix = f": {detail}" if detail else ""
+                raise RuntimeError(f"{endpoint}: HTTP {response.status_code}{suffix}") from exc
+            return response
+        raise RuntimeError("; ".join(errors) or f"No Genie TTS endpoint available: {candidates}")
+
     def stop_server(self) -> None:
         if self._server_process is not None:
             try:
@@ -467,11 +514,14 @@ class GenieTTSAdapter(TTSAdapter):
         print("Genie TTS server start timeout, continue and retry on request.")
 
     def _is_server_alive(self):
-        try:
-            response = requests.post(self.tts_server_url + "stop", timeout=1.5)
-            return response.status_code in (200, 204, 405)
-        except Exception:
-            return False
+        for endpoint in ("", "docs", "openapi.json"):
+            try:
+                response = requests.get(self._endpoint_url(endpoint), timeout=1.5)
+                response.close()
+                return response.status_code < 500
+            except Exception:
+                continue
+        return False
 
     def _load_character_model(self, language="ja"):
         """Load the character model via Genie TTS HTTP API."""
@@ -483,10 +533,10 @@ class GenieTTSAdapter(TTSAdapter):
             payload = {
                 "character_name": encoded_character_name,
                 "onnx_model_dir": self.onnx_model_dir,
-                "language": language
+                "language": self._normalize_language(language)
             }
-            response = requests.post(self.tts_server_url + "load_character", json=payload, timeout=20)
-            response.raise_for_status()
+            response = self._post_json_candidates(("load_character", "api/load_character"), payload, timeout=20)
+            response.close()
             self.loaded_character_name = self.character_name
             print(f"Genie TTS character '{self.character_name}' loaded successfully.")
         except Exception as e:
@@ -515,7 +565,7 @@ class GenieTTSAdapter(TTSAdapter):
         
         ref_audio_path = kwargs.get('ref_audio_path')
         audio_text = kwargs.get('prompt_text')
-        audio_lang = kwargs.get('prompt_lang') or kwargs.get('text_lang') or "zh"
+        audio_lang = self._normalize_language(kwargs.get('prompt_lang') or kwargs.get('text_lang') or "zh")
         print(f"Genie TTS generate_speech called with character='{self.character_name}', audio_lang='{audio_lang}'")
         reference_audio_key = f"{ref_audio_path}|{audio_text}|{audio_lang}"
         encoded_character_name = self._encode_name(self.character_name)
@@ -533,8 +583,8 @@ class GenieTTSAdapter(TTSAdapter):
                     "audio_text": audio_text,
                     "language": audio_lang
                 }
-                response = requests.post(self.tts_server_url + "set_reference_audio", json=payload, timeout=20)
-                response.raise_for_status()
+                response = self._post_json_candidates(("set_reference_audio", "api/set_reference_audio"), payload, timeout=20)
+                response.close()
                 self.reference_audio_key = reference_audio_key
                 print("Genie TTS reference audio set successfully.")
             except Exception as e:
@@ -550,11 +600,27 @@ class GenieTTSAdapter(TTSAdapter):
             payload = {
                 "character_name": encoded_character_name,
                 "text": text,
+                "save_path": abs_file_path,
                 "split_sentence": False,
             }
-            with requests.post(self.tts_server_url + "tts", json=payload, stream=True, timeout=120) as response:
-                response.raise_for_status()
+            with self._post_json_candidates(("tts", "api/tts", "v1/tts"), payload, stream=True, timeout=120) as response:
+                content_type = response.headers.get("Content-Type", "")
                 chunks = [chunk for chunk in response.iter_content(chunk_size=4096) if chunk]
+
+            if self._is_valid_wav_file(abs_file_path):
+                print("Genie TTS audio generation complete.")
+                return abs_file_path
+
+            if "json" in content_type.lower():
+                try:
+                    data = json.loads(b"".join(chunks).decode("utf-8"))
+                    returned_path = str(data.get("path") or data.get("save_path") or data.get("file_path") or "").strip()
+                    if returned_path and self._is_valid_wav_file(returned_path):
+                        return os.path.abspath(returned_path)
+                except Exception:
+                    pass
+                print("Genie TTS returned JSON but no usable WAV path.")
+                return None
 
             if not chunks:
                 print("Genie TTS returned empty audio stream.")

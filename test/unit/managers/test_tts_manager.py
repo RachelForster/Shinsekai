@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tts.tts_manager import TTSManager, TTSAdapterFactory
+from tts.tts_adapter import GenieTTSAdapter
 from test.mocks import MockTTSAdapter
 
 
@@ -27,6 +28,13 @@ class TestTTSAdapterFactoryRegistry:
             assert isinstance(adapter, MockTTSAdapter)
         finally:
             del TTSAdapterFactory._adapters["mock-tts"]
+
+
+class TestGenieTTSAdapter:
+    def test_language_codes_match_genie_api(self):
+        assert GenieTTSAdapter._normalize_language("ja") == "jp"
+        assert GenieTTSAdapter._normalize_language("zh_CN") == "zh"
+        assert GenieTTSAdapter._normalize_language("ko") == "kr"
 
 
 class TestTTSManagerWithMock:
@@ -56,6 +64,19 @@ class TestTTSManagerWithMock:
         call = mock_tts_adapter.call_history[0]
         assert call["text"] == "Hello world"
         assert call["kwargs"]["character_name"] == "TestChar"
+        mgr.shutdown()
+
+    def test_generate_tts_uses_platform_cache_path(self, mock_tts_adapter, tmp_path):
+        mgr = TTSManager()
+        mgr.set_tts_adapter(mock_tts_adapter)
+
+        ref_audio = tmp_path / "ref.wav"
+        ref_audio.write_text("fake ref")
+
+        mgr.generate_tts(text="Hello", ref_audio_path=str(ref_audio))
+
+        call = mock_tts_adapter.call_history[0]
+        assert Path(call["file_path"]).parts[-3:] == ("cache", "audio", "0.wav")
         mgr.shutdown()
 
     def test_generate_tts_no_ref_audio_returns_empty(self, mock_tts_adapter):
