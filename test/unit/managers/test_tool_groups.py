@@ -236,7 +236,7 @@ class TestLRUGroupManagement:
         mgr = LLMManager(adapter=adapter, max_tokens=128000)
         assert mgr._active_tool_groups == ["default"]
         assert hasattr(mgr, "_max_active_groups")
-        assert mgr._max_active_groups == 5
+        assert mgr._max_active_groups == 3
 
     def test_search_tools_expands_groups(self):
         """Simulate what happens when search_tools is called in chat."""
@@ -318,6 +318,19 @@ class TestLRUGroupManagement:
 
         assert "new_group" in mgr._active_tool_groups
         assert len(mgr._active_tool_groups) == 3
+
+    def test_lru_keeps_default_group_when_limit_is_two(self):
+        """Even with a tight group budget, default remains available."""
+        from llm.llm_manager import LLMManager
+        from test.mocks import MockLLMAdapter
+
+        adapter = MockLLMAdapter(responses=[""])
+        mgr = LLMManager(adapter=adapter, max_tokens=128000, max_active_tool_groups=2)
+        mgr._active_tool_groups = ["memory", "default"]
+
+        mgr._activate_tool_group("file")
+
+        assert mgr._active_tool_groups == ["file", "default"]
 
     def test_tool_manager_execute_returns_grouped(self):
         tm = _reset_tm()

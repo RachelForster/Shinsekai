@@ -263,11 +263,21 @@
       "tt_temp": "0～2，越高越发散",
       "tt_rep": "部分端不支持则忽略",
       "tt_maxctx": "0 可表示不限制，依后端为准",
+      "tt_compact_threshold": "估算历史达到该上下文占比时触发压缩",
+      "tt_compact_target": "压缩后的目标上下文占比",
+      "tt_history_recent": "加载或压缩历史时保留的最近消息数",
+      "tt_tool_result": "单次工具结果写入历史的最大字符数",
+      "tt_tool_groups": "每轮请求携带的最大活跃工具组数量",
       "l_temp": "temperature",
       "l_rep": "repetition_penalty",
       "l_presence": "presence_penalty",
       "l_freq": "frequency_penalty",
-      "l_maxctx": "最大上下文 token"
+      "l_maxctx": "最大上下文 token",
+      "l_compact_threshold": "压缩阈值",
+      "l_compact_target": "压缩目标",
+      "l_history_recent": "最近历史消息数",
+      "l_tool_result": "工具结果字符数",
+      "l_tool_groups": "活跃工具组"
     },
     "tts": {
       "hint": "不念台词可留空。需要时填写 API 与本地/整合包路径。Genie TTS 偏 CPU；GPT SoVITS 偏 GPU。可用上方「一键下载并解压」获取整合包；若一键失败，请手动下载并解压，地址见下方折叠项「资源与说明」。",

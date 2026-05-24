@@ -208,6 +208,8 @@ class TestUISignalFlow:
             max_sprite_slots=1,
         )
         qtbot.addWidget(window)
+        window.show()
+        qtbot.waitExposed(window)
 
         ui = UIUpdateManager(chat_history=[], bg_group=[])
         connect_to_desktop_window(ui, window)
@@ -220,12 +222,21 @@ class TestUISignalFlow:
         ui.post_options(["Option A", "Option B"])
         # Emit numeric value
         ui.post_numeric_value("HP: 100")
+        # Emit context token estimate
+        ui.post_context_token_estimate({
+            "system_prompt_tokens": 1200,
+            "history_tokens": 3400,
+            "tool_definition_tokens": 560,
+            "estimated_total_tokens": 5160,
+        })
 
         # Signals are queued; flush with processEvents
         QApplication.processEvents()
 
         # Verify the UI received them — window state updated
         assert window.current_options == ["Option A", "Option B"]
+        assert not window.context_token_label.isHidden()
+        assert window.context_token_label.text() == "tokens sys 1.2k | hist 3.4k | tools 560 | total 5.2k"
 
     def test_dialog_update_signal_to_window(self, qtbot):
         """update_dialog signal renders text in the chat display."""

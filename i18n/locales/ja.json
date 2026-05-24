@@ -263,11 +263,21 @@
       "tt_temp": "0～2。高いほど多様",
       "tt_rep": "非対応のバックエンドでは無視",
       "tt_maxctx": "0 は無制限の意味の場合も（バックエンド依存）",
+      "tt_compact_threshold": "推定履歴がこのコンテキスト比率に達したら圧縮します",
+      "tt_compact_target": "圧縮後の目標コンテキスト比率",
+      "tt_history_recent": "履歴読み込み/圧縮時に残す直近メッセージ数",
+      "tt_tool_result": "1 回のツール結果を履歴に保存する最大文字数",
+      "tt_tool_groups": "1 回のリクエストに含める最大アクティブツールグループ数",
       "l_temp": "temperature",
       "l_rep": "repetition_penalty",
       "l_presence": "presence_penalty",
       "l_freq": "frequency_penalty",
-      "l_maxctx": "最大コンテキスト token"
+      "l_maxctx": "最大コンテキスト token",
+      "l_compact_threshold": "圧縮しきい値",
+      "l_compact_target": "圧縮目標",
+      "l_history_recent": "直近履歴メッセージ",
+      "l_tool_result": "ツール結果文字数",
+      "l_tool_groups": "アクティブツールグループ"
     },
     "tts": {
       "hint": "台詞不要なら空欄。API とローカル/統合パスを必要に応じて。Genie TTS＝CPU 寄り、GPT SoVITS＝GPU 寄り。上の一括ダウンロードが使えます。失敗した場合は手動取得し、折りたたみの「リソース」内リンクを参照してください。",

@@ -62,6 +62,37 @@ def register_api_tab(ctx: WebUIContext) -> None:
                         value=int(ctx.config_manager.config.api_config.max_context_tokens),
                         precision=0,
                     )
+                    compact_threshold = gr.Slider(
+                        minimum=0.05,
+                        maximum=0.95,
+                        value=float(ctx.config_manager.config.api_config.compact_threshold),
+                        step=0.05,
+                        label="compact_threshold",
+                    )
+                    compact_target_ratio = gr.Slider(
+                        minimum=0.05,
+                        maximum=0.90,
+                        value=float(ctx.config_manager.config.api_config.compact_target_ratio),
+                        step=0.05,
+                        label="compact_target_ratio",
+                    )
+                    history_recent_messages = gr.Number(
+                        label="history_recent_messages",
+                        value=int(ctx.config_manager.config.api_config.history_recent_messages),
+                        precision=0,
+                    )
+                    max_tool_result_chars = gr.Number(
+                        label="max_tool_result_chars",
+                        value=int(ctx.config_manager.config.api_config.max_tool_result_chars),
+                        precision=0,
+                    )
+                    max_active_tool_groups = gr.Number(
+                        label="max_active_tool_groups",
+                        value=int(ctx.config_manager.config.api_config.max_active_tool_groups),
+                        precision=0,
+                    )
+                    tts_split_state = gr.State(bool(ctx.config_manager.config.api_config.tts_split_enabled))
+                    tts_max_sentence_state = gr.State(int(ctx.config_manager.config.api_config.tts_max_sentence_length))
             with gr.Column():
                 api_output = gr.Textbox(label="输出信息", interactive=False)
         with gr.Row():
@@ -181,6 +212,13 @@ def register_api_tab(ctx: WebUIContext) -> None:
                 presence_penalty,
                 frequency_penalty,
                 max_context_tokens,
+                tts_split_state,
+                tts_max_sentence_state,
+                compact_threshold,
+                compact_target_ratio,
+                history_recent_messages,
+                max_tool_result_chars,
+                max_active_tool_groups,
             ],
             outputs=api_output,
         )

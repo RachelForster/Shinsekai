@@ -60,6 +60,69 @@ class TestLLMManagerMessageManagement:
         mgr.set_messages(new_msgs)
         assert mgr.messages == new_msgs
 
+    def test_set_messages_trims_over_budget_history_without_llm_call(self, mock_llm_adapter):
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            max_tokens=200,
+            compact_threshold=0.4,
+            history_recent_messages=4,
+        )
+        history = [{"role": "system", "content": "System prompt"}]
+        for i in range(20):
+            history.append({"role": "user", "content": f"question {i} " + ("x" * 120)})
+            history.append({"role": "assistant", "content": f"answer {i} " + ("y" * 120)})
+
+        mgr.set_messages(history)
+
+        assert mock_llm_adapter.call_history == []
+        assert mgr.messages[0]["role"] == "system"
+        assert len(mgr.messages) < len(history)
+        assert any("历史" in m.get("content", "") for m in mgr.messages)
+        assert mgr.messages[-1]["content"].startswith("answer 19")
+
+    def test_set_messages_preserves_loaded_tool_payloads(self, mock_llm_adapter):
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+        history = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "read a file"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "file_read", "arguments": "{}"},
+                }],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_1",
+                "name": "file_read",
+                "content": "x" * 10000,
+            },
+            {
+                "role": "assistant",
+                "content": "I found the answer.",
+                "tool_calls": [{
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {"name": "memory_search", "arguments": "{}"},
+                }],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_2",
+                "name": "memory_search",
+                "content": "y" * 10000,
+            },
+        ]
+
+        mgr.set_messages(history)
+
+        assert mock_llm_adapter.call_history == []
+        assert mgr.messages == history
+
     def test_set_adapter_switches_and_resets(self, mock_llm_adapter):
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
         mgr.add_message("user", "Hello")
@@ -73,6 +136,34 @@ class TestLLMManagerMessageManagement:
 
 
 class TestLLMManagerCompact:
+    def test_default_token_budget_settings(self, mock_llm_adapter):
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+
+        assert mgr.compact_manager.compact_threshold == 0.4
+        assert mgr.compact_manager.compact_target_ratio == 0.3
+        assert mgr.compact_manager.recent_message_limit == 20
+        assert mgr._max_active_groups == 3
+
+    def test_history_load_budget_caps_at_50k(self, mock_llm_adapter):
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            max_tokens=200000,
+            compact_threshold=0.4,
+        )
+
+        assert mgr._history_load_budget() == 50000
+
+    def test_compact_target_ratio_is_clamped_below_threshold(self, mock_llm_adapter):
+        cm = CompactManager(
+            mock_llm_adapter,
+            max_tokens=100000,
+            compact_threshold=0.4,
+            compact_target_ratio=0.39,
+        )
+
+        assert cm.compact_target_ratio == 0.35
+
     def test_auto_compact_triggers_when_threshold_exceeded(self, mock_llm_adapter):
         """With low threshold and high token count, auto-compact fires on add_message."""
         mock_llm_adapter.responses = ["Summary: compacted conversation about testing."]
@@ -107,20 +198,59 @@ class TestLLMManagerCompact:
         """CompactManager.needs_compaction returns True with high tokens."""
         mock_llm_adapter.responses = ["Compacted."]
         cm = CompactManager(mock_llm_adapter, max_tokens=100, compact_threshold=0.1)
-        cm.set_token_count(90)
-        needs = cm.needs_compaction([{"role": "user", "content": "Extra message"}])
+        needs = cm.needs_compaction([{"role": "user", "content": "Extra message " * 80}])
         assert needs is True
 
     def test_compact_manager_with_high_threshold(self, mock_llm_adapter):
         cm = CompactManager(mock_llm_adapter, max_tokens=100000, compact_threshold=0.95)
-        cm.set_token_count(100)
         needs = cm.needs_compaction([{"role": "user", "content": "Short"}])
         assert needs is False
+
+    def test_count_tokens_includes_tool_call_payloads(self, mock_llm_adapter):
+        cm = CompactManager(mock_llm_adapter, max_tokens=100000)
+        base = [{"role": "assistant", "content": ""}]
+        with_tool_call = [{
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": {
+                    "name": "file_read",
+                    "arguments": json.dumps({"path": "x.txt", "max_chars": 5000}),
+                },
+            }],
+        }]
+
+        assert cm.count_tokens(with_tool_call) > cm.count_tokens(base)
+
+    def test_compact_failure_falls_back_to_bounded_history(self, mock_llm_adapter):
+        def _fail(*args, **kwargs):
+            raise RuntimeError("summary failed")
+
+        mock_llm_adapter.chat = _fail
+        cm = CompactManager(
+            mock_llm_adapter,
+            max_tokens=500,
+            compact_threshold=0.4,
+            recent_message_limit=4,
+        )
+        messages = [{"role": "system", "content": "S"}]
+        for i in range(10):
+            messages.append({"role": "user", "content": f"Q{i} " + ("x" * 100)})
+            messages.append({"role": "assistant", "content": f"A{i} " + ("y" * 100)})
+
+        result = cm.compact_messages(messages)
+
+        assert result[0]["role"] == "system"
+        assert len(result) < len(messages)
+        assert any("历史" in m.get("content", "") for m in result)
+        assert result[-1]["content"].startswith("A9")
 
     def test_compact_messages_preserves_system(self, mock_llm_adapter):
         """CompactManager.compact_messages keeps system message and produces fewer messages."""
         mock_llm_adapter.responses = ["A summary of the test conversation."]
-        cm = CompactManager(mock_llm_adapter, max_tokens=10000, compact_threshold=0.5)
+        cm = CompactManager(mock_llm_adapter, max_tokens=10000, compact_threshold=0.5, recent_message_limit=3)
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "Q1: What is Python?"},
@@ -133,6 +263,47 @@ class TestLLMManagerCompact:
         result = cm.compact_messages(messages)
         assert result[0]["role"] == "system"
         assert len(result) < len(messages)
+
+    def test_add_message_persists_same_length_compaction(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Condensed old turn."]
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            max_tokens=10000,
+            compact_threshold=0.01,
+            history_recent_messages=1,
+        )
+        mgr.messages = [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "old " + ("x" * 1000)},
+        ]
+
+        mgr.add_message("assistant", "latest")
+
+        assert len(mgr.messages) == 3
+        assert "历史对话总结" in mgr.messages[1]["content"]
+        assert mgr.messages[-1]["content"] == "latest"
+
+    def test_compact_messages_handles_short_but_over_budget_history(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Condensed short history."]
+        cm = CompactManager(
+            mock_llm_adapter,
+            max_tokens=10000,
+            compact_threshold=0.01,
+            recent_message_limit=20,
+        )
+        messages = [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "large old message " + ("x" * 1000)},
+            {"role": "assistant", "content": "latest"},
+        ]
+
+        result = cm.compact_messages(messages)
+
+        assert result[0]["role"] == "system"
+        assert "历史对话总结" in result[1]["content"]
+        assert result[-1]["content"] == "latest"
+        assert result != messages
 
     def test_compact_messages_too_few_returns_unchanged(self, mock_llm_adapter):
         cm = CompactManager(mock_llm_adapter, max_tokens=1000, compact_threshold=0.5)
@@ -244,6 +415,57 @@ class TestLLMManagerToolCalling:
         assert tool["type"] == "function"
         assert "name" in tool["function"]
         assert "description" in tool["function"]
+
+    def test_prepare_tool_result_truncates_long_history_payload(self, mock_llm_adapter):
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            max_tool_result_chars=80,
+        )
+
+        result = mgr._prepare_tool_result_for_history("x" * 200)
+        parsed = json.loads(result)
+
+        assert parsed["truncated"] is True
+        assert parsed["original_chars"] == 200
+        assert parsed["omitted_chars"] == 120
+        assert parsed["head"] == "x" * 40
+        assert parsed["tail"] == "x" * 40
+
+    def test_chat_records_token_estimate_and_resets_tool_groups_sync(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Response."]
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="System")
+        mgr._active_tool_groups = ["memory", "default"]
+
+        mgr.chat("Hello", stream=False, include_local_time=False)
+
+        estimate = mgr.get_context_token_estimate()
+        assert estimate["system_prompt_tokens"] > 0
+        assert estimate["history_tokens"] > 0
+        assert "tool_definition_tokens" in estimate
+        assert "estimated_total_tokens" in estimate
+        assert mgr._active_tool_groups == ["default"]
+
+    def test_chat_posts_token_estimate_to_runtime_ui(self, mock_app_runtime):
+        mgr = mock_app_runtime.llm_manager
+
+        mgr.chat("Hello", stream=False, include_local_time=False)
+
+        mock_app_runtime.ui_update_manager.post_context_token_estimate.assert_called_once()
+        estimate = mock_app_runtime.ui_update_manager.post_context_token_estimate.call_args.args[0]
+        assert "system_prompt_tokens" in estimate
+        assert "history_tokens" in estimate
+        assert "tool_definition_tokens" in estimate
+        assert "estimated_total_tokens" in estimate
+
+    def test_chat_resets_tool_groups_stream_after_consumed(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Response."]
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="System")
+        mgr._active_tool_groups = ["memory", "default"]
+
+        list(mgr.chat("Hello", stream=True, include_local_time=False))
+
+        assert mgr._active_tool_groups == ["default"]
 
     def test_register_mcp_tools(self):
         tm = ToolManager()
