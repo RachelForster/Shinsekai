@@ -252,12 +252,6 @@ class PluginManager:
             return []
         return self._capabilities.chat_ui_contributions
 
-    def collect_dag_node_factories(self) -> list[tuple[Callable[[], list], bool]]:
-        self._ensure_plugins_initialized()
-        if self._capabilities is None:
-            return []
-        return self._capabilities.dag_node_factories
-
     def collect_dag_yaml_paths(self) -> list[str]:
         self._ensure_plugins_initialized()
         if self._capabilities is None:

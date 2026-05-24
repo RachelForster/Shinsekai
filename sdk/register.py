@@ -131,7 +131,6 @@ class PluginCapabilityRegistry:
         self._settings_ui_plugin_ctx: tuple[str, str] | None = None
         self._tools_tab_contributions: list[ToolsTabContribution] = []
         self._chat_ui_contributions: list[ChatUIContribution] = []
-        self._dag_node_factories: list[tuple[Callable[[], list], bool]] = []
         self._workflow_contributions: list[WorkflowContribution] = []
         self._output_contract_patches: list[OutputContractPatch] = []
 
@@ -204,21 +203,6 @@ class PluginCapabilityRegistry:
     def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:
         self._chat_ui_contributions.append(contribution)
 
-    def register_dag_node(
-        self,
-        factory: Callable[[], list],
-        *,
-        skip_default: bool = False,
-    ) -> None:
-        """Register DAG node candidates for plugin tooling.
-
-        Runtime workflow execution no longer auto-merges registered nodes.
-        Users select exactly one workflow YAML, and that YAML references node
-        classes directly by dotted import path. ``skip_default`` is kept for
-        compatibility and is not used by the runtime builder.
-        """
-        self._dag_node_factories.append((factory, skip_default))
-
     def register_dag_yaml(self, path: str) -> None:
         """Register a workflow YAML path.
 
@@ -290,10 +274,6 @@ class PluginCapabilityRegistry:
     @property
     def chat_ui_contributions(self) -> list[ChatUIContribution]:
         return sorted(self._chat_ui_contributions, key=lambda c: c.order)
-
-    @property
-    def dag_node_factories(self) -> list[tuple[Callable[[], list], bool]]:
-        return list(self._dag_node_factories)
 
     @property
     def dag_yaml_paths(self) -> list[str]:

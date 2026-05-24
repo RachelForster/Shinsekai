@@ -34,7 +34,6 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
 | `register_workflow`             | Workflow with optional output contract/schema              |
 | `register_output_contract_patch` | Patch an LLM output contract (fields, requirements, …)     |
-| `register_dag_node`             | DAG node candidates for plugin tooling                     |
 
 
 **Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
