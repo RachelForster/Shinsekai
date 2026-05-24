@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from llm.template_generator import TRANSPARENT_BG
@@ -15,6 +16,7 @@ from ui.settings_ui.feedback import is_failure_message
 from i18n import tr as tr_i18n
 
 _main_chat_process = None
+_main_chat_log_file = None
 
 # 模板文件分节（保存到 .txt）；无标记的旧文件解析为 (全文, "")。
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
@@ -167,6 +169,57 @@ def _release_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent.parent
 
 
+def _chat_log_path() -> Path:
+    root = _release_root()
+    log_dir = root / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir / "main.log"
+
+
+def _tail_text(path: Path, max_chars: int = 2400) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+def _close_chat_log_if_needed() -> None:
+    global _main_chat_log_file
+    if _main_chat_log_file is not None:
+        try:
+            _main_chat_log_file.close()
+        except OSError:
+            pass
+        _main_chat_log_file = None
+
+
+def _popen_chat_process(cmd: list[str], *, cwd: Path) -> tuple[subprocess.Popen, Path]:
+    global _main_chat_log_file
+    _close_chat_log_if_needed()
+    log_path = _chat_log_path()
+    _main_chat_log_file = log_path.open("a", encoding="utf-8", buffering=1)
+    _main_chat_log_file.write(
+        "\n"
+        + "=" * 60
+        + f"\n{datetime.now().isoformat(sep=' ', timespec='seconds')}  main.py launch\n"
+        + f"cwd: {cwd}\n"
+        + f"cmd: {' '.join(cmd)}\n"
+    )
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(cwd),
+        stdout=_main_chat_log_file,
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
+    return proc, log_path
+
+
 def launch_chat(
     ctx: SettingsUIContext,
     user_scenario: str,
@@ -180,6 +233,9 @@ def launch_chat(
     global _main_chat_process
     print("启动聊天，使用模板:")
     try:
+        if _main_chat_process is not None and _main_chat_process.poll() is not None:
+            _close_chat_log_if_needed()
+
         template = compose_for_llm(user_scenario, system_template)
 
         dest_path = os.path.join(ctx.template_dir_path, "_temp.txt")
@@ -228,12 +284,12 @@ def launch_chat(
                 ms = root / "main" / "main.exe"
                 flat = root / "main.exe"
                 if ms.is_file():
-                    _main_chat_process = subprocess.Popen(
-                        [str(ms)] + args, cwd=str(root)
+                    _main_chat_process, log_path = _popen_chat_process(
+                        [str(ms)] + args, cwd=root
                     )
                 elif flat.is_file():
-                    _main_chat_process = subprocess.Popen(
-                        [str(flat)] + args, cwd=str(root)
+                    _main_chat_process, log_path = _popen_chat_process(
+                        [str(flat)] + args, cwd=root
                     )
                 else:
                     return (
@@ -241,13 +297,25 @@ def launch_chat(
                         f"已检查 {ms} 与 {flat}）。请按 packaging 脚本的发行目录结构部署。"
                     )
             else:
-                _main_chat_process = subprocess.Popen(
+                _main_chat_process, log_path = _popen_chat_process(
                     [sys.executable, str(root / "main.py")] + args,
-                    cwd=str(root),
+                    cwd=root,
                 )
-            return "聊天进程已启动！PID: " + str(_main_chat_process.pid)
+            try:
+                exit_code = _main_chat_process.wait(timeout=1.2)
+            except subprocess.TimeoutExpired:
+                return (
+                    "聊天进程已启动！PID: "
+                    + str(_main_chat_process.pid)
+                    + f"\n日志: {log_path}"
+                )
+            _close_chat_log_if_needed()
+            tail = _tail_text(log_path).strip()
+            detail = f"\n\n日志尾部:\n{tail}" if tail else ""
+            return f"启动失败: 聊天进程已退出，退出码 {exit_code}。\n日志: {log_path}{detail}"
         return "进程已经在运行中！PID: " + str(_main_chat_process.pid)
     except Exception as e:
+        _close_chat_log_if_needed()
         print("启动模版失败：", e)
         return f"启动失败: {e}"
 
@@ -259,7 +327,9 @@ def stop_chat() -> str:
         _main_chat_process.wait()
         pid = _main_chat_process.pid
         _main_chat_process = None
+        _close_chat_log_if_needed()
         return f"进程 {pid} 已停止！"
+    _close_chat_log_if_needed()
     return "没有正在运行的进程！"
 
 
