@@ -104,14 +104,14 @@ class BackgroundSettingsTab(QWidget):
         self._community_bg_btn.setToolTip(tr_i18n("bg.community_btn"))
         self._community_bg_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(
-                QUrl("https://shinsekai.end0rph1n.icu/resources")
+                QUrl("https://rachelforster.github.io/Shinsekai/resources.html?type=background")
             )
         )
         self._upload_bg_btn = QPushButton(tr_i18n("bg.upload_btn"))
         self._upload_bg_btn.setToolTip(tr_i18n("bg.upload_btn"))
         self._upload_bg_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(
-                QUrl("https://shinsekai.end0rph1n.icu/resources")
+                QUrl("https://wj.qq.com/s2/26616089/b61a/")
             )
         )
         community_row.addWidget(self._community_bg_btn)
