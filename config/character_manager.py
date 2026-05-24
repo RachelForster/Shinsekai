@@ -182,6 +182,26 @@ class CharacterManager:
 
         characters = self._config_manager.config.characters
 
+        # check sprite_prefix collision (unique per-character upload directory)
+        _prefix = (sprite_prefix or "").strip()
+        if _prefix:
+            for c in characters:
+                _c_prefix = (c.sprite_prefix or "").strip()
+                if not _c_prefix or _prefix != _c_prefix:
+                    continue
+                # editing: new prefix must not collide with *other* characters
+                if edit_as_name and str(edit_as_name).strip():
+                    if c.name != str(edit_as_name).strip():
+                        return (
+                            f"立绘目录名「{_prefix}」已被角色「{c.name}」占用！",
+                            current_names,
+                        )
+                else:
+                    return (
+                        f"立绘目录名「{_prefix}」已被角色「{c.name}」占用！",
+                        current_names,
+                    )
+
         if edit_as_name and str(edit_as_name).strip():
             target = self._config_manager.get_character_by_name(str(edit_as_name).strip())
             if target is not None:

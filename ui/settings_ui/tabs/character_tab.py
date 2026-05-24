@@ -795,6 +795,19 @@ class CharacterSettingsTab(QWidget):
             return True, ""
 
         _spr = self.sprite_prefix.text().strip()
+        # check sprite_prefix collision before deeper validation
+        if _spr:
+            for c in self._ctx.config_manager.config.characters:
+                _c_prefix = (c.sprite_prefix or "").strip()
+                if _c_prefix and _c_prefix == _spr:
+                    if not edit_as or c.name != edit_as:
+                        warn_if_invalid(
+                            (False, [f"立绘目录名「{_spr}」已被角色「{c.name}」占用，请换一个"]),
+                            title=tr_i18n("char.msg_validation_title"),
+                            parent=self,
+                        )
+                        return
+
         _gpt = self.gpt_model_path.text().strip()
         _sovits = self.sovits_model_path.text().strip()
         _ref = self.refer_audio_path.text().strip()
