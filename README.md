@@ -9,7 +9,7 @@
 ## 为什么用它
 
 - **角色演出一条龙**：聊天模板、会话历史、立绘切图与情绪、TTS/ASR 与输入管线在同一套工作流里衔接，减少到处换工具。  
-- **双窗分工**：**设置中心**（`webui.py` / 整合包）集中管 API、角色、插件；**聊天主窗**专责对白与演出，思路清晰。  
+- **双窗分工**：**React 设置中心**（`webui_react.py` / `start.bat` / `start-react.*`）集中管 API、角色、背景、模板、小工具、插件与 MCP；**聊天主窗**专责对白与演出，思路清晰。  
 - **多模型、可换引擎**：在 **API 设定** 对接常见 LLM 与 OpenAI 兼容端点；**TTS** 含 GPT-SoVITS、Genie TTS 等，无独显也可选轻量方案；**文生图**可接 ComfyUI 等工作流（同页配置）。  
 - **听懂与说出口**：麦克风 **ASR**（如 Vosk；更多后端可装**插件**）与台词 **TTS** 可选开关，适配「只打字」「只朗读立绘音频」等多种玩法。  
 - **模型不仅会聊天**：内置/插件 **LLM 工具**（如角色与世界书相关能力）+ **MCP** 接入外部服务，把检索、自动化等能力收进同一次对话。  
@@ -38,8 +38,8 @@
 | **语音** | **TTS**：GPT-SoVITS、Genie TTS、CosyVoice 等（**API 设定**中选引擎并填服务路径/URL）；选「不使用」时可仅播放 **立绘绑定的台词音频**。**ASR**：麦克风识别默认可走 **Vosk**；Whisper 类等可通过 **插件** 注册。 |
 | **LLM 与工具** | **API 设定**中配置供应商、**模型 ID**、Key、Base URL；支持 **流式**输出与 **工具调用**；工具来源包括内置/插件 **`@tool`** 与 **MCP**（`data/config/mcp.yaml`）。 |
 | **文生图（T2I）** | 在 **API 设定**中配置 **ComfyUI** 等服务端地址、工作流与节点 ID；可按需接入其他 **T2I 适配器**（插件注册）。 |
-| **设置与系统集成** | **PySide** 设置界面集中管理 **API**（`data/config/api.yaml`）与 **系统**（`data/config/system_config.yaml`）：界面语言、语音识别后端、主题色、字体等。 |
-| **插件** | `data/config/plugins.yaml` 清单加载；**插件**页发现/安装、启用禁用；扩展 LLM/TTS/ASR/T2I、工具与 **Settings / 工具箱 / 聊天窗** 入口。 |
+| **设置与系统集成** | **React 设置中心**通过本地 Python bridge 管理 **API**（`data/config/api.yaml`）与 **系统**（`data/config/system_config.yaml`）：界面语言、语音识别后端、主题色、字体等；配置读写仍留在 Python 层。 |
+| **插件与小工具** | `data/config/plugins.yaml` 清单加载；**插件**页发现/安装、启用禁用；**小工具**页对齐 PySide 设置窗的立绘提示词、批量生成、裁剪和抠图流程；插件可扩展 LLM/TTS/ASR/T2I、工具与 **Settings / 工具箱 / 聊天窗** 入口。 |
 | **MCP** | **插件 → MCP** 子页或 YAML 连接远端/本机 MCP Server（SSE / stdio），工具并入当前进程的 LLM 工具列表。 |
 | **视觉与其它扩展** | 视觉理解、主题编辑等能力可通过 **官方或社区插件** 启用（如仓库内 `plugins/` 示例）；具体能力以各插件说明为准。 |
 
@@ -69,7 +69,14 @@ cd Shinsekai
 
 **整合包用户**：双击对应平台的安装脚本即可。
 
-**开发者** 建议 Python 3.10 虚拟环境：
+**开发者** 使用项目标准 conda 环境 `shinsekai`：
+
+```bash
+conda env create -f environment.yml
+conda activate shinsekai
+```
+
+也可以手动创建同名环境：
 
 ```bash
 conda create -n shinsekai python=3.10
@@ -79,24 +86,66 @@ pip install -r requirements.txt
 
 Linux 源码用户也可以运行 `./scripts/install-linux.sh`。如果已激活 Python 3.10 的非 `base` conda 环境，脚本会直接在当前环境安装依赖；否则会优先用 `uv` 创建 `.venv`，没有 `uv` 时需要系统提供 `python3.10`。
 
-### 3. 打开设置界面
+### 3. 构建并打开 React 设置中心
 
-| 平台 | 操作 |
-|------|------|
-| Windows | 双击 `start.bat` |
-| macOS | 双击 `start.command` |
-| Linux | `./scripts/start-linux.sh` |
-
-源码用户：
+先构建前端：
 
 ```bash
-python webui_qt.py
+cd frontend
+pnpm install
+pnpm build
+cd ..
 ```
+
+然后启动：
+
+- Windows：双击 `start.bat`（也可用 `start-react.bat`）
+- macOS：双击 `start-react.command`，或运行 `scripts/start.command`
+- Linux / 源码命令：`conda run -n shinsekai python webui_react.py`（已 `conda activate shinsekai` 时也可直接 `python webui_react.py`）
+
+这个入口会启动本地 Python HTTP bridge，并直接托管 `frontend/dist`，浏览器打开后即可通过同一个进程与 Python 配置、角色、背景、模板和插件接口通信。
+
+旧 PySide 设置页仍可作为兼容入口使用：源码用户可运行 `python webui_qt.py`。
+
+### React 前端开发验证
+
+```bash
+cd frontend
+pnpm install
+```
+
+开发验证：
+
+```bash
+pnpm lint:types
+pnpm test
+pnpm exec playwright install chromium
+```
+
+真实数据开发时先开 bridge：
+
+```bash
+pnpm dev:bridge:conda -- --host 127.0.0.1 --port 8787
+```
+
+另开一个终端启动 Vite：
+
+```bash
+VITE_SHINSEKAI_API_BASE=http://127.0.0.1:8787 pnpm dev --host 127.0.0.1 --port 5174
+```
+
+视觉回归在 Vite 运行时执行：
+
+```bash
+pnpm test:visual
+```
+
+bridge 和 `pnpm dev` 保持运行后，另开一个终端执行 `pnpm test:visual`。更新视觉基线时使用 `pnpm test:visual:update`。
 
 ### 4. 第一次对话
 
 1. 在 **API 设定** 中填写 LLM（例如 DeepSeek / OpenAI 兼容端点），保存。  
-2. 在 **角色管理** 导入角色包（示例：[nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char)；更多角色包见 [社区资源](https://shinsekai.end0rph1n.icu/resources)）。  
+2. 在 **角色管理** 导入角色包（示例：[nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char)；更多角色包见 [社区资源](https://rachelforster.github.io/Shinsekai/resources.html)）。  
 3. 打开 **聊天模板**，勾选角色并生成模板。  
 4. **启动聊天**，即可在主窗口发消息、看立绘与回复。
 
@@ -139,18 +188,6 @@ python webui_qt.py
 
 ---
 
-## 参与贡献
-
-我们非常欢迎社区贡献，也希望能让协作过程对彼此都轻松。[CONTRIBUTING.md](CONTRIBUTING.md) 有详细说明，这里简单列几条约定：
-
-- **先开 Issue 聊聊想法** — 避免你花时间写完了才发现方向对不上。Issue 里说清楚想做什么、为什么，等 maintainer 确认后再动手，效率更高。
-- **一个 PR 只做一件事** — 小步快跑比一个巨大的 PR 容易 review 太多。如果改动超过几百行，大概率可以拆成几个递进的 PR。
-- **文件放对位置** — 新功能相关的脚本请放在对应的模块目录下，尽量不要往 `scripts/` 这类顶层目录堆大量不相关文件。
-
-如果你不确定怎么组织，开个 Issue 问问就好，我们会尽快回复。
-
----
-
 ## 文档与链接
 
 | 内容 | 链接 |
@@ -161,4 +198,4 @@ python webui_qt.py
 | 插件开发者指南 | [docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md) |
 | 本仓库 | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
 
-欢迎参与，请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。若二次分发角色与语音资源，请遵守对应作者许可。
+欢迎 Issue / PR；若二次分发角色与语音资源，请遵守对应作者许可。
