@@ -2,6 +2,7 @@ numpy
 pygame
 opencv_python
 openai
+socksio
 opencc-python-reimplemented
 pydantic
 pandas
