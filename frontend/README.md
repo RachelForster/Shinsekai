@@ -9,10 +9,14 @@ accesses it only through `shared/platform`.
 ```bash
 cd frontend
 pnpm install
+pnpm format:check
 pnpm lint:types
 pnpm test
 pnpm build
 ```
+
+The React frontend CI runs the same formatting, type-checking, unit test, and
+build commands for frontend changes.
 
 Visual regression tests cover the settings routes and the chat stage with
 Playwright screenshots. Keep the Vite dev server running before invoking the

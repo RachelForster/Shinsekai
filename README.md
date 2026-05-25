@@ -117,10 +117,14 @@ pnpm install
 开发验证：
 
 ```bash
+pnpm format:check
 pnpm lint:types
 pnpm test
+pnpm build
 pnpm exec playwright install chromium
 ```
+
+React 前端 CI 会在 `frontend/` 下执行安装、格式检查、类型检查、unit test 和构建。
 
 真实数据开发时先开 bridge：
 
