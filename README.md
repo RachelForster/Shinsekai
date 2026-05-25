@@ -59,9 +59,9 @@ cd Shinsekai
 
 | 平台 | 安装 | 启动 |
 |------|------|------|
-| Windows | 双击 `install.bat` | 双击 `start.bat` |
-| macOS | 双击 `install.command` | 双击 `start.command` |
-| Linux | `./scripts/install-linux.sh` | `./scripts/start-linux.sh` |
+| Windows | 双击 `install.bat` | 双击 `start-react.bat` |
+| macOS | 双击 `install.command` | 双击 `start-react.command` |
+| Linux | `./scripts/install-linux.sh` | `./start-react.sh` |
 
 > **macOS 首次运行**：如果双击提示「无法验证开发者」，请右键（或 Ctrl+点击）文件 → **打开**，在弹出的对话框中再次点 **打开** 即可。或者前往 **系统设置 → 隐私与安全性** 中允许。
 
@@ -86,65 +86,81 @@ pip install -r requirements.txt
 
 Linux 源码用户也可以运行 `./scripts/install-linux.sh`。如果已激活 Python 3.10 的非 `base` conda 环境，脚本会直接在当前环境安装依赖；否则会优先用 `uv` 创建 `.venv`，没有 `uv` 时需要系统提供 `python3.10`。
 
-### 3. 构建并打开 React 设置中心
+### 3. 启动 React 设置中心
 
-先构建前端：
+安装完成后，优先使用 React 启动脚本：
+
+| 平台 | 启动方式 |
+|------|----------|
+| Windows | 双击 `start-react.bat` |
+| macOS | 双击 `start-react.command` |
+| Linux | 运行 `./start-react.sh` |
+
+`start-react.*` 会启动本地 Python HTTP bridge，托管 React 设置中心，并自动打开浏览器。React 设置中心用于管理 API、角色、背景、聊天模板、小工具、插件和 MCP。
+
+源码用户如果没有运行安装脚本，需要先安装前端依赖一次：
 
 ```bash
 cd frontend
 pnpm install
-pnpm build
 cd ..
 ```
 
-然后启动：
+启动脚本会在 `frontend/dist` 不存在或前端源码更新后自动构建。旧 PySide 设置页仍作为兼容入口保留：`python webui_qt.py`。
 
-- Windows：双击 `start.bat`（也可用 `start-react.bat`）
-- macOS：双击 `start-react.command`，或运行 `scripts/start.command`
-- Linux / 源码命令：`conda run -n shinsekai python webui_react.py`（已 `conda activate shinsekai` 时也可直接 `python webui_react.py`）
+### React 前端测试
 
-这个入口会启动本地 Python HTTP bridge，并直接托管 `frontend/dist`，浏览器打开后即可通过同一个进程与 Python 配置、角色、背景、模板和插件接口通信。
-
-旧 PySide 设置页仍可作为兼容入口使用：源码用户可运行 `python webui_qt.py`。
-
-### React 前端开发验证
+前端测试都在 `frontend/` 下执行。第一次测试前先安装依赖：
 
 ```bash
 cd frontend
 pnpm install
 ```
 
-开发验证：
+提交 React 前端改动前，运行这组必过检查：
 
 ```bash
 pnpm format:check
 pnpm lint:types
 pnpm test
 pnpm build
-pnpm exec playwright install chromium
 ```
 
-React 前端 CI 会在 `frontend/` 下执行安装、格式检查、类型检查、unit test 和构建。
+含义：
 
-真实数据开发时先开 bridge：
+- `pnpm format:check`：检查 Prettier 格式。
+- `pnpm lint:types`：运行 TypeScript 类型检查。
+- `pnpm test`：运行 Vitest 单元测试。
+- `pnpm build`：确认生产构建可用。
+
+React 前端 CI 会执行同一组检查。
+
+视觉回归测试只在需要确认页面截图变化时运行。先启动 Vite：
+
+```bash
+pnpm dev --host 127.0.0.1 --port 5174
+```
+
+另开一个终端执行：
+
+```bash
+pnpm exec playwright install chromium
+pnpm test:visual
+```
+
+只有在确认视觉变化是预期结果时，才运行 `pnpm test:visual:update` 更新截图基线。
+
+需要连接真实项目数据开发时，先启动 bridge：
 
 ```bash
 pnpm dev:bridge:conda -- --host 127.0.0.1 --port 8787
 ```
 
-另开一个终端启动 Vite：
+再启动 Vite：
 
 ```bash
 VITE_SHINSEKAI_API_BASE=http://127.0.0.1:8787 pnpm dev --host 127.0.0.1 --port 5174
 ```
-
-视觉回归在 Vite 运行时执行：
-
-```bash
-pnpm test:visual
-```
-
-bridge 和 `pnpm dev` 保持运行后，另开一个终端执行 `pnpm test:visual`。更新视觉基线时使用 `pnpm test:visual:update`。
 
 ### 4. 第一次对话
 

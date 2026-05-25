@@ -4,11 +4,34 @@ This package is the React + TypeScript frontend rewrite defined by `../design.md
 It keeps the existing Python/Qt business logic as the desktop/backend side and
 accesses it only through `shared/platform`.
 
-## Commands
+## Install Frontend Dependencies
 
 ```bash
 cd frontend
 pnpm install
+```
+
+## Start The React Settings Center
+
+Use the launcher from the repository root:
+
+| Platform | Command               |
+| -------- | --------------------- |
+| Windows  | `start-react.bat`     |
+| macOS    | `start-react.command` |
+| Linux    | `./start-react.sh`    |
+
+The launcher runs `webui_react.py`, starts the Python bridge, serves
+`frontend/dist`, and opens the settings UI in the default browser. If the build
+is missing or older than the source tree, it runs `pnpm build` automatically as
+long as `frontend/node_modules` is already installed.
+
+## Required Checks
+
+Run these before submitting React frontend changes:
+
+```bash
+cd frontend
 pnpm format:check
 pnpm lint:types
 pnpm test
@@ -18,38 +41,30 @@ pnpm build
 The React frontend CI runs the same formatting, type-checking, unit test, and
 build commands for frontend changes.
 
+## Visual Regression Tests
+
 Visual regression tests cover the settings routes and the chat stage with
-Playwright screenshots. Keep the Vite dev server running before invoking the
-visual suite:
+Playwright screenshots. Run them only when you need to inspect or update visual
+baselines.
+
+Terminal 1:
 
 ```bash
-pnpm exec playwright install chromium
+cd frontend
 pnpm dev --host 127.0.0.1 --port 5174
+```
+
+Terminal 2:
+
+```bash
+cd frontend
+pnpm exec playwright install chromium
 pnpm test:visual
 ```
 
 Use `pnpm test:visual:update` only when intentionally accepting a visual change.
 The checked-in baselines live under `e2e/visual.spec.ts-snapshots/`; transient
 `playwright-report/` and `test-results/` output is ignored.
-
-## Built Frontend / Single-Start Launcher
-
-From the repository root:
-
-```bash
-conda run -n shinsekai python webui_react.py
-```
-
-This starts the Python bridge, serves `frontend/dist`, and opens the React
-settings UI in the default browser. If `frontend/dist` is missing but
-`frontend/node_modules` already exists, `webui_react.py` runs `pnpm build`
-automatically before startup.
-
-When starting from `frontend/`, use:
-
-```bash
-pnpm serve:bundle:conda
-```
 
 ## Development With Real Project Data
 
