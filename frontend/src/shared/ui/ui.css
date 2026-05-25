@@ -336,6 +336,7 @@
 .dialog.path-picker {
   display: flex;
   width: min(900px, 100%);
+  height: min(700px, calc(100vh - 32px));
   max-height: min(700px, calc(100vh - 32px));
   flex-direction: column;
   overflow: hidden;
@@ -343,7 +344,8 @@
 
 .path-picker__body {
   display: flex;
-  min-height: min(430px, calc(100vh - 190px));
+  min-height: 0;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: var(--space-3);
   overflow: hidden;
@@ -362,6 +364,95 @@
   gap: var(--space-1);
   color: var(--color-text-muted);
   font-size: 12px;
+}
+
+.path-picker__address-label {
+  line-height: 1.2;
+}
+
+.path-picker__address-control,
+.path-picker__address-input {
+  min-height: 31px;
+}
+
+.path-picker__address-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  cursor: text;
+}
+
+.path-picker__address-control:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+
+.path-picker__breadcrumbs {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 5px;
+  scrollbar-width: thin;
+  white-space: nowrap;
+}
+
+.path-picker__breadcrumb-item {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.path-picker__breadcrumb {
+  display: inline-flex;
+  max-width: 190px;
+  height: 23px;
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  padding: 0 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-picker__breadcrumb:hover {
+  border-color: var(--color-border);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.path-picker__breadcrumb:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+
+.path-picker__breadcrumb-separator {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.path-picker__address-spacer {
+  min-width: 36px;
+  flex: 1 0 36px;
+  align-self: stretch;
 }
 
 .path-picker__main {

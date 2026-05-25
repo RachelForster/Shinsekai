@@ -378,13 +378,6 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
       async openExternal(url) {
         window.open(url, "_blank", "noopener,noreferrer");
       },
-      async pickFile(options) {
-        const result = await requestJson<{ paths: string[] }>(apiBase, "/api/files/pick", {
-          body: JSON.stringify(options ?? {}),
-          method: "POST",
-        });
-        return result.paths;
-      },
     },
     musicCover: {
       async run(input, options) {

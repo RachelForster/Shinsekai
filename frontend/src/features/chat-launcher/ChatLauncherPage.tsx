@@ -227,6 +227,7 @@ export function ChatLauncherPage() {
               <span className="field-row__label">{t("template.field.initSprite")}</span>
               <span className="field-row__control">
                 <FilePicker
+                  acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
                   onChange={(event) => setInitSpritePath(event.target.value)}
                   onPathChange={setInitSpritePath}
                   pickLabel={t("common.chooseFile")}
@@ -240,6 +241,7 @@ export function ChatLauncherPage() {
               <span className="field-row__label">{t("launch.history")}</span>
               <span className="field-row__control">
                 <FilePicker
+                  acceptedExtensions={[".json"]}
                   onChange={(event) => setHistoryPath(event.target.value)}
                   onPathChange={setHistoryPath}
                   pickLabel={t("common.chooseFile")}

@@ -1148,33 +1148,6 @@ def _fetch_llm_models(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def _pick_local_files(payload: dict[str, Any]) -> dict[str, Any]:
-    title = str(payload.get("title") or "Select file")
-    multiple = bool(payload.get("multiple"))
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except Exception as exc:
-        raise RuntimeError(f"file dialog is not available: {exc}") from exc
-
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        try:
-            root.attributes("-topmost", True)
-        except tk.TclError:
-            pass
-        if multiple:
-            paths = filedialog.askopenfilenames(parent=root, title=title)
-            out = [str(path) for path in paths]
-        else:
-            path = filedialog.askopenfilename(parent=root, title=title)
-            out = [str(path)] if path else []
-    finally:
-        root.destroy()
-    return {"paths": out}
-
-
 def _display_path(path: Path) -> str:
     return path.resolve(strict=False).as_posix()
 
@@ -1197,7 +1170,7 @@ def _filesystem_roots(project_root: Path) -> list[dict[str, str]]:
         seen.add(key)
         roots.append({"label": label, "path": value})
 
-    add("Project", project_root)
+    add("Shinsekai", project_root)
     add("Data", project_root / "data")
     add("Home", Path.home())
 
@@ -2876,8 +2849,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_fetch_llm_models(body))
             elif method == "POST" and path == "/api/files/browse":
                 self._send_json(_browse_local_files(self.state, body))
-            elif method == "POST" and path == "/api/files/pick":
-                self._send_json(_pick_local_files(body))
             elif method == "POST" and path == "/api/music-cover/search":
                 self._send_json(_music_cover_search(self.state, body))
             elif method == "POST" and path == "/api/music-cover/config":

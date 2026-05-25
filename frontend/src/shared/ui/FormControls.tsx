@@ -31,6 +31,7 @@ export function ColorInput(props: InputHTMLAttributes<HTMLInputElement>) {
 }
 
 interface FilePickerProps extends InputHTMLAttributes<HTMLInputElement> {
+  acceptedExtensions?: string[];
   onPick?: () => void;
   onPathChange?: (path: string) => void;
   onPathsChange?: (paths: string[]) => void;
@@ -40,6 +41,7 @@ interface FilePickerProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export function FilePicker({
+  acceptedExtensions,
   disabled,
   multiple,
   onChange,
@@ -65,6 +67,7 @@ export function FilePicker({
         </IconButton>
       </div>
       <PathPickerDialog
+        acceptedExtensions={acceptedExtensions}
         multiple={Boolean(multiple)}
         mode={pickerMode}
         onClose={() => setPickerOpen(false)}

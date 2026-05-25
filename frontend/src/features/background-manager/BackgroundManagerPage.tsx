@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, ExternalLink, Image as ImageIcon, Languages, Music, Plus, Save, Trash2, Upload } from "lucide-react";
 
@@ -72,11 +72,10 @@ export function BackgroundManagerPage() {
   const [draft, setDraft] = useState<Background>(createBackground());
   const [isCreating, setIsCreating] = useState(false);
   const [pendingBgmPaths, setPendingBgmPaths] = useState<string[]>([]);
-  const [pendingImportFiles, setPendingImportFiles] = useState<File[]>([]);
+  const [pendingImportFiles, setPendingImportFiles] = useState<string[]>([]);
   const [pendingImagePaths, setPendingImagePaths] = useState<string[]>([]);
   const [selectedBgmIndexes, setSelectedBgmIndexes] = useState<number[]>([]);
   const [nameError, setNameError] = useState("");
-  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const selected = useMemo(
     () => (isCreating ? undefined : data.find((background) => background.name === selectedName) ?? data[0]),
@@ -431,35 +430,27 @@ export function BackgroundManagerPage() {
           >
             {t("common.new")}
           </Button>
+          <div className="page__file-picker">
+            <FilePicker
+              acceptedExtensions={[".bg"]}
+              multiple
+              onPathsChange={setPendingImportFiles}
+              pickLabel={t("common.chooseFile")}
+              pickerTitle={t("common.import")}
+              readOnly
+              value={pendingImportFiles.length ? t("background.asset.selectedFiles", { count: pendingImportFiles.length }) : ""}
+            />
+          </div>
           <AsyncButton
+            disabled={!pendingImportFiles.length}
             icon={<Upload aria-hidden className="button__icon" />}
             loading={importMutation.isPending}
             onClick={() => {
-              if (pendingImportFiles.length) {
-                importMutation.mutate(pendingImportFiles);
-                return;
-              }
-              importInputRef.current?.click();
+              importMutation.mutate(pendingImportFiles);
             }}
           >
             {t("common.import")}
           </AsyncButton>
-          {pendingImportFiles.length ? (
-            <span className="inline-status">{t("background.asset.selectedFiles", { count: pendingImportFiles.length })}</span>
-          ) : null}
-          <input
-            accept=".bg"
-            className="visually-hidden"
-            onChange={(event) => {
-              const files = Array.from(event.currentTarget.files ?? []);
-              event.currentTarget.value = "";
-              if (files.length) {
-                setPendingImportFiles(files);
-              }
-            }}
-            ref={importInputRef}
-            type="file"
-          />
           <AsyncButton
             icon={<Download aria-hidden className="button__icon" />}
             loading={exportMutation.isPending}
@@ -677,6 +668,7 @@ export function BackgroundManagerPage() {
                 <span className="field-row__label">{t("background.asset.selectImages")}</span>
                 <span className="field-row__control">
                   <FilePicker
+                    acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
                     multiple
                     onPathsChange={(paths) => {
                       if (paths.length) {
@@ -775,6 +767,7 @@ export function BackgroundManagerPage() {
                 <span className="field-row__label">{t("background.asset.selectBgm")}</span>
                 <span className="field-row__control">
                   <FilePicker
+                    acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
                     multiple
                     onPathsChange={(paths) => {
                       if (paths.length) {

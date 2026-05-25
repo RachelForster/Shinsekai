@@ -217,6 +217,14 @@
   border: 1px solid var(--color-border);
 }
 
+.page__file-picker {
+  width: min(360px, 100%);
+}
+
+.page__file-picker .input-group {
+  width: 100%;
+}
+
 .form-grid {
   display: grid;
   gap: 10px;

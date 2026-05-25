@@ -111,13 +111,12 @@ export function CharacterEditorPage() {
   const [draft, setDraft] = useState<Character>(createCharacter());
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
-  const [pendingImportItems, setPendingImportItems] = useState<File[] | string[]>([]);
+  const [pendingImportItems, setPendingImportItems] = useState<string[]>([]);
   const [pendingSpritePaths, setPendingSpritePaths] = useState<string[]>([]);
   const [pendingVoicePaths, setPendingVoicePaths] = useState<Record<number, string>>({});
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
   const [memoryInput, setMemoryInput] = useState("");
-  const importInputRef = useRef<HTMLInputElement | null>(null);
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const memoryName = draft.name.trim();
   const currentCharacterName = isCreating ? "" : selectedName;
@@ -538,39 +537,28 @@ export function CharacterEditorPage() {
           >
             {t("common.new")}
           </Button>
-          <Button icon={<Upload aria-hidden className="button__icon" />} onClick={() => importInputRef.current?.click()}>
-            {t("common.chooseFile")}
-          </Button>
+          <div className="page__file-picker">
+            <FilePicker
+              acceptedExtensions={[".char", ".cha"]}
+              multiple
+              onPathsChange={setPendingImportItems}
+              pickLabel={t("common.chooseFile")}
+              pickerTitle={t("common.import")}
+              placeholder={t("character.import.noFile")}
+              readOnly
+              value={pendingImportItems.length ? importItemsLabel(pendingImportItems) : ""}
+            />
+          </div>
           <AsyncButton
+            disabled={!pendingImportItems.length}
             icon={<Upload aria-hidden className="button__icon" />}
             loading={importMutation.isPending}
             onClick={() => {
-              if (pendingImportItems.length) {
-                importMutation.mutate(pendingImportItems);
-                return;
-              }
-              importInputRef.current?.click();
+              importMutation.mutate(pendingImportItems);
             }}
           >
             {t("common.import")}
           </AsyncButton>
-          <span className="entity-list__meta">
-            {pendingImportItems.length ? importItemsLabel(pendingImportItems) : t("character.import.noFile")}
-          </span>
-          <input
-            accept=".char,.cha"
-            className="visually-hidden"
-            multiple
-            onChange={(event) => {
-              const files = Array.from(event.currentTarget.files ?? []);
-              event.currentTarget.value = "";
-              if (files.length) {
-                setPendingImportItems(files);
-              }
-            }}
-            ref={importInputRef}
-            type="file"
-          />
           <AsyncButton
             icon={<Download aria-hidden className="button__icon" />}
             loading={exportMutation.isPending}
@@ -793,6 +781,7 @@ export function CharacterEditorPage() {
                 <span className="field-row__label">{t("character.field.gptModel")}</span>
                 <span className="field-row__control">
                   <FilePicker
+                    acceptedExtensions={[".ckpt"]}
                     onChange={(event) => update("gpt_model_path", event.target.value)}
                     onPathChange={(path) => update("gpt_model_path", path)}
                     pickLabel={t("common.chooseFile")}
@@ -806,6 +795,7 @@ export function CharacterEditorPage() {
                 <span className="field-row__label">{t("character.field.sovitsModel")}</span>
                 <span className="field-row__control">
                   <FilePicker
+                    acceptedExtensions={[".pth"]}
                     onChange={(event) => update("sovits_model_path", event.target.value)}
                     onPathChange={(path) => update("sovits_model_path", path)}
                     pickLabel={t("common.chooseFile")}
@@ -819,6 +809,7 @@ export function CharacterEditorPage() {
                 <span className="field-row__label">{t("character.field.referAudio")}</span>
                 <span className="field-row__control">
                   <FilePicker
+                    acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
                     onChange={(event) => update("refer_audio_path", event.target.value)}
                     onPathChange={(path) => update("refer_audio_path", path)}
                     pickLabel={t("common.chooseFile")}
@@ -915,6 +906,7 @@ export function CharacterEditorPage() {
                 <span className="field-row__label">{t("character.sprite.selectImages")}</span>
                 <span className="field-row__control">
                   <FilePicker
+                    acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
                     multiple
                     onPathsChange={(paths) => {
                       if (paths.length) {
@@ -1004,6 +996,7 @@ export function CharacterEditorPage() {
                     <span className="field-row__label">{t("character.sprite.voiceUploadPath")}</span>
                     <span className="field-row__control">
                       <FilePicker
+                        acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
                         onPathChange={(path) => setPendingVoicePaths((current) => ({ ...current, [index]: path }))}
                         pickLabel={t("common.chooseFile")}
                         pickerTitle={t("character.sprite.voiceUploadPath")}

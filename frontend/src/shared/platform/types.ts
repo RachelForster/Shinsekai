@@ -336,7 +336,6 @@ export interface ShinsekaiPlatform {
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;
     openExternal: (url: string) => Promise<void>;
-    pickFile: (options?: { multiple?: boolean; title?: string }) => Promise<string[]>;
   };
   musicCover: {
     run: (input: MusicCoverRunInput, options?: TaskProgressOptions<MusicCoverRunResult>) => Promise<MusicCoverRunResult>;

@@ -197,32 +197,13 @@ describe("http platform", () => {
     expect(init.headers).toBeUndefined();
   });
 
-  it("opens local file pickers through the bridge", async () => {
-    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
-      mockJsonResponse({ paths: ["/tmp/reference.png"] }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const platform = createHttpPlatform("http://127.0.0.1:8787");
-    const paths = await platform.files.pickFile({ title: "Reference image" });
-
-    expect(paths).toEqual(["/tmp/reference.png"]);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/files/pick",
-      expect.objectContaining({
-        body: JSON.stringify({ title: "Reference image" }),
-        method: "POST",
-      }),
-    );
-  });
-
   it("browses local folders through the bridge", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       mockJsonResponse({
         cwd: "/tmp",
         entries: [{ kind: "directory", name: "assets", path: "/tmp/assets", size: null }],
         parent: "/",
-        roots: [{ label: "Project", path: "/tmp" }],
+        roots: [{ label: "Shinsekai", path: "/tmp" }],
       }),
     );
     vi.stubGlobal("fetch", fetchMock);

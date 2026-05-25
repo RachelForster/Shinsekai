@@ -249,6 +249,7 @@ export function ToolsPage() {
                 <span className="field-row__label">{t("tools.refLabel")}</span>
                 <span className="field-row__control">
                   <FilePicker
+                    acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
                     onChange={(event) => setReferenceImage(event.target.value)}
                     onPathChange={setReferenceImage}
                     pickLabel={t("tools.browse")}

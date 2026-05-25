@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../shared/i18n/I18nProvider";
@@ -53,7 +53,7 @@ describe("FilePicker", () => {
         { kind: "file", modifiedAt: 1, name: "b.png", path: "/tmp/b.png", size: 2 },
       ],
       parent: "/",
-      roots: [{ label: "Project", path: "/tmp" }],
+      roots: [{ label: "Shinsekai", path: "/tmp" }],
     });
   });
 
@@ -80,5 +80,58 @@ describe("FilePicker", () => {
 
     expect(onPathsChange).toHaveBeenCalledWith(["/tmp/a.png", "/tmp/b.png"]);
     expect(mockPlatform.files.browse).toHaveBeenCalledWith({ path: "", showHidden: false });
+  });
+
+  it("opens parent folders from the address breadcrumbs", async () => {
+    mockPlatform.files.browse.mockResolvedValueOnce({
+      cwd: "/home/shinsekai/project/data/config",
+      entries: [],
+      parent: "/home/shinsekai/project/data",
+      roots: [{ label: "Shinsekai", path: "/home/shinsekai/project" }],
+    });
+
+    render(
+      <I18nProvider language="zh_CN">
+        <FilePicker pickLabel="选择路径" value="" />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByLabelText("选择路径"));
+
+    const dataCrumb = await screen.findByRole("button", { name: "data" });
+    fireEvent.click(dataCrumb);
+
+    await waitFor(() => {
+      expect(mockPlatform.files.browse).toHaveBeenLastCalledWith({
+        path: "/home/shinsekai/project/data",
+        showHidden: false,
+      });
+    });
+  });
+
+  it("selects the full address when clicking the blank address area", async () => {
+    const cwd = "/home/shinsekai/project/data/config";
+    mockPlatform.files.browse.mockResolvedValueOnce({
+      cwd,
+      entries: [],
+      parent: "/home/shinsekai/project/data",
+      roots: [{ label: "Shinsekai", path: "/home/shinsekai/project" }],
+    });
+
+    render(
+      <I18nProvider language="zh_CN">
+        <FilePicker pickLabel="选择路径" value="" />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByLabelText("选择路径"));
+    fireEvent.click(await screen.findByRole("group", { name: cwd }));
+
+    const input = await screen.findByDisplayValue(cwd);
+    await waitFor(() => {
+      expect(input).toHaveFocus();
+      expect((input as HTMLInputElement).selectionStart).toBe(0);
+      expect((input as HTMLInputElement).selectionEnd).toBe(cwd.length);
+    });
   });
 });

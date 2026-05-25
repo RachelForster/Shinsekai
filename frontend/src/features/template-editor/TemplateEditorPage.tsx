@@ -618,6 +618,7 @@ export function TemplateEditorPage() {
                 <span className="field-row__label">{t("template.field.initSprite")}</span>
                 <span className="field-row__control">
                   <FilePicker
+                    acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
                     onChange={(event) => setInitSpritePath(event.target.value)}
                     onPathChange={setInitSpritePath}
                     pickLabel={t("common.chooseFile")}

@@ -98,7 +98,7 @@ function previewFileBrowser(path?: string) {
     })),
     parent,
     roots: [
-      { label: "Project", path: "/home/shinsekai/project" },
+      { label: "Shinsekai", path: "/home/shinsekai/project" },
       { label: "Data", path: "/home/shinsekai/project/data" },
       { label: "Home", path: "/home/shinsekai" },
       { label: "/", path: "/" },
@@ -556,9 +556,6 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async openExternal(url) {
         window.open(url, "_blank", "noopener,noreferrer");
-      },
-      async pickFile() {
-        return delay([]);
       },
     },
     musicCover: {

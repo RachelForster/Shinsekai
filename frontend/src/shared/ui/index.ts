@@ -2,6 +2,7 @@ export * from "./Button";
 export * from "./DataTable";
 export * from "./Dialog";
 export * from "./EmptyState";
+export * from "./FileManager";
 export * from "./FormControls";
 export * from "./IconButton";
 export * from "./PathPickerDialog";
