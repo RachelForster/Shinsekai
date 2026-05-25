@@ -23,14 +23,34 @@ from ui.settings_ui.tts.tts_env_probe import get_default_project_root
 _WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 _DOWNLOAD_CHUNK_SIZE = 512 * 1024
 _HASH_CHUNK_SIZE = 4 * 1024 * 1024
+_SEVEN_ZIP_COMMANDS = (
+    "7zz.exe",
+    "7za.exe",
+    "7z.exe",
+    "7zz",
+    "7za",
+    "7z",
+)
 
 
 class _DownloadInterrupted(Exception):
     pass
 
 
+class _ExtractionInterrupted(Exception):
+    pass
+
+
+def _load_py7zz() -> Any | None:
+    """py7zz bundles the cross-platform 7zz CLI as a pip dependency."""
+    try:
+        return importlib.import_module("py7zz")
+    except ImportError:  # pragma: no cover
+        return None
+
+
 def _load_py7zr() -> Any | None:
-    """开发环境用纯 Python 的 py7zr；生产 exe 用打包的 7za.exe。"""
+    """Pure Python fallback; it cannot extract BCJ2 archives."""
     try:
         return importlib.import_module("py7zr")
     except ImportError:  # pragma: no cover
@@ -38,15 +58,24 @@ def _load_py7zr() -> Any | None:
 
 
 def _seven_zip_exe() -> Path | None:
-    """生产：PyInstaller 将 build_exe/7za.exe 打进 _internal/7za/7za.exe。开发：仓库 build_exe/7za.exe。"""
+    """Find an external 7-Zip CLI shipped with the app or available on PATH."""
     if getattr(sys, "frozen", False):
         meip = getattr(sys, "_MEIPASS", None)
-        if not meip:
-            return None
-        p = Path(meip) / "7za" / "7za.exe"
-        return p if p.is_file() else None
-    p = get_default_project_root() / "build_exe" / "7za.exe"
-    return p if p.is_file() else None
+        if meip:
+            for name in _SEVEN_ZIP_COMMANDS:
+                p = Path(meip) / "7za" / name
+                if p.is_file():
+                    return p
+    project_root = get_default_project_root()
+    for name in _SEVEN_ZIP_COMMANDS:
+        p = project_root / "build_exe" / name
+        if p.is_file():
+            return p
+    for name in _SEVEN_ZIP_COMMANDS:
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    return None
 
 
 def _extract_7za(exe: Path, archive: Path, out_dir: Path) -> str | None:
@@ -70,6 +99,87 @@ def _extract_7za(exe: Path, archive: Path, out_dir: Path) -> str | None:
     if r.returncode != 0:
         err = (r.stderr or r.stdout or "").strip() or f"exit {r.returncode}"
         return err[:2000]
+    return None
+
+
+def _extract_py7zz(archive: Path, out_dir: Path) -> str | None:
+    p7zz = _load_py7zz()
+    if p7zz is None:
+        return "missing"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        p7zz.extract_archive(str(archive), str(out_dir))
+    except Exception as e:
+        return str(e)[:2000]
+    return None
+
+
+def _extract_py7zr(
+    p7: Any,
+    archive: Path,
+    out_dir: Path,
+    *,
+    is_interrupted: Any | None = None,
+    on_progress: Any | None = None,
+) -> None:
+    with p7.SevenZipFile(archive, "r") as z:
+        targets = _list_targets(z)
+        n = len(targets)
+        if n == 0 or n > 1000:
+            z.extractall(path=out_dir)
+            if on_progress is not None:
+                on_progress(100)
+            return
+        for i, name in enumerate(targets):
+            if is_interrupted is not None and is_interrupted():
+                raise _ExtractionInterrupted()
+            z.extract(path=out_dir, targets=[name])
+            if on_progress is not None:
+                on_progress(70 + int(30 * (i + 1) / n))
+
+
+def _extract_archive(
+    archive: Path,
+    out_dir: Path,
+    *,
+    is_interrupted: Any | None = None,
+    on_progress: Any | None = None,
+) -> str | None:
+    """Extract with external 7-Zip first; py7zr is only a last fallback."""
+    py7zz_err = _extract_py7zz(archive, out_dir)
+    if py7zz_err is None:
+        return None
+
+    sz = _seven_zip_exe()
+    if sz is not None:
+        if py7zz_err != "missing":
+            _rmtree(out_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+        cli_err = _extract_7za(sz, archive, out_dir)
+        if cli_err is None:
+            return None
+        if py7zz_err != "missing":
+            return f"py7zz: {py7zz_err}\n7-Zip: {cli_err}"[:2000]
+        return cli_err
+
+    p7 = _load_py7zr()
+    if p7 is None:
+        return "7za"
+    try:
+        _extract_py7zr(
+            p7,
+            archive,
+            out_dir,
+            is_interrupted=is_interrupted,
+            on_progress=on_progress,
+        )
+    except _ExtractionInterrupted:
+        raise
+    except Exception as e:
+        return (
+            "external 7-Zip CLI is required for this archive; "
+            f"py7zr fallback failed: {e}"
+        )[:2000]
     return None
 
 
@@ -246,42 +356,21 @@ class TtsBundleDownloadWorker(QThread):
         _archive_str = str(archive.resolve())
         _rmtree(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        sz = _seven_zip_exe()
-        if getattr(sys, "frozen", False):
-            if sz is None:
+        try:
+            err = _extract_archive(
+                archive,
+                out_dir,
+                is_interrupted=self.isInterruptionRequested,
+                on_progress=self.progress.emit,
+            )
+        except _ExtractionInterrupted:
+            return
+        if err is not None:
+            if err == "7za":
                 self.failed.emit(f"7za||{_archive_str}")
-                return
-            err = _extract_7za(sz, archive, out_dir)
-            if err is not None:
-                self.failed.emit(f"extract: {err}||{_archive_str}")
-                return
-        else:
-            p7 = _load_py7zr()
-            if p7 is not None:
-                try:
-                    with p7.SevenZipFile(archive, "r") as z:
-                        targets = _list_targets(z)
-                        n = len(targets)
-                        if n == 0 or n > 1000:
-                            z.extractall(path=out_dir)
-                            self.progress.emit(100)
-                        else:
-                            for i, name in enumerate(targets):
-                                if self.isInterruptionRequested():
-                                    return
-                                z.extract(path=out_dir, targets=[name])
-                                self.progress.emit(70 + int(30 * (i + 1) / n))
-                except Exception as e:
-                    self.failed.emit(f"extract: {e}||{_archive_str}")
-                    return
-            elif sz is not None:
-                err = _extract_7za(sz, archive, out_dir)
-                if err is not None:
-                    self.failed.emit(f"extract: {err}||{_archive_str}")
-                    return
             else:
-                self.failed.emit(f"py7zr||{_archive_str}")
-                return
+                self.failed.emit(f"extract: {err}||{_archive_str}")
+            return
 
         self.progress.emit(100)
         root = _resolve_extracted_root(out_dir)

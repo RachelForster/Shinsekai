@@ -44,6 +44,7 @@ def _patch_extract_success(monkeypatch, extracted_roots: list[Path]) -> None:
         extracted_roots.append(out_dir)
         return None
 
+    monkeypatch.setattr(worker_mod, "_load_py7zz", lambda: None)
     monkeypatch.setattr(worker_mod, "_load_py7zr", lambda: None)
     monkeypatch.setattr(worker_mod, "_seven_zip_exe", lambda: Path("/bin/7za"))
     monkeypatch.setattr(worker_mod, "_extract_7za", fake_extract)
@@ -163,3 +164,77 @@ def test_worker_redownloads_and_verifies_invalid_cache(tmp_path, monkeypatch):
     assert statuses == ["verify", "download", "verify", "extract"]
     assert extracted_roots
     assert finished
+
+
+def test_extract_archive_uses_py7zz_before_py7zr(tmp_path, monkeypatch):
+    archive = tmp_path / "demo.7z"
+    archive.write_bytes(b"archive")
+    out_dir = tmp_path / "out"
+    calls: list[tuple[str, str]] = []
+
+    class FakePy7zz:
+        @staticmethod
+        def extract_archive(src: str, dst: str) -> None:
+            calls.append((src, dst))
+
+    monkeypatch.setattr(worker_mod, "_load_py7zz", lambda: FakePy7zz)
+    monkeypatch.setattr(
+        worker_mod,
+        "_load_py7zr",
+        lambda: pytest.fail("py7zr should not run when py7zz is available"),
+    )
+
+    assert worker_mod._extract_archive(archive, out_dir) is None
+    assert calls == [(str(archive), str(out_dir))]
+
+
+def test_extract_archive_uses_direct_cli_before_py7zr(tmp_path, monkeypatch):
+    archive = tmp_path / "demo.7z"
+    archive.write_bytes(b"archive")
+    out_dir = tmp_path / "out"
+    calls: list[Path] = []
+
+    monkeypatch.setattr(worker_mod, "_load_py7zz", lambda: None)
+    monkeypatch.setattr(worker_mod, "_seven_zip_exe", lambda: Path("/usr/bin/7zz"))
+    monkeypatch.setattr(
+        worker_mod,
+        "_extract_7za",
+        lambda exe, _archive, _out_dir: calls.append(exe) or None,
+    )
+    monkeypatch.setattr(
+        worker_mod,
+        "_load_py7zr",
+        lambda: pytest.fail("py7zr should not run when 7z CLI is available"),
+    )
+
+    assert worker_mod._extract_archive(archive, out_dir) is None
+    assert calls == [Path("/usr/bin/7zz")]
+
+
+def test_extract_archive_reports_bcj2_when_no_external_cli(tmp_path, monkeypatch):
+    archive = tmp_path / "demo.7z"
+    archive.write_bytes(b"archive")
+    out_dir = tmp_path / "out"
+
+    class FakeSevenZip:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            raise RuntimeError("BCJ2 filter is not supported by py7zr")
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakePy7zr:
+        SevenZipFile = FakeSevenZip
+
+    monkeypatch.setattr(worker_mod, "_load_py7zz", lambda: None)
+    monkeypatch.setattr(worker_mod, "_seven_zip_exe", lambda: None)
+    monkeypatch.setattr(worker_mod, "_load_py7zr", lambda: FakePy7zr)
+
+    err = worker_mod._extract_archive(archive, out_dir)
+
+    assert err is not None
+    assert "external 7-Zip CLI is required" in err
+    assert "BCJ2 filter is not supported by py7zr" in err
