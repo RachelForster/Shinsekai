@@ -3,11 +3,25 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Eraser, Image as ImageIcon, Scissors, WandSparkles } from "lucide-react";
 
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
-import { cropSprites, generateSpritePrompts, generateSprites, removeSpriteBackground } from "../../entities/tools/repository";
+import {
+  cropSprites,
+  generateSpritePrompts,
+  generateSprites,
+  removeSpriteBackground,
+} from "../../entities/tools/repository";
 import { useI18n } from "../../shared/i18n";
 import { getPlatform } from "../../shared/platform/platform";
 import type { TaskSnapshot } from "../../shared/platform/types";
-import { AsyncButton, EmptyState, FilePicker, NumberInput, Select, TextArea, TextInput, useToast } from "../../shared/ui";
+import {
+  AsyncButton,
+  EmptyState,
+  FilePicker,
+  NumberInput,
+  Select,
+  TextArea,
+  TextInput,
+  useToast,
+} from "../../shared/ui";
 
 function extractPrompt(line: string) {
   const trimmed = line.trim();
@@ -92,7 +106,9 @@ export function ToolsPage() {
       setToolTask(null);
     },
     onSuccess(result) {
-      setPromptText(result.prompts.map((prompt, index) => t("tools.promptLine", { n: index + 1, text: prompt })).join("\n"));
+      setPromptText(
+        result.prompts.map((prompt, index) => t("tools.promptLine", { n: index + 1, text: prompt })).join("\n"),
+      );
       setToolOutput(t("tools.promptsGenerated", { n: result.prompts.length }));
     },
   });

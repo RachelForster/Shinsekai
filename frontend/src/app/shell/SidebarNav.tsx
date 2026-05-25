@@ -1,15 +1,5 @@
 import { NavLink } from "react-router-dom";
-import {
-  Brush,
-  FileImage,
-  Gamepad2,
-  Home,
-  Menu,
-  Plug,
-  Save,
-  Settings,
-  SlidersHorizontal,
-} from "lucide-react";
+import { Brush, FileImage, Gamepad2, Home, Menu, Plug, Save, Settings, SlidersHorizontal } from "lucide-react";
 import type { MessageKey } from "../../shared/i18n";
 import { useI18n } from "../../shared/i18n";
 

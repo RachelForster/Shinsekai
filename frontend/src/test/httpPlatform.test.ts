@@ -50,7 +50,10 @@ describe("http platform", () => {
   });
 
   it("surfaces bridge errors", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => mockJsonResponse({ error: "保存失败" }, false)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => mockJsonResponse({ error: "保存失败" }, false)),
+    );
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
     await expect(platform.config.saveApi(sampleConfig.api_config)).rejects.toThrow("保存失败");
@@ -283,9 +286,7 @@ describe("http platform", () => {
       .mockResolvedValueOnce(
         await mockJsonResponse({ agentId: "Nanami", count: 1, memories: [{ id: "mem-1", memory: "likes tea" }] }),
       )
-      .mockResolvedValueOnce(
-        await mockJsonResponse({ agentId: "Nanami", count: 0, memories: [] }),
-      );
+      .mockResolvedValueOnce(await mockJsonResponse({ agentId: "Nanami", count: 0, memories: [] }));
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
@@ -594,9 +595,7 @@ describe("http platform", () => {
   });
 
   it("reads plugin registry catalog through the bridge", async () => {
-    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
-      mockJsonResponse(samplePluginCatalog),
-    );
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(samplePluginCatalog));
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
@@ -796,9 +795,7 @@ describe("http platform", () => {
   });
 
   it("reads MCP config through the bridge", async () => {
-    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
-      mockJsonResponse(sampleMcpConfig),
-    );
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(sampleMcpConfig));
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");

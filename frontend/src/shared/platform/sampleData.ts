@@ -100,7 +100,13 @@ export const sampleConfig: AppConfig = {
       name: "Nanami",
       color: "#d07d7d",
       sprite_prefix: "nanami",
-      sprites: [{ path: "/assets/present_example.png", voice_path: "data/speech/nanami/hello.wav", voice_text: "欢迎来到新世界。" }],
+      sprites: [
+        {
+          path: "/assets/present_example.png",
+          voice_path: "data/speech/nanami/hello.wav",
+          voice_text: "欢迎来到新世界。",
+        },
+      ],
       character_setting: "温柔、带一点调皮的剧情向角色。",
       sprite_scale: 1,
       emotion_tags: "立绘 1：默认、微笑、惊讶\n",

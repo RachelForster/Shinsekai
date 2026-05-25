@@ -10,7 +10,12 @@ interface SegmentedTabsProps<T extends string> {
   onChange: (value: T) => void;
 }
 
-export function SegmentedTabs<T extends string>({ ariaLabel = "Subpages", items, onChange, value }: SegmentedTabsProps<T>) {
+export function SegmentedTabs<T extends string>({
+  ariaLabel = "Subpages",
+  items,
+  onChange,
+  value,
+}: SegmentedTabsProps<T>) {
   if (items.length <= 1) {
     return null;
   }

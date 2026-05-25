@@ -63,7 +63,11 @@ test.describe.serial("live React functionality smoke", () => {
 
     const characters = await requestJson<Array<{ name: string }>>(request, "get", "/api/characters");
     const backgrounds = await requestJson<Array<{ name: string }>>(request, "get", "/api/backgrounds");
-    const plugins = await requestJson<Array<{ directory?: string; entry: string; loaded: boolean; title: string }>>(request, "get", "/api/plugins");
+    const plugins = await requestJson<Array<{ directory?: string; entry: string; loaded: boolean; title: string }>>(
+      request,
+      "get",
+      "/api/plugins",
+    );
     expect(characters.length).toBeGreaterThan(0);
     expect(backgrounds.length).toBeGreaterThan(0);
     const moondream = plugins.find((plugin) => plugin.entry.includes("moondream_vision"));
@@ -137,18 +141,20 @@ test.describe.serial("live React functionality smoke", () => {
         timeout: 30_000,
       })
       .toBeGreaterThan(beforeCharacters.length);
-    const afterCharacters = await requestJson<Array<{ name: string; sprites: Array<{ path: string; voice_path?: string }> }>>(
-      request,
-      "get",
-      "/api/characters",
+    const afterCharacters = await requestJson<
+      Array<{ name: string; sprites: Array<{ path: string; voice_path?: string }> }>
+    >(request, "get", "/api/characters");
+    const importedCharacter = afterCharacters.find(
+      (character) => !beforeCharacters.some((before) => before.name === character.name),
     );
-    const importedCharacter = afterCharacters.find((character) => !beforeCharacters.some((before) => before.name === character.name));
     expect(importedCharacter?.sprites[0]?.path).toBeTruthy();
     expect(importedCharacter?.sprites[0]?.path).not.toContain("\\");
     if (importedCharacter?.sprites[0]?.voice_path) {
       expect(importedCharacter.sprites[0].voice_path).not.toContain("\\");
     }
-    const characterMedia = await request.get(`${apiBase}/api/media?path=${encodeURIComponent(importedCharacter?.sprites[0]?.path ?? "")}`);
+    const characterMedia = await request.get(
+      `${apiBase}/api/media?path=${encodeURIComponent(importedCharacter?.sprites[0]?.path ?? "")}`,
+    );
     expect(characterMedia.ok(), "imported character sprite should be loadable").toBeTruthy();
 
     const beforeBackgrounds = await requestJson<Array<{ name: string }>>(request, "get", "/api/backgrounds");
@@ -164,11 +170,19 @@ test.describe.serial("live React functionality smoke", () => {
         timeout: 30_000,
       })
       .toBeGreaterThan(beforeBackgrounds.length);
-    const afterBackgrounds = await requestJson<Array<{ name: string; sprites: Array<{ path: string }> }>>(request, "get", "/api/backgrounds");
-    const importedBackground = afterBackgrounds.find((background) => !beforeBackgrounds.some((before) => before.name === background.name));
+    const afterBackgrounds = await requestJson<Array<{ name: string; sprites: Array<{ path: string }> }>>(
+      request,
+      "get",
+      "/api/backgrounds",
+    );
+    const importedBackground = afterBackgrounds.find(
+      (background) => !beforeBackgrounds.some((before) => before.name === background.name),
+    );
     expect(importedBackground?.sprites[0]?.path).toBeTruthy();
     expect(importedBackground?.sprites[0]?.path).not.toContain("\\");
-    const backgroundMedia = await request.get(`${apiBase}/api/media?path=${encodeURIComponent(importedBackground?.sprites[0]?.path ?? "")}`);
+    const backgroundMedia = await request.get(
+      `${apiBase}/api/media?path=${encodeURIComponent(importedBackground?.sprites[0]?.path ?? "")}`,
+    );
     expect(backgroundMedia.ok(), "imported background image should be loadable").toBeTruthy();
   });
 

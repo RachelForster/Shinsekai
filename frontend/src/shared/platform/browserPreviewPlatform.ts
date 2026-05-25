@@ -391,17 +391,17 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         const imported = items.map<Character>((item, index) => {
           const label = item instanceof File ? item.name : item.split("/").pop() || `character-${index + 1}`;
           return {
-          character_setting: "导入预览角色",
-          color: "#d07d7d",
-          emotion_tags: "",
-          name: `Imported ${index + 1}`,
-          pronunciation_map: {},
-          speech_speed: 1,
-          speech_volume: 1,
-          sprite_prefix: label.replace(/\W+/g, "_") || "imported",
-          sprite_scale: 1,
-          sprites: [],
-        };
+            character_setting: "导入预览角色",
+            color: "#d07d7d",
+            emotion_tags: "",
+            name: `Imported ${index + 1}`,
+            pronunciation_map: {},
+            speech_speed: 1,
+            speech_volume: 1,
+            sprite_prefix: label.replace(/\W+/g, "_") || "imported",
+            sprite_scale: 1,
+            sprites: [],
+          };
         });
         config.characters.push(...imported);
         return delay(imported);
@@ -429,7 +429,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         const index = originalName
           ? config.characters.findIndex((item) => item.name === originalName)
           : config.characters.findIndex((item) => item.name === character.name);
-        const duplicateIndex = config.characters.findIndex((item, itemIndex) => item.name === character.name && itemIndex !== index);
+        const duplicateIndex = config.characters.findIndex(
+          (item, itemIndex) => item.name === character.name && itemIndex !== index,
+        );
         if (duplicateIndex >= 0) {
           throw new Error(`名称「${character.name}」已与其他角色重复！`);
         }
@@ -521,15 +523,27 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     config: {
       async downloadTtsBundle(input, options) {
         const taskId = `preview-tts-${Date.now()}`;
-        previewTask(taskId, { message: "正在下载 TTS 整合包。", phase: "download", progress: 0.35, status: "running" }, options);
+        previewTask(
+          taskId,
+          { message: "正在下载 TTS 整合包。", phase: "download", progress: 0.35, status: "running" },
+          options,
+        );
         await delay(null, 160);
-        previewTask(taskId, { message: "正在解压整合包。", phase: "extract", progress: 0.82, status: "running" }, options);
+        previewTask(
+          taskId,
+          { message: "正在解压整合包。", phase: "extract", progress: 0.82, status: "running" },
+          options,
+        );
         await delay(null, 160);
         const result = {
           path: `data/tts_bundles/installed/${input.kind}`,
           provider: input.kind === "genie" ? "genie-tts" : "gpt-sovits",
         } as const;
-        previewTask(taskId, { message: "TTS 整合包已就绪。", phase: "completed", progress: 1, result, status: "succeeded" }, options);
+        previewTask(
+          taskId,
+          { message: "TTS 整合包已就绪。", phase: "completed", progress: 1, result, status: "succeeded" },
+          options,
+        );
         return delay(result);
       },
       fetchLlmModels: async () => {
@@ -621,22 +635,36 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       search: (input) =>
         delay({
-          log: [`source=${input.source}`, `query=${input.query || "(empty)"}`, "1. Preview result - sample song"].join("\n"),
+          log: [`source=${input.source}`, `query=${input.query || "(empty)"}`, "1. Preview result - sample song"].join(
+            "\n",
+          ),
         }),
     },
     plugins: {
       async appUpdateRun(input, options) {
         const taskId = `preview-app-update-${Date.now()}`;
-        previewTask(taskId, { message: "正在下载源码归档。", phase: "download", progress: 0.35, status: "running" }, options);
+        previewTask(
+          taskId,
+          { message: "正在下载源码归档。", phase: "download", progress: 0.35, status: "running" },
+          options,
+        );
         await delay(null, 160);
-        previewTask(taskId, { message: "正在合并到程序目录。", phase: "merge", progress: 0.72, status: "running" }, options);
+        previewTask(
+          taskId,
+          { message: "正在合并到程序目录。", phase: "merge", progress: 0.72, status: "running" },
+          options,
+        );
         await delay(null, 160);
         const result = {
           message: `已模拟更新到 ${input.refKind === "tag" ? input.tagName || "tag" : input.refKind}。`,
           pipCode: "app_update_skip_pip",
           version: "preview",
         };
-        previewTask(taskId, { message: result.message, phase: "completed", progress: 1, result, status: "succeeded" }, options);
+        previewTask(
+          taskId,
+          { message: result.message, phase: "completed", progress: 1, result, status: "succeeded" },
+          options,
+        );
         return delay(result);
       },
       appUpdateInfo: () => delay({ repo: "RachelForster/Shinsekai", version: "preview" }),
@@ -645,7 +673,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async install(input, options) {
         const id = typeof input === "string" ? input : input.source;
         const taskId = `preview-${Date.now()}`;
-        previewTask(taskId, { message: "正在下载插件清单。", phase: "download", progress: 0.25, status: "running" }, options);
+        previewTask(
+          taskId,
+          { message: "正在下载插件清单。", phase: "download", progress: 0.25, status: "running" },
+          options,
+        );
         await delay(null, 180);
         previewTask(taskId, { message: "正在安装依赖。", phase: "pip", progress: 0.72, status: "running" }, options);
         await delay(null, 220);
@@ -708,7 +740,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       openConfigFile: () => delay(mcpConfig.path ?? "data/config/mcp.yaml"),
       async previewTools(_config, options) {
         const taskId = `mcp-preview-${Date.now()}`;
-        previewTask(taskId, { kind: "mcp-preview", message: "正在连接 MCP 服务。", phase: "probe", progress: 0.4, status: "running" }, options);
+        previewTask(
+          taskId,
+          { kind: "mcp-preview", message: "正在连接 MCP 服务。", phase: "probe", progress: 0.4, status: "running" },
+          options,
+        );
         await delay(null, 220);
         previewTask(
           taskId,
@@ -726,7 +762,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async saveAndApply(nextConfig, options) {
         const taskId = `mcp-apply-${Date.now()}`;
-        previewTask(taskId, { kind: "mcp-apply", message: "正在写入 MCP 配置。", phase: "write", progress: 0.45, status: "running" }, options);
+        previewTask(
+          taskId,
+          { kind: "mcp-apply", message: "正在写入 MCP 配置。", phase: "write", progress: 0.45, status: "running" },
+          options,
+        );
         await delay(null, 180);
         mcpConfig = clone({ ...nextConfig, path: nextConfig.path ?? mcpConfig.path });
         previewTask(
@@ -805,19 +845,45 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           message: `成功裁剪，输出目录: ${input.outputDir || `${input.inputDir}/cropped_upper_${input.ratio}`}`,
           outputDir: input.outputDir || `${input.inputDir}/cropped_upper_${input.ratio}`,
         };
-        previewTask(taskId, { kind: "tools-crop", message: "正在裁剪立绘。", phase: "crop", progress: 0.6, status: "running" }, options);
+        previewTask(
+          taskId,
+          { kind: "tools-crop", message: "正在裁剪立绘。", phase: "crop", progress: 0.6, status: "running" },
+          options,
+        );
         await delay(null, 180);
-        previewTask(taskId, { kind: "tools-crop", message: result.message, phase: "completed", progress: 1, result, status: "succeeded" }, options);
+        previewTask(
+          taskId,
+          { kind: "tools-crop", message: result.message, phase: "completed", progress: 1, result, status: "succeeded" },
+          options,
+        );
         return delay(result);
       },
       async generateSpritePrompts(input, options) {
         const taskId = `tools-prompts-${Date.now()}`;
         const result: SpritePromptResult = {
-          prompts: Array.from({ length: input.count }, (_, index) => `Make the character pose ${index + 1}, pure white background.`),
+          prompts: Array.from(
+            { length: input.count },
+            (_, index) => `Make the character pose ${index + 1}, pure white background.`,
+          ),
         };
-        previewTask(taskId, { kind: "tools-prompts", message: "正在生成立绘提示词。", phase: "prompt", progress: 0.4, status: "running" }, options);
+        previewTask(
+          taskId,
+          { kind: "tools-prompts", message: "正在生成立绘提示词。", phase: "prompt", progress: 0.4, status: "running" },
+          options,
+        );
         await delay(null, 220);
-        previewTask(taskId, { kind: "tools-prompts", message: "提示词已生成。", phase: "completed", progress: 1, result, status: "succeeded" }, options);
+        previewTask(
+          taskId,
+          {
+            kind: "tools-prompts",
+            message: "提示词已生成。",
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+          },
+          options,
+        );
         return delay(result);
       },
       async generateSprites(input, options) {
@@ -828,9 +894,24 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           message: `已生成 ${input.prompts.length} 张（输出目录: ${outputDir}）`,
           outputDir,
         };
-        previewTask(taskId, { kind: "tools-sprites", message: "正在生成立绘。", phase: "generate", progress: 0.35, status: "running" }, options);
+        previewTask(
+          taskId,
+          { kind: "tools-sprites", message: "正在生成立绘。", phase: "generate", progress: 0.35, status: "running" },
+          options,
+        );
         await delay(null, 260);
-        previewTask(taskId, { kind: "tools-sprites", message: result.message, phase: "completed", progress: 1, result, status: "succeeded" }, options);
+        previewTask(
+          taskId,
+          {
+            kind: "tools-sprites",
+            message: result.message,
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+          },
+          options,
+        );
         return delay(result);
       },
       async removeSpriteBackground(input, options) {
@@ -840,9 +921,23 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           message: `成功处理: 3，失败: 0，输出到目录： ${outputDir}`,
           outputDir,
         };
-        previewTask(taskId, { kind: "tools-rmbg", message: "正在批量抠出立绘。", phase: "remove-background", progress: 0.5, status: "running" }, options);
+        previewTask(
+          taskId,
+          {
+            kind: "tools-rmbg",
+            message: "正在批量抠出立绘。",
+            phase: "remove-background",
+            progress: 0.5,
+            status: "running",
+          },
+          options,
+        );
         await delay(null, 220);
-        previewTask(taskId, { kind: "tools-rmbg", message: result.message, phase: "completed", progress: 1, result, status: "succeeded" }, options);
+        previewTask(
+          taskId,
+          { kind: "tools-rmbg", message: result.message, phase: "completed", progress: 1, result, status: "succeeded" },
+          options,
+        );
         return delay(result);
       },
     },

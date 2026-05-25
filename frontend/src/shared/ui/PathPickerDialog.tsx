@@ -51,10 +51,13 @@ export function PathPickerDialog({
     onClose();
   };
 
-  const handleOpenFile = useCallback((path: string) => {
-    onSelect(path);
-    onClose();
-  }, [onClose, onSelect]);
+  const handleOpenFile = useCallback(
+    (path: string) => {
+      onSelect(path);
+      onClose();
+    },
+    [onClose, onSelect],
+  );
 
   const handleSelectionChange = useCallback((selection: { confirmPaths: string[] }) => {
     setConfirmPaths(selection.confirmPaths);
@@ -72,7 +75,12 @@ export function PathPickerDialog({
       footer={
         <>
           <Button onClick={onClose}>{t("common.cancel")}</Button>
-          <Button disabled={!confirmPaths.length} icon={<Check aria-hidden className="button__icon" />} onClick={handleConfirm} variant="primary">
+          <Button
+            disabled={!confirmPaths.length}
+            icon={<Check aria-hidden className="button__icon" />}
+            onClick={handleConfirm}
+            variant="primary"
+          >
             {mode === "directory" ? t("filePicker.selectCurrent") : t("filePicker.selectFile")}
           </Button>
         </>

@@ -15,11 +15,27 @@ import {
   setPluginEnabled,
   uninstallPlugin,
 } from "../../entities/plugin/repository";
-import type { AppUpdateRefKind, AppUpdateResult, PluginCatalogItem, PluginInstallInput, PluginManifest } from "../../entities/plugin/types";
+import type {
+  AppUpdateRefKind,
+  AppUpdateResult,
+  PluginCatalogItem,
+  PluginInstallInput,
+  PluginManifest,
+} from "../../entities/plugin/types";
 import { useI18n } from "../../shared/i18n";
 import { getPlatform } from "../../shared/platform/platform";
 import type { TaskSnapshot } from "../../shared/platform/types";
-import { AlertDialog, AsyncButton, Button, DataTable, Dialog, EmptyState, SegmentedTabs, Select, useToast } from "../../shared/ui";
+import {
+  AlertDialog,
+  AsyncButton,
+  Button,
+  DataTable,
+  Dialog,
+  EmptyState,
+  SegmentedTabs,
+  Select,
+  useToast,
+} from "../../shared/ui";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 
 type PluginView = "installed" | "discover" | "mcp";
@@ -293,7 +309,9 @@ export function PluginManagerPage() {
           <div className="section__header">
             <h2 className="section__title">{t("plugin.installed.title")}</h2>
             <span className="inline-status">
-              {toggleMutation.isPending ? t("plugin.status.updating") : t("plugin.installed.count", { count: data.length })}
+              {toggleMutation.isPending
+                ? t("plugin.status.updating")
+                : t("plugin.installed.count", { count: data.length })}
             </span>
           </div>
           {isLoading ? <EmptyState title={t("plugin.installed.loading")} /> : null}
@@ -317,12 +335,18 @@ export function PluginManagerPage() {
                           </span>
                         ) : null}
                       </div>
-                      <span className="plugin-card__status" data-enabled={plugin.enabled && loaded} data-loaded={loaded}>
+                      <span
+                        className="plugin-card__status"
+                        data-enabled={plugin.enabled && loaded}
+                        data-loaded={loaded}
+                      >
                         {statusLabel}
                       </span>
                     </div>
                     {!loaded && plugin.enabled ? (
-                      <p className="plugin-card__description">{plugin.loadError || t("plugin.loadError.unavailable")}</p>
+                      <p className="plugin-card__description">
+                        {plugin.loadError || t("plugin.loadError.unavailable")}
+                      </p>
                     ) : plugin.description ? (
                       <p className="plugin-card__description">{plugin.description}</p>
                     ) : null}
@@ -374,7 +398,9 @@ export function PluginManagerPage() {
               })}
             </div>
           ) : null}
-          {!isLoading && !data.length ? <EmptyState title={t("plugin.installed.emptyTitle")} body={t("plugin.installed.emptyBody")} /> : null}
+          {!isLoading && !data.length ? (
+            <EmptyState title={t("plugin.installed.emptyTitle")} body={t("plugin.installed.emptyBody")} />
+          ) : null}
         </section>
       ) : view === "discover" ? (
         <section className="section">
@@ -439,7 +465,10 @@ export function PluginManagerPage() {
           {catalogQuery.isError ? (
             <EmptyState
               action={
-                <Button icon={<RefreshCw aria-hidden className="button__icon" />} onClick={() => catalogQuery.refetch()}>
+                <Button
+                  icon={<RefreshCw aria-hidden className="button__icon" />}
+                  onClick={() => catalogQuery.refetch()}
+                >
                   {t("common.retry")}
                 </Button>
               }
@@ -448,7 +477,11 @@ export function PluginManagerPage() {
             />
           ) : null}
           {catalogQuery.data?.length ? (
-            <DataTable columns={catalogColumns} getRowKey={(plugin) => plugin.repo || plugin.entry} rows={catalogQuery.data} />
+            <DataTable
+              columns={catalogColumns}
+              getRowKey={(plugin) => plugin.repo || plugin.entry}
+              rows={catalogQuery.data}
+            />
           ) : null}
           {!catalogQuery.isLoading && !catalogQuery.isError && !catalogQuery.data?.length ? (
             <EmptyState title={t("plugin.catalog.emptyTitle")} body={t("plugin.catalog.emptyBody")} />
@@ -521,7 +554,9 @@ export function PluginManagerPage() {
                   </option>
                 ))}
               </Select>
-              {catalogTagsQuery.isLoading ? <span className="field-row__help">{t("plugin.appUpdate.tagsLoading")}</span> : null}
+              {catalogTagsQuery.isLoading ? (
+                <span className="field-row__help">{t("plugin.appUpdate.tagsLoading")}</span>
+              ) : null}
               {!catalogTagsQuery.isLoading && !catalogTagsQuery.data?.length ? (
                 <span className="field-row__help">{t("plugin.appUpdate.tagsEmpty")}</span>
               ) : null}
@@ -585,7 +620,9 @@ export function PluginManagerPage() {
                   </option>
                 ))}
               </Select>
-              {appUpdateTagsQuery.isLoading ? <span className="field-row__help">{t("plugin.appUpdate.tagsLoading")}</span> : null}
+              {appUpdateTagsQuery.isLoading ? (
+                <span className="field-row__help">{t("plugin.appUpdate.tagsLoading")}</span>
+              ) : null}
               {!appUpdateTagsQuery.isLoading && !appUpdateTagsQuery.data?.length ? (
                 <span className="field-row__help">{t("plugin.appUpdate.tagsEmpty")}</span>
               ) : null}

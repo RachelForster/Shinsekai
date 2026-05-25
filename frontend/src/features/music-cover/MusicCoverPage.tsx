@@ -5,7 +5,12 @@ import { Play, Save, Search } from "lucide-react";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
 import { getPlatform } from "../../shared/platform/platform";
-import type { MusicCoverConfigInput, MusicCoverRunResult, MusicCoverSource, TaskSnapshot } from "../../shared/platform/types";
+import type {
+  MusicCoverConfigInput,
+  MusicCoverRunResult,
+  MusicCoverSource,
+  TaskSnapshot,
+} from "../../shared/platform/types";
 import { AsyncButton, EmptyState, NumberInput, Select, TextArea, TextInput, useToast } from "../../shared/ui";
 
 function musicCoverConfigFromSystem(systemConfig: SystemConfig): MusicCoverConfigInput {
@@ -121,7 +126,9 @@ export function MusicCoverPage() {
       <header className="page__header">
         <div>
           <h1 className="page__title">音乐翻唱流水线</h1>
-          <p className="page__description">下载 → 歌词/字幕 → UVR 分离 → RVC 翻唱 → 合成。修改路径后请先保存配置，再执行流水线。</p>
+          <p className="page__description">
+            下载 → 歌词/字幕 → UVR 分离 → RVC 翻唱 → 合成。修改路径后请先保存配置，再执行流水线。
+          </p>
         </div>
       </header>
 
@@ -135,19 +142,31 @@ export function MusicCoverPage() {
               <label className="field-row">
                 <span className="field-row__label">工作目录</span>
                 <span className="field-row__control">
-                  <TextInput disabled={busy} onChange={(event) => updateDraft("music_cover_work_dir", event.target.value)} value={draft.music_cover_work_dir} />
+                  <TextInput
+                    disabled={busy}
+                    onChange={(event) => updateDraft("music_cover_work_dir", event.target.value)}
+                    value={draft.music_cover_work_dir}
+                  />
                 </span>
               </label>
               <label className="field-row">
                 <span className="field-row__label">yt-dlp 路径（可空=PATH）</span>
                 <span className="field-row__control">
-                  <TextInput disabled={busy} onChange={(event) => updateDraft("music_cover_yt_dlp_exe", event.target.value)} value={draft.music_cover_yt_dlp_exe} />
+                  <TextInput
+                    disabled={busy}
+                    onChange={(event) => updateDraft("music_cover_yt_dlp_exe", event.target.value)}
+                    value={draft.music_cover_yt_dlp_exe}
+                  />
                 </span>
               </label>
               <label className="field-row">
                 <span className="field-row__label">ffmpeg 路径（可空=PATH）</span>
                 <span className="field-row__control">
-                  <TextInput disabled={busy} onChange={(event) => updateDraft("music_cover_ffmpeg_exe", event.target.value)} value={draft.music_cover_ffmpeg_exe} />
+                  <TextInput
+                    disabled={busy}
+                    onChange={(event) => updateDraft("music_cover_ffmpeg_exe", event.target.value)}
+                    value={draft.music_cover_ffmpeg_exe}
+                  />
                 </span>
               </label>
               <label className="field-row">
@@ -175,13 +194,21 @@ export function MusicCoverPage() {
               <label className="field-row">
                 <span className="field-row__label">RVC 模型 .pth</span>
                 <span className="field-row__control">
-                  <TextInput disabled={busy} onChange={(event) => updateDraft("music_cover_rvc_model_path", event.target.value)} value={draft.music_cover_rvc_model_path} />
+                  <TextInput
+                    disabled={busy}
+                    onChange={(event) => updateDraft("music_cover_rvc_model_path", event.target.value)}
+                    value={draft.music_cover_rvc_model_path}
+                  />
                 </span>
               </label>
               <label className="field-row">
                 <span className="field-row__label">RVC 索引 .index（可选）</span>
                 <span className="field-row__control">
-                  <TextInput disabled={busy} onChange={(event) => updateDraft("music_cover_rvc_index_path", event.target.value)} value={draft.music_cover_rvc_index_path} />
+                  <TextInput
+                    disabled={busy}
+                    onChange={(event) => updateDraft("music_cover_rvc_index_path", event.target.value)}
+                    value={draft.music_cover_rvc_index_path}
+                  />
                 </span>
               </label>
             </div>
@@ -195,13 +222,21 @@ export function MusicCoverPage() {
               <label className="field-row">
                 <span className="field-row__label">device</span>
                 <span className="field-row__control">
-                  <TextInput disabled={busy} onChange={(event) => updateDraft("music_cover_rvc_device", event.target.value)} value={draft.music_cover_rvc_device} />
+                  <TextInput
+                    disabled={busy}
+                    onChange={(event) => updateDraft("music_cover_rvc_device", event.target.value)}
+                    value={draft.music_cover_rvc_device}
+                  />
                 </span>
               </label>
               <label className="field-row">
                 <span className="field-row__label">模型版本</span>
                 <span className="field-row__control">
-                  <Select disabled={busy} onChange={(event) => updateDraft("music_cover_rvc_model_version", event.target.value)} value={draft.music_cover_rvc_model_version}>
+                  <Select
+                    disabled={busy}
+                    onChange={(event) => updateDraft("music_cover_rvc_model_version", event.target.value)}
+                    value={draft.music_cover_rvc_model_version}
+                  >
                     <option value="v1">v1</option>
                     <option value="v2">v2</option>
                   </Select>
@@ -210,7 +245,11 @@ export function MusicCoverPage() {
               <label className="field-row">
                 <span className="field-row__label">音高 method</span>
                 <span className="field-row__control">
-                  <Select disabled={busy} onChange={(event) => updateDraft("music_cover_rvc_f0_method", event.target.value)} value={draft.music_cover_rvc_f0_method}>
+                  <Select
+                    disabled={busy}
+                    onChange={(event) => updateDraft("music_cover_rvc_f0_method", event.target.value)}
+                    value={draft.music_cover_rvc_f0_method}
+                  >
                     <option value="rmvpe">rmvpe</option>
                     <option value="harvest">harvest</option>
                     <option value="crepe">crepe</option>
@@ -221,37 +260,79 @@ export function MusicCoverPage() {
               <label className="field-row">
                 <span className="field-row__label">变调 pitch（半音）</span>
                 <span className="field-row__control">
-                  <NumberInput disabled={busy} max={12} min={-12} onChange={(event) => updateDraft("music_cover_rvc_pitch", Number(event.target.value))} step={0.5} value={draft.music_cover_rvc_pitch} />
+                  <NumberInput
+                    disabled={busy}
+                    max={12}
+                    min={-12}
+                    onChange={(event) => updateDraft("music_cover_rvc_pitch", Number(event.target.value))}
+                    step={0.5}
+                    value={draft.music_cover_rvc_pitch}
+                  />
                 </span>
               </label>
               <label className="field-row">
                 <span className="field-row__label">index_rate</span>
                 <span className="field-row__control">
-                  <NumberInput disabled={busy} max={1} min={0} onChange={(event) => updateDraft("music_cover_rvc_index_rate", Number(event.target.value))} step={0.05} value={draft.music_cover_rvc_index_rate} />
+                  <NumberInput
+                    disabled={busy}
+                    max={1}
+                    min={0}
+                    onChange={(event) => updateDraft("music_cover_rvc_index_rate", Number(event.target.value))}
+                    step={0.05}
+                    value={draft.music_cover_rvc_index_rate}
+                  />
                 </span>
               </label>
               <label className="field-row">
                 <span className="field-row__label">filter_radius</span>
                 <span className="field-row__control">
-                  <NumberInput disabled={busy} max={7} min={0} onChange={(event) => updateDraft("music_cover_rvc_filter_radius", Number(event.target.value))} step={1} value={draft.music_cover_rvc_filter_radius} />
+                  <NumberInput
+                    disabled={busy}
+                    max={7}
+                    min={0}
+                    onChange={(event) => updateDraft("music_cover_rvc_filter_radius", Number(event.target.value))}
+                    step={1}
+                    value={draft.music_cover_rvc_filter_radius}
+                  />
                 </span>
               </label>
               <label className="field-row">
                 <span className="field-row__label">resample_sr（0=不重采样）</span>
                 <span className="field-row__control">
-                  <NumberInput disabled={busy} max={192000} min={0} onChange={(event) => updateDraft("music_cover_rvc_resample_sr", Number(event.target.value))} step={1} value={draft.music_cover_rvc_resample_sr} />
+                  <NumberInput
+                    disabled={busy}
+                    max={192000}
+                    min={0}
+                    onChange={(event) => updateDraft("music_cover_rvc_resample_sr", Number(event.target.value))}
+                    step={1}
+                    value={draft.music_cover_rvc_resample_sr}
+                  />
                 </span>
               </label>
               <label className="field-row">
                 <span className="field-row__label">rms_mix_rate</span>
                 <span className="field-row__control">
-                  <NumberInput disabled={busy} max={1} min={0} onChange={(event) => updateDraft("music_cover_rvc_rms_mix_rate", Number(event.target.value))} step={0.05} value={draft.music_cover_rvc_rms_mix_rate} />
+                  <NumberInput
+                    disabled={busy}
+                    max={1}
+                    min={0}
+                    onChange={(event) => updateDraft("music_cover_rvc_rms_mix_rate", Number(event.target.value))}
+                    step={0.05}
+                    value={draft.music_cover_rvc_rms_mix_rate}
+                  />
                 </span>
               </label>
               <label className="field-row">
                 <span className="field-row__label">protect</span>
                 <span className="field-row__control">
-                  <NumberInput disabled={busy} max={0.5} min={0} onChange={(event) => updateDraft("music_cover_rvc_protect", Number(event.target.value))} step={0.01} value={draft.music_cover_rvc_protect} />
+                  <NumberInput
+                    disabled={busy}
+                    max={0.5}
+                    min={0}
+                    onChange={(event) => updateDraft("music_cover_rvc_protect", Number(event.target.value))}
+                    step={0.01}
+                    value={draft.music_cover_rvc_protect}
+                  />
                 </span>
               </label>
             </div>
@@ -277,10 +358,19 @@ export function MusicCoverPage() {
               <h2 className="section__title">流水线执行</h2>
             </div>
             <div className="page__actions">
-              <AsyncButton icon={<Search aria-hidden className="button__icon" />} loading={musicSearchMutation.isPending} onClick={() => musicSearchMutation.mutate()}>
+              <AsyncButton
+                icon={<Search aria-hidden className="button__icon" />}
+                loading={musicSearchMutation.isPending}
+                onClick={() => musicSearchMutation.mutate()}
+              >
                 预览搜索结果
               </AsyncButton>
-              <AsyncButton icon={<Play aria-hidden className="button__icon" />} loading={musicRunMutation.isPending} onClick={() => musicRunMutation.mutate()} variant="primary">
+              <AsyncButton
+                icon={<Play aria-hidden className="button__icon" />}
+                loading={musicRunMutation.isPending}
+                onClick={() => musicRunMutation.mutate()}
+                variant="primary"
+              >
                 执行完整流水线
               </AsyncButton>
             </div>
@@ -289,7 +379,11 @@ export function MusicCoverPage() {
             <label className="field-row field-row--stack">
               <span className="field-row__label">来源</span>
               <span className="field-row__control">
-                <Select disabled={musicSearchMutation.isPending || musicRunMutation.isPending} onChange={(event) => setMusicSource(event.target.value as MusicCoverSource)} value={musicSource}>
+                <Select
+                  disabled={musicSearchMutation.isPending || musicRunMutation.isPending}
+                  onChange={(event) => setMusicSource(event.target.value as MusicCoverSource)}
+                  value={musicSource}
+                >
                   <option value="youtube">YouTube</option>
                   <option value="bilibili">Bilibili</option>
                   <option value="url">完整 URL</option>
@@ -311,13 +405,25 @@ export function MusicCoverPage() {
             <label className="field-row field-row--stack">
               <span className="field-row__label">选用第 {musicPick} 条</span>
               <span className="field-row__control">
-                <input disabled={musicRunMutation.isPending} max={7} min={0} onChange={(event) => setMusicPick(Number(event.target.value))} type="range" value={musicPick} />
+                <input
+                  disabled={musicRunMutation.isPending}
+                  max={7}
+                  min={0}
+                  onChange={(event) => setMusicPick(Number(event.target.value))}
+                  type="range"
+                  value={musicPick}
+                />
               </span>
             </label>
             <label className="field-row field-row--stack">
               <span className="field-row__control">
                 <label className="checkbox-row">
-                  <input checked={musicSkipRvc} disabled={musicRunMutation.isPending} onChange={(event) => setMusicSkipRvc(event.target.checked)} type="checkbox" />
+                  <input
+                    checked={musicSkipRvc}
+                    disabled={musicRunMutation.isPending}
+                    onChange={(event) => setMusicSkipRvc(event.target.checked)}
+                    type="checkbox"
+                  />
                   <span>跳过 RVC（仅用分离后人声合成）</span>
                 </label>
               </span>
@@ -326,11 +432,16 @@ export function MusicCoverPage() {
               <div className="task-progress" role="status" aria-live="polite">
                 <div className="task-progress__meta">
                   <strong>{musicTask.phase}</strong>
-                  <span>{musicTask.progress == null ? musicTask.status : `${Math.round(musicTask.progress * 100)}%`}</span>
+                  <span>
+                    {musicTask.progress == null ? musicTask.status : `${Math.round(musicTask.progress * 100)}%`}
+                  </span>
                 </div>
                 {musicTask.progress == null ? null : (
                   <div className="task-progress__track" aria-hidden>
-                    <span className="task-progress__fill" style={{ width: `${Math.round(musicTask.progress * 100)}%` }} />
+                    <span
+                      className="task-progress__fill"
+                      style={{ width: `${Math.round(musicTask.progress * 100)}%` }}
+                    />
                   </div>
                 )}
                 <div className="task-progress__message">{musicTask.message || musicTask.status}</div>

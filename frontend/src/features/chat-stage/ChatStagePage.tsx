@@ -18,10 +18,7 @@ interface BrowserSpeechRecognition {
   onend: (() => void) | null;
   onerror: ((event: { error?: string; message?: string }) => void) | null;
   onresult:
-    | ((event: {
-        resultIndex: number;
-        results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }>;
-      }) => void)
+    | ((event: { resultIndex: number; results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void)
     | null;
   start: () => void;
   stop: () => void;
@@ -102,13 +99,7 @@ function DialogLayer({ characterName, text }: { characterName?: string; text: st
   );
 }
 
-function OptionsLayer({
-  onSelect,
-  options,
-}: {
-  onSelect: (option: string) => void;
-  options: string[];
-}) {
+function OptionsLayer({ onSelect, options }: { onSelect: (option: string) => void; options: string[] }) {
   if (!options.length) {
     return null;
   }
@@ -123,13 +114,7 @@ function OptionsLayer({
   );
 }
 
-function FloatingToolbar({
-  onCommand,
-  status,
-}: {
-  onCommand: (command: ChatCommand) => void;
-  status: string;
-}) {
+function FloatingToolbar({ onCommand, status }: { onCommand: (command: ChatCommand) => void; status: string }) {
   const { t } = useI18n();
   return (
     <div className="floating-toolbar">
@@ -294,7 +279,11 @@ function InputLayer({
           }
         }}
       >
-        {listening ? <MicOff aria-hidden className="icon-button__icon" /> : <Mic aria-hidden className="icon-button__icon" />}
+        {listening ? (
+          <MicOff aria-hidden className="icon-button__icon" />
+        ) : (
+          <Mic aria-hidden className="icon-button__icon" />
+        )}
       </IconButton>
       <Button
         disabled={!value.trim() || disabled}
@@ -360,7 +349,11 @@ export function ChatStagePage() {
         showToast({ kind: "success", title: t("chat.toast.historyCopied") });
       }
       if (command.type === "open-history") {
-        showToast({ kind: "success", message: snapshot.openedPath || snapshot.historyPath, title: t("chat.toast.historyOpened") });
+        showToast({
+          kind: "success",
+          message: snapshot.openedPath || snapshot.historyPath,
+          title: t("chat.toast.historyOpened"),
+        });
       }
       if (command.type === "clear-history") {
         setConfirmClearHistory(false);

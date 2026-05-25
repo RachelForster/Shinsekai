@@ -30,9 +30,7 @@
 .chat-stage__background {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(180deg, rgba(16, 18, 24, 0.16), rgba(16, 18, 24, 0.42)),
-    var(--color-bg-app);
+  background: linear-gradient(180deg, rgba(16, 18, 24, 0.16), rgba(16, 18, 24, 0.42)), var(--color-bg-app);
 }
 
 .chat-stage__background img,

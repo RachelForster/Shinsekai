@@ -9,11 +9,7 @@ import {
   systemConfigFormSchema,
   validatePayloadFromSchema,
 } from "../../entities/config/schema";
-import {
-  configQueryKey,
-  getAppConfig,
-  saveSystemConfig,
-} from "../../entities/config/repository";
+import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton, EmptyState, useToast } from "../../shared/ui";
@@ -91,7 +87,11 @@ export function SystemSettingsPage() {
               const nextErrors = validatePayloadFromSchema(systemConfigPageSchema, draft);
               setErrors(nextErrors);
               if (hasSchemaErrors(nextErrors)) {
-                showToast({ kind: "error", message: t("common.fixInvalidFields"), title: t("common.validationFailed") });
+                showToast({
+                  kind: "error",
+                  message: t("common.fixInvalidFields"),
+                  title: t("common.validationFailed"),
+                });
                 return;
               }
               saveMutation.mutate({

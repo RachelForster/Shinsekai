@@ -12,7 +12,10 @@ export function fetchLlmModels(input: { apiKey: string; baseUrl: string; provide
   return getPlatform().config.fetchLlmModels(input);
 }
 
-export function downloadTtsBundle(input: { kind: TtsBundleKind }, options?: TaskProgressOptions<TtsBundleDownloadResult>) {
+export function downloadTtsBundle(
+  input: { kind: TtsBundleKind },
+  options?: TaskProgressOptions<TtsBundleDownloadResult>,
+) {
   return getPlatform().config.downloadTtsBundle(input, options);
 }
 

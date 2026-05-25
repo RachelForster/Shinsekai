@@ -22,15 +22,7 @@ import {
 import type { Background } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
 import { getPlatform } from "../../shared/platform/platform";
-import {
-  AsyncButton,
-  Button,
-  EmptyState,
-  FilePicker,
-  TextArea,
-  TextInput,
-  useToast,
-} from "../../shared/ui";
+import { AsyncButton, Button, EmptyState, FilePicker, TextArea, TextInput, useToast } from "../../shared/ui";
 
 function createBackground(): Background {
   return {
@@ -78,7 +70,7 @@ export function BackgroundManagerPage() {
   const [nameError, setNameError] = useState("");
 
   const selected = useMemo(
-    () => (isCreating ? undefined : data.find((background) => background.name === selectedName) ?? data[0]),
+    () => (isCreating ? undefined : (data.find((background) => background.name === selectedName) ?? data[0])),
     [data, isCreating, selectedName],
   );
   const currentBackgroundName = isCreating ? "" : selectedName;
@@ -438,7 +430,11 @@ export function BackgroundManagerPage() {
               pickLabel={t("common.chooseFile")}
               pickerTitle={t("common.import")}
               readOnly
-              value={pendingImportFiles.length ? t("background.asset.selectedFiles", { count: pendingImportFiles.length }) : ""}
+              value={
+                pendingImportFiles.length
+                  ? t("background.asset.selectedFiles", { count: pendingImportFiles.length })
+                  : ""
+              }
             />
           </div>
           <AsyncButton
@@ -456,7 +452,11 @@ export function BackgroundManagerPage() {
             loading={exportMutation.isPending}
             onClick={() => {
               if (!currentBackgroundName) {
-                showToast({ kind: "error", message: t("background.validation.nameRequired"), title: t("common.export") });
+                showToast({
+                  kind: "error",
+                  message: t("background.validation.nameRequired"),
+                  title: t("common.export"),
+                });
                 return;
               }
               exportMutation.mutate(currentBackgroundName);
@@ -475,7 +475,9 @@ export function BackgroundManagerPage() {
           <Button
             icon={<ExternalLink aria-hidden className="button__icon" />}
             onClick={() =>
-              getPlatform().files.openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=background")
+              getPlatform().files.openExternal(
+                "https://rachelforster.github.io/Shinsekai/resources.html?type=background",
+              )
             }
             variant="ghost"
           >
@@ -498,7 +500,9 @@ export function BackgroundManagerPage() {
             <span className="entity-list__meta">{data.length}</span>
           </div>
           {isLoading ? <EmptyState title={t("background.loading")} /> : null}
-          {!isLoading && !data.length ? <EmptyState title={t("background.emptyTitle")} body={t("background.emptyBody")} /> : null}
+          {!isLoading && !data.length ? (
+            <EmptyState title={t("background.emptyTitle")} body={t("background.emptyBody")} />
+          ) : null}
           {data.map((background) => (
             <button
               aria-selected={!isCreating && background.name === draft.name}
@@ -511,7 +515,9 @@ export function BackgroundManagerPage() {
               type="button"
             >
               <span className="entity-list__primary">{background.name}</span>
-              <span className="entity-list__meta">{t("background.resource.imageCount", { count: background.sprites.length })}</span>
+              <span className="entity-list__meta">
+                {t("background.resource.imageCount", { count: background.sprites.length })}
+              </span>
             </button>
           ))}
         </aside>
@@ -526,7 +532,11 @@ export function BackgroundManagerPage() {
                   loading={translateMutation.isPending}
                   onClick={() => {
                     if (!draft.name.trim() && !draft.bg_tags.trim() && !draft.bgm_tags.trim()) {
-                      showToast({ kind: "error", message: t("common.fixInvalidFields"), title: t("common.validationFailed") });
+                      showToast({
+                        kind: "error",
+                        message: t("common.fixInvalidFields"),
+                        title: t("common.validationFailed"),
+                      });
                       return;
                     }
                     translateMutation.mutate();
@@ -592,7 +602,11 @@ export function BackgroundManagerPage() {
                     loading={imageTagsSaveMutation.isPending}
                     onClick={() => {
                       if (!currentBackgroundName) {
-                        showToast({ kind: "error", message: t("background.validation.nameRequired"), title: t("background.action.saveImageTags") });
+                        showToast({
+                          kind: "error",
+                          message: t("background.validation.nameRequired"),
+                          title: t("background.action.saveImageTags"),
+                        });
                         return;
                       }
                       imageTagsSaveMutation.mutate();
@@ -612,7 +626,11 @@ export function BackgroundManagerPage() {
                     loading={bgmTagsSaveMutation.isPending}
                     onClick={() => {
                       if (!currentBackgroundName) {
-                        showToast({ kind: "error", message: t("background.validation.nameRequired"), title: t("background.action.saveBgmTags") });
+                        showToast({
+                          kind: "error",
+                          message: t("background.validation.nameRequired"),
+                          title: t("background.action.saveBgmTags"),
+                        });
                         return;
                       }
                       bgmTagsSaveMutation.mutate();
@@ -635,7 +653,11 @@ export function BackgroundManagerPage() {
                   loading={imageUploadMutation.isPending}
                   onClick={() => {
                     if (!currentBackgroundName) {
-                      showToast({ kind: "error", message: t("background.validation.nameRequired"), title: t("background.asset.uploadImages") });
+                      showToast({
+                        kind: "error",
+                        message: t("background.validation.nameRequired"),
+                        title: t("background.asset.uploadImages"),
+                      });
                       return;
                     }
                     if (!pendingImagePaths.length) {
@@ -677,7 +699,11 @@ export function BackgroundManagerPage() {
                     }}
                     pickLabel={t("common.chooseFile")}
                     pickerTitle={t("background.asset.selectImages")}
-                    value={pendingImagePaths.length ? t("background.asset.selectedFiles", { count: pendingImagePaths.length }) : ""}
+                    value={
+                      pendingImagePaths.length
+                        ? t("background.asset.selectedFiles", { count: pendingImagePaths.length })
+                        : ""
+                    }
                   />
                 </span>
               </label>
@@ -720,7 +746,11 @@ export function BackgroundManagerPage() {
                   loading={bgmUploadMutation.isPending}
                   onClick={() => {
                     if (!currentBackgroundName) {
-                      showToast({ kind: "error", message: t("background.validation.nameRequired"), title: t("background.asset.uploadBgm") });
+                      showToast({
+                        kind: "error",
+                        message: t("background.validation.nameRequired"),
+                        title: t("background.asset.uploadBgm"),
+                      });
                       return;
                     }
                     if (!pendingBgmPaths.length) {
@@ -776,7 +806,11 @@ export function BackgroundManagerPage() {
                     }}
                     pickLabel={t("common.chooseFile")}
                     pickerTitle={t("background.asset.selectBgm")}
-                    value={pendingBgmPaths.length ? t("background.asset.selectedFiles", { count: pendingBgmPaths.length }) : ""}
+                    value={
+                      pendingBgmPaths.length
+                        ? t("background.asset.selectedFiles", { count: pendingBgmPaths.length })
+                        : ""
+                    }
                   />
                 </span>
               </label>
@@ -814,9 +848,16 @@ export function BackgroundManagerPage() {
                             <span className="background-bgm-table__path">{path}</span>
                           </td>
                           <td>
-                            <TextInput onChange={(event) => updateBgmRowTag(index, event.target.value)} value={bgmRowTags[index] ?? ""} />
+                            <TextInput
+                              onChange={(event) => updateBgmRowTag(index, event.target.value)}
+                              value={bgmRowTags[index] ?? ""}
+                            />
                           </td>
-                          <td>{path ? <audio className="audio-inline" controls src={getPlatform().files.fileUrl(path)} /> : null}</td>
+                          <td>
+                            {path ? (
+                              <audio className="audio-inline" controls src={getPlatform().files.fileUrl(path)} />
+                            ) : null}
+                          </td>
                           <td>
                             <AsyncButton
                               icon={<Trash2 aria-hidden className="button__icon" />}

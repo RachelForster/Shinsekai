@@ -1,6 +1,13 @@
 import { getPlatform } from "../../shared/platform/platform";
 import type { TaskProgressOptions } from "../../shared/platform/types";
-import type { AppUpdateRefKind, AppUpdateResult, McpConfig, McpToolPreview, PluginInstallInput, PluginManifest } from "./types";
+import type {
+  AppUpdateRefKind,
+  AppUpdateResult,
+  McpConfig,
+  McpToolPreview,
+  PluginInstallInput,
+  PluginManifest,
+} from "./types";
 
 export const pluginCatalogQueryKey = ["plugins", "catalog"] as const;
 export const pluginsQueryKey = ["plugins"] as const;

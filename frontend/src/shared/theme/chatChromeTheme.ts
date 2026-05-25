@@ -12,7 +12,8 @@ interface ThemeBlock {
   hover_extra_qss?: unknown;
 }
 
-const forbiddenDecl = /^(width|height|min-width|max-width|min-height|max-height|min-size|max-size|position|left|right|top|bottom|font-size)\s*:/i;
+const forbiddenDecl =
+  /^(width|height|min-width|max-width|min-height|max-height|min-size|max-size|position|left|right|top|bottom|font-size)\s*:/i;
 
 const visualVarMap: Record<string, string> = {
   background: "background",
@@ -38,9 +39,7 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
 }
 
 function normalizeCssColor(value: string) {
-  const match = value
-    .trim()
-    .match(/^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([0-9.]+)\s*\)$/i);
+  const match = value.trim().match(/^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([0-9.]+)\s*\)$/i);
   if (!match) {
     return value.trim();
   }

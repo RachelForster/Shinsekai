@@ -1,5 +1,10 @@
 import { getPlatform } from "../../shared/platform/platform";
-import type { BatchToolResult, SpriteGenerationResult, SpritePromptResult, TaskProgressOptions } from "../../shared/platform/types";
+import type {
+  BatchToolResult,
+  SpriteGenerationResult,
+  SpritePromptResult,
+  TaskProgressOptions,
+} from "../../shared/platform/types";
 
 export function generateSpritePrompts(
   input: { characterName: string; count: number },

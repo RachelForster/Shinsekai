@@ -188,14 +188,7 @@ export interface TtsBundleDownloadResult {
   provider: "genie-tts" | "gpt-sovits";
 }
 
-export type ChatRuntimeStatus =
-  | "idle"
-  | "listening"
-  | "generating"
-  | "streaming"
-  | "speaking"
-  | "paused"
-  | "error";
+export type ChatRuntimeStatus = "idle" | "listening" | "generating" | "streaming" | "speaking" | "paused" | "error";
 
 export interface ChatSprite {
   id: string;
@@ -318,9 +311,18 @@ export interface ShinsekaiPlatform {
     saveSpriteVoiceText: (name: string, spriteIndex: number, voiceText: string) => Promise<Character>;
     deleteAllSprites: (name: string) => Promise<Character>;
     deleteSprite: (name: string, spriteIndex: number) => Promise<Character>;
-    translateFields: (input: { characterSetting: string; emotionTags: string; name: string }) => Promise<CharacterTranslateResult>;
+    translateFields: (input: {
+      characterSetting: string;
+      emotionTags: string;
+      name: string;
+    }) => Promise<CharacterTranslateResult>;
     uploadSprites: (input: { emotionTags: string; name: string; paths: string[] }) => Promise<Character>;
-    uploadSpriteVoice: (input: { name: string; spriteIndex: number; voicePath: string; voiceText: string }) => Promise<Character>;
+    uploadSpriteVoice: (input: {
+      name: string;
+      spriteIndex: number;
+      voicePath: string;
+      voiceText: string;
+    }) => Promise<Character>;
   };
   config: {
     downloadTtsBundle: (
@@ -338,7 +340,10 @@ export interface ShinsekaiPlatform {
     openExternal: (url: string) => Promise<void>;
   };
   musicCover: {
-    run: (input: MusicCoverRunInput, options?: TaskProgressOptions<MusicCoverRunResult>) => Promise<MusicCoverRunResult>;
+    run: (
+      input: MusicCoverRunInput,
+      options?: TaskProgressOptions<MusicCoverRunResult>,
+    ) => Promise<MusicCoverRunResult>;
     saveConfig: (input: MusicCoverConfigInput) => Promise<MusicCoverConfigResult>;
     search: (input: { query: string; source: MusicCoverSource }) => Promise<MusicCoverSearchResult>;
   };
@@ -350,7 +355,10 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<AppUpdateResult>,
     ) => Promise<AppUpdateResult>;
     catalog: () => Promise<PluginCatalogItem[]>;
-    install: (input: PluginInstallInput | string, options?: TaskProgressOptions<PluginManifest>) => Promise<PluginManifest>;
+    install: (
+      input: PluginInstallInput | string,
+      options?: TaskProgressOptions<PluginManifest>,
+    ) => Promise<PluginManifest>;
     list: () => Promise<PluginManifest[]>;
     repoTags: (repo: string) => Promise<string[]>;
     setEnabled: (id: string, enabled: boolean) => Promise<PluginManifest>;
@@ -359,10 +367,7 @@ export interface ShinsekaiPlatform {
   mcp: {
     getConfig: () => Promise<McpConfig>;
     openConfigFile: () => Promise<string>;
-    previewTools: (
-      config: McpConfig,
-      options?: TaskProgressOptions<McpToolPreview[]>,
-    ) => Promise<McpToolPreview[]>;
+    previewTools: (config: McpConfig, options?: TaskProgressOptions<McpToolPreview[]>) => Promise<McpToolPreview[]>;
     saveAndApply: (config: McpConfig, options?: TaskProgressOptions<McpConfig>) => Promise<McpConfig>;
   };
   tasks: {

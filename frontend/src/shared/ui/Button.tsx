@@ -21,17 +21,9 @@ export function Button({
   variant = "default",
   ...props
 }: ButtonProps) {
-  const classes = ["button", variant !== "default" ? `button--${variant}` : "", className]
-    .filter(Boolean)
-    .join(" ");
+  const classes = ["button", variant !== "default" ? `button--${variant}` : "", className].filter(Boolean).join(" ");
   return (
-    <button
-      className={classes}
-      disabled={disabled || loading}
-      title={tooltip}
-      type={type}
-      {...props}
-    >
+    <button className={classes} disabled={disabled || loading} title={tooltip} type={type} {...props}>
       {loading ? <LoaderCircle aria-hidden className="button__spinner" /> : icon}
       {children}
     </button>

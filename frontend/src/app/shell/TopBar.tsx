@@ -12,7 +12,12 @@ export function TopBar() {
         <p className="topbar__title">{t("app.title")}</p>
       </div>
       <div className="topbar__actions">
-        <Link aria-label={t("nav.system")} className="topbar__icon-button" title={t("nav.system")} to="/settings/system">
+        <Link
+          aria-label={t("nav.system")}
+          className="topbar__icon-button"
+          title={t("nav.system")}
+          to="/settings/system"
+        >
           <Settings aria-hidden />
         </Link>
         <div aria-hidden className="topbar__window-buttons">

@@ -60,7 +60,9 @@ export function Dialog({
         role="dialog"
       >
         <header className="dialog__header">
-          <h2 className="dialog__title" id={titleId}>{title}</h2>
+          <h2 className="dialog__title" id={titleId}>
+            {title}
+          </h2>
           <IconButton label={closeLabel} onClick={onClose} ref={closeButtonRef}>
             <X aria-hidden className="icon-button__icon" />
           </IconButton>

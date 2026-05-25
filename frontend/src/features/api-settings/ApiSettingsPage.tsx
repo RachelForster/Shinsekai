@@ -19,7 +19,14 @@ import {
   saveApiConfig,
   saveSystemConfig,
 } from "../../entities/config/repository";
-import type { AdapterCatalog, AdapterExtraFieldSchema, AdapterOption, ApiConfig, FormGroupSchema, SystemConfig } from "../../entities/config/types";
+import type {
+  AdapterCatalog,
+  AdapterExtraFieldSchema,
+  AdapterOption,
+  ApiConfig,
+  FormGroupSchema,
+  SystemConfig,
+} from "../../entities/config/types";
 import { useAppState } from "../../app/providers/AppState";
 import { useI18n } from "../../shared/i18n";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
@@ -129,7 +136,9 @@ function normalizeSystemAsrForSave(systemConfig: SystemConfig): SystemConfig {
     ...systemConfig,
     asr_provider: normalizeAsrProvider(systemConfig.asr_provider),
     asr_whisper_compute_type: String(systemConfig.asr_whisper_compute_type ?? "").trim(),
-    asr_whisper_device: String(systemConfig.asr_whisper_device || "auto").trim().toLowerCase(),
+    asr_whisper_device: String(systemConfig.asr_whisper_device || "auto")
+      .trim()
+      .toLowerCase(),
     asr_whisper_model_size: String(systemConfig.asr_whisper_model_size || "small").trim() || "small",
   };
 }
@@ -144,7 +153,10 @@ function normalizeApiAsrForSave(apiConfig: ApiConfig, systemConfig: SystemConfig
   return updateAsrExtraConfig(apiConfig, "vosk", "model_path", modelPath);
 }
 
-function catalogOptions(options: AdapterOption[] | undefined, fallback: ReadonlyArray<{ label: string; value: string }>) {
+function catalogOptions(
+  options: AdapterOption[] | undefined,
+  fallback: ReadonlyArray<{ label: string; value: string }>,
+) {
   if (!options?.length) {
     return fallback.map((option) => ({ label: option.label, value: option.value }));
   }
@@ -160,26 +172,20 @@ function apiSchemaWithAdapterOptions(
   draft: ApiConfig | null,
 ): Array<FormGroupSchema<ApiConfig>> {
   const ttsOptions = withCurrentOption(
-    catalogOptions(
-      catalog?.tts,
-      [
-        { label: "不使用", value: "none" },
-        { label: "Genie TTS", value: "genie-tts" },
-        { label: "GPT SoVITS", value: "gpt-sovits" },
-        { label: "IndexTTS", value: "index-tts" },
-        { label: "CosyVoice", value: "cosyvoice" },
-      ],
-    ),
+    catalogOptions(catalog?.tts, [
+      { label: "不使用", value: "none" },
+      { label: "Genie TTS", value: "genie-tts" },
+      { label: "GPT SoVITS", value: "gpt-sovits" },
+      { label: "IndexTTS", value: "index-tts" },
+      { label: "CosyVoice", value: "cosyvoice" },
+    ]),
     draft?.tts_provider ?? "",
   );
   const t2iOptions = withCurrentOption(
-    catalogOptions(
-      catalog?.t2i,
-      [
-        { label: "ComfyUI", value: "comfyui" },
-        { label: "Stable Diffusion", value: "stable diffusion" },
-      ],
-    ),
+    catalogOptions(catalog?.t2i, [
+      { label: "ComfyUI", value: "comfyui" },
+      { label: "Stable Diffusion", value: "stable diffusion" },
+    ]),
     draft?.t2i_provider ?? "",
   );
 
@@ -278,9 +284,7 @@ function EditableModelSelect({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listboxId = `${id}-listbox`;
   const query = value.trim().toLowerCase();
-  const visibleOptions = query
-    ? options.filter((option) => option.id.toLowerCase().includes(query))
-    : options;
+  const visibleOptions = query ? options.filter((option) => option.id.toLowerCase().includes(query)) : options;
   const menuOptions = visibleOptions.length ? visibleOptions : options;
 
   useEffect(() => {
@@ -445,7 +449,11 @@ function AdapterExtraForm({
         let control;
         if (Array.isArray(field.choices) && field.choices.length) {
           control = (
-            <Select disabled={controlDisabled} onChange={(event) => onChange(key, event.target.value)} value={String(rawValue ?? "")}>
+            <Select
+              disabled={controlDisabled}
+              onChange={(event) => onChange(key, event.target.value)}
+              value={String(rawValue ?? "")}
+            >
               {field.choices.map((choice) => (
                 <option key={choice} value={choice}>
                   {choice}
@@ -515,7 +523,10 @@ export function ApiSettingsPage() {
   const [ttsBundleKind, setTtsBundleKind] = useState<TtsBundleKind>("genie");
   const [ttsBundleTask, setTtsBundleTask] = useState<TaskSnapshot<TtsBundleDownloadResult> | null>(null);
   const adapterCatalog = data?.adapter_catalog;
-  const apiSchema = useMemo(() => apiSchemaWithAdapterOptions(adapterCatalog, draft), [adapterCatalog, draft?.t2i_provider, draft?.tts_provider]);
+  const apiSchema = useMemo(
+    () => apiSchemaWithAdapterOptions(adapterCatalog, draft),
+    [adapterCatalog, draft?.t2i_provider, draft?.tts_provider],
+  );
 
   useEffect(() => {
     if (data?.api_config) {
@@ -687,7 +698,10 @@ export function ApiSettingsPage() {
   const activeAsrProvider = normalizeAsrProvider(systemDraft.asr_provider);
   const asrProviderSelectOptions = withCurrentOption(
     adapterCatalog?.asr?.length
-      ? adapterCatalog.asr.map((option) => ({ label: option.label || option.value, value: normalizeAsrProvider(option.value) }))
+      ? adapterCatalog.asr.map((option) => ({
+          label: option.label || option.value,
+          value: normalizeAsrProvider(option.value),
+        }))
       : [...asrProviderOptions],
     activeAsrProvider,
   );
@@ -794,11 +808,19 @@ export function ApiSettingsPage() {
     }
     if (requiresTtsServerConfig(draft.tts_provider)) {
       if (!draft.gpt_sovits_url.trim() || !draft.gpt_sovits_api_path.trim()) {
-        showToast({ kind: "error", message: "当前 TTS 引擎需要填写 URL 和服务启动路径。", title: t("common.validationFailed") });
+        showToast({
+          kind: "error",
+          message: "当前 TTS 引擎需要填写 URL 和服务启动路径。",
+          title: t("common.validationFailed"),
+        });
         return;
       }
       if (containsPathQuotes(draft.gpt_sovits_url) || containsPathQuotes(draft.gpt_sovits_api_path)) {
-        showToast({ kind: "error", message: "TTS URL 和服务启动路径不能包含引号。", title: t("common.validationFailed") });
+        showToast({
+          kind: "error",
+          message: "TTS URL 和服务启动路径不能包含引号。",
+          title: t("common.validationFailed"),
+        });
         return;
       }
     }
@@ -877,7 +899,11 @@ export function ApiSettingsPage() {
           <label className="field-row">
             <span className="field-row__label">{t("api.llm.provider")}</span>
             <span className="field-row__control">
-              <Select disabled={saveMutation.isPending} onChange={(event) => updateProvider(event.target.value)} value={draft.llm_provider}>
+              <Select
+                disabled={saveMutation.isPending}
+                onChange={(event) => updateProvider(event.target.value)}
+                value={draft.llm_provider}
+              >
                 {llmProviderSelectOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -1239,11 +1265,7 @@ export function ApiSettingsPage() {
         <p className="section__description resource-links__help">{t("api.links.help")}</p>
       </section>
       <footer className="api-page__save-footer">
-        <AsyncButton
-          className="api-page__save-button"
-          loading={saveMutation.isPending}
-          onClick={handleSave}
-        >
+        <AsyncButton className="api-page__save-button" loading={saveMutation.isPending} onClick={handleSave}>
           {t("common.save")}
         </AsyncButton>
       </footer>

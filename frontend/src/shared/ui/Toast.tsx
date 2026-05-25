@@ -20,9 +20,7 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-type ToastAction =
-  | { type: "push"; toast: ToastItem }
-  | { type: "remove"; id: string };
+type ToastAction = { type: "push"; toast: ToastItem } | { type: "remove"; id: string };
 
 function toastReducer(state: ToastItem[], action: ToastAction) {
   switch (action.type) {

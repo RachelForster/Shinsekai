@@ -26,7 +26,10 @@ export function ChatLauncherPage() {
   const { data: characters = [] } = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const { data: backgrounds = [] } = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const { data: templates = [] } = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
-  const { data: launchSession, isFetched: sessionFetched } = useQuery({ queryFn: getTemplateSession, queryKey: [...templatesQueryKey, "session"] });
+  const { data: launchSession, isFetched: sessionFetched } = useQuery({
+    queryFn: getTemplateSession,
+    queryKey: [...templatesQueryKey, "session"],
+  });
   const { data: appConfig } = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const [templateId, setTemplateId] = useState("");
   const [backgroundName, setBackgroundName] = useState(TRANSPARENT_BACKGROUND);
@@ -53,7 +56,15 @@ export function ChatLauncherPage() {
     if (!sessionRestored && !selectedCharacters.length && characters[0]) {
       setSelectedCharacters([characters[0].name]);
     }
-  }, [backgroundName, backgroundOptions, characters, selectedCharacters.length, sessionRestored, templateId, templates]);
+  }, [
+    backgroundName,
+    backgroundOptions,
+    characters,
+    selectedCharacters.length,
+    sessionRestored,
+    templateId,
+    templates,
+  ]);
 
   useEffect(() => {
     if (!sessionFetched || sessionRestored) {

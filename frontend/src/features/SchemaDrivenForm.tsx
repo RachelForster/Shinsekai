@@ -118,7 +118,8 @@ export function SchemaDrivenForm<T extends object>({
           max={field.max}
           min={field.min}
           onChange={(event: ChangeEvent<HTMLInputElement>) => {
-            const next = field.type === "integer" ? Number.parseInt(event.target.value, 10) : Number(event.target.value);
+            const next =
+              field.type === "integer" ? Number.parseInt(event.target.value, 10) : Number(event.target.value);
             update(field.name, (Number.isNaN(next) ? 0 : next) as T[keyof T]);
           }}
           step={field.step}
@@ -135,11 +136,7 @@ export function SchemaDrivenForm<T extends object>({
             onChange={(event) => update(field.name, event.target.value as T[keyof T])}
             value={String(rawValue ?? "")}
           />
-          <span
-            aria-hidden
-            className="swatch"
-            style={{ background: String(rawValue ?? "transparent") }}
-          />
+          <span aria-hidden className="swatch" style={{ background: String(rawValue ?? "transparent") }} />
         </div>
       );
     }
@@ -189,11 +186,11 @@ export function SchemaDrivenForm<T extends object>({
 
         return (
           <section className="section schema-section" key={group.id}>
-          <div className="section__header">
-            <h2 className="section__title">{group.title}</h2>
-          </div>
-          {fields}
-        </section>
+            <div className="section__header">
+              <h2 className="section__title">{group.title}</h2>
+            </div>
+            {fields}
+          </section>
         );
       })}
     </div>

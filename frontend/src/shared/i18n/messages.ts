@@ -533,9 +533,11 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "app.preview": "Settings",
     "app.shellMeta": "AI RPG Tools",
     "app.title": "Shinsekai",
-    "api.description": "Configure LLM, TTS, voice input, and ComfyUI. API settings are written to api.yaml; microphone recognition settings are written to system_config.yaml.",
+    "api.description":
+      "Configure LLM, TTS, voice input, and ComfyUI. API settings are written to api.yaml; microphone recognition settings are written to system_config.yaml.",
     "api.error.saveFallback": "Check the configuration fields.",
-    "api.links.help": "Extract and point the TTS service startup path to that folder. GPT SoVITS needs about 11GB; Genie TTS about 4GB.",
+    "api.links.help":
+      "Extract and point the TTS service startup path to that folder. GPT SoVITS needs about 11GB; Genie TTS about 4GB.",
     "api.links.link1": "GPT-SoVITS on GitHub",
     "api.links.link2": "ModelScope: GPT-SoVITS v2pro package",
     "api.links.link3": "ModelScope: RTX 50-series bundle",
@@ -566,7 +568,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.llm.thinkingUnsupported": "This model does not support thinking mode.",
     "api.loading": "Loading API settings",
     "api.resume.btn": "Resume last chat & launch",
-    "api.resume.tip": "Uses the newest chat history JSON and the last launch template cache, then starts chat with transparent background and ComfyUI disabled.",
+    "api.resume.tip":
+      "Uses the newest chat history JSON and the last launch template cache, then starts chat with transparent background and ComfyUI disabled.",
     "api.resume.title": "Launch chat",
     "api.tts.bundleDone": "TTS bundle is ready: {path}",
     "api.tts.bundleDownload": "Download",
@@ -598,7 +601,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.resource.backgroundImage": "Background images",
     "background.resource.bgm": "BGM",
     "background.resource.count": "Count",
-    "background.resource.description": "The React layer edits resource declarations; upload, copy, and validation stay in the platform adapter.",
+    "background.resource.description":
+      "The React layer edits resource declarations; upload, copy, and validation stay in the platform adapter.",
     "background.resource.imageCount": "{count} images",
     "background.resource.source": "Source",
     "background.resource.type": "Type",
@@ -730,7 +734,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "chat.input.micError": "Speech recognition could not start.",
     "chat.input.micStart": "Start microphone",
     "chat.input.micStop": "Stop microphone",
-    "chat.input.micUnsupported": "This browser does not support speech recognition. Use Chrome/Edge on the local React bridge.",
+    "chat.input.micUnsupported":
+      "This browser does not support speech recognition. Use Chrome/Edge on the local React bridge.",
     "chat.input.placeholder": "Enter dialogue",
     "chat.input.send": "Send",
     "chat.toast.historyCleared": "History cleared",
@@ -872,7 +877,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "tools.cropOutput": "Output folder (optional)",
     "tools.cropRatio": "Keep top fraction of height",
     "tools.cropTitle": "Batch crop sprites",
-    "tools.description": "Sprite generation, crop, and background removal use the same tool flow as the PySide settings window.",
+    "tools.description":
+      "Sprite generation, crop, and background removal use the same tool flow as the PySide settings window.",
     "tools.galleryEmpty": "No generated sprites",
     "tools.galleryLabel": "Output previews",
     "tools.gemBox": "Batch-generate sprites (requires Gemini API key)",
@@ -922,7 +928,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.appUpdate.title": "Update application",
     "plugin.appUpdate.version": "Current version: {version}",
     "plugin.appUpdate.versionUnknown": "Current version: unknown",
-    "plugin.appUpdate.warning": "This downloads a GitHub source archive and merges it into the current install directory, skipping data and plugins. This cannot be undone automatically.",
+    "plugin.appUpdate.warning":
+      "This downloads a GitHub source archive and merges it into the current install directory, skipping data and plugins. This cannot be undone automatically.",
     "plugin.author": "Author",
     "plugin.catalog.emptyBody": "Refresh the catalog to show community plugins.",
     "plugin.catalog.emptyTitle": "No plugins found",
@@ -930,10 +937,12 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.catalog.errorTitle": "Could not load plugin catalog",
     "plugin.catalog.loading": "Loading plugin catalog",
     "plugin.catalog.title": "Discover",
-    "plugin.description": "Plugins contribute only to fixed slots and are installed, enabled, or disabled through the platform layer.",
+    "plugin.description":
+      "Plugins contribute only to fixed slots and are installed, enabled, or disabled through the platform layer.",
     "plugin.directory": "Directory",
     "plugin.detail.noUi": "This plugin has no settings page contribution.",
-    "plugin.detail.pyqtNotice": "Python plugin settings are contributed as PyQt widgets. The React view lists the same entries and fixed slots.",
+    "plugin.detail.pyqtNotice":
+      "Python plugin settings are contributed as PyQt widgets. The React view lists the same entries and fixed slots.",
     "plugin.detail.settingsPages": "Settings pages",
     "plugin.detail.title": "{title} settings",
     "plugin.detail.toolsTabs": "Tools tabs",
@@ -943,7 +952,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.error.toggleFallback": "Plugin status was not updated.",
     "plugin.error.uninstallFallback": "Plugin was not removed.",
     "plugin.id": "Plugin ID",
-    "plugin.install.entryHelp": "Manifest entries are supported. GitHub repositories download sources, install dependencies, and try to register automatically.",
+    "plugin.install.entryHelp":
+      "Manifest entries are supported. GitHub repositories download sources, install dependencies, and try to register automatically.",
     "plugin.install.entryLabel": "Plugin ID",
     "plugin.install.placeholder": "plugins.xxx.plugin:Plugin or owner/repo",
     "plugin.install.title": "Install",
@@ -953,7 +963,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.installed.count": "{count} plugins",
     "plugin.installed.loading": "Loading plugins",
     "plugin.installed.title": "Installed",
-    "plugin.loadError.unavailable": "Configured in plugins.yaml, but the plugin code is not installed or failed to import.",
+    "plugin.loadError.unavailable":
+      "Configured in plugins.yaml, but the plugin code is not installed or failed to import.",
     "plugin.permissions": "Permissions",
     "plugin.plugin": "Plugin",
     "plugin.toggle.disable": "Disable",
@@ -982,7 +993,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "system.asr.device": "Device",
     "system.asr.deviceAuto": "Auto",
     "system.asr.followUi": "Follow interface language",
-    "system.asr.hint": "Recognition language applies to every engine. Whisper model, device, and precision appear only for Whisper engines; Vosk keeps only its model path.",
+    "system.asr.hint":
+      "Recognition language applies to every engine. Whisper model, device, and precision appear only for Whisper engines; Vosk keeps only its model path.",
     "system.asr.langEn": "English",
     "system.asr.langJa": "Japanese",
     "system.asr.langYue": "Cantonese",
@@ -992,7 +1004,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "system.asr.modelCustomPlaceholder": "Local folder or full model id",
     "system.asr.provider": "Engine",
     "system.asr.title": "Voice input (ASR)",
-    "system.asr.voskHint": "Download a Vosk model, extract it, and paste the folder path into the Vosk model path field.",
+    "system.asr.voskHint":
+      "Download a Vosk model, extract it, and paste the folder path into the Vosk model path field.",
     "system.asr.voskModelPath": "Vosk model path",
     "system.asr.voskModels": "Vosk models",
     "system.asr.whisperModel": "Whisper model",
@@ -1005,7 +1018,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "template.action.quickRestart": "Quick restart",
     "template.action.selectAllCharacters": "Select all characters",
     "template.defaultName": "New template",
-    "template.description": "Template editing and generation reuse character and background queries, then refresh chat launch after saving.",
+    "template.description":
+      "Template editing and generation reuse character and background queries, then refresh chat launch after saving.",
     "template.emptyBody": "Generate a template first.",
     "template.emptySelection": "No template selected",
     "template.emptyTitle": "No templates",
@@ -1060,9 +1074,11 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "app.preview": "設定",
     "app.shellMeta": "AI RPG Tools",
     "app.title": "新世界プログラム",
-    "api.description": "大規模言語モデル、TTS、音声入力、ComfyUI を設定します。API 関連は api.yaml、マイク認識は system_config.yaml に保存します。",
+    "api.description":
+      "大規模言語モデル、TTS、音声入力、ComfyUI を設定します。API 関連は api.yaml、マイク認識は system_config.yaml に保存します。",
     "api.error.saveFallback": "設定項目を確認してください。",
-    "api.links.help": "展開先を TTS サービス起動パスに指定してください。GPT SoVITS は約 11GB、Genie TTS は約 4GB 必要です。",
+    "api.links.help":
+      "展開先を TTS サービス起動パスに指定してください。GPT SoVITS は約 11GB、Genie TTS は約 4GB 必要です。",
     "api.links.link1": "GitHub: GPT-SoVITS",
     "api.links.link2": "ModelScope: GPT-SoVITS v2pro",
     "api.links.link3": "ModelScope: RTX 50 系向け",
@@ -1093,7 +1109,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.llm.thinkingUnsupported": "このモデルは思考モードに対応していません。",
     "api.loading": "API 設定を読み込み中",
     "api.resume.btn": "最後のチャットを読み込んで起動",
-    "api.resume.tip": "最新のチャット履歴 JSON と前回起動テンプレートを使い、透明背景・ComfyUI 無効でチャットを開始します。",
+    "api.resume.tip":
+      "最新のチャット履歴 JSON と前回起動テンプレートを使い、透明背景・ComfyUI 無効でチャットを開始します。",
     "api.resume.title": "チャット起動",
     "api.tts.bundleDone": "TTS 統合パッケージの準備ができました: {path}",
     "api.tts.bundleDownload": "ダウンロード",
@@ -1125,7 +1142,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.resource.backgroundImage": "背景画像",
     "background.resource.bgm": "BGM",
     "background.resource.count": "数",
-    "background.resource.description": "React 層はリソース宣言のみ編集し、アップロード、コピー、検証は platform adapter に任せます。",
+    "background.resource.description":
+      "React 層はリソース宣言のみ編集し、アップロード、コピー、検証は platform adapter に任せます。",
     "background.resource.imageCount": "{count} 枚",
     "background.resource.source": "出所",
     "background.resource.type": "種類",
@@ -1257,7 +1275,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "chat.input.micError": "音声認識を開始できませんでした。",
     "chat.input.micStart": "マイクを開始",
     "chat.input.micStop": "マイクを停止",
-    "chat.input.micUnsupported": "このブラウザは音声認識に対応していません。ローカルの React bridge で Chrome/Edge を使用してください。",
+    "chat.input.micUnsupported":
+      "このブラウザは音声認識に対応していません。ローカルの React bridge で Chrome/Edge を使用してください。",
     "chat.input.placeholder": "台詞を入力",
     "chat.input.send": "送信",
     "chat.toast.historyCleared": "履歴を消去しました",
@@ -1449,7 +1468,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.appUpdate.title": "本体プログラムの更新",
     "plugin.appUpdate.version": "現在のバージョン：{version}",
     "plugin.appUpdate.versionUnknown": "現在のバージョン：不明",
-    "plugin.appUpdate.warning": "GitHub のソース ZIP をダウンロードし、現在のインストール先にマージします（data と plugins は除外）。元に戻せません。",
+    "plugin.appUpdate.warning":
+      "GitHub のソース ZIP をダウンロードし、現在のインストール先にマージします（data と plugins は除外）。元に戻せません。",
     "plugin.author": "作者",
     "plugin.catalog.emptyBody": "索引を更新するとコミュニティプラグインが表示されます。",
     "plugin.catalog.emptyTitle": "表示できるプラグインがありません",
@@ -1460,7 +1480,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.description": "プラグインは固定 slot にのみ貢献し、platform 層を通じてインストール、有効化、無効化します。",
     "plugin.directory": "場所",
     "plugin.detail.noUi": "このプラグインには設定ページがありません。",
-    "plugin.detail.pyqtNotice": "Python プラグイン設定は PyQt ウィジェットとして提供されます。React 画面では同じ項目と固定 slot を一覧します。",
+    "plugin.detail.pyqtNotice":
+      "Python プラグイン設定は PyQt ウィジェットとして提供されます。React 画面では同じ項目と固定 slot を一覧します。",
     "plugin.detail.settingsPages": "設定ページ",
     "plugin.detail.title": "{title} 設定",
     "plugin.detail.toolsTabs": "ツールタブ",
@@ -1470,7 +1491,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.error.toggleFallback": "プラグイン状態を更新できませんでした。",
     "plugin.error.uninstallFallback": "プラグインを削除できませんでした。",
     "plugin.id": "プラグイン ID",
-    "plugin.install.entryHelp": "manifest entry に対応。GitHub リポジトリはソース取得、依存関係のインストール、自動登録を試みます。",
+    "plugin.install.entryHelp":
+      "manifest entry に対応。GitHub リポジトリはソース取得、依存関係のインストール、自動登録を試みます。",
     "plugin.install.entryLabel": "プラグイン ID",
     "plugin.install.placeholder": "plugins.xxx.plugin:Plugin または owner/repo",
     "plugin.install.title": "インストール",
@@ -1480,7 +1502,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.installed.count": "{count} 件のプラグイン",
     "plugin.installed.loading": "プラグインを読み込み中",
     "plugin.installed.title": "インストール済み",
-    "plugin.loadError.unavailable": "plugins.yaml には設定されていますが、プラグインコードが未インストールか、インポートに失敗しました。",
+    "plugin.loadError.unavailable":
+      "plugins.yaml には設定されていますが、プラグインコードが未インストールか、インポートに失敗しました。",
     "plugin.permissions": "権限",
     "plugin.plugin": "プラグイン",
     "plugin.toggle.disable": "無効化",
@@ -1501,7 +1524,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.toast.operationFailed": "操作失敗",
     "plugin.toast.restartHint": "プラグイン変更を反映するにはアプリを再起動してください。",
     "plugin.toast.uninstalled": "プラグインをアンインストールしました",
-    "plugin.uninstall.confirmBody": "「{title}」を manifest から削除し、安全な場合はプラグインフォルダーも削除しますか？",
+    "plugin.uninstall.confirmBody":
+      "「{title}」を manifest から削除し、安全な場合はプラグインフォルダーも削除しますか？",
     "plugin.uninstall.confirmTitle": "プラグインをアンインストール",
     "plugin.version": "バージョン",
     "system.asr.computeAuto": "自動（デバイスに合わせる）",
@@ -1509,7 +1533,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "system.asr.device": "推論デバイス",
     "system.asr.deviceAuto": "自動",
     "system.asr.followUi": "表示言語に合わせる",
-    "system.asr.hint": "認識言語は全エンジン共通です。Whisper モデル、デバイス、精度は Whisper 系エンジン選択時のみ表示し、Vosk ではモデルパスだけを扱います。",
+    "system.asr.hint":
+      "認識言語は全エンジン共通です。Whisper モデル、デバイス、精度は Whisper 系エンジン選択時のみ表示し、Vosk ではモデルパスだけを扱います。",
     "system.asr.langEn": "English",
     "system.asr.langJa": "日本語",
     "system.asr.langYue": "粵語",
@@ -1532,7 +1557,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "template.action.quickRestart": "クイック再起動",
     "template.action.selectAllCharacters": "全キャラクターを選択",
     "template.defaultName": "新規テンプレート",
-    "template.description": "テンプレート編集と生成はキャラクター、背景 query を再利用し、保存後にチャット開始を更新します。",
+    "template.description":
+      "テンプレート編集と生成はキャラクター、背景 query を再利用し、保存後にチャット開始を更新します。",
     "template.emptyBody": "まずテンプレートを生成してください。",
     "template.emptySelection": "テンプレートが選択されていません",
     "template.emptyTitle": "テンプレートがありません",
@@ -1587,7 +1613,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "app.preview": "设置",
     "app.shellMeta": "AI RPG Tools",
     "app.title": "新世界程序",
-    "api.description": "配置大语言模型、TTS、语音输入与 ComfyUI；API 相关写入 api.yaml，麦克风识别选项写入 system_config.yaml。",
+    "api.description":
+      "配置大语言模型、TTS、语音输入与 ComfyUI；API 相关写入 api.yaml，麦克风识别选项写入 system_config.yaml。",
     "api.error.saveFallback": "请检查配置字段。",
     "api.links.help": "解压后请将目录填到 TTS 服务启动路径。GPT SoVITS 建议至少 11GB 磁盘，Genie TTS 约 4GB。",
     "api.links.link1": "GPT-SOVITS github 源地址",
@@ -1620,7 +1647,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.llm.thinkingUnsupported": "该模型不支持思考模式。",
     "api.loading": "正在读取 API 设定",
     "api.resume.btn": "加载上次聊天并启动",
-    "api.resume.tip": "使用 data/chat_history 下最近修改的聊天记录和上次启动模板缓存，以透明背景、不启用 ComfyUI 的方式启动聊天。",
+    "api.resume.tip":
+      "使用 data/chat_history 下最近修改的聊天记录和上次启动模板缓存，以透明背景、不启用 ComfyUI 的方式启动聊天。",
     "api.resume.title": "启动聊天",
     "api.tts.bundleDone": "TTS 整合包已就绪：{path}",
     "api.tts.bundleDownload": "下载",
@@ -1976,7 +2004,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.appUpdate.title": "更新主程序",
     "plugin.appUpdate.version": "当前版本：{version}",
     "plugin.appUpdate.versionUnknown": "当前版本：未知",
-    "plugin.appUpdate.warning": "将从 GitHub 下载源码归档并合并覆盖到当前程序目录（会跳过 data 和 plugins）。此操作不可自动撤销。",
+    "plugin.appUpdate.warning":
+      "将从 GitHub 下载源码归档并合并覆盖到当前程序目录（会跳过 data 和 plugins）。此操作不可自动撤销。",
     "plugin.author": "作者",
     "plugin.catalog.emptyBody": "刷新索引后会显示社区插件。",
     "plugin.catalog.emptyTitle": "暂无可发现插件",
@@ -2036,7 +2065,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "system.asr.device": "推理设备",
     "system.asr.deviceAuto": "自动",
     "system.asr.followUi": "跟随界面语言",
-    "system.asr.hint": "识别语言对所有引擎共用；Whisper 模型、推理设备与计算精度仅在选用 Whisper 引擎时显示，Vosk 只保留模型目录字段。",
+    "system.asr.hint":
+      "识别语言对所有引擎共用；Whisper 模型、推理设备与计算精度仅在选用 Whisper 引擎时显示，Vosk 只保留模型目录字段。",
     "system.asr.langEn": "English",
     "system.asr.langJa": "日本語",
     "system.asr.langYue": "粵語",

@@ -1,15 +1,6 @@
-export type PluginSlotId =
-  | "chat-output"
-  | "chat-toolbar"
-  | "settings-extension"
-  | "settings-tools";
+export type PluginSlotId = "chat-output" | "chat-toolbar" | "settings-extension" | "settings-tools";
 
-export const pluginSlotIds: PluginSlotId[] = [
-  "chat-output",
-  "chat-toolbar",
-  "settings-extension",
-  "settings-tools",
-];
+export const pluginSlotIds: PluginSlotId[] = ["chat-output", "chat-toolbar", "settings-extension", "settings-tools"];
 
 export function isPluginSlotId(value: string): value is PluginSlotId {
   return pluginSlotIds.includes(value as PluginSlotId);

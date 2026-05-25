@@ -22,21 +22,11 @@ function interpolate(template: string, values?: MessageValues) {
   );
 }
 
-export function translateMessage(
-  language: FrontendLanguage,
-  key: MessageKey,
-  values?: MessageValues,
-) {
+export function translateMessage(language: FrontendLanguage, key: MessageKey, values?: MessageValues) {
   return interpolate(frontendMessages[language][key] ?? frontendMessages.zh_CN[key] ?? key, values);
 }
 
-export function I18nProvider({
-  children,
-  language,
-}: {
-  children: ReactNode;
-  language: FrontendLanguage;
-}) {
+export function I18nProvider({ children, language }: { children: ReactNode; language: FrontendLanguage }) {
   useEffect(() => {
     document.documentElement.lang = language === "zh_CN" ? "zh-CN" : language;
   }, [language]);

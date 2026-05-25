@@ -69,7 +69,9 @@ function createCharacter(): Character {
 }
 
 function pronunciationMapToText(value: Record<string, string>) {
-  return Object.entries(value ?? {}).map(([key, item]) => `${key}=${item}`).join("\n");
+  return Object.entries(value ?? {})
+    .map(([key, item]) => `${key}=${item}`)
+    .join("\n");
 }
 
 function pronunciationTextToMap(value: string) {
@@ -120,11 +122,13 @@ export function CharacterEditorPage() {
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const memoryName = draft.name.trim();
   const currentCharacterName = isCreating ? "" : selectedName;
-  const isSavedCharacter = Boolean(currentCharacterName && data.some((character) => character.name === currentCharacterName));
+  const isSavedCharacter = Boolean(
+    currentCharacterName && data.some((character) => character.name === currentCharacterName),
+  );
   const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(draft.color || "") ? draft.color : "#d07d7d";
 
   const selected = useMemo(
-    () => (isCreating ? undefined : data.find((character) => character.name === selectedName) ?? data[0]),
+    () => (isCreating ? undefined : (data.find((character) => character.name === selectedName) ?? data[0])),
     [data, isCreating, selectedName],
   );
 
@@ -319,7 +323,8 @@ export function CharacterEditorPage() {
   });
 
   const voiceTextMutation = useMutation({
-    mutationFn: ({ index, text }: { index: number; text: string }) => saveSpriteVoiceText(currentCharacterName, index, text),
+    mutationFn: ({ index, text }: { index: number; text: string }) =>
+      saveSpriteVoiceText(currentCharacterName, index, text),
     onError(error) {
       showToast({
         kind: "error",
@@ -479,12 +484,18 @@ export function CharacterEditorPage() {
       return;
     }
     const spritePrefix = draft.sprite_prefix.trim();
-    const pathFields = [draft.gpt_model_path, draft.sovits_model_path, draft.refer_audio_path].filter(Boolean).map(String);
+    const pathFields = [draft.gpt_model_path, draft.sovits_model_path, draft.refer_audio_path]
+      .filter(Boolean)
+      .map(String);
     const validationMessages = [
       !spritePrefix ? t("character.validation.spritePrefixRequired") : "",
       spritePrefix && !/^[\x00-\x7F]+$/.test(spritePrefix) ? t("character.validation.spritePrefixAscii") : "",
-      pathFields.some((path) => path.trim().startsWith("\"") || path.trim().endsWith("\"")) ? t("character.validation.noQuotedPaths") : "",
-      draft.gpt_model_path?.trim() && !draft.gpt_model_path.trim().toLowerCase().endsWith(".ckpt") ? t("character.validation.gptModelExt") : "",
+      pathFields.some((path) => path.trim().startsWith('"') || path.trim().endsWith('"'))
+        ? t("character.validation.noQuotedPaths")
+        : "",
+      draft.gpt_model_path?.trim() && !draft.gpt_model_path.trim().toLowerCase().endsWith(".ckpt")
+        ? t("character.validation.gptModelExt")
+        : "",
       draft.sovits_model_path?.trim() && !draft.sovits_model_path.trim().toLowerCase().endsWith(".pth")
         ? t("character.validation.sovitsModelExt")
         : "",
@@ -564,7 +575,11 @@ export function CharacterEditorPage() {
             loading={exportMutation.isPending}
             onClick={() => {
               if (!currentCharacterName) {
-                showToast({ kind: "error", message: t("character.validation.nameRequired"), title: t("common.export") });
+                showToast({
+                  kind: "error",
+                  message: t("character.validation.nameRequired"),
+                  title: t("common.export"),
+                });
                 return;
               }
               exportMutation.mutate(currentCharacterName);
@@ -583,7 +598,9 @@ export function CharacterEditorPage() {
           <Button
             icon={<ExternalLink aria-hidden className="button__icon" />}
             onClick={() =>
-              getPlatform().files.openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=character")
+              getPlatform().files.openExternal(
+                "https://rachelforster.github.io/Shinsekai/resources.html?type=character",
+              )
             }
             variant="ghost"
           >
@@ -631,7 +648,9 @@ export function CharacterEditorPage() {
             <span className="entity-list__meta">{data.length}</span>
           </div>
           {isLoading ? <EmptyState title={t("character.loading")} /> : null}
-          {!isLoading && !data.length ? <EmptyState title={t("character.emptyTitle")} body={t("character.emptyBody")} /> : null}
+          {!isLoading && !data.length ? (
+            <EmptyState title={t("character.emptyTitle")} body={t("character.emptyBody")} />
+          ) : null}
           {data.map((character) => (
             <button
               aria-selected={!isCreating && character.name === draft.name}
@@ -657,7 +676,11 @@ export function CharacterEditorPage() {
                 icon={<Trash2 aria-hidden className="button__icon" />}
                 onClick={() => {
                   if (!currentCharacterName) {
-                    showToast({ kind: "error", message: t("character.validation.nameRequired"), title: t("common.delete") });
+                    showToast({
+                      kind: "error",
+                      message: t("character.validation.nameRequired"),
+                      title: t("common.delete"),
+                    });
                     return;
                   }
                   setPendingDelete(currentCharacterName);
@@ -735,7 +758,11 @@ export function CharacterEditorPage() {
                   onClick={() => {
                     if (!draft.name.trim()) {
                       setNameError(t("character.validation.nameRequired"));
-                      showToast({ kind: "error", message: t("common.fixInvalidFields"), title: t("common.validationFailed") });
+                      showToast({
+                        kind: "error",
+                        message: t("common.fixInvalidFields"),
+                        title: t("common.validationFailed"),
+                      });
                       return;
                     }
                     aiSettingMutation.mutate();
@@ -748,7 +775,11 @@ export function CharacterEditorPage() {
                   loading={translateMutation.isPending}
                   onClick={() => {
                     if (!draft.name.trim() && !draft.character_setting.trim() && !draft.emotion_tags.trim()) {
-                      showToast({ kind: "error", message: t("common.fixInvalidFields"), title: t("common.validationFailed") });
+                      showToast({
+                        kind: "error",
+                        message: t("common.fixInvalidFields"),
+                        title: t("common.validationFailed"),
+                      });
                       return;
                     }
                     translateMutation.mutate();
@@ -873,7 +904,11 @@ export function CharacterEditorPage() {
                   loading={spriteUploadMutation.isPending}
                   onClick={() => {
                     if (!isSavedCharacter) {
-                      showToast({ kind: "error", message: t("character.validation.nameRequired"), title: t("character.sprite.uploadImages") });
+                      showToast({
+                        kind: "error",
+                        message: t("character.validation.nameRequired"),
+                        title: t("character.sprite.uploadImages"),
+                      });
                       return;
                     }
                     if (!pendingSpritePaths.length) {
@@ -915,7 +950,11 @@ export function CharacterEditorPage() {
                     }}
                     pickLabel={t("common.chooseFile")}
                     pickerTitle={t("character.sprite.selectImages")}
-                    value={pendingSpritePaths.length ? t("character.sprite.selectedFiles", { count: pendingSpritePaths.length }) : ""}
+                    value={
+                      pendingSpritePaths.length
+                        ? t("character.sprite.selectedFiles", { count: pendingSpritePaths.length })
+                        : ""
+                    }
                   />
                 </span>
               </label>
@@ -934,7 +973,11 @@ export function CharacterEditorPage() {
                       loading={spriteScaleMutation.isPending}
                       onClick={() => {
                         if (!isSavedCharacter) {
-                          showToast({ kind: "error", message: t("character.validation.nameRequired"), title: t("character.sprite.saveScale") });
+                          showToast({
+                            kind: "error",
+                            message: t("character.validation.nameRequired"),
+                            title: t("character.sprite.saveScale"),
+                          });
                           return;
                         }
                         spriteScaleMutation.mutate();
@@ -948,13 +991,20 @@ export function CharacterEditorPage() {
               <label className="field-row field-row--stack">
                 <span className="field-row__label">{t("character.field.emotionTags")}</span>
                 <span className="field-row__control">
-                  <TextArea onChange={(event) => update("emotion_tags", event.target.value)} value={draft.emotion_tags} />
+                  <TextArea
+                    onChange={(event) => update("emotion_tags", event.target.value)}
+                    value={draft.emotion_tags}
+                  />
                   <div className="page__actions page__actions--left">
                     <AsyncButton
                       loading={emotionTagsMutation.isPending}
                       onClick={() => {
                         if (!isSavedCharacter || !draft.emotion_tags) {
-                          showToast({ kind: "error", message: t("common.fixInvalidFields"), title: t("character.sprite.saveTags") });
+                          showToast({
+                            kind: "error",
+                            message: t("common.fixInvalidFields"),
+                            title: t("character.sprite.saveTags"),
+                          });
                           return;
                         }
                         emotionTagsMutation.mutate();

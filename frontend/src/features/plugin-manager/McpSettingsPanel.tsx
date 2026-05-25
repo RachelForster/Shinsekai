@@ -65,7 +65,9 @@ function parseArrayJson(text: string, message: string): string[] {
 }
 
 function normalizeTransport(value: unknown): McpTransport {
-  const raw = String(value || "sse").trim().toLowerCase();
+  const raw = String(value || "sse")
+    .trim()
+    .toLowerCase();
   if (raw === "stdio") {
     return "stdio";
   }
@@ -138,15 +140,17 @@ function importMcpServers(rawText: string): McpServerEntry[] {
     if (transport === "stdio") {
       entry.command = String(source.command ?? "");
       entry.args = Array.isArray(source.args) ? source.args.map(String) : [];
-      entry.env = source.env && typeof source.env === "object" && !Array.isArray(source.env)
-        ? Object.fromEntries(Object.entries(source.env).map(([key, item]) => [key, String(item)]))
-        : {};
+      entry.env =
+        source.env && typeof source.env === "object" && !Array.isArray(source.env)
+          ? Object.fromEntries(Object.entries(source.env).map(([key, item]) => [key, String(item)]))
+          : {};
       return [entry];
     }
     entry.url = String(source.url ?? "");
-    entry.headers = source.headers && typeof source.headers === "object" && !Array.isArray(source.headers)
-      ? Object.fromEntries(Object.entries(source.headers).map(([key, item]) => [key, String(item)]))
-      : {};
+    entry.headers =
+      source.headers && typeof source.headers === "object" && !Array.isArray(source.headers)
+        ? Object.fromEntries(Object.entries(source.headers).map(([key, item]) => [key, String(item)]))
+        : {};
     return [entry];
   });
 }
@@ -244,7 +248,11 @@ function McpServerDialog({
         <label className="field-row">
           <span className="field-row__label">{t("mcp.enabled")}</span>
           <span className="field-row__control">
-            <input checked={server.enabled} onChange={(event) => update({ enabled: event.target.checked })} type="checkbox" />
+            <input
+              checked={server.enabled}
+              onChange={(event) => update({ enabled: event.target.checked })}
+              type="checkbox"
+            />
           </span>
         </label>
         <label className="field-row">
@@ -262,7 +270,10 @@ function McpServerDialog({
         <label className="field-row">
           <span className="field-row__label">{t("mcp.field.transport")}</span>
           <span className="field-row__control">
-            <Select onChange={(event) => update({ transport: event.target.value as McpTransport })} value={server.transport}>
+            <Select
+              onChange={(event) => update({ transport: event.target.value as McpTransport })}
+              value={server.transport}
+            >
               <option value="sse">SSE</option>
               <option value="streamable_http">Streamable HTTP</option>
               <option value="stdio">stdio</option>
@@ -272,7 +283,11 @@ function McpServerDialog({
         <label className="field-row">
           <span className="field-row__label">{t("mcp.field.group")}</span>
           <span className="field-row__control">
-            <TextInput onChange={(event) => update({ group: event.target.value })} placeholder="mcp" value={server.group ?? ""} />
+            <TextInput
+              onChange={(event) => update({ group: event.target.value })}
+              placeholder="mcp"
+              value={server.group ?? ""}
+            />
           </span>
         </label>
 
@@ -314,7 +329,11 @@ function McpServerDialog({
           </>
         )}
 
-        {error ? <div className="field-error" role="alert">{error}</div> : null}
+        {error ? (
+          <div className="field-error" role="alert">
+            {error}
+          </div>
+        ) : null}
       </div>
     </Dialog>
   );
@@ -480,7 +499,11 @@ export function McpSettingsPanel() {
       key: "actions",
       render: (server: McpServerRow) => (
         <div className="page__actions">
-          <Button disabled={!controlsEnabled} onClick={() => setServerDialog({ index: server.index, server })} variant="ghost">
+          <Button
+            disabled={!controlsEnabled}
+            onClick={() => setServerDialog({ index: server.index, server })}
+            variant="ghost"
+          >
             {t("common.edit")}
           </Button>
           <Button
@@ -580,7 +603,11 @@ export function McpSettingsPanel() {
         <div className="section__header">
           <h2 className="section__title">{t("mcp.server.title")}</h2>
           <div className="page__actions">
-            <Button icon={<FileJson aria-hidden className="button__icon" />} onClick={() => setImportOpen(true)} variant="ghost">
+            <Button
+              icon={<FileJson aria-hidden className="button__icon" />}
+              onClick={() => setImportOpen(true)}
+              variant="ghost"
+            >
               {t("mcp.importJson")}
             </Button>
             <Button
@@ -645,7 +672,11 @@ export function McpSettingsPanel() {
         <div className="form-grid">
           <p className="section__description">{t("mcp.importJson.hint")}</p>
           <TextArea onChange={(event) => setImportText(event.target.value)} rows={10} value={importText} />
-          {importError ? <div className="field-error" role="alert">{importError}</div> : null}
+          {importError ? (
+            <div className="field-error" role="alert">
+              {importError}
+            </div>
+          ) : null}
         </div>
       </Dialog>
 

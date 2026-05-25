@@ -14,8 +14,8 @@ export const llmDefaultBaseUrls: Record<string, string> = {
   Claude: "https://api.anthropic.com/v1",
   Deepseek: "https://api.deepseek.com/v1",
   Gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
-  "豆包": "https://ark.cn-beijing.volces.com/api/v3",
-  "通义千问": "https://dashscope.aliyuncs.com/api/v1",
+  豆包: "https://ark.cn-beijing.volces.com/api/v3",
+  通义千问: "https://dashscope.aliyuncs.com/api/v1",
 };
 
 export const apiConfigFormSchema: Array<FormGroupSchema<ApiConfig>> = [
@@ -111,9 +111,7 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
   {
     id: "voice",
     title: "语音与识别",
-    fields: [
-      { label: "语音语言", name: "voice_language", type: "text" },
-    ],
+    fields: [{ label: "语音语言", name: "voice_language", type: "text" }],
   },
   {
     id: "media",
@@ -167,10 +165,7 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
   },
 ];
 
-export function buildPayloadFromSchema<T extends object>(
-  schema: Array<FormGroupSchema<T>>,
-  draft: T,
-): Partial<T> {
+export function buildPayloadFromSchema<T extends object>(schema: Array<FormGroupSchema<T>>, draft: T): Partial<T> {
   const payload: Partial<T> = {};
   for (const group of schema) {
     for (const field of group.fields) {

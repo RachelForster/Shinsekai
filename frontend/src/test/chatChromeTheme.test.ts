@@ -7,8 +7,7 @@ describe("parseChatChromeTheme", () => {
     const style = parseChatChromeTheme({
       raw: {
         dialog_label: {
-          extra_qss:
-            "background-color: rgba(50,50,50,200); color: #fff; width: 999px; border-radius: 12px;",
+          extra_qss: "background-color: rgba(50,50,50,200); color: #fff; width: 999px; border-radius: 12px;",
         },
         dialog_offset_y: 16,
         dialog_padding: 28,

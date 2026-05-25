@@ -169,31 +169,34 @@ export function FileManager({
     });
   }, [address, confirmPathsKey, onSelectionChange, selectedPaths, snapshot?.cwd]);
 
-  const browse = useCallback(async (path?: string, selection?: string[], hidden?: boolean) => {
-    setLoading(true);
-    setError("");
-    const desiredSelection = selection ?? selectedPathsRef.current;
-    try {
-      const next = await getPlatform().files.browse({ path, showHidden: hidden ?? showHiddenRef.current });
-      setSnapshot(next);
-      setAddress(next.cwd);
-      setEditingAddress(false);
-      if (mode === "directory") {
-        updateSelectedPaths([next.cwd]);
-      } else {
-        const visibleFilePaths = new Set(
-          next.entries
-            .filter((entry) => entry.kind === "file" && matchesExtension(entry, normalizedAcceptedExtensions))
-            .map((entry) => entry.path),
-        );
-        updateSelectedPaths(desiredSelection.filter((item) => visibleFilePaths.has(item)));
+  const browse = useCallback(
+    async (path?: string, selection?: string[], hidden?: boolean) => {
+      setLoading(true);
+      setError("");
+      const desiredSelection = selection ?? selectedPathsRef.current;
+      try {
+        const next = await getPlatform().files.browse({ path, showHidden: hidden ?? showHiddenRef.current });
+        setSnapshot(next);
+        setAddress(next.cwd);
+        setEditingAddress(false);
+        if (mode === "directory") {
+          updateSelectedPaths([next.cwd]);
+        } else {
+          const visibleFilePaths = new Set(
+            next.entries
+              .filter((entry) => entry.kind === "file" && matchesExtension(entry, normalizedAcceptedExtensions))
+              .map((entry) => entry.path),
+          );
+          updateSelectedPaths(desiredSelection.filter((item) => visibleFilePaths.has(item)));
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [mode, normalizedAcceptedExtensions]);
+    },
+    [mode, normalizedAcceptedExtensions],
+  );
 
   const beginAddressEdit = useCallback(() => {
     setAddress(displayAddress);
@@ -301,10 +304,18 @@ export function FileManager({
             </div>
           )}
         </div>
-        <IconButton disabled={!snapshot?.parent || loading} label={t("filePicker.parent")} onClick={() => void browse(snapshot?.parent, [], showHiddenRef.current)}>
+        <IconButton
+          disabled={!snapshot?.parent || loading}
+          label={t("filePicker.parent")}
+          onClick={() => void browse(snapshot?.parent, [], showHiddenRef.current)}
+        >
           <ChevronUp aria-hidden className="icon-button__icon" />
         </IconButton>
-        <IconButton disabled={loading} label={t("common.refresh")} onClick={() => void browse(snapshot?.cwd || address, selectedPathsRef.current, showHiddenRef.current)}>
+        <IconButton
+          disabled={loading}
+          label={t("common.refresh")}
+          onClick={() => void browse(snapshot?.cwd || address, selectedPathsRef.current, showHiddenRef.current)}
+        >
           <RefreshCw aria-hidden className="icon-button__icon" />
         </IconButton>
         <IconButton
@@ -315,7 +326,11 @@ export function FileManager({
             void browse(snapshot?.cwd || address, selectedPathsRef.current, next);
           }}
         >
-          {showHidden ? <Eye aria-hidden className="icon-button__icon" /> : <EyeOff aria-hidden className="icon-button__icon" />}
+          {showHidden ? (
+            <Eye aria-hidden className="icon-button__icon" />
+          ) : (
+            <EyeOff aria-hidden className="icon-button__icon" />
+          )}
         </IconButton>
       </div>
 

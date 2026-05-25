@@ -336,10 +336,14 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
     },
     config: {
       async downloadTtsBundle(input, options) {
-        const task = await requestJson<TaskSnapshot<TtsBundleDownloadResult>>(apiBase, "/api/config/tts-bundle/download", {
-          body: JSON.stringify(input),
-          method: "POST",
-        });
+        const task = await requestJson<TaskSnapshot<TtsBundleDownloadResult>>(
+          apiBase,
+          "/api/config/tts-bundle/download",
+          {
+            body: JSON.stringify(input),
+            method: "POST",
+          },
+        );
         return waitForTask(apiBase, task, options);
       },
       fetchLlmModels: (input) =>

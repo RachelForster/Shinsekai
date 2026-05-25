@@ -24,9 +24,7 @@ interface PluginSlotProps {
   slot: PluginSlotId;
 }
 
-export function normalizePluginContributions(
-  contributions: PluginUIContribution[],
-): PluginUIContribution[] {
+export function normalizePluginContributions(contributions: PluginUIContribution[]): PluginUIContribution[] {
   const seen = new Set<string>();
   const normalized: PluginUIContribution[] = [];
 
@@ -56,12 +54,7 @@ export function PluginSlot({ contributions = [], slot }: PluginSlotProps) {
   return (
     <>
       {items.map((item) => (
-        <div
-          data-plugin-contribution={item.id}
-          data-plugin-slot={slot}
-          data-plugin-title={item.title}
-          key={item.id}
-        >
+        <div data-plugin-contribution={item.id} data-plugin-slot={slot} data-plugin-title={item.title} key={item.id}>
           {item.render({ contributionId: item.id, slot, title: item.title })}
         </div>
       ))}

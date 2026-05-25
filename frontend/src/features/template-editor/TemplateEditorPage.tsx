@@ -56,8 +56,8 @@ function createTemplate(name: string): TemplateSummary {
 }
 
 function normalizeTemplate(template: TemplateSummary): TemplateSummary {
-  const scenario = template.scenario ?? (template.system ? "" : template.content ?? "");
-  const system = template.system ?? (template.scenario ? template.content ?? "" : "");
+  const scenario = template.scenario ?? (template.system ? "" : (template.content ?? ""));
+  const system = template.system ?? (template.scenario ? (template.content ?? "") : "");
   return {
     ...template,
     content: composeContent(scenario, system),
@@ -71,7 +71,10 @@ export function TemplateEditorPage() {
   const { showToast } = useToast();
   const { t } = useI18n();
   const { data: templates = [], isLoading } = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
-  const { data: launchSession, isFetched: sessionFetched } = useQuery({ queryFn: getTemplateSession, queryKey: [...templatesQueryKey, "session"] });
+  const { data: launchSession, isFetched: sessionFetched } = useQuery({
+    queryFn: getTemplateSession,
+    queryKey: [...templatesQueryKey, "session"],
+  });
   const { data: appConfig } = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const { data: characters = [] } = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const { data: backgrounds = [] } = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
@@ -102,7 +105,7 @@ export function TemplateEditorPage() {
   const suppressNextAutoGenerateRef = useRef(false);
 
   const selected = useMemo(
-    () => (isCreating ? undefined : templates.find((template) => template.id === selectedId) ?? templates[0]),
+    () => (isCreating ? undefined : (templates.find((template) => template.id === selectedId) ?? templates[0])),
     [isCreating, selectedId, templates],
   );
   const backgroundOptions = useMemo(() => {
@@ -170,8 +173,12 @@ export function TemplateEditorPage() {
     if (!sessionRestored || launchSession) {
       return;
     }
-    const configuredLanguage = String(appConfig?.system_config.voice_language || "").trim().toLowerCase();
-    const nextLanguage = voiceLanguages.some((option) => option.value === configuredLanguage) ? configuredLanguage : "ja";
+    const configuredLanguage = String(appConfig?.system_config.voice_language || "")
+      .trim()
+      .toLowerCase();
+    const nextLanguage = voiceLanguages.some((option) => option.value === configuredLanguage)
+      ? configuredLanguage
+      : "ja";
     if (!configuredLanguage || nextLanguage === voiceLanguage) {
       return;
     }
@@ -383,12 +390,19 @@ export function TemplateEditorPage() {
   });
 
   const toggleCharacter = (name: string, checked: boolean) => {
-    setSelectedCharacters((current) => (checked ? [...new Set([...current, name])] : current.filter((item) => item !== name)));
+    setSelectedCharacters((current) =>
+      checked ? [...new Set([...current, name])] : current.filter((item) => item !== name),
+    );
   };
 
   const templateOptions = [
     { key: "effect", label: t("template.field.useEffect"), setValue: setUseEffectPrompt, value: useEffectPrompt },
-    { key: "translation", label: t("template.field.useTranslation"), setValue: setUseTranslation, value: useTranslation },
+    {
+      key: "translation",
+      label: t("template.field.useTranslation"),
+      setValue: setUseTranslation,
+      value: useTranslation,
+    },
     { key: "cg", label: t("template.field.useCg"), setValue: setUseCg, value: useCg },
     { key: "cot", label: t("template.field.useCot"), setValue: setUseCot, value: useCot },
     { key: "choice", label: t("template.field.useChoice"), setValue: setUseChoice, value: useChoice },
@@ -442,10 +456,7 @@ export function TemplateEditorPage() {
               <label className="field-row">
                 <span className="field-row__label">{t("template.field.background")}</span>
                 <span className="field-row__control">
-                  <Select
-                    onChange={(event) => setSelectedBackground(event.target.value)}
-                    value={selectedBackground}
-                  >
+                  <Select onChange={(event) => setSelectedBackground(event.target.value)} value={selectedBackground}>
                     {backgroundOptions.map((name) => (
                       <option key={name} value={name}>
                         {name === TRANSPARENT_BACKGROUND ? t("template.transparentBackground") : name}
@@ -631,10 +642,7 @@ export function TemplateEditorPage() {
               <label className="field-row">
                 <span className="field-row__label">{t("template.field.historyFile")}</span>
                 <span className="field-row__control">
-                  <TextInput
-                    onChange={(event) => setHistoryPath(event.target.value)}
-                    value={historyPath}
-                  />
+                  <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
                 </span>
               </label>
             </div>

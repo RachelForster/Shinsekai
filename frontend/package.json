@@ -10,6 +10,8 @@
     "serve:bundle": "python ../webui_react.py",
     "serve:bundle:conda": "conda run -n shinsekai python ../webui_react.py",
     "build": "tsc -b && vite build",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
     "preview": "vite preview",
     "test": "vitest run",
     "test:functional": "playwright test e2e/functionality.spec.ts",
@@ -33,6 +35,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "jsdom": "^25.0.1",
+    "prettier": "^3.8.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vitest": "^2.1.5"
