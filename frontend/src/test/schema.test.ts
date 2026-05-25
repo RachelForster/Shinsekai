@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adapterExtraSchemaToFormGroup,
   apiConfigFormSchema,
   buildPayloadFromSchema,
+  defaultAdapterExtraValue,
   hasSchemaErrors,
   validatePayloadFromSchema,
 } from "../entities/config/schema";
@@ -44,5 +46,35 @@ describe("schema-driven API config", () => {
 
     expect(disabled.tts_max_sentence_length).toBeUndefined();
     expect(enabled.tts_max_sentence_length).toBe("不能大于 100。");
+  });
+
+  it("normalizes adapter extra schemas into reusable form groups", () => {
+    const group = adapterExtraSchemaToFormGroup({
+      disabledKeys: ["thinking_enabled"],
+      disabledReason: "该模型不支持思考模式。",
+      id: "llm-extra",
+      schema: {
+        api_secret: { label: "Secret", secret: true, type: "str" },
+        mode: { choices: ["fast", "safe"], default: "safe", label: "Mode", type: "str" },
+        retries: { max: 5, min: 0, type: "INT" },
+        temperature: { step: 0.05, type: "float" },
+        thinking_enabled: { default: true, type: "bool" },
+      },
+      title: "LLM Extra",
+    });
+
+    expect(group.fields.map((field) => [field.name, field.type])).toEqual([
+      ["api_secret", "password"],
+      ["mode", "select"],
+      ["retries", "integer"],
+      ["temperature", "number"],
+      ["thinking_enabled", "checkbox"],
+    ]);
+    expect(group.fields.find((field) => field.name === "mode")?.options).toEqual([
+      { label: "fast", value: "fast" },
+      { label: "safe", value: "safe" },
+    ]);
+    expect(group.fields.find((field) => field.name === "thinking_enabled")?.disabledWhen?.({})).toBe(true);
+    expect(defaultAdapterExtraValue({ type: "float" })).toBe(0);
   });
 });

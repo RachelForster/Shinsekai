@@ -1,4 +1,11 @@
-import type { ApiConfig, FormFieldSchema, FormGroupSchema, SystemConfig } from "./types";
+import type {
+  AdapterExtraFieldSchema,
+  ApiConfig,
+  FieldKind,
+  FormFieldSchema,
+  FormGroupSchema,
+  SystemConfig,
+} from "./types";
 
 export const llmProviderOptions = [
   { label: "Deepseek", value: "Deepseek" },
@@ -130,8 +137,8 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
       { label: "工作目录", name: "music_cover_work_dir", pathKind: "directory", type: "file" },
       { label: "yt-dlp", name: "music_cover_yt_dlp_exe", type: "file" },
       { label: "ffmpeg", name: "music_cover_ffmpeg_exe", type: "file" },
-      { label: "UVR 命令模板", name: "music_cover_uvr_cmd_template", type: "textarea" },
-      { label: "RVC 命令模板", name: "music_cover_rvc_cmd_template", type: "textarea" },
+      { label: "UVR 命令模板", name: "music_cover_uvr_cmd_template", span: "full", type: "textarea" },
+      { label: "RVC 命令模板", name: "music_cover_rvc_cmd_template", span: "full", type: "textarea" },
       { label: "RVC 模型", name: "music_cover_rvc_model_path", type: "file" },
       { label: "RVC 索引", name: "music_cover_rvc_index_path", type: "file" },
       { label: "RVC 设备", name: "music_cover_rvc_device", type: "text" },
@@ -164,6 +171,81 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
     ],
   },
 ];
+
+export type AdapterExtraFormValues = Record<string, unknown>;
+
+export interface AdapterExtraFormGroupOptions {
+  disabledKeys?: string[];
+  disabledReason?: string;
+  id: string;
+  schema: Record<string, AdapterExtraFieldSchema>;
+  title: string;
+}
+
+function adapterFieldType(field: AdapterExtraFieldSchema) {
+  return String(field.type || "str").toLowerCase();
+}
+
+export function defaultAdapterExtraValue(field: AdapterExtraFieldSchema): unknown {
+  const type = adapterFieldType(field);
+  if (field.default !== undefined) {
+    return field.default;
+  }
+  if (type === "bool") {
+    return false;
+  }
+  if (type === "int" || type === "float") {
+    return 0;
+  }
+  return "";
+}
+
+function adapterFieldKind(field: AdapterExtraFieldSchema): FieldKind {
+  const type = adapterFieldType(field);
+  if (Array.isArray(field.choices) && field.choices.length) {
+    return "select";
+  }
+  if (type === "bool") {
+    return "checkbox";
+  }
+  if (type === "int") {
+    return "integer";
+  }
+  if (type === "float") {
+    return "number";
+  }
+  return field.secret ? "password" : "text";
+}
+
+export function adapterExtraSchemaToFormGroup({
+  disabledKeys = [],
+  disabledReason,
+  id,
+  schema,
+  title,
+}: AdapterExtraFormGroupOptions): FormGroupSchema<AdapterExtraFormValues> {
+  const disabledKeySet = new Set(disabledKeys);
+  return {
+    columns: 2,
+    fields: Object.entries(schema).map(([key, field]) => {
+      const type = adapterFieldType(field);
+      return {
+        defaultValue: defaultAdapterExtraValue(field),
+        disabledReason: disabledKeySet.has(key) ? disabledReason : undefined,
+        disabledWhen: disabledKeySet.has(key) ? () => true : undefined,
+        label: field.label || key,
+        max: field.max,
+        min: field.min,
+        name: key,
+        options: field.choices?.map((choice) => ({ label: choice, value: choice })),
+        step: field.step ?? (type === "int" ? 1 : type === "float" ? 0.01 : undefined),
+        type: adapterFieldKind(field),
+      };
+    }),
+    id,
+    title,
+  };
+}
 
 export function buildPayloadFromSchema<T extends object>(schema: Array<FormGroupSchema<T>>, draft: T): Partial<T> {
   const payload: Partial<T> = {};

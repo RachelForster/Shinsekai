@@ -15,6 +15,15 @@ interface SchemaDrivenFormProps<T extends object> {
   value: T;
 }
 
+interface SchemaFieldGridProps<T extends object> {
+  className?: string;
+  disabled?: boolean;
+  errors?: SchemaErrorMap<T>;
+  group: FormGroupSchema<T>;
+  onChange: (draft: T) => void;
+  value: T;
+}
+
 function parseJson(text: string): unknown {
   if (!text.trim()) {
     return {};
@@ -26,14 +35,25 @@ function formatJson(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2);
 }
 
-export function SchemaDrivenForm<T extends object>({
-  collapsedGroupIds = [],
+function resolveDisabledReason<T extends object>(field: FormFieldSchema<T>, value: T) {
+  if (typeof field.disabledReason === "function") {
+    return field.disabledReason(value);
+  }
+  return field.disabledReason;
+}
+
+function formGridClassName<T extends object>(group: FormGroupSchema<T>, className = "") {
+  return ["form-grid", group.columns === 1 ? "form-grid--one" : "form-grid--two", className].filter(Boolean).join(" ");
+}
+
+export function SchemaFieldGrid<T extends object>({
+  className = "",
   disabled = false,
   errors = {},
-  groups,
+  group,
   onChange,
   value,
-}: SchemaDrivenFormProps<T>) {
+}: SchemaFieldGridProps<T>) {
   const { t } = useI18n();
 
   const update = <K extends keyof T>(name: K, next: T[K]) => {
@@ -41,9 +61,10 @@ export function SchemaDrivenForm<T extends object>({
   };
 
   const renderField = (field: FormFieldSchema<T>) => {
-    const rawValue = value[field.name];
+    const rawValue = value[field.name] ?? field.defaultValue;
+    const fieldDisabled = disabled || Boolean(field.disabledWhen?.(value));
     const common = {
-      disabled,
+      disabled: fieldDisabled,
       id: String(field.name),
     };
 
@@ -88,7 +109,7 @@ export function SchemaDrivenForm<T extends object>({
     if (field.type === "json") {
       return (
         <JsonField
-          disabled={disabled}
+          disabled={fieldDisabled}
           id={String(field.name)}
           onChange={(next) => update(field.name, next as T[keyof T])}
           value={rawValue}
@@ -153,26 +174,46 @@ export function SchemaDrivenForm<T extends object>({
   };
 
   return (
+    <>
+      {group.description ? <p className="section__description">{group.description}</p> : null}
+      <div className={formGridClassName(group, className)}>
+        {group.fields.map((field) => {
+          if (field.visibleWhen && !field.visibleWhen(value)) {
+            return null;
+          }
+          const disabledReason = field.disabledWhen?.(value) ? resolveDisabledReason(field, value) : undefined;
+          const help = disabledReason || field.description;
+          const fullWidth = field.span === "full" || field.type === "json" || field.type === "textarea";
+          const rowClassName = ["field-row", fullWidth ? "field-row--full" : ""].filter(Boolean).join(" ");
+          return (
+            <label className={rowClassName} htmlFor={String(field.name)} key={String(field.name)}>
+              <span className="field-row__label">{field.label}</span>
+              <span className="field-row__control">
+                {renderField(field)}
+                {errors[field.name] ? <span className="field-error">{errors[field.name]}</span> : null}
+                {help ? <span className="field-row__help">{help}</span> : null}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+export function SchemaDrivenForm<T extends object>({
+  collapsedGroupIds = [],
+  disabled = false,
+  errors = {},
+  groups,
+  onChange,
+  value,
+}: SchemaDrivenFormProps<T>) {
+  return (
     <div className="settings-grid">
       {groups.map((group) => {
         const fields = (
-          <>
-            {group.description ? <p className="section__description">{group.description}</p> : null}
-            <div className="form-grid form-grid--two">
-              {group.fields.map((field) =>
-                field.visibleWhen && !field.visibleWhen(value) ? null : (
-                  <label className="field-row" htmlFor={String(field.name)} key={String(field.name)}>
-                    <span className="field-row__label">{field.label}</span>
-                    <span className="field-row__control">
-                      {renderField(field)}
-                      {errors[field.name] ? <span className="field-error">{errors[field.name]}</span> : null}
-                      {field.description ? <span className="field-row__help">{field.description}</span> : null}
-                    </span>
-                  </label>
-                ),
-              )}
-            </div>
-          </>
+          <SchemaFieldGrid disabled={disabled} errors={errors} group={group} onChange={onChange} value={value} />
         );
 
         if (collapsedGroupIds.includes(group.id)) {

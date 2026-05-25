@@ -3,11 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, DownloadCloud, ExternalLink, RefreshCw } from "lucide-react";
 
 import {
+  adapterExtraSchemaToFormGroup,
   buildPayloadFromSchema,
   apiConfigFormSchema,
+  defaultAdapterExtraValue,
   hasSchemaErrors,
   llmDefaultBaseUrls,
   llmProviderOptions,
+  type AdapterExtraFormValues,
   type SchemaErrorMap,
   validatePayloadFromSchema,
 } from "../../entities/config/schema";
@@ -31,8 +34,8 @@ import { useAppState } from "../../app/providers/AppState";
 import { useI18n } from "../../shared/i18n";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
 import { getPlatform } from "../../shared/platform/platform";
-import { AsyncButton, Button, EmptyState, IconButton, NumberInput, Select, TextInput, useToast } from "../../shared/ui";
-import { SchemaDrivenForm } from "../SchemaDrivenForm";
+import { AsyncButton, Button, EmptyState, IconButton, Select, TextInput, useToast } from "../../shared/ui";
+import { SchemaDrivenForm, SchemaFieldGrid } from "../SchemaDrivenForm";
 
 type UiLanguage = "zh_CN" | "en" | "ja";
 
@@ -402,19 +405,6 @@ function containsPathQuotes(value: string) {
   return value.includes('"') || value.includes("'");
 }
 
-function defaultExtraValue(field: AdapterExtraFieldSchema) {
-  if (field.default !== undefined) {
-    return field.default;
-  }
-  if (field.type === "bool") {
-    return false;
-  }
-  if (field.type === "int" || field.type === "float") {
-    return 0;
-  }
-  return "";
-}
-
 function hasAdapterSchema(schema: Record<string, AdapterExtraFieldSchema>) {
   return Object.keys(schema).length > 0;
 }
@@ -437,75 +427,37 @@ function AdapterExtraForm({
     return null;
   }
 
+  const disabledKeys = modelUnsupportedThinking ? ["thinking_enabled", "reasoning_effort"] : [];
+  const group = adapterExtraSchemaToFormGroup({
+    disabledKeys,
+    disabledReason: "该模型不支持思考模式。",
+    id: "adapter-extra",
+    schema,
+    title: "扩展参数",
+  });
+  const displayValues = entries.reduce<AdapterExtraFormValues>((accumulator, [key, field]) => {
+    accumulator[key] = values[key] ?? defaultAdapterExtraValue(field);
+    if (modelUnsupportedThinking && key === "thinking_enabled") {
+      accumulator[key] = false;
+    }
+    return accumulator;
+  }, {});
+
   return (
-    <div className="form-grid form-grid--two api-extra-grid">
-      {entries.map(([key, field]) => {
-        const rawValue = values[key] ?? defaultExtraValue(field);
-        const disabledByModel = modelUnsupportedThinking && (key === "thinking_enabled" || key === "reasoning_effort");
-        const controlDisabled = disabled || disabledByModel;
-        const label = field.label || key;
-        const type = String(field.type || "str").toLowerCase();
-
-        let control;
-        if (Array.isArray(field.choices) && field.choices.length) {
-          control = (
-            <Select
-              disabled={controlDisabled}
-              onChange={(event) => onChange(key, event.target.value)}
-              value={String(rawValue ?? "")}
-            >
-              {field.choices.map((choice) => (
-                <option key={choice} value={choice}>
-                  {choice}
-                </option>
-              ))}
-            </Select>
-          );
-        } else if (type === "bool") {
-          control = (
-            <input
-              checked={disabledByModel && key === "thinking_enabled" ? false : Boolean(rawValue)}
-              disabled={controlDisabled}
-              onChange={(event) => onChange(key, event.target.checked)}
-              type="checkbox"
-            />
-          );
-        } else if (type === "int" || type === "float") {
-          control = (
-            <NumberInput
-              disabled={controlDisabled}
-              max={field.max}
-              min={field.min}
-              onChange={(event) => {
-                const next = type === "int" ? Number.parseInt(event.target.value, 10) : Number(event.target.value);
-                onChange(key, Number.isNaN(next) ? defaultExtraValue(field) : next);
-              }}
-              step={field.step ?? (type === "int" ? 1 : 0.01)}
-              value={Number(rawValue ?? defaultExtraValue(field))}
-            />
-          );
-        } else {
-          control = (
-            <TextInput
-              disabled={controlDisabled}
-              onChange={(event) => onChange(key, event.target.value)}
-              type={field.secret ? "password" : "text"}
-              value={String(rawValue ?? "")}
-            />
-          );
+    <SchemaFieldGrid
+      className="api-extra-grid"
+      disabled={disabled}
+      group={group}
+      onChange={(nextValues) => {
+        for (const [key, value] of Object.entries(nextValues)) {
+          if (!Object.is(value, displayValues[key])) {
+            onChange(key, value);
+            return;
+          }
         }
-
-        return (
-          <label className="field-row" key={key}>
-            <span className="field-row__label">{label}</span>
-            <span className="field-row__control">
-              {control}
-              {disabledByModel ? <span className="field-row__help">该模型不支持思考模式。</span> : null}
-            </span>
-          </label>
-        );
-      })}
-    </div>
+      }}
+      value={displayValues}
+    />
   );
 }
 
@@ -719,6 +671,19 @@ export function ApiSettingsPage() {
   const activeAsrSchema =
     adapterCatalog?.asr?.find((option) => normalizeAsrProvider(option.value) === activeAsrProvider)?.schema ?? {};
   const voskModelPath = String(draft.asr_extra_configs?.vosk?.model_path ?? VOSK_MODEL_PATH);
+  const apiLanguageGroup: FormGroupSchema<SystemConfig> = {
+    columns: 1,
+    fields: [
+      {
+        label: t("api.language.field"),
+        name: "ui_language",
+        options: uiLanguageOptions,
+        type: "select",
+      },
+    ],
+    id: "api-language",
+    title: t("api.language.title"),
+  };
 
   const updateDraft = (patch: Partial<ApiConfig>) => {
     setDraft({ ...draft, ...patch });
@@ -860,28 +825,16 @@ export function ApiSettingsPage() {
               <h2 className="section__title">{t("api.language.title")}</h2>
             </div>
           </div>
-          <div className="form-grid form-grid--two">
-            <label className="field-row">
-              <span className="field-row__label">{t("api.language.field")}</span>
-              <span className="field-row__control">
-                <Select
-                  disabled={languageMutation.isPending}
-                  onChange={(event) => {
-                    const language = normalizeUiLanguage(event.target.value);
-                    setSystemDraft({ ...systemDraft, ui_language: language });
-                    languageMutation.mutate(language);
-                  }}
-                  value={normalizeUiLanguage(systemDraft.ui_language)}
-                >
-                  {uiLanguageOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              </span>
-            </label>
-          </div>
+          <SchemaFieldGrid
+            disabled={languageMutation.isPending}
+            group={apiLanguageGroup}
+            onChange={(nextSystem) => {
+              const language = normalizeUiLanguage(nextSystem.ui_language);
+              setSystemDraft({ ...systemDraft, ui_language: language });
+              languageMutation.mutate(language);
+            }}
+            value={systemDraft}
+          />
           <p className="section__description">{t("api.language.hint")}</p>
         </section>
       ) : null}
