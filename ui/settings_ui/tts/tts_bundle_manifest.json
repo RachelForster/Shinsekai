@@ -1,0 +1,28 @@
+{
+  "bundles": [
+    {
+      "kind": "genie",
+      "bundle_dir_key": "genie_tts_server",
+      "filename": "Genie-TTS Server.7z",
+      "download_url": "https://www.modelscope.cn/models/twillzxy/genie-tts-server/resolve/master/Genie-TTS%20Server.7z",
+      "size": 1041915345,
+      "sha256": "8f06077b6102aa29f1c9473926db9a74890d627f077393aa8ebb928b52f15de1"
+    },
+    {
+      "kind": "gptso",
+      "bundle_dir_key": "gpt_sovits_v2pro",
+      "filename": "GPT-SoVITS-v2pro-20250604.7z",
+      "download_url": "https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604.7z",
+      "size": 8185086602,
+      "sha256": "bd60d0796553ff05d8568136e199c13e0dc22ebe2ed24273134e34ed6f215cd6"
+    },
+    {
+      "kind": "gptso50",
+      "bundle_dir_key": "gpt_sovits_nvidia50",
+      "filename": "GPT-SoVITS-v2pro-20250604-nvidia50.7z",
+      "download_url": "https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604-nvidia50.7z",
+      "size": 8835144925,
+      "sha256": "97b4edcd451c42357db7e26e6c1c877ca5d85144fe97beaff6d7005d35bee008"
+    }
+  ]
+}

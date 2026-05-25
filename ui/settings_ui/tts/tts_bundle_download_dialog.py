@@ -191,6 +191,8 @@ class TtsBundleDownloadDialog(QDialog):
     def _on_worker_status(self, s: str) -> None:
         if s == "download":
             self._st.setText(tr_i18n("api.tts.env.st_download"))
+        elif s == "verify":
+            self._st.setText(tr_i18n("api.tts.env.st_verify"))
         elif s == "extract":
             self._st.setText(tr_i18n("api.tts.env.st_extract"))
         self._st.setVisible(True)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import shutil
 import subprocess
@@ -13,9 +14,19 @@ from urllib.parse import unquote, urlparse
 import requests
 from PySide6.QtCore import QObject, QThread, Signal
 
+from ui.settings_ui.tts.tts_bundle_manifest import (
+    TtsBundleManifestEntry,
+    bundle_manifest_for_key,
+)
 from ui.settings_ui.tts.tts_env_probe import get_default_project_root
 
 _WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+_DOWNLOAD_CHUNK_SIZE = 512 * 1024
+_HASH_CHUNK_SIZE = 4 * 1024 * 1024
+
+
+class _DownloadInterrupted(Exception):
+    pass
 
 
 def _load_py7zr() -> Any | None:
@@ -67,6 +78,78 @@ def _archive_filename(url: str) -> str:
     return path.rsplit("/", 1)[-1] or "bundle.7z"
 
 
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(_HASH_CHUNK_SIZE), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _archive_verification_error(
+    archive: Path, manifest: TtsBundleManifestEntry
+) -> str | None:
+    if not archive.is_file():
+        return "archive is missing"
+    try:
+        actual_size = archive.stat().st_size
+    except OSError as e:
+        return str(e)
+    if actual_size != manifest.size:
+        return f"size mismatch: expected {manifest.size}, got {actual_size}"
+    try:
+        actual_sha256 = _sha256_file(archive)
+    except OSError as e:
+        return str(e)
+    if actual_sha256.lower() != manifest.sha256.lower():
+        return (
+            "sha256 mismatch: expected "
+            f"{manifest.sha256}, got {actual_sha256}"
+        )
+    return None
+
+
+def _download_archive(
+    url: str,
+    archive: Path,
+    headers: dict[str, str],
+    *,
+    expected_size: int | None = None,
+    is_interrupted: Any | None = None,
+    on_progress: Any | None = None,
+) -> None:
+    part = archive.with_name(f"{archive.name}.part")
+    if part.exists():
+        part.unlink()
+    try:
+        with requests.get(url, stream=True, timeout=(15, 600), headers=headers) as r:
+            r.raise_for_status()
+            total = int(r.headers.get("Content-Length", "0") or 0)
+            if total <= 0 and expected_size is not None:
+                total = expected_size
+            n = 0
+            with part.open("wb") as f:
+                for chunk in r.iter_content(_DOWNLOAD_CHUNK_SIZE):
+                    if is_interrupted is not None and is_interrupted():
+                        raise _DownloadInterrupted()
+                    if not chunk:
+                        continue
+                    f.write(chunk)
+                    n += len(chunk)
+                    if on_progress is None:
+                        continue
+                    if total > 0:
+                        on_progress(min(70, int(70 * n / total)))
+                    else:
+                        on_progress(min(35, n // (10 * 1024 * 1024)))
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        part.replace(archive)
+    except Exception:
+        if part.exists():
+            part.unlink()
+        raise
+
+
 def _rmtree(p: Path) -> None:
     if p.is_dir():
         shutil.rmtree(p, ignore_errors=True)
@@ -116,44 +199,53 @@ class TtsBundleDownloadWorker(QThread):
         dl_dir = base / "downloads"
         out_dir = base / "installed" / self._key
         dl_dir.mkdir(parents=True, exist_ok=True)
-        local_name = _archive_filename(self._url)
+        manifest = bundle_manifest_for_key(self._key)
+        local_name = (
+            manifest.filename if manifest is not None else _archive_filename(self._url)
+        )
         archive = dl_dir / local_name
-        _rmtree(out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) EasyAI-Desktop/1.0"
         }
-        self.status.emit("download")
-        try:
-            with requests.get(
-                self._url, stream=True, timeout=(15, 600), headers=headers
-            ) as r:
-                r.raise_for_status()
-                total = int(r.headers.get("Content-Length", "0") or 0)
-                n = 0
-                with open(archive, "wb") as f:
-                    for chunk in r.iter_content(512 * 1024):
-                        if self.isInterruptionRequested():
-                            return
-                        if not chunk:
-                            continue
-                        f.write(chunk)
-                        n += len(chunk)
-                        if total > 0:
-                            pct = min(70, int(70 * n / total))
-                            self.progress.emit(pct)
-                        else:
-                            self.progress.emit(min(35, n // (10 * 1024 * 1024)))
-        except Exception as e:
-            self.failed.emit(f"download: {e}")
-            return
+
+        archive_ready = False
+        if manifest is not None and archive.exists():
+            self.status.emit("verify")
+            self.progress.emit(1)
+            archive_ready = _archive_verification_error(archive, manifest) is None
+
+        if not archive_ready:
+            self.status.emit("download")
+            try:
+                _download_archive(
+                    self._url,
+                    archive,
+                    headers,
+                    expected_size=manifest.size if manifest is not None else None,
+                    is_interrupted=self.isInterruptionRequested,
+                    on_progress=self.progress.emit,
+                )
+            except _DownloadInterrupted:
+                return
+            except Exception as e:
+                self.failed.emit(f"download: {e}")
+                return
+
+            if manifest is not None:
+                self.status.emit("verify")
+                err = _archive_verification_error(archive, manifest)
+                if err is not None:
+                    self.failed.emit(f"download: verification failed: {err}")
+                    return
 
         self.progress.emit(70)
         self.status.emit("extract")
 
         _archive_str = str(archive.resolve())
+        _rmtree(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
         sz = _seven_zip_exe()
         if getattr(sys, "frozen", False):
             if sz is None:

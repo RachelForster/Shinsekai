@@ -298,6 +298,7 @@
         "rec_genie": "Genie TTS Server（非上述情况：A 卡/核显/显存不足等）",
         "btn_dl": "一键下载并解压推荐整合包",
         "st_download": "正在下载…",
+        "st_verify": "正在校验下载文件…",
         "st_extract": "正在解压…",
         "no_gpu": "未能读取 GPU 信息（可仍手动下载下方链接）",
         "err_py7": "开发环境可安装：pip install py7zr；或在项目 build_exe 下放置 7za.exe 后重试。",

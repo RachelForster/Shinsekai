@@ -301,6 +301,7 @@
         "rec_genie": "Genie TTS Server (other GPUs, under 8GB VRAM, or CPU-friendlier case)",
         "btn_dl": "Download and extract recommended bundle",
         "st_download": "Downloading…",
+        "st_verify": "Verifying downloaded file…",
         "st_extract": "Extracting…",
         "no_gpu": "Could not read GPU info; you can still use links below.",
         "err_py7": "For development: pip install py7zr, or place 7za.exe under the repo's build_exe folder.",
