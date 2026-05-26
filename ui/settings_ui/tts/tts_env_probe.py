@@ -11,26 +11,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ui.settings_ui.tts.tts_bundle_manifest import (
+    URL_GENIE,
+    URL_GPTSOVITS_NVIDIA50,
+    URL_GPTSOVITS_STANDARD,
+)
+
 # PyPI: gpu-list → import gpu_list
 try:
     from gpu_list import get_info as _gpu_get_info
 except ImportError:  # pragma: no cover
     _gpu_get_info = None  # type: ignore[misc, assignment]
 
-
-# 与 api_tab 资源区 ModelScope 链接一致
-URL_GPTSOVITS_STANDARD = (
-    "https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/"
-    "resolve/master/GPT-SoVITS-v2pro-20250604.7z"
-)
-URL_GPTSOVITS_NVIDIA50 = (
-    "https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/"
-    "resolve/master/GPT-SoVITS-v2pro-20250604-nvidia50.7z"
-)
-URL_GENIE = (
-    "https://www.modelscope.cn/models/twillzxy/genie-tts-server/resolve/master/"
-    "Genie-TTS%20Server.7z"
-)
 
 # 8GB 及以上、N 卡 且非 50 系，使用通用 v2pro；50 系用 nvidia50 专用包
 MIN_VRAM_GB_GPT = 8.0
