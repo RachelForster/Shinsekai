@@ -86,12 +86,37 @@ def test_download_archive_writes_part_then_replaces_target(tmp_path, monkeypatch
         archive,
         {},
         expected_size=len(payload),
+        expected_sha256=hashlib.sha256(payload).hexdigest(),
         on_progress=progress.append,
     )
 
     assert archive.read_bytes() == payload
     assert not archive.with_name("demo.7z.part").exists()
     assert progress[-1] == 70
+
+
+def test_download_archive_rejects_wrong_stream_hash(tmp_path, monkeypatch):
+    payload = b"fresh-bundle"
+    archive = tmp_path / "demo.7z"
+    wrong_sha256 = hashlib.sha256(b"stale-bundle").hexdigest()
+
+    monkeypatch.setattr(
+        worker_mod.requests,
+        "get",
+        lambda *args, **kwargs: _FakeResponse(payload),
+    )
+
+    with pytest.raises(ValueError, match="sha256 mismatch"):
+        worker_mod._download_archive(
+            "https://example.test/demo.7z",
+            archive,
+            {},
+            expected_size=len(payload),
+            expected_sha256=wrong_sha256,
+        )
+
+    assert not archive.exists()
+    assert not archive.with_name("demo.7z.part").exists()
 
 
 def test_worker_reuses_verified_download_without_request(tmp_path, monkeypatch):
@@ -145,6 +170,11 @@ def test_worker_redownloads_and_verifies_invalid_cache(tmp_path, monkeypatch):
         lambda url, *args, **kwargs: requests_made.append(url)
         or _FakeResponse(payload),
     )
+    monkeypatch.setattr(
+        worker_mod,
+        "_sha256_file",
+        lambda _path: pytest.fail("downloaded archive should use stream hash"),
+    )
     _patch_extract_success(monkeypatch, extracted_roots)
 
     statuses: list[str] = []
@@ -161,7 +191,7 @@ def test_worker_redownloads_and_verifies_invalid_cache(tmp_path, monkeypatch):
 
     assert archive.read_bytes() == payload
     assert requests_made == [manifest.download_url]
-    assert statuses == ["verify", "download", "verify", "extract"]
+    assert statuses == ["verify", "download", "extract"]
     assert extracted_roots
     assert finished
 

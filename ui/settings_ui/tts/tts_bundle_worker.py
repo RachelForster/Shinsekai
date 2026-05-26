@@ -225,6 +225,7 @@ def _download_archive(
     headers: dict[str, str],
     *,
     expected_size: int | None = None,
+    expected_sha256: str | None = None,
     is_interrupted: Any | None = None,
     on_progress: Any | None = None,
 ) -> None:
@@ -232,6 +233,7 @@ def _download_archive(
     if part.exists():
         part.unlink()
     try:
+        hasher = hashlib.sha256() if expected_sha256 is not None else None
         with requests.get(url, stream=True, timeout=(15, 600), headers=headers) as r:
             r.raise_for_status()
             total = int(r.headers.get("Content-Length", "0") or 0)
@@ -245,6 +247,8 @@ def _download_archive(
                     if not chunk:
                         continue
                     f.write(chunk)
+                    if hasher is not None:
+                        hasher.update(chunk)
                     n += len(chunk)
                     if on_progress is None:
                         continue
@@ -252,6 +256,17 @@ def _download_archive(
                         on_progress(min(70, int(70 * n / total)))
                     else:
                         on_progress(min(35, n // (10 * 1024 * 1024)))
+        if expected_size is not None and n != expected_size:
+            raise ValueError(
+                f"verification failed: size mismatch: expected {expected_size}, got {n}"
+            )
+        if hasher is not None:
+            actual_sha256 = hasher.hexdigest()
+            if actual_sha256.lower() != expected_sha256.lower():
+                raise ValueError(
+                    "verification failed: sha256 mismatch: expected "
+                    f"{expected_sha256}, got {actual_sha256}"
+                )
         archive.parent.mkdir(parents=True, exist_ok=True)
         part.replace(archive)
     except Exception:
@@ -334,6 +349,7 @@ class TtsBundleDownloadWorker(QThread):
                     archive,
                     headers,
                     expected_size=manifest.size if manifest is not None else None,
+                    expected_sha256=manifest.sha256 if manifest is not None else None,
                     is_interrupted=self.isInterruptionRequested,
                     on_progress=self.progress.emit,
                 )
@@ -342,13 +358,6 @@ class TtsBundleDownloadWorker(QThread):
             except Exception as e:
                 self.failed.emit(f"download: {e}")
                 return
-
-            if manifest is not None:
-                self.status.emit("verify")
-                err = _archive_verification_error(archive, manifest)
-                if err is not None:
-                    self.failed.emit(f"download: verification failed: {err}")
-                    return
 
         self.progress.emit(70)
         self.status.emit("extract")
