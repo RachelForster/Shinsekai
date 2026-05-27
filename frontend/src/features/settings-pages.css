@@ -960,6 +960,32 @@
   color: var(--color-text-muted);
 }
 
+.plugin-detail-page__back {
+  margin-bottom: var(--space-2);
+  padding-left: 0;
+}
+
+.plugin-detail-page__notice {
+  padding-top: var(--space-2);
+}
+
+.plugin-detail-page__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 -28px;
+  padding: 8px 28px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-app);
+}
+
+.plugin-config-panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
 @media (max-width: 860px) {
   .settings-grid--split,
   .form-grid--two,

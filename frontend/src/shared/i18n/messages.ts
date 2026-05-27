@@ -368,8 +368,18 @@ export type MessageKey =
   | "plugin.catalog.title"
   | "plugin.description"
   | "plugin.directory"
+  | "plugin.detail.back"
+  | "plugin.detail.errorBody"
+  | "plugin.detail.errorTitle"
+  | "plugin.detail.kindSettings"
+  | "plugin.detail.kindTools"
+  | "plugin.detail.loading"
   | "plugin.detail.noUi"
+  | "plugin.detail.pages"
   | "plugin.detail.pyqtNotice"
+  | "plugin.detail.save"
+  | "plugin.detail.saveFailed"
+  | "plugin.detail.saveSuccess"
   | "plugin.detail.settingsPages"
   | "plugin.detail.title"
   | "plugin.detail.toolsTabs"
@@ -940,9 +950,19 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.description":
       "Plugins contribute only to fixed slots and are installed, enabled, or disabled through the platform layer.",
     "plugin.directory": "Directory",
+    "plugin.detail.back": "Back to plugins",
+    "plugin.detail.errorBody": "The plugin page metadata could not be loaded.",
+    "plugin.detail.errorTitle": "Could not load plugin settings",
+    "plugin.detail.kindSettings": "Settings page",
+    "plugin.detail.kindTools": "Tools tab",
+    "plugin.detail.loading": "Loading plugin settings",
     "plugin.detail.noUi": "This plugin has no settings page contribution.",
+    "plugin.detail.pages": "Plugin pages",
     "plugin.detail.pyqtNotice":
-      "Python plugin settings are contributed as PyQt widgets. The React view lists the same entries and fixed slots.",
+      "This plugin still contributes a PyQt widget and does not expose a React config schema.",
+    "plugin.detail.save": "Save settings",
+    "plugin.detail.saveFailed": "Plugin settings were not saved.",
+    "plugin.detail.saveSuccess": "Plugin settings saved",
     "plugin.detail.settingsPages": "Settings pages",
     "plugin.detail.title": "{title} settings",
     "plugin.detail.toolsTabs": "Tools tabs",
@@ -1479,9 +1499,19 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.catalog.title": "発見",
     "plugin.description": "プラグインは固定 slot にのみ貢献し、platform 層を通じてインストール、有効化、無効化します。",
     "plugin.directory": "場所",
+    "plugin.detail.back": "プラグイン一覧へ戻る",
+    "plugin.detail.errorBody": "プラグインページのメタデータを読み込めませんでした。",
+    "plugin.detail.errorTitle": "プラグイン設定を読み込めません",
+    "plugin.detail.kindSettings": "設定ページ",
+    "plugin.detail.kindTools": "ツールタブ",
+    "plugin.detail.loading": "プラグイン設定を読み込み中",
     "plugin.detail.noUi": "このプラグインには設定ページがありません。",
+    "plugin.detail.pages": "プラグインページ",
     "plugin.detail.pyqtNotice":
-      "Python プラグイン設定は PyQt ウィジェットとして提供されます。React 画面では同じ項目と固定 slot を一覧します。",
+      "このプラグインはまだ PyQt ウィジェットとして提供されており、React の設定 schema は公開されていません。",
+    "plugin.detail.save": "設定を保存",
+    "plugin.detail.saveFailed": "プラグイン設定を保存できませんでした。",
+    "plugin.detail.saveSuccess": "プラグイン設定を保存しました",
     "plugin.detail.settingsPages": "設定ページ",
     "plugin.detail.title": "{title} 設定",
     "plugin.detail.toolsTabs": "ツールタブ",
@@ -2015,8 +2045,18 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.catalog.title": "发现",
     "plugin.description": "插件只能贡献到固定 slot，并通过平台层安装、启用和停用。",
     "plugin.directory": "位置",
+    "plugin.detail.back": "返回插件列表",
+    "plugin.detail.errorBody": "插件页面元数据读取失败。",
+    "plugin.detail.errorTitle": "无法读取插件设置",
+    "plugin.detail.kindSettings": "设置页",
+    "plugin.detail.kindTools": "工具页",
+    "plugin.detail.loading": "正在读取插件设置",
     "plugin.detail.noUi": "该插件没有设置页贡献。",
-    "plugin.detail.pyqtNotice": "Python 插件设置以 PyQt Widget 形式贡献。React 页面会列出相同入口和固定 slot。",
+    "plugin.detail.pages": "插件页面",
+    "plugin.detail.pyqtNotice": "该插件仍以 PyQt Widget 形式贡献设置页，尚未暴露 React 可渲染的配置 schema。",
+    "plugin.detail.save": "保存设置",
+    "plugin.detail.saveFailed": "插件设置未保存。",
+    "plugin.detail.saveSuccess": "插件设置已保存",
     "plugin.detail.settingsPages": "设置页",
     "plugin.detail.title": "{title} 设置",
     "plugin.detail.toolsTabs": "工具页标签",

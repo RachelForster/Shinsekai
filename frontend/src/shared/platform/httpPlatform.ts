@@ -4,8 +4,10 @@ import type {
   AppUpdateResult,
   McpConfig,
   McpToolPreview,
+  PluginConfigSaveResult,
   PluginCatalogItem,
   PluginManifest,
+  PluginUIDetail,
 } from "../../entities/plugin/types";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type {
@@ -426,6 +428,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         });
         return waitForTask(apiBase, task, options);
       },
+      getUi: (id) => requestJson<PluginUIDetail>(apiBase, `/api/plugins/${encodePath(id)}/ui`),
       list: () => requestJson<PluginManifest[]>(apiBase, "/api/plugins"),
       async repoTags(repo) {
         const result = await requestJson<{ tags: string[] }>(apiBase, "/api/plugins/repo-tags", {
@@ -434,6 +437,11 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         });
         return result.tags;
       },
+      saveUiConfig: (id, pageId, values) =>
+        requestJson<PluginConfigSaveResult>(apiBase, `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/config`, {
+          body: JSON.stringify({ values }),
+          method: "POST",
+        }),
       setEnabled: (id, enabled) =>
         requestJson<PluginManifest>(apiBase, `/api/plugins/${encodePath(id)}/enabled`, {
           body: JSON.stringify({ enabled }),

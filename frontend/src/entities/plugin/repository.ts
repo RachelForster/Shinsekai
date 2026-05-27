@@ -3,18 +3,36 @@ import type { TaskProgressOptions } from "../../shared/platform/types";
 import type {
   AppUpdateRefKind,
   AppUpdateResult,
+  PluginConfigSaveResult,
   McpConfig,
   McpToolPreview,
   PluginInstallInput,
   PluginManifest,
+  PluginUIDetail,
 } from "./types";
 
 export const pluginCatalogQueryKey = ["plugins", "catalog"] as const;
 export const pluginsQueryKey = ["plugins"] as const;
 export const mcpConfigQueryKey = ["plugins", "mcp", "config"] as const;
 
+export function pluginUiQueryKey(id: string) {
+  return ["plugins", "ui", id] as const;
+}
+
 export function listPlugins() {
   return getPlatform().plugins.list();
+}
+
+export function getPluginUiDetail(id: string): Promise<PluginUIDetail> {
+  return getPlatform().plugins.getUi(id);
+}
+
+export function savePluginUiConfig(
+  id: string,
+  pageId: string,
+  values: Record<string, unknown>,
+): Promise<PluginConfigSaveResult> {
+  return getPlatform().plugins.saveUiConfig(id, pageId, values);
 }
 
 export function listPluginCatalog() {

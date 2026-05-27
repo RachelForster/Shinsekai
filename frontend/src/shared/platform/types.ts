@@ -5,9 +5,11 @@ import type {
   AppUpdateResult,
   McpConfig,
   McpToolPreview,
+  PluginConfigSaveResult,
   PluginCatalogItem,
   PluginInstallInput,
   PluginManifest,
+  PluginUIDetail,
 } from "../../entities/plugin/types";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 
@@ -359,8 +361,10 @@ export interface ShinsekaiPlatform {
       input: PluginInstallInput | string,
       options?: TaskProgressOptions<PluginManifest>,
     ) => Promise<PluginManifest>;
+    getUi: (id: string) => Promise<PluginUIDetail>;
     list: () => Promise<PluginManifest[]>;
     repoTags: (repo: string) => Promise<string[]>;
+    saveUiConfig: (id: string, pageId: string, values: Record<string, unknown>) => Promise<PluginConfigSaveResult>;
     setEnabled: (id: string, enabled: boolean) => Promise<PluginManifest>;
     uninstall: (id: string) => Promise<PluginUninstallResult>;
   };

@@ -610,6 +610,72 @@ describe("http platform", () => {
     );
   });
 
+  it("reads and saves plugin UI config through the bridge", async () => {
+    const detail = {
+      pages: [
+        {
+          id: "demo-page",
+          kind: "settings",
+          order: 1,
+          pluginId: "plugins.demo.plugin:DemoPlugin",
+          pluginVersion: "1.0.0",
+          schema: [
+            {
+              fields: [{ key: "enabled", label: "Enabled", type: "boolean" }],
+              id: "main",
+              title: "Main",
+            },
+          ],
+          title: "Demo page",
+          values: { enabled: true },
+        },
+      ],
+      plugin: {
+        author: "",
+        description: "demo",
+        enabled: true,
+        entry: "plugins.demo.plugin:DemoPlugin",
+        id: "plugins.demo.plugin:DemoPlugin",
+        loaded: true,
+        permissions: [],
+        settingsPages: ["Demo page"],
+        slots: ["settings-extension"],
+        title: "Demo",
+        toolsTabs: [],
+        version: "1.0.0",
+      },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse(detail))
+      .mockResolvedValueOnce(await mockJsonResponse({ message: "saved", page: detail.pages[0], plugin: detail.plugin }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const ui = await platform.plugins.getUi("plugins.demo.plugin:DemoPlugin");
+    const result = await platform.plugins.saveUiConfig("plugins.demo.plugin:DemoPlugin", "demo-page", {
+      enabled: false,
+    });
+
+    expect(ui.pages[0]?.title).toBe("Demo page");
+    expect(result.message).toBe("saved");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/api/plugins/plugins.demo.plugin%3ADemoPlugin/ui",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8787/api/plugins/plugins.demo.plugin%3ADemoPlugin/ui/demo-page/config",
+      expect.objectContaining({
+        body: JSON.stringify({ values: { enabled: false } }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("runs app self-update through task endpoints", async () => {
     const fetchMock = vi
       .fn()

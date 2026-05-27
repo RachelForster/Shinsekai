@@ -33,6 +33,8 @@ export interface PluginCatalogItem {
   repo: string;
 }
 
+export type PluginUIPageKind = "settings" | "tools";
+
 export type AppUpdateRefKind = "latest" | "head" | "tag";
 
 export interface AppUpdateInfo {
@@ -83,7 +85,15 @@ export interface McpToolPreview {
   registered_name: string;
 }
 
-export type PluginConfigFieldType = "boolean" | "number" | "password" | "select" | "text" | "textarea" | "url";
+export type PluginConfigFieldType =
+  | "boolean"
+  | "integer"
+  | "number"
+  | "password"
+  | "select"
+  | "text"
+  | "textarea"
+  | "url";
 
 export interface PluginConfigOption {
   label: string;
@@ -95,8 +105,13 @@ export interface PluginConfigFieldSchema {
   description?: string;
   key: string;
   label: string;
+  max?: number;
+  min?: number;
   options?: PluginConfigOption[];
+  placeholder?: string;
   required?: boolean;
+  span?: "full";
+  step?: number;
   type: PluginConfigFieldType;
 }
 
@@ -105,4 +120,29 @@ export interface PluginConfigGroupSchema {
   fields: PluginConfigFieldSchema[];
   id: string;
   title: string;
+}
+
+export interface PluginUIPage {
+  description?: string;
+  id: string;
+  kind: PluginUIPageKind;
+  order: number;
+  pluginId: string;
+  pluginVersion: string;
+  restartHint?: string;
+  schema?: PluginConfigGroupSchema[];
+  title: string;
+  unavailableReason?: string;
+  values?: Record<string, unknown>;
+}
+
+export interface PluginUIDetail {
+  pages: PluginUIPage[];
+  plugin: PluginManifest;
+}
+
+export interface PluginConfigSaveResult {
+  message: string;
+  page: PluginUIPage;
+  plugin: PluginManifest;
 }

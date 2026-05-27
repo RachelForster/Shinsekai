@@ -1,5 +1,5 @@
 import type { Background, Character } from "../../entities/config/types";
-import type { PluginManifest } from "../../entities/plugin/types";
+import type { PluginManifest, PluginUIPage } from "../../entities/plugin/types";
 import {
   sampleChatSnapshot,
   sampleConfig,
@@ -670,6 +670,31 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       appUpdateInfo: () => delay({ repo: "RachelForster/Shinsekai", version: "preview" }),
       appUpdateTags: () => delay(["v1.0.0", "v0.9.0"]),
       catalog: () => delay(pluginCatalog),
+      getUi(id) {
+        const plugin = plugins.find((item) => item.id === id || item.entry === id);
+        if (!plugin) {
+          return Promise.reject(new Error(`插件不存在：${id}`));
+        }
+        const settingsPages: PluginUIPage[] = plugin.settingsPages.map((title, index) => ({
+          id: `settings-${index}`,
+          kind: "settings",
+          order: index,
+          pluginId: plugin.id,
+          pluginVersion: plugin.version,
+          title,
+          unavailableReason: "浏览器预览没有真实插件设置 schema。",
+        }));
+        const toolsPages: PluginUIPage[] = plugin.toolsTabs.map((title, index) => ({
+          id: `tools-${index}`,
+          kind: "tools",
+          order: index + settingsPages.length,
+          pluginId: plugin.id,
+          pluginVersion: plugin.version,
+          title,
+          unavailableReason: "浏览器预览没有真实插件工具 schema。",
+        }));
+        return delay({ pages: [...settingsPages, ...toolsPages], plugin });
+      },
       async install(input, options) {
         const id = typeof input === "string" ? input : input.source;
         const taskId = `preview-${Date.now()}`;
@@ -715,6 +740,26 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       list: () => delay(plugins),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
+      saveUiConfig(id, pageId, values) {
+        const plugin = plugins.find((item) => item.id === id || item.entry === id);
+        if (!plugin) {
+          return Promise.reject(new Error(`插件不存在：${id}`));
+        }
+        return delay({
+          message: "插件设置已保存。",
+          page: {
+            id: pageId,
+            kind: "settings",
+            order: 0,
+            pluginId: plugin.id,
+            pluginVersion: plugin.version,
+            schema: [],
+            title: pageId,
+            values,
+          } satisfies PluginUIPage,
+          plugin,
+        });
+      },
       async setEnabled(id, enabled) {
         plugins = plugins.map((plugin) => (plugin.id === id || plugin.entry === id ? { ...plugin, enabled } : plugin));
         const plugin = plugins.find((item) => item.id === id || item.entry === id);

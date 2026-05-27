@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DownloadCloud, ExternalLink, Power, RefreshCw, Settings, Trash2 } from "lucide-react";
+import { ArrowLeft, DownloadCloud, ExternalLink, Power, RefreshCw, Save, Settings, Trash2 } from "lucide-react";
 
 import {
+  getPluginUiDetail,
   installPlugin,
   getAppUpdateInfo,
   listAppUpdateTags,
@@ -10,17 +11,23 @@ import {
   listPlugins,
   listRepoTags,
   pluginCatalogQueryKey,
+  pluginUiQueryKey,
   pluginsQueryKey,
   runAppUpdate,
+  savePluginUiConfig,
   setPluginEnabled,
   uninstallPlugin,
 } from "../../entities/plugin/repository";
+import type { FieldKind, FormGroupSchema } from "../../entities/config/types";
 import type {
   AppUpdateRefKind,
   AppUpdateResult,
+  PluginConfigFieldType,
+  PluginConfigGroupSchema,
   PluginCatalogItem,
   PluginInstallInput,
   PluginManifest,
+  PluginUIPage,
 } from "../../entities/plugin/types";
 import { useI18n } from "../../shared/i18n";
 import { getPlatform } from "../../shared/platform/platform";
@@ -36,9 +43,11 @@ import {
   Select,
   useToast,
 } from "../../shared/ui";
+import { SchemaDrivenForm } from "../SchemaDrivenForm";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 
 type PluginView = "installed" | "discover" | "mcp";
+type PluginConfigDraft = Record<string, unknown>;
 
 function catalogInstallSource(item: PluginCatalogItem) {
   return item.repo;
@@ -68,6 +77,145 @@ function pluginInstallSource(input: PluginInstallInput | string) {
   return typeof input === "string" ? input : input.source;
 }
 
+function pluginUiPageKey(page: PluginUIPage) {
+  return `${page.kind}:${page.id}`;
+}
+
+function fallbackPluginUiPages(plugin: PluginManifest | null): PluginUIPage[] {
+  if (!plugin) {
+    return [];
+  }
+  const settingsPages = plugin.settingsPages.map((title, index) => ({
+    id: `settings-${index}`,
+    kind: "settings" as const,
+    order: index,
+    pluginId: plugin.id,
+    pluginVersion: plugin.version,
+    title,
+    unavailableReason: "",
+  }));
+  const toolsPages = plugin.toolsTabs.map((title, index) => ({
+    id: `tools-${index}`,
+    kind: "tools" as const,
+    order: settingsPages.length + index,
+    pluginId: plugin.id,
+    pluginVersion: plugin.version,
+    title,
+    unavailableReason: "",
+  }));
+  return [...settingsPages, ...toolsPages];
+}
+
+function pluginFieldTypeToFormType(type: PluginConfigFieldType): FieldKind {
+  if (type === "boolean") {
+    return "checkbox";
+  }
+  return type;
+}
+
+function pluginConfigGroupsToFormGroups(
+  groups: PluginConfigGroupSchema[],
+): Array<FormGroupSchema<PluginConfigDraft>> {
+  return groups.map((group) => ({
+    columns: 1,
+    description: group.description,
+    fields: group.fields.map((field) => ({
+      defaultValue: field.defaultValue,
+      description: field.description,
+      label: field.label,
+      max: field.max,
+      min: field.min,
+      name: field.key,
+      options: field.options,
+      placeholder: field.placeholder,
+      required: field.required,
+      span: field.span,
+      step: field.step,
+      type: pluginFieldTypeToFormType(field.type),
+    })),
+    id: group.id,
+    title: group.title,
+  }));
+}
+
+function pluginConfigInitialValues(page: PluginUIPage): PluginConfigDraft {
+  const values = page.values ?? {};
+  const draft: PluginConfigDraft = {};
+  for (const group of page.schema ?? []) {
+    for (const field of group.fields) {
+      draft[field.key] = Object.prototype.hasOwnProperty.call(values, field.key)
+        ? values[field.key]
+        : field.defaultValue;
+    }
+  }
+  return draft;
+}
+
+function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginUIPage }) {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const { t } = useI18n();
+  const formGroups = useMemo(() => pluginConfigGroupsToFormGroups(page.schema ?? []), [page.schema]);
+  const [draft, setDraft] = useState<PluginConfigDraft>(() => pluginConfigInitialValues(page));
+
+  useEffect(() => {
+    setDraft(pluginConfigInitialValues(page));
+  }, [page]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => savePluginUiConfig(lookupId, page.id, draft),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("plugin.detail.saveFailed"),
+        title: t("plugin.toast.operationFailed"),
+      });
+    },
+    onSuccess(result) {
+      setDraft(pluginConfigInitialValues(result.page));
+      queryClient.invalidateQueries({ queryKey: pluginUiQueryKey(lookupId) });
+      queryClient.invalidateQueries({ queryKey: pluginsQueryKey });
+      showToast({
+        kind: "success",
+        message: result.page.restartHint || result.message,
+        title: t("plugin.detail.saveSuccess"),
+      });
+    },
+  });
+
+  if (!page.schema?.length) {
+    return (
+      <section className="section plugin-detail-page__notice">
+        <div className="section__header">
+          <h2 className="section__title">{page.title}</h2>
+          <span className="inline-status">
+            {page.kind === "tools" ? t("plugin.detail.kindTools") : t("plugin.detail.kindSettings")}
+          </span>
+        </div>
+        <p className="plugin-card__description">{page.unavailableReason || t("plugin.detail.pyqtNotice")}</p>
+      </section>
+    );
+  }
+
+  return (
+    <div className="plugin-config-panel">
+      {page.description ? <p className="section__description">{page.description}</p> : null}
+      <SchemaDrivenForm groups={formGroups} onChange={setDraft} value={draft} />
+      {page.restartHint ? <p className="inline-status">{page.restartHint}</p> : null}
+      <div className="plugin-detail-page__footer">
+        <AsyncButton
+          icon={<Save aria-hidden className="button__icon" />}
+          loading={saveMutation.isPending}
+          onClick={() => saveMutation.mutate()}
+          variant="primary"
+        >
+          {t("plugin.detail.save")}
+        </AsyncButton>
+      </div>
+    </div>
+  );
+}
+
 export function PluginManagerPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -85,6 +233,8 @@ export function PluginManagerPage() {
   const [pendingCatalogInstall, setPendingCatalogInstall] = useState<PluginCatalogItem | null>(null);
   const [catalogRefKind, setCatalogRefKind] = useState<AppUpdateRefKind>("latest");
   const [catalogTagName, setCatalogTagName] = useState("");
+  const [activeDetailPageId, setActiveDetailPageId] = useState("");
+  const detailLookupId = detailPlugin ? pluginActionId(detailPlugin) : "";
   const appUpdateInfoQuery = useQuery({
     enabled: view === "discover",
     queryFn: getAppUpdateInfo,
@@ -107,6 +257,11 @@ export function PluginManagerPage() {
     queryFn: listPluginCatalog,
     queryKey: pluginCatalogQueryKey,
     retry: 1,
+  });
+  const pluginDetailQuery = useQuery({
+    enabled: Boolean(detailLookupId),
+    queryFn: () => getPluginUiDetail(detailLookupId),
+    queryKey: pluginUiQueryKey(detailLookupId),
   });
 
   useEffect(() => {
@@ -221,6 +376,20 @@ export function PluginManagerPage() {
   const appUpdateProgress = appUpdateTask?.progress == null ? null : Math.round(appUpdateTask.progress * 100);
   const appUpdateLogs = appUpdateTask?.logs.slice(-6) ?? [];
   const appUpdateInfo = appUpdateInfoQuery.data;
+  const fallbackDetailPages = useMemo(() => fallbackPluginUiPages(detailPlugin), [detailPlugin]);
+  const detailPages = pluginDetailQuery.data?.pages ?? fallbackDetailPages;
+  const detailPageSignature = detailPages.map(pluginUiPageKey).join("|");
+
+  useEffect(() => {
+    if (!detailPlugin) {
+      setActiveDetailPageId("");
+      return;
+    }
+    const pageKeys = detailPages.map(pluginUiPageKey);
+    if (pageKeys.length && !pageKeys.includes(activeDetailPageId)) {
+      setActiveDetailPageId(pageKeys[0]);
+    }
+  }, [activeDetailPageId, detailPageSignature, detailPages, detailPlugin]);
 
   const catalogColumns = [
     {
@@ -283,6 +452,78 @@ export function PluginManagerPage() {
     },
   ];
   const pluginBusy = toggleMutation.isPending || uninstallMutation.isPending;
+  const detailPluginRow = pluginDetailQuery.data?.plugin ?? detailPlugin;
+  const activeDetailPage = detailPages.find((page) => pluginUiPageKey(page) === activeDetailPageId) ?? detailPages[0];
+
+  if (detailPlugin && detailPluginRow) {
+    const loaded = detailPluginRow.loaded !== false;
+    const statusLabel = !detailPluginRow.enabled
+      ? t("plugin.status.disabled")
+      : loaded
+        ? t("plugin.status.enabled")
+        : t("plugin.status.unavailable");
+
+    return (
+      <div className="page plugin-detail-page">
+        <header className="page__header">
+          <div>
+            <Button
+              className="plugin-detail-page__back"
+              icon={<ArrowLeft aria-hidden className="button__icon" />}
+              onClick={() => setDetailPlugin(null)}
+              variant="ghost"
+            >
+              {t("plugin.detail.back")}
+            </Button>
+            <h1 className="page__title">{t("plugin.detail.title", { title: detailPluginRow.title })}</h1>
+            <p className="page__description">
+              {t("plugin.version")}: {detailPluginRow.version || "-"}
+              {detailPluginRow.author ? ` · ${t("plugin.author")}: ${detailPluginRow.author}` : ""}
+            </p>
+          </div>
+          <span className="plugin-card__status" data-enabled={detailPluginRow.enabled && loaded} data-loaded={loaded}>
+            {statusLabel}
+          </span>
+        </header>
+
+        {!loaded && detailPluginRow.enabled ? (
+          <section className="section">
+            <p className="plugin-card__description">
+              {detailPluginRow.loadError || t("plugin.loadError.unavailable")}
+            </p>
+          </section>
+        ) : null}
+
+        {pluginDetailQuery.isLoading && !pluginDetailQuery.data ? (
+          <EmptyState title={t("plugin.detail.loading")} />
+        ) : null}
+        {pluginDetailQuery.isError ? (
+          <EmptyState
+            body={
+              pluginDetailQuery.error instanceof Error
+                ? pluginDetailQuery.error.message
+                : t("plugin.detail.errorBody")
+            }
+            title={t("plugin.detail.errorTitle")}
+          />
+        ) : null}
+        {!pluginDetailQuery.isLoading && !detailPages.length ? (
+          <EmptyState title={t("plugin.detail.noUi")} body={t("plugin.detail.pyqtNotice")} />
+        ) : null}
+        {detailPages.length ? (
+          <>
+            <SegmentedTabs
+              ariaLabel={t("plugin.detail.pages")}
+              items={detailPages.map((page) => ({ id: pluginUiPageKey(page), label: page.title }))}
+              onChange={setActiveDetailPageId}
+              value={activeDetailPage ? pluginUiPageKey(activeDetailPage) : activeDetailPageId}
+            />
+            {activeDetailPage ? <PluginConfigPanel lookupId={detailLookupId} page={activeDetailPage} /> : null}
+          </>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -628,39 +869,6 @@ export function PluginManagerPage() {
               ) : null}
             </span>
           </label>
-        </div>
-      </Dialog>
-
-      <Dialog
-        closeLabel={t("common.close")}
-        onClose={() => setDetailPlugin(null)}
-        open={Boolean(detailPlugin)}
-        title={t("plugin.detail.title", { title: detailPlugin?.title ?? "" })}
-      >
-        <div className="plugin-detail">
-          {pluginSettingsPages(detailPlugin).length ? (
-            <div className="plugin-detail__group">
-              <strong>{t("plugin.detail.settingsPages")}</strong>
-              <ul>
-                {pluginSettingsPages(detailPlugin).map((label) => (
-                  <li key={label}>{label}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {pluginToolsTabs(detailPlugin).length ? (
-            <div className="plugin-detail__group">
-              <strong>{t("plugin.detail.toolsTabs")}</strong>
-              <ul>
-                {pluginToolsTabs(detailPlugin).map((label) => (
-                  <li key={label}>{label}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {!pluginSettingsPages(detailPlugin).length && !pluginToolsTabs(detailPlugin).length ? (
-            <p className="inline-status">{t("plugin.detail.noUi")}</p>
-          ) : null}
         </div>
       </Dialog>
 
