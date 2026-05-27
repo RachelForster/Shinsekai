@@ -113,9 +113,7 @@ function pluginFieldTypeToFormType(type: PluginConfigFieldType): FieldKind {
   return type;
 }
 
-function pluginConfigGroupsToFormGroups(
-  groups: PluginConfigGroupSchema[],
-): Array<FormGroupSchema<PluginConfigDraft>> {
+function pluginConfigGroupsToFormGroups(groups: PluginConfigGroupSchema[]): Array<FormGroupSchema<PluginConfigDraft>> {
   return groups.map((group) => ({
     columns: 1,
     description: group.description,
@@ -488,9 +486,7 @@ export function PluginManagerPage() {
 
         {!loaded && detailPluginRow.enabled ? (
           <section className="section">
-            <p className="plugin-card__description">
-              {detailPluginRow.loadError || t("plugin.loadError.unavailable")}
-            </p>
+            <p className="plugin-card__description">{detailPluginRow.loadError || t("plugin.loadError.unavailable")}</p>
           </section>
         ) : null}
 
@@ -500,9 +496,7 @@ export function PluginManagerPage() {
         {pluginDetailQuery.isError ? (
           <EmptyState
             body={
-              pluginDetailQuery.error instanceof Error
-                ? pluginDetailQuery.error.message
-                : t("plugin.detail.errorBody")
+              pluginDetailQuery.error instanceof Error ? pluginDetailQuery.error.message : t("plugin.detail.errorBody")
             }
             title={t("plugin.detail.errorTitle")}
           />

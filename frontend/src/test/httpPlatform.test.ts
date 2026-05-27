@@ -648,7 +648,9 @@ describe("http platform", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(await mockJsonResponse(detail))
-      .mockResolvedValueOnce(await mockJsonResponse({ message: "saved", page: detail.pages[0], plugin: detail.plugin }));
+      .mockResolvedValueOnce(
+        await mockJsonResponse({ message: "saved", page: detail.pages[0], plugin: detail.plugin }),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
