@@ -232,6 +232,7 @@ const BackgroundBgmRow = memo(function BackgroundBgmRow({
     (event: ChangeEvent<HTMLInputElement>) => onToggleSelection(index, event.target.checked),
     [index, onToggleSelection],
   );
+  const filename = baseName(path);
 
   return (
     <tr aria-selected={selected}>
@@ -239,17 +240,21 @@ const BackgroundBgmRow = memo(function BackgroundBgmRow({
         <input checked={selected} onChange={handleToggle} type="checkbox" />
       </td>
       <td>{index + 1}</td>
-      <td className="background-bgm-table__filename">
+      <td className="background-bgm-table__filename" title={filename}>
         <Music aria-hidden className="asset-row__icon" />
-        {baseName(path)}
+        <span>{filename}</span>
       </td>
       <td>
-        <span className="background-bgm-table__path">{path}</span>
+        <span className="background-bgm-table__path" title={path}>
+          {path}
+        </span>
       </td>
-      <td>
+      <td className="background-bgm-table__tag">
         <TextInput onChange={handleTagChange} value={tag} />
       </td>
-      <td>{path ? <audio className="audio-inline" controls preload="none" src={fileUrl(path)} /> : null}</td>
+      <td className="background-bgm-table__preview">
+        {path ? <audio className="audio-inline" controls preload="none" src={fileUrl(path)} /> : null}
+      </td>
       <td>
         <AsyncButton
           icon={<Trash2 aria-hidden className="button__icon" />}
@@ -301,6 +306,15 @@ const BackgroundBgmRows = memo(function BackgroundBgmRows({
       style={{ maxHeight: virtual.maxHeight }}
     >
       <table className="data-table background-bgm-table">
+        <colgroup>
+          <col className="background-bgm-table__select-col" />
+          <col className="background-bgm-table__index-col" />
+          <col className="background-bgm-table__filename-col" />
+          <col className="background-bgm-table__path-col" />
+          <col className="background-bgm-table__tag-col" />
+          <col className="background-bgm-table__preview-col" />
+          <col className="background-bgm-table__remove-col" />
+        </colgroup>
         <thead>
           <tr>
             <th>{selectLabel}</th>

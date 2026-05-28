@@ -821,22 +821,70 @@
 }
 
 .background-bgm-table {
-  min-width: 880px;
+  min-width: 1160px;
+  table-layout: fixed;
+}
+
+.background-bgm-table__select-col {
+  width: 56px;
+}
+
+.background-bgm-table__index-col {
+  width: 58px;
+}
+
+.background-bgm-table__filename-col {
+  width: 160px;
+}
+
+.background-bgm-table__path-col {
+  width: 210px;
+}
+
+.background-bgm-table__tag-col {
+  width: 220px;
+}
+
+.background-bgm-table__preview-col {
+  width: 360px;
+}
+
+.background-bgm-table__remove-col {
+  width: 96px;
 }
 
 .background-bgm-table__filename {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: var(--space-1);
+}
+
+.background-bgm-table__filename span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .background-bgm-table__path {
   display: block;
-  max-width: 340px;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
   color: var(--color-text-muted);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-bgm-table__tag,
+.background-bgm-table__preview {
+  min-width: 0;
+}
+
+.background-bgm-table__preview .audio-inline {
+  min-width: 300px;
+  margin-top: 0;
 }
 
 .memory-table {
