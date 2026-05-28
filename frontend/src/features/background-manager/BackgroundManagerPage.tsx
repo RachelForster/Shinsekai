@@ -20,8 +20,8 @@ import {
   uploadBackgroundImages,
 } from "../../entities/background/repository";
 import type { Background } from "../../entities/config/types";
+import { fileUrl, openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { getPlatform } from "../../shared/platform/platform";
 import { AsyncButton, Button, EmptyState, FilePicker, TextArea, TextInput, useToast } from "../../shared/ui";
 
 function createBackground(): Background {
@@ -474,18 +474,14 @@ export function BackgroundManagerPage() {
           </AsyncButton>
           <Button
             icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() =>
-              getPlatform().files.openExternal(
-                "https://rachelforster.github.io/Shinsekai/resources.html?type=background",
-              )
-            }
+            onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=background")}
             variant="ghost"
           >
             {t("background.action.community")}
           </Button>
           <Button
             icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => getPlatform().files.openExternal("https://wj.qq.com/s2/26616089/b61a/")}
+            onClick={() => openExternal("https://wj.qq.com/s2/26616089/b61a/")}
             variant="ghost"
           >
             {t("background.action.uploadContribution")}
@@ -712,7 +708,7 @@ export function BackgroundManagerPage() {
                 <div className="asset-row asset-row--compact" key={`${sprite.path}-${index}`}>
                   <div className="asset-row__index">
                     {sprite.path ? (
-                      <img alt="" className="asset-thumb" src={getPlatform().files.fileUrl(sprite.path)} />
+                      <img alt="" className="asset-thumb" src={fileUrl(sprite.path)} />
                     ) : (
                       <ImageIcon aria-hidden className="asset-row__icon" />
                     )}
@@ -853,11 +849,7 @@ export function BackgroundManagerPage() {
                               value={bgmRowTags[index] ?? ""}
                             />
                           </td>
-                          <td>
-                            {path ? (
-                              <audio className="audio-inline" controls src={getPlatform().files.fileUrl(path)} />
-                            ) : null}
-                          </td>
+                          <td>{path ? <audio className="audio-inline" controls src={fileUrl(path)} /> : null}</td>
                           <td>
                             <AsyncButton
                               icon={<Trash2 aria-hidden className="button__icon" />}

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Copy, History, Mic, MicOff, RotateCcw, Send, SkipForward, Trash2 } from "lucide-react";
 
+import { getChatSnapshot, getChatTheme, sendChatCommand, subscribeChat } from "../../entities/chat/repository";
 import { PluginSlot } from "../../entities/plugin/slots";
 import { useI18n } from "../../shared/i18n";
-import { getPlatform } from "../../shared/platform/platform";
 import type { ChatCommand, ChatSnapshot, ChatSprite } from "../../shared/platform/types";
 import { parseChatChromeTheme } from "../../shared/theme/chatChromeTheme";
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
@@ -303,13 +303,11 @@ export function ChatStagePage() {
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const { showToast } = useToast();
   const { t } = useI18n();
-  const platform = getPlatform();
   const themeStyle = useMemo(() => parseChatChromeTheme(themePayload), [themePayload]);
 
   useEffect(() => {
     let mounted = true;
-    platform.chat
-      .getTheme()
+    getChatTheme()
       .then((theme) => {
         if (mounted) {
           setThemePayload(theme);
@@ -320,8 +318,7 @@ export function ChatStagePage() {
           setThemePayload(null);
         }
       });
-    platform.chat
-      .getSnapshot()
+    getChatSnapshot()
       .then((snapshot: ChatSnapshot) => {
         if (mounted) {
           dispatch({ snapshot, type: "hydrate" });
@@ -330,12 +327,12 @@ export function ChatStagePage() {
       .catch((error) => {
         dispatch({ message: error instanceof Error ? error.message : t("chat.error.loadFallback"), type: "error" });
       });
-    const unsubscribe = platform.chat.subscribe((snapshot) => dispatch({ snapshot, type: "hydrate" }));
+    const unsubscribe = subscribeChat((snapshot) => dispatch({ snapshot, type: "hydrate" }));
     return () => {
       mounted = false;
       unsubscribe();
     };
-  }, [platform.chat]);
+  }, [t]);
 
   const sendCommand = async (command: ChatCommand) => {
     if (command.type === "clear-history" && !confirmClearHistory) {
@@ -343,7 +340,7 @@ export function ChatStagePage() {
       return;
     }
     try {
-      const snapshot = await platform.chat.command(command);
+      const snapshot = await sendChatCommand(command);
       dispatch({ snapshot, type: "hydrate" });
       if (command.type === "copy-history") {
         showToast({ kind: "success", title: t("chat.toast.historyCopied") });

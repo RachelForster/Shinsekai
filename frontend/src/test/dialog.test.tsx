@@ -1,18 +1,19 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../shared/i18n/I18nProvider";
-import { AlertDialog, FilePicker } from "../shared/ui";
+import { AlertDialog, FileBrowserProvider, FilePicker } from "../shared/ui";
 
-const mockPlatform = vi.hoisted(() => ({
-  files: {
-    browse: vi.fn(),
-  },
-}));
+const browseFiles = vi.fn();
 
-vi.mock("../shared/platform/platform", () => ({
-  getPlatform: () => mockPlatform,
-}));
+function renderWithFileBrowser(children: ReactNode) {
+  return render(
+    <I18nProvider language="zh_CN">
+      <FileBrowserProvider browse={browseFiles}>{children}</FileBrowserProvider>
+    </I18nProvider>,
+  );
+}
 
 describe("AlertDialog", () => {
   afterEach(() => {
@@ -46,7 +47,7 @@ describe("AlertDialog", () => {
 
 describe("FilePicker", () => {
   beforeEach(() => {
-    mockPlatform.files.browse.mockResolvedValue({
+    browseFiles.mockResolvedValue({
       cwd: "/tmp",
       entries: [
         { kind: "file", modifiedAt: 1, name: "a.png", path: "/tmp/a.png", size: 1 },
@@ -64,11 +65,7 @@ describe("FilePicker", () => {
   it("uses the self-drawn browser for multiple file selection", async () => {
     const onPathsChange = vi.fn();
 
-    render(
-      <I18nProvider language="zh_CN">
-        <FilePicker multiple onPathsChange={onPathsChange} pickLabel="选择素材" value="" />
-      </I18nProvider>,
-    );
+    renderWithFileBrowser(<FilePicker multiple onPathsChange={onPathsChange} pickLabel="选择素材" value="" />);
 
     fireEvent.click(screen.getByLabelText("选择素材"));
 
@@ -79,22 +76,18 @@ describe("FilePicker", () => {
     fireEvent.click(screen.getByRole("button", { name: "选择文件" }));
 
     expect(onPathsChange).toHaveBeenCalledWith(["/tmp/a.png", "/tmp/b.png"]);
-    expect(mockPlatform.files.browse).toHaveBeenCalledWith({ path: "", showHidden: false });
+    expect(browseFiles).toHaveBeenCalledWith({ path: "", showHidden: false });
   });
 
   it("opens parent folders from the address breadcrumbs", async () => {
-    mockPlatform.files.browse.mockResolvedValueOnce({
+    browseFiles.mockResolvedValueOnce({
       cwd: "/home/shinsekai/project/data/config",
       entries: [],
       parent: "/home/shinsekai/project/data",
       roots: [{ label: "Shinsekai", path: "/home/shinsekai/project" }],
     });
 
-    render(
-      <I18nProvider language="zh_CN">
-        <FilePicker pickLabel="选择路径" value="" />
-      </I18nProvider>,
-    );
+    renderWithFileBrowser(<FilePicker pickLabel="选择路径" value="" />);
 
     fireEvent.click(screen.getByLabelText("选择路径"));
 
@@ -102,7 +95,7 @@ describe("FilePicker", () => {
     fireEvent.click(dataCrumb);
 
     await waitFor(() => {
-      expect(mockPlatform.files.browse).toHaveBeenLastCalledWith({
+      expect(browseFiles).toHaveBeenLastCalledWith({
         path: "/home/shinsekai/project/data",
         showHidden: false,
       });
@@ -111,18 +104,14 @@ describe("FilePicker", () => {
 
   it("selects the full address when clicking the blank address area", async () => {
     const cwd = "/home/shinsekai/project/data/config";
-    mockPlatform.files.browse.mockResolvedValueOnce({
+    browseFiles.mockResolvedValueOnce({
       cwd,
       entries: [],
       parent: "/home/shinsekai/project/data",
       roots: [{ label: "Shinsekai", path: "/home/shinsekai/project" }],
     });
 
-    render(
-      <I18nProvider language="zh_CN">
-        <FilePicker pickLabel="选择路径" value="" />
-      </I18nProvider>,
-    );
+    renderWithFileBrowser(<FilePicker pickLabel="选择路径" value="" />);
 
     fireEvent.click(screen.getByLabelText("选择路径"));
     fireEvent.click(await screen.findByRole("group", { name: cwd }));

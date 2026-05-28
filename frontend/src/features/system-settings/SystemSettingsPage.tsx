@@ -11,9 +11,9 @@ import {
 } from "../../entities/config/schema";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
+import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton, EmptyState, useToast } from "../../shared/ui";
-import { useAppState } from "../../app/providers/AppState";
 import { SchemaDrivenForm } from "../SchemaDrivenForm";
 
 const systemConfigPageSchema = systemConfigFormSchema

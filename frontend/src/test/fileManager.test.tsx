@@ -5,27 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../shared/i18n/I18nProvider";
 import { FileManager, normalizeFileExtensions } from "../shared/ui/FileManager";
 
-const mockPlatform = vi.hoisted(() => ({
-  files: {
-    browse: vi.fn(),
-  },
-}));
-
-vi.mock("../shared/platform/platform", () => ({
-  getPlatform: () => mockPlatform,
-}));
+const browseFiles = vi.fn();
 
 function renderFileManager(props: ComponentProps<typeof FileManager>) {
   return render(
     <I18nProvider language="zh_CN">
-      <FileManager {...props} />
+      <FileManager onBrowse={browseFiles} {...props} />
     </I18nProvider>,
   );
 }
 
 describe("FileManager", () => {
   beforeEach(() => {
-    mockPlatform.files.browse.mockResolvedValue({
+    browseFiles.mockResolvedValue({
       cwd: "/project",
       entries: [
         { kind: "directory", modifiedAt: 1, name: "assets", path: "/project/assets" },
@@ -83,7 +75,7 @@ describe("FileManager", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(mockPlatform.files.browse).toHaveBeenLastCalledWith({ path: "/project/data", showHidden: false });
+      expect(browseFiles).toHaveBeenLastCalledWith({ path: "/project/data", showHidden: false });
     });
   });
 
@@ -94,7 +86,7 @@ describe("FileManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "/" }));
 
     await waitFor(() => {
-      expect(mockPlatform.files.browse).toHaveBeenLastCalledWith({ path: "/", showHidden: false });
+      expect(browseFiles).toHaveBeenLastCalledWith({ path: "/", showHidden: false });
     });
   });
 
@@ -118,7 +110,7 @@ describe("FileManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "显示隐藏文件" }));
 
     await waitFor(() => {
-      expect(mockPlatform.files.browse).toHaveBeenLastCalledWith({ path: "/project", showHidden: true });
+      expect(browseFiles).toHaveBeenLastCalledWith({ path: "/project", showHidden: true });
     });
   });
 });

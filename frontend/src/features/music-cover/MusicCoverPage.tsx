@@ -4,7 +4,7 @@ import { Play, Save, Search } from "lucide-react";
 
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
-import { getPlatform } from "../../shared/platform/platform";
+import { runMusicCover, saveMusicCoverConfig, searchMusicCover } from "../../entities/music-cover/repository";
 import type {
   MusicCoverConfigInput,
   MusicCoverRunResult,
@@ -55,7 +55,7 @@ export function MusicCoverPage() {
   }, [data?.system_config]);
 
   const saveMutation = useMutation({
-    mutationFn: (config: MusicCoverConfigInput) => getPlatform().musicCover.saveConfig(config),
+    mutationFn: (config: MusicCoverConfigInput) => saveMusicCoverConfig(config),
     onError(error) {
       const message = error instanceof Error ? error.message : "保存失败。";
       setSaveOutput(message);
@@ -70,7 +70,7 @@ export function MusicCoverPage() {
   });
 
   const musicSearchMutation = useMutation({
-    mutationFn: () => getPlatform().musicCover.search({ query: musicQuery.trim(), source: musicSource }),
+    mutationFn: () => searchMusicCover({ query: musicQuery.trim(), source: musicSource }),
     onError(error) {
       setMusicLog(error instanceof Error ? error.message : "搜索预览失败。");
     },
@@ -81,7 +81,7 @@ export function MusicCoverPage() {
 
   const musicRunMutation = useMutation({
     mutationFn: () =>
-      getPlatform().musicCover.run(
+      runMusicCover(
         {
           pickIndex: musicPick,
           query: musicQuery.trim(),

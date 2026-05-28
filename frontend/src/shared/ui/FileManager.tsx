@@ -1,10 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { ChevronRight, ChevronUp, Eye, EyeOff, File, Folder, HardDrive, RefreshCw } from "lucide-react";
 
 import type { FileBrowserEntry, FileBrowserSnapshot, PathPickerMode } from "../platform/types";
-import { getPlatform } from "../platform/platform";
 import { useI18n } from "../i18n";
 import { IconButton } from "./IconButton";
+
+export type FileBrowseHandler = (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
+
+const FileBrowserContext = createContext<FileBrowseHandler | null>(null);
+
+export function FileBrowserProvider({ browse, children }: { browse: FileBrowseHandler; children: ReactNode }) {
+  return <FileBrowserContext.Provider value={browse}>{children}</FileBrowserContext.Provider>;
+}
 
 export interface FileManagerSelection {
   address: string;
@@ -17,6 +25,7 @@ export interface FileManagerProps {
   acceptedExtensions?: string[];
   mode?: PathPickerMode;
   multiple?: boolean;
+  onBrowse?: FileBrowseHandler;
   onOpenFile?: (path: string) => void;
   onSelectionChange?: (selection: FileManagerSelection) => void;
   value?: string;
@@ -110,11 +119,14 @@ export function FileManager({
   acceptedExtensions,
   mode = "file",
   multiple = false,
+  onBrowse,
   onOpenFile,
   onSelectionChange,
   value = "",
 }: FileManagerProps) {
   const { t } = useI18n();
+  const contextBrowse = useContext(FileBrowserContext);
+  const browseFiles = onBrowse ?? contextBrowse;
   const [address, setAddress] = useState(value);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -175,7 +187,10 @@ export function FileManager({
       setError("");
       const desiredSelection = selection ?? selectedPathsRef.current;
       try {
-        const next = await getPlatform().files.browse({ path, showHidden: hidden ?? showHiddenRef.current });
+        if (!browseFiles) {
+          throw new Error("File browser is not configured.");
+        }
+        const next = await browseFiles({ path, showHidden: hidden ?? showHiddenRef.current });
         setSnapshot(next);
         setAddress(next.cwd);
         setEditingAddress(false);
@@ -195,7 +210,7 @@ export function FileManager({
         setLoading(false);
       }
     },
-    [mode, normalizedAcceptedExtensions],
+    [browseFiles, mode, normalizedAcceptedExtensions],
   );
 
   const beginAddressEdit = useCallback(() => {

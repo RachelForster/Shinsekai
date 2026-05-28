@@ -38,8 +38,8 @@ import {
   uploadSpriteVoice,
 } from "../../entities/character/repository";
 import type { Character, Sprite } from "../../entities/config/types";
+import { fileUrl, openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { getPlatform } from "../../shared/platform/platform";
 import {
   AlertDialog,
   AsyncButton,
@@ -597,18 +597,14 @@ export function CharacterEditorPage() {
           </AsyncButton>
           <Button
             icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() =>
-              getPlatform().files.openExternal(
-                "https://rachelforster.github.io/Shinsekai/resources.html?type=character",
-              )
-            }
+            onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=character")}
             variant="ghost"
           >
             {t("character.action.community")}
           </Button>
           <Button
             icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => getPlatform().files.openExternal("https://wj.qq.com/s2/26613318/4fd2/")}
+            onClick={() => openExternal("https://wj.qq.com/s2/26613318/4fd2/")}
             variant="ghost"
           >
             {t("character.action.uploadContribution")}
@@ -1021,7 +1017,7 @@ export function CharacterEditorPage() {
                 <div className="asset-row asset-row--character" key={`${sprite.path}-${index}`}>
                   <div className="asset-row__index">
                     {sprite.path ? (
-                      <img alt="" className="asset-thumb" src={getPlatform().files.fileUrl(sprite.path)} />
+                      <img alt="" className="asset-thumb" src={fileUrl(sprite.path)} />
                     ) : (
                       <ImageIcon aria-hidden className="asset-row__icon" />
                     )}
@@ -1038,7 +1034,7 @@ export function CharacterEditorPage() {
                     <span className="field-row__control">
                       <TextInput readOnly value={sprite.voice_path ?? ""} />
                       {sprite.voice_path ? (
-                        <audio className="audio-inline" controls src={getPlatform().files.fileUrl(sprite.voice_path)} />
+                        <audio className="audio-inline" controls src={fileUrl(sprite.voice_path)} />
                       ) : null}
                     </span>
                   </label>

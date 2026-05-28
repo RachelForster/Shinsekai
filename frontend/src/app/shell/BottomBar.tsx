@@ -1,18 +1,13 @@
-import { useIsFetching, useIsMutating, useQuery } from "@tanstack/react-query";
+import { useIsFetching, useIsMutating } from "@tanstack/react-query";
 
+import { useAppUpdateInfo } from "../../entities/plugin/hooks";
 import { useI18n } from "../../shared/i18n";
-import { getPlatform } from "../../shared/platform/platform";
 
 export function BottomBar() {
   const fetching = useIsFetching();
   const mutating = useIsMutating();
   const { t } = useI18n();
-  const versionQuery = useQuery({
-    queryFn: () => getPlatform().plugins.appUpdateInfo(),
-    queryKey: ["app-update-info", "bottom-bar"],
-    refetchOnWindowFocus: false,
-    staleTime: 300_000,
-  });
+  const versionQuery = useAppUpdateInfo();
   const status = mutating ? t("bottom.saving") : fetching ? t("bottom.syncing") : "";
   const rawVersion = versionQuery.data?.version?.trim() ?? "";
   const version = rawVersion ? (rawVersion.toLowerCase().startsWith("v") ? rawVersion : `v${rawVersion}`) : "";

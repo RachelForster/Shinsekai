@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
+import { launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
   getTemplateSession,
@@ -13,7 +14,6 @@ import {
   templatesQueryKey,
 } from "../../entities/template/repository";
 import { useI18n } from "../../shared/i18n";
-import { getPlatform } from "../../shared/platform/platform";
 import type { ChatLaunchPayload, TemplateLaunchSession } from "../../shared/platform/types";
 import { AlertDialog, AsyncButton, Button, EmptyState, FilePicker, Select, TextInput, useToast } from "../../shared/ui";
 
@@ -115,7 +115,7 @@ export function ChatLauncherPage() {
   const launchMutation = useMutation({
     mutationFn: async (payload: ChatLaunchPayload) => {
       await saveTemplateSession(buildSession());
-      return getPlatform().chat.launch(payload);
+      return launchChat(payload);
     },
     onError(error) {
       showToast({

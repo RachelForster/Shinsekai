@@ -9,8 +9,8 @@ import {
   generateSprites,
   removeSpriteBackground,
 } from "../../entities/tools/repository";
+import { fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { getPlatform } from "../../shared/platform/platform";
 import type { TaskSnapshot } from "../../shared/platform/types";
 import {
   AsyncButton,
@@ -48,12 +48,7 @@ function GeneratedSpritePreview({ file }: { file: string }) {
   }
 
   return (
-    <img
-      alt={basename(file)}
-      className="tool-gallery__thumb"
-      onError={() => setFailed(true)}
-      src={getPlatform().files.fileUrl(file)}
-    />
+    <img alt={basename(file)} className="tool-gallery__thumb" onError={() => setFailed(true)} src={fileUrl(file)} />
   );
 }
 

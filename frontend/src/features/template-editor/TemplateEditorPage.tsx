@@ -4,7 +4,8 @@ import { ChevronDown, ChevronRight, Play, RotateCw, Save } from "lucide-react";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
-import { configQueryKey, getAppConfig } from "../../entities/config/repository";
+import { launchChat } from "../../entities/chat/repository";
+import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import {
   generateTemplate,
   getTemplateSession,
@@ -15,7 +16,6 @@ import {
   type TemplateSummary,
 } from "../../entities/template/repository";
 import { useI18n } from "../../shared/i18n";
-import { getPlatform } from "../../shared/platform/platform";
 import type { TemplateLaunchSession } from "../../shared/platform/types";
 import {
   AlertDialog,
@@ -266,8 +266,8 @@ export function TemplateEditorPage() {
 
   const voiceLanguageMutation = useMutation({
     mutationFn: async (language: string) => {
-      const config = await getPlatform().config.get();
-      return getPlatform().config.saveSystem({
+      const config = await getAppConfig();
+      return saveSystemConfig({
         ...config.system_config,
         voice_language: language,
       });
@@ -359,7 +359,7 @@ export function TemplateEditorPage() {
       const template = buildTemplate();
       const session = buildLaunchSession();
       await saveTemplateSession(session);
-      const snapshot = await getPlatform().chat.launch({
+      const snapshot = await launchChat({
         backgroundName: selectedBackground,
         characters: selectedCharacters,
         historyPath: historyPath.trim(),

@@ -1,7 +1,14 @@
-import type { AppConfig } from "../../entities/config/types";
-import type { McpConfig, McpToolPreview, PluginCatalogItem, PluginManifest } from "../../entities/plugin/types";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
-import type { ChatLaunchPayload, ChatSnapshot, TemplateSummary } from "./types";
+import type {
+  AppConfig,
+  ChatLaunchPayload,
+  ChatSnapshot,
+  McpConfig,
+  McpToolPreview,
+  PluginCatalogItem,
+  PluginManifest,
+  TemplateSummary,
+} from "./types";
 
 export const sampleConfig: AppConfig = {
   adapter_catalog: {

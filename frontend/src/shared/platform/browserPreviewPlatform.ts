@@ -1,5 +1,3 @@
-import type { Background, Character } from "../../entities/config/types";
-import type { PluginManifest, PluginUIPage } from "../../entities/plugin/types";
 import {
   sampleChatSnapshot,
   sampleConfig,
@@ -12,9 +10,13 @@ import {
 } from "./sampleData";
 import type {
   BatchToolResult,
+  Background,
+  Character,
   CharacterMemoryList,
   ChatSnapshot,
   MusicCoverRunResult,
+  PluginManifest,
+  PluginUIPage,
   ShinsekaiPlatform,
   TemplateLaunchSession,
   SpriteGenerationResult,

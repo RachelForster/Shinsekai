@@ -27,13 +27,14 @@ import type {
   AdapterExtraFieldSchema,
   AdapterOption,
   ApiConfig,
-  FormGroupSchema,
   SystemConfig,
 } from "../../entities/config/types";
-import { useAppState } from "../../app/providers/AppState";
+import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
+import { openExternal } from "../../entities/files/repository";
+import { resumeLastChat } from "../../entities/chat/repository";
+import type { FormGroupSchema } from "../../shared/ui/formSchema";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
-import { getPlatform } from "../../shared/platform/platform";
 import { AsyncButton, Button, EmptyState, IconButton, Select, TextInput, useToast } from "../../shared/ui";
 import { SchemaDrivenForm, SchemaFieldGrid } from "../SchemaDrivenForm";
 
@@ -541,7 +542,7 @@ export function ApiSettingsPage() {
   });
 
   const resumeMutation = useMutation({
-    mutationFn: getPlatform().chat.resumeLast,
+    mutationFn: resumeLastChat,
     onError(error) {
       showToast({
         kind: "error",
@@ -1037,7 +1038,7 @@ export function ApiSettingsPage() {
             <span>{t("system.asr.voskHint")}</span>
             <Button
               icon={<ExternalLink aria-hidden className="button__icon" />}
-              onClick={() => getPlatform().files.openExternal(VOSK_MODELS_URL)}
+              onClick={() => openExternal(VOSK_MODELS_URL)}
               variant="ghost"
             >
               {t("system.asr.voskModels")}
@@ -1208,7 +1209,7 @@ export function ApiSettingsPage() {
             <Button
               icon={<ExternalLink aria-hidden className="button__icon" />}
               key={url}
-              onClick={() => getPlatform().files.openExternal(url)}
+              onClick={() => openExternal(url)}
               variant="ghost"
             >
               {t(labelKey)}

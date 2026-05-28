@@ -18,7 +18,6 @@ import {
   setPluginEnabled,
   uninstallPlugin,
 } from "../../entities/plugin/repository";
-import type { FieldKind, FormGroupSchema } from "../../entities/config/types";
 import type {
   AppUpdateRefKind,
   AppUpdateResult,
@@ -29,9 +28,10 @@ import type {
   PluginManifest,
   PluginUIPage,
 } from "../../entities/plugin/types";
+import { openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { getPlatform } from "../../shared/platform/platform";
 import type { TaskSnapshot } from "../../shared/platform/types";
+import type { FieldKind, FormGroupSchema } from "../../shared/ui/formSchema";
 import {
   AlertDialog,
   AsyncButton,
@@ -439,7 +439,7 @@ export function PluginManagerPage() {
             <Button
               disabled={!url}
               icon={<ExternalLink aria-hidden className="button__icon" />}
-              onClick={() => url && getPlatform().files.openExternal(url)}
+              onClick={() => url && openExternal(url)}
               variant="ghost"
             >
               {t("plugin.action.openGitHub")}
