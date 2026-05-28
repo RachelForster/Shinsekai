@@ -8,21 +8,35 @@ is responsible for actually inserting widgets into sidebars, tab bars, etc.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
-from PySide6.QtWidgets import QWidget
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QWidget
+else:
+    QWidget = Any
 
-from sdk.plugin_host_context import PluginSettingsUIContext
-from sdk.chat_ui_context import ChatUIContext
+if TYPE_CHECKING:
+    from sdk.chat_ui_context import ChatUIContext
+    from sdk.plugin_host_context import PluginSettingsUIContext
+else:
+    ChatUIContext = Any
+    PluginSettingsUIContext = Any
 
 __all__ = [
     "ChatUIContext",
     "ChatUIContribution",
+    "ChatOutputContract",
+    "FieldPatch",
+    "OutputContractPatch",
+    "OutputFieldSpec",
     "PluginDescriptor",
     "PluginSettingsUIContext",
     "QWidget",
+    "RequirementPatch",
+    "RequirementSpec",
     "SettingsUIContribution",
     "ToolsTabContribution",
+    "WorkflowContribution",
 ]
 
 
@@ -87,6 +101,94 @@ class ChatUIContribution:
     placement: str
     build: Callable[[ChatUIContext], QWidget]
     order: float = 100.0
+
+
+@dataclass(frozen=True)
+class OutputFieldSpec:
+    """One field in an LLM JSON output contract.
+
+    ``key`` should be a simple JSON object member name. ``aliases`` are
+    prompt-facing hints for alternative names the LLM may see or produce.
+    """
+
+    key: str
+    type: str = "string"
+    description: str = ""
+    required: bool = False
+    aliases: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RequirementSpec:
+    """One stable, patchable requirement in an LLM output contract."""
+
+    id: str
+    text: str
+    order: float = 100.0
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
+class FieldPatch:
+    """Partial override for one output field's prompt-facing contract.
+
+    ``description=None`` keeps the current description. ``description=""`` is
+    also treated as keep-current so plugins do not accidentally erase guidance.
+    """
+
+    description: str | None = None
+    required: bool | None = None
+    type: str | None = None
+    enum: tuple[Any, ...] | None = None
+
+
+@dataclass(frozen=True)
+class RequirementPatch:
+    """Patch operation for a requirement identified by stable id."""
+
+    mode: Literal["append", "prepend", "replace", "remove"]
+    text: str = ""
+
+
+@dataclass(frozen=True)
+class OutputContractPatch:
+    """
+    Local modification to an existing LLM output contract.
+
+    Use this when a plugin wants to reuse an existing workflow but adjust prompt
+    requirements or field semantics, such as tightening ``speech`` output rules.
+    """
+
+    id: str
+    target_contract: str
+    priority: float = 100.0
+    field_patches: dict[str, FieldPatch] = field(default_factory=dict)
+    add_fields: tuple[OutputFieldSpec, ...] = ()
+    remove_fields: tuple[str, ...] = ()
+    requirement_patches: dict[str, RequirementPatch] = field(default_factory=dict)
+    add_requirements: tuple[RequirementSpec, ...] = ()
+
+
+@dataclass(frozen=True)
+class ChatOutputContract:
+    """Complete schema contract owned by a workflow."""
+
+    id: str
+    json_schema: dict[str, Any]
+    requirements: tuple[str, ...] = ()
+    target_export: str = "llm.output"
+    stream_mode: Literal["json_object", "json_lines", "json_array"] = "json_object"
+
+
+@dataclass(frozen=True)
+class WorkflowContribution:
+    """A plugin-provided workflow YAML plus optional LLM output contract."""
+
+    id: str
+    name: str
+    yaml_path: str
+    description: str = ""
+    output_contract: ChatOutputContract | None = None
 
 
 @dataclass

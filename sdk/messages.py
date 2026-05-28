@@ -20,7 +20,7 @@ class UserInputMessage(BaseModel):
 class LLMDialogMessage(BaseModel):
     """LLM 输出对话片段队列的消息格式 (tts_queue)。"""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     name: str = Field(..., alias="character_name", description="实体名称（角色名 / 系统关键字如 bgm/NARR 等）")
     text: Optional[str] = Field("", alias="speech", description="文本内容（台词 / 系统提示）")
