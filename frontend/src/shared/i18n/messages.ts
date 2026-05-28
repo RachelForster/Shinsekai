@@ -169,7 +169,9 @@ export type MessageKey =
   | "character.sprite.add"
   | "character.sprite.clear"
   | "character.sprite.empty"
+  | "character.sprite.hasVoice"
   | "character.sprite.imageError"
+  | "character.sprite.noVoice"
   | "character.sprite.path"
   | "character.sprite.saveScale"
   | "character.sprite.saveTags"
@@ -715,7 +717,9 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.add": "Add sprite row",
     "character.sprite.clear": "Delete all sprites",
     "character.sprite.empty": "No sprites",
+    "character.sprite.hasVoice": "Voice",
     "character.sprite.imageError": "Sprite image operation failed.",
+    "character.sprite.noVoice": "No voice",
     "character.sprite.path": "Sprite path",
     "character.sprite.saveScale": "Save scale",
     "character.sprite.saveTags": "Upload tags",
@@ -1270,7 +1274,9 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.add": "立ち絵行を追加",
     "character.sprite.clear": "立ち絵をすべて削除",
     "character.sprite.empty": "立ち絵がありません",
+    "character.sprite.hasVoice": "音声あり",
     "character.sprite.imageError": "立ち絵画像の操作に失敗しました。",
+    "character.sprite.noVoice": "音声なし",
     "character.sprite.path": "立ち絵パス",
     "character.sprite.saveScale": "倍率を保存",
     "character.sprite.saveTags": "タグをアップロード",
@@ -1821,7 +1827,9 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.add": "添加立绘行",
     "character.sprite.clear": "删除所有立绘",
     "character.sprite.empty": "暂无立绘",
+    "character.sprite.hasVoice": "有语音",
     "character.sprite.imageError": "立绘图片操作失败。",
+    "character.sprite.noVoice": "无语音",
     "character.sprite.path": "立绘路径",
     "character.sprite.saveScale": "保存缩放",
     "character.sprite.saveTags": "上传立绘标注",

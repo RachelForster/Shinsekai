@@ -15,6 +15,7 @@ import {
   AsyncButton,
   EmptyState,
   NumberInput,
+  PathDisplay,
   QueryErrorState,
   Select,
   TextArea,
@@ -478,7 +479,7 @@ export function MusicCoverPage() {
             <label className="field-row field-row--stack">
               <span className="field-row__label">成品试听路径</span>
               <span className="field-row__control">
-                <TextInput readOnly placeholder="成品 wav 路径（执行后显示）" value={musicAudioPath} />
+                <PathDisplay className="path-display--input" path={musicAudioPath} />
               </span>
             </label>
           </div>

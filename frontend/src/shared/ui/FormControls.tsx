@@ -4,6 +4,7 @@ import { FolderOpen } from "lucide-react";
 
 import type { PathPickerMode } from "../platform/types";
 import { IconButton } from "./IconButton";
+import { PathDisplay } from "./PathDisplay";
 import { PathPickerDialog } from "./PathPickerDialog";
 
 export function TextInput({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
@@ -57,11 +58,20 @@ export function FilePicker({
 }: FilePickerProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const handlePick = onPick ?? (() => setPickerOpen(true));
+  const showPathDisplay = readOnly ?? !onChange;
+  const stringValue = typeof value === "string" ? value : "";
 
   return (
     <>
       <div className="input-group">
-        <TextInput disabled={disabled} onChange={onChange} readOnly={readOnly ?? !onChange} value={value} {...props} />
+        {showPathDisplay ? (
+          <PathDisplay
+            className={["path-display--input", disabled ? "path-display--disabled" : ""].filter(Boolean).join(" ")}
+            path={stringValue}
+          />
+        ) : (
+          <TextInput disabled={disabled} onChange={onChange} value={value} {...props} />
+        )}
         <IconButton disabled={disabled} label={pickLabel} onClick={handlePick}>
           <FolderOpen aria-hidden className="icon-button__icon" />
         </IconButton>

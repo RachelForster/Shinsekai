@@ -47,7 +47,9 @@ import {
   Button,
   EmptyState,
   FilePicker,
+  ImageAssetGallery,
   NumberInput,
+  PathDisplay,
   QueryErrorState,
   Select,
   TextArea,
@@ -106,6 +108,22 @@ function importItemsLabel(items: File[] | string[]) {
     .join("; ");
 }
 
+function baseName(path: string) {
+  return path.split(/[\\/]/).pop() || path;
+}
+
+function extractTagContent(line: string) {
+  const fullWidth = line.indexOf("：");
+  const ascii = line.indexOf(":");
+  const index = fullWidth >= 0 && ascii >= 0 ? Math.min(fullWidth, ascii) : Math.max(fullWidth, ascii);
+  return index >= 0 ? line.slice(index + 1).trim() : line.trim();
+}
+
+function tagContents(block: string, count: number) {
+  const lines = block.split(/\r?\n/).filter(Boolean);
+  return Array.from({ length: count }, (_, index) => extractTagContent(lines[index] ?? ""));
+}
+
 export function CharacterEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -120,6 +138,7 @@ export function CharacterEditorPage() {
   const [pendingImportItems, setPendingImportItems] = useState<string[]>([]);
   const [pendingSpritePaths, setPendingSpritePaths] = useState<string[]>([]);
   const [pendingVoicePaths, setPendingVoicePaths] = useState<Record<number, string>>({});
+  const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
   const [memoryInput, setMemoryInput] = useState("");
@@ -143,9 +162,14 @@ export function CharacterEditorPage() {
       setPronunciationText(pronunciationMapToText(selected.pronunciation_map));
       setPendingSpritePaths([]);
       setPendingVoicePaths({});
+      setSelectedSpriteIndex(0);
       setNameError("");
     }
   }, [selected]);
+
+  useEffect(() => {
+    setSelectedSpriteIndex((current) => Math.min(current, Math.max(0, draft.sprites.length - 1)));
+  }, [draft.sprites.length]);
 
   const memoryQuery = useQuery({
     enabled: Boolean(memoryName),
@@ -530,6 +554,24 @@ export function CharacterEditorPage() {
     });
   };
 
+  const spriteTags = useMemo(
+    () => tagContents(draft.emotion_tags, draft.sprites.length),
+    [draft.emotion_tags, draft.sprites.length],
+  );
+  const selectedSprite = draft.sprites[selectedSpriteIndex];
+  const spriteGalleryItems = useMemo(
+    () =>
+      draft.sprites.map((sprite, index) => ({
+        badge: sprite.voice_path ? t("character.sprite.hasVoice") : t("character.sprite.noVoice"),
+        badgeTone: sprite.voice_path ? ("default" as const) : ("muted" as const),
+        id: `${sprite.path}-${index}`,
+        imageSrc: sprite.path ? fileUrl(sprite.path) : "",
+        meta: spriteTags[index] || sprite.voice_text || "",
+        title: baseName(sprite.path) || `${index + 1}`,
+      })),
+    [draft.sprites, spriteTags, t],
+  );
+
   return (
     <div className="page character-page">
       <header className="page__header">
@@ -547,6 +589,7 @@ export function CharacterEditorPage() {
               setPronunciationText("");
               setPendingSpritePaths([]);
               setPendingVoicePaths({});
+              setSelectedSpriteIndex(0);
               setNameError("");
             }}
           >
@@ -1025,97 +1068,110 @@ export function CharacterEditorPage() {
                 </span>
               </label>
               {!draft.sprites.length ? <EmptyState title={t("character.sprite.empty")} /> : null}
-              {draft.sprites.map((sprite, index) => (
-                <div className="asset-row asset-row--character" key={`${sprite.path}-${index}`}>
-                  <div className="asset-row__index">
-                    {sprite.path ? (
-                      <img alt="" className="asset-thumb" src={fileUrl(sprite.path)} />
-                    ) : (
-                      <ImageIcon aria-hidden className="asset-row__icon" />
-                    )}
-                    <span>{index + 1}</span>
-                  </div>
-                  <label className="field-row field-row--stack">
-                    <span className="field-row__label">{t("character.sprite.path")}</span>
-                    <span className="field-row__control">
-                      <TextInput readOnly value={sprite.path} />
-                    </span>
-                  </label>
-                  <label className="field-row field-row--stack">
-                    <span className="field-row__label">{t("character.sprite.voicePath")}</span>
-                    <span className="field-row__control">
-                      <TextInput readOnly value={sprite.voice_path ?? ""} />
-                      {sprite.voice_path ? (
-                        <audio className="audio-inline" controls src={fileUrl(sprite.voice_path)} />
-                      ) : null}
-                    </span>
-                  </label>
-                  <label className="field-row field-row--stack">
-                    <span className="field-row__label">{t("character.sprite.voiceUploadPath")}</span>
-                    <span className="field-row__control">
-                      <FilePicker
-                        acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
-                        onPathChange={(path) => setPendingVoicePaths((current) => ({ ...current, [index]: path }))}
-                        pickLabel={t("common.chooseFile")}
-                        pickerTitle={t("character.sprite.voiceUploadPath")}
-                        value={pendingVoicePaths[index] ?? ""}
-                      />
-                    </span>
-                  </label>
-                  <label className="field-row field-row--stack">
-                    <span className="field-row__label">{t("character.sprite.voiceText")}</span>
-                    <span className="field-row__control">
-                      <TextInput
-                        onBlur={(event) => {
-                          const text = event.currentTarget.value;
-                          const savedText = selected?.sprites[index]?.voice_text ?? "";
-                          if (currentCharacterName && text !== savedText && !voiceTextMutation.isPending) {
-                            voiceTextMutation.mutate({ index, text });
+              {selectedSprite ? (
+                <div className="asset-gallery-layout asset-gallery-layout--character">
+                  <ImageAssetGallery
+                    items={spriteGalleryItems}
+                    onSelect={setSelectedSpriteIndex}
+                    selectedIndex={selectedSpriteIndex}
+                  />
+                  <aside className="asset-inspector">
+                    <div className="asset-inspector__preview asset-inspector__preview--character">
+                      {selectedSprite.path ? (
+                        <img alt="" decoding="async" src={fileUrl(selectedSprite.path)} />
+                      ) : (
+                        <ImageIcon aria-hidden className="asset-inspector__fallback" />
+                      )}
+                    </div>
+                    <label className="field-row field-row--stack">
+                      <span className="field-row__label">{t("character.sprite.path")}</span>
+                      <span className="field-row__control">
+                        <PathDisplay className="path-display--input" path={selectedSprite.path} />
+                      </span>
+                    </label>
+                    <label className="field-row field-row--stack">
+                      <span className="field-row__label">{t("character.sprite.voicePath")}</span>
+                      <span className="field-row__control">
+                        <PathDisplay className="path-display--input" path={selectedSprite.voice_path ?? ""} />
+                        {selectedSprite.voice_path ? (
+                          <audio
+                            className="audio-inline"
+                            controls
+                            preload="none"
+                            src={fileUrl(selectedSprite.voice_path)}
+                          />
+                        ) : null}
+                      </span>
+                    </label>
+                    <label className="field-row field-row--stack">
+                      <span className="field-row__label">{t("character.sprite.voiceUploadPath")}</span>
+                      <span className="field-row__control">
+                        <FilePicker
+                          acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
+                          onPathChange={(path) =>
+                            setPendingVoicePaths((current) => ({ ...current, [selectedSpriteIndex]: path }))
                           }
+                          pickLabel={t("common.chooseFile")}
+                          pickerTitle={t("character.sprite.voiceUploadPath")}
+                          value={pendingVoicePaths[selectedSpriteIndex] ?? ""}
+                        />
+                      </span>
+                    </label>
+                    <label className="field-row field-row--stack">
+                      <span className="field-row__label">{t("character.sprite.voiceText")}</span>
+                      <span className="field-row__control">
+                        <TextInput
+                          onBlur={(event) => {
+                            const text = event.currentTarget.value;
+                            const savedText = selected?.sprites[selectedSpriteIndex]?.voice_text ?? "";
+                            if (currentCharacterName && text !== savedText && !voiceTextMutation.isPending) {
+                              voiceTextMutation.mutate({ index: selectedSpriteIndex, text });
+                            }
+                          }}
+                          onChange={(event) => updateSprite(selectedSpriteIndex, { voice_text: event.target.value })}
+                          value={selectedSprite.voice_text ?? ""}
+                        />
+                      </span>
+                    </label>
+                    <div className="asset-inspector__actions">
+                      <AsyncButton
+                        loading={voiceUploadMutation.isPending}
+                        onClick={() => {
+                          if (!currentCharacterName || !pendingVoicePaths[selectedSpriteIndex]) {
+                            showToast({ kind: "error", title: t("character.sprite.voiceUploadPath") });
+                            return;
+                          }
+                          voiceUploadMutation.mutate({ index: selectedSpriteIndex, sprite: selectedSprite });
                         }}
-                        onChange={(event) => updateSprite(index, { voice_text: event.target.value })}
-                        value={sprite.voice_text ?? ""}
-                      />
-                    </span>
-                  </label>
-                  <div className="asset-row__actions">
-                    <AsyncButton
-                      loading={voiceUploadMutation.isPending}
-                      onClick={() => {
-                        if (!currentCharacterName || !pendingVoicePaths[index]) {
-                          showToast({ kind: "error", title: t("character.sprite.voiceUploadPath") });
-                          return;
-                        }
-                        voiceUploadMutation.mutate({ index, sprite });
-                      }}
-                      variant="ghost"
-                    >
-                      {t("character.sprite.uploadVoice")}
-                    </AsyncButton>
-                    <AsyncButton
-                      loading={voiceDeleteMutation.isPending}
-                      onClick={() => {
-                        if (!currentCharacterName || !sprite.voice_path) {
-                          showToast({ kind: "error", title: t("character.sprite.deleteVoice") });
-                          return;
-                        }
-                        voiceDeleteMutation.mutate(index);
-                      }}
-                      variant="ghost"
-                    >
-                      {t("character.sprite.deleteVoice")}
-                    </AsyncButton>
-                    <AsyncButton
-                      icon={<Trash2 aria-hidden className="button__icon" />}
-                      loading={spriteDeleteMutation.isPending}
-                      onClick={() => spriteDeleteMutation.mutate(index)}
-                      variant="ghost"
-                    >
-                      {t("common.remove")}
-                    </AsyncButton>
-                  </div>
+                        variant="ghost"
+                      >
+                        {t("character.sprite.uploadVoice")}
+                      </AsyncButton>
+                      <AsyncButton
+                        loading={voiceDeleteMutation.isPending}
+                        onClick={() => {
+                          if (!currentCharacterName || !selectedSprite.voice_path) {
+                            showToast({ kind: "error", title: t("character.sprite.deleteVoice") });
+                            return;
+                          }
+                          voiceDeleteMutation.mutate(selectedSpriteIndex);
+                        }}
+                        variant="ghost"
+                      >
+                        {t("character.sprite.deleteVoice")}
+                      </AsyncButton>
+                      <AsyncButton
+                        icon={<Trash2 aria-hidden className="button__icon" />}
+                        loading={spriteDeleteMutation.isPending}
+                        onClick={() => spriteDeleteMutation.mutate(selectedSpriteIndex)}
+                        variant="ghost"
+                      >
+                        {t("common.remove")}
+                      </AsyncButton>
+                    </div>
+                  </aside>
                 </div>
-              ))}
+              ) : null}
             </div>
             <div className="inline-status">
               <Volume2 aria-hidden className="button__icon" />

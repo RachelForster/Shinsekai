@@ -20,7 +20,7 @@ import {
   uploadBackgroundBgm,
   uploadBackgroundImages,
 } from "../../entities/background/repository";
-import type { Background, Sprite } from "../../entities/config/types";
+import type { Background } from "../../entities/config/types";
 import { fileUrl, openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
 import {
@@ -28,6 +28,8 @@ import {
   Button,
   EmptyState,
   FilePicker,
+  ImageAssetGallery,
+  PathDisplay,
   QueryErrorState,
   TextArea,
   TextInput,
@@ -65,10 +67,8 @@ function tagContents(block: string, count: number) {
   return Array.from({ length: count }, (_, index) => extractTagContent(lines[index] ?? ""));
 }
 
-const IMAGE_ROW_HEIGHT = 82;
 const BGM_ROW_HEIGHT = 58;
 const VIRTUAL_OVERSCAN_ROWS = 4;
-const VIRTUAL_IMAGE_ROWS = 8;
 const VIRTUAL_BGM_ROWS = 10;
 
 function useVirtualRange(count: number, rowHeight: number, visibleRows: number) {
@@ -91,97 +91,6 @@ function useVirtualRange(count: number, rowHeight: number, visibleRows: number) 
     startIndex,
   };
 }
-
-interface BackgroundImageRowsProps {
-  deleting: boolean;
-  onDelete: (index: number) => void;
-  pathLabel: string;
-  removeLabel: string;
-  sprites: Sprite[];
-}
-
-interface BackgroundImageRowProps {
-  deleting: boolean;
-  index: number;
-  onDelete: (index: number) => void;
-  path: string;
-  pathLabel: string;
-  removeLabel: string;
-}
-
-const BackgroundImageRow = memo(function BackgroundImageRow({
-  deleting,
-  index,
-  onDelete,
-  path,
-  pathLabel,
-  removeLabel,
-}: BackgroundImageRowProps) {
-  const handleDelete = useCallback(() => onDelete(index), [index, onDelete]);
-
-  return (
-    <div className="asset-row asset-row--compact">
-      <div className="asset-row__index">
-        {path ? (
-          <img alt="" className="asset-thumb" decoding="async" loading="lazy" src={fileUrl(path)} />
-        ) : (
-          <ImageIcon aria-hidden className="asset-row__icon" />
-        )}
-        <span>{index + 1}</span>
-      </div>
-      <label className="field-row field-row--stack">
-        <span className="field-row__label">{pathLabel}</span>
-        <span className="field-row__control">
-          <TextInput readOnly value={path} />
-        </span>
-      </label>
-      <AsyncButton
-        icon={<Trash2 aria-hidden className="button__icon" />}
-        loading={deleting}
-        onClick={handleDelete}
-        variant="ghost"
-      >
-        {removeLabel}
-      </AsyncButton>
-    </div>
-  );
-});
-
-const BackgroundImageRows = memo(function BackgroundImageRows({
-  deleting,
-  onDelete,
-  pathLabel,
-  removeLabel,
-  sprites,
-}: BackgroundImageRowsProps) {
-  const virtual = useVirtualRange(sprites.length, IMAGE_ROW_HEIGHT, VIRTUAL_IMAGE_ROWS);
-  const visibleSprites = sprites.slice(virtual.startIndex, virtual.endIndex);
-
-  return (
-    <div className="background-virtual-list" onScroll={virtual.onScroll} style={{ maxHeight: virtual.maxHeight }}>
-      {virtual.paddingTop ? (
-        <div aria-hidden className="background-virtual-list__spacer" style={{ height: virtual.paddingTop }} />
-      ) : null}
-      {visibleSprites.map((sprite, offset) => {
-        const index = virtual.startIndex + offset;
-        return (
-          <BackgroundImageRow
-            deleting={deleting}
-            index={index}
-            key={`${sprite.path}-${index}`}
-            onDelete={onDelete}
-            path={sprite.path}
-            pathLabel={pathLabel}
-            removeLabel={removeLabel}
-          />
-        );
-      })}
-      {virtual.paddingBottom ? (
-        <div aria-hidden className="background-virtual-list__spacer" style={{ height: virtual.paddingBottom }} />
-      ) : null}
-    </div>
-  );
-});
 
 interface BackgroundBgmRowsProps {
   deleting: boolean;
@@ -245,9 +154,7 @@ const BackgroundBgmRow = memo(function BackgroundBgmRow({
         <span>{filename}</span>
       </td>
       <td>
-        <span className="background-bgm-table__path" title={path}>
-          {path}
-        </span>
+        <PathDisplay className="background-bgm-table__path" path={path} />
       </td>
       <td className="background-bgm-table__tag">
         <TextInput onChange={handleTagChange} value={tag} />
@@ -366,6 +273,7 @@ export function BackgroundManagerPage() {
   const [pendingImportFiles, setPendingImportFiles] = useState<string[]>([]);
   const [pendingImagePaths, setPendingImagePaths] = useState<string[]>([]);
   const [selectedBgmIndexes, setSelectedBgmIndexes] = useState<number[]>([]);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [nameError, setNameError] = useState("");
 
   const selected = useMemo(
@@ -380,9 +288,14 @@ export function BackgroundManagerPage() {
       setPendingBgmPaths([]);
       setPendingImagePaths([]);
       setSelectedBgmIndexes([]);
+      setSelectedImageIndex(0);
       setNameError("");
     }
   }, [selected]);
+
+  useEffect(() => {
+    setSelectedImageIndex((current) => Math.min(current, Math.max(0, draft.sprites.length - 1)));
+  }, [draft.sprites.length]);
 
   const saveMutation = useMutation({
     mutationFn: ({ background, originalName }: { background: Background; originalName?: string }) =>
@@ -672,6 +585,14 @@ export function BackgroundManagerPage() {
     });
   }, []);
 
+  const updateImageRowTag = useCallback((index: number, value: string) => {
+    setDraft((current) => {
+      const tags = tagContents(current.bg_tags, current.sprites.length);
+      tags[index] = value;
+      return { ...current, bg_tags: numberedTags("场景", tags) };
+    });
+  }, []);
+
   const toggleBgmSelection = useCallback((index: number, checked: boolean) => {
     setSelectedBgmIndexes((current) => {
       if (checked) {
@@ -707,6 +628,21 @@ export function BackgroundManagerPage() {
     () => tagContents(draft.bgm_tags, draft.bgm_list.length),
     [draft.bgm_list.length, draft.bgm_tags],
   );
+  const imageRowTags = useMemo(
+    () => tagContents(draft.bg_tags, draft.sprites.length),
+    [draft.bg_tags, draft.sprites.length],
+  );
+  const selectedImage = draft.sprites[selectedImageIndex];
+  const backgroundImageItems = useMemo(
+    () =>
+      draft.sprites.map((sprite, index) => ({
+        id: `${sprite.path}-${index}`,
+        imageSrc: sprite.path ? fileUrl(sprite.path) : "",
+        meta: imageRowTags[index] || "",
+        title: baseName(sprite.path) || `${index + 1}`,
+      })),
+    [draft.sprites, imageRowTags],
+  );
   const selectedBgmIndexSet = useMemo(() => new Set(selectedBgmIndexes), [selectedBgmIndexes]);
 
   return (
@@ -726,6 +662,7 @@ export function BackgroundManagerPage() {
               setPendingBgmPaths([]);
               setPendingImagePaths([]);
               setSelectedBgmIndexes([]);
+              setSelectedImageIndex(0);
               setNameError("");
             }}
           >
@@ -1021,14 +958,66 @@ export function BackgroundManagerPage() {
                 </span>
               </label>
               {!draft.sprites.length ? <EmptyState title={t("background.asset.emptyImages")} /> : null}
-              {draft.sprites.length ? (
-                <BackgroundImageRows
-                  deleting={imageDeleteMutation.isPending}
-                  onDelete={handleImageDelete}
-                  pathLabel={t("background.asset.path")}
-                  removeLabel={t("common.remove")}
-                  sprites={draft.sprites}
-                />
+              {selectedImage ? (
+                <div className="asset-gallery-layout asset-gallery-layout--background">
+                  <ImageAssetGallery
+                    items={backgroundImageItems}
+                    onSelect={setSelectedImageIndex}
+                    selectedIndex={selectedImageIndex}
+                  />
+                  <aside className="asset-inspector">
+                    <div className="asset-inspector__preview asset-inspector__preview--background">
+                      {selectedImage.path ? (
+                        <img alt="" decoding="async" src={fileUrl(selectedImage.path)} />
+                      ) : (
+                        <ImageIcon aria-hidden className="asset-inspector__fallback" />
+                      )}
+                    </div>
+                    <label className="field-row field-row--stack">
+                      <span className="field-row__label">{t("background.asset.path")}</span>
+                      <span className="field-row__control">
+                        <PathDisplay className="path-display--input" path={selectedImage.path} />
+                      </span>
+                    </label>
+                    <label className="field-row field-row--stack">
+                      <span className="field-row__label">{t("background.asset.tag")}</span>
+                      <span className="field-row__control">
+                        <TextInput
+                          onChange={(event) => updateImageRowTag(selectedImageIndex, event.target.value)}
+                          value={imageRowTags[selectedImageIndex] ?? ""}
+                        />
+                      </span>
+                    </label>
+                    <div className="asset-inspector__actions">
+                      <AsyncButton
+                        icon={<Save aria-hidden className="button__icon" />}
+                        loading={imageTagsSaveMutation.isPending}
+                        onClick={() => {
+                          if (!currentBackgroundName) {
+                            showToast({
+                              kind: "error",
+                              message: t("background.validation.nameRequired"),
+                              title: t("background.action.saveImageTags"),
+                            });
+                            return;
+                          }
+                          imageTagsSaveMutation.mutate();
+                        }}
+                        variant="ghost"
+                      >
+                        {t("background.action.saveImageTags")}
+                      </AsyncButton>
+                      <AsyncButton
+                        icon={<Trash2 aria-hidden className="button__icon" />}
+                        loading={imageDeleteMutation.isPending}
+                        onClick={() => handleImageDelete(selectedImageIndex)}
+                        variant="ghost"
+                      >
+                        {t("common.remove")}
+                      </AsyncButton>
+                    </div>
+                  </aside>
+                </div>
               ) : null}
             </div>
           </section>

@@ -6,6 +6,8 @@ export * from "./ErrorBoundary";
 export * from "./FileManager";
 export * from "./FormControls";
 export * from "./IconButton";
+export * from "./ImageAssetGallery";
+export * from "./PathDisplay";
 export * from "./PathPickerDialog";
 export * from "./QueryErrorState";
 export * from "./SegmentedTabs";

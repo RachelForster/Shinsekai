@@ -25,7 +25,7 @@ export function Button({
   return (
     <button className={classes} disabled={disabled || loading} title={tooltip} type={type} {...props}>
       {loading ? <LoaderCircle aria-hidden className="button__spinner" /> : icon}
-      {children}
+      {children ? <span className="button__label">{children}</span> : null}
     </button>
   );
 }
