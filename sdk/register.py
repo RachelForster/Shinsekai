@@ -8,6 +8,7 @@ import importlib
 import logging
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Type
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
@@ -18,9 +19,11 @@ if TYPE_CHECKING:
 from sdk.plugin import PluginBase
 from sdk.types import (
     ChatUIContribution,
+    OutputContractPatch,
     PluginDescriptor,
     SettingsUIContribution,
     ToolsTabContribution,
+    WorkflowContribution,
 )
 
 logger = logging.getLogger(__name__)
@@ -129,7 +132,8 @@ class PluginCapabilityRegistry:
         self._tools_tab_contributions: list[ToolsTabContribution] = []
         self._chat_ui_contributions: list[ChatUIContribution] = []
         self._dag_node_factories: list[tuple[Callable[[], list], bool]] = []
-        self._dag_yaml_paths: list[str] = []
+        self._workflow_contributions: list[WorkflowContribution] = []
+        self._output_contract_patches: list[OutputContractPatch] = []
 
     def register_llm_adapter(self, provider: str, adapter_cls: Type[LLMAdapter]) -> None:
         self._llm_adapters[provider] = adapter_cls
@@ -216,16 +220,38 @@ class PluginCapabilityRegistry:
         self._dag_node_factories.append((factory, skip_default))
 
     def register_dag_yaml(self, path: str) -> None:
-        """Register a workflow YAML path (reserved for future workflow selection UX).
+        """Register a workflow YAML path.
 
         .. note::
-            This API is **reserved** and not yet active.  Plugin-registered
-            workflow YAML paths are collected but are not consumed by the
-            runtime builder, CLI, or Settings UI yet.  Plugins that call this
-            method today will have their paths stored, but users have no
-            mechanism to select them at runtime.
+            Kept for compatibility. Prefer :meth:`register_workflow` when the
+            workflow also owns an LLM output contract/schema.
         """
-        self._dag_yaml_paths.append(path)
+        cleaned = str(path).strip()
+        if not cleaned:
+            raise ValueError("Workflow YAML path cannot be empty")
+        self.register_workflow(
+            WorkflowContribution(
+                id=cleaned,
+                name=Path(cleaned).stem or cleaned,
+                yaml_path=cleaned,
+            )
+        )
+
+    def register_workflow(self, contribution: WorkflowContribution) -> None:
+        """Register a selectable workflow and optional output contract/schema."""
+        if not contribution.id.strip():
+            raise ValueError("WorkflowContribution.id cannot be empty")
+        if not contribution.yaml_path.strip():
+            raise ValueError("WorkflowContribution.yaml_path cannot be empty")
+        self._workflow_contributions.append(contribution)
+
+    def register_output_contract_patch(self, patch: OutputContractPatch) -> None:
+        """Patch a named output contract while reusing its workflow."""
+        if not patch.id.strip():
+            raise ValueError("OutputContractPatch.id cannot be empty")
+        if not patch.target_contract.strip():
+            raise ValueError("OutputContractPatch.target_contract cannot be empty")
+        self._output_contract_patches.append(patch)
 
     @property
     def llm_adapters(self) -> dict[str, Type[LLMAdapter]]:
@@ -271,7 +297,15 @@ class PluginCapabilityRegistry:
 
     @property
     def dag_yaml_paths(self) -> list[str]:
-        return list(self._dag_yaml_paths)
+        return [c.yaml_path for c in self._workflow_contributions]
+
+    @property
+    def workflow_contributions(self) -> list[WorkflowContribution]:
+        return list(self._workflow_contributions)
+
+    @property
+    def output_contract_patches(self) -> list[OutputContractPatch]:
+        return sorted(self._output_contract_patches, key=lambda p: p.priority)
 
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
         for registrar in self._llm_tool_registrars:
