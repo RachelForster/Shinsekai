@@ -794,6 +794,32 @@
   margin-top: var(--space-1);
 }
 
+.background-virtual-list {
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.background-virtual-list .asset-row {
+  margin-bottom: var(--space-2);
+}
+
+.background-virtual-list .asset-row:last-child {
+  margin-bottom: 0;
+}
+
+.background-virtual-list__spacer {
+  min-height: 0;
+}
+
+.background-virtual-table {
+  max-width: 100%;
+}
+
+.background-virtual-table__spacer td {
+  padding: 0;
+  border-bottom: 0;
+}
+
 .background-bgm-table {
   min-width: 880px;
 }
