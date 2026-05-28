@@ -10,9 +10,21 @@ from email.policy import default as default_email_policy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlparse
 
+from .backgrounds import (
+    _delete_all_background_bgm,
+    _delete_all_background_images,
+    _delete_background_bgm,
+    _delete_background_image,
+    _save_background,
+    _save_background_bgm_tags,
+    _save_background_image_tags,
+    _translate_background_fields,
+    _upload_background_bgm,
+    _upload_background_images,
+)
 from .chat import (
     TRANSPARENT_BACKGROUND_NAME,
     _chat_history_path,
@@ -22,62 +34,53 @@ from .chat import (
     _launch_chat,
     _sprite_path,
 )
-from .config import _app_config_response, _fetch_llm_models, _save_api_config
-from .media import (
+from .characters import (
+    _add_character_memory,
     _as_character_config,
-    _delete_all_background_bgm,
-    _delete_all_background_images,
     _delete_all_character_sprites,
-    _delete_background_bgm,
-    _delete_background_image,
     _delete_character_memory,
     _delete_character_sprite,
     _delete_sprite_voice,
     _generate_character_setting,
     _list_character_memories,
-    _add_character_memory,
-    _save_background,
-    _save_background_bgm_tags,
-    _save_background_image_tags,
     _save_character,
     _save_character_emotion_tags,
     _save_sprite_scale,
     _save_sprite_voice_text,
-    _translate_background_fields,
     _translate_character_fields,
-    _upload_background_bgm,
-    _upload_background_images,
     _upload_character_sprites,
     _upload_sprite_voice,
 )
+from .config import _app_config_response, _fetch_llm_models, _save_api_config
+from .mcp import (
+    _mcp_config_response,
+    _open_mcp_config_file,
+    _preview_mcp_tools_from_payload,
+    _save_and_apply_mcp_config,
+)
 from .music import _music_cover_search, _run_music_cover, _save_music_cover_config
-from .plugins import (
+from .plugin_catalog import (
+    _plugin_registry_rows,
+    _plugin_rows,
+    _set_plugin_enabled,
+    _uninstall_plugin,
+)
+from .plugin_ui import _plugin_ui_detail, _save_plugin_ui_config
+from .plugin_updates import (
     _app_update_info,
     _app_update_tags,
     _install_plugin_source,
-    _is_repo_source,
-    _mcp_config_response,
-    _open_mcp_config_file,
-    _plugin_registry_rows,
-    _plugin_rows,
-    _plugin_ui_detail,
-    _preview_mcp_tools_from_payload,
     _repo_tags,
     _run_app_update,
-    _save_and_apply_mcp_config,
-    _save_plugin_ui_config,
-    _set_plugin_enabled,
-    _uninstall_plugin,
 )
 from .state import BridgeState, _jsonify
 from .static import _frontend_dist_root
 from .tasks import _create_task, _get_task, _is_running_task, _run_background_task, _update_task
 from .templates import (
     _compose_for_llm,
-    _has_untranslated_template_keys,
     _latest_history_json,
     _list_templates,
-    _repair_template_session_if_needed,
+    _repair_template_parts_from_session_if_needed,
     _resume_template_parts,
     _save_template_session_payload,
     _save_template_summary,
@@ -87,11 +90,11 @@ from .templates import (
 from .tools import (
     _browse_local_files,
     _crop_sprites,
-    _download_tts_bundle,
     _generate_sprite_prompts,
     _generate_sprites,
     _remove_sprite_background,
 )
+from .tts import _download_tts_bundle
 
 
 class FrontendBridgeHandler(BaseHTTPRequestHandler):
@@ -120,6 +123,35 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
 
     def _send_error_json(self, exc: Exception, status: HTTPStatus = HTTPStatus.BAD_REQUEST) -> None:
         self._send_json({"error": str(exc), "type": exc.__class__.__name__}, status)
+
+    def _send_exception_json(self, exc: Exception) -> None:
+        if isinstance(exc, (KeyError, FileNotFoundError)):
+            self._send_error_json(exc, HTTPStatus.NOT_FOUND)
+        elif isinstance(exc, PermissionError):
+            self._send_error_json(exc, HTTPStatus.FORBIDDEN)
+        else:
+            self._send_error_json(exc)
+
+    def _enqueue_background_task(
+        self,
+        *,
+        kind: str,
+        title: str,
+        message: str,
+        worker: Callable[[str], Any],
+        task_updates: dict[str, Any] | None = None,
+    ) -> None:
+        task = _create_task(self.state, kind=kind, title=title, message=message)
+        task_id = str(task["id"])
+        if task_updates:
+            _update_task(self.state, task_id, **task_updates)
+        thread = threading.Thread(
+            target=_run_background_task,
+            args=(self.state, task_id, lambda: worker(task_id)),
+            daemon=True,
+        )
+        thread.start()
+        self._send_json(_get_task(self.state, task_id), HTTPStatus.ACCEPTED)
 
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length") or "0")
@@ -213,14 +245,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 return
             else:
                 self._send_error_json(FileNotFoundError(path), HTTPStatus.NOT_FOUND)
-        except KeyError as exc:
-            self._send_error_json(exc, HTTPStatus.NOT_FOUND)
-        except FileNotFoundError as exc:
-            self._send_error_json(exc, HTTPStatus.NOT_FOUND)
-        except PermissionError as exc:
-            self._send_error_json(exc, HTTPStatus.FORBIDDEN)
         except Exception as exc:
-            self._send_error_json(exc)
+            self._send_exception_json(exc)
 
     def do_POST(self) -> None:  # noqa: N802
         self._handle_write("POST")
@@ -263,43 +289,19 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/music-cover/config":
                 self._send_json(_save_music_cover_config(self.state, body))
             elif method == "POST" and path == "/api/music-cover/run":
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="music-cover",
                     title="音乐翻唱流水线",
                     message="音乐翻唱流水线已排队。",
+                    worker=lambda task_id: _run_music_cover(self.state, task_id, body),
                 )
-                threading.Thread(
-                    daemon=True,
-                    target=_run_background_task,
-                    args=(
-                        self.state,
-                        task["id"],
-                        lambda task_id=task["id"], payload=body: _run_music_cover(
-                            self.state, task_id, payload
-                        ),
-                    ),
-                ).start()
-                self._send_json(task)
             elif method == "POST" and path == "/api/config/tts-bundle/download":
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="tts-bundle",
                     title="TTS 整合包下载",
                     message="TTS 整合包下载已排队。",
+                    worker=lambda task_id: _download_tts_bundle(self.state, task_id, body),
                 )
-                threading.Thread(
-                    daemon=True,
-                    target=_run_background_task,
-                    args=(
-                        self.state,
-                        task["id"],
-                        lambda task_id=task["id"], payload=body: _download_tts_bundle(
-                            self.state, task_id, payload
-                        ),
-                    ),
-                ).start()
-                self._send_json(task)
             elif method in {"POST", "PUT"} and path == "/api/characters":
                 self._send_json(_save_character(self.state, body))
             elif method == "POST" and path == "/api/characters/ai-setting":
@@ -422,127 +424,49 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/templates/generate":
                 self._send_json(_generate_template_summary(self.state, body))
             elif method == "POST" and path == "/api/tools/sprite-prompts":
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="tools-prompts",
                     message="立绘提示词生成任务已排队。",
                     title="生成立绘提示词",
+                    worker=lambda task_id: _generate_sprite_prompts(self.state, task_id, body),
                 )
-                thread = threading.Thread(
-                    target=_run_background_task,
-                    args=(
-                        self.state,
-                        task["id"],
-                        lambda task_id=task["id"], payload=body: _generate_sprite_prompts(
-                            self.state, task_id, payload
-                        ),
-                    ),
-                    daemon=True,
-                )
-                thread.start()
-                self._send_json(_get_task(self.state, task["id"]), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/tools/sprites/generate":
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="tools-sprites",
                     message="立绘批量生成任务已排队。",
                     title="批量生成立绘",
+                    worker=lambda task_id: _generate_sprites(self.state, task_id, body),
                 )
-                thread = threading.Thread(
-                    target=_run_background_task,
-                    args=(
-                        self.state,
-                        task["id"],
-                        lambda task_id=task["id"], payload=body: _generate_sprites(
-                            self.state, task_id, payload
-                        ),
-                    ),
-                    daemon=True,
-                )
-                thread.start()
-                self._send_json(_get_task(self.state, task["id"]), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/tools/sprites/crop":
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="tools-crop",
                     message="立绘裁剪任务已排队。",
                     title="批量裁剪立绘",
+                    worker=lambda task_id: _crop_sprites(self.state, task_id, body),
                 )
-                thread = threading.Thread(
-                    target=_run_background_task,
-                    args=(
-                        self.state,
-                        task["id"],
-                        lambda task_id=task["id"], payload=body: _crop_sprites(
-                            self.state, task_id, payload
-                        ),
-                    ),
-                    daemon=True,
-                )
-                thread.start()
-                self._send_json(_get_task(self.state, task["id"]), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/tools/sprites/remove-background":
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="tools-rmbg",
                     message="立绘抠图任务已排队。",
                     title="批量抠出立绘",
+                    worker=lambda task_id: _remove_sprite_background(self.state, task_id, body),
                 )
-                thread = threading.Thread(
-                    target=_run_background_task,
-                    args=(
-                        self.state,
-                        task["id"],
-                        lambda task_id=task["id"], payload=body: _remove_sprite_background(
-                            self.state, task_id, payload
-                        ),
-                    ),
-                    daemon=True,
-                )
-                thread.start()
-                self._send_json(_get_task(self.state, task["id"]), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/mcp/config/open":
                 self._send_json(_open_mcp_config_file())
             elif method == "POST" and path == "/api/mcp/config/apply":
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="mcp-apply",
                     message="MCP 保存应用任务已排队。",
                     title="保存并应用 MCP 配置",
+                    worker=lambda task_id: _save_and_apply_mcp_config(self.state, task_id, body),
                 )
-                thread = threading.Thread(
-                    target=_run_background_task,
-                    args=(
-                        self.state,
-                        task["id"],
-                        lambda task_id=task["id"], payload=body: _save_and_apply_mcp_config(
-                            self.state, task_id, payload
-                        ),
-                    ),
-                    daemon=True,
-                )
-                thread.start()
-                self._send_json(_get_task(self.state, task["id"]), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/mcp/preview":
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="mcp-preview",
                     message="MCP 工具预览任务已排队。",
                     title="刷新 MCP 工具列表",
+                    worker=lambda task_id: _preview_mcp_tools_from_payload(self.state, task_id, body),
                 )
-                thread = threading.Thread(
-                    target=_run_background_task,
-                    args=(
-                        self.state,
-                        task["id"],
-                        lambda task_id=task["id"], payload=body: _preview_mcp_tools_from_payload(
-                            self.state, task_id, payload
-                        ),
-                    ),
-                    daemon=True,
-                )
-                thread.start()
-                self._send_json(_get_task(self.state, task["id"]), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/plugins/install":
                 plugin_id = str(body.get("source") or body.get("id") or "").strip()
                 if not plugin_id:
@@ -561,26 +485,20 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 if running:
                     self._send_json(running[0], HTTPStatus.ACCEPTED)
                     return
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="plugin-install",
                     message="插件安装任务已排队。",
                     title=f"安装插件 {plugin_id}",
-                )
-                _update_task(self.state, task["id"], source=plugin_id)
-                thread = threading.Thread(
-                    target=_run_background_task,
-                    args=(
+                    task_updates={"source": plugin_id},
+                    worker=lambda task_id: _install_plugin_source(
                         self.state,
-                        task["id"],
-                        lambda source=plugin_id, task_id=task["id"], rk=ref_kind, tn=tag_name, ow=overwrite: _install_plugin_source(
-                            self.state, task_id, source, ref_kind=rk, tag_name=tn, overwrite=ow
-                        ),
+                        task_id,
+                        plugin_id,
+                        ref_kind=ref_kind,
+                        tag_name=tag_name,
+                        overwrite=overwrite,
                     ),
-                    daemon=True,
                 )
-                thread.start()
-                self._send_json(_get_task(self.state, task["id"]), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/plugins/repo-tags":
                 self._send_json(_repo_tags(body))
             elif method == "POST" and path == "/api/plugins/app-update/tags":
@@ -588,26 +506,13 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/plugins/app-update/run":
                 ref_kind = str(body.get("refKind") or "latest").strip()
                 tag_name = str(body.get("tagName") or "").strip()
-                task = _create_task(
-                    self.state,
+                self._enqueue_background_task(
                     kind="app-update",
                     message="主程序更新任务已排队。",
                     title="更新主程序",
+                    task_updates={"refKind": ref_kind, "tagName": tag_name},
+                    worker=lambda task_id: _run_app_update(self.state, task_id, body),
                 )
-                _update_task(self.state, task["id"], refKind=ref_kind, tagName=tag_name)
-                thread = threading.Thread(
-                    target=_run_background_task,
-                    args=(
-                        self.state,
-                        task["id"],
-                        lambda task_id=task["id"], payload=body: _run_app_update(
-                            self.state, task_id, payload
-                        ),
-                    ),
-                    daemon=True,
-                )
-                thread.start()
-                self._send_json(_get_task(self.state, task["id"]), HTTPStatus.ACCEPTED)
             elif method == "POST" and path.startswith("/api/plugins/") and path.endswith("/enabled"):
                 plugin_id = unquote(path[len("/api/plugins/") : -len("/enabled")])
                 self._send_json(_set_plugin_enabled(plugin_id, bool(body.get("enabled"))))
@@ -633,12 +538,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_handle_chat_command(self.state, body))
             else:
                 self._send_error_json(FileNotFoundError(path), HTTPStatus.NOT_FOUND)
-        except KeyError as exc:
-            self._send_error_json(exc, HTTPStatus.NOT_FOUND)
-        except FileNotFoundError as exc:
-            self._send_error_json(exc, HTTPStatus.NOT_FOUND)
         except Exception as exc:
-            self._send_error_json(exc)
+            self._send_exception_json(exc)
 
     def _import_background_paths(self, paths: list[str]) -> list[dict[str, Any]]:
         import tools.file_util as file_util
@@ -695,13 +596,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     pass
         user_scenario = str(row.get("scenario") or row.get("content") or "")
         system_template = str(row.get("system") or "")
-        if _has_untranslated_template_keys(user_scenario, system_template):
-            from ui.settings_ui.services.template_tab_session import load_template_session
-
-            repaired = _repair_template_session_if_needed(self.state, load_template_session(self.state.template_dir_path))
-            if repaired:
-                user_scenario = str(repaired.get("scenario_text") or "")
-                system_template = str(repaired.get("system_template_text") or "")
+        user_scenario, system_template = _repair_template_parts_from_session_if_needed(
+            self.state,
+            user_scenario,
+            system_template,
+        )
         message = _launch_chat(
             self.state,
             history_file="" if reset_history else history_path.as_posix(),

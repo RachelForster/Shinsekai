@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -13,18 +14,13 @@ from .state import BridgeState
 from .templates import (
     TEMP_SPLIT_META,
     _compose_for_llm,
-    _has_untranslated_template_keys,
     _history_id_from_scenario,
-    _latest_history_json,
-    _list_templates,
-    _parse_stored_template,
-    _repair_template_session_if_needed,
-    _resume_template_parts,
     _template_dir,
 )
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _main_chat_process: subprocess.Popen[bytes] | None = None
+_main_chat_process_lock = threading.Lock()
 
 
 def _release_root() -> Path:
@@ -48,50 +44,51 @@ def _launch_chat(
 ) -> str:
     global _main_chat_process
 
-    template = _compose_for_llm(user_scenario, system_template)
-    template_dir = _template_dir(state)
-    (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
-    (template_dir / TEMP_SPLIT_META).write_text(
-        json.dumps({"scenario": user_scenario, "system": system_template}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    with _main_chat_process_lock:
+        if _main_chat_process is not None and _main_chat_process.poll() is None:
+            return f"进程已经在运行中！PID: {_main_chat_process.pid}"
 
-    sc = state.config_manager.config.system_config.model_copy(deep=True)
-    sc.live_room_id = room_id
-    state.config_manager.config.system_config = sc
-    state.config_manager.save_system_config()
+        template = _compose_for_llm(user_scenario, system_template)
+        template_dir = _template_dir(state)
+        (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
+        (template_dir / TEMP_SPLIT_META).write_text(
+            json.dumps({"scenario": user_scenario, "system": system_template}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
-    if _main_chat_process is not None and _main_chat_process.poll() is None:
-        return f"进程已经在运行中！PID: {_main_chat_process.pid}"
+        sc = state.config_manager.config.system_config.model_copy(deep=True)
+        sc.live_room_id = room_id
+        state.config_manager.config.system_config = sc
+        state.config_manager.save_system_config()
 
-    template_hash = _history_id_from_scenario(user_scenario, system_template)
-    history_path = Path(history_file) if history_file else Path(state.history_dir) / f"{template_hash}.json"
-    history_path.parent.mkdir(parents=True, exist_ok=True)
-    root = _release_root()
-    tts_slug = str(state.config_manager.config.api_config.tts_provider or "gpt-sovits").strip() or "gpt-sovits"
-    args = [
-        "--template=_temp",
-        f"--init_sprite_path={init_sprite_path or ''}",
-        f"--history={history_path.resolve()}",
-        f"--bg={selected_bg}",
-        f"--t2i={'ComfyUI' if use_cg else ''}",
-        f"--room_id={room_id}",
-        f"--tts={tts_slug}",
-    ]
+        template_hash = _history_id_from_scenario(user_scenario, system_template)
+        history_path = Path(history_file) if history_file else Path(state.history_dir) / f"{template_hash}.json"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        root = _release_root()
+        tts_slug = str(state.config_manager.config.api_config.tts_provider or "gpt-sovits").strip() or "gpt-sovits"
+        args = [
+            "--template=_temp",
+            f"--init_sprite_path={init_sprite_path or ''}",
+            f"--history={history_path.resolve()}",
+            f"--bg={selected_bg}",
+            f"--t2i={'ComfyUI' if use_cg else ''}",
+            f"--room_id={room_id}",
+            f"--tts={tts_slug}",
+        ]
 
-    if getattr(sys, "frozen", False):
-        candidates = [root / "main" / "main.exe", root / "main.exe"]
-        exe = next((item for item in candidates if item.is_file()), None)
-        if exe is None:
-            checked = " 与 ".join(str(item) for item in candidates)
-            return f"启动失败: 未找到 main.exe（已检查 {checked}）。"
-        _main_chat_process = subprocess.Popen([str(exe)] + args, cwd=str(root))
-    else:
-        main_py = root / "main.py"
-        if not main_py.is_file():
-            return f"启动失败: 未找到 main.py（已检查 {main_py}）。"
-        _main_chat_process = subprocess.Popen([sys.executable, str(main_py)] + args, cwd=str(root))
-    return f"聊天进程已启动！PID: {_main_chat_process.pid}"
+        if getattr(sys, "frozen", False):
+            candidates = [root / "main" / "main.exe", root / "main.exe"]
+            exe = next((item for item in candidates if item.is_file()), None)
+            if exe is None:
+                checked = " 与 ".join(str(item) for item in candidates)
+                return f"启动失败: 未找到 main.exe（已检查 {checked}）。"
+            _main_chat_process = subprocess.Popen([str(exe)] + args, cwd=str(root))
+        else:
+            main_py = root / "main.py"
+            if not main_py.is_file():
+                return f"启动失败: 未找到 main.py（已检查 {main_py}）。"
+            _main_chat_process = subprocess.Popen([sys.executable, str(main_py)] + args, cwd=str(root))
+        return f"聊天进程已启动！PID: {_main_chat_process.pid}"
 
 
 def _resolve_project_file(raw_path: str | Path) -> Path:

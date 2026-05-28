@@ -1,430 +1,59 @@
 from __future__ import annotations
 
-from pathlib import Path
-from types import SimpleNamespace
-from typing import Any
-
-from .state import BridgeState, _jsonify
-
-
-def _as_character_config(character: Any) -> Any:
-    from config.character_config import CharacterConfig
-
-    data = character.model_dump(mode="json") if hasattr(character, "model_dump") else dict(character)
-    return CharacterConfig.parse_dic(data)
-
-
-def _optional_suffix_check(value: str, suffix: str, label: str) -> tuple[bool, str]:
-    if not value:
-        return True, ""
-    if value.lower().endswith(suffix):
-        return True, ""
-    return False, f"{label}: 文件后缀应为 {suffix}"
-
-
-def _validate_character_payload_like_pyqt(body: dict[str, Any]) -> None:
-    from sdk.ui.validators import (
-        ascii_only,
-        audio_duration_between,
-        check_all,
-        file_exists,
-        no_quotes,
-        not_empty,
-    )
-
-    sprite_prefix = str(body.get("sprite_prefix") or "").strip()
-    gpt_model_path = str(body.get("gpt_model_path") or "").strip()
-    sovits_model_path = str(body.get("sovits_model_path") or "").strip()
-    refer_audio_path = str(body.get("refer_audio_path") or "").strip()
-    ok, errors = check_all(
-        not_empty(sprite_prefix, "立绘目录"),
-        ascii_only(sprite_prefix, "立绘目录"),
-        no_quotes(gpt_model_path, "GPT 模型路径"),
-        file_exists(gpt_model_path, "GPT 模型路径"),
-        _optional_suffix_check(gpt_model_path, ".ckpt", "GPT 模型路径"),
-        no_quotes(sovits_model_path, "SoVITS 模型路径"),
-        file_exists(sovits_model_path, "SoVITS 模型路径"),
-        _optional_suffix_check(sovits_model_path, ".pth", "SoVITS 模型路径"),
-        no_quotes(refer_audio_path, "参考音频"),
-        file_exists(refer_audio_path, "参考音频"),
-        audio_duration_between(refer_audio_path, 3.0, 10.0, "参考音频"),
-    )
-    if not ok:
-        raise ValueError("\n".join(errors))
-
-
-def _sprite_voice_path(sprite: Any) -> str:
-    if hasattr(sprite, "voice_path"):
-        return str(sprite.voice_path or "")
-    if isinstance(sprite, dict):
-        return str(sprite.get("voice_path") or "")
-    return ""
-
-
-def _validate_sprite_voice_duration(voice_path: str, voice_text: str) -> None:
-    if not voice_text.strip():
-        return
-    from sdk.ui.validators import audio_duration_between
-
-    ok, err = audio_duration_between(voice_path, 3.0, 10.0, "语音")
-    if not ok:
-        raise ValueError(err)
-
-
-def _save_character(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    from config.schema import Character
-
-    body = payload.get("character", payload)
-    if not isinstance(body, dict):
-        raise ValueError("character payload must be an object")
-    original_name = str(payload.get("originalName") or body.get("name") or "").strip()
-    _validate_character_payload_like_pyqt(body)
-    character = Character.model_validate(body)
-    saved_name = character.name.strip()
-    message, _names = state.character_manager.add_character(
-        saved_name,
-        str(character.color or "").strip() or "#d07d7d",
-        character.sprite_prefix.strip() or "temp",
-        str(character.gpt_model_path or "").strip(),
-        str(character.sovits_model_path or "").strip(),
-        str(character.refer_audio_path or "").strip(),
-        str(character.prompt_text or "").strip(),
-        str(character.prompt_lang or "").strip(),
-        str(character.character_setting or "").strip(),
-        speech_speed=character.speech_speed,
-        speech_volume=character.speech_volume,
-        pronunciation_map=character.pronunciation_map,
-        edit_as_name=original_name,
-    )
-    if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
-        raise RuntimeError(message)
-    state.config_manager.reload()
-    saved = state.config_manager.get_character_by_name(saved_name)
-    return _jsonify(saved or character)
-
-
-def _character_by_name(state: BridgeState, name: str) -> Any:
-    character = state.config_manager.get_character_by_name(name)
-    if character is None:
-        raise KeyError(f"character not found: {name}")
-    return character
-
-
-def _character_json_after_reload(state: BridgeState, name: str) -> dict[str, Any]:
-    state.config_manager.reload()
-    return _jsonify(_character_by_name(state, name))
-
-
-def _character_agent_id(name: str) -> str:
-    value = str(name or "").strip()
-    return value if value else "user"
-
-
-def _list_character_memories(name: str) -> dict[str, Any]:
-    from llm.tools.memory_tools import _get_mem0
-
-    agent_id = _character_agent_id(name)
-    mem = _get_mem0()
-    raw = mem.get_all(filters={"user_id": agent_id}, limit=200)
-    rows = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
-    memories = []
-    for row in rows:
-        if isinstance(row, dict):
-            memories.append({"id": str(row.get("id") or ""), "memory": str(row.get("memory") or row.get("content") or "")})
-        else:
-            memories.append({"id": "", "memory": str(row)})
-    return {"agentId": agent_id, "count": len(memories), "memories": memories}
-
-
-def _add_character_memory(name: str, content: str) -> dict[str, Any]:
-    from llm.tools.memory_tools import memory_remember
-
-    text = str(content or "").strip()
-    if not text:
-        raise ValueError("memory content is required")
-    result = memory_remember(text, character_name=_character_agent_id(name))
-    if isinstance(result, dict) and result.get("error"):
-        raise RuntimeError(str(result["error"]))
-    return _list_character_memories(name)
-
-
-def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
-    from llm.tools.memory_tools import memory_forget
-
-    mid = str(memory_id or "").strip()
-    if not mid:
-        raise ValueError("memory id is required")
-    result = memory_forget(mid)
-    if isinstance(result, dict) and result.get("error"):
-        raise RuntimeError(str(result["error"]))
-    return _list_character_memories(name)
-
-
-def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    setting = str(payload.get("setting") or "")
-    message, character_setting = state.character_manager.generate_character_setting(name, setting)
-    return {"characterSetting": character_setting, "message": message}
-
-
-def _translate_character_fields(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    from ui.settings_ui.ai_field_translate import translate_character_name_and_tags
-
-    ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
-    error, name, emotion_tags, character_setting = translate_character_name_and_tags(
-        state.config_manager,
-        ui_language,
-        str(payload.get("name") or ""),
-        str(payload.get("emotionTags") or ""),
-        str(payload.get("characterSetting") or ""),
-    )
-    if error:
-        return {"characterSetting": character_setting, "emotionTags": emotion_tags, "error": error, "name": name}
-    return {"characterSetting": character_setting, "emotionTags": emotion_tags, "name": name}
-
-
-def _upload_sprite_voice(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    sprite_index = int(payload.get("spriteIndex") or 0)
-    voice_path = str(payload.get("voicePath") or "").strip()
-    voice_text = str(payload.get("voiceText") or "").strip()
-    if not voice_path:
-        raise ValueError("voice path is required")
-    _validate_sprite_voice_duration(voice_path, voice_text)
-    message, _path = state.character_manager.upload_voice(name, sprite_index, voice_path, voice_text)
-    if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请选择") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _character_json_after_reload(state, name)
-
-
-def _upload_character_sprites(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    emotion_tags = str(payload.get("emotionTags") or "")
-    paths = payload.get("paths") or []
-    if not isinstance(paths, list):
-        raise ValueError("paths must be a list")
-    message, _paths, _tags = state.character_manager.upload_sprites(
-        name,
-        _path_namespace_list([str(item) for item in paths]),
-        emotion_tags,
-    )
-    if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _character_json_after_reload(state, name)
-
-
-def _save_character_emotion_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    emotion_tags = str(payload.get("emotionTags") or "")
-    message = state.character_manager.upload_emotion_tags(name, emotion_tags)
-    if (
-        message.startswith("请先")
-        or message.startswith("请输入")
-        or message.startswith("找不到")
-        or message.startswith("标注出错")
-    ):
-        raise RuntimeError(message)
-    return _character_json_after_reload(state, name)
-
-
-def _delete_character_sprite(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    sprite_index = int(payload.get("spriteIndex") or 0)
-    message, _paths, _tags = state.character_manager.delete_single_sprite(name, sprite_index)
-    if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _character_json_after_reload(state, name)
-
-
-def _delete_all_character_sprites(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    message, _paths, _tags = state.character_manager.delete_all_sprites(name)
-    if message.startswith("找不到") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _character_json_after_reload(state, name)
-
-
-def _save_sprite_scale(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    scale = float(payload.get("scale") or 0)
-    message = state.character_manager.save_sprite_scale(name, scale)
-    text = str(message[0] if isinstance(message, tuple) else message)
-    if text.startswith("名称不能为空") or text.startswith("找不到"):
-        raise RuntimeError(text)
-    return _character_json_after_reload(state, name)
-
-
-def _save_sprite_voice_text(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    sprite_index = int(payload.get("spriteIndex") or 0)
-    voice_text = str(payload.get("voiceText") or "").strip()
-    character = _character_by_name(state, name)
-    sprites = getattr(character, "sprites", []) or []
-    if 0 <= sprite_index < len(sprites):
-        voice_path = _sprite_voice_path(sprites[sprite_index])
-        if voice_path and Path(voice_path).is_file():
-            _validate_sprite_voice_duration(voice_path, voice_text)
-    message = state.character_manager.save_sprite_voice_text(name, sprite_index, voice_text)
-    if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _character_json_after_reload(state, name)
-
-
-def _delete_sprite_voice(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    sprite_index = int(payload.get("spriteIndex") or 0)
-    message = state.character_manager.delete_sprite_voice(name, sprite_index)
-    if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _character_json_after_reload(state, name)
-
-
-def _save_background(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    body = payload.get("background", payload)
-    if not isinstance(body, dict):
-        raise ValueError("background payload must be an object")
-    name = str(body.get("name") or "").strip()
-    prefix = str(body.get("sprite_prefix") or "temp").strip() or "temp"
-    original_name = str(payload.get("originalName") or "").strip()
-    message, _names = state.background_manager.add_background(name, prefix, edit_as_name=original_name or None)
-    if message.startswith("名称") or "重复" in message or message.startswith("找不到"):
-        raise RuntimeError(message)
-    state.config_manager.reload()
-    saved = state.config_manager.get_background_by_name(name)
-    if saved is None:
-        raise RuntimeError(message)
-    return _jsonify(saved)
-
-
-def _background_by_name(state: BridgeState, name: str) -> Any:
-    background = state.config_manager.get_background_by_name(name)
-    if background is None:
-        raise KeyError(f"background not found: {name}")
-    return background
-
-
-def _background_json_after_reload(state: BridgeState, name: str) -> dict[str, Any]:
-    state.config_manager.reload()
-    return _jsonify(_background_by_name(state, name))
-
-
-def _numbered_background_bgm_tags(tags: list[str]) -> str:
-    return "".join(f"音乐 {index + 1}：{str(tag or '').strip()}\n" for index, tag in enumerate(tags))
-
-
-def _tag_content(text: Any) -> str:
-    value = str(text or "")
-    if "：" in value:
-        return value.split("：", 1)[1].strip()
-    if ":" in value:
-        return value.split(":", 1)[1].strip()
-    return value.strip()
-
-
-def _path_namespace_list(paths: Any) -> list[Any]:
-    if not isinstance(paths, list):
-        raise ValueError("paths must be a list")
-    out = []
-    for item in paths:
-        path = str(item or "").strip()
-        if path:
-            out.append(SimpleNamespace(name=path))
-    if not out:
-        raise ValueError("at least one path is required")
-    return out
-
-
-def _translate_background_fields(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    from ui.settings_ui.ai_field_translate import translate_background_fields
-
-    row_tag_payload = payload.get("bgmRowTags")
-    if isinstance(row_tag_payload, list):
-        bgm_row_tags = [str(item or "") for item in row_tag_payload]
-    else:
-        bgm_row_tags = [_tag_content(line) for line in str(payload.get("bgmTags") or "").splitlines()]
-    ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
-    error, name, bg_tags, bgm_tags, bgm_row_tags = translate_background_fields(
-        state.config_manager,
-        ui_language,
-        str(payload.get("name") or ""),
-        str(payload.get("bgTags") or ""),
-        str(payload.get("bgmTags") or ""),
-        bgm_row_tags,
-    )
-    response_bgm_tags = _numbered_background_bgm_tags(bgm_row_tags) if bgm_row_tags else bgm_tags
-    if bgm_row_tags:
-        bgm_tags = response_bgm_tags
-    if error:
-        return {"bgTags": bg_tags, "bgmRowTags": bgm_row_tags, "bgmTags": bgm_tags, "error": error, "name": name}
-    return {"bgTags": bg_tags, "bgmRowTags": bgm_row_tags, "bgmTags": bgm_tags, "name": name}
-
-
-def _upload_background_images(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    files = _path_namespace_list(payload.get("paths") or [])
-    message, _paths, _tags = state.background_manager.upload_sprites(name, files, str(payload.get("bgTags") or ""))
-    if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
-
-
-def _upload_background_bgm(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    files = _path_namespace_list(payload.get("paths") or [])
-    background = _background_by_name(state, name)
-    background.bgm_tags = str(payload.get("bgmTags") or background.bgm_tags or "")
-    state.config_manager.save_background_config()
-    message, _df, _tags = state.background_manager.upload_bgms(name, files)
-    if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
-
-
-def _save_background_image_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    message = state.background_manager.upload_bg_tags(name, str(payload.get("bgTags") or ""))
-    if message.startswith("找不到") or message.startswith("请") or "出错" in message:
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
-
-
-def _save_background_bgm_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    message = state.background_manager.upload_bgm_tags(name, str(payload.get("bgmTags") or ""))
-    if message.startswith("找不到") or message.startswith("请") or "出错" in message:
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
-
-
-def _delete_background_image(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    index = int(payload.get("index") or 0)
-    message, _paths, _tags = state.background_manager.delete_single_sprite(name, index)
-    if message.startswith("找不到") or message.startswith("背景图片不存在") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
-
-
-def _delete_all_background_images(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    message, _paths, _tags = state.background_manager.delete_all_sprites(name)
-    if message.startswith("找不到") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
-
-
-def _delete_background_bgm(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    index = int(payload.get("index") or 0)
-    message, _paths, _tags = state.background_manager.delete_single_bgm(name, index)
-    if message.startswith("找不到") or message.startswith("背景音乐不存在") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
-
-
-def _delete_all_background_bgm(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    message, _paths, _tags = state.background_manager.delete_all_bgms(name)
-    if message.startswith("找不到") or message.startswith("请先"):
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
+from .backgrounds import (
+    _delete_all_background_bgm,
+    _delete_all_background_images,
+    _delete_background_bgm,
+    _delete_background_image,
+    _save_background,
+    _save_background_bgm_tags,
+    _save_background_image_tags,
+    _translate_background_fields,
+    _upload_background_bgm,
+    _upload_background_images,
+)
+from .characters import (
+    _add_character_memory,
+    _as_character_config,
+    _delete_all_character_sprites,
+    _delete_character_memory,
+    _delete_character_sprite,
+    _delete_sprite_voice,
+    _generate_character_setting,
+    _list_character_memories,
+    _save_character,
+    _save_character_emotion_tags,
+    _save_sprite_scale,
+    _save_sprite_voice_text,
+    _translate_character_fields,
+    _upload_character_sprites,
+    _upload_sprite_voice,
+)
+
+__all__ = [
+    "_add_character_memory",
+    "_as_character_config",
+    "_delete_all_background_bgm",
+    "_delete_all_background_images",
+    "_delete_all_character_sprites",
+    "_delete_background_bgm",
+    "_delete_background_image",
+    "_delete_character_memory",
+    "_delete_character_sprite",
+    "_delete_sprite_voice",
+    "_generate_character_setting",
+    "_list_character_memories",
+    "_save_background",
+    "_save_background_bgm_tags",
+    "_save_background_image_tags",
+    "_save_character",
+    "_save_character_emotion_tags",
+    "_save_sprite_scale",
+    "_save_sprite_voice_text",
+    "_translate_background_fields",
+    "_translate_character_fields",
+    "_upload_background_bgm",
+    "_upload_background_images",
+    "_upload_character_sprites",
+    "_upload_sprite_voice",
+]

@@ -85,23 +85,29 @@ def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:
     return None
 
 
+def _repair_template_parts_from_session_if_needed(
+    state: BridgeState,
+    scenario: str,
+    system: str,
+) -> tuple[str, str]:
+    if not _has_untranslated_template_keys(scenario, system):
+        return scenario, system
+    from ui.settings_ui.services.template_tab_session import load_template_session
+
+    repaired = _repair_template_session_if_needed(state, load_template_session(state.template_dir_path))
+    if not repaired:
+        return scenario, system
+    return str(repaired.get("scenario_text") or ""), str(repaired.get("system_template_text") or "")
+
+
 def _resume_template_parts(state: BridgeState) -> tuple[str, str, str] | None:
     template_dir = _template_dir(state)
     temp_path = template_dir / "_temp.txt"
     if temp_path.is_file() and temp_path.stat().st_size > 0:
         split_meta = _read_split_meta(template_dir)
         if split_meta is not None:
-            if _has_untranslated_template_keys(split_meta[0], split_meta[1]):
-                from ui.settings_ui.services.template_tab_session import load_template_session
-
-                repaired = _repair_template_session_if_needed(state, load_template_session(state.template_dir_path))
-                if repaired:
-                    return (
-                        str(repaired.get("scenario_text") or ""),
-                        str(repaired.get("system_template_text") or ""),
-                        "_temp.txt",
-                    )
-            return split_meta[0], split_meta[1], "_temp.txt"
+            scenario, system = _repair_template_parts_from_session_if_needed(state, split_meta[0], split_meta[1])
+            return scenario, system, "_temp.txt"
         try:
             scenario, system = _parse_stored_template(temp_path.read_text(encoding="utf-8"))
         except OSError:
