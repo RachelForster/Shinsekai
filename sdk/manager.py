@@ -20,9 +20,11 @@ from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry, PluginDiscoveryRegistry
 from sdk.types import (
     ChatUIContribution,
+    OutputContractPatch,
     PluginDescriptor,
     SettingsUIContribution,
     ToolsTabContribution,
+    WorkflowContribution,
 )
 
 if TYPE_CHECKING:
@@ -261,6 +263,18 @@ class PluginManager:
         if self._capabilities is None:
             return []
         return self._capabilities.dag_yaml_paths
+
+    def collect_workflow_contributions(self) -> list[WorkflowContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.workflow_contributions
+
+    def collect_output_contract_patches(self) -> list[OutputContractPatch]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.output_contract_patches
 
     def iter_plugin_ids(self) -> Iterator[str]:
         self._ensure_plugins_instantiated()

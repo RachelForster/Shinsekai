@@ -32,8 +32,10 @@ if TYPE_CHECKING:
     from sdk.handlers import MessageHandler, UIOutputMessageHandler
     from sdk.types import (
         ChatUIContribution,
+        OutputContractPatch,
         SettingsUIContribution,
         ToolsTabContribution,
+        WorkflowContribution,
     )
     from ui.settings_ui.context import SettingsUIContext
 
@@ -46,6 +48,8 @@ _plugin_tts_handlers: List["MessageHandler"] = []
 _plugin_ui_handlers: List["UIOutputMessageHandler"] = []
 _plugin_dag_node_factories: list[tuple[Callable[[], list], bool]] = []
 _plugin_dag_yaml_paths: list[str] = []
+_plugin_workflow_contributions: list["WorkflowContribution"] = []
+_plugin_output_contract_patches: list["OutputContractPatch"] = []
 
 
 def get_plugin_manager() -> PluginManager | None:
@@ -65,8 +69,23 @@ def get_plugin_dag_node_factories() -> list[tuple[Callable[[], list], bool]]:
 
 
 def get_plugin_dag_yaml_paths() -> list[str]:
-    """Return plugin-registered workflow YAML paths (reserved — not yet wired into UX)."""
+    """Return plugin-registered workflow YAML paths (reserved; not yet wired into UX)."""
     return list(_plugin_dag_yaml_paths)
+
+
+def get_plugin_workflow_contributions() -> list["WorkflowContribution"]:
+    """Return plugin-registered workflow descriptors."""
+    return list(_plugin_workflow_contributions)
+
+
+def get_plugin_output_contract_patches(
+    target_contract: str | None = None,
+) -> list["OutputContractPatch"]:
+    """Return plugin patches for LLM output contracts."""
+    patches = list(_plugin_output_contract_patches)
+    if target_contract is not None:
+        patches = [p for p in patches if p.target_contract == target_contract]
+    return patches
 
 
 def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager | None:
@@ -75,7 +94,9 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
     provider tables into the respective factories, register tools on the global ToolManager, and cache message handlers
     for :mod:`core.handlers.handler_registry`.
     """
-    global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers, _plugin_dag_node_factories, _plugin_dag_yaml_paths
+    global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
+    global _plugin_dag_node_factories, _plugin_dag_yaml_paths
+    global _plugin_workflow_contributions, _plugin_output_contract_patches
     if _loaded:
         return _plugin_manager
 
@@ -144,6 +165,16 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
     except Exception:
         logger.exception("collect_dag_yaml_paths failed")
         _plugin_dag_yaml_paths = []
+    try:
+        _plugin_workflow_contributions = mgr.collect_workflow_contributions()
+    except Exception:
+        logger.exception("collect_workflow_contributions failed")
+        _plugin_workflow_contributions = []
+    try:
+        _plugin_output_contract_patches = mgr.collect_output_contract_patches()
+    except Exception:
+        logger.exception("collect_output_contract_patches failed")
+        _plugin_output_contract_patches = []
 
     _plugin_manager = mgr
     _loaded = True
