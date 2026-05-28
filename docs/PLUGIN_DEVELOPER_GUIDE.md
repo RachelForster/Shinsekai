@@ -31,7 +31,9 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_settings_ui`          | Extra Settings sidebar page                                |
 | `register_tools_tab`            | Extra tab under **Settings → Tools**                       |
 | `register_chat_ui_widget`       | Chat window widget + placement hint                        |
-| `register_dag_yaml`             | Workflow YAML path (reserved — not yet wired into UX)      |
+| `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
+| `register_workflow`             | Workflow with optional output contract/schema              |
+| `register_output_contract_patch` | Patch an LLM output contract (fields, requirements, …)     |
 | `register_dag_node`             | DAG node candidates for plugin tooling                     |
 
 
@@ -70,7 +72,7 @@ The host runs exactly one workflow at a time:
   In headless mode (``--headless``) the default is `assets/system/workflow/headless.yaml`,
   which omits UIWorker and avoids pygame/Qt window dependencies.
 - Plugin workflow YAML files are selectable candidates; they are not merged into the default workflow automatically.
-  (Workflow selection UX is not yet wired — ``register_dag_yaml`` paths are reserved for future use.)
+  Plugin workflow YAML files registered via ``register_dag_yaml`` or ``register_workflow`` are collected as ``WorkflowContribution`` objects and are selectable candidates for the workflow runner.
 
 A workflow YAML has three top-level sections:
 
@@ -137,6 +139,109 @@ class RouterNode(DagNode):
 ```
 
 Important boundary: `edges` only wire queues. A passive node is not executed just because it appears in YAML. Something must call its methods, or it must implement its own lifecycle.
+
+### Output contract patching
+
+Plugins can customise the LLM output template (the JSON dialog format) without replacing the entire workflow. Use ``OutputContractPatch`` to add fields, modify field descriptions, tweak requirement text, or append new requirements — all targeting the default dialog contract ``”default.dialog.v1”``.
+
+**Key types** (from `sdk.types`):
+
+| Type | Purpose |
+|---|---|
+| `OutputFieldSpec` | One field in the LLM JSON output (`key`, `type`, `description`, `required`, `example`, `aliases`) |
+| `RequirementSpec` | One stable, patchable requirement with a persistent `id`, `text`, `order`, `enabled` flag |
+| `FieldPatch` | Partial override for a field: `description`, `examples`, `required`, `type`, `enum` |
+| `RequirementPatch` | Patch operation: `mode` is `”append”`, `”prepend”`, `”replace”`, or `”remove”`; `text` carries the patch payload |
+| `OutputContractPatch` | Bundled patch targeting a named contract (`target_contract`), with `priority` ordering |
+| `ChatOutputContract` | Complete declarative schema (`json_schema`, `example`, `requirements`, `stream_mode`) — attach to `WorkflowContribution` |
+| `WorkflowContribution` | Workflow YAML path plus optional `output_contract` (use `register_workflow` to register) |
+
+**Example: tightening speech rules**
+
+```python
+from sdk.register import PluginCapabilityRegistry
+from sdk.types import (
+    FieldPatch,
+    OutputContractPatch,
+    OutputFieldSpec,
+    RequirementPatch,
+    RequirementSpec,
+)
+
+DEFAULT_DIALOG = “default.dialog.v1”
+
+
+def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> None:
+    # Add an optional “camera” field to the JSON output
+    register.register_output_contract_patch(
+        OutputContractPatch(
+            id=”my_plugin.camera_direction”,
+            target_contract=DEFAULT_DIALOG,
+            priority=50.0,
+            add_fields=(
+                OutputFieldSpec(
+                    key=”camera”,
+                    type=”string”,
+                    description=”Camera direction hint for visual novel rendering.”,
+                    required=False,
+                    example=”close_up”,
+                ),
+            ),
+            field_patches={
+                “speech”: FieldPatch(
+                    description=”Speech may include parenthesized vocal tags like (cough) or (laugh).”,
+                    examples=(“(cough) I need a second.”,),
+                ),
+            },
+            requirement_patches={
+                “r_speech”: RequirementPatch(
+                    mode=”append”,
+                    text=”Allow concise parenthesized tags such as (cough), (laugh), or (sigh).”,
+                ),
+            },
+            add_requirements=(
+                RequirementSpec(
+                    id=”my_plugin.emotion_tag_balance”,
+                    text=”Do not overuse parenthesized vocal tags — at most 1 per 3 lines.”,
+                    order=71,
+                ),
+            ),
+        )
+    )
+```
+
+**How patches apply:**
+
+1. Patches are sorted by `priority` (lower first, higher wins on conflict).
+2. `remove_fields` runs first (core fields `character_name`, `speech`, `sprite` are **protected**).
+3. `field_patches` modify existing fields — `description` replaces when non-empty; `enum` and `examples` append to the description text.
+4. `add_fields` inserts new fields and generates corresponding JSON example lines in the prompt.
+5. Requirement patches (`requirement_patches`) target stable requirement IDs like `r_speech`, `r_format`, `r_cname`, etc.
+6. `add_requirements` inserts new requirement entries; they participate in the same priority-ordered sort.
+
+**Stable requirement IDs** (for `requirement_patches`):
+
+| ID | Content |
+|---|---|
+| `r_format` | JSON array format rule |
+| `r_cname` | Character name assignment |
+| `r_sprite` | Sprite/asset ID rule |
+| `r_non_sprite` | Non-sprite entities (NARR, CHOICE, STAT) |
+| `r_scene` | Scene background (when real bg selected) |
+| `r_bgm` | Background music (when real bg selected) |
+| `r_speech` | Speech text language/quality rule |
+| `r_array` | Output must be a JSON array |
+| `r_speech_max_chars` | Max characters per speech line |
+| `r_dialog_max_items` | Max dialog items per response |
+| `r_narration` | Narration formatting |
+| `r_choice_pos` | Choice placement rules |
+| `r_choice_format` | Choice JSON format |
+| `r_choice_balance` | Choice balance guidance |
+| `r_stats` | Stat display format |
+| `r_cg` | CG/illustration display |
+| `r_translate` | Translation field (when LLM translation enabled) |
+| `r_effect` | Emotion effect field |
+| `r_cot` | Chain-of-thought (when enabled) |
 
 ### Adapter classes: schemas and “extra” kwargs
 
@@ -629,7 +734,7 @@ python -m sdk.cli registry-snippet --name "my_plugin_name" --author "You" \
 | ---------------------------- | ------------------------------------------------------------ |
 | Plugin base                  | `sdk/plugin.py`                                              |
 | Registry                     | `sdk/register.py`                                            |
-| Contribution types           | `sdk/types.py`                                               |
+| Contribution types           | `sdk/types.py` (also: `OutputFieldSpec`, `RequirementSpec`, `FieldPatch`, `RequirementPatch`, `OutputContractPatch`, `ChatOutputContract`, `WorkflowContribution`) |
 | Host snapshot / settings ctx | `sdk/plugin_host_context.py`                                 |
 | Chat UI ctx                  | `sdk/chat_ui_context.py`                                     |
 | Adapter ABCs                 | `sdk/adapters/*.py`                                          |
