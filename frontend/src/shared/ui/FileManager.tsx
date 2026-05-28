@@ -8,6 +8,8 @@ import { IconButton } from "./IconButton";
 
 export type FileBrowseHandler = (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
 
+const BROWSE_TIMEOUT_MS = 12_000;
+
 const FileBrowserContext = createContext<FileBrowseHandler | null>(null);
 
 export function FileBrowserProvider({ browse, children }: { browse: FileBrowseHandler; children: ReactNode }) {
@@ -115,6 +117,18 @@ function isSelectable(entry: FileBrowserEntry, mode: PathPickerMode, acceptedExt
   return entry.kind === "directory";
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+    }
+  });
+}
+
 export function FileManager({
   acceptedExtensions,
   mode = "file",
@@ -135,6 +149,8 @@ export function FileManager({
   const [snapshot, setSnapshot] = useState<FileBrowserSnapshot | null>(null);
   const [editingAddress, setEditingAddress] = useState(false);
   const addressInputRef = useRef<HTMLInputElement>(null);
+  const activeBrowseRequestRef = useRef(0);
+  const mountedRef = useRef(false);
   const selectedPathsRef = useRef(selectedPaths);
   const showHiddenRef = useRef(showHidden);
   const acceptedExtensionsKey = (acceptedExtensions ?? []).join("\0");
@@ -173,6 +189,19 @@ export function FileManager({
   const confirmPathsKey = confirmPaths.join("\0");
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      activeBrowseRequestRef.current += 1;
+    };
+  }, []);
+
+  const isCurrentBrowseRequest = useCallback(
+    (requestId: number) => mountedRef.current && requestId === activeBrowseRequestRef.current,
+    [],
+  );
+
+  useEffect(() => {
     onSelectionChange?.({
       address,
       confirmPaths,
@@ -183,6 +212,8 @@ export function FileManager({
 
   const browse = useCallback(
     async (path?: string, selection?: string[], hidden?: boolean) => {
+      const requestId = activeBrowseRequestRef.current + 1;
+      activeBrowseRequestRef.current = requestId;
       setLoading(true);
       setError("");
       const desiredSelection = selection ?? selectedPathsRef.current;
@@ -190,7 +221,14 @@ export function FileManager({
         if (!browseFiles) {
           throw new Error("File browser is not configured.");
         }
-        const next = await browseFiles({ path, showHidden: hidden ?? showHiddenRef.current });
+        const next = await withTimeout(
+          browseFiles({ path, showHidden: hidden ?? showHiddenRef.current }),
+          BROWSE_TIMEOUT_MS,
+          t("filePicker.timeout"),
+        );
+        if (!isCurrentBrowseRequest(requestId)) {
+          return;
+        }
         setSnapshot(next);
         setAddress(next.cwd);
         setEditingAddress(false);
@@ -205,12 +243,17 @@ export function FileManager({
           updateSelectedPaths(desiredSelection.filter((item) => visibleFilePaths.has(item)));
         }
       } catch (err) {
+        if (!isCurrentBrowseRequest(requestId)) {
+          return;
+        }
         setError(err instanceof Error ? err.message : String(err));
       } finally {
-        setLoading(false);
+        if (isCurrentBrowseRequest(requestId)) {
+          setLoading(false);
+        }
       }
     },
-    [browseFiles, mode, normalizedAcceptedExtensions],
+    [browseFiles, isCurrentBrowseRequest, mode, normalizedAcceptedExtensions, t],
   );
 
   const beginAddressEdit = useCallback(() => {

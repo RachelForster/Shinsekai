@@ -8,6 +8,8 @@ from typing import Any
 from .state import BridgeState
 from .tasks import _update_task
 
+MAX_FILE_BROWSER_ENTRIES = 2000
+
 
 def _extract_prompt_from_line(line: str) -> str:
     text = line.strip()
@@ -174,30 +176,31 @@ def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str
 
     entries: list[dict[str, Any]] = []
     try:
-        children = list(target.iterdir())
+        with os.scandir(target) as children:
+            for child in children:
+                name = child.name
+                if not show_hidden and name.startswith("."):
+                    continue
+                if len(entries) >= MAX_FILE_BROWSER_ENTRIES:
+                    break
+                try:
+                    is_dir = child.is_dir(follow_symlinks=False)
+                    item_stat = child.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                entries.append(
+                    {
+                        "kind": "directory" if is_dir else "file",
+                        "modifiedAt": item_stat.st_mtime,
+                        "name": name,
+                        "path": _display_path(Path(child.path)),
+                        "size": None if is_dir else item_stat.st_size,
+                    }
+                )
     except PermissionError:
         raise
     except OSError as exc:
         raise RuntimeError(f"无法读取目录: {target}: {exc}") from exc
-
-    for child in children:
-        name = child.name
-        if not show_hidden and name.startswith("."):
-            continue
-        try:
-            item_stat = child.stat()
-            is_dir = child.is_dir()
-        except OSError:
-            continue
-        entries.append(
-            {
-                "kind": "directory" if is_dir else "file",
-                "modifiedAt": item_stat.st_mtime,
-                "name": name,
-                "path": _display_path(child),
-                "size": None if is_dir else item_stat.st_size,
-            }
-        )
 
     entries.sort(key=lambda item: (item["kind"] != "directory", item["name"].casefold()))
     parent = target.parent if target.parent != target else None

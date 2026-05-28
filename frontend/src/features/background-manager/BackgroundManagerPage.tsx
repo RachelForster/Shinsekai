@@ -409,7 +409,11 @@ export function BackgroundManagerPage() {
     });
   };
 
-  const bgmRowTags = tagContents(draft.bgm_tags, draft.bgm_list.length);
+  const bgmRowTags = useMemo(
+    () => tagContents(draft.bgm_tags, draft.bgm_list.length),
+    [draft.bgm_list.length, draft.bgm_tags],
+  );
+  const selectedBgmIndexSet = useMemo(() => new Set(selectedBgmIndexes), [selectedBgmIndexes]);
 
   return (
     <div className="page">
@@ -727,7 +731,7 @@ export function BackgroundManagerPage() {
                 <div className="asset-row asset-row--compact" key={`${sprite.path}-${index}`}>
                   <div className="asset-row__index">
                     {sprite.path ? (
-                      <img alt="" className="asset-thumb" src={fileUrl(sprite.path)} />
+                      <img alt="" className="asset-thumb" decoding="async" loading="lazy" src={fileUrl(sprite.path)} />
                     ) : (
                       <ImageIcon aria-hidden className="asset-row__icon" />
                     )}
@@ -846,10 +850,10 @@ export function BackgroundManagerPage() {
                     </thead>
                     <tbody>
                       {draft.bgm_list.map((path, index) => (
-                        <tr aria-selected={selectedBgmIndexes.includes(index)} key={`${path}-${index}`}>
+                        <tr aria-selected={selectedBgmIndexSet.has(index)} key={`${path}-${index}`}>
                           <td>
                             <input
-                              checked={selectedBgmIndexes.includes(index)}
+                              checked={selectedBgmIndexSet.has(index)}
                               onChange={(event) => toggleBgmSelection(index, event.target.checked)}
                               type="checkbox"
                             />
@@ -868,7 +872,11 @@ export function BackgroundManagerPage() {
                               value={bgmRowTags[index] ?? ""}
                             />
                           </td>
-                          <td>{path ? <audio className="audio-inline" controls src={fileUrl(path)} /> : null}</td>
+                          <td>
+                            {path ? (
+                              <audio className="audio-inline" controls preload="none" src={fileUrl(path)} />
+                            ) : null}
+                          </td>
                           <td>
                             <AsyncButton
                               icon={<Trash2 aria-hidden className="button__icon" />}

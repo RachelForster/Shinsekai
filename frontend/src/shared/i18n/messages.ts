@@ -260,6 +260,7 @@ export type MessageKey =
   | "filePicker.selectCurrent"
   | "filePicker.selectFile"
   | "filePicker.size"
+  | "filePicker.timeout"
   | "filePicker.type"
   | "filePicker.typeDirectory"
   | "filePicker.typeFile"
@@ -806,6 +807,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "filePicker.selectCurrent": "Select folder",
     "filePicker.selectFile": "Select file",
     "filePicker.size": "Size",
+    "filePicker.timeout": "Folder loading timed out. Try refreshing or enter a more specific path.",
     "filePicker.type": "Type",
     "filePicker.typeDirectory": "Folder",
     "filePicker.typeFile": "File",
@@ -1360,6 +1362,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "filePicker.selectCurrent": "フォルダを選択",
     "filePicker.selectFile": "ファイルを選択",
     "filePicker.size": "サイズ",
+    "filePicker.timeout": "フォルダの読み込みがタイムアウトしました。更新するか、より具体的なパスを入力してください。",
     "filePicker.type": "種類",
     "filePicker.typeDirectory": "フォルダ",
     "filePicker.typeFile": "ファイル",
@@ -1909,6 +1912,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "filePicker.selectCurrent": "选择文件夹",
     "filePicker.selectFile": "选择文件",
     "filePicker.size": "大小",
+    "filePicker.timeout": "读取文件夹超时，请刷新或输入更具体的路径。",
     "filePicker.type": "类型",
     "filePicker.typeDirectory": "文件夹",
     "filePicker.typeFile": "文件",

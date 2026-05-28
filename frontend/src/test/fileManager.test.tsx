@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,6 +31,7 @@ describe("FileManager", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("normalizes accepted file extensions", () => {
@@ -112,5 +113,21 @@ describe("FileManager", () => {
     await waitFor(() => {
       expect(browseFiles).toHaveBeenLastCalledWith({ path: "/project", showHidden: true });
     });
+  });
+
+  it("stops showing the loading state when folder loading stalls", async () => {
+    vi.useFakeTimers();
+    browseFiles.mockImplementationOnce(() => new Promise(() => undefined));
+
+    renderFileManager({});
+
+    expect(screen.getByText("正在读取文件夹...")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(12_000);
+    });
+
+    expect(screen.getByText("读取文件夹超时，请刷新或输入更具体的路径。")).toBeTruthy();
+    expect(screen.queryByText("正在读取文件夹...")).toBeNull();
   });
 });
