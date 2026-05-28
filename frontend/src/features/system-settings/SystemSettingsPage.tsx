@@ -13,7 +13,7 @@ import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/c
 import type { SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, EmptyState, useToast } from "../../shared/ui";
+import { AsyncButton, EmptyState, QueryErrorState, useToast } from "../../shared/ui";
 import { SchemaDrivenForm } from "../SchemaDrivenForm";
 
 const systemConfigPageSchema = systemConfigFormSchema
@@ -36,7 +36,8 @@ export function SystemSettingsPage() {
   const { showToast } = useToast();
   const { t } = useI18n();
   const { dispatch } = useAppState();
-  const { data, isLoading } = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<SystemConfig | null>(null);
   const [errors, setErrors] = useState<SchemaErrorMap<SystemConfig>>({});
 
@@ -67,6 +68,18 @@ export function SystemSettingsPage() {
       showToast({ kind: "success", title: t("system.toast.saved") });
     },
   });
+
+  if (configQuery.isError) {
+    return (
+      <QueryErrorState
+        body={t("system.error.saveFallback")}
+        error={configQuery.error}
+        onRetry={() => void configQuery.refetch()}
+        retryLabel={t("common.retry")}
+        title={t("common.operationFailed")}
+      />
+    );
+  }
 
   if (isLoading || !draft) {
     return <EmptyState title={t("system.loading")} />;

@@ -11,7 +11,16 @@ import type {
   MusicCoverSource,
   TaskSnapshot,
 } from "../../shared/platform/types";
-import { AsyncButton, EmptyState, NumberInput, Select, TextArea, TextInput, useToast } from "../../shared/ui";
+import {
+  AsyncButton,
+  EmptyState,
+  NumberInput,
+  QueryErrorState,
+  Select,
+  TextArea,
+  TextInput,
+  useToast,
+} from "../../shared/ui";
 
 function musicCoverConfigFromSystem(systemConfig: SystemConfig): MusicCoverConfigInput {
   return {
@@ -37,7 +46,8 @@ function musicCoverConfigFromSystem(systemConfig: SystemConfig): MusicCoverConfi
 export function MusicCoverPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { data, isLoading } = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<SystemConfig | null>(null);
   const [saveOutput, setSaveOutput] = useState("");
   const [musicSource, setMusicSource] = useState<MusicCoverSource>("youtube");
@@ -110,6 +120,18 @@ export function MusicCoverPage() {
       setMusicAudioPath(result.audioPath);
     },
   });
+
+  if (configQuery.isError) {
+    return (
+      <QueryErrorState
+        body="检查桥接服务后重试。"
+        error={configQuery.error}
+        onRetry={() => void configQuery.refetch()}
+        retryLabel="重试"
+        title="读取翻唱流水线配置失败"
+      />
+    );
+  }
 
   if (isLoading || !draft) {
     return <EmptyState title="正在读取翻唱流水线配置" />;

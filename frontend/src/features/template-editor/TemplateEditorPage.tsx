@@ -15,6 +15,7 @@ import {
   templatesQueryKey,
   type TemplateSummary,
 } from "../../entities/template/repository";
+import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type { TemplateLaunchSession } from "../../shared/platform/types";
 import {
@@ -24,19 +25,18 @@ import {
   EmptyState,
   FilePicker,
   NumberInput,
+  QueryErrorState,
   Select,
   TextArea,
   TextInput,
   useToast,
 } from "../../shared/ui";
 
-const TRANSPARENT_BACKGROUND = "透明场景";
-
 const voiceLanguages = [
-  { label: "日本語", value: "ja" },
-  { label: "English", value: "en" },
-  { label: "中文", value: "zh" },
-  { label: "粤语", value: "yue" },
+  { labelKey: "system.asr.langJa", value: "ja" },
+  { labelKey: "system.asr.langEn", value: "en" },
+  { labelKey: "system.asr.langZh", value: "zh" },
+  { labelKey: "system.asr.langYue", value: "yue" },
 ] as const;
 
 function composeContent(scenario: unknown, system: unknown) {
@@ -70,14 +70,21 @@ export function TemplateEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const { data: templates = [], isLoading } = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
-  const { data: launchSession, isFetched: sessionFetched } = useQuery({
+  const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
+  const sessionQuery = useQuery({
     queryFn: getTemplateSession,
     queryKey: [...templatesQueryKey, "session"],
   });
-  const { data: appConfig } = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
-  const { data: characters = [] } = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
-  const { data: backgrounds = [] } = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
+  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
+  const templates = templatesQuery.data ?? [];
+  const isLoading = templatesQuery.isLoading;
+  const launchSession = sessionQuery.data;
+  const sessionFetched = sessionQuery.isFetched;
+  const appConfig = configQuery.data;
+  const characters = charactersQuery.data ?? [];
+  const backgrounds = backgroundsQuery.data ?? [];
   const [selectedId, setSelectedId] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [sessionDraftActive, setSessionDraftActive] = useState(false);
@@ -85,7 +92,7 @@ export function TemplateEditorPage() {
   const [draft, setDraft] = useState<TemplateSummary>(() => createTemplate(t("template.defaultName")));
   const [nameError, setNameError] = useState("");
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
-  const [selectedBackground, setSelectedBackground] = useState(TRANSPARENT_BACKGROUND);
+  const [selectedBackground, setSelectedBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
   const [voiceLanguage, setVoiceLanguage] = useState("ja");
   const [useEffectPrompt, setUseEffectPrompt] = useState(true);
   const [useTranslation, setUseTranslation] = useState(true);
@@ -110,8 +117,11 @@ export function TemplateEditorPage() {
   );
   const backgroundOptions = useMemo(() => {
     const names = backgrounds.map((background) => background.name);
-    return names.includes(TRANSPARENT_BACKGROUND) ? names : [...names, TRANSPARENT_BACKGROUND];
+    return names.includes(TRANSPARENT_BACKGROUND_NAME) ? names : [...names, TRANSPARENT_BACKGROUND_NAME];
   }, [backgrounds]);
+  const failedQuery = [templatesQuery, sessionQuery, configQuery, charactersQuery, backgroundsQuery].find(
+    (query) => query.isError,
+  );
 
   useEffect(() => {
     if (selected && !sessionDraftActive) {
@@ -134,7 +144,7 @@ export function TemplateEditorPage() {
     }
     setSessionDraftActive(true);
     setSelectedCharacters(Array.isArray(launchSession.selectedCharacters) ? launchSession.selectedCharacters : []);
-    setSelectedBackground(launchSession.background || TRANSPARENT_BACKGROUND);
+    setSelectedBackground(launchSession.background || TRANSPARENT_BACKGROUND_NAME);
     setVoiceLanguage(launchSession.voiceLanguage || "ja");
     setUseEffectPrompt(launchSession.useEffect ?? true);
     setUseTranslation(launchSession.useTranslation ?? true);
@@ -165,7 +175,7 @@ export function TemplateEditorPage() {
 
   useEffect(() => {
     if (!backgroundOptions.includes(selectedBackground)) {
-      setSelectedBackground(TRANSPARENT_BACKGROUND);
+      setSelectedBackground(TRANSPARENT_BACKGROUND_NAME);
     }
   }, [backgroundOptions, selectedBackground]);
 
@@ -426,7 +436,15 @@ export function TemplateEditorPage() {
             <span className="entity-list__meta">{templates.length}</span>
           </div>
           {isLoading ? <EmptyState title={t("template.loading")} /> : null}
-          {!isLoading && !templates.length ? (
+          {failedQuery ? (
+            <QueryErrorState
+              error={failedQuery.error}
+              onRetry={() => void failedQuery.refetch()}
+              retryLabel={t("common.retry")}
+              title={t("common.operationFailed")}
+            />
+          ) : null}
+          {!isLoading && !failedQuery && !templates.length ? (
             <EmptyState title={t("template.emptyTitle")} body={t("template.emptyBody")} />
           ) : null}
           {templates.map((template) => (
@@ -459,7 +477,7 @@ export function TemplateEditorPage() {
                   <Select onChange={(event) => setSelectedBackground(event.target.value)} value={selectedBackground}>
                     {backgroundOptions.map((name) => (
                       <option key={name} value={name}>
-                        {name === TRANSPARENT_BACKGROUND ? t("template.transparentBackground") : name}
+                        {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}
                       </option>
                     ))}
                   </Select>
@@ -478,7 +496,7 @@ export function TemplateEditorPage() {
                   >
                     {voiceLanguages.map((option) => (
                       <option key={option.value} value={option.value}>
-                        {option.label}
+                        {t(option.labelKey)}
                       </option>
                     ))}
                   </Select>

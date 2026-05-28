@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Play, RotateCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -13,26 +13,41 @@ import {
   saveTemplateSession,
   templatesQueryKey,
 } from "../../entities/template/repository";
+import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type { ChatLaunchPayload, TemplateLaunchSession } from "../../shared/platform/types";
-import { AlertDialog, AsyncButton, Button, EmptyState, FilePicker, Select, TextInput, useToast } from "../../shared/ui";
-
-const TRANSPARENT_BACKGROUND = "透明场景";
+import {
+  AlertDialog,
+  AsyncButton,
+  Button,
+  EmptyState,
+  FilePicker,
+  QueryErrorState,
+  Select,
+  TextInput,
+  useToast,
+} from "../../shared/ui";
 
 export function ChatLauncherPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const { data: characters = [] } = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
-  const { data: backgrounds = [] } = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
-  const { data: templates = [] } = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
-  const { data: launchSession, isFetched: sessionFetched } = useQuery({
+  const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
+  const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
+  const sessionQuery = useQuery({
     queryFn: getTemplateSession,
     queryKey: [...templatesQueryKey, "session"],
   });
-  const { data: appConfig } = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const characters = charactersQuery.data ?? [];
+  const backgrounds = backgroundsQuery.data ?? [];
+  const templates = templatesQuery.data ?? [];
+  const launchSession = sessionQuery.data;
+  const sessionFetched = sessionQuery.isFetched;
+  const appConfig = configQuery.data;
   const [templateId, setTemplateId] = useState("");
-  const [backgroundName, setBackgroundName] = useState(TRANSPARENT_BACKGROUND);
+  const [backgroundName, setBackgroundName] = useState(TRANSPARENT_BACKGROUND_NAME);
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [historyPath, setHistoryPath] = useState("");
   const [initSpritePath, setInitSpritePath] = useState("");
@@ -41,17 +56,23 @@ export function ChatLauncherPage() {
   const [sessionRestored, setSessionRestored] = useState(false);
 
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? templates[0];
-  const backgroundOptions = (() => {
+  const backgroundOptions = useMemo(() => {
     const names = backgrounds.map((background) => background.name);
-    return names.includes(TRANSPARENT_BACKGROUND) ? names : [...names, TRANSPARENT_BACKGROUND];
-  })();
+    return names.includes(TRANSPARENT_BACKGROUND_NAME) ? names : [...names, TRANSPARENT_BACKGROUND_NAME];
+  }, [backgrounds]);
+  const failedQuery = [charactersQuery, backgroundsQuery, templatesQuery, sessionQuery, configQuery].find(
+    (query) => query.isError,
+  );
+  const isLoadingLaunchData = [charactersQuery, backgroundsQuery, templatesQuery, sessionQuery, configQuery].some(
+    (query) => query.isLoading,
+  );
 
   useEffect(() => {
     if (!templateId && templates[0]) {
       setTemplateId(templates[0].id);
     }
     if (!backgroundName || !backgroundOptions.includes(backgroundName)) {
-      setBackgroundName(TRANSPARENT_BACKGROUND);
+      setBackgroundName(TRANSPARENT_BACKGROUND_NAME);
     }
     if (!sessionRestored && !selectedCharacters.length && characters[0]) {
       setSelectedCharacters([characters[0].name]);
@@ -83,7 +104,7 @@ export function ChatLauncherPage() {
     if (restoredTemplate) {
       setTemplateId(restoredTemplate.id);
     }
-    setBackgroundName(launchSession.background || TRANSPARENT_BACKGROUND);
+    setBackgroundName(launchSession.background || TRANSPARENT_BACKGROUND_NAME);
     setSelectedCharacters(Array.isArray(launchSession.selectedCharacters) ? launchSession.selectedCharacters : []);
     setHistoryPath(launchSession.historyPath || "");
     setInitSpritePath(launchSession.initSpritePath || "");
@@ -186,7 +207,16 @@ export function ChatLauncherPage() {
         </div>
       </header>
 
-      {!templates.length ? (
+      {failedQuery ? (
+        <QueryErrorState
+          error={failedQuery.error}
+          onRetry={() => void failedQuery.refetch()}
+          retryLabel={t("common.retry")}
+          title={t("common.operationFailed")}
+        />
+      ) : isLoadingLaunchData ? (
+        <EmptyState title={t("template.loading")} />
+      ) : !templates.length ? (
         <EmptyState title={t("launch.emptyTitle")} body={t("launch.emptyBody")} />
       ) : (
         <section className="section">
@@ -209,7 +239,7 @@ export function ChatLauncherPage() {
                 <Select onChange={(event) => setBackgroundName(event.target.value)} value={backgroundName}>
                   {backgroundOptions.map((name) => (
                     <option key={name} value={name}>
-                      {name === TRANSPARENT_BACKGROUND ? t("template.transparentBackground") : name}
+                      {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}
                     </option>
                   ))}
                 </Select>

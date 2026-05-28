@@ -904,12 +904,12 @@
 
 .plugin-card__status[data-enabled="true"] {
   border-color: rgba(80, 250, 123, 0.42);
-  color: #50fa7b;
+  color: var(--color-success);
 }
 
 .plugin-card__status[data-loaded="false"] {
   border-color: rgba(255, 184, 108, 0.45);
-  color: #ffb86c;
+  color: var(--color-warning);
 }
 
 .plugin-card__description {

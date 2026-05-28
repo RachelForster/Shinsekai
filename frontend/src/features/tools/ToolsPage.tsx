@@ -17,6 +17,7 @@ import {
   EmptyState,
   FilePicker,
   NumberInput,
+  QueryErrorState,
   Select,
   TextArea,
   TextInput,
@@ -55,7 +56,9 @@ function GeneratedSpritePreview({ file }: { file: string }) {
 export function ToolsPage() {
   const { t } = useI18n();
   const { showToast } = useToast();
-  const { data: characters = [], isLoading } = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const characters = charactersQuery.data ?? [];
+  const isLoading = charactersQuery.isLoading;
   const [selectedCharacter, setSelectedCharacter] = useState("");
   const [spriteCount, setSpriteCount] = useState(1);
   const [referenceImage, setReferenceImage] = useState("");
@@ -217,6 +220,15 @@ export function ToolsPage() {
               <p className="section__description">{t("tools.gemHint")}</p>
             </div>
           </div>
+
+          {charactersQuery.isError ? (
+            <QueryErrorState
+              error={charactersQuery.error}
+              onRetry={() => void charactersQuery.refetch()}
+              retryLabel={t("common.retry")}
+              title={t("common.operationFailed")}
+            />
+          ) : null}
 
           <div className="tools-grid tools-grid--three">
             <div className="form-grid">

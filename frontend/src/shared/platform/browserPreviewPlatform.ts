@@ -8,6 +8,7 @@ import {
   sampleChatTheme,
   sampleTemplates,
 } from "./sampleData";
+import { DEFAULT_CHARACTER_COLOR } from "../constants";
 import type {
   BatchToolResult,
   Background,
@@ -394,7 +395,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           const label = item instanceof File ? item.name : item.split("/").pop() || `character-${index + 1}`;
           return {
             character_setting: "导入预览角色",
-            color: "#d07d7d",
+            color: DEFAULT_CHARACTER_COLOR,
             emotion_tags: "",
             name: `Imported ${index + 1}`,
             pronunciation_map: {},
@@ -439,7 +440,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         const savedCharacter = {
           ...clone(character),
-          color: character.color.trim() || "#d07d7d",
+          color: character.color.trim() || DEFAULT_CHARACTER_COLOR,
           emotion_tags: index >= 0 ? config.characters[index].emotion_tags : "",
           gpt_model_path: character.gpt_model_path?.trim() || "",
           prompt_lang: character.prompt_lang?.trim() || "",

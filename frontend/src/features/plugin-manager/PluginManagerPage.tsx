@@ -39,6 +39,7 @@ import {
   DataTable,
   Dialog,
   EmptyState,
+  QueryErrorState,
   SegmentedTabs,
   Select,
   useToast,
@@ -218,7 +219,9 @@ export function PluginManagerPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const { data = [], isLoading } = useQuery({ queryFn: listPlugins, queryKey: pluginsQueryKey });
+  const pluginsQuery = useQuery({ queryFn: listPlugins, queryKey: pluginsQueryKey });
+  const data = pluginsQuery.data ?? [];
+  const isLoading = pluginsQuery.isLoading;
   const [view, setView] = useState<PluginView>("installed");
   const [installingSource, setInstallingSource] = useState("");
   const [installTask, setInstallTask] = useState<TaskSnapshot<PluginManifest> | null>(null);
@@ -494,10 +497,11 @@ export function PluginManagerPage() {
           <EmptyState title={t("plugin.detail.loading")} />
         ) : null}
         {pluginDetailQuery.isError ? (
-          <EmptyState
-            body={
-              pluginDetailQuery.error instanceof Error ? pluginDetailQuery.error.message : t("plugin.detail.errorBody")
-            }
+          <QueryErrorState
+            body={t("plugin.detail.errorBody")}
+            error={pluginDetailQuery.error}
+            onRetry={() => void pluginDetailQuery.refetch()}
+            retryLabel={t("common.retry")}
             title={t("plugin.detail.errorTitle")}
           />
         ) : null}
@@ -550,7 +554,15 @@ export function PluginManagerPage() {
             </span>
           </div>
           {isLoading ? <EmptyState title={t("plugin.installed.loading")} /> : null}
-          {!isLoading && data.length ? (
+          {pluginsQuery.isError ? (
+            <QueryErrorState
+              error={pluginsQuery.error}
+              onRetry={() => void pluginsQuery.refetch()}
+              retryLabel={t("common.retry")}
+              title={t("common.operationFailed")}
+            />
+          ) : null}
+          {!isLoading && !pluginsQuery.isError && data.length ? (
             <div className="plugin-card-grid">
               {data.map((plugin) => {
                 const loaded = plugin.loaded !== false;
@@ -633,7 +645,7 @@ export function PluginManagerPage() {
               })}
             </div>
           ) : null}
-          {!isLoading && !data.length ? (
+          {!isLoading && !pluginsQuery.isError && !data.length ? (
             <EmptyState title={t("plugin.installed.emptyTitle")} body={t("plugin.installed.emptyBody")} />
           ) : null}
         </section>
@@ -696,18 +708,22 @@ export function PluginManagerPage() {
               {installLogs.length ? <pre className="task-progress__log">{installLogs.join("\n")}</pre> : null}
             </div>
           ) : null}
+          {appUpdateInfoQuery.isError ? (
+            <QueryErrorState
+              body={t("plugin.appUpdate.failed")}
+              error={appUpdateInfoQuery.error}
+              onRetry={() => void appUpdateInfoQuery.refetch()}
+              retryLabel={t("common.retry")}
+              title={t("common.operationFailed")}
+            />
+          ) : null}
           {catalogQuery.isLoading ? <EmptyState title={t("plugin.catalog.loading")} /> : null}
           {catalogQuery.isError ? (
-            <EmptyState
-              action={
-                <Button
-                  icon={<RefreshCw aria-hidden className="button__icon" />}
-                  onClick={() => catalogQuery.refetch()}
-                >
-                  {t("common.retry")}
-                </Button>
-              }
-              body={catalogQuery.error instanceof Error ? catalogQuery.error.message : t("plugin.catalog.errorBody")}
+            <QueryErrorState
+              body={t("plugin.catalog.errorBody")}
+              error={catalogQuery.error}
+              onRetry={() => void catalogQuery.refetch()}
+              retryLabel={t("common.retry")}
               title={t("plugin.catalog.errorTitle")}
             />
           ) : null}
@@ -792,7 +808,14 @@ export function PluginManagerPage() {
               {catalogTagsQuery.isLoading ? (
                 <span className="field-row__help">{t("plugin.appUpdate.tagsLoading")}</span>
               ) : null}
-              {!catalogTagsQuery.isLoading && !catalogTagsQuery.data?.length ? (
+              {catalogTagsQuery.isError ? (
+                <span className="field-row__help" role="alert">
+                  {catalogTagsQuery.error instanceof Error
+                    ? catalogTagsQuery.error.message
+                    : t("plugin.appUpdate.tagsEmpty")}
+                </span>
+              ) : null}
+              {!catalogTagsQuery.isLoading && !catalogTagsQuery.isError && !catalogTagsQuery.data?.length ? (
                 <span className="field-row__help">{t("plugin.appUpdate.tagsEmpty")}</span>
               ) : null}
             </span>
@@ -858,7 +881,14 @@ export function PluginManagerPage() {
               {appUpdateTagsQuery.isLoading ? (
                 <span className="field-row__help">{t("plugin.appUpdate.tagsLoading")}</span>
               ) : null}
-              {!appUpdateTagsQuery.isLoading && !appUpdateTagsQuery.data?.length ? (
+              {appUpdateTagsQuery.isError ? (
+                <span className="field-row__help" role="alert">
+                  {appUpdateTagsQuery.error instanceof Error
+                    ? appUpdateTagsQuery.error.message
+                    : t("plugin.appUpdate.tagsEmpty")}
+                </span>
+              ) : null}
+              {!appUpdateTagsQuery.isLoading && !appUpdateTagsQuery.isError && !appUpdateTagsQuery.data?.length ? (
                 <span className="field-row__help">{t("plugin.appUpdate.tagsEmpty")}</span>
               ) : null}
             </span>

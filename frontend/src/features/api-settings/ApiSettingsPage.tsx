@@ -35,7 +35,16 @@ import { openExternal } from "../../entities/files/repository";
 import { resumeLastChat } from "../../entities/chat/repository";
 import type { FormGroupSchema } from "../../shared/ui/formSchema";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
-import { AsyncButton, Button, EmptyState, IconButton, Select, TextInput, useToast } from "../../shared/ui";
+import {
+  AsyncButton,
+  Button,
+  EmptyState,
+  IconButton,
+  QueryErrorState,
+  Select,
+  TextInput,
+  useToast,
+} from "../../shared/ui";
 import { SchemaDrivenForm, SchemaFieldGrid } from "../SchemaDrivenForm";
 
 type UiLanguage = "zh_CN" | "en" | "ja";
@@ -56,12 +65,6 @@ const resourceLinks = [
     "https://www.modelscope.cn/models/twillzxy/genie-tts-server/resolve/master/Genie-TTS%20Server.7z",
   ],
 ] as const;
-
-const uiLanguageOptions: Array<{ label: string; value: UiLanguage }> = [
-  { label: "简体中文", value: "zh_CN" },
-  { label: "English", value: "en" },
-  { label: "日本語", value: "ja" },
-];
 
 const VOSK_MODEL_PATH = "./assets/system/models/vosk-model-small-cn-0.22";
 const VOSK_MODELS_URL = "https://alphacephei.com/vosk/models";
@@ -467,7 +470,8 @@ export function ApiSettingsPage() {
   const { showToast } = useToast();
   const { t } = useI18n();
   const { dispatch } = useAppState();
-  const { data, isLoading } = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<ApiConfig | null>(null);
   const [systemDraft, setSystemDraft] = useState<SystemConfig | null>(null);
   const [errors, setErrors] = useState<SchemaErrorMap<ApiConfig>>({});
@@ -638,6 +642,18 @@ export function ApiSettingsPage() {
     },
   });
 
+  if (configQuery.isError) {
+    return (
+      <QueryErrorState
+        body={t("api.error.saveFallback")}
+        error={configQuery.error}
+        onRetry={() => void configQuery.refetch()}
+        retryLabel={t("common.retry")}
+        title={t("common.operationFailed")}
+      />
+    );
+  }
+
   if (isLoading || !draft || !systemDraft) {
     return <EmptyState title={t("api.loading")} />;
   }
@@ -672,6 +688,11 @@ export function ApiSettingsPage() {
   const activeAsrSchema =
     adapterCatalog?.asr?.find((option) => normalizeAsrProvider(option.value) === activeAsrProvider)?.schema ?? {};
   const voskModelPath = String(draft.asr_extra_configs?.vosk?.model_path ?? VOSK_MODEL_PATH);
+  const uiLanguageOptions: Array<{ label: string; value: UiLanguage }> = [
+    { label: t("api.language.zh"), value: "zh_CN" },
+    { label: t("api.language.en"), value: "en" },
+    { label: t("api.language.ja"), value: "ja" },
+  ];
   const apiLanguageGroup: FormGroupSchema<SystemConfig> = {
     columns: 1,
     fields: [

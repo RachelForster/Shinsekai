@@ -20,6 +20,7 @@ import {
   Dialog,
   EmptyState,
   NumberInput,
+  QueryErrorState,
   Select,
   TextArea,
   TextInput,
@@ -343,7 +344,8 @@ export function McpSettingsPanel() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const { data, isLoading } = useQuery({ queryFn: getMcpConfig, queryKey: mcpConfigQueryKey });
+  const mcpConfigQuery = useQuery({ queryFn: getMcpConfig, queryKey: mcpConfigQueryKey });
+  const { data, isLoading } = mcpConfigQuery;
   const [draft, setDraft] = useState<McpConfig | null>(null);
   const [serverDialog, setServerDialog] = useState<ServerDialogState>(null);
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
@@ -541,6 +543,18 @@ export function McpSettingsPanel() {
       render: (tool: McpToolPreview) => <span className="inline-status">{tool.description}</span>,
     },
   ];
+
+  if (mcpConfigQuery.isError) {
+    return (
+      <QueryErrorState
+        body={t("mcp.installHint")}
+        error={mcpConfigQuery.error}
+        onRetry={() => void mcpConfigQuery.refetch()}
+        retryLabel={t("common.retry")}
+        title={t("common.operationFailed")}
+      />
+    );
+  }
 
   if (isLoading || !draft) {
     return <EmptyState title={t("mcp.preview.loading")} />;

@@ -22,7 +22,16 @@ import {
 import type { Background } from "../../entities/config/types";
 import { fileUrl, openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, Button, EmptyState, FilePicker, TextArea, TextInput, useToast } from "../../shared/ui";
+import {
+  AsyncButton,
+  Button,
+  EmptyState,
+  FilePicker,
+  QueryErrorState,
+  TextArea,
+  TextInput,
+  useToast,
+} from "../../shared/ui";
 
 function createBackground(): Background {
   return {
@@ -59,7 +68,9 @@ export function BackgroundManagerPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const { data = [], isLoading } = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
+  const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
+  const data = backgroundsQuery.data ?? [];
+  const isLoading = backgroundsQuery.isLoading;
   const [selectedName, setSelectedName] = useState("");
   const [draft, setDraft] = useState<Background>(createBackground());
   const [isCreating, setIsCreating] = useState(false);
@@ -496,7 +507,15 @@ export function BackgroundManagerPage() {
             <span className="entity-list__meta">{data.length}</span>
           </div>
           {isLoading ? <EmptyState title={t("background.loading")} /> : null}
-          {!isLoading && !data.length ? (
+          {backgroundsQuery.isError ? (
+            <QueryErrorState
+              error={backgroundsQuery.error}
+              onRetry={() => void backgroundsQuery.refetch()}
+              retryLabel={t("common.retry")}
+              title={t("common.operationFailed")}
+            />
+          ) : null}
+          {!isLoading && !backgroundsQuery.isError && !data.length ? (
             <EmptyState title={t("background.emptyTitle")} body={t("background.emptyBody")} />
           ) : null}
           {data.map((background) => (

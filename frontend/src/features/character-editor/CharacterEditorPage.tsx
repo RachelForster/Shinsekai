@@ -39,6 +39,7 @@ import {
 } from "../../entities/character/repository";
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl, openExternal } from "../../entities/files/repository";
+import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import {
   AlertDialog,
@@ -47,6 +48,7 @@ import {
   EmptyState,
   FilePicker,
   NumberInput,
+  QueryErrorState,
   Select,
   TextArea,
   TextInput,
@@ -56,7 +58,7 @@ import {
 function createCharacter(): Character {
   return {
     character_setting: "",
-    color: "#d07d7d",
+    color: DEFAULT_CHARACTER_COLOR,
     emotion_tags: "",
     name: "",
     pronunciation_map: {},
@@ -108,7 +110,9 @@ export function CharacterEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const { data = [], isLoading } = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const data = charactersQuery.data ?? [];
+  const isLoading = charactersQuery.isLoading;
   const [selectedName, setSelectedName] = useState("");
   const [draft, setDraft] = useState<Character>(createCharacter());
   const [isCreating, setIsCreating] = useState(false);
@@ -125,7 +129,7 @@ export function CharacterEditorPage() {
   const isSavedCharacter = Boolean(
     currentCharacterName && data.some((character) => character.name === currentCharacterName),
   );
-  const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(draft.color || "") ? draft.color : "#d07d7d";
+  const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(draft.color || "") ? draft.color : DEFAULT_CHARACTER_COLOR;
 
   const selected = useMemo(
     () => (isCreating ? undefined : (data.find((character) => character.name === selectedName) ?? data[0])),
@@ -512,7 +516,7 @@ export function CharacterEditorPage() {
       character: {
         ...draft,
         character_setting: draft.character_setting.trim(),
-        color: draft.color.trim() || "#d07d7d",
+        color: draft.color.trim() || DEFAULT_CHARACTER_COLOR,
         gpt_model_path: draft.gpt_model_path?.trim() || "",
         name: draft.name.trim(),
         prompt_lang: draft.prompt_lang?.trim() || "",
@@ -644,7 +648,15 @@ export function CharacterEditorPage() {
             <span className="entity-list__meta">{data.length}</span>
           </div>
           {isLoading ? <EmptyState title={t("character.loading")} /> : null}
-          {!isLoading && !data.length ? (
+          {charactersQuery.isError ? (
+            <QueryErrorState
+              error={charactersQuery.error}
+              onRetry={() => void charactersQuery.refetch()}
+              retryLabel={t("common.retry")}
+              title={t("common.operationFailed")}
+            />
+          ) : null}
+          {!isLoading && !charactersQuery.isError && !data.length ? (
             <EmptyState title={t("character.emptyTitle")} body={t("character.emptyBody")} />
           ) : null}
           {data.map((character) => (
@@ -1130,7 +1142,16 @@ export function CharacterEditorPage() {
             </div>
             {!memoryName ? <EmptyState title={t("character.memory.nameRequired")} /> : null}
             {memoryName && memoryQuery.isLoading ? <EmptyState title={t("character.memory.loading")} /> : null}
-            {memoryName && !memoryQuery.isLoading && !memoryQuery.data?.memories.length ? (
+            {memoryName && memoryQuery.isError ? (
+              <QueryErrorState
+                body={t("character.memory.error")}
+                error={memoryQuery.error}
+                onRetry={() => void memoryQuery.refetch()}
+                retryLabel={t("common.retry")}
+                title={t("common.operationFailed")}
+              />
+            ) : null}
+            {memoryName && !memoryQuery.isLoading && !memoryQuery.isError && !memoryQuery.data?.memories.length ? (
               <EmptyState title={t("character.memory.empty")} />
             ) : null}
             {memoryQuery.data?.memories.length ? (

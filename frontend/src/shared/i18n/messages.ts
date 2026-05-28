@@ -16,7 +16,10 @@ export type MessageKey =
   | "api.links.title"
   | "api.language.field"
   | "api.language.hint"
+  | "api.language.en"
+  | "api.language.ja"
   | "api.language.title"
+  | "api.language.zh"
   | "api.llm.apiKey"
   | "api.llm.baseUrl"
   | "api.llm.connectionTitle"
@@ -556,7 +559,10 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.links.title": "Resources & links",
     "api.language.field": "Interface language",
     "api.language.hint": "Takes effect immediately. Standalone desktop chat windows apply it after the next launch.",
+    "api.language.en": "English",
+    "api.language.ja": "Japanese",
     "api.language.title": "Interface language",
+    "api.language.zh": "Simplified Chinese",
     "api.llm.apiKey": "LLM API Key",
     "api.llm.baseUrl": "LLM base URL",
     "api.llm.connectionTitle": "LLM API",
@@ -1083,7 +1089,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "template.toast.generated": "Template generated",
     "template.toast.launched": "Chat launched",
     "template.toast.saved": "Template saved",
-    "template.transparentBackground": "透明场景",
+    "template.transparentBackground": "Transparent scene",
     "template.validation.backgroundRequired": "Choose a background.",
     "template.validation.charactersRequired": "Choose at least one character.",
     "template.validation.nameRequired": "Template name is required.",
@@ -1107,7 +1113,10 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.links.title": "リソース",
     "api.language.field": "インターフェース言語",
     "api.language.hint": "即時反映されます。単独実行中のデスクトップチャット窓には次回起動時に適用されます。",
+    "api.language.en": "英語",
+    "api.language.ja": "日本語",
     "api.language.title": "インターフェース言語",
+    "api.language.zh": "簡体字中国語",
     "api.llm.apiKey": "LLM API Key",
     "api.llm.baseUrl": "LLM ベース URL",
     "api.llm.connectionTitle": "LLM API",
@@ -1632,7 +1641,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "template.toast.generated": "テンプレートを生成しました",
     "template.toast.launched": "チャットを起動しました",
     "template.toast.saved": "テンプレートを保存しました",
-    "template.transparentBackground": "透明场景",
+    "template.transparentBackground": "透明シーン",
     "template.validation.backgroundRequired": "背景を選択してください。",
     "template.validation.charactersRequired": "キャラクターを 1 人以上選択してください。",
     "template.validation.nameRequired": "テンプレート名は必須です。",
@@ -1655,7 +1664,10 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.links.title": "资源与说明",
     "api.language.field": "界面语言",
     "api.language.hint": "立即生效。独立运行的桌面主窗口在下次启动时应用。",
+    "api.language.en": "English",
+    "api.language.ja": "日本語",
     "api.language.title": "界面语言",
+    "api.language.zh": "简体中文",
     "api.llm.apiKey": "LLM API Key",
     "api.llm.baseUrl": "LLM API 基础网址",
     "api.llm.connectionTitle": "LLM API 配置",

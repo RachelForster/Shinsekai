@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import { DEFAULT_CHARACTER_COLOR } from "../constants";
 import type {
   AppConfig,
   ChatLaunchPayload,
@@ -105,7 +106,7 @@ export const sampleConfig: AppConfig = {
   characters: [
     {
       name: "Nanami",
-      color: "#d07d7d",
+      color: DEFAULT_CHARACTER_COLOR,
       sprite_prefix: "nanami",
       sprites: [
         {
