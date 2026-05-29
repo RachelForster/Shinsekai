@@ -291,9 +291,7 @@ function EditableModelSelect({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listboxId = `${id}-listbox`;
-  const query = value.trim().toLowerCase();
-  const visibleOptions = query ? options.filter((option) => option.id.toLowerCase().includes(query)) : options;
-  const menuOptions = visibleOptions.length ? visibleOptions : options;
+  const menuOptions = options;
 
   useEffect(() => {
     if (!open) {
@@ -351,9 +349,14 @@ function EditableModelSelect({
             if (event.key === "Escape") {
               setOpen(false);
             }
-            if (event.key === "Enter" && open && menuOptions[0]) {
+            if (event.key === "Enter" && open) {
               event.preventDefault();
-              selectOption(menuOptions[0].id);
+              const exactMatch = menuOptions.find((option) => option.id === value);
+              if (exactMatch) {
+                selectOption(exactMatch.id);
+                return;
+              }
+              setOpen(false);
             }
           }}
           placeholder={placeholder}

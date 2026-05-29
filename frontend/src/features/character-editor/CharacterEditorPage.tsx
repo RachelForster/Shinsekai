@@ -1088,6 +1088,7 @@ export function CharacterEditorPage() {
                       <span className="field-row__control">
                         <div className="input-group sprite-tag-row">
                           <TextInput
+                            className="sprite-tag-input"
                             onChange={(event) => updateSpriteTag(selectedSpriteIndex, event.target.value)}
                             value={selectedSpriteTag}
                           />
