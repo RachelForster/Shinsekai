@@ -40,11 +40,11 @@ import {
   Dialog,
   EmptyState,
   QueryErrorState,
+  SchemaDrivenForm,
   SegmentedTabs,
   Select,
   useToast,
 } from "../../shared/ui";
-import { SchemaDrivenForm } from "../SchemaDrivenForm";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 
 type PluginView = "installed" | "discover" | "mcp";

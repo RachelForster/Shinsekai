@@ -10,5 +10,6 @@ export * from "./ImageAssetGallery";
 export * from "./PathDisplay";
 export * from "./PathPickerDialog";
 export * from "./QueryErrorState";
+export * from "./SchemaDrivenForm";
 export * from "./SegmentedTabs";
 export * from "./Toast";

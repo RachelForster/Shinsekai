@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 
-import type { FormFieldSchema, FormGroupSchema } from "../shared/ui/formSchema";
-import type { SchemaErrorMap } from "../entities/config/schema";
-import { useI18n } from "../shared/i18n";
-import { ColorInput, FilePicker, NumberInput, Select, TextArea, TextInput } from "../shared/ui";
+import { useI18n } from "../i18n";
+import { ColorInput, FilePicker, NumberInput, Select, TextArea, TextInput } from "./FormControls";
+import type { FormFieldSchema, FormGroupSchema } from "./formSchema";
+
+export type SchemaErrorMap<T extends object> = Partial<Record<keyof T, string>>;
 
 interface SchemaDrivenFormProps<T extends object> {
   collapsedGroupIds?: string[];

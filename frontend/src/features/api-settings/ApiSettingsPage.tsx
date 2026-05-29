@@ -41,11 +41,12 @@ import {
   EmptyState,
   IconButton,
   QueryErrorState,
+  SchemaDrivenForm,
+  SchemaFieldGrid,
   Select,
   TextInput,
   useToast,
 } from "../../shared/ui";
-import { SchemaDrivenForm, SchemaFieldGrid } from "../SchemaDrivenForm";
 
 type UiLanguage = "zh_CN" | "en" | "ja";
 
