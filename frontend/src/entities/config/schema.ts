@@ -1,5 +1,5 @@
 import type { AdapterExtraFieldSchema, ApiConfig, SystemConfig } from "./types";
-import type { FieldKind, FormFieldSchema, FormGroupSchema } from "../../shared/ui/formSchema";
+import type { FieldKind, FormFieldSchema, FormGroupSchema } from "../../shared/form-schema";
 
 export const llmProviderOptions = [
   { label: "Deepseek", value: "Deepseek" },

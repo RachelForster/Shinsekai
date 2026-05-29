@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, DownloadCloud, ExternalLink, RefreshCw } from "lucide-react";
+import { DownloadCloud, ExternalLink, RefreshCw } from "lucide-react";
 
 import {
   adapterExtraSchemaToFormGroup,
@@ -33,13 +33,12 @@ import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
 import { openExternal } from "../../entities/files/repository";
 import { resumeLastChat } from "../../entities/chat/repository";
-import type { FormGroupSchema } from "../../shared/ui/formSchema";
+import type { FormGroupSchema } from "../../shared/form-schema";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
 import {
   AsyncButton,
   Button,
   EmptyState,
-  IconButton,
   QueryErrorState,
   SchemaDrivenForm,
   SchemaFieldGrid,
@@ -48,6 +47,7 @@ import {
   TextInput,
   useToast,
 } from "../../shared/ui";
+import { EditableModelSelect, ModelCapabilityBadge } from "./EditableModelSelect";
 import "../settings-pages.css";
 
 type UiLanguage = "zh_CN" | "en" | "ja";
@@ -256,155 +256,8 @@ function llmModelFetchKey(config: ApiConfig) {
   ]);
 }
 
-function capabilityLabel(tag: string) {
-  const labels: Record<string, string> = {
-    audio: "Audio",
-    file: "File",
-    image_out: "Image",
-    no_access: "No access",
-    not_found: "Missing",
-    text: "Text",
-    unknown: "Unknown",
-    video: "Video",
-    vision: "Vision",
-  };
-  return labels[tag] ?? tag;
-}
-
 function thinkingUnsupported(model: string) {
   return ["deepseek-v4-flash", "deepseek-chat"].includes(model.trim().toLowerCase());
-}
-
-function EditableModelSelect({
-  disabled,
-  id,
-  onChange,
-  options,
-  placeholder,
-  value,
-}: {
-  disabled: boolean;
-  id: string;
-  onChange: (value: string) => void;
-  options: LlmModelOption[];
-  placeholder: string;
-  value: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const listboxId = `${id}-listbox`;
-  const menuOptions = options;
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const closeIfOutside = (target: EventTarget | null) => {
-      if (!rootRef.current?.contains(target as Node)) {
-        setOpen(false);
-      }
-    };
-    const handlePointerDown = (event: PointerEvent) => closeIfOutside(event.target);
-    const handleFocusIn = (event: FocusEvent) => closeIfOutside(event.target);
-    const handleWindowBlur = () => setOpen(false);
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    document.addEventListener("focusin", handleFocusIn, true);
-    window.addEventListener("blur", handleWindowBlur);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-      document.removeEventListener("focusin", handleFocusIn, true);
-      window.removeEventListener("blur", handleWindowBlur);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!options.length) {
-      setOpen(false);
-    }
-  }, [options.length]);
-
-  const selectOption = (modelId: string) => {
-    onChange(modelId);
-    setOpen(false);
-  };
-
-  return (
-    <div className="editable-combo" ref={rootRef}>
-      <div className="editable-combo__control">
-        <TextInput
-          aria-autocomplete="list"
-          aria-controls={listboxId}
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
-          onFocus={() => {
-            if (options.length) {
-              setOpen(true);
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown" && options.length) {
-              event.preventDefault();
-              setOpen(true);
-            }
-            if (event.key === "Escape") {
-              setOpen(false);
-            }
-            if (event.key === "Enter" && open) {
-              event.preventDefault();
-              const exactMatch = menuOptions.find((option) => option.id === value);
-              if (exactMatch) {
-                selectOption(exactMatch.id);
-                return;
-              }
-              setOpen(false);
-            }
-          }}
-          placeholder={placeholder}
-          role="combobox"
-          value={value}
-        />
-        <IconButton
-          aria-expanded={open}
-          className="editable-combo__button"
-          disabled={disabled || !options.length}
-          label={placeholder}
-          onClick={() => setOpen((current) => (options.length ? !current : false))}
-        >
-          <ChevronDown aria-hidden className="icon-button__icon" />
-        </IconButton>
-      </div>
-      {open && options.length ? (
-        <div className="editable-combo__menu" id={listboxId} role="listbox">
-          {menuOptions.map((option) => (
-            <button
-              aria-selected={option.id === value}
-              className="editable-combo__option"
-              key={option.id}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => selectOption(option.id)}
-              role="option"
-              type="button"
-            >
-              <span className="editable-combo__option-main">
-                <span className="editable-combo__option-id">{option.id}</span>
-                {option.tags.length ? (
-                  <span className="editable-combo__option-tags">
-                    {option.tags.map((tag) => (
-                      <span className="llm-model-badge llm-model-badge--ghost" data-tag={tag} key={tag}>
-                        {capabilityLabel(tag)}
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function requiresTtsServerConfig(provider: string) {
@@ -957,9 +810,7 @@ export function ApiSettingsPage() {
               {selectedOption?.tags.length ? (
                 <div className="llm-model-badges">
                   {selectedOption.tags.map((tag) => (
-                    <span className="llm-model-badge" data-tag={tag} key={tag}>
-                      {capabilityLabel(tag)}
-                    </span>
+                    <ModelCapabilityBadge key={tag} tag={tag} />
                   ))}
                 </div>
               ) : null}

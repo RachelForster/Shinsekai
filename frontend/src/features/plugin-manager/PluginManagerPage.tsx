@@ -31,7 +31,7 @@ import type {
 import { openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
 import type { TaskSnapshot } from "../../shared/platform/types";
-import type { FieldKind, FormGroupSchema } from "../../shared/ui/formSchema";
+import type { FieldKind, FormGroupSchema } from "../../shared/form-schema";
 import {
   AlertDialog,
   AsyncButton,

@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 
 import { useI18n } from "../i18n";
+import type { FormFieldSchema, FormGroupSchema } from "../form-schema";
 import { ColorInput, FilePicker, NumberInput, Select, TextArea, TextInput } from "./FormControls";
-import type { FormFieldSchema, FormGroupSchema } from "./formSchema";
 
 export type SchemaErrorMap<T extends object> = Partial<Record<keyof T, string>>;
 
