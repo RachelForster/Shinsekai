@@ -242,14 +242,20 @@
 }
 
 .sprite-tag-input {
-  border-color: rgba(139, 233, 253, 0.58);
-  background: linear-gradient(90deg, rgba(139, 233, 253, 0.11), rgba(33, 37, 43, 0.82) 34%), var(--color-bg-sidebar);
-  box-shadow: inset 3px 0 0 rgba(139, 233, 253, 0.74);
+  border-color: rgba(189, 147, 249, 0.7);
+  box-shadow: 0 0 0 1px rgba(189, 147, 249, 0.22);
 }
 
-.sprite-tag-input:hover,
+.sprite-tag-input:hover {
+  border-color: rgba(189, 147, 249, 0.92);
+  box-shadow: 0 0 0 1px rgba(189, 147, 249, 0.34);
+}
+
 .sprite-tag-input:focus {
-  border-color: rgba(139, 233, 253, 0.86);
+  border-color: rgba(189, 147, 249, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(189, 147, 249, 0.34),
+    var(--focus-ring);
 }
 
 .sprite-tags-dialog {
