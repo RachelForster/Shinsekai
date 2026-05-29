@@ -22,6 +22,7 @@ import {
 } from "../../entities/background/repository";
 import type { Background } from "../../entities/config/types";
 import { fileUrl, openExternal } from "../../entities/files/repository";
+import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
 import {
   AsyncButton,
@@ -45,26 +46,6 @@ function createBackground(): Background {
     sprite_prefix: "temp",
     sprites: [],
   };
-}
-
-function baseName(path: string) {
-  return path.split(/[\\/]/).pop() || path;
-}
-
-function extractTagContent(line: string) {
-  const fullWidth = line.indexOf("：");
-  const ascii = line.indexOf(":");
-  const index = fullWidth >= 0 && ascii >= 0 ? Math.min(fullWidth, ascii) : Math.max(fullWidth, ascii);
-  return index >= 0 ? line.slice(index + 1).trim() : line.trim();
-}
-
-function numberedTags(prefix: string, tags: string[]) {
-  return tags.map((tag, index) => `${prefix} ${index + 1}：${tag}`).join("\n") + (tags.length ? "\n" : "");
-}
-
-function tagContents(block: string, count: number) {
-  const lines = block.split(/\r?\n/).filter(Boolean);
-  return Array.from({ length: count }, (_, index) => extractTagContent(lines[index] ?? ""));
 }
 
 const BGM_ROW_HEIGHT = 58;
