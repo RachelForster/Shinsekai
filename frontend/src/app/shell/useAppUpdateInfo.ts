@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { getAppUpdateInfo } from "./repository";
+import { getAppUpdateInfo } from "../../entities/plugin/repository";
 
 export const appUpdateInfoQueryKey = ["plugins", "app-update", "info"] as const;
 

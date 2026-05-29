@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-import { isPluginSlotId } from "./types";
-import type { PluginConfigGroupSchema, PluginSlotId } from "./types";
+import type { PluginConfigGroupSchema, PluginSlotId } from "../platform/types";
+import { isPluginSlotId } from "./slotIds";
 
 export interface PluginRenderContext {
   contributionId: string;
@@ -51,6 +51,7 @@ export function PluginSlot({ contributions = [], slot }: PluginSlotProps) {
   if (!items.length) {
     return null;
   }
+
   return (
     <>
       {items.map((item) => (

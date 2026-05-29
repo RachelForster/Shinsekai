@@ -1,7 +1,7 @@
 import { useIsFetching, useIsMutating } from "@tanstack/react-query";
 
-import { useAppUpdateInfo } from "../../entities/plugin/hooks";
 import { useI18n } from "../../shared/i18n";
+import { useAppUpdateInfo } from "./useAppUpdateInfo";
 
 export function BottomBar() {
   const fetching = useIsFetching();

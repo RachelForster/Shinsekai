@@ -2,8 +2,8 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Copy, History, Mic, MicOff, RotateCcw, Send, SkipForward, Trash2 } from "lucide-react";
 
 import { getChatSnapshot, getChatTheme, sendChatCommand, subscribeChat } from "../../entities/chat/repository";
-import { PluginSlot } from "../../entities/plugin/slots";
 import { useI18n } from "../../shared/i18n";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import type { ChatCommand, ChatSnapshot, ChatSprite } from "../../shared/platform/types";
 import { parseChatChromeTheme } from "../../shared/theme/chatChromeTheme";
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";

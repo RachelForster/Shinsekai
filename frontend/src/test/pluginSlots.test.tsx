@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { normalizePluginContributions, PluginSlot } from "../entities/plugin/slots";
-import type { PluginUIContribution } from "../entities/plugin/slots";
+import { normalizePluginContributions, PluginSlot } from "../shared/plugin/PluginSlot";
+import type { PluginUIContribution } from "../shared/plugin/PluginSlot";
 
 const validContribution: PluginUIContribution = {
   id: "demo.output",
