@@ -10,6 +10,7 @@ import {
   removeSpriteBackground,
 } from "../../entities/tools/repository";
 import { fileUrl } from "../../entities/files/repository";
+import { baseName } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
 import type { TaskSnapshot } from "../../shared/platform/types";
 import {
@@ -19,10 +20,12 @@ import {
   NumberInput,
   QueryErrorState,
   Select,
+  TaskProgress,
   TextArea,
   TextInput,
   useToast,
 } from "../../shared/ui";
+import "../settings-pages.css";
 
 function extractPrompt(line: string) {
   const trimmed = line.trim();
@@ -31,10 +34,6 @@ function extractPrompt(line: string) {
   }
   const match = trimmed.match(/^[^:：]+[:：]\s*(.+)$/);
   return (match?.[1] ?? trimmed).trim();
-}
-
-function basename(path: string) {
-  return path.split(/[\\/]/).filter(Boolean).pop() || path;
 }
 
 function GeneratedSpritePreview({ file }: { file: string }) {
@@ -49,7 +48,7 @@ function GeneratedSpritePreview({ file }: { file: string }) {
   }
 
   return (
-    <img alt={basename(file)} className="tool-gallery__thumb" onError={() => setFailed(true)} src={fileUrl(file)} />
+    <img alt={baseName(file)} className="tool-gallery__thumb" onError={() => setFailed(true)} src={fileUrl(file)} />
   );
 }
 
@@ -80,9 +79,6 @@ export function ToolsPage() {
   }, [characters, selectedCharacter]);
 
   const prompts = useMemo(() => promptText.split("\n").map(extractPrompt).filter(Boolean), [promptText]);
-  const taskProgress = toolTask?.progress == null ? null : Math.round(toolTask.progress * 100);
-  const taskLogs = toolTask?.logs.slice(-5) ?? [];
-
   const showOperationError = (error: unknown, title: string, fallback: string) => {
     showToast({
       kind: "error",
@@ -315,7 +311,7 @@ export function ToolsPage() {
                     <div className="tool-gallery__item" key={file} title={file}>
                       <GeneratedSpritePreview file={file} />
                       <div>
-                        <strong>{basename(file)}</strong>
+                        <strong>{baseName(file)}</strong>
                         <span>{file}</span>
                       </div>
                     </div>
@@ -403,21 +399,7 @@ export function ToolsPage() {
         </div>
       </section>
 
-      {toolTask ? (
-        <div className="task-progress" role="status" aria-live="polite">
-          <div className="task-progress__meta">
-            <strong>{toolTask.phase}</strong>
-            <span>{taskProgress == null ? toolTask.status : `${taskProgress}%`}</span>
-          </div>
-          {taskProgress == null ? null : (
-            <div className="task-progress__track" aria-hidden>
-              <span className="task-progress__fill" style={{ width: `${taskProgress}%` }} />
-            </div>
-          )}
-          <div className="task-progress__message">{toolTask.message || toolTask.status}</div>
-          {taskLogs.length ? <pre className="task-progress__log">{taskLogs.join("\n")}</pre> : null}
-        </div>
-      ) : null}
+      <TaskProgress logLimit={5} task={toolTask} />
 
       <TextArea className="tools-page__output" readOnly value={toolOutput} />
     </div>

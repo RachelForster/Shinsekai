@@ -8,6 +8,7 @@ import type { ChatCommand, ChatSnapshot, ChatSprite } from "../../shared/platfor
 import { parseChatChromeTheme } from "../../shared/theme/chatChromeTheme";
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
 import { AlertDialog, Button, IconButton, TextArea, ToolbarButton, useToast } from "../../shared/ui";
+import "./chat-stage.css";
 import { chatStageReducer, emptyChatState } from "./chatState";
 
 interface BrowserSpeechRecognition {

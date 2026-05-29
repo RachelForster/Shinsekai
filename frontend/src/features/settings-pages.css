@@ -521,67 +521,6 @@
   font-size: 12px;
 }
 
-.task-progress {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  background: rgba(33, 37, 43, 0.76);
-}
-
-.task-progress__meta {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.task-progress__meta strong {
-  overflow: hidden;
-  color: var(--color-text-primary);
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-progress__track {
-  height: 8px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--color-bg-input);
-}
-
-.task-progress__fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--color-accent-primary);
-  transition: width 160ms ease;
-}
-
-.task-progress__message {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--color-text-primary);
-}
-
-.task-progress__log {
-  max-height: 132px;
-  min-width: 0;
-  overflow: auto;
-  padding: var(--space-2);
-  margin: 0;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-  background: var(--color-bg-input);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  white-space: pre-wrap;
-}
-
 .swatch {
   width: 28px;
   height: 24px;

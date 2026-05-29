@@ -36,6 +36,7 @@ import {
   TextInput,
   useToast,
 } from "../../shared/ui";
+import "../settings-pages.css";
 
 function createBackground(): Background {
   return {

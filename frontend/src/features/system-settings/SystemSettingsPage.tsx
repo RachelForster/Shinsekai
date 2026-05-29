@@ -14,6 +14,7 @@ import type { SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton, EmptyState, QueryErrorState, SchemaDrivenForm, useToast } from "../../shared/ui";
+import "../settings-pages.css";
 
 const systemConfigPageSchema = systemConfigFormSchema
   .map((group) => {

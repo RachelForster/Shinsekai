@@ -43,8 +43,10 @@ import {
   SchemaDrivenForm,
   SegmentedTabs,
   Select,
+  TaskProgress,
   useToast,
 } from "../../shared/ui";
+import "../settings-pages.css";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 
 type PluginView = "installed" | "discover" | "mcp";
@@ -372,10 +374,6 @@ export function PluginManagerPage() {
     },
   });
 
-  const installProgress = installTask?.progress == null ? null : Math.round(installTask.progress * 100);
-  const installLogs = installTask?.logs.slice(-6) ?? [];
-  const appUpdateProgress = appUpdateTask?.progress == null ? null : Math.round(appUpdateTask.progress * 100);
-  const appUpdateLogs = appUpdateTask?.logs.slice(-6) ?? [];
   const appUpdateInfo = appUpdateInfoQuery.data;
   const fallbackDetailPages = useMemo(() => fallbackPluginUiPages(detailPlugin), [detailPlugin]);
   const detailPages = pluginDetailQuery.data?.pages ?? fallbackDetailPages;
@@ -678,36 +676,8 @@ export function PluginManagerPage() {
               </Button>
             </div>
           </div>
-          {appUpdateTask ? (
-            <div className="task-progress" role="status" aria-live="polite">
-              <div className="task-progress__meta">
-                <strong>{appUpdateTask.phase}</strong>
-                <span>{appUpdateProgress == null ? appUpdateTask.status : `${appUpdateProgress}%`}</span>
-              </div>
-              {appUpdateProgress == null ? null : (
-                <div className="task-progress__track" aria-hidden>
-                  <span className="task-progress__fill" style={{ width: `${appUpdateProgress}%` }} />
-                </div>
-              )}
-              <div className="task-progress__message">{appUpdateTask.message || appUpdateTask.status}</div>
-              {appUpdateLogs.length ? <pre className="task-progress__log">{appUpdateLogs.join("\n")}</pre> : null}
-            </div>
-          ) : null}
-          {installTask ? (
-            <div className="task-progress" role="status" aria-live="polite">
-              <div className="task-progress__meta">
-                <strong>{installTask.phase}</strong>
-                <span>{installProgress == null ? installTask.status : `${installProgress}%`}</span>
-              </div>
-              {installProgress == null ? null : (
-                <div className="task-progress__track" aria-hidden>
-                  <span className="task-progress__fill" style={{ width: `${installProgress}%` }} />
-                </div>
-              )}
-              <div className="task-progress__message">{installTask.message || installTask.status}</div>
-              {installLogs.length ? <pre className="task-progress__log">{installLogs.join("\n")}</pre> : null}
-            </div>
-          ) : null}
+          <TaskProgress task={appUpdateTask} />
+          <TaskProgress task={installTask} />
           {appUpdateInfoQuery.isError ? (
             <QueryErrorState
               body={t("plugin.appUpdate.failed")}

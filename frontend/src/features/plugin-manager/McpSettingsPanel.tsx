@@ -22,6 +22,7 @@ import {
   NumberInput,
   QueryErrorState,
   Select,
+  TaskProgress,
   TextArea,
   TextInput,
   useToast,
@@ -86,32 +87,6 @@ function connectionSummary(server: McpServerEntry) {
     return [server.command, ...head, suffix].filter(Boolean).join(" ");
   }
   return server.url ?? "";
-}
-
-function previewTaskPercent(task: TaskSnapshot | null) {
-  return task?.progress == null ? null : Math.round(task.progress * 100);
-}
-
-function McpTaskProgress({ task }: { task: TaskSnapshot | null }) {
-  const percent = previewTaskPercent(task);
-  if (!task) {
-    return null;
-  }
-  return (
-    <div className="task-progress" role="status" aria-live="polite">
-      <div className="task-progress__meta">
-        <strong>{task.phase}</strong>
-        <span>{percent == null ? task.status : `${percent}%`}</span>
-      </div>
-      {percent == null ? null : (
-        <div className="task-progress__track" aria-hidden>
-          <span className="task-progress__fill" style={{ width: `${percent}%` }} />
-        </div>
-      )}
-      <div className="task-progress__message">{task.message || task.status}</div>
-      {task.logs.length ? <pre className="task-progress__log">{task.logs.slice(-6).join("\n")}</pre> : null}
-    </div>
-  );
 }
 
 function importMcpServers(rawText: string): McpServerEntry[] {
@@ -610,7 +585,7 @@ export function McpSettingsPanel() {
             </span>
           </label>
         </div>
-        <McpTaskProgress task={applyTask} />
+        <TaskProgress task={applyTask} />
       </section>
 
       <section className="section">
@@ -653,7 +628,7 @@ export function McpSettingsPanel() {
             {t("mcp.action.previewTools")}
           </AsyncButton>
         </div>
-        <McpTaskProgress task={previewTask} />
+        <TaskProgress task={previewTask} />
         {tools.length ? (
           <DataTable columns={toolColumns} getRowKey={(tool) => tool.registered_name || tool.name} rows={tools} />
         ) : (

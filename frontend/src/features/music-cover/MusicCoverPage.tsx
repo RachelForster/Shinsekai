@@ -18,10 +18,12 @@ import {
   PathDisplay,
   QueryErrorState,
   Select,
+  TaskProgress,
   TextArea,
   TextInput,
   useToast,
 } from "../../shared/ui";
+import "../settings-pages.css";
 
 function musicCoverConfigFromSystem(systemConfig: SystemConfig): MusicCoverConfigInput {
   return {
@@ -451,25 +453,7 @@ export function MusicCoverPage() {
                 </label>
               </span>
             </label>
-            {musicTask ? (
-              <div className="task-progress" role="status" aria-live="polite">
-                <div className="task-progress__meta">
-                  <strong>{musicTask.phase}</strong>
-                  <span>
-                    {musicTask.progress == null ? musicTask.status : `${Math.round(musicTask.progress * 100)}%`}
-                  </span>
-                </div>
-                {musicTask.progress == null ? null : (
-                  <div className="task-progress__track" aria-hidden>
-                    <span
-                      className="task-progress__fill"
-                      style={{ width: `${Math.round(musicTask.progress * 100)}%` }}
-                    />
-                  </div>
-                )}
-                <div className="task-progress__message">{musicTask.message || musicTask.status}</div>
-              </div>
-            ) : null}
+            <TaskProgress logLimit={0} task={musicTask} />
             <label className="field-row field-row--stack">
               <span className="field-row__label">日志</span>
               <span className="field-row__control">

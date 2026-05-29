@@ -31,6 +31,7 @@ import {
   TextInput,
   useToast,
 } from "../../shared/ui";
+import "../settings-pages.css";
 
 const voiceLanguages = [
   { labelKey: "system.asr.langJa", value: "ja" },

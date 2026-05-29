@@ -44,9 +44,11 @@ import {
   SchemaDrivenForm,
   SchemaFieldGrid,
   Select,
+  TaskProgress,
   TextInput,
   useToast,
 } from "../../shared/ui";
+import "../settings-pages.css";
 
 type UiLanguage = "zh_CN" | "en" | "ja";
 
@@ -667,7 +669,6 @@ export function ApiSettingsPage() {
   const availableModelOptions = mergeModelOptions(modelOptions, activeModel ? [{ id: activeModel, tags: [] }] : []);
   const selectedOption = availableModelOptions.find((option) => option.id === activeModel);
   const modelCandidateListId = "llm-model-candidates";
-  const ttsBundleProgress = ttsBundleTask?.progress == null ? null : Math.round(ttsBundleTask.progress * 100);
   const activeAsrProvider = normalizeAsrProvider(systemDraft.asr_provider);
   const asrProviderSelectOptions = withCurrentOption(
     adapterCatalog?.asr?.length
@@ -1028,20 +1029,7 @@ export function ApiSettingsPage() {
             </span>
           </label>
         </div>
-        {ttsBundleTask ? (
-          <div className="task-progress" role="status" aria-live="polite">
-            <div className="task-progress__meta">
-              <strong>{ttsBundleTask.phase}</strong>
-              <span>{ttsBundleProgress == null ? ttsBundleTask.status : `${ttsBundleProgress}%`}</span>
-            </div>
-            {ttsBundleProgress == null ? null : (
-              <div className="task-progress__track" aria-hidden>
-                <span className="task-progress__fill" style={{ width: `${ttsBundleProgress}%` }} />
-              </div>
-            )}
-            <div className="task-progress__message">{ttsBundleTask.message || ttsBundleTask.status}</div>
-          </div>
-        ) : null}
+        <TaskProgress logLimit={0} task={ttsBundleTask} />
       </section>
       <SchemaDrivenForm
         collapsedGroupIds={["llm", "t2i"]}

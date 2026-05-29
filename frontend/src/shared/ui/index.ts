@@ -12,4 +12,5 @@ export * from "./PathPickerDialog";
 export * from "./QueryErrorState";
 export * from "./SchemaDrivenForm";
 export * from "./SegmentedTabs";
+export * from "./TaskProgress";
 export * from "./Toast";
