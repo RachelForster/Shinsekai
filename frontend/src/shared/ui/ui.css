@@ -206,6 +206,7 @@
 }
 
 .path-display__prefix {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--color-text-muted);
@@ -214,11 +215,20 @@
 }
 
 .path-display__name {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 100%;
+  direction: rtl;
   overflow: hidden;
+  text-align: left;
   text-overflow: ellipsis;
+  unicode-bidi: plaintext;
   white-space: nowrap;
+}
+
+.path-display[data-has-prefix="true"] .path-display__name {
+  min-width: min(14ch, 52%);
+  max-width: 58%;
 }
 
 .path-display--input {

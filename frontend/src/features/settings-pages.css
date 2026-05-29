@@ -217,6 +217,22 @@
   border: 1px solid var(--color-border);
 }
 
+.character-color-control .input {
+  min-width: 96px;
+}
+
+.character-color-control .button {
+  flex: 0 0 auto;
+}
+
+.character-scale-control {
+  align-items: stretch;
+}
+
+.character-scale-control .input {
+  max-width: 140px;
+}
+
 .page__file-picker {
   width: min(360px, 100%);
 }

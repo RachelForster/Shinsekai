@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { WheelEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Brain,
@@ -122,6 +123,14 @@ function extractTagContent(line: string) {
 function tagContents(block: string, count: number) {
   const lines = block.split(/\r?\n/).filter(Boolean);
   return Array.from({ length: count }, (_, index) => extractTagContent(lines[index] ?? ""));
+}
+
+const SPRITE_SCALE_MIN = 0;
+const SPRITE_SCALE_MAX = 3;
+const SPRITE_SCALE_STEP = 0.05;
+
+function clampSpriteScale(value: number) {
+  return Math.min(SPRITE_SCALE_MAX, Math.max(SPRITE_SCALE_MIN, Number(value.toFixed(2))));
 }
 
 export function CharacterEditorPage() {
@@ -324,12 +333,12 @@ export function CharacterEditorPage() {
   });
 
   const voiceUploadMutation = useMutation({
-    mutationFn: ({ index, sprite }: { index: number; sprite: Sprite }) =>
+    mutationFn: ({ index, voicePath, voiceText }: { index: number; voicePath: string; voiceText: string }) =>
       uploadSpriteVoice({
         name: currentCharacterName,
         spriteIndex: index,
-        voicePath: pendingVoicePaths[index] ?? "",
-        voiceText: sprite.voice_text ?? "",
+        voicePath,
+        voiceText,
       }),
     onError(error) {
       showToast({
@@ -499,6 +508,14 @@ export function CharacterEditorPage() {
       sprites[index] = { ...sprites[index], ...patch };
       return { ...current, sprites };
     });
+  };
+
+  const handleSpriteScaleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const direction = event.deltaY < 0 ? 1 : -1;
+    const current = Number(draft.sprite_scale) || 0;
+    update("sprite_scale", clampSpriteScale(current + direction * SPRITE_SCALE_STEP));
   };
 
   const saveDraft = () => {
@@ -756,7 +773,7 @@ export function CharacterEditorPage() {
               <label className="field-row">
                 <span className="field-row__label">{t("character.field.color")}</span>
                 <span className="field-row__control">
-                  <div className="input-group">
+                  <div className="input-group character-color-control">
                     <TextInput onChange={(event) => update("color", event.target.value)} value={draft.color} />
                     <span aria-hidden className="swatch" style={{ background: draft.color }} />
                     <Button
@@ -1012,12 +1029,12 @@ export function CharacterEditorPage() {
               <label className="field-row field-row--stack">
                 <span className="field-row__label">{t("character.field.spriteScale")}</span>
                 <span className="field-row__control">
-                  <div className="input-group">
+                  <div className="input-group character-scale-control" onWheel={handleSpriteScaleWheel}>
                     <NumberInput
-                      max={3}
-                      min={0}
+                      max={SPRITE_SCALE_MAX}
+                      min={SPRITE_SCALE_MIN}
                       onChange={(event) => update("sprite_scale", Number(event.target.value))}
-                      step={0.05}
+                      step={SPRITE_SCALE_STEP}
                       value={draft.sprite_scale}
                     />
                     <AsyncButton
@@ -1137,11 +1154,24 @@ export function CharacterEditorPage() {
                       <AsyncButton
                         loading={voiceUploadMutation.isPending}
                         onClick={() => {
-                          if (!currentCharacterName || !pendingVoicePaths[selectedSpriteIndex]) {
+                          const voicePath = pendingVoicePaths[selectedSpriteIndex]?.trim() ?? "";
+                          if (!isSavedCharacter) {
+                            showToast({
+                              kind: "error",
+                              message: t("character.validation.nameRequired"),
+                              title: t("character.sprite.uploadVoice"),
+                            });
+                            return;
+                          }
+                          if (!voicePath) {
                             showToast({ kind: "error", title: t("character.sprite.voiceUploadPath") });
                             return;
                           }
-                          voiceUploadMutation.mutate({ index: selectedSpriteIndex, sprite: selectedSprite });
+                          voiceUploadMutation.mutate({
+                            index: selectedSpriteIndex,
+                            voicePath,
+                            voiceText: selectedSprite.voice_text ?? "",
+                          });
                         }}
                         variant="ghost"
                       >
