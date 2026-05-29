@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Play, RotateCw, Save } from "lucide-react";
+import { ChevronDown, ChevronRight, Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
@@ -405,6 +405,26 @@ export function TemplateEditorPage() {
     );
   };
 
+  const handleGenerateTemplate = () => {
+    if (!selectedBackground) {
+      showToast({
+        kind: "error",
+        message: t("template.validation.backgroundRequired"),
+        title: t("template.mode.generate"),
+      });
+      return;
+    }
+    if (!selectedCharacters.length) {
+      showToast({
+        kind: "error",
+        message: t("template.validation.charactersRequired"),
+        title: t("template.mode.generate"),
+      });
+      return;
+    }
+    generateMutation.mutate({ silent: false });
+  };
+
   const templateOptions = [
     { key: "effect", label: t("template.field.useEffect"), setValue: setUseEffectPrompt, value: useEffectPrompt },
     {
@@ -469,6 +489,24 @@ export function TemplateEditorPage() {
           <section className="section">
             <div className="section__header">
               <h2 className="section__title">{t("template.section.generate")}</h2>
+              <div className="template-generate-actions">
+                <Button
+                  disabled={!characters.length}
+                  icon={<Users aria-hidden className="button__icon" />}
+                  onClick={() => setSelectedCharacters(characters.map((character) => character.name))}
+                  variant="ghost"
+                >
+                  {t("template.action.selectAllCharacters")}
+                </Button>
+                <AsyncButton
+                  icon={<Sparkles aria-hidden className="button__icon" />}
+                  loading={generateMutation.isPending}
+                  onClick={handleGenerateTemplate}
+                  variant="primary"
+                >
+                  {t("template.mode.generate")}
+                </AsyncButton>
+              </div>
             </div>
             <div className="form-grid form-grid--two">
               <label className="field-row">
@@ -529,26 +567,38 @@ export function TemplateEditorPage() {
 
             <div className="template-option-grid">
               {templateOptions.map((option) => (
-                <fieldset className="radio-row" key={option.key}>
+                <fieldset className="template-toggle-row" key={option.key}>
                   <legend>{option.label}</legend>
-                  <label>
-                    <input
-                      checked={option.value}
-                      name={`template-${option.key}`}
-                      onChange={() => option.setValue(true)}
-                      type="radio"
-                    />
-                    <span>{t("common.yes")}</span>
-                  </label>
-                  <label>
-                    <input
-                      checked={!option.value}
-                      name={`template-${option.key}`}
-                      onChange={() => option.setValue(false)}
-                      type="radio"
-                    />
-                    <span>{t("common.no")}</span>
-                  </label>
+                  <div className="template-toggle-row__choices">
+                    <label
+                      className={["template-toggle-row__choice", option.value ? "is-selected" : ""]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      <input
+                        className="visually-hidden"
+                        checked={option.value}
+                        name={`template-${option.key}`}
+                        onChange={() => option.setValue(true)}
+                        type="radio"
+                      />
+                      <span>{t("common.yes")}</span>
+                    </label>
+                    <label
+                      className={["template-toggle-row__choice", !option.value ? "is-selected" : ""]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      <input
+                        className="visually-hidden"
+                        checked={!option.value}
+                        name={`template-${option.key}`}
+                        onChange={() => option.setValue(false)}
+                        type="radio"
+                      />
+                      <span>{t("common.no")}</span>
+                    </label>
+                  </div>
                 </fieldset>
               ))}
             </div>
@@ -621,7 +671,7 @@ export function TemplateEditorPage() {
               <label className="field-row">
                 <span className="field-row__label">{t("template.field.templateName")}</span>
                 <span className="field-row__control">
-                  <div className="input-group">
+                  <div className="input-group template-name-row">
                     <TextInput
                       className={nameError ? "input--error" : ""}
                       onChange={(event) => {
@@ -664,7 +714,7 @@ export function TemplateEditorPage() {
                 </span>
               </label>
             </div>
-            <div className="page__actions page__actions--left">
+            <div className="page__actions page__actions--left template-run-actions">
               <AsyncButton
                 icon={<Play aria-hidden className="button__icon" />}
                 loading={launchMutation.isPending}
