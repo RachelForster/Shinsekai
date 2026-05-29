@@ -233,6 +233,29 @@
   max-width: 140px;
 }
 
+.sprite-tag-row {
+  align-items: stretch;
+}
+
+.sprite-tag-row .button {
+  flex: 0 0 128px;
+}
+
+.sprite-tags-dialog {
+  width: min(560px, 100%);
+}
+
+.sprite-tags-dialog__body {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sprite-tags-dialog__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
 .page__file-picker {
   width: min(360px, 100%);
 }

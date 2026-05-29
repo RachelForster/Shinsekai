@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Save,
   Sparkles,
+  Tags,
   Trash2,
   Upload,
   Volume2,
@@ -46,6 +47,7 @@ import {
   AlertDialog,
   AsyncButton,
   Button,
+  Dialog,
   EmptyState,
   FilePicker,
   ImageAssetGallery,
@@ -125,6 +127,10 @@ function tagContents(block: string, count: number) {
   return Array.from({ length: count }, (_, index) => extractTagContent(lines[index] ?? ""));
 }
 
+function numberedTags(prefix: string, tags: string[]) {
+  return tags.map((tag, index) => `${prefix} ${index + 1}：${tag}`).join("\n") + (tags.length ? "\n" : "");
+}
+
 const SPRITE_SCALE_MIN = 0;
 const SPRITE_SCALE_MAX = 3;
 const SPRITE_SCALE_STEP = 0.05;
@@ -148,6 +154,8 @@ export function CharacterEditorPage() {
   const [pendingSpritePaths, setPendingSpritePaths] = useState<string[]>([]);
   const [pendingVoicePaths, setPendingVoicePaths] = useState<Record<number, string>>({});
   const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
+  const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
+  const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
   const [memoryInput, setMemoryInput] = useState("");
@@ -510,6 +518,19 @@ export function CharacterEditorPage() {
     });
   };
 
+  const updateSpriteTag = (index: number, value: string) => {
+    setDraft((current) => {
+      const tags = tagContents(current.emotion_tags, current.sprites.length);
+      tags[index] = value;
+      return { ...current, emotion_tags: numberedTags("立绘", tags) };
+    });
+  };
+
+  const openBulkSpriteTagsDialog = () => {
+    setBulkSpriteTagsDraft(draft.emotion_tags);
+    setBulkSpriteTagsOpen(true);
+  };
+
   const handleSpriteScaleWheel = (event: WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -576,6 +597,7 @@ export function CharacterEditorPage() {
     [draft.emotion_tags, draft.sprites.length],
   );
   const selectedSprite = draft.sprites[selectedSpriteIndex];
+  const selectedSpriteTag = spriteTags[selectedSpriteIndex] ?? "";
   const spriteGalleryItems = useMemo(
     () =>
       draft.sprites.map((sprite, index) => ({
@@ -990,6 +1012,14 @@ export function CharacterEditorPage() {
                   {t("character.sprite.uploadImages")}
                 </AsyncButton>
                 <Button
+                  disabled={!draft.sprites.length}
+                  icon={<Tags aria-hidden className="button__icon" />}
+                  onClick={openBulkSpriteTagsDialog}
+                  variant="ghost"
+                >
+                  {t("character.sprite.batchTags")}
+                </Button>
+                <Button
                   icon={<Trash2 aria-hidden className="button__icon" />}
                   onClick={() => {
                     if (!isSavedCharacter || !draft.sprites.length) {
@@ -1056,34 +1086,6 @@ export function CharacterEditorPage() {
                   </div>
                 </span>
               </label>
-              <label className="field-row field-row--stack">
-                <span className="field-row__label">{t("character.field.emotionTags")}</span>
-                <span className="field-row__control">
-                  <TextArea
-                    onChange={(event) => update("emotion_tags", event.target.value)}
-                    value={draft.emotion_tags}
-                  />
-                  <div className="page__actions page__actions--left">
-                    <AsyncButton
-                      loading={emotionTagsMutation.isPending}
-                      onClick={() => {
-                        if (!isSavedCharacter || !draft.emotion_tags) {
-                          showToast({
-                            kind: "error",
-                            message: t("common.fixInvalidFields"),
-                            title: t("character.sprite.saveTags"),
-                          });
-                          return;
-                        }
-                        emotionTagsMutation.mutate();
-                      }}
-                      variant="ghost"
-                    >
-                      {t("character.sprite.saveTags")}
-                    </AsyncButton>
-                  </div>
-                </span>
-              </label>
               {!draft.sprites.length ? <EmptyState title={t("character.sprite.empty")} /> : null}
               {selectedSprite ? (
                 <div className="asset-gallery-layout asset-gallery-layout--character">
@@ -1100,6 +1102,34 @@ export function CharacterEditorPage() {
                         <ImageIcon aria-hidden className="asset-inspector__fallback" />
                       )}
                     </div>
+                    <label className="field-row field-row--stack">
+                      <span className="field-row__label">{t("character.sprite.tag")}</span>
+                      <span className="field-row__control">
+                        <div className="input-group sprite-tag-row">
+                          <TextInput
+                            onChange={(event) => updateSpriteTag(selectedSpriteIndex, event.target.value)}
+                            value={selectedSpriteTag}
+                          />
+                          <AsyncButton
+                            loading={emotionTagsMutation.isPending}
+                            onClick={() => {
+                              if (!isSavedCharacter || !draft.emotion_tags) {
+                                showToast({
+                                  kind: "error",
+                                  message: t("common.fixInvalidFields"),
+                                  title: t("character.sprite.saveTags"),
+                                });
+                                return;
+                              }
+                              emotionTagsMutation.mutate();
+                            }}
+                            variant="ghost"
+                          >
+                            {t("character.sprite.saveTags")}
+                          </AsyncButton>
+                        </div>
+                      </span>
+                    </label>
                     <label className="field-row field-row--stack">
                       <span className="field-row__label">{t("character.sprite.path")}</span>
                       <span className="field-row__control">
@@ -1279,6 +1309,41 @@ export function CharacterEditorPage() {
           </section>
         </section>
       </div>
+
+      <Dialog
+        bodyClassName="sprite-tags-dialog__body"
+        className="sprite-tags-dialog"
+        closeLabel={t("common.close")}
+        footer={
+          <>
+            <Button onClick={() => setBulkSpriteTagsOpen(false)}>{t("common.cancel")}</Button>
+            <Button
+              onClick={() => {
+                update("emotion_tags", bulkSpriteTagsDraft);
+                setBulkSpriteTagsOpen(false);
+              }}
+              variant="primary"
+            >
+              {t("common.confirm")}
+            </Button>
+          </>
+        }
+        onClose={() => setBulkSpriteTagsOpen(false)}
+        open={bulkSpriteTagsOpen}
+        title={t("character.sprite.batchTagsTitle")}
+      >
+        <label className="field-row field-row--stack">
+          <span className="field-row__label">{t("character.field.emotionTags")}</span>
+          <span className="field-row__control">
+            <TextArea
+              onChange={(event) => setBulkSpriteTagsDraft(event.target.value)}
+              rows={12}
+              value={bulkSpriteTagsDraft}
+            />
+          </span>
+        </label>
+        <p className="sprite-tags-dialog__hint">{t("character.sprite.batchTagsHelp")}</p>
+      </Dialog>
 
       <AlertDialog
         body={t("character.delete.confirmBody", { name: pendingDelete ?? "" })}

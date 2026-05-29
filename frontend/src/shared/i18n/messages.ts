@@ -167,6 +167,9 @@ export type MessageKey =
   | "character.section.sprites"
   | "character.section.voice"
   | "character.sprite.add"
+  | "character.sprite.batchTags"
+  | "character.sprite.batchTagsHelp"
+  | "character.sprite.batchTagsTitle"
   | "character.sprite.clear"
   | "character.sprite.empty"
   | "character.sprite.hasVoice"
@@ -177,6 +180,7 @@ export type MessageKey =
   | "character.sprite.saveTags"
   | "character.sprite.selectImages"
   | "character.sprite.selectedFiles"
+  | "character.sprite.tag"
   | "character.sprite.deleteVoice"
   | "character.sprite.saveVoiceText"
   | "character.sprite.uploadVoice"
@@ -225,6 +229,7 @@ export type MessageKey =
   | "common.chooseFile"
   | "common.chooseFolder"
   | "common.close"
+  | "common.confirm"
   | "common.delete"
   | "common.deleteFailed"
   | "common.description"
@@ -715,6 +720,10 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.section.sprites": "Sprites",
     "character.section.voice": "Voice reference (SoVITS, optional)",
     "character.sprite.add": "Add sprite row",
+    "character.sprite.batchTags": "Batch tags",
+    "character.sprite.batchTagsHelp":
+      "Paste one numbered tag per line. Confirm applies the text to the current character; use Upload tags to save.",
+    "character.sprite.batchTagsTitle": "Batch sprite tags",
     "character.sprite.clear": "Delete all sprites",
     "character.sprite.empty": "No sprites",
     "character.sprite.hasVoice": "Voice",
@@ -725,6 +734,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.saveTags": "Upload tags",
     "character.sprite.selectImages": "Choose images...",
     "character.sprite.selectedFiles": "{count} files selected",
+    "character.sprite.tag": "Sprite tag",
     "character.sprite.deleteVoice": "Delete voice",
     "character.sprite.saveVoiceText": "Save text",
     "character.sprite.uploadVoice": "Upload voice",
@@ -774,6 +784,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "common.chooseFile": "Choose file",
     "common.chooseFolder": "Choose folder",
     "common.close": "Close",
+    "common.confirm": "Confirm",
     "common.delete": "Delete",
     "common.deleteFailed": "Delete failed",
     "common.description": "Description",
@@ -1272,6 +1283,10 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.section.sprites": "立ち絵",
     "character.section.voice": "声の参照（SoVITS 等・任意）",
     "character.sprite.add": "立ち絵行を追加",
+    "character.sprite.batchTags": "タグを一括編集",
+    "character.sprite.batchTagsHelp":
+      "番号付きタグを 1 行ずつ貼り付けます。確定で現在のキャラクターに反映し、タグをアップロードで保存します。",
+    "character.sprite.batchTagsTitle": "立ち絵タグの一括編集",
     "character.sprite.clear": "立ち絵をすべて削除",
     "character.sprite.empty": "立ち絵がありません",
     "character.sprite.hasVoice": "音声あり",
@@ -1282,6 +1297,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.saveTags": "タグをアップロード",
     "character.sprite.selectImages": "画像を選択...",
     "character.sprite.selectedFiles": "{count} 件を選択中",
+    "character.sprite.tag": "立ち絵タグ",
     "character.sprite.deleteVoice": "音声を削除",
     "character.sprite.saveVoiceText": "テキスト保存",
     "character.sprite.uploadVoice": "音声をアップロード",
@@ -1331,6 +1347,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "common.chooseFile": "ファイルを選択",
     "common.chooseFolder": "フォルダを選択",
     "common.close": "閉じる",
+    "common.confirm": "確定",
     "common.delete": "削除",
     "common.deleteFailed": "削除失敗",
     "common.description": "説明",
@@ -1825,6 +1842,9 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.section.sprites": "立绘管理",
     "character.section.voice": "语音模型参考（SoVITS 等，可选）",
     "character.sprite.add": "添加立绘行",
+    "character.sprite.batchTags": "批量立绘标注",
+    "character.sprite.batchTagsHelp": "每行填写一个带编号的标注。确定后先应用到当前角色，再点击上传立绘标注保存。",
+    "character.sprite.batchTagsTitle": "批量编辑立绘标注",
     "character.sprite.clear": "删除所有立绘",
     "character.sprite.empty": "暂无立绘",
     "character.sprite.hasVoice": "有语音",
@@ -1835,6 +1855,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.saveTags": "上传立绘标注",
     "character.sprite.selectImages": "选择立绘图片...",
     "character.sprite.selectedFiles": "已选择 {count} 个文件",
+    "character.sprite.tag": "立绘关键字标注",
     "character.sprite.deleteVoice": "删除语音",
     "character.sprite.saveVoiceText": "保存文本",
     "character.sprite.uploadVoice": "上传语音",
@@ -1883,6 +1904,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "common.chooseFile": "选择文件",
     "common.chooseFolder": "选择文件夹",
     "common.close": "关闭",
+    "common.confirm": "确定",
     "common.delete": "删除",
     "common.deleteFailed": "删除失败",
     "common.description": "说明",
