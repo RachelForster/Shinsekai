@@ -5,6 +5,38 @@ export default defineConfig({
   plugins: [react()],
   build: {
     assetsDir: "web-assets",
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const moduleId = id.replace(/\\/g, "/");
+          const has = (value: string) => moduleId.indexOf(value) >= 0;
+
+          if (!has("/node_modules/")) {
+            return undefined;
+          }
+
+          if (
+            has("/react/") ||
+            has("/react-dom/") ||
+            has("/react-router/") ||
+            has("/react-router-dom/") ||
+            has("/scheduler/")
+          ) {
+            return "react-vendor";
+          }
+
+          if (has("/@tanstack/")) {
+            return "query-vendor";
+          }
+
+          if (has("/lucide-react/")) {
+            return "icon-vendor";
+          }
+
+          return "vendor";
+        },
+      },
+    },
   },
   server: {
     host: "127.0.0.1",

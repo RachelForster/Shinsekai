@@ -1,16 +1,71 @@
+import { lazy, Suspense } from "react";
+import type { ReactNode } from "react";
 import { Navigate, Route, Routes, HashRouter } from "react-router-dom";
 
 import { AppShell } from "../shell/AppShell";
-import { ApiSettingsPage } from "../../features/api-settings/ApiSettingsPage";
-import { BackgroundManagerPage } from "../../features/background-manager/BackgroundManagerPage";
-import { CharacterEditorPage } from "../../features/character-editor/CharacterEditorPage";
-import { ChatLauncherPage } from "../../features/chat-launcher/ChatLauncherPage";
-import { ChatStagePage } from "../../features/chat-stage/ChatStagePage";
-import { MusicCoverPage } from "../../features/music-cover/MusicCoverPage";
-import { PluginManagerPage } from "../../features/plugin-manager/PluginManagerPage";
-import { SystemSettingsPage } from "../../features/system-settings/SystemSettingsPage";
-import { TemplateEditorPage } from "../../features/template-editor/TemplateEditorPage";
-import { ToolsPage } from "../../features/tools/ToolsPage";
+
+const ApiSettingsPage = lazy(() =>
+  import("../../features/api-settings/ApiSettingsPage").then(({ ApiSettingsPage }) => ({
+    default: ApiSettingsPage,
+  })),
+);
+const BackgroundManagerPage = lazy(() =>
+  import("../../features/background-manager/BackgroundManagerPage").then(({ BackgroundManagerPage }) => ({
+    default: BackgroundManagerPage,
+  })),
+);
+const CharacterEditorPage = lazy(() =>
+  import("../../features/character-editor/CharacterEditorPage").then(({ CharacterEditorPage }) => ({
+    default: CharacterEditorPage,
+  })),
+);
+const ChatLauncherPage = lazy(() =>
+  import("../../features/chat-launcher/ChatLauncherPage").then(({ ChatLauncherPage }) => ({
+    default: ChatLauncherPage,
+  })),
+);
+const ChatStagePage = lazy(() =>
+  import("../../features/chat-stage/ChatStagePage").then(({ ChatStagePage }) => ({
+    default: ChatStagePage,
+  })),
+);
+const MusicCoverPage = lazy(() =>
+  import("../../features/music-cover/MusicCoverPage").then(({ MusicCoverPage }) => ({
+    default: MusicCoverPage,
+  })),
+);
+const PluginManagerPage = lazy(() =>
+  import("../../features/plugin-manager/PluginManagerPage").then(({ PluginManagerPage }) => ({
+    default: PluginManagerPage,
+  })),
+);
+const SystemSettingsPage = lazy(() =>
+  import("../../features/system-settings/SystemSettingsPage").then(({ SystemSettingsPage }) => ({
+    default: SystemSettingsPage,
+  })),
+);
+const TemplateEditorPage = lazy(() =>
+  import("../../features/template-editor/TemplateEditorPage").then(({ TemplateEditorPage }) => ({
+    default: TemplateEditorPage,
+  })),
+);
+const ToolsPage = lazy(() =>
+  import("../../features/tools/ToolsPage").then(({ ToolsPage }) => ({
+    default: ToolsPage,
+  })),
+);
+
+function RouteLoader() {
+  return <div aria-hidden className="route-loading" />;
+}
+
+function LazyRoute({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<RouteLoader />}>{children}</Suspense>;
+}
+
+function lazyRouteElement(children: ReactNode) {
+  return <LazyRoute>{children}</LazyRoute>;
+}
 
 export function AppRoutes() {
   return (
@@ -18,17 +73,17 @@ export function AppRoutes() {
       <Routes>
         <Route element={<AppShell />} path="/settings">
           <Route element={<Navigate replace to="/settings/api" />} index />
-          <Route element={<ApiSettingsPage />} path="api" />
-          <Route element={<CharacterEditorPage />} path="characters" />
-          <Route element={<BackgroundManagerPage />} path="backgrounds" />
-          <Route element={<TemplateEditorPage />} path="templates" />
-          <Route element={<PluginManagerPage />} path="plugins" />
-          <Route element={<ToolsPage />} path="tools" />
-          <Route element={<MusicCoverPage />} path="music-cover" />
-          <Route element={<ChatLauncherPage />} path="launch" />
-          <Route element={<SystemSettingsPage />} path="system" />
+          <Route element={lazyRouteElement(<ApiSettingsPage />)} path="api" />
+          <Route element={lazyRouteElement(<CharacterEditorPage />)} path="characters" />
+          <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
+          <Route element={lazyRouteElement(<TemplateEditorPage />)} path="templates" />
+          <Route element={lazyRouteElement(<PluginManagerPage />)} path="plugins" />
+          <Route element={lazyRouteElement(<ToolsPage />)} path="tools" />
+          <Route element={lazyRouteElement(<MusicCoverPage />)} path="music-cover" />
+          <Route element={lazyRouteElement(<ChatLauncherPage />)} path="launch" />
+          <Route element={lazyRouteElement(<SystemSettingsPage />)} path="system" />
         </Route>
-        <Route element={<ChatStagePage />} path="/chat" />
+        <Route element={lazyRouteElement(<ChatStagePage />)} path="/chat" />
         <Route element={<Navigate replace to="/settings/api" />} path="*" />
       </Routes>
     </HashRouter>

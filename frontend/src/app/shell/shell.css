@@ -210,6 +210,12 @@
   padding: 18px 28px 0;
 }
 
+.route-loading {
+  width: min(100%, 640px);
+  min-height: 140px;
+  margin: 0 auto;
+}
+
 .bottombar {
   display: flex;
   min-width: 0;
