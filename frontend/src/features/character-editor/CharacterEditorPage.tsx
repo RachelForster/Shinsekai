@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WheelEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -76,6 +76,12 @@ export function CharacterEditorPage() {
     currentCharacterName && data.some((character) => character.name === currentCharacterName),
   );
   const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(draft.color || "") ? draft.color : DEFAULT_CHARACTER_COLOR;
+  const setColorInputElement = useCallback((element: HTMLInputElement | null) => {
+    colorInputRef.current = element;
+  }, []);
+  const openColorPicker = useCallback(() => {
+    colorInputRef.current?.click();
+  }, []);
 
   const selected = useMemo(
     () => (isCreating ? undefined : (data.find((character) => character.name === selectedName) ?? data[0])),
@@ -809,11 +815,9 @@ export function CharacterEditorPage() {
             draft={draft}
             nameError={nameError}
             onChange={update}
-            onColorInputRef={(element) => {
-              colorInputRef.current = element;
-            }}
+            onColorInputRef={setColorInputElement}
             onDelete={requestCharacterDelete}
-            onPickColor={() => colorInputRef.current?.click()}
+            onPickColor={openColorPicker}
             onPronunciationTextChange={setPronunciationText}
             pronunciationText={pronunciationText}
           />

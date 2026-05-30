@@ -1,7 +1,6 @@
 import { Palette, Trash2 } from "lucide-react";
 
 import type { Character } from "../../entities/config/types";
-import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import { Button, TextArea, TextInput } from "../../shared/ui";
 import type { CharacterFieldChange } from "./characterEditorUtils";
@@ -30,7 +29,6 @@ export function CharacterBasicSection({
   pronunciationText,
 }: CharacterBasicSectionProps) {
   const { t } = useI18n();
-  const swatchColor = draft.color || DEFAULT_CHARACTER_COLOR;
 
   return (
     <section className="section">
@@ -57,7 +55,7 @@ export function CharacterBasicSection({
           <span className="field-row__control">
             <div className="input-group character-color-control">
               <TextInput onChange={(event) => onChange("color", event.target.value)} value={draft.color} />
-              <span aria-hidden className="swatch" style={{ background: swatchColor }} />
+              <span aria-hidden className="swatch" style={{ background: draft.color }} />
               <Button icon={<Palette aria-hidden className="button__icon" />} onClick={onPickColor} variant="ghost">
                 {t("character.action.pickColor")}
               </Button>
