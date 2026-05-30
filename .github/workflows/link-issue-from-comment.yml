@@ -29,10 +29,19 @@ jobs:
 
           target="$(python3 - <<'PY'
           import os, re, sys
-          body = os.environ["COMMENT_BODY"].strip()
-          m = re.fullmatch(r"/link\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)", body)
+          
+          body = os.environ["COMMENT_BODY"].replace("\r\n", "\n")
+          
+          # 允许 comment 里其他内容存在，只要某一行是：
+          # /link owner/repo#123
+          m = re.search(
+              r"(?m)^[ \t]*/link[ \t]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)[ \t]*$",
+              body,
+          )
+          
           if not m:
               sys.exit(1)
+          
           print(m.group(1))
           PY
           )" || {
