@@ -49,6 +49,7 @@ import {
   Button,
   Dialog,
   EmptyState,
+  FilePicker,
   QueryErrorState,
   SchemaDrivenForm,
   SchemaFieldGrid,
@@ -1154,9 +1155,13 @@ export function ApiSettingsPage() {
             <label className="field-row">
               <span className="field-row__label">{t("system.asr.voskModelPath")}</span>
               <span className="field-row__control">
-                <TextInput
+                <FilePicker
                   disabled={saveMutation.isPending}
                   onChange={(event) => updateAsrExtra("vosk", "model_path", event.target.value)}
+                  onPathChange={(path) => updateAsrExtra("vosk", "model_path", path)}
+                  pickLabel={t("common.chooseFolder")}
+                  pickerMode="directory"
+                  pickerTitle={t("system.asr.voskModelPath")}
                   value={voskModelPath}
                 />
               </span>
