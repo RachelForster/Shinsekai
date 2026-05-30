@@ -60,7 +60,7 @@ import {
   useToast,
 } from "../../shared/ui";
 import { EditableModelSelect, ModelCapabilityBadge } from "./EditableModelSelect";
-import "../settings-pages.css";
+import "./ApiSettingsPage.css";
 
 type UiLanguage = "zh_CN" | "en" | "ja";
 

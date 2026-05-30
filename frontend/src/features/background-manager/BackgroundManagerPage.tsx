@@ -49,7 +49,7 @@ import {
   TextInput,
   useToast,
 } from "../../shared/ui";
-import "../settings-pages.css";
+import "./BackgroundManagerPage.css";
 
 function createBackground(): Background {
   return {

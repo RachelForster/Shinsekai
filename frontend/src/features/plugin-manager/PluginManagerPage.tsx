@@ -46,7 +46,7 @@ import {
   TaskProgress,
   useToast,
 } from "../../shared/ui";
-import "../settings-pages.css";
+import "./PluginManagerPage.css";
 import { McpSettingsPanel } from "./McpSettingsPanel";
 
 type PluginView = "installed" | "discover" | "mcp";

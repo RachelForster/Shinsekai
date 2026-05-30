@@ -1,0 +1,181 @@
+/* ── Background Manager page ── */
+
+.asset-gallery-layout--background {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 400px);
+}
+
+.asset-gallery-layout--background .image-asset-card__media {
+  aspect-ratio: 16 / 9;
+}
+
+.asset-inspector__preview--background {
+  aspect-ratio: 16 / 9;
+  min-height: 180px;
+}
+
+.asset-inspector__preview--background img {
+  height: 100%;
+}
+
+/* ── Shared asset row (also used by character page) ── */
+
+.asset-row {
+  display: grid;
+  grid-template-columns: 56px minmax(180px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  background: rgba(33, 37, 43, 0.62);
+}
+
+.asset-row__index {
+  display: grid;
+  min-height: 36px;
+  place-items: center;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.asset-row__icon {
+  width: 20px;
+  height: 20px;
+  color: var(--color-accent-primary);
+}
+
+.asset-row__actions {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.asset-row__actions .button {
+  justify-content: flex-start;
+}
+
+.audio-inline {
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin-top: var(--space-1);
+}
+
+/* ── Background BGM table ── */
+
+.background-virtual-table {
+  max-width: 100%;
+}
+
+.background-virtual-table__spacer td {
+  padding: 0;
+  border-bottom: 0;
+}
+
+.background-bgm-table {
+  min-width: 1160px;
+  table-layout: fixed;
+}
+
+.background-bgm-table__select-col {
+  width: 56px;
+}
+
+.background-bgm-table__index-col {
+  width: 75px;
+}
+
+.background-bgm-table__filename-col {
+  width: 267px;
+}
+
+.background-bgm-table__path-col {
+  width: 266px;
+}
+
+.background-bgm-table__tag-col {
+  width: 220px;
+}
+
+.background-bgm-table__preview-col {
+  width: 180px;
+}
+
+.background-bgm-table__remove-col {
+  width: 96px;
+}
+
+.background-bgm-table__header-button {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.background-bgm-table__header-button:hover,
+.background-bgm-table__header-button:focus-visible {
+  color: var(--color-accent-primary);
+  outline: none;
+}
+
+.background-bgm-table__header-button:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.background-bgm-table__sort-indicator {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  color: var(--color-accent-primary);
+  filter: drop-shadow(0 0 5px rgba(189, 147, 249, 0.34));
+  stroke-width: 2.4;
+}
+
+.background-bgm-table__filename {
+  min-width: 0;
+}
+
+.background-bgm-table__filename-inner {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.background-bgm-table__filename-inner span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-bgm-table__path {
+  display: inline-flex;
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.background-bgm-table__tag,
+.background-bgm-table__preview {
+  min-width: 0;
+}
+
+.background-bgm-table__preview .audio-inline {
+  min-width: 0;
+  margin-top: 0;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 860px) {
+  .asset-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -6,7 +6,14 @@ from __future__ import annotations
 import argparse
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+# Ensure the repository root is on sys.path so that `frontend_bridge` and
+# its dependencies are importable regardless of the launching directory.
+_repo_root = Path(__file__).resolve().parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
 
 from frontend_bridge import run as run_frontend_bridge
 

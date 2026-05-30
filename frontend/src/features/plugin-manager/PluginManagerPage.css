@@ -1,0 +1,138 @@
+/* ── Plugin Manager page (manage / discover / MCP) ── */
+
+.plugin-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.plugin-card {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+  align-content: start;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: rgba(33, 37, 43, 0.62);
+}
+
+.plugin-card__title-row {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.plugin-card__title {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.plugin-card__title strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-card__status {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.plugin-card__status[data-enabled="true"] {
+  border-color: rgba(80, 250, 123, 0.42);
+  color: var(--color-success);
+}
+
+.plugin-card__status[data-loaded="false"] {
+  border-color: rgba(255, 184, 108, 0.45);
+  color: var(--color-warning);
+}
+
+.plugin-card__description {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.plugin-card__meta {
+  display: grid;
+  gap: 3px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.plugin-card__meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* Plugin detail view */
+.plugin-detail {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.plugin-detail__group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.plugin-detail__group ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--color-text-muted);
+}
+
+.plugin-detail-page__back {
+  margin-bottom: var(--space-2);
+  padding-left: 0;
+}
+
+.plugin-detail-page__notice {
+  padding-top: var(--space-2);
+}
+
+.plugin-detail-page__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 -28px;
+  padding: 8px 28px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-app);
+}
+
+/* MCP config panel (under plugin tab) */
+.plugin-config-panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 860px) {
+  .plugin-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -60,7 +60,7 @@ import {
   TextInput,
   useToast,
 } from "../../shared/ui";
-import "../settings-pages.css";
+import "./CharacterEditorPage.css";
 
 const CHARACTER_RESOURCES_URL = "https://shinsekai.end0rph1n.icu/resources";
 
