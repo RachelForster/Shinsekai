@@ -159,7 +159,7 @@ export function PluginManagerPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page plugin-page">
       <header className="page__header">
         <div>
           <h1 className="page__title">{t("nav.plugins")}</h1>

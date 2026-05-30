@@ -1,0 +1,15 @@
+/* System settings inherit the SVG-style settings surface while keeping current theme colors. */
+
+.system-page > .settings-grid {
+  gap: var(--space-4);
+}
+
+.system-page .schema-section .form-grid--two {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+@media (max-width: 860px) {
+  .system-page .schema-section .form-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

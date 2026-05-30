@@ -28,6 +28,7 @@ import {
   useToast,
 } from "../../shared/ui";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css (imported in main.tsx)
+import "./ChatLauncherPage.css";
 
 export function ChatLauncherPage() {
   const navigate = useNavigate();
@@ -174,7 +175,7 @@ export function ChatLauncherPage() {
   };
 
   return (
-    <div className="page">
+    <div className="page launch-page">
       <header className="page__header">
         <div>
           <h1 className="page__title">{t("launch.title")}</h1>
@@ -220,8 +221,8 @@ export function ChatLauncherPage() {
       ) : !templates.length ? (
         <EmptyState title={t("launch.emptyTitle")} body={t("launch.emptyBody")} />
       ) : (
-        <section className="section">
-          <div className="form-grid form-grid--two">
+        <section className="section launch-page__panel">
+          <div className="form-grid form-grid--two launch-page__grid">
             <label className="field-row">
               <span className="field-row__label">{t("launch.template")}</span>
               <span className="field-row__control">

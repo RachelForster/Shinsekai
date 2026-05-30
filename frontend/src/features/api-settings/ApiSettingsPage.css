@@ -1,35 +1,31 @@
 /* ── API Settings page — LLM / TTS / T2I configuration ── */
 
-.api-page__resume-row {
-  display: flex;
-  min-height: 31px;
-  align-items: center;
-  margin-bottom: 16px;
+.api-page__header {
+  min-height: 36px;
 }
 
 /* Language selector block */
 .api-page__language {
-  padding: 8px 10px 6px;
-  border: 1px solid var(--color-border);
+  min-height: 92px;
+  align-content: center;
 }
 
 .api-page__language .section__header {
-  margin-bottom: 6px;
+  justify-content: center;
+  margin-bottom: 10px;
 }
 
 .api-page__language .section__title {
-  color: var(--color-accent-primary);
   font-size: 13px;
 }
 
-.api-page__language .form-grid--two,
-.api-page .form-grid--two {
+.api-page__language .form-grid--two {
   grid-template-columns: minmax(0, 1fr);
 }
 
 .api-page__language .field-row {
   display: block;
-  max-width: 110px;
+  max-width: 200px;
 }
 
 .api-page__language .field-row__label {
@@ -37,7 +33,12 @@
 }
 
 .api-page__language .section__description {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
+  text-align: center;
+}
+
+.api-page > .section:not(.api-page__language) .form-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 /* Model fetch combo */
@@ -61,10 +62,13 @@
   position: sticky;
   bottom: 0;
   z-index: 2;
-  margin: 0 -28px;
-  padding: 8px 28px;
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 calc(-1 * var(--settings-page-gutter));
+  padding: 10px var(--settings-page-gutter);
   border-top: 1px solid var(--color-border);
-  background: var(--color-bg-app);
+  background: rgba(40, 44, 52, 0.94);
+  backdrop-filter: blur(10px);
 }
 
 .api-page__save-button {
@@ -315,6 +319,10 @@
 }
 
 @media (max-width: 640px) {
+  .api-page > .section:not(.api-page__language) .form-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .tts-bundle-summary__row {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-1);

@@ -513,26 +513,26 @@ export function ApiSettingsPage() {
 
   return (
     <div className="page api-page">
-      <div className="api-page__resume-row">
-        <AsyncButton
-          loading={resumeMutation.isPending}
-          onClick={() => resumeMutation.mutate()}
-          tooltip={t("api.resume.tip")}
-        >
-          {t("api.resume.btn")}
-        </AsyncButton>
-      </div>
+      <header className="page__header api-page__header">
+        <div>
+          <h1 className="page__title">{t("api.title")}</h1>
+          <p className="page__description">{t("api.description")}</p>
+        </div>
+        <div className="page__actions">
+          <AsyncButton
+            loading={resumeMutation.isPending}
+            onClick={() => resumeMutation.mutate()}
+            tooltip={t("api.resume.tip")}
+          >
+            {t("api.resume.btn")}
+          </AsyncButton>
+        </div>
+      </header>
       <ApiLanguageSection
         disabled={languageMutation.isPending}
         onChange={handleLanguageChange}
         systemDraft={systemDraft}
       />
-      <header className="page__header">
-        <div>
-          <h1 className="page__title">{t("api.title")}</h1>
-          <p className="page__description">{t("api.description")}</p>
-        </div>
-      </header>
       <LlmConnectionSection
         activeApiKey={activeApiKey}
         activeModel={activeModel}
