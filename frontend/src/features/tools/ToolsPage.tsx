@@ -52,7 +52,7 @@ function GeneratedSpritePreview({ file }: { file: string }) {
   );
 }
 
-export function ToolsPage() {
+export function ToolsPanelContent({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n();
   const { showToast } = useToast();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
@@ -190,15 +190,17 @@ export function ToolsPage() {
   };
 
   return (
-    <div className="page tools-page">
-      <header className="page__header">
-        <div>
-          <h1 className="page__title">{t("nav.tools")}</h1>
-          <p className="page__description">{t("tools.description")}</p>
-        </div>
-      </header>
+    <div className={["page", "tools-page", embedded ? "tools-page--embedded" : ""].filter(Boolean).join(" ")}>
+      {!embedded ? (
+        <header className="page__header">
+          <div>
+            <h1 className="page__title">{t("nav.tools")}</h1>
+            <p className="page__description">{t("tools.description")}</p>
+          </div>
+        </header>
+      ) : null}
 
-      <div aria-label={t("common.subpages")} className="segmented-tabs" role="tablist">
+      <div aria-label={t("common.subpages")} className="segmented-tabs segmented-tabs--underline" role="tablist">
         <button aria-selected="true" className="segmented-tabs__tab" role="tab" type="button">
           {t("tools.tabMain")}
         </button>
@@ -404,4 +406,8 @@ export function ToolsPage() {
       <TextArea className="tools-page__output" readOnly value={toolOutput} />
     </div>
   );
+}
+
+export function ToolsPage() {
+  return <ToolsPanelContent />;
 }
