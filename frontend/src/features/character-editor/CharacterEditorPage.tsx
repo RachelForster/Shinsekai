@@ -62,6 +62,8 @@ import {
 } from "../../shared/ui";
 import "../settings-pages.css";
 
+const CHARACTER_RESOURCES_URL = "https://shinsekai.end0rph1n.icu/resources";
+
 function createCharacter(): Character {
   return {
     character_setting: "",
@@ -665,14 +667,14 @@ export function CharacterEditorPage() {
           </AsyncButton>
           <Button
             icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=character")}
+            onClick={() => openExternal(CHARACTER_RESOURCES_URL)}
             variant="ghost"
           >
             {t("character.action.community")}
           </Button>
           <Button
             icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => openExternal("https://wj.qq.com/s2/26613318/4fd2/")}
+            onClick={() => openExternal(CHARACTER_RESOURCES_URL)}
             variant="ghost"
           >
             {t("character.action.uploadContribution")}
