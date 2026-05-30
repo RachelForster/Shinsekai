@@ -551,7 +551,7 @@ export function BackgroundManagerPage() {
   const selectedBgmIndexSet = useMemo(() => new Set(selectedBgmIndexes), [selectedBgmIndexes]);
 
   return (
-    <div className="page">
+    <div className="page background-page">
       <header className="page__header">
         <div>
           <h1 className="page__title">{t("background.title")}</h1>

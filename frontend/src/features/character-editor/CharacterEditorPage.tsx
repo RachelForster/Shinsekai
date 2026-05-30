@@ -30,7 +30,6 @@ import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import { AlertDialog, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
-import { CharacterListPanel } from "./CharacterListPanel";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
@@ -797,19 +796,8 @@ export function CharacterEditorPage() {
         selectedName={selectedName}
       />
 
-      <div className="settings-grid settings-grid--split">
-        <CharacterListPanel
-          characters={data}
-          currentDraftName={draft.name}
-          error={charactersQuery.error}
-          isCreating={isCreating}
-          isError={charactersQuery.isError}
-          isLoading={isLoading}
-          onRetry={() => void charactersQuery.refetch()}
-          onSelect={selectExistingCharacter}
-        />
-
-        <section className="settings-grid">
+      <div className="settings-grid character-page__content">
+        <div className="character-page__top-grid">
           <CharacterBasicSection
             colorPickerValue={colorPickerValue}
             draft={draft}
@@ -830,57 +818,57 @@ export function CharacterEditorPage() {
             onTranslate={translateDraft}
             translatePending={translateMutation.isPending}
           />
+        </div>
 
-          <CharacterVoiceSection draft={draft} onChange={update} />
+        <CharacterVoiceSection draft={draft} onChange={update} />
 
-          <CharacterSpritesSection
-            draft={draft}
-            emotionTagsPending={emotionTagsMutation.isPending}
-            onClearSprites={requestClearSprites}
-            onOpenBulkTags={openBulkSpriteTagsDialog}
-            onPendingSpritePathsChange={setPendingSpritePaths}
-            onPendingVoicePathChange={updatePendingVoicePath}
-            onSaveScale={saveSpriteScaleValue}
-            onSaveTags={saveSpriteTags}
-            onScaleChange={update}
-            onScaleWheel={handleSpriteScaleWheel}
-            onSelectSprite={setSelectedSpriteIndex}
-            onSpriteDelete={requestSelectedSpriteDelete}
-            onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
-            onSpriteUpload={uploadSprites}
-            onSpriteVoiceDelete={requestSelectedSpriteVoiceDelete}
-            onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
-            onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
-            onSpriteVoiceUpload={uploadSelectedSpriteVoice}
-            pendingSpritePaths={pendingSpritePaths}
-            pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
-            selectedSprite={selectedSprite}
-            selectedSpriteIndex={selectedSpriteIndex}
-            selectedSpriteTag={selectedSpriteTag}
-            spriteDeletePending={spriteDeleteMutation.isPending}
-            spriteGalleryItems={spriteGalleryItems}
-            spriteScalePending={spriteScaleMutation.isPending}
-            spriteUploadPending={spriteUploadMutation.isPending}
-            voiceDeletePending={voiceDeleteMutation.isPending}
-            voiceUploadPending={voiceUploadMutation.isPending}
-          />
+        <CharacterSpritesSection
+          draft={draft}
+          emotionTagsPending={emotionTagsMutation.isPending}
+          onClearSprites={requestClearSprites}
+          onOpenBulkTags={openBulkSpriteTagsDialog}
+          onPendingSpritePathsChange={setPendingSpritePaths}
+          onPendingVoicePathChange={updatePendingVoicePath}
+          onSaveScale={saveSpriteScaleValue}
+          onSaveTags={saveSpriteTags}
+          onScaleChange={update}
+          onScaleWheel={handleSpriteScaleWheel}
+          onSelectSprite={setSelectedSpriteIndex}
+          onSpriteDelete={requestSelectedSpriteDelete}
+          onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
+          onSpriteUpload={uploadSprites}
+          onSpriteVoiceDelete={requestSelectedSpriteVoiceDelete}
+          onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
+          onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
+          onSpriteVoiceUpload={uploadSelectedSpriteVoice}
+          pendingSpritePaths={pendingSpritePaths}
+          pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
+          selectedSprite={selectedSprite}
+          selectedSpriteIndex={selectedSpriteIndex}
+          selectedSpriteTag={selectedSpriteTag}
+          spriteDeletePending={spriteDeleteMutation.isPending}
+          spriteGalleryItems={spriteGalleryItems}
+          spriteScalePending={spriteScaleMutation.isPending}
+          spriteUploadPending={spriteUploadMutation.isPending}
+          voiceDeletePending={voiceDeleteMutation.isPending}
+          voiceUploadPending={voiceUploadMutation.isPending}
+        />
 
-          <CharacterMemorySection
-            addPending={memoryAddMutation.isPending}
-            data={memoryQuery.data}
-            deletePending={memoryDeleteMutation.isPending}
-            error={memoryQuery.error}
-            isError={memoryQuery.isError}
-            isFetching={memoryQuery.isFetching}
-            isLoading={memoryQuery.isLoading}
-            memoryInput={memoryInput}
-            memoryName={memoryName}
-            onAddMemory={() => memoryAddMutation.mutate()}
-            onDeleteMemory={requestMemoryDelete}
-            onMemoryInputChange={setMemoryInput}
-            onRefresh={() => void memoryQuery.refetch()}
-          />
-        </section>
+        <CharacterMemorySection
+          addPending={memoryAddMutation.isPending}
+          data={memoryQuery.data}
+          deletePending={memoryDeleteMutation.isPending}
+          error={memoryQuery.error}
+          isError={memoryQuery.isError}
+          isFetching={memoryQuery.isFetching}
+          isLoading={memoryQuery.isLoading}
+          memoryInput={memoryInput}
+          memoryName={memoryName}
+          onAddMemory={() => memoryAddMutation.mutate()}
+          onDeleteMemory={requestMemoryDelete}
+          onMemoryInputChange={setMemoryInput}
+          onRefresh={() => void memoryQuery.refetch()}
+        />
       </div>
 
       <SpriteTagsDialog

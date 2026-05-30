@@ -1,16 +1,38 @@
 /* ── Character Editor page ── */
 
-.character-page .settings-grid--split {
-  grid-template-columns: minmax(0, 1fr);
+.character-page__content {
+  gap: var(--space-4);
 }
 
-.character-page .entity-list {
-  display: none;
+.character-page__top-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  gap: var(--space-4);
 }
 
 .character-page__file-box {
   padding: 10px;
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: rgba(33, 37, 43, 0.36);
+}
+
+.character-page__top-grid > .section {
+  min-height: 232px;
+}
+
+.character-page__top-grid .form-grid--two,
+.character-page__top-grid .field-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.character-page__top-grid .field-row__label {
+  padding-top: 0;
+}
+
+.character-page__top-grid textarea {
+  min-height: 160px;
 }
 
 /* Character color control */
@@ -89,7 +111,7 @@
 }
 
 .asset-gallery-layout--character {
-  grid-template-columns: minmax(0, 1.4fr) minmax(310px, 380px);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 220px);
 }
 
 .asset-inspector {
@@ -100,7 +122,7 @@
   gap: var(--space-2);
   padding: var(--space-3);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: rgba(33, 37, 43, 0.62);
 }
 
@@ -188,6 +210,7 @@
 /* ── Responsive ── */
 
 @media (max-width: 860px) {
+  .character-page__top-grid,
   .asset-gallery-layout,
   .memory-row,
   .memory-add-row {

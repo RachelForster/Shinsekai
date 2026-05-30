@@ -24,6 +24,7 @@ import {
   useToast,
 } from "../../shared/ui";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css (imported in main.tsx)
+import "./MusicCoverPage.css";
 
 function musicCoverConfigFromSystem(systemConfig: SystemConfig): MusicCoverConfigInput {
   return {
@@ -147,7 +148,7 @@ export function MusicCoverPage() {
   const busy = saveMutation.isPending || musicSearchMutation.isPending || musicRunMutation.isPending;
 
   return (
-    <div className="page">
+    <div className="page music-cover-page">
       <header className="page__header">
         <div>
           <h1 className="page__title">音乐翻唱流水线</h1>
@@ -157,7 +158,7 @@ export function MusicCoverPage() {
         </div>
       </header>
 
-      <div className="form-grid form-grid--two">
+      <div className="music-cover-layout">
         <div className="settings-grid">
           <section className="section">
             <div className="section__header">

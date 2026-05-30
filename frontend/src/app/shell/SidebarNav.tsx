@@ -1,23 +1,23 @@
 import { NavLink } from "react-router-dom";
-import { Brush, FileImage, Gamepad2, Home, Menu, Plug, Save, Settings, SlidersHorizontal } from "lucide-react";
+import { Brush, FileImage, Gamepad2, LayoutTemplate, Plug, Settings, SlidersHorizontal, Wrench } from "lucide-react";
 import type { MessageKey } from "../../shared/i18n";
 import { useI18n } from "../../shared/i18n";
 
 const links = [
-  { icon: Home, labelKey: "nav.api", to: "/settings/api" },
+  { icon: Settings, labelKey: "nav.api", to: "/settings/api" },
   { icon: Gamepad2, labelKey: "nav.character", to: "/settings/characters" },
   { icon: FileImage, labelKey: "nav.background", to: "/settings/backgrounds" },
-  { icon: Save, labelKey: "nav.template", to: "/settings/templates" },
+  { icon: LayoutTemplate, labelKey: "nav.template", to: "/settings/templates" },
   { icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" },
-  { icon: SlidersHorizontal, labelKey: "nav.tools", to: "/settings/tools" },
-] satisfies Array<{ icon: typeof Home; labelKey: MessageKey; to: string }>;
+  { icon: SlidersHorizontal, labelKey: "nav.system", to: "/settings/system" },
+] satisfies Array<{ icon: typeof Settings; labelKey: MessageKey; to: string }>;
 
 type SidebarNavProps = {
-  expanded: boolean;
-  onToggle: () => void;
+  toolsOpen: boolean;
+  onToolsToggle: () => void;
 };
 
-export function SidebarNav({ expanded, onToggle }: SidebarNavProps) {
+export function SidebarNav({ onToolsToggle, toolsOpen }: SidebarNavProps) {
   const { t } = useI18n();
 
   return (
@@ -32,17 +32,6 @@ export function SidebarNav({ expanded, onToggle }: SidebarNavProps) {
         </div>
       </div>
       <nav aria-label={t("nav.settingsCenter")} className="sidebar__nav">
-        <button
-          aria-expanded={expanded}
-          aria-label={t("nav.settingsCenter")}
-          className="sidebar__link sidebar__toggle"
-          onClick={onToggle}
-          title={t("nav.settingsCenter")}
-          type="button"
-        >
-          <Menu aria-hidden className="sidebar__icon" />
-          <span className="sidebar__link-label">{t("nav.settingsCenter")}</span>
-        </button>
         {links.map((link) => {
           const Icon = link.icon;
           return (
@@ -55,10 +44,16 @@ export function SidebarNav({ expanded, onToggle }: SidebarNavProps) {
       </nav>
       <div className="sidebar__spacer" />
       <nav aria-label={t("nav.secondary")} className="sidebar__nav sidebar__nav--secondary">
-        <NavLink className="sidebar__link" title={t("nav.system")} to="/settings/system">
-          <Settings aria-hidden className="sidebar__icon" />
-          <span className="sidebar__link-label">{t("nav.system")}</span>
-        </NavLink>
+        <button
+          aria-pressed={toolsOpen}
+          className="sidebar__link sidebar__link--button"
+          onClick={onToolsToggle}
+          title={t("nav.tools")}
+          type="button"
+        >
+          <Wrench aria-hidden className="sidebar__icon" />
+          <span className="sidebar__link-label">{t("nav.tools")}</span>
+        </button>
       </nav>
     </aside>
   );

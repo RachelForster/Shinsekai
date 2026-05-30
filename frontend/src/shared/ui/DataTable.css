@@ -1,7 +1,8 @@
 .data-table-wrap {
   overflow: auto;
   border: 1px solid var(--color-border);
-  background: rgba(33, 37, 43, 0.76);
+  border-radius: var(--radius-control);
+  background: rgba(33, 37, 43, 0.42);
 }
 
 .data-table {
@@ -12,7 +13,7 @@
 
 .data-table th,
 .data-table td {
-  padding: 9px 10px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--color-border);
   text-align: left;
   vertical-align: middle;
@@ -23,7 +24,7 @@
   top: 0;
   z-index: 1;
   color: var(--color-text-muted);
-  background: var(--color-bg-panel);
+  background: var(--color-bg-sidebar);
   font-size: 12px;
   font-weight: 650;
 }

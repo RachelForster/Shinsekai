@@ -13,8 +13,8 @@
   max-height: min(620px, calc(100vh - 32px));
   overflow: auto;
   border: 1px solid var(--color-border-hover);
-  border-radius: 8px;
-  background: var(--color-bg-panel);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-sidebar);
   box-shadow: 0 22px 58px rgba(0, 0, 0, 0.38);
 }
 
@@ -34,6 +34,7 @@
 
 .dialog__title {
   margin: 0;
+  color: var(--color-accent-primary);
   font-size: 16px;
 }
 

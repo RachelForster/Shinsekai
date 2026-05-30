@@ -1,7 +1,11 @@
 /* ── Background Manager page ── */
 
+.background-page .settings-grid--split {
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+}
+
 .asset-gallery-layout--background {
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 400px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
 }
 
 .asset-gallery-layout--background .image-asset-card__media {
@@ -26,6 +30,7 @@
   gap: var(--space-2);
   padding: var(--space-2);
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   background: rgba(33, 37, 43, 0.62);
 }
 
@@ -175,6 +180,8 @@
 /* ── Responsive ── */
 
 @media (max-width: 860px) {
+  .background-page .settings-grid--split,
+  .asset-gallery-layout--background,
   .asset-row {
     grid-template-columns: minmax(0, 1fr);
   }

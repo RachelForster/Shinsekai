@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
+import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
@@ -442,7 +442,7 @@ export function TemplateEditorPage() {
   ];
 
   return (
-    <div className="page">
+    <div className="page template-page">
       <header className="page__header">
         <div>
           <h1 className="page__title">{t("template.title")}</h1>
@@ -642,12 +642,8 @@ export function TemplateEditorPage() {
                 onClick={() => setSystemExpanded((current) => !current)}
                 type="button"
               >
-                {systemExpanded ? (
-                  <ChevronDown aria-hidden className="button__icon" />
-                ) : (
-                  <ChevronRight aria-hidden className="button__icon" />
-                )}
                 <span>{t("template.section.system")}</span>
+                <span aria-hidden className="section-toggle__indicator" />
               </button>
             </div>
             {systemExpanded ? (

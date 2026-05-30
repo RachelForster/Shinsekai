@@ -1,5 +1,17 @@
 /* ── Template Editor page ── */
 
+.template-page .settings-grid--split {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+}
+
+.template-page .settings-grid--split > .entity-list {
+  order: 2;
+}
+
+.template-page .settings-grid--split > .settings-grid {
+  order: 1;
+}
+
 .template-generate-actions {
   display: flex;
   min-width: 0;
@@ -29,7 +41,8 @@
   overflow: auto;
   padding: var(--space-2);
   border: 1px solid var(--color-border);
-  background: var(--color-surface-subtle);
+  border-radius: var(--radius-control);
+  background: rgba(33, 37, 43, 0.36);
 }
 
 /* Yes/No toggle rows */
@@ -109,6 +122,15 @@
 /* ── Responsive ── */
 
 @media (max-width: 860px) {
+  .template-page .settings-grid--split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .template-page .settings-grid--split > .entity-list,
+  .template-page .settings-grid--split > .settings-grid {
+    order: initial;
+  }
+
   .template-generate-actions,
   .template-run-actions {
     width: 100%;

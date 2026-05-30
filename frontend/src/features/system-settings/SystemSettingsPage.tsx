@@ -15,6 +15,7 @@ import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton, EmptyState, QueryErrorState, SchemaDrivenForm, useToast } from "../../shared/ui";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css
+import "./SystemSettingsPage.css";
 
 const systemConfigPageSchema = systemConfigFormSchema
   .map((group) => {
@@ -86,7 +87,7 @@ export function SystemSettingsPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page system-page">
       <header className="page__header">
         <div>
           <h1 className="page__title">{t("system.title")}</h1>
