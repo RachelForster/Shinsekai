@@ -448,11 +448,103 @@
 }
 
 .field-row__label {
+  display: inline-flex;
   min-width: 0;
+  align-items: flex-start;
+  gap: 5px;
   padding-top: 6px;
   color: var(--color-text-primary);
   font-weight: 520;
   line-height: 1.35;
+}
+
+.field-row__label-text {
+  min-width: 0;
+}
+
+.field-row__tooltip {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.field-row__tooltip-trigger {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  cursor: help;
+  outline: none;
+}
+
+.field-row__tooltip-trigger:hover,
+.field-row__tooltip-trigger:focus-visible {
+  color: var(--color-accent-primary);
+}
+
+.field-row__tooltip-trigger:focus-visible {
+  box-shadow: 0 0 0 2px rgba(189, 147, 249, 0.34);
+}
+
+.field-row__tooltip-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+.field-row__tooltip-bubble {
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 48px));
+  padding: 7px 9px;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity 100ms ease,
+    transform 100ms ease,
+    visibility 0s linear 100ms;
+  border: 1px solid rgba(189, 147, 249, 0.3);
+  border-radius: var(--radius-control);
+  background: rgba(28, 31, 38, 0.98);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  visibility: hidden;
+  white-space: normal;
+}
+
+.field-row__tooltip-bubble::after {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid rgba(189, 147, 249, 0.3);
+  border-bottom: 1px solid rgba(189, 147, 249, 0.3);
+  background: rgba(28, 31, 38, 0.98);
+  content: "";
+  transform: translate(-50%, -4px) rotate(45deg);
+}
+
+.field-row__tooltip:hover .field-row__tooltip-bubble,
+.field-row__tooltip:focus-within .field-row__tooltip-bubble {
+  transform: translate(-50%, 0);
+  transition-delay: 80ms, 80ms, 0s;
+  opacity: 1;
+  visibility: visible;
 }
 
 .field-row__control {

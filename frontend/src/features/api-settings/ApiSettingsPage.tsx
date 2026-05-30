@@ -6,6 +6,7 @@ import {
   adapterExtraSchemaToFormGroup,
   buildPayloadFromSchema,
   apiConfigFormSchema,
+  compactTargetRatioMax,
   defaultAdapterExtraValue,
   hasSchemaErrors,
   llmDefaultBaseUrls,
@@ -232,15 +233,33 @@ function activeMapValue(map: Record<string, string>, provider: string) {
   return map?.[provider] ?? "";
 }
 
-function normalizeApiConfigForUi(config: ApiConfig): ApiConfig {
-  const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
+function finiteNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function syncCompactRatioDraft(config: ApiConfig): ApiConfig {
+  const compactThreshold = finiteNumber(config.compact_threshold, 0.4);
+  const compactTargetMax = compactTargetRatioMax({ compact_threshold: compactThreshold });
   return {
     ...config,
+    compact_threshold: compactThreshold,
+    compact_target_ratio: Math.min(finiteNumber(config.compact_target_ratio, 0.3), compactTargetMax),
+  };
+}
+
+function normalizeApiConfigForUi(config: ApiConfig): ApiConfig {
+  const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
+  return syncCompactRatioDraft({
+    ...config,
+    history_recent_messages: finiteNumber(config.history_recent_messages, 20),
     llm_api_key: config.llm_api_key ?? {},
     llm_base_url: String(config.llm_base_url || "").trim() || llmDefaultBaseUrls[provider] || "",
     llm_model: config.llm_model ?? {},
     llm_provider: provider,
-  };
+    max_active_tool_groups: finiteNumber(config.max_active_tool_groups, 3),
+    max_tool_result_chars: finiteNumber(config.max_tool_result_chars, 6000),
+  });
 }
 
 function mergeModelOptions(...groups: Array<LlmModelOption[] | undefined>) {
@@ -1096,7 +1115,7 @@ export function ApiSettingsPage() {
         disabled={saveMutation.isPending}
         errors={errors}
         groups={apiSchema}
-        onChange={setDraft}
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
         value={draft}
       />
       <section className="section">

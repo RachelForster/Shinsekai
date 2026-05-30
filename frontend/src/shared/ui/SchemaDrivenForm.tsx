@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
+import { CircleHelp } from "lucide-react";
 
 import { useI18n } from "../i18n";
 import type { FormFieldSchema, FormGroupSchema } from "../form-schema";
@@ -41,6 +42,10 @@ function resolveDisabledReason<T extends object>(field: FormFieldSchema<T>, valu
     return field.disabledReason(value);
   }
   return field.disabledReason;
+}
+
+function resolveNumericBound<T extends object>(bound: FormFieldSchema<T>["max"] | FormFieldSchema<T>["min"], value: T) {
+  return typeof bound === "function" ? bound(value) : bound;
 }
 
 function formGridClassName<T extends object>(group: FormGroupSchema<T>, className = "") {
@@ -134,11 +139,13 @@ export function SchemaFieldGrid<T extends object>({
     }
 
     if (field.type === "number" || field.type === "integer") {
+      const max = resolveNumericBound(field.max, value);
+      const min = resolveNumericBound(field.min, value);
       return (
         <NumberInput
           {...common}
-          max={field.max}
-          min={field.min}
+          max={max}
+          min={min}
           onChange={(event: ChangeEvent<HTMLInputElement>) => {
             const next =
               field.type === "integer" ? Number.parseInt(event.target.value, 10) : Number(event.target.value);
@@ -183,16 +190,28 @@ export function SchemaFieldGrid<T extends object>({
             return null;
           }
           const disabledReason = field.disabledWhen?.(value) ? resolveDisabledReason(field, value) : undefined;
-          const help = disabledReason || field.description;
           const fullWidth = field.span === "full" || field.type === "json" || field.type === "textarea";
           const rowClassName = ["field-row", fullWidth ? "field-row--full" : ""].filter(Boolean).join(" ");
+          const descriptionId = `${String(field.name)}-description`;
           return (
             <label className={rowClassName} htmlFor={String(field.name)} key={String(field.name)}>
-              <span className="field-row__label">{field.label}</span>
+              <span className="field-row__label">
+                <span className="field-row__label-text">{field.label}</span>
+                {field.description ? (
+                  <span className="field-row__tooltip">
+                    <span aria-describedby={descriptionId} className="field-row__tooltip-trigger" tabIndex={0}>
+                      <CircleHelp aria-hidden className="field-row__tooltip-icon" />
+                    </span>
+                    <span className="field-row__tooltip-bubble" id={descriptionId} role="tooltip">
+                      {field.description}
+                    </span>
+                  </span>
+                ) : null}
+              </span>
               <span className="field-row__control">
                 {renderField(field)}
                 {errors[field.name] ? <span className="field-error">{errors[field.name]}</span> : null}
-                {help ? <span className="field-row__help">{help}</span> : null}
+                {disabledReason ? <span className="field-row__help">{disabledReason}</span> : null}
               </span>
             </label>
           );

@@ -19,6 +19,12 @@ export const llmDefaultBaseUrls: Record<string, string> = {
   通义千问: "https://dashscope.aliyuncs.com/api/v1",
 };
 
+export function compactTargetRatioMax(draft: Pick<ApiConfig, "compact_threshold">) {
+  const threshold = Number(draft.compact_threshold ?? 0.4);
+  const safeThreshold = Number.isFinite(threshold) ? threshold : 0.4;
+  return Math.round(Math.max(0.05, safeThreshold - 0.05) * 100) / 100;
+}
+
 export const apiConfigFormSchema: Array<FormGroupSchema<ApiConfig>> = [
   {
     id: "llm",
@@ -31,6 +37,51 @@ export const apiConfigFormSchema: Array<FormGroupSchema<ApiConfig>> = [
       { label: "存在惩罚", max: 2, min: -2, name: "presence_penalty", step: 0.05, type: "number" },
       { label: "频率惩罚", max: 2, min: -2, name: "frequency_penalty", step: 0.05, type: "number" },
       { label: "最大上下文 token", max: 2000000, min: 0, name: "max_context_tokens", step: 1, type: "integer" },
+      {
+        description: "估算历史达到该上下文占比时触发压缩。",
+        label: "压缩阈值",
+        max: 0.95,
+        min: 0.1,
+        name: "compact_threshold",
+        step: 0.05,
+        type: "number",
+      },
+      {
+        description: "压缩后的目标上下文占比，需低于压缩阈值。",
+        label: "压缩目标",
+        max: compactTargetRatioMax,
+        min: 0.05,
+        name: "compact_target_ratio",
+        step: 0.05,
+        type: "number",
+      },
+      {
+        description: "加载或压缩历史时保留的最近消息数。",
+        label: "最近历史消息数",
+        max: 200,
+        min: 1,
+        name: "history_recent_messages",
+        step: 1,
+        type: "integer",
+      },
+      {
+        description: "写入历史的单次工具结果最大字符数。",
+        label: "工具结果字符数",
+        max: 200000,
+        min: 100,
+        name: "max_tool_result_chars",
+        step: 1,
+        type: "integer",
+      },
+      {
+        description: "同时启用的工具组数量上限。",
+        label: "工具组上限",
+        max: 20,
+        min: 1,
+        name: "max_active_tool_groups",
+        step: 1,
+        type: "integer",
+      },
     ],
   },
   {
@@ -266,7 +317,11 @@ function isValidUrl(value: string) {
   }
 }
 
-function validateField<T extends object>(field: FormFieldSchema<T>, value: unknown): string {
+function resolveNumericBound<T extends object>(bound: FormFieldSchema<T>["max"] | FormFieldSchema<T>["min"], draft: T) {
+  return typeof bound === "function" ? bound(draft) : bound;
+}
+
+function validateField<T extends object>(field: FormFieldSchema<T>, value: unknown, draft: T): string {
   if (field.required && isBlank(value)) {
     return "此项必填。";
   }
@@ -283,11 +338,13 @@ function validateField<T extends object>(field: FormFieldSchema<T>, value: unkno
     if (field.type === "integer" && !Number.isInteger(numberValue)) {
       return "请输入整数。";
     }
-    if (typeof field.min === "number" && numberValue < field.min) {
-      return `不能小于 ${field.min}。`;
+    const min = resolveNumericBound(field.min, draft);
+    const max = resolveNumericBound(field.max, draft);
+    if (typeof min === "number" && numberValue < min) {
+      return `不能小于 ${min}。`;
     }
-    if (typeof field.max === "number" && numberValue > field.max) {
-      return `不能大于 ${field.max}。`;
+    if (typeof max === "number" && numberValue > max) {
+      return `不能大于 ${max}。`;
     }
   }
 
@@ -308,7 +365,7 @@ export function validatePayloadFromSchema<T extends object>(
       if (field.visibleWhen && !field.visibleWhen(draft)) {
         continue;
       }
-      const error = validateField(field, draft[field.name]);
+      const error = validateField(field, draft[field.name], draft);
       if (error) {
         errors[field.name] = error;
       }

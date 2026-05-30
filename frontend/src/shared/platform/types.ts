@@ -56,6 +56,11 @@ export interface ApiConfig {
   presence_penalty: number;
   frequency_penalty: number;
   max_context_tokens: number;
+  compact_threshold: number;
+  compact_target_ratio: number;
+  history_recent_messages: number;
+  max_tool_result_chars: number;
+  max_active_tool_groups: number;
   hugging_face_access_token: string;
   llm_extra_configs: Record<string, Record<string, unknown>>;
   tts_extra_configs: Record<string, Record<string, unknown>>;

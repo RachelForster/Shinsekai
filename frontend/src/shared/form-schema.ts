@@ -16,14 +16,16 @@ export interface FormOption {
   value: string;
 }
 
+export type NumericBound<T extends object> = number | ((draft: T) => number);
+
 export interface FormFieldSchema<T extends object> {
   defaultValue?: unknown;
   description?: string;
   disabledReason?: string | ((draft: T) => string | undefined);
   disabledWhen?: (draft: T) => boolean;
   label: string;
-  max?: number;
-  min?: number;
+  max?: NumericBound<T>;
+  min?: NumericBound<T>;
   name: keyof T;
   options?: FormOption[];
   pathKind?: "directory" | "file";
