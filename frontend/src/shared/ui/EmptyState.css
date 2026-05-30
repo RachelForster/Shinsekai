@@ -1,0 +1,19 @@
+.empty-state {
+  display: grid;
+  min-height: 132px;
+  place-items: center;
+  padding: var(--space-5);
+  border: 1px dashed var(--color-border-hover);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.empty-state__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-weight: 650;
+}
+
+.empty-state__body {
+  margin: var(--space-1) 0 var(--space-3);
+}

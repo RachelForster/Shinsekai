@@ -25,7 +25,7 @@ import {
   TextInput,
   useToast,
 } from "../../shared/ui";
-import "../settings-pages.css";
+import "./ToolsPage.css";
 
 function extractPrompt(line: string) {
   const trimmed = line.trim();

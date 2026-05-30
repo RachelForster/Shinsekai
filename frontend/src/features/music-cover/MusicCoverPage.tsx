@@ -23,7 +23,7 @@ import {
   TextInput,
   useToast,
 } from "../../shared/ui";
-import "../settings-pages.css";
+// Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css (imported in main.tsx)
 
 function musicCoverConfigFromSystem(systemConfig: SystemConfig): MusicCoverConfigInput {
   return {

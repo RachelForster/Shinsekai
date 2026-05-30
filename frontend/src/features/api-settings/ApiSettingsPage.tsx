@@ -59,7 +59,7 @@ import {
   VOSK_MODEL_PATH,
   type UiLanguage,
 } from "./apiSettingsUtils";
-import "../settings-pages.css";
+import "./ApiSettingsPage.css";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 

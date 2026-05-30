@@ -46,7 +46,7 @@ import {
   pronunciationTextToMap,
   type CharacterResourceDeleteTarget,
 } from "./characterEditorUtils";
-import "../settings-pages.css";
+import "./CharacterEditorPage.css";
 
 export function CharacterEditorPage() {
   const queryClient = useQueryClient();

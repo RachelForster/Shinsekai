@@ -1,0 +1,125 @@
+.image-asset-gallery {
+  display: grid;
+  min-width: 0;
+  max-height: 620px;
+  align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: var(--space-2);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.image-asset-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+  background: rgba(33, 37, 43, 0.62);
+  cursor: pointer;
+  text-align: left;
+}
+
+.image-asset-card:hover {
+  border-color: var(--color-border-hover);
+  background: rgba(57, 65, 80, 0.54);
+}
+
+.image-asset-card:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+
+.image-asset-card[aria-selected="true"] {
+  border-color: rgba(139, 233, 253, 0.7);
+  background: rgba(139, 233, 253, 0.08);
+}
+
+.image-asset-card__media {
+  display: grid;
+  min-width: 0;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+}
+
+.image-asset-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.image-asset-card__fallback {
+  width: 32px;
+  height: 32px;
+  color: var(--color-text-muted);
+}
+
+.image-asset-card__body {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.image-asset-card__title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.image-asset-card__title span {
+  display: grid;
+  width: 22px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+}
+
+.image-asset-card__title strong,
+.image-asset-card__meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-asset-card__title strong {
+  flex: 1 1 auto;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.image-asset-card__meta {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.image-asset-card__badge {
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 6px;
+  border: 1px solid rgba(139, 233, 253, 0.36);
+  border-radius: var(--radius-control);
+  color: var(--color-info);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-asset-card__badge--muted {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}

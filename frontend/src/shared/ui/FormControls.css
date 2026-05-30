@@ -1,0 +1,92 @@
+.input,
+.textarea,
+.select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-bg-sidebar);
+  border-radius: var(--radius-control);
+  color: var(--color-text-primary);
+  line-height: 1.35;
+}
+
+.input,
+.select {
+  min-height: 31px;
+  padding: 5px 10px;
+  background: var(--color-bg-sidebar);
+}
+
+.select {
+  appearance: none;
+  padding-right: 30px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-text-muted) 50%),
+    linear-gradient(135deg, var(--color-text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 13px,
+    calc(100% - 11px) 13px;
+  background-repeat: no-repeat;
+  background-size:
+    5px 5px,
+    5px 5px;
+}
+
+.select:disabled {
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(113, 126, 149, 0.56) 50%),
+    linear-gradient(135deg, rgba(113, 126, 149, 0.56) 50%, transparent 50%);
+}
+
+.textarea {
+  min-height: 96px;
+  resize: vertical;
+  padding: 7px 10px;
+  background: var(--color-bg-input);
+  line-height: 1.55;
+}
+
+.input:hover:not(:disabled),
+.textarea:hover:not(:disabled),
+.select:hover:not(:disabled) {
+  border-color: var(--color-border-hover);
+}
+
+.input:disabled,
+.textarea:disabled,
+.select:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.input::selection,
+.textarea::selection {
+  color: #1b1d23;
+  background: var(--color-accent-secondary);
+}
+
+.input--error,
+.textarea--error,
+.select--error {
+  border-color: var(--color-danger);
+}
+
+.input-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.input-group .input {
+  flex: 1 1 auto;
+}
+
+.input-group .path-display--input {
+  flex: 1 1 auto;
+}
+
+.field-error {
+  margin-top: var(--space-1);
+  color: #ff8a8a;
+  font-size: 12px;
+}

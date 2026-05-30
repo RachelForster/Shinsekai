@@ -1,3 +1,4 @@
+import "./ImageAssetGallery.css";
 import { Image as ImageIcon } from "lucide-react";
 
 export interface ImageAssetGalleryItem {

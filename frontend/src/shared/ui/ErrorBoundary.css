@@ -1,0 +1,48 @@
+.error-boundary {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  color: var(--color-text-primary);
+  background: var(--color-bg-app);
+}
+
+.error-boundary__panel {
+  width: min(560px, 100%);
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-panel);
+}
+
+.error-boundary__eyebrow {
+  margin: 0 0 var(--space-1);
+  color: var(--color-warning);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.error-boundary__title {
+  margin: 0;
+  font-size: 22px;
+}
+
+.error-boundary__body {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+}
+
+.error-boundary__detail {
+  max-height: 160px;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-primary);
+  background: var(--color-bg-input);
+  white-space: pre-wrap;
+}

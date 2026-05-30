@@ -1,3 +1,5 @@
+import "./PathDisplay.css";
+
 interface PathDisplayProps {
   className?: string;
   path?: string;

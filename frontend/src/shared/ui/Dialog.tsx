@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
+import "./Dialog.css";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 

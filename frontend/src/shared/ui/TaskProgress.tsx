@@ -1,3 +1,5 @@
+import "./TaskProgress.css";
+
 interface TaskProgressSnapshot {
   logs?: readonly string[];
   message?: string;

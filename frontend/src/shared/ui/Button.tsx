@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { LoaderCircle } from "lucide-react";
+import "./Button.css";
 
 type ButtonVariant = "default" | "primary" | "danger" | "ghost";
 

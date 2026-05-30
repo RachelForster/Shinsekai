@@ -1,3 +1,5 @@
+import "./SegmentedTabs.css";
+
 export interface SegmentedTabItem<T extends string> {
   id: T;
   label: string;

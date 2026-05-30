@@ -6,7 +6,7 @@ import { AppRoutes } from "./app/routes/AppRoutes";
 import { ErrorBoundary } from "./shared/ui";
 import "./shared/theme/tokens.css";
 import "./shared/theme/global.css";
-import "./shared/ui/ui.css";
+import "./shared/theme/settings-base.css";
 import "./app/shell/shell.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
