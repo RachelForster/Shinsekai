@@ -1119,15 +1119,15 @@
 }
 
 .background-bgm-table__index-col {
-  width: 58px;
+  width: 75px;
 }
 
 .background-bgm-table__filename-col {
-  width: 160px;
+  width: 267px;
 }
 
 .background-bgm-table__path-col {
-  width: 210px;
+  width: 266px;
 }
 
 .background-bgm-table__tag-col {
@@ -1135,21 +1135,59 @@
 }
 
 .background-bgm-table__preview-col {
-  width: 360px;
+  width: 180px;
 }
 
 .background-bgm-table__remove-col {
   width: 96px;
 }
 
+.background-bgm-table__header-button {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.background-bgm-table__header-button:hover,
+.background-bgm-table__header-button:focus-visible {
+  color: var(--color-accent-primary);
+  outline: none;
+}
+
+.background-bgm-table__header-button:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.background-bgm-table__sort-indicator {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  color: var(--color-accent-primary);
+  filter: drop-shadow(0 0 5px rgba(189, 147, 249, 0.34));
+  stroke-width: 2.4;
+}
+
 .background-bgm-table__filename {
+  min-width: 0;
+}
+
+.background-bgm-table__filename-inner {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: var(--space-1);
 }
 
-.background-bgm-table__filename span {
+.background-bgm-table__filename-inner span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1169,7 +1207,7 @@
 }
 
 .background-bgm-table__preview .audio-inline {
-  min-width: 300px;
+  min-width: 0;
   margin-top: 0;
 }
 

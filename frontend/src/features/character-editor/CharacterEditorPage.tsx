@@ -119,6 +119,12 @@ const SPRITE_SCALE_MIN = 0;
 const SPRITE_SCALE_MAX = 3;
 const SPRITE_SCALE_STEP = 0.05;
 
+type CharacterResourceDeleteTarget =
+  | { characterName: string; index: number; kind: "sprite"; filename: string }
+  | { characterName: string; count: number; kind: "all-sprites" }
+  | { characterName: string; index: number; kind: "sprite-voice"; filename: string }
+  | { characterName: string; kind: "memory"; memory: string; memoryId: string };
+
 function clampSpriteScale(value: number) {
   return Math.min(SPRITE_SCALE_MAX, Math.max(SPRITE_SCALE_MIN, Number(value.toFixed(2))));
 }
@@ -134,6 +140,7 @@ export function CharacterEditorPage() {
   const [draft, setDraft] = useState<Character>(createCharacter());
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [pendingResourceDelete, setPendingResourceDelete] = useState<CharacterResourceDeleteTarget | null>(null);
   const [pendingImportItems, setPendingImportItems] = useState<string[]>([]);
   const [pendingSpritePaths, setPendingSpritePaths] = useState<string[]>([]);
   const [pendingVoicePaths, setPendingVoicePaths] = useState<Record<number, string>>({});
@@ -311,7 +318,7 @@ export function CharacterEditorPage() {
   });
 
   const memoryDeleteMutation = useMutation({
-    mutationFn: (memoryId: string) => deleteCharacterMemory(memoryName, memoryId),
+    mutationFn: ({ memoryId, name }: { memoryId: string; name: string }) => deleteCharacterMemory(name, memoryId),
     onError(error) {
       showToast({
         kind: "error",
@@ -319,8 +326,8 @@ export function CharacterEditorPage() {
         title: t("character.memory.delete"),
       });
     },
-    onSuccess(result) {
-      queryClient.setQueryData(["character-memories", memoryName], result);
+    onSuccess(result, variables) {
+      queryClient.setQueryData(["character-memories", variables.name], result);
     },
   });
 
@@ -380,7 +387,7 @@ export function CharacterEditorPage() {
   });
 
   const voiceDeleteMutation = useMutation({
-    mutationFn: (index: number) => deleteSpriteVoice(currentCharacterName, index),
+    mutationFn: ({ index, name }: { index: number; name: string }) => deleteSpriteVoice(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -388,12 +395,12 @@ export function CharacterEditorPage() {
         title: t("character.sprite.deleteVoice"),
       });
     },
-    onSuccess(character, index) {
+    onSuccess(character, variables) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
       setDraft((current) => ({ ...current, sprites: character.sprites }));
       setPendingVoicePaths((current) => {
         const next = { ...current };
-        delete next[index];
+        delete next[variables.index];
         return next;
       });
       showToast({ kind: "success", title: t("character.sprite.deleteVoice") });
@@ -440,7 +447,7 @@ export function CharacterEditorPage() {
   });
 
   const spriteDeleteMutation = useMutation({
-    mutationFn: (index: number) => deleteCharacterSprite(currentCharacterName, index),
+    mutationFn: ({ index, name }: { index: number; name: string }) => deleteCharacterSprite(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -456,7 +463,7 @@ export function CharacterEditorPage() {
   });
 
   const spriteDeleteAllMutation = useMutation({
-    mutationFn: () => deleteAllCharacterSprites(currentCharacterName),
+    mutationFn: (name: string) => deleteAllCharacterSprites(name),
     onError(error) {
       showToast({
         kind: "error",
@@ -594,6 +601,65 @@ export function CharacterEditorPage() {
       })),
     [draft.sprites, spriteTags, t],
   );
+
+  const confirmPendingResourceDelete = () => {
+    if (!pendingResourceDelete) {
+      return;
+    }
+    const target = pendingResourceDelete;
+    setPendingResourceDelete(null);
+    if (target.kind === "memory") {
+      memoryDeleteMutation.mutate({ memoryId: target.memoryId, name: target.characterName });
+      return;
+    }
+    if (target.kind === "sprite") {
+      spriteDeleteMutation.mutate({ index: target.index, name: target.characterName });
+      return;
+    }
+    if (target.kind === "all-sprites") {
+      spriteDeleteAllMutation.mutate(target.characterName);
+      return;
+    }
+    voiceDeleteMutation.mutate({ index: target.index, name: target.characterName });
+  };
+
+  const pendingResourceDeleteCopy = pendingResourceDelete
+    ? {
+        body:
+          pendingResourceDelete.kind === "memory"
+            ? t("character.memory.deleteConfirmBody", {
+                memory: pendingResourceDelete.memory,
+                name: pendingResourceDelete.characterName,
+              })
+            : pendingResourceDelete.kind === "sprite"
+              ? t("character.sprite.deleteConfirmBody", {
+                  filename: pendingResourceDelete.filename,
+                  index: pendingResourceDelete.index + 1,
+                  name: pendingResourceDelete.characterName,
+                })
+              : pendingResourceDelete.kind === "all-sprites"
+                ? t("character.sprite.clearConfirmBody", {
+                    count: pendingResourceDelete.count,
+                    name: pendingResourceDelete.characterName,
+                  })
+                : t("character.sprite.deleteVoiceConfirmBody", {
+                    filename: pendingResourceDelete.filename,
+                    index: pendingResourceDelete.index + 1,
+                  }),
+        confirmLabel:
+          pendingResourceDelete.kind === "sprite" || pendingResourceDelete.kind === "sprite-voice"
+            ? t("common.remove")
+            : t("common.delete"),
+        title:
+          pendingResourceDelete.kind === "memory"
+            ? t("character.memory.delete")
+            : pendingResourceDelete.kind === "all-sprites"
+              ? t("character.sprite.clear")
+              : pendingResourceDelete.kind === "sprite-voice"
+                ? t("character.sprite.deleteVoice")
+                : t("common.remove"),
+      }
+    : null;
 
   return (
     <div className="page character-page">
@@ -1010,7 +1076,11 @@ export function CharacterEditorPage() {
                       showToast({ kind: "error", title: t("character.sprite.clear") });
                       return;
                     }
-                    spriteDeleteAllMutation.mutate();
+                    setPendingResourceDelete({
+                      characterName: currentCharacterName,
+                      count: draft.sprites.length,
+                      kind: "all-sprites",
+                    });
                   }}
                   variant="ghost"
                 >
@@ -1199,7 +1269,12 @@ export function CharacterEditorPage() {
                             showToast({ kind: "error", title: t("character.sprite.deleteVoice") });
                             return;
                           }
-                          voiceDeleteMutation.mutate(selectedSpriteIndex);
+                          setPendingResourceDelete({
+                            characterName: currentCharacterName,
+                            filename: baseName(selectedSprite.path) || `${selectedSpriteIndex + 1}`,
+                            index: selectedSpriteIndex,
+                            kind: "sprite-voice",
+                          });
                         }}
                         variant="ghost"
                       >
@@ -1208,7 +1283,18 @@ export function CharacterEditorPage() {
                       <AsyncButton
                         icon={<Trash2 aria-hidden className="button__icon" />}
                         loading={spriteDeleteMutation.isPending}
-                        onClick={() => spriteDeleteMutation.mutate(selectedSpriteIndex)}
+                        onClick={() => {
+                          if (!currentCharacterName || !selectedSprite) {
+                            showToast({ kind: "error", title: t("common.remove") });
+                            return;
+                          }
+                          setPendingResourceDelete({
+                            characterName: currentCharacterName,
+                            filename: baseName(selectedSprite.path) || `${selectedSpriteIndex + 1}`,
+                            index: selectedSpriteIndex,
+                            kind: "sprite",
+                          });
+                        }}
                         variant="ghost"
                       >
                         {t("common.remove")}
@@ -1267,7 +1353,17 @@ export function CharacterEditorPage() {
                     <AsyncButton
                       disabled={!memory.id}
                       loading={memoryDeleteMutation.isPending}
-                      onClick={() => memoryDeleteMutation.mutate(memory.id)}
+                      onClick={() => {
+                        if (!memory.id) {
+                          return;
+                        }
+                        setPendingResourceDelete({
+                          characterName: memoryName,
+                          kind: "memory",
+                          memory: memory.memory,
+                          memoryId: memory.id,
+                        });
+                      }}
                       variant="ghost"
                     >
                       {t("character.memory.delete")}
@@ -1339,6 +1435,16 @@ export function CharacterEditorPage() {
         onConfirm={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
         open={Boolean(pendingDelete)}
         title={t("character.delete.confirmTitle")}
+      />
+      <AlertDialog
+        body={pendingResourceDeleteCopy?.body ?? ""}
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={pendingResourceDeleteCopy?.confirmLabel ?? t("common.delete")}
+        onCancel={() => setPendingResourceDelete(null)}
+        onConfirm={confirmPendingResourceDelete}
+        open={Boolean(pendingResourceDelete)}
+        title={pendingResourceDeleteCopy?.title ?? t("common.delete")}
       />
     </div>
   );

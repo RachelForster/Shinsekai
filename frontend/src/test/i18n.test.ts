@@ -24,12 +24,23 @@ describe("translateMessage", () => {
     expect(translateMessage("zh_CN", "background.toast.importComplete", { count: 2 })).toBe("导入 2 个背景组");
     expect(translateMessage("en", "background.resource.imageCount", { count: 1 })).toBe("1 images");
     expect(translateMessage("ja", "background.validation.nameRequired")).toContain("背景名");
+    expect(translateMessage("zh_CN", "background.asset.clearImagesConfirmBody", { count: 2, name: "Room" })).toContain(
+      "Room",
+    );
+    expect(translateMessage("en", "background.asset.selectAllBgm")).toContain("Select all");
   });
 
   it("covers character editor copy", () => {
     expect(translateMessage("zh_CN", "character.toast.importComplete", { count: 2 })).toBe("导入 2 个角色");
     expect(translateMessage("en", "character.validation.nameRequired")).toContain("Character");
     expect(translateMessage("ja", "character.delete.confirmBody", { name: "Nanami" })).toContain("Nanami");
+    expect(
+      translateMessage("en", "character.sprite.deleteConfirmBody", {
+        filename: "Sprite01.webp",
+        index: 1,
+        name: "Nanami",
+      }),
+    ).toContain("Sprite01.webp");
   });
 
   it("covers template, chat, and plugin copy", () => {

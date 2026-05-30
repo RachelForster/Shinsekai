@@ -110,8 +110,14 @@ export type MessageKey =
   | "background.asset.addBgm"
   | "background.asset.addImage"
   | "background.asset.clearBgm"
+  | "background.asset.clearBgmConfirmBody"
+  | "background.asset.clearBgmSelection"
   | "background.asset.clearImages"
+  | "background.asset.clearImagesConfirmBody"
+  | "background.asset.deleteBgmConfirmBody"
+  | "background.asset.deleteImageConfirmBody"
   | "background.asset.deleteSelectedBgm"
+  | "background.asset.deleteSelectedBgmConfirmBody"
   | "background.asset.emptyBgm"
   | "background.asset.emptyImages"
   | "background.asset.filename"
@@ -120,6 +126,7 @@ export type MessageKey =
   | "background.asset.path"
   | "background.asset.preview"
   | "background.asset.select"
+  | "background.asset.selectAllBgm"
   | "background.asset.selectBgm"
   | "background.asset.selectImages"
   | "background.asset.selectedFiles"
@@ -179,6 +186,7 @@ export type MessageKey =
   | "character.memory.add"
   | "character.memory.count"
   | "character.memory.delete"
+  | "character.memory.deleteConfirmBody"
   | "character.memory.empty"
   | "character.memory.error"
   | "character.memory.loading"
@@ -196,6 +204,8 @@ export type MessageKey =
   | "character.sprite.batchTagsHelp"
   | "character.sprite.batchTagsTitle"
   | "character.sprite.clear"
+  | "character.sprite.clearConfirmBody"
+  | "character.sprite.deleteConfirmBody"
   | "character.sprite.empty"
   | "character.sprite.hasVoice"
   | "character.sprite.imageError"
@@ -207,6 +217,7 @@ export type MessageKey =
   | "character.sprite.selectedFiles"
   | "character.sprite.tag"
   | "character.sprite.deleteVoice"
+  | "character.sprite.deleteVoiceConfirmBody"
   | "character.sprite.saveVoiceText"
   | "character.sprite.uploadVoice"
   | "character.sprite.uploadImages"
@@ -690,8 +701,14 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.asset.addBgm": "Add BGM row",
     "background.asset.addImage": "Add image row",
     "background.asset.clearBgm": "Delete all BGM",
+    "background.asset.clearBgmConfirmBody": "Delete all {count} BGM entries from “{name}”?",
+    "background.asset.clearBgmSelection": "Clear selection",
     "background.asset.clearImages": "Delete all images",
+    "background.asset.clearImagesConfirmBody": "Delete all {count} background images from “{name}”?",
+    "background.asset.deleteBgmConfirmBody": "Delete BGM #{index} “{filename}” from “{name}”?",
+    "background.asset.deleteImageConfirmBody": "Delete background image #{index} “{filename}” from “{name}”?",
     "background.asset.deleteSelectedBgm": "Delete selected BGM",
+    "background.asset.deleteSelectedBgmConfirmBody": "Delete {count} selected BGM entries from “{name}”?",
     "background.asset.emptyBgm": "No BGM entries",
     "background.asset.emptyImages": "No background images",
     "background.asset.filename": "File name",
@@ -700,6 +717,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.asset.path": "Path",
     "background.asset.preview": "Preview",
     "background.asset.select": "Select",
+    "background.asset.selectAllBgm": "Select all BGM",
     "background.asset.selectBgm": "Select BGM files",
     "background.asset.selectImages": "Select image files",
     "background.asset.selectedFiles": "{count} files selected",
@@ -759,6 +777,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.memory.add": "Add memory",
     "character.memory.count": "{count} memories",
     "character.memory.delete": "Delete",
+    "character.memory.deleteConfirmBody": "Delete memory “{memory}” from “{name}”?",
     "character.memory.empty": "No memories",
     "character.memory.error": "Memory operation failed.",
     "character.memory.loading": "Loading memories",
@@ -777,6 +796,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
       "Paste one numbered tag per line. Confirm applies the text to the current character; use Upload tags to save.",
     "character.sprite.batchTagsTitle": "Batch sprite tags",
     "character.sprite.clear": "Delete all sprites",
+    "character.sprite.clearConfirmBody": "Delete all {count} sprites from “{name}”?",
+    "character.sprite.deleteConfirmBody": "Delete sprite #{index} “{filename}” from “{name}”?",
     "character.sprite.empty": "No sprites",
     "character.sprite.hasVoice": "Voice",
     "character.sprite.imageError": "Sprite image operation failed.",
@@ -788,6 +809,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.selectedFiles": "{count} files selected",
     "character.sprite.tag": "Sprite tag",
     "character.sprite.deleteVoice": "Delete voice",
+    "character.sprite.deleteVoiceConfirmBody": "Delete voice for sprite #{index} “{filename}”?",
     "character.sprite.saveVoiceText": "Save text",
     "character.sprite.uploadVoice": "Upload voice",
     "character.sprite.uploadImages": "Upload",
@@ -1279,8 +1301,14 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.asset.addBgm": "BGM 行を追加",
     "background.asset.addImage": "画像行を追加",
     "background.asset.clearBgm": "BGM をすべて削除",
+    "background.asset.clearBgmConfirmBody": "背景「{name}」から {count} 件の BGM をすべて削除しますか？",
+    "background.asset.clearBgmSelection": "選択解除",
     "background.asset.clearImages": "画像をすべて削除",
+    "background.asset.clearImagesConfirmBody": "背景「{name}」から {count} 枚の背景画像をすべて削除しますか？",
+    "background.asset.deleteBgmConfirmBody": "背景「{name}」から BGM #{index}「{filename}」を削除しますか？",
+    "background.asset.deleteImageConfirmBody": "背景「{name}」から背景画像 #{index}「{filename}」を削除しますか？",
     "background.asset.deleteSelectedBgm": "選択した BGM を削除",
+    "background.asset.deleteSelectedBgmConfirmBody": "背景「{name}」から選択した {count} 件の BGM を削除しますか？",
     "background.asset.emptyBgm": "BGM がありません",
     "background.asset.emptyImages": "背景画像がありません",
     "background.asset.filename": "ファイル名",
@@ -1289,6 +1317,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.asset.path": "パス",
     "background.asset.preview": "再生",
     "background.asset.select": "選択",
+    "background.asset.selectAllBgm": "BGM をすべて選択",
     "background.asset.selectBgm": "BGM ファイルを選択",
     "background.asset.selectImages": "画像ファイルを選択",
     "background.asset.selectedFiles": "{count} 件を選択中",
@@ -1348,6 +1377,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.memory.add": "記憶を追加",
     "character.memory.count": "{count} 件",
     "character.memory.delete": "削除",
+    "character.memory.deleteConfirmBody": "「{name}」から記憶「{memory}」を削除しますか？",
     "character.memory.empty": "記憶がありません",
     "character.memory.error": "記憶操作に失敗しました。",
     "character.memory.loading": "記憶を読み込み中",
@@ -1366,6 +1396,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
       "番号付きタグを 1 行ずつ貼り付けます。確定で現在のキャラクターに反映し、タグをアップロードで保存します。",
     "character.sprite.batchTagsTitle": "立ち絵タグの一括編集",
     "character.sprite.clear": "立ち絵をすべて削除",
+    "character.sprite.clearConfirmBody": "「{name}」から {count} 枚の立ち絵をすべて削除しますか？",
+    "character.sprite.deleteConfirmBody": "「{name}」から立ち絵 #{index}「{filename}」を削除しますか？",
     "character.sprite.empty": "立ち絵がありません",
     "character.sprite.hasVoice": "音声あり",
     "character.sprite.imageError": "立ち絵画像の操作に失敗しました。",
@@ -1377,6 +1409,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.selectedFiles": "{count} 件を選択中",
     "character.sprite.tag": "立ち絵タグ",
     "character.sprite.deleteVoice": "音声を削除",
+    "character.sprite.deleteVoiceConfirmBody": "立ち絵 #{index}「{filename}」の音声を削除しますか？",
     "character.sprite.saveVoiceText": "テキスト保存",
     "character.sprite.uploadVoice": "音声をアップロード",
     "character.sprite.uploadImages": "アップロード",
@@ -1863,8 +1896,14 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.asset.addBgm": "添加 BGM 行",
     "background.asset.addImage": "添加图片行",
     "background.asset.clearBgm": "删除所有背景音乐",
+    "background.asset.clearBgmConfirmBody": "确认从背景「{name}」删除全部 {count} 条背景音乐？",
+    "background.asset.clearBgmSelection": "取消选择",
     "background.asset.clearImages": "删除所有背景图片",
+    "background.asset.clearImagesConfirmBody": "确认从背景「{name}」删除全部 {count} 张背景图片？",
+    "background.asset.deleteBgmConfirmBody": "确认从背景「{name}」删除 BGM #{index}「{filename}」？",
+    "background.asset.deleteImageConfirmBody": "确认从背景「{name}」删除背景图片 #{index}「{filename}」？",
     "background.asset.deleteSelectedBgm": "批量删除已选 BGM",
+    "background.asset.deleteSelectedBgmConfirmBody": "确认从背景「{name}」删除已选的 {count} 条 BGM？",
     "background.asset.emptyBgm": "暂无 BGM",
     "background.asset.emptyImages": "暂无背景图片",
     "background.asset.filename": "文件名",
@@ -1873,6 +1912,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.asset.path": "路径",
     "background.asset.preview": "试听",
     "background.asset.select": "选择",
+    "background.asset.selectAllBgm": "全选 BGM",
     "background.asset.selectBgm": "选择 BGM 文件",
     "background.asset.selectImages": "选择背景图片",
     "background.asset.selectedFiles": "已选择 {count} 个文件",
@@ -1932,6 +1972,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.memory.add": "添加记忆",
     "character.memory.count": "{count} 条记忆",
     "character.memory.delete": "删除",
+    "character.memory.deleteConfirmBody": "确认从「{name}」删除记忆「{memory}」？",
     "character.memory.empty": "暂无记忆",
     "character.memory.error": "记忆操作失败。",
     "character.memory.loading": "正在读取记忆",
@@ -1949,6 +1990,8 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.batchTagsHelp": "每行填写一个带编号的标注。确定后先应用到当前角色，再点击上传立绘标注保存。",
     "character.sprite.batchTagsTitle": "批量编辑立绘标注",
     "character.sprite.clear": "删除所有立绘",
+    "character.sprite.clearConfirmBody": "确认从「{name}」删除全部 {count} 张立绘？",
+    "character.sprite.deleteConfirmBody": "确认从「{name}」删除立绘 #{index}「{filename}」？",
     "character.sprite.empty": "暂无立绘",
     "character.sprite.hasVoice": "有语音",
     "character.sprite.imageError": "立绘图片操作失败。",
@@ -1960,6 +2003,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.sprite.selectedFiles": "已选择 {count} 个文件",
     "character.sprite.tag": "立绘关键字标注",
     "character.sprite.deleteVoice": "删除语音",
+    "character.sprite.deleteVoiceConfirmBody": "确认删除立绘 #{index}「{filename}」的语音？",
     "character.sprite.saveVoiceText": "保存文本",
     "character.sprite.uploadVoice": "上传语音",
     "character.sprite.uploadImages": "上传图片",

@@ -1,7 +1,19 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, UIEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, Image as ImageIcon, Languages, Music, Plus, Save, Trash2, Upload } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Download,
+  ExternalLink,
+  Image as ImageIcon,
+  Languages,
+  Music,
+  Plus,
+  Save,
+  Trash2,
+  Upload,
+} from "lucide-react";
 
 import {
   backgroundsQueryKey,
@@ -25,6 +37,7 @@ import { fileUrl, openExternal } from "../../entities/files/repository";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
 import {
+  AlertDialog,
   AsyncButton,
   Button,
   EmptyState,
@@ -53,6 +66,23 @@ const BGM_ROW_HEIGHT = 58;
 const VIRTUAL_OVERSCAN_ROWS = 4;
 const VIRTUAL_BGM_ROWS = 10;
 
+type BackgroundDeleteTarget =
+  | { kind: "background"; name: string }
+  | { filename: string; index: number; kind: "image"; name: string }
+  | { count: number; kind: "all-images"; name: string }
+  | { filename: string; index: number; kind: "bgm"; name: string }
+  | { count: number; indexes: number[]; kind: "selected-bgm"; name: string }
+  | { count: number; kind: "all-bgm"; name: string };
+
+type BgmSortDirection = "asc" | "desc";
+type BgmSortKey = "filename" | "index";
+
+interface BackgroundBgmItem {
+  filename: string;
+  originalIndex: number;
+  path: string;
+}
+
 function useVirtualRange(count: number, rowHeight: number, visibleRows: number) {
   const [scrollTop, setScrollTop] = useState(0);
   const viewportHeight = Math.max(rowHeight, Math.min(count || 1, visibleRows) * rowHeight);
@@ -75,19 +105,26 @@ function useVirtualRange(count: number, rowHeight: number, visibleRows: number) 
 }
 
 interface BackgroundBgmRowsProps {
+  allSelected: boolean;
+  clearSelectionLabel: string;
   deleting: boolean;
   filenameLabel: string;
+  items: BackgroundBgmItem[];
   indexLabel: string;
   onDelete: (index: number) => void;
+  onSort: (key: BgmSortKey) => void;
+  onToggleAllSelection: () => void;
   onTagChange: (index: number, value: string) => void;
   onToggleSelection: (index: number, checked: boolean) => void;
   pathLabel: string;
-  paths: string[];
   previewLabel: string;
   removeLabel: string;
   rowTags: string[];
   selectLabel: string;
+  selectAllLabel: string;
   selectedIndexes: Set<number>;
+  sortDirection: BgmSortDirection;
+  sortKey: BgmSortKey;
   tagLabel: string;
 }
 
@@ -132,8 +169,10 @@ const BackgroundBgmRow = memo(function BackgroundBgmRow({
       </td>
       <td>{index + 1}</td>
       <td className="background-bgm-table__filename" title={filename}>
-        <Music aria-hidden className="asset-row__icon" />
-        <span>{filename}</span>
+        <span className="background-bgm-table__filename-inner">
+          <Music aria-hidden className="asset-row__icon" />
+          <span>{filename}</span>
+        </span>
       </td>
       <td>
         <PathDisplay className="background-bgm-table__path" path={path} />
@@ -170,23 +209,33 @@ function BgmSpacerRow({ height }: { height: number }) {
 }
 
 const BackgroundBgmRows = memo(function BackgroundBgmRows({
+  allSelected,
+  clearSelectionLabel,
   deleting,
   filenameLabel,
+  items,
   indexLabel,
   onDelete,
+  onSort,
+  onToggleAllSelection,
   onTagChange,
   onToggleSelection,
   pathLabel,
-  paths,
   previewLabel,
   removeLabel,
   rowTags,
   selectLabel,
+  selectAllLabel,
   selectedIndexes,
+  sortDirection,
+  sortKey,
   tagLabel,
 }: BackgroundBgmRowsProps) {
-  const virtual = useVirtualRange(paths.length, BGM_ROW_HEIGHT, VIRTUAL_BGM_ROWS);
-  const visiblePaths = paths.slice(virtual.startIndex, virtual.endIndex);
+  const virtual = useVirtualRange(items.length, BGM_ROW_HEIGHT, VIRTUAL_BGM_ROWS);
+  const visibleItems = items.slice(virtual.startIndex, virtual.endIndex);
+  const indexAriaSort = sortKey === "index" ? (sortDirection === "asc" ? "ascending" : "descending") : undefined;
+  const filenameAriaSort = sortKey === "filename" ? (sortDirection === "asc" ? "ascending" : "descending") : undefined;
+  const SortIcon = sortDirection === "asc" ? ArrowUp : ArrowDown;
 
   return (
     <div
@@ -206,9 +255,32 @@ const BackgroundBgmRows = memo(function BackgroundBgmRows({
         </colgroup>
         <thead>
           <tr>
-            <th>{selectLabel}</th>
-            <th>{indexLabel}</th>
-            <th>{filenameLabel}</th>
+            <th>
+              <button
+                aria-label={allSelected ? clearSelectionLabel : selectAllLabel}
+                aria-pressed={allSelected}
+                className="background-bgm-table__header-button"
+                onClick={onToggleAllSelection}
+                title={allSelected ? clearSelectionLabel : selectAllLabel}
+                type="button"
+              >
+                {selectLabel}
+              </button>
+            </th>
+            <th aria-sort={indexAriaSort}>
+              <button className="background-bgm-table__header-button" onClick={() => onSort("index")} type="button">
+                <span>{indexLabel}</span>
+                {sortKey === "index" ? <SortIcon aria-hidden className="background-bgm-table__sort-indicator" /> : null}
+              </button>
+            </th>
+            <th aria-sort={filenameAriaSort}>
+              <button className="background-bgm-table__header-button" onClick={() => onSort("filename")} type="button">
+                <span>{filenameLabel}</span>
+                {sortKey === "filename" ? (
+                  <SortIcon aria-hidden className="background-bgm-table__sort-indicator" />
+                ) : null}
+              </button>
+            </th>
             <th>{pathLabel}</th>
             <th>{tagLabel}</th>
             <th>{previewLabel}</th>
@@ -217,20 +289,19 @@ const BackgroundBgmRows = memo(function BackgroundBgmRows({
         </thead>
         <tbody>
           <BgmSpacerRow height={virtual.paddingTop} />
-          {visiblePaths.map((path, offset) => {
-            const index = virtual.startIndex + offset;
+          {visibleItems.map((item) => {
             return (
               <BackgroundBgmRow
                 deleting={deleting}
-                index={index}
-                key={`${path}-${index}`}
+                index={item.originalIndex}
+                key={`${item.path}-${item.originalIndex}`}
                 onDelete={onDelete}
                 onTagChange={onTagChange}
                 onToggleSelection={onToggleSelection}
-                path={path}
+                path={item.path}
                 removeLabel={removeLabel}
-                selected={selectedIndexes.has(index)}
-                tag={rowTags[index] ?? ""}
+                selected={selectedIndexes.has(item.originalIndex)}
+                tag={rowTags[item.originalIndex] ?? ""}
               />
             );
           })}
@@ -254,8 +325,13 @@ export function BackgroundManagerPage() {
   const [pendingBgmPaths, setPendingBgmPaths] = useState<string[]>([]);
   const [pendingImportFiles, setPendingImportFiles] = useState<string[]>([]);
   const [pendingImagePaths, setPendingImagePaths] = useState<string[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<BackgroundDeleteTarget | null>(null);
   const [selectedBgmIndexes, setSelectedBgmIndexes] = useState<number[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [bgmSort, setBgmSort] = useState<{ direction: BgmSortDirection; key: BgmSortKey }>({
+    direction: "asc",
+    key: "index",
+  });
   const [nameError, setNameError] = useState("");
 
   const selected = useMemo(
@@ -461,7 +537,7 @@ export function BackgroundManagerPage() {
   });
 
   const imageDeleteMutation = useMutation({
-    mutationFn: (index: number) => deleteBackgroundImage(currentBackgroundName, index),
+    mutationFn: ({ index, name }: { index: number; name: string }) => deleteBackgroundImage(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -477,7 +553,7 @@ export function BackgroundManagerPage() {
   });
 
   const imageDeleteAllMutation = useMutation({
-    mutationFn: () => deleteAllBackgroundImages(currentBackgroundName),
+    mutationFn: (name: string) => deleteAllBackgroundImages(name),
     onError(error) {
       showToast({
         kind: "error",
@@ -493,7 +569,7 @@ export function BackgroundManagerPage() {
   });
 
   const bgmDeleteMutation = useMutation({
-    mutationFn: (index: number) => deleteBackgroundBgm(currentBackgroundName, index),
+    mutationFn: ({ index, name }: { index: number; name: string }) => deleteBackgroundBgm(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -510,10 +586,10 @@ export function BackgroundManagerPage() {
   });
 
   const bgmBatchDeleteMutation = useMutation({
-    mutationFn: async (indexes: number[]) => {
+    mutationFn: async ({ indexes, name }: { indexes: number[]; name: string }) => {
       let background: Background | null = null;
       for (const index of [...indexes].sort((a, b) => b - a)) {
-        background = await deleteBackgroundBgm(currentBackgroundName, index);
+        background = await deleteBackgroundBgm(name, index);
       }
       if (!background) {
         throw new Error(t("background.asset.noSelectedBgm"));
@@ -536,7 +612,7 @@ export function BackgroundManagerPage() {
   });
 
   const bgmDeleteAllMutation = useMutation({
-    mutationFn: () => deleteAllBackgroundBgm(currentBackgroundName),
+    mutationFn: (name: string) => deleteAllBackgroundBgm(name),
     onError(error) {
       showToast({
         kind: "error",
@@ -584,11 +660,130 @@ export function BackgroundManagerPage() {
     });
   }, []);
 
+  const toggleAllBgmSelection = useCallback(() => {
+    setSelectedBgmIndexes((current) => {
+      const validSelection = current.filter((index) => index >= 0 && index < draft.bgm_list.length);
+      const allSelected = draft.bgm_list.length > 0 && validSelection.length === draft.bgm_list.length;
+      return allSelected ? [] : draft.bgm_list.map((_, index) => index);
+    });
+  }, [draft.bgm_list]);
+
+  const toggleBgmSort = useCallback((key: BgmSortKey) => {
+    setBgmSort((current) => {
+      if (current.key === key) {
+        return { ...current, direction: current.direction === "asc" ? "desc" : "asc" };
+      }
+      return { direction: "asc", key };
+    });
+  }, []);
+
   const handleImageDelete = useCallback(
-    (index: number) => imageDeleteMutation.mutate(index),
-    [imageDeleteMutation.mutate],
+    (index: number) => {
+      const image = draft.sprites[index];
+      if (!currentBackgroundName || !image) {
+        showToast({ kind: "error", title: t("common.remove") });
+        return;
+      }
+      setPendingDelete({
+        filename: baseName(image.path) || `${index + 1}`,
+        index,
+        kind: "image",
+        name: currentBackgroundName,
+      });
+    },
+    [currentBackgroundName, draft.sprites, showToast, t],
   );
-  const handleBgmDelete = useCallback((index: number) => bgmDeleteMutation.mutate(index), [bgmDeleteMutation.mutate]);
+  const handleBgmDelete = useCallback(
+    (index: number) => {
+      const path = draft.bgm_list[index];
+      if (!currentBackgroundName || !path) {
+        showToast({ kind: "error", title: t("common.remove") });
+        return;
+      }
+      setPendingDelete({
+        filename: baseName(path) || `${index + 1}`,
+        index,
+        kind: "bgm",
+        name: currentBackgroundName,
+      });
+    },
+    [currentBackgroundName, draft.bgm_list, showToast, t],
+  );
+
+  const confirmPendingDelete = () => {
+    if (!pendingDelete) {
+      return;
+    }
+    const target = pendingDelete;
+    setPendingDelete(null);
+    if (target.kind === "background") {
+      deleteMutation.mutate(target.name);
+      return;
+    }
+    if (target.kind === "image") {
+      imageDeleteMutation.mutate({ index: target.index, name: target.name });
+      return;
+    }
+    if (target.kind === "all-images") {
+      imageDeleteAllMutation.mutate(target.name);
+      return;
+    }
+    if (target.kind === "bgm") {
+      bgmDeleteMutation.mutate({ index: target.index, name: target.name });
+      return;
+    }
+    if (target.kind === "selected-bgm") {
+      bgmBatchDeleteMutation.mutate({ indexes: target.indexes, name: target.name });
+      return;
+    }
+    bgmDeleteAllMutation.mutate(target.name);
+  };
+
+  const pendingDeleteCopy = pendingDelete
+    ? {
+        body:
+          pendingDelete.kind === "background"
+            ? t("background.delete.confirmBody", { name: pendingDelete.name })
+            : pendingDelete.kind === "image"
+              ? t("background.asset.deleteImageConfirmBody", {
+                  filename: pendingDelete.filename,
+                  index: pendingDelete.index + 1,
+                  name: pendingDelete.name,
+                })
+              : pendingDelete.kind === "all-images"
+                ? t("background.asset.clearImagesConfirmBody", {
+                    count: pendingDelete.count,
+                    name: pendingDelete.name,
+                  })
+                : pendingDelete.kind === "bgm"
+                  ? t("background.asset.deleteBgmConfirmBody", {
+                      filename: pendingDelete.filename,
+                      index: pendingDelete.index + 1,
+                      name: pendingDelete.name,
+                    })
+                  : pendingDelete.kind === "selected-bgm"
+                    ? t("background.asset.deleteSelectedBgmConfirmBody", {
+                        count: pendingDelete.count,
+                        name: pendingDelete.name,
+                      })
+                    : t("background.asset.clearBgmConfirmBody", {
+                        count: pendingDelete.count,
+                        name: pendingDelete.name,
+                      }),
+        confirmLabel:
+          pendingDelete.kind === "image" || pendingDelete.kind === "bgm" ? t("common.remove") : t("common.delete"),
+        title:
+          pendingDelete.kind === "background"
+            ? t("background.delete.confirmTitle")
+            : pendingDelete.kind === "all-images"
+              ? t("background.asset.clearImages")
+              : pendingDelete.kind === "selected-bgm"
+                ? t("background.asset.deleteSelectedBgm")
+                : pendingDelete.kind === "all-bgm"
+                  ? t("background.asset.clearBgm")
+                  : t("common.remove"),
+      }
+    : null;
 
   const saveDraft = () => {
     if (!draft.name.trim()) {
@@ -610,6 +805,25 @@ export function BackgroundManagerPage() {
     () => tagContents(draft.bgm_tags, draft.bgm_list.length),
     [draft.bgm_list.length, draft.bgm_tags],
   );
+  const sortedBgmItems = useMemo(() => {
+    const direction = bgmSort.direction === "asc" ? 1 : -1;
+    return draft.bgm_list
+      .map((path, originalIndex) => ({
+        filename: baseName(path),
+        originalIndex,
+        path,
+      }))
+      .sort((left, right) => {
+        if (bgmSort.key === "filename") {
+          const filenameOrder = left.filename.localeCompare(right.filename, undefined, {
+            numeric: true,
+            sensitivity: "base",
+          });
+          return (filenameOrder || left.originalIndex - right.originalIndex) * direction;
+        }
+        return (left.originalIndex - right.originalIndex) * direction;
+      });
+  }, [bgmSort.direction, bgmSort.key, draft.bgm_list]);
   const imageRowTags = useMemo(
     () => tagContents(draft.bg_tags, draft.sprites.length),
     [draft.bg_tags, draft.sprites.length],
@@ -626,6 +840,8 @@ export function BackgroundManagerPage() {
     [draft.sprites, imageRowTags],
   );
   const selectedBgmIndexSet = useMemo(() => new Set(selectedBgmIndexes), [selectedBgmIndexes]);
+  const selectedBgmCount = selectedBgmIndexes.filter((index) => index >= 0 && index < draft.bgm_list.length).length;
+  const allBgmSelected = draft.bgm_list.length > 0 && selectedBgmCount === draft.bgm_list.length;
 
   return (
     <div className="page">
@@ -788,7 +1004,7 @@ export function BackgroundManagerPage() {
                       });
                       return;
                     }
-                    deleteMutation.mutate(currentBackgroundName);
+                    setPendingDelete({ kind: "background", name: currentBackgroundName });
                   }}
                   variant="danger"
                 >
@@ -909,7 +1125,11 @@ export function BackgroundManagerPage() {
                       showToast({ kind: "error", title: t("background.asset.clearImages") });
                       return;
                     }
-                    imageDeleteAllMutation.mutate();
+                    setPendingDelete({
+                      count: draft.sprites.length,
+                      kind: "all-images",
+                      name: currentBackgroundName,
+                    });
                   }}
                   variant="ghost"
                 >
@@ -1034,11 +1254,19 @@ export function BackgroundManagerPage() {
                   icon={<Trash2 aria-hidden className="button__icon" />}
                   loading={bgmBatchDeleteMutation.isPending}
                   onClick={() => {
-                    if (!selectedBgmIndexes.length) {
+                    const validSelectedBgmIndexes = selectedBgmIndexes.filter(
+                      (index) => index >= 0 && index < draft.bgm_list.length,
+                    );
+                    if (!validSelectedBgmIndexes.length) {
                       showToast({ kind: "error", title: t("background.asset.noSelectedBgm") });
                       return;
                     }
-                    bgmBatchDeleteMutation.mutate(selectedBgmIndexes);
+                    setPendingDelete({
+                      count: validSelectedBgmIndexes.length,
+                      indexes: validSelectedBgmIndexes,
+                      kind: "selected-bgm",
+                      name: currentBackgroundName,
+                    });
                   }}
                   variant="ghost"
                 >
@@ -1051,7 +1279,11 @@ export function BackgroundManagerPage() {
                       showToast({ kind: "error", title: t("background.asset.clearBgm") });
                       return;
                     }
-                    bgmDeleteAllMutation.mutate();
+                    setPendingDelete({
+                      count: draft.bgm_list.length,
+                      kind: "all-bgm",
+                      name: currentBackgroundName,
+                    });
                   }}
                   variant="ghost"
                 >
@@ -1084,19 +1316,26 @@ export function BackgroundManagerPage() {
               {!draft.bgm_list.length ? <EmptyState title={t("background.asset.emptyBgm")} /> : null}
               {draft.bgm_list.length ? (
                 <BackgroundBgmRows
+                  allSelected={allBgmSelected}
+                  clearSelectionLabel={t("background.asset.clearBgmSelection")}
                   deleting={bgmDeleteMutation.isPending}
                   filenameLabel={t("background.asset.filename")}
+                  items={sortedBgmItems}
                   indexLabel={t("background.asset.index")}
                   onDelete={handleBgmDelete}
+                  onSort={toggleBgmSort}
                   onTagChange={updateBgmRowTag}
+                  onToggleAllSelection={toggleAllBgmSelection}
                   onToggleSelection={toggleBgmSelection}
                   pathLabel={t("background.asset.path")}
-                  paths={draft.bgm_list}
                   previewLabel={t("background.asset.preview")}
                   removeLabel={t("common.remove")}
                   rowTags={bgmRowTags}
                   selectLabel={t("background.asset.select")}
+                  selectAllLabel={t("background.asset.selectAllBgm")}
                   selectedIndexes={selectedBgmIndexSet}
+                  sortDirection={bgmSort.direction}
+                  sortKey={bgmSort.key}
                   tagLabel={t("background.asset.tag")}
                 />
               ) : null}
@@ -1104,6 +1343,17 @@ export function BackgroundManagerPage() {
           </section>
         </section>
       </div>
+
+      <AlertDialog
+        body={pendingDeleteCopy?.body ?? ""}
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={pendingDeleteCopy?.confirmLabel ?? t("common.delete")}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={confirmPendingDelete}
+        open={Boolean(pendingDelete)}
+        title={pendingDeleteCopy?.title ?? t("common.delete")}
+      />
     </div>
   );
 }
