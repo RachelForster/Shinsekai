@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import shutil
 import subprocess
 import sys
@@ -122,6 +123,22 @@ def _extract_7za(
     return None
 
 
+def _call_extract_7za(
+    exe: Path,
+    archive: Path,
+    out_dir: Path,
+    *,
+    is_interrupted: Any | None = None,
+) -> str | None:
+    try:
+        params = inspect.signature(_extract_7za).parameters
+    except (TypeError, ValueError):  # pragma: no cover
+        params = {}
+    if is_interrupted is not None and "is_interrupted" in params:
+        return _extract_7za(exe, archive, out_dir, is_interrupted=is_interrupted)
+    return _extract_7za(exe, archive, out_dir)
+
+
 def _extract_py7zz(archive: Path, out_dir: Path) -> str | None:
     p7zz = _load_py7zz()
     if p7zz is None:
@@ -168,7 +185,7 @@ def _extract_archive(
     """Extract with external 7-Zip first; py7zr is only a last fallback."""
     sz = _seven_zip_exe()
     if is_interrupted is not None and sz is not None:
-        cli_err = _extract_7za(sz, archive, out_dir, is_interrupted=is_interrupted)
+        cli_err = _call_extract_7za(sz, archive, out_dir, is_interrupted=is_interrupted)
         if cli_err is None:
             if on_progress is not None:
                 on_progress(100)
@@ -186,7 +203,7 @@ def _extract_archive(
         if py7zz_err != "missing":
             _rmtree(out_dir)
             out_dir.mkdir(parents=True, exist_ok=True)
-        cli_err = _extract_7za(sz, archive, out_dir, is_interrupted=is_interrupted)
+        cli_err = _call_extract_7za(sz, archive, out_dir, is_interrupted=is_interrupted)
         if cli_err is None:
             if on_progress is not None:
                 on_progress(100)
