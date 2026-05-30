@@ -3,7 +3,7 @@
 .select {
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--color-bg-sidebar);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   color: var(--color-text-primary);
   line-height: 1.35;
@@ -11,9 +11,9 @@
 
 .input,
 .select {
-  min-height: 31px;
+  min-height: 32px;
   padding: 5px 10px;
-  background: var(--color-bg-sidebar);
+  background: var(--color-bg-input);
 }
 
 .select {
@@ -49,6 +49,12 @@
 .textarea:hover:not(:disabled),
 .select:hover:not(:disabled) {
   border-color: var(--color-border-hover);
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+  border-color: rgba(189, 147, 249, 0.72);
 }
 
 .input:disabled,

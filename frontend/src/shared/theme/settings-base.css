@@ -2,16 +2,19 @@
 
 .page {
   display: flex;
+  width: min(100%, var(--settings-content-max-width));
   min-width: 0;
   min-height: 100%;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-4);
+  margin: 0 auto;
 }
 
 .page__header {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  min-height: 32px;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
   padding-bottom: 0;
@@ -20,15 +23,15 @@
 
 .page__title {
   margin: 0;
-  font-size: 21px;
+  font-size: 18px;
   font-weight: 650;
   line-height: 1.3;
 }
 
 .page__description {
   max-width: 760px;
-  margin: var(--space-1) 0 0;
-  color: var(--color-accent-primary);
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
 }
 
 .page__actions {
@@ -44,7 +47,7 @@
 }
 
 .page__file-picker {
-  width: min(360px, 100%);
+  width: min(320px, 100%);
 }
 
 .page__file-picker .input-group {
@@ -55,12 +58,14 @@
 
 .section {
   min-width: 0;
-  padding: 0 0 10px;
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: rgba(33, 37, 43, 0.36);
 }
 
 .section:last-child {
-  border-bottom: 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .section__header {
@@ -73,6 +78,7 @@
 
 .section__title {
   margin: 0;
+  color: var(--color-accent-primary);
   font-size: 14px;
   font-weight: 650;
 }
@@ -83,18 +89,38 @@
 }
 
 .section-toggle {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   min-width: 0;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
-  padding: 0;
+  padding: 0 var(--space-2) 0 0;
   border: 0;
-  color: var(--color-text-primary);
+  color: var(--color-accent-primary);
   background: transparent;
   cursor: pointer;
   font: inherit;
   font-size: 15px;
   font-weight: 650;
+}
+
+.section-toggle__indicator,
+.schema-section__summary::after {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.section-toggle[aria-expanded="true"] .section-toggle__indicator,
+.schema-section[open] .schema-section__summary::after {
+  transform: rotate(225deg);
 }
 
 .section-toggle:focus-visible {
@@ -105,12 +131,21 @@
 /* ── Schema section (collapsible details) ── */
 
 .schema-section__summary {
-  display: list-item;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 0;
-  color: var(--color-text-primary);
+  padding-right: var(--space-2);
+  color: var(--color-accent-primary);
   cursor: pointer;
   font-size: 14px;
   font-weight: 650;
+  list-style: none;
+}
+
+.schema-section__summary::-webkit-details-marker {
+  display: none;
 }
 
 .schema-section[open] .schema-section__summary {
@@ -125,7 +160,7 @@
 /* ── Resource links ── */
 
 .resource-links {
-  padding-top: var(--space-1);
+  padding-top: var(--space-4);
 }
 
 .resource-links__grid {
@@ -146,7 +181,18 @@
 
 .form-grid {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+}
+
+.settings-grid {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-4);
+}
+
+.settings-grid--split {
+  grid-template-columns: minmax(260px, 0.34fr) minmax(0, 1fr);
+  align-items: start;
 }
 
 .form-grid--one {
@@ -161,7 +207,7 @@
 
 .field-row {
   display: grid;
-  grid-template-columns: minmax(142px, 0.22fr) minmax(0, 1fr);
+  grid-template-columns: minmax(128px, 0.22fr) minmax(0, 1fr);
   align-items: start;
   gap: 10px;
 }
@@ -185,7 +231,7 @@
   align-items: flex-start;
   gap: 5px;
   padding-top: 6px;
-  color: var(--color-text-primary);
+  color: var(--color-text-muted);
   font-weight: 520;
   line-height: 1.35;
 }
@@ -334,6 +380,7 @@
 .entity-list {
   min-width: 0;
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   background: var(--color-bg-sidebar);
 }
 
@@ -364,6 +411,10 @@
 .entity-list__item[aria-selected="true"] {
   color: var(--color-accent-primary);
   background: rgba(189, 147, 249, 0.12);
+}
+
+.entity-list__item:last-child {
+  border-bottom: 0;
 }
 
 .entity-list__primary {

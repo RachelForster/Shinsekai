@@ -3,7 +3,7 @@
   min-width: 0;
   max-height: 620px;
   align-content: start;
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
   gap: var(--space-2);
   overflow: auto;
   padding-right: 2px;
@@ -17,9 +17,9 @@
   gap: var(--space-1);
   padding: var(--space-2);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--color-text-primary);
-  background: rgba(33, 37, 43, 0.62);
+  background: rgba(33, 37, 43, 0.42);
   cursor: pointer;
   text-align: left;
 }

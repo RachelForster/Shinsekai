@@ -3,15 +3,15 @@
   display: inline-flex;
   max-width: 100%;
   min-width: 0;
-  min-height: 31px;
+  min-height: 32px;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: 5px 12px;
+  padding: 5px 13px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   color: var(--color-text-primary);
-  background: var(--color-border);
+  background: rgba(33, 37, 43, 0.72);
   cursor: pointer;
   line-height: 1.25;
   white-space: nowrap;
@@ -24,7 +24,7 @@
 
 .button:hover:not(:disabled) {
   border-color: var(--color-border-hover);
-  background: var(--color-control-hover);
+  background: rgba(57, 65, 80, 0.72);
 }
 
 .button:active:not(:disabled) {
@@ -38,13 +38,13 @@
 
 .button--primary {
   border-color: rgba(189, 147, 249, 0.68);
-  color: var(--color-text-primary);
-  background: var(--color-border);
+  color: var(--color-accent-primary);
+  background: rgba(189, 147, 249, 0.12);
 }
 
 .button--primary:hover:not(:disabled) {
   border-color: rgba(189, 147, 249, 0.92);
-  background: var(--color-control-hover);
+  background: rgba(189, 147, 249, 0.18);
 }
 
 .button--danger {

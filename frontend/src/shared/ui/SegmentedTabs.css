@@ -2,6 +2,9 @@
   display: flex;
   min-width: 0;
   gap: var(--space-1);
+}
+
+.segmented-tabs--underline {
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -22,4 +25,21 @@
 .segmented-tabs__tab[aria-selected="true"] {
   border-bottom-color: var(--color-accent-primary);
   color: var(--color-accent-primary);
+}
+
+.segmented-tabs--pills {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.segmented-tabs--pills .segmented-tabs__tab {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: rgba(33, 37, 43, 0.72);
+}
+
+.segmented-tabs--pills .segmented-tabs__tab[aria-selected="true"] {
+  border-color: rgba(189, 147, 249, 0.68);
+  color: var(--color-accent-primary);
+  background: rgba(189, 147, 249, 0.12);
 }

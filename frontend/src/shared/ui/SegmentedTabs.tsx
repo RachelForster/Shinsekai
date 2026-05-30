@@ -10,6 +10,7 @@ interface SegmentedTabsProps<T extends string> {
   items: Array<SegmentedTabItem<T>>;
   value: T;
   onChange: (value: T) => void;
+  variant?: "pills" | "underline";
 }
 
 export function SegmentedTabs<T extends string>({
@@ -17,13 +18,14 @@ export function SegmentedTabs<T extends string>({
   items,
   onChange,
   value,
+  variant = "underline",
 }: SegmentedTabsProps<T>) {
   if (items.length <= 1) {
     return null;
   }
 
   return (
-    <div aria-label={ariaLabel} className="segmented-tabs" role="tablist">
+    <div aria-label={ariaLabel} className={`segmented-tabs segmented-tabs--${variant}`} role="tablist">
       {items.map((item) => (
         <button
           aria-selected={item.id === value}
