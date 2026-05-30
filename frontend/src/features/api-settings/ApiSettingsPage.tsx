@@ -1,17 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DownloadCloud, ExternalLink, RefreshCw } from "lucide-react";
 
 import {
-  adapterExtraSchemaToFormGroup,
   buildPayloadFromSchema,
-  apiConfigFormSchema,
-  compactTargetRatioMax,
-  defaultAdapterExtraValue,
   hasSchemaErrors,
-  llmDefaultBaseUrls,
-  llmProviderOptions,
-  type AdapterExtraFormValues,
   type SchemaErrorMap,
   validatePayloadFromSchema,
 } from "../../entities/config/schema";
@@ -26,304 +18,50 @@ import {
   saveSystemConfig,
   ttsBundleRecommendationQueryKey,
 } from "../../entities/config/repository";
-import type {
-  AdapterCatalog,
-  AdapterExtraFieldSchema,
-  AdapterOption,
-  ApiConfig,
-  SystemConfig,
-} from "../../entities/config/types";
+import type { ApiConfig, SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
-import { openExternal } from "../../entities/files/repository";
 import { resumeLastChat } from "../../entities/chat/repository";
-import type { FormGroupSchema } from "../../shared/form-schema";
-import type {
-  LlmModelOption,
-  TaskSnapshot,
-  TtsBundleDownloadResult,
-  TtsBundleKind,
-  TtsGpuInfo,
-} from "../../shared/platform/types";
+import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
+import { AsyncButton, EmptyState, QueryErrorState, SchemaDrivenForm, useToast } from "../../shared/ui";
+import { AdapterExtraSection } from "./AdapterExtraSection";
+import { ApiLanguageSection } from "./ApiLanguageSection";
+import { AsrSettingsSection } from "./AsrSettingsSection";
+import { LlmConnectionSection } from "./LlmConnectionSection";
+import { ResourceLinksSection } from "./ResourceLinksSection";
+import { TtsBundleSection } from "./TtsBundleSection";
 import {
-  AsyncButton,
-  Button,
-  Dialog,
-  EmptyState,
-  FilePicker,
-  QueryErrorState,
-  SchemaDrivenForm,
-  SchemaFieldGrid,
-  Select,
-  TaskProgress,
-  TextInput,
-  useToast,
-} from "../../shared/ui";
-import { EditableModelSelect, ModelCapabilityBadge } from "./EditableModelSelect";
+  activeMapValue,
+  adapterSchema,
+  apiSchemaWithAdapterOptions,
+  asrComputeOptions,
+  asrProviderOptions,
+  catalogOptions,
+  containsPathQuotes,
+  hasAdapterSchema,
+  isTaskCancelledError,
+  isTaskRunning,
+  llmDefaultBaseUrls,
+  llmModelFetchKey,
+  llmProviderOptions,
+  mergeModelOptions,
+  normalizeApiAsrForSave,
+  normalizeApiConfigForUi,
+  normalizeAsrProvider,
+  normalizeSystemAsrForSave,
+  normalizeUiLanguage,
+  requiresTtsServerConfig,
+  resolveAsrWhisperPresetValue,
+  syncCompactRatioDraft,
+  thinkingUnsupported,
+  updateAsrExtraConfig,
+  withCurrentOption,
+  VOSK_MODEL_PATH,
+  type UiLanguage,
+} from "./apiSettingsUtils";
 import "./ApiSettingsPage.css";
 
-type UiLanguage = "zh_CN" | "en" | "ja";
-
-const resourceLinks = [
-  ["api.links.link1", "https://github.com/RVC-Boss/GPT-SoVITS"],
-  [
-    "api.links.link2",
-    "https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604.7z",
-  ],
-  [
-    "api.links.link3",
-    "https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604-nvidia50.7z",
-  ],
-  ["api.links.link4", "https://github.com/High-Logic/Genie-TTS"],
-  [
-    "api.links.link5",
-    "https://www.modelscope.cn/models/twillzxy/genie-tts-server/resolve/master/Genie-TTS%20Server.7z",
-  ],
-] as const;
-
-const VOSK_MODEL_PATH = "./assets/system/models/vosk-model-small-cn-0.22";
-const VOSK_MODELS_URL = "https://alphacephei.com/vosk/models";
-
-const asrProviderOptions = [
-  { label: "Vosk", value: "vosk" },
-  { label: "faster-whisper", value: "faster_whisper" },
-  { label: "RealtimeSTT", value: "realtime_stt" },
-] as const;
-
-const asrWhisperModelPresets = [
-  "tiny",
-  "base",
-  "small",
-  "medium",
-  "large-v1",
-  "large-v2",
-  "large-v3",
-  "distil-large-v2",
-  "distil-large-v3",
-] as const;
-
-const asrComputeOptions = [
-  { labelKey: "system.asr.computeAuto", value: "" },
-  { label: "int8", value: "int8" },
-  { label: "float16", value: "float16" },
-  { label: "int8_float16", value: "int8_float16" },
-  { label: "int16", value: "int16" },
-  { label: "float32", value: "float32" },
-] as const;
-
-function withCurrentOption(options: Array<{ label: string; value: string }>, currentValue: string) {
-  const cleanValue = String(currentValue || "").trim();
-  if (!cleanValue || options.some((option) => option.value === cleanValue)) {
-    return options;
-  }
-  return [...options, { label: cleanValue, value: cleanValue }];
-}
-
-function normalizeUiLanguage(language: string): UiLanguage {
-  return language === "en" || language === "ja" ? language : "zh_CN";
-}
-
-function normalizeAsrProvider(provider: string) {
-  const normalized = (provider || "vosk").trim().toLowerCase().replace(/-/g, "_");
-  if (normalized === "fasterwhisper" || normalized === "whisper") {
-    return "faster_whisper";
-  }
-  if (normalized === "realtimestt") {
-    return "realtime_stt";
-  }
-  return normalized || "vosk";
-}
-
-function resolveAsrWhisperPresetValue(model: string) {
-  const value = (model || "small").trim();
-  return (asrWhisperModelPresets as readonly string[]).includes(value) ? value : "__custom__";
-}
-
-function updateAsrExtraConfig(apiConfig: ApiConfig, provider: string, key: string, value: unknown): ApiConfig {
-  const providerKey = normalizeAsrProvider(provider);
-  return {
-    ...apiConfig,
-    asr_extra_configs: {
-      ...(apiConfig.asr_extra_configs ?? {}),
-      [providerKey]: {
-        ...((apiConfig.asr_extra_configs ?? {})[providerKey] ?? {}),
-        [key]: value,
-      },
-    },
-  };
-}
-
-function normalizeSystemAsrForSave(systemConfig: SystemConfig): SystemConfig {
-  return {
-    ...systemConfig,
-    asr_provider: normalizeAsrProvider(systemConfig.asr_provider),
-    asr_whisper_compute_type: String(systemConfig.asr_whisper_compute_type ?? "").trim(),
-    asr_whisper_device: String(systemConfig.asr_whisper_device || "auto")
-      .trim()
-      .toLowerCase(),
-    asr_whisper_model_size: String(systemConfig.asr_whisper_model_size || "small").trim() || "small",
-  };
-}
-
-function normalizeApiAsrForSave(apiConfig: ApiConfig, systemConfig: SystemConfig): ApiConfig {
-  const provider = normalizeAsrProvider(systemConfig.asr_provider);
-  if (provider !== "vosk") {
-    return apiConfig;
-  }
-  const current = (apiConfig.asr_extra_configs ?? {}).vosk ?? {};
-  const modelPath = String(current.model_path ?? "").trim() || VOSK_MODEL_PATH;
-  return updateAsrExtraConfig(apiConfig, "vosk", "model_path", modelPath);
-}
-
-function catalogOptions(
-  options: AdapterOption[] | undefined,
-  fallback: ReadonlyArray<{ label: string; value: string }>,
-) {
-  if (!options?.length) {
-    return fallback.map((option) => ({ label: option.label, value: option.value }));
-  }
-  return options.map((option) => ({ label: option.label || option.value, value: option.value }));
-}
-
-function adapterSchema(options: AdapterOption[] | undefined, value: string) {
-  return options?.find((option) => option.value === value)?.schema ?? {};
-}
-
-function apiSchemaWithAdapterOptions(
-  catalog: AdapterCatalog | undefined,
-  draft: ApiConfig | null,
-): Array<FormGroupSchema<ApiConfig>> {
-  const ttsOptions = withCurrentOption(
-    catalogOptions(catalog?.tts, [
-      { label: "不使用", value: "none" },
-      { label: "Genie TTS", value: "genie-tts" },
-      { label: "GPT SoVITS", value: "gpt-sovits" },
-      { label: "IndexTTS", value: "index-tts" },
-      { label: "CosyVoice", value: "cosyvoice" },
-    ]),
-    draft?.tts_provider ?? "",
-  );
-  const t2iOptions = withCurrentOption(
-    catalogOptions(catalog?.t2i, [
-      { label: "ComfyUI", value: "comfyui" },
-      { label: "Stable Diffusion", value: "stable diffusion" },
-    ]),
-    draft?.t2i_provider ?? "",
-  );
-
-  return apiConfigFormSchema
-    .map((group) => ({
-      ...group,
-      fields: group.fields
-        .filter((field) => field.name !== "is_streaming")
-        .map((field) => {
-          if (field.name === "tts_provider") {
-            return { ...field, options: ttsOptions };
-          }
-          if (field.name === "t2i_provider") {
-            return { ...field, options: t2iOptions };
-          }
-          return field;
-        }),
-    }))
-    .filter((group) => group.fields.length > 0);
-}
-
-function activeMapValue(map: Record<string, string>, provider: string) {
-  return map?.[provider] ?? "";
-}
-
-function finiteNumber(value: unknown, fallback: number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function syncCompactRatioDraft(config: ApiConfig): ApiConfig {
-  const compactThreshold = finiteNumber(config.compact_threshold, 0.4);
-  const compactTargetMax = compactTargetRatioMax({ compact_threshold: compactThreshold });
-  return {
-    ...config,
-    compact_threshold: compactThreshold,
-    compact_target_ratio: Math.min(finiteNumber(config.compact_target_ratio, 0.3), compactTargetMax),
-  };
-}
-
-function normalizeApiConfigForUi(config: ApiConfig): ApiConfig {
-  const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
-  return syncCompactRatioDraft({
-    ...config,
-    history_recent_messages: finiteNumber(config.history_recent_messages, 20),
-    llm_api_key: config.llm_api_key ?? {},
-    llm_base_url: String(config.llm_base_url || "").trim() || llmDefaultBaseUrls[provider] || "",
-    llm_model: config.llm_model ?? {},
-    llm_provider: provider,
-    max_active_tool_groups: finiteNumber(config.max_active_tool_groups, 3),
-    max_tool_result_chars: finiteNumber(config.max_tool_result_chars, 6000),
-  });
-}
-
-function mergeModelOptions(...groups: Array<LlmModelOption[] | undefined>) {
-  const out: LlmModelOption[] = [];
-  const seen = new Set<string>();
-  for (const group of groups) {
-    for (const option of group ?? []) {
-      const id = String(option.id || "").trim();
-      if (!id || seen.has(id)) {
-        continue;
-      }
-      seen.add(id);
-      out.push({ id, tags: option.tags ?? [] });
-    }
-  }
-  return out;
-}
-
-function llmModelFetchKey(config: ApiConfig) {
-  return JSON.stringify([
-    config.llm_provider,
-    String(config.llm_base_url || "").trim(),
-    activeMapValue(config.llm_api_key, config.llm_provider),
-  ]);
-}
-
-function thinkingUnsupported(model: string) {
-  return ["deepseek-v4-flash", "deepseek-chat"].includes(model.trim().toLowerCase());
-}
-
-function isTaskRunning(task: TaskSnapshot | null) {
-  return task?.status === "queued" || task?.status === "running";
-}
-
-function isTaskCancelledError(error: unknown) {
-  return error instanceof Error && error.name === "TaskCancelledError";
-}
-
 type Translate = ReturnType<typeof useI18n>["t"];
-
-function normalizeGpuName(gpu: TtsGpuInfo, t: Translate) {
-  const vendor = String(gpu.vendor || "").trim();
-  const device = String(gpu.device || "").trim();
-  const name =
-    vendor && device && !device.toLowerCase().includes(vendor.toLowerCase()) ? `${vendor} ${device}` : device || vendor;
-  return name.replace(/\s+/g, " ").trim() || t("api.tts.bundleUnknownGpu");
-}
-
-function formatGpuMemory(gpu: TtsGpuInfo, t: Translate) {
-  const raw = gpu.vram_gb;
-  if (raw == null || raw === "") {
-    return t("api.tts.bundleGpuMemoryUnknown");
-  }
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) {
-    return t("api.tts.bundleGpuMemoryUnknown");
-  }
-  const formatted = Number.isInteger(value) ? String(value) : value.toFixed(1);
-  return `${formatted} GB`;
-}
-
-function formatTtsGpu(gpu: TtsGpuInfo, t: Translate) {
-  return `${normalizeGpuName(gpu, t)} / ${formatGpuMemory(gpu, t)}`;
-}
 
 function formatTtsBundleFailure(error: unknown, t: Translate) {
   const raw = error instanceof Error ? error.message : "";
@@ -342,70 +80,6 @@ function formatTtsBundleFailure(error: unknown, t: Translate) {
     message = clean;
   }
   return archive ? `${message}\n${t("api.tts.bundleErrorManual", { path: archive })}` : message;
-}
-
-function requiresTtsServerConfig(provider: string) {
-  return ["genie-tts", "gpt-sovits"].includes(provider.trim().toLowerCase());
-}
-
-function containsPathQuotes(value: string) {
-  return value.includes('"') || value.includes("'");
-}
-
-function hasAdapterSchema(schema: Record<string, AdapterExtraFieldSchema>) {
-  return Object.keys(schema).length > 0;
-}
-
-function AdapterExtraForm({
-  disabled,
-  modelUnsupportedThinking = false,
-  onChange,
-  schema,
-  values,
-}: {
-  disabled?: boolean;
-  modelUnsupportedThinking?: boolean;
-  onChange: (key: string, value: unknown) => void;
-  schema: Record<string, AdapterExtraFieldSchema>;
-  values: Record<string, unknown>;
-}) {
-  const entries = Object.entries(schema);
-  if (!entries.length) {
-    return null;
-  }
-
-  const disabledKeys = modelUnsupportedThinking ? ["thinking_enabled", "reasoning_effort"] : [];
-  const group = adapterExtraSchemaToFormGroup({
-    disabledKeys,
-    disabledReason: "该模型不支持思考模式。",
-    id: "adapter-extra",
-    schema,
-    title: "扩展参数",
-  });
-  const displayValues = entries.reduce<AdapterExtraFormValues>((accumulator, [key, field]) => {
-    accumulator[key] = values[key] ?? defaultAdapterExtraValue(field);
-    if (modelUnsupportedThinking && key === "thinking_enabled") {
-      accumulator[key] = false;
-    }
-    return accumulator;
-  }, {});
-
-  return (
-    <SchemaFieldGrid
-      className="api-extra-grid"
-      disabled={disabled}
-      group={group}
-      onChange={(nextValues) => {
-        for (const [key, value] of Object.entries(nextValues)) {
-          if (!Object.is(value, displayValues[key])) {
-            onChange(key, value);
-            return;
-          }
-        }
-      }}
-      value={displayValues}
-    />
-  );
 }
 
 export function ApiSettingsPage() {
@@ -653,17 +327,6 @@ export function ApiSettingsPage() {
   const availableModelOptions = mergeModelOptions(modelOptions, activeModel ? [{ id: activeModel, tags: [] }] : []);
   const selectedOption = availableModelOptions.find((option) => option.id === activeModel);
   const modelCandidateListId = "llm-model-candidates";
-  const ttsBundleLabels: Record<TtsBundleKind, string> = {
-    genie: t("api.tts.bundleGenie"),
-    gptso: t("api.tts.bundleGptSovits"),
-    gptso50: t("api.tts.bundleGptSovits50"),
-  };
-  const recommendedBundle = ttsBundleRecommendationQuery.data
-    ? ttsBundleLabels[ttsBundleRecommendationQuery.data.kind]
-    : "";
-  const detectedGpuLabels = ttsBundleRecommendationQuery.data?.gpus.length
-    ? ttsBundleRecommendationQuery.data.gpus.map((gpu) => formatTtsGpu(gpu, t))
-    : [];
   const canCancelTtsBundleDownload =
     ttsBundleMutation.isPending && isTaskRunning(ttsBundleTask) && !ttsBundleTask?.cancelRequested;
   const openTtsBundleDialog = () => {
@@ -695,31 +358,26 @@ export function ApiSettingsPage() {
   const activeAsrSchema =
     adapterCatalog?.asr?.find((option) => normalizeAsrProvider(option.value) === activeAsrProvider)?.schema ?? {};
   const voskModelPath = String(draft.asr_extra_configs?.vosk?.model_path ?? VOSK_MODEL_PATH);
-  const uiLanguageOptions: Array<{ label: string; value: UiLanguage }> = [
-    { label: t("api.language.zh"), value: "zh_CN" },
-    { label: t("api.language.en"), value: "en" },
-    { label: t("api.language.ja"), value: "ja" },
-  ];
-  const apiLanguageGroup: FormGroupSchema<SystemConfig> = {
-    columns: 1,
-    fields: [
-      {
-        label: t("api.language.field"),
-        name: "ui_language",
-        options: uiLanguageOptions,
-        type: "select",
-      },
-    ],
-    id: "api-language",
-    title: t("api.language.title"),
-  };
 
   const updateDraft = (patch: Partial<ApiConfig>) => {
     setDraft({ ...draft, ...patch });
   };
 
+  const updateDraftAndResetModelFetch = (patch: Partial<ApiConfig>) => {
+    if (Object.prototype.hasOwnProperty.call(patch, "llm_base_url")) {
+      activeModelFetchKey.current = null;
+      setModelOptions([]);
+    }
+    updateDraft(patch);
+  };
+
   const updateSystemDraft = (patch: Partial<SystemConfig>) => {
     setSystemDraft({ ...systemDraft, ...patch });
+  };
+
+  const handleLanguageChange = (language: UiLanguage) => {
+    setSystemDraft({ ...systemDraft, ui_language: language });
+    languageMutation.mutate(language);
   };
 
   const updateProvider = (provider: string) => {
@@ -733,6 +391,10 @@ export function ApiSettingsPage() {
   };
 
   const updateProviderMap = (key: "llm_api_key" | "llm_model", value: string) => {
+    if (key === "llm_api_key") {
+      activeModelFetchKey.current = null;
+      setModelOptions([]);
+    }
     const nextExtra =
       key === "llm_model" && thinkingUnsupported(value)
         ? {
@@ -770,6 +432,19 @@ export function ApiSettingsPage() {
           [key]: value,
         },
       },
+    });
+  };
+
+  const handleFetchModels = () => {
+    if (!draft.llm_base_url.trim() || !activeApiKey.trim()) {
+      showToast({ kind: "error", message: t("api.llm.fetchMissing"), title: t("api.llm.fetchTitle") });
+      return;
+    }
+    modelFetchMutation.mutate({
+      apiKey: activeApiKey,
+      baseUrl: draft.llm_base_url,
+      fetchKey: llmModelFetchKey(draft),
+      provider: draft.llm_provider,
     });
   };
 
@@ -847,269 +522,56 @@ export function ApiSettingsPage() {
           {t("api.resume.btn")}
         </AsyncButton>
       </div>
-      {systemDraft ? (
-        <section className="section api-page__language">
-          <div className="section__header">
-            <div>
-              <h2 className="section__title">{t("api.language.title")}</h2>
-            </div>
-          </div>
-          <SchemaFieldGrid
-            disabled={languageMutation.isPending}
-            group={apiLanguageGroup}
-            onChange={(nextSystem) => {
-              const language = normalizeUiLanguage(nextSystem.ui_language);
-              setSystemDraft({ ...systemDraft, ui_language: language });
-              languageMutation.mutate(language);
-            }}
-            value={systemDraft}
-          />
-          <p className="section__description">{t("api.language.hint")}</p>
-        </section>
-      ) : null}
+      <ApiLanguageSection
+        disabled={languageMutation.isPending}
+        onChange={handleLanguageChange}
+        systemDraft={systemDraft}
+      />
       <header className="page__header">
         <div>
           <h1 className="page__title">{t("api.title")}</h1>
           <p className="page__description">{t("api.description")}</p>
         </div>
       </header>
-      <section className="section">
-        <div className="section__header">
-          <h2 className="section__title">{t("api.llm.connectionTitle")}</h2>
-        </div>
-        <div className="form-grid form-grid--two">
-          <label className="field-row">
-            <span className="field-row__label">{t("api.llm.provider")}</span>
-            <span className="field-row__control">
-              <Select
-                disabled={saveMutation.isPending}
-                onChange={(event) => updateProvider(event.target.value)}
-                value={draft.llm_provider}
-              >
-                {llmProviderSelectOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </span>
-          </label>
-          <label className="field-row">
-            <span className="field-row__label">{t("api.llm.baseUrl")}</span>
-            <span className="field-row__control">
-              <TextInput
-                disabled={saveMutation.isPending}
-                onChange={(event) => {
-                  activeModelFetchKey.current = null;
-                  setModelOptions([]);
-                  updateDraft({ llm_base_url: event.target.value });
-                }}
-                placeholder="https://api.example.com/v1"
-                type="url"
-                value={draft.llm_base_url}
-              />
-            </span>
-          </label>
-          <label className="field-row">
-            <span className="field-row__label">{t("api.llm.apiKey")}</span>
-            <span className="field-row__control">
-              <TextInput
-                disabled={saveMutation.isPending}
-                onChange={(event) => {
-                  activeModelFetchKey.current = null;
-                  setModelOptions([]);
-                  updateProviderMap("llm_api_key", event.target.value);
-                }}
-                type="password"
-                value={activeApiKey}
-              />
-            </span>
-          </label>
-          <label className="field-row">
-            <span className="field-row__label">{t("api.llm.model")}</span>
-            <span className="field-row__control">
-              <span className="api-page__model-control">
-                <EditableModelSelect
-                  disabled={saveMutation.isPending}
-                  id={modelCandidateListId}
-                  onChange={(value) => updateProviderMap("llm_model", value)}
-                  options={availableModelOptions}
-                  placeholder={t("api.llm.modelPlaceholder")}
-                  value={activeModel}
-                />
-                <AsyncButton
-                  icon={<RefreshCw aria-hidden className="button__icon" />}
-                  loading={modelFetchMutation.isPending}
-                  onClick={() => {
-                    if (!draft.llm_base_url.trim() || !activeApiKey.trim()) {
-                      showToast({ kind: "error", message: t("api.llm.fetchMissing"), title: t("api.llm.fetchTitle") });
-                      return;
-                    }
-                    modelFetchMutation.mutate({
-                      apiKey: activeApiKey,
-                      baseUrl: draft.llm_base_url,
-                      fetchKey: llmModelFetchKey(draft),
-                      provider: draft.llm_provider,
-                    });
-                  }}
-                >
-                  {modelFetchMutation.isPending ? t("api.llm.fetching") : t("api.llm.fetchModels")}
-                </AsyncButton>
-              </span>
-              {selectedOption?.tags.length ? (
-                <div className="llm-model-badges">
-                  {selectedOption.tags.map((tag) => (
-                    <ModelCapabilityBadge key={tag} tag={tag} />
-                  ))}
-                </div>
-              ) : null}
-            </span>
-          </label>
-          <div className="field-row">
-            <span className="field-row__label">{t("api.llm.streaming")}</span>
-            <span className="field-row__control radio-pair">
-              <label>
-                <input
-                  checked={draft.is_streaming}
-                  disabled={saveMutation.isPending}
-                  name="api-streaming"
-                  onChange={() => updateDraft({ is_streaming: true })}
-                  type="radio"
-                />
-                <span>{t("common.yes")}</span>
-              </label>
-              <label>
-                <input
-                  checked={!draft.is_streaming}
-                  disabled={saveMutation.isPending}
-                  name="api-streaming"
-                  onChange={() => updateDraft({ is_streaming: false })}
-                  type="radio"
-                />
-                <span>{t("common.no")}</span>
-              </label>
-            </span>
-          </div>
-        </div>
-        <AdapterExtraForm
-          disabled={saveMutation.isPending}
-          modelUnsupportedThinking={thinkingUnsupported(activeModel)}
-          onChange={(key, value) => updateAdapterExtra("llm_extra_configs", draft.llm_provider, key, value)}
-          schema={llmExtraSchema}
-          values={draft.llm_extra_configs?.[draft.llm_provider] ?? {}}
-        />
-      </section>
-      <section className="section">
-        <div className="section__header">
-          <div>
-            <h2 className="section__title">{t("api.tts.bundleTitle")}</h2>
-            <p className="section__description">{t("api.tts.bundleHint")}</p>
-          </div>
-          <div className="inline-actions">
-            <Button
-              icon={<DownloadCloud aria-hidden className="button__icon" />}
-              onClick={openTtsBundleDialog}
-              variant={ttsBundleMutation.isPending ? "primary" : "default"}
-            >
-              {ttsBundleMutation.isPending ? t("api.tts.bundleOpenRunning") : t("api.tts.bundleOpenDialog")}
-            </Button>
-          </div>
-        </div>
-      </section>
-      <Dialog
-        className="tts-bundle-dialog"
-        closeLabel={t("api.tts.bundleClose")}
-        footer={
-          <>
-            <Button onClick={() => setTtsBundleDialogOpen(false)}>{t("api.tts.bundleClose")}</Button>
-            {canCancelTtsBundleDownload ? (
-              <AsyncButton
-                loading={ttsBundleCancelMutation.isPending}
-                onClick={() => ttsBundleCancelMutation.mutate()}
-                variant="danger"
-              >
-                {t("api.tts.bundleCancel")}
-              </AsyncButton>
-            ) : null}
-            <AsyncButton
-              disabled={ttsBundleMutation.isPending}
-              icon={<DownloadCloud aria-hidden className="button__icon" />}
-              loading={ttsBundleMutation.isPending}
-              onClick={() => ttsBundleMutation.mutate()}
-              variant="primary"
-            >
-              {t("api.tts.bundleStart")}
-            </AsyncButton>
-          </>
-        }
-        onClose={() => setTtsBundleDialogOpen(false)}
-        open={ttsBundleDialogOpen}
-        title={t("api.tts.bundleDialogTitle")}
-      >
-        <div className="tts-bundle-dialog__content">
-          <p className="tts-bundle-dialog__intro">{t("api.tts.bundleDialogIntro")}</p>
-          <div className="tts-bundle-summary" aria-live="polite">
-            <div className="tts-bundle-summary__row">
-              <span className="tts-bundle-summary__label">{t("api.tts.bundlePlatform")}</span>
-              <span className="tts-bundle-summary__value">
-                {ttsBundleRecommendationQuery.data?.platform || t("api.tts.bundleRecommendDetecting")}
-              </span>
-            </div>
-            <div className="tts-bundle-summary__row">
-              <span className="tts-bundle-summary__label">{t("api.tts.bundleDetectedGpu")}</span>
-              <span className="tts-bundle-summary__value">
-                {ttsBundleRecommendationQuery.isLoading ? t("api.tts.bundleRecommendDetecting") : null}
-                {ttsBundleRecommendationQuery.isError ? t("api.tts.bundleRecommendFailed") : null}
-                {!ttsBundleRecommendationQuery.isLoading && !ttsBundleRecommendationQuery.isError ? (
-                  detectedGpuLabels.length ? (
-                    <span className="tts-bundle-gpu-list">
-                      {detectedGpuLabels.map((gpu) => (
-                        <span className="tts-bundle-gpu-list__item" key={gpu}>
-                          {gpu}
-                        </span>
-                      ))}
-                    </span>
-                  ) : (
-                    t("api.tts.bundleRecommendNoGpu")
-                  )
-                ) : null}
-              </span>
-            </div>
-            <div className="tts-bundle-summary__row tts-bundle-summary__row--recommend">
-              <span className="tts-bundle-summary__label">{t("api.tts.bundleRecommended")}</span>
-              <span className="tts-bundle-summary__value">{recommendedBundle || t("api.tts.bundleGenie")}</span>
-            </div>
-          </div>
-          <label className="field-row field-row--stack">
-            <span className="field-row__label">{t("api.tts.bundlePick")}</span>
-            <span className="field-row__control">
-              <Select
-                disabled={ttsBundleMutation.isPending || saveMutation.isPending}
-                onChange={(event) => {
-                  setTtsBundleKindTouched(true);
-                  setTtsBundleKind(event.target.value as TtsBundleKind);
-                }}
-                value={ttsBundleKind}
-              >
-                <option value="genie">{t("api.tts.bundleGenie")}</option>
-                <option value="gptso">{t("api.tts.bundleGptSovits")}</option>
-                <option value="gptso50">{t("api.tts.bundleGptSovits50")}</option>
-              </Select>
-              <span className="field-row__help">{t("api.tts.bundleManualPick")}</span>
-            </span>
-          </label>
-          {ttsBundleError ? (
-            <div className="tts-bundle-status__error" role="alert">
-              {ttsBundleError}
-            </div>
-          ) : null}
-          {ttsBundleTask ? (
-            <div className="tts-bundle-status">
-              <TaskProgress logLimit={0} task={ttsBundleTask} />
-            </div>
-          ) : null}
-        </div>
-      </Dialog>
+      <LlmConnectionSection
+        activeApiKey={activeApiKey}
+        activeModel={activeModel}
+        availableModelOptions={availableModelOptions}
+        disabled={saveMutation.isPending}
+        draft={draft}
+        fetchModelsPending={modelFetchMutation.isPending}
+        llmExtraSchema={llmExtraSchema}
+        llmProviderSelectOptions={llmProviderSelectOptions}
+        modelCandidateListId={modelCandidateListId}
+        modelUnsupportedThinking={thinkingUnsupported(activeModel)}
+        onAdapterExtraChange={(key, value) => updateAdapterExtra("llm_extra_configs", draft.llm_provider, key, value)}
+        onDraftPatch={updateDraftAndResetModelFetch}
+        onFetchModels={handleFetchModels}
+        onProviderChange={updateProvider}
+        onProviderMapChange={updateProviderMap}
+        selectedOption={selectedOption}
+      />
+      <TtsBundleSection
+        canCancelDownload={canCancelTtsBundleDownload}
+        cancelPending={ttsBundleCancelMutation.isPending}
+        dialogOpen={ttsBundleDialogOpen}
+        downloadPending={ttsBundleMutation.isPending}
+        error={ttsBundleError}
+        kind={ttsBundleKind}
+        onCancelDownload={() => ttsBundleCancelMutation.mutate()}
+        onCloseDialog={() => setTtsBundleDialogOpen(false)}
+        onKindChange={(kind) => {
+          setTtsBundleKindTouched(true);
+          setTtsBundleKind(kind);
+        }}
+        onOpenDialog={openTtsBundleDialog}
+        onStartDownload={() => ttsBundleMutation.mutate()}
+        recommendation={ttsBundleRecommendationQuery.data}
+        recommendationError={ttsBundleRecommendationQuery.isError}
+        recommendationLoading={ttsBundleRecommendationQuery.isLoading}
+        savePending={saveMutation.isPending}
+        task={ttsBundleTask}
+      />
       <SchemaDrivenForm
         collapsedGroupIds={["llm", "t2i"]}
         disabled={saveMutation.isPending}
@@ -1118,202 +580,41 @@ export function ApiSettingsPage() {
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
         value={draft}
       />
-      <section className="section">
-        <div className="section__header">
-          <div>
-            <h2 className="section__title">{t("system.asr.title")}</h2>
-            <p className="section__description">{t("system.asr.hint")}</p>
-          </div>
-        </div>
-        {activeAsrProvider === "vosk" ? (
-          <div className="asr-vosk-hint">
-            <span>{t("system.asr.voskHint")}</span>
-            <Button
-              icon={<ExternalLink aria-hidden className="button__icon" />}
-              onClick={() => openExternal(VOSK_MODELS_URL)}
-              variant="ghost"
-            >
-              {t("system.asr.voskModels")}
-            </Button>
-          </div>
-        ) : null}
-        <div className="form-grid form-grid--two">
-          <label className="field-row">
-            <span className="field-row__label">{t("system.asr.provider")}</span>
-            <span className="field-row__control">
-              <Select
-                disabled={saveMutation.isPending}
-                onChange={(event) => updateSystemDraft({ asr_provider: normalizeAsrProvider(event.target.value) })}
-                value={activeAsrProvider}
-              >
-                {asrProviderSelectOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </span>
-          </label>
-          <label className="field-row">
-            <span className="field-row__label">{t("system.asr.language")}</span>
-            <span className="field-row__control">
-              <Select
-                disabled={saveMutation.isPending}
-                onChange={(event) => updateSystemDraft({ asr_language: event.target.value })}
-                value={systemDraft.asr_language ?? ""}
-              >
-                <option value="">{t("system.asr.followUi")}</option>
-                <option value="en">{t("system.asr.langEn")}</option>
-                <option value="zh">{t("system.asr.langZh")}</option>
-                <option value="ja">{t("system.asr.langJa")}</option>
-                <option value="yue">{t("system.asr.langYue")}</option>
-              </Select>
-            </span>
-          </label>
-          {activeAsrProvider === "vosk" ? (
-            <label className="field-row">
-              <span className="field-row__label">{t("system.asr.voskModelPath")}</span>
-              <span className="field-row__control">
-                <FilePicker
-                  disabled={saveMutation.isPending}
-                  onChange={(event) => updateAsrExtra("vosk", "model_path", event.target.value)}
-                  onPathChange={(path) => updateAsrExtra("vosk", "model_path", path)}
-                  pickLabel={t("common.chooseFolder")}
-                  pickerMode="directory"
-                  pickerTitle={t("system.asr.voskModelPath")}
-                  value={voskModelPath}
-                />
-              </span>
-            </label>
-          ) : null}
-        </div>
-        {showWhisperFields ? (
-          <div className="form-grid form-grid--two api-extra-grid">
-            <label className="field-row">
-              <span className="field-row__label">{t("system.asr.whisperModel")}</span>
-              <span className="field-row__control">
-                <Select
-                  disabled={saveMutation.isPending}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    updateSystemDraft({
-                      asr_whisper_model_size:
-                        next === "__custom__"
-                          ? (asrWhisperModelPresets as readonly string[]).includes(systemDraft.asr_whisper_model_size)
-                            ? ""
-                            : systemDraft.asr_whisper_model_size
-                          : next,
-                    });
-                  }}
-                  value={whisperPresetValue}
-                >
-                  {asrWhisperModelPresets.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                  <option value="__custom__">{t("system.asr.modelCustom")}</option>
-                </Select>
-                {customWhisperModel ? (
-                  <TextInput
-                    className="asr-custom-model-input"
-                    disabled={saveMutation.isPending}
-                    onChange={(event) => updateSystemDraft({ asr_whisper_model_size: event.target.value })}
-                    placeholder={t("system.asr.modelCustomPlaceholder")}
-                    value={
-                      (asrWhisperModelPresets as readonly string[]).includes(systemDraft.asr_whisper_model_size)
-                        ? ""
-                        : systemDraft.asr_whisper_model_size
-                    }
-                  />
-                ) : null}
-              </span>
-            </label>
-            <label className="field-row">
-              <span className="field-row__label">{t("system.asr.device")}</span>
-              <span className="field-row__control">
-                <Select
-                  disabled={saveMutation.isPending}
-                  onChange={(event) => updateSystemDraft({ asr_whisper_device: event.target.value })}
-                  value={systemDraft.asr_whisper_device || "auto"}
-                >
-                  <option value="auto">{t("system.asr.deviceAuto")}</option>
-                  <option value="cuda">CUDA</option>
-                  <option value="cpu">CPU</option>
-                </Select>
-              </span>
-            </label>
-            <label className="field-row">
-              <span className="field-row__label">{t("system.asr.computeType")}</span>
-              <span className="field-row__control">
-                <Select
-                  disabled={saveMutation.isPending}
-                  onChange={(event) => updateSystemDraft({ asr_whisper_compute_type: event.target.value })}
-                  value={currentAsrCompute}
-                >
-                  {asrComputeSelectOptions.map((option) => (
-                    <option key={option.value || "__auto__"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              </span>
-            </label>
-          </div>
-        ) : null}
-        {activeAsrProvider !== "vosk" && hasAdapterSchema(activeAsrSchema) ? (
-          <AdapterExtraForm
-            disabled={saveMutation.isPending}
-            onChange={(key, value) => updateAsrExtra(activeAsrProvider, key, value)}
-            schema={activeAsrSchema}
-            values={draft.asr_extra_configs?.[activeAsrProvider] ?? {}}
-          />
-        ) : null}
-      </section>
+      <AsrSettingsSection
+        activeAsrProvider={activeAsrProvider}
+        activeAsrSchema={activeAsrSchema}
+        asrComputeSelectOptions={asrComputeSelectOptions}
+        asrProviderSelectOptions={asrProviderSelectOptions}
+        currentAsrCompute={currentAsrCompute}
+        customWhisperModel={customWhisperModel}
+        disabled={saveMutation.isPending}
+        draft={draft}
+        onAsrExtraChange={updateAsrExtra}
+        onSystemPatch={updateSystemDraft}
+        showWhisperFields={showWhisperFields}
+        systemDraft={systemDraft}
+        voskModelPath={voskModelPath}
+        whisperPresetValue={whisperPresetValue}
+      />
       {hasAdapterSchema(ttsExtraSchema) ? (
-        <section className="section">
-          <div className="section__header">
-            <h2 className="section__title">{draft.tts_provider} 扩展参数</h2>
-          </div>
-          <AdapterExtraForm
-            disabled={saveMutation.isPending}
-            onChange={(key, value) => updateAdapterExtra("tts_extra_configs", draft.tts_provider, key, value)}
-            schema={ttsExtraSchema}
-            values={draft.tts_extra_configs?.[draft.tts_provider] ?? {}}
-          />
-        </section>
+        <AdapterExtraSection
+          disabled={saveMutation.isPending}
+          onChange={(key, value) => updateAdapterExtra("tts_extra_configs", draft.tts_provider, key, value)}
+          schema={ttsExtraSchema}
+          title={`${draft.tts_provider} 扩展参数`}
+          values={draft.tts_extra_configs?.[draft.tts_provider] ?? {}}
+        />
       ) : null}
       {hasAdapterSchema(t2iExtraSchema) ? (
-        <section className="section">
-          <div className="section__header">
-            <h2 className="section__title">{draft.t2i_provider} 扩展参数</h2>
-          </div>
-          <AdapterExtraForm
-            disabled={saveMutation.isPending}
-            onChange={(key, value) => updateAdapterExtra("t2i_extra_configs", draft.t2i_provider, key, value)}
-            schema={t2iExtraSchema}
-            values={draft.t2i_extra_configs?.[draft.t2i_provider] ?? {}}
-          />
-        </section>
+        <AdapterExtraSection
+          disabled={saveMutation.isPending}
+          onChange={(key, value) => updateAdapterExtra("t2i_extra_configs", draft.t2i_provider, key, value)}
+          schema={t2iExtraSchema}
+          title={`${draft.t2i_provider} 扩展参数`}
+          values={draft.t2i_extra_configs?.[draft.t2i_provider] ?? {}}
+        />
       ) : null}
-      <section className="section resource-links">
-        <div className="section__header">
-          <h2 className="section__title">{t("api.links.title")}</h2>
-        </div>
-        <div className="resource-links__grid">
-          {resourceLinks.map(([labelKey, url]) => (
-            <Button
-              icon={<ExternalLink aria-hidden className="button__icon" />}
-              key={url}
-              onClick={() => openExternal(url)}
-              variant="ghost"
-            >
-              {t(labelKey)}
-            </Button>
-          ))}
-        </div>
-        <p className="section__description resource-links__help">{t("api.links.help")}</p>
-      </section>
+      <ResourceLinksSection />
       <footer className="api-page__save-footer">
         <AsyncButton className="api-page__save-button" loading={saveMutation.isPending} onClick={handleSave}>
           {t("common.save")}
