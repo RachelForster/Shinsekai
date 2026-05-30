@@ -114,6 +114,56 @@ describe("http platform", () => {
     );
   });
 
+  it("reads TTS bundle recommendation through the bridge", async () => {
+    const recommendation = {
+      gpus: [{ device: "GeForce RTX 5090", vendor: "NVIDIA", vram_gb: 32 }],
+      kind: "gptso50",
+      platform: "Windows 11",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(recommendation));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const result = await platform.config.getTtsBundleRecommendation();
+
+    expect(result.kind).toBe("gptso50");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/config/tts-bundle/recommendation",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
+    );
+  });
+
+  it("cancels TTS bundle download tasks through the bridge", async () => {
+    const task = {
+      createdAt: 1,
+      id: "tts-task",
+      kind: "tts-bundle",
+      logs: [],
+      message: "任务已取消，已清理下载内容。",
+      phase: "cancelled",
+      progress: null,
+      result: null,
+      status: "cancelled",
+      title: "TTS 整合包下载",
+      updatedAt: 2,
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(task));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const result = await platform.config.cancelTtsBundleDownload("tts-task");
+
+    expect(result.status).toBe("cancelled");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/tasks/tts-task/cancel",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+  });
+
   it("uses bridge endpoints for music cover search and run tasks", async () => {
     const runTask = {
       createdAt: 1,

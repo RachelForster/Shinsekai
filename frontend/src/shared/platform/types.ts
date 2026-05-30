@@ -444,6 +444,19 @@ export interface PluginUninstallResult {
 
 export type TtsBundleKind = "genie" | "gptso" | "gptso50";
 
+export interface TtsGpuInfo {
+  device?: string;
+  vendor?: string;
+  vendor_id?: string;
+  vram_gb?: number | string;
+}
+
+export interface TtsBundleRecommendation {
+  gpus: TtsGpuInfo[];
+  kind: TtsBundleKind;
+  platform: string;
+}
+
 export interface TtsBundleDownloadResult {
   path: string;
   provider: "genie-tts" | "gpt-sovits";
@@ -488,7 +501,7 @@ export interface ChatCommand {
     | "submit-option";
 }
 
-export type TaskStatus = "queued" | "running" | "succeeded" | "failed";
+export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
 export type PathPickerMode = "directory" | "file";
 
@@ -513,6 +526,7 @@ export interface FileBrowserSnapshot {
 }
 
 export interface TaskSnapshot<TResult = unknown> {
+  cancelRequested?: boolean;
   createdAt: number;
   error?: string;
   id: string;
@@ -586,12 +600,14 @@ export interface ShinsekaiPlatform {
     }) => Promise<Character>;
   };
   config: {
+    cancelTtsBundleDownload: (taskId: string) => Promise<TaskSnapshot<TtsBundleDownloadResult>>;
     downloadTtsBundle: (
       input: { kind: TtsBundleKind },
       options?: TaskProgressOptions<TtsBundleDownloadResult>,
     ) => Promise<TtsBundleDownloadResult>;
     fetchLlmModels: (input: { apiKey: string; baseUrl: string; provider: string }) => Promise<LlmModelOption[]>;
     get: () => Promise<AppConfig>;
+    getTtsBundleRecommendation: () => Promise<TtsBundleRecommendation>;
     saveApi: (config: ApiConfig) => Promise<ApiConfig>;
     saveSystem: (config: SystemConfig) => Promise<SystemConfig>;
   };

@@ -43,15 +43,40 @@ export type MessageKey =
   | "api.resume.btn"
   | "api.resume.tip"
   | "api.resume.title"
+  | "api.tts.bundleCancel"
+  | "api.tts.bundleCancelFailed"
+  | "api.tts.bundleCancelUnavailable"
+  | "api.tts.bundleCancelled"
+  | "api.tts.bundleCancelRequested"
+  | "api.tts.bundleClose"
+  | "api.tts.bundleDetectedGpu"
+  | "api.tts.bundleDialogIntro"
+  | "api.tts.bundleDialogTitle"
   | "api.tts.bundleDone"
   | "api.tts.bundleDownload"
+  | "api.tts.bundleErrorDownload"
+  | "api.tts.bundleErrorExtract"
+  | "api.tts.bundleErrorManual"
+  | "api.tts.bundleErrorUnknown"
   | "api.tts.bundleFailed"
   | "api.tts.bundleGenie"
+  | "api.tts.bundleGpuMemoryUnknown"
   | "api.tts.bundleGptSovits"
   | "api.tts.bundleGptSovits50"
   | "api.tts.bundleHint"
+  | "api.tts.bundleManualPick"
+  | "api.tts.bundleOpenDialog"
+  | "api.tts.bundleOpenRunning"
   | "api.tts.bundlePick"
+  | "api.tts.bundlePlatform"
+  | "api.tts.bundleRecommend"
+  | "api.tts.bundleRecommendDetecting"
+  | "api.tts.bundleRecommendFailed"
+  | "api.tts.bundleRecommendNoGpu"
+  | "api.tts.bundleRecommended"
+  | "api.tts.bundleStart"
   | "api.tts.bundleTitle"
+  | "api.tts.bundleUnknownGpu"
   | "api.title"
   | "api.toast.saved"
   | "background.delete.confirmBody"
@@ -595,15 +620,42 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.resume.tip":
       "Uses the newest chat history JSON and the last launch template cache, then starts chat with transparent background and ComfyUI disabled.",
     "api.resume.title": "Launch chat",
+    "api.tts.bundleCancel": "Cancel download",
+    "api.tts.bundleCancelFailed": "Could not cancel the TTS bundle download.",
+    "api.tts.bundleCancelUnavailable": "No running TTS bundle download to cancel.",
+    "api.tts.bundleCancelled": "TTS bundle download cancelled",
+    "api.tts.bundleCancelRequested": "Cancelling download...",
+    "api.tts.bundleClose": "Close",
+    "api.tts.bundleDetectedGpu": "Detected GPU",
+    "api.tts.bundleDialogIntro":
+      "Confirm the detected hardware and recommended package before starting the integrated TTS package download.",
+    "api.tts.bundleDialogTitle": "Download TTS package",
     "api.tts.bundleDone": "TTS bundle is ready: {path}",
     "api.tts.bundleDownload": "Download",
+    "api.tts.bundleErrorDownload": "Download failed: {detail}",
+    "api.tts.bundleErrorExtract": "Extraction failed: {detail}",
+    "api.tts.bundleErrorManual": "The archive was kept here for manual extraction: {path}",
+    "api.tts.bundleErrorUnknown": "TTS bundle download failed.",
     "api.tts.bundleFailed": "TTS bundle download failed.",
     "api.tts.bundleGenie": "Genie TTS Server",
+    "api.tts.bundleGpuMemoryUnknown": "VRAM unknown",
     "api.tts.bundleGptSovits": "GPT-SoVITS v2pro",
     "api.tts.bundleGptSovits50": "GPT-SoVITS v2pro for RTX 50",
     "api.tts.bundleHint": "Downloads and extracts the same integrated TTS packages as the PySide settings window.",
+    "api.tts.bundleManualPick":
+      "The recommendation is pre-selected; change it only if you know another package is needed.",
+    "api.tts.bundleOpenDialog": "Choose package",
+    "api.tts.bundleOpenRunning": "View download",
     "api.tts.bundlePick": "Package",
+    "api.tts.bundlePlatform": "Platform",
+    "api.tts.bundleRecommend": "Recommended: {bundle}. Detected GPU: {gpu}",
+    "api.tts.bundleRecommendDetecting": "Detecting GPU for package recommendation...",
+    "api.tts.bundleRecommendFailed": "Could not detect GPU; pick a package manually.",
+    "api.tts.bundleRecommendNoGpu": "no supported GPU detected",
+    "api.tts.bundleRecommended": "Recommended package",
+    "api.tts.bundleStart": "Start download",
     "api.tts.bundleTitle": "TTS integrated package",
+    "api.tts.bundleUnknownGpu": "Unknown GPU",
     "api.title": "API Configuration",
     "api.toast.saved": "API settings saved",
     "background.delete.confirmBody": "Delete background group “{name}”?",
@@ -1158,15 +1210,41 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.resume.tip":
       "最新のチャット履歴 JSON と前回起動テンプレートを使い、透明背景・ComfyUI 無効でチャットを開始します。",
     "api.resume.title": "チャット起動",
+    "api.tts.bundleCancel": "ダウンロードを中止",
+    "api.tts.bundleCancelFailed": "TTS 統合パッケージのダウンロードを中止できませんでした。",
+    "api.tts.bundleCancelUnavailable": "中止できる TTS 統合パッケージのダウンロードがありません。",
+    "api.tts.bundleCancelled": "TTS 統合パッケージのダウンロードを中止しました",
+    "api.tts.bundleCancelRequested": "ダウンロードを中止しています...",
+    "api.tts.bundleClose": "閉じる",
+    "api.tts.bundleDetectedGpu": "検出 GPU",
+    "api.tts.bundleDialogIntro":
+      "統合 TTS パッケージをダウンロードする前に、検出されたハードウェアと推奨パッケージを確認してください。",
+    "api.tts.bundleDialogTitle": "TTS パッケージのダウンロード",
     "api.tts.bundleDone": "TTS 統合パッケージの準備ができました: {path}",
     "api.tts.bundleDownload": "ダウンロード",
+    "api.tts.bundleErrorDownload": "ダウンロードに失敗しました: {detail}",
+    "api.tts.bundleErrorExtract": "展開に失敗しました: {detail}",
+    "api.tts.bundleErrorManual": "手動展開用のアーカイブを保存しました: {path}",
+    "api.tts.bundleErrorUnknown": "TTS 統合パッケージのダウンロードに失敗しました。",
     "api.tts.bundleFailed": "TTS 統合パッケージのダウンロードに失敗しました。",
     "api.tts.bundleGenie": "Genie TTS Server",
+    "api.tts.bundleGpuMemoryUnknown": "VRAM 不明",
     "api.tts.bundleGptSovits": "GPT-SoVITS v2pro",
     "api.tts.bundleGptSovits50": "RTX 50 系向け GPT-SoVITS v2pro",
     "api.tts.bundleHint": "PySide 設定画面と同じ TTS 統合パッケージをダウンロードして展開します。",
+    "api.tts.bundleManualPick": "推奨パッケージが選択済みです。必要な場合のみ変更してください。",
+    "api.tts.bundleOpenDialog": "パッケージを選択",
+    "api.tts.bundleOpenRunning": "ダウンロードを表示",
     "api.tts.bundlePick": "パッケージ",
+    "api.tts.bundlePlatform": "動作環境",
+    "api.tts.bundleRecommend": "推奨：{bundle}。検出 GPU：{gpu}",
+    "api.tts.bundleRecommendDetecting": "GPU を検出して推奨パッケージを判定中...",
+    "api.tts.bundleRecommendFailed": "GPU を検出できませんでした。パッケージを手動で選んでください。",
+    "api.tts.bundleRecommendNoGpu": "対応 GPU は検出されませんでした",
+    "api.tts.bundleRecommended": "推奨パッケージ",
+    "api.tts.bundleStart": "ダウンロード開始",
     "api.tts.bundleTitle": "TTS 統合パッケージ",
+    "api.tts.bundleUnknownGpu": "不明な GPU",
     "api.title": "API 設定",
     "api.toast.saved": "API 設定を保存しました",
     "background.delete.confirmBody": "背景グループ「{name}」を削除しますか？",
@@ -1718,15 +1796,40 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.resume.tip":
       "使用 data/chat_history 下最近修改的聊天记录和上次启动模板缓存，以透明背景、不启用 ComfyUI 的方式启动聊天。",
     "api.resume.title": "启动聊天",
+    "api.tts.bundleCancel": "取消下载",
+    "api.tts.bundleCancelFailed": "无法取消 TTS 整合包下载。",
+    "api.tts.bundleCancelUnavailable": "当前没有可取消的 TTS 整合包下载。",
+    "api.tts.bundleCancelled": "TTS 整合包下载已取消",
+    "api.tts.bundleCancelRequested": "正在取消下载...",
+    "api.tts.bundleClose": "关闭",
+    "api.tts.bundleDetectedGpu": "检测到的显卡",
+    "api.tts.bundleDialogIntro": "开始下载 TTS 整合包前，先确认检测到的硬件与自动推荐的整合包。",
+    "api.tts.bundleDialogTitle": "下载 TTS 整合包",
     "api.tts.bundleDone": "TTS 整合包已就绪：{path}",
     "api.tts.bundleDownload": "下载",
+    "api.tts.bundleErrorDownload": "下载失败：{detail}",
+    "api.tts.bundleErrorExtract": "解压失败：{detail}",
+    "api.tts.bundleErrorManual": "已保留压缩包，可手动解压：{path}",
+    "api.tts.bundleErrorUnknown": "TTS 整合包下载失败。",
     "api.tts.bundleFailed": "TTS 整合包下载失败。",
     "api.tts.bundleGenie": "Genie TTS Server",
+    "api.tts.bundleGpuMemoryUnknown": "显存未知",
     "api.tts.bundleGptSovits": "GPT-SoVITS v2pro",
     "api.tts.bundleGptSovits50": "50 系显卡 GPT-SoVITS v2pro",
     "api.tts.bundleHint": "下载并解压与 PySide 设置窗口相同的 TTS 整合包。",
+    "api.tts.bundleManualPick": "已自动选中推荐项；只有明确需要其他包时再手动改选。",
+    "api.tts.bundleOpenDialog": "选择整合包",
+    "api.tts.bundleOpenRunning": "查看下载",
     "api.tts.bundlePick": "整合包",
+    "api.tts.bundlePlatform": "运行平台",
+    "api.tts.bundleRecommend": "推荐：{bundle}。检测到的显卡：{gpu}",
+    "api.tts.bundleRecommendDetecting": "正在检测显卡并推荐整合包...",
+    "api.tts.bundleRecommendFailed": "未能检测显卡，请手动选择整合包。",
+    "api.tts.bundleRecommendNoGpu": "未检测到可用显卡",
+    "api.tts.bundleRecommended": "推荐整合包",
+    "api.tts.bundleStart": "开始下载",
     "api.tts.bundleTitle": "TTS 整合包",
+    "api.tts.bundleUnknownGpu": "未知显卡",
     "api.title": "API 配置",
     "api.toast.saved": "API 设定已保存",
     "background.delete.confirmBody": "确认删除背景组「{name}」？",

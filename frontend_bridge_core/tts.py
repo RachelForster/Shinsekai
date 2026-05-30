@@ -1,22 +1,39 @@
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 from .state import BridgeState
-from .tasks import _update_task
+from .tasks import TaskCancelled, _is_task_cancel_requested, _update_task
+
+
+def _tts_bundle_recommendation() -> dict[str, Any]:
+    from ui.settings_ui.tts.tts_env_probe import (
+        format_platform,
+        get_gpu_list,
+        recommend_tts_bundle,
+    )
+
+    gpus = get_gpu_list()
+    choice = recommend_tts_bundle(gpus)
+    return {
+        "gpus": gpus,
+        "kind": choice.kind,
+        "platform": format_platform(),
+    }
 
 
 def _download_tts_bundle(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     from ui.settings_ui.tts.tts_bundle_worker import (
+        _DownloadInterrupted,
+        _ExtractionInterrupted,
         _archive_filename,
-        _extract_7za,
-        _list_targets,
-        _load_py7zr,
+        _archive_verification_error,
+        _download_archive,
+        _extract_archive,
         _resolve_extracted_root,
         _rmtree,
-        _seven_zip_exe,
     )
+    from ui.settings_ui.tts.tts_bundle_manifest import bundle_manifest_for_key
     from ui.settings_ui.tts.tts_env_probe import bundle_choice_for_kind, get_default_project_root
 
     kind = str(payload.get("kind") or "genie").strip()
@@ -26,9 +43,11 @@ def _download_tts_bundle(state: BridgeState, task_id: str, payload: dict[str, An
     dl_dir = base / "downloads"
     out_dir = base / "installed" / choice.bundle_dir_key
     dl_dir.mkdir(parents=True, exist_ok=True)
-    archive = dl_dir / _archive_filename(choice.download_url)
-    _rmtree(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = bundle_manifest_for_key(choice.bundle_dir_key)
+    local_name = manifest.filename if manifest is not None else _archive_filename(choice.download_url)
+    archive = dl_dir / local_name
+    downloaded_this_run = False
+    started_extract = False
 
     headers = {
         "User-Agent": (
@@ -36,66 +55,97 @@ def _download_tts_bundle(state: BridgeState, task_id: str, payload: dict[str, An
             "AppleWebKit/537.36 (KHTML, like Gecko) EasyAI-Desktop/1.0"
         )
     }
-    _update_task(state, task_id, message="正在下载 TTS 整合包。", phase="download", progress=0.02)
-    try:
-        import requests
 
-        with requests.get(choice.download_url, stream=True, timeout=(15, 600), headers=headers) as response:
-            response.raise_for_status()
-            total = int(response.headers.get("Content-Length", "0") or 0)
-            downloaded = 0
-            with archive.open("wb") as file:
-                for chunk in response.iter_content(512 * 1024):
-                    if not chunk:
-                        continue
-                    file.write(chunk)
-                    downloaded += len(chunk)
-                    if total > 0:
-                        progress = min(0.7, 0.7 * downloaded / total)
-                        message = f"正在下载 {downloaded}/{total} bytes。"
-                    else:
-                        progress = min(0.35, downloaded / (50 * 1024 * 1024))
-                        message = f"已下载 {downloaded} bytes。"
-                    _update_task(state, task_id, message=message, phase="download", progress=round(progress, 4))
-    except Exception as exc:
-        raise RuntimeError(f"download: {exc}") from exc
+    def cancel_requested() -> bool:
+        return _is_task_cancel_requested(state, task_id)
+
+    def cleanup_cancelled_download() -> None:
+        part = archive.with_name(f"{archive.name}.part")
+        if part.exists():
+            part.unlink()
+        if downloaded_this_run and archive.exists():
+            archive.unlink()
+        if started_extract:
+            _rmtree(out_dir)
+
+    archive_ready = False
+    if manifest is not None and archive.exists():
+        _update_task(state, task_id, message="正在校验已下载的 TTS 整合包。", phase="verify", progress=0.01)
+        try:
+            archive_ready = _archive_verification_error(archive, manifest, is_interrupted=cancel_requested) is None
+        except _DownloadInterrupted as exc:
+            cleanup_cancelled_download()
+            raise TaskCancelled() from exc
+
+    if cancel_requested():
+        cleanup_cancelled_download()
+        raise TaskCancelled()
+
+    if not archive_ready:
+        _update_task(state, task_id, message="正在下载 TTS 整合包。", phase="download", progress=0.02)
+
+        def on_download_progress(progress: int) -> None:
+            _update_task(
+                state,
+                task_id,
+                message=f"正在下载 TTS 整合包（{progress}%）。",
+                phase="download",
+                progress=round(progress / 100, 4),
+            )
+
+        try:
+            _download_archive(
+                choice.download_url,
+                archive,
+                headers,
+                expected_size=manifest.size if manifest is not None else None,
+                expected_sha256=manifest.sha256 if manifest is not None else None,
+                is_interrupted=cancel_requested,
+                on_progress=on_download_progress,
+                timeout=(15, 5),
+            )
+            downloaded_this_run = True
+        except _DownloadInterrupted as exc:
+            cleanup_cancelled_download()
+            raise TaskCancelled() from exc
+        except Exception as exc:
+            cleanup_cancelled_download()
+            raise RuntimeError(f"download: {exc}") from exc
+
+    if cancel_requested():
+        cleanup_cancelled_download()
+        raise TaskCancelled()
 
     _update_task(state, task_id, message="正在解压 TTS 整合包。", phase="extract", progress=0.7)
-    seven_zip = _seven_zip_exe()
-    if getattr(sys, "frozen", False):
-        if seven_zip is None:
-            raise RuntimeError(f"7za not found; archive saved at {archive.resolve()}")
-        error = _extract_7za(seven_zip, archive, out_dir)
-        if error is not None:
-            raise RuntimeError(f"extract: {error}; archive saved at {archive.resolve()}")
-    else:
-        py7zr = _load_py7zr()
-        if py7zr is not None:
-            try:
-                with py7zr.SevenZipFile(archive, "r") as zfile:
-                    targets = _list_targets(zfile)
-                    total_targets = len(targets)
-                    if total_targets == 0 or total_targets > 1000:
-                        zfile.extractall(path=out_dir)
-                    else:
-                        for index, name in enumerate(targets, start=1):
-                            zfile.extract(path=out_dir, targets=[name])
-                            progress = 0.7 + 0.3 * index / total_targets
-                            _update_task(
-                                state,
-                                task_id,
-                                message=f"正在解压 {index}/{total_targets}。",
-                                phase="extract",
-                                progress=round(progress, 4),
-                            )
-            except Exception as exc:
-                raise RuntimeError(f"extract: {exc}; archive saved at {archive.resolve()}") from exc
-        elif seven_zip is not None:
-            error = _extract_7za(seven_zip, archive, out_dir)
-            if error is not None:
-                raise RuntimeError(f"extract: {error}; archive saved at {archive.resolve()}")
-        else:
-            raise RuntimeError(f"py7zr is not installed; archive saved at {archive.resolve()}")
+    _rmtree(out_dir)
+    started_extract = True
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def on_extract_progress(progress: int) -> None:
+        _update_task(
+            state,
+            task_id,
+            message=f"正在解压 TTS 整合包（{progress}%）。",
+            phase="extract",
+            progress=round(progress / 100, 4),
+        )
+
+    try:
+        error = _extract_archive(
+            archive,
+            out_dir,
+            is_interrupted=cancel_requested,
+            on_progress=on_extract_progress,
+        )
+    except _ExtractionInterrupted as exc:
+        cleanup_cancelled_download()
+        raise TaskCancelled() from exc
+    if cancel_requested():
+        cleanup_cancelled_download()
+        raise TaskCancelled()
+    if error is not None:
+        _rmtree(out_dir)
+        raise RuntimeError(f"extract: {error}; archive saved at {archive.resolve()}")
 
     bundle_root = _resolve_extracted_root(out_dir)
     result = {

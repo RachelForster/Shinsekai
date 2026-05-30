@@ -7,6 +7,10 @@ from typing import Any
 from .state import BridgeState
 
 
+class TaskCancelled(Exception):
+    pass
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -26,6 +30,7 @@ def _create_task(state: BridgeState, *, kind: str, title: str, message: str = ""
         "createdAt": now,
         "error": "",
         "id": task_id,
+        "cancelRequested": False,
         "kind": kind,
         "logs": [],
         "message": message,
@@ -49,6 +54,26 @@ def _update_task(state: BridgeState, task_id: str, **changes: Any) -> dict[str, 
         task.update(changes)
         task["updatedAt"] = _now_ms()
         return dict(task)
+
+
+def _request_task_cancel(state: BridgeState, task_id: str) -> dict[str, Any]:
+    with state.task_lock:
+        task = state.tasks.get(task_id)
+        if task is None:
+            raise KeyError(f"task not found: {task_id}")
+        if not _is_running_task(task):
+            return dict(task)
+        task["cancelRequested"] = True
+        task["message"] = "正在取消任务。"
+        task["phase"] = "cancelling"
+        task["updatedAt"] = _now_ms()
+        return dict(task)
+
+
+def _is_task_cancel_requested(state: BridgeState, task_id: str) -> bool:
+    with state.task_lock:
+        task = state.tasks.get(task_id)
+        return bool(task and task.get("cancelRequested"))
 
 
 def _append_task_log(state: BridgeState, task_id: str, line: str, *, limit: int = 120) -> None:
@@ -77,6 +102,15 @@ def _run_background_task(state: BridgeState, task_id: str, worker: Any) -> None:
             progress=1,
             result=result,
             status="succeeded",
+        )
+    except TaskCancelled:
+        _update_task(
+            state,
+            task_id,
+            message="任务已取消，已清理下载内容。",
+            phase="cancelled",
+            progress=None,
+            status="cancelled",
         )
     except Exception as exc:
         _update_task(

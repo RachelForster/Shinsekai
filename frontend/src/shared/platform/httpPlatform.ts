@@ -35,6 +35,7 @@ import type {
   TemplateLaunchSession,
   TemplateSummary,
   TtsBundleDownloadResult,
+  TtsBundleRecommendation,
 } from "./types";
 
 async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
@@ -111,6 +112,11 @@ async function waitForTask<TResult>(
 
   if (task.status === "failed") {
     throw new Error(task.error || task.message || "任务失败。");
+  }
+  if (task.status === "cancelled") {
+    const error = new Error(task.message || "任务已取消。");
+    error.name = "TaskCancelledError";
+    throw error;
   }
   if (!task.result) {
     throw new Error(task.message || "任务完成但没有返回结果。");
@@ -339,6 +345,10 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         }),
     },
     config: {
+      cancelTtsBundleDownload: (taskId) =>
+        requestJson<TaskSnapshot<TtsBundleDownloadResult>>(apiBase, `/api/tasks/${encodePath(taskId)}/cancel`, {
+          method: "POST",
+        }),
       async downloadTtsBundle(input, options) {
         const task = await requestJson<TaskSnapshot<TtsBundleDownloadResult>>(
           apiBase,
@@ -356,6 +366,8 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           method: "POST",
         }),
       get: () => requestJson<AppConfig>(apiBase, "/api/config"),
+      getTtsBundleRecommendation: () =>
+        requestJson<TtsBundleRecommendation>(apiBase, "/api/config/tts-bundle/recommendation"),
       saveApi: (config: ApiConfig) =>
         requestJson<ApiConfig>(apiBase, "/api/config/api", {
           body: JSON.stringify(config),

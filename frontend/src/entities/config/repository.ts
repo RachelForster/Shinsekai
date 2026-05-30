@@ -3,6 +3,7 @@ import type { TtsBundleKind, TtsBundleDownloadResult, TaskProgressOptions } from
 import type { ApiConfig, SystemConfig } from "./types";
 
 export const configQueryKey = ["config"] as const;
+export const ttsBundleRecommendationQueryKey = ["config", "tts-bundle", "recommendation"] as const;
 
 export function getAppConfig() {
   return getPlatform().config.get();
@@ -17,6 +18,14 @@ export function downloadTtsBundle(
   options?: TaskProgressOptions<TtsBundleDownloadResult>,
 ) {
   return getPlatform().config.downloadTtsBundle(input, options);
+}
+
+export function cancelTtsBundleDownload(taskId: string) {
+  return getPlatform().config.cancelTtsBundleDownload(taskId);
+}
+
+export function getTtsBundleRecommendation() {
+  return getPlatform().config.getTtsBundleRecommendation();
 }
 
 export function saveApiConfig(config: ApiConfig) {

@@ -524,6 +524,23 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     config: {
+      async cancelTtsBundleDownload(taskId) {
+        const now = Date.now();
+        return delay({
+          createdAt: now,
+          error: "",
+          id: taskId,
+          kind: "tts-bundle",
+          logs: [],
+          message: "任务已取消，已清理下载内容。",
+          phase: "cancelled",
+          progress: null,
+          result: null,
+          status: "cancelled",
+          title: "TTS 整合包下载",
+          updatedAt: now,
+        });
+      },
       async downloadTtsBundle(input, options) {
         const taskId = `preview-tts-${Date.now()}`;
         previewTask(
@@ -555,6 +572,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         );
       },
       get: () => delay(config),
+      getTtsBundleRecommendation: () =>
+        delay({
+          gpus: [{ device: "NVIDIA GeForce RTX 4070", vendor: "NVIDIA", vram_gb: 12 }],
+          kind: "gptso",
+          platform: "Browser preview",
+        }),
       async saveApi(apiConfig) {
         config.api_config = clone(apiConfig);
         return delay(config.api_config);

@@ -75,7 +75,7 @@ from .plugin_updates import (
 )
 from .state import BridgeState, _jsonify
 from .static import _frontend_dist_root
-from .tasks import _create_task, _get_task, _is_running_task, _run_background_task, _update_task
+from .tasks import _create_task, _get_task, _is_running_task, _request_task_cancel, _run_background_task, _update_task
 from .templates import (
     _compose_for_llm,
     _latest_history_json,
@@ -94,7 +94,7 @@ from .tools import (
     _generate_sprites,
     _remove_sprite_background,
 )
-from .tts import _download_tts_bundle
+from .tts import _download_tts_bundle, _tts_bundle_recommendation
 
 
 class FrontendBridgeHandler(BaseHTTPRequestHandler):
@@ -205,6 +205,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": True})
             elif path == "/api/config":
                 self._send_json(_app_config_response(self.state))
+            elif path == "/api/config/tts-bundle/recommendation":
+                self._send_json(_tts_bundle_recommendation())
             elif path == "/api/characters":
                 self._send_json(self.state.config_manager.config.characters)
             elif path == "/api/backgrounds":
@@ -302,6 +304,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     message="TTS 整合包下载已排队。",
                     worker=lambda task_id: _download_tts_bundle(self.state, task_id, body),
                 )
+            elif method == "POST" and path.startswith("/api/tasks/") and path.endswith("/cancel"):
+                task_id = unquote(path[len("/api/tasks/") : -len("/cancel")])
+                self._send_json(_request_task_cancel(self.state, task_id))
             elif method in {"POST", "PUT"} and path == "/api/characters":
                 self._send_json(_save_character(self.state, body))
             elif method == "POST" and path == "/api/characters/ai-setting":

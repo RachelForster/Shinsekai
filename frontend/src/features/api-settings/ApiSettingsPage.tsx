@@ -15,12 +15,15 @@ import {
   validatePayloadFromSchema,
 } from "../../entities/config/schema";
 import {
+  cancelTtsBundleDownload,
   configQueryKey,
   downloadTtsBundle,
   fetchLlmModels,
   getAppConfig,
+  getTtsBundleRecommendation,
   saveApiConfig,
   saveSystemConfig,
+  ttsBundleRecommendationQueryKey,
 } from "../../entities/config/repository";
 import type {
   AdapterCatalog,
@@ -34,10 +37,17 @@ import { useI18n } from "../../shared/i18n";
 import { openExternal } from "../../entities/files/repository";
 import { resumeLastChat } from "../../entities/chat/repository";
 import type { FormGroupSchema } from "../../shared/form-schema";
-import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
+import type {
+  LlmModelOption,
+  TaskSnapshot,
+  TtsBundleDownloadResult,
+  TtsBundleKind,
+  TtsGpuInfo,
+} from "../../shared/platform/types";
 import {
   AsyncButton,
   Button,
+  Dialog,
   EmptyState,
   QueryErrorState,
   SchemaDrivenForm,
@@ -260,6 +270,60 @@ function thinkingUnsupported(model: string) {
   return ["deepseek-v4-flash", "deepseek-chat"].includes(model.trim().toLowerCase());
 }
 
+function isTaskRunning(task: TaskSnapshot | null) {
+  return task?.status === "queued" || task?.status === "running";
+}
+
+function isTaskCancelledError(error: unknown) {
+  return error instanceof Error && error.name === "TaskCancelledError";
+}
+
+type Translate = ReturnType<typeof useI18n>["t"];
+
+function normalizeGpuName(gpu: TtsGpuInfo, t: Translate) {
+  const vendor = String(gpu.vendor || "").trim();
+  const device = String(gpu.device || "").trim();
+  const name =
+    vendor && device && !device.toLowerCase().includes(vendor.toLowerCase()) ? `${vendor} ${device}` : device || vendor;
+  return name.replace(/\s+/g, " ").trim() || t("api.tts.bundleUnknownGpu");
+}
+
+function formatGpuMemory(gpu: TtsGpuInfo, t: Translate) {
+  const raw = gpu.vram_gb;
+  if (raw == null || raw === "") {
+    return t("api.tts.bundleGpuMemoryUnknown");
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    return t("api.tts.bundleGpuMemoryUnknown");
+  }
+  const formatted = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return `${formatted} GB`;
+}
+
+function formatTtsGpu(gpu: TtsGpuInfo, t: Translate) {
+  return `${normalizeGpuName(gpu, t)} / ${formatGpuMemory(gpu, t)}`;
+}
+
+function formatTtsBundleFailure(error: unknown, t: Translate) {
+  const raw = error instanceof Error ? error.message : "";
+  if (!raw.trim()) {
+    return t("api.tts.bundleErrorUnknown");
+  }
+  const archiveMatch = raw.match(/archive saved at (.+)$/);
+  const archive = archiveMatch?.[1]?.trim() ?? "";
+  const clean = raw.replace(/; archive saved at .+$/, "").trim();
+  let message: string;
+  if (clean.startsWith("download:")) {
+    message = t("api.tts.bundleErrorDownload", { detail: clean.slice("download:".length).trim() || clean });
+  } else if (clean.startsWith("extract:")) {
+    message = t("api.tts.bundleErrorExtract", { detail: clean.slice("extract:".length).trim() || clean });
+  } else {
+    message = clean;
+  }
+  return archive ? `${message}\n${t("api.tts.bundleErrorManual", { path: archive })}` : message;
+}
+
 function requiresTtsServerConfig(provider: string) {
   return ["genie-tts", "gpt-sovits"].includes(provider.trim().toLowerCase());
 }
@@ -330,6 +394,11 @@ export function ApiSettingsPage() {
   const { t } = useI18n();
   const { dispatch } = useAppState();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const ttsBundleRecommendationQuery = useQuery({
+    queryFn: getTtsBundleRecommendation,
+    queryKey: ttsBundleRecommendationQueryKey,
+    staleTime: 300_000,
+  });
   const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<ApiConfig | null>(null);
   const [systemDraft, setSystemDraft] = useState<SystemConfig | null>(null);
@@ -337,6 +406,9 @@ export function ApiSettingsPage() {
   const [modelOptions, setModelOptions] = useState<LlmModelOption[]>([]);
   const activeModelFetchKey = useRef<string | null>(null);
   const [ttsBundleKind, setTtsBundleKind] = useState<TtsBundleKind>("genie");
+  const [ttsBundleKindTouched, setTtsBundleKindTouched] = useState(false);
+  const [ttsBundleDialogOpen, setTtsBundleDialogOpen] = useState(false);
+  const [ttsBundleError, setTtsBundleError] = useState<string | null>(null);
   const [ttsBundleTask, setTtsBundleTask] = useState<TaskSnapshot<TtsBundleDownloadResult> | null>(null);
   const adapterCatalog = data?.adapter_catalog;
   const apiSchema = useMemo(
@@ -474,16 +546,24 @@ export function ApiSettingsPage() {
   const ttsBundleMutation = useMutation({
     mutationFn: () => downloadTtsBundle({ kind: ttsBundleKind }, { onTaskUpdate: setTtsBundleTask }),
     onError(error) {
+      if (isTaskCancelledError(error)) {
+        return;
+      }
+      const message = formatTtsBundleFailure(error, t);
+      setTtsBundleError(message);
       showToast({
         kind: "error",
-        message: error instanceof Error ? error.message : t("api.tts.bundleFailed"),
+        message,
         title: t("api.tts.bundleTitle"),
       });
     },
     onMutate() {
+      setTtsBundleError(null);
       setTtsBundleTask(null);
     },
     onSuccess(result) {
+      setTtsBundleDialogOpen(false);
+      setTtsBundleError(null);
       setDraft((current) =>
         current
           ? {
@@ -500,6 +580,37 @@ export function ApiSettingsPage() {
       });
     },
   });
+
+  const ttsBundleCancelMutation = useMutation({
+    mutationFn: () => {
+      if (!ttsBundleTask?.id) {
+        throw new Error(t("api.tts.bundleCancelUnavailable"));
+      }
+      return cancelTtsBundleDownload(ttsBundleTask.id);
+    },
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("api.tts.bundleCancelFailed"),
+        title: t("api.tts.bundleTitle"),
+      });
+    },
+    onSuccess(task) {
+      setTtsBundleTask(task);
+      showToast({
+        kind: "success",
+        title: task.status === "cancelled" ? t("api.tts.bundleCancelled") : t("api.tts.bundleCancelRequested"),
+      });
+    },
+  });
+
+  useEffect(() => {
+    const recommendation = ttsBundleRecommendationQuery.data;
+    if (!recommendation || ttsBundleKindTouched || ttsBundleMutation.isPending) {
+      return;
+    }
+    setTtsBundleKind(recommendation.kind);
+  }, [ttsBundleKindTouched, ttsBundleMutation.isPending, ttsBundleRecommendationQuery.data]);
 
   if (configQuery.isError) {
     return (
@@ -522,6 +633,24 @@ export function ApiSettingsPage() {
   const availableModelOptions = mergeModelOptions(modelOptions, activeModel ? [{ id: activeModel, tags: [] }] : []);
   const selectedOption = availableModelOptions.find((option) => option.id === activeModel);
   const modelCandidateListId = "llm-model-candidates";
+  const ttsBundleLabels: Record<TtsBundleKind, string> = {
+    genie: t("api.tts.bundleGenie"),
+    gptso: t("api.tts.bundleGptSovits"),
+    gptso50: t("api.tts.bundleGptSovits50"),
+  };
+  const recommendedBundle = ttsBundleRecommendationQuery.data
+    ? ttsBundleLabels[ttsBundleRecommendationQuery.data.kind]
+    : "";
+  const detectedGpuLabels = ttsBundleRecommendationQuery.data?.gpus.length
+    ? ttsBundleRecommendationQuery.data.gpus.map((gpu) => formatTtsGpu(gpu, t))
+    : [];
+  const canCancelTtsBundleDownload =
+    ttsBundleMutation.isPending && isTaskRunning(ttsBundleTask) && !ttsBundleTask?.cancelRequested;
+  const openTtsBundleDialog = () => {
+    setTtsBundleDialogOpen(true);
+    setTtsBundleError(null);
+    void ttsBundleRecommendationQuery.refetch();
+  };
   const activeAsrProvider = normalizeAsrProvider(systemDraft.asr_provider);
   const asrProviderSelectOptions = withCurrentOption(
     adapterCatalog?.asr?.length
@@ -856,32 +985,111 @@ export function ApiSettingsPage() {
             <h2 className="section__title">{t("api.tts.bundleTitle")}</h2>
             <p className="section__description">{t("api.tts.bundleHint")}</p>
           </div>
-          <AsyncButton
-            icon={<DownloadCloud aria-hidden className="button__icon" />}
-            loading={ttsBundleMutation.isPending}
-            onClick={() => ttsBundleMutation.mutate()}
-          >
-            {t("api.tts.bundleDownload")}
-          </AsyncButton>
+          <div className="inline-actions">
+            <Button
+              icon={<DownloadCloud aria-hidden className="button__icon" />}
+              onClick={openTtsBundleDialog}
+              variant={ttsBundleMutation.isPending ? "primary" : "default"}
+            >
+              {ttsBundleMutation.isPending ? t("api.tts.bundleOpenRunning") : t("api.tts.bundleOpenDialog")}
+            </Button>
+          </div>
         </div>
-        <div className="form-grid form-grid--two">
-          <label className="field-row">
+      </section>
+      <Dialog
+        className="tts-bundle-dialog"
+        closeLabel={t("api.tts.bundleClose")}
+        footer={
+          <>
+            <Button onClick={() => setTtsBundleDialogOpen(false)}>{t("api.tts.bundleClose")}</Button>
+            {canCancelTtsBundleDownload ? (
+              <AsyncButton
+                loading={ttsBundleCancelMutation.isPending}
+                onClick={() => ttsBundleCancelMutation.mutate()}
+                variant="danger"
+              >
+                {t("api.tts.bundleCancel")}
+              </AsyncButton>
+            ) : null}
+            <AsyncButton
+              disabled={ttsBundleMutation.isPending}
+              icon={<DownloadCloud aria-hidden className="button__icon" />}
+              loading={ttsBundleMutation.isPending}
+              onClick={() => ttsBundleMutation.mutate()}
+              variant="primary"
+            >
+              {t("api.tts.bundleStart")}
+            </AsyncButton>
+          </>
+        }
+        onClose={() => setTtsBundleDialogOpen(false)}
+        open={ttsBundleDialogOpen}
+        title={t("api.tts.bundleDialogTitle")}
+      >
+        <div className="tts-bundle-dialog__content">
+          <p className="tts-bundle-dialog__intro">{t("api.tts.bundleDialogIntro")}</p>
+          <div className="tts-bundle-summary" aria-live="polite">
+            <div className="tts-bundle-summary__row">
+              <span className="tts-bundle-summary__label">{t("api.tts.bundlePlatform")}</span>
+              <span className="tts-bundle-summary__value">
+                {ttsBundleRecommendationQuery.data?.platform || t("api.tts.bundleRecommendDetecting")}
+              </span>
+            </div>
+            <div className="tts-bundle-summary__row">
+              <span className="tts-bundle-summary__label">{t("api.tts.bundleDetectedGpu")}</span>
+              <span className="tts-bundle-summary__value">
+                {ttsBundleRecommendationQuery.isLoading ? t("api.tts.bundleRecommendDetecting") : null}
+                {ttsBundleRecommendationQuery.isError ? t("api.tts.bundleRecommendFailed") : null}
+                {!ttsBundleRecommendationQuery.isLoading && !ttsBundleRecommendationQuery.isError ? (
+                  detectedGpuLabels.length ? (
+                    <span className="tts-bundle-gpu-list">
+                      {detectedGpuLabels.map((gpu) => (
+                        <span className="tts-bundle-gpu-list__item" key={gpu}>
+                          {gpu}
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    t("api.tts.bundleRecommendNoGpu")
+                  )
+                ) : null}
+              </span>
+            </div>
+            <div className="tts-bundle-summary__row tts-bundle-summary__row--recommend">
+              <span className="tts-bundle-summary__label">{t("api.tts.bundleRecommended")}</span>
+              <span className="tts-bundle-summary__value">{recommendedBundle || t("api.tts.bundleGenie")}</span>
+            </div>
+          </div>
+          <label className="field-row field-row--stack">
             <span className="field-row__label">{t("api.tts.bundlePick")}</span>
             <span className="field-row__control">
               <Select
                 disabled={ttsBundleMutation.isPending || saveMutation.isPending}
-                onChange={(event) => setTtsBundleKind(event.target.value as TtsBundleKind)}
+                onChange={(event) => {
+                  setTtsBundleKindTouched(true);
+                  setTtsBundleKind(event.target.value as TtsBundleKind);
+                }}
                 value={ttsBundleKind}
               >
                 <option value="genie">{t("api.tts.bundleGenie")}</option>
                 <option value="gptso">{t("api.tts.bundleGptSovits")}</option>
                 <option value="gptso50">{t("api.tts.bundleGptSovits50")}</option>
               </Select>
+              <span className="field-row__help">{t("api.tts.bundleManualPick")}</span>
             </span>
           </label>
+          {ttsBundleError ? (
+            <div className="tts-bundle-status__error" role="alert">
+              {ttsBundleError}
+            </div>
+          ) : null}
+          {ttsBundleTask ? (
+            <div className="tts-bundle-status">
+              <TaskProgress logLimit={0} task={ttsBundleTask} />
+            </div>
+          ) : null}
         </div>
-        <TaskProgress logLimit={0} task={ttsBundleTask} />
-      </section>
+      </Dialog>
       <SchemaDrivenForm
         collapsedGroupIds={["llm", "t2i"]}
         disabled={saveMutation.isPending}
