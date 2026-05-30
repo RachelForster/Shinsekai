@@ -3,7 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "packageManager": "pnpm@10.22.0",
   "scripts": {
     "dev": "vite",
     "dev:bridge": "python ../frontend_bridge.py --project-root ..",
