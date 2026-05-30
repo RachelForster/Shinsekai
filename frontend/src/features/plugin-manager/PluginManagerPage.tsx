@@ -223,22 +223,40 @@ export function PluginManagerPage() {
                       <div className="plugin-card__title">
                         <strong>{plugin.title}</strong>
                         {plugin.title !== plugin.id ? (
-                          <span className="inline-status">{t("plugin.id")}: {plugin.id}</span>
+                          <span className="inline-status">
+                            {t("plugin.id")}: {plugin.id}
+                          </span>
                         ) : null}
                       </div>
-                      <span className="plugin-card__status" data-enabled={plugin.enabled && loaded} data-loaded={loaded}>
+                      <span
+                        className="plugin-card__status"
+                        data-enabled={plugin.enabled && loaded}
+                        data-loaded={loaded}
+                      >
                         {statusLabel}
                       </span>
                     </div>
                     {!loaded && plugin.enabled ? (
-                      <p className="plugin-card__description">{plugin.loadError || t("plugin.loadError.unavailable")}</p>
+                      <p className="plugin-card__description">
+                        {plugin.loadError || t("plugin.loadError.unavailable")}
+                      </p>
                     ) : plugin.description ? (
                       <p className="plugin-card__description">{plugin.description}</p>
                     ) : null}
                     <div className="plugin-card__meta">
-                      <span>{t("plugin.version")}: {plugin.version || "-"}</span>
-                      {plugin.author ? <span>{t("plugin.author")}: {plugin.author}</span> : null}
-                      {plugin.directory ? <span>{t("plugin.directory")}: {plugin.directory}</span> : null}
+                      <span>
+                        {t("plugin.version")}: {plugin.version || "-"}
+                      </span>
+                      {plugin.author ? (
+                        <span>
+                          {t("plugin.author")}: {plugin.author}
+                        </span>
+                      ) : null}
+                      {plugin.directory ? (
+                        <span>
+                          {t("plugin.directory")}: {plugin.directory}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="plugin-card__actions">
                       <Button

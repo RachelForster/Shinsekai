@@ -12,7 +12,13 @@ import {
   pluginsQueryKey,
   runAppUpdate,
 } from "../../entities/plugin/repository";
-import type { AppUpdateRefKind, AppUpdateResult, PluginCatalogItem, PluginInstallInput, PluginManifest } from "../../entities/plugin/types";
+import type {
+  AppUpdateRefKind,
+  AppUpdateResult,
+  PluginCatalogItem,
+  PluginInstallInput,
+  PluginManifest,
+} from "../../entities/plugin/types";
 import { openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
 import type { TaskSnapshot } from "../../shared/platform/types";
@@ -30,7 +36,9 @@ import {
 import { catalogInstallSource, githubUrl } from "./pluginUtils";
 
 interface PluginCatalogPanelProps {
-  appUpdateMutation: ReturnType<typeof useMutation<AppUpdateResult, Error, { refKind: AppUpdateRefKind; tagName: string }>>;
+  appUpdateMutation: ReturnType<
+    typeof useMutation<AppUpdateResult, Error, { refKind: AppUpdateRefKind; tagName: string }>
+  >;
   appUpdateTask: TaskSnapshot<AppUpdateResult> | null;
   catalogQuery: ReturnType<typeof useQuery<PluginCatalogItem[]>>;
   installMutation: ReturnType<typeof useMutation<PluginManifest, Error, string | PluginInstallInput>>;
@@ -225,7 +233,11 @@ export function PluginCatalogPanel({
                   return;
                 }
                 if (catalogRefKind === "tag" && !catalogTagName.trim()) {
-                  showToast({ kind: "error", message: t("plugin.appUpdate.tagInvalid"), title: t("plugin.installRef.title") });
+                  showToast({
+                    kind: "error",
+                    message: t("plugin.appUpdate.tagInvalid"),
+                    title: t("plugin.installRef.title"),
+                  });
                   return;
                 }
                 installMutation.mutate({
@@ -265,7 +277,9 @@ export function PluginCatalogPanel({
                 <option value="latest">{t("plugin.appUpdate.refLatest")}</option>
                 <option value="head">{t("plugin.appUpdate.refHead")}</option>
                 {catalogTagsQuery.data?.map((tag) => (
-                  <option key={tag} value={`tag:${tag}`}>{tag}</option>
+                  <option key={tag} value={`tag:${tag}`}>
+                    {tag}
+                  </option>
                 ))}
               </Select>
               {catalogTagsQuery.isLoading ? (
@@ -273,7 +287,9 @@ export function PluginCatalogPanel({
               ) : null}
               {catalogTagsQuery.isError ? (
                 <span className="field-row__help" role="alert">
-                  {catalogTagsQuery.error instanceof Error ? catalogTagsQuery.error.message : t("plugin.appUpdate.tagsEmpty")}
+                  {catalogTagsQuery.error instanceof Error
+                    ? catalogTagsQuery.error.message
+                    : t("plugin.appUpdate.tagsEmpty")}
                 </span>
               ) : null}
               {!catalogTagsQuery.isLoading && !catalogTagsQuery.isError && !catalogTagsQuery.data?.length ? (
@@ -295,7 +311,11 @@ export function PluginCatalogPanel({
               loading={appUpdateMutation.isPending}
               onClick={() => {
                 if (appUpdateRefKind === "tag" && !appUpdateTagName.trim()) {
-                  showToast({ kind: "error", message: t("plugin.appUpdate.tagInvalid"), title: t("plugin.appUpdate.title") });
+                  showToast({
+                    kind: "error",
+                    message: t("plugin.appUpdate.tagInvalid"),
+                    title: t("plugin.appUpdate.title"),
+                  });
                   return;
                 }
                 appUpdateMutation.mutate({ refKind: appUpdateRefKind, tagName: appUpdateTagName });
@@ -331,7 +351,9 @@ export function PluginCatalogPanel({
                 <option value="latest">{t("plugin.appUpdate.refLatest")}</option>
                 <option value="head">{t("plugin.appUpdate.refHead")}</option>
                 {appUpdateTagsQuery.data?.map((tag) => (
-                  <option key={tag} value={`tag:${tag}`}>{tag}</option>
+                  <option key={tag} value={`tag:${tag}`}>
+                    {tag}
+                  </option>
                 ))}
               </Select>
               {appUpdateTagsQuery.isLoading ? (
@@ -339,7 +361,9 @@ export function PluginCatalogPanel({
               ) : null}
               {appUpdateTagsQuery.isError ? (
                 <span className="field-row__help" role="alert">
-                  {appUpdateTagsQuery.error instanceof Error ? appUpdateTagsQuery.error.message : t("plugin.appUpdate.tagsEmpty")}
+                  {appUpdateTagsQuery.error instanceof Error
+                    ? appUpdateTagsQuery.error.message
+                    : t("plugin.appUpdate.tagsEmpty")}
                 </span>
               ) : null}
               {!appUpdateTagsQuery.isLoading && !appUpdateTagsQuery.isError && !appUpdateTagsQuery.data?.length ? (

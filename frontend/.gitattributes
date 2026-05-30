@@ -1,0 +1,3 @@
+# Frontend — force LF for all text files so that Windows autocrlf does not
+# cause spurious diffs after Prettier / ESLint reformatting.
+* text=auto eol=lf

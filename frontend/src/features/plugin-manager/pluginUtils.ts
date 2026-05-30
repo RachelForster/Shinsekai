@@ -1,4 +1,11 @@
-import type { PluginConfigFieldType, PluginConfigGroupSchema, PluginCatalogItem, PluginInstallInput, PluginManifest, PluginUIPage } from "../../entities/plugin/types";
+import type {
+  PluginConfigFieldType,
+  PluginConfigGroupSchema,
+  PluginCatalogItem,
+  PluginInstallInput,
+  PluginManifest,
+  PluginUIPage,
+} from "../../entities/plugin/types";
 import type { FieldKind, FormGroupSchema } from "../../shared/form-schema";
 
 export type PluginView = "installed" | "discover" | "mcp";
@@ -68,7 +75,9 @@ export function pluginFieldTypeToFormType(type: PluginConfigFieldType): FieldKin
   return type;
 }
 
-export function pluginConfigGroupsToFormGroups(groups: PluginConfigGroupSchema[]): Array<FormGroupSchema<PluginConfigDraft>> {
+export function pluginConfigGroupsToFormGroups(
+  groups: PluginConfigGroupSchema[],
+): Array<FormGroupSchema<PluginConfigDraft>> {
   return groups.map((group) => ({
     columns: 1,
     description: group.description,

@@ -321,11 +321,7 @@ export function BackgroundMusicSection({
           >
             {t("background.asset.deleteSelectedBgm")}
           </AsyncButton>
-          <Button
-            icon={<Trash2 aria-hidden className="button__icon" />}
-            onClick={onClearAll}
-            variant="ghost"
-          >
+          <Button icon={<Trash2 aria-hidden className="button__icon" />} onClick={onClearAll} variant="ghost">
             {t("background.asset.clearBgm")}
           </Button>
         </div>
@@ -345,9 +341,7 @@ export function BackgroundMusicSection({
               pickLabel={t("common.chooseFile")}
               pickerTitle={t("background.asset.selectBgm")}
               value={
-                pendingBgmPaths.length
-                  ? t("background.asset.selectedFiles", { count: pendingBgmPaths.length })
-                  : ""
+                pendingBgmPaths.length ? t("background.asset.selectedFiles", { count: pendingBgmPaths.length }) : ""
               }
             />
           </span>

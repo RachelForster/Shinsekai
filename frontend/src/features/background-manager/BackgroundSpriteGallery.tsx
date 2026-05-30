@@ -108,9 +108,7 @@ export function BackgroundSpriteGallery({
               pickLabel={t("common.chooseFile")}
               pickerTitle={t("background.asset.selectImages")}
               value={
-                pendingImagePaths.length
-                  ? t("background.asset.selectedFiles", { count: pendingImagePaths.length })
-                  : ""
+                pendingImagePaths.length ? t("background.asset.selectedFiles", { count: pendingImagePaths.length }) : ""
               }
             />
           </span>
