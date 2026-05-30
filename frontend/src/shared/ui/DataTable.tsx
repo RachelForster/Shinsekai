@@ -1,3 +1,4 @@
+import "./DataTable.css";
 import type { ReactNode } from "react";
 
 export interface DataTableColumn<T> {

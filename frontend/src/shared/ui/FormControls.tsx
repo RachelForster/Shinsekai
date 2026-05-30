@@ -3,6 +3,7 @@ import { useState } from "react";
 import { FolderOpen } from "lucide-react";
 
 import type { PathPickerMode } from "../platform/types";
+import "./FormControls.css";
 import { IconButton } from "./IconButton";
 import { PathDisplay } from "./PathDisplay";
 import { PathPickerDialog } from "./PathPickerDialog";

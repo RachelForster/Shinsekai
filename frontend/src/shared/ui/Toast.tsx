@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useReducer } from "react";
 import type { ReactNode } from "react";
+import "./Toast.css";
 
 type ToastKind = "success" | "error" | "info";
 

@@ -1,0 +1,49 @@
+.path-display {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.path-display__prefix {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-display__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  direction: rtl;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  unicode-bidi: plaintext;
+  white-space: nowrap;
+}
+
+.path-display[data-has-prefix="true"] .path-display__name {
+  min-width: min(14ch, 52%);
+  max-width: 58%;
+}
+
+.path-display--input {
+  width: 100%;
+  min-height: 31px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-bg-sidebar);
+  border-radius: var(--radius-control);
+  color: var(--color-text-primary);
+  background: var(--color-bg-sidebar);
+  line-height: 1.35;
+}
+
+.path-display--disabled {
+  opacity: 0.62;
+}

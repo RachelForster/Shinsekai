@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { RefreshCw, RotateCcw } from "lucide-react";
 
+import "./ErrorBoundary.css";
 import { Button } from "./Button";
 
 interface ErrorBoundaryProps {

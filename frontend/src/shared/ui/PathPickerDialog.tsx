@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 
 import type { PathPickerMode } from "../platform/types";
 import { useI18n } from "../i18n";
+import "./PathPickerDialog.css";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { FileManager } from "./FileManager";
