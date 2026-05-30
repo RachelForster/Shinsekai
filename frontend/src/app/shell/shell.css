@@ -174,14 +174,7 @@
   gap: 6px;
 }
 
-.topbar__window-buttons {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.topbar__icon-button,
-.topbar__window-buttons span {
+.topbar__icon-button {
   display: grid;
   width: 28px;
   height: 26px;
@@ -191,14 +184,12 @@
   background: transparent;
 }
 
-.topbar__icon-button svg,
-.topbar__window-buttons svg {
+.topbar__icon-button svg {
   width: 16px;
   height: 16px;
 }
 
-.topbar__icon-button:hover,
-.topbar__window-buttons span:hover {
+.topbar__icon-button:hover {
   background: #2c3139;
 }
 

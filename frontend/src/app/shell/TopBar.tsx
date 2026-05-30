@@ -1,4 +1,4 @@
-import { Minus, Settings, Square, X } from "lucide-react";
+import { Settings } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { useI18n } from "../../shared/i18n";
@@ -20,17 +20,6 @@ export function TopBar() {
         >
           <Settings aria-hidden />
         </Link>
-        <div aria-hidden className="topbar__window-buttons">
-          <span>
-            <Minus aria-hidden />
-          </span>
-          <span>
-            <Square aria-hidden />
-          </span>
-          <span>
-            <X aria-hidden />
-          </span>
-        </div>
       </div>
     </header>
   );
