@@ -74,6 +74,7 @@ fn start_bridge(app: &tauri::App) -> DesktopResult<BridgeLaunch> {
     let frontend_dist = resolve_frontend_dist(&source_root)?;
     let port = choose_bridge_port()?;
     let mut command = python_command(&source_root)?;
+    sanitize_python_environment(&mut command);
 
     command
         .arg(source_root.join("frontend_bridge.py"))
@@ -110,15 +111,15 @@ fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
         .into());
     }
 
-    if let Some(root) = dev_project_root() {
-        if has_bridge(&root) {
-            return Ok(root);
-        }
-    }
-
     if let Ok(resource_dir) = app.path().resource_dir() {
         if has_bridge(&resource_dir) {
             return Ok(resource_dir);
+        }
+    }
+
+    if let Some(root) = dev_project_root() {
+        if has_bridge(&root) {
+            return Ok(root);
         }
     }
 
@@ -217,6 +218,14 @@ fn python_command(project_root: &Path) -> DesktopResult<Command> {
     }
 
     Err("no Python runtime found; set SHINSEKAI_PYTHON, provide runtime/, or install the shinsekai conda env".into())
+}
+
+fn sanitize_python_environment(command: &mut Command) {
+    command.env_remove("PYTHONHOME").env_remove("PYTHONPATH");
+
+    if env::var_os("APPIMAGE").is_some() || env::var_os("APPDIR").is_some() {
+        command.env_remove("LD_LIBRARY_PATH");
+    }
 }
 
 #[cfg(windows)]
