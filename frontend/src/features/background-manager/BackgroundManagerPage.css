@@ -29,6 +29,12 @@
   background: var(--color-surface-raised);
 }
 
+.background-page__group-select {
+  width: min(260px, 100%);
+  min-width: min(220px, 100%);
+  flex: 0 1 260px;
+}
+
 .background-page__package-actions,
 .background-page__resource-actions {
   display: flex;
@@ -47,8 +53,9 @@
   justify-content: flex-end;
 }
 
-.background-page .settings-grid--split {
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+.background-page__status {
+  display: grid;
+  gap: var(--space-2);
 }
 
 .background-images-section__toolbar {
@@ -167,7 +174,10 @@
 }
 
 .asset-inspector__preview--background img {
+  width: 100%;
   height: 100%;
+  max-height: none;
+  object-fit: cover;
 }
 
 /* ── Shared asset row (also used by character page) ── */
@@ -489,12 +499,12 @@
 /* ── Responsive ── */
 
 @media (max-width: 860px) {
-  .background-page .settings-grid--split,
   .asset-gallery-layout--background,
   .asset-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .background-page__group-select,
   .background-page__primary-actions,
   .background-page__package-actions,
   .background-page__resource-actions {
