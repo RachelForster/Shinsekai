@@ -28,7 +28,7 @@ import {
   AsyncButton,
   Button,
   EmptyState,
-  FilePicker,
+  PathPickerDialog,
   QueryErrorState,
   TextArea,
   TextInput,
@@ -56,11 +56,11 @@ export function BackgroundManagerPage() {
   const [draft, setDraft] = useState<Background>(createBackground());
   const [isCreating, setIsCreating] = useState(false);
   const [pendingBgmPaths, setPendingBgmPaths] = useState<string[]>([]);
-  const [pendingImportFiles, setPendingImportFiles] = useState<string[]>([]);
   const [pendingImagePaths, setPendingImagePaths] = useState<string[]>([]);
   const [pendingDelete, setPendingDelete] = useState<BackgroundDeleteTarget | null>(null);
   const [selectedBgmIndexes, setSelectedBgmIndexes] = useState<number[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [importPickerOpen, setImportPickerOpen] = useState(false);
   const [bgmSort, setBgmSort] = useState<{ direction: BgmSortDirection; key: BgmSortKey }>({
     direction: "asc",
     key: "index",
@@ -126,7 +126,6 @@ export function BackgroundManagerPage() {
     mutationFn: importBackgrounds,
     onSuccess(imported) {
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
-      setPendingImportFiles([]);
       const lastImported = imported[imported.length - 1];
       if (lastImported) {
         setIsCreating(false);
@@ -584,26 +583,10 @@ export function BackgroundManagerPage() {
         </div>
         <div className="background-page__toolbar">
           <div className="background-page__package-actions">
-            <div className="page__file-picker background-page__file-picker">
-              <FilePicker
-                acceptedExtensions={[".bg"]}
-                multiple
-                onPathsChange={setPendingImportFiles}
-                pickLabel={t("common.chooseFile")}
-                pickerTitle={t("common.import")}
-                readOnly
-                value={
-                  pendingImportFiles.length
-                    ? t("background.asset.selectedFiles", { count: pendingImportFiles.length })
-                    : ""
-                }
-              />
-            </div>
             <AsyncButton
-              disabled={!pendingImportFiles.length}
               icon={<Upload aria-hidden className="button__icon" />}
               loading={importMutation.isPending}
-              onClick={() => importMutation.mutate(pendingImportFiles)}
+              onClick={() => setImportPickerOpen(true)}
             >
               {t("common.import")}
             </AsyncButton>
@@ -643,6 +626,15 @@ export function BackgroundManagerPage() {
             </Button>
           </div>
         </div>
+        <PathPickerDialog
+          acceptedExtensions={[".bg"]}
+          multiple
+          onClose={() => setImportPickerOpen(false)}
+          onSelect={(path) => importMutation.mutate([path])}
+          onSelectMany={(paths) => importMutation.mutate(paths)}
+          open={importPickerOpen}
+          title={t("common.import")}
+        />
       </header>
 
       <div className="settings-grid settings-grid--split">

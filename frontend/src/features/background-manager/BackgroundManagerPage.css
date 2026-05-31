@@ -39,18 +39,12 @@
 }
 
 .background-page__package-actions {
-  flex: 1 1 420px;
+  flex: 1 1 220px;
 }
 
 .background-page__resource-actions {
   flex: 0 1 auto;
   justify-content: flex-end;
-}
-
-.background-page__file-picker {
-  width: auto;
-  min-width: min(100%, 260px);
-  flex: 1 1 320px;
 }
 
 .background-page .settings-grid--split {
