@@ -5,82 +5,86 @@
   color-scheme: light dark;
 
   /* ── Background ── */
-  --color-bg-app:     light-dark(#fff5f8, #1a0f14);
+  --color-bg-app: light-dark(#fff5f8, #1a0f14);
   --color-bg-sidebar: light-dark(#ffeff4, #1f1218);
-  --color-bg-panel:   light-dark(#fffafb, #24161c);
-  --color-bg-input:   light-dark(#ffffff, #1c0e14);
+  --color-bg-panel: light-dark(#fffafb, #24161c);
+  --color-bg-input: light-dark(#ffffff, #1c0e14);
 
   /* ── Border ── */
-  --color-border:       light-dark(#f0d8e0, #38222c);
+  --color-border: light-dark(#f0d8e0, #38222c);
   --color-border-hover: light-dark(#e0c0cd, #4a2e3a);
 
   /* ── Interactive ── */
   --color-control-active: light-dark(#e8d0da, #2a1822);
-  --color-control-hover:  light-dark(#f5e0e8, #36202c);
+  --color-control-hover: light-dark(#f5e0e8, #36202c);
 
   /* ── Text ── */
   --color-text-primary: light-dark(#4a2a38, #f2dfe6);
-  --color-text-muted:   light-dark(#9a6a7c, #b894a2);
+  --color-text-muted: light-dark(#9a6a7c, #b894a2);
 
   /* ── Accent (sakura pink) ── */
-  --color-accent-primary:   light-dark(#d4788e, #f0a0c0);
+  --color-accent-primary: light-dark(#d4788e, #f0a0c0);
   --color-accent-secondary: light-dark(#c0607a, #e8789a);
 
   /* ── Chat surfaces ── */
-  --color-chat-surface:  light-dark(rgba(255 250 251 / 0.92), rgba(20 12 16 / 0.9));
-  --color-chat-toolbar:  light-dark(rgba(255 240 246 / 0.94), rgba(26 14 18 / 0.82));
+  --color-chat-surface: light-dark(rgba(255 250 251 / 0.92), rgba(20 12 16 / 0.9));
+  --color-chat-toolbar: light-dark(rgba(255 240 246 / 0.94), rgba(26 14 18 / 0.82));
 
   /* ── Semantic ── */
   --color-success: light-dark(#3d8b5e, #62d68e);
   --color-warning: light-dark(#c08030, #e8b05c);
-  --color-danger:  light-dark(#c24858, #ed7a86);
-  --color-info:    light-dark(#3d7a8e, #5ec0d6);
+  --color-danger: light-dark(#c24858, #ed7a86);
+  --color-info: light-dark(#3d7a8e, #5ec0d6);
 
   /* ── Surface overlays ── */
-  --color-surface:        light-dark(rgba(255 255 255 / 0.55), rgba(255 255 255 / 0.03));
+  --color-surface: light-dark(rgba(255 255 255 / 0.55), rgba(255 255 255 / 0.03));
   --color-surface-raised: light-dark(rgba(255 255 255 / 0.7), rgba(255 255 255 / 0.05));
-  --color-surface-hover:  light-dark(rgba(0 0 0 / 0.03), rgba(255 255 255 / 0.04));
+  --color-surface-hover: light-dark(rgba(0 0 0 / 0.03), rgba(255 255 255 / 0.04));
 
   /* ── Backdrop ── */
   --color-backdrop: light-dark(rgba(0 0 0 / 0.15), rgba(0 0 0 / 0.55));
 
   /* ── Tooltip ── */
-  --color-tooltip-bg:     light-dark(rgba(74 42 56 / 0.96), rgba(12 8 10 / 0.96));
+  --color-tooltip-bg: light-dark(rgba(74 42 56 / 0.96), rgba(12 8 10 / 0.96));
   --color-tooltip-border: light-dark(rgba(212 120 142 / 0.22), rgba(240 160 192 / 0.28));
 
   /* ── Accent overlays ── */
-  --color-accent-border:        light-dark(rgba(212 120 142 / 0.35), rgba(240 160 192 / 0.45));
+  --color-accent-border: light-dark(rgba(212 120 142 / 0.35), rgba(240 160 192 / 0.45));
   --color-accent-border-strong: light-dark(rgba(212 120 142 / 0.58), rgba(240 160 192 / 0.58));
-  --color-accent-bg:            light-dark(rgba(212 120 142 / 0.06), rgba(240 160 192 / 0.06));
-  --color-accent-bg-hover:      light-dark(rgba(212 120 142 / 0.1), rgba(240 160 192 / 0.1));
-  --color-accent-bg-intense:    light-dark(rgba(212 120 142 / 0.16), rgba(240 160 192 / 0.18));
+  --color-accent-bg: light-dark(rgba(212 120 142 / 0.06), rgba(240 160 192 / 0.06));
+  --color-accent-bg-hover: light-dark(rgba(212 120 142 / 0.1), rgba(240 160 192 / 0.1));
+  --color-accent-bg-intense: light-dark(rgba(212 120 142 / 0.16), rgba(240 160 192 / 0.18));
 
   /* ── Danger overlays ── */
-  --color-danger-border:        light-dark(rgba(194 72 88 / 0.42), rgba(237 122 134 / 0.5));
+  --color-danger-border: light-dark(rgba(194 72 88 / 0.42), rgba(237 122 134 / 0.5));
   --color-danger-border-strong: light-dark(rgba(194 72 88 / 0.62), rgba(237 122 134 / 0.65));
-  --color-danger-bg:            light-dark(rgba(194 72 88 / 0.05), rgba(237 122 134 / 0.06));
-  --color-danger-bg-hover:      light-dark(rgba(194 72 88 / 0.12), rgba(237 122 134 / 0.14));
-  --color-danger-bg-intense:    light-dark(rgba(194 72 88 / 0.18), rgba(237 122 134 / 0.22));
+  --color-danger-bg: light-dark(rgba(194 72 88 / 0.05), rgba(237 122 134 / 0.06));
+  --color-danger-bg-hover: light-dark(rgba(194 72 88 / 0.12), rgba(237 122 134 / 0.14));
+  --color-danger-bg-intense: light-dark(rgba(194 72 88 / 0.18), rgba(237 122 134 / 0.22));
 
   /* ── Info overlays ── */
   --color-info-border: light-dark(rgba(61 122 142 / 0.3), rgba(94 192 214 / 0.45));
-  --color-info-bg:     light-dark(rgba(61 122 142 / 0.04), rgba(94 192 214 / 0.05));
+  --color-info-bg: light-dark(rgba(61 122 142 / 0.04), rgba(94 192 214 / 0.05));
 
   /* ── Success / Warning overlays ── */
   --color-success-border: light-dark(rgba(61 139 94 / 0.26), rgba(98 214 142 / 0.35));
   --color-warning-border: light-dark(rgba(192 128 48 / 0.26), rgba(232 176 92 / 0.35));
 
   /* ── Shadow ── */
-  --color-shadow:       light-dark(rgba(0 0 0 / 0.05), rgba(0 0 0 / 0.45));
+  --color-shadow: light-dark(rgba(0 0 0 / 0.05), rgba(0 0 0 / 0.45));
   --color-shadow-heavy: light-dark(rgba(0 0 0 / 0.08), rgba(0 0 0 / 0.55));
 
   /* ── Scrim ── */
   --color-scrim: light-dark(rgba(0 0 0 / 0.06), rgba(0 0 0 / 0.35));
 
   /* ── Button surface ── */
-  --color-btn-surface:       light-dark(rgba(0 0 0 / 0.05), rgba(255 255 255 / 0.05));
+  --color-btn-surface: light-dark(rgba(0 0 0 / 0.05), rgba(255 255 255 / 0.05));
   --color-btn-surface-hover: light-dark(rgba(0 0 0 / 0.07), rgba(255 255 255 / 0.07));
 }
 
-:root[data-color-scheme="light"] { color-scheme: light; }
-:root[data-color-scheme="dark"]  { color-scheme: dark;  }
+:root[data-color-scheme="light"] {
+  color-scheme: light;
+}
+:root[data-color-scheme="dark"] {
+  color-scheme: dark;
+}

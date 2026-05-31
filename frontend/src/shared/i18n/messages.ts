@@ -110,6 +110,12 @@ export type MessageKey =
   | "background.action.uploadContribution"
   | "background.asset.addBgm"
   | "background.asset.addImage"
+  | "background.asset.batchBgmTags"
+  | "background.asset.batchBgmTagsHelp"
+  | "background.asset.batchBgmTagsTitle"
+  | "background.asset.batchImageTags"
+  | "background.asset.batchImageTagsHelp"
+  | "background.asset.batchImageTagsTitle"
   | "background.asset.clearBgm"
   | "background.asset.clearBgmConfirmBody"
   | "background.asset.clearBgmSelection"
@@ -139,7 +145,6 @@ export type MessageKey =
   | "background.section.bgm"
   | "background.section.images"
   | "background.section.info"
-  | "background.section.tags"
   | "background.title"
   | "background.toast.deleted"
   | "background.toast.exportComplete"
@@ -700,6 +705,14 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.action.uploadContribution": "Upload contribution",
     "background.asset.addBgm": "Add BGM row",
     "background.asset.addImage": "Add image row",
+    "background.asset.batchBgmTags": "Batch BGM tags",
+    "background.asset.batchBgmTagsHelp":
+      "Paste one numbered tag per line. Confirm applies the text to this background; use Save BGM description to persist.",
+    "background.asset.batchBgmTagsTitle": "Batch BGM tags",
+    "background.asset.batchImageTags": "Batch image tags",
+    "background.asset.batchImageTagsHelp":
+      "Paste one numbered tag per line. Confirm applies the text to this background; use Save image description to persist.",
+    "background.asset.batchImageTagsTitle": "Batch image tags",
     "background.asset.clearBgm": "Delete all BGM",
     "background.asset.clearBgmConfirmBody": "Delete all {count} BGM entries from “{name}”?",
     "background.asset.clearBgmSelection": "Clear selection",
@@ -722,14 +735,13 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.asset.selectImages": "Select image files",
     "background.asset.selectedFiles": "{count} files selected",
     "background.asset.tag": "Tag",
-    "background.asset.uploadBgm": "Upload listed BGM",
+    "background.asset.uploadBgm": "Upload BGM",
     "background.asset.uploadError": "Resource upload failed.",
-    "background.asset.uploadImages": "Upload listed images",
+    "background.asset.uploadImages": "Upload images",
     "background.section.assets": "Resources",
     "background.section.bgm": "Background music",
     "background.section.images": "Background images",
     "background.section.info": "Background info",
-    "background.section.tags": "Tags",
     "background.title": "Backgrounds",
     "background.toast.deleted": "Background deleted",
     "background.toast.exportComplete": "Export complete",
@@ -1299,6 +1311,14 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.action.uploadContribution": "投稿フォーム",
     "background.asset.addBgm": "BGM 行を追加",
     "background.asset.addImage": "画像行を追加",
+    "background.asset.batchBgmTags": "BGM タグを一括編集",
+    "background.asset.batchBgmTagsHelp":
+      "番号付きタグを 1 行ずつ貼り付けます。確定で現在の背景に反映し、BGM 説明を保存で保存します。",
+    "background.asset.batchBgmTagsTitle": "BGM タグの一括編集",
+    "background.asset.batchImageTags": "画像タグを一括編集",
+    "background.asset.batchImageTagsHelp":
+      "番号付きタグを 1 行ずつ貼り付けます。確定で現在の背景に反映し、背景説明を保存で保存します。",
+    "background.asset.batchImageTagsTitle": "背景画像タグの一括編集",
     "background.asset.clearBgm": "BGM をすべて削除",
     "background.asset.clearBgmConfirmBody": "背景「{name}」から {count} 件の BGM をすべて削除しますか？",
     "background.asset.clearBgmSelection": "選択解除",
@@ -1321,14 +1341,13 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.asset.selectImages": "画像ファイルを選択",
     "background.asset.selectedFiles": "{count} 件を選択中",
     "background.asset.tag": "タグ",
-    "background.asset.uploadBgm": "一覧の BGM をアップロード",
+    "background.asset.uploadBgm": "BGM をアップロード",
     "background.asset.uploadError": "リソースのアップロードに失敗しました。",
-    "background.asset.uploadImages": "一覧の画像をアップロード",
+    "background.asset.uploadImages": "画像をアップロード",
     "background.section.assets": "リソース",
     "background.section.bgm": "BGM",
     "background.section.images": "背景画像",
     "background.section.info": "背景情報",
-    "background.section.tags": "タグ",
     "background.title": "背景管理",
     "background.toast.deleted": "背景を削除しました",
     "background.toast.exportComplete": "書き出し完了",
@@ -1893,6 +1912,14 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.action.uploadContribution": "上传投稿",
     "background.asset.addBgm": "添加 BGM 行",
     "background.asset.addImage": "添加图片行",
+    "background.asset.batchBgmTags": "批量音乐标注",
+    "background.asset.batchBgmTagsHelp":
+      "每行填写一个带编号的标注。确定后先应用到当前背景组，再点击保存背景音乐描述进行保存。",
+    "background.asset.batchBgmTagsTitle": "批量编辑背景音乐标注",
+    "background.asset.batchImageTags": "批量图片标注",
+    "background.asset.batchImageTagsHelp":
+      "每行填写一个带编号的标注。确定后先应用到当前背景组，再点击保存背景说明到当前组进行保存。",
+    "background.asset.batchImageTagsTitle": "批量编辑背景图片标注",
     "background.asset.clearBgm": "删除所有背景音乐",
     "background.asset.clearBgmConfirmBody": "确认从背景「{name}」删除全部 {count} 条背景音乐？",
     "background.asset.clearBgmSelection": "取消选择",
@@ -1915,14 +1942,13 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "background.asset.selectImages": "选择背景图片",
     "background.asset.selectedFiles": "已选择 {count} 个文件",
     "background.asset.tag": "标签描述",
-    "background.asset.uploadBgm": "上传列表中的 BGM",
+    "background.asset.uploadBgm": "上传背景音乐",
     "background.asset.uploadError": "资源上传失败。",
-    "background.asset.uploadImages": "上传列表中的图片",
+    "background.asset.uploadImages": "上传背景图片",
     "background.section.assets": "资源",
     "background.section.bgm": "背景音乐",
     "background.section.images": "背景图片",
     "background.section.info": "背景信息",
-    "background.section.tags": "标签",
     "background.title": "背景管理",
     "background.toast.deleted": "背景已删除",
     "background.toast.exportComplete": "导出完成",

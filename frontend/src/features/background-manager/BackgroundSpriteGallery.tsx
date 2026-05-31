@@ -1,4 +1,5 @@
-import { Image as ImageIcon, Save, Trash2, Upload } from "lucide-react";
+import { useState } from "react";
+import { Image as ImageIcon, Save, Tags, Trash2, Upload } from "lucide-react";
 
 import type { Background } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
@@ -8,9 +9,9 @@ import {
   AsyncButton,
   Button,
   EmptyState,
-  FilePicker,
   ImageAssetGallery,
   PathDisplay,
+  PathPickerDialog,
   TextInput,
 } from "../../shared/ui";
 
@@ -20,12 +21,11 @@ interface BackgroundSpriteGalleryProps {
   imageRowTags: string[];
   onClearImages: () => void;
   onDeleteImage: (index: number) => void;
-  onPendingImagePathsChange: (paths: string[]) => void;
+  onOpenBulkTags: () => void;
   onSaveImageTags: () => void;
   onSelectImage: (index: number) => void;
   onUpdateImageTag: (index: number, value: string) => void;
-  onUploadImages: () => void;
-  pendingImagePaths: string[];
+  onUploadImages: (paths: string[]) => void;
   saveTagsPending: boolean;
   selectedImageIndex: number;
   sprites: Background["sprites"];
@@ -38,18 +38,18 @@ export function BackgroundSpriteGallery({
   imageRowTags,
   onClearImages,
   onDeleteImage,
-  onPendingImagePathsChange,
+  onOpenBulkTags,
   onSaveImageTags,
   onSelectImage,
   onUpdateImageTag,
   onUploadImages,
-  pendingImagePaths,
   saveTagsPending,
   selectedImageIndex,
   sprites,
   uploadPending,
 }: BackgroundSpriteGalleryProps) {
   const { t } = useI18n();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const selectedImage = sprites[selectedImageIndex];
   const backgroundImageItems: ImageAssetGalleryItem[] = sprites.map((sprite, index) => ({
     id: `${sprite.path}-${index}`,
@@ -62,62 +62,40 @@ export function BackgroundSpriteGallery({
     <section className="section background-images-section">
       <div className="section__header">
         <h2 className="section__title">{t("background.section.images")}</h2>
+        <div className="page__actions">
+          <AsyncButton
+            disabled={!currentBackgroundName}
+            icon={<Upload aria-hidden className="button__icon" />}
+            loading={uploadPending}
+            onClick={() => setPickerOpen(true)}
+            variant="ghost"
+          >
+            {t("background.asset.uploadImages")}
+          </AsyncButton>
+          <Button
+            disabled={!sprites.length}
+            icon={<Tags aria-hidden className="button__icon" />}
+            onClick={onOpenBulkTags}
+            variant="ghost"
+          >
+            {t("background.asset.batchImageTags")}
+          </Button>
+          <Button
+            disabled={!currentBackgroundName || !sprites.length}
+            icon={<Trash2 aria-hidden className="button__icon" />}
+            onClick={() => {
+              if (!currentBackgroundName || !sprites.length) {
+                return;
+              }
+              onClearImages();
+            }}
+            variant="ghost"
+          >
+            {t("background.asset.clearImages")}
+          </Button>
+        </div>
       </div>
       <div className="asset-editor">
-        <div className="background-images-section__toolbar">
-          <label className="field-row field-row--stack background-images-section__picker">
-            <span className="field-row__label">{t("background.asset.selectImages")}</span>
-            <span className="field-row__control">
-              <FilePicker
-                acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
-                multiple
-                onPathsChange={(paths) => {
-                  if (paths.length) {
-                    onPendingImagePathsChange(paths);
-                  }
-                }}
-                pickLabel={t("common.chooseFile")}
-                pickerTitle={t("background.asset.selectImages")}
-                value={
-                  pendingImagePaths.length
-                    ? t("background.asset.selectedFiles", { count: pendingImagePaths.length })
-                    : ""
-                }
-              />
-            </span>
-          </label>
-          <div className="background-images-section__actions">
-            <AsyncButton
-              disabled={!currentBackgroundName || !pendingImagePaths.length}
-              icon={<Upload aria-hidden className="button__icon" />}
-              loading={uploadPending}
-              onClick={() => {
-                if (!currentBackgroundName) {
-                  return;
-                }
-                if (!pendingImagePaths.length) {
-                  return;
-                }
-                onUploadImages();
-              }}
-            >
-              {t("background.asset.uploadImages")}
-            </AsyncButton>
-            <Button
-              disabled={!currentBackgroundName || !sprites.length}
-              icon={<Trash2 aria-hidden className="button__icon" />}
-              onClick={() => {
-                if (!currentBackgroundName || !sprites.length) {
-                  return;
-                }
-                onClearImages();
-              }}
-              variant="ghost"
-            >
-              {t("background.asset.clearImages")}
-            </Button>
-          </div>
-        </div>
         {!sprites.length ? <EmptyState title={t("background.asset.emptyImages")} /> : null}
         {selectedImage ? (
           <div className="asset-gallery-layout asset-gallery-layout--background">
@@ -173,6 +151,23 @@ export function BackgroundSpriteGallery({
           </div>
         ) : null}
       </div>
+      <PathPickerDialog
+        acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+        multiple
+        onClose={() => setPickerOpen(false)}
+        onSelect={(path) => {
+          if (currentBackgroundName) {
+            onUploadImages([path]);
+          }
+        }}
+        onSelectMany={(paths) => {
+          if (currentBackgroundName) {
+            onUploadImages(paths);
+          }
+        }}
+        open={pickerOpen}
+        title={t("background.asset.selectImages")}
+      />
     </section>
   );
 }

@@ -1,11 +1,19 @@
 import { memo, useCallback, useState } from "react";
 import type { ChangeEvent, UIEvent } from "react";
-import { ArrowDown, ArrowUp, Music, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Music, Tags, Trash2, Upload } from "lucide-react";
 
 import { fileUrl } from "../../entities/files/repository";
 import { baseName } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, AudioPlayer, Button, EmptyState, FilePicker, PathDisplay, TextInput } from "../../shared/ui";
+import {
+  AsyncButton,
+  AudioPlayer,
+  Button,
+  EmptyState,
+  PathDisplay,
+  PathPickerDialog,
+  TextInput,
+} from "../../shared/ui";
 import type { BackgroundBgmItem, BgmSortDirection, BgmSortKey } from "./backgroundUtils";
 
 const BGM_ROW_HEIGHT = 60;
@@ -255,13 +263,12 @@ interface BackgroundMusicSectionProps {
   onBatchDelete: () => void;
   onClearAll: () => void;
   onDelete: (index: number) => void;
-  onPendingBgmPathsChange: (paths: string[]) => void;
+  onOpenBulkTags: () => void;
   onSortToggle: (key: BgmSortKey) => void;
   onTagChange: (index: number, value: string) => void;
   onToggleAllSelection: () => void;
   onToggleSelection: (index: number, checked: boolean) => void;
-  onUpload: () => void;
-  pendingBgmPaths: string[];
+  onUpload: (paths: string[]) => void;
   selectedBgmIndexSet: Set<number>;
   sortDirection: BgmSortDirection;
   sortKey: BgmSortKey;
@@ -278,13 +285,12 @@ export function BackgroundMusicSection({
   onBatchDelete,
   onClearAll,
   onDelete,
-  onPendingBgmPathsChange,
+  onOpenBulkTags,
   onSortToggle,
   onTagChange,
   onToggleAllSelection,
   onToggleSelection,
   onUpload,
-  pendingBgmPaths,
   selectedBgmIndexSet,
   sortDirection,
   sortKey,
@@ -292,8 +298,8 @@ export function BackgroundMusicSection({
   uploadPending,
 }: BackgroundMusicSectionProps) {
   const { t } = useI18n();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const allBgmSelected = bgmList.length > 0 && selectedBgmIndexSet.size === bgmList.length;
-  const canUploadBgm = Boolean(currentBackgroundName && pendingBgmPaths.length);
   const canDeleteSelectedBgm = Boolean(currentBackgroundName && selectedBgmIndexSet.size);
   const canClearBgm = Boolean(currentBackgroundName && bgmList.length);
 
@@ -301,62 +307,44 @@ export function BackgroundMusicSection({
     <section className="section background-music-section">
       <div className="section__header">
         <h2 className="section__title">{t("background.section.bgm")}</h2>
+        <div className="page__actions">
+          <AsyncButton
+            disabled={!currentBackgroundName}
+            icon={<Upload aria-hidden className="button__icon" />}
+            loading={uploadPending}
+            onClick={() => setPickerOpen(true)}
+            variant="ghost"
+          >
+            {t("background.asset.uploadBgm")}
+          </AsyncButton>
+          <Button
+            disabled={!bgmList.length}
+            icon={<Tags aria-hidden className="button__icon" />}
+            onClick={onOpenBulkTags}
+            variant="ghost"
+          >
+            {t("background.asset.batchBgmTags")}
+          </Button>
+          <AsyncButton
+            disabled={!canDeleteSelectedBgm}
+            icon={<Trash2 aria-hidden className="button__icon" />}
+            loading={batchDeletePending}
+            onClick={onBatchDelete}
+            variant="ghost"
+          >
+            {t("background.asset.deleteSelectedBgm")}
+          </AsyncButton>
+          <Button
+            disabled={!canClearBgm}
+            icon={<Trash2 aria-hidden className="button__icon" />}
+            onClick={onClearAll}
+            variant="ghost"
+          >
+            {t("background.asset.clearBgm")}
+          </Button>
+        </div>
       </div>
       <div className="asset-editor">
-        <div className="background-music-section__toolbar">
-          <label className="field-row field-row--stack background-music-section__picker">
-            <span className="field-row__label">{t("background.asset.selectBgm")}</span>
-            <span className="field-row__control">
-              <FilePicker
-                acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
-                multiple
-                onPathsChange={(paths) => {
-                  if (paths.length) {
-                    onPendingBgmPathsChange(paths);
-                  }
-                }}
-                pickLabel={t("common.chooseFile")}
-                pickerTitle={t("background.asset.selectBgm")}
-                value={
-                  pendingBgmPaths.length ? t("background.asset.selectedFiles", { count: pendingBgmPaths.length }) : ""
-                }
-              />
-            </span>
-          </label>
-          <div className="background-music-section__actions">
-            <AsyncButton
-              disabled={!canUploadBgm}
-              icon={<Upload aria-hidden className="button__icon" />}
-              loading={uploadPending}
-              onClick={() => {
-                if (!currentBackgroundName || !pendingBgmPaths.length) {
-                  return;
-                }
-                onUpload();
-              }}
-              variant="ghost"
-            >
-              {t("background.asset.uploadBgm")}
-            </AsyncButton>
-            <AsyncButton
-              disabled={!canDeleteSelectedBgm}
-              icon={<Trash2 aria-hidden className="button__icon" />}
-              loading={batchDeletePending}
-              onClick={onBatchDelete}
-              variant="ghost"
-            >
-              {t("background.asset.deleteSelectedBgm")}
-            </AsyncButton>
-            <Button
-              disabled={!canClearBgm}
-              icon={<Trash2 aria-hidden className="button__icon" />}
-              onClick={onClearAll}
-              variant="ghost"
-            >
-              {t("background.asset.clearBgm")}
-            </Button>
-          </div>
-        </div>
         {!bgmList.length ? <EmptyState title={t("background.asset.emptyBgm")} /> : null}
         {bgmList.length ? (
           <BackgroundBgmRows
@@ -384,6 +372,23 @@ export function BackgroundMusicSection({
           />
         ) : null}
       </div>
+      <PathPickerDialog
+        acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
+        multiple
+        onClose={() => setPickerOpen(false)}
+        onSelect={(path) => {
+          if (currentBackgroundName) {
+            onUpload([path]);
+          }
+        }}
+        onSelectMany={(paths) => {
+          if (currentBackgroundName) {
+            onUpload(paths);
+          }
+        }}
+        open={pickerOpen}
+        title={t("background.asset.selectBgm")}
+      />
     </section>
   );
 }
