@@ -4,6 +4,7 @@ import { CircleHelp } from "lucide-react";
 
 import { useI18n } from "../i18n";
 import type { FormFieldSchema, FormGroupSchema } from "../form-schema";
+import { normalizeThemeColor } from "../theme/appTheme";
 import { ColorInput, FilePicker, NumberInput, Select, TextArea, TextInput } from "./FormControls";
 import { Switch } from "./Switch";
 
@@ -159,14 +160,15 @@ export function SchemaFieldGrid<T extends object>({
     }
 
     if (field.type === "color") {
+      const colorValue = normalizeThemeColor(String(rawValue ?? ""));
       return (
         <div className="input-group">
           <ColorInput
             {...common}
             onChange={(event) => update(field.name, event.target.value as T[keyof T])}
-            value={String(rawValue ?? "")}
+            value={colorValue}
           />
-          <span aria-hidden className="swatch" style={{ background: String(rawValue ?? "transparent") }} />
+          <span aria-hidden className="swatch" style={{ background: colorValue }} />
         </div>
       );
     }

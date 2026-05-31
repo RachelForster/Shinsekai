@@ -1,86 +1,157 @@
-/* ── Shinsekai color tokens ──
-   Sakura palette — cherry blossom pink.  Matches docs/index.html. */
+/* Shinsekai color tokens.
+   Most UI colors are derived from --theme-accent so users can customize one seed color. */
 
 :root {
   color-scheme: light dark;
 
-  /* ── Background ── */
-  --color-bg-app:     light-dark(#fff5f8, #1a0f14);
-  --color-bg-sidebar: light-dark(#ffeff4, #1f1218);
-  --color-bg-panel:   light-dark(#fffafb, #24161c);
-  --color-bg-input:   light-dark(#ffffff, #1c0e14);
+  /* User theme seed. Keep this as a concrete color; runtime code may override it. */
+  --theme-accent: #d4788e;
 
-  /* ── Border ── */
-  --color-border:       light-dark(#f0d8e0, #38222c);
-  --color-border-hover: light-dark(#e0c0cd, #4a2e3a);
+  /* Background */
+  --color-bg-app: light-dark(
+    color-mix(in oklch, var(--theme-accent) 7%, white),
+    color-mix(in oklch, var(--theme-accent) 14%, #0d0a0c)
+  );
+  --color-bg-sidebar: light-dark(
+    color-mix(in oklch, var(--theme-accent) 12%, white),
+    color-mix(in oklch, var(--theme-accent) 18%, #120d10)
+  );
+  --color-bg-panel: light-dark(
+    color-mix(in oklch, var(--theme-accent) 4%, white),
+    color-mix(in oklch, var(--theme-accent) 10%, #181014)
+  );
+  --color-bg-input: light-dark(
+    color-mix(in oklch, var(--theme-accent) 2%, white),
+    color-mix(in oklch, var(--theme-accent) 8%, #100b0e)
+  );
 
-  /* ── Interactive ── */
-  --color-control-active: light-dark(#e8d0da, #2a1822);
-  --color-control-hover:  light-dark(#f5e0e8, #36202c);
+  /* Border */
+  --color-border: light-dark(
+    color-mix(in oklch, var(--theme-accent) 24%, white),
+    color-mix(in oklch, var(--theme-accent) 26%, #241820)
+  );
+  --color-border-hover: light-dark(
+    color-mix(in oklch, var(--theme-accent) 34%, white),
+    color-mix(in oklch, var(--theme-accent) 36%, #2e2028)
+  );
 
-  /* ── Text ── */
-  --color-text-primary: light-dark(#4a2a38, #f2dfe6);
-  --color-text-muted:   light-dark(#9a6a7c, #b894a2);
+  /* Interactive */
+  --color-control-active: light-dark(
+    color-mix(in oklch, var(--theme-accent) 22%, white),
+    color-mix(in oklch, var(--theme-accent) 24%, #1b1117)
+  );
+  --color-control-hover: light-dark(
+    color-mix(in oklch, var(--theme-accent) 16%, white),
+    color-mix(in oklch, var(--theme-accent) 22%, #21161d)
+  );
 
-  /* ── Accent (sakura pink) ── */
-  --color-accent-primary:   light-dark(#d4788e, #f0a0c0);
-  --color-accent-secondary: light-dark(#c0607a, #e8789a);
+  /* Text */
+  --color-text-primary: light-dark(
+    color-mix(in oklch, var(--theme-accent) 28%, #241820),
+    color-mix(in oklch, var(--theme-accent) 18%, white)
+  );
+  --color-text-muted: light-dark(
+    color-mix(in oklch, var(--theme-accent) 42%, #686068),
+    color-mix(in oklch, var(--theme-accent) 34%, #b8adb4)
+  );
 
-  /* ── Chat surfaces ── */
-  --color-chat-surface:  light-dark(rgba(255 250 251 / 0.92), rgba(20 12 16 / 0.9));
-  --color-chat-toolbar:  light-dark(rgba(255 240 246 / 0.94), rgba(26 14 18 / 0.82));
+  /* Accent */
+  --color-accent-primary: light-dark(
+    var(--theme-accent),
+    color-mix(in oklch, var(--theme-accent) 72%, white)
+  );
+  --color-accent-secondary: light-dark(
+    color-mix(in oklch, var(--theme-accent) 86%, black),
+    color-mix(in oklch, var(--theme-accent) 82%, white)
+  );
 
-  /* ── Semantic ── */
+  /* Chat surfaces */
+  --color-chat-surface: light-dark(
+    color-mix(in oklch, var(--theme-accent) 4%, rgb(255 255 255 / 0.92)),
+    color-mix(in oklch, var(--theme-accent) 10%, rgb(20 12 16 / 0.9))
+  );
+  --color-chat-toolbar: light-dark(
+    color-mix(in oklch, var(--theme-accent) 10%, rgb(255 255 255 / 0.94)),
+    color-mix(in oklch, var(--theme-accent) 12%, rgb(26 14 18 / 0.82))
+  );
+
+  /* Semantic colors stay stable so meaning remains clear across themes. */
   --color-success: light-dark(#3d8b5e, #62d68e);
   --color-warning: light-dark(#c08030, #e8b05c);
-  --color-danger:  light-dark(#c24858, #ed7a86);
-  --color-info:    light-dark(#3d7a8e, #5ec0d6);
+  --color-danger: light-dark(#c24858, #ed7a86);
+  --color-info: light-dark(#3d7a8e, #5ec0d6);
 
-  /* ── Surface overlays ── */
-  --color-surface:        light-dark(rgba(255 255 255 / 0.55), rgba(255 255 255 / 0.03));
+  /* Surface overlays */
+  --color-surface: light-dark(rgba(255 255 255 / 0.55), rgba(255 255 255 / 0.03));
   --color-surface-raised: light-dark(rgba(255 255 255 / 0.7), rgba(255 255 255 / 0.05));
-  --color-surface-hover:  light-dark(rgba(0 0 0 / 0.03), rgba(255 255 255 / 0.04));
+  --color-surface-hover: light-dark(rgba(0 0 0 / 0.03), rgba(255 255 255 / 0.04));
 
-  /* ── Backdrop ── */
+  /* Backdrop */
   --color-backdrop: light-dark(rgba(0 0 0 / 0.15), rgba(0 0 0 / 0.55));
 
-  /* ── Tooltip ── */
-  --color-tooltip-bg:     light-dark(rgba(74 42 56 / 0.96), rgba(12 8 10 / 0.96));
-  --color-tooltip-border: light-dark(rgba(212 120 142 / 0.22), rgba(240 160 192 / 0.28));
+  /* Tooltip */
+  --color-tooltip-bg: light-dark(
+    color-mix(in oklch, var(--theme-accent) 28%, rgb(32 24 28 / 0.96)),
+    color-mix(in oklch, var(--theme-accent) 10%, rgb(12 8 10 / 0.96))
+  );
+  --color-tooltip-border: light-dark(
+    color-mix(in oklch, var(--theme-accent) 22%, transparent),
+    color-mix(in oklch, var(--theme-accent) 28%, transparent)
+  );
 
-  /* ── Accent overlays ── */
-  --color-accent-border:        light-dark(rgba(212 120 142 / 0.35), rgba(240 160 192 / 0.45));
-  --color-accent-border-strong: light-dark(rgba(212 120 142 / 0.58), rgba(240 160 192 / 0.58));
-  --color-accent-bg:            light-dark(rgba(212 120 142 / 0.06), rgba(240 160 192 / 0.06));
-  --color-accent-bg-hover:      light-dark(rgba(212 120 142 / 0.1), rgba(240 160 192 / 0.1));
-  --color-accent-bg-intense:    light-dark(rgba(212 120 142 / 0.16), rgba(240 160 192 / 0.18));
+  /* Accent overlays */
+  --color-accent-border: light-dark(
+    color-mix(in oklch, var(--theme-accent) 35%, transparent),
+    color-mix(in oklch, var(--theme-accent) 45%, transparent)
+  );
+  --color-accent-border-strong: light-dark(
+    color-mix(in oklch, var(--theme-accent) 58%, transparent),
+    color-mix(in oklch, var(--theme-accent) 58%, transparent)
+  );
+  --color-accent-bg: light-dark(
+    color-mix(in oklch, var(--theme-accent) 6%, transparent),
+    color-mix(in oklch, var(--theme-accent) 6%, transparent)
+  );
+  --color-accent-bg-hover: light-dark(
+    color-mix(in oklch, var(--theme-accent) 10%, transparent),
+    color-mix(in oklch, var(--theme-accent) 10%, transparent)
+  );
+  --color-accent-bg-intense: light-dark(
+    color-mix(in oklch, var(--theme-accent) 16%, transparent),
+    color-mix(in oklch, var(--theme-accent) 18%, transparent)
+  );
 
-  /* ── Danger overlays ── */
-  --color-danger-border:        light-dark(rgba(194 72 88 / 0.42), rgba(237 122 134 / 0.5));
+  /* Danger overlays */
+  --color-danger-border: light-dark(rgba(194 72 88 / 0.42), rgba(237 122 134 / 0.5));
   --color-danger-border-strong: light-dark(rgba(194 72 88 / 0.62), rgba(237 122 134 / 0.65));
-  --color-danger-bg:            light-dark(rgba(194 72 88 / 0.05), rgba(237 122 134 / 0.06));
-  --color-danger-bg-hover:      light-dark(rgba(194 72 88 / 0.12), rgba(237 122 134 / 0.14));
-  --color-danger-bg-intense:    light-dark(rgba(194 72 88 / 0.18), rgba(237 122 134 / 0.22));
+  --color-danger-bg: light-dark(rgba(194 72 88 / 0.05), rgba(237 122 134 / 0.06));
+  --color-danger-bg-hover: light-dark(rgba(194 72 88 / 0.12), rgba(237 122 134 / 0.14));
+  --color-danger-bg-intense: light-dark(rgba(194 72 88 / 0.18), rgba(237 122 134 / 0.22));
 
-  /* ── Info overlays ── */
+  /* Info overlays */
   --color-info-border: light-dark(rgba(61 122 142 / 0.3), rgba(94 192 214 / 0.45));
-  --color-info-bg:     light-dark(rgba(61 122 142 / 0.04), rgba(94 192 214 / 0.05));
+  --color-info-bg: light-dark(rgba(61 122 142 / 0.04), rgba(94 192 214 / 0.05));
 
-  /* ── Success / Warning overlays ── */
+  /* Success / Warning overlays */
   --color-success-border: light-dark(rgba(61 139 94 / 0.26), rgba(98 214 142 / 0.35));
   --color-warning-border: light-dark(rgba(192 128 48 / 0.26), rgba(232 176 92 / 0.35));
 
-  /* ── Shadow ── */
-  --color-shadow:       light-dark(rgba(0 0 0 / 0.05), rgba(0 0 0 / 0.45));
+  /* Shadow */
+  --color-shadow: light-dark(rgba(0 0 0 / 0.05), rgba(0 0 0 / 0.45));
   --color-shadow-heavy: light-dark(rgba(0 0 0 / 0.08), rgba(0 0 0 / 0.55));
 
-  /* ── Scrim ── */
+  /* Scrim */
   --color-scrim: light-dark(rgba(0 0 0 / 0.06), rgba(0 0 0 / 0.35));
 
-  /* ── Button surface ── */
-  --color-btn-surface:       light-dark(rgba(0 0 0 / 0.05), rgba(255 255 255 / 0.05));
+  /* Button surface */
+  --color-btn-surface: light-dark(rgba(0 0 0 / 0.05), rgba(255 255 255 / 0.05));
   --color-btn-surface-hover: light-dark(rgba(0 0 0 / 0.07), rgba(255 255 255 / 0.07));
 }
 
-:root[data-color-scheme="light"] { color-scheme: light; }
-:root[data-color-scheme="dark"]  { color-scheme: dark;  }
+:root[data-color-scheme="light"] {
+  color-scheme: light;
+}
+
+:root[data-color-scheme="dark"] {
+  color-scheme: dark;
+}

@@ -13,6 +13,7 @@ import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/c
 import type { SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
+import { applyThemeColor } from "../../shared/theme/appTheme";
 import { AsyncButton, EmptyState, QueryErrorState, SchemaDrivenForm, useToast } from "../../shared/ui";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css
 import "./SystemSettingsPage.css";
@@ -46,11 +47,16 @@ export function SystemSettingsPage() {
     if (data?.system_config) {
       setDraft(data.system_config);
       setErrors({});
+      applyThemeColor(data.system_config.theme_color);
       if (["zh_CN", "en", "ja"].includes(data.system_config.ui_language)) {
         dispatch({ language: data.system_config.ui_language as "zh_CN" | "en" | "ja", type: "setLanguage" });
       }
     }
   }, [data?.system_config, dispatch]);
+
+  useEffect(() => {
+    applyThemeColor(draft?.theme_color);
+  }, [draft?.theme_color]);
 
   const saveMutation = useMutation({
     mutationFn: saveSystemConfig,
@@ -63,6 +69,7 @@ export function SystemSettingsPage() {
     },
     onSuccess(saved) {
       queryClient.invalidateQueries({ queryKey: configQueryKey });
+      applyThemeColor(saved.theme_color);
       if (["zh_CN", "en", "ja"].includes(saved.ui_language)) {
         dispatch({ language: saved.ui_language as "zh_CN" | "en" | "ja", type: "setLanguage" });
       }

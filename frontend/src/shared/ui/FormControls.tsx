@@ -30,7 +30,7 @@ export function NumberInput(props: InputHTMLAttributes<HTMLInputElement>) {
 }
 
 export function ColorInput(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <TextInput type="text" {...props} />;
+  return <TextInput type="color" {...props} />;
 }
 
 interface FilePickerProps extends InputHTMLAttributes<HTMLInputElement> {
