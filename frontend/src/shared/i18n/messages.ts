@@ -1849,7 +1849,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.tts.bundleGpuMemoryUnknown": "显存未知",
     "api.tts.bundleGptSovits": "GPT-SoVITS v2pro",
     "api.tts.bundleGptSovits50": "50 系显卡 GPT-SoVITS v2pro",
-    "api.tts.bundleHint": "下载并解压与 PySide 设置窗口相同的 TTS 整合包。",
+    "api.tts.bundleHint": "请先下载语音模块整合包，才能合成语音。",
     "api.tts.bundleManualPick": "已自动选中推荐项；只有明确需要其他包时再手动改选。",
     "api.tts.bundleOpenDialog": "选择整合包",
     "api.tts.bundleOpenRunning": "查看下载",

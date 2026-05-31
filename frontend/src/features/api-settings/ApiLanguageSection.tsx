@@ -32,12 +32,8 @@ export function ApiLanguageSection({ disabled, onChange, systemDraft }: ApiLangu
   };
 
   return (
-    <section className="section api-page__language">
-      <div className="section__header">
-        <div>
-          <h2 className="section__title">{t("api.language.title")}</h2>
-        </div>
-      </div>
+    <details className="section schema-section" open>
+      <summary className="schema-section__summary">{t("api.language.title")}</summary>
       <SchemaFieldGrid
         disabled={disabled}
         group={apiLanguageGroup}
@@ -45,6 +41,6 @@ export function ApiLanguageSection({ disabled, onChange, systemDraft }: ApiLangu
         value={systemDraft}
       />
       <p className="section__description">{t("api.language.hint")}</p>
-    </section>
+    </details>
   );
 }

@@ -51,48 +51,47 @@ export function LlmConnectionSection({
       <div className="section__header">
         <h2 className="section__title">{t("api.llm.connectionTitle")}</h2>
       </div>
-      <div className="form-grid form-grid--two">
-        <label className="field-row">
-          <span className="field-row__label">{t("api.llm.provider")}</span>
-          <span className="field-row__control">
-            <Select
-              disabled={disabled}
-              onChange={(event) => onProviderChange(event.target.value)}
-              value={draft.llm_provider}
-            >
-              {llmProviderSelectOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </span>
-        </label>
-        <label className="field-row">
-          <span className="field-row__label">{t("api.llm.baseUrl")}</span>
-          <span className="field-row__control">
-            <TextInput
-              disabled={disabled}
-              onChange={(event) => onDraftPatch({ llm_base_url: event.target.value })}
-              placeholder="https://api.example.com/v1"
-              type="url"
-              value={draft.llm_base_url}
-            />
-          </span>
-        </label>
-        <label className="field-row">
-          <span className="field-row__label">{t("api.llm.apiKey")}</span>
-          <span className="field-row__control">
-            <TextInput
-              disabled={disabled}
-              onChange={(event) => onProviderMapChange("llm_api_key", event.target.value)}
-              type="password"
-              value={activeApiKey}
-            />
-          </span>
-        </label>
-        <label className="field-row">
-          <span className="field-row__label">{t("api.llm.model")}</span>
+      <label className="field-row">
+        <span className="field-row__label">{t("api.llm.provider")}</span>
+        <span className="field-row__control">
+          <Select
+            disabled={disabled}
+            onChange={(event) => onProviderChange(event.target.value)}
+            value={draft.llm_provider}
+          >
+            {llmProviderSelectOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </span>
+      </label>
+      <label className="field-row">
+        <span className="field-row__label">{t("api.llm.baseUrl")}</span>
+        <span className="field-row__control">
+          <TextInput
+            disabled={disabled}
+            onChange={(event) => onDraftPatch({ llm_base_url: event.target.value })}
+            placeholder="https://api.example.com/v1"
+            type="url"
+            value={draft.llm_base_url}
+          />
+        </span>
+      </label>
+      <label className="field-row">
+        <span className="field-row__label">{t("api.llm.apiKey")}</span>
+        <span className="field-row__control">
+          <TextInput
+            disabled={disabled}
+            onChange={(event) => onProviderMapChange("llm_api_key", event.target.value)}
+            type="password"
+            value={activeApiKey}
+          />
+        </span>
+      </label>
+      <label className="field-row">
+        <span className="field-row__label">{t("api.llm.model")}</span>
           <span className="field-row__control">
             <span className="api-page__model-control">
               <EditableModelSelect
@@ -120,32 +119,31 @@ export function LlmConnectionSection({
             ) : null}
           </span>
         </label>
-        <div className="field-row">
-          <span className="field-row__label">{t("api.llm.streaming")}</span>
-          <span className="field-row__control radio-pair">
-            <label>
-              <input
-                checked={draft.is_streaming}
-                disabled={disabled}
-                name="api-streaming"
-                onChange={() => onDraftPatch({ is_streaming: true })}
-                type="radio"
-              />
-              <span>{t("common.yes")}</span>
-            </label>
-            <label>
-              <input
-                checked={!draft.is_streaming}
-                disabled={disabled}
-                name="api-streaming"
-                onChange={() => onDraftPatch({ is_streaming: false })}
-                type="radio"
-              />
-              <span>{t("common.no")}</span>
-            </label>
-          </span>
-        </div>
-      </div>
+      <label className="field-row">
+        <span className="field-row__label">{t("api.llm.streaming")}</span>
+        <span className="field-row__control radio-pair">
+          <label>
+            <input
+              checked={draft.is_streaming}
+              disabled={disabled}
+              name="api-streaming"
+              onChange={() => onDraftPatch({ is_streaming: true })}
+              type="radio"
+            />
+            <span>{t("common.yes")}</span>
+          </label>
+          <label>
+            <input
+              checked={!draft.is_streaming}
+              disabled={disabled}
+              name="api-streaming"
+              onChange={() => onDraftPatch({ is_streaming: false })}
+              type="radio"
+            />
+            <span>{t("common.no")}</span>
+          </label>
+        </span>
+      </label>
       <AdapterExtraForm
         disabled={disabled}
         modelUnsupportedThinking={modelUnsupportedThinking}
