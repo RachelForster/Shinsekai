@@ -67,11 +67,12 @@
   margin: 0 calc(-1 * var(--settings-page-gutter));
   padding: 10px var(--settings-page-gutter);
   border-top: 1px solid var(--color-border);
-  background: rgba(40, 44, 52, 0.94);
+  background: var(--color-surface);
   backdrop-filter: blur(10px);
 }
 
 .api-page__save-button {
+  flex: 1 1 auto;
   min-width: 160px;
 }
 
@@ -89,36 +90,36 @@
   border: 1px solid var(--color-border-hover);
   border-radius: var(--radius-control);
   color: var(--color-text-muted);
-  background: rgba(68, 71, 90, 0.68);
+  background: var(--color-surface-raised);
   font-size: 11px;
   line-height: 1.35;
   white-space: nowrap;
 }
 
 .llm-model-badge--ghost {
-  border-color: rgba(113, 126, 149, 0.36);
-  color: rgba(221, 221, 221, 0.68);
-  background: rgba(40, 44, 52, 0.18);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .llm-model-badge[data-tag="text"] {
-  border-color: rgba(139, 233, 253, 0.55);
-  color: #8be9fd;
+  border-color: var(--color-info-border);
+  color: var(--color-info);
 }
 
 .llm-model-badge--ghost[data-tag="text"] {
-  border-color: rgba(139, 233, 253, 0.28);
-  color: rgba(139, 233, 253, 0.72);
+  border-color: var(--color-info-border);
+  color: var(--color-info);
 }
 
 .llm-model-badge[data-tag="vision"] {
-  border-color: rgba(189, 147, 249, 0.55);
-  color: #d6b8ff;
+  border-color: var(--color-accent-border);
+  color: var(--color-accent-primary);
 }
 
 .llm-model-badge--ghost[data-tag="vision"] {
-  border-color: rgba(189, 147, 249, 0.3);
-  color: rgba(214, 184, 255, 0.72);
+  border-color: var(--color-tooltip-border);
+  color: var(--color-accent-primary);
 }
 
 /* ── Editable combo (model select) ── */
@@ -155,7 +156,7 @@
   border: 1px solid var(--color-border-hover);
   border-radius: var(--radius-control);
   background: var(--color-bg-sidebar);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 14px 32px var(--color-shadow);
 }
 
 .editable-combo__option {
@@ -180,7 +181,7 @@
 
 .editable-combo__option:hover,
 .editable-combo__option[aria-selected="true"] {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-surface-hover);
 }
 
 .editable-combo__option-id {
@@ -248,7 +249,7 @@
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: rgba(33, 37, 43, 0.4);
+  background: var(--color-surface);
 }
 
 .tts-bundle-summary__row {
@@ -265,7 +266,7 @@
 
 .tts-bundle-summary__row--recommend {
   border-left: 3px solid var(--color-accent-primary);
-  background: rgba(189, 147, 249, 0.1);
+  background: var(--color-accent-bg-hover);
 }
 
 .tts-bundle-summary__label {
@@ -299,7 +300,7 @@
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: rgba(33, 37, 43, 0.48);
+  background: var(--color-surface-raised);
 }
 
 .tts-bundle-status .task-progress {
@@ -309,10 +310,10 @@
 
 .tts-bundle-status__error {
   padding: var(--space-3);
-  border: 1px solid rgba(255, 85, 85, 0.62);
+  border: 1px solid var(--color-danger-border);
   border-radius: var(--radius-control);
   color: var(--color-text-primary);
-  background: rgba(255, 85, 85, 0.08);
+  background: var(--color-danger-bg);
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;

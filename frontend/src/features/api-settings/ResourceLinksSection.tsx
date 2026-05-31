@@ -9,10 +9,8 @@ export function ResourceLinksSection() {
   const { t } = useI18n();
 
   return (
-    <section className="section resource-links">
-      <div className="section__header">
-        <h2 className="section__title">{t("api.links.title")}</h2>
-      </div>
+    <details className="section schema-section resource-links">
+      <summary className="schema-section__summary">{t("api.links.title")}</summary>
       <div className="resource-links__grid">
         {resourceLinks.map(([labelKey, url]) => (
           <Button
@@ -26,6 +24,6 @@ export function ResourceLinksSection() {
         ))}
       </div>
       <p className="section__description resource-links__help">{t("api.links.help")}</p>
-    </section>
+    </details>
   );
 }

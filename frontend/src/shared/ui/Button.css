@@ -11,7 +11,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   color: var(--color-text-primary);
-  background: rgba(33, 37, 43, 0.72);
+  background: var(--color-btn-surface);
   cursor: pointer;
   line-height: 1.25;
   white-space: nowrap;
@@ -24,7 +24,7 @@
 
 .button:hover:not(:disabled) {
   border-color: var(--color-border-hover);
-  background: rgba(57, 65, 80, 0.72);
+  background: var(--color-btn-surface-hover);
 }
 
 .button:active:not(:disabled) {
@@ -37,25 +37,25 @@
 }
 
 .button--primary {
-  border-color: rgba(189, 147, 249, 0.68);
+  border-color: var(--color-accent-border-strong);
   color: var(--color-accent-primary);
-  background: rgba(189, 147, 249, 0.12);
+  background: var(--color-accent-bg-hover);
 }
 
 .button--primary:hover:not(:disabled) {
-  border-color: rgba(189, 147, 249, 0.92);
-  background: rgba(189, 147, 249, 0.18);
+  border-color: var(--color-accent-border-strong);
+  background: var(--color-accent-bg-intense);
 }
 
 .button--danger {
-  border-color: rgba(255, 85, 85, 0.72);
-  color: #ffecec;
-  background: rgba(255, 85, 85, 0.2);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger);
+  background: var(--color-danger-bg-hover);
 }
 
 .button--danger:hover:not(:disabled) {
-  border-color: rgba(255, 138, 138, 0.86);
-  background: rgba(255, 85, 85, 0.3);
+  border-color: var(--color-danger-border-strong);
+  background: var(--color-danger-bg-intense);
 }
 
 .button--ghost {
@@ -65,7 +65,7 @@
 
 .button--ghost:hover:not(:disabled) {
   border-color: var(--color-border);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-surface-hover);
 }
 
 .button__icon {

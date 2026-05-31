@@ -49,13 +49,9 @@ export function AsrSettingsSection({
   const { t } = useI18n();
 
   return (
-    <section className="section">
-      <div className="section__header">
-        <div>
-          <h2 className="section__title">{t("system.asr.title")}</h2>
-          <p className="section__description">{t("system.asr.hint")}</p>
-        </div>
-      </div>
+    <details className="section schema-section">
+      <summary className="schema-section__summary">{t("system.asr.title")}</summary>
+      <p className="section__description">{t("system.asr.hint")}</p>
       {activeAsrProvider === "vosk" ? (
         <div className="asr-vosk-hint">
           <span>{t("system.asr.voskHint")}</span>
@@ -200,6 +196,6 @@ export function AsrSettingsSection({
           values={draft.asr_extra_configs?.[activeAsrProvider] ?? {}}
         />
       ) : null}
-    </section>
+    </details>
   );
 }

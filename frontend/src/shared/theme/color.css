@@ -1,0 +1,87 @@
+/* ── Shinsekai color tokens ──
+   Warm amber + deep charcoal.  High-end tool aesthetic. */
+
+:root {
+  color-scheme: light dark;
+
+  /* ── Background ── */
+  --color-bg-app:     light-dark(#fbf9f6, #181613);
+  --color-bg-sidebar: light-dark(#f5f1ea, #1e1b17);
+  --color-bg-panel:   light-dark(#fefdfb, #221e19);
+  --color-bg-input:   light-dark(#ffffff, #151310);
+
+  /* ── Border ── */
+  --color-border:       light-dark(#e7dfd2, #2e2921);
+  --color-border-hover: light-dark(#d4c9b6, #423b30);
+
+  /* ── Interactive ── */
+  --color-control-active: light-dark(#e2d9c8, #282318);
+  --color-control-hover:  light-dark(#f0e9dc, #352e24);
+
+  /* ── Text ── */
+  --color-text-primary: light-dark(#1f1b14, #ebe5da);
+  --color-text-muted:   light-dark(#7a7264, #9d9483);
+
+  /* ── Accent (warm amber) ── */
+  --color-accent-primary:   light-dark(#b86e1f, #e0a64b);
+  --color-accent-secondary: light-dark(#c45a2c, #e8845e);
+
+  /* ── Chat surfaces ── */
+  --color-chat-surface:  light-dark(rgba(255 252 248 / 0.92), rgba(20 18 15 / 0.9));
+  --color-chat-toolbar:  light-dark(rgba(250 246 240 / 0.94), rgba(26 23 18 / 0.82));
+
+  /* ── Semantic ── */
+  --color-success: light-dark(#2d8a4e, #54c97a);
+  --color-warning: light-dark(#c87a18, #eda840);
+  --color-danger:  light-dark(#c23d3d, #ed6a6a);
+  --color-info:    light-dark(#2d7d8f, #5cc0d6);
+
+  /* ── Surface overlays ── */
+
+  --color-surface:        light-dark(rgba(0 0 0 / 0.025), rgba(255 255 255 / 0.025));
+  --color-surface-raised: light-dark(rgba(0 0 0 / 0.04),  rgba(255 255 255 / 0.04));
+  --color-surface-hover:  light-dark(rgba(0 0 0 / 0.03),  rgba(255 255 255 / 0.035));
+
+  /* ── Backdrop ── */
+  --color-backdrop: light-dark(rgba(0 0 0 / 0.15), rgba(0 0 0 / 0.55));
+
+  /* ── Tooltip ── */
+  --color-tooltip-bg:     light-dark(rgba(31 27 20 / 0.96), rgba(12 10 8 / 0.96));
+  --color-tooltip-border: light-dark(rgba(184 110 31 / 0.22), rgba(224 166 75 / 0.28));
+
+  /* ── Accent overlays ── */
+  --color-accent-border:        light-dark(rgba(184 110 31 / 0.35), rgba(224 166 75 / 0.45));
+  --color-accent-border-strong: light-dark(rgba(184 110 31 / 0.58), rgba(224 166 75 / 0.58));
+  --color-accent-bg:            light-dark(rgba(184 110 31 / 0.05), rgba(224 166 75 / 0.06));
+  --color-accent-bg-hover:      light-dark(rgba(184 110 31 / 0.09), rgba(224 166 75 / 0.1));
+  --color-accent-bg-intense:    light-dark(rgba(184 110 31 / 0.15), rgba(224 166 75 / 0.18));
+
+  /* ── Danger overlays ── */
+  --color-danger-border:        light-dark(rgba(194 61 61 / 0.42), rgba(237 106 106 / 0.5));
+  --color-danger-border-strong: light-dark(rgba(194 61 61 / 0.62), rgba(237 106 106 / 0.65));
+  --color-danger-bg:            light-dark(rgba(194 61 61 / 0.05), rgba(237 106 106 / 0.06));
+  --color-danger-bg-hover:      light-dark(rgba(194 61 61 / 0.12), rgba(237 106 106 / 0.14));
+  --color-danger-bg-intense:    light-dark(rgba(194 61 61 / 0.18), rgba(237 106 106 / 0.22));
+
+  /* ── Info overlays ── */
+  --color-info-border: light-dark(rgba(45 125 143 / 0.3), rgba(92 192 214 / 0.45));
+  --color-info-bg:     light-dark(rgba(45 125 143 / 0.04), rgba(92 192 214 / 0.05));
+
+  /* ── Success / Warning overlays ── */
+  --color-success-border: light-dark(rgba(45 138 78 / 0.26), rgba(84 201 122 / 0.35));
+  --color-warning-border: light-dark(rgba(200 122 24 / 0.26), rgba(237 168 64 / 0.35));
+
+  /* ── Shadow ── */
+  --color-shadow:       light-dark(rgba(0 0 0 / 0.05), rgba(0 0 0 / 0.45));
+  --color-shadow-heavy: light-dark(rgba(0 0 0 / 0.08), rgba(0 0 0 / 0.55));
+
+  /* ── Scrim ── */
+  --color-scrim: light-dark(rgba(0 0 0 / 0.06), rgba(0 0 0 / 0.35));
+
+  /* ── Button surface ── */
+  --color-btn-surface:       light-dark(rgba(0 0 0 / 0.05), rgba(255 255 255 / 0.05));
+  --color-btn-surface-hover: light-dark(rgba(0 0 0 / 0.07), rgba(255 255 255 / 0.07));
+}
+
+:root[data-color-scheme="light"] { color-scheme: light; }
+:root[data-color-scheme="dark"]  { color-scheme: dark;  }

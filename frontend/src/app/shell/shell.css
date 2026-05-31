@@ -34,7 +34,7 @@
   height: 28px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgba(189, 147, 249, 0.62);
+  border: 1px solid var(--color-accent-border);
   border-radius: var(--radius-control);
   color: var(--color-accent-primary);
 }
@@ -93,16 +93,16 @@
 }
 
 .sidebar__link:hover {
-  border-color: rgba(189, 147, 249, 0.24);
+  border-color: var(--color-accent-border);
   color: var(--color-text-primary);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-surface-hover);
 }
 
 .sidebar__link.active,
 .sidebar__link[aria-pressed="true"] {
-  border-color: rgba(189, 147, 249, 0.18);
+  border-color: var(--color-accent-bg-intense);
   color: var(--color-accent-primary);
-  background: rgba(189, 147, 249, 0.12);
+  background: var(--color-accent-bg-hover);
 }
 
 .sidebar__link--button {
@@ -165,7 +165,7 @@
   bottom: 0;
   left: var(--shell-sidebar-width);
   padding: 0;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--color-scrim);
   cursor: default;
   pointer-events: auto;
 }
@@ -180,7 +180,7 @@
   grid-template-rows: 60px minmax(0, 1fr);
   border-left: 1px solid var(--color-border);
   background: var(--color-bg-sidebar);
-  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.3);
+  box-shadow: -18px 0 40px var(--color-scrim);
   pointer-events: auto;
 }
 
@@ -221,7 +221,7 @@
 .tools-drawer__close:hover {
   border-color: var(--color-border);
   color: var(--color-text-primary);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-surface-hover);
 }
 
 .tools-drawer__body {

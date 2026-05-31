@@ -1,29 +1,4 @@
 :root {
-  color-scheme: dark;
-
-  --color-bg-app: #282c34;
-  --color-bg-sidebar: #21252b;
-  --color-bg-panel: #2c313a;
-  --color-bg-input: #1b1d23;
-  --color-border: #343b48;
-  --color-border-hover: #404758;
-  --color-control-active: #232831;
-  --color-control-hover: #394150;
-  --color-text-primary: #dddddd;
-  --color-text-muted: #717e95;
-  --color-accent-primary: #bd93f9;
-  --color-accent-secondary: #ff79c6;
-  --color-chat-surface: rgba(50, 50, 50, 0.78);
-  --color-chat-toolbar: rgba(50, 50, 50, 0.59);
-
-  --color-success: #50fa7b;
-  --color-warning: #ffb86c;
-  --color-danger: #ff5555;
-  --color-info: #8be9fd;
-
-  --font-settings: "Segoe UI", "Microsoft YaHei", "Microsoft Yahei", "微软雅黑", Arial, sans-serif;
-  --font-chat: "Microsoft YaHei", "SimHei", Arial, sans-serif;
-
   --radius-control: 5px;
   --radius-toast: 12px;
   --space-1: 4px;
@@ -38,7 +13,7 @@
   --settings-page-gutter: 24px;
   --shell-topbar-height: 50px;
   --shell-bottombar-height: 22px;
-  --focus-ring: 0 0 0 2px rgba(189, 147, 249, 0.62);
+  --focus-ring: 0 0 0 2px var(--color-accent-border);
 }
 
 [data-density="compact"] {

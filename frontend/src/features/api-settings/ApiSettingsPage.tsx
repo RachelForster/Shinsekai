@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { RotateCcw, Save } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -520,9 +521,11 @@ export function ApiSettingsPage() {
         </div>
         <div className="page__actions">
           <AsyncButton
+            icon={<RotateCcw aria-hidden className="button__icon" />}
             loading={resumeMutation.isPending}
             onClick={() => resumeMutation.mutate()}
             tooltip={t("api.resume.tip")}
+            variant="primary"
           >
             {t("api.resume.btn")}
           </AsyncButton>
@@ -551,6 +554,14 @@ export function ApiSettingsPage() {
         onProviderMapChange={updateProviderMap}
         selectedOption={selectedOption}
       />
+      <SchemaDrivenForm
+        collapsedGroupIds={["llm"]}
+        disabled={saveMutation.isPending}
+        errors={errors}
+        groups={apiSchema.filter((g) => g.id === "llm")}
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
+        value={draft}
+      />
       <TtsBundleSection
         canCancelDownload={canCancelTtsBundleDownload}
         cancelPending={ttsBundleCancelMutation.isPending}
@@ -573,10 +584,10 @@ export function ApiSettingsPage() {
         task={ttsBundleTask}
       />
       <SchemaDrivenForm
-        collapsedGroupIds={["llm", "t2i"]}
+        collapsedGroupIds={["t2i"]}
         disabled={saveMutation.isPending}
         errors={errors}
-        groups={apiSchema}
+        groups={apiSchema.filter((g) => g.id !== "llm")}
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
         value={draft}
       />
@@ -616,7 +627,13 @@ export function ApiSettingsPage() {
       ) : null}
       <ResourceLinksSection />
       <footer className="api-page__save-footer">
-        <AsyncButton className="api-page__save-button" loading={saveMutation.isPending} onClick={handleSave}>
+        <AsyncButton
+          className="api-page__save-button"
+          icon={<Save aria-hidden className="button__icon" />}
+          loading={saveMutation.isPending}
+          onClick={handleSave}
+          variant="primary"
+        >
           {t("common.save")}
         </AsyncButton>
       </footer>

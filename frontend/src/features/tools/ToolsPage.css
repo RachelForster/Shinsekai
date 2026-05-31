@@ -29,7 +29,7 @@
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: rgba(33, 37, 43, 0.36);
+  background: var(--color-surface);
 }
 
 .tools-page__prompts {
@@ -98,7 +98,7 @@
   padding: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-surface-hover);
 }
 
 .tool-gallery__item strong,

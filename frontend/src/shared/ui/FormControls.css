@@ -4,16 +4,17 @@
   width: 100%;
   min-width: 0;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
+  border-radius: 8px;
   color: var(--color-text-primary);
+  background: var(--color-bg-input);
   line-height: 1.35;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .input,
 .select {
   min-height: 32px;
   padding: 5px 10px;
-  background: var(--color-bg-input);
 }
 
 .select {
@@ -26,22 +27,19 @@
     calc(100% - 16px) 13px,
     calc(100% - 11px) 13px;
   background-repeat: no-repeat;
-  background-size:
-    5px 5px,
-    5px 5px;
+  background-size: 5px 5px, 5px 5px;
 }
 
 .select:disabled {
   background-image:
-    linear-gradient(45deg, transparent 50%, rgba(113, 126, 149, 0.56) 50%),
-    linear-gradient(135deg, rgba(113, 126, 149, 0.56) 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, var(--color-border-hover) 50%),
+    linear-gradient(135deg, var(--color-border-hover) 50%, transparent 50%);
 }
 
 .textarea {
   min-height: 96px;
   resize: vertical;
   padding: 7px 10px;
-  background: var(--color-bg-input);
   line-height: 1.55;
 }
 
@@ -54,26 +52,33 @@
 .input:focus,
 .textarea:focus,
 .select:focus {
-  border-color: rgba(189, 147, 249, 0.72);
+  border-color: var(--color-accent-border-strong);
+  box-shadow: 0 0 0 3px var(--color-accent-bg);
 }
 
 .input:disabled,
 .textarea:disabled,
 .select:disabled {
   cursor: not-allowed;
-  opacity: 0.62;
+  opacity: 0.5;
+  background: var(--color-surface);
 }
 
 .input::selection,
 .textarea::selection {
-  color: #1b1d23;
-  background: var(--color-accent-secondary);
+  color: var(--color-bg-input);
+  background: var(--color-accent-primary);
 }
 
 .input--error,
 .textarea--error,
 .select--error {
   border-color: var(--color-danger);
+}
+
+.input--error:focus,
+.textarea--error:focus {
+  box-shadow: 0 0 0 3px var(--color-danger-bg);
 }
 
 .input-group {
@@ -93,6 +98,6 @@
 
 .field-error {
   margin-top: var(--space-1);
-  color: #ff8a8a;
+  color: var(--color-danger);
   font-size: 12px;
 }

@@ -27,6 +27,7 @@ import {
   NumberInput,
   QueryErrorState,
   Select,
+  Switch,
   TextArea,
   TextInput,
   useToast,
@@ -568,39 +569,13 @@ export function TemplateEditorPage() {
 
             <div className="template-option-grid">
               {templateOptions.map((option) => (
-                <fieldset className="template-toggle-row" key={option.key}>
-                  <legend>{option.label}</legend>
-                  <div className="template-toggle-row__choices">
-                    <label
-                      className={["template-toggle-row__choice", option.value ? "is-selected" : ""]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <input
-                        className="visually-hidden"
-                        checked={option.value}
-                        name={`template-${option.key}`}
-                        onChange={() => option.setValue(true)}
-                        type="radio"
-                      />
-                      <span>{t("common.yes")}</span>
-                    </label>
-                    <label
-                      className={["template-toggle-row__choice", !option.value ? "is-selected" : ""]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <input
-                        className="visually-hidden"
-                        checked={!option.value}
-                        name={`template-${option.key}`}
-                        onChange={() => option.setValue(false)}
-                        type="radio"
-                      />
-                      <span>{t("common.no")}</span>
-                    </label>
-                  </div>
-                </fieldset>
+                <label className="template-toggle-row" key={option.key}>
+                  <span>{option.label}</span>
+                  <Switch
+                    checked={option.value}
+                    onChange={(e) => option.setValue(e.target.checked)}
+                  />
+                </label>
               ))}
             </div>
 
@@ -711,26 +686,27 @@ export function TemplateEditorPage() {
                 </span>
               </label>
             </div>
-            <div className="page__actions page__actions--left template-run-actions">
-              <AsyncButton
-                icon={<Play aria-hidden className="button__icon" />}
-                loading={launchMutation.isPending}
-                onClick={() => launchMutation.mutate({ resetHistory: false })}
-                variant="primary"
-              >
-                {t("template.action.launch")}
-              </AsyncButton>
-              <Button
-                icon={<RotateCw aria-hidden className="button__icon" />}
-                onClick={() => setQuickRestartOpen(true)}
-                variant="ghost"
-              >
-                {t("template.action.quickRestart")}
-              </Button>
-            </div>
           </section>
         </section>
       </div>
+
+      <footer className="template-page__footer">
+        <AsyncButton
+          icon={<Play aria-hidden className="button__icon" />}
+          loading={launchMutation.isPending}
+          onClick={() => launchMutation.mutate({ resetHistory: false })}
+          variant="primary"
+        >
+          {t("template.action.launch")}
+        </AsyncButton>
+        <Button
+          icon={<RotateCw aria-hidden className="button__icon" />}
+          onClick={() => setQuickRestartOpen(true)}
+          variant="ghost"
+        >
+          {t("template.action.quickRestart")}
+        </Button>
+      </footer>
 
       <AlertDialog
         body={t("template.quickRestart.body")}
