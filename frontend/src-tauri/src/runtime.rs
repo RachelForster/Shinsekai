@@ -11,7 +11,7 @@ use std::{
 use flate2::read::GzDecoder;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use tauri::Manager;
+use tauri::{Manager, Runtime};
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 
@@ -89,8 +89,8 @@ struct ProbeStats {
     best_latency: Option<Duration>,
 }
 
-pub fn resolve_python_runtime(
-    app: &tauri::App,
+pub fn find_python_runtime<R: Runtime>(
+    app: &impl Manager<R>,
     source_root: &Path,
 ) -> RuntimeResult<PythonRuntime> {
     let manifest = load_manifest(source_root).ok();
@@ -139,32 +139,21 @@ pub fn resolve_python_runtime(
         }
     }
 
-    if let Some(manifest) = manifest.as_ref() {
-        match repair_runtime(app, source_root, manifest) {
-            Ok(Some(runtime_root)) => {
-                if let Some(python) = python_in_prefix(&runtime_root) {
-                    if validate_python(&python, source_root, required_modules.as_deref()) {
-                        return Ok(PythonRuntime {
-                            command: Command::new(python),
-                            description: format!("repaired runtime at {}", runtime_root.display()),
-                        });
-                    }
-                }
-            }
-            Ok(None) => {}
-            Err(error) => {
-                return Err(format!(
-                    "no complete Python runtime found and runtime repair failed: {error}"
-                )
-                .into());
-            }
-        }
-    }
-
     Err("no complete Python runtime found; set SHINSEKAI_PYTHON, provide runtime/, install the shinsekai conda env, or configure runtime_manifest.json".into())
 }
 
-fn runtime_candidates(app: &tauri::App, source_root: &Path) -> Vec<RuntimeCandidate> {
+pub fn repair_python_runtime<R: Runtime>(
+    app: &impl Manager<R>,
+    source_root: &Path,
+) -> RuntimeResult<Option<PathBuf>> {
+    let manifest = load_manifest(source_root)?;
+    repair_runtime(app, source_root, &manifest)
+}
+
+fn runtime_candidates<R: Runtime>(
+    app: &impl Manager<R>,
+    source_root: &Path,
+) -> Vec<RuntimeCandidate> {
     let mut candidates = Vec::new();
     if let Some(root) = env_path("SHINSEKAI_RUNTIME_DIR") {
         candidates.push(RuntimeCandidate {
@@ -214,42 +203,8 @@ fn runtime_candidates(app: &tauri::App, source_root: &Path) -> Vec<RuntimeCandid
     dedupe_candidates(candidates)
 }
 
-fn install_runtime_roots(source_root: &Path) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(parent) = source_root.parent() {
-        roots.push(parent.join("runtime"));
-        if source_root.file_name().and_then(|name| name.to_str()) != Some("resources") {
-            if let Some(grandparent) = parent.parent() {
-                roots.push(grandparent.join("runtime"));
-            }
-        }
-    }
-    roots
-}
-
-fn dedupe_candidates(candidates: Vec<RuntimeCandidate>) -> Vec<RuntimeCandidate> {
-    let mut deduped: Vec<RuntimeCandidate> = Vec::new();
-    for candidate in candidates {
-        let normalized = candidate
-            .root
-            .canonicalize()
-            .unwrap_or_else(|_| candidate.root.clone());
-        if deduped.iter().any(|existing| {
-            existing
-                .root
-                .canonicalize()
-                .unwrap_or_else(|_| existing.root.clone())
-                == normalized
-        }) {
-            continue;
-        }
-        deduped.push(candidate);
-    }
-    deduped
-}
-
-fn repair_runtime(
-    app: &tauri::App,
+fn repair_runtime<R: Runtime>(
+    app: &impl Manager<R>,
     source_root: &Path,
     manifest: &RuntimeManifest,
 ) -> RuntimeResult<Option<PathBuf>> {
@@ -453,42 +408,46 @@ fn download_and_extract_runtime(
     let archive_path = parent.join("shinsekai-runtime.download");
     let staging_root = parent.join("runtime.tmp");
 
-    let mut response = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(1800))
-        .build()?
-        .get(url)
-        .send()?
-        .error_for_status()?;
+    let result = (|| -> RuntimeResult<()> {
+        let mut response = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(1800))
+            .build()?
+            .get(url)
+            .send()?
+            .error_for_status()?;
 
-    let mut archive = File::create(&archive_path)?;
-    io::copy(&mut response, &mut archive)?;
-    drop(archive);
+        let mut archive = File::create(&archive_path)?;
+        io::copy(&mut response, &mut archive)?;
+        drop(archive);
 
-    verify_sha256(&archive_path, &target.sha256)?;
+        verify_sha256(&archive_path, &target.sha256)?;
 
-    if staging_root.exists() {
-        fs::remove_dir_all(&staging_root)?;
-    }
-    fs::create_dir_all(&staging_root)?;
+        if staging_root.exists() {
+            fs::remove_dir_all(&staging_root)?;
+        }
+        fs::create_dir_all(&staging_root)?;
 
-    match target.archive_type {
-        ArchiveType::TarGz => extract_tar_gz(&archive_path, &staging_root)?,
-        ArchiveType::Zip => extract_zip(&archive_path, &staging_root)?,
-    }
+        match target.archive_type {
+            ArchiveType::TarGz => extract_tar_gz(&archive_path, &staging_root)?,
+            ArchiveType::Zip => extract_zip(&archive_path, &staging_root)?,
+        }
 
-    let runtime_payload = normalize_extracted_runtime(&staging_root);
-    write_runtime_marker(&runtime_payload, manifest)?;
+        let runtime_payload = normalize_extracted_runtime(&staging_root);
+        write_runtime_marker(&runtime_payload, manifest)?;
 
-    if runtime_root.exists() {
-        fs::remove_dir_all(runtime_root)?;
-    }
-    fs::rename(&runtime_payload, runtime_root)?;
+        if runtime_root.exists() {
+            fs::remove_dir_all(runtime_root)?;
+        }
+        fs::rename(&runtime_payload, runtime_root)?;
+        Ok(())
+    })();
 
     let _ = fs::remove_file(&archive_path);
     if staging_root.exists() {
         let _ = fs::remove_dir_all(&staging_root);
     }
-    Ok(())
+
+    result
 }
 
 fn verify_sha256(path: &Path, expected: &str) -> RuntimeResult<()> {
@@ -578,6 +537,40 @@ fn python_in_prefix(prefix: &Path) -> Option<PathBuf> {
         prefix.join("python.exe"),
     ];
     candidates.into_iter().find(|candidate| candidate.is_file())
+}
+
+fn install_runtime_roots(source_root: &Path) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(parent) = source_root.parent() {
+        roots.push(parent.join("runtime"));
+        if source_root.file_name().and_then(|name| name.to_str()) != Some("resources") {
+            if let Some(grandparent) = parent.parent() {
+                roots.push(grandparent.join("runtime"));
+            }
+        }
+    }
+    roots
+}
+
+fn dedupe_candidates(candidates: Vec<RuntimeCandidate>) -> Vec<RuntimeCandidate> {
+    let mut deduped: Vec<RuntimeCandidate> = Vec::new();
+    for candidate in candidates {
+        let normalized = candidate
+            .root
+            .canonicalize()
+            .unwrap_or_else(|_| candidate.root.clone());
+        if deduped.iter().any(|existing| {
+            existing
+                .root
+                .canonicalize()
+                .unwrap_or_else(|_| existing.root.clone())
+                == normalized
+        }) {
+            continue;
+        }
+        deduped.push(candidate);
+    }
+    deduped
 }
 
 fn find_conda_env_python(env_name: &str) -> Option<PathBuf> {

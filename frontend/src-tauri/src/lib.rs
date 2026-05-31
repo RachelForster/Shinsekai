@@ -10,7 +10,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use serde::Serialize;
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 mod runtime;
 
@@ -44,38 +45,236 @@ impl Drop for BridgeProcess {
 
 struct BridgeLaunch {
     child: Child,
-    port: u16,
+}
+
+#[derive(Clone)]
+enum DesktopRuntimePhase {
+    Checking,
+    Missing { message: String },
+    Updating,
+    Ready,
+    Error { message: String },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopRuntimeView {
+    status: &'static str,
+    message: Option<String>,
+    bridge_url: String,
+}
+
+struct DesktopState {
+    source_root: PathBuf,
+    project_root: PathBuf,
+    frontend_dist: PathBuf,
+    bridge_port: u16,
+    bridge: Mutex<Option<BridgeProcess>>,
+    runtime: Mutex<DesktopRuntimePhase>,
+}
+
+impl DesktopState {
+    fn new(
+        source_root: PathBuf,
+        project_root: PathBuf,
+        frontend_dist: PathBuf,
+        bridge_port: u16,
+    ) -> Self {
+        Self {
+            source_root,
+            project_root,
+            frontend_dist,
+            bridge_port,
+            bridge: Mutex::new(None),
+            runtime: Mutex::new(DesktopRuntimePhase::Checking),
+        }
+    }
+
+    fn bridge_url(&self) -> String {
+        format!("http://{BRIDGE_HOST}:{}", self.bridge_port)
+    }
+
+    fn set_runtime(&self, phase: DesktopRuntimePhase) {
+        if let Ok(mut runtime) = self.runtime.lock() {
+            *runtime = phase;
+        }
+    }
+
+    fn runtime_view(&self) -> DesktopRuntimeView {
+        let phase = self
+            .runtime
+            .lock()
+            .map(|runtime| runtime.clone())
+            .unwrap_or_else(|_| DesktopRuntimePhase::Error {
+                message: "runtime state lock is poisoned".to_string(),
+            });
+        let (status, message) = match phase {
+            DesktopRuntimePhase::Checking => ("checking", None),
+            DesktopRuntimePhase::Missing { message } => ("missing", Some(message)),
+            DesktopRuntimePhase::Updating => ("updating", None),
+            DesktopRuntimePhase::Ready => ("ready", None),
+            DesktopRuntimePhase::Error { message } => ("error", Some(message)),
+        };
+        DesktopRuntimeView {
+            status,
+            message,
+            bridge_url: self.bridge_url(),
+        }
+    }
 }
 
 pub fn run() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            desktop_runtime_state,
+            desktop_runtime_update,
+            desktop_window_minimize,
+            desktop_window_toggle_maximize,
+            desktop_window_start_drag,
+            desktop_window_close
+        ])
         .setup(|app| {
-            let bridge = start_bridge(app)?;
-            let url = format!("http://{BRIDGE_HOST}:{}#/settings/api", bridge.port);
-            app.manage(BridgeProcess::new(bridge.child));
+            let source_root = resolve_source_root(app)?;
+            let project_root = resolve_project_root(app, &source_root)?;
+            let frontend_dist = resolve_frontend_dist(&source_root)?;
+            let bridge_port = choose_bridge_port()?;
+            let url = app_window_url(bridge_port);
+            app.manage(DesktopState::new(
+                source_root,
+                project_root,
+                frontend_dist,
+                bridge_port,
+            ));
 
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::App(url.into()))
                 .title("Shinsekai")
                 .inner_size(1180.0, 780.0)
                 .min_inner_size(860.0, 620.0)
+                .decorations(false)
+                .shadow(true)
                 .center()
-                .on_navigation(move |target| {
-                    target.host_str() == Some(BRIDGE_HOST)
-                        && target.port_or_known_default() == Some(bridge.port)
-                })
                 .build()?;
+
+            let app_handle = app.handle().clone();
+            thread::spawn(move || bootstrap_runtime(app_handle));
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running Shinsekai desktop shell");
 }
 
-fn start_bridge(app: &tauri::App) -> DesktopResult<BridgeLaunch> {
-    let source_root = resolve_source_root(app)?;
-    let project_root = resolve_project_root(app, &source_root)?;
-    let frontend_dist = resolve_frontend_dist(&source_root)?;
-    let port = choose_bridge_port()?;
-    let runtime = runtime::resolve_python_runtime(app, &source_root)?;
+#[tauri::command]
+fn desktop_runtime_state(state: State<'_, DesktopState>) -> DesktopRuntimeView {
+    state.runtime_view()
+}
+
+#[tauri::command]
+fn desktop_runtime_update(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<DesktopRuntimeView, String> {
+    state.set_runtime(DesktopRuntimePhase::Updating);
+    let result = runtime::repair_python_runtime(&app, &state.source_root)
+        .map_err(|error| error.to_string())
+        .and_then(|runtime_root| {
+            if runtime_root.is_none() {
+                return Err("no runtime package is available for this platform".to_string());
+            }
+            runtime::find_python_runtime(&app, &state.source_root)
+                .map_err(|error| error.to_string())
+        })
+        .and_then(|runtime| {
+            start_bridge_for_state(&state, runtime).map_err(|error| error.to_string())
+        });
+
+    match result {
+        Ok(()) => state.set_runtime(DesktopRuntimePhase::Ready),
+        Err(message) => state.set_runtime(DesktopRuntimePhase::Error { message }),
+    }
+    Ok(state.runtime_view())
+}
+
+#[tauri::command]
+fn desktop_window_minimize(window: WebviewWindow) -> Result<(), String> {
+    window.minimize().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_toggle_maximize(window: WebviewWindow) -> Result<(), String> {
+    if window.is_maximized().map_err(|error| error.to_string())? {
+        window.unmaximize().map_err(|error| error.to_string())
+    } else {
+        window.maximize().map_err(|error| error.to_string())
+    }
+}
+
+#[tauri::command]
+fn desktop_window_start_drag(window: WebviewWindow) -> Result<(), String> {
+    window.start_dragging().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_close(window: WebviewWindow) -> Result<(), String> {
+    window.close().map_err(|error| error.to_string())
+}
+
+fn bootstrap_runtime(app: AppHandle) {
+    let state = app.state::<DesktopState>();
+    state.set_runtime(DesktopRuntimePhase::Checking);
+    let result = runtime::find_python_runtime(&app, &state.source_root)
+        .map_err(|error| error.to_string())
+        .and_then(|runtime| {
+            start_bridge_for_state(&state, runtime).map_err(|error| error.to_string())
+        });
+
+    match result {
+        Ok(()) => state.set_runtime(DesktopRuntimePhase::Ready),
+        Err(message) => state.set_runtime(DesktopRuntimePhase::Missing { message }),
+    }
+}
+
+fn app_window_url(port: u16) -> String {
+    let bridge_url = format!("http://{BRIDGE_HOST}:{port}");
+    let encoded = bridge_url.replace(':', "%3A").replace('/', "%2F");
+    format!("index.html?shinsekai_bridge={encoded}#/settings/api")
+}
+
+fn start_bridge_for_state(
+    state: &DesktopState,
+    runtime: runtime::PythonRuntime,
+) -> DesktopResult<()> {
+    if state
+        .bridge
+        .lock()
+        .map(|bridge| bridge.is_some())
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    let bridge = spawn_bridge(
+        &state.source_root,
+        &state.project_root,
+        &state.frontend_dist,
+        state.bridge_port,
+        runtime,
+    )?;
+    let mut child = Some(BridgeProcess::new(bridge.child));
+    if let Ok(mut bridge_process) = state.bridge.lock() {
+        if bridge_process.is_none() {
+            *bridge_process = child.take();
+        }
+    }
+    Ok(())
+}
+
+fn spawn_bridge(
+    source_root: &Path,
+    project_root: &Path,
+    frontend_dist: &Path,
+    port: u16,
+    runtime: runtime::PythonRuntime,
+) -> DesktopResult<BridgeLaunch> {
     println!("Using Shinsekai Python runtime: {}", runtime.description);
     let mut command = runtime.command;
     sanitize_python_environment(&mut command);
@@ -100,7 +299,7 @@ fn start_bridge(app: &tauri::App) -> DesktopResult<BridgeLaunch> {
     })?;
 
     wait_for_bridge(&mut child, port)?;
-    Ok(BridgeLaunch { child, port })
+    Ok(BridgeLaunch { child })
 }
 
 fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
