@@ -64,20 +64,32 @@ jobs:
             bundles: deb
             runtime_asset: x86_64-unknown-linux-gnu
             runtime_python: runtime/bin/python3
+            runtime_manifest_platform: linux
+            runtime_manifest_arch: x64
+            runtime_archive: tar-gz
           - platform: windows-x64
             os: windows-latest
             bundles: msi
             runtime_python: runtime/python.exe
+            runtime_manifest_platform: windows
+            runtime_manifest_arch: x64
+            runtime_archive: zip
           - platform: macos-x64
             os: macos-13
             bundles: dmg
             runtime_asset: x86_64-apple-darwin
             runtime_python: runtime/bin/python3
+            runtime_manifest_platform: macos
+            runtime_manifest_arch: x64
+            runtime_archive: tar-gz
           - platform: macos-arm64
             os: macos-14
             bundles: dmg
             runtime_asset: aarch64-apple-darwin
             runtime_python: runtime/bin/python3
+            runtime_manifest_platform: macos
+            runtime_manifest_arch: arm64
+            runtime_archive: tar-gz
 
     steps:
       - uses: actions/checkout@v4
@@ -175,6 +187,27 @@ jobs:
           ./${{ matrix.runtime_python }} -m pip install --upgrade pip
           ./${{ matrix.runtime_python }} -m pip install --prefer-binary -r requirements.txt
 
+      - name: Verify Python runtime
+        shell: bash
+        run: |
+          ./${{ matrix.runtime_python }} frontend_bridge.py --check-runtime --project-root "$PWD" --requirements-file requirements.txt
+
+      - name: Package Python runtime asset
+        shell: bash
+        env:
+          RUNTIME_OFFICIAL_BASE_URL: ${{ startsWith(github.ref, 'refs/tags/v') && format('https://github.com/{0}/releases/download/{1}', github.repository, github.ref_name) || '' }}
+          RUNTIME_CHINA_BASE_URL: ${{ vars.SHINSEKAI_RUNTIME_CHINA_BASE_URL }}
+        run: |
+          ./${{ matrix.runtime_python }} scripts/package_runtime.py \
+            --runtime-dir runtime \
+            --output-dir runtime-dist \
+            --manifest frontend/src-tauri/runtime_manifest.json \
+            --platform ${{ matrix.runtime_manifest_platform }} \
+            --arch ${{ matrix.runtime_manifest_arch }} \
+            --archive-type ${{ matrix.runtime_archive }} \
+            --official-base-url "$RUNTIME_OFFICIAL_BASE_URL" \
+            --china-base-url "$RUNTIME_CHINA_BASE_URL"
+
       - name: Verify frontend
         working-directory: frontend
         run: |
@@ -185,8 +218,6 @@ jobs:
       - name: Build Tauri bundle
         working-directory: frontend
         shell: bash
-        env:
-          SHINSEKAI_TAURI_RUNTIME_DIR: ${{ github.workspace }}/runtime
         run: pnpm tauri build --ci --bundles ${{ matrix.bundles }}
 
       - name: Upload workflow artifact
@@ -195,6 +226,7 @@ jobs:
           name: shinsekai-${{ matrix.platform }}
           if-no-files-found: error
           path: |
+            runtime-dist/*
             frontend/src-tauri/target/release/bundle/appimage/*.AppImage
             frontend/src-tauri/target/release/bundle/deb/*.deb
             frontend/src-tauri/target/release/bundle/dmg/*.dmg
@@ -206,6 +238,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            runtime-dist/*
             frontend/src-tauri/target/release/bundle/appimage/*.AppImage
             frontend/src-tauri/target/release/bundle/deb/*.deb
             frontend/src-tauri/target/release/bundle/dmg/*.dmg
