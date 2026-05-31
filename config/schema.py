@@ -169,7 +169,7 @@ class SystemConfig(BaseModel):
         description="faster-whisper / RealtimeSTT compute_type，留空则按设备自动选择",
     )
     music_volumn: DefaultIfNone[int] =Field(default=30,description="bgm 音量")
-    theme_color: DefaultIfNone[str] = Field(default='rgba(50,50,50,200)',description="主题色")
+    theme_color: DefaultIfNone[str] = Field(default='#d4788e',description="主题色")
     bgm_path: DefaultIfNone[str] = Field(default="",description="BGM 的路径")
     background_path: DefaultIfNone[str] = Field(default="",description="背景图片的路径")
     live_room_id : DefaultIfNone[str] = Field(default="", description="直播间ID，用于直播相关功能")

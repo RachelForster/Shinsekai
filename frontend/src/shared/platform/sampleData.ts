@@ -140,7 +140,7 @@ export const sampleConfig: AppConfig = {
     asr_whisper_device: "auto",
     asr_whisper_compute_type: "",
     music_volumn: 30,
-    theme_color: "rgba(50,50,50,200)",
+    theme_color: "#d4788e",
     bgm_path: "",
     background_path: "",
     live_room_id: "",
