@@ -132,6 +132,7 @@
   min-height: 0;
   overflow: auto;
   padding: var(--settings-page-gutter) var(--settings-page-gutter) 0;
+  scrollbar-gutter: stable;
 }
 
 .route-loading {

@@ -536,7 +536,6 @@ export type MessageKey =
   | "template.section.content"
   | "template.section.generate"
   | "template.section.load"
-  | "template.section.run"
   | "template.section.scenario"
   | "template.section.system"
   | "template.toast.launched"
@@ -1175,7 +1174,6 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "template.section.content": "Template content",
     "template.section.generate": "Generate template",
     "template.section.load": "Load from file",
-    "template.section.run": "Save and launch",
     "template.section.scenario": "User scenario",
     "template.section.system": "System template",
     "template.title": "Templates",
@@ -1774,7 +1772,6 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "template.section.content": "テンプレート内容",
     "template.section.generate": "テンプレート生成",
     "template.section.load": "ファイルから読み込み",
-    "template.section.run": "保存と起動",
     "template.section.scenario": "ユーザーシナリオ",
     "template.section.system": "システムテンプレート",
     "template.title": "チャットテンプレート",
@@ -2363,7 +2360,6 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "template.section.content": "模板内容",
     "template.section.generate": "生成模板",
     "template.section.load": "从文件加载",
-    "template.section.run": "保存与启动",
     "template.section.scenario": "用户情景",
     "template.section.system": "系统模板",
     "template.title": "聊天模板",
