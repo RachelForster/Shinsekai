@@ -22,6 +22,32 @@
   min-height: 232px;
 }
 
+.character-personality-section {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-self: stretch;
+}
+
+.character-personality-section__body,
+.character-personality-section__field,
+.character-personality-section__field .field-row__control {
+  display: grid;
+  min-height: 0;
+}
+
+.character-personality-section__body {
+  height: 100%;
+}
+
+.character-personality-section__field {
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.character-personality-section__textarea {
+  height: 100%;
+}
+
 .character-page__top-grid .form-grid--two,
 .character-page__top-grid .field-row {
   grid-template-columns: minmax(0, 1fr);

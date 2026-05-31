@@ -25,7 +25,7 @@ export function CharacterPersonalitySection({
   const { t } = useI18n();
 
   return (
-    <section className="section">
+    <section className="section character-personality-section">
       <div className="section__header">
         <h2 className="section__title">{t("character.section.personality")}</h2>
         <div className="page__actions">
@@ -42,11 +42,12 @@ export function CharacterPersonalitySection({
           </AsyncButton>
         </div>
       </div>
-      <div className="form-grid">
-        <label className="field-row">
+      <div className="form-grid character-personality-section__body">
+        <label className="field-row character-personality-section__field">
           <span className="field-row__label">{t("character.field.characterSetting")}</span>
           <span className="field-row__control">
             <TextArea
+              className="character-personality-section__textarea"
               onChange={(event) => onChange("character_setting", event.target.value)}
               value={draft.character_setting}
             />
