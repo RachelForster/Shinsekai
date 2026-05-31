@@ -9,13 +9,17 @@
 .plugin-card {
   display: grid;
   min-width: 0;
-  min-height: 154px;
-  gap: var(--space-2);
+  gap: var(--space-3);
   align-content: start;
   padding: var(--space-4);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  transition: border-color 120ms ease;
+}
+
+.plugin-card:hover {
+  border-color: var(--color-border-hover);
 }
 
 .plugin-card__title-row {
@@ -29,13 +33,14 @@
 .plugin-card__title {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: 3px;
 }
 
 .plugin-card__title strong {
   min-width: 0;
   overflow: hidden;
-  color: var(--color-text-primary);
+  color: var(--color-accent-primary);
+  font-size: 15px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -43,31 +48,37 @@
 
 .plugin-card__status {
   flex: 0 0 auto;
-  padding: 3px 8px;
+  padding: 2px 10px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
+  border-radius: 999px;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 520;
+  white-space: nowrap;
 }
 
 .plugin-card__status[data-enabled="true"] {
   border-color: var(--color-success-border);
   color: var(--color-success);
+  background: var(--color-accent-bg);
 }
 
-.plugin-card__status[data-loaded="false"] {
+.plugin-card__status[data-loaded="false"][data-enabled="true"] {
   border-color: var(--color-warning-border);
   color: var(--color-warning);
+  background: rgba(237 168 64 / 0.06);
 }
 
 .plugin-card__description {
   margin: 0;
   color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .plugin-card__meta {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   color: var(--color-text-muted);
   font-size: 12px;
 }
@@ -83,7 +94,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: auto;
+  margin-top: var(--space-1);
 }
 
 /* Plugin detail view */
@@ -129,8 +140,6 @@
   display: grid;
   gap: var(--space-3);
 }
-
-/* ── Responsive ── */
 
 @media (max-width: 860px) {
   .plugin-card-grid {

@@ -59,7 +59,6 @@ export function ApiLanguageSection({ disabled, onChange, systemDraft }: ApiLangu
           </span>
         </label>
       </div>
-      <p className="section__description">{t("api.language.hint")}</p>
     </details>
   );
 }

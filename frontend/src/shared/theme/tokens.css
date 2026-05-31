@@ -1,7 +1,4 @@
 :root {
-  --font-settings: "Segoe UI", "Microsoft YaHei", "Microsoft Yahei", "微软雅黑", Arial, sans-serif;
-  --font-chat: "Microsoft YaHei", "SimHei", Arial, sans-serif;
-
   --radius-control: 5px;
   --radius-toast: 12px;
   --space-1: 4px;

@@ -17,6 +17,7 @@ import {
   AsyncButton,
   Button,
   DataTable,
+  Switch,
   Dialog,
   EmptyState,
   NumberInput,
@@ -224,10 +225,9 @@ function McpServerDialog({
         <label className="field-row">
           <span className="field-row__label">{t("mcp.enabled")}</span>
           <span className="field-row__control">
-            <input
+            <Switch
               checked={server.enabled}
               onChange={(event) => update({ enabled: event.target.checked })}
-              type="checkbox"
             />
           </span>
         </label>
@@ -567,10 +567,9 @@ export function McpSettingsPanel() {
           <label className="field-row">
             <span className="field-row__label">{t("mcp.globalEnable")}</span>
             <span className="field-row__control">
-              <input
+              <Switch
                 checked={draft.enabled}
                 onChange={(event) => updateDraft({ enabled: event.target.checked })}
-                type="checkbox"
               />
             </span>
           </label>
