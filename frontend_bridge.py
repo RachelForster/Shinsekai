@@ -17,6 +17,12 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 
+def _configure_stdio_encoding() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parent
 
@@ -187,6 +193,7 @@ def _marker_clause_applies(clause: str) -> bool:
 
 
 def main() -> None:
+    _configure_stdio_encoding()
     parser = argparse.ArgumentParser(description="Run the Shinsekai React frontend HTTP bridge.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8787, type=int)
