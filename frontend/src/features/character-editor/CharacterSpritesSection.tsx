@@ -7,6 +7,7 @@ import { useI18n } from "../../shared/i18n";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
   AsyncButton,
+  AudioPlayer,
   Button,
   EmptyState,
   FilePicker,
@@ -194,7 +195,12 @@ export function CharacterSpritesSection({
                 <span className="field-row__control">
                   <PathDisplay className="path-display--input" path={selectedSprite.voice_path ?? ""} />
                   {selectedSprite.voice_path ? (
-                    <audio className="audio-inline" controls preload="none" src={fileUrl(selectedSprite.voice_path)} />
+                    <AudioPlayer
+                      className="sprite-voice-player"
+                      label={t("character.sprite.voicePath")}
+                      preload="metadata"
+                      src={fileUrl(selectedSprite.voice_path)}
+                    />
                   ) : null}
                 </span>
               </label>

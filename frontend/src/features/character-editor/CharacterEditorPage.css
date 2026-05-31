@@ -130,6 +130,10 @@
   height: auto;
 }
 
+.sprite-voice-player {
+  margin-top: var(--space-1);
+}
+
 /* ── Character memory ── */
 
 .memory-table {

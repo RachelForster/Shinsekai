@@ -20,6 +20,10 @@
   margin: 0;
 }
 
+.music-cover-player {
+  margin-top: var(--space-1);
+}
+
 @media (max-width: 980px) {
   .music-cover-layout {
     grid-template-columns: minmax(0, 1fr);
