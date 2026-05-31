@@ -56,10 +56,7 @@
   );
 
   /* Accent */
-  --color-accent-primary: light-dark(
-    var(--theme-accent),
-    color-mix(in oklch, var(--theme-accent) 72%, white)
-  );
+  --color-accent-primary: light-dark(var(--theme-accent), color-mix(in oklch, var(--theme-accent) 72%, white));
   --color-accent-secondary: light-dark(
     color-mix(in oklch, var(--theme-accent) 86%, black),
     color-mix(in oklch, var(--theme-accent) 82%, white)
