@@ -1,0 +1,22 @@
+[package]
+name = "shinsekai-desktop"
+version = "0.1.0"
+description = "Shinsekai desktop shell"
+authors = ["Shinsekai Contributors"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/RachelForster/Shinsekai"
+
+[lib]
+name = "shinsekai_desktop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "shinsekai"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.2", features = [] }

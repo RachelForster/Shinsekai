@@ -1,7 +1,10 @@
+coverage
 dist
 .vite
-coverage
-playwright-report
-test-results
 node_modules
 pnpm-lock.yaml
+playwright-report
+test-results
+src-tauri/gen
+src-tauri/resources
+src-tauri/target

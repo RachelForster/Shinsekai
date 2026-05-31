@@ -10,6 +10,10 @@
     "serve:bundle": "python ../webui_react.py",
     "serve:bundle:conda": "conda run -n shinsekai python ../webui_react.py",
     "build": "tsc -b && vite build",
+    "prepare:tauri-resources": "node scripts/prepare-tauri-resources.mjs",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
     "preview": "vite preview",
@@ -29,6 +33,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@tauri-apps/cli": "^2.11.2",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^15.0.7",
     "@types/react": "^18.3.12",
