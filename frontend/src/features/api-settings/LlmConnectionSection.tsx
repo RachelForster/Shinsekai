@@ -92,33 +92,33 @@ export function LlmConnectionSection({
       </label>
       <label className="field-row">
         <span className="field-row__label">{t("api.llm.model")}</span>
-          <span className="field-row__control">
-            <span className="api-page__model-control">
-              <EditableModelSelect
-                disabled={disabled}
-                id={modelCandidateListId}
-                onChange={(value) => onProviderMapChange("llm_model", value)}
-                options={availableModelOptions}
-                placeholder={t("api.llm.modelPlaceholder")}
-                value={activeModel}
-              />
-              <AsyncButton
-                icon={<RefreshCw aria-hidden className="button__icon" />}
-                loading={fetchModelsPending}
-                onClick={onFetchModels}
-              >
-                {fetchModelsPending ? t("api.llm.fetching") : t("api.llm.fetchModels")}
-              </AsyncButton>
-            </span>
-            {selectedOption?.tags.length ? (
-              <div className="llm-model-badges">
-                {selectedOption.tags.map((tag) => (
-                  <ModelCapabilityBadge key={tag} tag={tag} />
-                ))}
-              </div>
-            ) : null}
+        <span className="field-row__control">
+          <span className="api-page__model-control">
+            <EditableModelSelect
+              disabled={disabled}
+              id={modelCandidateListId}
+              onChange={(value) => onProviderMapChange("llm_model", value)}
+              options={availableModelOptions}
+              placeholder={t("api.llm.modelPlaceholder")}
+              value={activeModel}
+            />
+            <AsyncButton
+              icon={<RefreshCw aria-hidden className="button__icon" />}
+              loading={fetchModelsPending}
+              onClick={onFetchModels}
+            >
+              {fetchModelsPending ? t("api.llm.fetching") : t("api.llm.fetchModels")}
+            </AsyncButton>
           </span>
-        </label>
+          {selectedOption?.tags.length ? (
+            <div className="llm-model-badges">
+              {selectedOption.tags.map((tag) => (
+                <ModelCapabilityBadge key={tag} tag={tag} />
+              ))}
+            </div>
+          ) : null}
+        </span>
+      </label>
       <label className="field-row">
         <span className="field-row__label">{t("api.llm.streaming")}</span>
         <span className="field-row__control">

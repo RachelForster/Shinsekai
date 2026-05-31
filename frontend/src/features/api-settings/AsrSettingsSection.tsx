@@ -189,13 +189,13 @@ export function AsrSettingsSection({
         </div>
       ) : null}
       {activeAsrProvider !== "vosk" && hasAdapterSchema(activeAsrSchema) ? (
-            <AdapterExtraForm
-              disabled={disabled}
-              onChange={(key, value) => onAsrExtraChange(activeAsrProvider, key, value)}
-              schema={activeAsrSchema}
-              values={draft.asr_extra_configs?.[activeAsrProvider] ?? {}}
-            />
-          ) : null}
+        <AdapterExtraForm
+          disabled={disabled}
+          onChange={(key, value) => onAsrExtraChange(activeAsrProvider, key, value)}
+          schema={activeAsrSchema}
+          values={draft.asr_extra_configs?.[activeAsrProvider] ?? {}}
+        />
+      ) : null}
     </details>
   );
 }

@@ -5,7 +5,7 @@
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: rgba(0, 0, 0, 0.48);
+  background: var(--color-backdrop);
 }
 
 .dialog {
@@ -15,7 +15,7 @@
   border: 1px solid var(--color-border-hover);
   border-radius: var(--radius-control);
   background: var(--color-bg-sidebar);
-  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 22px 58px var(--color-shadow);
 }
 
 .dialog__header,

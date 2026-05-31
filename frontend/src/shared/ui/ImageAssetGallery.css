@@ -19,14 +19,14 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   color: var(--color-text-primary);
-  background: rgba(33, 37, 43, 0.42);
+  background: var(--color-surface);
   cursor: pointer;
   text-align: left;
 }
 
 .image-asset-card:hover {
   border-color: var(--color-border-hover);
-  background: rgba(57, 65, 80, 0.54);
+  background: var(--color-btn-surface-hover);
 }
 
 .image-asset-card:focus-visible {
@@ -35,8 +35,8 @@
 }
 
 .image-asset-card[aria-selected="true"] {
-  border-color: rgba(139, 233, 253, 0.7);
-  background: rgba(139, 233, 253, 0.08);
+  border-color: var(--color-info-border);
+  background: var(--color-info-bg);
 }
 
 .image-asset-card__media {
@@ -83,7 +83,7 @@
   place-items: center;
   border-radius: var(--radius-control);
   color: var(--color-text-muted);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-surface-hover);
   font-size: 11px;
 }
 
@@ -111,7 +111,7 @@
   max-width: 100%;
   overflow: hidden;
   padding: 1px 6px;
-  border: 1px solid rgba(139, 233, 253, 0.36);
+  border: 1px solid var(--color-info-border);
   border-radius: var(--radius-control);
   color: var(--color-info);
   font-size: 11px;

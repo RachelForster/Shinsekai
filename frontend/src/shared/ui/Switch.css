@@ -10,7 +10,6 @@
 
 .switch--disabled {
   cursor: not-allowed;
-  opacity: 0.56;
 }
 
 .switch__input {
@@ -40,9 +39,21 @@
     border-color 150ms ease;
 }
 
+.switch__input:disabled + .switch__track {
+  border-color: var(--color-border);
+  background: var(--color-bg-input);
+  opacity: 0.6;
+}
+
 .switch__input:checked + .switch__track {
-  border-color: rgba(189, 147, 249, 0.68);
-  background: rgba(189, 147, 249, 0.42);
+  border-color: var(--color-accent-border-strong);
+  background: var(--color-accent-bg-intense);
+}
+
+.switch__input:checked:disabled + .switch__track {
+  border-color: var(--color-border-hover);
+  background: var(--color-accent-bg);
+  opacity: 0.6;
 }
 
 .switch__input:focus-visible + .switch__track {
@@ -56,8 +67,14 @@
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  background: var(--color-text-primary);
-  transition: transform 150ms ease;
+  background: var(--color-text-muted);
+  transition:
+    transform 150ms ease,
+    background 150ms ease;
+}
+
+.switch__input:disabled + .switch__track > .switch__thumb {
+  background: var(--color-border-hover);
 }
 
 .switch__input:checked + .switch__track > .switch__thumb {
@@ -65,6 +82,11 @@
   background: var(--color-accent-primary);
 }
 
+.switch__input:checked:disabled + .switch__track > .switch__thumb {
+  background: var(--color-accent-border);
+}
+
 .switch__label {
   min-width: 0;
+  opacity: 0.52;
 }

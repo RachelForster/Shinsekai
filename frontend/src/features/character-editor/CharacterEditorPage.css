@@ -15,7 +15,7 @@
   padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: rgba(33, 37, 43, 0.36);
+  background: var(--color-surface);
 }
 
 .character-page__top-grid > .section {
@@ -63,19 +63,19 @@
 }
 
 .sprite-tag-input {
-  border-color: rgba(189, 147, 249, 0.7);
-  box-shadow: 0 0 0 1px rgba(189, 147, 249, 0.22);
+  border-color: var(--color-accent-border-strong);
+  box-shadow: 0 0 0 1px var(--color-accent-border);
 }
 
 .sprite-tag-input:hover {
-  border-color: rgba(189, 147, 249, 0.92);
-  box-shadow: 0 0 0 1px rgba(189, 147, 249, 0.34);
+  border-color: var(--color-accent-border-strong);
+  box-shadow: 0 0 0 1px var(--color-accent-border);
 }
 
 .sprite-tag-input:focus {
-  border-color: rgba(189, 147, 249, 0.92);
+  border-color: var(--color-accent-border-strong);
   box-shadow:
-    0 0 0 1px rgba(189, 147, 249, 0.34),
+    0 0 0 1px var(--color-accent-border),
     var(--focus-ring);
 }
 
@@ -123,7 +123,7 @@
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: rgba(33, 37, 43, 0.62);
+  background: var(--color-surface-raised);
 }
 
 .asset-inspector__preview {
@@ -180,7 +180,7 @@
   gap: var(--space-2);
   padding: var(--space-2);
   border: 1px solid var(--color-border);
-  background: rgba(33, 37, 43, 0.62);
+  background: var(--color-surface-raised);
 }
 
 .memory-row__content {

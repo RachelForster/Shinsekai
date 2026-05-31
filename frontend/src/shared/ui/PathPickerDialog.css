@@ -98,7 +98,7 @@
 
 .path-picker__breadcrumb:hover {
   border-color: var(--color-border);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-surface-hover);
 }
 
 .path-picker__breadcrumb:focus-visible {
@@ -156,7 +156,7 @@
 
 .path-picker__root:hover {
   border-color: var(--color-border);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-surface-hover);
 }
 
 .path-picker__root:focus-visible {
@@ -203,7 +203,7 @@
   top: 0;
   z-index: 1;
   color: var(--color-text-muted);
-  background: #242932;
+  background: var(--color-bg-sidebar);
   font-size: 12px;
   font-weight: 600;
 }
@@ -229,11 +229,11 @@
 }
 
 .path-picker__row:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-surface-hover);
 }
 
 .path-picker__row[aria-selected="true"] {
-  background: rgba(139, 233, 253, 0.14);
+  background: var(--color-info-bg);
 }
 
 .path-picker__name {
@@ -256,7 +256,7 @@
 }
 
 .path-picker__error {
-  color: #ff8a8a;
+  color: var(--color-danger);
 }
 
 @media (max-width: 720px) {

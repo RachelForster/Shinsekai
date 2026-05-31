@@ -31,7 +31,7 @@
   padding: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: rgba(33, 37, 43, 0.62);
+  background: var(--color-surface-raised);
 }
 
 .asset-row__index {
@@ -138,7 +138,7 @@
   width: 13px;
   height: 13px;
   color: var(--color-accent-primary);
-  filter: drop-shadow(0 0 5px rgba(189, 147, 249, 0.34));
+  filter: drop-shadow(0 0 5px var(--color-accent-border));
   stroke-width: 2.4;
 }
 

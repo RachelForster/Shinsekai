@@ -15,7 +15,7 @@
   padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: rgba(33, 37, 43, 0.42);
+  background: var(--color-surface);
 }
 
 .plugin-card__title-row {
@@ -51,12 +51,12 @@
 }
 
 .plugin-card__status[data-enabled="true"] {
-  border-color: rgba(80, 250, 123, 0.42);
+  border-color: var(--color-success-border);
   color: var(--color-success);
 }
 
 .plugin-card__status[data-loaded="false"] {
-  border-color: rgba(255, 184, 108, 0.45);
+  border-color: var(--color-warning-border);
   color: var(--color-warning);
 }
 

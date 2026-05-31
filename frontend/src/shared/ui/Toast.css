@@ -13,15 +13,15 @@
   border-radius: var(--radius-toast);
   padding: var(--space-3);
   background: var(--color-bg-panel);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 14px 36px var(--color-scrim);
 }
 
 .toast--success {
-  border-color: rgba(80, 250, 123, 0.48);
+  border-color: var(--color-success-border);
 }
 
 .toast--error {
-  border-color: rgba(255, 85, 85, 0.62);
+  border-color: var(--color-danger-border);
 }
 
 .toast__title {

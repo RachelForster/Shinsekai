@@ -19,7 +19,7 @@ body {
   font-size: 13px;
   line-height: 1.5;
   letter-spacing: 0;
-  scrollbar-color: var(--color-accent-primary) var(--color-border);
+  scrollbar-color: var(--color-border-hover) var(--color-border);
   scrollbar-width: thin;
 }
 
@@ -50,12 +50,12 @@ a {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-accent-primary);
+  background: var(--color-border-hover);
   border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #caa6ff;
+  background: var(--color-text-muted);
 }
 
 .visually-hidden {

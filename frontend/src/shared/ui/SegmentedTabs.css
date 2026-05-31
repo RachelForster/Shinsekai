@@ -19,7 +19,7 @@
 }
 
 .segmented-tabs__tab:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-surface-hover);
 }
 
 .segmented-tabs__tab[aria-selected="true"] {
@@ -35,11 +35,11 @@
 .segmented-tabs--pills .segmented-tabs__tab {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: rgba(33, 37, 43, 0.72);
+  background: var(--color-btn-surface);
 }
 
 .segmented-tabs--pills .segmented-tabs__tab[aria-selected="true"] {
-  border-color: rgba(189, 147, 249, 0.68);
+  border-color: var(--color-accent-border-strong);
   color: var(--color-accent-primary);
-  background: rgba(189, 147, 249, 0.12);
+  background: var(--color-accent-bg-hover);
 }

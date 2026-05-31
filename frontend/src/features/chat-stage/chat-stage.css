@@ -9,7 +9,7 @@
   --chat-dialog-background: var(--color-chat-surface);
   --chat-dialog-border-color: rgba(255, 255, 255, 0.32);
   --chat-dialog-border-radius: var(--radius-control);
-  --chat-dialog-box-shadow: 0 16px 44px rgba(0, 0, 0, 0.36);
+  --chat-dialog-box-shadow: 0 16px 44px var(--color-shadow);
   --chat-dialog-color: #fff;
   --chat-dialog-offset-y: 0px;
   --chat-dialog-padding: var(--space-4);
@@ -54,7 +54,7 @@
   height: min(72vh, 740px);
   max-width: 35vw;
   margin: 0;
-  filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.42));
+  filter: drop-shadow(0 18px 34px var(--color-shadow-heavy));
 }
 
 .sprite-layer__image {
