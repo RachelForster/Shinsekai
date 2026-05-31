@@ -58,6 +58,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Keep the desktop matrix limited to platforms that currently have
+        # available CI runners. Add macOS x64 or Windows/Linux arm64 entries
+        # only when matching runners are available.
         include:
           - platform: linux-x64
             os: ubuntu-latest
@@ -74,14 +77,6 @@ jobs:
             runtime_manifest_platform: windows
             runtime_manifest_arch: x64
             runtime_archive: zip
-          - platform: macos-x64
-            os: macos-13
-            bundles: dmg
-            runtime_asset: x86_64-apple-darwin
-            runtime_python: runtime/bin/python3
-            runtime_manifest_platform: macos
-            runtime_manifest_arch: x64
-            runtime_archive: tar-gz
           - platform: macos-arm64
             os: macos-14
             bundles: dmg
@@ -192,6 +187,13 @@ jobs:
         run: |
           ./${{ matrix.runtime_python }} frontend_bridge.py --check-runtime --project-root "$PWD" --requirements-file requirements.txt
 
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          pnpm format:check
+          pnpm lint:types
+          pnpm test
+
       - name: Package Python runtime asset
         shell: bash
         env:
@@ -207,13 +209,6 @@ jobs:
             --archive-type ${{ matrix.runtime_archive }} \
             --official-base-url "$RUNTIME_OFFICIAL_BASE_URL" \
             --china-base-url "$RUNTIME_CHINA_BASE_URL"
-
-      - name: Verify frontend
-        working-directory: frontend
-        run: |
-          pnpm format:check
-          pnpm lint:types
-          pnpm test
 
       - name: Build Tauri bundle
         working-directory: frontend
