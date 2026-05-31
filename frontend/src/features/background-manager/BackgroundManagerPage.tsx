@@ -552,12 +552,12 @@ export function BackgroundManagerPage() {
 
   return (
     <div className="page background-page">
-      <header className="page__header">
-        <div>
+      <header className="page__header background-page__header">
+        <div className="background-page__heading">
           <h1 className="page__title">{t("background.title")}</h1>
           <p className="page__description">{t("background.description")}</p>
         </div>
-        <div className="page__actions">
+        <div className="page__actions background-page__primary-actions">
           <Button
             icon={<Plus aria-hidden className="button__icon" />}
             onClick={() => {
@@ -573,46 +573,6 @@ export function BackgroundManagerPage() {
           >
             {t("common.new")}
           </Button>
-          <div className="page__file-picker">
-            <FilePicker
-              acceptedExtensions={[".bg"]}
-              multiple
-              onPathsChange={setPendingImportFiles}
-              pickLabel={t("common.chooseFile")}
-              pickerTitle={t("common.import")}
-              readOnly
-              value={
-                pendingImportFiles.length
-                  ? t("background.asset.selectedFiles", { count: pendingImportFiles.length })
-                  : ""
-              }
-            />
-          </div>
-          <AsyncButton
-            disabled={!pendingImportFiles.length}
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={importMutation.isPending}
-            onClick={() => importMutation.mutate(pendingImportFiles)}
-          >
-            {t("common.import")}
-          </AsyncButton>
-          <AsyncButton
-            icon={<Download aria-hidden className="button__icon" />}
-            loading={exportMutation.isPending}
-            onClick={() => {
-              if (!currentBackgroundName) {
-                showToast({
-                  kind: "error",
-                  message: t("background.validation.nameRequired"),
-                  title: t("common.export"),
-                });
-                return;
-              }
-              exportMutation.mutate(currentBackgroundName);
-            }}
-          >
-            {t("common.export")}
-          </AsyncButton>
           <AsyncButton
             icon={<Save aria-hidden className="button__icon" />}
             loading={saveMutation.isPending}
@@ -621,20 +581,67 @@ export function BackgroundManagerPage() {
           >
             {t("common.save")}
           </AsyncButton>
-          <Button
-            icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=background")}
-            variant="ghost"
-          >
-            {t("background.action.community")}
-          </Button>
-          <Button
-            icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => openExternal("https://wj.qq.com/s2/26616089/b61a/")}
-            variant="ghost"
-          >
-            {t("background.action.uploadContribution")}
-          </Button>
+        </div>
+        <div className="background-page__toolbar">
+          <div className="background-page__package-actions">
+            <div className="page__file-picker background-page__file-picker">
+              <FilePicker
+                acceptedExtensions={[".bg"]}
+                multiple
+                onPathsChange={setPendingImportFiles}
+                pickLabel={t("common.chooseFile")}
+                pickerTitle={t("common.import")}
+                readOnly
+                value={
+                  pendingImportFiles.length
+                    ? t("background.asset.selectedFiles", { count: pendingImportFiles.length })
+                    : ""
+                }
+              />
+            </div>
+            <AsyncButton
+              disabled={!pendingImportFiles.length}
+              icon={<Upload aria-hidden className="button__icon" />}
+              loading={importMutation.isPending}
+              onClick={() => importMutation.mutate(pendingImportFiles)}
+            >
+              {t("common.import")}
+            </AsyncButton>
+            <AsyncButton
+              icon={<Download aria-hidden className="button__icon" />}
+              loading={exportMutation.isPending}
+              onClick={() => {
+                if (!currentBackgroundName) {
+                  showToast({
+                    kind: "error",
+                    message: t("background.validation.nameRequired"),
+                    title: t("common.export"),
+                  });
+                  return;
+                }
+                exportMutation.mutate(currentBackgroundName);
+              }}
+              variant="ghost"
+            >
+              {t("common.export")}
+            </AsyncButton>
+          </div>
+          <div className="background-page__resource-actions">
+            <Button
+              icon={<ExternalLink aria-hidden className="button__icon" />}
+              onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=background")}
+              variant="ghost"
+            >
+              {t("background.action.community")}
+            </Button>
+            <Button
+              icon={<ExternalLink aria-hidden className="button__icon" />}
+              onClick={() => openExternal("https://wj.qq.com/s2/26616089/b61a/")}
+              variant="ghost"
+            >
+              {t("background.action.uploadContribution")}
+            </Button>
+          </div>
         </div>
       </header>
 

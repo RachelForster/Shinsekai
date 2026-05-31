@@ -1,5 +1,58 @@
 /* ── Background Manager page ── */
 
+.background-page__header {
+  align-items: flex-start;
+}
+
+.background-page__heading {
+  min-width: 240px;
+  flex: 1 1 360px;
+}
+
+.background-page__primary-actions {
+  flex: 0 0 auto;
+  padding-top: 1px;
+}
+
+.background-page__toolbar {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-raised);
+}
+
+.background-page__package-actions,
+.background-page__resource-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.background-page__package-actions {
+  flex: 1 1 420px;
+}
+
+.background-page__resource-actions {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+}
+
+.background-page__file-picker {
+  width: auto;
+  min-width: min(100%, 260px);
+  flex: 1 1 320px;
+}
+
 .background-page .settings-grid--split {
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
 }
@@ -184,5 +237,12 @@
   .asset-gallery-layout--background,
   .asset-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .background-page__primary-actions,
+  .background-page__package-actions,
+  .background-page__resource-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
