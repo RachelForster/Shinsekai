@@ -5,6 +5,7 @@ import { CircleHelp } from "lucide-react";
 import { useI18n } from "../i18n";
 import type { FormFieldSchema, FormGroupSchema } from "../form-schema";
 import { ColorInput, FilePicker, NumberInput, Select, TextArea, TextInput } from "./FormControls";
+import { Switch } from "./Switch";
 
 export type SchemaErrorMap<T extends object> = Partial<Record<keyof T, string>>;
 
@@ -76,11 +77,11 @@ export function SchemaFieldGrid<T extends object>({
 
     if (field.type === "checkbox") {
       return (
-        <input
-          {...common}
+        <Switch
           checked={Boolean(rawValue)}
+          disabled={common.disabled}
+          id={common.id}
           onChange={(event) => update(field.name, event.target.checked as T[keyof T])}
-          type="checkbox"
         />
       );
     }

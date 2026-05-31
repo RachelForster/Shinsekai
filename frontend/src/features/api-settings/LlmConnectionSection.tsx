@@ -3,7 +3,7 @@ import { RefreshCw } from "lucide-react";
 import type { AdapterExtraFieldSchema, ApiConfig } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
 import type { LlmModelOption } from "../../shared/platform/types";
-import { AsyncButton, Select, TextInput } from "../../shared/ui";
+import { AsyncButton, Select, Switch, TextInput } from "../../shared/ui";
 import { AdapterExtraForm } from "./AdapterExtraForm";
 import { EditableModelSelect, ModelCapabilityBadge } from "./EditableModelSelect";
 
@@ -121,27 +121,12 @@ export function LlmConnectionSection({
         </label>
       <label className="field-row">
         <span className="field-row__label">{t("api.llm.streaming")}</span>
-        <span className="field-row__control radio-pair">
-          <label>
-            <input
-              checked={draft.is_streaming}
-              disabled={disabled}
-              name="api-streaming"
-              onChange={() => onDraftPatch({ is_streaming: true })}
-              type="radio"
-            />
-            <span>{t("common.yes")}</span>
-          </label>
-          <label>
-            <input
-              checked={!draft.is_streaming}
-              disabled={disabled}
-              name="api-streaming"
-              onChange={() => onDraftPatch({ is_streaming: false })}
-              type="radio"
-            />
-            <span>{t("common.no")}</span>
-          </label>
+        <span className="field-row__control">
+          <Switch
+            checked={draft.is_streaming}
+            disabled={disabled}
+            onChange={(e) => onDraftPatch({ is_streaming: e.target.checked })}
+          />
         </span>
       </label>
       <AdapterExtraForm
