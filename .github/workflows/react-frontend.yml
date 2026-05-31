@@ -2,6 +2,8 @@ name: React Frontend
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - ".github/workflows/react-frontend.yml"
       - "frontend/**"

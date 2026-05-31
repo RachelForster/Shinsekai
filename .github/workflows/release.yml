@@ -66,57 +66,26 @@ jobs:
     needs: [tag, release]
     name: Package ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: linux-x64
             os: ubuntu-latest
-            bundles: deb,rpm,appimage
-            runtime_asset: x86_64-unknown-linux-gnu
-            runtime_python: runtime/bin/python3
-            runtime_manifest_platform: linux
-            runtime_manifest_arch: x64
-            runtime_archive: tar-gz
-            python_cache_version: python-standalone-20221002
+            bundles: deb,appimage
           - platform: linux-arm64
             os: ubuntu-24.04-arm
-            bundles: deb,rpm,appimage
-            runtime_asset: aarch64-unknown-linux-gnu
-            runtime_python: runtime/bin/python3
-            runtime_manifest_platform: linux
-            runtime_manifest_arch: arm64
-            runtime_archive: tar-gz
-            python_cache_version: python-standalone-20221002
+            bundles: deb,appimage
           - platform: windows-x64
             os: windows-latest
             bundles: msi,nsis
-            runtime_python: runtime/python.exe
-            runtime_manifest_platform: windows
-            runtime_manifest_arch: x64
-            runtime_archive: zip
-            python_cache_version: python-3.11.9
-            python_embed_url: https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
-            python_pth_file: python311._pth
           - platform: windows-arm64
             os: windows-11-arm
             bundles: msi,nsis
-            runtime_python: runtime/python.exe
-            runtime_manifest_platform: windows
-            runtime_manifest_arch: arm64
-            runtime_archive: zip
-            python_cache_version: python-3.11.9
-            python_embed_url: https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-arm64.zip
-            python_pth_file: python311._pth
           - platform: macos-arm64
             os: macos-14
             bundles: dmg
-            runtime_asset: aarch64-apple-darwin
-            runtime_python: runtime/bin/python3
-            runtime_manifest_platform: macos
-            runtime_manifest_arch: arm64
-            runtime_archive: tar-gz
-            python_cache_version: python-standalone-20221002
 
     steps:
       - uses: actions/checkout@v4
@@ -137,17 +106,6 @@ jobs:
         with:
           workspaces: frontend/src-tauri -> target
 
-      - name: Cache Python package downloads
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pip
-            ~/Library/Caches/pip
-            ~/AppData/Local/pip/Cache
-          key: runtime-pip-${{ runner.os }}-${{ matrix.runtime_manifest_arch }}-${{ matrix.python_cache_version }}-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            runtime-pip-${{ runner.os }}-${{ matrix.runtime_manifest_arch }}-${{ matrix.python_cache_version }}-
-
       - name: Install Linux Tauri dependencies
         if: runner.os == 'Linux'
         run: |
@@ -155,16 +113,12 @@ jobs:
           sudo apt-get install -y -qq \
             libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev \
-            libssl-dev patchelf portaudio19-dev rpm
+            libssl-dev patchelf
           if apt-cache show libfuse2t64 >/dev/null 2>&1; then
             sudo apt-get install -y -qq libfuse2t64
           else
             sudo apt-get install -y -qq libfuse2
           fi
-
-      - name: Install macOS Python build dependencies
-        if: runner.os == 'macOS'
-        run: brew install portaudio
 
       - name: Install Windows installer dependencies
         if: runner.os == 'Windows'
@@ -174,88 +128,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-
-      - name: Download Python runtime (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUNTIME_ASSET: ${{ matrix.runtime_asset }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import urllib.request
-
-          tag = "20221002"
-          asset_key = os.environ["RUNTIME_ASSET"]
-          api_url = f"https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/{tag}"
-          request = urllib.request.Request(
-              api_url,
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-              },
-          )
-          with urllib.request.urlopen(request, timeout=45) as response:
-              release = json.load(response)
-          for asset in release.get("assets", []):
-              name = asset.get("name", "")
-              if asset_key in name and name.endswith(".tar.gz"):
-                  url = asset["browser_download_url"]
-                  print(f"Downloading {name}")
-                  urllib.request.urlretrieve(url, "python-standalone.tar.gz")
-                  break
-          else:
-              raise SystemExit(f"No python-build-standalone asset matched {asset_key}")
-          PY
-          rm -rf runtime
-          mkdir -p runtime
-          tar -xzf python-standalone.tar.gz -C runtime --strip-components=1
-
-      - name: Prepare Python runtime (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          curl -fL -o python-embed.zip "${{ matrix.python_embed_url }}"
-          rm -rf runtime
-          mkdir -p runtime
-          unzip -q python-embed.zip -d runtime
-          curl -fL -o runtime/get-pip.py https://bootstrap.pypa.io/get-pip.py
-          ./runtime/python.exe runtime/get-pip.py --no-warn-script-location
-          sed -i 's/^#import site/import site/' "runtime/${{ matrix.python_pth_file }}"
-          ./runtime/python.exe -m pip install --upgrade pip --no-warn-script-location
-          ./runtime/python.exe -m pip install --prefer-binary -r requirements.txt --no-warn-script-location
-
-      - name: Install Python dependencies (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          ./${{ matrix.runtime_python }} -m pip install --upgrade pip
-          ./${{ matrix.runtime_python }} -m pip install --prefer-binary -r requirements.txt
-
-      - name: Verify Python runtime
-        shell: bash
-        env:
-          PYTHONIOENCODING: utf-8
-        run: |
-          ./${{ matrix.runtime_python }} frontend_bridge.py --check-runtime --project-root "$PWD" --requirements-file requirements.txt
-
-      - name: Package Python runtime asset
-        shell: bash
-        env:
-          RUNTIME_OFFICIAL_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ needs.tag.outputs.tag }}
-          RUNTIME_CHINA_BASE_URL: ${{ vars.SHINSEKAI_RUNTIME_CHINA_BASE_URL }}
-        run: |
-          ./${{ matrix.runtime_python }} scripts/package_runtime.py \
-            --runtime-dir runtime \
-            --output-dir runtime-dist \
-            --manifest frontend/src-tauri/runtime_manifest.json \
-            --platform ${{ matrix.runtime_manifest_platform }} \
-            --arch ${{ matrix.runtime_manifest_arch }} \
-            --archive-type ${{ matrix.runtime_archive }} \
-            --official-base-url "$RUNTIME_OFFICIAL_BASE_URL" \
-            --china-base-url "$RUNTIME_CHINA_BASE_URL"
 
       - name: Build Tauri bundle
         working-directory: frontend
@@ -267,9 +139,8 @@ jobs:
         run: |
           rm -rf release-assets
           mkdir -p release-assets
-          cp runtime-dist/* release-assets/
           find frontend/src-tauri/target/release/bundle -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
             -exec cp {} release-assets/ \;
           ls -lh release-assets
 
