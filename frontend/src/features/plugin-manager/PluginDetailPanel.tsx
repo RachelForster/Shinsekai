@@ -27,7 +27,6 @@ import {
   pluginUiPageKey,
   type PluginConfigDraft,
 } from "./pluginUtils";
-import { PlaywrightBrowserPluginPanel } from "../../../../plugins/playwright_browser/frontend/PlaywrightBrowserPluginPanel";
 
 /* ── Config form for a single plugin UI page ── */
 
@@ -97,8 +96,17 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
 }
 
 function PluginPagePanel({ lookupId, page }: { lookupId: string; page: PluginUIPage }) {
-  if (page.pluginId === "com.shinsekai.playwright_browser" && page.id === "playwright_browser") {
-    return <PlaywrightBrowserPluginPanel lookupId={lookupId} page={page} />;
+  if (page.frontendUrl) {
+    return (
+      <section className="section plugin-frontend-frame-section">
+        <iframe
+          className="plugin-frontend-frame"
+          sandbox="allow-forms allow-same-origin allow-scripts"
+          src={page.frontendUrl}
+          title={page.title}
+        />
+      </section>
+    );
   }
   return <PluginConfigPanel lookupId={lookupId} page={page} />;
 }

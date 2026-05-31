@@ -141,6 +141,19 @@
   gap: var(--space-3);
 }
 
+.plugin-frontend-frame-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.plugin-frontend-frame {
+  display: block;
+  width: 100%;
+  min-height: 620px;
+  border: 0;
+  background: var(--color-bg-app);
+}
+
 @media (max-width: 860px) {
   .plugin-card-grid {
     grid-template-columns: minmax(0, 1fr);
