@@ -27,6 +27,7 @@ import {
   pluginUiPageKey,
   type PluginConfigDraft,
 } from "./pluginUtils";
+import { PlaywrightBrowserPluginPanel } from "../../../../plugins/playwright_browser/frontend/PlaywrightBrowserPluginPanel";
 
 /* ── Config form for a single plugin UI page ── */
 
@@ -93,6 +94,13 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
       </div>
     </div>
   );
+}
+
+function PluginPagePanel({ lookupId, page }: { lookupId: string; page: PluginUIPage }) {
+  if (page.pluginId === "com.shinsekai.playwright_browser" && page.id === "playwright_browser") {
+    return <PlaywrightBrowserPluginPanel lookupId={lookupId} page={page} />;
+  }
+  return <PluginConfigPanel lookupId={lookupId} page={page} />;
 }
 
 /* ── Detail page ── */
@@ -185,7 +193,7 @@ export function PluginDetailPanel({ detailPlugin, onBack }: PluginDetailPanelPro
             onChange={setActiveDetailPageId}
             value={activeDetailPage ? pluginUiPageKey(activeDetailPage) : activeDetailPageId}
           />
-          {activeDetailPage ? <PluginConfigPanel lookupId={detailLookupId} page={activeDetailPage} /> : null}
+          {activeDetailPage ? <PluginPagePanel lookupId={detailLookupId} page={activeDetailPage} /> : null}
         </>
       ) : null}
     </div>
