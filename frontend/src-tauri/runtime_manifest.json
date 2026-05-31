@@ -1,0 +1,9 @@
+{
+  "version": "0.1.0",
+  "required_modules": ["yaml", "pydantic", "requests", "numpy", "pygame"],
+  "probes": {
+    "official": ["https://www.python.org/", "https://pypi.org/simple/"],
+    "china": ["https://mirrors.tuna.tsinghua.edu.cn/", "https://pypi.tuna.tsinghua.edu.cn/simple/"]
+  },
+  "targets": []
+}

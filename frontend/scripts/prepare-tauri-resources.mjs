@@ -69,6 +69,11 @@ for (const file of files) {
   await copyFileToStage(file);
 }
 
+const runtimeManifest = path.join(frontendDir, "src-tauri", "runtime_manifest.json");
+if (await pathExists(runtimeManifest)) {
+  await cp(runtimeManifest, path.join(stageRoot, "runtime_manifest.json"), { force: true });
+}
+
 for (const directory of directories) {
   await copyDirectoryToStage(directory);
 }

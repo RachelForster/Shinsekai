@@ -12,6 +12,8 @@ use std::{
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
+mod runtime;
+
 type DesktopResult<T> = Result<T, Box<dyn Error>>;
 
 const BRIDGE_HOST: &str = "127.0.0.1";
@@ -73,7 +75,9 @@ fn start_bridge(app: &tauri::App) -> DesktopResult<BridgeLaunch> {
     let project_root = resolve_project_root(app, &source_root)?;
     let frontend_dist = resolve_frontend_dist(&source_root)?;
     let port = choose_bridge_port()?;
-    let mut command = python_command(&source_root)?;
+    let runtime = runtime::resolve_python_runtime(app, &source_root)?;
+    println!("Using Shinsekai Python runtime: {}", runtime.description);
+    let mut command = runtime.command;
     sanitize_python_environment(&mut command);
 
     command
@@ -190,158 +194,12 @@ fn env_path(name: &str) -> Option<PathBuf> {
         .map(|path| path.canonicalize().unwrap_or(path))
 }
 
-fn python_command(project_root: &Path) -> DesktopResult<Command> {
-    if let Some(raw) = env::var_os("SHINSEKAI_PYTHON") {
-        return Ok(Command::new(raw));
-    }
-
-    let embedded_candidates = [
-        project_root.join("runtime").join("bin").join("python3"),
-        project_root.join("runtime").join("bin").join("python"),
-        project_root.join("runtime").join("python.exe"),
-    ];
-    for candidate in embedded_candidates {
-        if candidate.is_file() {
-            return Ok(Command::new(candidate));
-        }
-    }
-
-    let conda_env = env::var("SHINSEKAI_CONDA_ENV").unwrap_or_else(|_| "shinsekai".to_string());
-    if let Some(conda_python) = find_conda_env_python(&conda_env) {
-        return Ok(Command::new(conda_python));
-    }
-
-    for name in python_candidate_names() {
-        if let Some(path) = find_on_path(name) {
-            return Ok(Command::new(path));
-        }
-    }
-
-    Err("no Python runtime found; set SHINSEKAI_PYTHON, provide runtime/, or install the shinsekai conda env".into())
-}
-
 fn sanitize_python_environment(command: &mut Command) {
     command.env_remove("PYTHONHOME").env_remove("PYTHONPATH");
 
     if env::var_os("APPIMAGE").is_some() || env::var_os("APPDIR").is_some() {
         command.env_remove("LD_LIBRARY_PATH");
     }
-}
-
-#[cfg(windows)]
-fn python_candidate_names() -> &'static [&'static str] {
-    &["python.exe", "python3.exe", "py.exe"]
-}
-
-#[cfg(not(windows))]
-fn python_candidate_names() -> &'static [&'static str] {
-    &["python3", "python"]
-}
-
-fn find_on_path(name: &str) -> Option<PathBuf> {
-    let direct = PathBuf::from(name);
-    if direct.is_file() {
-        return Some(direct);
-    }
-
-    let paths = env::var_os("PATH")?;
-    let candidates = executable_names(name);
-    env::split_paths(&paths).find_map(|path| {
-        candidates
-            .iter()
-            .map(|candidate| path.join(candidate))
-            .find(|candidate| candidate.is_file())
-    })
-}
-
-fn find_conda_env_python(env_name: &str) -> Option<PathBuf> {
-    if let Some(prefix) = env_path("CONDA_PREFIX") {
-        if env::var("CONDA_DEFAULT_ENV").ok().as_deref() == Some(env_name) {
-            if let Some(python) = python_in_prefix(&prefix) {
-                return Some(python);
-            }
-        }
-    }
-
-    let mut roots = Vec::new();
-    if let Some(conda_exe) = env_path("CONDA_EXE").or_else(|| find_on_path("conda")) {
-        roots.extend(conda_roots_from_executable(&conda_exe));
-    }
-    roots.extend(default_conda_roots());
-
-    roots
-        .into_iter()
-        .map(|root| root.join("envs").join(env_name))
-        .find_map(|prefix| python_in_prefix(&prefix))
-}
-
-fn conda_roots_from_executable(conda_exe: &Path) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(parent) = conda_exe.parent() {
-        if let Some(root) = parent.parent() {
-            roots.push(root.to_path_buf());
-        }
-        if parent.file_name().and_then(|name| name.to_str()) == Some("condabin") {
-            if let Some(root) = parent.parent() {
-                roots.push(root.to_path_buf());
-            }
-        }
-    }
-    roots
-}
-
-fn default_conda_roots() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(home) = home_dir() {
-        roots.push(home.join("miniconda3"));
-        roots.push(home.join("anaconda3"));
-    }
-    #[cfg(not(windows))]
-    {
-        roots.push(PathBuf::from("/opt/miniconda3"));
-        roots.push(PathBuf::from("/opt/anaconda3"));
-    }
-    #[cfg(windows)]
-    {
-        if let Some(program_data) = env::var_os("ProgramData") {
-            let program_data = PathBuf::from(program_data);
-            roots.push(program_data.join("miniconda3"));
-            roots.push(program_data.join("anaconda3"));
-        }
-    }
-    roots
-}
-
-fn python_in_prefix(prefix: &Path) -> Option<PathBuf> {
-    let candidates = [
-        prefix.join("bin").join("python3"),
-        prefix.join("bin").join("python"),
-        prefix.join("python.exe"),
-    ];
-    candidates.into_iter().find(|candidate| candidate.is_file())
-}
-
-#[cfg(windows)]
-fn executable_names(name: &str) -> Vec<String> {
-    if Path::new(name).extension().is_some() {
-        return vec![name.to_string()];
-    }
-
-    let pathext = env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
-    let mut names = vec![name.to_string()];
-    names.extend(
-        pathext
-            .split(';')
-            .map(str::trim)
-            .filter(|ext| !ext.is_empty())
-            .map(|ext| format!("{name}{ext}")),
-    );
-    names
-}
-
-#[cfg(not(windows))]
-fn executable_names(name: &str) -> Vec<String> {
-    vec![name.to_string()]
 }
 
 fn choose_bridge_port() -> DesktopResult<u16> {
