@@ -47,7 +47,9 @@ export function ApiLanguageSection({ disabled, onChange, systemDraft }: ApiLangu
               value={systemDraft.ui_language}
             >
               {uiLanguageOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </Select>
           </span>

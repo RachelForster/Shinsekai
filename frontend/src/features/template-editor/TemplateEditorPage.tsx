@@ -571,10 +571,7 @@ export function TemplateEditorPage() {
               {templateOptions.map((option) => (
                 <label className="template-toggle-row" key={option.key}>
                   <span>{option.label}</span>
-                  <Switch
-                    checked={option.value}
-                    onChange={(e) => option.setValue(e.target.checked)}
-                  />
+                  <Switch checked={option.value} onChange={(e) => option.setValue(e.target.checked)} />
                 </label>
               ))}
             </div>
