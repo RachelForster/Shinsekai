@@ -225,10 +225,7 @@ function McpServerDialog({
         <label className="field-row">
           <span className="field-row__label">{t("mcp.enabled")}</span>
           <span className="field-row__control">
-            <Switch
-              checked={server.enabled}
-              onChange={(event) => update({ enabled: event.target.checked })}
-            />
+            <Switch checked={server.enabled} onChange={(event) => update({ enabled: event.target.checked })} />
           </span>
         </label>
         <label className="field-row">
@@ -567,10 +564,7 @@ export function McpSettingsPanel() {
           <label className="field-row">
             <span className="field-row__label">{t("mcp.globalEnable")}</span>
             <span className="field-row__control">
-              <Switch
-                checked={draft.enabled}
-                onChange={(event) => updateDraft({ enabled: event.target.checked })}
-              />
+              <Switch checked={draft.enabled} onChange={(event) => updateDraft({ enabled: event.target.checked })} />
             </span>
           </label>
           <label className="field-row">

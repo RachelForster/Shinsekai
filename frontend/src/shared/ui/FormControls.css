@@ -8,7 +8,9 @@
   color: var(--color-text-primary);
   background: var(--color-bg-input);
   line-height: 1.35;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .input,
@@ -27,7 +29,9 @@
     calc(100% - 16px) 13px,
     calc(100% - 11px) 13px;
   background-repeat: no-repeat;
-  background-size: 5px 5px, 5px 5px;
+  background-size:
+    5px 5px,
+    5px 5px;
 }
 
 .select:disabled {
