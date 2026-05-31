@@ -20,6 +20,7 @@ from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry, PluginDiscoveryRegistry
 from sdk.types import (
     ChatUIContribution,
+    FrontendConfigContribution,
     OutputContractPatch,
     PluginDescriptor,
     SettingsUIContribution,
@@ -245,6 +246,12 @@ class PluginManager:
         if self._capabilities is None:
             return []
         return self._capabilities.tools_tab_contributions
+
+    def collect_frontend_config_contributions(self) -> list[FrontendConfigContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.frontend_config_contributions
 
     def collect_chat_ui_contributions(self) -> list[ChatUIContribution]:
         self._ensure_plugins_initialized()

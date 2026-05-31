@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 from sdk.plugin import PluginBase
 from sdk.types import (
     ChatUIContribution,
+    FrontendConfigContribution,
     OutputContractPatch,
     PluginDescriptor,
     SettingsUIContribution,
@@ -130,6 +131,7 @@ class PluginCapabilityRegistry:
         self._settings_contributions: list[SettingsUIContribution] = []
         self._settings_ui_plugin_ctx: tuple[str, str] | None = None
         self._tools_tab_contributions: list[ToolsTabContribution] = []
+        self._frontend_config_contributions: list[FrontendConfigContribution] = []
         self._chat_ui_contributions: list[ChatUIContribution] = []
         self._workflow_contributions: list[WorkflowContribution] = []
         self._output_contract_patches: list[OutputContractPatch] = []
@@ -200,7 +202,26 @@ class PluginCapabilityRegistry:
             )
         self._tools_tab_contributions.append(contribution)
 
+    def register_frontend_config_page(self, contribution: FrontendConfigContribution) -> None:
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
+        self._frontend_config_contributions.append(contribution)
+
     def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
         self._chat_ui_contributions.append(contribution)
 
     def register_dag_yaml(self, path: str) -> None:
@@ -270,6 +291,10 @@ class PluginCapabilityRegistry:
     @property
     def tools_tab_contributions(self) -> list[ToolsTabContribution]:
         return sorted(self._tools_tab_contributions, key=lambda c: c.order)
+
+    @property
+    def frontend_config_contributions(self) -> list[FrontendConfigContribution]:
+        return sorted(self._frontend_config_contributions, key=lambda c: c.order)
 
     @property
     def chat_ui_contributions(self) -> list[ChatUIContribution]:

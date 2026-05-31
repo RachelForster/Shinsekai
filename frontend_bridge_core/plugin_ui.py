@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
 from .plugin_catalog import _plugin_rows
@@ -295,6 +296,41 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
     return None
 
 
+def _frontend_config_contributions_for(plugin_id: str) -> list[Any]:
+    try:
+        from core.plugins.plugin_host import collect_frontend_config_contributions
+    except Exception:
+        return []
+    out: list[Any] = []
+    for contribution in collect_frontend_config_contributions():
+        if str(getattr(contribution, "plugin_id", "") or "").strip() == plugin_id:
+            out.append(contribution)
+    return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
+
+
+def _frontend_config_page_payload(contribution: Any) -> dict[str, Any]:
+    page_id = str(getattr(contribution, "page_id", "") or "").strip()
+    title = str(getattr(contribution, "title", "") or "").strip() or page_id
+    kind = str(getattr(contribution, "kind", "") or "settings").strip()
+    if kind not in {"settings", "tools"}:
+        kind = "settings"
+    raw_values = contribution.load_values()
+    if not isinstance(raw_values, Mapping):
+        raise ValueError(f"frontend config page {page_id!r} load_values must return a mapping")
+    return {
+        "description": str(getattr(contribution, "description", "") or ""),
+        "id": page_id,
+        "kind": kind,
+        "order": float(getattr(contribution, "order", 100.0) or 100.0),
+        "pluginId": str(getattr(contribution, "plugin_id", "") or ""),
+        "pluginVersion": str(getattr(contribution, "plugin_version", "") or ""),
+        "restartHint": str(getattr(contribution, "restart_hint", "") or ""),
+        "schema": list(getattr(contribution, "schema", []) or []),
+        "title": title,
+        "values": dict(raw_values),
+    }
+
+
 def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
     try:
         from core.plugins.plugin_host import collect_settings_contributions, collect_tools_tab_contributions
@@ -312,11 +348,19 @@ def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
 
     plugin_id = str(plugin_row.get("id") or "").strip()
     pages: list[dict[str, Any]] = []
+    frontend_page_keys: set[tuple[str, str]] = set()
+
+    for contribution in _frontend_config_contributions_for(plugin_id):
+        page = _frontend_config_page_payload(contribution)
+        frontend_page_keys.add((str(page.get("kind") or ""), str(page.get("id") or "")))
+        pages.append(page)
 
     for contribution in collect_settings_contributions():
         if str(getattr(contribution, "plugin_id", "") or "").strip() != plugin_id:
             continue
         page_id = str(getattr(contribution, "page_id", "") or "").strip()
+        if ("settings", page_id) in frontend_page_keys:
+            continue
         title = str(getattr(contribution, "nav_label", "") or "").strip() or page_id
         page: dict[str, Any] = {
             "id": page_id,
@@ -337,6 +381,8 @@ def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
         if str(getattr(contribution, "plugin_id", "") or "").strip() != plugin_id:
             continue
         page_id = str(getattr(contribution, "tab_id", "") or "").strip()
+        if ("tools", page_id) in frontend_page_keys:
+            continue
         title = str(getattr(contribution, "title", "") or "").strip() or page_id
         page = {
             "id": page_id,
@@ -436,6 +482,21 @@ def _save_plugin_ui_config(plugin_id_or_entry: str, page_id: str, payload: dict[
     raw_values = payload.get("values", payload)
     if not isinstance(raw_values, dict):
         raise ValueError("values must be an object")
+
+    for contribution in _frontend_config_contributions_for(plugin_id):
+        if str(getattr(contribution, "page_id", "") or "").strip() == page_id:
+            contribution.save_values(raw_values)
+            updated = _plugin_ui_detail(plugin_id)
+            updated_page = next(
+                (candidate for candidate in updated["pages"] if candidate.get("id") == page_id),
+                page,
+            )
+            return {
+                "message": "插件设置已保存。",
+                "page": updated_page,
+                "plugin": updated["plugin"],
+            }
+
     _save_builtin_plugin_config(plugin_id, page_id, raw_values)
     updated = _plugin_ui_detail(plugin_id)
     updated_page = next((candidate for candidate in updated["pages"] if candidate.get("id") == page_id), page)

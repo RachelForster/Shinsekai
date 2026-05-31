@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from sdk.handlers import MessageHandler, UIOutputMessageHandler
     from sdk.types import (
         ChatUIContribution,
+        FrontendConfigContribution,
         OutputContractPatch,
         SettingsUIContribution,
         ToolsTabContribution,
@@ -223,6 +224,17 @@ def collect_tools_tab_contributions() -> List["ToolsTabContribution"]:
         return mgr.collect_tools_tab_contributions()
     except Exception:
         logger.exception("collect_tools_tab_contributions failed")
+        return []
+
+
+def collect_frontend_config_contributions() -> List["FrontendConfigContribution"]:
+    mgr = _plugin_manager
+    if mgr is None:
+        return []
+    try:
+        return mgr.collect_frontend_config_contributions()
+    except Exception:
+        logger.exception("collect_frontend_config_contributions failed")
         return []
 
 

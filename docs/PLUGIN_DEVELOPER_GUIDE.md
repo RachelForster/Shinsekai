@@ -30,13 +30,14 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_user_input_processor` | `(str) -> str | None` filter before `UserInputMessage`     |
 | `register_settings_ui`          | Extra Settings sidebar page                                |
 | `register_tools_tab`            | Extra tab under **Settings → Tools**                       |
+| `register_frontend_config_page` | React-renderable plugin config page (schema + load/save callbacks) |
 | `register_chat_ui_widget`       | Chat window widget + placement hint                        |
 | `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
 | `register_workflow`             | Workflow with optional output contract/schema              |
 | `register_output_contract_patch` | Patch an LLM output contract (fields, requirements, …)     |
 
 
-**Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
+**Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
 
 ---
 
@@ -580,6 +581,57 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
         )
     )
 ```
+
+---
+
+### `register_frontend_config_page(contribution)`
+
+Use this when the React settings frontend should render your plugin page. Keep
+the existing Qt `register_settings_ui` / `register_tools_tab` page if you still
+support the PySide settings window.
+
+```python
+from dataclasses import asdict
+from pathlib import Path
+from sdk.types import FrontendConfigContribution
+
+
+def initialize(self, register, plugin_root: Path, host) -> None:
+    def load_values():
+        return asdict(load_config(plugin_root / "config.json"))
+
+    def save_values(values):
+        save_config(plugin_root / "config.json", MyConfig(enabled=bool(values.get("enabled"))))
+
+    register.register_frontend_config_page(
+        FrontendConfigContribution(
+            page_id="my_plugin.settings",
+            title="My plugin",
+            kind="settings",
+            schema=[
+                {
+                    "id": "main",
+                    "title": "Main",
+                    "fields": [
+                        {
+                            "key": "enabled",
+                            "label": "Enabled",
+                            "type": "boolean",
+                            "defaultValue": False,
+                        }
+                    ],
+                }
+            ],
+            load_values=load_values,
+            save_values=save_values,
+            order=120.0,
+        )
+    )
+```
+
+The schema must be JSON-safe. Supported field types match the React
+`PluginConfigFieldType`: `boolean`, `integer`, `number`, `password`, `select`,
+`text`, `textarea`, and `url`.
 
 ---
 
