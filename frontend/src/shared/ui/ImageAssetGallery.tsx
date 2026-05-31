@@ -1,4 +1,5 @@
 import "./ImageAssetGallery.css";
+import { useEffect, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
 
 export interface ImageAssetGalleryItem {
@@ -11,12 +12,66 @@ export interface ImageAssetGalleryItem {
 }
 
 interface ImageAssetGalleryProps {
+  imageDecoding?: "async" | "auto" | "sync";
+  imageLoading?: "eager" | "lazy";
   items: ImageAssetGalleryItem[];
   onSelect: (index: number) => void;
   selectedIndex: number;
 }
 
-export function ImageAssetGallery({ items, onSelect, selectedIndex }: ImageAssetGalleryProps) {
+interface ImageAssetThumbProps {
+  decoding: "async" | "auto" | "sync";
+  loading: "eager" | "lazy";
+  src?: string;
+}
+
+function ImageAssetThumb({ decoding, loading, src }: ImageAssetThumbProps) {
+  const [state, setState] = useState<"empty" | "error" | "loaded" | "loading">(src ? "loading" : "empty");
+
+  useEffect(() => {
+    setState(src ? "loading" : "empty");
+  }, [src]);
+
+  const showPlaceholder = state !== "loaded";
+
+  return (
+    <span className="image-asset-card__media" data-state={state}>
+      {src ? (
+        <img
+          alt=""
+          decoding={decoding}
+          loading={loading}
+          onError={() => setState("error")}
+          onLoad={(event) => {
+            const image = event.currentTarget;
+            if (typeof image.decode !== "function") {
+              setState(image.naturalWidth > 0 ? "loaded" : "error");
+              return;
+            }
+            void image
+              .decode()
+              .then(() => setState("loaded"))
+              .catch(() => setState(image.naturalWidth > 0 ? "loaded" : "error"));
+          }}
+          src={src}
+        />
+      ) : null}
+      {showPlaceholder ? (
+        <span aria-hidden className="image-asset-card__placeholder">
+          <ImageIcon className="image-asset-card__fallback" />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+export function ImageAssetGallery({
+  imageDecoding = "async",
+  imageLoading = "lazy",
+  items,
+  onSelect,
+  selectedIndex,
+}: ImageAssetGalleryProps) {
   return (
     <div className="image-asset-gallery">
       {items.map((item, index) => (
@@ -28,13 +83,7 @@ export function ImageAssetGallery({ items, onSelect, selectedIndex }: ImageAsset
           title={item.title}
           type="button"
         >
-          <span className="image-asset-card__media">
-            {item.imageSrc ? (
-              <img alt="" decoding="async" loading="lazy" src={item.imageSrc} />
-            ) : (
-              <ImageIcon aria-hidden className="image-asset-card__fallback" />
-            )}
-          </span>
+          <ImageAssetThumb decoding={imageDecoding} loading={imageLoading} src={item.imageSrc} />
           <span className="image-asset-card__body">
             <span className="image-asset-card__title">
               <span>{index + 1}</span>

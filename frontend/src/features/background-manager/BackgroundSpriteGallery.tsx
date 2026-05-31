@@ -122,6 +122,8 @@ export function BackgroundSpriteGallery({
         {selectedImage ? (
           <div className="asset-gallery-layout asset-gallery-layout--background">
             <ImageAssetGallery
+              imageDecoding="sync"
+              imageLoading="eager"
               items={backgroundImageItems}
               onSelect={onSelectImage}
               selectedIndex={selectedImageIndex}
