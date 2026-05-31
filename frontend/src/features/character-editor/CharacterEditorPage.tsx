@@ -104,7 +104,7 @@ export function CharacterEditorPage() {
   }, [draft.sprites.length]);
 
   const memoryQuery = useQuery({
-    enabled: Boolean(memoryName),
+    enabled: false,
     queryFn: () => listCharacterMemories(memoryName),
     queryKey: ["character-memories", memoryName],
   });
@@ -860,6 +860,7 @@ export function CharacterEditorPage() {
           deletePending={memoryDeleteMutation.isPending}
           error={memoryQuery.error}
           isError={memoryQuery.isError}
+          isFetched={memoryQuery.isFetched}
           isFetching={memoryQuery.isFetching}
           isLoading={memoryQuery.isLoading}
           memoryInput={memoryInput}

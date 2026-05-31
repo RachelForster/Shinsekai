@@ -11,6 +11,7 @@ interface CharacterMemorySectionProps {
   error: unknown;
   isError: boolean;
   isFetching: boolean;
+  isFetched: boolean;
   isLoading: boolean;
   memoryInput: string;
   memoryName: string;
@@ -26,6 +27,7 @@ export function CharacterMemorySection({
   deletePending,
   error,
   isError,
+  isFetched,
   isFetching,
   isLoading,
   memoryInput,
@@ -64,7 +66,7 @@ export function CharacterMemorySection({
           title={t("common.operationFailed")}
         />
       ) : null}
-      {memoryName && !isLoading && !isError && !data?.memories.length ? (
+      {memoryName && isFetched && !isLoading && !isError && !data?.memories.length ? (
         <EmptyState title={t("character.memory.empty")} />
       ) : null}
       {data?.memories.length ? (
