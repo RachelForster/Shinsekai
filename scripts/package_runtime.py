@@ -8,6 +8,10 @@ import zipfile
 from pathlib import Path
 
 
+ARCHIVE_COMPRESSION_LEVEL = 1
+PROGRESS_INTERVAL = 5000
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Package a Shinsekai Python runtime.")
     parser.add_argument("--runtime-dir", required=True)
@@ -54,15 +58,35 @@ def archive_name(platform: str, arch: str, archive_type: str) -> str:
 
 
 def write_tar_gz(runtime_dir: Path, archive_path: Path) -> None:
-    with tarfile.open(archive_path, "w:gz") as archive:
-        for path in runtime_paths(runtime_dir):
+    archived_entries = 0
+    with tarfile.open(
+        archive_path,
+        "w:gz",
+        compresslevel=ARCHIVE_COMPRESSION_LEVEL,
+    ) as archive:
+        for archived_entries, path in enumerate(runtime_paths(runtime_dir), start=1):
             archive.add(path, arcname=path.relative_to(runtime_dir), recursive=False)
+            print_progress(archived_entries)
+    print(f"Archived {archived_entries} runtime entries", flush=True)
 
 
 def write_zip(runtime_dir: Path, archive_path: Path) -> None:
-    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for path in runtime_paths(runtime_dir):
+    archived_entries = 0
+    with zipfile.ZipFile(
+        archive_path,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=ARCHIVE_COMPRESSION_LEVEL,
+    ) as archive:
+        for archived_entries, path in enumerate(runtime_paths(runtime_dir), start=1):
             archive.write(path, arcname=path.relative_to(runtime_dir))
+            print_progress(archived_entries)
+    print(f"Archived {archived_entries} runtime entries", flush=True)
+
+
+def print_progress(archived_entries: int) -> None:
+    if archived_entries % PROGRESS_INTERVAL == 0:
+        print(f"Archived {archived_entries} runtime entries...", flush=True)
 
 
 def runtime_paths(runtime_dir: Path):
