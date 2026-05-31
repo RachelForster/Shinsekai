@@ -137,7 +137,7 @@
 }
 
 .asset-gallery-layout--character {
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 220px);
+  grid-template-columns: minmax(240px, 1fr) minmax(320px, 380px);
 }
 
 .asset-inspector {
