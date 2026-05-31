@@ -5,7 +5,7 @@ use std::{
     io::{self, Read, Write},
     path::{Path, PathBuf},
     process::Command,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use flate2::read::GzDecoder;
@@ -83,6 +83,12 @@ enum NetworkRegion {
     Official,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct ProbeStats {
+    successes: usize,
+    best_latency: Option<Duration>,
+}
+
 pub fn resolve_python_runtime(
     app: &tauri::App,
     source_root: &Path,
@@ -92,7 +98,7 @@ pub fn resolve_python_runtime(
 
     if let Some(raw) = env::var_os("SHINSEKAI_PYTHON") {
         let path = PathBuf::from(raw);
-        if validate_python(&path, required_modules.as_deref()) {
+        if validate_python(&path, source_root, required_modules.as_deref()) {
             return Ok(PythonRuntime {
                 command: Command::new(path),
                 description: "SHINSEKAI_PYTHON".to_string(),
@@ -102,7 +108,7 @@ pub fn resolve_python_runtime(
 
     for candidate in runtime_candidates(app, source_root) {
         if let Some(python) = python_in_prefix(&candidate.root) {
-            if validate_python(&python, required_modules.as_deref()) {
+            if validate_python(&python, source_root, required_modules.as_deref()) {
                 return Ok(PythonRuntime {
                     command: Command::new(python),
                     description: format!("managed runtime at {}", candidate.root.display()),
@@ -114,7 +120,7 @@ pub fn resolve_python_runtime(
     let conda_env =
         env::var("SHINSEKAI_CONDA_ENV").unwrap_or_else(|_| DEFAULT_CONDA_ENV.to_string());
     if let Some(conda_python) = find_conda_env_python(&conda_env) {
-        if validate_python(&conda_python, required_modules.as_deref()) {
+        if validate_python(&conda_python, source_root, required_modules.as_deref()) {
             return Ok(PythonRuntime {
                 command: Command::new(conda_python),
                 description: format!("conda env {conda_env}"),
@@ -124,7 +130,7 @@ pub fn resolve_python_runtime(
 
     for name in python_candidate_names() {
         if let Some(path) = find_on_path(name) {
-            if validate_python(&path, required_modules.as_deref()) {
+            if validate_python(&path, source_root, required_modules.as_deref()) {
                 return Ok(PythonRuntime {
                     command: Command::new(path),
                     description: format!("PATH python {name}"),
@@ -137,7 +143,7 @@ pub fn resolve_python_runtime(
         match repair_runtime(app, source_root, manifest) {
             Ok(Some(runtime_root)) => {
                 if let Some(python) = python_in_prefix(&runtime_root) {
-                    if validate_python(&python, required_modules.as_deref()) {
+                    if validate_python(&python, source_root, required_modules.as_deref()) {
                         return Ok(PythonRuntime {
                             command: Command::new(python),
                             description: format!("repaired runtime at {}", runtime_root.display()),
@@ -303,7 +309,7 @@ fn required_modules_from_env(manifest: Option<&RuntimeManifest>) -> Option<Vec<S
     )
 }
 
-fn validate_python(python: &Path, required_modules: Option<&[String]>) -> bool {
+fn validate_python(python: &Path, source_root: &Path, required_modules: Option<&[String]>) -> bool {
     if !python.is_file() {
         return false;
     }
@@ -321,6 +327,29 @@ fn validate_python(python: &Path, required_modules: Option<&[String]>) -> bool {
     Command::new(python)
         .arg("-c")
         .arg(script)
+        .env_remove("PYTHONHOME")
+        .env_remove("PYTHONPATH")
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+        && validate_bridge_runtime(python, source_root)
+}
+
+fn validate_bridge_runtime(python: &Path, source_root: &Path) -> bool {
+    let bridge = source_root.join("frontend_bridge.py");
+    let requirements = source_root.join("requirements.txt");
+    if !bridge.is_file() || !requirements.is_file() {
+        return false;
+    }
+
+    Command::new(python)
+        .arg(&bridge)
+        .arg("--check-runtime")
+        .arg("--project-root")
+        .arg(source_root)
+        .arg("--requirements-file")
+        .arg(&requirements)
+        .current_dir(source_root)
         .env_remove("PYTHONHOME")
         .env_remove("PYTHONPATH")
         .status()
@@ -363,36 +392,54 @@ fn detect_network_region(manifest: &RuntimeManifest) -> NetworkRegion {
         manifest.probes.official.clone()
     };
 
-    let china_score = probe_urls(&china_probes);
-    let official_score = probe_urls(&official_probes);
-    if china_score > 0 && official_score == 0 {
+    let china_stats = probe_urls(&china_probes);
+    let official_stats = probe_urls(&official_probes);
+    if china_stats.successes > 0 && official_stats.successes == 0 {
         return NetworkRegion::China;
     }
-    if china_score > official_score {
+    if china_stats.successes > official_stats.successes {
         return NetworkRegion::China;
+    }
+    if china_stats.successes == official_stats.successes {
+        if let (Some(china_latency), Some(official_latency)) =
+            (china_stats.best_latency, official_stats.best_latency)
+        {
+            if china_latency < official_latency {
+                return NetworkRegion::China;
+            }
+        }
     }
     NetworkRegion::Official
 }
 
-fn probe_urls(urls: &[String]) -> usize {
+fn probe_urls(urls: &[String]) -> ProbeStats {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(3))
         .build();
     let Ok(client) = client else {
-        return 0;
+        return ProbeStats::default();
     };
-    urls.iter()
-        .filter(|url| {
-            client
-                .head(url.as_str())
-                .send()
-                .or_else(|_| client.get(url.as_str()).send())
-                .map(|response| {
-                    response.status().is_success() || response.status().is_redirection()
-                })
-                .unwrap_or(false)
-        })
-        .count()
+    let mut stats = ProbeStats::default();
+    for url in urls {
+        let started = Instant::now();
+        let ok = client
+            .head(url.as_str())
+            .send()
+            .or_else(|_| client.get(url.as_str()).send())
+            .map(|response| response.status().is_success() || response.status().is_redirection())
+            .unwrap_or(false);
+        if ok {
+            let latency = started.elapsed();
+            stats.successes += 1;
+            stats.best_latency = Some(
+                stats
+                    .best_latency
+                    .map(|current| current.min(latency))
+                    .unwrap_or(latency),
+            );
+        }
+    }
+    stats
 }
 
 fn download_and_extract_runtime(
