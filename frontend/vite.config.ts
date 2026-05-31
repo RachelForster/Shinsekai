@@ -1,8 +1,21 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+function modulePath(path: string) {
+  return new URL(path, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+}
+
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@tanstack/react-query": modulePath("./node_modules/@tanstack/react-query"),
+      "lucide-react": modulePath("./node_modules/lucide-react/dist/esm/lucide-react.js"),
+      react: modulePath("./node_modules/react"),
+      "react-dom": modulePath("./node_modules/react-dom"),
+      "react/jsx-runtime": modulePath("./node_modules/react/jsx-runtime.js"),
+    },
+  },
   build: {
     assetsDir: "web-assets",
     rollupOptions: {

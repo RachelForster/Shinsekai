@@ -8,6 +8,7 @@ is responsible for actually inserting widgets into sidebars, tab bars, etc.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
 if TYPE_CHECKING:
@@ -27,6 +28,8 @@ __all__ = [
     "ChatUIContribution",
     "ChatOutputContract",
     "FieldPatch",
+    "FrontendConfigContribution",
+    "FrontendPageContribution",
     "OutputContractPatch",
     "OutputFieldSpec",
     "PluginDescriptor",
@@ -85,6 +88,51 @@ class ToolsTabContribution:
 
 
 @dataclass(frozen=True)
+class FrontendConfigContribution:
+    """
+    A React-renderable plugin page described by JSON-safe schema and callbacks.
+
+    Unlike :class:`SettingsUIContribution` and :class:`ToolsTabContribution`,
+    this contribution does not expose a Qt ``QWidget``. The bridge serializes
+    ``schema`` and ``load_values()`` to the frontend, then calls
+    ``save_values(values)`` when the user saves.
+    """
+
+    page_id: str
+    title: str
+    schema: list[dict[str, Any]]
+    load_values: Callable[[], Mapping[str, Any]]
+    save_values: Callable[[Mapping[str, Any]], None]
+    kind: Literal["settings", "tools"] = "settings"
+    description: str = ""
+    restart_hint: str = ""
+    order: float = 100.0
+    plugin_id: str | None = None
+    plugin_version: str | None = None
+
+
+@dataclass(frozen=True)
+class FrontendPageContribution:
+    """
+    A plugin-owned frontend page served as static files and embedded by iframe.
+
+    ``entry`` points at the page's ``index.html``. Relative paths are resolved
+    from the current working directory; plugins may pass an absolute path based
+    on ``Path(__file__).parent``. Assets are served only from the entry file's
+    containing directory.
+    """
+
+    page_id: str
+    title: str
+    entry: str
+    kind: Literal["settings", "tools"] = "settings"
+    description: str = ""
+    order: float = 100.0
+    plugin_id: str | None = None
+    plugin_version: str | None = None
+
+
+@dataclass(frozen=True)
 class ChatUIContribution:
     """
     Extra widgets for the Chat UI window (:class:`~ui.chat_ui.chat_ui.ChatUIWindow`).
@@ -101,6 +149,8 @@ class ChatUIContribution:
     placement: str
     build: Callable[[ChatUIContext], QWidget]
     order: float = 100.0
+    plugin_id: str | None = None
+    plugin_version: str | None = None
 
 
 @dataclass(frozen=True)

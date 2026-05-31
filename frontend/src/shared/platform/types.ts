@@ -254,6 +254,7 @@ export interface PluginConfigGroupSchema {
 
 export interface PluginUIPage {
   description?: string;
+  frontendUrl?: string;
   id: string;
   kind: PluginUIPageKind;
   order: number;

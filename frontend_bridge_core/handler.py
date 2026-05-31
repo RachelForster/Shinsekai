@@ -65,7 +65,7 @@ from .plugin_catalog import (
     _set_plugin_enabled,
     _uninstall_plugin,
 )
-from .plugin_ui import _plugin_ui_detail, _save_plugin_ui_config
+from .plugin_ui import _plugin_ui_detail, _resolve_plugin_frontend_file, _save_plugin_ui_config
 from .plugin_updates import (
     _app_update_info,
     _app_update_tags,
@@ -241,6 +241,18 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path.startswith("/api/plugins/") and path.endswith("/ui"):
                 plugin_id = unquote(path[len("/api/plugins/") : -len("/ui")])
                 self._send_json(_plugin_ui_detail(plugin_id))
+            elif path.startswith("/api/plugins/") and "/frontend/" in path:
+                rest = path[len("/api/plugins/") :]
+                plugin_part, _, frontend_tail = rest.partition("/frontend/")
+                page_part, _, asset_part = frontend_tail.partition("/")
+                self._send_local_file(
+                    _resolve_plugin_frontend_file(
+                        unquote(plugin_part),
+                        unquote(page_part),
+                        unquote(asset_part),
+                    ),
+                    send_body=True,
+                )
             elif path == "/api/plugins/app-update/info":
                 self._send_json(_app_update_info())
             elif path == "/api/plugins/registry":
@@ -285,6 +297,18 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 query = parse_qs(parsed.query)
                 target = unquote((query.get("path") or [""])[0])
                 self._send_file(target, attachment=False, send_body=False)
+            elif path.startswith("/api/plugins/") and "/frontend/" in path:
+                rest = path[len("/api/plugins/") :]
+                plugin_part, _, frontend_tail = rest.partition("/frontend/")
+                page_part, _, asset_part = frontend_tail.partition("/")
+                self._send_local_file(
+                    _resolve_plugin_frontend_file(
+                        unquote(plugin_part),
+                        unquote(page_part),
+                        unquote(asset_part),
+                    ),
+                    send_body=False,
+                )
             elif path.startswith("/assets/") or path.startswith("/data/"):
                 self._send_file(path.lstrip("/"), send_body=False)
             elif self._try_send_frontend(path, send_body=False):

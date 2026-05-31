@@ -34,6 +34,8 @@ def _plugin_rows() -> list[dict[str, Any]]:
     try:
         from core.plugins.plugin_host import (
             collect_chat_ui_contributions,
+            collect_frontend_config_contributions,
+            collect_frontend_page_contributions,
             collect_settings_contributions,
             collect_tools_tab_contributions,
             get_plugin_manager,
@@ -47,6 +49,8 @@ def _plugin_rows() -> list[dict[str, Any]]:
     settings_by_plugin: dict[str, list[str]] = {}
     tools_by_plugin: dict[str, list[str]] = {}
     chat_by_plugin: dict[str, list[str]] = {}
+    frontend_settings_by_plugin: dict[str, list[str]] = {}
+    frontend_tools_by_plugin: dict[str, list[str]] = {}
     for contribution in collect_settings_contributions():
         plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
         label = str(getattr(contribution, "nav_label", "") or "").strip()
@@ -62,6 +66,26 @@ def _plugin_rows() -> list[dict[str, Any]]:
         placement = str(getattr(contribution, "placement", "") or "").strip()
         if plugin_id and placement:
             chat_by_plugin.setdefault(plugin_id, []).append(placement)
+    for contribution in collect_frontend_config_contributions():
+        plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
+        label = str(getattr(contribution, "title", "") or "").strip()
+        kind = str(getattr(contribution, "kind", "") or "").strip()
+        if not plugin_id or not label:
+            continue
+        if kind == "tools":
+            frontend_tools_by_plugin.setdefault(plugin_id, []).append(label)
+        else:
+            frontend_settings_by_plugin.setdefault(plugin_id, []).append(label)
+    for contribution in collect_frontend_page_contributions():
+        plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
+        label = str(getattr(contribution, "title", "") or "").strip()
+        kind = str(getattr(contribution, "kind", "") or "").strip()
+        if not plugin_id or not label:
+            continue
+        if kind == "tools":
+            frontend_tools_by_plugin.setdefault(plugin_id, []).append(label)
+        else:
+            frontend_settings_by_plugin.setdefault(plugin_id, []).append(label)
 
     def _row(
         *,
@@ -77,8 +101,14 @@ def _plugin_rows() -> list[dict[str, Any]]:
         load_error: str = "",
         loaded: bool = True,
     ) -> dict[str, Any]:
-        settings_pages = settings_by_plugin.get(plugin_id, [])
-        tools_tabs = tools_by_plugin.get(plugin_id, [])
+        settings_pages = list(dict.fromkeys([
+            *settings_by_plugin.get(plugin_id, []),
+            *frontend_settings_by_plugin.get(plugin_id, []),
+        ]))
+        tools_tabs = list(dict.fromkeys([
+            *tools_by_plugin.get(plugin_id, []),
+            *frontend_tools_by_plugin.get(plugin_id, []),
+        ]))
         slots: set[str] = set()
         if settings_pages:
             slots.add("settings-extension")

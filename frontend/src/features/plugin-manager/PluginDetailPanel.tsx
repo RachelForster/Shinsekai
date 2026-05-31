@@ -95,6 +95,22 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
   );
 }
 
+function PluginPagePanel({ lookupId, page }: { lookupId: string; page: PluginUIPage }) {
+  if (page.frontendUrl) {
+    return (
+      <section className="section plugin-frontend-frame-section">
+        <iframe
+          className="plugin-frontend-frame"
+          sandbox="allow-forms allow-same-origin allow-scripts"
+          src={page.frontendUrl}
+          title={page.title}
+        />
+      </section>
+    );
+  }
+  return <PluginConfigPanel lookupId={lookupId} page={page} />;
+}
+
 /* ── Detail page ── */
 
 interface PluginDetailPanelProps {
@@ -185,7 +201,7 @@ export function PluginDetailPanel({ detailPlugin, onBack }: PluginDetailPanelPro
             onChange={setActiveDetailPageId}
             value={activeDetailPage ? pluginUiPageKey(activeDetailPage) : activeDetailPageId}
           />
-          {activeDetailPage ? <PluginConfigPanel lookupId={detailLookupId} page={activeDetailPage} /> : null}
+          {activeDetailPage ? <PluginPagePanel lookupId={detailLookupId} page={activeDetailPage} /> : null}
         </>
       ) : null}
     </div>

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
+from urllib.parse import quote
 
 from .plugin_catalog import _plugin_rows
 
@@ -295,6 +297,95 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
     return None
 
 
+def _frontend_config_contributions_for(plugin_id: str) -> list[Any]:
+    try:
+        from core.plugins.plugin_host import collect_frontend_config_contributions
+    except Exception:
+        return []
+    out: list[Any] = []
+    for contribution in collect_frontend_config_contributions():
+        if str(getattr(contribution, "plugin_id", "") or "").strip() == plugin_id:
+            out.append(contribution)
+    return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
+
+
+def _frontend_page_contributions_for(plugin_id: str) -> list[Any]:
+    try:
+        from core.plugins.plugin_host import collect_frontend_page_contributions
+    except Exception:
+        return []
+    out: list[Any] = []
+    for contribution in collect_frontend_page_contributions():
+        if str(getattr(contribution, "plugin_id", "") or "").strip() == plugin_id:
+            out.append(contribution)
+    return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
+
+
+def _frontend_page_contribution(plugin_id: str, page_id: str) -> Any | None:
+    for contribution in _frontend_page_contributions_for(plugin_id):
+        if str(getattr(contribution, "page_id", "") or "").strip() == page_id:
+            return contribution
+    return None
+
+
+def _frontend_config_page_payload(contribution: Any) -> dict[str, Any]:
+    page_id = str(getattr(contribution, "page_id", "") or "").strip()
+    title = str(getattr(contribution, "title", "") or "").strip() or page_id
+    kind = str(getattr(contribution, "kind", "") or "settings").strip()
+    if kind not in {"settings", "tools"}:
+        kind = "settings"
+    raw_values = contribution.load_values()
+    if not isinstance(raw_values, Mapping):
+        raise ValueError(f"frontend config page {page_id!r} load_values must return a mapping")
+    return {
+        "description": str(getattr(contribution, "description", "") or ""),
+        "id": page_id,
+        "kind": kind,
+        "order": float(getattr(contribution, "order", 100.0) or 100.0),
+        "pluginId": str(getattr(contribution, "plugin_id", "") or ""),
+        "pluginVersion": str(getattr(contribution, "plugin_version", "") or ""),
+        "restartHint": str(getattr(contribution, "restart_hint", "") or ""),
+        "schema": list(getattr(contribution, "schema", []) or []),
+        "title": title,
+        "values": dict(raw_values),
+    }
+
+
+def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
+    page_id = str(getattr(contribution, "page_id", "") or "").strip()
+    title = str(getattr(contribution, "title", "") or "").strip() or page_id
+    kind = str(getattr(contribution, "kind", "") or "settings").strip()
+    if kind not in {"settings", "tools"}:
+        kind = "settings"
+    plugin_id = str(getattr(contribution, "plugin_id", "") or "")
+    page = {
+        "description": str(getattr(contribution, "description", "") or ""),
+        "frontendUrl": (
+            f"/api/plugins/{quote(plugin_id, safe='')}/frontend/{quote(page_id, safe='')}/"
+            f"?pluginId={quote(plugin_id, safe='')}&pageId={quote(page_id, safe='')}"
+        ),
+        "id": page_id,
+        "kind": kind,
+        "order": float(getattr(contribution, "order", 100.0) or 100.0),
+        "pluginId": plugin_id,
+        "pluginVersion": str(getattr(contribution, "plugin_version", "") or ""),
+        "title": title,
+    }
+    for config_contribution in _frontend_config_contributions_for(plugin_id):
+        if str(getattr(config_contribution, "page_id", "") or "").strip() != page_id:
+            continue
+        config_page = _frontend_config_page_payload(config_contribution)
+        if str(config_page.get("kind") or "settings") != kind:
+            continue
+        for key in ("restartHint", "schema", "values"):
+            if key in config_page:
+                page[key] = config_page[key]
+        if not page["description"] and config_page.get("description"):
+            page["description"] = config_page["description"]
+        break
+    return page
+
+
 def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
     try:
         from core.plugins.plugin_host import collect_settings_contributions, collect_tools_tab_contributions
@@ -312,11 +403,26 @@ def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
 
     plugin_id = str(plugin_row.get("id") or "").strip()
     pages: list[dict[str, Any]] = []
+    frontend_page_keys: set[tuple[str, str]] = set()
+
+    for contribution in _frontend_page_contributions_for(plugin_id):
+        page = _frontend_page_payload(contribution)
+        frontend_page_keys.add((str(page.get("kind") or ""), str(page.get("id") or "")))
+        pages.append(page)
+
+    for contribution in _frontend_config_contributions_for(plugin_id):
+        page = _frontend_config_page_payload(contribution)
+        if (str(page.get("kind") or ""), str(page.get("id") or "")) in frontend_page_keys:
+            continue
+        frontend_page_keys.add((str(page.get("kind") or ""), str(page.get("id") or "")))
+        pages.append(page)
 
     for contribution in collect_settings_contributions():
         if str(getattr(contribution, "plugin_id", "") or "").strip() != plugin_id:
             continue
         page_id = str(getattr(contribution, "page_id", "") or "").strip()
+        if ("settings", page_id) in frontend_page_keys:
+            continue
         title = str(getattr(contribution, "nav_label", "") or "").strip() or page_id
         page: dict[str, Any] = {
             "id": page_id,
@@ -337,6 +443,8 @@ def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
         if str(getattr(contribution, "plugin_id", "") or "").strip() != plugin_id:
             continue
         page_id = str(getattr(contribution, "tab_id", "") or "").strip()
+        if ("tools", page_id) in frontend_page_keys:
+            continue
         title = str(getattr(contribution, "title", "") or "").strip() or page_id
         page = {
             "id": page_id,
@@ -431,11 +539,27 @@ def _save_plugin_ui_config(plugin_id_or_entry: str, page_id: str, payload: dict[
             break
     if page is None:
         raise KeyError(f"plugin page not found: {page_id}")
-    if "schema" not in page:
-        raise KeyError(f"plugin page config not supported: {plugin_id}/{page_id}")
     raw_values = payload.get("values", payload)
     if not isinstance(raw_values, dict):
         raise ValueError("values must be an object")
+
+    for contribution in _frontend_config_contributions_for(plugin_id):
+        if str(getattr(contribution, "page_id", "") or "").strip() == page_id:
+            contribution.save_values(raw_values)
+            updated = _plugin_ui_detail(plugin_id)
+            updated_page = next(
+                (candidate for candidate in updated["pages"] if candidate.get("id") == page_id),
+                page,
+            )
+            return {
+                "message": "插件设置已保存。",
+                "page": updated_page,
+                "plugin": updated["plugin"],
+            }
+
+    if "schema" not in page:
+        raise KeyError(f"plugin page config not supported: {plugin_id}/{page_id}")
+
     _save_builtin_plugin_config(plugin_id, page_id, raw_values)
     updated = _plugin_ui_detail(plugin_id)
     updated_page = next((candidate for candidate in updated["pages"] if candidate.get("id") == page_id), page)
@@ -444,3 +568,29 @@ def _save_plugin_ui_config(plugin_id_or_entry: str, page_id: str, payload: dict[
         "page": updated_page,
         "plugin": updated["plugin"],
     }
+
+
+def _resolve_plugin_frontend_file(plugin_id_or_entry: str, page_id: str, asset_path: str) -> Path:
+    detail = _plugin_ui_detail(plugin_id_or_entry)
+    plugin = detail["plugin"]
+    plugin_id = str(plugin.get("id") or "").strip()
+    contribution = _frontend_page_contribution(plugin_id, page_id)
+    if contribution is None:
+        raise KeyError(f"plugin frontend page not found: {plugin_id}/{page_id}")
+    entry = Path(str(getattr(contribution, "entry", "") or "")).expanduser()
+    if not entry.is_absolute():
+        entry = (Path.cwd() / entry).resolve()
+    else:
+        entry = entry.resolve()
+    if not entry.is_file():
+        raise FileNotFoundError(entry.as_posix())
+    root = entry.parent.resolve()
+    cleaned_asset = str(asset_path or "").replace("\\", "/").strip("/")
+    target = entry if not cleaned_asset else (root / cleaned_asset).resolve()
+    if root not in target.parents and target != root and target != entry:
+        raise PermissionError("plugin frontend asset is outside frontend root")
+    if target.is_dir():
+        target = target / "index.html"
+    if not target.is_file():
+        raise FileNotFoundError(target.as_posix())
+    return target

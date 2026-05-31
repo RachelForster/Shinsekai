@@ -11,6 +11,12 @@
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@tanstack/react-query": ["node_modules/@tanstack/react-query"],
+      "lucide-react": ["node_modules/lucide-react"]
+    },
+    "typeRoots": ["./node_modules/@types"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
