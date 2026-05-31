@@ -181,7 +181,6 @@ export type MessageKey =
   | "character.field.speechVolume"
   | "character.field.spritePrefix"
   | "character.field.spriteScale"
-  | "character.import.noFile"
   | "character.listTitle"
   | "character.loading"
   | "character.memory.add"
@@ -772,7 +771,6 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.field.speechVolume": "TTS Volume",
     "character.field.spritePrefix": "Upload directory name (ASCII)",
     "character.field.spriteScale": "Display scale",
-    "character.import.noFile": "No file selected",
     "character.listTitle": "Characters",
     "character.loading": "Loading characters",
     "character.memory.add": "Add memory",
@@ -1372,7 +1370,6 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.field.speechVolume": "TTS 音量",
     "character.field.spritePrefix": "アップロード用ディレクトリ名（英字）",
     "character.field.spriteScale": "表示倍率",
-    "character.import.noFile": "ファイル未選択",
     "character.listTitle": "キャラクター",
     "character.loading": "キャラクターを読み込み中",
     "character.memory.add": "記憶を追加",
@@ -1967,7 +1964,6 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "character.field.speechVolume": "TTS 语音音量",
     "character.field.spritePrefix": "上传数据目录名（英文）",
     "character.field.spriteScale": "立绘显示缩放",
-    "character.import.noFile": "未选择文件",
     "character.listTitle": "角色",
     "character.loading": "正在读取角色",
     "character.memory.add": "添加记忆",
