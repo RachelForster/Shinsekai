@@ -14,6 +14,7 @@ export type MessageKey =
   | "api.links.link4"
   | "api.links.link5"
   | "api.links.title"
+  | "api.language.darkMode"
   | "api.language.field"
   | "api.language.hint"
   | "api.language.en"
@@ -601,6 +602,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.links.link4": "Genie TTS for CPU-friendly inference",
     "api.links.link5": "ModelScope: Genie TTS Server bundle",
     "api.links.title": "Resources & links",
+    "api.language.darkMode": "Dark mode",
     "api.language.field": "Interface language",
     "api.language.hint": "Takes effect immediately. Standalone desktop chat windows apply it after the next launch.",
     "api.language.en": "English",
@@ -1202,6 +1204,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.links.link4": "Genie TTS（CPU 向け軽量推論）",
     "api.links.link5": "ModelScope: Genie TTS Server 統合包",
     "api.links.title": "リソース",
+    "api.language.darkMode": "ダークモード",
     "api.language.field": "インターフェース言語",
     "api.language.hint": "即時反映されます。単独実行中のデスクトップチャット窓には次回起動時に適用されます。",
     "api.language.en": "英語",
@@ -1799,6 +1802,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "api.links.link4": "Genie TTS（适用于 CPU 的轻量推理）",
     "api.links.link5": "下载 Genie TTS Server 整合包（ModelScope .7z）",
     "api.links.title": "资源与说明",
+    "api.language.darkMode": "夜间模式",
     "api.language.field": "界面语言",
     "api.language.hint": "立即生效。独立运行的桌面主窗口在下次启动时应用。",
     "api.language.en": "English",
