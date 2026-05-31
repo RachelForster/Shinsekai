@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
 
@@ -15,7 +15,7 @@ import {
   templatesQueryKey,
   type TemplateSummary,
 } from "../../entities/template/repository";
-import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
+import { DEFAULT_CHARACTER_COLOR, TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type { TemplateLaunchSession } from "../../shared/platform/types";
 import {
@@ -40,6 +40,16 @@ const voiceLanguages = [
   { labelKey: "system.asr.langZh", value: "zh" },
   { labelKey: "system.asr.langYue", value: "yue" },
 ] as const;
+
+type CharacterChipStyle = CSSProperties & {
+  "--template-character-color"?: string;
+};
+
+function getCharacterChipStyle(color: string): CharacterChipStyle {
+  return {
+    "--template-character-color": color.trim() || DEFAULT_CHARACTER_COLOR,
+  };
+}
 
 function composeContent(scenario: unknown, system: unknown) {
   return [String(scenario ?? "").trim(), String(system ?? "").trim()].filter(Boolean).join("\n\n");
@@ -121,6 +131,7 @@ export function TemplateEditorPage() {
     const names = backgrounds.map((background) => background.name);
     return names.includes(TRANSPARENT_BACKGROUND_NAME) ? names : [...names, TRANSPARENT_BACKGROUND_NAME];
   }, [backgrounds]);
+  const selectedCharacterNames = useMemo(() => new Set(selectedCharacters), [selectedCharacters]);
   const failedQuery = [templatesQuery, sessionQuery, configQuery, charactersQuery, backgroundsQuery].find(
     (query) => query.isError,
   );
@@ -492,14 +503,6 @@ export function TemplateEditorPage() {
             <div className="section__header">
               <h2 className="section__title">{t("template.section.generate")}</h2>
               <div className="template-generate-actions">
-                <Button
-                  disabled={!characters.length}
-                  icon={<Users aria-hidden className="button__icon" />}
-                  onClick={() => setSelectedCharacters(characters.map((character) => character.name))}
-                  variant="ghost"
-                >
-                  {t("template.action.selectAllCharacters")}
-                </Button>
                 <AsyncButton
                   icon={<Sparkles aria-hidden className="button__icon" />}
                   loading={generateMutation.isPending}
@@ -576,17 +579,37 @@ export function TemplateEditorPage() {
               ))}
             </div>
 
-            <div className="character-check-grid">
-              {characters.map((character) => (
-                <label className="check-row" key={character.name}>
-                  <input
-                    checked={selectedCharacters.includes(character.name)}
-                    onChange={(event) => toggleCharacter(character.name, event.target.checked)}
-                    type="checkbox"
-                  />
-                  <span>{character.name}</span>
-                </label>
-              ))}
+            <div className="template-character-picker">
+              <div className="template-character-picker__header">
+                <span className="field-row__label">{t("template.field.characters")}</span>
+                <Button
+                  disabled={!characters.length}
+                  icon={<Users aria-hidden className="button__icon" />}
+                  onClick={() => setSelectedCharacters(characters.map((character) => character.name))}
+                  variant="ghost"
+                >
+                  {t("template.action.selectAllCharacters")}
+                </Button>
+              </div>
+              <div aria-label={t("template.field.characters")} className="template-character-grid" role="group">
+                {characters.map((character) => {
+                  const isSelected = selectedCharacterNames.has(character.name);
+                  return (
+                    <button
+                      aria-pressed={isSelected}
+                      className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
+                      key={character.name}
+                      onClick={() => toggleCharacter(character.name, !isSelected)}
+                      style={getCharacterChipStyle(character.color)}
+                      title={character.name}
+                      type="button"
+                    >
+                      <span aria-hidden className="template-character-card__dot" />
+                      <span className="template-character-card__name">{character.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </section>
 
