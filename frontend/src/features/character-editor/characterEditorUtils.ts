@@ -55,17 +55,6 @@ export function pronunciationTextToMap(value: string) {
     }, {});
 }
 
-export function importItemsLabel(items: File[] | string[]) {
-  return items
-    .map((item) => {
-      if (typeof File !== "undefined" && item instanceof File) {
-        return item.name;
-      }
-      return String(item).split(/[\\/]/).pop() || String(item);
-    })
-    .join("; ");
-}
-
 export function clampSpriteScale(value: number) {
   return Math.min(SPRITE_SCALE_MAX, Math.max(SPRITE_SCALE_MIN, Number(value.toFixed(2))));
 }

@@ -33,7 +33,6 @@ import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
-import { CharacterSelectionSection } from "./CharacterSelectionSection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
@@ -59,7 +58,6 @@ export function CharacterEditorPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingResourceDelete, setPendingResourceDelete] = useState<CharacterResourceDeleteTarget | null>(null);
-  const [pendingImportItems, setPendingImportItems] = useState<string[]>([]);
   const [pendingSpritePaths, setPendingSpritePaths] = useState<string[]>([]);
   const [pendingVoicePaths, setPendingVoicePaths] = useState<Record<number, string>>({});
   const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
@@ -104,7 +102,7 @@ export function CharacterEditorPage() {
   }, [draft.sprites.length]);
 
   const memoryQuery = useQuery({
-    enabled: Boolean(memoryName),
+    enabled: false,
     queryFn: () => listCharacterMemories(memoryName),
     queryKey: ["character-memories", memoryName],
   });
@@ -147,7 +145,6 @@ export function CharacterEditorPage() {
     mutationFn: importCharacters,
     onSuccess(imported) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setPendingImportItems([]);
       const lastImported = imported[imported.length - 1];
       if (lastImported) {
         setIsCreating(false);
@@ -777,22 +774,17 @@ export function CharacterEditorPage() {
   return (
     <div className="page character-page">
       <CharacterPageHeader
+        characters={data}
         exportPending={exportMutation.isPending}
         importPending={importMutation.isPending}
-        onCreate={startCreatingCharacter}
-        onExport={exportCurrentCharacter}
-        onImport={() => importMutation.mutate(pendingImportItems)}
-        onPendingImportItemsChange={setPendingImportItems}
-        onSave={saveDraft}
-        pendingImportItems={pendingImportItems}
-        savePending={saveMutation.isPending}
-      />
-
-      <CharacterSelectionSection
-        characters={data}
         isCreating={isCreating}
         isLoading={isLoading}
-        onSelect={selectExistingCharacter}
+        onCreate={startCreatingCharacter}
+        onExport={exportCurrentCharacter}
+        onImport={(items) => importMutation.mutate(items)}
+        onSave={saveDraft}
+        onSelectCharacter={selectExistingCharacter}
+        savePending={saveMutation.isPending}
         selectedName={selectedName}
       />
 
@@ -860,6 +852,7 @@ export function CharacterEditorPage() {
           deletePending={memoryDeleteMutation.isPending}
           error={memoryQuery.error}
           isError={memoryQuery.isError}
+          isFetched={memoryQuery.isFetched}
           isFetching={memoryQuery.isFetching}
           isLoading={memoryQuery.isLoading}
           memoryInput={memoryInput}

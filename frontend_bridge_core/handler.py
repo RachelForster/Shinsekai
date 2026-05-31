@@ -97,6 +97,10 @@ from .tools import (
 from .tts import _download_tts_bundle, _tts_bundle_recommendation
 
 
+class _RangeNotSatisfiable(Exception):
+    pass
+
+
 class FrontendBridgeHandler(BaseHTTPRequestHandler):
     server_version = "ShinsekaiFrontendBridge/0.1"
 
@@ -109,8 +113,13 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
 
     def _send_cors(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Task-Id")
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Range, X-Task-Id")
+        self.send_header("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range")
+
+    @staticmethod
+    def _is_client_disconnect(exc: Exception) -> bool:
+        return isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError))
 
     def _send_json(self, data: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         raw = json.dumps(_jsonify(data), ensure_ascii=False).encode("utf-8")
@@ -118,8 +127,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self._send_cors()
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
+        try:
+            self.end_headers()
+            self.wfile.write(raw)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
 
     def _send_error_json(self, exc: Exception, status: HTTPStatus = HTTPStatus.BAD_REQUEST) -> None:
         self._send_json({"error": str(exc), "type": exc.__class__.__name__}, status)
@@ -131,6 +143,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self._send_error_json(exc, HTTPStatus.FORBIDDEN)
         else:
             self._send_error_json(exc)
+
+    def _send_empty_response(self, status: HTTPStatus) -> None:
+        self.send_response(status)
+        self._send_cors()
+        self.send_header("Content-Length", "0")
+        try:
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
 
     def _enqueue_background_task(
         self,
@@ -248,7 +269,36 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             else:
                 self._send_error_json(FileNotFoundError(path), HTTPStatus.NOT_FOUND)
         except Exception as exc:
+            if self._is_client_disconnect(exc):
+                return
             self._send_exception_json(exc)
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        try:
+            parsed = urlparse(self.path)
+            path = parsed.path
+            if path == "/api/download":
+                query = parse_qs(parsed.query)
+                target = unquote((query.get("path") or [""])[0])
+                self._send_file(target, attachment=True, send_body=False)
+            elif path == "/api/media":
+                query = parse_qs(parsed.query)
+                target = unquote((query.get("path") or [""])[0])
+                self._send_file(target, attachment=False, send_body=False)
+            elif path.startswith("/assets/") or path.startswith("/data/"):
+                self._send_file(path.lstrip("/"), send_body=False)
+            elif self._try_send_frontend(path, send_body=False):
+                return
+            else:
+                self._send_empty_response(HTTPStatus.NOT_FOUND)
+        except FileNotFoundError:
+            self._send_empty_response(HTTPStatus.NOT_FOUND)
+        except PermissionError:
+            self._send_empty_response(HTTPStatus.FORBIDDEN)
+        except Exception as exc:
+            if self._is_client_disconnect(exc):
+                return
+            self._send_empty_response(HTTPStatus.BAD_REQUEST)
 
     def do_POST(self) -> None:  # noqa: N802
         self._handle_write("POST")
@@ -544,6 +594,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             else:
                 self._send_error_json(FileNotFoundError(path), HTTPStatus.NOT_FOUND)
         except Exception as exc:
+            if self._is_client_disconnect(exc):
+                return
             self._send_exception_json(exc)
 
     def _import_background_paths(self, paths: list[str]) -> list[dict[str, Any]]:
@@ -701,21 +753,91 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             raise PermissionError("path is outside static root")
         return target
 
-    def _send_local_file(self, path: Path, *, attachment: bool = False) -> None:
+    def _send_local_file(
+        self,
+        path: Path,
+        *,
+        attachment: bool = False,
+        send_body: bool = True,
+    ) -> None:
         if not path.is_file():
             raise FileNotFoundError(path.as_posix())
-        data = path.read_bytes()
+        file_size = path.stat().st_size
+        try:
+            byte_range = self._parse_byte_range(self.headers.get("Range"), file_size) if not attachment else None
+        except _RangeNotSatisfiable:
+            self._send_range_not_satisfiable(file_size)
+            return
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        self.send_response(HTTPStatus.OK)
+        if byte_range is None:
+            start = 0
+            end = file_size - 1
+            response_status = HTTPStatus.OK
+            content_length = file_size
+        else:
+            start, end = byte_range
+            response_status = HTTPStatus.PARTIAL_CONTENT
+            content_length = end - start + 1
+        self.send_response(response_status)
         self._send_cors()
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(content_length))
+        if byte_range is not None:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
         if attachment:
             self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.end_headers()
+            if not send_body:
+                return
+            with path.open("rb") as file:
+                file.seek(start)
+                remaining = content_length
+                while remaining > 0:
+                    chunk = file.read(min(1024 * 512, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
 
-    def _try_send_frontend(self, request_path: str) -> bool:
+    def _send_range_not_satisfiable(self, file_size: int) -> None:
+        self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+        self._send_cors()
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Range", f"bytes */{file_size}")
+        self.send_header("Content-Length", "0")
+        try:
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
+
+    def _parse_byte_range(self, range_header: str | None, file_size: int) -> tuple[int, int] | None:
+        if not range_header or not range_header.startswith("bytes=") or file_size <= 0:
+            return None
+        first_range = range_header.removeprefix("bytes=").split(",", 1)[0].strip()
+        start_text, separator, end_text = first_range.partition("-")
+        if separator != "-":
+            return None
+        try:
+            if start_text:
+                start = int(start_text)
+                end = int(end_text) if end_text else file_size - 1
+            else:
+                suffix_length = int(end_text)
+                if suffix_length <= 0:
+                    return None
+                start = max(0, file_size - suffix_length)
+                end = file_size - 1
+        except ValueError:
+            return None
+        if start < 0 or start >= file_size or end < start:
+            raise _RangeNotSatisfiable
+        return start, min(end, file_size - 1)
+
+    def _try_send_frontend(self, request_path: str, *, send_body: bool = True) -> bool:
         dist_root = _frontend_dist_root(self.state)
         if dist_root is None or not dist_root.is_dir():
             return False
@@ -724,19 +846,29 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             return False
 
         if request_path in {"", "/", "/index.html"}:
-            self._send_local_file(index_path)
+            self._send_local_file(index_path, send_body=send_body)
             return True
 
         candidate = self._resolve_static_path(dist_root, request_path)
         if candidate.is_file():
-            self._send_local_file(candidate)
+            self._send_local_file(candidate, send_body=send_body)
             return True
 
         if request_path.startswith("/web-assets/"):
             raise FileNotFoundError(request_path)
 
-        self._send_local_file(index_path)
+        self._send_local_file(index_path, send_body=send_body)
         return True
 
-    def _send_file(self, relative_path: str, *, attachment: bool = False) -> None:
-        self._send_local_file(self._resolve_project_path(relative_path), attachment=attachment)
+    def _send_file(
+        self,
+        relative_path: str,
+        *,
+        attachment: bool = False,
+        send_body: bool = True,
+    ) -> None:
+        self._send_local_file(
+            self._resolve_project_path(relative_path),
+            attachment=attachment,
+            send_body=send_body,
+        )

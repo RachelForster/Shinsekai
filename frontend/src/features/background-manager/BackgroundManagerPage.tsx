@@ -28,8 +28,9 @@ import {
   AsyncButton,
   Button,
   EmptyState,
-  FilePicker,
+  PathPickerDialog,
   QueryErrorState,
+  Select,
   TextArea,
   TextInput,
   useToast,
@@ -56,11 +57,11 @@ export function BackgroundManagerPage() {
   const [draft, setDraft] = useState<Background>(createBackground());
   const [isCreating, setIsCreating] = useState(false);
   const [pendingBgmPaths, setPendingBgmPaths] = useState<string[]>([]);
-  const [pendingImportFiles, setPendingImportFiles] = useState<string[]>([]);
   const [pendingImagePaths, setPendingImagePaths] = useState<string[]>([]);
   const [pendingDelete, setPendingDelete] = useState<BackgroundDeleteTarget | null>(null);
   const [selectedBgmIndexes, setSelectedBgmIndexes] = useState<number[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [importPickerOpen, setImportPickerOpen] = useState(false);
   const [bgmSort, setBgmSort] = useState<{ direction: BgmSortDirection; key: BgmSortKey }>({
     direction: "asc",
     key: "index",
@@ -126,7 +127,6 @@ export function BackgroundManagerPage() {
     mutationFn: importBackgrounds,
     onSuccess(imported) {
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
-      setPendingImportFiles([]);
       const lastImported = imported[imported.length - 1];
       if (lastImported) {
         setIsCreating(false);
@@ -552,12 +552,12 @@ export function BackgroundManagerPage() {
 
   return (
     <div className="page background-page">
-      <header className="page__header">
-        <div>
+      <header className="page__header background-page__header">
+        <div className="background-page__heading">
           <h1 className="page__title">{t("background.title")}</h1>
           <p className="page__description">{t("background.description")}</p>
         </div>
-        <div className="page__actions">
+        <div className="page__actions background-page__primary-actions">
           <Button
             icon={<Plus aria-hidden className="button__icon" />}
             onClick={() => {
@@ -573,46 +573,6 @@ export function BackgroundManagerPage() {
           >
             {t("common.new")}
           </Button>
-          <div className="page__file-picker">
-            <FilePicker
-              acceptedExtensions={[".bg"]}
-              multiple
-              onPathsChange={setPendingImportFiles}
-              pickLabel={t("common.chooseFile")}
-              pickerTitle={t("common.import")}
-              readOnly
-              value={
-                pendingImportFiles.length
-                  ? t("background.asset.selectedFiles", { count: pendingImportFiles.length })
-                  : ""
-              }
-            />
-          </div>
-          <AsyncButton
-            disabled={!pendingImportFiles.length}
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={importMutation.isPending}
-            onClick={() => importMutation.mutate(pendingImportFiles)}
-          >
-            {t("common.import")}
-          </AsyncButton>
-          <AsyncButton
-            icon={<Download aria-hidden className="button__icon" />}
-            loading={exportMutation.isPending}
-            onClick={() => {
-              if (!currentBackgroundName) {
-                showToast({
-                  kind: "error",
-                  message: t("background.validation.nameRequired"),
-                  title: t("common.export"),
-                });
-                return;
-              }
-              exportMutation.mutate(currentBackgroundName);
-            }}
-          >
-            {t("common.export")}
-          </AsyncButton>
           <AsyncButton
             icon={<Save aria-hidden className="button__icon" />}
             loading={saveMutation.isPending}
@@ -621,29 +581,84 @@ export function BackgroundManagerPage() {
           >
             {t("common.save")}
           </AsyncButton>
-          <Button
-            icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=background")}
-            variant="ghost"
-          >
-            {t("background.action.community")}
-          </Button>
-          <Button
-            icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => openExternal("https://wj.qq.com/s2/26616089/b61a/")}
-            variant="ghost"
-          >
-            {t("background.action.uploadContribution")}
-          </Button>
         </div>
+        <div className="background-page__toolbar">
+          <label className="background-page__group-select">
+            <span className="visually-hidden">{t("background.groupListTitle")}</span>
+            <Select
+              disabled={isLoading || (!isCreating && !data.length)}
+              onChange={(event) => {
+                setIsCreating(false);
+                setSelectedName(event.target.value);
+              }}
+              value={isCreating ? "" : selectedName || data[0]?.name || ""}
+            >
+              {isCreating ? <option value="">{t("common.new")}</option> : null}
+              {!isCreating && !data.length ? <option value="">{t("background.emptyTitle")}</option> : null}
+              {data.map((background) => (
+                <option key={background.name} value={background.name}>
+                  {background.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <div className="background-page__package-actions">
+            <AsyncButton
+              icon={<Upload aria-hidden className="button__icon" />}
+              loading={importMutation.isPending}
+              onClick={() => setImportPickerOpen(true)}
+            >
+              {t("common.import")}
+            </AsyncButton>
+            <AsyncButton
+              icon={<Download aria-hidden className="button__icon" />}
+              loading={exportMutation.isPending}
+              onClick={() => {
+                if (!currentBackgroundName) {
+                  showToast({
+                    kind: "error",
+                    message: t("background.validation.nameRequired"),
+                    title: t("common.export"),
+                  });
+                  return;
+                }
+                exportMutation.mutate(currentBackgroundName);
+              }}
+              variant="ghost"
+            >
+              {t("common.export")}
+            </AsyncButton>
+          </div>
+          <div className="background-page__resource-actions">
+            <Button
+              icon={<ExternalLink aria-hidden className="button__icon" />}
+              onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=background")}
+              variant="ghost"
+            >
+              {t("background.action.community")}
+            </Button>
+            <Button
+              icon={<ExternalLink aria-hidden className="button__icon" />}
+              onClick={() => openExternal("https://wj.qq.com/s2/26616089/b61a/")}
+              variant="ghost"
+            >
+              {t("background.action.uploadContribution")}
+            </Button>
+          </div>
+        </div>
+        <PathPickerDialog
+          acceptedExtensions={[".bg"]}
+          multiple
+          onClose={() => setImportPickerOpen(false)}
+          onSelect={(path) => importMutation.mutate([path])}
+          onSelectMany={(paths) => importMutation.mutate(paths)}
+          open={importPickerOpen}
+          title={t("common.import")}
+        />
       </header>
 
-      <div className="settings-grid settings-grid--split">
-        <aside className="entity-list">
-          <div className="entity-list__header">
-            <strong>{t("background.groupListTitle")}</strong>
-            <span className="entity-list__meta">{data.length}</span>
-          </div>
+      {isLoading || backgroundsQuery.isError || (!isLoading && !backgroundsQuery.isError && !data.length) ? (
+        <div className="background-page__status">
           {isLoading ? <EmptyState title={t("background.loading")} /> : null}
           {backgroundsQuery.isError ? (
             <QueryErrorState
@@ -656,227 +671,210 @@ export function BackgroundManagerPage() {
           {!isLoading && !backgroundsQuery.isError && !data.length ? (
             <EmptyState title={t("background.emptyTitle")} body={t("background.emptyBody")} />
           ) : null}
-          {data.map((background) => (
-            <button
-              aria-selected={!isCreating && background.name === draft.name}
-              className="entity-list__item"
-              key={background.name}
-              onClick={() => {
-                setIsCreating(false);
-                setSelectedName(background.name);
-              }}
-              type="button"
-            >
-              <span className="entity-list__primary">{background.name}</span>
-              <span className="entity-list__meta">
-                {t("background.resource.imageCount", { count: background.sprites.length })}
-              </span>
-            </button>
-          ))}
-        </aside>
+        </div>
+      ) : null}
 
-        <section className="settings-grid">
-          {/* Info section */}
-          <section className="section">
-            <div className="section__header">
-              <h2 className="section__title">{t("background.section.info")}</h2>
-              <div className="page__actions">
+      <section className="settings-grid background-page__content">
+        {/* Info section */}
+        <section className="section">
+          <div className="section__header">
+            <h2 className="section__title">{t("background.section.info")}</h2>
+            <div className="page__actions">
+              <AsyncButton
+                icon={<Languages aria-hidden className="button__icon" />}
+                loading={translateMutation.isPending}
+                onClick={() => {
+                  if (!draft.name.trim() && !draft.bg_tags.trim() && !draft.bgm_tags.trim()) {
+                    showToast({
+                      kind: "error",
+                      message: t("common.fixInvalidFields"),
+                      title: t("common.validationFailed"),
+                    });
+                    return;
+                  }
+                  translateMutation.mutate();
+                }}
+                variant="ghost"
+              >
+                {t("background.action.aiTranslate")}
+              </AsyncButton>
+              <Button
+                icon={<Trash2 aria-hidden className="button__icon" />}
+                onClick={() => {
+                  if (!currentBackgroundName) {
+                    showToast({
+                      kind: "error",
+                      message: t("background.error.deleteFallback"),
+                      title: t("common.deleteFailed"),
+                    });
+                    return;
+                  }
+                  setPendingDelete({ kind: "background", name: currentBackgroundName });
+                }}
+                variant="danger"
+              >
+                {t("common.delete")}
+              </Button>
+            </div>
+          </div>
+          <div className="form-grid form-grid--two">
+            <label className="field-row">
+              <span className="field-row__label">{t("background.field.name")}</span>
+              <span className="field-row__control">
+                <TextInput
+                  className={nameError ? "input--error" : ""}
+                  onChange={(event) => update("name", event.target.value)}
+                  value={draft.name}
+                />
+                {nameError ? <span className="field-error">{nameError}</span> : null}
+              </span>
+            </label>
+            <label className="field-row">
+              <span className="field-row__label">{t("background.field.spritePrefix")}</span>
+              <span className="field-row__control">
+                <TextInput
+                  onChange={(event) => update("sprite_prefix", event.target.value)}
+                  value={draft.sprite_prefix}
+                />
+              </span>
+            </label>
+          </div>
+        </section>
+
+        {/* Tags section */}
+        <section className="section">
+          <div className="section__header">
+            <h2 className="section__title">{t("background.section.tags")}</h2>
+          </div>
+          <div className="form-grid">
+            <label className="field-row">
+              <span className="field-row__label">{t("background.field.bgTags")}</span>
+              <span className="field-row__control">
+                <TextArea onChange={(event) => update("bg_tags", event.target.value)} value={draft.bg_tags} />
                 <AsyncButton
-                  icon={<Languages aria-hidden className="button__icon" />}
-                  loading={translateMutation.isPending}
-                  onClick={() => {
-                    if (!draft.name.trim() && !draft.bg_tags.trim() && !draft.bgm_tags.trim()) {
-                      showToast({
-                        kind: "error",
-                        message: t("common.fixInvalidFields"),
-                        title: t("common.validationFailed"),
-                      });
-                      return;
-                    }
-                    translateMutation.mutate();
-                  }}
-                  variant="ghost"
-                >
-                  {t("background.action.aiTranslate")}
-                </AsyncButton>
-                <Button
-                  icon={<Trash2 aria-hidden className="button__icon" />}
+                  icon={<Save aria-hidden className="button__icon" />}
+                  loading={imageTagsSaveMutation.isPending}
                   onClick={() => {
                     if (!currentBackgroundName) {
                       showToast({
                         kind: "error",
-                        message: t("background.error.deleteFallback"),
-                        title: t("common.deleteFailed"),
+                        message: t("background.validation.nameRequired"),
+                        title: t("background.action.saveImageTags"),
                       });
                       return;
                     }
-                    setPendingDelete({ kind: "background", name: currentBackgroundName });
+                    imageTagsSaveMutation.mutate();
                   }}
-                  variant="danger"
+                  variant="ghost"
                 >
-                  {t("common.delete")}
-                </Button>
-              </div>
-            </div>
-            <div className="form-grid form-grid--two">
-              <label className="field-row">
-                <span className="field-row__label">{t("background.field.name")}</span>
-                <span className="field-row__control">
-                  <TextInput
-                    className={nameError ? "input--error" : ""}
-                    onChange={(event) => update("name", event.target.value)}
-                    value={draft.name}
-                  />
-                  {nameError ? <span className="field-error">{nameError}</span> : null}
-                </span>
-              </label>
-              <label className="field-row">
-                <span className="field-row__label">{t("background.field.spritePrefix")}</span>
-                <span className="field-row__control">
-                  <TextInput
-                    onChange={(event) => update("sprite_prefix", event.target.value)}
-                    value={draft.sprite_prefix}
-                  />
-                </span>
-              </label>
-            </div>
-          </section>
-
-          {/* Tags section */}
-          <section className="section">
-            <div className="section__header">
-              <h2 className="section__title">{t("background.section.tags")}</h2>
-            </div>
-            <div className="form-grid">
-              <label className="field-row">
-                <span className="field-row__label">{t("background.field.bgTags")}</span>
-                <span className="field-row__control">
-                  <TextArea onChange={(event) => update("bg_tags", event.target.value)} value={draft.bg_tags} />
-                  <AsyncButton
-                    icon={<Save aria-hidden className="button__icon" />}
-                    loading={imageTagsSaveMutation.isPending}
-                    onClick={() => {
-                      if (!currentBackgroundName) {
-                        showToast({
-                          kind: "error",
-                          message: t("background.validation.nameRequired"),
-                          title: t("background.action.saveImageTags"),
-                        });
-                        return;
-                      }
-                      imageTagsSaveMutation.mutate();
-                    }}
-                    variant="ghost"
-                  >
-                    {t("background.action.saveImageTags")}
-                  </AsyncButton>
-                </span>
-              </label>
-              <label className="field-row">
-                <span className="field-row__label">{t("background.field.bgmTags")}</span>
-                <span className="field-row__control">
-                  <TextArea onChange={(event) => update("bgm_tags", event.target.value)} value={draft.bgm_tags} />
-                  <AsyncButton
-                    icon={<Save aria-hidden className="button__icon" />}
-                    loading={bgmTagsSaveMutation.isPending}
-                    onClick={() => {
-                      if (!currentBackgroundName) {
-                        showToast({
-                          kind: "error",
-                          message: t("background.validation.nameRequired"),
-                          title: t("background.action.saveBgmTags"),
-                        });
-                        return;
-                      }
-                      bgmTagsSaveMutation.mutate();
-                    }}
-                    variant="ghost"
-                  >
-                    {t("background.action.saveBgmTags")}
-                  </AsyncButton>
-                </span>
-              </label>
-            </div>
-          </section>
-
-          {/* Sprite gallery */}
-          <BackgroundSpriteGallery
-            currentBackgroundName={currentBackgroundName}
-            deletePending={imageDeleteMutation.isPending}
-            imageRowTags={imageRowTags}
-            onClearImages={() => {
-              if (!currentBackgroundName || !draft.sprites.length) {
-                showToast({ kind: "error", title: t("background.asset.clearImages") });
-                return;
-              }
-              setPendingDelete({ count: draft.sprites.length, kind: "all-images", name: currentBackgroundName });
-            }}
-            onDeleteImage={handleImageDelete}
-            onPendingImagePathsChange={setPendingImagePaths}
-            onSaveImageTags={() => {
-              if (!currentBackgroundName) {
-                showToast({
-                  kind: "error",
-                  message: t("background.validation.nameRequired"),
-                  title: t("background.action.saveImageTags"),
-                });
-                return;
-              }
-              imageTagsSaveMutation.mutate();
-            }}
-            onSelectImage={setSelectedImageIndex}
-            onUpdateImageTag={updateImageRowTag}
-            onUploadImages={() => imageUploadMutation.mutate()}
-            pendingImagePaths={pendingImagePaths}
-            saveTagsPending={imageTagsSaveMutation.isPending}
-            selectedImageIndex={selectedImageIndex}
-            sprites={draft.sprites}
-            uploadPending={imageUploadMutation.isPending}
-          />
-
-          {/* BGM section */}
-          <BackgroundMusicSection
-            batchDeletePending={bgmBatchDeleteMutation.isPending}
-            bgmList={draft.bgm_list}
-            bgmRowTags={bgmRowTags}
-            currentBackgroundName={currentBackgroundName}
-            deletePending={bgmDeleteMutation.isPending}
-            onBatchDelete={() => {
-              const validIndexes = selectedBgmIndexes.filter((i) => i >= 0 && i < draft.bgm_list.length);
-              if (!validIndexes.length) {
-                showToast({ kind: "error", title: t("background.asset.noSelectedBgm") });
-                return;
-              }
-              setPendingDelete({
-                count: validIndexes.length,
-                indexes: validIndexes,
-                kind: "selected-bgm",
-                name: currentBackgroundName,
-              });
-            }}
-            onClearAll={() => {
-              if (!currentBackgroundName || !draft.bgm_list.length) {
-                showToast({ kind: "error", title: t("background.asset.clearBgm") });
-                return;
-              }
-              setPendingDelete({ count: draft.bgm_list.length, kind: "all-bgm", name: currentBackgroundName });
-            }}
-            onDelete={handleBgmDelete}
-            onPendingBgmPathsChange={setPendingBgmPaths}
-            onSortToggle={toggleBgmSort}
-            onTagChange={updateBgmRowTag}
-            onToggleAllSelection={toggleAllBgmSelection}
-            onToggleSelection={toggleBgmSelection}
-            onUpload={() => bgmUploadMutation.mutate()}
-            pendingBgmPaths={pendingBgmPaths}
-            selectedBgmIndexSet={selectedBgmIndexSet}
-            sortDirection={bgmSort.direction}
-            sortKey={bgmSort.key}
-            sortedBgmItems={sortedBgmItems}
-            uploadPending={bgmUploadMutation.isPending}
-          />
+                  {t("background.action.saveImageTags")}
+                </AsyncButton>
+              </span>
+            </label>
+            <label className="field-row">
+              <span className="field-row__label">{t("background.field.bgmTags")}</span>
+              <span className="field-row__control">
+                <TextArea onChange={(event) => update("bgm_tags", event.target.value)} value={draft.bgm_tags} />
+                <AsyncButton
+                  icon={<Save aria-hidden className="button__icon" />}
+                  loading={bgmTagsSaveMutation.isPending}
+                  onClick={() => {
+                    if (!currentBackgroundName) {
+                      showToast({
+                        kind: "error",
+                        message: t("background.validation.nameRequired"),
+                        title: t("background.action.saveBgmTags"),
+                      });
+                      return;
+                    }
+                    bgmTagsSaveMutation.mutate();
+                  }}
+                  variant="ghost"
+                >
+                  {t("background.action.saveBgmTags")}
+                </AsyncButton>
+              </span>
+            </label>
+          </div>
         </section>
-      </div>
+
+        {/* Sprite gallery */}
+        <BackgroundSpriteGallery
+          currentBackgroundName={currentBackgroundName}
+          deletePending={imageDeleteMutation.isPending}
+          imageRowTags={imageRowTags}
+          onClearImages={() => {
+            if (!currentBackgroundName || !draft.sprites.length) {
+              showToast({ kind: "error", title: t("background.asset.clearImages") });
+              return;
+            }
+            setPendingDelete({ count: draft.sprites.length, kind: "all-images", name: currentBackgroundName });
+          }}
+          onDeleteImage={handleImageDelete}
+          onPendingImagePathsChange={setPendingImagePaths}
+          onSaveImageTags={() => {
+            if (!currentBackgroundName) {
+              showToast({
+                kind: "error",
+                message: t("background.validation.nameRequired"),
+                title: t("background.action.saveImageTags"),
+              });
+              return;
+            }
+            imageTagsSaveMutation.mutate();
+          }}
+          onSelectImage={setSelectedImageIndex}
+          onUpdateImageTag={updateImageRowTag}
+          onUploadImages={() => imageUploadMutation.mutate()}
+          pendingImagePaths={pendingImagePaths}
+          saveTagsPending={imageTagsSaveMutation.isPending}
+          selectedImageIndex={selectedImageIndex}
+          sprites={draft.sprites}
+          uploadPending={imageUploadMutation.isPending}
+        />
+
+        {/* BGM section */}
+        <BackgroundMusicSection
+          batchDeletePending={bgmBatchDeleteMutation.isPending}
+          bgmList={draft.bgm_list}
+          bgmRowTags={bgmRowTags}
+          currentBackgroundName={currentBackgroundName}
+          deletePending={bgmDeleteMutation.isPending}
+          onBatchDelete={() => {
+            const validIndexes = selectedBgmIndexes.filter((i) => i >= 0 && i < draft.bgm_list.length);
+            if (!validIndexes.length) {
+              showToast({ kind: "error", title: t("background.asset.noSelectedBgm") });
+              return;
+            }
+            setPendingDelete({
+              count: validIndexes.length,
+              indexes: validIndexes,
+              kind: "selected-bgm",
+              name: currentBackgroundName,
+            });
+          }}
+          onClearAll={() => {
+            if (!currentBackgroundName || !draft.bgm_list.length) {
+              showToast({ kind: "error", title: t("background.asset.clearBgm") });
+              return;
+            }
+            setPendingDelete({ count: draft.bgm_list.length, kind: "all-bgm", name: currentBackgroundName });
+          }}
+          onDelete={handleBgmDelete}
+          onPendingBgmPathsChange={setPendingBgmPaths}
+          onSortToggle={toggleBgmSort}
+          onTagChange={updateBgmRowTag}
+          onToggleAllSelection={toggleAllBgmSelection}
+          onToggleSelection={toggleBgmSelection}
+          onUpload={() => bgmUploadMutation.mutate()}
+          pendingBgmPaths={pendingBgmPaths}
+          selectedBgmIndexSet={selectedBgmIndexSet}
+          sortDirection={bgmSort.direction}
+          sortKey={bgmSort.key}
+          sortedBgmItems={sortedBgmItems}
+          uploadPending={bgmUploadMutation.isPending}
+        />
+      </section>
 
       <AlertDialog
         body={pendingDeleteCopy?.body ?? ""}

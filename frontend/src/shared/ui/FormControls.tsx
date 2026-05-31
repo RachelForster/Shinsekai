@@ -3,6 +3,7 @@ import { useState } from "react";
 import { FolderOpen } from "lucide-react";
 
 import type { PathPickerMode } from "../platform/types";
+import { CustomSelect } from "./CustomSelect";
 import "./FormControls.css";
 import { IconButton } from "./IconButton";
 import { PathDisplay } from "./PathDisplay";
@@ -18,9 +19,9 @@ export function TextArea({ className = "", ...props }: TextareaHTMLAttributes<HT
 
 export function Select({ className = "", children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={["select", className].filter(Boolean).join(" ")} {...props}>
+    <CustomSelect className={className} {...props}>
       {children}
-    </select>
+    </CustomSelect>
   );
 }
 

@@ -4,6 +4,7 @@ import { Play, Save, Search } from "lucide-react";
 
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
+import { fileUrl } from "../../entities/files/repository";
 import { runMusicCover, saveMusicCoverConfig, searchMusicCover } from "../../entities/music-cover/repository";
 import type {
   MusicCoverConfigInput,
@@ -13,6 +14,7 @@ import type {
 } from "../../shared/platform/types";
 import {
   AsyncButton,
+  AudioPlayer,
   EmptyState,
   NumberInput,
   PathDisplay,
@@ -465,6 +467,14 @@ export function MusicCoverPage() {
               <span className="field-row__label">成品试听路径</span>
               <span className="field-row__control">
                 <PathDisplay className="path-display--input" path={musicAudioPath} />
+                {musicAudioPath ? (
+                  <AudioPlayer
+                    className="music-cover-player"
+                    label="成品试听"
+                    preload="metadata"
+                    src={fileUrl(musicAudioPath)}
+                  />
+                ) : null}
               </span>
             </label>
           </div>

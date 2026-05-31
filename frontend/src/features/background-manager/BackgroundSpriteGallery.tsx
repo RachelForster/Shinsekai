@@ -59,69 +59,76 @@ export function BackgroundSpriteGallery({
   }));
 
   return (
-    <section className="section">
+    <section className="section background-images-section">
       <div className="section__header">
         <h2 className="section__title">{t("background.section.images")}</h2>
-        <div className="page__actions">
-          <AsyncButton
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={uploadPending}
-            onClick={() => {
-              if (!currentBackgroundName) {
-                return;
-              }
-              if (!pendingImagePaths.length) {
-                return;
-              }
-              onUploadImages();
-            }}
-            variant="ghost"
-          >
-            {t("background.asset.uploadImages")}
-          </AsyncButton>
-          <Button
-            icon={<Trash2 aria-hidden className="button__icon" />}
-            onClick={() => {
-              if (!currentBackgroundName || !sprites.length) {
-                return;
-              }
-              onClearImages();
-            }}
-            variant="ghost"
-          >
-            {t("background.asset.clearImages")}
-          </Button>
-        </div>
       </div>
       <div className="asset-editor">
-        <label className="field-row field-row--stack">
-          <span className="field-row__label">{t("background.asset.selectImages")}</span>
-          <span className="field-row__control">
-            <FilePicker
-              acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
-              multiple
-              onPathsChange={(paths) => {
-                if (paths.length) {
-                  onPendingImagePathsChange(paths);
+        <div className="background-images-section__toolbar">
+          <label className="field-row field-row--stack background-images-section__picker">
+            <span className="field-row__label">{t("background.asset.selectImages")}</span>
+            <span className="field-row__control">
+              <FilePicker
+                acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+                multiple
+                onPathsChange={(paths) => {
+                  if (paths.length) {
+                    onPendingImagePathsChange(paths);
+                  }
+                }}
+                pickLabel={t("common.chooseFile")}
+                pickerTitle={t("background.asset.selectImages")}
+                value={
+                  pendingImagePaths.length
+                    ? t("background.asset.selectedFiles", { count: pendingImagePaths.length })
+                    : ""
                 }
+              />
+            </span>
+          </label>
+          <div className="background-images-section__actions">
+            <AsyncButton
+              disabled={!currentBackgroundName || !pendingImagePaths.length}
+              icon={<Upload aria-hidden className="button__icon" />}
+              loading={uploadPending}
+              onClick={() => {
+                if (!currentBackgroundName) {
+                  return;
+                }
+                if (!pendingImagePaths.length) {
+                  return;
+                }
+                onUploadImages();
               }}
-              pickLabel={t("common.chooseFile")}
-              pickerTitle={t("background.asset.selectImages")}
-              value={
-                pendingImagePaths.length ? t("background.asset.selectedFiles", { count: pendingImagePaths.length }) : ""
-              }
-            />
-          </span>
-        </label>
+            >
+              {t("background.asset.uploadImages")}
+            </AsyncButton>
+            <Button
+              disabled={!currentBackgroundName || !sprites.length}
+              icon={<Trash2 aria-hidden className="button__icon" />}
+              onClick={() => {
+                if (!currentBackgroundName || !sprites.length) {
+                  return;
+                }
+                onClearImages();
+              }}
+              variant="ghost"
+            >
+              {t("background.asset.clearImages")}
+            </Button>
+          </div>
+        </div>
         {!sprites.length ? <EmptyState title={t("background.asset.emptyImages")} /> : null}
         {selectedImage ? (
           <div className="asset-gallery-layout asset-gallery-layout--background">
             <ImageAssetGallery
+              imageDecoding="sync"
+              imageLoading="eager"
               items={backgroundImageItems}
               onSelect={onSelectImage}
               selectedIndex={selectedImageIndex}
             />
-            <aside className="asset-inspector">
+            <aside className="asset-inspector asset-inspector--background">
               <div className="asset-inspector__preview asset-inspector__preview--background">
                 {selectedImage.path ? (
                   <img alt="" decoding="async" src={fileUrl(selectedImage.path)} />

@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react";
 
 import type { LlmModelOption } from "../../shared/platform/types";
 import { IconButton, TextInput } from "../../shared/ui";
+import "../../shared/ui/CustomSelect.css";
 
 function capabilityLabel(tag: string) {
   const labels: Record<string, string> = {

@@ -5,12 +5,12 @@ import { ArrowDown, ArrowUp, Music, Trash2, Upload } from "lucide-react";
 import { fileUrl } from "../../entities/files/repository";
 import { baseName } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, Button, EmptyState, FilePicker, PathDisplay, TextInput } from "../../shared/ui";
+import { AsyncButton, AudioPlayer, Button, EmptyState, FilePicker, PathDisplay, TextInput } from "../../shared/ui";
 import type { BackgroundBgmItem, BgmSortDirection, BgmSortKey } from "./backgroundUtils";
 
-const BGM_ROW_HEIGHT = 58;
+const BGM_ROW_HEIGHT = 60;
 const VIRTUAL_OVERSCAN_ROWS = 4;
-const VIRTUAL_BGM_ROWS = 10;
+const VIRTUAL_BGM_ROWS = 8;
 
 /* ── Virtual scroll hook ── */
 
@@ -44,9 +44,12 @@ interface BackgroundBgmRowProps {
   onTagChange: (index: number, value: string) => void;
   onToggleSelection: (index: number, checked: boolean) => void;
   path: string;
+  previewLabel: string;
   removeLabel: string;
   selected: boolean;
+  selectLabel: string;
   tag: string;
+  tagLabel: string;
 }
 
 const BackgroundBgmRow = memo(function BackgroundBgmRow({
@@ -56,9 +59,12 @@ const BackgroundBgmRow = memo(function BackgroundBgmRow({
   onTagChange,
   onToggleSelection,
   path,
+  previewLabel,
   removeLabel,
   selected,
+  selectLabel,
   tag,
+  tagLabel,
 }: BackgroundBgmRowProps) {
   const handleDelete = useCallback(() => onDelete(index), [index, onDelete]);
   const handleTagChange = useCallback(
@@ -72,49 +78,44 @@ const BackgroundBgmRow = memo(function BackgroundBgmRow({
   const filename = baseName(path);
 
   return (
-    <tr aria-selected={selected}>
-      <td>
-        <input checked={selected} onChange={handleToggle} type="checkbox" />
-      </td>
-      <td>{index + 1}</td>
-      <td className="background-bgm-table__filename" title={filename}>
-        <span className="background-bgm-table__filename-inner">
+    <div aria-selected={selected} className="background-bgm-row" role="listitem">
+      <div className="background-bgm-row__select">
+        <input aria-label={`${selectLabel} ${index + 1}`} checked={selected} onChange={handleToggle} type="checkbox" />
+      </div>
+      <div className="background-bgm-row__index">{index + 1}</div>
+      <div className="background-bgm-row__file">
+        <span className="background-bgm-row__filename" title={filename}>
           <Music aria-hidden className="asset-row__icon" />
           <span>{filename}</span>
         </span>
-      </td>
-      <td>
-        <PathDisplay className="background-bgm-table__path" path={path} />
-      </td>
-      <td className="background-bgm-table__tag">
-        <TextInput onChange={handleTagChange} value={tag} />
-      </td>
-      <td className="background-bgm-table__preview">
-        {path ? <audio className="audio-inline" controls preload="none" src={fileUrl(path)} /> : null}
-      </td>
-      <td>
+        <PathDisplay className="background-bgm-row__path" path={path} />
+      </div>
+      <div className="background-bgm-row__tag">
+        <TextInput aria-label={tagLabel} onChange={handleTagChange} placeholder={tagLabel} value={tag} />
+      </div>
+      <div className="background-bgm-row__preview" title={previewLabel}>
+        {path ? <AudioPlayer compact label={`${previewLabel} ${filename}`} src={fileUrl(path)} /> : null}
+      </div>
+      <div className="background-bgm-row__actions">
         <AsyncButton
+          aria-label={`${removeLabel} ${filename}`}
+          className="background-bgm-row__remove"
           icon={<Trash2 aria-hidden className="button__icon" />}
           loading={deleting}
           onClick={handleDelete}
+          tooltip={removeLabel}
           variant="ghost"
-        >
-          {removeLabel}
-        </AsyncButton>
-      </td>
-    </tr>
+        />
+      </div>
+    </div>
   );
 });
 
-function BgmSpacerRow({ height }: { height: number }) {
+function BgmSpacer({ height }: { height: number }) {
   if (!height) {
     return null;
   }
-  return (
-    <tr aria-hidden className="background-virtual-table__spacer">
-      <td colSpan={7} style={{ height }} />
-    </tr>
-  );
+  return <div aria-hidden className="background-bgm-list__spacer" style={{ height }} />;
 }
 
 interface BackgroundBgmRowsProps {
@@ -171,76 +172,74 @@ const BackgroundBgmRows = memo(function BackgroundBgmRows({
   const SortIcon = sortDirection === "asc" ? ArrowUp : ArrowDown;
 
   return (
-    <div
-      className="data-table-wrap background-virtual-table"
-      onScroll={virtual.onScroll}
-      style={{ maxHeight: virtual.maxHeight }}
-    >
-      <table className="data-table background-bgm-table">
-        <colgroup>
-          <col className="background-bgm-table__select-col" />
-          <col className="background-bgm-table__index-col" />
-          <col className="background-bgm-table__filename-col" />
-          <col className="background-bgm-table__path-col" />
-          <col className="background-bgm-table__tag-col" />
-          <col className="background-bgm-table__preview-col" />
-          <col className="background-bgm-table__remove-col" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>
-              <button
-                aria-label={allSelected ? clearSelectionLabel : selectAllLabel}
-                aria-pressed={allSelected}
-                className="background-bgm-table__header-button"
-                onClick={onToggleAllSelection}
-                title={allSelected ? clearSelectionLabel : selectAllLabel}
-                type="button"
-              >
-                {selectLabel}
-              </button>
-            </th>
-            <th aria-sort={indexAriaSort}>
-              <button className="background-bgm-table__header-button" onClick={() => onSort("index")} type="button">
-                <span>{indexLabel}</span>
-                {sortKey === "index" ? <SortIcon aria-hidden className="background-bgm-table__sort-indicator" /> : null}
-              </button>
-            </th>
-            <th aria-sort={filenameAriaSort}>
-              <button className="background-bgm-table__header-button" onClick={() => onSort("filename")} type="button">
-                <span>{filenameLabel}</span>
-                {sortKey === "filename" ? (
-                  <SortIcon aria-hidden className="background-bgm-table__sort-indicator" />
-                ) : null}
-              </button>
-            </th>
-            <th>{pathLabel}</th>
-            <th>{tagLabel}</th>
-            <th>{previewLabel}</th>
-            <th>{removeLabel}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <BgmSpacerRow height={virtual.paddingTop} />
-          {visibleItems.map((item) => {
-            return (
+    <div className="background-bgm-panel">
+      <div className="background-bgm-list__header">
+        <button
+          aria-label={allSelected ? clearSelectionLabel : selectAllLabel}
+          aria-pressed={allSelected}
+          className="background-bgm-list__header-button background-bgm-list__header-button--center"
+          onClick={onToggleAllSelection}
+          title={allSelected ? clearSelectionLabel : selectAllLabel}
+          type="button"
+        >
+          {selectLabel}
+        </button>
+        <button
+          aria-label={indexAriaSort ? `${indexLabel} ${indexAriaSort}` : indexLabel}
+          className="background-bgm-list__header-button background-bgm-list__header-button--center background-bgm-list__header-button--index"
+          onClick={() => onSort("index")}
+          type="button"
+        >
+          <span>{indexLabel}</span>
+          {sortKey === "index" ? <SortIcon aria-hidden className="background-bgm-list__sort-indicator" /> : null}
+        </button>
+        <button
+          aria-label={filenameAriaSort ? `${filenameLabel} ${filenameAriaSort}` : filenameLabel}
+          className="background-bgm-list__header-button background-bgm-list__header-button--file"
+          onClick={() => onSort("filename")}
+          title={`${filenameLabel} / ${pathLabel}`}
+          type="button"
+        >
+          <span>{filenameLabel}</span>
+          {sortKey === "filename" ? <SortIcon aria-hidden className="background-bgm-list__sort-indicator" /> : null}
+        </button>
+        <span className="background-bgm-list__header-meta">{tagLabel}</span>
+        <span className="background-bgm-list__header-meta">{previewLabel}</span>
+        <span aria-hidden className="background-bgm-list__header-meta" />
+      </div>
+      <div
+        className="background-bgm-list"
+        onScroll={virtual.onScroll}
+        role="list"
+        style={{ maxHeight: virtual.maxHeight }}
+      >
+        <BgmSpacer height={virtual.paddingTop} />
+        {visibleItems.map((item) => {
+          return (
+            <div
+              className="background-bgm-list__slot"
+              key={`${item.path}-${item.originalIndex}`}
+              style={{ height: BGM_ROW_HEIGHT }}
+            >
               <BackgroundBgmRow
                 deleting={deleting}
                 index={item.originalIndex}
-                key={`${item.path}-${item.originalIndex}`}
                 onDelete={onDelete}
                 onTagChange={onTagChange}
                 onToggleSelection={onToggleSelection}
                 path={item.path}
+                previewLabel={previewLabel}
                 removeLabel={removeLabel}
+                selectLabel={selectLabel}
                 selected={selectedIndexes.has(item.originalIndex)}
                 tag={rowTags[item.originalIndex] ?? ""}
+                tagLabel={tagLabel}
               />
-            );
-          })}
-          <BgmSpacerRow height={virtual.paddingBottom} />
-        </tbody>
-      </table>
+            </div>
+          );
+        })}
+        <BgmSpacer height={virtual.paddingBottom} />
+      </div>
     </div>
   );
 });
@@ -294,58 +293,70 @@ export function BackgroundMusicSection({
 }: BackgroundMusicSectionProps) {
   const { t } = useI18n();
   const allBgmSelected = bgmList.length > 0 && selectedBgmIndexSet.size === bgmList.length;
+  const canUploadBgm = Boolean(currentBackgroundName && pendingBgmPaths.length);
+  const canDeleteSelectedBgm = Boolean(currentBackgroundName && selectedBgmIndexSet.size);
+  const canClearBgm = Boolean(currentBackgroundName && bgmList.length);
 
   return (
-    <section className="section">
+    <section className="section background-music-section">
       <div className="section__header">
         <h2 className="section__title">{t("background.section.bgm")}</h2>
-        <div className="page__actions">
-          <AsyncButton
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={uploadPending}
-            onClick={() => {
-              if (!currentBackgroundName || !pendingBgmPaths.length) {
-                return;
-              }
-              onUpload();
-            }}
-            variant="ghost"
-          >
-            {t("background.asset.uploadBgm")}
-          </AsyncButton>
-          <AsyncButton
-            icon={<Trash2 aria-hidden className="button__icon" />}
-            loading={batchDeletePending}
-            onClick={onBatchDelete}
-            variant="ghost"
-          >
-            {t("background.asset.deleteSelectedBgm")}
-          </AsyncButton>
-          <Button icon={<Trash2 aria-hidden className="button__icon" />} onClick={onClearAll} variant="ghost">
-            {t("background.asset.clearBgm")}
-          </Button>
-        </div>
       </div>
       <div className="asset-editor">
-        <label className="field-row field-row--stack">
-          <span className="field-row__label">{t("background.asset.selectBgm")}</span>
-          <span className="field-row__control">
-            <FilePicker
-              acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
-              multiple
-              onPathsChange={(paths) => {
-                if (paths.length) {
-                  onPendingBgmPathsChange(paths);
+        <div className="background-music-section__toolbar">
+          <label className="field-row field-row--stack background-music-section__picker">
+            <span className="field-row__label">{t("background.asset.selectBgm")}</span>
+            <span className="field-row__control">
+              <FilePicker
+                acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
+                multiple
+                onPathsChange={(paths) => {
+                  if (paths.length) {
+                    onPendingBgmPathsChange(paths);
+                  }
+                }}
+                pickLabel={t("common.chooseFile")}
+                pickerTitle={t("background.asset.selectBgm")}
+                value={
+                  pendingBgmPaths.length ? t("background.asset.selectedFiles", { count: pendingBgmPaths.length }) : ""
                 }
+              />
+            </span>
+          </label>
+          <div className="background-music-section__actions">
+            <AsyncButton
+              disabled={!canUploadBgm}
+              icon={<Upload aria-hidden className="button__icon" />}
+              loading={uploadPending}
+              onClick={() => {
+                if (!currentBackgroundName || !pendingBgmPaths.length) {
+                  return;
+                }
+                onUpload();
               }}
-              pickLabel={t("common.chooseFile")}
-              pickerTitle={t("background.asset.selectBgm")}
-              value={
-                pendingBgmPaths.length ? t("background.asset.selectedFiles", { count: pendingBgmPaths.length }) : ""
-              }
-            />
-          </span>
-        </label>
+              variant="ghost"
+            >
+              {t("background.asset.uploadBgm")}
+            </AsyncButton>
+            <AsyncButton
+              disabled={!canDeleteSelectedBgm}
+              icon={<Trash2 aria-hidden className="button__icon" />}
+              loading={batchDeletePending}
+              onClick={onBatchDelete}
+              variant="ghost"
+            >
+              {t("background.asset.deleteSelectedBgm")}
+            </AsyncButton>
+            <Button
+              disabled={!canClearBgm}
+              icon={<Trash2 aria-hidden className="button__icon" />}
+              onClick={onClearAll}
+              variant="ghost"
+            >
+              {t("background.asset.clearBgm")}
+            </Button>
+          </div>
+        </div>
         {!bgmList.length ? <EmptyState title={t("background.asset.emptyBgm")} /> : null}
         {bgmList.length ? (
           <BackgroundBgmRows
