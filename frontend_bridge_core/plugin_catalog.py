@@ -35,6 +35,7 @@ def _plugin_rows() -> list[dict[str, Any]]:
         from core.plugins.plugin_host import (
             collect_chat_ui_contributions,
             collect_frontend_config_contributions,
+            collect_frontend_page_contributions,
             collect_settings_contributions,
             collect_tools_tab_contributions,
             get_plugin_manager,
@@ -66,6 +67,16 @@ def _plugin_rows() -> list[dict[str, Any]]:
         if plugin_id and placement:
             chat_by_plugin.setdefault(plugin_id, []).append(placement)
     for contribution in collect_frontend_config_contributions():
+        plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
+        label = str(getattr(contribution, "title", "") or "").strip()
+        kind = str(getattr(contribution, "kind", "") or "").strip()
+        if not plugin_id or not label:
+            continue
+        if kind == "tools":
+            frontend_tools_by_plugin.setdefault(plugin_id, []).append(label)
+        else:
+            frontend_settings_by_plugin.setdefault(plugin_id, []).append(label)
+    for contribution in collect_frontend_page_contributions():
         plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
         label = str(getattr(contribution, "title", "") or "").strip()
         kind = str(getattr(contribution, "kind", "") or "").strip()

@@ -31,13 +31,14 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_settings_ui`          | Extra Settings sidebar page                                |
 | `register_tools_tab`            | Extra tab under **Settings → Tools**                       |
 | `register_frontend_config_page` | React-renderable plugin config page (schema + load/save callbacks) |
+| `register_frontend_page`        | Plugin-owned static frontend page embedded by iframe       |
 | `register_chat_ui_widget`       | Chat window widget + placement hint                        |
 | `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
 | `register_workflow`             | Workflow with optional output contract/schema              |
 | `register_output_contract_patch` | Patch an LLM output contract (fields, requirements, …)     |
 
 
-**Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
+**Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` / `FrontendPageContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
 
 ---
 
@@ -632,6 +633,54 @@ def initialize(self, register, plugin_root: Path, host) -> None:
 The schema must be JSON-safe. Supported field types match the React
 `PluginConfigFieldType`: `boolean`, `integer`, `number`, `password`, `select`,
 `text`, `textarea`, and `url`.
+
+---
+
+### `register_frontend_page(contribution)`
+
+Use this when a plugin needs its own richer frontend than the schema renderer
+can provide. Ship a built static page in the plugin directory, usually
+`plugins/<package>/frontend/dist/index.html`, and register that file as the
+entry. The host serves files from the entry directory and embeds the page in an
+iframe.
+
+If you also register a `FrontendConfigContribution` with the same `page_id` and
+`kind`, the page payload includes that schema and current values. The iframe can
+read `/api/plugins/<plugin_id>/ui` and save to
+`/api/plugins/<plugin_id>/ui/<page_id>/config`.
+
+```python
+from pathlib import Path
+from sdk.types import FrontendConfigContribution, FrontendPageContribution
+
+
+def initialize(self, register, plugin_root: Path, host) -> None:
+    page_id = "my_plugin.tools"
+
+    register.register_frontend_config_page(
+        FrontendConfigContribution(
+            page_id=page_id,
+            title="My tool",
+            kind="tools",
+            schema=[...],
+            load_values=load_values,
+            save_values=save_values,
+        )
+    )
+    register.register_frontend_page(
+        FrontendPageContribution(
+            page_id=page_id,
+            title="My tool",
+            kind="tools",
+            entry=(Path(__file__).parent / "frontend" / "dist" / "index.html").as_posix(),
+            order=80.0,
+        )
+    )
+```
+
+This keeps downloaded plugins self-contained: after install and app restart, the
+host discovers the contribution from the plugin's Python entry point and serves
+the bundled frontend files without rebuilding the main React app.
 
 ---
 

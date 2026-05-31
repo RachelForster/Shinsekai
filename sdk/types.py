@@ -29,6 +29,7 @@ __all__ = [
     "ChatOutputContract",
     "FieldPatch",
     "FrontendConfigContribution",
+    "FrontendPageContribution",
     "OutputContractPatch",
     "OutputFieldSpec",
     "PluginDescriptor",
@@ -105,6 +106,27 @@ class FrontendConfigContribution:
     kind: Literal["settings", "tools"] = "settings"
     description: str = ""
     restart_hint: str = ""
+    order: float = 100.0
+    plugin_id: str | None = None
+    plugin_version: str | None = None
+
+
+@dataclass(frozen=True)
+class FrontendPageContribution:
+    """
+    A plugin-owned frontend page served as static files and embedded by iframe.
+
+    ``entry`` points at the page's ``index.html``. Relative paths are resolved
+    from the current working directory; plugins may pass an absolute path based
+    on ``Path(__file__).parent``. Assets are served only from the entry file's
+    containing directory.
+    """
+
+    page_id: str
+    title: str
+    entry: str
+    kind: Literal["settings", "tools"] = "settings"
+    description: str = ""
     order: float = 100.0
     plugin_id: str | None = None
     plugin_version: str | None = None

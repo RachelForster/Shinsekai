@@ -6,7 +6,7 @@ from sdk.manager import PluginManager
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry
-from sdk.types import ChatUIContribution, FrontendConfigContribution
+from sdk.types import ChatUIContribution, FrontendConfigContribution, FrontendPageContribution
 
 
 def test_frontend_config_contribution_gets_plugin_context() -> None:
@@ -46,6 +46,23 @@ def test_chat_ui_contribution_gets_plugin_context() -> None:
     assert contribution.plugin_version == "1.2.3"
 
 
+def test_frontend_page_contribution_gets_plugin_context() -> None:
+    registry = PluginCapabilityRegistry()
+    registry.set_settings_ui_plugin_context("demo.plugin", "1.2.3")
+
+    registry.register_frontend_page(
+        FrontendPageContribution(
+            page_id="demo.frontend",
+            title="Demo Frontend",
+            entry="plugins/demo/frontend/dist/index.html",
+        )
+    )
+
+    contribution = registry.frontend_page_contributions[0]
+    assert contribution.plugin_id == "demo.plugin"
+    assert contribution.plugin_version == "1.2.3"
+
+
 def test_plugin_manager_collects_frontend_config_contributions(tmp_path: Path) -> None:
     saved: list[dict[str, object]] = []
 
@@ -74,6 +91,13 @@ def test_plugin_manager_collects_frontend_config_contributions(tmp_path: Path) -
                     save_values=lambda values: saved.append(dict(values)),
                 )
             )
+            register.register_frontend_page(
+                FrontendPageContribution(
+                    page_id="demo.frontend",
+                    title="Demo Frontend",
+                    entry="plugins/demo/frontend/dist/index.html",
+                )
+            )
 
     manager = PluginManager(plugin_data_root=tmp_path)
     manager.register_plugin_class(DemoPlugin)
@@ -88,3 +112,8 @@ def test_plugin_manager_collects_frontend_config_contributions(tmp_path: Path) -
 
     contributions[0].save_values({"value": 2})
     assert saved == [{"value": 2}]
+
+    frontend_pages = manager.collect_frontend_page_contributions()
+    assert len(frontend_pages) == 1
+    assert frontend_pages[0].plugin_id == "demo.plugin"
+    assert frontend_pages[0].plugin_version == "1.0.0"
