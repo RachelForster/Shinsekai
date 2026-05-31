@@ -1,5 +1,6 @@
 export * from "./AudioPlayer";
 export * from "./Button";
+export * from "./CustomSelect";
 export * from "./DataTable";
 export * from "./Dialog";
 export * from "./EmptyState";
