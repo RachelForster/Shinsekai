@@ -16,7 +16,11 @@ describe("IconButton", () => {
 
   it("fires onClick", () => {
     let fired = false;
-    render(<IconButton label="点击" onClick={() => (fired = true)} />);
+    render(
+      <IconButton label="点击" onClick={() => (fired = true)}>
+        ✓
+      </IconButton>,
+    );
     screen.getByRole("button").click();
     expect(fired).toBe(true);
   });
