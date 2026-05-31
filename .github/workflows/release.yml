@@ -139,9 +139,31 @@ jobs:
         run: |
           rm -rf release-assets
           mkdir -p release-assets
-          find frontend/src-tauri/target/release/bundle -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
-            -exec cp {} release-assets/ \;
+          version="$(node -p "require('./frontend/package.json').version")"
+          base="Shinsekai-${version}-${{ matrix.platform }}"
+          count=0
+          while IFS= read -r asset; do
+            name="$(basename "$asset")"
+            case "$name" in
+              *.AppImage) target="${base}.AppImage" ;;
+              *.deb) target="${base}.deb" ;;
+              *.dmg) target="${base}.dmg" ;;
+              *.msi) target="${base}.msi" ;;
+              *.exe) target="${base}-setup.exe" ;;
+              *) continue ;;
+            esac
+            cp "$asset" "release-assets/$target"
+            echo "$asset -> release-assets/$target"
+            count=$((count + 1))
+          done < <(
+            find frontend/src-tauri/target/release/bundle -type f \
+              \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
+              | sort
+          )
+          if [[ "$count" -eq 0 ]]; then
+            echo "No release assets were collected." >&2
+            exit 1
+          fi
           ls -lh release-assets
 
       - name: Upload release assets
