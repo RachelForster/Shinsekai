@@ -177,7 +177,7 @@ const BackgroundBgmRows = memo(function BackgroundBgmRows({
         <button
           aria-label={allSelected ? clearSelectionLabel : selectAllLabel}
           aria-pressed={allSelected}
-          className="background-bgm-list__header-button"
+          className="background-bgm-list__header-button background-bgm-list__header-button--center"
           onClick={onToggleAllSelection}
           title={allSelected ? clearSelectionLabel : selectAllLabel}
           type="button"
@@ -186,7 +186,7 @@ const BackgroundBgmRows = memo(function BackgroundBgmRows({
         </button>
         <button
           aria-label={indexAriaSort ? `${indexLabel} ${indexAriaSort}` : indexLabel}
-          className="background-bgm-list__header-button"
+          className="background-bgm-list__header-button background-bgm-list__header-button--center background-bgm-list__header-button--index"
           onClick={() => onSort("index")}
           type="button"
         >
