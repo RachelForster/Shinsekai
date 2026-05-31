@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { access, cp, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,6 +6,8 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(frontendDir, "..");
 const stageRoot = path.join(frontendDir, "src-tauri", "resources");
+const runtimeEnv = process.env.SHINSEKAI_TAURI_RUNTIME_DIR?.trim();
+const runtimeSource = runtimeEnv ? path.resolve(runtimeEnv) : path.join(repoRoot, "runtime");
 
 const files = ["VERSION", "frontend_bridge.py", "requirements.txt"];
 const directories = [
@@ -38,6 +40,15 @@ function filter(source) {
   return true;
 }
 
+async function pathExists(target) {
+  try {
+    await access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function copyFileToStage(relativePath) {
   await cp(path.join(repoRoot, relativePath), path.join(stageRoot, relativePath), { force: true });
 }
@@ -67,5 +78,19 @@ await cp(path.join(frontendDir, "dist"), path.join(stageRoot, "frontend", "dist"
   force: true,
   recursive: true,
 });
+
+if (await pathExists(runtimeSource)) {
+  await cp(runtimeSource, path.join(stageRoot, "runtime"), {
+    errorOnExist: false,
+    filter,
+    force: true,
+    recursive: true,
+  });
+  console.log(`Prepared embedded Python runtime from ${path.relative(repoRoot, runtimeSource) || "."}`);
+} else if (runtimeEnv) {
+  throw new Error(`SHINSEKAI_TAURI_RUNTIME_DIR does not exist: ${runtimeSource}`);
+} else {
+  console.log("No embedded Python runtime found; packaged app will use configured or system Python.");
+}
 
 console.log(`Prepared Tauri resources in ${path.relative(repoRoot, stageRoot)}`);
