@@ -92,6 +92,32 @@ describe("EditableModelSelect", () => {
 
     expect(screen.getByRole("button", { name: "Model ID" })).toBeDisabled();
   });
+
+  it("accepts an exact option with Enter and disables the text input when requested", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <EditableModelSelect
+        disabled={false}
+        id="model"
+        onChange={onChange}
+        options={options}
+        placeholder="Model ID"
+        value="deepseek-chat"
+      />,
+    );
+
+    fireEvent.focus(screen.getByRole("combobox"));
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+
+    expect(onChange).toHaveBeenCalledWith("deepseek-chat");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    rerender(
+      <EditableModelSelect disabled id="model" onChange={onChange} options={[]} placeholder="Model ID" value="" />,
+    );
+
+    expect(screen.getByRole("combobox")).toBeDisabled();
+  });
 });
 
 describe("ModelCapabilityBadge", () => {
