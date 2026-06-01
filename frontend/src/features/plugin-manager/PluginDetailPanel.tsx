@@ -21,6 +21,7 @@ import {
 } from "../../shared/ui";
 import {
   fallbackPluginUiPages,
+  localizePluginUiPage,
   pluginActionId,
   pluginConfigInitialValues,
   pluginConfigGroupsToFormGroups,
@@ -33,7 +34,7 @@ import {
 function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginUIPage }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const formGroups = useMemo(() => pluginConfigGroupsToFormGroups(page.schema ?? []), [page.schema]);
   const [draft, setDraft] = useState<PluginConfigDraft>(() => pluginConfigInitialValues(page));
 
@@ -52,11 +53,12 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
     },
     onSuccess(result) {
       setDraft(pluginConfigInitialValues(result.page));
+      const localizedPage = localizePluginUiPage(result.page, language);
       queryClient.invalidateQueries({ queryKey: pluginUiQueryKey(lookupId) });
       queryClient.invalidateQueries({ queryKey: pluginsQueryKey });
       showToast({
         kind: "success",
-        message: result.page.restartHint || result.message,
+        message: localizedPage.restartHint || result.message,
         title: t("plugin.detail.saveSuccess"),
       });
     },
@@ -119,7 +121,7 @@ interface PluginDetailPanelProps {
 }
 
 export function PluginDetailPanel({ detailPlugin, onBack }: PluginDetailPanelProps) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const detailLookupId = pluginActionId(detailPlugin);
   const [activeDetailPageId, setActiveDetailPageId] = useState("");
 
@@ -130,7 +132,11 @@ export function PluginDetailPanel({ detailPlugin, onBack }: PluginDetailPanelPro
   });
 
   const fallbackDetailPages = useMemo(() => fallbackPluginUiPages(detailPlugin), [detailPlugin]);
-  const detailPages = pluginDetailQuery.data?.pages ?? fallbackDetailPages;
+  const rawDetailPages = pluginDetailQuery.data?.pages ?? fallbackDetailPages;
+  const detailPages = useMemo(
+    () => rawDetailPages.map((page) => localizePluginUiPage(page, language)),
+    [language, rawDetailPages],
+  );
   const detailPluginRow = pluginDetailQuery.data?.plugin ?? detailPlugin;
   const detailPageSignature = detailPages.map(pluginUiPageKey).join("|");
 

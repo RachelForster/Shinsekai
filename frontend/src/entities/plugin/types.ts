@@ -10,6 +10,7 @@ export type {
   PluginConfigFieldSchema,
   PluginConfigFieldType,
   PluginConfigGroupSchema,
+  PluginConfigI18nMap,
   PluginConfigOption,
   PluginConfigSaveResult,
   PluginInstallInput,

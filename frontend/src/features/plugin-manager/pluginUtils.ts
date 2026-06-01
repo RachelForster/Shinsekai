@@ -1,5 +1,6 @@
 import type {
   PluginConfigFieldType,
+  PluginConfigI18nMap,
   PluginConfigGroupSchema,
   PluginCatalogItem,
   PluginInstallInput,
@@ -7,6 +8,7 @@ import type {
   PluginUIPage,
 } from "../../entities/plugin/types";
 import type { FieldKind, FormGroupSchema } from "../../shared/form-schema";
+import type { FrontendLanguage } from "../../shared/i18n/messages";
 
 export type PluginView = "installed" | "discover" | "mcp";
 export type PluginConfigDraft = Record<string, unknown>;
@@ -41,6 +43,50 @@ export function pluginInstallSource(input: PluginInstallInput | string) {
 
 export function pluginUiPageKey(page: PluginUIPage) {
   return `${page.kind}:${page.id}`;
+}
+
+function localizedPageI18n(i18n: PluginConfigI18nMap | undefined, language: FrontendLanguage) {
+  if (!i18n) {
+    return undefined;
+  }
+  return i18n[language] ?? i18n.en ?? i18n.zh_CN ?? Object.values(i18n)[0];
+}
+
+export function localizePluginUiPage(page: PluginUIPage, language: FrontendLanguage): PluginUIPage {
+  const pageI18n = localizedPageI18n(page.i18n, language);
+  if (!pageI18n) {
+    return page;
+  }
+  const groups = pageI18n.groups ?? {};
+  return {
+    ...page,
+    description: pageI18n.description ?? page.description,
+    restartHint: pageI18n.restartHint ?? page.restartHint,
+    schema: page.schema?.map((group) => {
+      const groupI18n = groups[group.id] ?? {};
+      const fields = groupI18n.fields ?? {};
+      return {
+        ...group,
+        description: groupI18n.description ?? group.description,
+        fields: group.fields.map((field) => {
+          const fieldI18n = fields[field.key] ?? {};
+          const optionLabels = fieldI18n.options ?? {};
+          return {
+            ...field,
+            description: fieldI18n.description ?? field.description,
+            label: fieldI18n.label ?? field.label,
+            options: field.options?.map((option) => ({
+              ...option,
+              label: optionLabels[option.value] ?? option.label,
+            })),
+            placeholder: fieldI18n.placeholder ?? field.placeholder,
+          };
+        }),
+        title: groupI18n.title ?? group.title,
+      };
+    }),
+    title: pageI18n.title ?? page.title,
+  };
 }
 
 export function fallbackPluginUiPages(plugin: PluginManifest | null): PluginUIPage[] {

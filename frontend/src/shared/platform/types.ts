@@ -252,9 +252,32 @@ export interface PluginConfigGroupSchema {
   title: string;
 }
 
+export interface PluginConfigFieldI18n {
+  description?: string;
+  label?: string;
+  options?: Record<string, string>;
+  placeholder?: string;
+}
+
+export interface PluginConfigGroupI18n {
+  description?: string;
+  fields?: Record<string, PluginConfigFieldI18n>;
+  title?: string;
+}
+
+export interface PluginConfigPageI18n {
+  description?: string;
+  groups?: Record<string, PluginConfigGroupI18n>;
+  restartHint?: string;
+  title?: string;
+}
+
+export type PluginConfigI18nMap = Record<string, PluginConfigPageI18n>;
+
 export interface PluginUIPage {
   description?: string;
   frontendUrl?: string;
+  i18n?: PluginConfigI18nMap;
   id: string;
   kind: PluginUIPageKind;
   order: number;
