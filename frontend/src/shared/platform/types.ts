@@ -232,7 +232,7 @@ export interface PluginConfigOption {
 }
 
 export interface PluginConfigFieldSchema {
-  defaultValue?: boolean | number | string;
+  defaultValue?: unknown;
   description?: string;
   key: string;
   label: string;

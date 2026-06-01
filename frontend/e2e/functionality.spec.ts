@@ -6,6 +6,13 @@ const apiBase = process.env.SHINSEKAI_API_BASE ?? "http://127.0.0.1:8787";
 const projectRoot = process.env.SHINSEKAI_PROJECT_ROOT ?? path.resolve(process.cwd(), "..");
 const hasLiveBridge = Boolean(process.env.SHINSEKAI_API_BASE && process.env.SHINSEKAI_PROJECT_ROOT);
 
+declare global {
+  interface Window {
+    __pluginSavePayloads?: Array<{ id: string; pageId: string; values: Record<string, unknown> }>;
+    __SHINSEKAI_IPC__?: unknown;
+  }
+}
+
 async function requestJson<T>(request: APIRequestContext, method: "get" | "post", endpoint: string, data?: unknown) {
   const response =
     method === "get"
@@ -23,6 +30,107 @@ function fieldControl(page: Page, label: string, selector: string) {
   return field(page, label).locator(selector).first();
 }
 
+async function installPluginConfigurationMock(page: Page) {
+  await page.addInitScript(() => {
+    const plugin = {
+      author: "E2E",
+      description: "Configuration is provided dynamically.",
+      directory: "plugins/e2e_frontend_config",
+      enabled: true,
+      entry: "e2e.plugin",
+      id: "e2e.plugin",
+      loaded: true,
+      permissions: ["settings"],
+      settingsPages: ["settings"],
+      slots: ["settings-extension"],
+      title: "E2E Plugin",
+      toolsTabs: [],
+      version: "1.0.0",
+    };
+    const configPage = {
+      description: "Default description",
+      i18n: {
+        zh_CN: {
+          description: "ZH page description",
+          groups: {
+            main: {
+              fields: {
+                displayName: { label: "Display Name", placeholder: "Name" },
+                extra: { label: "Extra JSON" },
+                mode: { label: "Mode", options: { auto: "Automatic", manual: "Manual" } },
+              },
+              title: "ZH Group",
+            },
+          },
+          restartHint: "ZH Restart",
+          title: "ZH Settings",
+        },
+      },
+      id: "settings",
+      kind: "settings",
+      order: 0,
+      pluginId: "e2e.plugin",
+      pluginVersion: "1.0.0",
+      restartHint: "Restart required",
+      schema: [
+        {
+          fields: [
+            { defaultValue: "Miku", key: "displayName", label: "Name", placeholder: "Name", type: "text" },
+            {
+              defaultValue: "auto",
+              key: "mode",
+              label: "Mode",
+              options: [
+                { label: "Auto", value: "auto" },
+                { label: "Manual", value: "manual" },
+              ],
+              type: "select",
+            },
+            { defaultValue: { rate: 1 }, key: "extra", label: "Extra", span: "full", type: "json" },
+          ],
+          id: "main",
+          title: "Main",
+        },
+      ],
+      title: "Settings",
+      values: { displayName: "Miku", extra: { rate: 1 }, mode: "auto" },
+    };
+
+    window.__pluginSavePayloads = [];
+    window.__SHINSEKAI_IPC__ = {
+      config: {
+        get: async () => ({
+          api_config: {},
+          background_list: [],
+          characters: [],
+          system_config: { theme_color: "#2f7cff", ui_language: "zh_CN" },
+        }),
+      },
+      files: {
+        browse: async () => ({ cwd: "/", entries: [], roots: [] }),
+        fileUrl: (value: string) => value,
+        openExternal: async () => undefined,
+      },
+      plugins: {
+        appUpdateInfo: async () => ({ repo: "example/repo", version: "test" }),
+        appUpdateRun: async () => ({ message: "updated", version: "test" }),
+        appUpdateTags: async () => [],
+        catalog: async () => [],
+        getUi: async () => ({ pages: [configPage], plugin }),
+        install: async () => plugin,
+        list: async () => [plugin],
+        repoTags: async () => [],
+        saveUiConfig: async (id: string, pageId: string, values: Record<string, unknown>) => {
+          window.__pluginSavePayloads?.push({ id, pageId, values });
+          return { message: "Saved", page: { ...configPage, values }, plugin };
+        },
+        setEnabled: async () => plugin,
+        uninstall: async () => ({ message: "uninstalled" }),
+      },
+    };
+  });
+}
+
 test("API model dropdown closes when focus moves outside", async ({ page }) => {
   await page.goto("/#/settings/api");
   await expect(page.getByRole("heading", { exact: true, name: "API 配置" })).toBeVisible();
@@ -38,6 +146,38 @@ test("API model dropdown closes when focus moves outside", async ({ page }) => {
 
   await page.getByRole("heading", { exact: true, name: "API 配置" }).click();
   await expect(listbox).toBeHidden();
+});
+
+test("plugin configuration page renders dynamic i18n schema and saves edited values", async ({ page }) => {
+  await installPluginConfigurationMock(page);
+  await page.goto("/#/settings/plugins");
+
+  const card = page.locator(".plugin-card").filter({ hasText: "E2E Plugin" });
+  await expect(card).toBeVisible();
+  await card.locator(".plugin-card__actions button").last().click();
+
+  await expect(page.getByText("ZH page description")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ZH Group" })).toBeVisible();
+  await expect(fieldControl(page, "Display Name", "input")).toHaveValue("Miku");
+  await expect(fieldControl(page, "Mode", ".custom-select__button")).toContainText("Automatic");
+
+  await fieldControl(page, "Display Name", "input").fill("Rin");
+  await fieldControl(page, "Mode", ".custom-select__button").click();
+  await page.getByRole("option", { name: "Manual" }).click();
+  await fieldControl(page, "Extra JSON", "textarea").fill('{"rate":2}');
+  await fieldControl(page, "Extra JSON", "textarea").blur();
+  await page.locator(".plugin-detail-page__footer button").click();
+
+  await expect(page.locator(".toast__message").filter({ hasText: "ZH Restart" })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.__pluginSavePayloads ?? []))
+    .toEqual([
+      {
+        id: "e2e.plugin",
+        pageId: "settings",
+        values: { displayName: "Rin", extra: { rate: 2 }, mode: "manual" },
+      },
+    ]);
 });
 
 async function exportCharacterPackage(request: APIRequestContext, name: string) {
