@@ -655,8 +655,8 @@ def initialize(self, register, plugin_root: Path, host) -> None:
 ```
 
 The schema must be JSON-safe. Supported field types match the React
-`PluginConfigFieldType`: `boolean`, `integer`, `number`, `password`, `select`,
-`text`, `textarea`, and `url`.
+`PluginConfigFieldType`: `boolean`, `integer`, `json`, `number`, `password`,
+`select`, `text`, `textarea`, and `url`.
 
 The optional `i18n` map is keyed by frontend language (`zh_CN`, `en`, `ja`).
 It can override page `title`, `description`, `restartHint`, group

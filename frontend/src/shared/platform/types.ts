@@ -218,6 +218,7 @@ export interface McpToolPreview {
 export type PluginConfigFieldType =
   | "boolean"
   | "integer"
+  | "json"
   | "number"
   | "password"
   | "select"
