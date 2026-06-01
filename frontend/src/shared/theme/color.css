@@ -88,12 +88,16 @@
 
   /* Tooltip */
   --color-tooltip-bg: light-dark(
-    color-mix(in oklch, var(--theme-accent) 28%, rgb(32 24 28 / 0.96)),
+    color-mix(in oklch, var(--theme-accent) 18%, rgb(32 24 28 / 0.96)),
     color-mix(in oklch, var(--theme-accent) 10%, rgb(12 8 10 / 0.96))
   );
+  --color-tooltip-text: light-dark(
+    color-mix(in oklch, var(--theme-accent) 4%, white),
+    color-mix(in oklch, var(--theme-accent) 8%, white)
+  );
   --color-tooltip-border: light-dark(
-    color-mix(in oklch, var(--theme-accent) 22%, transparent),
-    color-mix(in oklch, var(--theme-accent) 28%, transparent)
+    color-mix(in oklch, var(--theme-accent) 34%, rgba(255 255 255 / 0.18)),
+    color-mix(in oklch, var(--theme-accent) 28%, rgba(255 255 255 / 0.14))
   );
 
   /* Accent overlays */

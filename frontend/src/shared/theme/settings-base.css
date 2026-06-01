@@ -302,7 +302,7 @@ details > .field-row + .field-row {
   border-radius: var(--radius-control);
   background: var(--color-tooltip-bg);
   box-shadow: 0 12px 30px var(--color-shadow);
-  color: var(--color-text-primary);
+  color: var(--color-tooltip-text);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.45;
