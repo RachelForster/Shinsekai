@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  fallbackPluginUiPages,
   localizePluginUiPage,
+  pluginActionId,
   pluginConfigGroupsToFormGroups,
   pluginConfigInitialValues,
+  pluginHasManifestEntry,
+  pluginInstallSource,
+  pluginSettingsPages,
+  pluginToolsTabs,
+  pluginUiPageKey,
 } from "../features/plugin-manager/pluginUtils";
-import type { PluginUIPage } from "../shared/platform/types";
+import type { PluginManifest, PluginUIPage } from "../shared/platform/types";
 
 function makePage(): PluginUIPage {
   return {
@@ -111,5 +118,51 @@ describe("plugin config i18n", () => {
       enabled: true,
       extra: { retries: 2 },
     });
+  });
+});
+
+describe("plugin manager utilities", () => {
+  const plugin: PluginManifest = {
+    author: "Tester",
+    description: "Utility plugin",
+    directory: "plugins/utility",
+    enabled: true,
+    entry: "plugins.utility:Plugin",
+    id: "utility",
+    loaded: true,
+    permissions: ["settings"],
+    settingsPages: ["Settings", "Advanced"],
+    slots: ["settings-extension"],
+    title: "Utility",
+    toolsTabs: ["Inspector"],
+    version: "1.0.0",
+  };
+
+  it("uses manifest entry as the action id and detects missing entries", () => {
+    expect(pluginActionId(plugin)).toBe("plugins.utility:Plugin");
+    expect(pluginActionId({ ...plugin, entry: "", id: "fallback" })).toBe("fallback");
+    expect(pluginHasManifestEntry(plugin)).toBe(true);
+    expect(pluginHasManifestEntry({ ...plugin, entry: "   " })).toBe(false);
+  });
+
+  it("normalizes install sources and plugin page lists", () => {
+    expect(pluginInstallSource("owner/repo")).toBe("owner/repo");
+    expect(pluginInstallSource({ source: "plugins.demo:Plugin", tagName: "v1.0.0" })).toBe("plugins.demo:Plugin");
+    expect(pluginSettingsPages(plugin)).toEqual(["Settings", "Advanced"]);
+    expect(pluginToolsTabs(plugin)).toEqual(["Inspector"]);
+    expect(pluginSettingsPages(null)).toEqual([]);
+    expect(pluginToolsTabs(null)).toEqual([]);
+  });
+
+  it("creates stable fallback UI page keys for settings and tools pages", () => {
+    const pages = fallbackPluginUiPages(plugin);
+
+    expect(pages.map(pluginUiPageKey)).toEqual(["settings:settings-0", "settings:settings-1", "tools:tools-0"]);
+    expect(pages.map((page) => [page.title, page.order, page.pluginId, page.pluginVersion])).toEqual([
+      ["Settings", 0, "utility", "1.0.0"],
+      ["Advanced", 1, "utility", "1.0.0"],
+      ["Inspector", 2, "utility", "1.0.0"],
+    ]);
+    expect(fallbackPluginUiPages(null)).toEqual([]);
   });
 });
