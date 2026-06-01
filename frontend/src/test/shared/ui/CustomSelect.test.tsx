@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { CustomSelect } from "../../../shared/ui/CustomSelect";
+import { CustomSelect } from "../../../shared/ui";
 
 describe("CustomSelect", () => {
   it("renders the selected label and emits select-like change events", () => {
@@ -27,29 +27,47 @@ describe("CustomSelect", () => {
     });
   });
 
-  it("skips disabled options during keyboard navigation", () => {
+  it("skips disabled options during keyboard selection", () => {
     const onChange = vi.fn();
     render(
-      <CustomSelect id="provider" onChange={onChange} defaultValue="a">
-        <option value="a">A</option>
-        <option disabled value="b">
-          B
+      <CustomSelect id="provider" onChange={onChange} defaultValue="first">
+        <option value="first">First</option>
+        <option disabled value="blocked">
+          Blocked
         </option>
-        <option value="c">C</option>
+        <option value="last">Last</option>
       </CustomSelect>,
     );
 
-    const combo = screen.getByRole("combobox");
-    fireEvent.keyDown(combo, { key: "ArrowDown" });
-    fireEvent.keyDown(combo, { key: "ArrowDown" });
-    fireEvent.keyDown(combo, { key: "Enter" });
+    const trigger = screen.getByRole("combobox");
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(trigger, { key: "Enter" });
 
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange.mock.calls[0][0].target.value).toBe("c");
-    expect(screen.getByRole("combobox")).toHaveTextContent("C");
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ target: expect.objectContaining({ value: "last" }) }),
+    );
+    expect(screen.getByRole("combobox")).toHaveTextContent("Last");
   });
 
-  it("falls back to the native select for multiple mode", () => {
+  it("closes when focus moves outside", () => {
+    render(
+      <>
+        <CustomSelect id="theme" defaultValue="dark">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </CustomSelect>
+        <button type="button">Outside</button>
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("combobox"));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    fireEvent.focusIn(screen.getByRole("button", { name: "Outside" }));
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the native select when multiple is enabled", () => {
     render(
       <CustomSelect defaultValue={["a", "b"]} multiple>
         <option value="a">A</option>

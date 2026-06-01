@@ -29,6 +29,57 @@ def test_frontend_config_contribution_gets_plugin_context() -> None:
     assert contribution.load_values() == {"enabled": True}
 
 
+def test_frontend_config_contribution_keeps_i18n_payload() -> None:
+    from frontend_bridge_core.plugin_ui import _frontend_config_page_payload
+
+    contribution = FrontendConfigContribution(
+        page_id="demo",
+        title="Demo",
+        description="Default description",
+        restart_hint="Restart required",
+        schema=[
+            {
+                "fields": [
+                    {
+                        "key": "enabled",
+                        "label": "Enabled",
+                        "options": [{"label": "Yes", "value": "yes"}],
+                        "type": "select",
+                    }
+                ],
+                "id": "main",
+                "title": "Main",
+            }
+        ],
+        i18n={
+            "zh_CN": {
+                "description": "默认说明",
+                "groups": {
+                    "main": {
+                        "fields": {
+                            "enabled": {
+                                "label": "启用",
+                                "options": {"yes": "是"},
+                            }
+                        },
+                        "title": "主要",
+                    }
+                },
+                "restartHint": "需要重启",
+                "title": "演示",
+            }
+        },
+        load_values=lambda: {"enabled": "yes"},
+        save_values=lambda values: None,
+    )
+
+    payload = _frontend_config_page_payload(contribution)
+
+    assert payload["i18n"]["zh_CN"]["title"] == "演示"
+    assert payload["i18n"]["zh_CN"]["groups"]["main"]["fields"]["enabled"]["label"] == "启用"
+    assert payload["values"] == {"enabled": "yes"}
+
+
 def test_chat_ui_contribution_gets_plugin_context() -> None:
     registry = PluginCapabilityRegistry()
     registry.set_settings_ui_plugin_context("demo.plugin", "1.2.3")

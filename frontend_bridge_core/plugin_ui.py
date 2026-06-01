@@ -339,6 +339,7 @@ def _frontend_config_page_payload(contribution: Any) -> dict[str, Any]:
         raise ValueError(f"frontend config page {page_id!r} load_values must return a mapping")
     return {
         "description": str(getattr(contribution, "description", "") or ""),
+        "i18n": dict(getattr(contribution, "i18n", {}) or {}),
         "id": page_id,
         "kind": kind,
         "order": float(getattr(contribution, "order", 100.0) or 100.0),
@@ -377,7 +378,7 @@ def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
         config_page = _frontend_config_page_payload(config_contribution)
         if str(config_page.get("kind") or "settings") != kind:
             continue
-        for key in ("restartHint", "schema", "values"):
+        for key in ("i18n", "restartHint", "schema", "values"):
             if key in config_page:
                 page[key] = config_page[key]
         if not page["description"] and config_page.get("description"):

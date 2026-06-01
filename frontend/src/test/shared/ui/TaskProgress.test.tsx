@@ -6,33 +6,35 @@ import { TaskProgress } from "../../../shared/ui";
 describe("TaskProgress", () => {
   it("renders nothing without a task", () => {
     const { container } = render(<TaskProgress task={null} />);
+
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("clamps progress and shows recent logs", () => {
+  it("clamps progress, renders the message, and limits logs from the end", () => {
     render(
       <TaskProgress
         logLimit={2}
         task={{
-          logs: ["first", "second", "third"],
-          message: "Downloading",
-          phase: "running",
+          logs: ["prepare", "download", "done"],
+          message: "Almost there",
+          phase: "install",
           progress: 1.4,
           status: "running",
         }}
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("running");
+    expect(screen.getByRole("status")).toHaveTextContent("install");
     expect(screen.getByRole("status")).toHaveTextContent("100%");
-    expect(screen.getByText("Downloading")).toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.textContent === "second\nthird")).toBeInTheDocument();
+    expect(screen.getByText("Almost there")).toBeInTheDocument();
+    expect(screen.queryByText("prepare")).not.toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === "download\ndone")).toBeInTheDocument();
   });
 
   it("uses status text when progress and message are absent", () => {
-    render(<TaskProgress task={{ phase: "queued", progress: null, status: "queued" }} />);
+    render(<TaskProgress task={{ phase: "queued", status: "waiting" }} />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("queued");
-    expect(screen.queryByText("%")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("waiting");
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 });

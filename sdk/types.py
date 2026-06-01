@@ -96,6 +96,10 @@ class FrontendConfigContribution:
     this contribution does not expose a Qt ``QWidget``. The bridge serializes
     ``schema`` and ``load_values()`` to the frontend, then calls
     ``save_values(values)`` when the user saves.
+
+    ``i18n`` may provide localized labels keyed by UI language, e.g.
+    ``{"zh_CN": {"title": "...", "groups": {"main": {"fields": {"enabled": {"label": "..."}}}}}}``.
+    Missing localized strings fall back to the base ``title`` / ``schema`` strings.
     """
 
     page_id: str
@@ -109,6 +113,7 @@ class FrontendConfigContribution:
     order: float = 100.0
     plugin_id: str | None = None
     plugin_version: str | None = None
+    i18n: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

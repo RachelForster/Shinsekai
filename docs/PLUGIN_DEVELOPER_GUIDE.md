@@ -623,6 +623,30 @@ def initialize(self, register, plugin_root: Path, host) -> None:
                     ],
                 }
             ],
+            i18n={
+                "zh_CN": {
+                    "title": "我的插件",
+                    "groups": {
+                        "main": {
+                            "title": "主要",
+                            "fields": {
+                                "enabled": {"label": "启用"},
+                            },
+                        }
+                    },
+                },
+                "ja": {
+                    "title": "マイプラグイン",
+                    "groups": {
+                        "main": {
+                            "title": "メイン",
+                            "fields": {
+                                "enabled": {"label": "有効"},
+                            },
+                        }
+                    },
+                },
+            },
             load_values=load_values,
             save_values=save_values,
             order=120.0,
@@ -631,8 +655,14 @@ def initialize(self, register, plugin_root: Path, host) -> None:
 ```
 
 The schema must be JSON-safe. Supported field types match the React
-`PluginConfigFieldType`: `boolean`, `integer`, `number`, `password`, `select`,
-`text`, `textarea`, and `url`.
+`PluginConfigFieldType`: `boolean`, `integer`, `json`, `number`, `password`,
+`select`, `text`, `textarea`, and `url`.
+
+The optional `i18n` map is keyed by frontend language (`zh_CN`, `en`, `ja`).
+It can override page `title`, `description`, `restartHint`, group
+`title` / `description`, and field `label` / `description` / `placeholder`.
+For select fields, use `options` keyed by option `value`, for example
+`{"options": {"chromium": "Chromium（Playwright）"}}`.
 
 ---
 

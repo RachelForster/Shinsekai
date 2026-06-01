@@ -72,6 +72,7 @@ def test_frontend_config_page_payload_normalizes_kind_and_values():
     assert payload == {
         "description": "Config page",
         "id": "settings",
+        "i18n": {},
         "kind": "settings",
         "order": 12.5,
         "pluginId": "demo/plugin",
