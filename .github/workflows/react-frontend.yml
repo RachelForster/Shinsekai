@@ -2,6 +2,8 @@ name: React Frontend
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - ".github/workflows/react-frontend.yml"
       - "frontend/**"
@@ -21,6 +23,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
   group: react-frontend-${{ github.workflow }}-${{ github.ref }}

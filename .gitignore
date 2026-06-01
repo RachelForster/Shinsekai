@@ -41,3 +41,6 @@ runtime/
 /frontend/coverage
 /frontend/playwright-report
 /frontend/test-results
+/frontend/src-tauri/gen
+/frontend/src-tauri/resources
+/frontend/src-tauri/target

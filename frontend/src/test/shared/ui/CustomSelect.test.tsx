@@ -4,26 +4,33 @@ import { describe, expect, it, vi } from "vitest";
 import { CustomSelect } from "../../../shared/ui";
 
 describe("CustomSelect", () => {
-  it("renders the selected option and emits select-like change events", () => {
+  it("renders the selected label and emits select-like change events", () => {
     const onChange = vi.fn();
     render(
-      <CustomSelect id="mode" name="mode" onChange={onChange} value="auto">
-        <option value="auto">Automatic</option>
-        <option value="manual">Manual</option>
+      <CustomSelect id="mode" name="mode" onChange={onChange} value="safe">
+        <option value="fast">Fast</option>
+        <option value="safe">Safe</option>
       </CustomSelect>,
     );
 
-    fireEvent.click(screen.getByRole("combobox", { name: "" }));
-    fireEvent.click(screen.getByRole("option", { name: "Manual" }));
+    const combo = screen.getByRole("combobox");
+    expect(combo).toHaveTextContent("Safe");
+
+    fireEvent.click(combo);
+    fireEvent.click(screen.getByRole("option", { name: "Fast" }));
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange.mock.calls[0][0].target).toMatchObject({ id: "mode", name: "mode", value: "manual" });
+    expect(onChange.mock.calls[0][0].target).toMatchObject({
+      id: "mode",
+      name: "mode",
+      value: "fast",
+    });
   });
 
   it("skips disabled options during keyboard selection", () => {
     const onChange = vi.fn();
     render(
-      <CustomSelect id="provider" onChange={onChange} value="first">
+      <CustomSelect id="provider" onChange={onChange} defaultValue="first">
         <option value="first">First</option>
         <option disabled value="blocked">
           Blocked
@@ -40,6 +47,7 @@ describe("CustomSelect", () => {
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ target: expect.objectContaining({ value: "last" }) }),
     );
+    expect(screen.getByRole("combobox")).toHaveTextContent("Last");
   });
 
   it("closes when focus moves outside", () => {
@@ -60,9 +68,8 @@ describe("CustomSelect", () => {
   });
 
   it("falls back to the native select when multiple is enabled", () => {
-    const onChange = vi.fn();
     render(
-      <CustomSelect multiple onChange={onChange} value={["a"]}>
+      <CustomSelect defaultValue={["a", "b"]} multiple>
         <option value="a">A</option>
         <option value="b">B</option>
       </CustomSelect>,

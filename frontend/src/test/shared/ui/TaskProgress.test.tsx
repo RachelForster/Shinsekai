@@ -28,7 +28,7 @@ describe("TaskProgress", () => {
     expect(screen.getByRole("status")).toHaveTextContent("100%");
     expect(screen.getByText("Almost there")).toBeInTheDocument();
     expect(screen.queryByText("prepare")).not.toBeInTheDocument();
-    expect(document.querySelector(".task-progress__log")?.textContent).toBe("download\ndone");
+    expect(screen.getByText((_, element) => element?.textContent === "download\ndone")).toBeInTheDocument();
   });
 
   it("uses status text when progress and message are absent", () => {

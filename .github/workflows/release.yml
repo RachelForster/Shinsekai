@@ -4,187 +4,170 @@ on:
   schedule:
     - cron: "0 9 1,15 * *"
   workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   tag:
     runs-on: ubuntu-latest
     outputs:
-      TAG: ${{ steps.gen.outputs.TAG }}
+      tag: ${{ steps.gen.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate tag
+      - name: Resolve release tag
         id: gen
+        shell: bash
         run: |
-          VER=$(head -1 VERSION | sed 's/-dev//' | sed 's/^v//')
-          TAG="v${VER}"
-          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            VER="$(head -1 VERSION | sed 's/-dev//' | sed 's/^v//')"
+            TAG="v${VER}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-  test:
+  release:
     needs: tag
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            libegl1 libxkbcommon0 libxcb-cursor0 libxcb-icccm4 \
-            libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
-            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
-            libglib2.0-0 libportaudio2 portaudio19-dev
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip -q
-          pip install -r requirements.txt -q
-          pip install pytest pytest-qt pytest-mock pytest-env -q
-
-      - name: Run tests
-        env:
-          QT_QPA_PLATFORM: offscreen
-          PYTHONIOENCODING: utf-8
-        run: python -m pytest -v --tb=short --strict-markers -p no:warnings
-
-  release:
-    needs: [tag, test]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Create Release
+      - name: Create or update release (tag)
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.tag.outputs.TAG }}
-          name: ${{ needs.tag.outputs.TAG }}
+          tag_name: ${{ needs.tag.outputs.tag }}
+          name: ${{ needs.tag.outputs.tag }}
           generate_release_notes: true
           prerelease: true
 
-  bundle:
-    needs: [tag, test]
+      - name: Create or update release (scheduled/manual)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.tag }}
+          name: ${{ needs.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          prerelease: true
+
+  package:
+    needs: [tag, release]
+    name: Package ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            platform: windows-x64
-            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-windows-x64.zip
-            embed_url: https://www.python.org/ftp/python/3.10.8/python-3.10.8-embed-amd64.zip
-            embed_archive: python-embed.zip
-            pth_file: python310._pth
-          - os: macos-latest
-            platform: macos-arm64
-            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-macos-arm64.zip
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
+          - platform: linux-x64
+            os: ubuntu-latest
+            bundles: deb,appimage
+          - platform: linux-arm64
+            os: ubuntu-24.04-arm
+            bundles: deb,appimage
+          - platform: windows-x64
+            os: windows-latest
+            bundles: msi,nsis
+          - platform: windows-arm64
+            os: windows-11-arm
+            bundles: msi,nsis
+          - platform: macos-arm64
+            os: macos-14
+            bundles: dmg
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python 3.10 (Windows download embeddable)
-        if: matrix.platform == 'windows-x64'
-        shell: bash
-        run: |
-          curl -fL -o python-embed.zip "https://www.python.org/ftp/python/3.10.8/python-3.10.8-embed-amd64.zip"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
-      - name: Setup Python 3.10 (macOS via python-build-standalone)
-        if: matrix.platform != 'windows-x64'
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri -> target
+
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
         run: |
-          RELEASES_URL="https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/20221002"
-          echo "Fetching release metadata: $RELEASES_URL"
-          RESP=$(curl -sS --connect-timeout 15 --max-time 30 \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "$RELEASES_URL")
-          if [ -z "$RESP" ]; then
-            echo "ERROR: empty response from GitHub API"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev patchelf
+          if apt-cache show libfuse2t64 >/dev/null 2>&1; then
+            sudo apt-get install -y -qq libfuse2t64
+          else
+            sudo apt-get install -y -qq libfuse2
+          fi
+
+      - name: Install Windows installer dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install wixtoolset nsis --no-progress -y
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri bundle
+        working-directory: frontend
+        shell: bash
+        run: pnpm tauri build --ci --bundles ${{ matrix.bundles }}
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          rm -rf release-assets
+          mkdir -p release-assets
+          version="$(node -p "require('./frontend/package.json').version")"
+          base="Shinsekai-${version}_${{ matrix.platform }}"
+          count=0
+          while IFS= read -r asset; do
+            name="$(basename "$asset")"
+            case "$name" in
+              *.AppImage) target="${base}.AppImage" ;;
+              *.deb) target="${base}.deb" ;;
+              *.dmg) target="${base}.dmg" ;;
+              *.msi) target="${base}.msi" ;;
+              *.exe) target="${base}-setup.exe" ;;
+              *) continue ;;
+            esac
+            cp "$asset" "release-assets/$target"
+            echo "$asset -> release-assets/$target"
+            count=$((count + 1))
+          done < <(
+            find frontend/src-tauri/target/release/bundle -type f \
+              \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
+              | sort
+          )
+          if [[ "$count" -eq 0 ]]; then
+            echo "No release assets were collected." >&2
             exit 1
           fi
-          ASSET_URL=$(echo "$RESP" | python3 -c "
-          import sys, json
-          rel = json.load(sys.stdin)
-          if not isinstance(rel, dict):
-              err = rel.get('message', 'unknown error')
-              raise SystemExit(f'GitHub API error: {err}')
-          for a in rel.get('assets', []):
-              n = a.get('name', '')
-              if 'aarch64-apple-darwin' in n and n.endswith('.tar.gz'):
-                  print(a['browser_download_url'])
-                  raise SystemExit(0)
-          raise SystemExit('no matching asset found')
-          ")
-          echo "Downloading: $ASSET_URL"
-          curl -fL --connect-timeout 15 --max-time 600 -o python-standalone.tar.gz "$ASSET_URL"
+          ls -lh release-assets
 
-      - name: Extract Python to runtime/
-        shell: bash
-        run: |
-          rm -rf runtime
-          if [[ "${{ matrix.platform }}" == "windows-x64" ]]; then
-            mkdir -p runtime
-            unzip -q python-embed.zip -d runtime/
-          else
-            mkdir -p runtime
-            tar -xzf python-standalone.tar.gz -C runtime/ --strip-components=1
-          fi
-
-      - name: Setup pip and modify _pth (Windows)
-        if: matrix.platform == 'windows-x64'
-        shell: bash
-        run: |
-          curl -fL -o runtime/get-pip.py https://bootstrap.pypa.io/get-pip.py
-          ./runtime/python.exe runtime/get-pip.py --no-warn-script-location
-          sed -i 's/^#import site/import site/' runtime/python310._pth
-
-      - name: Setup pip (macOS)
-        if: matrix.platform != 'windows-x64'
-        shell: bash
-        run: |
-          ./runtime/bin/python3 -m pip install --upgrade pip -q
-
-      - name: Make scripts executable (macOS)
-        if: matrix.platform != 'windows-x64'
-        shell: bash
-        run: chmod +x scripts/install.sh scripts/start.sh scripts/install.command scripts/start.command
-
-      - name: Tidy macOS bundle layout
-        if: matrix.platform != 'windows-x64'
-        shell: bash
-        run: |
-          cp scripts/install.command install.command
-          cp scripts/start.command start.command
-          rm -f install.bat start.bat
-
-      - name: Tidy Windows bundle layout
-        if: matrix.platform == 'windows-x64'
-        shell: bash
-        run: rm -f install.command start.command
-
-      - name: Create bundle archive (Windows)
-        if: matrix.platform == 'windows-x64'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path * -DestinationPath "${{ matrix.artifact }}" -Force
-
-      - name: Create bundle archive (macOS)
-        if: matrix.platform != 'windows-x64'
-        shell: bash
-        run: |
-          zip -rq "${{ matrix.artifact }}" . \
-            -x '.git/*' '*.pyc' '__pycache__/*' \
-            'data/tts_bundles/*' '*.egg-info/*' '*.dist-info/*'
-
-      - name: Upload bundle to release
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.tag.outputs.TAG }}
-          files: ${{ matrix.artifact }}
+          tag_name: ${{ needs.tag.outputs.tag }}
+          files: release-assets/*

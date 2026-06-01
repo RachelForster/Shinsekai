@@ -31,12 +31,12 @@ import {
   PathPickerDialog,
   QueryErrorState,
   Select,
-  TextArea,
   TextInput,
   useToast,
 } from "../../shared/ui";
 import { BackgroundMusicSection } from "./BackgroundMusicSection";
 import { BackgroundSpriteGallery } from "./BackgroundSpriteGallery";
+import { BackgroundTagsDialog } from "./BackgroundTagsDialog";
 import {
   createBackground,
   type BackgroundBgmItem,
@@ -56,12 +56,14 @@ export function BackgroundManagerPage() {
   const [selectedName, setSelectedName] = useState("");
   const [draft, setDraft] = useState<Background>(createBackground());
   const [isCreating, setIsCreating] = useState(false);
-  const [pendingBgmPaths, setPendingBgmPaths] = useState<string[]>([]);
-  const [pendingImagePaths, setPendingImagePaths] = useState<string[]>([]);
   const [pendingDelete, setPendingDelete] = useState<BackgroundDeleteTarget | null>(null);
   const [selectedBgmIndexes, setSelectedBgmIndexes] = useState<number[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [importPickerOpen, setImportPickerOpen] = useState(false);
+  const [bulkImageTagsOpen, setBulkImageTagsOpen] = useState(false);
+  const [bulkImageTagsDraft, setBulkImageTagsDraft] = useState("");
+  const [bulkBgmTagsOpen, setBulkBgmTagsOpen] = useState(false);
+  const [bulkBgmTagsDraft, setBulkBgmTagsDraft] = useState("");
   const [bgmSort, setBgmSort] = useState<{ direction: BgmSortDirection; key: BgmSortKey }>({
     direction: "asc",
     key: "index",
@@ -78,8 +80,6 @@ export function BackgroundManagerPage() {
     if (selected) {
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
-      setPendingBgmPaths([]);
-      setPendingImagePaths([]);
       setSelectedBgmIndexes([]);
       setSelectedImageIndex(0);
       setNameError("");
@@ -195,8 +195,8 @@ export function BackgroundManagerPage() {
   });
 
   const imageUploadMutation = useMutation({
-    mutationFn: () =>
-      uploadBackgroundImages({ bgTags: draft.bg_tags, name: currentBackgroundName, paths: pendingImagePaths }),
+    mutationFn: (paths: string[]) =>
+      uploadBackgroundImages({ bgTags: draft.bg_tags, name: currentBackgroundName, paths }),
     onError(error) {
       showToast({
         kind: "error",
@@ -207,7 +207,6 @@ export function BackgroundManagerPage() {
     onSuccess(background) {
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       setDraft((current) => ({ ...current, bg_tags: background.bg_tags, sprites: background.sprites }));
-      setPendingImagePaths([]);
       showToast({ kind: "success", title: t("background.asset.uploadImages") });
     },
   });
@@ -229,8 +228,8 @@ export function BackgroundManagerPage() {
   });
 
   const bgmUploadMutation = useMutation({
-    mutationFn: () =>
-      uploadBackgroundBgm({ bgmTags: draft.bgm_tags, name: currentBackgroundName, paths: pendingBgmPaths }),
+    mutationFn: (paths: string[]) =>
+      uploadBackgroundBgm({ bgmTags: draft.bgm_tags, name: currentBackgroundName, paths }),
     onError(error) {
       showToast({
         kind: "error",
@@ -241,7 +240,6 @@ export function BackgroundManagerPage() {
     onSuccess(background) {
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       setDraft((current) => ({ ...current, bgm_list: background.bgm_list, bgm_tags: background.bgm_tags }));
-      setPendingBgmPaths([]);
       showToast({ kind: "success", title: t("background.asset.uploadBgm") });
     },
   });
@@ -376,6 +374,26 @@ export function BackgroundManagerPage() {
       return { ...current, bg_tags: numberedTags("场景", tags) };
     });
   }, []);
+
+  const openBulkImageTagsDialog = () => {
+    setBulkImageTagsDraft(draft.bg_tags);
+    setBulkImageTagsOpen(true);
+  };
+
+  const confirmBulkImageTags = () => {
+    update("bg_tags", bulkImageTagsDraft);
+    setBulkImageTagsOpen(false);
+  };
+
+  const openBulkBgmTagsDialog = () => {
+    setBulkBgmTagsDraft(draft.bgm_tags);
+    setBulkBgmTagsOpen(true);
+  };
+
+  const confirmBulkBgmTags = () => {
+    update("bgm_tags", bulkBgmTagsDraft);
+    setBulkBgmTagsOpen(false);
+  };
 
   const toggleBgmSelection = useCallback((index: number, checked: boolean) => {
     setSelectedBgmIndexes((current) => {
@@ -564,8 +582,6 @@ export function BackgroundManagerPage() {
               setIsCreating(true);
               setSelectedName("");
               setDraft(createBackground());
-              setPendingBgmPaths([]);
-              setPendingImagePaths([]);
               setSelectedBgmIndexes([]);
               setSelectedImageIndex(0);
               setNameError("");
@@ -741,63 +757,6 @@ export function BackgroundManagerPage() {
           </div>
         </section>
 
-        {/* Tags section */}
-        <section className="section">
-          <div className="section__header">
-            <h2 className="section__title">{t("background.section.tags")}</h2>
-          </div>
-          <div className="form-grid">
-            <label className="field-row">
-              <span className="field-row__label">{t("background.field.bgTags")}</span>
-              <span className="field-row__control">
-                <TextArea onChange={(event) => update("bg_tags", event.target.value)} value={draft.bg_tags} />
-                <AsyncButton
-                  icon={<Save aria-hidden className="button__icon" />}
-                  loading={imageTagsSaveMutation.isPending}
-                  onClick={() => {
-                    if (!currentBackgroundName) {
-                      showToast({
-                        kind: "error",
-                        message: t("background.validation.nameRequired"),
-                        title: t("background.action.saveImageTags"),
-                      });
-                      return;
-                    }
-                    imageTagsSaveMutation.mutate();
-                  }}
-                  variant="ghost"
-                >
-                  {t("background.action.saveImageTags")}
-                </AsyncButton>
-              </span>
-            </label>
-            <label className="field-row">
-              <span className="field-row__label">{t("background.field.bgmTags")}</span>
-              <span className="field-row__control">
-                <TextArea onChange={(event) => update("bgm_tags", event.target.value)} value={draft.bgm_tags} />
-                <AsyncButton
-                  icon={<Save aria-hidden className="button__icon" />}
-                  loading={bgmTagsSaveMutation.isPending}
-                  onClick={() => {
-                    if (!currentBackgroundName) {
-                      showToast({
-                        kind: "error",
-                        message: t("background.validation.nameRequired"),
-                        title: t("background.action.saveBgmTags"),
-                      });
-                      return;
-                    }
-                    bgmTagsSaveMutation.mutate();
-                  }}
-                  variant="ghost"
-                >
-                  {t("background.action.saveBgmTags")}
-                </AsyncButton>
-              </span>
-            </label>
-          </div>
-        </section>
-
         {/* Sprite gallery */}
         <BackgroundSpriteGallery
           currentBackgroundName={currentBackgroundName}
@@ -811,7 +770,7 @@ export function BackgroundManagerPage() {
             setPendingDelete({ count: draft.sprites.length, kind: "all-images", name: currentBackgroundName });
           }}
           onDeleteImage={handleImageDelete}
-          onPendingImagePathsChange={setPendingImagePaths}
+          onOpenBulkTags={openBulkImageTagsDialog}
           onSaveImageTags={() => {
             if (!currentBackgroundName) {
               showToast({
@@ -825,8 +784,7 @@ export function BackgroundManagerPage() {
           }}
           onSelectImage={setSelectedImageIndex}
           onUpdateImageTag={updateImageRowTag}
-          onUploadImages={() => imageUploadMutation.mutate()}
-          pendingImagePaths={pendingImagePaths}
+          onUploadImages={(paths) => imageUploadMutation.mutate(paths)}
           saveTagsPending={imageTagsSaveMutation.isPending}
           selectedImageIndex={selectedImageIndex}
           sprites={draft.sprites}
@@ -861,13 +819,12 @@ export function BackgroundManagerPage() {
             setPendingDelete({ count: draft.bgm_list.length, kind: "all-bgm", name: currentBackgroundName });
           }}
           onDelete={handleBgmDelete}
-          onPendingBgmPathsChange={setPendingBgmPaths}
+          onOpenBulkTags={openBulkBgmTagsDialog}
           onSortToggle={toggleBgmSort}
           onTagChange={updateBgmRowTag}
           onToggleAllSelection={toggleAllBgmSelection}
           onToggleSelection={toggleBgmSelection}
-          onUpload={() => bgmUploadMutation.mutate()}
-          pendingBgmPaths={pendingBgmPaths}
+          onUpload={(paths) => bgmUploadMutation.mutate(paths)}
           selectedBgmIndexSet={selectedBgmIndexSet}
           sortDirection={bgmSort.direction}
           sortKey={bgmSort.key}
@@ -875,6 +832,27 @@ export function BackgroundManagerPage() {
           uploadPending={bgmUploadMutation.isPending}
         />
       </section>
+
+      <BackgroundTagsDialog
+        draft={bulkImageTagsDraft}
+        fieldLabel={t("background.field.bgTags")}
+        help={t("background.asset.batchImageTagsHelp")}
+        onChange={setBulkImageTagsDraft}
+        onClose={() => setBulkImageTagsOpen(false)}
+        onConfirm={confirmBulkImageTags}
+        open={bulkImageTagsOpen}
+        title={t("background.asset.batchImageTagsTitle")}
+      />
+      <BackgroundTagsDialog
+        draft={bulkBgmTagsDraft}
+        fieldLabel={t("background.field.bgmTags")}
+        help={t("background.asset.batchBgmTagsHelp")}
+        onChange={setBulkBgmTagsDraft}
+        onClose={() => setBulkBgmTagsOpen(false)}
+        onConfirm={confirmBulkBgmTags}
+        open={bulkBgmTagsOpen}
+        title={t("background.asset.batchBgmTagsTitle")}
+      />
 
       <AlertDialog
         body={pendingDeleteCopy?.body ?? ""}
