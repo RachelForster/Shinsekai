@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ToastProvider, useToast } from "../../../shared/ui";
@@ -15,7 +15,7 @@ describe("Toast", () => {
         <ToastTrigger title="操作成功" />
       </ToastProvider>,
     );
-    screen.getByRole("button").click();
+    fireEvent.click(screen.getByRole("button"));
     await waitFor(() => {
       expect(screen.getByText("操作成功")).toBeInTheDocument();
     });
@@ -27,7 +27,7 @@ describe("Toast", () => {
         <ToastTrigger message="已保存 3 个文件" title="保存完成" />
       </ToastProvider>,
     );
-    screen.getByRole("button").click();
+    fireEvent.click(screen.getByRole("button"));
     await waitFor(() => {
       expect(screen.getByText("保存完成")).toBeInTheDocument();
       expect(screen.getByText("已保存 3 个文件")).toBeInTheDocument();

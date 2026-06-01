@@ -69,7 +69,7 @@ function lazyRouteElement(children: ReactNode) {
 
 export function AppRoutes() {
   return (
-    <HashRouter>
+    <HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <Routes>
         <Route element={<AppShell />} path="/settings">
           <Route element={<Navigate replace to="/settings/api" />} index />

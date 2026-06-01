@@ -38,7 +38,7 @@ function renderPage() {
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <ToastProvider>
         <I18nProvider language="zh_CN">
-          <MemoryRouter>
+          <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
             <ChatLauncherPage />
           </MemoryRouter>
         </I18nProvider>
