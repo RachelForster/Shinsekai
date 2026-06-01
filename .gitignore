@@ -1,39 +1,80 @@
-data/config
-data/models
-data/sprite
-llm/__pycache__
-runtime/
-!core/runtime
-!core/runtime/**
-/__pycache__
-*.pyc
-/data
-/out
-/output
-/build
-/dist
-/logs
-/temp_export_*
-/.pytest_cache
-/.tmp_pytest_*
-/ui/settings_ui/__pycache__
-/ui/settings_ui/.gitignore
-/ui/settings_ui/images
-/packaging
-/build_exe
-/assets/system/models
-/cache
-/onnx
-/data
-/plugins
-/plugins
-/plugins
-/data
+# 注意顺序 / pay attention to the order
+
+# ======= 编辑器 & 日志文件 / IDE & Log Files =======
+# AI / IDE 本地配置缓存 / AI & IDE local config cache
+.claude/
 .claude/settings.local.json
-/.venv
-/.uv-cache
-/temp_import_*
+.kiro/
+.codex/
+.cursor/
+.trae/
+.roo/
+.windsurf/
+.idea/
+.vscode/
+.sublime-project/
+.tern/
+
+# ======= 环境变量文件 / Env Files =======
+# 忽略私有配置，保留示例模板 / Ignore private config, keep examples
 .env
 .env.*
 !.env.example
 !.env.local.example
+
+# ======= 业务数据 & AI模型资源 / Data & AI Resources =======
+# 业务资源目录 / Business resource directory
+/data
+/assets/system/models
+/ui/settings_ui/images
+# 插件目录 / Plugins directory
+/plugins/*
+!/plugins/__init__.py
+# AI模型权重文件 / AI model weight files
+**/*.onnx
+**/*.pt
+**/*.pth
+**/*.ckpt
+# 全局日志 / Global log files
+**/*.log
+
+# ======= 运行时 & 构建产物 / Runtime & Build Output =======
+# 保留 core/runtime 核心目录 / Keep core runtime directory
+runtime/
+!core/runtime
+!core/runtime/**
+# 项目构建、临时导出文件 / Build & temp export files
+/out
+/output
+/build
+/dist
+/log
+/logs
+/temp_import_*
+/temp_export_*
+/packaging
+/build_exe
+# 打包编译产物 / Packaging artifacts
+**/*.spec
+**/*.exe
+**/*.zip
+**/*.tar.gz
+
+# ======= 全局各类缓存 / All Cache Files =======
+# Python 编译缓存 / Python compile cache
+**/__pycache__
+**/*.pyc
+# 项目运行缓存 / Runtime cache
+/cache
+/onnx
+# 测试缓存 / Test cache
+/.pytest_cache
+/.tmp_pytest_*
+# 虚拟环境 & 依赖缓存 / Env & package cache
+/*.egg-info
+/.venv
+/venv
+/.uv-cache
+/__pypackages__
+.python-version
+uv.lock
