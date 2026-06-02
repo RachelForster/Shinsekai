@@ -4,12 +4,16 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactN
 import { Button } from "../ui/Button";
 import {
   closeDesktopWindow,
+  desktopRestartErrorMessage,
   getDesktopRuntimeState,
+  isDesktopBridgeConnectionError,
+  isDesktopRestarting,
   isTauriDesktop,
   minimizeDesktopWindow,
   startDesktopWindowDrag,
   toggleMaximizeDesktopWindow,
   updateDesktopRuntime,
+  writeDesktopRestartDebugLog,
   type DesktopRuntimeState,
 } from "./desktopApi";
 
@@ -72,6 +76,25 @@ function DesktopTitleBar() {
   );
 }
 
+async function bridgeHealthReady(bridgeUrl: string) {
+  if (!bridgeUrl) {
+    return false;
+  }
+  try {
+    const response = await fetch(`${bridgeUrl.replace(/\/$/, "")}/api/health`, { cache: "no-store" });
+    if (!response.ok) {
+      return false;
+    }
+    const payload = await response.json().catch(() => null);
+    return payload?.ok === true;
+  } catch (error) {
+    if (isDesktopBridgeConnectionError(error)) {
+      void writeDesktopRestartDebugLog(`DesktopRuntimeGate health fetch bridge error: ${desktopRestartErrorMessage(error)}`);
+    }
+    return false;
+  }
+}
+
 function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   const [runtime, setRuntime] = useState<DesktopRuntimeState>({
     bridgeUrl: "",
@@ -89,15 +112,39 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
         if (stopped) {
           return;
         }
+        if (next.status === "ready" && !(await bridgeHealthReady(next.bridgeUrl))) {
+          if (!stopped) {
+            setRuntime({
+              ...next,
+              message: "正在等待本地服务启动。",
+              status: "checking",
+            });
+            timer = window.setTimeout(refresh, 500);
+          }
+          return;
+        }
         setRuntime(next);
         if (next.status === "checking" || next.status === "updating") {
           timer = window.setTimeout(refresh, 700);
         }
       } catch (error) {
+        if (stopped) {
+          return;
+        }
+        if (isDesktopRestarting()) {
+          const message = desktopRestartErrorMessage(error);
+          void writeDesktopRestartDebugLog(`DesktopRuntimeGate suppressed restart error: ${message}`);
+          return;
+        }
+        if (isDesktopBridgeConnectionError(error)) {
+          void writeDesktopRestartDebugLog(
+            `DesktopRuntimeGate displayed bridge error: ${desktopRestartErrorMessage(error)}`,
+          );
+        }
         if (!stopped) {
           setRuntime({
             bridgeUrl: "",
-            message: error instanceof Error ? error.message : String(error),
+            message: desktopRestartErrorMessage(error),
             status: "error",
           });
         }
@@ -117,9 +164,14 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
     try {
       setRuntime(await updateDesktopRuntime());
     } catch (error) {
+      if (isDesktopBridgeConnectionError(error)) {
+        void writeDesktopRestartDebugLog(
+          `DesktopRuntimeGate update displayed bridge error: ${desktopRestartErrorMessage(error)}`,
+        );
+      }
       setRuntime((current) => ({
         ...current,
-        message: error instanceof Error ? error.message : String(error),
+        message: desktopRestartErrorMessage(error),
         status: "error",
       }));
     } finally {

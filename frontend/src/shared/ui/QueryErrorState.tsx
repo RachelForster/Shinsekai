@@ -1,5 +1,11 @@
 import { RefreshCw } from "lucide-react";
+import { useEffect } from "react";
 
+import {
+  desktopRestartErrorMessage,
+  isDesktopBridgeConnectionError,
+  writeDesktopRestartDebugLog,
+} from "../desktop/desktopApi";
 import { Button } from "./Button";
 import { EmptyState } from "./EmptyState";
 
@@ -16,6 +22,17 @@ function errorMessage(error: unknown, fallback = "") {
 }
 
 export function QueryErrorState({ body, error, onRetry, retryLabel, title }: QueryErrorStateProps) {
+  useEffect(() => {
+    if (!isDesktopBridgeConnectionError(error)) {
+      return;
+    }
+    void writeDesktopRestartDebugLog(
+      `QueryErrorState displayed bridge error title=${title} body=${body ?? ""} error=${desktopRestartErrorMessage(
+        error,
+      )}`,
+    );
+  }, [body, error, title]);
+
   return (
     <EmptyState
       action={

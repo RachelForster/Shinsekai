@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useReducer } from "react";
 import type { ReactNode } from "react";
+
+import { isDesktopBridgeConnectionError, writeDesktopRestartDebugLog } from "../desktop/desktopApi";
 import "./Toast.css";
 
 type ToastKind = "success" | "error" | "info";
@@ -40,6 +42,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const showToast = useCallback((payload: ToastPayload) => {
     const id = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
     const toast: ToastItem = { kind: payload.kind ?? "info", ...payload, id };
+    const message = `${payload.title} ${payload.message ?? ""}`;
+    if (isDesktopBridgeConnectionError(message)) {
+      void writeDesktopRestartDebugLog(
+        `Toast displayed bridge error kind=${toast.kind} title=${payload.title} message=${payload.message ?? ""}`,
+      );
+    }
     dispatch({ toast, type: "push" });
     window.setTimeout(() => dispatch({ id, type: "remove" }), 4500);
   }, []);

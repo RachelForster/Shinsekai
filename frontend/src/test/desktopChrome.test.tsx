@@ -18,6 +18,13 @@ import { DesktopChrome } from "../shared/desktop/DesktopChrome";
 describe("DesktopChrome", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: async () => ({ ok: true }),
+        ok: true,
+      }),
+    );
     desktopApi.closeDesktopWindow.mockResolvedValue(undefined);
     desktopApi.minimizeDesktopWindow.mockResolvedValue(undefined);
     desktopApi.startDesktopWindowDrag.mockResolvedValue(undefined);

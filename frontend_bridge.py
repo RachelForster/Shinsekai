@@ -13,6 +13,9 @@ import os
 import platform
 import re
 import sys
+import tempfile
+import threading
+import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -25,6 +28,22 @@ def _configure_stdio_encoding() -> None:
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parent
+
+
+def _restart_debug_log_path() -> Path:
+    if raw_path := os.environ.get("SHINSEKAI_RESTART_LOG"):
+        return Path(raw_path)
+    return Path(tempfile.gettempdir()) / "shinsekai-restart-debug.log"
+
+
+def _restart_debug_log(message: str) -> None:
+    line = f"ts={time.time():.3f} pid={os.getpid()} component=bridge {message}\n"
+    print(f"[restart-debug] {line}", end="")
+    try:
+        with _restart_debug_log_path().open("a", encoding="utf-8") as handle:
+            handle.write(line)
+    except OSError:
+        pass
 
 
 def _configure_runtime_context(
@@ -55,7 +74,12 @@ def run(
     project_root: str | None = None,
     frontend_dist: str | None = "frontend/dist",
     open_browser: bool = False,
+    parent_pid: int | None = None,
 ) -> None:
+    _restart_debug_log(
+        f"run start host={host} port={port} project_root={project_root or ''} frontend_dist={frontend_dist or ''} parent_pid={parent_pid or 0}"
+    )
+    _start_parent_watchdog(parent_pid)
     _repo_root_value, resolved_frontend_dist = _configure_runtime_context(
         project_root,
         frontend_dist,
@@ -89,6 +113,7 @@ def run(
         print(f"Plugin load failed: {exc}")
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
     server.state = state  # type: ignore[attr-defined]
+    _restart_debug_log(f"server listening host={host} port={port} frontend_dist={resolved_frontend_dist}")
     print(f"Shinsekai frontend bridge listening on http://{host}:{port}")
     frontend_index = Path(resolved_frontend_dist) / "index.html" if resolved_frontend_dist else None
     if frontend_index and frontend_index.is_file():
@@ -97,7 +122,62 @@ def run(
             _schedule_browser_open(f"http://{host}:{port}/#/settings/api")
     elif resolved_frontend_dist:
         print(f"Built frontend not found at {resolved_frontend_dist}; API bridge only.")
+    _restart_debug_log("serve_forever enter")
     server.serve_forever()
+
+
+def _start_parent_watchdog(parent_pid: int | None) -> None:
+    if not parent_pid or parent_pid <= 0:
+        _restart_debug_log("parent watchdog disabled")
+        return
+
+    _restart_debug_log(f"parent watchdog start parent_pid={parent_pid}")
+
+    def watch_parent() -> None:
+        if sys.platform == "win32":
+            _watch_windows_parent(parent_pid)
+            return
+        _watch_posix_parent(parent_pid)
+
+    thread = threading.Thread(target=watch_parent, name="shinsekai-parent-watchdog", daemon=True)
+    thread.start()
+
+
+def _watch_posix_parent(parent_pid: int) -> None:
+    while True:
+        time.sleep(0.25)
+        if os.getppid() != parent_pid:
+            _restart_debug_log(
+                f"parent watchdog exit reason=ppid_changed expected={parent_pid} actual={os.getppid()}"
+            )
+            os._exit(0)
+        try:
+            os.kill(parent_pid, 0)
+        except ProcessLookupError:
+            _restart_debug_log(f"parent watchdog exit reason=parent_missing parent_pid={parent_pid}")
+            os._exit(0)
+        except PermissionError:
+            continue
+
+
+def _watch_windows_parent(parent_pid: int) -> None:
+    import ctypes
+
+    synchronize = 0x00100000
+    wait_timeout = 0x00000102
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(synchronize, False, parent_pid)
+    if not handle:
+        _restart_debug_log(f"parent watchdog exit reason=open_process_failed parent_pid={parent_pid}")
+        os._exit(0)
+    try:
+        while True:
+            time.sleep(0.25)
+            if kernel32.WaitForSingleObject(handle, 0) != wait_timeout:
+                _restart_debug_log(f"parent watchdog exit reason=parent_signaled parent_pid={parent_pid}")
+                os._exit(0)
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def check_runtime(
@@ -213,6 +293,12 @@ def main() -> None:
         help="Open the built React settings UI in the default browser after startup.",
     )
     parser.add_argument(
+        "--parent-pid",
+        default=0,
+        type=int,
+        help="Desktop shell process PID. The bridge exits automatically when this parent exits.",
+    )
+    parser.add_argument(
         "--check-runtime",
         action="store_true",
         help="Validate the Python runtime and exit without starting the HTTP bridge.",
@@ -238,6 +324,7 @@ def main() -> None:
         args.project_root or None,
         args.frontend_dist or None,
         args.open_browser,
+        args.parent_pid or None,
     )
 
 

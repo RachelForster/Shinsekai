@@ -1,4 +1,11 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import {
+  isTauriDesktop,
+  isDesktopBridgeRestarting,
+  openDesktopExternalUrl,
+  waitForDesktopBridgeRestart,
+  writeDesktopRestartDebugLog,
+} from "../desktop/desktopApi";
 import type {
   ApiConfig,
   AppConfig,
@@ -39,13 +46,14 @@ import type {
 } from "./types";
 
 async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const requestInit = {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
-  });
+  };
+  const response = await fetchWithStartupRetry(`${baseUrl}${path}`, requestInit);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
@@ -54,10 +62,62 @@ async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit)
   return data as T;
 }
 
+async function fetchWithStartupRetry(url: string, init: RequestInit): Promise<Response> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const retryable = method === "GET" || method === "HEAD";
+  const attempts = retryable ? 15 : 1;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      lastError = error;
+      if (isDesktopBridgeRestarting() && isTransientBridgeError(error)) {
+        logBridgeRestartRetry(method, url, error);
+        await waitForDesktopBridgeRestart();
+        continue;
+      }
+      if (isDesktopRestarting() && isTransientBridgeError(error)) {
+        logSuppressedRestartError(method, url, error);
+        return waitForRestartExit();
+      }
+      if (!retryable || !isTransientBridgeError(error)) {
+        if (isTransientBridgeError(error)) {
+          logThrownBridgeError(method, url, error);
+        }
+        throw error;
+      }
+      await delay(200 + attempt * 150);
+    }
+  }
+  if (isTransientBridgeError(lastError)) {
+    logThrownBridgeError(method, url, lastError);
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function isTransientBridgeError(error: unknown) {
+  const message = errorMessage(error);
+  return /127\.0\.0\.1|localhost|connection refused|could not connect|failed to fetch|network/i.test(message);
+}
+
 async function requestForm<T>(baseUrl: string, path: string, formData: FormData): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const url = `${baseUrl}${path}`;
+  const init = {
     body: formData,
     method: "POST",
+  };
+  const response = await fetch(url, init).catch(async (error) => {
+    if (isDesktopBridgeRestarting() && isTransientBridgeError(error)) {
+      logBridgeRestartRetry("POST", url, error);
+      await waitForDesktopBridgeRestart();
+      return fetch(url, init);
+    }
+    if (isDesktopRestarting() && isTransientBridgeError(error)) {
+      logSuppressedRestartError("POST", url, error);
+      return waitForRestartExit();
+    }
+    throw error;
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -90,6 +150,61 @@ function openDownload(apiBase: string, path: string) {
 
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isDesktopRestarting() {
+  return typeof window !== "undefined" && window.__SHINSEKAI_RESTARTING__ === true;
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function waitForRestartExit(): Promise<never> {
+  return new Promise(() => {});
+}
+
+function logSuppressedRestartError(method: string, url: string, error: unknown) {
+  void writeDesktopRestartDebugLog(
+    `httpPlatform suppressed restart disconnect method=${method} url=${sanitizeRestartLogUrl(url)} error=${errorMessage(
+      error,
+    )}`,
+  );
+}
+
+function logThrownBridgeError(method: string, url: string, error: unknown) {
+  void writeDesktopRestartDebugLog(
+    `httpPlatform throwing bridge error method=${method} url=${sanitizeRestartLogUrl(url)} restarting=${isDesktopRestarting()} error=${errorMessage(
+      error,
+    )}`,
+  );
+}
+
+function logBridgeRestartRetry(method: string, url: string, error: unknown) {
+  void writeDesktopRestartDebugLog(
+    `httpPlatform waiting for bridge restart method=${method} url=${sanitizeRestartLogUrl(url)} error=${errorMessage(
+      error,
+    )}`,
+  );
+}
+
+function sanitizeRestartLogUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url;
+  }
 }
 
 function isTaskRunning(task: TaskSnapshot) {
@@ -396,6 +511,10 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         return `${apiBase}/api/media?path=${encodeURIComponent(path)}`;
       },
       async openExternal(url) {
+        if (isTauriDesktop()) {
+          await openDesktopExternalUrl(url);
+          return;
+        }
         window.open(url, "_blank", "noopener,noreferrer");
       },
     },

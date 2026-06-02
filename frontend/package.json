@@ -12,7 +12,7 @@
     "build": "tsc -b && vite build",
     "prepare:tauri-resources": "node scripts/prepare-tauri-resources.mjs",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "pnpm build && pnpm prepare:tauri-resources && tauri dev",
     "tauri:build": "tauri build",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
