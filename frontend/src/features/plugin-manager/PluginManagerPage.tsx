@@ -12,11 +12,7 @@ import {
   setPluginEnabled,
   uninstallPlugin,
 } from "../../entities/plugin/repository";
-import type {
-  AppUpdateRefKind,
-  PluginInstallInput,
-  PluginManifest,
-} from "../../entities/plugin/types";
+import type { AppUpdateRefKind, PluginInstallInput, PluginManifest } from "../../entities/plugin/types";
 import {
   desktopRestartErrorMessage,
   isTauriDesktop,
@@ -198,7 +194,9 @@ export function PluginManagerPage() {
         {desktopApp ? (
           <div className="page__actions plugin-page__actions">
             <AsyncButton
-              className={pluginReloadPending ? "plugin-reload-button plugin-reload-button--active" : "plugin-reload-button"}
+              className={
+                pluginReloadPending ? "plugin-reload-button plugin-reload-button--active" : "plugin-reload-button"
+              }
               disabled={pluginReloadPending}
               icon={
                 <RotateCcw
@@ -394,11 +392,7 @@ async function waitForPluginBridgeReady(bridgeUrl: string, timeoutMs = 15000) {
     await delayPluginReload(160);
   }
 
-  throw new Error(
-    lastError instanceof Error
-      ? lastError.message
-      : `Timed out waiting for plugin service at ${url}`,
-  );
+  throw new Error(lastError instanceof Error ? lastError.message : `Timed out waiting for plugin service at ${url}`);
 }
 
 function delayPluginReload(ms: number) {

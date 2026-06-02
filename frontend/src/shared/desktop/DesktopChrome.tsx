@@ -91,7 +91,9 @@ async function bridgeHealthReady(bridgeUrl: string) {
     return payload?.ok === true;
   } catch (error) {
     if (isDesktopBridgeConnectionError(error)) {
-      void writeDesktopRestartDebugLog(`DesktopRuntimeGate health fetch bridge error: ${desktopRestartErrorMessage(error)}`);
+      void writeDesktopRestartDebugLog(
+        `DesktopRuntimeGate health fetch bridge error: ${desktopRestartErrorMessage(error)}`,
+      );
     }
     return false;
   }

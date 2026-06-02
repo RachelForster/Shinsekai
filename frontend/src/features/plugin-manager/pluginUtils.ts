@@ -40,7 +40,10 @@ function githubPageUrl(repo: string) {
   }
   try {
     const parsed = new URL(withProtocol);
-    const parts = parsed.pathname.split("/").map((part) => part.trim()).filter(Boolean);
+    const parts = parsed.pathname
+      .split("/")
+      .map((part) => part.trim())
+      .filter(Boolean);
     if (parts.length < 2) {
       return "";
     }

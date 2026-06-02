@@ -216,10 +216,7 @@ export function isDesktopBridgeConnectionError(error: unknown) {
 
 function isDesktopIpcDisconnect(error: unknown) {
   const message = desktopRestartErrorMessage(error).toLowerCase();
-  return (
-    message.includes("ipc") ||
-    message.includes("channel")
-  );
+  return message.includes("ipc") || message.includes("channel");
 }
 
 function waitForDesktopRestartExit(): Promise<never> {
