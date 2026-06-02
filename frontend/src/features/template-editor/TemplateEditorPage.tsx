@@ -383,6 +383,7 @@ export function TemplateEditorPage() {
       const template = buildTemplate();
       const session = buildLaunchSession();
       await saveTemplateSession(session);
+      queryClient.setQueryData([...templatesQueryKey, "session"], session);
       const snapshot = await launchChat({
         backgroundName: selectedBackground,
         characters: selectedCharacters,
