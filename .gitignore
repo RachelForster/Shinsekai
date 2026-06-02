@@ -56,7 +56,6 @@ runtime/
 /build_exe
 # 前端构建与测试产物 / Frontend build and test output
 /frontend/node_modules
-/frontend/dist
 /frontend/.vite
 /frontend/coverage
 /frontend/playwright-report

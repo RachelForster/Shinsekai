@@ -30,6 +30,10 @@ RefKindApi = Literal["latest", "head", "tag"]
 
 _DEV_VERSION_TOKEN_RE = re.compile(r"(?:^|[^0-9a-z])dev[0-9]*(?:$|[^0-9a-z])")
 _RELEASE_VERSION_RE = re.compile(r"^\d+(?:\.\d+)*$")
+_SKIP_ANY_DIR_NAMES = frozenset(
+    {".git", "venv", ".venv", "__pycache__", "node_modules", ".cursor", ".idea"}
+)
+_SKIP_TOP_LEVEL_DIR_NAMES = frozenset({"dist", "build"})
 
 
 def default_app_github_repo_slug() -> str:
@@ -209,6 +213,29 @@ def _zip_top_folder_name(zip_path: Path) -> str:
         return top
 
 
+def _casefold_names(names: frozenset[str]) -> frozenset[str]:
+    return frozenset(name.casefold() for name in names)
+
+
+def _should_skip_source_dir(parts: tuple[str, ...], dirname: str, skip_top_level: frozenset[str]) -> bool:
+    name = dirname.casefold()
+    if name in _SKIP_ANY_DIR_NAMES or name.endswith(".egg-info"):
+        return True
+    return not parts and name in skip_top_level
+
+
+def mark_frontend_dist_fresh(project_root: Path) -> bool:
+    """Keep a copied release build from being treated as stale by source mtimes."""
+    index_path = project_root / "frontend" / "dist" / "index.html"
+    if not index_path.is_file():
+        return False
+    try:
+        os.utime(index_path, None)
+    except OSError:
+        return False
+    return True
+
+
 def merge_source_tree_into(
     dest_root: Path,
     source_top: Path,
@@ -221,9 +248,7 @@ def merge_source_tree_into(
     ``also_skip_top_level``：在归档根下按「首段路径名」整棵跳过的目录名（不区分大小写），
     用于主程序更新时保留本机 ``plugins/``、``data/`` 等。
     """
-    skip_root = frozenset(
-        {".git", "venv", ".venv", "__pycache__", "node_modules", ".cursor", "dist", "build", ".idea"}
-    ) | {n.casefold() for n in also_skip_top_level}
+    skip_top_level = _SKIP_TOP_LEVEL_DIR_NAMES | _casefold_names(also_skip_top_level)
 
     dest_root.mkdir(parents=True, exist_ok=True)
     if not source_top.is_dir():
@@ -232,13 +257,16 @@ def merge_source_tree_into(
     for root, dirs, files in os.walk(source_top, followlinks=False):
         rel = Path(root).relative_to(source_top)
         parts = rel.parts if rel.parts != (".",) else ()
-        if parts and parts[0].casefold() in skip_root:
+        if parts and (
+            parts[0].casefold() in skip_top_level
+            or any(part.casefold() in _SKIP_ANY_DIR_NAMES for part in parts)
+        ):
             dirs.clear()
             continue
         dirs[:] = [
             d
             for d in dirs
-            if d.casefold() not in skip_root and not d.endswith(".egg-info")
+            if not _should_skip_source_dir(parts, d, skip_top_level)
         ]
         rp = "_".join(parts) if parts else ""
         if ".git" in parts or rp.startswith(".git"):
@@ -328,7 +356,7 @@ def download_zip_extract_top_folder(
     return td, extracted_top
 
 
-def overwrite_merge_app_tree(slug: str, ref_kind: RefKindApi, tag_name: str, *, progress, on_phase) -> None:
+def overwrite_merge_app_tree(slug: str, ref_kind: RefKindApi, tag_name: str, *, progress, on_phase) -> dict[str, bool]:
     """下载指定 ref 并把归档根目录内容合并覆盖到当前工程根目录（不覆盖本机 ``plugins/``、``data/``）。"""
     rr = resolve_ref_for_download(slug, ref_kind, tag_name)
     td, extracted = download_zip_extract_top_folder(
@@ -340,11 +368,13 @@ def overwrite_merge_app_tree(slug: str, ref_kind: RefKindApi, tag_name: str, *, 
     )
     try:
         dest = resolve_project_root()
+        has_frontend_dist = (extracted / "frontend" / "dist" / "index.html").is_file()
         merge_source_tree_into(
             dest,
             extracted,
             also_skip_top_level=frozenset({"plugins", "data"}),
         )
+        return {"frontendDistUpdated": has_frontend_dist and mark_frontend_dist_fresh(dest)}
     finally:
         shutil.rmtree(td, ignore_errors=True)
 

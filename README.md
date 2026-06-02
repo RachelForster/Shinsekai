@@ -106,7 +106,7 @@ pnpm install
 cd ..
 ```
 
-启动脚本会在 `frontend/dist` 不存在或前端源码更新后自动构建。旧 PySide 设置页仍作为兼容入口保留：`python webui_qt.py`。
+启动脚本会在 `frontend/dist` 不存在时尝试自动构建；如果前端源码较新且本机已有 `pnpm` 与前端依赖，也会自动重建。发布版会携带已构建的 `frontend/dist`，没有前端构建环境时会直接使用现有构建。旧 PySide 设置页仍作为兼容入口保留：`python webui_qt.py`。
 
 ### React 前端测试
 

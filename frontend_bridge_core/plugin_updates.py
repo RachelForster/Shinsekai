@@ -74,7 +74,7 @@ def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -
             _update_task(state, task_id, message="正在合并到程序目录。", phase="merge", progress=0.68)
 
     try:
-        overwrite_merge_app_tree(
+        merge_result = overwrite_merge_app_tree(
             slug,
             ref_kind,  # type: ignore[arg-type]
             tag_name,
@@ -95,6 +95,7 @@ def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -
     version = read_local_version(resolve_project_root()).strip()
     result = {
         "detail": detail,
+        "frontendDistUpdated": bool(merge_result.get("frontendDistUpdated")),
         "message": "文件已合并到当前目录。建议关闭本程序后重新启动以使代码生效。",
         "pipCode": pip_code,
         "version": version,

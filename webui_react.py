@@ -18,6 +18,10 @@ if str(_repo_root) not in sys.path:
 from frontend_bridge import run as run_frontend_bridge
 
 
+class FrontendBuildUnavailable(RuntimeError):
+    """Raised when an existing frontend build can be served but cannot be rebuilt locally."""
+
+
 def _default_repo_root() -> Path:
     return Path(__file__).resolve().parent
 
@@ -66,21 +70,21 @@ def _build_frontend(repo_root: Path, frontend_dist: Path, reason: str) -> None:
     default_dist = (frontend_dir / "dist").resolve()
     index_path = frontend_dist / "index.html"
     if frontend_dist != default_dist:
-        raise SystemExit(
+        raise FrontendBuildUnavailable(
             f"Built frontend {reason}: {index_path}\n"
             "Automatic rebuild is only supported for the default `frontend/dist` output."
         )
     if not frontend_dir.is_dir():
-        raise SystemExit(f"Frontend source directory not found: {frontend_dir}")
+        raise FrontendBuildUnavailable(f"Frontend source directory not found: {frontend_dir}")
     if not (frontend_dir / "node_modules").is_dir():
-        raise SystemExit(
+        raise FrontendBuildUnavailable(
             f"Built frontend {reason}, but frontend dependencies are not installed.\n"
             "Run `cd frontend && pnpm install` first."
         )
 
     pnpm = shutil.which("pnpm")
     if pnpm is None:
-        raise SystemExit(
+        raise FrontendBuildUnavailable(
             f"Built frontend {reason}, but `pnpm` is not available in PATH.\n"
             "Run `cd frontend && pnpm build` first."
         )
@@ -104,7 +108,15 @@ def _ensure_frontend_dist(
     if index_path.is_file():
         frontend_dir = repo_root / "frontend"
         if build_if_stale and _frontend_sources_are_newer(frontend_dir, index_path):
-            _build_frontend(repo_root, frontend_dist, "is older than the source tree")
+            try:
+                _build_frontend(repo_root, frontend_dist, "is older than the source tree")
+            except FrontendBuildUnavailable as exc:
+                print(
+                    f"{exc}\n"
+                    "Serving the existing built frontend. Install frontend dependencies and run "
+                    "`cd frontend && pnpm build` to rebuild locally.",
+                    file=sys.stderr,
+                )
         return
     if not build_if_missing:
         raise SystemExit(
@@ -112,7 +124,10 @@ def _ensure_frontend_dist(
             "Run `cd frontend && pnpm install && pnpm build` first."
         )
 
-    _build_frontend(repo_root, frontend_dist, "not found")
+    try:
+        _build_frontend(repo_root, frontend_dist, "not found")
+    except FrontendBuildUnavailable as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def main() -> None:

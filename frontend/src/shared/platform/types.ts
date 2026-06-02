@@ -174,6 +174,7 @@ export interface AppUpdateInfo {
 
 export interface AppUpdateResult {
   detail?: string;
+  frontendDistUpdated?: boolean;
   message: string;
   pipCode?: string;
   version: string;
