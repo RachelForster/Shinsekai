@@ -1,1 +1,0 @@
-import{j as t}from"./index-xweNt15y.js";const a=["templates"];function n(){return t().templates.list()}function r(e){return t().templates.save(e)}function l(e){return t().templates.generate(e)}function m(){return t().templates.getSession()}function o(e){return t().templates.saveSession(e)}export{m as a,o as b,l as g,n as l,r as s,a as t};

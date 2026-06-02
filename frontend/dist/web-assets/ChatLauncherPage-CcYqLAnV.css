@@ -1,1 +1,0 @@
-.launch-page__panel{min-height:220px}.launch-page__grid{grid-template-columns:repeat(2,minmax(260px,1fr))}.launch-page select[multiple]{min-height:112px;padding-block:7px;background-image:none}.launch-page .field-row:last-child{align-items:center}@media (max-width: 860px){.launch-page__grid{grid-template-columns:minmax(0,1fr)}}

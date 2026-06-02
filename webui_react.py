@@ -150,14 +150,14 @@ def main() -> None:
         help="Start the bridge without opening the browser automatically.",
     )
     parser.add_argument(
-        "--no-build-if-missing",
+        "--build-if-missing",
         action="store_true",
-        help="Fail instead of running `pnpm build` when the built frontend is missing.",
+        help="Run `pnpm build` when the built frontend is missing.",
     )
     parser.add_argument(
-        "--no-build-if-stale",
+        "--build-if-stale",
         action="store_true",
-        help="Serve an existing build even when React source files are newer.",
+        help="Run `pnpm build` when React source files are newer than the existing build.",
     )
     args = parser.parse_args()
 
@@ -167,8 +167,8 @@ def main() -> None:
     _ensure_frontend_dist(
         repo_root,
         frontend_dist,
-        build_if_missing=not args.no_build_if_missing,
-        build_if_stale=not args.no_build_if_stale,
+        build_if_missing=args.build_if_missing,
+        build_if_stale=args.build_if_stale,
     )
 
     run_frontend_bridge(
