@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for Shinsekai desktop windows.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "updater:default"
+  ]
+}

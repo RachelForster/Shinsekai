@@ -195,12 +195,12 @@ jobs:
           while IFS= read -r asset; do
             name="$(basename "$asset")"
             case "$name" in
-              *.AppImage) target="${base}.AppImage"; updater_suffix="appimage" ;;
-              *.deb) target="${base}.deb"; updater_suffix="deb" ;;
-              *.app.tar.gz) target="${base}.app.tar.gz"; updater_suffix="app" ;;
-              *.dmg) target="${base}.dmg"; updater_suffix="" ;;
-              *.msi) target="${base}.msi"; updater_suffix="msi" ;;
-              *.exe) target="${base}-setup.exe"; updater_suffix="nsis" ;;
+              *.AppImage) target="${base}.AppImage"; updater_suffix="appimage"; generic_fallback=true ;;
+              *.deb) target="${base}.deb"; updater_suffix="deb"; generic_fallback=false ;;
+              *.app.tar.gz) target="${base}.app.tar.gz"; updater_suffix="app"; generic_fallback=true ;;
+              *.dmg) target="${base}.dmg"; updater_suffix=""; generic_fallback=false ;;
+              *.msi) target="${base}.msi"; updater_suffix="msi"; generic_fallback=false ;;
+              *.exe) target="${base}-setup.exe"; updater_suffix="nsis"; generic_fallback=true ;;
               *) continue ;;
             esac
             cp "$asset" "release-assets/$target"
@@ -210,6 +210,9 @@ jobs:
               echo "${asset}.sig -> release-assets/${target}.sig"
               if [[ -n "${updater_os}" && -n "${updater_arch}" && -n "${updater_suffix}" ]]; then
                 write_latest_fragment "${updater_os}-${updater_arch}-${updater_suffix}" "${target}"
+              fi
+              if [[ "${generic_fallback}" == "true" && -n "${updater_os}" && -n "${updater_arch}" ]]; then
+                write_latest_fragment "${updater_os}-${updater_arch}" "${target}"
               fi
             fi
             count=$((count + 1))
