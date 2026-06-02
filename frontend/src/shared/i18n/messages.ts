@@ -396,6 +396,10 @@ export type MessageKey =
   | "plugin.action.uninstall"
   | "plugin.action.update"
   | "plugin.action.viewConfig"
+  | "plugin.appRestart.button"
+  | "plugin.appRestart.failed"
+  | "plugin.appRestart.pending"
+  | "plugin.appRestart.success"
   | "plugin.appUpdate.button"
   | "plugin.appUpdate.confirm"
   | "plugin.appUpdate.failed"
@@ -1032,6 +1036,10 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.action.uninstall": "Uninstall",
     "plugin.action.update": "Update",
     "plugin.action.viewConfig": "Plugin settings",
+    "plugin.appRestart.button": "Reload plugins",
+    "plugin.appRestart.failed": "Plugin service reload failed.",
+    "plugin.appRestart.pending": "Reloading plugin service...",
+    "plugin.appRestart.success": "Plugin service reloaded",
     "plugin.appUpdate.button": "Update app",
     "plugin.appUpdate.confirm": "Update",
     "plugin.appUpdate.failed": "App update failed.",
@@ -1111,7 +1119,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.toast.installFailed": "Install failed",
     "plugin.toast.installSuccess": "Plugin installed",
     "plugin.toast.operationFailed": "Operation failed",
-    "plugin.toast.restartHint": "Restart the app for plugin changes to take effect.",
+    "plugin.toast.restartHint": "Reload plugins for plugin changes to take effect.",
     "plugin.toast.uninstalled": "Plugin uninstalled",
     "plugin.uninstall.confirmBody": "Remove “{title}” from the manifest and delete its plugin folder when safe?",
     "plugin.uninstall.confirmTitle": "Uninstall plugin",
@@ -1637,6 +1645,10 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.action.uninstall": "アンインストール",
     "plugin.action.update": "更新",
     "plugin.action.viewConfig": "プラグイン設定",
+    "plugin.appRestart.button": "プラグイン再読み込み",
+    "plugin.appRestart.failed": "プラグインサービスの再読み込みに失敗しました。",
+    "plugin.appRestart.pending": "プラグインサービスを再読み込み中...",
+    "plugin.appRestart.success": "プラグインサービスを再読み込みしました",
     "plugin.appUpdate.button": "本体を更新",
     "plugin.appUpdate.confirm": "更新",
     "plugin.appUpdate.failed": "本体の更新に失敗しました。",
@@ -1715,7 +1727,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.toast.installFailed": "インストール失敗",
     "plugin.toast.installSuccess": "プラグインをインストールしました",
     "plugin.toast.operationFailed": "操作失敗",
-    "plugin.toast.restartHint": "プラグイン変更を反映するにはアプリを再起動してください。",
+    "plugin.toast.restartHint": "プラグイン変更を反映するにはプラグインを再読み込みしてください。",
     "plugin.toast.uninstalled": "プラグインをアンインストールしました",
     "plugin.uninstall.confirmBody":
       "「{title}」を manifest から削除し、安全な場合はプラグインフォルダーも削除しますか？",
@@ -2236,6 +2248,10 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.action.uninstall": "卸载",
     "plugin.action.update": "更新",
     "plugin.action.viewConfig": "插件设置",
+    "plugin.appRestart.button": "重载插件",
+    "plugin.appRestart.failed": "插件服务重载失败。",
+    "plugin.appRestart.pending": "正在重载插件服务...",
+    "plugin.appRestart.success": "插件服务已重载",
     "plugin.appUpdate.button": "更新主程序",
     "plugin.appUpdate.confirm": "更新",
     "plugin.appUpdate.failed": "主程序更新失败。",
@@ -2311,7 +2327,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.toast.installFailed": "安装失败",
     "plugin.toast.installSuccess": "插件已安装",
     "plugin.toast.operationFailed": "操作失败",
-    "plugin.toast.restartHint": "重启应用后插件变更生效。",
+    "plugin.toast.restartHint": "重载插件后插件变更生效。",
     "plugin.toast.uninstalled": "插件已卸载",
     "plugin.uninstall.confirmBody": "确认将「{title}」从 manifest 移除，并在安全时删除对应插件目录？",
     "plugin.uninstall.confirmTitle": "卸载插件",

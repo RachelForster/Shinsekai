@@ -46,6 +46,11 @@ describe("plugin manager utilities", () => {
       }),
     ).toBe("owner/demo");
     expect(githubUrl("owner/demo")).toBe("https://github.com/owner/demo");
+    expect(githubUrl("https://github.com/owner/demo.git")).toBe("https://github.com/owner/demo");
+    expect(githubUrl("github.com/owner/demo/tree/main")).toBe("https://github.com/owner/demo/tree/main");
+    expect(githubUrl("https://github.com/owner/demo/releases/tag/v1.0.0")).toBe(
+      "https://github.com/owner/demo/releases/tag/v1.0.0",
+    );
     expect(githubUrl("")).toBe("");
     expect(pluginActionId(plugin)).toBe("plugins.demo:Plugin");
     expect(pluginActionId({ ...plugin, entry: "" })).toBe("demo");

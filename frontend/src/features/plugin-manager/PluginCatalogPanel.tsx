@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { DownloadCloud, ExternalLink, RefreshCw } from "lucide-react";
 
 import {
@@ -8,8 +8,6 @@ import {
   listAppUpdateTags,
   listPluginCatalog,
   listRepoTags,
-  pluginCatalogQueryKey,
-  pluginsQueryKey,
   runAppUpdate,
 } from "../../entities/plugin/repository";
 import type {
@@ -39,7 +37,6 @@ interface PluginCatalogPanelProps {
   appUpdateMutation: ReturnType<
     typeof useMutation<AppUpdateResult, Error, { refKind: AppUpdateRefKind; tagName: string }>
   >;
-  appUpdateTask: TaskSnapshot<AppUpdateResult> | null;
   catalogQuery: ReturnType<typeof useQuery<PluginCatalogItem[]>>;
   installMutation: ReturnType<typeof useMutation<PluginManifest, Error, string | PluginInstallInput>>;
   installTask: TaskSnapshot<PluginManifest> | null;
@@ -48,13 +45,11 @@ interface PluginCatalogPanelProps {
 
 export function PluginCatalogPanel({
   appUpdateMutation,
-  appUpdateTask,
   catalogQuery,
   installMutation,
   installTask,
   installingSource,
 }: PluginCatalogPanelProps) {
-  const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
 
@@ -77,8 +72,8 @@ export function PluginCatalogPanel({
   });
   const catalogTagsQuery = useQuery({
     enabled: Boolean(pendingCatalogInstall?.repo),
-    queryFn: () => listRepoTags(pendingCatalogInstall?.repo ?? ""),
-    queryKey: ["plugins", "repo-tags", pendingCatalogInstall?.repo ?? ""],
+    queryFn: () => listRepoTags(pendingCatalogInstall ? catalogInstallSource(pendingCatalogInstall) : ""),
+    queryKey: ["plugins", "repo-tags", pendingCatalogInstall ? catalogInstallSource(pendingCatalogInstall) : ""],
     retry: 1,
   });
 
@@ -95,15 +90,37 @@ export function PluginCatalogPanel({
   }, [catalogTagName, catalogTagsQuery.data]);
 
   const appUpdateInfo = appUpdateInfoQuery.data;
+  const catalogInstallDone = Boolean(pendingCatalogInstall && installMutation.isSuccess && !installMutation.isPending);
+  const appUpdateDone = pendingAppUpdate && appUpdateMutation.isSuccess && !appUpdateMutation.isPending;
+
+  const closeCatalogInstallDialog = () => {
+    if (!installMutation.isPending) {
+      installMutation.reset();
+    }
+    setPendingCatalogInstall(null);
+  };
+
+  const closeAppUpdateDialog = () => {
+    if (!appUpdateMutation.isPending) {
+      appUpdateMutation.reset();
+    }
+    setPendingAppUpdate(false);
+  };
 
   const catalogColumns = [
     {
       header: t("plugin.plugin"),
       key: "name",
       render: (plugin: PluginCatalogItem) => (
-        <div>
-          <strong>{plugin.name}</strong>
-          {plugin.repo ? <div className="inline-status">{plugin.repo}</div> : null}
+        <div className="plugin-catalog-identity">
+          <strong className="plugin-catalog-identity__name" title={plugin.name}>
+            {plugin.name}
+          </strong>
+          {plugin.repo ? (
+            <span className="plugin-catalog-identity__repo" title={plugin.repo}>
+              {plugin.repo}
+            </span>
+          ) : null}
         </div>
       ),
     },
@@ -132,6 +149,7 @@ export function PluginCatalogPanel({
               loading={installMutation.isPending && installingSource === source}
               onClick={() => {
                 if (plugin.repo) {
+                  installMutation.reset();
                   setCatalogRefKind("latest");
                   setCatalogTagName("");
                   setPendingCatalogInstall(plugin);
@@ -172,7 +190,10 @@ export function PluginCatalogPanel({
           <Button
             disabled={appUpdateMutation.isPending}
             icon={<DownloadCloud aria-hidden className="button__icon" />}
-            onClick={() => setPendingAppUpdate(true)}
+            onClick={() => {
+              appUpdateMutation.reset();
+              setPendingAppUpdate(true);
+            }}
             variant="ghost"
           >
             {t("plugin.appUpdate.button")}
@@ -186,8 +207,6 @@ export function PluginCatalogPanel({
           </Button>
         </div>
       </div>
-      <TaskProgress task={appUpdateTask} />
-      <TaskProgress task={installTask} />
       {appUpdateInfoQuery.isError ? (
         <QueryErrorState
           body={t("plugin.appUpdate.failed")}
@@ -222,38 +241,44 @@ export function PluginCatalogPanel({
       <Dialog
         closeLabel={t("common.close")}
         footer={
-          <>
-            <Button onClick={() => setPendingCatalogInstall(null)}>{t("common.cancel")}</Button>
-            <AsyncButton
-              icon={<DownloadCloud aria-hidden className="button__icon" />}
-              loading={installMutation.isPending}
-              onClick={() => {
-                const source = pendingCatalogInstall ? catalogInstallSource(pendingCatalogInstall) : "";
-                if (!source) {
-                  return;
-                }
-                if (catalogRefKind === "tag" && !catalogTagName.trim()) {
-                  showToast({
-                    kind: "error",
-                    message: t("plugin.appUpdate.tagInvalid"),
-                    title: t("plugin.installRef.title"),
+          catalogInstallDone ? (
+            <Button onClick={closeCatalogInstallDialog} variant="primary">
+              {t("common.confirm")}
+            </Button>
+          ) : (
+            <>
+              <Button onClick={closeCatalogInstallDialog}>{t("common.cancel")}</Button>
+              <AsyncButton
+                icon={<DownloadCloud aria-hidden className="button__icon" />}
+                loading={installMutation.isPending}
+                onClick={() => {
+                  const source = pendingCatalogInstall ? catalogInstallSource(pendingCatalogInstall) : "";
+                  if (!source) {
+                    return;
+                  }
+                  if (catalogRefKind === "tag" && !catalogTagName.trim()) {
+                    showToast({
+                      kind: "error",
+                      message: t("plugin.appUpdate.tagInvalid"),
+                      title: t("plugin.installRef.title"),
+                    });
+                    return;
+                  }
+                  installMutation.mutate({
+                    overwrite: Boolean(pendingCatalogInstall?.downloaded),
+                    refKind: catalogRefKind,
+                    source,
+                    tagName: catalogRefKind === "tag" ? catalogTagName : undefined,
                   });
-                  return;
-                }
-                installMutation.mutate({
-                  overwrite: Boolean(pendingCatalogInstall?.downloaded),
-                  refKind: catalogRefKind,
-                  source,
-                  tagName: catalogRefKind === "tag" ? catalogTagName : undefined,
-                });
-              }}
-              variant="primary"
-            >
-              {pendingCatalogInstall?.downloaded ? t("plugin.action.update") : t("plugin.action.install")}
-            </AsyncButton>
-          </>
+                }}
+                variant="primary"
+              >
+                {pendingCatalogInstall?.downloaded ? t("plugin.action.update") : t("plugin.action.install")}
+              </AsyncButton>
+            </>
+          )
         }
-        onClose={() => setPendingCatalogInstall(null)}
+        onClose={closeCatalogInstallDialog}
         open={Boolean(pendingCatalogInstall)}
         title={t("plugin.installRef.title")}
       >
@@ -297,6 +322,7 @@ export function PluginCatalogPanel({
               ) : null}
             </span>
           </label>
+          <TaskProgress task={installTask} />
         </div>
       </Dialog>
 
@@ -304,29 +330,35 @@ export function PluginCatalogPanel({
       <Dialog
         closeLabel={t("common.close")}
         footer={
-          <>
-            <Button onClick={() => setPendingAppUpdate(false)}>{t("common.cancel")}</Button>
-            <AsyncButton
-              icon={<DownloadCloud aria-hidden className="button__icon" />}
-              loading={appUpdateMutation.isPending}
-              onClick={() => {
-                if (appUpdateRefKind === "tag" && !appUpdateTagName.trim()) {
-                  showToast({
-                    kind: "error",
-                    message: t("plugin.appUpdate.tagInvalid"),
-                    title: t("plugin.appUpdate.title"),
-                  });
-                  return;
-                }
-                appUpdateMutation.mutate({ refKind: appUpdateRefKind, tagName: appUpdateTagName });
-              }}
-              variant="danger"
-            >
-              {t("plugin.appUpdate.confirm")}
-            </AsyncButton>
-          </>
+          appUpdateDone ? (
+            <Button onClick={closeAppUpdateDialog} variant="primary">
+              {t("common.confirm")}
+            </Button>
+          ) : (
+            <>
+              <Button onClick={closeAppUpdateDialog}>{t("common.cancel")}</Button>
+              <AsyncButton
+                icon={<DownloadCloud aria-hidden className="button__icon" />}
+                loading={appUpdateMutation.isPending}
+                onClick={() => {
+                  if (appUpdateRefKind === "tag" && !appUpdateTagName.trim()) {
+                    showToast({
+                      kind: "error",
+                      message: t("plugin.appUpdate.tagInvalid"),
+                      title: t("plugin.appUpdate.title"),
+                    });
+                    return;
+                  }
+                  appUpdateMutation.mutate({ refKind: appUpdateRefKind, tagName: appUpdateTagName });
+                }}
+                variant="danger"
+              >
+                {t("plugin.appUpdate.confirm")}
+              </AsyncButton>
+            </>
+          )
         }
-        onClose={() => setPendingAppUpdate(false)}
+        onClose={closeAppUpdateDialog}
         open={pendingAppUpdate}
         title={t("plugin.appUpdate.title")}
       >

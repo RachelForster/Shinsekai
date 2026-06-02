@@ -14,11 +14,60 @@ export type PluginView = "installed" | "discover" | "mcp";
 export type PluginConfigDraft = Record<string, unknown>;
 
 export function catalogInstallSource(item: PluginCatalogItem) {
-  return item.repo;
+  return githubRepoSlug(item.repo) || item.repo.trim();
 }
 
 export function githubUrl(repo: string) {
-  return repo ? `https://github.com/${repo}` : "";
+  const pageUrl = githubPageUrl(repo);
+  if (pageUrl) {
+    return pageUrl;
+  }
+  const slug = githubRepoSlug(repo);
+  return slug ? `https://github.com/${slug}` : "";
+}
+
+function githubPageUrl(repo: string) {
+  const raw = repo.trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^git@github\.com:/i.test(raw)) {
+    return "";
+  }
+  const withProtocol = /^github\.com\//i.test(raw) ? `https://${raw}` : raw;
+  if (!/^https?:\/\/github\.com\//i.test(withProtocol)) {
+    return "";
+  }
+  try {
+    const parsed = new URL(withProtocol);
+    const parts = parsed.pathname.split("/").map((part) => part.trim()).filter(Boolean);
+    if (parts.length < 2) {
+      return "";
+    }
+    parts[1] = parts[1].replace(/\.git$/i, "");
+    return `https://github.com/${parts.join("/")}${parsed.search}${parsed.hash}`;
+  } catch {
+    return "";
+  }
+}
+
+export function githubRepoSlug(repo: string) {
+  let raw = repo.trim();
+  if (!raw) {
+    return "";
+  }
+  raw = raw
+    .replace(/^git@github\.com:/i, "")
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^github\.com\//i, "")
+    .split("#", 1)[0]
+    .split("?", 1)[0]
+    .replace(/^\/+|\/+$/g, "");
+  if (raw.endsWith(".git")) {
+    raw = raw.slice(0, -4);
+  }
+  const parts = raw.split("/").filter(Boolean);
+  return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : "";
 }
 
 export function pluginSettingsPages(plugin: PluginManifest | null) {

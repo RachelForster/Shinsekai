@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Power, Settings, Trash2 } from "lucide-react";
+import { Power, RotateCcw, Settings, Trash2 } from "lucide-react";
 
 import {
   installPlugin,
@@ -14,10 +14,15 @@ import {
 } from "../../entities/plugin/repository";
 import type {
   AppUpdateRefKind,
-  AppUpdateResult,
   PluginInstallInput,
   PluginManifest,
 } from "../../entities/plugin/types";
+import {
+  desktopRestartErrorMessage,
+  isTauriDesktop,
+  restartDesktopBridge,
+  writeDesktopRestartDebugLog,
+} from "../../shared/desktop/desktopApi";
 import { useI18n } from "../../shared/i18n";
 import type { TaskSnapshot } from "../../shared/platform/types";
 import {
@@ -54,7 +59,7 @@ export function PluginManagerPage() {
   const [installTask, setInstallTask] = useState<TaskSnapshot<PluginManifest> | null>(null);
   const [pendingUninstall, setPendingUninstall] = useState<PluginManifest | null>(null);
   const [detailPlugin, setDetailPlugin] = useState<PluginManifest | null>(null);
-  const [appUpdateTask, setAppUpdateTask] = useState<TaskSnapshot<AppUpdateResult> | null>(null);
+  const [pluginReloadPending, setPluginReloadPending] = useState(false);
 
   const catalogQuery = useQuery({
     enabled: view === "discover",
@@ -132,19 +137,13 @@ export function PluginManagerPage() {
 
   const appUpdateMutation = useMutation({
     mutationFn: (opts: { refKind: AppUpdateRefKind; tagName: string }) =>
-      runAppUpdate(
-        { refKind: opts.refKind, tagName: opts.refKind === "tag" ? opts.tagName : undefined },
-        { onTaskUpdate: setAppUpdateTask },
-      ),
+      runAppUpdate({ refKind: opts.refKind, tagName: opts.refKind === "tag" ? opts.tagName : undefined }),
     onError(error) {
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("plugin.appUpdate.failed"),
         title: t("plugin.appUpdate.title"),
       });
-    },
-    onMutate() {
-      setAppUpdateTask(null);
     },
     onSuccess(result) {
       queryClient.invalidateQueries({ queryKey: ["plugins", "app-update", "info"] });
@@ -153,6 +152,34 @@ export function PluginManagerPage() {
   });
 
   const pluginBusy = toggleMutation.isPending || uninstallMutation.isPending;
+  const desktopApp = isTauriDesktop();
+
+  const handleReloadPlugins = async () => {
+    setPluginReloadPending(true);
+    try {
+      await waitForReloadAnimationFrame();
+      const runtime = await restartDesktopBridge();
+      await waitForPluginBridgeReady(runtime.bridgeUrl);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: pluginsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["plugins", "app-update", "info"] }),
+      ]);
+      showToast({
+        kind: "success",
+        title: t("plugin.appRestart.success"),
+      });
+    } catch (error) {
+      await writeDesktopRestartDebugLog(`PluginManagerPage plugin reload catch: ${desktopRestartErrorMessage(error)}`);
+      showToast({
+        kind: "error",
+        message: desktopRestartErrorMessage(error) || t("plugin.appRestart.failed"),
+        title: t("plugin.appRestart.button"),
+      });
+    } finally {
+      setPluginReloadPending(false);
+    }
+  };
 
   if (detailPlugin) {
     return <PluginDetailPanel detailPlugin={detailPlugin} onBack={() => setDetailPlugin(null)} />;
@@ -164,7 +191,32 @@ export function PluginManagerPage() {
         <div>
           <h1 className="page__title">{t("nav.plugins")}</h1>
           <p className="page__description">{t("plugin.description")}</p>
+          {pluginReloadPending ? (
+            <span className="inline-status plugin-reload-status">{t("plugin.appRestart.pending")}</span>
+          ) : null}
         </div>
+        {desktopApp ? (
+          <div className="page__actions plugin-page__actions">
+            <AsyncButton
+              className={pluginReloadPending ? "plugin-reload-button plugin-reload-button--active" : "plugin-reload-button"}
+              disabled={pluginReloadPending}
+              icon={
+                <RotateCcw
+                  aria-hidden
+                  className={
+                    pluginReloadPending
+                      ? "button__icon plugin-reload-button__icon plugin-reload-button__icon--spinning"
+                      : "button__icon plugin-reload-button__icon"
+                  }
+                />
+              }
+              onClick={() => void handleReloadPlugins()}
+              variant="ghost"
+            >
+              {t("plugin.appRestart.button")}
+            </AsyncButton>
+          </div>
+        ) : null}
       </header>
 
       <SegmentedTabs
@@ -181,7 +233,6 @@ export function PluginManagerPage() {
       {view === "discover" ? (
         <PluginCatalogPanel
           appUpdateMutation={appUpdateMutation}
-          appUpdateTask={appUpdateTask}
           catalogQuery={catalogQuery}
           installMutation={installMutation}
           installTask={installTask}
@@ -309,4 +360,47 @@ export function PluginManagerPage() {
       />
     </div>
   );
+}
+
+function waitForReloadAnimationFrame() {
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+async function waitForPluginBridgeReady(bridgeUrl: string, timeoutMs = 15000) {
+  if (!bridgeUrl) {
+    return;
+  }
+  const url = `${bridgeUrl.replace(/\/$/, "")}/api/health`;
+  const started = Date.now();
+  let lastError: unknown;
+
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload?.ok === true) {
+        return;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await delayPluginReload(160);
+  }
+
+  throw new Error(
+    lastError instanceof Error
+      ? lastError.message
+      : `Timed out waiting for plugin service at ${url}`,
+  );
+}
+
+function delayPluginReload(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
