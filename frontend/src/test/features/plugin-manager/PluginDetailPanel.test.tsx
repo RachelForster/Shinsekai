@@ -139,7 +139,7 @@ describe("PluginDetailPanel", () => {
 
     expect(await screen.findByText("Localized page description")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Localized Group" })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("https://saved.test")).toBeInTheDocument();
+    expect((screen.getByLabelText(/Endpoint URL/) as HTMLInputElement).value).toMatch(/^https:\/\/saved\.test\/?$/);
     expect(screen.getByRole("combobox")).toHaveTextContent("Automatic");
     expect(screen.getByLabelText("Extra JSON")).toHaveValue(JSON.stringify({ retries: 1 }, null, 2));
   });
@@ -147,7 +147,9 @@ describe("PluginDetailPanel", () => {
   it("saves the edited draft and shows the localized restart hint", async () => {
     renderPanel();
 
-    fireEvent.change(await screen.findByDisplayValue("https://saved.test"), {
+    const endpointInput = (await screen.findByLabelText(/Endpoint URL/)) as HTMLInputElement;
+    expect(endpointInput.value).toMatch(/^https:\/\/saved\.test\/?$/);
+    fireEvent.change(endpointInput, {
       target: { value: "https://edited.test" },
     });
     fireEvent.click(screen.getByRole("combobox"));
