@@ -16,6 +16,7 @@ class BridgeState:
     template_dir_path: str = "./data/character_templates"
     history_dir: str = "./data/chat_history"
     frontend_dist_dir: str = ""
+    app_root_dir: str = ""
     chat_session: dict[str, Any] = field(default_factory=dict)
 
 

@@ -49,14 +49,26 @@ def _restart_debug_log(message: str) -> None:
 def _configure_runtime_context(
     project_root: str | None = None,
     frontend_dist: str | None = "frontend/dist",
-) -> tuple[Path, str]:
+    app_root: str | None = None,
+) -> tuple[Path, str, str]:
     repo_root = _repo_root()
     resolved_frontend_dist = ""
+    resolved_app_root = ""
     if frontend_dist:
         dist_path = Path(frontend_dist).expanduser()
         if not dist_path.is_absolute():
             dist_path = repo_root / dist_path
         resolved_frontend_dist = str(dist_path.resolve())
+
+    raw_app_root = app_root or os.environ.get("SHINSEKAI_APP_ROOT")
+    if raw_app_root:
+        app_root_path = Path(raw_app_root).expanduser().resolve(strict=False)
+        if app_root_path.exists() and app_root_path.is_dir():
+            resolved_app_root = str(app_root_path)
+            os.environ["SHINSEKAI_APP_ROOT"] = resolved_app_root
+    if not resolved_app_root:
+        resolved_app_root = str(repo_root)
+        os.environ.setdefault("SHINSEKAI_APP_ROOT", resolved_app_root)
 
     if project_root:
         root = Path(project_root).expanduser().resolve()
@@ -65,7 +77,7 @@ def _configure_runtime_context(
         os.chdir(root)
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
-    return repo_root, resolved_frontend_dist
+    return repo_root, resolved_frontend_dist, resolved_app_root
 
 
 def run(
@@ -75,14 +87,16 @@ def run(
     frontend_dist: str | None = "frontend/dist",
     open_browser: bool = False,
     parent_pid: int | None = None,
+    app_root: str | None = None,
 ) -> None:
     _restart_debug_log(
-        f"run start host={host} port={port} project_root={project_root or ''} frontend_dist={frontend_dist or ''} parent_pid={parent_pid or 0}"
+        f"run start host={host} port={port} project_root={project_root or ''} app_root={app_root or ''} frontend_dist={frontend_dist or ''} parent_pid={parent_pid or 0}"
     )
     _start_parent_watchdog(parent_pid)
-    _repo_root_value, resolved_frontend_dist = _configure_runtime_context(
+    _repo_root_value, resolved_frontend_dist, resolved_app_root = _configure_runtime_context(
         project_root,
         frontend_dist,
+        app_root,
     )
 
     from config.background_manager import BackgroundManager
@@ -104,6 +118,7 @@ def run(
         background_manager=BackgroundManager(),
         template_generator=TemplateGenerator(),
         frontend_dist_dir=resolved_frontend_dist,
+        app_root_dir=resolved_app_root,
     )
     try:
         from core.plugins.plugin_host import ensure_plugins_loaded
@@ -184,8 +199,13 @@ def check_runtime(
     project_root: str | None = None,
     frontend_dist: str | None = "frontend/dist",
     requirements_file: str | None = "requirements.txt",
+    app_root: str | None = None,
 ) -> None:
-    repo_root, _resolved_frontend_dist = _configure_runtime_context(project_root, frontend_dist)
+    repo_root, _resolved_frontend_dist, _resolved_app_root = _configure_runtime_context(
+        project_root,
+        frontend_dist,
+        app_root,
+    )
     if requirements_file:
         requirements_path = Path(requirements_file).expanduser()
         if not requirements_path.is_absolute():
@@ -283,6 +303,11 @@ def main() -> None:
         help="Project/data root to use for relative data/config paths. Defaults to the current directory.",
     )
     parser.add_argument(
+        "--app-root",
+        default="",
+        help="Application install directory used by the file browser Shinsekai location.",
+    )
+    parser.add_argument(
         "--frontend-dist",
         default="frontend/dist",
         help="Built frontend directory to serve. Relative paths resolve from the repository root.",
@@ -314,17 +339,19 @@ def main() -> None:
             args.project_root or None,
             args.frontend_dist or None,
             args.requirements_file or None,
+            args.app_root or None,
         )
         print("Shinsekai Python runtime check completed.")
         return
 
     run(
-        args.host,
-        args.port,
-        args.project_root or None,
-        args.frontend_dist or None,
-        args.open_browser,
-        args.parent_pid or None,
+        host=args.host,
+        port=args.port,
+        project_root=args.project_root or None,
+        frontend_dist=args.frontend_dist or None,
+        open_browser=args.open_browser,
+        parent_pid=args.parent_pid or None,
+        app_root=args.app_root or None,
     )
 
 

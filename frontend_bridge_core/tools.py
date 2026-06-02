@@ -154,15 +154,37 @@ def _file_browser_root_label(label: str, value: str) -> str:
     return normalized_label or normalized_value
 
 
-def _filesystem_roots(project_root: Path) -> list[dict[str, str]]:
+def _resolve_path(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False)
+    except Exception:
+        return path
+
+
+def _state_app_root(state: BridgeState, project_root: Path) -> Path:
+    raw = str(getattr(state, "app_root_dir", "") or os.environ.get("SHINSEKAI_APP_ROOT") or "").strip()
+    if raw:
+        app_root = _resolve_path(Path(raw).expanduser())
+        if app_root.exists() and app_root.is_dir():
+            return app_root
+    return project_root
+
+
+def _app_data_root(app_root: Path) -> Path:
+    data_root = _resolve_path(app_root / "data")
+    try:
+        data_root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return data_root
+
+
+def _filesystem_roots(project_root: Path, app_root: Path) -> list[dict[str, str]]:
     roots: list[dict[str, str]] = []
     seen: set[str] = set()
 
     def add(label: str, path: Path) -> None:
-        try:
-            resolved = path.resolve(strict=False)
-        except Exception:
-            return
+        resolved = _resolve_path(path)
         if not resolved.exists():
             return
         value = _display_path(resolved)
@@ -172,13 +194,14 @@ def _filesystem_roots(project_root: Path) -> list[dict[str, str]]:
         seen.add(key)
         roots.append({"label": _file_browser_root_label(label, value), "path": value})
 
-    add("Shinsekai", project_root)
-    add("Data", project_root / "data")
+    add("Shinsekai", app_root)
+    add("Data", _app_data_root(app_root))
     add("Home", Path.home())
 
-    anchor = project_root.resolve(strict=False).anchor
-    if anchor:
-        add(anchor, Path(anchor))
+    for root in (app_root, project_root):
+        anchor = _resolve_path(root).anchor
+        if anchor:
+            add(anchor, Path(anchor))
 
     if os.name == "nt":
         for code in range(ord("A"), ord("Z") + 1):
@@ -193,15 +216,13 @@ def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str
     raw_path = str(payload.get("path") or "").strip()
     show_hidden = bool(payload.get("showHidden"))
     root_raw = os.environ.get("EASYAI_PROJECT_ROOT") or str(Path.cwd())
-    project_root = Path(root_raw).expanduser().resolve(strict=False)
-    target = Path(raw_path).expanduser() if raw_path else project_root
+    project_root = _resolve_path(Path(root_raw).expanduser())
+    app_root = _state_app_root(state, project_root)
+    target = Path(raw_path).expanduser() if raw_path else app_root
     if not target.is_absolute():
         target = project_root / target
 
-    try:
-        target = target.resolve(strict=False)
-    except Exception:
-        pass
+    target = _resolve_path(target)
 
     if target.exists() and target.is_file():
         target = target.parent
@@ -245,5 +266,5 @@ def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str
         "cwd": _display_path(target),
         "entries": entries,
         "parent": _display_path(parent) if parent is not None else "",
-        "roots": _filesystem_roots(project_root),
+        "roots": _filesystem_roots(project_root, app_root),
     }

@@ -97,6 +97,7 @@ struct DesktopRuntimeView {
 struct DesktopState {
     source_root: PathBuf,
     project_root: PathBuf,
+    app_root: PathBuf,
     frontend_dist: PathBuf,
     bridge_port: u16,
     bridge: Mutex<Option<BridgeProcess>>,
@@ -121,12 +122,14 @@ impl DesktopState {
     fn new(
         source_root: PathBuf,
         project_root: PathBuf,
+        app_root: PathBuf,
         frontend_dist: PathBuf,
         bridge_port: u16,
     ) -> Self {
         Self {
             source_root,
             project_root,
+            app_root,
             frontend_dist,
             bridge_port,
             bridge: Mutex::new(None),
@@ -242,13 +245,15 @@ pub fn run() {
 
             let source_root = resolve_source_root(app)?;
             let project_root = resolve_project_root(app)?;
+            let app_root = resolve_app_root(app, &source_root)?;
             let frontend_dist = resolve_frontend_dist(&source_root)?;
             let bridge_port = choose_bridge_port()?;
             let url = app_window_url(bridge_port);
             restart_debug_log(format!(
-                "setup resolved source_root={} project_root={} frontend_dist={} bridge_port={} url={}",
+                "setup resolved source_root={} project_root={} app_root={} frontend_dist={} bridge_port={} url={}",
                 source_root.display(),
                 project_root.display(),
+                app_root.display(),
                 frontend_dist.display(),
                 bridge_port,
                 url
@@ -259,6 +264,7 @@ pub fn run() {
             app.manage(DesktopState::new(
                 source_root,
                 project_root,
+                app_root,
                 frontend_dist,
                 bridge_port,
             ));
@@ -365,11 +371,7 @@ async fn desktop_update_check(
     *pending = update;
     restart_debug_log(format!(
         "desktop_update_check result={}",
-        if view.is_some() {
-            "available"
-        } else {
-            "none"
-        }
+        if view.is_some() { "available" } else { "none" }
     ));
     Ok(view)
 }
@@ -1041,6 +1043,26 @@ mod tests {
         assert!(resolve_static_request_path(&root, "/web-assets\\secret.js").is_none());
     }
 
+    #[test]
+    fn app_root_from_executable_uses_executable_parent() {
+        let executable = PathBuf::from("/opt/Shinsekai/shinsekai");
+
+        assert_eq!(
+            app_root_from_executable(&executable).unwrap(),
+            PathBuf::from("/opt/Shinsekai")
+        );
+    }
+
+    #[test]
+    fn app_root_from_resource_dir_unwraps_resources_directory() {
+        let resource_dir = PathBuf::from("/opt/Shinsekai/resources");
+
+        assert_eq!(
+            app_root_from_resource_dir(&resource_dir).unwrap(),
+            PathBuf::from("/opt/Shinsekai")
+        );
+    }
+
     fn temp_test_dir(label: &str) -> PathBuf {
         let token = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1070,6 +1092,7 @@ fn start_bridge_for_state(
     let bridge = spawn_bridge(
         &state.source_root,
         &state.project_root,
+        &state.app_root,
         &state.frontend_dist,
         state.bridge_port,
         runtime,
@@ -1087,16 +1110,18 @@ fn start_bridge_for_state(
 fn spawn_bridge(
     source_root: &Path,
     project_root: &Path,
+    app_root: &Path,
     frontend_dist: &Path,
     port: u16,
     runtime: runtime::PythonRuntime,
 ) -> DesktopResult<BridgeLaunch> {
     println!("Using Shinsekai Python runtime: {}", runtime.description);
     restart_debug_log(format!(
-        "spawn_bridge runtime={} source_root={} project_root={} frontend_dist={} port={} parent_pid={}",
+        "spawn_bridge runtime={} source_root={} project_root={} app_root={} frontend_dist={} port={} parent_pid={}",
         runtime.description,
         source_root.display(),
         project_root.display(),
+        app_root.display(),
         frontend_dist.display(),
         port,
         std::process::id()
@@ -1115,6 +1140,8 @@ fn spawn_bridge(
         .arg(std::process::id().to_string())
         .arg("--project-root")
         .arg(&project_root)
+        .arg("--app-root")
+        .arg(&app_root)
         .arg("--frontend-dist")
         .arg(&frontend_dist)
         .current_dir(&source_root);
@@ -1189,6 +1216,82 @@ fn resolve_project_root(app: &tauri::App) -> DesktopResult<PathBuf> {
     let data_dir = app.path().app_data_dir()?.join("project");
     fs::create_dir_all(&data_dir)?;
     Ok(data_dir)
+}
+
+fn resolve_app_root(app: &tauri::App, source_root: &Path) -> DesktopResult<PathBuf> {
+    if let Some(root) = env_path("SHINSEKAI_APP_ROOT") {
+        if root.is_dir() {
+            return Ok(root);
+        }
+        return Err(format!("SHINSEKAI_APP_ROOT is not a directory: {}", root.display()).into());
+    }
+
+    if let Some(root) = appimage_app_root() {
+        return Ok(root);
+    }
+
+    if dev_project_root().as_deref() == Some(source_root) {
+        return Ok(source_root.to_path_buf());
+    }
+
+    if let Some(root) = app_root_from_current_exe() {
+        return Ok(root);
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        if let Some(root) = app_root_from_resource_dir(&resource_dir) {
+            return Ok(root);
+        }
+    }
+
+    Ok(source_root.to_path_buf())
+}
+
+fn appimage_app_root() -> Option<PathBuf> {
+    env_path("APPIMAGE")
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .filter(|path| path.is_dir())
+}
+
+fn app_root_from_current_exe() -> Option<PathBuf> {
+    env::current_exe()
+        .ok()
+        .and_then(|path| app_root_from_executable(&path))
+}
+
+fn app_root_from_executable(executable: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(app_bundle) = executable.ancestors().find(|ancestor| {
+            ancestor
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
+        }) {
+            return app_bundle.parent().map(Path::to_path_buf);
+        }
+    }
+
+    executable.parent().map(Path::to_path_buf)
+}
+
+fn app_root_from_resource_dir(resource_dir: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(app_bundle) = resource_dir.ancestors().find(|ancestor| {
+            ancestor
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
+        }) {
+            return app_bundle.parent().map(Path::to_path_buf);
+        }
+    }
+
+    if resource_dir.file_name().and_then(|name| name.to_str()) == Some("resources") {
+        return resource_dir.parent().map(Path::to_path_buf);
+    }
+    Some(resource_dir.to_path_buf())
 }
 
 fn dev_project_root() -> Option<PathBuf> {
