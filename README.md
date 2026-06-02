@@ -98,69 +98,49 @@ Linux 源码用户也可以运行 `./scripts/install-linux.sh`。如果已激活
 
 `start-react.*` 会启动本地 Python HTTP bridge，托管 React 设置中心，并自动打开浏览器。React 设置中心用于管理 API、角色、背景、聊天模板、小工具、插件和 MCP。
 
-源码用户如果没有运行安装脚本，需要先安装前端依赖一次：
+源码用户如果没有运行安装脚本，需要先安装前端依赖并构建 React 前端：
 
 ```bash
 cd frontend
 pnpm install
+pnpm build
 cd ..
 ```
 
-启动脚本会在 `frontend/dist` 不存在时尝试自动构建；如果前端源码较新且本机已有 `pnpm` 与前端依赖，也会自动重建。发布版会携带已构建的 `frontend/dist`，没有前端构建环境时会直接使用现有构建。旧 PySide 设置页仍作为兼容入口保留：`python webui_qt.py`。
+源码仓库不再提交 `frontend/dist`。`start-react.*` 发现构建产物不存在时会提示手动运行 `cd frontend && pnpm install && pnpm build`；需要自动构建时可显式传入 `--build-if-missing` 或 `--build-if-stale`。正式桌面安装包会在 release 构建流程中生成并内置前端资源。旧 PySide 设置页仍作为兼容入口保留：`python webui_qt.py`。
 
-### React 前端测试
+### Tauri 桌面端开发
 
-前端测试都在 `frontend/` 下执行。第一次测试前先安装依赖：
+需要调试正式桌面壳、窗口控制或官方 updater 时，在 `frontend/` 下启动 Tauri dev：
 
 ```bash
 cd frontend
 pnpm install
+pnpm tauri:dev
 ```
 
-提交 React 前端改动前，运行这组必过检查：
+`pnpm tauri:dev` 会先执行 `pnpm build` 和 `pnpm prepare:tauri-resources`，再运行 `tauri dev`。如果手动拆开执行，请使用完整顺序：
 
 ```bash
-pnpm format:check
-pnpm lint:types
-pnpm test
+cd frontend
 pnpm build
+pnpm prepare:tauri-resources
+pnpm tauri dev
 ```
 
-含义：
+桌面 dev 模式会被识别为 Tauri 桌面环境：更新按钮走官方 Tauri updater；源码更新入口只保留给非 Tauri 的浏览器/源码模式。
 
-- `pnpm format:check`：检查 Prettier 格式。
-- `pnpm lint:types`：运行 TypeScript 类型检查。
-- `pnpm test`：运行 Vitest 单元测试。
-- `pnpm build`：确认生产构建可用。
-
-React 前端 CI 会执行同一组检查。
-
-视觉回归测试只在需要确认页面截图变化时运行。先启动 Vite：
+构建本地桌面安装包或做 release dry run 时：
 
 ```bash
-pnpm dev --host 127.0.0.1 --port 5174
+cd frontend
+pnpm install
+pnpm build
+pnpm prepare:tauri-resources
+pnpm tauri build
 ```
 
-另开一个终端执行：
-
-```bash
-pnpm exec playwright install chromium
-pnpm test:visual
-```
-
-只有在确认视觉变化是预期结果时，才运行 `pnpm test:visual:update` 更新截图基线。
-
-需要连接真实项目数据开发时，先启动 bridge：
-
-```bash
-pnpm dev:bridge:conda -- --host 127.0.0.1 --port 8787
-```
-
-再启动 Vite：
-
-```bash
-VITE_SHINSEKAI_API_BASE=http://127.0.0.1:8787 pnpm dev --host 127.0.0.1 --port 5174
-```
+正式 release 构建需要设置 updater 签名私钥环境变量 `TAURI_SIGNING_PRIVATE_KEY`；如果私钥设置了密码，还需要 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。本地只想验证打包流程且不生成 updater artifacts 时，可使用 Tauri CLI 的 `--config` 覆盖关闭 `bundle.createUpdaterArtifacts`。
 
 ### 4. 第一次对话
 
