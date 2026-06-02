@@ -6,11 +6,13 @@ import {
   getPluginUiDetail,
   pluginUiQueryKey,
   pluginsQueryKey,
+  runPluginUiAction,
   savePluginUiConfig,
 } from "../../entities/plugin/repository";
-import type { PluginManifest, PluginUIPage } from "../../entities/plugin/types";
+import type { PluginConfigAction, PluginManifest, PluginUIPage } from "../../entities/plugin/types";
 import { useI18n } from "../../shared/i18n";
 import {
+  AlertDialog,
   AsyncButton,
   Button,
   EmptyState,
@@ -37,6 +39,7 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
   const { language, t } = useI18n();
   const formGroups = useMemo(() => pluginConfigGroupsToFormGroups(page.schema ?? []), [page.schema]);
   const [draft, setDraft] = useState<PluginConfigDraft>(() => pluginConfigInitialValues(page));
+  const [pendingAction, setPendingAction] = useState<PluginConfigAction | null>(null);
 
   useEffect(() => {
     setDraft(pluginConfigInitialValues(page));
@@ -64,6 +67,36 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
     },
   });
 
+  const actionMutation = useMutation({
+    mutationFn: (action: PluginConfigAction) => runPluginUiAction(lookupId, page.id, action.id, draft),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("plugin.detail.saveFailed"),
+        title: t("plugin.toast.operationFailed"),
+      });
+    },
+    onSuccess(result) {
+      setDraft(pluginConfigInitialValues(result.page));
+      const localizedPage = localizePluginUiPage(result.page, language);
+      queryClient.invalidateQueries({ queryKey: pluginUiQueryKey(lookupId) });
+      queryClient.invalidateQueries({ queryKey: pluginsQueryKey });
+      showToast({
+        kind: "success",
+        message: localizedPage.restartHint || result.message,
+        title: result.message,
+      });
+    },
+  });
+
+  const handleActionClick = (action: PluginConfigAction) => {
+    if (action.confirm) {
+      setPendingAction(action);
+    } else {
+      actionMutation.mutate(action);
+    }
+  };
+
   if (!page.schema?.length) {
     return (
       <section className="section plugin-detail-page__notice">
@@ -77,6 +110,8 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
       </section>
     );
   }
+
+  const actions = (page.actions ?? []).filter((a) => a.id);
 
   return (
     <div className="plugin-config-panel">
@@ -92,7 +127,32 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
         >
           {t("plugin.detail.save")}
         </AsyncButton>
+        {actions.map((action) => (
+          <AsyncButton
+            key={action.id}
+            loading={actionMutation.isPending && actionMutation.variables?.id === action.id}
+            onClick={() => handleActionClick(action)}
+            tooltip={action.description || undefined}
+            variant={action.variant}
+          >
+            {action.label}
+          </AsyncButton>
+        ))}
       </div>
+      {pendingAction ? (
+        <AlertDialog
+          body={pendingAction.confirm ?? ""}
+          cancelLabel={t("common.cancel")}
+          confirmLabel={t("common.confirm")}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={() => {
+            actionMutation.mutate(pendingAction);
+            setPendingAction(null);
+          }}
+          open
+          title={pendingAction.label}
+        />
+      ) : null}
     </div>
   );
 }

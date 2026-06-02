@@ -29,6 +29,7 @@ import type {
   MusicCoverRunResult,
   MusicCoverSearchResult,
   PluginCatalogItem,
+  PluginConfigActionResult,
   PluginConfigSaveResult,
   PluginManifest,
   PluginUninstallResult,
@@ -570,6 +571,12 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         });
         return result.tags;
       },
+      runUiAction: (id, pageId, actionId, values) =>
+        requestJson<PluginConfigActionResult>(
+          apiBase,
+          `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/actions/${encodePath(actionId)}`,
+          { body: JSON.stringify({ values }), method: "POST" },
+        ),
       saveUiConfig: (id, pageId, values) =>
         requestJson<PluginConfigSaveResult>(apiBase, `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/config`, {
           body: JSON.stringify({ values }),

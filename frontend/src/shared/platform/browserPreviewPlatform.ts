@@ -76,10 +76,15 @@ function previewFileBrowser(path?: string) {
     ],
     "/home/shinsekai/project/assets": [{ kind: "directory", name: "system" }],
     "/home/shinsekai/project/data": [
+      { kind: "directory", name: "bgm" },
       { kind: "directory", name: "config" },
       { kind: "directory", name: "speech" },
       { kind: "directory", name: "sprite" },
       { kind: "directory", name: "tts_bundles" },
+    ],
+    "/home/shinsekai/project/data/bgm": [
+      { kind: "file", name: "cuj-track.mp3" },
+      { kind: "file", name: "rain-loop.ogg" },
     ],
     "/home/shinsekai/project/data/config": [
       { kind: "file", name: "api.yaml" },
@@ -303,11 +308,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async launch(payload) {
         const character = config.characters.find((item) => payload.characters.includes(item.name));
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
+        const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview.json";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
           characterName: character?.name,
-          dialogText: `${payload.templateId} 已启动。`,
+          dialogText: `${payload.templateId} 已启动：${historyPath}`,
+          historyPath,
           sprites: character?.sprites[0]
             ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
             : [],
@@ -317,13 +324,18 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(chat);
       },
       async resumeLast() {
+        const character = config.characters.find((item) => templateSession?.selectedCharacters?.includes(item.name));
+        const background = config.background_list.find((item) => item.name === templateSession?.background);
+        const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview.json";
         chat = {
           ...chat,
-          backgroundPath: "",
-          characterName: "",
-          dialogText: "已加载浏览器预览中的上次聊天。",
-          historyPath: "./data/chat_history/preview.json",
-          sprites: [],
+          backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
+          characterName: character?.name ?? chat.characterName,
+          dialogText: `已恢复上次启动：${historyPath}`,
+          historyPath,
+          sprites: character?.sprites[0]
+            ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
+            : chat.sprites,
           status: "idle",
         };
         emitChat();
@@ -766,6 +778,27 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       list: () => delay(plugins),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
+      runUiAction(id, pageId, actionId, values) {
+        const plugin = plugins.find((item) => item.id === id || item.entry === id);
+        if (!plugin) {
+          return Promise.reject(new Error(`插件不存在：${id}`));
+        }
+        return delay({
+          message: `操作 ${actionId} 已完成。`,
+          page: {
+            id: pageId,
+            kind: "settings",
+            order: 0,
+            pluginId: plugin.id,
+            pluginVersion: plugin.version,
+            schema: [],
+            title: pageId,
+            values,
+          } satisfies PluginUIPage,
+          plugin,
+          result: {} as Record<string, unknown>,
+        });
+      },
       saveUiConfig(id, pageId, values) {
         const plugin = plugins.find((item) => item.id === id || item.entry === id);
         if (!plugin) {

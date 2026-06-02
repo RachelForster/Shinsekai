@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -32,6 +32,7 @@ import "./ChatLauncherPage.css";
 
 export function ChatLauncherPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
@@ -137,7 +138,9 @@ export function ChatLauncherPage() {
 
   const launchMutation = useMutation({
     mutationFn: async (payload: ChatLaunchPayload) => {
-      await saveTemplateSession(buildSession());
+      const session = buildSession();
+      await saveTemplateSession(session);
+      queryClient.setQueryData([...templatesQueryKey, "session"], session);
       return launchChat(payload);
     },
     onError(error) {

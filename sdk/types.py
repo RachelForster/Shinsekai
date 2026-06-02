@@ -28,6 +28,7 @@ __all__ = [
     "ChatUIContribution",
     "ChatOutputContract",
     "FieldPatch",
+    "FrontendConfigAction",
     "FrontendConfigContribution",
     "FrontendPageContribution",
     "OutputContractPatch",
@@ -88,6 +89,31 @@ class ToolsTabContribution:
 
 
 @dataclass(frozen=True)
+class FrontendConfigAction:
+    """
+    An interactive action button rendered alongside the save button on a
+    React-rendered plugin config page.
+
+    ``run`` receives the current form values and may return an optional
+    ``dict`` result that is forwarded to the frontend. Return ``None`` or
+    an empty dict when no result is needed.
+
+    ``variant`` maps to button intent: ``"primary"``, ``"ghost"``, or ``"danger"``.
+    Set ``confirm`` to a non-empty message to prompt the user before running.
+
+    ``order`` controls sort order relative to other actions on the same page.
+    """
+
+    id: str
+    label: str
+    description: str = ""
+    variant: Literal["primary", "ghost", "danger"] = "ghost"
+    confirm: str = ""
+    order: float = 100.0
+    run: Callable[[Mapping[str, Any]], Mapping[str, Any] | None] = lambda values: None
+
+
+@dataclass(frozen=True)
 class FrontendConfigContribution:
     """
     A React-renderable plugin page described by JSON-safe schema and callbacks.
@@ -114,6 +140,7 @@ class FrontendConfigContribution:
     plugin_id: str | None = None
     plugin_version: str | None = None
     i18n: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    actions: list[FrontendConfigAction] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

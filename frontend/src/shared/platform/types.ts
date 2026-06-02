@@ -218,6 +218,7 @@ export interface McpToolPreview {
 
 export type PluginConfigFieldType =
   | "boolean"
+  | "file"
   | "integer"
   | "json"
   | "number"
@@ -240,6 +241,7 @@ export interface PluginConfigFieldSchema {
   max?: number;
   min?: number;
   options?: PluginConfigOption[];
+  pathKind?: "directory" | "file";
   placeholder?: string;
   required?: boolean;
   span?: "full";
@@ -276,7 +278,19 @@ export interface PluginConfigPageI18n {
 
 export type PluginConfigI18nMap = Record<string, PluginConfigPageI18n>;
 
+export type PluginConfigActionVariant = "danger" | "ghost" | "primary";
+
+export interface PluginConfigAction {
+  confirm?: string;
+  description?: string;
+  id: string;
+  label: string;
+  order: number;
+  variant: PluginConfigActionVariant;
+}
+
 export interface PluginUIPage {
+  actions?: PluginConfigAction[];
   description?: string;
   frontendUrl?: string;
   i18n?: PluginConfigI18nMap;
@@ -301,6 +315,13 @@ export interface PluginConfigSaveResult {
   message: string;
   page: PluginUIPage;
   plugin: PluginManifest;
+}
+
+export interface PluginConfigActionResult {
+  message: string;
+  page: PluginUIPage;
+  plugin: PluginManifest;
+  result: Record<string, unknown>;
 }
 
 export interface TemplateSummary {
@@ -670,6 +691,12 @@ export interface ShinsekaiPlatform {
     getUi: (id: string) => Promise<PluginUIDetail>;
     list: () => Promise<PluginManifest[]>;
     repoTags: (repo: string) => Promise<string[]>;
+    runUiAction: (
+      id: string,
+      pageId: string,
+      actionId: string,
+      values: Record<string, unknown>,
+    ) => Promise<PluginConfigActionResult>;
     saveUiConfig: (id: string, pageId: string, values: Record<string, unknown>) => Promise<PluginConfigSaveResult>;
     setEnabled: (id: string, enabled: boolean) => Promise<PluginManifest>;
     uninstall: (id: string) => Promise<PluginUninstallResult>;

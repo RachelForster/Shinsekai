@@ -18,6 +18,7 @@
     "format:check": "prettier --check . --ignore-unknown",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:cuj": "playwright test --config playwright.cuj.config.ts",
     "test:functional": "playwright test e2e/functionality.spec.ts",
     "test:visual": "playwright test e2e/visual.spec.ts",
     "test:visual:update": "playwright test e2e/visual.spec.ts --update-snapshots",
