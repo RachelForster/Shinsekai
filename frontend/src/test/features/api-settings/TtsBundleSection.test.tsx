@@ -77,7 +77,7 @@ describe("TtsBundleSection", () => {
     expect(within(dialog).getByText("Downloading")).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("combobox"));
-    fireEvent.click(within(dialog).getByRole("option", { name: "GPT-SoVITS v2pro for RTX 50" }));
+    fireEvent.click(screen.getByRole("option", { name: "GPT-SoVITS v2pro for RTX 50" }));
     expect(props.onKindChange).toHaveBeenCalledWith("gptso50");
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel download" }));

@@ -1,16 +1,19 @@
 import {
   Children,
   isValidElement,
+  type CSSProperties,
   type ChangeEvent,
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
   type SelectHTMLAttributes,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 
 import "./CustomSelect.css";
@@ -113,7 +116,9 @@ export function CustomSelect({
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : undefined;
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const listboxId = id ? `${id}-listbox` : undefined;
 
   useEffect(() => {
@@ -130,7 +135,8 @@ export function CustomSelect({
     }
 
     const closeIfOutside = (target: EventTarget | null) => {
-      if (!rootRef.current?.contains(target as Node)) {
+      const node = target as Node;
+      if (!rootRef.current?.contains(node) && !menuRef.current?.contains(node)) {
         setOpen(false);
       }
     };
@@ -181,6 +187,48 @@ export function CustomSelect({
     setActiveIndex(selectedIndex >= 0 ? selectedIndex : nextEnabledIndex(options, 0, 1));
     setOpen(true);
   };
+
+  const updateMenuPosition = () => {
+    const root = rootRef.current;
+    if (!root) {
+      return;
+    }
+    const rect = root.getBoundingClientRect();
+    const viewportPadding = 12;
+    const gap = 3;
+    const preferredMaxHeight = 260;
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding - gap;
+    const availableAbove = rect.top - viewportPadding - gap;
+    const openAbove = availableBelow < 160 && availableAbove > availableBelow;
+    const availableHeight = Math.max(96, openAbove ? availableAbove : availableBelow);
+    const maxHeight = Math.min(preferredMaxHeight, availableHeight);
+    const left = Math.min(Math.max(rect.left, viewportPadding), window.innerWidth - rect.width - viewportPadding);
+    setMenuStyle({
+      left,
+      maxHeight,
+      top: openAbove ? rect.top - maxHeight - gap : rect.bottom + gap,
+      width: rect.width,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+    updateMenuPosition();
+  }, [open, options.length, selectedValue]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -265,32 +313,35 @@ export function CustomSelect({
         </span>
         <ChevronDown aria-hidden className="custom-select__icon" />
       </button>
-      {open && options.length ? (
-        <div className="custom-select__menu" id={listboxId} role="listbox">
-          {options.map((option, index) => (
-            <button
-              aria-disabled={option.disabled || undefined}
-              aria-selected={option.value === selectedValue}
-              className="custom-select__option"
-              data-active={index === activeIndex || undefined}
-              disabled={option.disabled}
-              id={listboxId ? `${listboxId}-option-${index}` : undefined}
-              key={`${option.value}-${index}`}
-              onClick={() => selectOption(option)}
-              onMouseDown={(event) => event.preventDefault()}
-              onMouseEnter={() => {
-                if (!option.disabled) {
-                  setActiveIndex(index);
-                }
-              }}
-              role="option"
-              type="button"
-            >
-              <span className="custom-select__option-label">{option.label}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {open && options.length
+        ? createPortal(
+            <div className="custom-select__menu" id={listboxId} ref={menuRef} role="listbox" style={menuStyle}>
+              {options.map((option, index) => (
+                <button
+                  aria-disabled={option.disabled || undefined}
+                  aria-selected={option.value === selectedValue}
+                  className="custom-select__option"
+                  data-active={index === activeIndex || undefined}
+                  disabled={option.disabled}
+                  id={listboxId ? `${listboxId}-option-${index}` : undefined}
+                  key={`${option.value}-${index}`}
+                  onClick={() => selectOption(option)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => {
+                    if (!option.disabled) {
+                      setActiveIndex(index);
+                    }
+                  }}
+                  role="option"
+                  type="button"
+                >
+                  <span className="custom-select__option-label">{option.label}</span>
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

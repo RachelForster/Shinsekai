@@ -87,13 +87,21 @@
   transform: rotate(180deg);
 }
 
-.custom-select__menu,
+.custom-select__menu {
+  position: fixed;
+  z-index: 80;
+}
+
 .editable-combo__menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 3px);
   right: 0;
   left: 0;
+}
+
+.custom-select__menu,
+.editable-combo__menu {
   max-height: 260px;
   overflow: auto;
   padding: 3px;
