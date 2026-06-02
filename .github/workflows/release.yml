@@ -85,7 +85,7 @@ jobs:
             bundles: msi,nsis
           - platform: macos-arm64
             os: macos-14
-            bundles: dmg
+            bundles: dmg,app
 
     steps:
       - uses: actions/checkout@v4
