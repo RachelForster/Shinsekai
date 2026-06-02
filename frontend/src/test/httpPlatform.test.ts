@@ -912,6 +912,52 @@ describe("http platform", () => {
     );
   });
 
+  it("runs plugin UI actions through the bridge", async () => {
+    const actionResult = {
+      message: "操作 Reload 已完成。",
+      page: {
+        id: "demo-page",
+        kind: "settings",
+        order: 1,
+        pluginId: "demo.plugin",
+        pluginVersion: "1.0.0",
+        schema: [],
+        title: "Demo page",
+        values: { enabled: true },
+      },
+      plugin: {
+        author: "",
+        description: "demo",
+        enabled: true,
+        entry: "demo.plugin",
+        id: "demo.plugin",
+        loaded: true,
+        permissions: [],
+        settingsPages: ["Demo page"],
+        slots: ["settings-extension"],
+        title: "Demo",
+        toolsTabs: [],
+        version: "1.0.0",
+      },
+      result: { reloaded: true },
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(actionResult));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const result = await platform.plugins.runUiAction("demo.plugin", "demo-page", "reload", { enabled: true });
+
+    expect(result.message).toContain("Reload");
+    expect(result.result).toEqual({ reloaded: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/plugins/demo.plugin/ui/demo-page/actions/reload",
+      expect.objectContaining({
+        body: JSON.stringify({ values: { enabled: true } }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("reads MCP config through the bridge", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(sampleMcpConfig));
     vi.stubGlobal("fetch", fetchMock);

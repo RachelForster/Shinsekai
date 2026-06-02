@@ -15,11 +15,26 @@ import { ToastProvider } from "../../../shared/ui";
 const mockGetPluginUiDetail = vi.fn<() => Promise<PluginUIDetail>>();
 const mockSavePluginUiConfig =
   vi.fn<(id: string, pageId: string, values: Record<string, unknown>) => Promise<PluginConfigSaveResult>>();
+const mockRunPluginUiAction = vi.fn<
+  (
+    id: string,
+    pageId: string,
+    actionId: string,
+    values: Record<string, unknown>,
+  ) => Promise<{
+    message: string;
+    page: PluginUIPage;
+    plugin: PluginManifest;
+    result: Record<string, unknown>;
+  }>
+>();
 
 vi.mock("../../../entities/plugin/repository", () => ({
   getPluginUiDetail: () => mockGetPluginUiDetail(),
   pluginUiQueryKey: (id: string) => ["plugins", "ui", id],
   pluginsQueryKey: ["plugins"],
+  runPluginUiAction: (id: string, pageId: string, actionId: string, values: Record<string, unknown>) =>
+    mockRunPluginUiAction(id, pageId, actionId, values),
   savePluginUiConfig: (id: string, pageId: string, values: Record<string, unknown>) =>
     mockSavePluginUiConfig(id, pageId, values),
 }));
@@ -132,6 +147,12 @@ describe("PluginDetailPanel", () => {
       page: { ...configPage, values },
       plugin,
     }));
+    mockRunPluginUiAction.mockImplementation(async (_id, _pageId, _actionId, values) => ({
+      message: "操作 Reload 已完成。",
+      page: { ...configPage, values },
+      plugin,
+      result: { reloaded: true },
+    }));
   });
 
   it("renders localized frontend configuration schema from plugin UI metadata", async () => {
@@ -169,5 +190,38 @@ describe("PluginDetailPanel", () => {
     );
     expect(await screen.findByText("Plugin settings saved")).toBeInTheDocument();
     expect(screen.getAllByText("Restart from i18n").length).toBeGreaterThan(1);
+  });
+
+  it("renders action buttons and invokes runPluginUiAction on click", async () => {
+    const pageWithActions: PluginUIPage = {
+      ...configPage,
+      actions: [
+        { id: "reload", label: "Reload", variant: "primary", order: 50 },
+        { id: "reset", label: "Reset", confirm: "Are you sure?", variant: "danger", order: 100 },
+      ],
+    };
+    mockGetPluginUiDetail.mockResolvedValue({ pages: [pageWithActions], plugin });
+
+    renderPanel();
+
+    // Wait for the form to render with saved values
+    await screen.findByDisplayValue("https://saved.test");
+
+    const reloadButton = screen.getByRole("button", { name: "Reload" });
+    const resetButton = screen.getByRole("button", { name: "Reset" });
+
+    expect(reloadButton).toBeInTheDocument();
+    expect(resetButton).toBeInTheDocument();
+
+    // Click action without confirm should call runPluginUiAction immediately
+    fireEvent.click(reloadButton);
+
+    await waitFor(() => expect(mockRunPluginUiAction).toHaveBeenCalled());
+    expect(mockRunPluginUiAction).toHaveBeenCalledWith(
+      "demo.plugin",
+      "settings",
+      "reload",
+      expect.objectContaining({ enabled: true }),
+    );
   });
 });

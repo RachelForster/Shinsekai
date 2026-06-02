@@ -337,7 +337,7 @@ def _frontend_config_page_payload(contribution: Any) -> dict[str, Any]:
     raw_values = contribution.load_values()
     if not isinstance(raw_values, Mapping):
         raise ValueError(f"frontend config page {page_id!r} load_values must return a mapping")
-    return {
+    payload: dict[str, Any] = {
         "description": str(getattr(contribution, "description", "") or ""),
         "i18n": dict(getattr(contribution, "i18n", {}) or {}),
         "id": page_id,
@@ -350,6 +350,23 @@ def _frontend_config_page_payload(contribution: Any) -> dict[str, Any]:
         "title": title,
         "values": dict(raw_values),
     }
+    actions = getattr(contribution, "actions", None) or []
+    if actions:
+        payload["actions"] = sorted(
+            [
+                {
+                    "confirm": str(getattr(action, "confirm", "") or ""),
+                    "description": str(getattr(action, "description", "") or ""),
+                    "id": str(getattr(action, "id", "") or ""),
+                    "label": str(getattr(action, "label", "") or ""),
+                    "order": float(getattr(action, "order", 100.0) or 100.0),
+                    "variant": str(getattr(action, "variant", "ghost") or "ghost"),
+                }
+                for action in actions
+            ],
+            key=lambda item: (float(item.get("order") or 100.0), str(item.get("label") or "")),
+        )
+    return payload
 
 
 def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
@@ -569,6 +586,45 @@ def _save_plugin_ui_config(plugin_id_or_entry: str, page_id: str, payload: dict[
         "page": updated_page,
         "plugin": updated["plugin"],
     }
+
+
+def _run_plugin_ui_action(
+    plugin_id_or_entry: str,
+    page_id: str,
+    action_id: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Find the matching action on a FrontendConfigContribution and invoke its run callback."""
+    detail = _plugin_ui_detail(plugin_id_or_entry)
+    plugin = detail["plugin"]
+    plugin_id = str(plugin.get("id") or "").strip()
+    raw_values = payload.get("values", payload)
+    if not isinstance(raw_values, dict):
+        raise ValueError("values must be an object")
+
+    for contribution in _frontend_config_contributions_for(plugin_id):
+        if str(getattr(contribution, "page_id", "") or "").strip() != page_id:
+            continue
+        for action in getattr(contribution, "actions", None) or []:
+            if str(getattr(action, "id", "") or "") == action_id:
+                result = action.run(raw_values) or {}
+                if not isinstance(result, Mapping):
+                    raise ValueError(f"action {action_id!r} run must return a mapping or None")
+                updated = _plugin_ui_detail(plugin_id)
+                updated_page = next(
+                    (candidate for candidate in updated["pages"] if candidate.get("id") == page_id),
+                    None,
+                )
+                if updated_page is None:
+                    raise KeyError(f"plugin page not found after action: {page_id}")
+                return {
+                    "message": f"操作 {action.label or action_id!r} 已完成。",
+                    "page": updated_page,
+                    "plugin": updated["plugin"],
+                    "result": dict(result),
+                }
+
+    raise KeyError(f"action not found: {plugin_id}/{page_id}/{action_id}")
 
 
 def _resolve_plugin_frontend_file(plugin_id_or_entry: str, page_id: str, asset_path: str) -> Path:

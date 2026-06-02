@@ -239,6 +239,19 @@ describe("entity repositories", () => {
         install: vi.fn().mockResolvedValue({ id: "core-tools" }),
         list: vi.fn().mockResolvedValue([]),
         repoTags: vi.fn().mockResolvedValue(["v0.1.0"]),
+        runUiAction: vi.fn().mockResolvedValue({
+          message: "ok",
+          page: {
+            id: "settings",
+            kind: "settings",
+            order: 0,
+            pluginId: "core-tools",
+            pluginVersion: "1.0",
+            title: "Settings",
+          },
+          plugin: { id: "core-tools" },
+          result: { reloaded: true },
+        }),
         saveUiConfig: vi.fn().mockResolvedValue({ message: "ok", values: {} }),
         setEnabled: vi.fn().mockResolvedValue({ id: "core-tools" }),
         uninstall: vi.fn().mockResolvedValue({ message: "ok" }),
@@ -261,6 +274,7 @@ describe("entity repositories", () => {
     expect(chat.subscribeChat(listener)).toBe(unsubscribe);
     await plugin.getPluginUiDetail("core-tools");
     await plugin.savePluginUiConfig("core-tools", "settings", { enabled: true });
+    await plugin.runPluginUiAction("core-tools", "settings", "reload", { enabled: true });
     await plugin.listPluginCatalog();
     await plugin.listRepoTags("myouo/Shinsekai");
     await plugin.getAppUpdateInfo();

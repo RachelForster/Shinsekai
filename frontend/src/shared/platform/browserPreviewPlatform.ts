@@ -778,6 +778,27 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       list: () => delay(plugins),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
+      runUiAction(id, pageId, actionId, values) {
+        const plugin = plugins.find((item) => item.id === id || item.entry === id);
+        if (!plugin) {
+          return Promise.reject(new Error(`插件不存在：${id}`));
+        }
+        return delay({
+          message: `操作 ${actionId} 已完成。`,
+          page: {
+            id: pageId,
+            kind: "settings",
+            order: 0,
+            pluginId: plugin.id,
+            pluginVersion: plugin.version,
+            schema: [],
+            title: pageId,
+            values,
+          } satisfies PluginUIPage,
+          plugin,
+          result: {} as Record<string, unknown>,
+        });
+      },
       saveUiConfig(id, pageId, values) {
         const plugin = plugins.find((item) => item.id === id || item.entry === id);
         if (!plugin) {

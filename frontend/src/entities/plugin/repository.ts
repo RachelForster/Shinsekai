@@ -3,6 +3,7 @@ import type { TaskProgressOptions } from "../../shared/platform/types";
 import type {
   AppUpdateRefKind,
   AppUpdateResult,
+  PluginConfigActionResult,
   PluginConfigSaveResult,
   McpConfig,
   McpToolPreview,
@@ -33,6 +34,15 @@ export function savePluginUiConfig(
   values: Record<string, unknown>,
 ): Promise<PluginConfigSaveResult> {
   return getPlatform().plugins.saveUiConfig(id, pageId, values);
+}
+
+export function runPluginUiAction(
+  id: string,
+  pageId: string,
+  actionId: string,
+  values: Record<string, unknown>,
+): Promise<PluginConfigActionResult> {
+  return getPlatform().plugins.runUiAction(id, pageId, actionId, values);
 }
 
 export function listPluginCatalog() {

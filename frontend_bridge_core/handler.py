@@ -65,7 +65,7 @@ from .plugin_catalog import (
     _set_plugin_enabled,
     _uninstall_plugin,
 )
-from .plugin_ui import _plugin_ui_detail, _resolve_plugin_frontend_file, _save_plugin_ui_config
+from .plugin_ui import _plugin_ui_detail, _resolve_plugin_frontend_file, _run_plugin_ui_action, _save_plugin_ui_config
 from .plugin_updates import (
     _app_update_info,
     _app_update_tags,
@@ -595,6 +595,19 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path.startswith("/api/plugins/") and path.endswith("/enabled"):
                 plugin_id = unquote(path[len("/api/plugins/") : -len("/enabled")])
                 self._send_json(_set_plugin_enabled(plugin_id, bool(body.get("enabled"))))
+            elif method == "POST" and path.startswith("/api/plugins/") and "/ui/" in path and "/actions/" in path:
+                # /api/plugins/{plugin_id}/ui/{page_id}/actions/{action_id}
+                rest = path[len("/api/plugins/") :]
+                plugin_part, _, ui_tail = rest.partition("/ui/")
+                page_part, _, action_tail = ui_tail.partition("/actions/")
+                self._send_json(
+                    _run_plugin_ui_action(
+                        unquote(plugin_part),
+                        unquote(page_part),
+                        unquote(action_tail),
+                        body,
+                    )
+                )
             elif method == "POST" and path.startswith("/api/plugins/") and "/ui/" in path and path.endswith("/config"):
                 rest = path[len("/api/plugins/") :]
                 plugin_part, _, page_tail = rest.partition("/ui/")

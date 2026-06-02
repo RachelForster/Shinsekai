@@ -6,7 +6,7 @@ from sdk.manager import PluginManager
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry
-from sdk.types import ChatUIContribution, FrontendConfigContribution, FrontendPageContribution
+from sdk.types import ChatUIContribution, FrontendConfigAction, FrontendConfigContribution, FrontendPageContribution
 
 
 def test_frontend_config_contribution_gets_plugin_context() -> None:
@@ -168,3 +168,51 @@ def test_plugin_manager_collects_frontend_config_contributions(tmp_path: Path) -
     assert len(frontend_pages) == 1
     assert frontend_pages[0].plugin_id == "demo.plugin"
     assert frontend_pages[0].plugin_version == "1.0.0"
+
+
+def test_frontend_config_contribution_stores_actions() -> None:
+    """FrontendConfigContribution preserves action metadata and callbacks."""
+    call_args: list[object] = []
+
+    def _record(values: object) -> None:
+        call_args.append(values)
+
+    action = FrontendConfigAction(
+        id="refresh",
+        label="Refresh",
+        description="Reload configuration",
+        variant="primary",
+        confirm="Are you sure?",
+        order=50.0,
+        run=_record,
+    )
+
+    contribution = FrontendConfigContribution(
+        page_id="demo",
+        title="Demo",
+        schema=[{"id": "main", "title": "Main", "fields": []}],
+        load_values=lambda: {"key": "val"},
+        save_values=lambda values: None,
+        actions=[action],
+    )
+
+    assert len(contribution.actions) == 1
+    assert contribution.actions[0].id == "refresh"
+    assert contribution.actions[0].label == "Refresh"
+    assert contribution.actions[0].variant == "primary"
+    assert contribution.actions[0].confirm == "Are you sure?"
+
+    contribution.actions[0].run({"key": "test"})
+    assert call_args == [{"key": "test"}]
+
+
+def test_frontend_config_contribution_default_empty_actions() -> None:
+    """FrontendConfigContribution has an empty actions list by default."""
+    contribution = FrontendConfigContribution(
+        page_id="demo",
+        title="Demo",
+        schema=[],
+        load_values=lambda: {},
+        save_values=lambda values: None,
+    )
+    assert contribution.actions == []
