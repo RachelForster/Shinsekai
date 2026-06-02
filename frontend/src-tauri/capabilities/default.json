@@ -3,8 +3,5 @@
   "identifier": "default",
   "description": "Default permissions for Shinsekai desktop windows.",
   "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "updater:default"
-  ]
+  "permissions": ["core:default", "updater:default"]
 }
