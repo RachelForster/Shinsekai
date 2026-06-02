@@ -1,6 +1,7 @@
 import { Maximize2, Minus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
+import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
 import {
   closeDesktopWindow,
@@ -18,6 +19,7 @@ import {
 } from "./desktopApi";
 
 function DesktopTitleBar() {
+  const { t } = useI18n();
   const runWindowAction = useCallback((action: () => Promise<void>) => {
     void action().catch((error) => {
       console.error("Desktop window action failed", error);
@@ -45,7 +47,7 @@ function DesktopTitleBar() {
       </div>
       <div className="desktop-titlebar__controls">
         <button
-          aria-label="最小化"
+          aria-label={t("desktop.titlebar.minimize")}
           className="desktop-titlebar__button"
           data-window-control
           onClick={() => runWindowAction(minimizeDesktopWindow)}
@@ -54,7 +56,7 @@ function DesktopTitleBar() {
           <Minus aria-hidden />
         </button>
         <button
-          aria-label="最大化"
+          aria-label={t("desktop.titlebar.maximize")}
           className="desktop-titlebar__button"
           data-window-control
           onClick={() => runWindowAction(toggleMaximizeDesktopWindow)}
@@ -63,7 +65,7 @@ function DesktopTitleBar() {
           <Maximize2 aria-hidden />
         </button>
         <button
-          aria-label="关闭"
+          aria-label={t("desktop.titlebar.close")}
           className="desktop-titlebar__button desktop-titlebar__button--close"
           data-window-control
           onClick={() => runWindowAction(closeDesktopWindow)}
@@ -96,6 +98,7 @@ async function bridgeHealthReady(bridgeUrl: string) {
 }
 
 function DesktopRuntimeGate({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
   const [runtime, setRuntime] = useState<DesktopRuntimeState>({
     bridgeUrl: "",
     status: "checking",
@@ -116,7 +119,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
           if (!stopped) {
             setRuntime({
               ...next,
-              message: "正在等待本地服务启动。",
+              message: t("desktop.runtime.waitingBridge"),
               status: "checking",
             });
             timer = window.setTimeout(refresh, 500);
@@ -184,13 +187,13 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   }
 
   const canUpdate = runtime.status === "missing" || runtime.status === "error";
-  const detail = runtime.message || "正在检查 Shinsekai 运行环境。";
+  const detail = runtime.message || t("desktop.runtime.defaultDetail");
   const title =
     runtime.status === "checking"
-      ? "正在检查运行环境"
+      ? t("desktop.runtime.checking")
       : runtime.status === "updating"
-        ? "正在更新运行环境"
-        : "需要更新运行环境";
+        ? t("desktop.runtime.updating")
+        : t("desktop.runtime.required");
 
   return (
     <main className="desktop-runtime">
@@ -198,7 +201,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
         <div className="desktop-runtime__status">
           <span aria-hidden className="desktop-runtime__pulse" />
           <div>
-            <p className="desktop-runtime__eyebrow">运行环境</p>
+            <p className="desktop-runtime__eyebrow">{t("desktop.runtime.eyebrow")}</p>
             <h1 className="desktop-runtime__title">{title}</h1>
           </div>
         </div>
@@ -206,7 +209,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
         <div className="desktop-runtime__actions">
           {canUpdate ? (
             <Button disabled={busy} loading={busy} onClick={handleUpdate} variant="primary">
-              是，更新
+              {t("desktop.runtime.updateButton")}
             </Button>
           ) : null}
         </div>

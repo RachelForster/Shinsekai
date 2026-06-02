@@ -156,6 +156,16 @@ export type MessageKey =
   | "bottom.saving"
   | "bottom.syncing"
   | "bottom.transport"
+  | "desktop.runtime.checking"
+  | "desktop.runtime.defaultDetail"
+  | "desktop.runtime.eyebrow"
+  | "desktop.runtime.required"
+  | "desktop.runtime.updateButton"
+  | "desktop.runtime.updating"
+  | "desktop.runtime.waitingBridge"
+  | "desktop.titlebar.close"
+  | "desktop.titlebar.maximize"
+  | "desktop.titlebar.minimize"
   | "character.delete.confirmBody"
   | "character.delete.confirmTitle"
   | "character.description"
@@ -415,6 +425,21 @@ export type MessageKey =
   | "plugin.appUpdate.version"
   | "plugin.appUpdate.versionUnknown"
   | "plugin.appUpdate.warning"
+  | "plugin.desktopUpdate.available"
+  | "plugin.desktopUpdate.checking"
+  | "plugin.desktopUpdate.downloading"
+  | "plugin.desktopUpdate.checkFailed"
+  | "plugin.desktopUpdate.errorNoPending"
+  | "plugin.desktopUpdate.errorWithDetail"
+  | "plugin.desktopUpdate.installFailed"
+  | "plugin.desktopUpdate.installing"
+  | "plugin.desktopUpdate.installRestart"
+  | "plugin.desktopUpdate.noUpdate"
+  | "plugin.desktopUpdate.releaseDate"
+  | "plugin.desktopUpdate.releaseNotes"
+  | "plugin.desktopUpdate.restartRequiredBody"
+  | "plugin.desktopUpdate.title"
+  | "plugin.desktopUpdate.unknownSize"
   | "plugin.author"
   | "plugin.catalog.emptyBody"
   | "plugin.catalog.emptyTitle"
@@ -757,6 +782,16 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "bottom.saving": "Saving",
     "bottom.syncing": "Syncing",
     "bottom.transport": "Components communicate through repositories, queries, and platform adapters",
+    "desktop.runtime.checking": "Checking runtime",
+    "desktop.runtime.defaultDetail": "Checking the Shinsekai runtime.",
+    "desktop.runtime.eyebrow": "Runtime",
+    "desktop.runtime.required": "Runtime update required",
+    "desktop.runtime.updateButton": "Update",
+    "desktop.runtime.updating": "Updating runtime",
+    "desktop.runtime.waitingBridge": "Waiting for the local service to start.",
+    "desktop.titlebar.close": "Close",
+    "desktop.titlebar.maximize": "Maximize",
+    "desktop.titlebar.minimize": "Minimize",
     "character.delete.confirmBody": "Delete character “{name}”?",
     "character.delete.confirmTitle": "Delete character",
     "character.description": "Edit character profile, sprites, emotion tags, and TTS parameters.",
@@ -1056,6 +1091,21 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.appUpdate.versionUnknown": "Current version: unknown",
     "plugin.appUpdate.warning":
       "This downloads a GitHub source archive and merges it into the current install directory, skipping data and plugins. This cannot be undone automatically.",
+    "plugin.desktopUpdate.available": "Version {version} is available",
+    "plugin.desktopUpdate.checkFailed": "Desktop update check failed.",
+    "plugin.desktopUpdate.checking": "Checking for updates...",
+    "plugin.desktopUpdate.downloading": "Downloading update...",
+    "plugin.desktopUpdate.errorNoPending": "No pending desktop update. Check for updates again.",
+    "plugin.desktopUpdate.errorWithDetail": "{prefix} Details: {message}",
+    "plugin.desktopUpdate.installFailed": "Desktop update install failed.",
+    "plugin.desktopUpdate.installing": "Installing update...",
+    "plugin.desktopUpdate.installRestart": "Install and restart",
+    "plugin.desktopUpdate.noUpdate": "No desktop update is available.",
+    "plugin.desktopUpdate.releaseDate": "Published: {date}",
+    "plugin.desktopUpdate.releaseNotes": "Release notes",
+    "plugin.desktopUpdate.restartRequiredBody": "The update was installed. Restarting the application...",
+    "plugin.desktopUpdate.title": "Desktop update",
+    "plugin.desktopUpdate.unknownSize": "unknown size",
     "plugin.author": "Author",
     "plugin.catalog.emptyBody": "Refresh the catalog to show community plugins.",
     "plugin.catalog.emptyTitle": "No plugins found",
@@ -1367,6 +1417,16 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "bottom.saving": "保存中",
     "bottom.syncing": "同期中",
     "bottom.transport": "コンポーネントは repository、query、platform adapter で通信",
+    "desktop.runtime.checking": "実行環境を確認中",
+    "desktop.runtime.defaultDetail": "Shinsekai の実行環境を確認しています。",
+    "desktop.runtime.eyebrow": "実行環境",
+    "desktop.runtime.required": "実行環境の更新が必要です",
+    "desktop.runtime.updateButton": "更新",
+    "desktop.runtime.updating": "実行環境を更新中",
+    "desktop.runtime.waitingBridge": "ローカルサービスの起動を待っています。",
+    "desktop.titlebar.close": "閉じる",
+    "desktop.titlebar.maximize": "最大化",
+    "desktop.titlebar.minimize": "最小化",
     "character.delete.confirmBody": "キャラクター「{name}」を削除しますか？",
     "character.delete.confirmTitle": "キャラクターを削除",
     "character.description": "キャラクター設定、立ち絵、感情タグ、TTS パラメータを編集します。",
@@ -1665,6 +1725,21 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.appUpdate.versionUnknown": "現在のバージョン：不明",
     "plugin.appUpdate.warning":
       "GitHub のソース ZIP をダウンロードし、現在のインストール先にマージします（data と plugins は除外）。元に戻せません。",
+    "plugin.desktopUpdate.available": "バージョン {version} が利用できます",
+    "plugin.desktopUpdate.checkFailed": "デスクトップ更新の確認に失敗しました。",
+    "plugin.desktopUpdate.checking": "更新を確認中...",
+    "plugin.desktopUpdate.downloading": "更新をダウンロード中...",
+    "plugin.desktopUpdate.errorNoPending": "保留中のデスクトップ更新がありません。もう一度更新を確認してください。",
+    "plugin.desktopUpdate.errorWithDetail": "{prefix} 詳細：{message}",
+    "plugin.desktopUpdate.installFailed": "デスクトップ更新のインストールに失敗しました。",
+    "plugin.desktopUpdate.installing": "更新をインストール中...",
+    "plugin.desktopUpdate.installRestart": "インストールして再起動",
+    "plugin.desktopUpdate.noUpdate": "デスクトップ更新はありません。",
+    "plugin.desktopUpdate.releaseDate": "公開日：{date}",
+    "plugin.desktopUpdate.releaseNotes": "リリースノート",
+    "plugin.desktopUpdate.restartRequiredBody": "更新をインストールしました。アプリを再起動しています...",
+    "plugin.desktopUpdate.title": "デスクトップ更新",
+    "plugin.desktopUpdate.unknownSize": "サイズ不明",
     "plugin.author": "作者",
     "plugin.catalog.emptyBody": "索引を更新するとコミュニティプラグインが表示されます。",
     "plugin.catalog.emptyTitle": "表示できるプラグインがありません",
@@ -1972,6 +2047,16 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "bottom.saving": "正在保存",
     "bottom.syncing": "正在同步",
     "bottom.transport": "组件通过 repository、query 和 platform adapter 通信",
+    "desktop.runtime.checking": "正在检查运行环境",
+    "desktop.runtime.defaultDetail": "正在检查 Shinsekai 运行环境。",
+    "desktop.runtime.eyebrow": "运行环境",
+    "desktop.runtime.required": "需要更新运行环境",
+    "desktop.runtime.updateButton": "更新",
+    "desktop.runtime.updating": "正在更新运行环境",
+    "desktop.runtime.waitingBridge": "正在等待本地服务启动。",
+    "desktop.titlebar.close": "关闭",
+    "desktop.titlebar.maximize": "最大化",
+    "desktop.titlebar.minimize": "最小化",
     "character.delete.confirmBody": "确认删除角色「{name}」？",
     "character.delete.confirmTitle": "删除角色",
     "character.description": "角色资料、立绘、情绪标签和 TTS 参数集中编辑。",
@@ -2268,6 +2353,21 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.appUpdate.versionUnknown": "当前版本：未知",
     "plugin.appUpdate.warning":
       "将从 GitHub 下载源码归档并合并覆盖到当前程序目录（会跳过 data 和 plugins）。此操作不可自动撤销。",
+    "plugin.desktopUpdate.available": "发现版本 {version}",
+    "plugin.desktopUpdate.checkFailed": "桌面更新检查失败。",
+    "plugin.desktopUpdate.checking": "正在检查更新...",
+    "plugin.desktopUpdate.downloading": "正在下载更新...",
+    "plugin.desktopUpdate.errorNoPending": "没有待安装的桌面更新，请重新检查更新。",
+    "plugin.desktopUpdate.errorWithDetail": "{prefix} 详情：{message}",
+    "plugin.desktopUpdate.installFailed": "桌面更新安装失败。",
+    "plugin.desktopUpdate.installing": "正在安装更新...",
+    "plugin.desktopUpdate.installRestart": "安装并重启",
+    "plugin.desktopUpdate.noUpdate": "当前没有可用的桌面更新。",
+    "plugin.desktopUpdate.releaseDate": "发布时间：{date}",
+    "plugin.desktopUpdate.releaseNotes": "更新说明",
+    "plugin.desktopUpdate.restartRequiredBody": "更新已安装，正在重启应用...",
+    "plugin.desktopUpdate.title": "桌面更新",
+    "plugin.desktopUpdate.unknownSize": "未知大小",
     "plugin.author": "作者",
     "plugin.catalog.emptyBody": "刷新索引后会显示社区插件。",
     "plugin.catalog.emptyTitle": "暂无可发现插件",

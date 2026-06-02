@@ -50,7 +50,7 @@ jobs:
           tag_name: ${{ needs.tag.outputs.tag }}
           name: ${{ needs.tag.outputs.tag }}
           generate_release_notes: true
-          prerelease: true
+          prerelease: false
 
       - name: Create or update release (scheduled/manual)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -60,7 +60,7 @@ jobs:
           name: ${{ needs.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
-          prerelease: true
+          prerelease: false
 
   package:
     needs: [tag, release]
@@ -129,9 +129,32 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Verify release version consistency
+        shell: bash
+        run: |
+          repo_version="$(head -1 VERSION | sed 's/-dev//' | sed 's/^v//')"
+          tauri_version="$(node -p "require('./frontend/package.json').version")"
+          if [[ "${repo_version}" != "${tauri_version}" ]]; then
+            echo "VERSION (${repo_version}) must match frontend/package.json (${tauri_version}) for Tauri updater releases." >&2
+            exit 1
+          fi
+
+      - name: Verify updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY secret is required for release builds with updater artifacts." >&2
+            exit 1
+          fi
+
       - name: Build Tauri bundle
         working-directory: frontend
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --ci --bundles ${{ matrix.bundles }}
 
       - name: Collect release assets
@@ -139,25 +162,60 @@ jobs:
         run: |
           rm -rf release-assets
           mkdir -p release-assets
+          mkdir -p latest-fragments
           version="$(node -p "require('./frontend/package.json').version")"
           base="Shinsekai-${version}_${{ matrix.platform }}"
+          release_url_base="https://github.com/${{ github.repository }}/releases/download/${{ needs.tag.outputs.tag }}"
+          case "${{ matrix.platform }}" in
+            linux-x64) updater_os="linux"; updater_arch="x86_64" ;;
+            linux-arm64) updater_os="linux"; updater_arch="aarch64" ;;
+            windows-x64) updater_os="windows"; updater_arch="x86_64" ;;
+            windows-arm64) updater_os="windows"; updater_arch="aarch64" ;;
+            macos-arm64) updater_os="darwin"; updater_arch="aarch64" ;;
+            *) updater_os=""; updater_arch="" ;;
+          esac
+          write_latest_fragment() {
+            local target_key="$1"
+            local asset_name="$2"
+            local signature_file="release-assets/${asset_name}.sig"
+            if [[ -z "${target_key}" || ! -f "${signature_file}" ]]; then
+              return
+            fi
+            local url="${release_url_base}/${asset_name}"
+            local output="latest-fragments/${target_key}.json"
+            node -e '
+              const fs = require("fs");
+              const [target, url, signaturePath, output] = process.argv.slice(1);
+              const signature = fs.readFileSync(signaturePath, "utf8").trim();
+              fs.writeFileSync(output, JSON.stringify({ [target]: { url, signature } }, null, 2));
+            ' "${target_key}" "${url}" "${signature_file}" "${output}"
+            echo "latest fragment ${target_key} -> ${url}"
+          }
           count=0
           while IFS= read -r asset; do
             name="$(basename "$asset")"
             case "$name" in
-              *.AppImage) target="${base}.AppImage" ;;
-              *.deb) target="${base}.deb" ;;
-              *.dmg) target="${base}.dmg" ;;
-              *.msi) target="${base}.msi" ;;
-              *.exe) target="${base}-setup.exe" ;;
+              *.AppImage) target="${base}.AppImage"; updater_suffix="appimage" ;;
+              *.deb) target="${base}.deb"; updater_suffix="deb" ;;
+              *.app.tar.gz) target="${base}.app.tar.gz"; updater_suffix="app" ;;
+              *.dmg) target="${base}.dmg"; updater_suffix="" ;;
+              *.msi) target="${base}.msi"; updater_suffix="msi" ;;
+              *.exe) target="${base}-setup.exe"; updater_suffix="nsis" ;;
               *) continue ;;
             esac
             cp "$asset" "release-assets/$target"
             echo "$asset -> release-assets/$target"
+            if [[ -f "${asset}.sig" ]]; then
+              cp "${asset}.sig" "release-assets/${target}.sig"
+              echo "${asset}.sig -> release-assets/${target}.sig"
+              if [[ -n "${updater_os}" && -n "${updater_arch}" && -n "${updater_suffix}" ]]; then
+                write_latest_fragment "${updater_os}-${updater_arch}-${updater_suffix}" "${target}"
+              fi
+            fi
             count=$((count + 1))
           done < <(
             find frontend/src-tauri/target/release/bundle -type f \
-              \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
+              \( -name '*.AppImage' -o -name '*.deb' -o -name '*.app.tar.gz' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
               | sort
           )
           if [[ "$count" -eq 0 ]]; then
@@ -171,3 +229,60 @@ jobs:
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
           files: release-assets/*
+
+      - name: Upload latest manifest fragments
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-fragment-${{ matrix.platform }}
+          if-no-files-found: error
+          path: latest-fragments/*.json
+
+  latest:
+    needs: [tag, release, package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download latest manifest fragments
+        uses: actions/download-artifact@v4
+        with:
+          pattern: latest-fragment-*
+          path: latest-fragments
+          merge-multiple: true
+
+      - name: Generate latest.json
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          version="$(node -p "require('./frontend/package.json').version")"
+          export RELEASE_VERSION="$version"
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const dir = "latest-fragments";
+            const platforms = {};
+            for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".json")).sort()) {
+              Object.assign(platforms, JSON.parse(fs.readFileSync(path.join(dir, file), "utf8")));
+            }
+            if (Object.keys(platforms).length === 0) {
+              throw new Error("No updater platforms were generated.");
+            }
+            const manifest = {
+              version: process.env.RELEASE_VERSION,
+              notes: `Shinsekai ${process.env.RELEASE_TAG}`,
+              pub_date: new Date().toISOString(),
+              platforms,
+            };
+            fs.writeFileSync("latest.json", `${JSON.stringify(manifest, null, 2)}\n`);
+          '
+
+      - name: Upload latest.json
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.tag }}
+          files: latest.json

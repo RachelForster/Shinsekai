@@ -6,6 +6,22 @@ export interface DesktopRuntimeState {
   bridgeUrl: string;
 }
 
+export interface DesktopUpdate {
+  version: string;
+  date?: string | null;
+  body?: string | null;
+}
+
+export type DesktopUpdateProgressEvent = "started" | "progress" | "finished";
+
+export interface DesktopUpdateProgress {
+  event: DesktopUpdateProgressEvent;
+  downloaded: number;
+  contentLength?: number | null;
+}
+
+export type DesktopEventUnlisten = () => void;
+
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
@@ -15,6 +31,7 @@ declare global {
 }
 
 const bridgeRestartFinishedEvent = "shinsekai:bridge-restart-finished";
+const desktopUpdateProgressEvent = "shinsekai:update-progress";
 
 export function isTauriDesktop() {
   if (typeof window === "undefined") {
@@ -22,6 +39,7 @@ export function isTauriDesktop() {
   }
   return (
     Boolean(window.__TAURI_INTERNALS__) ||
+    window.location.protocol === "shinsekai:" ||
     window.location.protocol === "tauri:" ||
     window.location.hostname === "tauri.localhost"
   );
@@ -40,6 +58,31 @@ export function updateDesktopRuntime() {
   return invokeDesktop<DesktopRuntimeState>("desktop_runtime_update");
 }
 
+export function checkDesktopUpdate() {
+  return invokeDesktop<DesktopUpdate | null>("desktop_update_check");
+}
+
+export async function installDesktopUpdate() {
+  markDesktopRestarting();
+  console.info("[restart-debug] frontend installDesktopUpdate invoked");
+  await writeDesktopRestartDebugLog("installDesktopUpdate invoked");
+  try {
+    await invokeDesktop<void>("desktop_update_install");
+    await writeDesktopRestartDebugLog("desktop_update_install returned; restart should be in progress");
+  } catch (error) {
+    clearDesktopRestarting();
+    await writeDesktopRestartDebugLog(`desktop_update_install rejected: ${desktopRestartErrorMessage(error)}`);
+    throw error;
+  }
+}
+
+export async function onDesktopUpdateProgress(
+  listener: (progress: DesktopUpdateProgress) => void,
+): Promise<DesktopEventUnlisten> {
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<DesktopUpdateProgress>(desktopUpdateProgressEvent, (event) => listener(event.payload));
+}
+
 export async function restartDesktopBridge() {
   markDesktopBridgeRestarting();
   console.info("[restart-debug] frontend restartDesktopBridge invoked");
@@ -54,6 +97,12 @@ export async function restartDesktopBridge() {
   } finally {
     clearDesktopBridgeRestarting();
   }
+}
+
+export async function reloadDesktopFrontend() {
+  console.info("[restart-debug] frontend reloadDesktopFrontend invoked");
+  await writeDesktopRestartDebugLog("reloadDesktopFrontend invoked");
+  await invokeDesktop<void>("desktop_frontend_reload");
 }
 
 export async function restartDesktopApp() {

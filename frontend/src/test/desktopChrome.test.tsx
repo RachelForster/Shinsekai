@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const desktopApi = vi.hoisted(() => ({
@@ -14,6 +15,15 @@ const desktopApi = vi.hoisted(() => ({
 vi.mock("../shared/desktop/desktopApi", () => desktopApi);
 
 import { DesktopChrome } from "../shared/desktop/DesktopChrome";
+import { I18nProvider } from "../shared/i18n/I18nProvider";
+
+function renderChrome(children: ReactNode) {
+  return render(
+    <I18nProvider language="en">
+      <DesktopChrome>{children}</DesktopChrome>
+    </I18nProvider>,
+  );
+}
 
 describe("DesktopChrome", () => {
   beforeEach(() => {
@@ -35,11 +45,7 @@ describe("DesktopChrome", () => {
   });
 
   it("renders plain children outside the Tauri desktop shell", () => {
-    render(
-      <DesktopChrome>
-        <main>App content</main>
-      </DesktopChrome>,
-    );
+    renderChrome(<main>App content</main>);
 
     expect(screen.getByText("App content")).toBeInTheDocument();
     expect(screen.queryByText("Shinsekai")).not.toBeInTheDocument();
@@ -49,11 +55,7 @@ describe("DesktopChrome", () => {
   it("renders the custom title bar after the desktop runtime is ready", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
 
-    render(
-      <DesktopChrome>
-        <main>App content</main>
-      </DesktopChrome>,
-    );
+    renderChrome(<main>App content</main>);
 
     expect(await screen.findByText("Shinsekai")).toBeInTheDocument();
     expect(screen.getByText("App content")).toBeInTheDocument();
@@ -68,17 +70,13 @@ describe("DesktopChrome", () => {
       status: "missing",
     });
 
-    render(
-      <DesktopChrome>
-        <main>App content</main>
-      </DesktopChrome>,
-    );
+    renderChrome(<main>App content</main>);
 
-    expect(await screen.findByText("需要更新运行环境")).toBeInTheDocument();
+    expect(await screen.findByText("Runtime update required")).toBeInTheDocument();
     expect(screen.getByText("缺少 Python 运行环境")).toBeInTheDocument();
     expect(screen.queryByText("App content")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "是，更新" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
     await waitFor(() => {
       expect(desktopApi.updateDesktopRuntime).toHaveBeenCalledTimes(1);
@@ -89,16 +87,12 @@ describe("DesktopChrome", () => {
   it("wires title bar buttons and drag region to desktop commands", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
 
-    const { container } = render(
-      <DesktopChrome>
-        <main>App content</main>
-      </DesktopChrome>,
-    );
+    const { container } = renderChrome(<main>App content</main>);
 
     await screen.findByText("App content");
-    fireEvent.click(screen.getByRole("button", { name: "最小化" }));
-    fireEvent.click(screen.getByRole("button", { name: "最大化" }));
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    fireEvent.click(screen.getByRole("button", { name: "Minimize" }));
+    fireEvent.click(screen.getByRole("button", { name: "Maximize" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.mouseDown(container.querySelector(".desktop-titlebar")!, { button: 0 });
 
     expect(desktopApi.minimizeDesktopWindow).toHaveBeenCalledTimes(1);

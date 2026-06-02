@@ -122,7 +122,7 @@ jobs:
       - name: Build Tauri bundle
         working-directory: frontend
         shell: bash
-        run: pnpm tauri build --ci --bundles ${{ matrix.bundles }}
+        run: pnpm tauri build --ci --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

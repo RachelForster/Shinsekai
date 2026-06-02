@@ -55,6 +55,7 @@ runtime/
 /packaging
 /build_exe
 # 前端构建与测试产物 / Frontend build and test output
+node_modules/
 /frontend/node_modules
 /frontend/.vite
 /frontend/coverage

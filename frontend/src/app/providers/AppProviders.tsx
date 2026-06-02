@@ -9,8 +9,13 @@ import { I18nProvider } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { FileBrowserProvider, ToastProvider } from "../../shared/ui";
 
-function LocalizedProviders({ children }: { children: ReactNode }) {
+function AppI18nProvider({ children }: { children: ReactNode }) {
   const { state } = useAppState();
+
+  return <I18nProvider language={state.language}>{children}</I18nProvider>;
+}
+
+export function AppRuntimeProviders({ children }: { children: ReactNode }) {
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
 
   useEffect(() => {
@@ -18,20 +23,26 @@ function LocalizedProviders({ children }: { children: ReactNode }) {
   }, [configQuery.data?.system_config.theme_color]);
 
   return (
-    <I18nProvider language={state.language}>
-      <FileBrowserProvider browse={browseFiles}>
-        <ToastProvider>{children}</ToastProvider>
-      </FileBrowserProvider>
-    </I18nProvider>
+    <FileBrowserProvider browse={browseFiles}>
+      <ToastProvider>{children}</ToastProvider>
+    </FileBrowserProvider>
+  );
+}
+
+export function AppRootProviders({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppStateProvider>
+        <AppI18nProvider>{children}</AppI18nProvider>
+      </AppStateProvider>
+    </QueryClientProvider>
   );
 }
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppStateProvider>
-        <LocalizedProviders>{children}</LocalizedProviders>
-      </AppStateProvider>
-    </QueryClientProvider>
+    <AppRootProviders>
+      <AppRuntimeProviders>{children}</AppRuntimeProviders>
+    </AppRootProviders>
   );
 }

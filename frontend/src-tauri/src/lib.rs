@@ -5,15 +5,21 @@ use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::{Child, Command},
-    sync::Mutex,
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    http::{header, Response, StatusCode},
+    AppHandle, Emitter, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
+};
+#[cfg(desktop)]
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -27,6 +33,11 @@ type DesktopResult<T> = Result<T, Box<dyn Error>>;
 const BRIDGE_HOST: &str = "127.0.0.1";
 const DEFAULT_BRIDGE_PORT: u16 = 8787;
 const RESTART_DEBUG_LOG_FILE: &str = "shinsekai-restart-debug.log";
+const LIVE_FRONTEND_SCHEME: &str = "shinsekai";
+const FRONTEND_DIST_MARKER: &str = ".dist-current";
+const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
+#[cfg(desktop)]
+const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -92,6 +103,20 @@ struct DesktopState {
     runtime: Mutex<DesktopRuntimePhase>,
 }
 
+#[cfg(desktop)]
+struct DesktopUpdateState {
+    pending: Mutex<Option<Update>>,
+}
+
+#[cfg(desktop)]
+impl DesktopUpdateState {
+    fn new() -> Self {
+        Self {
+            pending: Mutex::new(None),
+        }
+    }
+}
+
 impl DesktopState {
     fn new(
         source_root: PathBuf,
@@ -146,22 +171,75 @@ impl DesktopState {
     }
 }
 
+#[cfg(desktop)]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopUpdate {
+    version: String,
+    date: Option<String>,
+    body: Option<String>,
+}
+
+#[cfg(desktop)]
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopUpdateProgress {
+    event: &'static str,
+    downloaded: u64,
+    content_length: Option<u64>,
+}
+
+#[cfg(desktop)]
+#[derive(Default)]
+struct DesktopUpdateDownloadProgress {
+    downloaded: u64,
+    content_length: Option<u64>,
+}
+
 pub fn run() {
     restart_debug_log("run enter");
+    let protocol_frontend_dist = Arc::new(Mutex::new(None::<PathBuf>));
+    let protocol_frontend_dist_for_handler = Arc::clone(&protocol_frontend_dist);
     tauri::Builder::default()
+        .register_uri_scheme_protocol(LIVE_FRONTEND_SCHEME, move |_ctx, request| {
+            serve_live_frontend_protocol(&protocol_frontend_dist_for_handler, request.uri().path())
+        })
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_state,
             desktop_runtime_update,
             desktop_restart_debug_log,
             desktop_app_restart,
             desktop_bridge_restart,
+            desktop_frontend_reload,
             desktop_window_minimize,
             desktop_window_toggle_maximize,
             desktop_window_start_drag,
             desktop_window_close,
-            desktop_open_external_url
+            desktop_open_external_url,
+            #[cfg(desktop)]
+            desktop_update_check,
+            #[cfg(desktop)]
+            desktop_update_install
         ])
-        .setup(|app| {
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let app = window.app_handle().clone();
+                let state = app.state::<DesktopState>();
+                shutdown_desktop_app(&app, state.inner(), "main window close requested");
+            }
+        })
+        .setup(move |app| {
+            #[cfg(desktop)]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.manage(DesktopUpdateState::new());
+            }
+
             let source_root = resolve_source_root(app)?;
             let project_root = resolve_project_root(app)?;
             let frontend_dist = resolve_frontend_dist(&source_root)?;
@@ -175,6 +253,9 @@ pub fn run() {
                 bridge_port,
                 url
             ));
+            if let Ok(mut dist) = protocol_frontend_dist.lock() {
+                *dist = Some(frontend_dist.clone());
+            }
             app.manage(DesktopState::new(
                 source_root,
                 project_root,
@@ -263,6 +344,126 @@ fn desktop_runtime_update(
     Ok(state.runtime_view())
 }
 
+#[cfg(desktop)]
+#[tauri::command]
+async fn desktop_update_check(
+    app: AppHandle,
+    update_state: State<'_, DesktopUpdateState>,
+) -> Result<Option<DesktopUpdate>, String> {
+    restart_debug_log("desktop_update_check command received");
+    let update = app
+        .updater()
+        .map_err(desktop_update_error)?
+        .check()
+        .await
+        .map_err(desktop_update_error)?;
+    let view = update.as_ref().map(desktop_update_view);
+    let mut pending = update_state
+        .pending
+        .lock()
+        .map_err(|_| "desktop update state lock is poisoned".to_string())?;
+    *pending = update;
+    restart_debug_log(format!(
+        "desktop_update_check result={}",
+        if view.is_some() {
+            "available"
+        } else {
+            "none"
+        }
+    ));
+    Ok(view)
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn desktop_update_install(
+    app: AppHandle,
+    update_state: State<'_, DesktopUpdateState>,
+) -> Result<(), String> {
+    restart_debug_log("desktop_update_install command received");
+    let update = update_state
+        .pending
+        .lock()
+        .map_err(|_| "desktop update state lock is poisoned".to_string())?
+        .take()
+        .ok_or_else(|| "there is no pending desktop update".to_string())?;
+
+    emit_update_progress(
+        &app,
+        DesktopUpdateProgress {
+            event: "started",
+            downloaded: 0,
+            content_length: None,
+        },
+    );
+
+    let progress = Arc::new(Mutex::new(DesktopUpdateDownloadProgress::default()));
+    let chunk_progress = Arc::clone(&progress);
+    let chunk_app = app.clone();
+    let finish_progress = Arc::clone(&progress);
+    let finish_app = app.clone();
+
+    update
+        .download_and_install(
+            move |chunk_length, content_length| {
+                let payload = {
+                    let mut progress = match chunk_progress.lock() {
+                        Ok(progress) => progress,
+                        Err(_) => return,
+                    };
+                    progress.downloaded = progress.downloaded.saturating_add(chunk_length as u64);
+                    if content_length.is_some() {
+                        progress.content_length = content_length;
+                    }
+                    DesktopUpdateProgress {
+                        event: "progress",
+                        downloaded: progress.downloaded,
+                        content_length: progress.content_length,
+                    }
+                };
+                emit_update_progress(&chunk_app, payload);
+            },
+            move || {
+                let payload = {
+                    let progress = match finish_progress.lock() {
+                        Ok(progress) => progress,
+                        Err(_) => return,
+                    };
+                    DesktopUpdateProgress {
+                        event: "finished",
+                        downloaded: progress.downloaded,
+                        content_length: progress.content_length,
+                    }
+                };
+                emit_update_progress(&finish_app, payload);
+            },
+        )
+        .await
+        .map_err(desktop_update_error)?;
+
+    restart_debug_log("desktop_update_install completed; restarting app");
+    app.restart()
+}
+
+#[cfg(desktop)]
+fn desktop_update_view(update: &Update) -> DesktopUpdate {
+    DesktopUpdate {
+        version: update.version.clone(),
+        date: update.date.map(|date| date.to_string()),
+        body: update.body.clone(),
+    }
+}
+
+#[cfg(desktop)]
+fn emit_update_progress(app: &AppHandle, payload: DesktopUpdateProgress) {
+    let _ = app.emit(UPDATE_PROGRESS_EVENT, payload);
+}
+
+#[cfg(desktop)]
+fn desktop_update_error(error: impl std::fmt::Display) -> String {
+    error.to_string()
+}
+
 #[tauri::command]
 fn desktop_app_restart(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
     restart_debug_log("desktop_app_restart command received");
@@ -276,6 +477,12 @@ fn desktop_bridge_restart(
 ) -> Result<DesktopRuntimeView, String> {
     restart_debug_log("desktop_bridge_restart command received");
     restart_bridge_for_state(&app, &state)
+}
+
+#[tauri::command]
+fn desktop_frontend_reload(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
+    restart_debug_log("desktop_frontend_reload command received");
+    navigate_main_window_to_live_frontend(&app, state.bridge_port)
 }
 
 fn restart_bridge_for_state(
@@ -328,9 +535,25 @@ fn restart_desktop_app(app: &AppHandle, state: &DesktopState) -> Result<(), Stri
         let _ = window.hide();
         let _ = window.destroy();
     }
+    if let Some(bridge) = state.take_bridge() {
+        restart_debug_log("restart stopping bridge before app exit");
+        bridge.stop();
+    }
     restart_debug_log("restart requested app.exit(0)");
     app.exit(0);
     Ok(())
+}
+
+fn shutdown_desktop_app(app: &AppHandle, state: &DesktopState, reason: &str) {
+    restart_debug_log(format!("shutdown requested reason={reason}"));
+    if let Some(bridge) = state.take_bridge() {
+        restart_debug_log("shutdown stopping bridge");
+        bridge.stop();
+    } else {
+        restart_debug_log("shutdown no bridge to stop");
+    }
+    restart_debug_log("shutdown requested app.exit(0)");
+    app.exit(0);
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -473,8 +696,9 @@ fn desktop_window_start_drag(window: WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn desktop_window_close(window: WebviewWindow) -> Result<(), String> {
-    window.close().map_err(|error| error.to_string())
+fn desktop_window_close(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
+    shutdown_desktop_app(&app, state.inner(), "desktop_window_close command");
+    Ok(())
 }
 
 #[tauri::command]
@@ -528,7 +752,12 @@ fn bootstrap_runtime(app: AppHandle) {
     match result {
         Ok(()) => {
             restart_debug_log("bootstrap_runtime ready");
-            state.set_runtime(DesktopRuntimePhase::Ready)
+            state.set_runtime(DesktopRuntimePhase::Ready);
+            if let Err(error) = navigate_main_window_to_live_frontend(&app, state.bridge_port) {
+                restart_debug_log(format!(
+                    "bootstrap_runtime frontend navigate failed error={error}"
+                ));
+            }
         }
         Err(message) => {
             restart_debug_log(format!("bootstrap_runtime missing/error message={message}"));
@@ -541,6 +770,287 @@ fn app_window_url(port: u16) -> String {
     let bridge_url = format!("http://{BRIDGE_HOST}:{port}");
     let encoded = bridge_url.replace(':', "%3A").replace('/', "%2F");
     format!("index.html?shinsekai_bridge={encoded}#/settings/api")
+}
+
+fn live_frontend_url(port: u16) -> String {
+    let bridge_url = format!("http://{BRIDGE_HOST}:{port}");
+    let encoded = bridge_url.replace(':', "%3A").replace('/', "%2F");
+    let reload_token = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().to_string())
+        .unwrap_or_else(|_| "0".to_string());
+    format!(
+        "{LIVE_FRONTEND_SCHEME}://localhost/?shinsekai_bridge={encoded}&shinsekai_reload={reload_token}#/settings/api"
+    )
+}
+
+fn navigate_main_window_to_live_frontend(app: &AppHandle, bridge_port: u16) -> Result<(), String> {
+    let url = Url::parse(&live_frontend_url(bridge_port)).map_err(|error| error.to_string())?;
+    if let Some(window) = app.get_webview_window("main") {
+        restart_debug_log(format!("navigate live frontend url={url}"));
+        window.navigate(url).map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn serve_live_frontend_protocol(
+    frontend_dist: &Arc<Mutex<Option<PathBuf>>>,
+    request_path: &str,
+) -> Response<Vec<u8>> {
+    let raw_dist = match frontend_dist.lock().ok().and_then(|dist| dist.clone()) {
+        Some(path) => path,
+        None => {
+            return protocol_text_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "frontend dist is not ready",
+            )
+        }
+    };
+    let current_dist = resolve_published_frontend_dist(&raw_dist);
+    let index_path = current_dist.join("index.html");
+    if !index_path.is_file() {
+        return protocol_text_response(StatusCode::NOT_FOUND, "frontend index.html not found");
+    }
+
+    if request_path.is_empty() || request_path == "/" || request_path == "/index.html" {
+        return protocol_file_response(&index_path);
+    }
+
+    for root in frontend_dist_roots(&raw_dist) {
+        if let Some(candidate) = resolve_static_request_path(&root, request_path) {
+            if candidate.is_file() {
+                return protocol_file_response(&candidate);
+            }
+        }
+    }
+
+    if request_path.starts_with("/web-assets/") {
+        return protocol_text_response(StatusCode::NOT_FOUND, "frontend asset not found");
+    }
+    protocol_file_response(&index_path)
+}
+
+fn resolve_published_frontend_dist(raw_dist: &Path) -> PathBuf {
+    let Some(frontend_dir) = raw_dist.parent() else {
+        return raw_dist.to_path_buf();
+    };
+    let marker = frontend_dir.join(FRONTEND_DIST_MARKER);
+    let Ok(marker_text) = fs::read_to_string(marker) else {
+        return raw_dist.to_path_buf();
+    };
+    let trimmed = marker_text.trim();
+    if trimmed.is_empty() {
+        return raw_dist.to_path_buf();
+    }
+    let relative = Path::new(trimmed);
+    if relative.is_absolute()
+        || !relative
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+    {
+        return raw_dist.to_path_buf();
+    }
+
+    let frontend_root = frontend_dir
+        .canonicalize()
+        .unwrap_or_else(|_| frontend_dir.to_path_buf());
+    let Ok(target) = frontend_root.join(relative).canonicalize() else {
+        return raw_dist.to_path_buf();
+    };
+    if !target.starts_with(&frontend_root) || !target.join("index.html").is_file() {
+        return raw_dist.to_path_buf();
+    }
+    target
+}
+
+fn frontend_dist_roots(raw_dist: &Path) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    push_frontend_dist_root(&mut roots, resolve_published_frontend_dist(raw_dist));
+    push_frontend_dist_root(&mut roots, raw_dist.to_path_buf());
+
+    if let Some(frontend_dir) = raw_dist.parent() {
+        let releases_dir = frontend_dir.join(FRONTEND_DIST_RELEASES);
+        if let Ok(entries) = fs::read_dir(releases_dir) {
+            let mut release_dirs = entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| path.is_dir())
+                .collect::<Vec<_>>();
+            release_dirs.sort_by_key(|path| {
+                fs::metadata(path)
+                    .and_then(|metadata| metadata.modified())
+                    .ok()
+                    .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                    .map(|duration| duration.as_millis())
+                    .unwrap_or(0)
+            });
+            release_dirs.reverse();
+            for release_dir in release_dirs {
+                push_frontend_dist_root(&mut roots, release_dir);
+            }
+        }
+    }
+    roots
+}
+
+fn push_frontend_dist_root(roots: &mut Vec<PathBuf>, root: PathBuf) {
+    if !root.join("index.html").is_file() {
+        return;
+    }
+    let resolved = root.canonicalize().unwrap_or(root);
+    if !roots.iter().any(|candidate| candidate == &resolved) {
+        roots.push(resolved);
+    }
+}
+
+fn resolve_static_request_path(root: &Path, request_path: &str) -> Option<PathBuf> {
+    let decoded = percent_decode_path(request_path)?;
+    let mut target = root.to_path_buf();
+    for part in decoded.trim_start_matches('/').split('/') {
+        if part.is_empty() || part == "." {
+            continue;
+        }
+        if part == ".." || part.contains('\\') {
+            return None;
+        }
+        target.push(part);
+    }
+    Some(target)
+}
+
+fn percent_decode_path(path: &str) -> Option<String> {
+    let bytes = path.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                return None;
+            }
+            let high = hex_value(bytes[index + 1])?;
+            let low = hex_value(bytes[index + 2])?;
+            out.push((high << 4) | low);
+            index += 3;
+        } else {
+            out.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn protocol_file_response(path: &Path) -> Response<Vec<u8>> {
+    let Ok(body) = fs::read(path) else {
+        return protocol_text_response(StatusCode::NOT_FOUND, "frontend file not found");
+    };
+    let cache_control = if path.file_name().and_then(|name| name.to_str()) == Some("index.html") {
+        "no-cache"
+    } else {
+        "public, max-age=31536000, immutable"
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type_for_path(path))
+        .header(header::CACHE_CONTROL, cache_control)
+        .body(body)
+        .unwrap_or_else(|_| {
+            protocol_text_response(StatusCode::INTERNAL_SERVER_ERROR, "response build failed")
+        })
+}
+
+fn protocol_text_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .body(message.as_bytes().to_vec())
+        .unwrap_or_else(|_| Response::new(Vec::new()))
+}
+
+fn content_type_for_path(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("html") => "text/html; charset=utf-8",
+        Some("js") | Some("mjs") => "text/javascript; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("json") => "application/json; charset=utf-8",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("ico") => "image/x-icon",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        Some("ttf") => "font/ttf",
+        Some("wasm") => "application/wasm",
+        _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_published_frontend_dist_uses_current_marker() {
+        let root = temp_test_dir("published-dist");
+        let raw_dist = root.join("frontend").join("dist");
+        let release = root
+            .join("frontend")
+            .join(FRONTEND_DIST_RELEASES)
+            .join("v2");
+        fs::create_dir_all(&raw_dist).unwrap();
+        fs::create_dir_all(&release).unwrap();
+        fs::write(raw_dist.join("index.html"), "old").unwrap();
+        fs::write(release.join("index.html"), "new").unwrap();
+        fs::write(
+            root.join("frontend").join(FRONTEND_DIST_MARKER),
+            format!("{FRONTEND_DIST_RELEASES}/v2\n"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            resolve_published_frontend_dist(&raw_dist),
+            release.canonicalize().unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_static_request_path_rejects_parent_and_backslash_segments() {
+        let root = PathBuf::from("/tmp/frontend-dist");
+
+        assert_eq!(
+            resolve_static_request_path(&root, "/web-assets/app.js").unwrap(),
+            root.join("web-assets").join("app.js")
+        );
+        assert!(resolve_static_request_path(&root, "/../secret").is_none());
+        assert!(resolve_static_request_path(&root, "/web-assets\\secret.js").is_none());
+    }
+
+    fn temp_test_dir(label: &str) -> PathBuf {
+        let token = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        env::temp_dir().join(format!(
+            "shinsekai-tauri-test-{label}-{}-{token}",
+            std::process::id()
+        ))
+    }
 }
 
 fn start_bridge_for_state(

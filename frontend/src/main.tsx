@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-import { AppProviders } from "./app/providers/AppProviders";
+import { AppRootProviders, AppRuntimeProviders } from "./app/providers/AppProviders";
 import { AppRoutes } from "./app/routes/AppRoutes";
 import { DesktopChrome } from "./shared/desktop/DesktopChrome";
 import {
@@ -102,11 +102,13 @@ window.addEventListener("unhandledrejection", (event) => {
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <DesktopChrome>
-        <AppProviders>
-          <AppRoutes />
-        </AppProviders>
-      </DesktopChrome>
+      <AppRootProviders>
+        <DesktopChrome>
+          <AppRuntimeProviders>
+            <AppRoutes />
+          </AppRuntimeProviders>
+        </DesktopChrome>
+      </AppRootProviders>
     </ErrorBoundary>
   </React.StrictMode>,
 );
