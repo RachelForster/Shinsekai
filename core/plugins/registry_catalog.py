@@ -32,8 +32,10 @@ class RegistryPluginRecord:
     entry: str
 
     def github_url(self) -> str:
-        slug = self.repo.strip().strip("/")
-        return f"https://github.com/{slug}"
+        from core.plugins.registry_download import normalize_repo_slug
+
+        slug = normalize_repo_slug(self.repo)
+        return f"https://github.com/{slug}" if slug else ""
 
 
 def _relax_json_trailing_commas(text: str) -> str:

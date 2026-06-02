@@ -57,8 +57,23 @@ _DL_USER_AGENT = (
 
 
 def normalize_repo_slug(repo: str) -> str:
-    parts = [p.strip() for p in repo.strip().strip("/").split("/") if p.strip()]
-    return "/".join(parts).lower()
+    raw = repo.strip()
+    if not raw:
+        return ""
+    lowered = raw.lower()
+    if lowered.startswith("git@github.com:"):
+        raw = raw.split(":", 1)[1]
+    elif lowered.startswith("https://github.com/") or lowered.startswith("http://github.com/"):
+        raw = raw.split("github.com/", 1)[1]
+    elif lowered.startswith("github.com/"):
+        raw = raw.split("/", 1)[1]
+    raw = raw.split("#", 1)[0].split("?", 1)[0].strip("/")
+    if raw.endswith(".git"):
+        raw = raw[:-4]
+    parts = [p.strip() for p in raw.split("/") if p.strip()]
+    if len(parts) < 2:
+        return ""
+    return "/".join(parts[:2]).lower()
 
 
 def normalize_manifest_entry(entry: str) -> str:

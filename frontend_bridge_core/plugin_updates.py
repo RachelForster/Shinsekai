@@ -104,20 +104,18 @@ def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -
 
 
 def _repo_slug_from_source(source: str) -> str:
-    raw = source.strip()
-    if raw.startswith("https://github.com/") or raw.startswith("http://github.com/"):
-        raw = raw.split("github.com/", 1)[1]
-    raw = raw.split("#", 1)[0].split("?", 1)[0].strip("/")
-    if raw.endswith(".git"):
-        raw = raw[:-4]
-    parts = [part.strip() for part in raw.split("/") if part.strip()]
-    if len(parts) < 2:
-        return ""
-    return "/".join(parts[:2])
+    from core.plugins.registry_download import normalize_repo_slug
+
+    return normalize_repo_slug(source)
 
 
 def _is_repo_source(source: str) -> bool:
-    return bool(_repo_slug_from_source(source)) and ":" not in source
+    raw = source.strip().lower()
+    if ":" in source and not (
+        raw.startswith("http://") or raw.startswith("https://") or raw.startswith("git@github.com:")
+    ):
+        return False
+    return bool(_repo_slug_from_source(source))
 
 
 def _lookup_registry_plugin(source: str) -> Any | None:

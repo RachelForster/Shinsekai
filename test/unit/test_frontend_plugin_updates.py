@@ -12,12 +12,16 @@ from frontend_bridge_core.plugin_updates import (
 def test_repo_slug_from_source_accepts_common_github_forms():
     assert _repo_slug_from_source("owner/repo") == "owner/repo"
     assert _repo_slug_from_source("https://github.com/owner/repo.git") == "owner/repo"
+    assert _repo_slug_from_source("github.com/owner/repo/tree/main") == "owner/repo"
+    assert _repo_slug_from_source("git@github.com:owner/repo.git") == "owner/repo"
     assert _repo_slug_from_source("http://github.com/owner/repo/tree/main?x=1#readme") == "owner/repo"
     assert _repo_slug_from_source("owner") == ""
 
 
 def test_repo_source_rejects_manifest_entries():
     assert _is_repo_source("owner/repo") is True
+    assert _is_repo_source("https://github.com/owner/repo.git") is True
+    assert _is_repo_source("git@github.com:owner/repo.git") is True
     assert _is_repo_source("plugins.demo.plugin:DemoPlugin") is False
     assert _is_repo_source("not-enough") is False
 
