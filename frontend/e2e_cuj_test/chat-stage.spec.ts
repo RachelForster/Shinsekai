@@ -9,8 +9,12 @@ test.describe("CUJ: chat stage", () => {
 
     const dialog = page.locator(".dialog-layer__text");
     const before = await dialog.textContent();
-    await page.locator(".options-layer__button").first().click();
+    const firstOption = page.locator(".options-layer__button").first();
+    const optionText = (await firstOption.textContent())?.trim() ?? "";
+    await expect(firstOption).toBeEnabled();
+    await firstOption.click();
 
+    await expect(dialog).toContainText(optionText);
     await expect(dialog).not.toHaveText(before ?? "");
     await expect(page.locator(".floating-toolbar__status")).toContainText(/generating|idle|streaming|speaking/);
     await expectNoPageErrors(pageErrors);
@@ -20,7 +24,9 @@ test.describe("CUJ: chat stage", () => {
     await gotoAndExpectPage(page, "/#/chat", ".chat-stage");
 
     await page.locator(".input-layer__input").fill("Hello from CUJ");
-    await page.locator(".input-layer").getByRole("button").last().click();
+    const sendButton = page.locator(".input-layer").getByRole("button").last();
+    await expect(sendButton).toBeEnabled();
+    await sendButton.click();
 
     await expect(page.locator(".dialog-layer__text")).toContainText("Hello from CUJ");
     await expect(page.locator(".floating-toolbar__status")).toContainText(/streaming|speaking/);

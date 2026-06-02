@@ -40,6 +40,27 @@ test.describe("CUJ: template generation and chat launch", () => {
     await expect(page.locator(".dialog-layer__name")).toContainText("Nanami");
   });
 
+  test("resumes the same chat that was last launched", async ({ page }) => {
+    await gotoAndExpectPage(page, "/#/settings/launch", ".launch-page");
+
+    const launchInputs = page.locator(".launch-page input");
+    await fillInput(launchInputs.nth(1), "data/chat_history/cuj-last-chat.json");
+    await page.locator(".page__actions").getByRole("button").first().click();
+
+    await expect(page).toHaveURL(/#\/chat/);
+    await expect(page.locator(".dialog-layer__text")).toContainText("cuj-last-chat.json");
+
+    await page.goto("/#/settings/api");
+    await expect(page.locator(".api-page")).toBeVisible();
+    await page.locator(".api-page__header").getByRole("button").first().click();
+    await expect(page.locator(".toast").last()).toContainText("cuj-last-chat.json");
+
+    await page.goto("/#/chat");
+    await expect(page.locator(".chat-stage")).toBeVisible();
+    await expect(page.locator(".dialog-layer__text")).toContainText("cuj-last-chat.json");
+    await expect(page.locator(".dialog-layer__name")).toContainText("Nanami");
+  });
+
   test("requires confirmation for quick restart with reset history", async ({ page }) => {
     await gotoAndExpectPage(page, "/#/settings/templates", ".template-page");
 

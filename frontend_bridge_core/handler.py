@@ -703,29 +703,55 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         return _chat_snapshot(self.state, "idle", message)
 
     def _resume_last_chat(self) -> dict[str, Any]:
-        history_path = _latest_history_json(self.state.history_dir)
+        session = _load_template_session_payload(self.state) or {}
+        session_history_path = str(session.get("historyPath") or "").strip()
+        history_path = (
+            _chat_history_path(self.state, {"historyPath": session_history_path}, session)
+            if session_history_path
+            else _latest_history_json(self.state.history_dir)
+        )
         if history_path is None:
             raise FileNotFoundError("未找到聊天记录（*.json）。请先在主窗口进行过对话。")
         template_parts = _resume_template_parts(self.state)
+        session_scenario = str(session.get("scenario") or "")
+        session_system = str(session.get("system") or "")
+        if session_scenario.strip() or session_system.strip():
+            template_parts = (
+                session_scenario,
+                session_system,
+                str(session.get("templateFileDropdown") or "_temp.txt"),
+            )
         if template_parts is None:
             raise FileNotFoundError("未找到可用模板（.txt）。请先在聊天模板页生成、保存或启动过一次。")
         scenario, system_template, template_id = template_parts
-        room_id = self.state.config_manager.config.system_config.live_room_id
+        selected_characters = session.get("selectedCharacters") or []
+        first_character = (
+            str(selected_characters[0])
+            if isinstance(selected_characters, list) and selected_characters
+            else ""
+        )
+        init_sprite_path = str(session.get("initSpritePath") or "")
+        if not init_sprite_path and first_character:
+            character = self.state.config_manager.get_character_by_name(first_character)
+            if character and character.sprites:
+                init_sprite_path = _sprite_path(character.sprites[0])
+        room_id = str(session.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
+        selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
         message = _launch_chat(
             self.state,
             history_file=history_path.resolve().as_posix(),
-            init_sprite_path="",
-            room_id=str(room_id or ""),
-            selected_bg=TRANSPARENT_BACKGROUND_NAME,
+            init_sprite_path=init_sprite_path,
+            room_id=room_id,
+            selected_bg=selected_bg,
             system_template=system_template,
-            use_cg=False,
+            use_cg=bool(session.get("useCg", False)),
             user_scenario=scenario,
         )
         if message.startswith("启动失败"):
             raise RuntimeError(message)
         self.state.chat_session = {
-            "backgroundName": TRANSPARENT_BACKGROUND_NAME,
-            "characterName": "",
+            "backgroundName": selected_bg,
+            "characterName": first_character,
             "historyPath": history_path.as_posix(),
             "templateId": template_id,
         }
