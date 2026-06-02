@@ -113,8 +113,45 @@ def _remove_sprite_background(state: BridgeState, task_id: str, payload: dict[st
     return result
 
 
+def _strip_windows_verbatim_prefix(value: str) -> str:
+    if value.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + value[len("\\\\?\\UNC\\") :]
+    if value.startswith("\\\\?\\"):
+        return value[len("\\\\?\\") :]
+    if value.startswith("//?/UNC/"):
+        return "//" + value[len("//?/UNC/") :]
+    if value.startswith("//?/"):
+        return value[len("//?/") :]
+    return value
+
+
 def _display_path(path: Path) -> str:
-    return path.resolve(strict=False).as_posix()
+    try:
+        value = str(path.resolve(strict=False))
+    except Exception:
+        value = str(path)
+    if os.name == "nt":
+        value = _strip_windows_verbatim_prefix(value)
+        return value.replace("\\", "/")
+    return Path(value).as_posix()
+
+
+def _file_browser_root_key(value: str) -> str:
+    normalized = _strip_windows_verbatim_prefix(value).replace("\\", "/")
+    if match := re.match(r"^([A-Za-z]:)/*$", normalized):
+        return match.group(1).lower()
+    if normalized.startswith("//"):
+        return normalized.rstrip("/").lower()
+    return normalized.lower() if os.name == "nt" else normalized
+
+
+def _file_browser_root_label(label: str, value: str) -> str:
+    normalized_label = _strip_windows_verbatim_prefix(label).replace("\\", "/").rstrip("/")
+    normalized_value = _strip_windows_verbatim_prefix(value).replace("\\", "/").rstrip("/")
+    for candidate in (normalized_label, normalized_value):
+        if match := re.match(r"^([A-Za-z]:)$", candidate):
+            return match.group(1)
+    return normalized_label or normalized_value
 
 
 def _filesystem_roots(project_root: Path) -> list[dict[str, str]]:
@@ -128,12 +165,12 @@ def _filesystem_roots(project_root: Path) -> list[dict[str, str]]:
             return
         if not resolved.exists():
             return
-        value = resolved.as_posix()
-        key = value.lower() if os.name == "nt" else value
+        value = _display_path(resolved)
+        key = _file_browser_root_key(value)
         if key in seen:
             return
         seen.add(key)
-        roots.append({"label": label, "path": value})
+        roots.append({"label": _file_browser_root_label(label, value), "path": value})
 
     add("Shinsekai", project_root)
     add("Data", project_root / "data")
@@ -170,9 +207,9 @@ def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str
         target = target.parent
 
     if not target.exists():
-        raise FileNotFoundError(f"路径不存在: {target}")
+        raise FileNotFoundError(f"路径不存在: {_display_path(target)}")
     if not target.is_dir():
-        raise NotADirectoryError(f"不是目录: {target}")
+        raise NotADirectoryError(f"不是目录: {_display_path(target)}")
 
     entries: list[dict[str, Any]] = []
     try:
@@ -200,7 +237,7 @@ def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str
     except PermissionError:
         raise
     except OSError as exc:
-        raise RuntimeError(f"无法读取目录: {target}: {exc}") from exc
+        raise RuntimeError(f"无法读取目录: {_display_path(target)}: {exc}") from exc
 
     entries.sort(key=lambda item: (item["kind"] != "directory", item["name"].casefold()))
     parent = target.parent if target.parent != target else None

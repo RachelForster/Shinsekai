@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from "react";
 import { ChevronRight, ChevronUp, Eye, EyeOff, File, Folder, HardDrive, RefreshCw } from "lucide-react";
 
-import type { FileBrowserEntry, FileBrowserSnapshot, PathPickerMode } from "../platform/types";
+import type { FileBrowserEntry, FileBrowserRoot, FileBrowserSnapshot, PathPickerMode } from "../platform/types";
 import { useI18n } from "../i18n";
 import { IconButton } from "./IconButton";
 
@@ -34,15 +34,97 @@ export interface FileManagerProps {
 }
 
 function basename(path: string) {
-  return path.split(/[\\/]/).filter(Boolean).pop() || path;
+  const normalized = normalizeFileManagerPath(path);
+  return normalized.split(/[\\/]/).filter(Boolean).pop() || normalized || path;
+}
+
+export function normalizeFileManagerPath(path: string) {
+  const raw = path.trim();
+  if (!raw) {
+    return "";
+  }
+  let normalized = raw.replace(/\\/g, "/");
+  if (/^\/\/\?\/UNC\//i.test(normalized)) {
+    normalized = `//${normalized.slice("//?/UNC/".length)}`;
+  } else if (normalized.startsWith("//?/")) {
+    normalized = normalized.slice("//?/".length);
+  } else if (normalized.startsWith("//./")) {
+    normalized = normalized.slice("//./".length);
+  }
+  if (/^[A-Za-z]:$/.test(normalized)) {
+    return `${normalized}/`;
+  }
+  return normalized.replace(/^([A-Za-z]:)\/+$/, "$1/");
+}
+
+function normalizeFileBrowserSnapshot(snapshot: FileBrowserSnapshot): FileBrowserSnapshot {
+  return {
+    ...snapshot,
+    cwd: normalizeFileManagerPath(snapshot.cwd),
+    entries: snapshot.entries.map((entry) => ({
+      ...entry,
+      path: normalizeFileManagerPath(entry.path),
+    })),
+    parent: snapshot.parent ? normalizeFileManagerPath(snapshot.parent) : snapshot.parent,
+    roots: normalizeFileBrowserRoots(snapshot.roots),
+  };
+}
+
+function isWindowsDrivePath(path: string) {
+  return /^[A-Za-z]:(?:\/|$)/.test(normalizeFileManagerPath(path));
+}
+
+function fileManagerRootKey(path: string) {
+  const normalized = normalizeFileManagerPath(path);
+  if (isWindowsDrivePath(normalized) || normalized.startsWith("//")) {
+    return normalized.replace(/\/+$/, "").toLowerCase();
+  }
+  return normalized;
+}
+
+function normalizeFileBrowserRoots(roots: FileBrowserRoot[]) {
+  const seen = new Set<string>();
+  const normalizedRoots: FileBrowserRoot[] = [];
+  for (const root of roots) {
+    const normalizedPath = normalizeFileManagerPath(root.path);
+    const key = fileManagerRootKey(normalizedPath);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalizedRoots.push({ ...root, path: normalizedPath });
+  }
+  return normalizedRoots;
+}
+
+function driveRootName(path: string) {
+  return normalizeFileManagerPath(path).match(/^([A-Za-z]):\/?$/)?.[1];
+}
+
+function rootLabel(
+  root: FileBrowserRoot,
+  t: (key: "filePicker.rootData" | "filePicker.rootHome" | "filePicker.rootUserProfile") => string,
+) {
+  const label = root.label.trim();
+  const driveLabel = driveRootName(label) ?? driveRootName(root.path);
+  if (driveLabel) {
+    return `${driveLabel}:`;
+  }
+  if (/^home$/i.test(label)) {
+    return isWindowsDrivePath(root.path) ? t("filePicker.rootUserProfile") : t("filePicker.rootHome");
+  }
+  if (/^data$/i.test(label)) {
+    return t("filePicker.rootData");
+  }
+  return label || normalizeFileManagerPath(root.path);
 }
 
 function pathBreadcrumbs(path: string) {
-  const raw = path.trim();
+  const raw = normalizeFileManagerPath(path);
   if (!raw) {
     return [];
   }
-  const normalized = raw.replace(/\\/g, "/");
+  const normalized = raw;
   const drive = normalized.match(/^[A-Za-z]:/)?.[0];
   if (drive) {
     const rest = normalized.slice(drive.length).replace(/^\/+/, "");
@@ -139,12 +221,13 @@ export function FileManager({
   value = "",
 }: FileManagerProps) {
   const { t } = useI18n();
+  const normalizedValue = normalizeFileManagerPath(value);
   const contextBrowse = useContext(FileBrowserContext);
   const browseFiles = onBrowse ?? contextBrowse;
-  const [address, setAddress] = useState(value);
+  const [address, setAddress] = useState(normalizedValue);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [selectedPaths, setSelectedPaths] = useState<string[]>(value ? [value] : []);
+  const [selectedPaths, setSelectedPaths] = useState<string[]>(normalizedValue ? [normalizedValue] : []);
   const [showHidden, setShowHidden] = useState(false);
   const [snapshot, setSnapshot] = useState<FileBrowserSnapshot | null>(null);
   const [editingAddress, setEditingAddress] = useState(false);
@@ -159,7 +242,7 @@ export function FileManager({
     [acceptedExtensionsKey],
   );
   const selectedPath = selectedPaths[0] ?? "";
-  const displayAddress = snapshot?.cwd || address;
+  const displayAddress = normalizeFileManagerPath(snapshot?.cwd || address);
   const breadcrumbs = useMemo(() => pathBreadcrumbs(displayAddress), [displayAddress]);
 
   const updateSelectedPaths = (paths: string[]) => {
@@ -181,10 +264,10 @@ export function FileManager({
     mode === "directory"
       ? selectedEntry?.kind === "directory"
         ? selectedEntry.path
-        : snapshot?.cwd || address.trim()
+        : normalizeFileManagerPath(snapshot?.cwd || address)
       : selectedEntry?.kind === "file"
         ? selectedEntry.path
-        : address.trim();
+        : normalizeFileManagerPath(address);
   const confirmPaths = multiple && mode === "file" ? selectedPaths : confirmPath ? [confirmPath] : [];
   const confirmPathsKey = confirmPaths.join("\0");
 
@@ -221,10 +304,15 @@ export function FileManager({
         if (!browseFiles) {
           throw new Error("File browser is not configured.");
         }
-        const next = await withTimeout(
-          browseFiles({ path, showHidden: hidden ?? showHiddenRef.current }),
-          BROWSE_TIMEOUT_MS,
-          t("filePicker.timeout"),
+        const next = normalizeFileBrowserSnapshot(
+          await withTimeout(
+            browseFiles({
+              path: path ? normalizeFileManagerPath(path) : path,
+              showHidden: hidden ?? showHiddenRef.current,
+            }),
+            BROWSE_TIMEOUT_MS,
+            t("filePicker.timeout"),
+          ),
         );
         if (!isCurrentBrowseRequest(requestId)) {
           return;
@@ -266,11 +354,11 @@ export function FileManager({
   }, [displayAddress]);
 
   useEffect(() => {
-    const initialSelection = mode === "file" && value && !multiple ? [value] : [];
-    setAddress(value);
+    const initialSelection = mode === "file" && normalizedValue && !multiple ? [normalizedValue] : [];
+    setAddress(normalizedValue);
     updateSelectedPaths(initialSelection);
-    void browse(value, initialSelection, showHiddenRef.current);
-  }, [browse, mode, multiple, value]);
+    void browse(normalizedValue, initialSelection, showHiddenRef.current);
+  }, [browse, mode, multiple, normalizedValue]);
 
   const openEntry = (entry: FileBrowserEntry) => {
     if (entry.kind === "directory") {
@@ -402,7 +490,7 @@ export function FileManager({
               type="button"
             >
               <HardDrive aria-hidden className="path-picker__root-icon" />
-              <span>{root.label}</span>
+              <span>{rootLabel(root, t)}</span>
             </button>
           ))}
         </aside>

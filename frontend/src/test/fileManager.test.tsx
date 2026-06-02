@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../shared/i18n/I18nProvider";
-import { FileManager, normalizeFileExtensions } from "../shared/ui/FileManager";
+import { FileManager, normalizeFileExtensions, normalizeFileManagerPath } from "../shared/ui/FileManager";
 
 const browseFiles = vi.fn();
 
@@ -36,6 +36,42 @@ describe("FileManager", () => {
 
   it("normalizes accepted file extensions", () => {
     expect(normalizeFileExtensions(["png", ".JPG", "  webp  ", ""])).toEqual([".png", ".jpg", ".webp"]);
+  });
+
+  it("normalizes Windows verbatim paths for display", () => {
+    expect(normalizeFileManagerPath("\\\\?\\D:\\")).toBe("D:/");
+    expect(normalizeFileManagerPath("\\\\?\\D:\\Games\\")).toBe("D:/Games/");
+    expect(normalizeFileManagerPath("\\\\?\\UNC\\server\\share\\asset.png")).toBe("//server/share/asset.png");
+    expect(normalizeFileManagerPath("//?/D:/")).toBe("D:/");
+  });
+
+  it("renders Windows locations without verbatim prefixes", async () => {
+    browseFiles.mockResolvedValue({
+      cwd: "\\\\?\\D:\\",
+      entries: [{ kind: "directory", modifiedAt: 1, name: "Media", path: "\\\\?\\D:\\Media" }],
+      parent: "",
+      roots: [
+        { label: "Home", path: "\\\\?\\C:\\Users\\Tester" },
+        { label: "Data", path: "\\\\?\\D:\\data" },
+        { label: "\\\\?\\D:\\", path: "\\\\?\\D:\\" },
+        { label: "D:", path: "\\\\?\\D:\\" },
+      ],
+    });
+
+    renderFileManager({});
+
+    expect(await screen.findByRole("group", { name: "D:/" })).toBeInTheDocument();
+    const roots = screen.getByLabelText("位置");
+    expect(screen.getByRole("button", { name: "用户目录" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "数据目录" })).toBeInTheDocument();
+    expect(within(roots).getAllByRole("button", { name: "D:" })).toHaveLength(1);
+    expect(screen.queryByText(/\\\\\?/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "用户目录" }));
+
+    await waitFor(() => {
+      expect(browseFiles).toHaveBeenLastCalledWith({ path: "C:/Users/Tester", showHidden: false });
+    });
   });
 
   it("keeps directory mode selection scoped to directories", async () => {

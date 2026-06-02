@@ -315,6 +315,9 @@ export type MessageKey =
   | "filePicker.name"
   | "filePicker.parent"
   | "filePicker.roots"
+  | "filePicker.rootData"
+  | "filePicker.rootHome"
+  | "filePicker.rootUserProfile"
   | "filePicker.selectCurrent"
   | "filePicker.selectFile"
   | "filePicker.size"
@@ -943,6 +946,9 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "filePicker.name": "Name",
     "filePicker.parent": "Parent folder",
     "filePicker.roots": "Locations",
+    "filePicker.rootData": "Data",
+    "filePicker.rootHome": "Home",
+    "filePicker.rootUserProfile": "User profile",
     "filePicker.selectCurrent": "Select folder",
     "filePicker.selectFile": "Select file",
     "filePicker.size": "Size",
@@ -1578,6 +1584,9 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "filePicker.name": "名前",
     "filePicker.parent": "親フォルダ",
     "filePicker.roots": "場所",
+    "filePicker.rootData": "データ",
+    "filePicker.rootHome": "ホーム",
+    "filePicker.rootUserProfile": "ユーザーフォルダ",
     "filePicker.selectCurrent": "フォルダを選択",
     "filePicker.selectFile": "ファイルを選択",
     "filePicker.size": "サイズ",
@@ -2206,6 +2215,9 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "filePicker.name": "名称",
     "filePicker.parent": "上级文件夹",
     "filePicker.roots": "位置",
+    "filePicker.rootData": "数据目录",
+    "filePicker.rootHome": "主目录",
+    "filePicker.rootUserProfile": "用户目录",
     "filePicker.selectCurrent": "选择文件夹",
     "filePicker.selectFile": "选择文件",
     "filePicker.size": "大小",
