@@ -54,6 +54,26 @@ def test_plugin_config_field_omits_empty_optional_metadata():
     }
 
 
+def test_plugin_config_field_includes_path_kind_for_file_type():
+    """_plugin_config_field serializes pathKind when provided (e.g., for file picker)."""
+    field = _plugin_config_field(
+        "ref_audio",
+        "Reference Audio",
+        "file",
+        path_kind="file",
+        placeholder="Choose a WAV file...",
+    )
+    assert field["pathKind"] == "file"
+    assert field["placeholder"] == "Choose a WAV file..."
+    assert field["type"] == "file"
+
+
+def test_plugin_config_field_omits_path_kind_when_not_set():
+    """_plugin_config_field omits pathKind when not provided."""
+    field = _plugin_config_field("output_dir", "Output Directory", "text")
+    assert "pathKind" not in field
+
+
 def test_frontend_config_page_payload_normalizes_kind_and_values():
     contribution = SimpleNamespace(
         description="Config page",

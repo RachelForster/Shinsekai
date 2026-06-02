@@ -135,6 +135,7 @@ export function pluginConfigGroupsToFormGroups(
       min: field.min,
       name: field.key,
       options: field.options,
+      pathKind: field.pathKind,
       placeholder: field.placeholder,
       required: field.required,
       span: field.span,

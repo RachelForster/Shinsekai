@@ -23,6 +23,7 @@ def _plugin_config_field(
     max_value: float | int | None = None,
     min_value: float | int | None = None,
     options: list[tuple[str, str]] | None = None,
+    path_kind: str | None = None,
     placeholder: str = "",
     span: str | None = None,
     step: float | int | None = None,
@@ -41,6 +42,8 @@ def _plugin_config_field(
         field["min"] = min_value
     if options:
         field["options"] = [{"label": option_label, "value": option_value} for option_label, option_value in options]
+    if path_kind:
+        field["pathKind"] = path_kind
     if placeholder:
         field["placeholder"] = placeholder
     if span:

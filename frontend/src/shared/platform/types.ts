@@ -217,6 +217,7 @@ export interface McpToolPreview {
 
 export type PluginConfigFieldType =
   | "boolean"
+  | "file"
   | "integer"
   | "json"
   | "number"
@@ -239,6 +240,7 @@ export interface PluginConfigFieldSchema {
   max?: number;
   min?: number;
   options?: PluginConfigOption[];
+  pathKind?: "directory" | "file";
   placeholder?: string;
   required?: boolean;
   span?: "full";
