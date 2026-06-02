@@ -1,0 +1,1 @@
+import{j as t}from"./index-xweNt15y.js";function e(){return t().chat.getSnapshot()}function r(){return t().chat.getTheme()}function s(a){return t().chat.launch(a)}function h(){return t().chat.resumeLast()}function u(a){return t().chat.command(a)}function c(a){return t().chat.subscribe(a)}export{r as a,c as b,e as g,s as l,h as r,u as s};
