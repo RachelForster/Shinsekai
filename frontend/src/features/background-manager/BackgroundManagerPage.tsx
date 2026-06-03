@@ -579,14 +579,14 @@ export function BackgroundManagerPage() {
           <div className="background-page__resource-actions">
             <Button
               icon={<ExternalLink aria-hidden className="button__icon" />}
-              onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=background")}
+              onClick={() => openExternal("https://shinsekai.end0rph1n.icu/resources")}
               variant="ghost"
             >
               {t("background.action.community")}
             </Button>
             <Button
               icon={<ExternalLink aria-hidden className="button__icon" />}
-              onClick={() => openExternal("https://wj.qq.com/s2/26616089/b61a/")}
+              onClick={() => openExternal("https://shinsekai.end0rph1n.icu/resources")}
               variant="ghost"
             >
               {t("background.action.uploadContribution")}
