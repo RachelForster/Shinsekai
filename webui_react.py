@@ -18,6 +18,10 @@ if str(_repo_root) not in sys.path:
 from frontend_bridge import run as run_frontend_bridge
 
 
+class FrontendMigrationNeeded(RuntimeError):
+    """Raised when a source checkout cannot launch the built frontend."""
+
+
 def _default_repo_root() -> Path:
     return Path(__file__).resolve().parent
 
@@ -73,14 +77,14 @@ def _build_frontend(repo_root: Path, frontend_dist: Path, reason: str) -> None:
     if not frontend_dir.is_dir():
         raise SystemExit(f"Frontend source directory not found: {frontend_dir}")
     if not (frontend_dir / "node_modules").is_dir():
-        raise SystemExit(
+        raise FrontendMigrationNeeded(
             f"Built frontend {reason}, but frontend dependencies are not installed.\n"
             "Run `cd frontend && pnpm install` first."
         )
 
     pnpm = shutil.which("pnpm")
     if pnpm is None:
-        raise SystemExit(
+        raise FrontendMigrationNeeded(
             f"Built frontend {reason}, but `pnpm` is not available in PATH.\n"
             "Run `cd frontend && pnpm build` first."
         )
@@ -113,6 +117,27 @@ def _ensure_frontend_dist(
         )
 
     _build_frontend(repo_root, frontend_dist, "not found")
+
+
+def _show_frontend_migration_dialog(message: str) -> None:
+    print(message, file=sys.stderr)
+    print("Opening the Shinsekai Frontend migration helper...", file=sys.stderr)
+    try:
+        from ui.migrate_helper.dialog import MigrationRoleDialog
+        from PySide6.QtWidgets import QApplication
+    except Exception as exc:
+        print(f"Could not open migration helper dialog: {exc}", file=sys.stderr)
+        print(
+            "Developers: install pnpm/Corepack and run `cd frontend && pnpm install && pnpm build`.\n"
+            "Users: download the latest release package from "
+            "https://github.com/RachelForster/Shinsekai/releases",
+            file=sys.stderr,
+        )
+        return
+
+    app = QApplication.instance() or QApplication([])
+    dialog = MigrationRoleDialog()
+    dialog.exec()
 
 
 def main() -> None:
@@ -149,12 +174,16 @@ def main() -> None:
     repo_root = _default_repo_root()
     project_root = Path(args.project_root).expanduser().resolve() if args.project_root else repo_root
     frontend_dist = _resolve_frontend_dist(repo_root, args.frontend_dist)
-    _ensure_frontend_dist(
-        repo_root,
-        frontend_dist,
-        build_if_missing=not args.no_build_if_missing,
-        build_if_stale=not args.no_build_if_stale,
-    )
+    try:
+        _ensure_frontend_dist(
+            repo_root,
+            frontend_dist,
+            build_if_missing=not args.no_build_if_missing,
+            build_if_stale=not args.no_build_if_stale,
+        )
+    except FrontendMigrationNeeded as exc:
+        _show_frontend_migration_dialog(str(exc))
+        raise SystemExit(1) from exc
 
     run_frontend_bridge(
         args.host,
