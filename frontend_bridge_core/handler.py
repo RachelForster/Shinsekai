@@ -54,7 +54,7 @@ from .characters import (
     _upload_sprite_voice,
 )
 from .config import _app_config_response, _fetch_llm_models, _save_api_config
-from .logs import _default_log_snapshot, _log_snapshot
+from .logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
 from .mcp import (
     _mcp_config_response,
     _open_mcp_config_file,
@@ -267,6 +267,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_load_template_session_payload(self.state))
             elif path == "/api/logs/default":
                 self._send_json(_default_log_snapshot(Path.cwd().resolve()))
+            elif path == "/api/logs":
+                self._send_json(_log_file_list(Path.cwd().resolve()))
             elif path == "/api/plugins":
                 self._send_json(_plugin_rows())
             elif path.startswith("/api/plugins/") and path.endswith("/ui"):
@@ -402,6 +404,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     self._send_json(_log_snapshot(paths[0]))
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
+            elif method == "POST" and path == "/api/logs/diagnostic-bundle":
+                self._send_json(_diagnostic_bundle(Path.cwd().resolve()))
             elif method == "POST" and path == "/api/music-cover/search":
                 self._send_json(_music_cover_search(self.state, body))
             elif method == "POST" and path == "/api/music-cover/config":

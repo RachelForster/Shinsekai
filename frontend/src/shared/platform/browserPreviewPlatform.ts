@@ -631,6 +631,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     logs: {
+      exportDiagnostics: () =>
+        delay({
+          downloadUrl: "browser-preview://shinsekai-diagnostics.zip",
+          path: "browser-preview://shinsekai-diagnostics.zip",
+        }),
       getDefault: () => delay(previewLogSnapshot()),
       async import(items) {
         const first = items[0];
@@ -654,6 +659,19 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           path: String(first || "browser-preview://preview.log"),
         });
       },
+      list: () =>
+        delay({
+          files: [
+            {
+              app: "preview",
+              modifiedAt: Date.now() / 1000,
+              name: "preview.log",
+              path: "browser-preview://preview.log",
+              relativePath: "logs/preview/preview.log",
+              size: previewLogSnapshot().size,
+            },
+          ],
+        }),
     },
     musicCover: {
       async run(input, options) {

@@ -15,7 +15,9 @@ import type {
   CharacterMemoryList,
   CharacterSettingResult,
   CharacterTranslateResult,
+  DiagnosticBundleResult,
   FileBrowserSnapshot,
+  LogFileList,
   LogSnapshot,
   LlmModelOption,
   McpConfig,
@@ -402,6 +404,8 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
       },
     },
     logs: {
+      exportDiagnostics: () =>
+        requestJson<DiagnosticBundleResult>(apiBase, "/api/logs/diagnostic-bundle", { method: "POST" }),
       getDefault: () => requestJson<LogSnapshot>(apiBase, "/api/logs/default"),
       import: (items) => {
         if (isFileList(items)) {
@@ -412,6 +416,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           method: "POST",
         });
       },
+      list: () => requestJson<LogFileList>(apiBase, "/api/logs"),
     },
     musicCover: {
       async run(input, options) {

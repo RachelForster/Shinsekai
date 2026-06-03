@@ -7,20 +7,19 @@
 }
 
 .logs-toolbar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(116px, 150px)) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .logs-toolbar__search {
   position: relative;
-  flex: 1 1 360px;
-  min-width: min(100%, 240px);
+  min-width: 0;
 }
 
 .logs-toolbar__search .input {
+  width: 100%;
   padding-left: 34px;
 }
 
@@ -160,6 +159,60 @@
   background: var(--color-accent-bg);
 }
 
+.logs-file-list {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.logs-file-list__item {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 8px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-primary);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.logs-file-list__item:hover:not(:disabled) {
+  border-color: var(--color-border-hover);
+  background: var(--color-surface-hover);
+}
+
+.logs-file-list__item[data-active="true"] {
+  border-color: var(--color-accent-border-strong);
+  color: var(--color-accent-primary);
+  background: var(--color-accent-bg-hover);
+}
+
+.logs-file-list__item:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.logs-file-list__item span,
+.logs-file-list__item small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logs-file-list__item span {
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.logs-file-list__item small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
 .logs-truncated,
 .logs-hidden-count {
   margin: 0;
@@ -222,13 +275,33 @@
   word-break: break-word;
 }
 
+.logs-code__timestamp,
+.logs-code__logger,
+.logs-code__event {
+  color: var(--color-text-muted);
+}
+
+.logs-code__event {
+  color: var(--color-accent-primary);
+}
+
 .logs-hidden-count {
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-border);
   background: var(--color-surface);
 }
 
+@media (max-width: 1180px) {
+  .logs-toolbar {
+    grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(116px, 1fr));
+  }
+}
+
 @media (max-width: 960px) {
+  .logs-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .logs-layout {
     grid-template-columns: minmax(0, 1fr);
   }

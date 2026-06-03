@@ -1,16 +1,41 @@
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CaseSensitive, FileText, RefreshCw, Search, Upload } from "lucide-react";
+import { Archive, CaseSensitive, FileText, RefreshCw, Search, Upload } from "lucide-react";
 
-import { getDefaultLog, importLog, logsQueryKey } from "../../entities/logs/repository";
-import type { LogSnapshot } from "../../shared/platform/types";
-import { AsyncButton, Button, EmptyState, QueryErrorState, Switch, TextInput, useToast } from "../../shared/ui";
+import {
+  exportDiagnosticBundle,
+  getDefaultLog,
+  importLog,
+  listLogFiles,
+  logFilesQueryKey,
+  logsQueryKey,
+  readLog,
+} from "../../entities/logs/repository";
+import type { LogFileInfo, LogSnapshot, LogStructuredEntry } from "../../shared/platform/types";
+import {
+  AsyncButton,
+  Button,
+  EmptyState,
+  QueryErrorState,
+  Select,
+  Switch,
+  TextInput,
+  useToast,
+} from "../../shared/ui";
 import "./LogsPage.css";
 
+type LogLevel = "debug" | "error" | "info" | "warn" | "default";
+
 type LogLine = {
-  level: "debug" | "error" | "info" | "warn" | "default";
+  entry?: LogStructuredEntry;
+  event: string;
+  level: LogLevel;
+  logger: string;
   number: number;
+  pluginId: string;
+  taskId: string;
   text: string;
+  timestamp: string;
 };
 
 const MAX_VISIBLE_LINES = 3000;
@@ -36,44 +61,151 @@ function formatTimestamp(value?: number) {
   return new Date(value * 1000).toLocaleString();
 }
 
-function detectLevel(text: string): LogLine["level"] {
-  if (/\b(error|exception|failed|traceback)\b/i.test(text)) {
+function entryString(entry: LogStructuredEntry | undefined, key: keyof LogStructuredEntry) {
+  const value = entry?.[key];
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+function normalizeLevel(value: unknown, fallbackText = ""): LogLevel {
+  const raw = String(value || "").toLowerCase();
+  if (raw.includes("error") || raw.includes("critical") || /\b(exception|failed|traceback)\b/i.test(fallbackText)) {
     return "error";
   }
-  if (/\b(warn|warning)\b/i.test(text)) {
+  if (raw.includes("warn") || /\b(warn|warning)\b/i.test(fallbackText)) {
     return "warn";
   }
-  if (/\bdebug\b/i.test(text)) {
+  if (raw.includes("debug") || /\bdebug\b/i.test(fallbackText)) {
     return "debug";
   }
-  if (/\b(info|started|completed|success)\b/i.test(text)) {
+  if (raw.includes("info") || /\b(info|started|completed|success)\b/i.test(fallbackText)) {
     return "info";
   }
   return "default";
 }
 
-function buildLines(snapshot?: LogSnapshot): LogLine[] {
-  return (snapshot?.content ?? "").split(/\r?\n/).map((text, index) => ({
-    level: detectLevel(text),
-    number: index + 1,
-    text,
-  }));
+function parseJsonLine(text: string): LogStructuredEntry | undefined {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as LogStructuredEntry) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-function matchesSearch(line: LogLine, query: string, caseSensitive: boolean) {
+function buildLines(snapshot?: LogSnapshot): LogLine[] {
+  const entryByLine = new Map<number, LogStructuredEntry>();
+  for (const entry of snapshot?.entries ?? []) {
+    if (typeof entry.line === "number") {
+      entryByLine.set(entry.line, entry);
+    }
+  }
+  return (snapshot?.content ?? "").split(/\r?\n/).map((text, index) => {
+    const number = index + 1;
+    const entry = entryByLine.get(number) ?? parseJsonLine(text);
+    return {
+      entry,
+      event: entryString(entry, "event"),
+      level: normalizeLevel(entry?.level, text),
+      logger: entryString(entry, "logger"),
+      number,
+      pluginId: entryString(entry, "plugin_id"),
+      taskId: entryString(entry, "task_id"),
+      text,
+      timestamp: entryString(entry, "timestamp"),
+    };
+  });
+}
+
+function includesQuery(value: string, query: string, caseSensitive: boolean) {
+  if (!query) {
+    return true;
+  }
   const needle = caseSensitive ? query : query.toLowerCase();
-  const haystack = caseSensitive ? line.text : line.text.toLowerCase();
-  return haystack.includes(needle) || String(line.number).includes(needle);
+  const haystack = caseSensitive ? value : value.toLowerCase();
+  return haystack.includes(needle);
+}
+
+function lineMatches(line: LogLine, filters: {
+  caseSensitive: boolean;
+  event: string;
+  level: string;
+  logger: string;
+  pluginId: string;
+  query: string;
+}) {
+  if (filters.level !== "all" && line.level !== filters.level) {
+    return false;
+  }
+  if (filters.logger !== "all" && line.logger !== filters.logger) {
+    return false;
+  }
+  if (filters.event !== "all" && line.event !== filters.event) {
+    return false;
+  }
+  if (filters.pluginId !== "all" && line.pluginId !== filters.pluginId) {
+    return false;
+  }
+  const searchable = [
+    line.text,
+    line.logger,
+    line.event,
+    line.pluginId,
+    line.taskId,
+    line.timestamp,
+    String(line.number),
+  ].join(" ");
+  return includesQuery(searchable, filters.query.trim(), filters.caseSensitive);
+}
+
+function optionValues(lines: LogLine[], field: "event" | "logger" | "pluginId") {
+  return Array.from(new Set(lines.map((line) => line[field]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+function openDownload(url: string) {
+  if (!url) {
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function fileLabel(file: LogFileInfo) {
+  return file.relativePath || file.path || file.name;
 }
 
 export function LogsPage() {
   const { showToast } = useToast();
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [importedLog, setImportedLog] = useState<LogSnapshot | null>(null);
+  const [activeLog, setActiveLog] = useState<LogSnapshot | null>(null);
+  const [activePath, setActivePath] = useState("");
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
+  const [levelFilter, setLevelFilter] = useState("all");
+  const [loggerFilter, setLoggerFilter] = useState("all");
+  const [eventFilter, setEventFilter] = useState("all");
+  const [pluginFilter, setPluginFilter] = useState("all");
+
   const logsQuery = useQuery({ queryFn: getDefaultLog, queryKey: logsQueryKey, retry: 1 });
-  const activeLog = importedLog ?? logsQuery.data;
+  const filesQuery = useQuery({ queryFn: listLogFiles, queryKey: logFilesQueryKey, retry: 1 });
+  const currentLog = activeLog ?? logsQuery.data;
+
+  const readMutation = useMutation({
+    mutationFn: readLog,
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "日志读取失败。",
+        title: "读取失败",
+      });
+    },
+    onSuccess(snapshot) {
+      setActiveLog(snapshot);
+      setActivePath(snapshot.path);
+    },
+  });
 
   const importMutation = useMutation({
     mutationFn: (files: File[]) => importLog(files),
@@ -85,19 +217,45 @@ export function LogsPage() {
       });
     },
     onSuccess(snapshot) {
-      setImportedLog(snapshot);
+      setActiveLog(snapshot);
+      setActivePath(snapshot.path);
       showToast({ kind: "success", message: snapshot.name, title: "日志已导入" });
     },
   });
 
-  const allLines = useMemo(() => buildLines(activeLog), [activeLog]);
-  const filteredLines = useMemo(() => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      return allLines;
-    }
-    return allLines.filter((line) => matchesSearch(line, trimmed, caseSensitive));
-  }, [allLines, caseSensitive, query]);
+  const diagnosticsMutation = useMutation({
+    mutationFn: exportDiagnosticBundle,
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "诊断包生成失败。",
+        title: "导出失败",
+      });
+    },
+    onSuccess(result) {
+      showToast({ kind: "success", message: result.path, title: "诊断包已生成" });
+      openDownload(result.downloadUrl);
+    },
+  });
+
+  const allLines = useMemo(() => buildLines(currentLog), [currentLog]);
+  const loggerOptions = useMemo(() => optionValues(allLines, "logger"), [allLines]);
+  const eventOptions = useMemo(() => optionValues(allLines, "event"), [allLines]);
+  const pluginOptions = useMemo(() => optionValues(allLines, "pluginId"), [allLines]);
+  const filteredLines = useMemo(
+    () =>
+      allLines.filter((line) =>
+        lineMatches(line, {
+          caseSensitive,
+          event: eventFilter,
+          level: levelFilter,
+          logger: loggerFilter,
+          pluginId: pluginFilter,
+          query,
+        }),
+      ),
+    [allLines, caseSensitive, eventFilter, levelFilter, loggerFilter, pluginFilter, query],
+  );
   const visibleLines = filteredLines.slice(0, MAX_VISIBLE_LINES);
   const hiddenCount = Math.max(0, filteredLines.length - visibleLines.length);
 
@@ -108,40 +266,48 @@ export function LogsPage() {
           counts[line.level] += 1;
           return counts;
         },
-        { debug: 0, default: 0, error: 0, info: 0, warn: 0 } satisfies Record<LogLine["level"], number>,
+        { debug: 0, default: 0, error: 0, info: 0, warn: 0 } satisfies Record<LogLevel, number>,
       ),
     [allLines],
   );
+
+  const resetToDefaultLog = () => {
+    setActiveLog(null);
+    setActivePath("");
+    void logsQuery.refetch();
+    void filesQuery.refetch();
+  };
 
   return (
     <div className="page logs-page">
       <header className="page__header">
         <div>
           <h1 className="page__title">日志</h1>
-          <p className="page__description">查看运行日志，按关键字搜索，并导入本地日志文件。</p>
+          <p className="page__description">查看运行日志，按结构化字段筛选，并导出诊断包。</p>
         </div>
         <div className="page__actions">
-          <Button
-            icon={<Upload aria-hidden className="button__icon" />}
-            onClick={() => inputRef.current?.click()}
-            variant="default"
-          >
+          <Button icon={<Upload aria-hidden className="button__icon" />} onClick={() => inputRef.current?.click()}>
             导入
           </Button>
           <AsyncButton
+            icon={<Archive aria-hidden className="button__icon" />}
+            loading={diagnosticsMutation.isPending}
+            onClick={() => diagnosticsMutation.mutate()}
+            variant="ghost"
+          >
+            诊断包
+          </AsyncButton>
+          <AsyncButton
             icon={<RefreshCw aria-hidden className="button__icon" />}
-            loading={logsQuery.isFetching && !importMutation.isPending}
-            onClick={() => {
-              setImportedLog(null);
-              void logsQuery.refetch();
-            }}
+            loading={(logsQuery.isFetching || filesQuery.isFetching) && !importMutation.isPending}
+            onClick={resetToDefaultLog}
             variant="primary"
           >
             刷新
           </AsyncButton>
           <input
             ref={inputRef}
-            accept=".log,.txt,.json,.yaml,.yml"
+            accept=".log,.txt,.json,.jsonl,.yaml,.yml"
             className="logs-page__file-input"
             onChange={(event) => {
               const files = Array.from(event.target.files ?? []);
@@ -161,10 +327,42 @@ export function LogsPage() {
           <TextInput
             aria-label="搜索日志"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索文本或行号"
+            placeholder="搜索文本、行号、事件、任务 ID"
             value={query}
           />
         </div>
+        <Select aria-label="日志级别" onChange={(event) => setLevelFilter(event.target.value)} value={levelFilter}>
+          <option value="all">全部级别</option>
+          <option value="error">Error</option>
+          <option value="warn">Warn</option>
+          <option value="info">Info</option>
+          <option value="debug">Debug</option>
+          <option value="default">Other</option>
+        </Select>
+        <Select aria-label="Logger" onChange={(event) => setLoggerFilter(event.target.value)} value={loggerFilter}>
+          <option value="all">全部 logger</option>
+          {loggerOptions.map((logger) => (
+            <option key={logger} value={logger}>
+              {logger}
+            </option>
+          ))}
+        </Select>
+        <Select aria-label="Event" onChange={(event) => setEventFilter(event.target.value)} value={eventFilter}>
+          <option value="all">全部事件</option>
+          {eventOptions.map((event) => (
+            <option key={event} value={event}>
+              {event}
+            </option>
+          ))}
+        </Select>
+        <Select aria-label="Plugin" onChange={(event) => setPluginFilter(event.target.value)} value={pluginFilter}>
+          <option value="all">全部插件</option>
+          {pluginOptions.map((plugin) => (
+            <option key={plugin} value={plugin}>
+              {plugin}
+            </option>
+          ))}
+        </Select>
         <Switch
           checked={caseSensitive}
           id="logs-case-sensitive"
@@ -180,18 +378,18 @@ export function LogsPage() {
           <div className="logs-source">
             <FileText aria-hidden className="logs-source__icon" />
             <div className="logs-source__text">
-              <strong>{activeLog?.name ?? "未载入"}</strong>
-              <span>{activeLog?.path ?? "-"}</span>
+              <strong>{currentLog?.name ?? "未载入"}</strong>
+              <span>{currentLog?.path ?? "-"}</span>
             </div>
           </div>
           <dl className="logs-stats">
             <div>
               <dt>大小</dt>
-              <dd>{formatBytes(activeLog?.size ?? 0)}</dd>
+              <dd>{formatBytes(currentLog?.size ?? 0)}</dd>
             </div>
             <div>
               <dt>修改时间</dt>
-              <dd>{formatTimestamp(activeLog?.modifiedAt)}</dd>
+              <dd>{formatTimestamp(currentLog?.modifiedAt)}</dd>
             </div>
             <div>
               <dt>行数</dt>
@@ -208,12 +406,32 @@ export function LogsPage() {
             <span data-level="info">Info {levelCounts.info}</span>
             <span data-level="debug">Debug {levelCounts.debug}</span>
           </div>
-          {activeLog?.truncated ? <p className="logs-truncated">当前仅显示日志尾部内容。</p> : null}
+          {currentLog?.truncated ? <p className="logs-truncated">当前仅显示日志尾部内容。</p> : null}
+
+          <div className="logs-file-list">
+            <h2 className="section__title">最近日志</h2>
+            {filesQuery.isError ? <p className="logs-truncated">日志列表读取失败。</p> : null}
+            {(filesQuery.data?.files ?? []).map((file) => (
+              <button
+                className="logs-file-list__item"
+                data-active={activePath ? file.path === activePath : file.path === logsQuery.data?.path}
+                disabled={readMutation.isPending}
+                key={file.path}
+                onClick={() => readMutation.mutate(file.path)}
+                type="button"
+              >
+                <span>{fileLabel(file)}</span>
+                <small>
+                  {formatBytes(file.size)} · {formatTimestamp(file.modifiedAt)}
+                </small>
+              </button>
+            ))}
+          </div>
         </aside>
 
         <section className="logs-viewer section" aria-label="日志内容">
-          {logsQuery.isLoading && !activeLog ? <EmptyState title="正在读取日志" /> : null}
-          {logsQuery.isError && !activeLog ? (
+          {logsQuery.isLoading && !currentLog ? <EmptyState title="正在读取日志" /> : null}
+          {logsQuery.isError && !currentLog ? (
             <QueryErrorState
               body="可以导入本地日志文件继续查看。"
               error={logsQuery.error}
@@ -222,15 +440,20 @@ export function LogsPage() {
               title="无法读取默认日志"
             />
           ) : null}
-          {!logsQuery.isLoading && activeLog && visibleLines.length === 0 ? (
-            <EmptyState body="换一个关键词试试。" title="没有匹配的日志" />
+          {!logsQuery.isLoading && currentLog && visibleLines.length === 0 ? (
+            <EmptyState body="换一个筛选条件试试。" title="没有匹配的日志" />
           ) : null}
           {visibleLines.length ? (
             <div className="logs-code" role="log">
               {visibleLines.map((line) => (
                 <div className="logs-code__line" data-level={line.level} key={line.number}>
                   <span className="logs-code__number">{line.number}</span>
-                  <pre className="logs-code__text">{line.text || " "}</pre>
+                  <pre className="logs-code__text">
+                    {line.timestamp ? <span className="logs-code__timestamp">{line.timestamp} </span> : null}
+                    {line.logger ? <span className="logs-code__logger">{line.logger} </span> : null}
+                    {line.event ? <span className="logs-code__event">{line.event} </span> : null}
+                    {line.text || " "}
+                  </pre>
                 </div>
               ))}
             </div>
