@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import platform
-import sys
 import time
 import zipfile
 from pathlib import Path
 from typing import Any
+
+from sdk.logging.environment import runtime_environment
 
 MAX_LOG_BYTES = 4 * 1024 * 1024
 MAX_LOG_FILES = 200
@@ -56,11 +56,13 @@ def _diagnostic_bundle(project_root: Path) -> dict[str, Any]:
     output = output_dir / f"shinsekai-diagnostics-{stamp}.zip"
 
     files = _log_file_candidates(project_root)[:MAX_DIAGNOSTIC_FILES]
+    runtime = runtime_environment(project_root)
     manifest = {
         "createdAt": time.time(),
         "fileCount": len(files),
-        "platform": platform.platform(),
-        "python": sys.version.split()[0],
+        "platform": runtime.get("os", "unknown"),
+        "python": runtime.get("python_version", "unknown"),
+        "runtime": runtime,
         "version": _read_text(project_root / "VERSION"),
     }
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:

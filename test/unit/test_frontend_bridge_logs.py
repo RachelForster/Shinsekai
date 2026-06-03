@@ -58,3 +58,8 @@ def test_diagnostic_bundle_contains_manifest_and_logs(tmp_path):
         names = set(archive.namelist())
         assert "manifest.json" in names
         assert "logs/chat/run.jsonl" in names
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["runtime"]["python_version"]
+        assert manifest["runtime"]["project_root"] == tmp_path.as_posix()
+        assert isinstance(manifest["runtime"]["gpus"], list)
+        assert manifest["runtime"]["gpu_count"] == len(manifest["runtime"]["gpus"])

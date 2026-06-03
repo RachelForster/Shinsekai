@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from sdk.logging.context import get_log_context, new_log_id
+from sdk.logging.environment import runtime_environment
 from sdk.logging.formatters import ConsoleFormatter, JsonLineFormatter
 from sdk.logging.redaction import redact_value
 
@@ -214,6 +215,13 @@ def configure_logging(
         extra={
             "event": "logging.configured",
             "log_path": str(output_path) if output_path else "",
+        },
+    )
+    logging.getLogger("shinsekai.runtime").info(
+        "Runtime environment",
+        extra={
+            "event": "runtime.environment",
+            **runtime_environment(root_path, level=resolved_level, log_path=output_path),
         },
     )
     return output_path

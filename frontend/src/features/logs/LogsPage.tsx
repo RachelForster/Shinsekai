@@ -12,16 +12,7 @@ import {
   readLog,
 } from "../../entities/logs/repository";
 import type { LogFileInfo, LogSnapshot, LogStructuredEntry } from "../../shared/platform/types";
-import {
-  AsyncButton,
-  Button,
-  EmptyState,
-  QueryErrorState,
-  Select,
-  Switch,
-  TextInput,
-  useToast,
-} from "../../shared/ui";
+import { AsyncButton, Button, EmptyState, QueryErrorState, Select, Switch, TextInput, useToast } from "../../shared/ui";
 import "./LogsPage.css";
 
 type LogLevel = "debug" | "error" | "info" | "warn" | "default";
@@ -129,14 +120,17 @@ function includesQuery(value: string, query: string, caseSensitive: boolean) {
   return haystack.includes(needle);
 }
 
-function lineMatches(line: LogLine, filters: {
-  caseSensitive: boolean;
-  event: string;
-  level: string;
-  logger: string;
-  pluginId: string;
-  query: string;
-}) {
+function lineMatches(
+  line: LogLine,
+  filters: {
+    caseSensitive: boolean;
+    event: string;
+    level: string;
+    logger: string;
+    pluginId: string;
+    query: string;
+  },
+) {
   if (filters.level !== "all" && line.level !== filters.level) {
     return false;
   }
