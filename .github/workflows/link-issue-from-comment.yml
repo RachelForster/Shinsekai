@@ -78,22 +78,63 @@ jobs:
 
           TARGET="$target" python3 - <<'PY'
           import os
+          import re
+
           body = open("/tmp/pr_body.md", encoding="utf-8").read()
-          line = f"Closes {os.environ['TARGET']}"
+          target = os.environ["TARGET"]
+          target_key = target.lower()
+          line = f"Closes {target}"
 
           start = "<!-- issue-link-bot:start -->"
           end = "<!-- issue-link-bot:end -->"
+          heading = "### Linked issues"
+          closing_re = re.compile(
+              r"^(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+"
+              r"(?P<issue>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\s*$",
+              re.IGNORECASE,
+          )
 
-          if line in body:
-              new_body = body
-          elif start in body and end in body:
+          def closing_issue_ref(text):
+              match = closing_re.match(text.strip())
+              if not match:
+                  return None
+              return match.group("issue")
+
+          def normalize_link_lines(lines):
+              normalized = []
+              seen = set()
+              for raw_line in lines:
+                  issue_ref = closing_issue_ref(raw_line)
+                  if not issue_ref:
+                      continue
+                  key = issue_ref.lower()
+                  if key in seen:
+                      continue
+                  seen.add(key)
+                  normalized.append(f"Closes {issue_ref}")
+              return normalized, seen
+
+          def render_block(lines):
+              content = "\n".join(lines)
+              return f"{start}\n\n{heading}\n\n{content}\n\n{end}"
+
+          existing_issue_refs = {
+              issue_ref.lower()
+              for issue_ref in map(closing_issue_ref, body.splitlines())
+              if issue_ref
+          }
+
+          if start in body and end in body:
               before, rest = body.split(start, 1)
               block, after = rest.split(end, 1)
-              lines = block.strip().splitlines()
-              content = "\n".join(lines + [line])
-              new_body = before.rstrip() + f"\n\n{start}\n\n### Linked issues\n\n{content}\n\n{end}" + after
+              link_lines, _ = normalize_link_lines(block.splitlines())
+              if target_key not in existing_issue_refs:
+                  link_lines.append(line)
+              new_body = before.rstrip() + "\n\n" + render_block(link_lines) + after
+          elif target_key in existing_issue_refs:
+              new_body = body
           else:
-              block = f"{start}\n\n### Linked issues\n\n{line}\n\n{end}"
+              block = render_block([line])
               new_body = body.rstrip() + "\n\n" + block + "\n"
 
           open("/tmp/new_pr_body.md", "w", encoding="utf-8").write(new_body)
