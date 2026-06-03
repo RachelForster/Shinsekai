@@ -16,6 +16,7 @@ import type {
   CharacterSettingResult,
   CharacterTranslateResult,
   FileBrowserSnapshot,
+  LogSnapshot,
   LlmModelOption,
   McpConfig,
   McpToolPreview,
@@ -398,6 +399,18 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
       },
       async openExternal(url) {
         window.open(url, "_blank", "noopener,noreferrer");
+      },
+    },
+    logs: {
+      getDefault: () => requestJson<LogSnapshot>(apiBase, "/api/logs/default"),
+      import: (items) => {
+        if (isFileList(items)) {
+          return uploadFiles<LogSnapshot>(apiBase, "/api/logs/import-upload", items);
+        }
+        return requestJson<LogSnapshot>(apiBase, "/api/logs/read", {
+          body: JSON.stringify({ path: items[0] ?? "" }),
+          method: "POST",
+        });
       },
     },
     musicCover: {

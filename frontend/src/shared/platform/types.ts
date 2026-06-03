@@ -445,6 +445,15 @@ export interface MusicCoverConfigResult {
   systemConfig: SystemConfig;
 }
 
+export interface LogSnapshot {
+  content: string;
+  modifiedAt?: number;
+  name: string;
+  path: string;
+  size: number;
+  truncated?: boolean;
+}
+
 export interface CharacterSettingResult {
   characterSetting: string;
   message: string;
@@ -666,6 +675,10 @@ export interface ShinsekaiPlatform {
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;
     openExternal: (url: string) => Promise<void>;
+  };
+  logs: {
+    getDefault: () => Promise<LogSnapshot>;
+    import: (items: File[] | string[]) => Promise<LogSnapshot>;
   };
   musicCover: {
     run: (

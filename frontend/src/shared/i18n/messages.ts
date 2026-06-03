@@ -382,6 +382,7 @@ export type MessageKey =
   | "nav.background"
   | "nav.character"
   | "nav.launch"
+  | "nav.logs"
   | "nav.musicCover"
   | "nav.plugins"
   | "nav.secondary"
@@ -981,6 +982,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "nav.background": "Backgrounds",
     "nav.character": "Characters",
     "nav.launch": "Launch chat",
+    "nav.logs": "Logs",
     "nav.musicCover": "Music cover",
     "nav.plugins": "Plugins",
     "nav.secondary": "Secondary navigation",
@@ -1587,6 +1589,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "nav.background": "背景管理",
     "nav.character": "キャラクター",
     "nav.launch": "チャット開始",
+    "nav.logs": "ログ",
     "nav.musicCover": "音楽カバー",
     "nav.plugins": "プラグイン",
     "nav.secondary": "サブナビゲーション",
@@ -2186,6 +2189,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "nav.background": "背景管理",
     "nav.character": "人物设定",
     "nav.launch": "启动聊天",
+    "nav.logs": "日志",
     "nav.musicCover": "音乐翻唱",
     "nav.plugins": "插件",
     "nav.secondary": "辅助导航",

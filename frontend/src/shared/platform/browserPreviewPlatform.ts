@@ -15,6 +15,7 @@ import type {
   Character,
   CharacterMemoryList,
   ChatSnapshot,
+  LogSnapshot,
   MusicCoverRunResult,
   PluginManifest,
   PluginUIPage,
@@ -111,6 +112,25 @@ function previewFileBrowser(path?: string) {
       { label: "Home", path: "/home/shinsekai" },
       { label: "/", path: "/" },
     ],
+  };
+}
+
+function previewLogSnapshot(): LogSnapshot {
+  const lines = [
+    "2026-06-03 10:00:01 [INFO] Shinsekai frontend preview started",
+    "2026-06-03 10:00:02 [INFO] Bridge transport: browser preview",
+    "2026-06-03 10:01:16 [WARN] Preview mode cannot read local runtime logs",
+    "2026-06-03 10:02:45 [ERROR] Sample error entry for search filtering",
+    "2026-06-03 10:03:12 [INFO] Import a .log or .txt file to inspect real content",
+  ];
+  const content = lines.join("\n");
+  return {
+    content,
+    modifiedAt: Date.now() / 1000,
+    name: "preview.log",
+    path: "browser-preview://preview.log",
+    size: new Blob([content]).size,
+    truncated: false,
   };
 }
 
@@ -608,6 +628,28 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async openExternal(url) {
         window.open(url, "_blank", "noopener,noreferrer");
+      },
+    },
+    logs: {
+      getDefault: () => delay(previewLogSnapshot()),
+      async import(items) {
+        const first = items[0];
+        if (first instanceof File) {
+          const content = await first.text();
+          return delay({
+            content,
+            modifiedAt: first.lastModified / 1000,
+            name: first.name,
+            path: first.name,
+            size: first.size,
+            truncated: false,
+          });
+        }
+        return delay({
+          ...previewLogSnapshot(),
+          name: String(first || "preview.log").split(/[\\/]/).pop() || "preview.log",
+          path: String(first || "browser-preview://preview.log"),
+        });
       },
     },
     musicCover: {
