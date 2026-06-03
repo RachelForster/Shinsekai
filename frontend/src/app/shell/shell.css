@@ -131,7 +131,7 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: var(--settings-page-gutter) var(--settings-page-gutter) 0;
+  padding: var(--settings-page-gutter);
   scrollbar-gutter: stable;
 }
 

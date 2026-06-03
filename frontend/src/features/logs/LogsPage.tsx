@@ -103,10 +103,13 @@ export function LogsPage() {
 
   const levelCounts = useMemo(
     () =>
-      allLines.reduce((counts, line) => {
-        counts[line.level] += 1;
-        return counts;
-      }, { debug: 0, default: 0, error: 0, info: 0, warn: 0 } satisfies Record<LogLine["level"], number>),
+      allLines.reduce(
+        (counts, line) => {
+          counts[line.level] += 1;
+          return counts;
+        },
+        { debug: 0, default: 0, error: 0, info: 0, warn: 0 } satisfies Record<LogLine["level"], number>,
+      ),
     [allLines],
   );
 

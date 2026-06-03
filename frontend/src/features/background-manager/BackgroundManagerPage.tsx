@@ -576,29 +576,22 @@ export function BackgroundManagerPage() {
           <p className="page__description">{t("background.description")}</p>
         </div>
         <div className="page__actions background-page__primary-actions">
-          <Button
-            icon={<Plus aria-hidden className="button__icon" />}
-            onClick={() => {
-              setIsCreating(true);
-              setSelectedName("");
-              setDraft(createBackground());
-              setSelectedBgmIndexes([]);
-              setSelectedImageIndex(0);
-              setNameError("");
-            }}
-          >
-            {t("common.new")}
-          </Button>
-          <AsyncButton
-            icon={<Save aria-hidden className="button__icon" />}
-            loading={saveMutation.isPending}
-            onClick={saveDraft}
-            variant="primary"
-          >
-            {t("common.save")}
-          </AsyncButton>
-        </div>
-        <div className="background-page__toolbar">
+          <div className="background-page__resource-actions">
+            <Button
+              icon={<ExternalLink aria-hidden className="button__icon" />}
+              onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=background")}
+              variant="ghost"
+            >
+              {t("background.action.community")}
+            </Button>
+            <Button
+              icon={<ExternalLink aria-hidden className="button__icon" />}
+              onClick={() => openExternal("https://wj.qq.com/s2/26616089/b61a/")}
+              variant="ghost"
+            >
+              {t("background.action.uploadContribution")}
+            </Button>
+          </div>
           <label className="background-page__group-select">
             <span className="visually-hidden">{t("background.groupListTitle")}</span>
             <Select
@@ -645,22 +638,27 @@ export function BackgroundManagerPage() {
               {t("common.export")}
             </AsyncButton>
           </div>
-          <div className="background-page__resource-actions">
-            <Button
-              icon={<ExternalLink aria-hidden className="button__icon" />}
-              onClick={() => openExternal("https://rachelforster.github.io/Shinsekai/resources.html?type=background")}
-              variant="ghost"
-            >
-              {t("background.action.community")}
-            </Button>
-            <Button
-              icon={<ExternalLink aria-hidden className="button__icon" />}
-              onClick={() => openExternal("https://wj.qq.com/s2/26616089/b61a/")}
-              variant="ghost"
-            >
-              {t("background.action.uploadContribution")}
-            </Button>
-          </div>
+          <Button
+            icon={<Plus aria-hidden className="button__icon" />}
+            onClick={() => {
+              setIsCreating(true);
+              setSelectedName("");
+              setDraft(createBackground());
+              setSelectedBgmIndexes([]);
+              setSelectedImageIndex(0);
+              setNameError("");
+            }}
+          >
+            {t("common.new")}
+          </Button>
+          <AsyncButton
+            icon={<Save aria-hidden className="button__icon" />}
+            loading={saveMutation.isPending}
+            onClick={saveDraft}
+            variant="primary"
+          >
+            {t("common.save")}
+          </AsyncButton>
         </div>
         <PathPickerDialog
           acceptedExtensions={[".bg"]}

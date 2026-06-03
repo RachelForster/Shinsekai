@@ -452,6 +452,17 @@ export type MessageKey =
   | "plugin.installed.count"
   | "plugin.installed.loading"
   | "plugin.installed.title"
+  | "plugin.list.count"
+  | "plugin.list.next"
+  | "plugin.list.noMatches"
+  | "plugin.list.page"
+  | "plugin.list.pagination"
+  | "plugin.list.previous"
+  | "plugin.list.search"
+  | "plugin.list.searchCatalog"
+  | "plugin.list.searchInstalled"
+  | "plugin.list.searchMcpServers"
+  | "plugin.list.searchMcpTools"
   | "plugin.loadError.unavailable"
   | "plugin.permissions"
   | "plugin.plugin"
@@ -1093,6 +1104,17 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.installed.count": "{count} plugins",
     "plugin.installed.loading": "Loading plugins",
     "plugin.installed.title": "Installed",
+    "plugin.list.count": "{count} / {total}",
+    "plugin.list.next": "Next page",
+    "plugin.list.noMatches": "No matching items",
+    "plugin.list.page": "{page} / {total}",
+    "plugin.list.pagination": "Pagination",
+    "plugin.list.previous": "Previous page",
+    "plugin.list.search": "Search",
+    "plugin.list.searchCatalog": "Search plugins",
+    "plugin.list.searchInstalled": "Search installed plugins",
+    "plugin.list.searchMcpServers": "Search MCP servers",
+    "plugin.list.searchMcpTools": "Search MCP tools",
     "plugin.loadError.unavailable":
       "Configured in plugins.yaml, but the plugin code is not installed or failed to import.",
     "plugin.permissions": "Permissions",
@@ -1698,6 +1720,17 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.installed.count": "{count} 件のプラグイン",
     "plugin.installed.loading": "プラグインを読み込み中",
     "plugin.installed.title": "インストール済み",
+    "plugin.list.count": "{count} / {total}",
+    "plugin.list.next": "次のページ",
+    "plugin.list.noMatches": "一致する項目がありません",
+    "plugin.list.page": "{page} / {total}",
+    "plugin.list.pagination": "ページ送り",
+    "plugin.list.previous": "前のページ",
+    "plugin.list.search": "検索",
+    "plugin.list.searchCatalog": "プラグインを検索",
+    "plugin.list.searchInstalled": "インストール済みプラグインを検索",
+    "plugin.list.searchMcpServers": "MCP サーバーを検索",
+    "plugin.list.searchMcpTools": "MCP ツールを検索",
     "plugin.loadError.unavailable":
       "plugins.yaml には設定されていますが、プラグインコードが未インストールか、インポートに失敗しました。",
     "plugin.permissions": "権限",
@@ -2296,6 +2329,17 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "plugin.installed.count": "{count} 个插件",
     "plugin.installed.loading": "正在读取插件",
     "plugin.installed.title": "已安装",
+    "plugin.list.count": "{count} / {total}",
+    "plugin.list.next": "下一页",
+    "plugin.list.noMatches": "没有匹配项",
+    "plugin.list.page": "{page} / {total}",
+    "plugin.list.pagination": "分页",
+    "plugin.list.previous": "上一页",
+    "plugin.list.search": "搜索",
+    "plugin.list.searchCatalog": "搜索插件",
+    "plugin.list.searchInstalled": "搜索已安装插件",
+    "plugin.list.searchMcpServers": "搜索 MCP 服务",
+    "plugin.list.searchMcpTools": "搜索 MCP 工具",
     "plugin.loadError.unavailable": "plugins.yaml 已配置该插件，但插件代码未安装或导入失败。",
     "plugin.permissions": "权限",
     "plugin.plugin": "插件",

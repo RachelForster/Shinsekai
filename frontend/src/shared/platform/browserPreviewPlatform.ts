@@ -647,7 +647,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         return delay({
           ...previewLogSnapshot(),
-          name: String(first || "preview.log").split(/[\\/]/).pop() || "preview.log",
+          name:
+            String(first || "preview.log")
+              .split(/[\\/]/)
+              .pop() || "preview.log",
           path: String(first || "browser-preview://preview.log"),
         });
       },

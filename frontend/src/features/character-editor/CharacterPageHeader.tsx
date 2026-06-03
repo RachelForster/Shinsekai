@@ -45,7 +45,23 @@ export function CharacterPageHeader({
         <h1 className="page__title">{t("character.title")}</h1>
         <p className="page__description">{t("character.description")}</p>
       </div>
-      <div className="character-page__toolbar" aria-label={t("character.title")}>
+      <div className="page__actions character-page__toolbar" aria-label={t("character.title")}>
+        <div className="character-page__toolbar-group character-page__toolbar-group--links">
+          <Button
+            icon={<ExternalLink aria-hidden className="button__icon" />}
+            onClick={() => openExternal(CHARACTER_RESOURCES_URL)}
+            variant="ghost"
+          >
+            {t("character.action.community")}
+          </Button>
+          <Button
+            icon={<ExternalLink aria-hidden className="button__icon" />}
+            onClick={() => openExternal(CHARACTER_RESOURCES_URL)}
+            variant="ghost"
+          >
+            {t("character.action.uploadContribution")}
+          </Button>
+        </div>
         <label className="character-page__select">
           <span className="visually-hidden">{t("character.row.current")}</span>
           <Select
@@ -87,22 +103,6 @@ export function CharacterPageHeader({
           >
             {t("common.save")}
           </AsyncButton>
-        </div>
-        <div className="character-page__toolbar-group character-page__toolbar-group--links">
-          <Button
-            icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => openExternal(CHARACTER_RESOURCES_URL)}
-            variant="ghost"
-          >
-            {t("character.action.community")}
-          </Button>
-          <Button
-            icon={<ExternalLink aria-hidden className="button__icon" />}
-            onClick={() => openExternal(CHARACTER_RESOURCES_URL)}
-            variant="ghost"
-          >
-            {t("character.action.uploadContribution")}
-          </Button>
         </div>
       </div>
       <PathPickerDialog

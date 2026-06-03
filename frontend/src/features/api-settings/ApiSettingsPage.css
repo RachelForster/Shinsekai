@@ -58,24 +58,6 @@
 }
 
 /* Save footer */
-.api-page__save-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  display: flex;
-  justify-content: flex-end;
-  margin: 0 calc(-1 * var(--settings-page-gutter));
-  padding: 10px var(--settings-page-gutter);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface);
-  backdrop-filter: blur(10px);
-}
-
-.api-page__save-button {
-  flex: 1 1 auto;
-  min-width: 160px;
-}
-
 /* ── LLM model badges / capabilities ── */
 
 .llm-model-badges {

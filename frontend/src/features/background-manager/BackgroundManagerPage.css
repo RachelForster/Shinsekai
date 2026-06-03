@@ -1,56 +1,40 @@
 /* ── Background Manager page ── */
 
 .background-page__header {
-  align-items: flex-start;
+  align-items: center;
 }
 
 .background-page__heading {
-  min-width: 240px;
-  flex: 1 1 360px;
+  min-width: 0;
 }
 
 .background-page__primary-actions {
-  flex: 0 0 auto;
-  padding-top: 1px;
-}
-
-.background-page__toolbar {
-  display: flex;
-  width: 100%;
   min-width: 0;
-  flex: 1 0 100%;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-raised);
 }
 
 .background-page__group-select {
-  width: min(260px, 100%);
-  min-width: min(220px, 100%);
-  flex: 0 1 260px;
+  width: 220px;
+  min-width: 180px;
+  flex: 0 0 auto;
 }
 
 .background-page__package-actions,
 .background-page__resource-actions {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-2);
 }
 
 .background-page__package-actions {
-  flex: 1 1 220px;
+  flex: 0 0 auto;
 }
 
 .background-page__resource-actions {
-  flex: 0 1 auto;
-  justify-content: flex-end;
+  flex: 0 0 auto;
+  justify-content: flex-start;
 }
 
 .background-page__status {
@@ -474,8 +458,18 @@
   .background-page__primary-actions,
   .background-page__package-actions,
   .background-page__resource-actions {
-    width: 100%;
+    width: auto;
     justify-content: flex-start;
+  }
+
+  .background-page__group-select {
+    width: 180px;
+    min-width: 150px;
+  }
+
+  .background-page__primary-actions .button {
+    flex: 0 0 auto;
+    padding-inline: 9px;
   }
 }
 
