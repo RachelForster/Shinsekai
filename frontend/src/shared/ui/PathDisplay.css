@@ -3,12 +3,13 @@
   max-width: 100%;
   min-width: 0;
   align-items: center;
+  justify-content: flex-start;
   overflow: hidden;
   vertical-align: middle;
 }
 
 .path-display__prefix {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--color-text-muted);
@@ -20,11 +21,9 @@
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  direction: rtl;
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;
-  unicode-bidi: plaintext;
   white-space: nowrap;
 }
 
