@@ -626,6 +626,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       fileUrl(path) {
         return path;
       },
+      thumbnailUrl(path) {
+        return path;
+      },
       async openExternal(url) {
         window.open(url, "_blank", "noopener,noreferrer");
       },

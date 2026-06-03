@@ -50,6 +50,7 @@ describe("entity repositories", () => {
       files: {
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
+        thumbnailUrl: vi.fn((path: string, options?: { size?: number }) => `thumb://${options?.size ?? 0}/${path}`),
         openExternal: vi.fn().mockResolvedValue(undefined),
       },
       templates: {
@@ -71,6 +72,7 @@ describe("entity repositories", () => {
     await config.saveSystemConfig(systemConfig);
     await files.browseFiles({ path: "/tmp", showHidden: true });
     expect(files.fileUrl("/tmp/a.png")).toBe("file:///tmp/a.png");
+    expect(files.fileThumbnailUrl("/tmp/a.png", 160)).toBe("thumb://160//tmp/a.png");
     await files.openExternal("https://example.test");
     await templates.listTemplates();
     await templates.saveTemplate(template);

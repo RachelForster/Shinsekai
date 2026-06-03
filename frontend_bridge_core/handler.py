@@ -55,6 +55,7 @@ from .characters import (
 )
 from .config import _app_config_response, _fetch_llm_models, _save_api_config
 from .logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
+from .media import _media_thumbnail
 from .mcp import (
     _mcp_config_response,
     _open_mcp_config_file,
@@ -307,6 +308,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 query = parse_qs(parsed.query)
                 target = unquote((query.get("path") or [""])[0])
                 self._send_file(target, attachment=False)
+            elif path == "/api/media/thumbnail":
+                query = parse_qs(parsed.query)
+                target = unquote((query.get("path") or [""])[0])
+                size = (query.get("size") or ["160"])[0]
+                self._send_media_thumbnail(target, size)
             elif path.startswith("/assets/") or path.startswith("/data/"):
                 self._send_file(path.lstrip("/"))
             elif self._try_send_frontend(path):
@@ -331,6 +337,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 query = parse_qs(parsed.query)
                 target = unquote((query.get("path") or [""])[0])
                 self._send_file(target, attachment=False, send_body=False)
+            elif path == "/api/media/thumbnail":
+                query = parse_qs(parsed.query)
+                target = unquote((query.get("path") or [""])[0])
+                size = (query.get("size") or ["160"])[0]
+                self._send_media_thumbnail(target, size, send_body=False)
             elif path.startswith("/api/plugins/") and "/frontend/" in path:
                 rest = path[len("/api/plugins/") :]
                 plugin_part, _, frontend_tail = rest.partition("/frontend/")
@@ -982,3 +993,30 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             attachment=attachment,
             send_body=send_body,
         )
+
+    def _send_media_thumbnail(
+        self,
+        relative_path: str,
+        size: str,
+        *,
+        send_body: bool = True,
+    ) -> None:
+        source = self._resolve_project_path(relative_path)
+        try:
+            thumbnail = _media_thumbnail(
+                source,
+                project_root=Path.cwd().resolve(),
+                size=int(size or "160"),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Falling back to original media after thumbnail generation failed: %s",
+                exc,
+                extra={
+                    "event": "media.thumbnail.failed",
+                    "path": source.as_posix(),
+                    "error_type": exc.__class__.__name__,
+                },
+            )
+            thumbnail = source
+        self._send_local_file(thumbnail, attachment=False, send_body=send_body)

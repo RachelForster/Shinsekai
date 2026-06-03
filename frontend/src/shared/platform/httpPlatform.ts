@@ -514,6 +514,19 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         }
         return `${apiBase}/api/media?path=${encodeURIComponent(path)}`;
       },
+      thumbnailUrl(path, options) {
+        if (!path) {
+          return "";
+        }
+        if (/^(?:https?:|blob:|data:|\/assets\/)/.test(path)) {
+          return path;
+        }
+        const params = new URLSearchParams({ path });
+        if (options?.size) {
+          params.set("size", String(options.size));
+        }
+        return `${apiBase}/api/media/thumbnail?${params.toString()}`;
+      },
       async openExternal(url) {
         if (isTauriDesktop()) {
           await openDesktopExternalUrl(url);

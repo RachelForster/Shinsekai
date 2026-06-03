@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Image as ImageIcon, Save, Tags, Trash2, Upload } from "lucide-react";
 
 import type { Background } from "../../entities/config/types";
-import { fileUrl } from "../../entities/files/repository";
+import { fileThumbnailUrl, fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
@@ -53,7 +53,7 @@ export function BackgroundSpriteGallery({
   const selectedImage = sprites[selectedImageIndex];
   const backgroundImageItems: ImageAssetGalleryItem[] = sprites.map((sprite, index) => ({
     id: `${sprite.path}-${index}`,
-    imageSrc: sprite.path ? fileUrl(sprite.path) : "",
+    imageSrc: sprite.path ? fileThumbnailUrl(sprite.path, 160) : "",
     meta: imageRowTags[index] || "",
     title: sprite.path ? sprite.path.split(/[\\/]/).pop() || `${index + 1}` : `${index + 1}`,
   }));
@@ -100,6 +100,7 @@ export function BackgroundSpriteGallery({
         {selectedImage ? (
           <div className="asset-gallery-layout asset-gallery-layout--background">
             <ImageAssetGallery
+              imageLoading="eager"
               items={backgroundImageItems}
               onSelect={onSelectImage}
               selectedIndex={selectedImageIndex}

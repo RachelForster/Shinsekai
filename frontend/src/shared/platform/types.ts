@@ -707,6 +707,7 @@ export interface ShinsekaiPlatform {
   files: {
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;
+    thumbnailUrl: (path: string, options?: { size?: number }) => string;
     openExternal: (url: string) => Promise<void>;
   };
   logs: {

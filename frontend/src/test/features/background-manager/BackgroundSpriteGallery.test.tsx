@@ -6,6 +6,7 @@ import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
 vi.mock("../../../entities/files/repository", () => ({
   fileUrl: (path: string) => `asset://${path}`,
+  fileThumbnailUrl: (path: string, size?: number) => `thumb://${size ?? 0}/${path}`,
 }));
 
 function renderGallery(overrides: Partial<Parameters<typeof BackgroundSpriteGallery>[0]> = {}) {

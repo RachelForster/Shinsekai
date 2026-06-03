@@ -375,6 +375,9 @@ describe("http platform", () => {
     expect(platform.files.fileUrl("data/speech/nanami/hello.wav")).toBe(
       "http://127.0.0.1:8787/api/media?path=data%2Fspeech%2Fnanami%2Fhello.wav",
     );
+    expect(platform.files.thumbnailUrl("data/speech/nanami/hello.wav", { size: 160 })).toBe(
+      "http://127.0.0.1:8787/api/media/thumbnail?path=data%2Fspeech%2Fnanami%2Fhello.wav&size=160",
+    );
   });
 
   it("calls character sprite image endpoints", async () => {

@@ -109,6 +109,7 @@ async function installPluginConfigurationMock(page: Page) {
       files: {
         browse: async () => ({ cwd: "/", entries: [], roots: [] }),
         fileUrl: (value: string) => value,
+        thumbnailUrl: (value: string) => value,
         openExternal: async () => undefined,
       },
       plugins: {
