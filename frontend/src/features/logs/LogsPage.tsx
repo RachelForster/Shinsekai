@@ -34,14 +34,7 @@ type LogLine = {
 
 const MAX_VISIBLE_LINES = 3000;
 const DETAIL_FIELD_LIMIT = 36;
-const RESERVED_DETAIL_FIELDS = new Set([
-  "event",
-  "level",
-  "line",
-  "logger",
-  "message",
-  "timestamp",
-]);
+const RESERVED_DETAIL_FIELDS = new Set(["event", "level", "line", "logger", "message", "timestamp"]);
 
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) {
@@ -243,15 +236,7 @@ function formatStructuredTimestamp(value: string) {
   return date.toLocaleString();
 }
 
-function LogLineBody({
-  expanded,
-  line,
-  onToggle,
-}: {
-  expanded: boolean;
-  line: LogLine;
-  onToggle: () => void;
-}) {
+function LogLineBody({ expanded, line, onToggle }: { expanded: boolean; line: LogLine; onToggle: () => void }) {
   const hasStructuredDetails = Boolean(line.entry && line.detailPairs.length);
   const showRaw = line.entry && line.rawText && line.rawText !== line.text;
   const canExpand = hasStructuredDetails || showRaw;
