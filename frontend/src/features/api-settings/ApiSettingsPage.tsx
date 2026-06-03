@@ -521,11 +521,18 @@ export function ApiSettingsPage() {
         </div>
         <div className="page__actions">
           <AsyncButton
+            icon={<Save aria-hidden className="button__icon" />}
+            loading={saveMutation.isPending}
+            onClick={handleSave}
+            variant="primary"
+          >
+            {t("common.save")}
+          </AsyncButton>
+          <AsyncButton
             icon={<RotateCcw aria-hidden className="button__icon" />}
             loading={resumeMutation.isPending}
             onClick={() => resumeMutation.mutate()}
             tooltip={t("api.resume.tip")}
-            variant="primary"
           >
             {t("api.resume.btn")}
           </AsyncButton>
@@ -626,17 +633,6 @@ export function ApiSettingsPage() {
         />
       ) : null}
       <ResourceLinksSection />
-      <footer className="api-page__save-footer">
-        <AsyncButton
-          className="api-page__save-button"
-          icon={<Save aria-hidden className="button__icon" />}
-          loading={saveMutation.isPending}
-          onClick={handleSave}
-          variant="primary"
-        >
-          {t("common.save")}
-        </AsyncButton>
-      </footer>
     </div>
   );
 }

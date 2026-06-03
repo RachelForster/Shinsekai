@@ -7,6 +7,7 @@ export interface SegmentedTabItem<T extends string> {
 
 interface SegmentedTabsProps<T extends string> {
   ariaLabel?: string;
+  className?: string;
   items: Array<SegmentedTabItem<T>>;
   value: T;
   onChange: (value: T) => void;
@@ -15,6 +16,7 @@ interface SegmentedTabsProps<T extends string> {
 
 export function SegmentedTabs<T extends string>({
   ariaLabel = "Subpages",
+  className = "",
   items,
   onChange,
   value,
@@ -25,7 +27,11 @@ export function SegmentedTabs<T extends string>({
   }
 
   return (
-    <div aria-label={ariaLabel} className={`segmented-tabs segmented-tabs--${variant}`} role="tablist">
+    <div
+      aria-label={ariaLabel}
+      className={["segmented-tabs", `segmented-tabs--${variant}`, className].filter(Boolean).join(" ")}
+      role="tablist"
+    >
       {items.map((item) => (
         <button
           aria-selected={item.id === value}

@@ -29,6 +29,11 @@ const ChatStagePage = lazy(() =>
     default: ChatStagePage,
   })),
 );
+const LogsPage = lazy(() =>
+  import("../../features/logs/LogsPage").then(({ LogsPage }) => ({
+    default: LogsPage,
+  })),
+);
 const MusicCoverPage = lazy(() =>
   import("../../features/music-cover/MusicCoverPage").then(({ MusicCoverPage }) => ({
     default: MusicCoverPage,
@@ -78,6 +83,7 @@ export function AppRoutes() {
           <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
           <Route element={lazyRouteElement(<TemplateEditorPage />)} path="templates" />
           <Route element={lazyRouteElement(<PluginManagerPage />)} path="plugins" />
+          <Route element={lazyRouteElement(<LogsPage />)} path="logs" />
           <Route element={lazyRouteElement(<ToolsPage />)} path="tools" />
           <Route element={lazyRouteElement(<MusicCoverPage />)} path="music-cover" />
           <Route element={lazyRouteElement(<ChatLauncherPage />)} path="launch" />

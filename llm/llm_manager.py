@@ -1,7 +1,6 @@
 
 from asyncio import Queue
 import json
-import logging
 import threading
 from datetime import datetime
 from threading import Thread
@@ -15,10 +14,11 @@ from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAd
 from llm.compact_manager import CompactManager
 from llm.tools.tool_manager import ToolManager
 from llm.tools.tool_executor import ToolExecutor
+from sdk.logging import get_logger
 
 tool_manager = ToolManager()
 tool_executor = ToolExecutor(tool_manager)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 模型后台加载完成时：清除冷却 + 推送聊天通知
 def _on_tool_ready(group: str, message: str) -> None:
@@ -285,8 +285,7 @@ class LLMManager:
         self._chat_depth = 0
         
         # 设置日志
-        logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
 
     def _confirm_risky_tool(self, tool_name: str, risk: str, args_str: str) -> bool:
         """Request user confirmation for a risky tool. Returns True if confirmed."""

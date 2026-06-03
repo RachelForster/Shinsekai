@@ -21,6 +21,11 @@ if getattr(sys, "frozen", False):
 
     init_frozen_stdio("main")
 
+from sdk.logging import configure_logging, get_logger
+
+configure_logging("chat", project_root=os.environ.get("EASYAI_PROJECT_ROOT") or project_root)
+logger = get_logger(__name__)
+
 import llm.tools.character_tools
 import llm.tools.memory_tools
 import llm.tools.tool_search
@@ -34,7 +39,6 @@ from tts.tts_manager import TTSManager, TTSAdapterFactory
 from config.config_manager import ConfigManager
 from t2i.t2i_manager import T2IAdapterFactory, T2IManager
 import pygame
-import traceback
 from opencc import OpenCC
 from queue import Queue
 
@@ -73,15 +77,8 @@ def _shutdown_plugins() -> None:
         pass
 
 
-def _mask_secret(value: str) -> str:
-    if not value:
-        return ""
-    if len(value) <= 8:
-        return "***"
-    return f"{value[:4]}...{value[-4:]}"
-
-
 def main():
+    logger.info("Chat application starting", extra={"event": "app.started"})
     config = ConfigManager()
     from i18n import init_i18n, tr as tr_i18n, tr_in_bundle
     from asr.asr_adapter import system_config_to_asr_lang
@@ -118,9 +115,8 @@ def main():
                 ),
             )
             t2i_manager = T2IManager(t2i_adapter)
-        except Exception as e:
-            print(tr_i18n("main.print_t2i_fail", e=str(e)))
-            traceback.print_exc()
+        except Exception:
+            logger.exception("T2I initialization failed", extra={"event": "t2i.init.failed"})
 
     # TTS：仅当 API 中语音引擎不是「不使用」时加载；命令行 --tts 可覆盖引擎名（与 api.yaml 一致）
     gsv_url, gsv_api_path, config_tts_provider = config.get_gpt_sovits_config()
@@ -142,9 +138,8 @@ def main():
             tts_manager.set_tts_adapter(adapter=adapter)
             _voice_lang = str(config.config.system_config.voice_language or "ja").strip() or "ja"
             tts_manager.set_language(_voice_lang)
-        except Exception as e:
-            print(tr_i18n("main.print_tts_fail", e=str(e)))
-            traceback.print_exc()
+        except Exception:
+            logger.exception("TTS initialization failed", extra={"event": "tts.init.failed"})
 
     print(tr_i18n("main.print_load_template", a=args))
 
@@ -161,7 +156,16 @@ def main():
 
     # Init LLMManager before UI, so that handlers can access it via get_app_runtime().llm_manager
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
-    print(llm_provider, llm_model, base_url, _mask_secret(api_key))
+    logger.info(
+        "LLM configuration selected",
+        extra={
+            "event": "llm.config.selected",
+            "provider": llm_provider,
+            "model": llm_model,
+            "custom_base_url": bool(base_url),
+            "auth_configured": bool(api_key),
+        },
+    )
     if not llm_provider:
         print(tr_i18n("main.err_select_llm"))
         return

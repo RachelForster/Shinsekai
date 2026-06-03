@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Power, RotateCcw, Settings, Trash2 } from "lucide-react";
 
@@ -12,7 +12,12 @@ import {
   setPluginEnabled,
   uninstallPlugin,
 } from "../../entities/plugin/repository";
-import type { AppUpdateRefKind, PluginInstallInput, PluginManifest } from "../../entities/plugin/types";
+import type {
+  AppUpdateRefKind,
+  AppUpdateResult,
+  PluginInstallInput,
+  PluginManifest,
+} from "../../entities/plugin/types";
 import {
   desktopRestartErrorMessage,
   isTauriDesktop,
@@ -33,6 +38,7 @@ import {
 import { McpSettingsPanel } from "./McpSettingsPanel";
 import { PluginCatalogPanel } from "./PluginCatalogPanel";
 import { PluginDetailPanel } from "./PluginDetailPanel";
+import { PluginListControls, searchablePluginText, usePagedPluginList } from "./PluginListControls";
 import {
   pluginActionId,
   pluginHasManifestEntry,
@@ -42,6 +48,8 @@ import {
   type PluginView,
 } from "./pluginUtils";
 import "./PluginManagerPage.css";
+
+const INSTALLED_PLUGIN_PAGE_SIZE = 8;
 
 export function PluginManagerPage() {
   const queryClient = useQueryClient();
@@ -56,6 +64,25 @@ export function PluginManagerPage() {
   const [pendingUninstall, setPendingUninstall] = useState<PluginManifest | null>(null);
   const [detailPlugin, setDetailPlugin] = useState<PluginManifest | null>(null);
   const [pluginReloadPending, setPluginReloadPending] = useState(false);
+  const [appUpdateTask, setAppUpdateTask] = useState<TaskSnapshot<AppUpdateResult> | null>(null);
+  const installedPluginMatches = useCallback((plugin: PluginManifest, query: string) => {
+    return searchablePluginText([
+      plugin.title,
+      plugin.id,
+      plugin.entry,
+      plugin.description,
+      plugin.author,
+      plugin.version,
+      plugin.directory,
+      plugin.enabled ? "enabled" : "disabled",
+      plugin.loaded === false ? "unavailable not loaded" : "loaded",
+    ]).includes(query);
+  }, []);
+  const installedPlugins = usePagedPluginList({
+    items: data,
+    matcher: installedPluginMatches,
+    pageSize: INSTALLED_PLUGIN_PAGE_SIZE,
+  });
 
   const catalogQuery = useQuery({
     enabled: view === "discover",
@@ -133,13 +160,19 @@ export function PluginManagerPage() {
 
   const appUpdateMutation = useMutation({
     mutationFn: (opts: { refKind: AppUpdateRefKind; tagName: string }) =>
-      runAppUpdate({ refKind: opts.refKind, tagName: opts.refKind === "tag" ? opts.tagName : undefined }),
+      runAppUpdate(
+        { refKind: opts.refKind, tagName: opts.refKind === "tag" ? opts.tagName : undefined },
+        { onTaskUpdate: setAppUpdateTask },
+      ),
     onError(error) {
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("plugin.appUpdate.failed"),
         title: t("plugin.appUpdate.title"),
       });
+    },
+    onMutate() {
+      setAppUpdateTask(null);
     },
     onSuccess(result) {
       queryClient.invalidateQueries({ queryKey: ["plugins", "app-update", "info"] });
@@ -191,8 +224,8 @@ export function PluginManagerPage() {
             <span className="inline-status plugin-reload-status">{t("plugin.appRestart.pending")}</span>
           ) : null}
         </div>
-        {desktopApp ? (
-          <div className="page__actions plugin-page__actions">
+        <div className="page__actions plugin-page__actions">
+          {desktopApp ? (
             <AsyncButton
               className={
                 pluginReloadPending ? "plugin-reload-button plugin-reload-button--active" : "plugin-reload-button"
@@ -213,24 +246,25 @@ export function PluginManagerPage() {
             >
               {t("plugin.appRestart.button")}
             </AsyncButton>
-          </div>
-        ) : null}
+          ) : null}
+          <SegmentedTabs
+            ariaLabel={t("common.subpages")}
+            className="plugin-page__tabs"
+            items={[
+              { id: "installed", label: t("plugin.installed.title") },
+              { id: "discover", label: t("plugin.catalog.title") },
+              { id: "mcp", label: "MCP" },
+            ]}
+            onChange={setView}
+            value={view}
+          />
+        </div>
       </header>
-
-      <SegmentedTabs
-        ariaLabel={t("common.subpages")}
-        items={[
-          { id: "installed", label: t("plugin.installed.title") },
-          { id: "discover", label: t("plugin.catalog.title") },
-          { id: "mcp", label: "MCP" },
-        ]}
-        onChange={setView}
-        value={view}
-      />
 
       {view === "discover" ? (
         <PluginCatalogPanel
           appUpdateMutation={appUpdateMutation}
+          appUpdateTask={appUpdateTask}
           catalogQuery={catalogQuery}
           installMutation={installMutation}
           installTask={installTask}
@@ -258,8 +292,20 @@ export function PluginManagerPage() {
             />
           ) : null}
           {!isLoading && !pluginsQuery.isError && data.length ? (
+            <PluginListControls
+              filteredCount={installedPlugins.filteredItems.length}
+              page={installedPlugins.page}
+              placeholder={t("plugin.list.searchInstalled")}
+              query={installedPlugins.query}
+              setPage={installedPlugins.setPage}
+              setQuery={installedPlugins.setQuery}
+              totalCount={installedPlugins.totalItems}
+              totalPages={installedPlugins.totalPages}
+            />
+          ) : null}
+          {!isLoading && !pluginsQuery.isError && installedPlugins.pagedItems.length ? (
             <div className="plugin-card-grid">
-              {data.map((plugin) => {
+              {installedPlugins.pagedItems.map((plugin) => {
                 const loaded = plugin.loaded !== false;
                 const statusLabel = !plugin.enabled
                   ? t("plugin.status.disabled")
@@ -339,6 +385,9 @@ export function PluginManagerPage() {
                 );
               })}
             </div>
+          ) : null}
+          {!isLoading && !pluginsQuery.isError && data.length && !installedPlugins.filteredItems.length ? (
+            <EmptyState title={t("plugin.list.noMatches")} />
           ) : null}
           {!isLoading && !pluginsQuery.isError && !data.length ? (
             <EmptyState title={t("plugin.installed.emptyTitle")} body={t("plugin.installed.emptyBody")} />

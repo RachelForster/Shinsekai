@@ -23,7 +23,9 @@ from collections.abc import Callable
 from contextlib import ContextDecorator
 from typing import Any
 
-_log = logging.getLogger("stopwatch")
+from sdk.logging.api import get_logger
+
+_log = get_logger(__name__)
 
 
 class stopwatch(ContextDecorator):

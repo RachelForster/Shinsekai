@@ -446,6 +446,47 @@ export interface MusicCoverConfigResult {
   systemConfig: SystemConfig;
 }
 
+export interface LogSnapshot {
+  content: string;
+  entries?: LogStructuredEntry[];
+  modifiedAt?: number;
+  name: string;
+  path: string;
+  size: number;
+  truncated?: boolean;
+}
+
+export interface LogStructuredEntry {
+  [key: string]: unknown;
+  event?: string;
+  level?: string;
+  line?: number;
+  logger?: string;
+  message?: string;
+  plugin_id?: string;
+  session_id?: string;
+  task_id?: string;
+  timestamp?: string;
+}
+
+export interface LogFileInfo {
+  app?: string;
+  modifiedAt?: number;
+  name: string;
+  path: string;
+  relativePath?: string;
+  size: number;
+}
+
+export interface LogFileList {
+  files: LogFileInfo[];
+}
+
+export interface DiagnosticBundleResult {
+  downloadUrl: string;
+  path: string;
+}
+
 export interface CharacterSettingResult {
   characterSetting: string;
   message: string;
@@ -667,6 +708,12 @@ export interface ShinsekaiPlatform {
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;
     openExternal: (url: string) => Promise<void>;
+  };
+  logs: {
+    exportDiagnostics: () => Promise<DiagnosticBundleResult>;
+    getDefault: () => Promise<LogSnapshot>;
+    import: (items: File[] | string[]) => Promise<LogSnapshot>;
+    list: () => Promise<LogFileList>;
   };
   musicCover: {
     run: (

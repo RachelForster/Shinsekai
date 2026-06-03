@@ -18,8 +18,8 @@ if str(_repo_root) not in sys.path:
 from frontend_bridge import run as run_frontend_bridge
 
 
-class FrontendBuildUnavailable(RuntimeError):
-    """Raised when an existing frontend build can be served but cannot be rebuilt locally."""
+class FrontendMigrationNeeded(RuntimeError):
+    """Raised when a source checkout cannot launch the built frontend."""
 
 
 def _default_repo_root() -> Path:
@@ -70,21 +70,21 @@ def _build_frontend(repo_root: Path, frontend_dist: Path, reason: str) -> None:
     default_dist = (frontend_dir / "dist").resolve()
     index_path = frontend_dist / "index.html"
     if frontend_dist != default_dist:
-        raise FrontendBuildUnavailable(
+        raise FrontendMigrationNeeded(
             f"Built frontend {reason}: {index_path}\n"
             "Automatic rebuild is only supported for the default `frontend/dist` output."
         )
     if not frontend_dir.is_dir():
-        raise FrontendBuildUnavailable(f"Frontend source directory not found: {frontend_dir}")
+        raise FrontendMigrationNeeded(f"Frontend source directory not found: {frontend_dir}")
     if not (frontend_dir / "node_modules").is_dir():
-        raise FrontendBuildUnavailable(
+        raise FrontendMigrationNeeded(
             f"Built frontend {reason}, but frontend dependencies are not installed.\n"
             "Run `cd frontend && pnpm install` first."
         )
 
     pnpm = shutil.which("pnpm")
     if pnpm is None:
-        raise FrontendBuildUnavailable(
+        raise FrontendMigrationNeeded(
             f"Built frontend {reason}, but `pnpm` is not available in PATH.\n"
             "Run `cd frontend && pnpm build` first."
         )
@@ -110,7 +110,7 @@ def _ensure_frontend_dist(
         if build_if_stale and _frontend_sources_are_newer(frontend_dir, index_path):
             try:
                 _build_frontend(repo_root, frontend_dist, "is older than the source tree")
-            except FrontendBuildUnavailable as exc:
+            except FrontendMigrationNeeded as exc:
                 print(
                     f"{exc}\n"
                     "Serving the existing built frontend. Install frontend dependencies and run "
@@ -124,10 +124,28 @@ def _ensure_frontend_dist(
             "Run `cd frontend && pnpm install && pnpm build` first."
         )
 
+    _build_frontend(repo_root, frontend_dist, "not found")
+
+
+def _show_frontend_migration_dialog(message: str) -> None:
+    print(message, file=sys.stderr)
+    print("Opening the Shinsekai Frontend migration helper...", file=sys.stderr)
     try:
-        _build_frontend(repo_root, frontend_dist, "not found")
-    except FrontendBuildUnavailable as exc:
-        raise SystemExit(str(exc)) from exc
+        from ui.migrate_helper.dialog import MigrationRoleDialog
+        from PySide6.QtWidgets import QApplication
+    except Exception as exc:
+        print(f"Could not open migration helper dialog: {exc}", file=sys.stderr)
+        print(
+            "Developers: install pnpm/Corepack and run `cd frontend && pnpm install && pnpm build`.\n"
+            "Users: download the latest release package from "
+            "https://github.com/RachelForster/Shinsekai/releases",
+            file=sys.stderr,
+        )
+        return
+
+    app = QApplication.instance() or QApplication([])
+    dialog = MigrationRoleDialog()
+    dialog.exec()
 
 
 def main() -> None:
@@ -150,26 +168,30 @@ def main() -> None:
         help="Start the bridge without opening the browser automatically.",
     )
     parser.add_argument(
-        "--build-if-missing",
+        "--no-build-if-missing",
         action="store_true",
-        help="Run `pnpm build` when the built frontend is missing.",
+        help="Fail instead of running `pnpm build` when the built frontend is missing.",
     )
     parser.add_argument(
-        "--build-if-stale",
+        "--no-build-if-stale",
         action="store_true",
-        help="Run `pnpm build` when React source files are newer than the existing build.",
+        help="Serve an existing build even when React source files are newer.",
     )
     args = parser.parse_args()
 
     repo_root = _default_repo_root()
     project_root = Path(args.project_root).expanduser().resolve() if args.project_root else repo_root
     frontend_dist = _resolve_frontend_dist(repo_root, args.frontend_dist)
-    _ensure_frontend_dist(
-        repo_root,
-        frontend_dist,
-        build_if_missing=args.build_if_missing,
-        build_if_stale=args.build_if_stale,
-    )
+    try:
+        _ensure_frontend_dist(
+            repo_root,
+            frontend_dist,
+            build_if_missing=not args.no_build_if_missing,
+            build_if_stale=not args.no_build_if_stale,
+        )
+    except FrontendMigrationNeeded as exc:
+        _show_frontend_migration_dialog(str(exc))
+        raise SystemExit(1) from exc
 
     run_frontend_bridge(
         args.host,

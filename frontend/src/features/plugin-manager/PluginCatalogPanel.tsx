@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { DownloadCloud, ExternalLink, RefreshCw } from "lucide-react";
 
@@ -40,12 +40,14 @@ import {
   TaskProgress,
   useToast,
 } from "../../shared/ui";
+import { PluginListControls, searchablePluginText, usePagedPluginList } from "./PluginListControls";
 import { catalogInstallSource, githubUrl } from "./pluginUtils";
 
 interface PluginCatalogPanelProps {
   appUpdateMutation: ReturnType<
     typeof useMutation<AppUpdateResult, Error, { refKind: AppUpdateRefKind; tagName: string }>
   >;
+  appUpdateTask: TaskSnapshot<AppUpdateResult> | null;
   catalogQuery: ReturnType<typeof useQuery<PluginCatalogItem[]>>;
   installMutation: ReturnType<typeof useMutation<PluginManifest, Error, string | PluginInstallInput>>;
   installTask: TaskSnapshot<PluginManifest> | null;
@@ -64,8 +66,11 @@ type DesktopUpdateDialogStatus =
 type I18nT = ReturnType<typeof useI18n>["t"];
 type DesktopUpdateErrorFallback = "plugin.desktopUpdate.checkFailed" | "plugin.desktopUpdate.installFailed";
 
+const CATALOG_PAGE_SIZE = 10;
+
 export function PluginCatalogPanel({
   appUpdateMutation,
+  appUpdateTask,
   catalogQuery,
   installMutation,
   installTask,
@@ -85,6 +90,21 @@ export function PluginCatalogPanel({
   const [pendingCatalogInstall, setPendingCatalogInstall] = useState<PluginCatalogItem | null>(null);
   const [catalogRefKind, setCatalogRefKind] = useState<AppUpdateRefKind>("latest");
   const [catalogTagName, setCatalogTagName] = useState("");
+  const catalogMatches = useCallback((plugin: PluginCatalogItem, query: string) => {
+    return searchablePluginText([
+      plugin.name,
+      plugin.repo,
+      plugin.entry,
+      plugin.author,
+      plugin.description,
+      plugin.downloaded ? "downloaded installed update" : "not installed",
+    ]).includes(query);
+  }, []);
+  const catalogItems = usePagedPluginList({
+    items: catalogQuery.data ?? [],
+    matcher: catalogMatches,
+    pageSize: CATALOG_PAGE_SIZE,
+  });
 
   const appUpdateInfoQuery = useQuery({
     queryFn: getAppUpdateInfo,
@@ -327,6 +347,7 @@ export function PluginCatalogPanel({
           </Button>
         </div>
       </div>
+      <TaskProgress task={appUpdateTask} />
       {appUpdateInfoQuery.isError ? (
         <QueryErrorState
           body={t("plugin.appUpdate.failed")}
@@ -347,11 +368,29 @@ export function PluginCatalogPanel({
         />
       ) : null}
       {catalogQuery.data?.length ? (
+        <PluginListControls
+          filteredCount={catalogItems.filteredItems.length}
+          page={catalogItems.page}
+          placeholder={t("plugin.list.searchCatalog")}
+          query={catalogItems.query}
+          setPage={catalogItems.setPage}
+          setQuery={catalogItems.setQuery}
+          totalCount={catalogItems.totalItems}
+          totalPages={catalogItems.totalPages}
+        />
+      ) : null}
+      {catalogItems.pagedItems.length ? (
         <DataTable
           columns={catalogColumns}
           getRowKey={(plugin) => plugin.repo || plugin.entry}
-          rows={catalogQuery.data}
+          rows={catalogItems.pagedItems}
         />
+      ) : null}
+      {!catalogQuery.isLoading &&
+      !catalogQuery.isError &&
+      catalogQuery.data?.length &&
+      !catalogItems.filteredItems.length ? (
+        <EmptyState title={t("plugin.list.noMatches")} />
       ) : null}
       {!catalogQuery.isLoading && !catalogQuery.isError && !catalogQuery.data?.length ? (
         <EmptyState title={t("plugin.catalog.emptyTitle")} body={t("plugin.catalog.emptyBody")} />

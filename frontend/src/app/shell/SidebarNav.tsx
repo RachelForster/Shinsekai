@@ -1,5 +1,15 @@
 import { NavLink } from "react-router-dom";
-import { Brush, FileImage, Gamepad2, LayoutTemplate, Plug, Settings, SlidersHorizontal, Wrench } from "lucide-react";
+import {
+  Brush,
+  FileImage,
+  Gamepad2,
+  LayoutTemplate,
+  Plug,
+  ScrollText,
+  Settings,
+  SlidersHorizontal,
+  Wrench,
+} from "lucide-react";
 import type { MessageKey } from "../../shared/i18n";
 import { useI18n } from "../../shared/i18n";
 
@@ -9,6 +19,7 @@ const links = [
   { icon: FileImage, labelKey: "nav.background", to: "/settings/backgrounds" },
   { icon: LayoutTemplate, labelKey: "nav.template", to: "/settings/templates" },
   { icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" },
+  { icon: ScrollText, labelKey: "nav.logs", to: "/settings/logs" },
   { icon: SlidersHorizontal, labelKey: "nav.system", to: "/settings/system" },
 ] satisfies Array<{ icon: typeof Settings; labelKey: MessageKey; to: string }>;
 

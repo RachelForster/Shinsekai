@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlparse
 
+from sdk.logging import get_logger, log_context, new_log_id
+
 from .backgrounds import (
     _delete_all_background_bgm,
     _delete_all_background_images,
@@ -52,6 +54,7 @@ from .characters import (
     _upload_sprite_voice,
 )
 from .config import _app_config_response, _fetch_llm_models, _save_api_config
+from .logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
 from .mcp import (
     _mcp_config_response,
     _open_mcp_config_file,
@@ -96,6 +99,8 @@ from .tools import (
 )
 from .tts import _download_tts_bundle, _tts_bundle_recommendation
 
+logger = get_logger(__name__)
+
 
 class _RangeNotSatisfiable(Exception):
     pass
@@ -108,8 +113,32 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
     def state(self) -> BridgeState:
         return self.server.state  # type: ignore[attr-defined]
 
+    def handle_one_request(self) -> None:
+        with log_context(request_id=new_log_id("req_")):
+            super().handle_one_request()
+
     def log_message(self, fmt: str, *args: Any) -> None:
-        print(f"[frontend_bridge] {self.address_string()} - {fmt % args}")
+        logger.info(
+            fmt,
+            *args,
+            extra={
+                "event": "http.request.completed",
+                "method": getattr(self, "command", ""),
+                "path": urlparse(getattr(self, "path", "")).path,
+            },
+        )
+
+    def _log_request_exception(self, exc: Exception) -> None:
+        extra = {
+            "event": "http.request.failed",
+            "method": getattr(self, "command", ""),
+            "path": urlparse(getattr(self, "path", "")).path,
+            "error_type": exc.__class__.__name__,
+        }
+        if isinstance(exc, (KeyError, FileNotFoundError, PermissionError, ValueError)):
+            logger.warning("Frontend bridge request failed: %s", exc, extra=extra)
+        else:
+            logger.exception("Frontend bridge request failed", extra=extra)
 
     def _send_cors(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -236,6 +265,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_list_templates(self.state))
             elif path == "/api/templates/session":
                 self._send_json(_load_template_session_payload(self.state))
+            elif path == "/api/logs/default":
+                self._send_json(_default_log_snapshot(Path.cwd().resolve()))
+            elif path == "/api/logs":
+                self._send_json(_log_file_list(Path.cwd().resolve()))
             elif path == "/api/plugins":
                 self._send_json(_plugin_rows())
             elif path.startswith("/api/plugins/") and path.endswith("/ui"):
@@ -283,6 +316,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             if self._is_client_disconnect(exc):
                 return
+            self._log_request_exception(exc)
             self._send_exception_json(exc)
 
     def do_HEAD(self) -> None:  # noqa: N802
@@ -322,6 +356,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             if self._is_client_disconnect(exc):
                 return
+            self._log_request_exception(exc)
             self._send_empty_response(HTTPStatus.BAD_REQUEST)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -339,6 +374,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             is_upload = method == "POST" and path in {
                 "/api/characters/import-upload",
                 "/api/backgrounds/import-upload",
+                "/api/logs/import-upload",
             }
             body = {} if method == "DELETE" or is_upload else self._read_json()
             if method in {"POST", "PUT"} and path == "/api/config/api":
@@ -360,6 +396,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_fetch_llm_models(body))
             elif method == "POST" and path == "/api/files/browse":
                 self._send_json(_browse_local_files(self.state, body))
+            elif method == "POST" and path == "/api/logs/read":
+                self._send_json(_log_snapshot(self._resolve_project_path(str(body.get("path") or ""))))
+            elif method == "POST" and path == "/api/logs/import-upload":
+                temp_dir, paths = self._read_upload_files()
+                try:
+                    self._send_json(_log_snapshot(paths[0]))
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            elif method == "POST" and path == "/api/logs/diagnostic-bundle":
+                self._send_json(_diagnostic_bundle(Path.cwd().resolve()))
             elif method == "POST" and path == "/api/music-cover/search":
                 self._send_json(_music_cover_search(self.state, body))
             elif method == "POST" and path == "/api/music-cover/config":
@@ -633,6 +679,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             if self._is_client_disconnect(exc):
                 return
+            self._log_request_exception(exc)
             self._send_exception_json(exc)
 
     def _import_background_paths(self, paths: list[str]) -> list[dict[str, Any]]:

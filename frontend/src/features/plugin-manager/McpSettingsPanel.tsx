@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileJson, FolderOpen, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
@@ -28,9 +28,12 @@ import {
   TextInput,
   useToast,
 } from "../../shared/ui";
+import { PluginListControls, searchablePluginText, usePagedPluginList } from "./PluginListControls";
 
 type ServerDialogState = { index: number | null; server: McpServerEntry } | null;
 type McpServerRow = McpServerEntry & { index: number; rowKey: string };
+const MCP_SERVER_PAGE_SIZE = 10;
+const MCP_TOOL_PAGE_SIZE = 10;
 
 function emptyServer(): McpServerEntry {
   return {
@@ -344,6 +347,28 @@ export function McpSettingsPanel() {
     [draft],
   );
   const controlsEnabled = draft?.enabled !== false;
+  const serverMatches = useCallback((server: McpServerRow, query: string) => {
+    return searchablePluginText([
+      server.name_prefix,
+      server.transport,
+      server.group,
+      server.enabled ? "enabled" : "disabled",
+      connectionSummary(server),
+    ]).includes(query);
+  }, []);
+  const toolMatches = useCallback((tool: McpToolPreview, query: string) => {
+    return searchablePluginText([tool.prefix, tool.registered_name, tool.name, tool.description]).includes(query);
+  }, []);
+  const serverList = usePagedPluginList({
+    items: rows,
+    matcher: serverMatches,
+    pageSize: MCP_SERVER_PAGE_SIZE,
+  });
+  const toolList = usePagedPluginList({
+    items: tools,
+    matcher: toolMatches,
+    pageSize: MCP_TOOL_PAGE_SIZE,
+  });
 
   const saveMutation = useMutation({
     mutationFn: (config: McpConfig) => saveAndApplyMcpConfig(config, { onTaskUpdate: setApplyTask }),
@@ -602,7 +627,21 @@ export function McpSettingsPanel() {
           </div>
         </div>
         {rows.length ? (
-          <DataTable columns={serverColumns} getRowKey={(server) => server.rowKey} rows={rows} />
+          <PluginListControls
+            filteredCount={serverList.filteredItems.length}
+            page={serverList.page}
+            placeholder={t("plugin.list.searchMcpServers")}
+            query={serverList.query}
+            setPage={serverList.setPage}
+            setQuery={serverList.setQuery}
+            totalCount={serverList.totalItems}
+            totalPages={serverList.totalPages}
+          />
+        ) : null}
+        {serverList.pagedItems.length ? (
+          <DataTable columns={serverColumns} getRowKey={(server) => server.rowKey} rows={serverList.pagedItems} />
+        ) : rows.length ? (
+          <EmptyState title={t("plugin.list.noMatches")} />
         ) : (
           <EmptyState title={t("mcp.server.emptyTitle")} body={t("mcp.server.emptyBody")} />
         )}
@@ -623,7 +662,25 @@ export function McpSettingsPanel() {
         </div>
         <TaskProgress task={previewTask} />
         {tools.length ? (
-          <DataTable columns={toolColumns} getRowKey={(tool) => tool.registered_name || tool.name} rows={tools} />
+          <PluginListControls
+            filteredCount={toolList.filteredItems.length}
+            page={toolList.page}
+            placeholder={t("plugin.list.searchMcpTools")}
+            query={toolList.query}
+            setPage={toolList.setPage}
+            setQuery={toolList.setQuery}
+            totalCount={toolList.totalItems}
+            totalPages={toolList.totalPages}
+          />
+        ) : null}
+        {toolList.pagedItems.length ? (
+          <DataTable
+            columns={toolColumns}
+            getRowKey={(tool) => tool.registered_name || tool.name}
+            rows={toolList.pagedItems}
+          />
+        ) : tools.length ? (
+          <EmptyState title={t("plugin.list.noMatches")} />
         ) : (
           <EmptyState title={t("mcp.preview.empty")} body={t("mcp.preview.emptyBody")} />
         )}
