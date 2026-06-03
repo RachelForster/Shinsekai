@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from webui_react import _ensure_frontend_dist
+from webui_react import FrontendMigrationNeeded, _ensure_frontend_dist
 
 
 def test_existing_stale_dist_is_served_when_build_environment_is_missing(tmp_path, capsys):
@@ -28,16 +28,14 @@ def test_existing_stale_dist_is_served_when_build_environment_is_missing(tmp_pat
     assert "Serving the existing built frontend" in capsys.readouterr().err
 
 
-def test_missing_dist_still_fails_without_build_environment(tmp_path):
+def test_missing_dist_requests_migration_when_build_environment_is_missing(tmp_path):
     frontend_dir = tmp_path / "frontend"
     frontend_dir.mkdir()
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(FrontendMigrationNeeded, match="frontend dependencies are not installed"):
         _ensure_frontend_dist(
             tmp_path,
             frontend_dir / "dist",
             build_if_missing=True,
             build_if_stale=True,
         )
-
-    assert "frontend dependencies are not installed" in str(exc_info.value)
