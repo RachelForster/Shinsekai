@@ -54,7 +54,7 @@ describe("ImageAssetGallery", () => {
     expect(media).toHaveAttribute("data-state", "loading");
 
     Object.defineProperty(img, "naturalWidth", { configurable: true, value: 64 });
-    Object.defineProperty(img, "decode", { configurable: true, value: undefined });
+    Object.defineProperty(img, "decode", { configurable: true, value: vi.fn(() => new Promise(() => {})) });
     fireEvent.load(img);
     expect(media).toHaveAttribute("data-state", "loaded");
 

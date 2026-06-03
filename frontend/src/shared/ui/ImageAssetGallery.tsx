@@ -44,14 +44,7 @@ function ImageAssetThumb({ decoding, loading, src }: ImageAssetThumbProps) {
           onError={() => setState("error")}
           onLoad={(event) => {
             const image = event.currentTarget;
-            if (typeof image.decode !== "function") {
-              setState(image.naturalWidth > 0 ? "loaded" : "error");
-              return;
-            }
-            void image
-              .decode()
-              .then(() => setState("loaded"))
-              .catch(() => setState(image.naturalWidth > 0 ? "loaded" : "error"));
+            setState(image.naturalWidth > 0 ? "loaded" : "error");
           }}
           src={src}
         />
