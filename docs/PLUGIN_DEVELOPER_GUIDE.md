@@ -244,6 +244,28 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 | `r_effect` | Emotion effect field |
 | `r_cot` | Chain-of-thought (when enabled) |
 
+### Logging
+
+Plugins should use the SDK logging facade instead of configuring Python logging
+handlers directly:
+
+```python
+from sdk.logging import get_logger, log_context
+
+logger = get_logger(__name__, plugin_id="example.my-plugin")
+
+logger.info("Plugin initialized", extra={"event": "plugin.initialized"})
+
+with log_context(task_id="task-123"):
+    logger.info("Background work started", extra={"event": "plugin.task.started"})
+```
+
+The host owns log levels, files, rotation, formatting, and redaction. Plugins
+must not call `logging.basicConfig()`, add handlers, or write API keys, user
+messages, prompts, tool arguments, or model responses to logs. Prefer stable
+`event` names and summary fields such as character counts, item counts, and
+durations.
+
 ### Adapter classes: schemas and “extra” kwargs
 
 #### Where adapters show up, and who owns the parameters

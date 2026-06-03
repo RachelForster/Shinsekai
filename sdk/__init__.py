@@ -55,6 +55,9 @@ __all__ = [
     "RequirementPatch",
     "RequirementSpec",
     "SettingsUIContribution",
+    "get_logger",
+    "log_context",
+    "new_log_id",
     "stopwatch",
     "T2IAdapter",
     "TTSAdapter",
@@ -118,6 +121,9 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "registered_tool_entries": ("sdk.tool_registry", "registered_tool_entries"),
     "tool": ("sdk.tool_registry", "tool"),
     # ── logging ──
+    "get_logger": ("sdk.logging", "get_logger"),
+    "log_context": ("sdk.logging", "log_context"),
+    "new_log_id": ("sdk.logging", "new_log_id"),
     "stopwatch": ("sdk.logging", "stopwatch"),
     # ── lang ──
     "normalize_lang": ("sdk.lang", "normalize_lang"),

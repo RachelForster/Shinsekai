@@ -60,6 +60,10 @@ def run(
         project_root,
         frontend_dist,
     )
+    from sdk.logging import configure_logging, get_logger
+
+    configure_logging("frontend-bridge", project_root=Path.cwd())
+    logger = get_logger(__name__)
 
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
@@ -85,18 +89,37 @@ def run(
         from core.plugins.plugin_host import ensure_plugins_loaded
 
         ensure_plugins_loaded(state.config_manager)
-    except Exception as exc:
-        print(f"Plugin load failed: {exc}")
+    except Exception:
+        logger.exception("Plugin load failed", extra={"event": "plugin.load.failed"})
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
     server.state = state  # type: ignore[attr-defined]
-    print(f"Shinsekai frontend bridge listening on http://{host}:{port}")
+    logger.info(
+        "Frontend bridge listening",
+        extra={
+            "event": "http.server.started",
+            "host": host,
+            "port": port,
+        },
+    )
     frontend_index = Path(resolved_frontend_dist) / "index.html" if resolved_frontend_dist else None
     if frontend_index and frontend_index.is_file():
-        print(f"Serving built frontend from {frontend_index.parent}")
+        logger.info(
+            "Serving built frontend",
+            extra={
+                "event": "frontend.static.ready",
+                "frontend_dist": str(frontend_index.parent),
+            },
+        )
         if open_browser:
             _schedule_browser_open(f"http://{host}:{port}/#/settings/api")
     elif resolved_frontend_dist:
-        print(f"Built frontend not found at {resolved_frontend_dist}; API bridge only.")
+        logger.warning(
+            "Built frontend not found; API bridge only",
+            extra={
+                "event": "frontend.static.missing",
+                "frontend_dist": resolved_frontend_dist,
+            },
+        )
     server.serve_forever()
 
 
@@ -106,6 +129,9 @@ def check_runtime(
     requirements_file: str | None = "requirements.txt",
 ) -> None:
     repo_root, _resolved_frontend_dist = _configure_runtime_context(project_root, frontend_dist)
+    from sdk.logging import configure_logging
+
+    configure_logging("frontend-bridge", project_root=Path.cwd())
     if requirements_file:
         requirements_path = Path(requirements_file).expanduser()
         if not requirements_path.is_absolute():

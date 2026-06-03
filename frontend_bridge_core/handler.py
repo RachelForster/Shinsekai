@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlparse
 
+from sdk.logging import get_logger, log_context, new_log_id
+
 from .backgrounds import (
     _delete_all_background_bgm,
     _delete_all_background_images,
@@ -96,6 +98,8 @@ from .tools import (
 )
 from .tts import _download_tts_bundle, _tts_bundle_recommendation
 
+logger = get_logger(__name__)
+
 
 class _RangeNotSatisfiable(Exception):
     pass
@@ -108,8 +112,32 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
     def state(self) -> BridgeState:
         return self.server.state  # type: ignore[attr-defined]
 
+    def handle_one_request(self) -> None:
+        with log_context(request_id=new_log_id("req_")):
+            super().handle_one_request()
+
     def log_message(self, fmt: str, *args: Any) -> None:
-        print(f"[frontend_bridge] {self.address_string()} - {fmt % args}")
+        logger.info(
+            fmt,
+            *args,
+            extra={
+                "event": "http.request.completed",
+                "method": getattr(self, "command", ""),
+                "path": urlparse(getattr(self, "path", "")).path,
+            },
+        )
+
+    def _log_request_exception(self, exc: Exception) -> None:
+        extra = {
+            "event": "http.request.failed",
+            "method": getattr(self, "command", ""),
+            "path": urlparse(getattr(self, "path", "")).path,
+            "error_type": exc.__class__.__name__,
+        }
+        if isinstance(exc, (KeyError, FileNotFoundError, PermissionError, ValueError)):
+            logger.warning("Frontend bridge request failed: %s", exc, extra=extra)
+        else:
+            logger.exception("Frontend bridge request failed", extra=extra)
 
     def _send_cors(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -283,6 +311,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             if self._is_client_disconnect(exc):
                 return
+            self._log_request_exception(exc)
             self._send_exception_json(exc)
 
     def do_HEAD(self) -> None:  # noqa: N802
@@ -322,6 +351,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             if self._is_client_disconnect(exc):
                 return
+            self._log_request_exception(exc)
             self._send_empty_response(HTTPStatus.BAD_REQUEST)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -633,6 +663,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             if self._is_client_disconnect(exc):
                 return
+            self._log_request_exception(exc)
             self._send_exception_json(exc)
 
     def _import_background_paths(self, paths: list[str]) -> list[dict[str, Any]]:

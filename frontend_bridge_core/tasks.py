@@ -4,7 +4,11 @@ import time
 import uuid
 from typing import Any
 
+from sdk.logging import get_logger, log_context
+
 from .state import BridgeState
+
+logger = get_logger(__name__)
 
 
 class TaskCancelled(Exception):
@@ -43,6 +47,10 @@ def _create_task(state: BridgeState, *, kind: str, title: str, message: str = ""
     }
     with state.task_lock:
         state.tasks[task_id] = task
+    logger.info(
+        "Background task queued",
+        extra={"event": "task.queued", "task_id": task_id, "task_kind": kind},
+    )
     return dict(task)
 
 
@@ -91,7 +99,18 @@ def _append_task_log(state: BridgeState, task_id: str, line: str, *, limit: int 
 
 
 def _run_background_task(state: BridgeState, task_id: str, worker: Any) -> None:
+    with log_context(task_id=task_id):
+        _run_background_task_with_context(state, task_id, worker)
+
+
+def _run_background_task_with_context(state: BridgeState, task_id: str, worker: Any) -> None:
+    task_kind = str(_get_task(state, task_id).get("kind") or "")
+    started = time.perf_counter()
     try:
+        logger.info(
+            "Background task started",
+            extra={"event": "task.started", "task_id": task_id, "task_kind": task_kind},
+        )
         _update_task(state, task_id, phase="running", status="running")
         result = worker()
         _update_task(
@@ -103,6 +122,15 @@ def _run_background_task(state: BridgeState, task_id: str, worker: Any) -> None:
             result=result,
             status="succeeded",
         )
+        logger.info(
+            "Background task completed",
+            extra={
+                "event": "task.completed",
+                "task_id": task_id,
+                "task_kind": task_kind,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            },
+        )
     except TaskCancelled:
         _update_task(
             state,
@@ -112,7 +140,20 @@ def _run_background_task(state: BridgeState, task_id: str, worker: Any) -> None:
             progress=None,
             status="cancelled",
         )
+        logger.warning(
+            "Background task cancelled",
+            extra={"event": "task.cancelled", "task_id": task_id, "task_kind": task_kind},
+        )
     except Exception as exc:
+        logger.exception(
+            "Background task failed",
+            extra={
+                "event": "task.failed",
+                "task_id": task_id,
+                "task_kind": task_kind,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            },
+        )
         _update_task(
             state,
             task_id,

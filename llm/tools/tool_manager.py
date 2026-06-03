@@ -1,9 +1,9 @@
 import functools
 import inspect
 import json
-import logging
 from typing import Any, Callable, Dict, List
 
+from sdk.logging import get_logger
 from sdk.tool_registry import ToolNotReady
 
 
@@ -23,7 +23,7 @@ class ToolManager:
         self._functions: Dict[str, Callable[..., Any]] = {}
         self._tool_groups: Dict[str, str] = {}  # tool_name -> group
         self._tool_risks: Dict[str, str] = {}   # tool_name -> risk (low/medium/high)
-        self.logger = logging.getLogger("ToolManager")
+        self.logger = get_logger(__name__)
         self._initialized = True
 
     def _drop_tool(self, tool_name: str) -> None:
@@ -240,16 +240,26 @@ class ToolManager:
         return list(sorted(set(self._tool_groups.values())))
 
     def execute(self, name: str, arguments_json: str) -> str:
-        self.logger.info("Executing tool: %s with arguments: %s", name, arguments_json)
         if name not in self._functions:
             return json.dumps({"error": f"Tool '{name}' not found."})
 
         try:
             args = json.loads(arguments_json)
+            self.logger.info(
+                "Executing tool",
+                extra={
+                    "event": "tool.call.started",
+                    "tool_name": name,
+                    "argument_keys": sorted(args.keys()) if isinstance(args, dict) else [],
+                },
+            )
             result = self._functions[name](**args)
             return json.dumps(result, ensure_ascii=False)
         except ToolNotReady:
             raise  # 向上抛给 ToolExecutor 统一处理
         except Exception as e:
-            self.logger.error("Error executing tool '%s': %s", name, e)
+            self.logger.exception(
+                "Tool execution failed",
+                extra={"event": "tool.call.failed", "tool_name": name},
+            )
             return json.dumps({"error": str(e)})
