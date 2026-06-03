@@ -18,18 +18,30 @@ import "./LogsPage.css";
 type LogLevel = "debug" | "error" | "info" | "warn" | "default";
 
 type LogLine = {
+  detailPairs: Array<[string, string]>;
   entry?: LogStructuredEntry;
   event: string;
   level: LogLevel;
   logger: string;
+  message: string;
   number: number;
   pluginId: string;
+  rawText: string;
   taskId: string;
   text: string;
   timestamp: string;
 };
 
 const MAX_VISIBLE_LINES = 3000;
+const DETAIL_FIELD_LIMIT = 36;
+const RESERVED_DETAIL_FIELDS = new Set([
+  "event",
+  "level",
+  "line",
+  "logger",
+  "message",
+  "timestamp",
+]);
 
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) {
@@ -55,6 +67,50 @@ function formatTimestamp(value?: number) {
 function entryString(entry: LogStructuredEntry | undefined, key: keyof LogStructuredEntry) {
   const value = entry?.[key];
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+function valueToDisplay(value: unknown) {
+  if (value == null || value === "") {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function entryMessage(entry: LogStructuredEntry | undefined, rawText: string) {
+  const message = valueToDisplay(entry?.message).trim();
+  if (message) {
+    return message;
+  }
+  const exception = valueToDisplay(entry?.exception).trim();
+  if (exception) {
+    return exception.split(/\r?\n/, 1)[0] || "Exception";
+  }
+  const event = entryString(entry, "event");
+  if (event) {
+    return event;
+  }
+  return rawText;
+}
+
+function entryDetailPairs(entry: LogStructuredEntry | undefined) {
+  if (!entry) {
+    return [];
+  }
+  return Object.entries(entry)
+    .filter(([key, value]) => !RESERVED_DETAIL_FIELDS.has(key) && value != null && value !== "")
+    .slice(0, DETAIL_FIELD_LIMIT)
+    .map(([key, value]) => [key, valueToDisplay(value)] as [string, string])
+    .filter(([, value]) => value.trim());
 }
 
 function normalizeLevel(value: unknown, fallbackText = ""): LogLevel {
@@ -97,15 +153,19 @@ function buildLines(snapshot?: LogSnapshot): LogLine[] {
   return (snapshot?.content ?? "").split(/\r?\n/).map((text, index) => {
     const number = index + 1;
     const entry = entryByLine.get(number) ?? parseJsonLine(text);
+    const message = entryMessage(entry, text);
     return {
+      detailPairs: entryDetailPairs(entry),
       entry,
       event: entryString(entry, "event"),
       level: normalizeLevel(entry?.level, text),
       logger: entryString(entry, "logger"),
+      message,
       number,
       pluginId: entryString(entry, "plugin_id"),
+      rawText: text,
       taskId: entryString(entry, "task_id"),
-      text,
+      text: message,
       timestamp: entryString(entry, "timestamp"),
     };
   });
@@ -145,11 +205,13 @@ function lineMatches(
   }
   const searchable = [
     line.text,
+    line.rawText,
     line.logger,
     line.event,
     line.pluginId,
     line.taskId,
     line.timestamp,
+    line.detailPairs.map(([key, value]) => `${key} ${value}`).join(" "),
     String(line.number),
   ].join(" ");
   return includesQuery(searchable, filters.query.trim(), filters.caseSensitive);
@@ -170,6 +232,70 @@ function fileLabel(file: LogFileInfo) {
   return file.relativePath || file.path || file.name;
 }
 
+function formatStructuredTimestamp(value: string) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+}
+
+function LogLineBody({
+  expanded,
+  line,
+  onToggle,
+}: {
+  expanded: boolean;
+  line: LogLine;
+  onToggle: () => void;
+}) {
+  const hasStructuredDetails = Boolean(line.entry && line.detailPairs.length);
+  const showRaw = line.entry && line.rawText && line.rawText !== line.text;
+  const canExpand = hasStructuredDetails || showRaw;
+  return (
+    <div className="logs-code__body">
+      <button
+        aria-expanded={canExpand ? expanded : undefined}
+        className="logs-code__main"
+        disabled={!canExpand}
+        onClick={canExpand ? onToggle : undefined}
+        type="button"
+      >
+        <span className="logs-code__summary">
+          {line.timestamp ? (
+            <span className="logs-code__timestamp">{formatStructuredTimestamp(line.timestamp)}</span>
+          ) : null}
+          <span className="logs-code__level">{line.level.toUpperCase()}</span>
+          {line.logger ? <span className="logs-code__logger">{line.logger}</span> : null}
+          {line.event ? <span className="logs-code__event">{line.event}</span> : null}
+          {line.pluginId ? <span className="logs-code__chip">plugin {line.pluginId}</span> : null}
+          {line.taskId ? <span className="logs-code__chip">task {line.taskId}</span> : null}
+          {canExpand ? <span className="logs-code__expand">{expanded ? "收起" : "展开"}</span> : null}
+        </span>
+        <span className="logs-code__message">{line.text || " "}</span>
+      </button>
+      {canExpand && expanded ? (
+        <div className="logs-code__details">
+          {hasStructuredDetails ? (
+            <dl className="logs-code__detail-grid">
+              {line.detailPairs.map(([key, value]) => (
+                <div key={key}>
+                  <dt>{key}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          {showRaw ? <pre className="logs-code__raw">{line.rawText}</pre> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function LogsPage() {
   const { showToast } = useToast();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -181,6 +307,7 @@ export function LogsPage() {
   const [loggerFilter, setLoggerFilter] = useState("all");
   const [eventFilter, setEventFilter] = useState("all");
   const [pluginFilter, setPluginFilter] = useState("all");
+  const [expandedLines, setExpandedLines] = useState<Set<number>>(() => new Set());
 
   const logsQuery = useQuery({ queryFn: getDefaultLog, queryKey: logsQueryKey, retry: 1 });
   const filesQuery = useQuery({ queryFn: listLogFiles, queryKey: logFilesQueryKey, retry: 1 });
@@ -198,6 +325,7 @@ export function LogsPage() {
     onSuccess(snapshot) {
       setActiveLog(snapshot);
       setActivePath(snapshot.path);
+      setExpandedLines(new Set());
     },
   });
 
@@ -213,6 +341,7 @@ export function LogsPage() {
     onSuccess(snapshot) {
       setActiveLog(snapshot);
       setActivePath(snapshot.path);
+      setExpandedLines(new Set());
       showToast({ kind: "success", message: snapshot.name, title: "日志已导入" });
     },
   });
@@ -268,8 +397,21 @@ export function LogsPage() {
   const resetToDefaultLog = () => {
     setActiveLog(null);
     setActivePath("");
+    setExpandedLines(new Set());
     void logsQuery.refetch();
     void filesQuery.refetch();
+  };
+
+  const toggleExpandedLine = (lineNumber: number) => {
+    setExpandedLines((current) => {
+      const next = new Set(current);
+      if (next.has(lineNumber)) {
+        next.delete(lineNumber);
+      } else {
+        next.add(lineNumber);
+      }
+      return next;
+    });
   };
 
   return (
@@ -440,14 +582,18 @@ export function LogsPage() {
           {visibleLines.length ? (
             <div className="logs-code" role="log">
               {visibleLines.map((line) => (
-                <div className="logs-code__line" data-level={line.level} key={line.number}>
+                <div
+                  className="logs-code__line"
+                  data-expanded={expandedLines.has(line.number)}
+                  data-level={line.level}
+                  key={line.number}
+                >
                   <span className="logs-code__number">{line.number}</span>
-                  <pre className="logs-code__text">
-                    {line.timestamp ? <span className="logs-code__timestamp">{line.timestamp} </span> : null}
-                    {line.logger ? <span className="logs-code__logger">{line.logger} </span> : null}
-                    {line.event ? <span className="logs-code__event">{line.event} </span> : null}
-                    {line.text || " "}
-                  </pre>
+                  <LogLineBody
+                    expanded={expandedLines.has(line.number)}
+                    line={line}
+                    onToggle={() => toggleExpandedLine(line.number)}
+                  />
                 </div>
               ))}
             </div>
