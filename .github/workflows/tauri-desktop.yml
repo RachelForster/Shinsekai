@@ -140,13 +140,13 @@ jobs:
         include:
           - platform: linux-x64
             os: ubuntu-latest
-            bundles: deb,rpm,appimage
+            bundles: deb
           - platform: linux-arm64
             os: ubuntu-24.04-arm
-            bundles: deb,rpm,appimage
+            bundles: deb
           - platform: windows-x64
             os: windows-latest
-            bundles: msi,nsis
+            bundles: nsis
           - platform: macos-arm64
             os: macos-14
             bundles: dmg
@@ -187,7 +187,7 @@ jobs:
       - name: Install Windows installer dependencies
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install wixtoolset nsis --no-progress -y
+        run: choco install nsis --no-progress -y
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -248,7 +248,7 @@ jobs:
 
       - name: Verify packaged embedded Python runtime
         working-directory: frontend
-        run: pnpm verify:packaged-runtime --target ${{ matrix.platform }} --require-installers
+        run: pnpm verify:packaged-runtime --target ${{ matrix.platform }} --require-installers --installer-bundles ${{ matrix.bundles }}
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

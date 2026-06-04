@@ -22,9 +22,9 @@ const windowsRequiredFiles = new Map([
   ["windows-x64", ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll", "vcruntime140_threads.dll"]],
 ]);
 const expectedBundles = new Map([
-  ["linux-x64", ["deb", "rpm", "appimage"]],
-  ["linux-arm64", ["deb", "rpm", "appimage"]],
-  ["windows-x64", ["msi", "nsis"]],
+  ["linux-x64", ["deb"]],
+  ["linux-arm64", ["deb"]],
+  ["windows-x64", ["nsis"]],
   ["macos-arm64", ["dmg"]],
 ]);
 const expectedArtifactPaths = [
@@ -182,8 +182,10 @@ check(
   "workflow build job must cache embedded Python runtime and wheelhouse per target",
 );
 check(
-  workflow.includes("pnpm verify:packaged-runtime --target ${{ matrix.platform }} --require-installers"),
-  "workflow build job must verify the packaged embedded runtime and installer artifacts after packaging",
+  workflow.includes(
+    "pnpm verify:packaged-runtime --target ${{ matrix.platform }} --require-installers --installer-bundles ${{ matrix.bundles }}",
+  ),
+  "workflow build job must verify the packaged embedded runtime and selected installer artifacts after packaging",
 );
 check(
   !prepareRuntimeScript.includes('["-xzf", archivePath, "-C", extractRoot]'),

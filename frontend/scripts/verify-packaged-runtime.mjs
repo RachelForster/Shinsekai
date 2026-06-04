@@ -11,6 +11,7 @@ const targetDir = path.resolve(
 const args = parseArgs(process.argv.slice(2));
 const expectedTarget = args.target ?? process.env.SHINSEKAI_RUNTIME_TARGET ?? null;
 const requireInstallers = args.requireInstallers;
+const installerBundles = args.installerBundles;
 
 const runtimeMarkerFile = ".shinsekai-runtime.json";
 const wheelsMarkerFile = ".shinsekai-wheels.json";
@@ -76,7 +77,7 @@ if (packageSuffixes) {
 
 let installerArtifacts = [];
 if (requireInstallers) {
-  installerArtifacts = await verifyInstallerArtifacts(expectedTarget);
+  installerArtifacts = await verifyInstallerArtifacts(expectedTarget, installerBundles);
 }
 
 for (const root of verifiedRoots) {
@@ -92,6 +93,7 @@ console.log(`Verified packaged embedded Python runtime in ${verifiedCount} build
 
 function parseArgs(argv) {
   const parsed = {
+    installerBundles: null,
     requireInstallers: false,
     target: null,
   };
@@ -103,6 +105,10 @@ function parseArgs(argv) {
       parsed.target = arg.slice("--target=".length);
     } else if (arg === "--require-installers") {
       parsed.requireInstallers = true;
+    } else if (arg === "--installer-bundles") {
+      parsed.installerBundles = splitBundles(argv[++index] ?? "");
+    } else if (arg.startsWith("--installer-bundles=")) {
+      parsed.installerBundles = splitBundles(arg.slice("--installer-bundles=".length));
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -209,11 +215,11 @@ async function verifyRpmPackages(requiredSuffixes) {
   return inspected;
 }
 
-async function verifyInstallerArtifacts(targetName) {
+async function verifyInstallerArtifacts(targetName, requestedBundles) {
   if (!targetName) {
     throw new Error("--require-installers requires --target or SHINSEKAI_RUNTIME_TARGET");
   }
-  const expectedArtifacts = installerArtifactsForTarget(targetName);
+  const expectedArtifacts = installerArtifactsForTarget(targetName, requestedBundles);
   const artifacts = [];
   for (const artifact of expectedArtifacts) {
     const files = await findPackageFiles(path.join(targetDir, "bundle", artifact.directory), artifact.extension);
@@ -231,22 +237,34 @@ async function verifyInstallerArtifacts(targetName) {
   return artifacts;
 }
 
-function installerArtifactsForTarget(targetName) {
+function installerArtifactsForTarget(targetName, requestedBundles) {
+  const supportedArtifacts = supportedInstallerArtifactsForTarget(targetName);
+  const supportedBundles = new Set(supportedArtifacts.map((artifact) => artifact.bundle));
+  const requiredBundles =
+    requestedBundles && requestedBundles.length > 0 ? unique(requestedBundles) : [...supportedBundles];
+  const unsupportedBundles = requiredBundles.filter((bundle) => !supportedBundles.has(bundle));
+  if (unsupportedBundles.length > 0) {
+    throw new Error(`unsupported installer bundle(s) for ${targetName}: ${unsupportedBundles.join(", ")}`);
+  }
+  return supportedArtifacts.filter((artifact) => requiredBundles.includes(artifact.bundle));
+}
+
+function supportedInstallerArtifactsForTarget(targetName) {
   if (targetName.startsWith("linux-")) {
     return [
-      { directory: "deb", extension: ".deb", label: "deb" },
-      { directory: "rpm", extension: ".rpm", label: "rpm" },
-      { directory: "appimage", extension: ".AppImage", label: "AppImage" },
+      { bundle: "deb", directory: "deb", extension: ".deb", label: "deb" },
+      { bundle: "rpm", directory: "rpm", extension: ".rpm", label: "rpm" },
+      { bundle: "appimage", directory: "appimage", extension: ".AppImage", label: "AppImage" },
     ];
   }
   if (targetName.startsWith("windows-")) {
     return [
-      { directory: "msi", extension: ".msi", label: "MSI" },
-      { directory: "nsis", extension: ".exe", label: "NSIS" },
+      { bundle: "msi", directory: "msi", extension: ".msi", label: "MSI" },
+      { bundle: "nsis", directory: "nsis", extension: ".exe", label: "NSIS" },
     ];
   }
   if (targetName.startsWith("macos-")) {
-    return [{ directory: "dmg", extension: ".dmg", label: "DMG" }];
+    return [{ bundle: "dmg", directory: "dmg", extension: ".dmg", label: "DMG" }];
   }
   throw new Error(`unsupported runtime target for installer verification: ${targetName}`);
 }
@@ -307,6 +325,13 @@ function runtimePythonPath(runtimeRoot, marker) {
 
 function unique(values) {
   return [...new Set(values)];
+}
+
+function splitBundles(value) {
+  return String(value)
+    .split(",")
+    .map((bundle) => bundle.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 function relative(filePath) {
