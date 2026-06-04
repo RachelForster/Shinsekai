@@ -169,7 +169,18 @@ def main() -> None:
         action="store_true",
         help="Serve an existing build even when React source files are newer.",
     )
+    parser.add_argument(
+        "--show-migration-helper",
+        action="store_true",
+        help="Open the frontend migration helper dialog and exit.",
+    )
     args = parser.parse_args()
+
+    if args.show_migration_helper:
+        _show_frontend_migration_dialog(
+            "Opening the Shinsekai Frontend migration helper for testing."
+        )
+        return
 
     repo_root = _default_repo_root()
     project_root = Path(args.project_root).expanduser().resolve() if args.project_root else repo_root
