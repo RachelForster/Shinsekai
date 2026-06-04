@@ -70,46 +70,11 @@ fn missing_core_deps_repair_actions_match_runtime_ownership() {
             RuntimeRepairActionKind::SelectDifferentRuntime
         ]
     );
-
-    let conda = python_install(PythonKind::Conda);
-    assert_eq!(
-        missing_core_deps_actions(&conda),
-        vec![
-            RuntimeRepairActionKind::CreateManagedVenv,
-            RuntimeRepairActionKind::InstallRuntimeDeps,
-            RuntimeRepairActionKind::SelectDifferentRuntime
-        ]
-    );
-
-    let system = python_install(PythonKind::Path);
-    assert_eq!(
-        missing_core_deps_actions(&system),
-        vec![
-            RuntimeRepairActionKind::CreateManagedVenv,
-            RuntimeRepairActionKind::InstallRuntimeDeps,
-            RuntimeRepairActionKind::SelectDifferentRuntime
-        ]
-    );
 }
 
 #[test]
-fn explicit_conda_python_offers_isolated_venv_before_in_place_install() {
-    let mut install = python_install(PythonKind::Explicit);
-    install.is_conda = true;
-
-    assert_eq!(
-        missing_core_deps_actions(&install),
-        vec![
-            RuntimeRepairActionKind::CreateManagedVenv,
-            RuntimeRepairActionKind::InstallRuntimeDeps,
-            RuntimeRepairActionKind::SelectDifferentRuntime
-        ]
-    );
-}
-
-#[test]
-fn system_python_without_ensurepip_does_not_offer_managed_venv() {
-    let mut install = python_install(PythonKind::Path);
+fn managed_python_without_ensurepip_does_not_offer_managed_venv() {
+    let mut install = python_install(PythonKind::Managed);
     install.has_venv = true;
     install.has_ensurepip = false;
 
@@ -124,7 +89,7 @@ fn system_python_without_ensurepip_does_not_offer_managed_venv() {
 
 #[test]
 fn externally_managed_python_does_not_offer_in_place_dependency_install() {
-    let mut install = python_install(PythonKind::Path);
+    let mut install = python_install(PythonKind::Managed);
     install.externally_managed = true;
 
     assert_eq!(
@@ -137,8 +102,8 @@ fn externally_managed_python_does_not_offer_in_place_dependency_install() {
 }
 
 #[test]
-fn conda_without_ensurepip_can_still_offer_in_place_dependency_install() {
-    let mut install = python_install(PythonKind::Conda);
+fn managed_python_without_ensurepip_can_still_offer_in_place_dependency_install() {
+    let mut install = python_install(PythonKind::Managed);
     install.has_venv = true;
     install.has_ensurepip = false;
     install.has_pip = true;
@@ -154,7 +119,7 @@ fn conda_without_ensurepip_can_still_offer_in_place_dependency_install() {
 
 #[test]
 fn python_without_pip_can_offer_in_place_install_when_ensurepip_is_available() {
-    let mut install = python_install(PythonKind::Path);
+    let mut install = python_install(PythonKind::Managed);
     install.has_pip = false;
     install.has_ensurepip = true;
 
@@ -255,7 +220,8 @@ fn runtime_candidate_with_actions(
         python_id: Some(id.to_string()),
         label: id.to_string(),
         path: format!("/tmp/{id}"),
-        kind: RuntimeKind::Path,
+        display_path: format!("/tmp/{id}"),
+        kind: RuntimeKind::Managed,
         version: Some("3.11.9".to_string()),
         status: RuntimeCandidateStatus::MissingCoreDeps,
         message: None,

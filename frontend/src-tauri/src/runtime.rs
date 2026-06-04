@@ -8,9 +8,7 @@ mod python_env;
 mod python_probe;
 mod resolver;
 
-pub use resolver::{
-    RuntimeCandidateStatus, RuntimeCandidateView, RuntimeRepairActionKind, RuntimeScanView,
-};
+pub use resolver::{RuntimeCandidateView, RuntimeRepairActionKind, RuntimeScanView};
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 
@@ -41,21 +39,17 @@ pub fn find_python_runtime_for_candidate<R: Runtime>(
     candidate_id: Option<&str>,
 ) -> RuntimeResult<PythonRuntime> {
     let view = scan_runtime_view(app, source_root);
-    if let Some(message) =
-        strict_explicit_runtime_failure_message(&view, candidate_id, runtime_strict())
-    {
-        return Err(message.into());
-    }
     let Some(candidate) = resolver::ready_candidate(&view, candidate_id) else {
         return Err(view
             .message
             .unwrap_or_else(|| {
-                "no complete Python runtime found; set SHINSEKAI_PYTHON, provide runtime/, install the shinsekai conda env, or configure runtime_manifest.json".to_string()
+                "no complete Shinsekai managed Python runtime found; provide bundled runtime/ or set SHINSEKAI_RUNTIME_DIR".to_string()
             })
             .into());
     };
     let path = PathBuf::from(&candidate.path);
-    let mut command = Command::new(&path);
+    let launch_path = bridge_launch_python(&path);
+    let mut command = Command::new(&launch_path);
     python_env::configure_python_command(&mut command, &path);
     Ok(PythonRuntime {
         command,
@@ -140,6 +134,51 @@ pub fn repair_runtime_candidate<R: Runtime, M: Manager<R> + Emitter<R>>(
     }
 }
 
+pub fn install_runtime_profile<R: Runtime, M: Manager<R> + Emitter<R>>(
+    app: &M,
+    source_root: &Path,
+    profile: &str,
+    candidate_id: Option<&str>,
+) -> RuntimeResult<PathBuf> {
+    let profile = profile.trim();
+    if profile.is_empty() {
+        return Err("runtime profile is required".into());
+    }
+    let manifest = manifest::load_manifest(source_root)?;
+    if !manifest.profiles.contains_key(profile) {
+        return Err(format!("runtime profile is not defined in manifest: {profile}").into());
+    }
+    let view = scan_runtime_view(app, source_root);
+    let requested_candidate_id = candidate_id.or(view.selected_candidate_id.as_deref());
+    let candidate = resolver::ready_candidate(&view, requested_candidate_id)
+        .or_else(|| candidate_id.is_none().then(|| resolver::ready_candidate(&view, None)).flatten())
+        .ok_or_else(|| {
+            if let Some(candidate_id) = candidate_id {
+                format!(
+                    "current Shinsekai managed Python runtime is not ready for optional dependencies: {candidate_id}"
+                )
+            } else {
+                "Shinsekai managed Python runtime must be ready before installing optional runtime dependencies"
+                    .to_string()
+            }
+        })?;
+    if candidate.path.trim().is_empty() {
+        return Err("runtime candidate does not have a Python path".into());
+    }
+    let requirements = manifest::runtime_requirements(source_root, Some(&manifest), profile);
+    let pip_index_urls = manifest::pip_index_urls_for_source(&manifest, None);
+    let progress_id = format!("{}-{profile}", candidate.id);
+    managed::install_runtime_dependencies(
+        app,
+        source_root,
+        &PathBuf::from(&candidate.path),
+        &progress_id,
+        profile,
+        &requirements,
+        &pip_index_urls,
+    )
+}
+
 pub fn ready_candidate_id_for_path<R: Runtime>(
     app: &impl Manager<R>,
     source_root: &Path,
@@ -149,48 +188,7 @@ pub fn ready_candidate_id_for_path<R: Runtime>(
     ready_candidate_id_for_path_in_view(&view, repaired_path)
 }
 
-pub fn save_runtime_preference<R: Runtime>(
-    app: &impl Manager<R>,
-    source_root: &Path,
-    candidate_id: &str,
-) -> RuntimeResult<()> {
-    let view = scan_runtime_view(app, source_root);
-    let candidate = view
-        .candidates
-        .into_iter()
-        .find(|candidate| candidate.id == candidate_id)
-        .ok_or_else(|| format!("runtime candidate not found: {candidate_id}"))?;
-    if candidate.status != resolver::RuntimeCandidateStatus::Ready {
-        return Err(format!(
-            "runtime candidate is not ready: {}",
-            candidate
-                .message
-                .unwrap_or_else(|| candidate_id.to_string())
-        )
-        .into());
-    }
-    if candidate.path.trim().is_empty() {
-        return Err("runtime candidate does not have a Python path".into());
-    }
-    python_probe::save_runtime_preference(
-        app,
-        &candidate.id,
-        &PathBuf::from(candidate.path),
-        &candidate.label,
-    )
-}
-
-pub fn save_runtime_preference_for_path<R: Runtime>(
-    app: &impl Manager<R>,
-    path: &Path,
-) -> RuntimeResult<String> {
-    let python = resolve_python_path(path)?;
-    let candidate_id = python_probe::explicit_python_id(&python);
-    let label = format!("Custom Python {}", python.display());
-    python_probe::save_runtime_preference(app, &candidate_id, &python, &label)?;
-    Ok(candidate_id)
-}
-
+#[allow(dead_code)]
 pub fn resolve_python_path(path: &Path) -> RuntimeResult<PathBuf> {
     if path.is_file() {
         return Ok(path.to_path_buf());
@@ -212,35 +210,28 @@ fn runtime_profile() -> String {
     env::var("SHINSEKAI_RUNTIME_PROFILE").unwrap_or_else(|_| manifest::DEFAULT_PROFILE.to_string())
 }
 
-fn runtime_strict() -> bool {
-    env::var("SHINSEKAI_RUNTIME_STRICT")
-        .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "on"))
-        .unwrap_or(false)
+fn bridge_launch_python(python: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        pythonw_for_python(python).unwrap_or_else(|| python.to_path_buf())
+    }
+    #[cfg(not(windows))]
+    {
+        python.to_path_buf()
+    }
 }
 
-fn strict_explicit_runtime_failure_message(
-    view: &RuntimeScanView,
-    candidate_id: Option<&str>,
-    strict: bool,
-) -> Option<String> {
-    if candidate_id.is_some() || !strict {
+#[allow(dead_code)]
+fn pythonw_for_python(python: &Path) -> Option<PathBuf> {
+    let file_name = python.file_name()?.to_str()?.to_ascii_lowercase();
+    if file_name == "pythonw.exe" {
+        return Some(python.to_path_buf());
+    }
+    if !matches!(file_name.as_str(), "python.exe" | "python3.exe") {
         return None;
     }
-    view.candidates
-        .iter()
-        .find(|candidate| {
-            candidate.kind == resolver::RuntimeKind::Explicit
-                && candidate.status != resolver::RuntimeCandidateStatus::Ready
-        })
-        .map(|candidate| {
-            format!(
-                "explicit runtime candidate failed under SHINSEKAI_RUNTIME_STRICT=1: {}",
-                candidate
-                    .message
-                    .clone()
-                    .unwrap_or_else(|| candidate.label.clone())
-            )
-        })
+    let candidate = python.with_file_name("pythonw.exe");
+    candidate.is_file().then_some(candidate)
 }
 
 fn ready_candidate_id_for_path_in_view(
@@ -346,34 +337,29 @@ mod tests {
     }
 
     #[test]
-    fn broken_explicit_runtime_does_not_block_fallback_without_strict_mode() {
-        let view = runtime_scan_view_with_explicit_failure_and_ready_candidate();
+    fn pythonw_for_python_prefers_sibling_pythonw_executable() {
+        let temp_root = unique_temp_dir("runtime-pythonw");
+        let python = temp_root.join("python.exe");
+        let pythonw = temp_root.join("pythonw.exe");
+        fs::create_dir_all(&temp_root).unwrap();
+        fs::write(&python, "").unwrap();
+        fs::write(&pythonw, "").unwrap();
 
-        assert!(strict_explicit_runtime_failure_message(&view, None, false).is_none());
-        assert_eq!(
-            resolver::ready_candidate(&view, None).map(|candidate| candidate.id.as_str()),
-            Some("managed-ready")
-        );
+        assert_eq!(pythonw_for_python(&python), Some(pythonw));
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]
-    fn broken_explicit_runtime_blocks_fallback_in_strict_mode() {
-        let view = runtime_scan_view_with_explicit_failure_and_ready_candidate();
+    fn pythonw_for_python_falls_back_when_pythonw_is_missing() {
+        let temp_root = unique_temp_dir("runtime-pythonw-missing");
+        let python = temp_root.join("python.exe");
+        fs::create_dir_all(&temp_root).unwrap();
+        fs::write(&python, "").unwrap();
 
-        let message = strict_explicit_runtime_failure_message(&view, None, true)
-            .expect("strict mode should report the broken explicit candidate");
+        assert!(pythonw_for_python(&python).is_none());
 
-        assert!(message.contains("SHINSEKAI_RUNTIME_STRICT=1"));
-        assert!(message.contains("missing explicit runtime"));
-    }
-
-    #[test]
-    fn strict_mode_does_not_override_explicit_candidate_selection() {
-        let view = runtime_scan_view_with_explicit_failure_and_ready_candidate();
-
-        assert!(
-            strict_explicit_runtime_failure_message(&view, Some("managed-ready"), true).is_none()
-        );
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     fn runtime_scan_view_with_ready_candidate(id: &str, python: &Path) -> RuntimeScanView {
@@ -385,6 +371,7 @@ mod tests {
                 python_id: Some(id.to_string()),
                 label: id.to_string(),
                 path: python.display().to_string(),
+                display_path: python_probe::display_path(python),
                 kind: resolver::RuntimeKind::ManagedVenv,
                 version: Some("3.11.9".to_string()),
                 status: resolver::RuntimeCandidateStatus::Ready,
@@ -400,33 +387,6 @@ mod tests {
             }],
             message: None,
         }
-    }
-
-    fn runtime_scan_view_with_explicit_failure_and_ready_candidate() -> RuntimeScanView {
-        let ready_python = PathBuf::from("/tmp/managed-ready-python");
-        let mut view = runtime_scan_view_with_ready_candidate("managed-ready", &ready_python);
-        view.candidates.insert(
-            0,
-            RuntimeCandidateView {
-                id: "explicit-broken".to_string(),
-                python_id: Some("explicit-broken".to_string()),
-                label: "SHINSEKAI_PYTHON".to_string(),
-                path: "/missing/python".to_string(),
-                kind: resolver::RuntimeKind::Explicit,
-                version: None,
-                status: resolver::RuntimeCandidateStatus::BrokenPython,
-                message: Some("missing explicit runtime".to_string()),
-                score: 10_000,
-                selected: false,
-                managed: false,
-                missing_packages: Vec::new(),
-                missing_imports: Vec::new(),
-                python_version: None,
-                warnings: Vec::new(),
-                repair_actions: vec![RuntimeRepairActionKind::SelectDifferentRuntime],
-            },
-        );
-        view
     }
 
     fn unique_temp_dir(name: &str) -> PathBuf {

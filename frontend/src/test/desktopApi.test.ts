@@ -17,6 +17,7 @@ import {
   browseDesktopFiles,
   checkDesktopUpdate,
   chooseDesktopRuntimePython,
+  installDesktopRuntimeProfile,
   installDesktopUpdate,
   isTauriDesktop,
   onDesktopRuntimeProgress,
@@ -65,6 +66,7 @@ describe("desktop API environment detection", () => {
     await repairDesktopRuntime("python-missing", "createManagedVenv");
     await repairDesktopRuntime("python-conda", "installRuntimeDeps");
     await chooseDesktopRuntimePython("/opt/python/bin/python");
+    await installDesktopRuntimeProfile("media");
     await browseDesktopFiles({ path: "/tmp", showHidden: true });
 
     expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_scan", undefined);
@@ -79,6 +81,7 @@ describe("desktop API environment detection", () => {
       candidateId: "python-conda",
     });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_choose_python", { path: "/opt/python/bin/python" });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_install_profile", { profile: "media" });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", { path: "/tmp", showHidden: true });
   });
 

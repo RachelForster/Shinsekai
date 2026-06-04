@@ -2,21 +2,15 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{Manager, Runtime};
 
-use super::manifest::{env_path, home_dir};
+use super::manifest::env_path;
 
-pub const DEFAULT_CONDA_ENV: &str = "shinsekai";
-const RUNTIME_PREFERENCE_FILE: &str = "preference.json";
-const PRIORITY_INSTALL_DIR_RUNTIME: i32 = 900;
-const PRIORITY_PATH_PYTHON: i32 = 1_000;
-
-pub type RuntimeResult<T> = Result<T, Box<dyn std::error::Error>>;
+const PRIORITY_INSTALL_DIR_RUNTIME: i32 = 9_000;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,12 +40,8 @@ pub struct PythonInstall {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PythonKind {
-    Explicit,
     Managed,
     ManagedVenv,
-    Portable,
-    Conda,
-    Path,
 }
 
 #[derive(Clone, Debug)]
@@ -102,108 +92,51 @@ struct PythonProbePayload {
     externally_managed: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RuntimePreference {
-    candidate_id: String,
-    python_path: String,
-    label: String,
-    saved_at_ms: u128,
-}
-
 pub fn scan_python_installs<R: Runtime>(
     app: &impl Manager<R>,
     source_root: &Path,
 ) -> Vec<PythonInstall> {
-    let mut sources = Vec::new();
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        if let Some(source) = preferred_python_source(&data_dir) {
-            sources.push(source);
-        }
-    }
-
-    if let Some(path) = env_path("SHINSEKAI_PYTHON") {
-        sources.push(PythonSource {
-            id_override: None,
-            executable: path,
-            label: "SHINSEKAI_PYTHON".to_string(),
-            kind: PythonKind::Explicit,
-            priority: 10_000,
-        });
-    }
-
-    for root in runtime_root_candidates(app, source_root) {
-        if let Some(python) = python_in_prefix(&root.root) {
-            sources.push(PythonSource {
-                id_override: None,
-                executable: python,
-                label: format!("managed runtime at {}", root.root.display()),
-                kind: match root.kind {
-                    RuntimeRootKind::Explicit => PythonKind::Explicit,
-                    RuntimeRootKind::InstallDir => PythonKind::Portable,
-                    RuntimeRootKind::AppData => PythonKind::Managed,
-                },
-                priority: match root.kind {
-                    RuntimeRootKind::Explicit => 9_000,
-                    RuntimeRootKind::AppData => 8_000,
-                    RuntimeRootKind::InstallDir => PRIORITY_INSTALL_DIR_RUNTIME,
-                },
-            });
-        } else if root.kind == RuntimeRootKind::Explicit {
-            sources.push(PythonSource {
-                id_override: None,
-                executable: root.root,
-                label: "SHINSEKAI_RUNTIME_DIR".to_string(),
-                kind: PythonKind::Explicit,
-                priority: 9_000,
-            });
-        }
-    }
-
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        sources.extend(app_data_runtime_sources(&data_dir));
-    }
-    sources.extend(active_virtual_env_sources());
-    sources.extend(conda_python_sources());
-    sources.extend(shim_python_sources(source_root));
-    sources.extend(path_python_sources());
-
+    let data_dir = app.path().app_data_dir().ok();
+    let sources = managed_python_sources(
+        runtime_root_candidates(app, source_root),
+        data_dir.as_deref(),
+    );
     dedupe_python_sources(sources)
         .into_iter()
         .map(probe_python_source)
         .collect()
 }
 
-pub fn save_runtime_preference<R: Runtime>(
-    app: &impl Manager<R>,
-    candidate_id: &str,
-    python_path: &Path,
-    label: &str,
-) -> RuntimeResult<()> {
-    if !python_path.is_file() {
-        return Err(format!("runtime Python does not exist: {}", python_path.display()).into());
-    }
-    let runtime_home = app.path().app_data_dir()?.join("runtime");
-    fs::create_dir_all(&runtime_home)?;
-    let saved_at_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0);
-    let preference = RuntimePreference {
-        candidate_id: candidate_id.to_string(),
-        python_path: python_path.display().to_string(),
-        label: label.to_string(),
-        saved_at_ms,
-    };
-    fs::write(
-        runtime_home.join(RUNTIME_PREFERENCE_FILE),
-        serde_json::to_string_pretty(&preference)?,
-    )?;
-    Ok(())
+pub fn display_path(path: &Path) -> String {
+    display_path_text(&path.as_os_str().to_string_lossy())
 }
 
-pub fn explicit_python_id(executable: &Path) -> String {
-    python_id(&PythonKind::Explicit, executable)
+pub fn display_path_text(value: &str) -> String {
+    let trimmed = value.trim();
+    if let Some(rest) = strip_case_insensitive_prefix(trimmed, r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = strip_case_insensitive_prefix(trimmed, "//?/UNC/") {
+        return format!("//{rest}");
+    }
+    for prefix in [r"\\?\", r"\\.\"].iter() {
+        if let Some(rest) = strip_case_insensitive_prefix(trimmed, prefix) {
+            return rest.to_string();
+        }
+    }
+    for prefix in ["//?/", "//./"].iter() {
+        if let Some(rest) = strip_case_insensitive_prefix(trimmed, prefix) {
+            return rest.to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
+fn strip_case_insensitive_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    value
+        .get(..prefix.len())
+        .filter(|head| head.eq_ignore_ascii_case(prefix))
+        .and_then(|_| value.get(prefix.len()..))
 }
 
 pub fn runtime_root_candidates<R: Runtime>(
@@ -390,64 +323,47 @@ fn python_id(kind: &PythonKind, executable: &Path) -> String {
     format!("python-{:x}", hasher.finalize())
 }
 
-fn conda_python_sources() -> Vec<PythonSource> {
+fn managed_python_sources(
+    runtime_roots: Vec<RuntimeRootCandidate>,
+    data_dir: Option<&Path>,
+) -> Vec<PythonSource> {
     let mut sources = Vec::new();
-    let default_env =
-        env::var("SHINSEKAI_CONDA_ENV").unwrap_or_else(|_| DEFAULT_CONDA_ENV.to_string());
-    if let Some(prefix) = env_path("CONDA_PREFIX") {
-        let active_env = env::var("CONDA_DEFAULT_ENV").unwrap_or_default();
-        if let Some(python) = python_in_prefix(&prefix) {
+    for root in runtime_roots {
+        if let Some(python) = python_in_prefix(&root.root) {
             sources.push(PythonSource {
                 id_override: None,
                 executable: python,
-                label: if active_env.is_empty() {
-                    "active conda env".to_string()
-                } else {
-                    format!("active conda env {active_env}")
+                label: match root.kind {
+                    RuntimeRootKind::Explicit => {
+                        format!("SHINSEKAI_RUNTIME_DIR at {}", display_path(&root.root))
+                    }
+                    RuntimeRootKind::InstallDir => {
+                        format!("Shinsekai bundled runtime at {}", display_path(&root.root))
+                    }
+                    RuntimeRootKind::AppData => {
+                        format!("Shinsekai managed runtime at {}", display_path(&root.root))
+                    }
                 },
-                kind: PythonKind::Conda,
-                priority: active_conda_priority(&active_env, &default_env),
+                kind: PythonKind::Managed,
+                priority: match root.kind {
+                    RuntimeRootKind::Explicit => 10_000,
+                    RuntimeRootKind::InstallDir => PRIORITY_INSTALL_DIR_RUNTIME,
+                    RuntimeRootKind::AppData => 8_000,
+                },
+            });
+        } else if root.kind == RuntimeRootKind::Explicit {
+            sources.push(PythonSource {
+                id_override: None,
+                executable: root.root,
+                label: "SHINSEKAI_RUNTIME_DIR".to_string(),
+                kind: PythonKind::Managed,
+                priority: 10_000,
             });
         }
     }
 
-    if let Some(conda_python) = find_conda_env_python(&default_env) {
-        sources.push(PythonSource {
-            id_override: None,
-            executable: conda_python,
-            label: format!("conda/mamba env {default_env}"),
-            kind: PythonKind::Conda,
-            priority: 6_000,
-        });
-    }
-    sources
-}
-
-fn active_conda_priority(active_env: &str, default_env: &str) -> i32 {
-    if active_env == default_env {
-        6_500
-    } else {
-        5_700
-    }
-}
-
-fn active_virtual_env_sources() -> Vec<PythonSource> {
-    let mut sources = Vec::new();
-    for (variable, label, priority) in [
-        ("VIRTUAL_ENV", "active virtualenv", 5_800),
-        ("UV_PROJECT_ENVIRONMENT", "uv project environment", 5_700),
-    ] {
-        if let Some(prefix) = env_path(variable).or_else(|| relative_env_path(variable)) {
-            if let Some(python) = python_in_prefix(&prefix) {
-                sources.push(PythonSource {
-                    id_override: None,
-                    executable: python,
-                    label: format!("{label} at {}", prefix.display()),
-                    kind: PythonKind::Path,
-                    priority,
-                });
-            }
-        }
+    if let Some(data_dir) = data_dir {
+        sources.extend(app_data_runtime_sources(data_dir));
     }
     sources
 }
@@ -524,24 +440,6 @@ fn is_runtime_publish_artifact_dir(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn preferred_python_source(data_dir: &Path) -> Option<PythonSource> {
-    let preference_path = data_dir.join("runtime").join(RUNTIME_PREFERENCE_FILE);
-    let text = fs::read_to_string(preference_path).ok()?;
-    let preference = serde_json::from_str::<RuntimePreference>(&text).ok()?;
-    let executable = PathBuf::from(preference.python_path);
-    Some(PythonSource {
-        id_override: Some(preference.candidate_id),
-        executable,
-        label: if preference.label.trim().is_empty() {
-            "saved runtime preference".to_string()
-        } else {
-            preference.label
-        },
-        kind: PythonKind::Explicit,
-        priority: 11_000,
-    })
-}
-
 fn current_runtime_root(runtime_home: &Path) -> Option<PathBuf> {
     let current_path = runtime_home.join("current.json");
     let text = fs::read_to_string(current_path).ok()?;
@@ -560,340 +458,9 @@ fn current_runtime_root(runtime_home: &Path) -> Option<PathBuf> {
     Some(runtime_home.join("runtimes").join(runtime_id))
 }
 
-fn path_python_sources() -> Vec<PythonSource> {
-    let mut sources = Vec::new();
-    #[cfg(windows)]
-    {
-        sources.extend(py_launcher_sources());
-    }
-    for name in python_candidate_names() {
-        if let Some(path) = find_on_path(name) {
-            sources.push(PythonSource {
-                id_override: None,
-                executable: path,
-                label: format!("PATH python {name}"),
-                kind: PythonKind::Path,
-                priority: PRIORITY_PATH_PYTHON,
-            });
-        }
-    }
-    sources
-}
-
-#[cfg(windows)]
-fn py_launcher_sources() -> Vec<PythonSource> {
-    let Some(py) = find_on_path("py.exe").or_else(|| find_on_path("py")) else {
-        return Vec::new();
-    };
-    let Ok(output) = Command::new(py).arg("-0p").output() else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(parse_py_launcher_python_path)
-        .filter(|path| path.is_file())
-        .map(|path| PythonSource {
-            id_override: None,
-            executable: path,
-            label: "Windows py launcher".to_string(),
-            kind: PythonKind::Path,
-            priority: 1_200,
-        })
-        .collect()
-}
-
-#[cfg(any(windows, test))]
-fn parse_py_launcher_python_path(line: &str) -> Option<PathBuf> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    if let Some(start) = windows_path_start(trimmed) {
-        let path = trimmed[start..].trim().trim_matches('"');
-        if !path.is_empty() {
-            return Some(PathBuf::from(path));
-        }
-    }
-    trimmed.split_whitespace().last().map(PathBuf::from)
-}
-
-#[cfg(any(windows, test))]
-fn windows_path_start(value: &str) -> Option<usize> {
-    let bytes = value.as_bytes();
-    for index in 0..bytes.len().saturating_sub(2) {
-        if bytes[index].is_ascii_alphabetic()
-            && bytes[index + 1] == b':'
-            && matches!(bytes[index + 2], b'\\' | b'/')
-        {
-            return Some(index);
-        }
-    }
-    value.find(r"\\")
-}
-
-fn find_conda_env_python(env_name: &str) -> Option<PathBuf> {
-    if let Some(prefix) = env_path("CONDA_PREFIX") {
-        if env::var("CONDA_DEFAULT_ENV").ok().as_deref() == Some(env_name) {
-            if let Some(python) = python_in_prefix(&prefix) {
-                return Some(python);
-            }
-        }
-    }
-
-    conda_like_env_prefixes(env_name)
-        .into_iter()
-        .find_map(|prefix| python_in_prefix(&prefix))
-}
-
-fn conda_roots_from_executable(conda_exe: &Path) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(parent) = conda_exe.parent() {
-        if let Some(root) = parent.parent() {
-            roots.push(root.to_path_buf());
-        }
-        if parent.file_name().and_then(|name| name.to_str()) == Some("condabin") {
-            if let Some(root) = parent.parent() {
-                roots.push(root.to_path_buf());
-            }
-        }
-    }
-    roots
-}
-
-fn conda_like_env_prefixes(env_name: &str) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(conda_exe) = env_path("CONDA_EXE").or_else(|| find_on_path("conda")) {
-        roots.extend(conda_roots_from_executable(&conda_exe));
-    }
-    if let Some(mamba_exe) = env_path("MAMBA_EXE").or_else(|| find_on_path("mamba")) {
-        roots.extend(conda_roots_from_executable(&mamba_exe));
-    }
-    if let Some(root) = env_path("MAMBA_ROOT_PREFIX") {
-        roots.push(root);
-    }
-    roots.extend(default_conda_roots());
-    roots.extend(default_mamba_roots());
-
-    conda_env_prefixes_from_roots(dedupe_paths(roots), env_name)
-}
-
-fn conda_env_prefixes_from_roots(roots: Vec<PathBuf>, env_name: &str) -> Vec<PathBuf> {
-    roots
-        .into_iter()
-        .flat_map(|root| [root.join("envs").join(env_name), root.join(env_name)])
-        .collect()
-}
-
-fn default_conda_roots() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(home) = home_dir() {
-        roots.push(home.join("miniconda3"));
-        roots.push(home.join("anaconda3"));
-        roots.push(home.join("miniforge3"));
-        roots.push(home.join("mambaforge"));
-    }
-    #[cfg(not(windows))]
-    {
-        roots.push(PathBuf::from("/opt/miniconda3"));
-        roots.push(PathBuf::from("/opt/anaconda3"));
-        roots.push(PathBuf::from("/opt/miniforge3"));
-        roots.push(PathBuf::from("/opt/mambaforge"));
-    }
-    #[cfg(windows)]
-    {
-        if let Some(program_data) = env::var_os("ProgramData") {
-            let program_data = PathBuf::from(program_data);
-            roots.push(program_data.join("miniconda3"));
-            roots.push(program_data.join("anaconda3"));
-        }
-    }
-    roots
-}
-
-fn default_mamba_roots() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(home) = home_dir() {
-        roots.push(home.join(".micromamba"));
-        roots.push(home.join("micromamba"));
-        roots.push(home.join(".local").join("share").join("mamba"));
-    }
-    #[cfg(windows)]
-    {
-        if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
-            roots.push(PathBuf::from(local_app_data).join("mamba"));
-        }
-    }
-    roots
-}
-
-fn shim_python_sources(source_root: &Path) -> Vec<PythonSource> {
-    let mut sources = Vec::new();
-    sources.extend(source_root_virtual_env_sources(source_root));
-
-    if let Some(root) =
-        env_path("PYENV_ROOT").or_else(|| home_dir().map(|home| home.join(".pyenv")))
-    {
-        sources.extend(pyenv_python_sources(&root));
-    }
-    if let Some(root) =
-        env_path("ASDF_DATA_DIR").or_else(|| home_dir().map(|home| home.join(".asdf")))
-    {
-        sources.extend(asdf_python_sources(&root));
-    }
-    if let Some(root) = env_path("UV_PYTHON_INSTALL_DIR").or_else(|| {
-        home_dir().map(|home| home.join(".local").join("share").join("uv").join("python"))
-    }) {
-        sources.extend(uv_python_sources(&root));
-    }
-
-    sources
-}
-
-fn source_root_virtual_env_sources(source_root: &Path) -> Vec<PythonSource> {
-    [source_root.join(".venv"), source_root.join("venv")]
-        .into_iter()
-        .filter_map(|prefix| {
-            python_in_prefix(&prefix).map(|python| PythonSource {
-                id_override: None,
-                executable: python,
-                label: format!("project virtualenv at {}", prefix.display()),
-                kind: PythonKind::Path,
-                priority: 5_600,
-            })
-        })
-        .collect()
-}
-
-fn pyenv_python_sources(root: &Path) -> Vec<PythonSource> {
-    let mut sources = python_sources_from_shims(root.join("shims"), "pyenv shim", 1_500);
-    sources.extend(python_sources_from_install_roots(
-        &root.join("versions"),
-        "pyenv Python",
-        1_450,
-    ));
-    sources
-}
-
-fn asdf_python_sources(root: &Path) -> Vec<PythonSource> {
-    let mut sources = python_sources_from_shims(root.join("shims"), "asdf shim", 1_400);
-    sources.extend(python_sources_from_install_roots(
-        &root.join("installs").join("python"),
-        "asdf Python",
-        1_350,
-    ));
-    sources
-}
-
-fn uv_python_sources(root: &Path) -> Vec<PythonSource> {
-    python_sources_from_install_roots(root, "uv Python", 1_300)
-}
-
-fn python_sources_from_shims(shim_dir: PathBuf, label: &str, priority: i32) -> Vec<PythonSource> {
-    ["python3", "python", "python.exe", "python3.exe"]
-        .into_iter()
-        .map(|name| shim_dir.join(name))
-        .filter(|path| path.is_file())
-        .map(|path| PythonSource {
-            id_override: None,
-            executable: path,
-            label: label.to_string(),
-            kind: PythonKind::Path,
-            priority,
-        })
-        .collect()
-}
-
-fn python_sources_from_install_roots(root: &Path, label: &str, priority: i32) -> Vec<PythonSource> {
-    let Ok(entries) = fs::read_dir(root) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir())
-        .filter_map(|prefix| {
-            python_in_prefix(&prefix).map(|python| PythonSource {
-                id_override: None,
-                executable: python,
-                label: format!(
-                    "{} {}",
-                    label,
-                    prefix
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or("runtime")
-                ),
-                kind: PythonKind::Path,
-                priority,
-            })
-        })
-        .collect()
-}
-
 fn dev_project_root() -> Option<PathBuf> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir.parent()?.parent().map(Path::to_path_buf)
-}
-
-#[cfg(windows)]
-fn python_candidate_names() -> &'static [&'static str] {
-    &["python.exe", "python3.exe"]
-}
-
-#[cfg(not(windows))]
-fn python_candidate_names() -> &'static [&'static str] {
-    &["python3", "python"]
-}
-
-fn find_on_path(name: &str) -> Option<PathBuf> {
-    let direct = PathBuf::from(name);
-    if direct.is_file() {
-        return Some(direct);
-    }
-
-    let paths = env::var_os("PATH")?;
-    let candidates = executable_names(name);
-    env::split_paths(&paths).find_map(|path| {
-        candidates
-            .iter()
-            .map(|candidate| path.join(candidate))
-            .find(|candidate| candidate.is_file())
-    })
-}
-
-fn relative_env_path(variable: &str) -> Option<PathBuf> {
-    let raw = env::var_os(variable)?;
-    let path = PathBuf::from(raw);
-    if path.is_absolute() {
-        return Some(path);
-    }
-    env::current_dir().ok().map(|cwd| cwd.join(path))
-}
-
-#[cfg(windows)]
-fn executable_names(name: &str) -> Vec<String> {
-    if Path::new(name).extension().is_some() {
-        return vec![name.to_string()];
-    }
-
-    let pathext = env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
-    let mut names = vec![name.to_string()];
-    names.extend(
-        pathext
-            .split(';')
-            .map(str::trim)
-            .filter(|ext| !ext.is_empty())
-            .map(|ext| format!("{name}{ext}")),
-    );
-    names
-}
-
-#[cfg(not(windows))]
-fn executable_names(name: &str) -> Vec<String> {
-    vec![name.to_string()]
 }
 
 fn install_runtime_roots(source_root: &Path) -> Vec<PathBuf> {
@@ -926,20 +493,6 @@ fn dedupe_root_candidates(candidates: Vec<RuntimeRootCandidate>) -> Vec<RuntimeR
             continue;
         }
         deduped.push(candidate);
-    }
-    deduped
-}
-
-fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut deduped = Vec::new();
-    for path in paths {
-        let normalized = path.canonicalize().unwrap_or_else(|_| path.clone());
-        if deduped.iter().any(|existing: &PathBuf| {
-            existing.canonicalize().unwrap_or_else(|_| existing.clone()) == normalized
-        }) {
-            continue;
-        }
-        deduped.push(path);
     }
     deduped
 }

@@ -12,6 +12,7 @@ const browseFiles = vi.fn();
 const desktopApi = vi.hoisted(() => ({
   browseDesktopFiles: vi.fn(),
   chooseDesktopRuntimePython: vi.fn(),
+  installDesktopRuntimeProfile: vi.fn(),
   isDesktopBridgeConnectionError: vi.fn(),
   isTauriDesktop: vi.fn(),
   onDesktopRuntimeProgress: vi.fn(),
@@ -73,6 +74,7 @@ describe("SystemSettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     desktopApi.chooseDesktopRuntimePython.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
+    desktopApi.installDesktopRuntimeProfile.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
     desktopApi.isDesktopBridgeConnectionError.mockReturnValue(false);
     desktopApi.isTauriDesktop.mockReturnValue(false);
     desktopApi.onDesktopRuntimeProgress.mockResolvedValue(vi.fn());
@@ -126,34 +128,35 @@ describe("SystemSettingsPage", () => {
     expect(screen.queryByText("桌面运行环境")).not.toBeInTheDocument();
   });
 
-  it("manages desktop runtime candidates in the system settings wizard", async () => {
+  it("shows only the active desktop runtime and installs optional runtime profiles", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
     const runtimeView = {
       bridgeUrl: "",
       candidates: [
         {
           id: "python-ready",
-          kind: "conda",
-          label: "conda env shinsekai",
-          managed: false,
+          displayPath: "C:\\Shinsekai\\runtime\\python.exe",
+          kind: "managed",
+          label: "Shinsekai bundled runtime",
+          managed: true,
           missingImports: [],
           missingPackages: [],
-          path: "/opt/miniconda3/envs/shinsekai/bin/python",
+          path: "\\\\?\\C:\\Shinsekai\\runtime\\python.exe",
           repairActions: ["start"],
           score: 100,
-          selected: false,
+          selected: true,
           status: "ready",
           version: "3.10.20",
           warnings: [],
         },
         {
           id: "python-missing",
-          kind: "conda",
-          label: "conda env missing deps",
-          managed: false,
+          kind: "managed",
+          label: "Shinsekai managed runtime",
+          managed: true,
           missingImports: ["pygame"],
           missingPackages: ["pyyaml"],
-          path: "/opt/miniconda3/envs/missing/bin/python",
+          path: "/home/user/.local/share/Shinsekai/runtime/bin/python3",
           repairActions: ["installRuntimeDeps"],
           score: 20,
           selected: false,
@@ -162,10 +165,11 @@ describe("SystemSettingsPage", () => {
           warnings: [],
         },
       ],
-      message: "Python was found, but Shinsekai core dependencies are missing.",
-      status: "needsAction",
+      selectedCandidateId: "python-ready",
+      status: "ready",
     };
     desktopApi.scanDesktopRuntime.mockResolvedValue(runtimeView);
+    desktopApi.installDesktopRuntimeProfile.mockResolvedValue(runtimeView);
     desktopApi.repairDesktopRuntime.mockResolvedValue(runtimeView);
     desktopApi.selectDesktopRuntime.mockResolvedValue(runtimeView);
     mockGetAppConfig.mockResolvedValue(mockSystemConfig());
@@ -173,43 +177,34 @@ describe("SystemSettingsPage", () => {
     renderPage();
 
     expect(await screen.findByText("桌面运行环境")).toBeInTheDocument();
-    expect(await screen.findByText("conda env shinsekai")).toBeInTheDocument();
-    expect(screen.getByText("conda env missing deps")).toBeInTheDocument();
-    expect(screen.getByText(/pyyaml, pygame/)).toBeInTheDocument();
+    expect(await screen.findByText("Shinsekai bundled runtime")).toBeInTheDocument();
+    expect(screen.queryByText("Shinsekai managed runtime")).not.toBeInTheDocument();
+    expect(screen.getByText("C:\\Shinsekai\\runtime\\python.exe")).toBeInTheDocument();
+    expect(screen.queryByText(/\\\\\?/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pyyaml, pygame/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "安装依赖" }));
+    fireEvent.click(screen.getByRole("button", { name: "安装媒体运行环境" }));
     await waitFor(() => {
-      expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-missing", "installRuntimeDeps");
+      expect(desktopApi.installDesktopRuntimeProfile).toHaveBeenCalledWith("media");
     });
-
-    fireEvent.click(screen.getByRole("button", { name: "使用此运行环境" }));
-    await waitFor(() => {
-      expect(desktopApi.selectDesktopRuntime).toHaveBeenCalledWith("python-ready");
-    });
+    expect(desktopApi.repairDesktopRuntime).not.toHaveBeenCalled();
+    expect(desktopApi.selectDesktopRuntime).not.toHaveBeenCalled();
   });
 
-  it("uses a manually selected Python runtime path from system settings", async () => {
+  it("does not offer manual Python selection from system settings", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
     desktopApi.scanDesktopRuntime.mockResolvedValue({
       bridgeUrl: "",
       candidates: [],
-      message: "未找到 Python 运行环境。",
+      message: "未找到托管运行环境。",
       status: "needsAction",
     });
     mockGetAppConfig.mockResolvedValue(mockSystemConfig());
 
     renderPage();
 
-    await screen.findByText("未找到 Python 运行环境。");
-    fireEvent.change(await screen.findByLabelText("Python 可执行文件"), {
-      target: { value: "/opt/python/bin/python" },
-    });
-    const usePythonButton = screen.getByRole("button", { name: "使用 Python" });
-    await waitFor(() => expect(usePythonButton).toBeEnabled());
-    fireEvent.click(usePythonButton);
-
-    await waitFor(() => {
-      expect(desktopApi.chooseDesktopRuntimePython).toHaveBeenCalledWith("/opt/python/bin/python");
-    });
+    await screen.findByText("未找到托管运行环境。");
+    expect(screen.queryByLabelText("Python 可执行文件")).not.toBeInTheDocument();
+    expect(desktopApi.chooseDesktopRuntimePython).not.toHaveBeenCalled();
   });
 });

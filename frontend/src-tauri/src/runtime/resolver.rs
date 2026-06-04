@@ -24,6 +24,7 @@ pub struct RuntimeCandidateView {
     pub python_id: Option<String>,
     pub label: String,
     pub path: String,
+    pub display_path: String,
     pub kind: RuntimeKind,
     pub version: Option<String>,
     pub status: RuntimeCandidateStatus,
@@ -232,6 +233,7 @@ fn resolve_python_install(
         python_id: Some(install.id.clone()),
         label: install.label.clone(),
         path: install.executable.display().to_string(),
+        display_path: super::python_probe::display_path(&install.executable),
         kind: runtime_kind(install.kind),
         version: install.version.clone(),
         status,
@@ -580,12 +582,8 @@ fn macos_process_translated() -> bool {
 
 fn runtime_kind(kind: PythonKind) -> RuntimeKind {
     match kind {
-        PythonKind::Explicit => RuntimeKind::Explicit,
         PythonKind::Managed => RuntimeKind::Managed,
         PythonKind::ManagedVenv => RuntimeKind::ManagedVenv,
-        PythonKind::Portable => RuntimeKind::Portable,
-        PythonKind::Conda => RuntimeKind::Conda,
-        PythonKind::Path => RuntimeKind::Path,
     }
 }
 
@@ -642,7 +640,7 @@ fn scan_message(
         return Some(format!("Ready to start with {}.", candidate.label));
     }
     if candidates.is_empty() {
-        return Some("No Python runtime candidates were found.".to_string());
+        return Some("No Shinsekai managed Python runtime was found.".to_string());
     }
     if candidates
         .iter()
@@ -650,7 +648,7 @@ fn scan_message(
     {
         return Some("Python was found, but Shinsekai core dependencies are missing.".to_string());
     }
-    Some("No compatible Shinsekai runtime is ready. Choose a Python runtime or install Python first.".to_string())
+    Some("No compatible Shinsekai managed runtime is ready. Restore the bundled runtime or repair its dependencies.".to_string())
 }
 
 fn shorten(value: &str, limit: usize) -> String {

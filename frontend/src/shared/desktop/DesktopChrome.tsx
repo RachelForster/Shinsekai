@@ -3,10 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactN
 
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
-import { FilePicker } from "../ui/FormControls";
 import {
-  browseDesktopFiles,
-  chooseDesktopRuntimePython,
   closeDesktopWindow,
   desktopRestartErrorMessage,
   getDesktopRuntimeState,
@@ -26,6 +23,7 @@ import {
   type DesktopRuntimeRepairAction,
   type DesktopRuntimeState,
 } from "./desktopApi";
+import { RuntimeProgressPanel } from "./RuntimeProgressPanel";
 
 function DesktopTitleBar() {
   const { t } = useI18n();
@@ -117,7 +115,6 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   });
   const [runtimeProgress, setRuntimeProgress] = useState<DesktopRuntimeProgress | null>(null);
   const [busy, setBusy] = useState(false);
-  const [pythonPath, setPythonPath] = useState("");
 
   useEffect(() => {
     let stopped = false;
@@ -242,31 +239,6 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const handleChoosePython = useCallback(async () => {
-    const path = pythonPath.trim();
-    if (!path) {
-      return;
-    }
-    setBusy(true);
-    setRuntime((current) => ({ ...current, status: "checking" }));
-    try {
-      setRuntime(await chooseDesktopRuntimePython(path));
-    } catch (error) {
-      if (isDesktopBridgeConnectionError(error)) {
-        void writeDesktopRestartDebugLog(
-          `DesktopRuntimeGate choose Python displayed bridge error: ${desktopRestartErrorMessage(error)}`,
-        );
-      }
-      setRuntime((current) => ({
-        ...current,
-        message: desktopRestartErrorMessage(error),
-        status: "error",
-      }));
-    } finally {
-      setBusy(false);
-    }
-  }, [pythonPath]);
-
   if (runtime.status === "ready") {
     return <>{children}</>;
   }
@@ -309,69 +281,8 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
             </div>
           </div>
         ) : null}
-        <div className="desktop-runtime__import">
-          <label htmlFor="desktop-runtime-python">{t("desktop.runtime.pythonPathLabel")}</label>
-          <div className="desktop-runtime__import-row">
-            <FilePicker
-              autoComplete="off"
-              disabled={busy}
-              id="desktop-runtime-python"
-              onChange={(event) => setPythonPath(event.currentTarget.value)}
-              onPathChange={setPythonPath}
-              pickLabel={t("desktop.runtime.choosePythonButton")}
-              pickerBrowse={browseDesktopFiles}
-              pickerMode="path"
-              pickerTitle={t("desktop.runtime.pythonPathLabel")}
-              placeholder={t("desktop.runtime.pythonPathPlaceholder")}
-              type="text"
-              value={pythonPath}
-            />
-            <Button disabled={busy || !pythonPath.trim()} onClick={handleChoosePython}>
-              {t("desktop.runtime.usePythonButton")}
-            </Button>
-          </div>
-        </div>
       </section>
     </main>
-  );
-}
-
-function RuntimeProgressPanel({ progress }: { progress: DesktopRuntimeProgress }) {
-  const { t } = useI18n();
-  const hasTotal = typeof progress.total === "number" && progress.total > 0;
-  const percent = hasTotal
-    ? Math.max(0, Math.min(100, Math.round(((progress.downloaded ?? 0) / progress.total!) * 100)))
-    : null;
-  return (
-    <div className="desktop-runtime-progress" aria-live="polite">
-      <div className="desktop-runtime-progress__header">
-        <span>{progress.message || runtimeProgressPhaseLabel(progress.phase, t)}</span>
-        {percent !== null ? <strong>{t("desktop.runtime.progressPercent", { percent })}</strong> : null}
-      </div>
-      {percent !== null ? (
-        <div
-          aria-label={t("desktop.runtime.progressLabel")}
-          aria-valuemax={100}
-          aria-valuemin={0}
-          aria-valuenow={percent}
-          className="desktop-runtime-progress__bar"
-          role="progressbar"
-        >
-          <span style={{ width: `${percent}%` }} />
-        </div>
-      ) : null}
-      {hasTotal ? (
-        <p className="desktop-runtime-progress__meta">
-          {t("desktop.runtime.progressBytes", {
-            downloaded: formatRuntimeBytes(progress.downloaded ?? 0),
-            total: formatRuntimeBytes(progress.total ?? 0),
-          })}
-          {typeof progress.speedBytesPerSec === "number" && progress.speedBytesPerSec > 0
-            ? ` · ${t("desktop.runtime.progressSpeed", { speed: formatRuntimeBytes(progress.speedBytesPerSec) })}`
-            : ""}
-        </p>
-      ) : null}
-    </div>
   );
 }
 
@@ -410,7 +321,7 @@ function RuntimeCandidateRow({
       {candidate.path ? (
         <p className="desktop-runtime-candidate__path">
           <span>{t("desktop.runtime.candidatePath")}</span>
-          <code>{candidate.path}</code>
+          <code>{candidate.displayPath ?? candidate.path}</code>
         </p>
       ) : null}
       {candidate.message ? <p className="desktop-runtime-candidate__message">{candidate.message}</p> : null}
@@ -460,31 +371,6 @@ function runtimeCandidateStatusLabel(status: DesktopRuntimeCandidateStatus, t: R
     wrongArchitecture: "desktop.runtime.status.wrongArchitecture",
   };
   return t(keys[status]);
-}
-
-function runtimeProgressPhaseLabel(phase: DesktopRuntimeProgress["phase"], t: ReturnType<typeof useI18n>["t"]) {
-  const keys: Record<DesktopRuntimeProgress["phase"], Parameters<typeof t>[0]> = {
-    checkingBridge: "desktop.runtime.phase.checkingBridge",
-    installingDeps: "desktop.runtime.phase.installingDeps",
-    probing: "desktop.runtime.phase.probing",
-    ready: "desktop.runtime.phase.ready",
-  };
-  return t(keys[phase]);
-}
-
-function formatRuntimeBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB"];
-  let size = value;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  const precision = unitIndex === 0 || size >= 100 ? 0 : 1;
-  return `${size.toFixed(precision)} ${units[unitIndex]}`;
 }
 
 export function DesktopChrome({ children }: { children: ReactNode }) {

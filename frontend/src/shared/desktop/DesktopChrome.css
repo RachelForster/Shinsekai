@@ -242,6 +242,25 @@
   transition: width 150ms ease;
 }
 
+.desktop-runtime-progress__bar[data-indeterminate="true"] span {
+  width: 44%;
+  animation: desktop-runtime-progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes desktop-runtime-progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(80%);
+  }
+
+  100% {
+    transform: translateX(240%);
+  }
+}
+
 .desktop-runtime-progress__meta {
   margin: 0;
   color: var(--color-text-muted);

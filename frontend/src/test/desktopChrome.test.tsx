@@ -112,7 +112,7 @@ describe("DesktopChrome", () => {
     expect(desktopApi.getDesktopRuntimeState).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the runtime gate open for manual Python selection when no candidate exists", async () => {
+  it("keeps the runtime gate open when no managed runtime candidate exists", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
     desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "",
@@ -126,7 +126,7 @@ describe("DesktopChrome", () => {
     expect(await screen.findByText("Runtime update required")).toBeInTheDocument();
     expect(screen.getByText("缺少 Python 运行环境")).toBeInTheDocument();
     expect(screen.queryByText("App content")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Python executable")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Python executable")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Import" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
   });
@@ -155,12 +155,13 @@ describe("DesktopChrome", () => {
       candidates: [
         {
           id: "python-ready",
-          kind: "conda",
-          label: "conda env shinsekai",
-          managed: false,
+          displayPath: "C:\\Shinsekai\\runtime\\python.exe",
+          kind: "managed",
+          label: "Shinsekai bundled runtime",
+          managed: true,
           missingImports: [],
           missingPackages: [],
-          path: "/opt/miniconda3/envs/shinsekai/bin/python",
+          path: "\\\\?\\C:\\Shinsekai\\runtime\\python.exe",
           repairActions: ["start"],
           score: 100,
           selected: false,
@@ -170,12 +171,12 @@ describe("DesktopChrome", () => {
         },
         {
           id: "python-missing",
-          kind: "path",
-          label: "PATH python3",
-          managed: false,
+          kind: "managed",
+          label: "Shinsekai managed runtime",
+          managed: true,
           missingImports: ["pygame"],
           missingPackages: ["pyyaml"],
-          path: "/usr/bin/python3",
+          path: "/home/user/.local/share/Shinsekai/runtime/bin/python3",
           repairActions: ["createManagedVenv"],
           score: 10,
           selected: false,
@@ -191,8 +192,10 @@ describe("DesktopChrome", () => {
     renderChrome(<main>App content</main>);
 
     expect(await screen.findByText("Runtime candidates")).toBeInTheDocument();
-    expect(screen.getByText("conda env shinsekai")).toBeInTheDocument();
-    expect(screen.getByText("PATH python3")).toBeInTheDocument();
+    expect(screen.getByText("Shinsekai bundled runtime")).toBeInTheDocument();
+    expect(screen.getByText("Shinsekai managed runtime")).toBeInTheDocument();
+    expect(screen.getByText("C:\\Shinsekai\\runtime\\python.exe")).toBeInTheDocument();
+    expect(screen.queryByText(/\\\\\?/)).not.toBeInTheDocument();
     expect(screen.getByText(/pyyaml, pygame/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Use this runtime" }));
@@ -221,7 +224,7 @@ describe("DesktopChrome", () => {
     renderChrome(<main>App content</main>);
 
     expect(await screen.findByText("Installing Shinsekai runtime dependencies")).toBeInTheDocument();
-    expect(screen.queryByRole("progressbar", { name: "Runtime progress" })).not.toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Runtime progress" })).toBeInTheDocument();
   });
 
   it("repairs a missing dependency candidate with an isolated runtime", async () => {
@@ -258,19 +261,19 @@ describe("DesktopChrome", () => {
     });
   });
 
-  it("installs missing dependencies into a conda runtime candidate", async () => {
+  it("installs missing dependencies into a managed runtime candidate", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
     desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "",
       candidates: [
         {
-          id: "python-conda",
-          kind: "conda",
-          label: "conda env shinsekai",
-          managed: false,
+          id: "python-managed",
+          kind: "managed",
+          label: "Shinsekai bundled runtime",
+          managed: true,
           missingImports: ["pygame"],
           missingPackages: ["pyyaml"],
-          path: "/opt/miniconda3/envs/shinsekai/bin/python",
+          path: "/opt/Shinsekai/runtime/bin/python3",
           repairActions: ["installRuntimeDeps"],
           score: 10,
           selected: false,
@@ -288,49 +291,7 @@ describe("DesktopChrome", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Install dependencies" }));
 
     await waitFor(() => {
-      expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-conda", "installRuntimeDeps");
-    });
-  });
-
-  it("uses a manually selected Python runtime path from the gate", async () => {
-    desktopApi.isTauriDesktop.mockReturnValue(true);
-    desktopApi.getDesktopRuntimeState.mockResolvedValue({
-      bridgeUrl: "",
-      candidates: [],
-      message: "No Python runtime candidates were found.",
-      status: "needsAction",
-    });
-
-    renderChrome(<main>App content</main>);
-
-    fireEvent.change(await screen.findByLabelText("Python executable"), {
-      target: { value: "/opt/python/bin/python" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Use Python" }));
-
-    await waitFor(() => {
-      expect(desktopApi.chooseDesktopRuntimePython).toHaveBeenCalledWith("/opt/python/bin/python");
-    });
-  });
-
-  it("selects a runtime directory from the gate file browser", async () => {
-    desktopApi.isTauriDesktop.mockReturnValue(true);
-    desktopApi.getDesktopRuntimeState.mockResolvedValue({
-      bridgeUrl: "",
-      candidates: [],
-      message: "No Python runtime candidates were found.",
-      status: "needsAction",
-    });
-
-    renderChrome(<main>App content</main>);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Choose Python" }));
-    fireEvent.click(await screen.findByText("runtime"));
-    fireEvent.click(screen.getByRole("button", { name: "Select path" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use Python" }));
-
-    await waitFor(() => {
-      expect(desktopApi.chooseDesktopRuntimePython).toHaveBeenCalledWith("/tmp/runtime");
+      expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-managed", "installRuntimeDeps");
     });
   });
 });

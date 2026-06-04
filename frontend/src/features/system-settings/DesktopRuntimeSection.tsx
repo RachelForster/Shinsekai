@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCcw } from "lucide-react";
+import { DownloadCloud, RefreshCcw } from "lucide-react";
 
 import {
-  browseDesktopFiles,
-  chooseDesktopRuntimePython,
+  installDesktopRuntimeProfile,
   isTauriDesktop,
   onDesktopRuntimeProgress,
   repairDesktopRuntime,
@@ -12,11 +11,13 @@ import {
   type DesktopRuntimeCandidate,
   type DesktopRuntimeCandidateStatus,
   type DesktopRuntimeProgress,
+  type DesktopRuntimeProfile,
   type DesktopRuntimeRepairAction,
   type DesktopRuntimeState,
 } from "../../shared/desktop/desktopApi";
+import { RuntimeProgressPanel } from "../../shared/desktop/RuntimeProgressPanel";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, Button, FilePicker } from "../../shared/ui";
+import { AsyncButton, Button } from "../../shared/ui";
 
 function runtimeCandidateStatusLabel(status: DesktopRuntimeCandidateStatus, t: ReturnType<typeof useI18n>["t"]) {
   const keys: Record<DesktopRuntimeCandidateStatus, Parameters<typeof t>[0]> = {
@@ -31,19 +32,6 @@ function runtimeCandidateStatusLabel(status: DesktopRuntimeCandidateStatus, t: R
   return t(keys[status]);
 }
 
-function progressLabel(progress: DesktopRuntimeProgress, t: ReturnType<typeof useI18n>["t"]) {
-  if (progress.message) {
-    return progress.message;
-  }
-  const keys: Record<DesktopRuntimeProgress["phase"], Parameters<typeof t>[0]> = {
-    checkingBridge: "desktop.runtime.phase.checkingBridge",
-    installingDeps: "desktop.runtime.phase.installingDeps",
-    probing: "desktop.runtime.phase.probing",
-    ready: "desktop.runtime.phase.ready",
-  };
-  return t(keys[progress.phase]);
-}
-
 function candidateActions(candidate: DesktopRuntimeCandidate) {
   return new Set<DesktopRuntimeRepairAction>(candidate.repairActions);
 }
@@ -53,23 +41,32 @@ export function DesktopRuntimeSection() {
   const { t } = useI18n();
   const [runtime, setRuntime] = useState<DesktopRuntimeState | null>(null);
   const [runtimeProgress, setRuntimeProgress] = useState<DesktopRuntimeProgress | null>(null);
-  const [pythonPath, setPythonPath] = useState("");
   const [busy, setBusy] = useState(false);
+  const [activeProfile, setActiveProfile] = useState<DesktopRuntimeProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const runRuntimeAction = useCallback(async (action: () => Promise<DesktopRuntimeState>) => {
-    setBusy(true);
-    setError(null);
-    try {
-      setRuntime(await action());
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const runRuntimeAction = useCallback(
+    async (action: () => Promise<DesktopRuntimeState>, profile?: DesktopRuntimeProfile) => {
+      setBusy(true);
+      setActiveProfile(profile ?? null);
+      setError(null);
+      try {
+        setRuntime(await action());
+      } catch (error) {
+        setError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setActiveProfile(null);
+        setBusy(false);
+      }
+    },
+    [],
+  );
 
   const refresh = useCallback(() => runRuntimeAction(scanDesktopRuntime), [runRuntimeAction]);
+  const installRuntimeProfile = useCallback(
+    (profile: DesktopRuntimeProfile) => runRuntimeAction(() => installDesktopRuntimeProfile(profile), profile),
+    [runRuntimeAction],
+  );
 
   useEffect(() => {
     if (!desktop) {
@@ -105,13 +102,11 @@ export function DesktopRuntimeSection() {
     return null;
   }
 
-  const choosePython = () => {
-    const path = pythonPath.trim();
-    if (!path) {
-      return;
-    }
-    void runRuntimeAction(() => chooseDesktopRuntimePython(path));
-  };
+  const currentCandidateId =
+    runtime?.selectedCandidateId ?? runtime?.candidates.find((candidate) => candidate.selected)?.id;
+  const visibleCandidates = currentCandidateId
+    ? (runtime?.candidates ?? []).filter((candidate) => candidate.id === currentCandidateId)
+    : (runtime?.candidates ?? []);
 
   return (
     <section className="section desktop-runtime-settings">
@@ -134,12 +129,36 @@ export function DesktopRuntimeSection() {
       {runtime?.message || error ? (
         <p className="desktop-runtime-settings__message">{error ?? runtime?.message}</p>
       ) : null}
-      {runtimeProgress ? (
-        <p className="desktop-runtime-settings__progress">{progressLabel(runtimeProgress, t)}</p>
-      ) : null}
+      {runtimeProgress ? <RuntimeProgressPanel progress={runtimeProgress} /> : null}
+      <div className="desktop-runtime-settings__optional">
+        <div>
+          <h3>{t("system.runtime.optionalTitle")}</h3>
+          <p>{t("system.runtime.optionalDescription")}</p>
+        </div>
+        <div className="desktop-runtime-settings__optional-actions">
+          <AsyncButton
+            disabled={busy}
+            icon={<DownloadCloud aria-hidden className="button__icon" />}
+            loading={activeProfile === "media"}
+            onClick={() => void installRuntimeProfile("media")}
+            variant="ghost"
+          >
+            {t("system.runtime.installMedia")}
+          </AsyncButton>
+          <AsyncButton
+            disabled={busy}
+            icon={<DownloadCloud aria-hidden className="button__icon" />}
+            loading={activeProfile === "local-ai"}
+            onClick={() => void installRuntimeProfile("local-ai")}
+            variant="ghost"
+          >
+            {t("system.runtime.installLocalAi")}
+          </AsyncButton>
+        </div>
+      </div>
       <div className="desktop-runtime-settings__list">
-        {runtime?.candidates?.length ? (
-          runtime.candidates.map((candidate) => {
+        {visibleCandidates.length ? (
+          visibleCandidates.map((candidate) => {
             const actions = candidateActions(candidate);
             return (
               <article
@@ -159,7 +178,7 @@ export function DesktopRuntimeSection() {
                     {t("desktop.runtime.candidatePythonVersion")}: {candidate.pythonVersion}
                   </p>
                 ) : null}
-                {candidate.path ? <code>{candidate.path}</code> : null}
+                {candidate.path ? <code>{candidate.displayPath ?? candidate.path}</code> : null}
                 {candidate.message ? <p>{candidate.message}</p> : null}
                 {[...candidate.missingPackages, ...candidate.missingImports].length ? (
                   <p>
@@ -210,26 +229,6 @@ export function DesktopRuntimeSection() {
         ) : (
           <p className="desktop-runtime-settings__empty">{t("system.runtime.noCandidates")}</p>
         )}
-      </div>
-      <div className="desktop-runtime-settings__import">
-        <label htmlFor="system-runtime-python">{t("desktop.runtime.pythonPathLabel")}</label>
-        <div className="desktop-runtime-settings__import-row">
-          <FilePicker
-            disabled={busy}
-            id="system-runtime-python"
-            onChange={(event) => setPythonPath(event.currentTarget.value)}
-            onPathChange={setPythonPath}
-            pickLabel={t("desktop.runtime.choosePythonButton")}
-            pickerBrowse={browseDesktopFiles}
-            pickerMode="path"
-            pickerTitle={t("desktop.runtime.pythonPathLabel")}
-            placeholder={t("desktop.runtime.pythonPathPlaceholder")}
-            value={pythonPath}
-          />
-          <Button disabled={busy || !pythonPath.trim()} onClick={choosePython}>
-            {t("desktop.runtime.usePythonButton")}
-          </Button>
-        </div>
       </div>
     </section>
   );

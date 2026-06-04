@@ -49,12 +49,14 @@ unsafe extern "C" {
 
 struct BridgeProcess {
     child: Mutex<Option<Child>>,
+    candidate_id: Option<String>,
 }
 
 impl BridgeProcess {
-    fn new(child: Child) -> Self {
+    fn new(child: Child, candidate_id: Option<String>) -> Self {
         Self {
             child: Mutex::new(Some(child)),
+            candidate_id,
         }
     }
 
@@ -175,6 +177,14 @@ impl DesktopState {
             .unwrap_or(false)
     }
 
+    fn bridge_candidate_id(&self) -> Option<String> {
+        self.bridge
+            .lock()
+            .ok()?
+            .as_ref()
+            .and_then(|bridge| bridge.candidate_id.clone())
+    }
+
     fn runtime_view(&self) -> DesktopRuntimeView {
         let phase = self
             .runtime
@@ -193,13 +203,20 @@ impl DesktopState {
             DesktopRuntimePhase::Ready { view } => ("ready", None, view),
             DesktopRuntimePhase::Error { message, view } => ("error", Some(message), view),
         };
-        let selected_candidate_id = scan_view
+        let scanned_selected_candidate_id = scan_view
             .as_ref()
             .and_then(|view| view.selected_candidate_id.clone());
         let recommended_action = scan_view.as_ref().and_then(|view| view.recommended_action);
-        let candidates = scan_view
+        let mut candidates = scan_view
             .map(|view| view.candidates)
             .unwrap_or_else(Vec::new);
+        let bridge_candidate_id = self.bridge_candidate_id();
+        let selected_candidate_id = bridge_candidate_id
+            .filter(|id| candidates.iter().any(|candidate| candidate.id == *id))
+            .or(scanned_selected_candidate_id);
+        for candidate in &mut candidates {
+            candidate.selected = Some(&candidate.id) == selected_candidate_id.as_ref();
+        }
         DesktopRuntimeView {
             status,
             message,
@@ -263,6 +280,7 @@ pub fn run() {
             desktop_runtime_select,
             desktop_runtime_choose_python,
             desktop_runtime_repair,
+            desktop_runtime_install_profile,
             desktop_files_browse,
             desktop_restart_debug_log,
             desktop_app_restart,
@@ -373,16 +391,70 @@ fn desktop_runtime_state(state: State<'_, DesktopState>) -> DesktopRuntimeView {
     state.runtime_view()
 }
 
+async fn run_runtime_blocking<T, F>(
+    label: &'static str,
+    app: AppHandle,
+    task: F,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(&AppHandle, &DesktopState) -> Result<T, String> + Send + 'static,
+{
+    restart_debug_log(format!("{label} command received"));
+    let join = tauri::async_runtime::spawn_blocking(move || {
+        restart_debug_log(format!("{label} background start"));
+        let state = app.state::<DesktopState>();
+        let result = task(&app, state.inner());
+        match &result {
+            Ok(_) => restart_debug_log(format!("{label} background completed")),
+            Err(error) => restart_debug_log(format!("{label} background failed error={error}")),
+        }
+        result
+    });
+    match join.await {
+        Ok(result) => result,
+        Err(error) => Err(format!("{label} background task failed: {error}")),
+    }
+}
+
+fn runtime_task_error_view(app: &AppHandle, message: String) -> DesktopRuntimeView {
+    restart_debug_log(format!("desktop_runtime command error message={message}"));
+    let state = app.state::<DesktopState>();
+    let view = runtime::scan_runtime_view(app, &state.source_root);
+    state.set_runtime(DesktopRuntimePhase::Error {
+        message,
+        view: Some(view),
+    });
+    state.runtime_view()
+}
+
 #[tauri::command]
-fn desktop_runtime_scan(app: AppHandle, state: State<'_, DesktopState>) -> DesktopRuntimeView {
+async fn desktop_runtime_scan(app: AppHandle) -> DesktopRuntimeView {
+    match run_runtime_blocking("desktop_runtime_scan", app.clone(), |app, state| {
+        Ok(desktop_runtime_scan_blocking(app, state))
+    })
+    .await
+    {
+        Ok(view) => view,
+        Err(message) => runtime_task_error_view(&app, message),
+    }
+}
+
+fn desktop_runtime_scan_blocking(app: &AppHandle, state: &DesktopState) -> DesktopRuntimeView {
     emit_runtime_progress(
-        &app,
+        app,
         "probing",
         None,
         None,
         Some("Scanning runtime candidates"),
     );
-    let view = runtime::scan_runtime_view(&app, &state.source_root);
+    restart_debug_log("desktop_runtime_scan scanning candidates");
+    let view = runtime::scan_runtime_view(app, &state.source_root);
+    restart_debug_log(format!(
+        "desktop_runtime_scan candidates={} selected={:?}",
+        view.candidates.len(),
+        view.selected_candidate_id
+    ));
     state.set_runtime(phase_after_runtime_scan(state.has_bridge(), view));
     state.runtime_view()
 }
@@ -399,23 +471,25 @@ fn phase_after_runtime_scan(
 }
 
 #[tauri::command]
-fn desktop_runtime_start(
+async fn desktop_runtime_start(
     app: AppHandle,
-    state: State<'_, DesktopState>,
     candidate_id: Option<String>,
 ) -> Result<DesktopRuntimeView, String> {
-    start_runtime_candidate_for_state(&app, &state, candidate_id.as_deref())
+    run_runtime_blocking("desktop_runtime_start", app, move |app, state| {
+        start_runtime_candidate_for_state(app, state, candidate_id.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]
-fn desktop_runtime_select(
+async fn desktop_runtime_select(
     app: AppHandle,
-    state: State<'_, DesktopState>,
     candidate_id: String,
 ) -> Result<DesktopRuntimeView, String> {
-    runtime::save_runtime_preference(&app, &state.source_root, &candidate_id)
-        .map_err(|error| error.to_string())?;
-    start_runtime_candidate_for_state(&app, &state, Some(&candidate_id))
+    run_runtime_blocking("desktop_runtime_select", app, move |app, state| {
+        start_runtime_candidate_for_state(app, state, Some(&candidate_id))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -424,56 +498,118 @@ fn desktop_runtime_choose_python(
     state: State<'_, DesktopState>,
     path: String,
 ) -> Result<DesktopRuntimeView, String> {
-    emit_runtime_progress(
+    restart_debug_log(format!("desktop_runtime_choose_python ignored path={path}"));
+    Err(set_runtime_error_state(
         &app,
-        "probing",
-        None,
-        Some("local".to_string()),
-        Some("Checking selected Python runtime"),
-    );
-    let candidate_id = runtime::save_runtime_preference_for_path(&app, &PathBuf::from(path))
-        .map_err(|error| set_runtime_error_state(&app, &state, error.to_string()))?;
-    let scan = runtime::scan_runtime_view(&app, &state.source_root);
-    let chosen_is_ready = scan
-        .candidates
-        .iter()
-        .find(|candidate| candidate.id == candidate_id)
-        .map(|candidate| candidate.status == runtime::RuntimeCandidateStatus::Ready)
-        .unwrap_or(false);
-    if chosen_is_ready {
-        return start_runtime_candidate_for_state(&app, &state, Some(&candidate_id));
-    }
-    state.set_runtime(DesktopRuntimePhase::NeedsAction { view: scan });
-    Ok(state.runtime_view())
+        &state,
+        "Manual Python selection is disabled; Shinsekai uses its managed Python runtime."
+            .to_string(),
+    ))
 }
 
 #[tauri::command]
-fn desktop_runtime_repair(
+async fn desktop_runtime_repair(
     app: AppHandle,
-    state: State<'_, DesktopState>,
+    candidate_id: String,
+    action: runtime::RuntimeRepairActionKind,
+) -> Result<DesktopRuntimeView, String> {
+    run_runtime_blocking("desktop_runtime_repair", app, move |app, state| {
+        desktop_runtime_repair_blocking(app, state, candidate_id, action)
+    })
+    .await
+}
+
+fn desktop_runtime_repair_blocking(
+    app: &AppHandle,
+    state: &DesktopState,
     candidate_id: String,
     action: runtime::RuntimeRepairActionKind,
 ) -> Result<DesktopRuntimeView, String> {
     emit_runtime_progress(
-        &app,
+        app,
         "installingDeps",
         Some(candidate_id.clone()),
         None,
         Some("Repairing runtime candidate"),
     );
-    let scan = runtime::scan_runtime_view(&app, &state.source_root);
+    restart_debug_log(format!(
+        "desktop_runtime_repair action={action:?} candidate_id={candidate_id}"
+    ));
+    let scan = runtime::scan_runtime_view(app, &state.source_root);
     state.set_runtime(DesktopRuntimePhase::Updating { view: Some(scan) });
     let repaired_path =
-        runtime::repair_runtime_candidate(&app, &state.source_root, &candidate_id, action)
-            .map_err(|error| set_runtime_error_state(&app, &state, error.to_string()))?;
+        runtime::repair_runtime_candidate(app, &state.source_root, &candidate_id, action)
+            .map_err(|error| set_runtime_error_state(app, state, error.to_string()))?;
     emit_runtime_progress(
-        &app,
+        app,
         "checkingBridge",
         Some(candidate_id),
         None,
         Some("Checking repaired runtime"),
     );
-    start_repaired_runtime_for_state(&app, &state, repaired_path.as_deref())
+    start_repaired_runtime_for_state(app, state, repaired_path.as_deref())
+}
+
+#[tauri::command]
+async fn desktop_runtime_install_profile(
+    app: AppHandle,
+    profile: String,
+) -> Result<DesktopRuntimeView, String> {
+    run_runtime_blocking("desktop_runtime_install_profile", app, move |app, state| {
+        desktop_runtime_install_profile_blocking(app, state, profile)
+    })
+    .await
+}
+
+fn desktop_runtime_install_profile_blocking(
+    app: &AppHandle,
+    state: &DesktopState,
+    profile: String,
+) -> Result<DesktopRuntimeView, String> {
+    let profile = profile.trim().to_string();
+    restart_debug_log(format!("desktop_runtime_install_profile profile={profile}"));
+    emit_runtime_progress(
+        app,
+        "installingDeps",
+        Some(profile.clone()),
+        None,
+        Some("Installing optional runtime dependencies"),
+    );
+    let scan = runtime::scan_runtime_view(app, &state.source_root);
+    state.set_runtime(DesktopRuntimePhase::Updating { view: Some(scan) });
+    let Some(candidate_id) = state.bridge_candidate_id() else {
+        let message =
+            "Shinsekai managed Python runtime must be running before installing optional runtime dependencies"
+                .to_string();
+        restart_debug_log(format!(
+            "desktop_runtime_install_profile skipped profile={profile} message={message}"
+        ));
+        state.set_runtime(phase_after_runtime_scan(
+            state.has_bridge(),
+            runtime::scan_runtime_view(app, &state.source_root),
+        ));
+        return Err(message);
+    };
+    match runtime::install_runtime_profile(app, &state.source_root, &profile, Some(&candidate_id)) {
+        Ok(python) => {
+            restart_debug_log(format!(
+                "desktop_runtime_install_profile ready profile={profile} candidate_id={candidate_id} python={}",
+                python.display()
+            ));
+            let view = runtime::scan_runtime_view(app, &state.source_root);
+            state.set_runtime(phase_after_runtime_scan(state.has_bridge(), view));
+            Ok(state.runtime_view())
+        }
+        Err(error) => {
+            let message = error.to_string();
+            restart_debug_log(format!(
+                "desktop_runtime_install_profile failed profile={profile} message={message}"
+            ));
+            let view = runtime::scan_runtime_view(app, &state.source_root);
+            state.set_runtime(phase_after_runtime_scan(state.has_bridge(), view));
+            Err(message)
+        }
+    }
 }
 
 #[tauri::command]
@@ -674,7 +810,16 @@ fn start_runtime_candidate_for_state(
     state: &DesktopState,
     candidate_id: Option<&str>,
 ) -> Result<DesktopRuntimeView, String> {
+    restart_debug_log(format!(
+        "start_runtime_candidate begin candidate_id={}",
+        candidate_id.unwrap_or("")
+    ));
     let scan = runtime::scan_runtime_view(app, &state.source_root);
+    restart_debug_log(format!(
+        "start_runtime_candidate scan candidates={} selected={:?}",
+        scan.candidates.len(),
+        scan.selected_candidate_id
+    ));
     emit_runtime_progress(
         app,
         "probing",
@@ -693,6 +838,11 @@ fn start_runtime_candidate_for_state(
     let result = runtime::find_python_runtime_for_candidate(app, &state.source_root, candidate_id)
         .map_err(|error| error.to_string())
         .and_then(|runtime| {
+            restart_debug_log(format!(
+                "start_runtime_candidate launching bridge runtime={} candidate_id={}",
+                runtime.description,
+                runtime.candidate_id.as_deref().unwrap_or("")
+            ));
             start_bridge_for_state(state, runtime).map_err(|error| error.to_string())
         });
 
@@ -729,17 +879,6 @@ fn start_repaired_runtime_for_state(
             state,
             "repaired runtime did not produce a ready candidate".to_string(),
         ));
-    }
-    if let Some(candidate_id) = repaired_candidate_id.as_deref() {
-        runtime::save_runtime_preference(app, &state.source_root, candidate_id).map_err(
-            |error| {
-                set_runtime_error_state(
-                    app,
-                    state,
-                    format!("repaired runtime is ready but could not save preference: {error}"),
-                )
-            },
-        )?;
     }
     start_runtime_candidate_for_state(app, state, repaired_candidate_id.as_deref())
 }
@@ -976,7 +1115,14 @@ fn open_external_url(url: &str) -> Result<(), String> {
 fn bootstrap_runtime(app: AppHandle) {
     restart_debug_log("bootstrap_runtime start");
     let state = app.state::<DesktopState>();
+    restart_debug_log("bootstrap_runtime scanning runtime candidates");
     let scan = runtime::scan_runtime_view(&app, &state.source_root);
+    restart_debug_log(format!(
+        "bootstrap_runtime scan candidates={} selected={:?} message={:?}",
+        scan.candidates.len(),
+        scan.selected_candidate_id,
+        scan.message
+    ));
     state.set_runtime(DesktopRuntimePhase::Checking {
         view: Some(scan.clone()),
     });
@@ -986,6 +1132,10 @@ fn bootstrap_runtime(app: AppHandle) {
         return;
     }
 
+    restart_debug_log(format!(
+        "bootstrap_runtime starting selected_candidate_id={:?}",
+        scan.selected_candidate_id
+    ));
     let result = runtime::find_python_runtime_for_candidate(
         &app,
         &state.source_root,
@@ -1360,6 +1510,7 @@ fn start_bridge_for_state(
     state: &DesktopState,
     runtime: runtime::PythonRuntime,
 ) -> DesktopResult<()> {
+    let candidate_id = runtime.candidate_id.clone();
     if state
         .bridge
         .lock()
@@ -1378,11 +1529,14 @@ fn start_bridge_for_state(
         state.bridge_port,
         runtime,
     )?;
-    let mut child = Some(BridgeProcess::new(bridge.child));
+    let mut child = Some(BridgeProcess::new(bridge.child, candidate_id.clone()));
     if let Ok(mut bridge_process) = state.bridge.lock() {
         if bridge_process.is_none() {
             *bridge_process = child.take();
-            restart_debug_log("start_bridge_for_state stored bridge process");
+            restart_debug_log(format!(
+                "start_bridge_for_state stored bridge process candidate_id={}",
+                candidate_id.as_deref().unwrap_or("")
+            ));
         }
     }
     Ok(())
@@ -1427,6 +1581,9 @@ fn spawn_bridge(
         .arg("--frontend-dist")
         .arg(&frontend_dist)
         .current_dir(&source_root);
+
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
 
     let mut child = command.spawn().map_err(|error| {
         restart_debug_log(format!("spawn_bridge failed error={error}"));

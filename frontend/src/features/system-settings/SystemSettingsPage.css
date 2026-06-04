@@ -30,6 +30,38 @@
   gap: var(--space-2);
 }
 
+.desktop-runtime-settings__optional {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.desktop-runtime-settings__optional h3,
+.desktop-runtime-settings__optional p {
+  margin: 0;
+}
+
+.desktop-runtime-settings__optional h3 {
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.desktop-runtime-settings__optional p {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.desktop-runtime-settings__optional-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
 .desktop-runtime-settings__candidate {
   display: grid;
   gap: var(--space-2);

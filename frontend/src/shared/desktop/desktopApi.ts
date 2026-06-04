@@ -19,11 +19,14 @@ export type DesktopRuntimeRepairAction =
   | "installRuntimeDeps"
   | "selectDifferentRuntime";
 
+export type DesktopRuntimeProfile = "media" | "local-ai" | "full";
+
 export interface DesktopRuntimeCandidate {
   id: string;
   pythonId?: string | null;
   label: string;
   path: string;
+  displayPath?: string;
   kind: DesktopRuntimeCandidateKind;
   version?: string | null;
   status: DesktopRuntimeCandidateStatus;
@@ -126,6 +129,10 @@ export function chooseDesktopRuntimePython(path: string) {
 
 export function repairDesktopRuntime(candidateId: string, action: DesktopRuntimeRepairAction) {
   return invokeDesktop<DesktopRuntimeState>("desktop_runtime_repair", { action, candidateId });
+}
+
+export function installDesktopRuntimeProfile(profile: DesktopRuntimeProfile) {
+  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_install_profile", { profile });
 }
 
 export function browseDesktopFiles(options?: { path?: string; showHidden?: boolean }) {
