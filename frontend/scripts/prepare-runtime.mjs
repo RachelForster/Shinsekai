@@ -84,6 +84,10 @@ async function prepareRuntime(targetName, target) {
     const stagingRuntime = `${outputRuntime}.tmp-${process.pid}-${Date.now()}`;
     await rm(stagingRuntime, { force: true, recursive: true });
     await cp(archiveRuntimeRoot, stagingRuntime, { dereference: true, force: true, recursive: true });
+    const prunedFiles = await pruneRuntimeFiles(stagingRuntime, target.prune_files ?? []);
+    if (prunedFiles.length > 0) {
+      console.log(`Pruned ${prunedFiles.length} runtime file(s): ${prunedFiles.join(", ")}`);
+    }
     await verifyRequiredRuntimeFiles(stagingRuntime, target);
     await writeFile(
       path.join(stagingRuntime, runtimeMarkerFile),
@@ -100,6 +104,37 @@ async function prepareRuntime(targetName, target) {
 async function verifyRequiredRuntimeFiles(runtimeRoot, target) {
   for (const requiredFile of target.required_files ?? []) {
     await assertExists(path.join(runtimeRoot, requiredFile), `runtime archive missing required file ${requiredFile}`);
+  }
+}
+
+async function pruneRuntimeFiles(runtimeRoot, patterns) {
+  if (!Array.isArray(patterns) || patterns.length === 0) {
+    return [];
+  }
+  const matchers = patterns.map(globPatternToRegExp);
+  const prunedFiles = [];
+  await pruneRuntimeFilesInDirectory(runtimeRoot, runtimeRoot, matchers, prunedFiles);
+  return prunedFiles;
+}
+
+async function pruneRuntimeFilesInDirectory(runtimeRoot, directory, matchers, prunedFiles) {
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const entryPath = path.join(directory, entry.name);
+    const relativePath = toPosixPath(path.relative(runtimeRoot, entryPath));
+    if (matchers.some((matcher) => matcher.test(relativePath))) {
+      await rm(entryPath, { force: true, recursive: true });
+      prunedFiles.push(relativePath);
+      continue;
+    }
+    if (entry.isDirectory()) {
+      await pruneRuntimeFilesInDirectory(runtimeRoot, entryPath, matchers, prunedFiles);
+    }
   }
 }
 
@@ -290,6 +325,7 @@ function runtimeMarker(targetName, target) {
     asset: target.asset,
     sha256: target.sha256,
     requiredFiles: target.required_files ?? [],
+    prunedFiles: target.prune_files ?? [],
     profile: "desktop-core",
   };
 }
@@ -539,5 +575,32 @@ function toPosixRelativePath(fromDir, target) {
   if (!relativePath || path.isAbsolute(relativePath)) {
     throw new Error(`cannot express ${target} as a relative path from ${fromDir}`);
   }
-  return relativePath.split(path.sep).join("/");
+  return toPosixPath(relativePath);
+}
+
+function toPosixPath(value) {
+  return value.split(path.sep).join("/");
+}
+
+function globPatternToRegExp(pattern) {
+  let source = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    const next = pattern[index + 1];
+    if (char === "*" && next === "*") {
+      source += ".*";
+      index += 1;
+    } else if (char === "*") {
+      source += "[^/]*";
+    } else if (char === "?") {
+      source += "[^/]";
+    } else {
+      source += escapeRegExp(char);
+    }
+  }
+  return new RegExp(`${source}$`);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 }

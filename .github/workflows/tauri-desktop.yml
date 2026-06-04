@@ -207,10 +207,30 @@ jobs:
           SHINSEKAI_PIP_INDEX_URLS: ${{ vars.SHINSEKAI_PIP_INDEX_URLS }}
         run: pnpm prepare:runtime --target ${{ matrix.platform }} --verify
 
+      - name: Clear stale Tauri bundle outputs
+        working-directory: frontend
+        shell: bash
+        run: |
+          rm -rf src-tauri/target/release/bundle
+          rm -rf src-tauri/target/release/runtime src-tauri/target/release/wheels
+          rm -f src-tauri/target/release/requirements-runtime-*.txt
+
       - name: Build Tauri bundle
         working-directory: frontend
         shell: bash
-        run: pnpm tauri build --ci --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        env:
+          NO_STRIP: "1"
+        run: pnpm tauri build -v --ci --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Dump Linux AppImage diagnostics
+        if: failure() && runner.os == 'Linux'
+        working-directory: frontend
+        shell: bash
+        run: |
+          find src-tauri/target/release/bundle/appimage -maxdepth 4 -print || true
+          find src-tauri/target/release/bundle/appimage \
+            \( -name '*_tkinter*' -o -name 'libtcl*.so' -o -name 'libtk*.so' \) \
+            -print || true
 
       - name: Verify packaged embedded Python runtime
         working-directory: frontend

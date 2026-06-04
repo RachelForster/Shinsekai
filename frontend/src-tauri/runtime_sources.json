@@ -21,14 +21,16 @@
       "triple": "x86_64-unknown-linux-gnu",
       "asset": "cpython-3.10.20+20260602-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
       "sha256": "e56d5f09c005c1e814692053145a91721a89f0d1f4cd35f86675a4cb0876125e",
-      "required_files": ["bin/python3.10"]
+      "required_files": ["bin/python3.10"],
+      "prune_files": ["lib/python*/lib-dynload/_tkinter.*.so"]
     },
     "linux-arm64": {
       "python": "3.10.20",
       "triple": "aarch64-unknown-linux-gnu",
       "asset": "cpython-3.10.20+20260602-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz",
       "sha256": "923fbb586618affa735b9da0e4dc3c0299f99316354201c9df08a5c14c90e8e0",
-      "required_files": ["bin/python3.10"]
+      "required_files": ["bin/python3.10"],
+      "prune_files": ["lib/python*/lib-dynload/_tkinter.*.so"]
     },
     "windows-x64": {
       "python": "3.10.20",
@@ -42,7 +44,7 @@
       "triple": "aarch64-pc-windows-msvc",
       "asset": "cpython-3.11.15+20260602-aarch64-pc-windows-msvc-install_only_stripped.tar.gz",
       "sha256": "246d222bfb487f341d0caaf5e89337a0704b4b02da3f632de5cb6bac5b1fdbde",
-      "required_files": ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll", "vcruntime140_threads.dll"],
+      "required_files": ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll"],
       "note": "PBS does not publish CPython 3.10 aarch64-pc-windows-msvc assets; 3.11 stays within the app's >=3.10,<3.14 runtime range."
     },
     "macos-x64": {
