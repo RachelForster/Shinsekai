@@ -81,7 +81,15 @@ jobs:
         with:
           python-version: "3.10"
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Configure sccache
+        shell: bash
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 
       - name: Install system dependencies
         run: |
@@ -131,7 +139,6 @@ jobs:
         run: pnpm exec vitest run src/test/desktopApi.test.ts src/test/desktopChrome.test.tsx src/test/features/system-settings/SystemSettingsPage.test.tsx
 
   build:
-    needs: runtime-gate
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -146,7 +153,7 @@ jobs:
             bundles: deb
           - platform: windows-x64
             os: windows-latest
-            bundles: nsis
+            bundles: none
           - platform: macos-arm64
             os: macos-14
             bundles: dmg
@@ -164,7 +171,15 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Configure sccache
+        shell: bash
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -177,7 +192,7 @@ jobs:
           sudo apt-get install -y -qq \
             libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev \
-            libssl-dev patchelf portaudio19-dev rpm
+            libssl-dev patchelf portaudio19-dev
           if apt-cache show libfuse2t64 >/dev/null 2>&1; then
             sudo apt-get install -y -qq libfuse2t64
           else
@@ -185,7 +200,7 @@ jobs:
           fi
 
       - name: Install Windows installer dependencies
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.bundles != 'none'
         shell: pwsh
         run: choco install nsis --no-progress -y
 
@@ -234,7 +249,12 @@ jobs:
         shell: bash
         env:
           NO_STRIP: "1"
-        run: pnpm tauri build -v --ci --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        run: |
+          if [[ "${{ matrix.bundles }}" == "none" ]]; then
+            pnpm tauri build --ci --no-bundle --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          else
+            pnpm tauri build --ci --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          fi
 
       - name: Dump Linux AppImage diagnostics
         if: failure() && runner.os == 'Linux'
@@ -248,9 +268,16 @@ jobs:
 
       - name: Verify packaged embedded Python runtime
         working-directory: frontend
-        run: pnpm verify:packaged-runtime --target ${{ matrix.platform }} --require-installers --installer-bundles ${{ matrix.bundles }}
+        shell: bash
+        run: |
+          if [[ "${{ matrix.bundles }}" == "none" ]]; then
+            pnpm verify:packaged-runtime --target ${{ matrix.platform }}
+          else
+            pnpm verify:packaged-runtime --target ${{ matrix.platform }} --require-installers --installer-bundles ${{ matrix.bundles }}
+          fi
 
       - name: Upload workflow artifact
+        if: matrix.bundles != 'none'
         uses: actions/upload-artifact@v4
         with:
           name: shinsekai-${{ matrix.platform }}

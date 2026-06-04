@@ -8,10 +8,13 @@ const repoRoot = path.resolve(frontendDir, "..");
 
 const runtimeSourcesPath = path.join(frontendDir, "src-tauri", "runtime_sources.json");
 const workflowPath = path.join(repoRoot, ".github", "workflows", "tauri-desktop.yml");
+const releaseWorkflowPath = path.join(repoRoot, ".github", "workflows", "release.yml");
 const packageJsonPath = path.join(frontendDir, "package.json");
 const tauriConfigPath = path.join(frontendDir, "src-tauri", "tauri.conf.json");
 const prepareRuntimeScriptPath = path.join(frontendDir, "scripts", "prepare-runtime.mjs");
+const rustToolchainPath = path.join(repoRoot, "rust-toolchain.toml");
 
+const expectedRustToolchain = "1.96.0";
 const expectedTargets = ["linux-x64", "linux-arm64", "windows-x64", "macos-arm64"];
 const linuxTriples = new Map([
   ["linux-x64", "x86_64-unknown-linux-gnu"],
@@ -24,7 +27,7 @@ const windowsRequiredFiles = new Map([
 const expectedBundles = new Map([
   ["linux-x64", ["deb"]],
   ["linux-arm64", ["deb"]],
-  ["windows-x64", ["nsis"]],
+  ["windows-x64", ["none"]],
   ["macos-arm64", ["dmg"]],
 ]);
 const expectedArtifactPaths = [
@@ -38,9 +41,11 @@ const expectedArtifactPaths = [
 
 const runtimeSources = JSON.parse(await readFile(runtimeSourcesPath, "utf8"));
 const workflow = await readFile(workflowPath, "utf8");
+const releaseWorkflow = await readFile(releaseWorkflowPath, "utf8");
 const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
 const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
 const prepareRuntimeScript = await readFile(prepareRuntimeScriptPath, "utf8");
+const rustToolchainConfig = await readFile(rustToolchainPath, "utf8");
 
 const errors = [];
 
@@ -172,6 +177,26 @@ for (const command of [
 }
 check(tauriConfig.bundle?.resources?.["resources/"] === "", "Tauri bundle must include the staged resources directory");
 check(
+  rustToolchainConfig.includes(`channel = "${expectedRustToolchain}"`) &&
+    rustToolchainConfig.includes('profile = "minimal"'),
+  `rust-toolchain.toml must pin Rust ${expectedRustToolchain} with the minimal profile`,
+);
+check(
+  workflow.includes(`dtolnay/rust-toolchain@${expectedRustToolchain}`) &&
+    releaseWorkflow.includes(`dtolnay/rust-toolchain@${expectedRustToolchain}`),
+  `desktop and release workflows must use Rust ${expectedRustToolchain}`,
+);
+check(
+  workflow.includes("mozilla-actions/sccache-action@v0.0.9") &&
+    releaseWorkflow.includes("mozilla-actions/sccache-action@v0.0.9") &&
+    workflow.includes("SCCACHE_GHA_ENABLED=true") &&
+    releaseWorkflow.includes("SCCACHE_GHA_ENABLED=true") &&
+    workflow.includes("RUSTC_WRAPPER=sccache") &&
+    releaseWorkflow.includes("RUSTC_WRAPPER=sccache"),
+  "desktop and release workflows must enable sccache for Rust builds",
+);
+check(!workflow.includes("needs: runtime-gate"), "desktop build matrix must run in parallel with runtime-gate");
+check(
   workflow.includes("pnpm prepare:runtime --target ${{ matrix.platform }} --verify"),
   "workflow build job must prepare and verify the target-specific embedded runtime before packaging",
 );
@@ -187,6 +212,19 @@ check(
   ),
   "workflow build job must verify the packaged embedded runtime and selected installer artifacts after packaging",
 );
+check(
+  workflow.includes('if [[ "${{ matrix.bundles }}" == "none" ]]; then') &&
+    workflow.includes("pnpm tauri build --ci --no-bundle") &&
+    workflow.includes("pnpm tauri build --ci --bundles ${{ matrix.bundles }}") &&
+    workflow.includes("pnpm verify:packaged-runtime --target ${{ matrix.platform }}") &&
+    workflow.includes("if: matrix.bundles != 'none'"),
+  "workflow must skip installer generation and artifact upload for no-bundle platforms",
+);
+check(
+  workflow.includes("if: runner.os == 'Windows' && matrix.bundles != 'none'"),
+  "workflow must skip Windows installer dependency installation for no-bundle Windows builds",
+);
+check(!workflow.includes("pnpm tauri build -v"), "workflow must not use verbose Tauri build logging in CI");
 check(
   !prepareRuntimeScript.includes('["-xzf", archivePath, "-C", extractRoot]'),
   "prepare-runtime must not pass an absolute archivePath directly to tar on Windows",
