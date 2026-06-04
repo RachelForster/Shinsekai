@@ -1,4 +1,4 @@
-import { access, cp, mkdir, rm } from "node:fs/promises";
+import { access, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -74,6 +74,7 @@ async function copyDirectoryToStage(relativePath) {
 
 await rm(stageRoot, { force: true, recursive: true });
 await mkdir(stageRoot, { recursive: true });
+await writeFile(path.join(stageRoot, ".gitkeep"), "");
 
 for (const file of files) {
   await copyFileToStage(file);
