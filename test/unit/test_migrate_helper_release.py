@@ -3,7 +3,10 @@ from __future__ import annotations
 from ui.migrate_helper.release import (
     ReleaseAsset,
     current_platform_label,
+    default_download_dir,
+    safe_asset_filename,
     select_release_asset,
+    unique_download_path,
 )
 
 
@@ -55,3 +58,20 @@ def test_selects_linux_appimage_before_deb() -> None:
 
 def test_platform_label_normalizes_machine() -> None:
     assert current_platform_label("Windows", "AMD64") == "Windows / x64"
+
+
+def test_safe_asset_filename_removes_invalid_path_chars() -> None:
+    assert safe_asset_filename('Shinsekai:setup/preview?.msi') == "preview_.msi"
+
+
+def test_default_download_dir_uses_downloads_folder(tmp_path) -> None:
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+
+    assert default_download_dir(tmp_path) == downloads / "Shinsekai"
+
+
+def test_unique_download_path_adds_suffix_when_file_exists(tmp_path) -> None:
+    (tmp_path / "Shinsekai.msi").write_text("", encoding="utf-8")
+
+    assert unique_download_path(tmp_path, "Shinsekai.msi") == tmp_path / "Shinsekai-1.msi"

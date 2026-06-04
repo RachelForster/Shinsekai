@@ -6,11 +6,15 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 import json
 import platform
+from pathlib import Path
+import re
+from urllib.parse import unquote, urlsplit
 from urllib.request import Request, urlopen
 
 REPOSITORY = "RachelForster/Shinsekai"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
+DOWNLOAD_DIR_NAME = "Shinsekai"
 
 
 @dataclass(frozen=True)
@@ -114,6 +118,36 @@ def release_asset_from_mapping(raw: Mapping[str, object]) -> ReleaseAsset | None
     if not name.strip() or not url.strip():
         return None
     return ReleaseAsset(name=name.strip(), browser_download_url=url.strip())
+
+
+def safe_asset_filename(label: str, url: str = "") -> str:
+    raw = label.strip()
+    if not raw and url:
+        raw = unquote(Path(urlsplit(url).path).name)
+    raw = raw.replace("\\", "/").rsplit("/", 1)[-1]
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", raw).strip().strip(".")
+    return cleaned or "Shinsekai-release"
+
+
+def default_download_dir(home: Path | None = None) -> Path:
+    root = home or Path.home()
+    downloads = root / "Downloads"
+    if downloads.exists() or home is None:
+        return downloads / DOWNLOAD_DIR_NAME
+    return root / DOWNLOAD_DIR_NAME
+
+
+def unique_download_path(directory: Path, filename: str) -> Path:
+    path = directory / safe_asset_filename(filename)
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    for index in range(1, 1000):
+        candidate = directory / f"{stem}-{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+    return directory / f"{stem}-latest{suffix}"
 
 
 def select_release_asset(

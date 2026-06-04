@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import platform
+import stat
+import subprocess
+from urllib.request import Request, urlopen
 
 from PySide6.QtCore import QThread, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
@@ -22,7 +27,10 @@ from PySide6.QtWidgets import (
 from ui.migrate_helper.release import (
     RELEASES_URL,
     current_platform_label,
+    default_download_dir,
     resolve_download_target,
+    safe_asset_filename,
+    unique_download_path,
 )
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -85,6 +93,13 @@ QLabel#migrationCode {
     background: #fff7fa;
     font-family: Consolas, "Microsoft YaHei UI", monospace;
 }
+QLabel#migrationNotice {
+    padding: 9px 11px;
+    border: 1px solid rgba(212, 120, 142, 0.32);
+    border-radius: 8px;
+    color: #6d3146;
+    background: #fff0f5;
+}
 QPushButton {
     min-height: 32px;
     padding: 6px 14px;
@@ -116,19 +131,70 @@ QPushButton:disabled {
 """
 
 
-class _ReleaseResolverWorker(QThread):
+def _format_bytes(value: int) -> str:
+    if value < 1024:
+        return f"{value} B"
+    if value < 1024 * 1024:
+        return f"{value / 1024:.1f} KB"
+    if value < 1024 * 1024 * 1024:
+        return f"{value / 1024 / 1024:.1f} MB"
+    return f"{value / 1024 / 1024 / 1024:.1f} GB"
+
+
+class _ReleaseDownloadWorker(QThread):
+    progress = Signal(str)
     resolved = Signal(str, str, bool, str)
 
     def run(self) -> None:
         try:
             target = resolve_download_target()
-            self.resolved.emit(target.url, target.label, target.direct, target.message)
+            if not target.direct:
+                self.resolved.emit(target.url, target.label, False, target.message)
+                return
+
+            filename = safe_asset_filename(target.label, target.url)
+            download_dir = default_download_dir()
+            download_dir.mkdir(parents=True, exist_ok=True)
+            destination = unique_download_path(download_dir, filename)
+
+            self.progress.emit(f"正在下载 {target.label}...")
+            request = Request(
+                target.url,
+                headers={"User-Agent": "Shinsekai-Migration-Helper"},
+            )
+            with urlopen(request, timeout=30.0) as response:
+                total = int(response.headers.get("Content-Length") or 0)
+                downloaded = 0
+                with destination.open("wb") as handle:
+                    while True:
+                        chunk = response.read(1024 * 256)
+                        if not chunk:
+                            break
+                        handle.write(chunk)
+                        downloaded += len(chunk)
+                        if total > 0:
+                            self.progress.emit(
+                                f"正在下载 {target.label}... "
+                                f"{downloaded * 100 // total}% "
+                                f"({_format_bytes(downloaded)} / {_format_bytes(total)})"
+                            )
+                        else:
+                            self.progress.emit(
+                                f"正在下载 {target.label}... {_format_bytes(downloaded)}"
+                            )
+
+            self.resolved.emit(
+                str(destination),
+                target.label,
+                True,
+                f"已下载 {target.label}，正在打开安装包...",
+            )
         except Exception as exc:  # pragma: no cover - depends on network state
             self.resolved.emit(
                 RELEASES_URL,
                 "Releases",
                 False,
-                f"获取最新发行包失败，已打开 Releases 页面：{exc}",
+                f"下载发行包失败，已打开 Releases 页面：{exc}",
             )
 
 
@@ -137,7 +203,7 @@ class MigrationRoleDialog(QDialog):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._worker: _ReleaseResolverWorker | None = None
+        self._worker: _ReleaseDownloadWorker | None = None
 
         self.setObjectName("migrationRoleDialog")
         self.setWindowTitle("Shinsekai Frontend 迁移助手")
@@ -272,8 +338,8 @@ class MigrationRoleDialog(QDialog):
         layout.addWidget(heading)
 
         body = QLabel(
-            "适合只想使用新版 Frontend 设置中心的用户。点击下载后会自动匹配当前平台的最新发行包；"
-            "如果没有匹配到安装包，会打开 GitHub Releases 页面手动选择。",
+            "适合只想使用新版 Frontend 设置中心的用户。点击后会自动匹配当前平台的最新发行包，"
+            "下载到本机 Downloads/Shinsekai，并在下载完成后直接打开安装包。",
             panel,
         )
         body.setObjectName("migrationBody")
@@ -285,13 +351,23 @@ class MigrationRoleDialog(QDialog):
         platform_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(platform_label)
 
-        self._download_status = QLabel("建议下载 msi / exe / dmg / AppImage 等发行包，而不是源码压缩包。", panel)
+        install_notice = QLabel(
+            "安装提示：稍后安装时可以直接选择当前 Shinsekai 文件夹，安装器不会覆盖 data 和 plugins "
+            "文件夹。若你修改过其他源码或程序文件，请先备份或换目录安装，因为这些文件可能会被覆盖。",
+            panel,
+        )
+        install_notice.setObjectName("migrationNotice")
+        install_notice.setWordWrap(True)
+        install_notice.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(install_notice)
+
+        self._download_status = QLabel("建议运行 msi / exe / dmg / AppImage 等发行包，而不是源码压缩包。", panel)
         self._download_status.setObjectName("migrationMuted")
         self._download_status.setWordWrap(True)
         layout.addWidget(self._download_status)
 
         buttons = QHBoxLayout()
-        self._download_btn = QPushButton("下载当前平台发行包", panel)
+        self._download_btn = QPushButton("下载并运行当前平台发行包", panel)
         self._download_btn.setObjectName("migrationPrimaryButton")
         self._download_btn.clicked.connect(self._download_current_platform)
         releases_btn = QPushButton("打开 Releases", panel)
@@ -310,7 +386,8 @@ class MigrationRoleDialog(QDialog):
             return
         self._download_btn.setEnabled(False)
         self._download_status.setText("正在查询最新发行包...")
-        self._worker = _ReleaseResolverWorker(self)
+        self._worker = _ReleaseDownloadWorker(self)
+        self._worker.progress.connect(self._download_status.setText)
         self._worker.resolved.connect(self._on_release_resolved)
         self._worker.finished.connect(self._worker.deleteLater)
         self._worker.finished.connect(lambda: setattr(self, "_worker", None))
@@ -324,12 +401,36 @@ class MigrationRoleDialog(QDialog):
         message: str,
     ) -> None:
         self._download_btn.setEnabled(True)
-        self._download_status.setText(message)
-        self._open_url(url)
         if direct:
-            self._download_status.setText(f"{message}\n浏览器已开始打开下载链接。")
+            path = Path(url)
+            opened = self._open_downloaded_file(path)
+            if opened:
+                self._download_status.setText(f"{message}\n文件位置：{path}")
+            else:
+                self._download_status.setText(f"{message}\n无法自动打开，请手动运行：{path}")
+                self._open_local_file(path.parent)
         else:
+            self._open_url(url)
             self._download_status.setText(f"{message}\n请在页面中选择当前平台安装包。")
+
+    def _open_downloaded_file(self, path: Path) -> bool:
+        try:
+            system_name = platform.system().lower()
+            if system_name == "windows":
+                os.startfile(str(path))  # type: ignore[attr-defined]
+                return True
+            if system_name == "darwin":
+                subprocess.Popen(["open", str(path)])
+                return True
+            if system_name == "linux" and path.suffix.lower() == ".appimage":
+                mode = path.stat().st_mode
+                path.chmod(mode | stat.S_IXUSR)
+                subprocess.Popen([str(path)])
+                return True
+            return QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        except Exception as exc:
+            self._download_status.setText(f"打开下载文件失败：{exc}")
+            return False
 
     def _open_local_file(self, path: Path) -> None:
         if path.exists():
