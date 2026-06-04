@@ -1,23 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
-import { DownloadCloud, RefreshCcw } from "lucide-react";
+import { DownloadCloud, Wrench } from "lucide-react";
 
 import {
+  getDesktopRuntimeState,
   installDesktopRuntimeProfile,
   isTauriDesktop,
   onDesktopRuntimeProgress,
   repairDesktopRuntime,
-  scanDesktopRuntime,
-  selectDesktopRuntime,
   type DesktopRuntimeCandidate,
   type DesktopRuntimeCandidateStatus,
   type DesktopRuntimeProgress,
   type DesktopRuntimeProfile,
-  type DesktopRuntimeRepairAction,
   type DesktopRuntimeState,
 } from "../../shared/desktop/desktopApi";
 import { RuntimeProgressPanel } from "../../shared/desktop/RuntimeProgressPanel";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, Button } from "../../shared/ui";
+import { AsyncButton } from "../../shared/ui";
 
 function runtimeCandidateStatusLabel(status: DesktopRuntimeCandidateStatus, t: ReturnType<typeof useI18n>["t"]) {
   const keys: Record<DesktopRuntimeCandidateStatus, Parameters<typeof t>[0]> = {
@@ -32,39 +30,39 @@ function runtimeCandidateStatusLabel(status: DesktopRuntimeCandidateStatus, t: R
   return t(keys[status]);
 }
 
-function candidateActions(candidate: DesktopRuntimeCandidate) {
-  return new Set<DesktopRuntimeRepairAction>(candidate.repairActions);
-}
-
 export function DesktopRuntimeSection() {
   const desktop = isTauriDesktop();
   const { t } = useI18n();
   const [runtime, setRuntime] = useState<DesktopRuntimeState | null>(null);
   const [runtimeProgress, setRuntimeProgress] = useState<DesktopRuntimeProgress | null>(null);
   const [busy, setBusy] = useState(false);
-  const [activeProfile, setActiveProfile] = useState<DesktopRuntimeProfile | null>(null);
+  const [activeRuntimeAction, setActiveRuntimeAction] = useState<DesktopRuntimeProfile | "core" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const runRuntimeAction = useCallback(
-    async (action: () => Promise<DesktopRuntimeState>, profile?: DesktopRuntimeProfile) => {
+    async (action: () => Promise<DesktopRuntimeState>, activeAction?: DesktopRuntimeProfile | "core") => {
       setBusy(true);
-      setActiveProfile(profile ?? null);
+      setActiveRuntimeAction(activeAction ?? null);
       setError(null);
       try {
         setRuntime(await action());
       } catch (error) {
         setError(error instanceof Error ? error.message : String(error));
       } finally {
-        setActiveProfile(null);
+        setActiveRuntimeAction(null);
         setBusy(false);
       }
     },
     [],
   );
 
-  const refresh = useCallback(() => runRuntimeAction(scanDesktopRuntime), [runRuntimeAction]);
+  const refresh = useCallback(() => runRuntimeAction(getDesktopRuntimeState), [runRuntimeAction]);
   const installRuntimeProfile = useCallback(
     (profile: DesktopRuntimeProfile) => runRuntimeAction(() => installDesktopRuntimeProfile(profile), profile),
+    [runRuntimeAction],
+  );
+  const repairCoreDeps = useCallback(
+    (candidateId: string) => runRuntimeAction(() => repairDesktopRuntime(candidateId, "installRuntimeDeps"), "core"),
     [runRuntimeAction],
   );
 
@@ -107,6 +105,7 @@ export function DesktopRuntimeSection() {
   const visibleCandidates = currentCandidateId
     ? (runtime?.candidates ?? []).filter((candidate) => candidate.id === currentCandidateId)
     : (runtime?.candidates ?? []);
+  const currentCandidate = visibleCandidates[0] ?? null;
 
   return (
     <section className="section desktop-runtime-settings">
@@ -115,40 +114,24 @@ export function DesktopRuntimeSection() {
           <h2 className="section__title">{t("system.runtime.title")}</h2>
           <p className="section__description">{t("system.runtime.description")}</p>
         </div>
-        <div className="page__actions">
+        <div className="page__actions desktop-runtime-settings__primary-actions">
           <AsyncButton
-            icon={<RefreshCcw aria-hidden className="button__icon" />}
-            loading={busy}
-            onClick={refresh}
+            disabled={busy || !currentCandidate}
+            icon={<Wrench aria-hidden className="button__icon" />}
+            loading={activeRuntimeAction === "core"}
+            onClick={() => {
+              if (currentCandidate) {
+                void repairCoreDeps(currentCandidate.id);
+              }
+            }}
             variant="ghost"
           >
-            {t("system.runtime.scan")}
-          </AsyncButton>
-        </div>
-      </div>
-      {runtime?.message || error ? (
-        <p className="desktop-runtime-settings__message">{error ?? runtime?.message}</p>
-      ) : null}
-      {runtimeProgress ? <RuntimeProgressPanel progress={runtimeProgress} /> : null}
-      <div className="desktop-runtime-settings__optional">
-        <div>
-          <h3>{t("system.runtime.optionalTitle")}</h3>
-          <p>{t("system.runtime.optionalDescription")}</p>
-        </div>
-        <div className="desktop-runtime-settings__optional-actions">
-          <AsyncButton
-            disabled={busy}
-            icon={<DownloadCloud aria-hidden className="button__icon" />}
-            loading={activeProfile === "media"}
-            onClick={() => void installRuntimeProfile("media")}
-            variant="ghost"
-          >
-            {t("system.runtime.installMedia")}
+            {t("system.runtime.repairCoreDeps")}
           </AsyncButton>
           <AsyncButton
             disabled={busy}
             icon={<DownloadCloud aria-hidden className="button__icon" />}
-            loading={activeProfile === "local-ai"}
+            loading={activeRuntimeAction === "local-ai"}
             onClick={() => void installRuntimeProfile("local-ai")}
             variant="ghost"
           >
@@ -156,10 +139,13 @@ export function DesktopRuntimeSection() {
           </AsyncButton>
         </div>
       </div>
+      {runtime?.message || error ? (
+        <p className="desktop-runtime-settings__message">{error ?? runtime?.message}</p>
+      ) : null}
+      {runtimeProgress ? <RuntimeProgressPanel progress={runtimeProgress} /> : null}
       <div className="desktop-runtime-settings__list">
         {visibleCandidates.length ? (
           visibleCandidates.map((candidate) => {
-            const actions = candidateActions(candidate);
             return (
               <article
                 className="desktop-runtime-settings__candidate"
@@ -191,38 +177,6 @@ export function DesktopRuntimeSection() {
                     {t("desktop.runtime.candidateWarnings")}: {candidate.warnings.join(" ")}
                   </p>
                 ) : null}
-                <div className="desktop-runtime-settings__candidate-actions">
-                  {candidate.status === "ready" ? (
-                    <Button
-                      disabled={busy || candidate.selected}
-                      onClick={() => void runRuntimeAction(() => selectDesktopRuntime(candidate.id))}
-                    >
-                      {candidate.selected ? t("system.runtime.current") : t("desktop.runtime.useCandidate")}
-                    </Button>
-                  ) : null}
-                  {actions.has("createManagedVenv") ? (
-                    <Button
-                      disabled={busy}
-                      onClick={() =>
-                        void runRuntimeAction(() => repairDesktopRuntime(candidate.id, "createManagedVenv"))
-                      }
-                      variant="primary"
-                    >
-                      {t("desktop.runtime.createVenvButton")}
-                    </Button>
-                  ) : null}
-                  {actions.has("installRuntimeDeps") ? (
-                    <Button
-                      disabled={busy}
-                      onClick={() =>
-                        void runRuntimeAction(() => repairDesktopRuntime(candidate.id, "installRuntimeDeps"))
-                      }
-                      variant="primary"
-                    >
-                      {t("desktop.runtime.installDepsButton")}
-                    </Button>
-                  ) : null}
-                </div>
               </article>
             );
           })

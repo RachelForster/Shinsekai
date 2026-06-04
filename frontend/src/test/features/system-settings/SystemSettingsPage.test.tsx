@@ -11,14 +11,12 @@ const mockGetAppConfig = vi.fn();
 const browseFiles = vi.fn();
 const desktopApi = vi.hoisted(() => ({
   browseDesktopFiles: vi.fn(),
-  chooseDesktopRuntimePython: vi.fn(),
+  getDesktopRuntimeState: vi.fn(),
   installDesktopRuntimeProfile: vi.fn(),
   isDesktopBridgeConnectionError: vi.fn(),
   isTauriDesktop: vi.fn(),
   onDesktopRuntimeProgress: vi.fn(),
   repairDesktopRuntime: vi.fn(),
-  scanDesktopRuntime: vi.fn(),
-  selectDesktopRuntime: vi.fn(),
 }));
 
 vi.mock("../../../entities/config/repository", () => ({
@@ -73,18 +71,12 @@ function mockSystemConfig() {
 describe("SystemSettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    desktopApi.chooseDesktopRuntimePython.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
+    desktopApi.getDesktopRuntimeState.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
     desktopApi.installDesktopRuntimeProfile.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
     desktopApi.isDesktopBridgeConnectionError.mockReturnValue(false);
     desktopApi.isTauriDesktop.mockReturnValue(false);
     desktopApi.onDesktopRuntimeProgress.mockResolvedValue(vi.fn());
     desktopApi.repairDesktopRuntime.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
-    desktopApi.scanDesktopRuntime.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
-    desktopApi.selectDesktopRuntime.mockResolvedValue({
-      bridgeUrl: "http://127.0.0.1:8787",
-      candidates: [],
-      status: "ready",
-    });
     desktopApi.browseDesktopFiles.mockResolvedValue({
       cwd: "/tmp",
       entries: [
@@ -168,10 +160,8 @@ describe("SystemSettingsPage", () => {
       selectedCandidateId: "python-ready",
       status: "ready",
     };
-    desktopApi.scanDesktopRuntime.mockResolvedValue(runtimeView);
+    desktopApi.getDesktopRuntimeState.mockResolvedValue(runtimeView);
     desktopApi.installDesktopRuntimeProfile.mockResolvedValue(runtimeView);
-    desktopApi.repairDesktopRuntime.mockResolvedValue(runtimeView);
-    desktopApi.selectDesktopRuntime.mockResolvedValue(runtimeView);
     mockGetAppConfig.mockResolvedValue(mockSystemConfig());
 
     renderPage();
@@ -182,29 +172,64 @@ describe("SystemSettingsPage", () => {
     expect(screen.getByText("C:\\Shinsekai\\runtime\\python.exe")).toBeInTheDocument();
     expect(screen.queryByText(/\\\\\?/)).not.toBeInTheDocument();
     expect(screen.queryByText(/pyyaml, pygame/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "安装媒体运行环境" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "安装媒体运行环境" }));
+    fireEvent.click(screen.getByRole("button", { name: "安装本地 AI 运行环境" }));
     await waitFor(() => {
-      expect(desktopApi.installDesktopRuntimeProfile).toHaveBeenCalledWith("media");
+      expect(desktopApi.installDesktopRuntimeProfile).toHaveBeenCalledWith("local-ai");
     });
-    expect(desktopApi.repairDesktopRuntime).not.toHaveBeenCalled();
-    expect(desktopApi.selectDesktopRuntime).not.toHaveBeenCalled();
   });
 
   it("does not offer manual Python selection from system settings", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
-    desktopApi.scanDesktopRuntime.mockResolvedValue({
+    desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "",
       candidates: [],
-      message: "未找到托管运行环境。",
+      message: "未找到安装目录 runtime 运行环境。",
       status: "needsAction",
     });
     mockGetAppConfig.mockResolvedValue(mockSystemConfig());
 
     renderPage();
 
-    await screen.findByText("未找到托管运行环境。");
+    await screen.findByText("未找到安装目录 runtime 运行环境。");
     expect(screen.queryByLabelText("Python 可执行文件")).not.toBeInTheDocument();
-    expect(desktopApi.chooseDesktopRuntimePython).not.toHaveBeenCalled();
+  });
+
+  it("repairs core dependencies for the current desktop runtime", async () => {
+    desktopApi.isTauriDesktop.mockReturnValue(true);
+    const runtimeView = {
+      bridgeUrl: "",
+      candidates: [
+        {
+          id: "install-dir-runtime",
+          displayPath: "C:\\Shinsekai\\runtime\\python.exe",
+          kind: "managed",
+          label: "Shinsekai bundled runtime",
+          managed: true,
+          missingImports: [],
+          missingPackages: [],
+          path: "\\\\?\\C:\\Shinsekai\\runtime\\python.exe",
+          repairActions: ["start"],
+          score: 100,
+          selected: true,
+          status: "ready",
+          version: "3.10.20",
+          warnings: [],
+        },
+      ],
+      selectedCandidateId: "install-dir-runtime",
+      status: "ready",
+    };
+    desktopApi.getDesktopRuntimeState.mockResolvedValue(runtimeView);
+    desktopApi.repairDesktopRuntime.mockResolvedValue(runtimeView);
+    mockGetAppConfig.mockResolvedValue(mockSystemConfig());
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "修复核心依赖" }));
+    await waitFor(() => {
+      expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("install-dir-runtime", "installRuntimeDeps");
+    });
   });
 });

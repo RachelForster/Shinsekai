@@ -12,6 +12,11 @@
   gap: var(--space-3);
 }
 
+.desktop-runtime-settings > .section__header {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
 .desktop-runtime-settings__message,
 .desktop-runtime-settings__progress,
 .desktop-runtime-settings__empty {
@@ -30,32 +35,7 @@
   gap: var(--space-2);
 }
 
-.desktop-runtime-settings__optional {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-}
-
-.desktop-runtime-settings__optional h3,
-.desktop-runtime-settings__optional p {
-  margin: 0;
-}
-
-.desktop-runtime-settings__optional h3 {
-  color: var(--color-text-primary);
-  font-size: 14px;
-}
-
-.desktop-runtime-settings__optional p {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.desktop-runtime-settings__optional-actions {
+.desktop-runtime-settings__primary-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -113,40 +93,33 @@
   color: var(--color-success);
 }
 
-.desktop-runtime-settings__candidate-actions,
-.desktop-runtime-settings__import-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-}
-
-.desktop-runtime-settings__import {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.desktop-runtime-settings__import label {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.desktop-runtime-settings__import-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.desktop-runtime-settings__import-row .input-group {
-  min-width: 0;
-}
-
 @media (max-width: 860px) {
   .system-page .schema-section .form-grid--two {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .desktop-runtime-settings__candidate-main,
-  .desktop-runtime-settings__import-row {
+  .desktop-runtime-settings__candidate-main {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .desktop-runtime-settings > .section__header {
+    flex-direction: column;
+  }
+
+  .desktop-runtime-settings__primary-actions {
+    width: 100%;
+    justify-content: flex-start;
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .desktop-runtime-settings__primary-actions .button {
+    flex: 1 1 160px;
+  }
+
+  .desktop-runtime-settings__primary-actions .button__label {
+    max-width: none;
   }
 }
