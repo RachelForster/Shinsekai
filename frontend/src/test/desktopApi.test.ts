@@ -14,10 +14,17 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import {
+  browseDesktopFiles,
   checkDesktopUpdate,
+  chooseDesktopRuntimePython,
   installDesktopUpdate,
   isTauriDesktop,
+  onDesktopRuntimeProgress,
   onDesktopUpdateProgress,
+  repairDesktopRuntime,
+  scanDesktopRuntime,
+  selectDesktopRuntime,
+  startDesktopRuntime,
 } from "../shared/desktop/desktopApi";
 
 describe("desktop API environment detection", () => {
@@ -49,6 +56,32 @@ describe("desktop API environment detection", () => {
     expect(mockInvoke).toHaveBeenCalledWith("desktop_update_check", undefined);
   });
 
+  it("invokes desktop runtime scan and start commands", async () => {
+    mockInvoke.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
+
+    await scanDesktopRuntime();
+    await startDesktopRuntime("python-ready");
+    await selectDesktopRuntime("python-ready");
+    await repairDesktopRuntime("python-missing", "createManagedVenv");
+    await repairDesktopRuntime("python-conda", "installRuntimeDeps");
+    await chooseDesktopRuntimePython("/opt/python/bin/python");
+    await browseDesktopFiles({ path: "/tmp", showHidden: true });
+
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_scan", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_start", { candidateId: "python-ready" });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_select", { candidateId: "python-ready" });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_repair", {
+      action: "createManagedVenv",
+      candidateId: "python-missing",
+    });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_repair", {
+      action: "installRuntimeDeps",
+      candidateId: "python-conda",
+    });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_choose_python", { path: "/opt/python/bin/python" });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", { path: "/tmp", showHidden: true });
+  });
+
   it("marks restart state while installing a desktop update", async () => {
     mockInvoke.mockResolvedValue(undefined);
 
@@ -71,6 +104,22 @@ describe("desktop API environment detection", () => {
 
     expect(mockListen).toHaveBeenCalledWith("shinsekai:update-progress", expect.any(Function));
     expect(listener).toHaveBeenCalledWith({ contentLength: 20, downloaded: 10, event: "progress" });
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("subscribes to desktop runtime progress events", async () => {
+    const unlisten = vi.fn();
+    const listener = vi.fn();
+    mockListen.mockImplementation(async (_eventName, callback) => {
+      callback({ payload: { message: "Scanning", phase: "probing" } });
+      return unlisten;
+    });
+
+    const dispose = await onDesktopRuntimeProgress(listener);
+    dispose();
+
+    expect(mockListen).toHaveBeenCalledWith("shinsekai:runtime-progress", expect.any(Function));
+    expect(listener).toHaveBeenCalledWith({ message: "Scanning", phase: "probing" });
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
 });

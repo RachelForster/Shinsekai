@@ -1,9 +1,62 @@
-export type DesktopRuntimeStatus = "checking" | "missing" | "updating" | "ready" | "error";
+import type { FileBrowserSnapshot } from "../platform/types";
+
+export type DesktopRuntimeStatus = "checking" | "missing" | "needsAction" | "updating" | "ready" | "error";
+
+export type DesktopRuntimeCandidateKind = "explicit" | "managed" | "managedVenv" | "portable" | "conda" | "path";
+
+export type DesktopRuntimeCandidateStatus =
+  | "ready"
+  | "missingCoreDeps"
+  | "missingOptionalDeps"
+  | "unsupportedVersion"
+  | "wrongArchitecture"
+  | "brokenBridge"
+  | "brokenPython";
+
+export type DesktopRuntimeRepairAction =
+  | "start"
+  | "createManagedVenv"
+  | "installRuntimeDeps"
+  | "selectDifferentRuntime";
+
+export interface DesktopRuntimeCandidate {
+  id: string;
+  pythonId?: string | null;
+  label: string;
+  path: string;
+  kind: DesktopRuntimeCandidateKind;
+  version?: string | null;
+  status: DesktopRuntimeCandidateStatus;
+  message?: string | null;
+  score: number;
+  selected: boolean;
+  managed: boolean;
+  missingPackages: string[];
+  missingImports: string[];
+  pythonVersion?: string | null;
+  warnings: string[];
+  repairActions: DesktopRuntimeRepairAction[];
+}
 
 export interface DesktopRuntimeState {
   status: DesktopRuntimeStatus;
   message?: string | null;
   bridgeUrl: string;
+  selectedCandidateId?: string | null;
+  recommendedAction?: DesktopRuntimeRepairAction | null;
+  candidates: DesktopRuntimeCandidate[];
+}
+
+export type DesktopRuntimeProgressPhase = "probing" | "installingDeps" | "checkingBridge" | "ready";
+
+export interface DesktopRuntimeProgress {
+  phase: DesktopRuntimeProgressPhase;
+  candidateId?: string | null;
+  source?: string | null;
+  downloaded?: number | null;
+  total?: number | null;
+  speedBytesPerSec?: number | null;
+  message?: string | null;
 }
 
 export interface DesktopUpdate {
@@ -32,6 +85,7 @@ declare global {
 
 const bridgeRestartFinishedEvent = "shinsekai:bridge-restart-finished";
 const desktopUpdateProgressEvent = "shinsekai:update-progress";
+const desktopRuntimeProgressEvent = "shinsekai:runtime-progress";
 
 export function isTauriDesktop() {
   if (typeof window === "undefined") {
@@ -54,8 +108,28 @@ export function getDesktopRuntimeState() {
   return invokeDesktop<DesktopRuntimeState>("desktop_runtime_state");
 }
 
-export function updateDesktopRuntime() {
-  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_update");
+export function scanDesktopRuntime() {
+  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_scan");
+}
+
+export function startDesktopRuntime(candidateId?: string | null) {
+  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_start", { candidateId });
+}
+
+export function selectDesktopRuntime(candidateId: string) {
+  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_select", { candidateId });
+}
+
+export function chooseDesktopRuntimePython(path: string) {
+  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_choose_python", { path });
+}
+
+export function repairDesktopRuntime(candidateId: string, action: DesktopRuntimeRepairAction) {
+  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_repair", { action, candidateId });
+}
+
+export function browseDesktopFiles(options?: { path?: string; showHidden?: boolean }) {
+  return invokeDesktop<FileBrowserSnapshot>("desktop_files_browse", options ?? {});
 }
 
 export function checkDesktopUpdate() {
@@ -81,6 +155,13 @@ export async function onDesktopUpdateProgress(
 ): Promise<DesktopEventUnlisten> {
   const { listen } = await import("@tauri-apps/api/event");
   return listen<DesktopUpdateProgress>(desktopUpdateProgressEvent, (event) => listener(event.payload));
+}
+
+export async function onDesktopRuntimeProgress(
+  listener: (progress: DesktopRuntimeProgress) => void,
+): Promise<DesktopEventUnlisten> {
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<DesktopRuntimeProgress>(desktopRuntimeProgressEvent, (event) => listener(event.payload));
 }
 
 export async function restartDesktopBridge() {

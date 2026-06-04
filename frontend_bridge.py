@@ -8,7 +8,9 @@ current project already owns it.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib.metadata
+import json
 import os
 import platform
 import re
@@ -221,8 +223,9 @@ def _watch_windows_parent(parent_pid: int) -> None:
 def check_runtime(
     project_root: str | None = None,
     frontend_dist: str | None = "frontend/dist",
-    requirements_file: str | None = "requirements.txt",
+    requirements_file: str | None = None,
     app_root: str | None = None,
+    profile: str = "desktop-core",
 ) -> None:
     repo_root, _resolved_frontend_dist, _resolved_app_root = _configure_runtime_context(
         project_root,
@@ -232,6 +235,7 @@ def check_runtime(
     from sdk.logging import configure_logging
 
     configure_logging("frontend-bridge", project_root=Path.cwd())
+    requirements_file = requirements_file or _default_runtime_requirements_file(repo_root, profile)
     if requirements_file:
         requirements_path = Path(requirements_file).expanduser()
         if not requirements_path.is_absolute():
@@ -255,6 +259,39 @@ def check_runtime(
     TemplateGenerator()
 
 
+def runtime_check_report(
+    project_root: str | None = None,
+    frontend_dist: str | None = "frontend/dist",
+    requirements_file: str | None = None,
+    app_root: str | None = None,
+    profile: str = "desktop-core",
+) -> dict[str, object]:
+    try:
+        check_runtime(project_root, frontend_dist, requirements_file, app_root, profile)
+    except Exception as exc:
+        message = str(exc)
+        return {
+            "ok": False,
+            "profile": profile,
+            "message": message,
+            "missingDistributions": _missing_distributions_from_message(message),
+        }
+    return {
+        "ok": True,
+        "profile": profile,
+        "message": "Shinsekai Python runtime check completed.",
+        "missingDistributions": [],
+    }
+
+
+def _default_runtime_requirements_file(repo_root: Path, profile: str) -> str:
+    if profile == "desktop-core":
+        core = repo_root / "requirements-runtime-core.txt"
+        if core.is_file():
+            return str(core)
+    return str(repo_root / "requirements.txt")
+
+
 def _check_required_distributions(requirements_path: Path) -> None:
     if not requirements_path.is_file():
         raise FileNotFoundError(f"requirements file not found: {requirements_path}")
@@ -271,10 +308,34 @@ def _check_required_distributions(requirements_path: Path) -> None:
         raise RuntimeError(f"missing Python runtime distributions: {joined}")
 
 
-def _iter_requirement_names(requirements_path: Path):
+def _missing_distributions_from_message(message: str) -> list[str]:
+    prefix = "missing Python runtime distributions:"
+    if prefix not in message:
+        return []
+    return [
+        item.strip()
+        for item in message.split(prefix, 1)[1].split(",", maxsplit=128)
+        if item.strip()
+    ]
+
+
+def _iter_requirement_names(requirements_path: Path, seen: set[Path] | None = None):
+    requirements_path = requirements_path.resolve()
+    seen = seen or set()
+    if requirements_path in seen:
+        return
+    seen.add(requirements_path)
     for raw_line in requirements_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.split("#", 1)[0].strip()
-        if not line or line.startswith(("-", "http://", "https://")):
+        if not line:
+            continue
+
+        included_path = _included_requirements_path(requirements_path, line)
+        if included_path is not None:
+            yield from _iter_requirement_names(included_path, seen)
+            continue
+
+        if line.startswith(("-", "http://", "https://")):
             continue
 
         requirement, marker = _split_requirement_marker(line)
@@ -285,6 +346,21 @@ def _iter_requirement_names(requirements_path: Path):
         name = name.split("[", 1)[0].strip()
         if name:
             yield name
+
+
+def _included_requirements_path(requirements_path: Path, line: str) -> Path | None:
+    tokens = line.split()
+    if not tokens:
+        return None
+    if tokens[0] in {"-r", "--requirement"} and len(tokens) >= 2:
+        included = Path(tokens[1]).expanduser()
+    elif tokens[0].startswith("--requirement="):
+        included = Path(tokens[0].split("=", 1)[1]).expanduser()
+    else:
+        return None
+    if not included.is_absolute():
+        included = requirements_path.parent / included
+    return included
 
 
 def _split_requirement_marker(line: str) -> tuple[str, str]:
@@ -356,18 +432,42 @@ def main() -> None:
     )
     parser.add_argument(
         "--requirements-file",
-        default="requirements.txt",
+        default="",
         help="Requirements file used by --check-runtime. Relative paths resolve from the repository root.",
+    )
+    parser.add_argument(
+        "--profile",
+        default="desktop-core",
+        help="Runtime requirements profile used by --check-runtime.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit a structured runtime check report as JSON.",
     )
     args = parser.parse_args()
     if args.check_runtime:
-        check_runtime(
-            args.project_root or None,
-            args.frontend_dist or None,
-            args.requirements_file or None,
-            args.app_root or None,
-        )
-        print("Shinsekai Python runtime check completed.")
+        if args.json:
+            with contextlib.redirect_stdout(sys.stderr):
+                report = runtime_check_report(
+                    args.project_root or None,
+                    args.frontend_dist or None,
+                    args.requirements_file or None,
+                    args.app_root or None,
+                    args.profile,
+                )
+            print(json.dumps(report, ensure_ascii=True))
+            if not report["ok"]:
+                raise SystemExit(1)
+        else:
+            check_runtime(
+                args.project_root or None,
+                args.frontend_dist or None,
+                args.requirements_file or None,
+                args.app_root or None,
+                args.profile,
+            )
+            print("Shinsekai Python runtime check completed.")
         return
 
     run(

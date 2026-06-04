@@ -10,6 +10,9 @@ on:
       - "frontend_bridge.py"
       - "frontend_bridge_core/**"
       - "requirements.txt"
+      - "requirements-runtime-*.txt"
+      - "requirements-dev.txt"
+      - "test/unit/test_frontend_runtime_check.py"
       - "assets/**"
       - "asr/**"
       - "config/**"
@@ -30,6 +33,9 @@ on:
       - "frontend_bridge.py"
       - "frontend_bridge_core/**"
       - "requirements.txt"
+      - "requirements-runtime-*.txt"
+      - "requirements-dev.txt"
+      - "test/unit/test_frontend_runtime_check.py"
       - "assets/**"
       - "asr/**"
       - "config/**"
@@ -54,7 +60,70 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  runtime-gate:
+    name: Runtime gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev patchelf \
+            libegl1 libgl1 libglib2.0-0 \
+            libportaudio2 portaudio19-dev
+
+      - name: Install Python runtime dependencies
+        run: |
+          python -m pip install --upgrade pip -q
+          pip install -r requirements-runtime-core.txt -q
+          pip install pytest -q
+
+      - name: Check desktop-core runtime
+        run: |
+          python frontend_bridge.py \
+            --check-runtime \
+            --json \
+            --profile desktop-core \
+            --project-root . \
+            --requirements-file requirements-runtime-core.txt
+
+      - name: Runtime manifest tests
+        run: python -m pytest test/unit/test_frontend_runtime_check.py
+
+      - name: Rust runtime tests
+        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml runtime
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Desktop runtime UI contract tests
+        working-directory: frontend
+        run: pnpm exec vitest run src/test/desktopApi.test.ts src/test/desktopChrome.test.tsx src/test/features/system-settings/SystemSettingsPage.test.tsx
+
   build:
+    needs: runtime-gate
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -75,6 +144,9 @@ jobs:
             bundles: msi,nsis
           - platform: macos-arm64
             os: macos-14
+            bundles: dmg
+          - platform: macos-x64
+            os: macos-13
             bundles: dmg
 
     steps:

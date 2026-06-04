@@ -1,0 +1,8 @@
+-r requirements-runtime-core.txt
+opencv_python
+pandas
+rembg
+pyaudio
+vosk
+py7zr
+py7zz>=1.1.4; sys_platform == "darwin" or platform_machine == "x86_64" or platform_machine == "AMD64"

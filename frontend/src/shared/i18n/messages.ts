@@ -157,11 +157,38 @@ export type MessageKey =
   | "bottom.syncing"
   | "bottom.transport"
   | "desktop.runtime.checking"
+  | "desktop.runtime.candidateMissing"
+  | "desktop.runtime.candidatePath"
+  | "desktop.runtime.candidatePythonVersion"
+  | "desktop.runtime.candidates"
+  | "desktop.runtime.candidateWarnings"
+  | "desktop.runtime.choosePythonButton"
+  | "desktop.runtime.createVenvButton"
   | "desktop.runtime.defaultDetail"
   | "desktop.runtime.eyebrow"
+  | "desktop.runtime.installDepsButton"
+  | "desktop.runtime.phase.checkingBridge"
+  | "desktop.runtime.phase.installingDeps"
+  | "desktop.runtime.phase.probing"
+  | "desktop.runtime.phase.ready"
+  | "desktop.runtime.progressBytes"
+  | "desktop.runtime.progressLabel"
+  | "desktop.runtime.progressPercent"
+  | "desktop.runtime.progressSpeed"
+  | "desktop.runtime.pythonPathLabel"
+  | "desktop.runtime.pythonPathPlaceholder"
   | "desktop.runtime.required"
+  | "desktop.runtime.status.brokenBridge"
+  | "desktop.runtime.status.brokenPython"
+  | "desktop.runtime.status.missingCoreDeps"
+  | "desktop.runtime.status.missingOptionalDeps"
+  | "desktop.runtime.status.ready"
+  | "desktop.runtime.status.unsupportedVersion"
+  | "desktop.runtime.status.wrongArchitecture"
   | "desktop.runtime.updateButton"
   | "desktop.runtime.updating"
+  | "desktop.runtime.useCandidate"
+  | "desktop.runtime.usePythonButton"
   | "desktop.runtime.waitingBridge"
   | "desktop.titlebar.close"
   | "desktop.titlebar.maximize"
@@ -320,6 +347,7 @@ export type MessageKey =
   | "filePicker.rootUserProfile"
   | "filePicker.selectCurrent"
   | "filePicker.selectFile"
+  | "filePicker.selectPath"
   | "filePicker.size"
   | "filePicker.timeout"
   | "filePicker.type"
@@ -541,6 +569,11 @@ export type MessageKey =
   | "system.description"
   | "system.error.saveFallback"
   | "system.loading"
+  | "system.runtime.current"
+  | "system.runtime.description"
+  | "system.runtime.noCandidates"
+  | "system.runtime.scan"
+  | "system.runtime.title"
   | "system.title"
   | "system.toast.saved"
   | "template.action.selectAllCharacters"
@@ -798,11 +831,38 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "bottom.syncing": "Syncing",
     "bottom.transport": "Components communicate through repositories, queries, and platform adapters",
     "desktop.runtime.checking": "Checking runtime",
+    "desktop.runtime.candidateMissing": "Missing",
+    "desktop.runtime.candidatePath": "Path",
+    "desktop.runtime.candidatePythonVersion": "Python",
+    "desktop.runtime.candidates": "Runtime candidates",
+    "desktop.runtime.candidateWarnings": "Warnings",
+    "desktop.runtime.choosePythonButton": "Choose Python",
+    "desktop.runtime.createVenvButton": "Create isolated runtime",
     "desktop.runtime.defaultDetail": "Checking the Shinsekai runtime.",
     "desktop.runtime.eyebrow": "Runtime",
+    "desktop.runtime.installDepsButton": "Install dependencies",
+    "desktop.runtime.phase.checkingBridge": "Checking bridge",
+    "desktop.runtime.phase.installingDeps": "Installing dependencies",
+    "desktop.runtime.phase.probing": "Scanning runtimes",
+    "desktop.runtime.phase.ready": "Runtime ready",
+    "desktop.runtime.progressBytes": "{downloaded} / {total}",
+    "desktop.runtime.progressLabel": "Runtime progress",
+    "desktop.runtime.progressPercent": "{percent}%",
+    "desktop.runtime.progressSpeed": "{speed}/s",
+    "desktop.runtime.pythonPathLabel": "Python executable",
+    "desktop.runtime.pythonPathPlaceholder": "Paste a Python executable or runtime directory path",
     "desktop.runtime.required": "Runtime update required",
+    "desktop.runtime.status.brokenBridge": "Bridge check failed",
+    "desktop.runtime.status.brokenPython": "Python unavailable",
+    "desktop.runtime.status.missingCoreDeps": "Missing core deps",
+    "desktop.runtime.status.missingOptionalDeps": "Missing optional deps",
+    "desktop.runtime.status.ready": "Ready",
+    "desktop.runtime.status.unsupportedVersion": "Unsupported Python",
+    "desktop.runtime.status.wrongArchitecture": "Wrong architecture",
     "desktop.runtime.updateButton": "Update",
     "desktop.runtime.updating": "Updating runtime",
+    "desktop.runtime.useCandidate": "Use this runtime",
+    "desktop.runtime.usePythonButton": "Use Python",
     "desktop.runtime.waitingBridge": "Waiting for the local service to start.",
     "desktop.titlebar.close": "Close",
     "desktop.titlebar.maximize": "Maximize",
@@ -963,6 +1023,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "filePicker.rootUserProfile": "User profile",
     "filePicker.selectCurrent": "Select folder",
     "filePicker.selectFile": "Select file",
+    "filePicker.selectPath": "Select path",
     "filePicker.size": "Size",
     "filePicker.timeout": "Folder loading timed out. Try refreshing or enter a more specific path.",
     "filePicker.type": "Type",
@@ -1228,6 +1289,11 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "system.description": "Base interface, media paths, and live room settings.",
     "system.error.saveFallback": "Check the system configuration.",
     "system.loading": "Loading system settings",
+    "system.runtime.current": "Current runtime",
+    "system.runtime.description": "Review detected Python runtimes, switch preference, or repair dependencies.",
+    "system.runtime.noCandidates": "No runtime candidates have been scanned yet.",
+    "system.runtime.scan": "Scan runtimes",
+    "system.runtime.title": "Desktop runtime",
     "system.title": "System",
     "system.toast.saved": "System settings saved",
     "template.action.launch": "Launch chat",
@@ -1448,11 +1514,38 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "bottom.syncing": "同期中",
     "bottom.transport": "コンポーネントは repository、query、platform adapter で通信",
     "desktop.runtime.checking": "実行環境を確認中",
+    "desktop.runtime.candidateMissing": "不足",
+    "desktop.runtime.candidatePath": "パス",
+    "desktop.runtime.candidatePythonVersion": "Python",
+    "desktop.runtime.candidates": "実行環境候補",
+    "desktop.runtime.candidateWarnings": "警告",
+    "desktop.runtime.choosePythonButton": "Python を選択",
+    "desktop.runtime.createVenvButton": "独立した実行環境を作成",
     "desktop.runtime.defaultDetail": "Shinsekai の実行環境を確認しています。",
     "desktop.runtime.eyebrow": "実行環境",
+    "desktop.runtime.installDepsButton": "依存関係をインストール",
+    "desktop.runtime.phase.checkingBridge": "Bridge を確認中",
+    "desktop.runtime.phase.installingDeps": "依存関係をインストール中",
+    "desktop.runtime.phase.probing": "実行環境をスキャン中",
+    "desktop.runtime.phase.ready": "実行環境の準備完了",
+    "desktop.runtime.progressBytes": "{downloaded} / {total}",
+    "desktop.runtime.progressLabel": "実行環境の進捗",
+    "desktop.runtime.progressPercent": "{percent}%",
+    "desktop.runtime.progressSpeed": "{speed}/s",
+    "desktop.runtime.pythonPathLabel": "Python 実行ファイル",
+    "desktop.runtime.pythonPathPlaceholder": "Python 実行ファイル、または実行環境ディレクトリのパスを入力",
     "desktop.runtime.required": "実行環境の更新が必要です",
+    "desktop.runtime.status.brokenBridge": "Bridge チェック失敗",
+    "desktop.runtime.status.brokenPython": "Python を使用できません",
+    "desktop.runtime.status.missingCoreDeps": "必須依存関係が不足",
+    "desktop.runtime.status.missingOptionalDeps": "任意依存関係が不足",
+    "desktop.runtime.status.ready": "利用可能",
+    "desktop.runtime.status.unsupportedVersion": "未対応の Python",
+    "desktop.runtime.status.wrongArchitecture": "アーキテクチャ不一致",
     "desktop.runtime.updateButton": "更新",
     "desktop.runtime.updating": "実行環境を更新中",
+    "desktop.runtime.useCandidate": "この実行環境を使う",
+    "desktop.runtime.usePythonButton": "Python を使用",
     "desktop.runtime.waitingBridge": "ローカルサービスの起動を待っています。",
     "desktop.titlebar.close": "閉じる",
     "desktop.titlebar.maximize": "最大化",
@@ -1613,6 +1706,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "filePicker.rootUserProfile": "ユーザーフォルダ",
     "filePicker.selectCurrent": "フォルダを選択",
     "filePicker.selectFile": "ファイルを選択",
+    "filePicker.selectPath": "パスを選択",
     "filePicker.size": "サイズ",
     "filePicker.timeout": "フォルダの読み込みがタイムアウトしました。更新するか、より具体的なパスを入力してください。",
     "filePicker.type": "種類",
@@ -1876,6 +1970,11 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "system.description": "基本インターフェース、メディアパス、配信ルーム設定。",
     "system.error.saveFallback": "システム設定を確認してください。",
     "system.loading": "システム設定を読み込み中",
+    "system.runtime.current": "現在の実行環境",
+    "system.runtime.description": "検出した Python 実行環境の確認、優先設定の切り替え、依存関係の修復を行います。",
+    "system.runtime.noCandidates": "実行環境候補はまだスキャンされていません。",
+    "system.runtime.scan": "実行環境をスキャン",
+    "system.runtime.title": "デスクトップ実行環境",
     "system.title": "システム",
     "system.toast.saved": "システム設定を保存しました",
     "template.action.launch": "チャット開始",
@@ -2093,11 +2192,38 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "bottom.syncing": "正在同步",
     "bottom.transport": "组件通过 repository、query 和 platform adapter 通信",
     "desktop.runtime.checking": "正在检查运行环境",
+    "desktop.runtime.candidateMissing": "缺失",
+    "desktop.runtime.candidatePath": "路径",
+    "desktop.runtime.candidatePythonVersion": "Python",
+    "desktop.runtime.candidates": "运行环境候选",
+    "desktop.runtime.candidateWarnings": "警告",
+    "desktop.runtime.choosePythonButton": "选择 Python",
+    "desktop.runtime.createVenvButton": "创建独立运行环境",
     "desktop.runtime.defaultDetail": "正在检查 Shinsekai 运行环境。",
     "desktop.runtime.eyebrow": "运行环境",
+    "desktop.runtime.installDepsButton": "安装依赖",
+    "desktop.runtime.phase.checkingBridge": "正在检查 Bridge",
+    "desktop.runtime.phase.installingDeps": "正在安装依赖",
+    "desktop.runtime.phase.probing": "正在扫描运行环境",
+    "desktop.runtime.phase.ready": "运行环境已就绪",
+    "desktop.runtime.progressBytes": "{downloaded} / {total}",
+    "desktop.runtime.progressLabel": "运行环境进度",
+    "desktop.runtime.progressPercent": "{percent}%",
+    "desktop.runtime.progressSpeed": "{speed}/s",
+    "desktop.runtime.pythonPathLabel": "Python 可执行文件",
+    "desktop.runtime.pythonPathPlaceholder": "粘贴 Python 可执行文件或运行环境目录路径",
     "desktop.runtime.required": "需要更新运行环境",
+    "desktop.runtime.status.brokenBridge": "Bridge 检查失败",
+    "desktop.runtime.status.brokenPython": "Python 不可用",
+    "desktop.runtime.status.missingCoreDeps": "缺少核心依赖",
+    "desktop.runtime.status.missingOptionalDeps": "缺少可选依赖",
+    "desktop.runtime.status.ready": "可直接启动",
+    "desktop.runtime.status.unsupportedVersion": "Python 版本不支持",
+    "desktop.runtime.status.wrongArchitecture": "架构不匹配",
     "desktop.runtime.updateButton": "更新",
     "desktop.runtime.updating": "正在更新运行环境",
+    "desktop.runtime.useCandidate": "使用此运行环境",
+    "desktop.runtime.usePythonButton": "使用 Python",
     "desktop.runtime.waitingBridge": "正在等待本地服务启动。",
     "desktop.titlebar.close": "关闭",
     "desktop.titlebar.maximize": "最大化",
@@ -2256,6 +2382,7 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "filePicker.rootUserProfile": "用户目录",
     "filePicker.selectCurrent": "选择文件夹",
     "filePicker.selectFile": "选择文件",
+    "filePicker.selectPath": "选择路径",
     "filePicker.size": "大小",
     "filePicker.timeout": "读取文件夹超时，请刷新或输入更具体的路径。",
     "filePicker.type": "类型",
@@ -2515,6 +2642,11 @@ export const frontendMessages: Record<FrontendLanguage, Record<MessageKey, strin
     "system.description": "基础界面、媒体路径和直播配置。",
     "system.error.saveFallback": "请检查系统配置。",
     "system.loading": "正在读取系统设置",
+    "system.runtime.current": "当前运行环境",
+    "system.runtime.description": "查看已检测到的 Python 运行环境，切换偏好，或修复依赖。",
+    "system.runtime.noCandidates": "尚未扫描到运行环境候选。",
+    "system.runtime.scan": "扫描运行环境",
+    "system.runtime.title": "桌面运行环境",
     "system.title": "系统",
     "system.toast.saved": "系统设置已保存",
     "template.action.launch": "启动聊天",

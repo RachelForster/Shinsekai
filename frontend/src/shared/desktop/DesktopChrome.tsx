@@ -3,7 +3,10 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactN
 
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
+import { FilePicker } from "../ui/FormControls";
 import {
+  browseDesktopFiles,
+  chooseDesktopRuntimePython,
   closeDesktopWindow,
   desktopRestartErrorMessage,
   getDesktopRuntimeState,
@@ -11,10 +14,16 @@ import {
   isDesktopRestarting,
   isTauriDesktop,
   minimizeDesktopWindow,
+  onDesktopRuntimeProgress,
+  repairDesktopRuntime,
+  selectDesktopRuntime,
   startDesktopWindowDrag,
   toggleMaximizeDesktopWindow,
-  updateDesktopRuntime,
   writeDesktopRestartDebugLog,
+  type DesktopRuntimeCandidate,
+  type DesktopRuntimeCandidateStatus,
+  type DesktopRuntimeProgress,
+  type DesktopRuntimeRepairAction,
   type DesktopRuntimeState,
 } from "./desktopApi";
 
@@ -103,9 +112,12 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const [runtime, setRuntime] = useState<DesktopRuntimeState>({
     bridgeUrl: "",
+    candidates: [],
     status: "checking",
   });
+  const [runtimeProgress, setRuntimeProgress] = useState<DesktopRuntimeProgress | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pythonPath, setPythonPath] = useState("");
 
   useEffect(() => {
     let stopped = false;
@@ -149,6 +161,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
         if (!stopped) {
           setRuntime({
             bridgeUrl: "",
+            candidates: [],
             message: desktopRestartErrorMessage(error),
             status: "error",
           });
@@ -163,15 +176,39 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const handleUpdate = useCallback(async () => {
+  useEffect(() => {
+    let stopped = false;
+    let dispose: (() => void) | null = null;
+    void onDesktopRuntimeProgress((progress) => {
+      if (!stopped) {
+        setRuntimeProgress(progress);
+      }
+    })
+      .then((unlisten) => {
+        if (stopped) {
+          unlisten();
+          return;
+        }
+        dispose = unlisten;
+      })
+      .catch((error) => {
+        console.error("Desktop runtime progress listener failed", error);
+      });
+    return () => {
+      stopped = true;
+      dispose?.();
+    };
+  }, []);
+
+  const handleStartCandidate = useCallback(async (candidateId: string) => {
     setBusy(true);
-    setRuntime((current) => ({ ...current, status: "updating" }));
+    setRuntime((current) => ({ ...current, status: "checking" }));
     try {
-      setRuntime(await updateDesktopRuntime());
+      setRuntime(await selectDesktopRuntime(candidateId));
     } catch (error) {
       if (isDesktopBridgeConnectionError(error)) {
         void writeDesktopRestartDebugLog(
-          `DesktopRuntimeGate update displayed bridge error: ${desktopRestartErrorMessage(error)}`,
+          `DesktopRuntimeGate start displayed bridge error: ${desktopRestartErrorMessage(error)}`,
         );
       }
       setRuntime((current) => ({
@@ -184,11 +221,56 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const handleRepairCandidate = useCallback(async (candidateId: string, action: DesktopRuntimeRepairAction) => {
+    setBusy(true);
+    setRuntime((current) => ({ ...current, status: "updating" }));
+    try {
+      setRuntime(await repairDesktopRuntime(candidateId, action));
+    } catch (error) {
+      if (isDesktopBridgeConnectionError(error)) {
+        void writeDesktopRestartDebugLog(
+          `DesktopRuntimeGate repair displayed bridge error: ${desktopRestartErrorMessage(error)}`,
+        );
+      }
+      setRuntime((current) => ({
+        ...current,
+        message: desktopRestartErrorMessage(error),
+        status: "error",
+      }));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const handleChoosePython = useCallback(async () => {
+    const path = pythonPath.trim();
+    if (!path) {
+      return;
+    }
+    setBusy(true);
+    setRuntime((current) => ({ ...current, status: "checking" }));
+    try {
+      setRuntime(await chooseDesktopRuntimePython(path));
+    } catch (error) {
+      if (isDesktopBridgeConnectionError(error)) {
+        void writeDesktopRestartDebugLog(
+          `DesktopRuntimeGate choose Python displayed bridge error: ${desktopRestartErrorMessage(error)}`,
+        );
+      }
+      setRuntime((current) => ({
+        ...current,
+        message: desktopRestartErrorMessage(error),
+        status: "error",
+      }));
+    } finally {
+      setBusy(false);
+    }
+  }, [pythonPath]);
+
   if (runtime.status === "ready") {
     return <>{children}</>;
   }
 
-  const canUpdate = runtime.status === "missing" || runtime.status === "error";
   const detail = runtime.message || t("desktop.runtime.defaultDetail");
   const title =
     runtime.status === "checking"
@@ -196,6 +278,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
       : runtime.status === "updating"
         ? t("desktop.runtime.updating")
         : t("desktop.runtime.required");
+  const candidates = runtime.candidates ?? [];
 
   return (
     <main className="desktop-runtime">
@@ -208,16 +291,200 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
           </div>
         </div>
         <p className="desktop-runtime__message">{detail}</p>
-        <div className="desktop-runtime__actions">
-          {canUpdate ? (
-            <Button disabled={busy} loading={busy} onClick={handleUpdate} variant="primary">
-              {t("desktop.runtime.updateButton")}
+        {runtimeProgress ? <RuntimeProgressPanel progress={runtimeProgress} /> : null}
+        {candidates.length ? (
+          <div className="desktop-runtime__candidates">
+            <h2>{t("desktop.runtime.candidates")}</h2>
+            <div className="desktop-runtime__candidate-list">
+              {candidates.map((candidate) => (
+                <RuntimeCandidateRow
+                  busy={busy}
+                  candidate={candidate}
+                  key={candidate.id}
+                  onRepair={handleRepairCandidate}
+                  onStart={handleStartCandidate}
+                  statusLabel={runtimeCandidateStatusLabel(candidate.status, t)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className="desktop-runtime__import">
+          <label htmlFor="desktop-runtime-python">{t("desktop.runtime.pythonPathLabel")}</label>
+          <div className="desktop-runtime__import-row">
+            <FilePicker
+              autoComplete="off"
+              disabled={busy}
+              id="desktop-runtime-python"
+              onChange={(event) => setPythonPath(event.currentTarget.value)}
+              onPathChange={setPythonPath}
+              pickLabel={t("desktop.runtime.choosePythonButton")}
+              pickerBrowse={browseDesktopFiles}
+              pickerMode="path"
+              pickerTitle={t("desktop.runtime.pythonPathLabel")}
+              placeholder={t("desktop.runtime.pythonPathPlaceholder")}
+              type="text"
+              value={pythonPath}
+            />
+            <Button disabled={busy || !pythonPath.trim()} onClick={handleChoosePython}>
+              {t("desktop.runtime.usePythonButton")}
             </Button>
-          ) : null}
+          </div>
         </div>
       </section>
     </main>
   );
+}
+
+function RuntimeProgressPanel({ progress }: { progress: DesktopRuntimeProgress }) {
+  const { t } = useI18n();
+  const hasTotal = typeof progress.total === "number" && progress.total > 0;
+  const percent = hasTotal
+    ? Math.max(0, Math.min(100, Math.round(((progress.downloaded ?? 0) / progress.total!) * 100)))
+    : null;
+  return (
+    <div className="desktop-runtime-progress" aria-live="polite">
+      <div className="desktop-runtime-progress__header">
+        <span>{progress.message || runtimeProgressPhaseLabel(progress.phase, t)}</span>
+        {percent !== null ? <strong>{t("desktop.runtime.progressPercent", { percent })}</strong> : null}
+      </div>
+      {percent !== null ? (
+        <div
+          aria-label={t("desktop.runtime.progressLabel")}
+          aria-valuemax={100}
+          aria-valuemin={0}
+          aria-valuenow={percent}
+          className="desktop-runtime-progress__bar"
+          role="progressbar"
+        >
+          <span style={{ width: `${percent}%` }} />
+        </div>
+      ) : null}
+      {hasTotal ? (
+        <p className="desktop-runtime-progress__meta">
+          {t("desktop.runtime.progressBytes", {
+            downloaded: formatRuntimeBytes(progress.downloaded ?? 0),
+            total: formatRuntimeBytes(progress.total ?? 0),
+          })}
+          {typeof progress.speedBytesPerSec === "number" && progress.speedBytesPerSec > 0
+            ? ` · ${t("desktop.runtime.progressSpeed", { speed: formatRuntimeBytes(progress.speedBytesPerSec) })}`
+            : ""}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function RuntimeCandidateRow({
+  busy,
+  candidate,
+  onRepair,
+  onStart,
+  statusLabel,
+}: {
+  busy: boolean;
+  candidate: DesktopRuntimeCandidate;
+  onRepair: (candidateId: string, action: DesktopRuntimeRepairAction) => void;
+  onStart: (candidateId: string) => void;
+  statusLabel: string;
+}) {
+  const { t } = useI18n();
+  const missing = [...candidate.missingPackages, ...candidate.missingImports];
+  const canCreateManagedVenv = candidate.repairActions.includes("createManagedVenv");
+  const canInstallRuntimeDeps = candidate.repairActions.includes("installRuntimeDeps");
+  return (
+    <article className="desktop-runtime-candidate" data-status={candidate.status}>
+      <div className="desktop-runtime-candidate__header">
+        <div>
+          <h3>{candidate.label}</h3>
+          <p>{candidate.version || candidate.kind}</p>
+        </div>
+        <span className="desktop-runtime-candidate__status">{statusLabel}</span>
+      </div>
+      {candidate.pythonVersion ? (
+        <p className="desktop-runtime-candidate__message">
+          <span>{t("desktop.runtime.candidatePythonVersion")}: </span>
+          {candidate.pythonVersion}
+        </p>
+      ) : null}
+      {candidate.path ? (
+        <p className="desktop-runtime-candidate__path">
+          <span>{t("desktop.runtime.candidatePath")}</span>
+          <code>{candidate.path}</code>
+        </p>
+      ) : null}
+      {candidate.message ? <p className="desktop-runtime-candidate__message">{candidate.message}</p> : null}
+      {missing.length ? (
+        <p className="desktop-runtime-candidate__message">
+          <span>{t("desktop.runtime.candidateMissing")}: </span>
+          {missing.join(", ")}
+        </p>
+      ) : null}
+      {candidate.warnings.length ? (
+        <p className="desktop-runtime-candidate__message">
+          <span>{t("desktop.runtime.candidateWarnings")}: </span>
+          {candidate.warnings.join(" ")}
+        </p>
+      ) : null}
+      {candidate.status === "ready" || canCreateManagedVenv || canInstallRuntimeDeps ? (
+        <div className="desktop-runtime-candidate__actions">
+          {candidate.status === "ready" ? (
+            <Button disabled={busy} onClick={() => onStart(candidate.id)}>
+              {t("desktop.runtime.useCandidate")}
+            </Button>
+          ) : null}
+          {canCreateManagedVenv ? (
+            <Button disabled={busy} onClick={() => onRepair(candidate.id, "createManagedVenv")} variant="primary">
+              {t("desktop.runtime.createVenvButton")}
+            </Button>
+          ) : null}
+          {canInstallRuntimeDeps ? (
+            <Button disabled={busy} onClick={() => onRepair(candidate.id, "installRuntimeDeps")} variant="primary">
+              {t("desktop.runtime.installDepsButton")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function runtimeCandidateStatusLabel(status: DesktopRuntimeCandidateStatus, t: ReturnType<typeof useI18n>["t"]) {
+  const keys: Record<DesktopRuntimeCandidateStatus, Parameters<typeof t>[0]> = {
+    brokenBridge: "desktop.runtime.status.brokenBridge",
+    brokenPython: "desktop.runtime.status.brokenPython",
+    missingCoreDeps: "desktop.runtime.status.missingCoreDeps",
+    missingOptionalDeps: "desktop.runtime.status.missingOptionalDeps",
+    ready: "desktop.runtime.status.ready",
+    unsupportedVersion: "desktop.runtime.status.unsupportedVersion",
+    wrongArchitecture: "desktop.runtime.status.wrongArchitecture",
+  };
+  return t(keys[status]);
+}
+
+function runtimeProgressPhaseLabel(phase: DesktopRuntimeProgress["phase"], t: ReturnType<typeof useI18n>["t"]) {
+  const keys: Record<DesktopRuntimeProgress["phase"], Parameters<typeof t>[0]> = {
+    checkingBridge: "desktop.runtime.phase.checkingBridge",
+    installingDeps: "desktop.runtime.phase.installingDeps",
+    probing: "desktop.runtime.phase.probing",
+    ready: "desktop.runtime.phase.ready",
+  };
+  return t(keys[phase]);
+}
+
+function formatRuntimeBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const precision = unitIndex === 0 || size >= 100 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
 }
 
 export function DesktopChrome({ children }: { children: ReactNode }) {

@@ -8,8 +8,113 @@
   grid-template-columns: repeat(2, minmax(220px, 1fr));
 }
 
+.desktop-runtime-settings {
+  gap: var(--space-3);
+}
+
+.desktop-runtime-settings__message,
+.desktop-runtime-settings__progress,
+.desktop-runtime-settings__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.desktop-runtime-settings__progress {
+  color: var(--color-info);
+}
+
+.desktop-runtime-settings__list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.desktop-runtime-settings__candidate {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.desktop-runtime-settings__candidate-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.desktop-runtime-settings__candidate h3,
+.desktop-runtime-settings__candidate p {
+  margin: 0;
+}
+
+.desktop-runtime-settings__candidate h3 {
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.desktop-runtime-settings__candidate p,
+.desktop-runtime-settings__candidate code {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.desktop-runtime-settings__candidate code {
+  overflow-wrap: anywhere;
+}
+
+.desktop-runtime-settings__candidate-main > span {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.desktop-runtime-settings__candidate[data-status="ready"] .desktop-runtime-settings__candidate-main > span {
+  border-color: var(--color-success-border);
+  color: var(--color-success);
+}
+
+.desktop-runtime-settings__candidate-actions,
+.desktop-runtime-settings__import-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.desktop-runtime-settings__import {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.desktop-runtime-settings__import label {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.desktop-runtime-settings__import-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.desktop-runtime-settings__import-row .input-group {
+  min-width: 0;
+}
+
 @media (max-width: 860px) {
   .system-page .schema-section .form-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desktop-runtime-settings__candidate-main,
+  .desktop-runtime-settings__import-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }

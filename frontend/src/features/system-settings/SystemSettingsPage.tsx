@@ -15,6 +15,7 @@ import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { AsyncButton, EmptyState, QueryErrorState, SchemaDrivenForm, useToast } from "../../shared/ui";
+import { DesktopRuntimeSection } from "./DesktopRuntimeSection";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css
 import "./SystemSettingsPage.css";
 
@@ -126,6 +127,7 @@ export function SystemSettingsPage() {
           </AsyncButton>
         </div>
       </header>
+      <DesktopRuntimeSection />
       <SchemaDrivenForm
         disabled={saveMutation.isPending}
         errors={errors}

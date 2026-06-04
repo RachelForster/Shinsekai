@@ -1,9 +1,46 @@
 {
-  "version": "0.1.0",
+  "version": "1.7.0",
+  "schema": 2,
   "required_modules": ["yaml", "pydantic", "requests", "numpy", "pygame"],
+  "profiles": {
+    "desktop-core": {
+      "python": ">=3.10,<3.14",
+      "imports": ["yaml", "pydantic", "requests", "numpy", "pygame"],
+      "requirements": "requirements-runtime-core.txt",
+      "bridge_check": true
+    },
+    "media": {
+      "extends": "desktop-core",
+      "requirements": "requirements-runtime-media.txt"
+    },
+    "local-ai": {
+      "extends": "desktop-core",
+      "requirements": "requirements-runtime-local-ai.txt"
+    },
+    "full": {
+      "extends": "desktop-core",
+      "requirements": "requirements.txt"
+    }
+  },
   "probes": {
     "official": ["https://www.python.org/", "https://pypi.org/simple/"],
-    "china": ["https://mirrors.tuna.tsinghua.edu.cn/", "https://pypi.tuna.tsinghua.edu.cn/simple/"]
+    "china": [
+      "https://mirrors.tuna.tsinghua.edu.cn/",
+      "https://pypi.tuna.tsinghua.edu.cn/simple/",
+      "https://mirrors.aliyun.com/pypi/simple/",
+      "https://mirrors.ustc.edu.cn/pypi/simple/",
+      "https://mirrors.hit.edu.cn/pypi/web/simple/"
+    ]
   },
-  "targets": []
+  "pip_indexes": {
+    "official": "https://pypi.org/simple/",
+    "official_urls": ["https://pypi.org/simple/"],
+    "china": "https://pypi.tuna.tsinghua.edu.cn/simple/",
+    "china_urls": [
+      "https://pypi.tuna.tsinghua.edu.cn/simple/",
+      "https://mirrors.aliyun.com/pypi/simple/",
+      "https://mirrors.ustc.edu.cn/pypi/simple/",
+      "https://mirrors.hit.edu.cn/pypi/web/simple/"
+    ]
+  }
 }

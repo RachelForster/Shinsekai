@@ -36,8 +36,10 @@ const RESTART_DEBUG_LOG_FILE: &str = "shinsekai-restart-debug.log";
 const LIVE_FRONTEND_SCHEME: &str = "shinsekai";
 const FRONTEND_DIST_MARKER: &str = ".dist-current";
 const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
+const MAX_DESKTOP_FILE_BROWSER_ENTRIES: usize = 2000;
 #[cfg(desktop)]
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
+const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -79,11 +81,22 @@ struct BridgeLaunch {
 
 #[derive(Clone)]
 enum DesktopRuntimePhase {
-    Checking,
-    Missing { message: String },
-    Updating,
-    Ready,
-    Error { message: String },
+    Checking {
+        view: Option<runtime::RuntimeScanView>,
+    },
+    NeedsAction {
+        view: runtime::RuntimeScanView,
+    },
+    Updating {
+        view: Option<runtime::RuntimeScanView>,
+    },
+    Ready {
+        view: Option<runtime::RuntimeScanView>,
+    },
+    Error {
+        message: String,
+        view: Option<runtime::RuntimeScanView>,
+    },
 }
 
 #[derive(Serialize)]
@@ -92,6 +105,9 @@ struct DesktopRuntimeView {
     status: &'static str,
     message: Option<String>,
     bridge_url: String,
+    selected_candidate_id: Option<String>,
+    recommended_action: Option<runtime::RuntimeRepairActionKind>,
+    candidates: Vec<runtime::RuntimeCandidateView>,
 }
 
 struct DesktopState {
@@ -133,7 +149,7 @@ impl DesktopState {
             frontend_dist,
             bridge_port,
             bridge: Mutex::new(None),
-            runtime: Mutex::new(DesktopRuntimePhase::Checking),
+            runtime: Mutex::new(DesktopRuntimePhase::Checking { view: None }),
         }
     }
 
@@ -151,6 +167,13 @@ impl DesktopState {
         self.bridge.lock().ok()?.take()
     }
 
+    fn has_bridge(&self) -> bool {
+        self.bridge
+            .lock()
+            .map(|bridge| bridge.is_some())
+            .unwrap_or(false)
+    }
+
     fn runtime_view(&self) -> DesktopRuntimeView {
         let phase = self
             .runtime
@@ -158,18 +181,31 @@ impl DesktopState {
             .map(|runtime| runtime.clone())
             .unwrap_or_else(|_| DesktopRuntimePhase::Error {
                 message: "runtime state lock is poisoned".to_string(),
+                view: None,
             });
-        let (status, message) = match phase {
-            DesktopRuntimePhase::Checking => ("checking", None),
-            DesktopRuntimePhase::Missing { message } => ("missing", Some(message)),
-            DesktopRuntimePhase::Updating => ("updating", None),
-            DesktopRuntimePhase::Ready => ("ready", None),
-            DesktopRuntimePhase::Error { message } => ("error", Some(message)),
+        let (status, message, scan_view) = match phase {
+            DesktopRuntimePhase::Checking { view } => ("checking", None, view),
+            DesktopRuntimePhase::NeedsAction { view } => {
+                ("needsAction", view.message.clone(), Some(view))
+            }
+            DesktopRuntimePhase::Updating { view } => ("updating", None, view),
+            DesktopRuntimePhase::Ready { view } => ("ready", None, view),
+            DesktopRuntimePhase::Error { message, view } => ("error", Some(message), view),
         };
+        let selected_candidate_id = scan_view
+            .as_ref()
+            .and_then(|view| view.selected_candidate_id.clone());
+        let recommended_action = scan_view.as_ref().and_then(|view| view.recommended_action);
+        let candidates = scan_view
+            .map(|view| view.candidates)
+            .unwrap_or_else(Vec::new);
         DesktopRuntimeView {
             status,
             message,
             bridge_url: self.bridge_url(),
+            selected_candidate_id,
+            recommended_action,
+            candidates,
         }
     }
 }
@@ -192,6 +228,44 @@ struct DesktopUpdateProgress {
     content_length: Option<u64>,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopRuntimeProgress {
+    phase: &'static str,
+    candidate_id: Option<String>,
+    source: Option<String>,
+    downloaded: Option<u64>,
+    total: Option<u64>,
+    speed_bytes_per_sec: Option<f64>,
+    message: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopFileBrowserEntry {
+    kind: &'static str,
+    modified_at: Option<f64>,
+    name: String,
+    path: String,
+    size: Option<u64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopFileBrowserRoot {
+    label: String,
+    path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopFileBrowserSnapshot {
+    cwd: String,
+    entries: Vec<DesktopFileBrowserEntry>,
+    parent: String,
+    roots: Vec<DesktopFileBrowserRoot>,
+}
+
 #[cfg(desktop)]
 #[derive(Default)]
 struct DesktopUpdateDownloadProgress {
@@ -209,7 +283,12 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_state,
-            desktop_runtime_update,
+            desktop_runtime_scan,
+            desktop_runtime_start,
+            desktop_runtime_select,
+            desktop_runtime_choose_python,
+            desktop_runtime_repair,
+            desktop_files_browse,
             desktop_restart_debug_log,
             desktop_app_restart,
             desktop_bridge_restart,
@@ -320,34 +399,121 @@ fn desktop_runtime_state(state: State<'_, DesktopState>) -> DesktopRuntimeView {
 }
 
 #[tauri::command]
+fn desktop_runtime_scan(app: AppHandle, state: State<'_, DesktopState>) -> DesktopRuntimeView {
+    emit_runtime_progress(
+        &app,
+        "probing",
+        None,
+        None,
+        Some("Scanning runtime candidates"),
+    );
+    let view = runtime::scan_runtime_view(&app, &state.source_root);
+    state.set_runtime(phase_after_runtime_scan(state.has_bridge(), view));
+    state.runtime_view()
+}
+
+fn phase_after_runtime_scan(
+    has_bridge: bool,
+    view: runtime::RuntimeScanView,
+) -> DesktopRuntimePhase {
+    if has_bridge && view.selected_candidate_id.is_some() {
+        DesktopRuntimePhase::Ready { view: Some(view) }
+    } else {
+        DesktopRuntimePhase::NeedsAction { view }
+    }
+}
+
+#[tauri::command]
+fn desktop_runtime_start(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    candidate_id: Option<String>,
+) -> Result<DesktopRuntimeView, String> {
+    start_runtime_candidate_for_state(&app, &state, candidate_id.as_deref())
+}
+
+#[tauri::command]
+fn desktop_runtime_select(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    candidate_id: String,
+) -> Result<DesktopRuntimeView, String> {
+    runtime::save_runtime_preference(&app, &state.source_root, &candidate_id)
+        .map_err(|error| error.to_string())?;
+    start_runtime_candidate_for_state(&app, &state, Some(&candidate_id))
+}
+
+#[tauri::command]
+fn desktop_runtime_choose_python(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    path: String,
+) -> Result<DesktopRuntimeView, String> {
+    emit_runtime_progress(
+        &app,
+        "probing",
+        None,
+        Some("local".to_string()),
+        Some("Checking selected Python runtime"),
+    );
+    let candidate_id = runtime::save_runtime_preference_for_path(&app, &PathBuf::from(path))
+        .map_err(|error| set_runtime_error_state(&app, &state, error.to_string()))?;
+    let scan = runtime::scan_runtime_view(&app, &state.source_root);
+    let chosen_is_ready = scan
+        .candidates
+        .iter()
+        .find(|candidate| candidate.id == candidate_id)
+        .map(|candidate| candidate.status == runtime::RuntimeCandidateStatus::Ready)
+        .unwrap_or(false);
+    if chosen_is_ready {
+        return start_runtime_candidate_for_state(&app, &state, Some(&candidate_id));
+    }
+    state.set_runtime(DesktopRuntimePhase::NeedsAction { view: scan });
+    Ok(state.runtime_view())
+}
+
+#[tauri::command]
+fn desktop_runtime_repair(
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+    candidate_id: String,
+    action: runtime::RuntimeRepairActionKind,
+) -> Result<DesktopRuntimeView, String> {
+    emit_runtime_progress(
+        &app,
+        "installingDeps",
+        Some(candidate_id.clone()),
+        None,
+        Some("Repairing runtime candidate"),
+    );
+    let scan = runtime::scan_runtime_view(&app, &state.source_root);
+    state.set_runtime(DesktopRuntimePhase::Updating { view: Some(scan) });
+    let repaired_path =
+        runtime::repair_runtime_candidate(&app, &state.source_root, &candidate_id, action)
+            .map_err(|error| set_runtime_error_state(&app, &state, error.to_string()))?;
+    emit_runtime_progress(
+        &app,
+        "checkingBridge",
+        Some(candidate_id),
+        None,
+        Some("Checking repaired runtime"),
+    );
+    start_repaired_runtime_for_state(&app, &state, repaired_path.as_deref())
+}
+
+#[tauri::command]
 fn desktop_restart_debug_log(message: String) {
     restart_debug_log(format!("frontend {}", message));
 }
 
 #[tauri::command]
-fn desktop_runtime_update(
-    app: AppHandle,
+fn desktop_files_browse(
     state: State<'_, DesktopState>,
-) -> Result<DesktopRuntimeView, String> {
-    state.set_runtime(DesktopRuntimePhase::Updating);
-    let result = runtime::repair_python_runtime(&app, &state.source_root)
+    path: Option<String>,
+    show_hidden: Option<bool>,
+) -> Result<DesktopFileBrowserSnapshot, String> {
+    browse_desktop_files(state.inner(), path.as_deref(), show_hidden.unwrap_or(false))
         .map_err(|error| error.to_string())
-        .and_then(|runtime_root| {
-            if runtime_root.is_none() {
-                return Err("no runtime package is available for this platform".to_string());
-            }
-            runtime::find_python_runtime(&app, &state.source_root)
-                .map_err(|error| error.to_string())
-        })
-        .and_then(|runtime| {
-            start_bridge_for_state(&state, runtime).map_err(|error| error.to_string())
-        });
-
-    match result {
-        Ok(()) => state.set_runtime(DesktopRuntimePhase::Ready),
-        Err(message) => state.set_runtime(DesktopRuntimePhase::Error { message }),
-    }
-    Ok(state.runtime_view())
 }
 
 #[cfg(desktop)]
@@ -461,6 +627,27 @@ fn emit_update_progress(app: &AppHandle, payload: DesktopUpdateProgress) {
     let _ = app.emit(UPDATE_PROGRESS_EVENT, payload);
 }
 
+fn emit_runtime_progress(
+    app: &AppHandle,
+    phase: &'static str,
+    candidate_id: Option<String>,
+    source: Option<String>,
+    message: Option<&str>,
+) {
+    let _ = app.emit(
+        RUNTIME_PROGRESS_EVENT,
+        DesktopRuntimeProgress {
+            phase,
+            candidate_id,
+            source,
+            downloaded: None,
+            total: None,
+            speed_bytes_per_sec: None,
+            message: message.map(ToString::to_string),
+        },
+    );
+}
+
 #[cfg(desktop)]
 fn desktop_update_error(error: impl std::fmt::Display) -> String {
     error.to_string()
@@ -491,7 +678,7 @@ fn restart_bridge_for_state(
     app: &AppHandle,
     state: &DesktopState,
 ) -> Result<DesktopRuntimeView, String> {
-    state.set_runtime(DesktopRuntimePhase::Checking);
+    state.set_runtime(DesktopRuntimePhase::Checking { view: None });
     if let Some(bridge) = state.take_bridge() {
         restart_debug_log("desktop_bridge_restart stopping existing bridge");
         bridge.stop();
@@ -499,7 +686,31 @@ fn restart_bridge_for_state(
         restart_debug_log("desktop_bridge_restart no existing bridge to stop");
     }
 
-    let result = runtime::find_python_runtime(app, &state.source_root)
+    start_runtime_candidate_for_state(app, state, None)
+}
+
+fn start_runtime_candidate_for_state(
+    app: &AppHandle,
+    state: &DesktopState,
+    candidate_id: Option<&str>,
+) -> Result<DesktopRuntimeView, String> {
+    let scan = runtime::scan_runtime_view(app, &state.source_root);
+    emit_runtime_progress(
+        app,
+        "probing",
+        candidate_id.map(ToString::to_string),
+        None,
+        Some("Selecting runtime candidate"),
+    );
+    state.set_runtime(DesktopRuntimePhase::Checking {
+        view: Some(scan.clone()),
+    });
+    if let Some(bridge) = state.take_bridge() {
+        restart_debug_log("start_runtime_candidate stopping existing bridge");
+        bridge.stop();
+    }
+
+    let result = runtime::find_python_runtime_for_candidate(app, &state.source_root, candidate_id)
         .map_err(|error| error.to_string())
         .and_then(|runtime| {
             start_bridge_for_state(state, runtime).map_err(|error| error.to_string())
@@ -507,18 +718,59 @@ fn restart_bridge_for_state(
 
     match result {
         Ok(()) => {
-            restart_debug_log("desktop_bridge_restart ready");
-            state.set_runtime(DesktopRuntimePhase::Ready);
+            let view = runtime::scan_runtime_view(app, &state.source_root);
+            restart_debug_log("start_runtime_candidate ready");
+            emit_runtime_progress(app, "ready", None, None, Some("Runtime is ready"));
+            state.set_runtime(DesktopRuntimePhase::Ready { view: Some(view) });
             Ok(state.runtime_view())
         }
         Err(message) => {
-            restart_debug_log(format!("desktop_bridge_restart failed message={message}"));
+            let view = runtime::scan_runtime_view(app, &state.source_root);
+            restart_debug_log(format!("start_runtime_candidate failed message={message}"));
             state.set_runtime(DesktopRuntimePhase::Error {
                 message: message.clone(),
+                view: Some(view),
             });
             Err(message)
         }
     }
+}
+
+fn start_repaired_runtime_for_state(
+    app: &AppHandle,
+    state: &DesktopState,
+    repaired_path: Option<&Path>,
+) -> Result<DesktopRuntimeView, String> {
+    let repaired_candidate_id = repaired_path
+        .and_then(|path| runtime::ready_candidate_id_for_path(app, &state.source_root, path));
+    if repaired_path.is_some() && repaired_candidate_id.is_none() {
+        return Err(set_runtime_error_state(
+            app,
+            state,
+            "repaired runtime did not produce a ready candidate".to_string(),
+        ));
+    }
+    if let Some(candidate_id) = repaired_candidate_id.as_deref() {
+        runtime::save_runtime_preference(app, &state.source_root, candidate_id).map_err(
+            |error| {
+                set_runtime_error_state(
+                    app,
+                    state,
+                    format!("repaired runtime is ready but could not save preference: {error}"),
+                )
+            },
+        )?;
+    }
+    start_runtime_candidate_for_state(app, state, repaired_candidate_id.as_deref())
+}
+
+fn set_runtime_error_state(app: &AppHandle, state: &DesktopState, message: String) -> String {
+    let view = runtime::scan_runtime_view(app, &state.source_root);
+    state.set_runtime(DesktopRuntimePhase::Error {
+        message: message.clone(),
+        view: Some(view),
+    });
+    message
 }
 
 fn restart_desktop_app(app: &AppHandle, state: &DesktopState) -> Result<(), String> {
@@ -741,20 +993,229 @@ fn open_external_url(url: &str) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+fn browse_desktop_files(
+    state: &DesktopState,
+    raw_path: Option<&str>,
+    show_hidden: bool,
+) -> DesktopResult<DesktopFileBrowserSnapshot> {
+    let mut target = desktop_browse_target(&state.project_root, &state.app_root, raw_path)?;
+    if target.is_file() {
+        target = target
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| state.app_root.clone());
+    }
+    if !target.exists() {
+        return Err(format!("path does not exist: {}", target.display()).into());
+    }
+    if !target.is_dir() {
+        return Err(format!("path is not a directory: {}", target.display()).into());
+    }
+
+    let mut entries = Vec::new();
+    for child in fs::read_dir(&target)? {
+        if entries.len() >= MAX_DESKTOP_FILE_BROWSER_ENTRIES {
+            break;
+        }
+        let child = child?;
+        let name = child.file_name().to_string_lossy().to_string();
+        if !show_hidden && name.starts_with('.') {
+            continue;
+        }
+        let file_type = match child.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        let metadata = match child.metadata() {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        let is_dir = file_type.is_dir();
+        entries.push(DesktopFileBrowserEntry {
+            kind: if is_dir { "directory" } else { "file" },
+            modified_at: metadata.modified().ok().and_then(system_time_secs),
+            name,
+            path: child.path().display().to_string(),
+            size: if is_dir { None } else { Some(metadata.len()) },
+        });
+    }
+    entries.sort_by(|left, right| {
+        (left.kind != "directory")
+            .cmp(&(right.kind != "directory"))
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+    let parent = target
+        .parent()
+        .filter(|parent| *parent != target)
+        .map(|parent| parent.display().to_string())
+        .unwrap_or_default();
+    Ok(DesktopFileBrowserSnapshot {
+        cwd: target.display().to_string(),
+        entries,
+        parent,
+        roots: desktop_file_browser_roots(state),
+    })
+}
+
+fn desktop_browse_target(
+    project_root: &Path,
+    app_root: &Path,
+    raw_path: Option<&str>,
+) -> DesktopResult<PathBuf> {
+    let trimmed = raw_path.unwrap_or("").trim();
+    let mut target = if trimmed.is_empty() {
+        app_root.to_path_buf()
+    } else {
+        expand_home_path(PathBuf::from(trimmed))
+    };
+    if !target.is_absolute() {
+        target = project_root.join(target);
+    }
+    Ok(target.canonicalize().unwrap_or(target))
+}
+
+fn desktop_file_browser_roots(state: &DesktopState) -> Vec<DesktopFileBrowserRoot> {
+    let mut roots = Vec::new();
+    let mut seen = Vec::new();
+    push_desktop_file_browser_root(&mut roots, &mut seen, "Shinsekai", state.app_root.clone());
+    push_desktop_file_browser_root(&mut roots, &mut seen, "Data", state.app_root.join("data"));
+    if let Some(home) = desktop_home_dir() {
+        push_desktop_file_browser_root(&mut roots, &mut seen, "Home", home);
+    }
+    for root in [&state.app_root, &state.project_root] {
+        if let Some(anchor) = root
+            .canonicalize()
+            .unwrap_or_else(|_| root.to_path_buf())
+            .ancestors()
+            .last()
+            .map(Path::to_path_buf)
+        {
+            let label = anchor.display().to_string();
+            push_desktop_file_browser_root(&mut roots, &mut seen, &label, anchor);
+        }
+    }
+    #[cfg(windows)]
+    {
+        for letter in b'A'..=b'Z' {
+            let label = format!("{}:", letter as char);
+            push_desktop_file_browser_root(
+                &mut roots,
+                &mut seen,
+                &label,
+                PathBuf::from(format!("{label}/")),
+            );
+        }
+    }
+    roots
+}
+
+fn push_desktop_file_browser_root(
+    roots: &mut Vec<DesktopFileBrowserRoot>,
+    seen: &mut Vec<String>,
+    label: &str,
+    path: PathBuf,
+) {
+    let resolved = path.canonicalize().unwrap_or(path);
+    if !resolved.exists() {
+        return;
+    }
+    let value = resolved.display().to_string();
+    let key = desktop_file_browser_root_key(&value);
+    if seen.iter().any(|item| item == &key) {
+        return;
+    }
+    seen.push(key);
+    roots.push(DesktopFileBrowserRoot {
+        label: desktop_file_browser_root_label(label, &value),
+        path: value,
+    });
+}
+
+fn desktop_file_browser_root_key(value: &str) -> String {
+    #[cfg(windows)]
+    {
+        value.to_ascii_lowercase().replace('\\', "/")
+    }
+    #[cfg(not(windows))]
+    {
+        value.to_string()
+    }
+}
+
+fn desktop_file_browser_root_label(label: &str, path: &str) -> String {
+    if label == "Home" {
+        return "Home".to_string();
+    }
+    if label == "Data" {
+        return "Data".to_string();
+    }
+    if label == "Shinsekai" {
+        return "Shinsekai".to_string();
+    }
+    if label.trim().is_empty() {
+        path.to_string()
+    } else {
+        label.to_string()
+    }
+}
+
+fn expand_home_path(path: PathBuf) -> PathBuf {
+    let raw = path.as_os_str().to_string_lossy();
+    if raw == "~" {
+        return desktop_home_dir().unwrap_or(path);
+    }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        if let Some(home) = desktop_home_dir() {
+            return home.join(rest);
+        }
+    }
+    path
+}
+
+fn desktop_home_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        env::var_os("USERPROFILE").map(PathBuf::from)
+    }
+    #[cfg(not(windows))]
+    {
+        env::var_os("HOME").map(PathBuf::from)
+    }
+}
+
+fn system_time_secs(value: SystemTime) -> Option<f64> {
+    value
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs_f64())
+}
+
 fn bootstrap_runtime(app: AppHandle) {
     restart_debug_log("bootstrap_runtime start");
     let state = app.state::<DesktopState>();
-    state.set_runtime(DesktopRuntimePhase::Checking);
-    let result = runtime::find_python_runtime(&app, &state.source_root)
-        .map_err(|error| error.to_string())
-        .and_then(|runtime| {
-            start_bridge_for_state(&state, runtime).map_err(|error| error.to_string())
-        });
+    let scan = runtime::scan_runtime_view(&app, &state.source_root);
+    state.set_runtime(DesktopRuntimePhase::Checking {
+        view: Some(scan.clone()),
+    });
+    if scan.selected_candidate_id.is_none() {
+        restart_debug_log("bootstrap_runtime needs action; no ready runtime candidate");
+        state.set_runtime(DesktopRuntimePhase::NeedsAction { view: scan });
+        return;
+    }
+
+    let result = runtime::find_python_runtime_for_candidate(
+        &app,
+        &state.source_root,
+        scan.selected_candidate_id.as_deref(),
+    )
+    .map_err(|error| error.to_string())
+    .and_then(|runtime| start_bridge_for_state(&state, runtime).map_err(|error| error.to_string()));
 
     match result {
         Ok(()) => {
+            let view = runtime::scan_runtime_view(&app, &state.source_root);
             restart_debug_log("bootstrap_runtime ready");
-            state.set_runtime(DesktopRuntimePhase::Ready);
+            state.set_runtime(DesktopRuntimePhase::Ready { view: Some(view) });
             if let Err(error) = navigate_main_window_to_live_frontend(&app, state.bridge_port) {
                 restart_debug_log(format!(
                     "bootstrap_runtime frontend navigate failed error={error}"
@@ -762,8 +1223,12 @@ fn bootstrap_runtime(app: AppHandle) {
             }
         }
         Err(message) => {
+            let view = runtime::scan_runtime_view(&app, &state.source_root);
             restart_debug_log(format!("bootstrap_runtime missing/error message={message}"));
-            state.set_runtime(DesktopRuntimePhase::Missing { message })
+            state.set_runtime(DesktopRuntimePhase::Error {
+                message,
+                view: Some(view),
+            })
         }
     }
 }
@@ -1063,6 +1528,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn runtime_scan_keeps_ready_state_when_bridge_is_running() {
+        let phase = phase_after_runtime_scan(true, runtime_scan_view(Some("python-ready")));
+
+        match phase {
+            DesktopRuntimePhase::Ready { view: Some(view) } => {
+                assert_eq!(view.selected_candidate_id.as_deref(), Some("python-ready"));
+            }
+            _ => panic!("running bridge with a ready candidate should stay ready"),
+        }
+    }
+
+    #[test]
+    fn runtime_scan_enters_guided_action_when_no_ready_candidate_exists() {
+        let phase = phase_after_runtime_scan(true, runtime_scan_view(None));
+
+        match phase {
+            DesktopRuntimePhase::NeedsAction { view } => {
+                assert_eq!(view.message.as_deref(), Some("needs runtime action"));
+            }
+            _ => panic!("scan without a ready candidate should enter runtime guidance"),
+        }
+    }
+
+    fn runtime_scan_view(selected_candidate_id: Option<&str>) -> runtime::RuntimeScanView {
+        runtime::RuntimeScanView {
+            selected_candidate_id: selected_candidate_id.map(ToString::to_string),
+            recommended_action: Some(runtime::RuntimeRepairActionKind::Start),
+            candidates: Vec::new(),
+            message: Some("needs runtime action".to_string()),
+        }
+    }
+
     fn temp_test_dir(label: &str) -> PathBuf {
         let token = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1117,8 +1615,9 @@ fn spawn_bridge(
 ) -> DesktopResult<BridgeLaunch> {
     println!("Using Shinsekai Python runtime: {}", runtime.description);
     restart_debug_log(format!(
-        "spawn_bridge runtime={} source_root={} project_root={} app_root={} frontend_dist={} port={} parent_pid={}",
+        "spawn_bridge runtime={} candidate_id={} source_root={} project_root={} app_root={} frontend_dist={} port={} parent_pid={}",
         runtime.description,
+        runtime.candidate_id.as_deref().unwrap_or(""),
         source_root.display(),
         project_root.display(),
         app_root.display(),

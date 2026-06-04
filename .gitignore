@@ -43,6 +43,8 @@
 runtime/
 !core/runtime
 !core/runtime/**
+!/frontend/src-tauri/src/runtime
+!/frontend/src-tauri/src/runtime/**
 # 项目构建、临时导出文件 / Build & temp export files
 /out
 /output
