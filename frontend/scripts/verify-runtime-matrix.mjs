@@ -12,7 +12,7 @@ const packageJsonPath = path.join(frontendDir, "package.json");
 const tauriConfigPath = path.join(frontendDir, "src-tauri", "tauri.conf.json");
 const prepareRuntimeScriptPath = path.join(frontendDir, "scripts", "prepare-runtime.mjs");
 
-const expectedTargets = ["linux-x64", "linux-arm64", "windows-x64", "windows-arm64", "macos-x64", "macos-arm64"];
+const expectedTargets = ["linux-x64", "linux-arm64", "windows-x64", "windows-arm64", "macos-arm64"];
 const linuxTriples = new Map([
   ["linux-x64", "x86_64-unknown-linux-gnu"],
   ["linux-arm64", "aarch64-unknown-linux-gnu"],
@@ -27,7 +27,6 @@ const expectedBundles = new Map([
   ["linux-arm64", ["deb", "rpm", "appimage"]],
   ["windows-x64", ["msi", "nsis"]],
   ["windows-arm64", ["msi", "nsis"]],
-  ["macos-x64", ["dmg"]],
   ["macos-arm64", ["dmg"]],
 ]);
 const expectedArtifactPaths = [

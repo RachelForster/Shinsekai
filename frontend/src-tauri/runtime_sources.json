@@ -47,13 +47,6 @@
       "required_files": ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll"],
       "note": "PBS does not publish CPython 3.10 aarch64-pc-windows-msvc assets; 3.11 stays within the app's >=3.10,<3.14 runtime range."
     },
-    "macos-x64": {
-      "python": "3.10.20",
-      "triple": "x86_64-apple-darwin",
-      "asset": "cpython-3.10.20+20260602-x86_64-apple-darwin-install_only_stripped.tar.gz",
-      "sha256": "04cd42f9e4019a4f38603083b4eb2ac25c301e6db288d44da88ce251405e14d8",
-      "required_files": ["bin/python3.10"]
-    },
     "macos-arm64": {
       "python": "3.10.20",
       "triple": "aarch64-apple-darwin",

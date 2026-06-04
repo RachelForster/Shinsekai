@@ -29,7 +29,7 @@
 
 ## 目标产物与范围
 
-- 6 个构建 target(对齐 `.github/workflows/tauri-desktop.yml` 矩阵)各自内嵌匹配的 PBS 解释器。
+- 5 个构建 target(对齐 `.github/workflows/tauri-desktop.yml` 矩阵)各自内嵌匹配的 PBS 解释器。
 - 首启「离线优先(随包 vendored wheels)→ 在线网络感知镜像回退」完成依赖安装。
 - 无 Python 用户:装好即用、首启可全程离线;有合格 Python 用户:仍走现有检测快路径,行为不变。
 - 不在范围:重构现有检测/resolver 架构(仅增量接入);PBS 多版本/卸载管理。
@@ -45,7 +45,6 @@
 | `linux-arm64` | `aarch64-unknown-linux-gnu` | gnu 动态 |
 | `windows-x64` | `x86_64-pc-windows-msvc` | 随包确认 VC++ redist |
 | `windows-arm64` | `aarch64-pc-windows-msvc` | PBS 无 CPython 3.10 资产,当前锁定 3.11.15 fallback |
-| `macos-x64` | `x86_64-apple-darwin` | 签名/公证 |
 | `macos-arm64` | `aarch64-apple-darwin` | 签名/公证 |
 
 ## 网络环境处理
@@ -69,12 +68,12 @@
   会进一步检查安装包文件列表。CI 使用 `--require-installers` 强制校验每个矩阵 target 的预期安装器文件已产出。
 - **检测接入**:复用 `python_probe.rs::runtime_root_candidates` / `install_runtime_roots`(已对 `resources` 特判)。
 - **provision / 缺 pip 兜底**:`runtime/managed.rs`(`ensure_python_pip_available` 增加 ensurepip→get-pip 自举)。
-- **CI**:`.github/workflows/tauri-desktop.yml` 6 target build 前执行 PBS 物化,build 后校验打包输出。
+- **CI**:`.github/workflows/tauri-desktop.yml` 5 target build 前执行 PBS 物化,build 后校验打包输出。
 
 ## Definition of Done
 
 1. 断网 + 无 Python 的干净机首启,自动以内嵌 PBS 完成 provision 并 Ready,bridge 正常启动。
-2. 六平台各自打包内嵌正确 triple,CI 全绿,产物可启动。
+2. 五个构建平台各自打包内嵌正确 triple,CI 全绿,产物可启动。
 3. 缺部分 vendored wheels 时,联网经 china/official 镜像各验一次成功补装。
 4. 有合格 Python 的机器仍走快路径不退化;`cargo test runtime` 与 UI 契约测试通过。
 5. macOS 公证、首启无 Gatekeeper 拦截;Windows 无 VC++ 也能启动。
