@@ -77,7 +77,7 @@ from .plugin_updates import (
     _repo_tags,
     _run_app_update,
 )
-from .state import BridgeState, _jsonify
+from .state import BridgeState, _jsonify, plugin_load_snapshot
 from .static import _frontend_dist_root
 from .tasks import _create_task, _get_task, _is_running_task, _request_task_cancel, _run_background_task, _update_task
 from .templates import (
@@ -253,7 +253,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             path = parsed.path
             if path == "/api/health":
-                self._send_json({"ok": True})
+                self._send_json({"ok": True, "plugins": plugin_load_snapshot(self.state)})
             elif path == "/api/config":
                 self._send_json(_app_config_response(self.state))
             elif path == "/api/config/tts-bundle/recommendation":
@@ -271,7 +271,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path == "/api/logs":
                 self._send_json(_log_file_list(Path.cwd().resolve()))
             elif path == "/api/plugins":
-                self._send_json(_plugin_rows())
+                self._send_json(_plugin_rows(plugin_load_snapshot(self.state)))
+            elif path == "/api/plugins/status":
+                self._send_json(plugin_load_snapshot(self.state))
             elif path.startswith("/api/plugins/") and path.endswith("/ui"):
                 plugin_id = unquote(path[len("/api/plugins/") : -len("/ui")])
                 self._send_json(_plugin_ui_detail(plugin_id))

@@ -1,4 +1,4 @@
-from frontend_bridge_core.state import BridgeState
+from frontend_bridge_core.state import BridgeState, plugin_load_snapshot, set_plugin_load_status
 from frontend_bridge_core.tasks import (
     TaskCancelled,
     _append_task_log,
@@ -82,6 +82,24 @@ def test_background_task_records_cancelled_and_failed_states():
     assert failed_task["status"] == "failed"
     assert failed_task["phase"] == "failed"
     assert failed_task["error"] == "boom"
+
+
+def test_plugin_load_status_snapshot_tracks_completion():
+    state = _state()
+
+    set_plugin_load_status(state, "loading")
+    loading = plugin_load_snapshot(state)
+
+    assert loading["status"] == "loading"
+    assert loading["startedAt"] > 0
+    assert loading["completedAt"] == 0
+
+    set_plugin_load_status(state, "ready")
+    ready = plugin_load_snapshot(state)
+
+    assert ready["status"] == "ready"
+    assert ready["completedAt"] >= ready["startedAt"]
+    assert ready["elapsedSec"] >= 0
 
 
 def test_task_logs_are_trimmed_and_ignore_blank_lines():

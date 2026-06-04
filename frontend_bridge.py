@@ -82,6 +82,34 @@ def _configure_runtime_context(
     return repo_root, resolved_frontend_dist, resolved_app_root
 
 
+def _start_plugin_loader(state, logger) -> None:
+    from frontend_bridge_core.state import set_plugin_load_status
+
+    def load_plugins() -> None:
+        time.sleep(0.05)
+        set_plugin_load_status(state, "loading")
+        _restart_debug_log("plugin load background start")
+        try:
+            from core.plugins.plugin_host import ensure_plugins_loaded
+
+            ensure_plugins_loaded(state.config_manager)
+        except Exception as exc:
+            set_plugin_load_status(state, "error", error=str(exc))
+            _restart_debug_log(f"plugin load background failed error={exc}")
+            logger.exception("Plugin load failed", extra={"event": "plugin.load.failed"})
+            return
+        set_plugin_load_status(state, "ready")
+        _restart_debug_log("plugin load background completed")
+        logger.info("Plugin load completed", extra={"event": "plugin.load.completed"})
+
+    thread = threading.Thread(
+        target=load_plugins,
+        name="shinsekai-plugin-loader",
+        daemon=True,
+    )
+    thread.start()
+
+
 def run(
     host: str,
     port: int,
@@ -126,15 +154,10 @@ def run(
         frontend_dist_dir=resolved_frontend_dist,
         app_root_dir=resolved_app_root,
     )
-    try:
-        from core.plugins.plugin_host import ensure_plugins_loaded
-
-        ensure_plugins_loaded(state.config_manager)
-    except Exception:
-        logger.exception("Plugin load failed", extra={"event": "plugin.load.failed"})
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
     server.state = state  # type: ignore[attr-defined]
     _restart_debug_log(f"server listening host={host} port={port} frontend_dist={resolved_frontend_dist}")
+    _start_plugin_loader(state, logger)
     logger.info(
         "Frontend bridge listening",
         extra={

@@ -30,7 +30,7 @@ def _display_title_for_offline_plugin_entry(entry: str) -> str:
     return value.rpartition(".")[2] if "." in value else value
 
 
-def _plugin_rows() -> list[dict[str, Any]]:
+def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     try:
         from core.plugins.plugin_host import (
             collect_chat_ui_contributions,
@@ -161,7 +161,10 @@ def _plugin_rows() -> list[dict[str, Any]]:
                 description = ""
                 author = ""
                 loaded = False
-                load_error = "插件配置已启用，但插件代码未安装或导入失败。" if enabled else ""
+                if enabled and str((plugin_load or {}).get("status") or "") == "loading":
+                    load_error = "插件正在加载，请稍候。"
+                else:
+                    load_error = "插件配置已启用，但插件代码未安装或导入失败。" if enabled else ""
             slots = set(str(slot) for slot in (item.get("slots") or []) if str(slot).strip())
             directory = infer_plugin_package_directory(entry)
             row = _row(
