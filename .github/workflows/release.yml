@@ -80,14 +80,8 @@ jobs:
           - platform: windows-x64
             os: windows-latest
             bundles: msi,nsis
-          - platform: windows-arm64
-            os: windows-11-arm
-            bundles: msi,nsis
           - platform: macos-arm64
             os: macos-14
-            bundles: dmg,app
-          - platform: macos-x64
-            os: macos-13
             bundles: dmg,app
 
     steps:
@@ -152,6 +146,34 @@ jobs:
             exit 1
           fi
 
+      - name: Restore embedded Python runtime cache
+        id: embedded-python-runtime-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/python-build-standalone
+            runtime
+            wheels
+          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs', 'requirements-runtime-core.txt') }}
+
+      - name: Prepare embedded Python runtime
+        working-directory: frontend
+        shell: bash
+        env:
+          SHINSEKAI_PBS_DOWNLOAD_BASES: ${{ vars.SHINSEKAI_PBS_DOWNLOAD_BASES }}
+          SHINSEKAI_PIP_INDEX_URLS: ${{ vars.SHINSEKAI_PIP_INDEX_URLS }}
+        run: pnpm prepare:runtime --target ${{ matrix.platform }} --verify
+
+      - name: Save embedded Python runtime cache
+        if: steps.embedded-python-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/python-build-standalone
+            runtime
+            wheels
+          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs', 'requirements-runtime-core.txt') }}
+
       - name: Build Tauri bundle
         working-directory: frontend
         shell: bash
@@ -173,9 +195,7 @@ jobs:
             linux-x64) updater_os="linux"; updater_arch="x86_64" ;;
             linux-arm64) updater_os="linux"; updater_arch="aarch64" ;;
             windows-x64) updater_os="windows"; updater_arch="x86_64" ;;
-            windows-arm64) updater_os="windows"; updater_arch="aarch64" ;;
             macos-arm64) updater_os="darwin"; updater_arch="aarch64" ;;
-            macos-x64) updater_os="darwin"; updater_arch="x86_64" ;;
             *) updater_os=""; updater_arch="" ;;
           esac
           write_latest_fragment() {

@@ -12,7 +12,7 @@ const packageJsonPath = path.join(frontendDir, "package.json");
 const tauriConfigPath = path.join(frontendDir, "src-tauri", "tauri.conf.json");
 const prepareRuntimeScriptPath = path.join(frontendDir, "scripts", "prepare-runtime.mjs");
 
-const expectedTargets = ["linux-x64", "linux-arm64", "windows-x64", "windows-arm64", "macos-arm64"];
+const expectedTargets = ["linux-x64", "linux-arm64", "windows-x64", "macos-arm64"];
 const linuxTriples = new Map([
   ["linux-x64", "x86_64-unknown-linux-gnu"],
   ["linux-arm64", "aarch64-unknown-linux-gnu"],
@@ -20,13 +20,11 @@ const linuxTriples = new Map([
 const linuxRuntimePruneFiles = ["lib/python*/lib-dynload/_tkinter.*.so"];
 const windowsRequiredFiles = new Map([
   ["windows-x64", ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll", "vcruntime140_threads.dll"]],
-  ["windows-arm64", ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll"]],
 ]);
 const expectedBundles = new Map([
   ["linux-x64", ["deb", "rpm", "appimage"]],
   ["linux-arm64", ["deb", "rpm", "appimage"]],
   ["windows-x64", ["msi", "nsis"]],
-  ["windows-arm64", ["msi", "nsis"]],
   ["macos-arm64", ["dmg"]],
 ]);
 const expectedArtifactPaths = [
@@ -136,17 +134,6 @@ for (const targetName of expectedTargets) {
     check(target.python.startsWith("3.10."), "windows-x64 should stay on Python 3.10");
   }
 
-  if (targetName === "windows-arm64") {
-    check(
-      target.python === "3.11.15",
-      "windows-arm64 must explicitly use the documented PBS 3.11 fallback until a 3.10 asset exists",
-    );
-    check(
-      !(target.required_files ?? []).includes("vcruntime140_threads.dll"),
-      "windows-arm64 PBS archive must not require vcruntime140_threads.dll because that asset does not include it",
-    );
-  }
-
   if (targetName.startsWith("windows-")) {
     for (const requiredFile of windowsRequiredFiles.get(targetName) ?? []) {
       check(target.required_files.includes(requiredFile), `${targetName} must require ${requiredFile}`);
@@ -187,6 +174,12 @@ check(tauriConfig.bundle?.resources?.["resources/"] === "", "Tauri bundle must i
 check(
   workflow.includes("pnpm prepare:runtime --target ${{ matrix.platform }} --verify"),
   "workflow build job must prepare and verify the target-specific embedded runtime before packaging",
+);
+check(
+  workflow.includes("actions/cache/restore@v4") &&
+    workflow.includes("actions/cache/save@v4") &&
+    workflow.includes("embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}"),
+  "workflow build job must cache embedded Python runtime and wheelhouse per target",
 );
 check(
   workflow.includes("pnpm verify:packaged-runtime --target ${{ matrix.platform }} --require-installers"),

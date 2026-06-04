@@ -147,9 +147,6 @@ jobs:
           - platform: windows-x64
             os: windows-latest
             bundles: msi,nsis
-          - platform: windows-arm64
-            os: windows-11-arm
-            bundles: msi,nsis
           - platform: macos-arm64
             os: macos-14
             bundles: dmg
@@ -196,6 +193,16 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Restore embedded Python runtime cache
+        id: embedded-python-runtime-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/python-build-standalone
+            runtime
+            wheels
+          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs', 'requirements-runtime-core.txt') }}
+
       - name: Prepare embedded Python runtime
         working-directory: frontend
         shell: bash
@@ -203,6 +210,16 @@ jobs:
           SHINSEKAI_PBS_DOWNLOAD_BASES: ${{ vars.SHINSEKAI_PBS_DOWNLOAD_BASES }}
           SHINSEKAI_PIP_INDEX_URLS: ${{ vars.SHINSEKAI_PIP_INDEX_URLS }}
         run: pnpm prepare:runtime --target ${{ matrix.platform }} --verify
+
+      - name: Save embedded Python runtime cache
+        if: steps.embedded-python-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/python-build-standalone
+            runtime
+            wheels
+          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs', 'requirements-runtime-core.txt') }}
 
       - name: Clear stale Tauri bundle outputs
         working-directory: frontend
