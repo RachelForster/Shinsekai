@@ -202,6 +202,19 @@ check(
     prepareRuntimeScript.includes("cwd: extractRoot"),
   "prepare-runtime must extract tar archives from extractRoot with a relative archive path",
 );
+check(
+  prepareRuntimeScript.includes("buildSourceArchivesIntoWheels(stagingWheels, python)"),
+  "prepare-runtime must build downloaded source archives into wheels before packaging",
+);
+check(
+  prepareRuntimeScript.includes("assertNoSourceArchives(stagingWheels)") &&
+    prepareRuntimeScript.includes("assertNoSourceArchives(wheelsDir)"),
+  "prepare-runtime must reject source archives in the packaged runtime wheelhouse",
+);
+check(
+  prepareRuntimeScript.includes('"pip", "wheel"') && prepareRuntimeScript.includes('"--no-deps"'),
+  "prepare-runtime must convert source archives with pip wheel --no-deps",
+);
 
 if (errors.length > 0) {
   for (const error of errors) {

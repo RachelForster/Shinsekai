@@ -13,6 +13,7 @@ const runtimeSourcesPath = path.join(frontendDir, "src-tauri", "runtime_sources.
 const defaultCacheDir = path.join(repoRoot, ".cache", "python-build-standalone");
 const runtimeMarkerFile = ".shinsekai-runtime.json";
 const wheelsMarkerFile = ".shinsekai-wheels.json";
+const sourceArchiveSuffixes = [".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".zip"];
 
 const args = parseArgs(process.argv.slice(2));
 const runtimeSources = JSON.parse(await readFile(runtimeSourcesPath, "utf8"));
@@ -159,7 +160,7 @@ async function prepareWheels(targetName, target) {
   const requirements = runtimeSources.wheels?.requirements ?? ["requirements-runtime-core.txt"];
   const bootstrap = runtimeSources.wheels?.bootstrap ?? {};
   const wheelMarker = {
-    schema: 1,
+    schema: 2,
     target: targetName,
     release: runtimeSources.release,
     provider: runtimeSources.provider,
@@ -170,7 +171,8 @@ async function prepareWheels(targetName, target) {
   };
   if (
     (await markerMatches(path.join(wheelsDir, wheelsMarkerFile), wheelMarker)) &&
-    (await directoryHasEntries(wheelsDir))
+    (await directoryHasEntries(wheelsDir)) &&
+    (await listSourceArchives(wheelsDir)).length === 0
   ) {
     console.log(`Runtime wheels are already prepared at ${relative(wheelsDir)}`);
     return;
@@ -208,6 +210,8 @@ async function prepareWheels(targetName, target) {
         );
       }
     }
+    await buildSourceArchivesIntoWheels(stagingWheels, python);
+    await assertNoSourceArchives(stagingWheels);
     await writeFile(path.join(stagingWheels, wheelsMarkerFile), `${JSON.stringify(wheelMarker, null, 2)}\n`);
     await rm(wheelsDir, { force: true, recursive: true });
     await rename(stagingWheels, wheelsDir);
@@ -252,11 +256,44 @@ async function prepareBootstrapWheelhouse(stagingWheels, bootstrap, python) {
   }
 }
 
+async function buildSourceArchivesIntoWheels(stagingWheels, python) {
+  const sourceArchives = await listSourceArchives(stagingWheels);
+  if (sourceArchives.length === 0) {
+    return;
+  }
+  const env = { ...process.env };
+  delete env.PYTHONHOME;
+  delete env.PYTHONPATH;
+  env.PIP_DISABLE_PIP_VERSION_CHECK = "1";
+  for (const archivePath of sourceArchives) {
+    const build = spawnSync(
+      python,
+      ["-m", "pip", "wheel", "--wheel-dir", stagingWheels, "--no-deps", ...pipIndexArgs(), archivePath],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        env,
+      },
+    );
+    if (build.status !== 0) {
+      throw new Error(
+        `pip wheel failed for source archive ${path.basename(archivePath)}: ${
+          build.stderr || build.stdout || `exit ${build.status}`
+        }`,
+      );
+    }
+    await rm(archivePath, { force: true });
+    console.log(`Built wheel from source archive ${path.basename(archivePath)}`);
+  }
+}
+
 async function verifyWheelhouse(targetName) {
   const python = pythonInPrefix(outputRuntime);
   if (!python) {
     throw new Error(`prepared runtime does not contain a Python executable: ${outputRuntime}`);
   }
+  await assertNoSourceArchives(wheelsDir);
   const requirements = runtimeSources.wheels?.requirements ?? ["requirements-runtime-core.txt"];
   for (const requirement of requirements) {
     const requirementPath = path.join(repoRoot, requirement);
@@ -278,6 +315,29 @@ async function verifyWheelhouse(targetName) {
     }
   }
   console.log(`Verified offline runtime wheels for ${targetName}`);
+}
+
+async function assertNoSourceArchives(directory) {
+  const archives = await listSourceArchives(directory);
+  if (archives.length > 0) {
+    throw new Error(
+      `runtime wheelhouse must not contain source archives: ${archives
+        .map((archivePath) => path.basename(archivePath))
+        .join(", ")}`,
+    );
+  }
+}
+
+async function listSourceArchives(directory) {
+  let entries;
+  try {
+    entries = await readdir(directory);
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => sourceArchiveSuffixes.some((suffix) => entry.toLowerCase().endsWith(suffix)))
+    .map((entry) => path.join(directory, entry));
 }
 
 function runtimeDownloadUrls(assetName) {
