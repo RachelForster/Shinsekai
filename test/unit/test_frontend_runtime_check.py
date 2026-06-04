@@ -112,6 +112,25 @@ def test_full_requirements_use_pygame_ce_on_windows_arm64(monkeypatch):
     assert "pygame" not in names
 
 
+def test_runtime_core_pyaudio_marker_skips_platforms_without_portaudio_wheels(monkeypatch):
+    import frontend_bridge
+
+    repo_root = Path(__file__).resolve().parents[2]
+    requirements = repo_root / "requirements-runtime-core.txt"
+
+    monkeypatch.setattr(frontend_bridge.sys, "platform", "darwin")
+    monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "arm64")
+    assert "pyaudio" not in set(frontend_bridge._iter_requirement_names(requirements))
+
+    monkeypatch.setattr(frontend_bridge.sys, "platform", "win32")
+    monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "ARM64")
+    assert "pyaudio" not in set(frontend_bridge._iter_requirement_names(requirements))
+
+    monkeypatch.setattr(frontend_bridge.sys, "platform", "linux")
+    monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "x86_64")
+    assert "pyaudio" in set(frontend_bridge._iter_requirement_names(requirements))
+
+
 def test_runtime_manifest_defines_optional_requirement_profiles():
     repo_root = Path(__file__).resolve().parents[2]
     manifest = json.loads((repo_root / "frontend/src-tauri/runtime_manifest.json").read_text(encoding="utf-8"))
