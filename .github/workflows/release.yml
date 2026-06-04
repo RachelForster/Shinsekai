@@ -86,6 +86,9 @@ jobs:
           - platform: macos-arm64
             os: macos-14
             bundles: dmg,app
+          - platform: macos-x64
+            os: macos-13
+            bundles: dmg,app
 
     steps:
       - uses: actions/checkout@v4
@@ -172,6 +175,7 @@ jobs:
             windows-x64) updater_os="windows"; updater_arch="x86_64" ;;
             windows-arm64) updater_os="windows"; updater_arch="aarch64" ;;
             macos-arm64) updater_os="darwin"; updater_arch="aarch64" ;;
+            macos-x64) updater_os="darwin"; updater_arch="x86_64" ;;
             *) updater_os=""; updater_arch="" ;;
           esac
           write_latest_fragment() {

@@ -37,7 +37,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxRTcyQjRDREVFNjY4NUEKUldSYWFPYmVUQ3ZuSVloMGtRRjY0TVJVdjdHQ1VLREhuRlZFYUpuWlVUTWh2RGpUNWtLUkpnN2IK",
-      "endpoints": ["https://github.com/RachelForster/Shinsekai/releases/latest/download/latest.json"]
+      "endpoints": ["https://github.com/myouo/Shinsekai/releases/latest/download/latest.json"]
     }
   }
 }
