@@ -5,7 +5,7 @@
   "identifier": "studio.shinsekai",
   "build": {
     "frontendDist": "../dist",
-    "beforeBuildCommand": "pnpm prepare:runtime --verify && pnpm build && pnpm prepare:tauri-resources && pnpm verify:tauri-resources"
+    "beforeBuildCommand": "pnpm prepare:runtime --verify --skip-wheels && pnpm build && pnpm prepare:tauri-resources && pnpm verify:tauri-resources"
   },
   "app": {
     "windows": [],

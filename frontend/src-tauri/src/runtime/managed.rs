@@ -14,8 +14,6 @@ use super::{manifest::RuntimeRequirements, python_env};
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
-const WHEELS_DIR: &str = "wheels";
-const WHEELS_MARKER_FILE: &str = ".shinsekai-wheels.json";
 
 fn configure_pip_install_command(
     command: &mut Command,
@@ -28,12 +26,11 @@ fn configure_pip_install_command(
     }
 }
 
-fn ensure_python_pip_available(python: &Path, wheelhouse: Option<&Path>) -> RuntimeResult<()> {
+fn ensure_python_pip_available(python: &Path) -> RuntimeResult<()> {
     if check_python_pip(python).is_ok() {
         return Ok(());
     }
 
-    let mut bootstrap_errors = Vec::new();
     let mut ensurepip = Command::new(python);
     ensurepip
         .arg("-m")
@@ -42,39 +39,21 @@ fn ensure_python_pip_available(python: &Path, wheelhouse: Option<&Path>) -> Runt
         .arg("--default-pip");
     python_env::configure_pip_command(&mut ensurepip, python);
     if let Err(error) = run_command(&mut ensurepip, "bootstrap Python pip with ensurepip") {
-        bootstrap_errors.push(format!("ensurepip: {error}"));
-        if let Some(get_pip) = bundled_get_pip_script(wheelhouse) {
-            let mut get_pip_bootstrap = Command::new(python);
-            get_pip_bootstrap.arg(get_pip);
-            if let Some(wheelhouse) = wheelhouse {
-                get_pip_bootstrap
-                    .arg("--no-index")
-                    .arg("--find-links")
-                    .arg(wheelhouse);
-            }
-            python_env::configure_python_command(&mut get_pip_bootstrap, python);
-            if let Err(error) =
-                run_command(&mut get_pip_bootstrap, "bootstrap Python pip with get-pip")
-            {
-                bootstrap_errors.push(format!("get-pip: {error}"));
-            }
-        }
+        return Err(format!(
+            "Python pip bootstrap failed for {}: {error}",
+            python.display()
+        )
+        .into());
     }
 
     check_python_pip(python).map_err(|error| {
         format!(
-            "Python pip is still not available for {} after bootstrap attempts: {}; final check: {}",
+            "Python pip is still not available for {} after ensurepip bootstrap: {}",
             python.display(),
-            bootstrap_errors.join("; "),
             error
         )
         .into()
     })
-}
-
-fn bundled_get_pip_script(wheelhouse: Option<&Path>) -> Option<PathBuf> {
-    let script = wheelhouse?.join("get-pip.py");
-    script.is_file().then_some(script)
 }
 
 fn check_python_pip(python: &Path) -> RuntimeResult<()> {
@@ -88,41 +67,13 @@ fn install_runtime_requirements(
     python: &Path,
     requirements_path: &Path,
     pip_index_urls: &[String],
-    wheelhouse: Option<&Path>,
 ) -> RuntimeResult<()> {
-    ensure_python_pip_available(python, wheelhouse)?;
+    ensure_python_pip_available(python)?;
     let mut errors = Vec::new();
-    if let Some(wheelhouse) = wheelhouse {
-        let mut install = pip_install_wheelhouse_command(python, requirements_path, wheelhouse);
-        match run_command(
-            &mut install,
-            "install Shinsekai runtime dependencies from bundled wheels",
-        ) {
-            Ok(()) => return Ok(()),
-            Err(error) => errors.push(format!(
-                "bundled wheels at {}: {}",
-                wheelhouse.display(),
-                error
-            )),
-        }
-    }
 
     if pip_index_urls.is_empty() {
         let mut install = pip_install_command(python, requirements_path, None);
-        return run_command(&mut install, "install Shinsekai runtime dependencies").map_err(
-            |error| {
-                if errors.is_empty() {
-                    error
-                } else {
-                    format!(
-                        "install Shinsekai runtime dependencies failed; {}; default pip index: {}",
-                        errors.join("; "),
-                        error
-                    )
-                    .into()
-                }
-            },
-        );
+        return run_command(&mut install, "install Shinsekai runtime dependencies");
     }
 
     for pip_index_url in pip_index_urls {
@@ -151,23 +102,6 @@ fn pip_install_command(
     install
 }
 
-fn pip_install_wheelhouse_command(
-    python: &Path,
-    requirements_path: &Path,
-    wheelhouse: &Path,
-) -> Command {
-    let mut install = Command::new(python);
-    install.arg("-m").arg("pip").arg("install");
-    python_env::configure_pip_command(&mut install, python);
-    install
-        .arg("--no-index")
-        .arg("--find-links")
-        .arg(wheelhouse)
-        .arg("-r")
-        .arg(requirements_path);
-    install
-}
-
 pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
     app: &M,
     source_root: &Path,
@@ -184,7 +118,6 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
     let _install_lock = acquire_install_lock(&runtime_home)?;
     let candidate_id = safe_component(candidate_id);
     let requirements_path = requirements_path(source_root, &requirements.requirements_file);
-    let wheelhouse = runtime_wheelhouse(source_root);
     emit_runtime_progress(
         app,
         "installingDeps",
@@ -195,12 +128,7 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         None,
         Some("Installing Shinsekai runtime dependencies"),
     );
-    install_runtime_requirements(
-        python,
-        &requirements_path,
-        pip_index_urls,
-        wheelhouse.as_deref(),
-    )?;
+    install_runtime_requirements(python, &requirements_path, pip_index_urls)?;
 
     emit_runtime_progress(
         app,
@@ -447,21 +375,6 @@ fn requirements_path(source_root: &Path, requirements_file: &str) -> PathBuf {
     } else {
         source_root.join(path)
     }
-}
-
-fn runtime_wheelhouse(source_root: &Path) -> Option<PathBuf> {
-    let wheelhouse = source_root.join(WHEELS_DIR);
-    if !wheelhouse.is_dir() {
-        return None;
-    }
-    let has_installable = fs::read_dir(&wheelhouse).ok()?.any(|entry| {
-        entry
-            .ok()
-            .and_then(|entry| entry.file_name().into_string().ok())
-            .map(|name| name != WHEELS_MARKER_FILE && !name.starts_with('.'))
-            .unwrap_or(false)
-    });
-    has_installable.then_some(wheelhouse)
 }
 
 fn safe_component(value: &str) -> String {

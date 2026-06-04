@@ -202,8 +202,7 @@ jobs:
           path: |
             .cache/python-build-standalone
             runtime
-            wheels
-          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs', 'requirements-runtime-core.txt') }}
+          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs') }}
 
       - name: Prepare embedded Python runtime
         working-directory: frontend
@@ -211,7 +210,7 @@ jobs:
         env:
           SHINSEKAI_PBS_DOWNLOAD_BASES: ${{ vars.SHINSEKAI_PBS_DOWNLOAD_BASES }}
           SHINSEKAI_PIP_INDEX_URLS: ${{ vars.SHINSEKAI_PIP_INDEX_URLS }}
-        run: pnpm prepare:runtime --target ${{ matrix.platform }} --verify
+        run: pnpm prepare:runtime --target ${{ matrix.platform }} --verify --skip-wheels
 
       - name: Save embedded Python runtime cache
         if: steps.embedded-python-runtime-cache.outputs.cache-hit != 'true'
@@ -220,8 +219,7 @@ jobs:
           path: |
             .cache/python-build-standalone
             runtime
-            wheels
-          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs', 'requirements-runtime-core.txt') }}
+          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs') }}
 
       - name: Clear stale Tauri bundle outputs
         working-directory: frontend

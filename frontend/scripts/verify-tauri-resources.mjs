@@ -6,10 +6,8 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(scriptDir, "..");
 const resourcesDir = path.join(frontendDir, "src-tauri", "resources");
 const runtimeMarkerPath = path.join(resourcesDir, "runtime", ".shinsekai-runtime.json");
-const wheelsMarkerPath = path.join(resourcesDir, "wheels", ".shinsekai-wheels.json");
 
 const runtimeMarker = await readJson(runtimeMarkerPath);
-const wheelsMarker = await readJson(wheelsMarkerPath);
 
 if (runtimeMarker.provider && runtimeMarker.provider !== "python-build-standalone") {
   throw new Error(`unexpected embedded runtime provider: ${runtimeMarker.provider}`);
@@ -17,25 +15,13 @@ if (runtimeMarker.provider && runtimeMarker.provider !== "python-build-standalon
 if (runtimeMarker.source !== "python-build-standalone") {
   throw new Error(`unexpected embedded runtime source: ${runtimeMarker.source}`);
 }
-if (wheelsMarker.provider !== "python-build-standalone") {
-  throw new Error(`unexpected wheelhouse provider: ${wheelsMarker.provider}`);
-}
-if (runtimeMarker.target !== wheelsMarker.target) {
-  throw new Error(`runtime target ${runtimeMarker.target} does not match wheelhouse target ${wheelsMarker.target}`);
-}
-if (runtimeMarker.triple !== wheelsMarker.triple) {
-  throw new Error(`runtime triple ${runtimeMarker.triple} does not match wheelhouse triple ${wheelsMarker.triple}`);
-}
 
 await assertExists(runtimePythonPath(runtimeMarker));
 for (const requiredFile of runtimeMarker.requiredFiles ?? []) {
   await assertExists(path.join(resourcesDir, "runtime", requiredFile));
 }
-await assertExists(path.join(resourcesDir, "wheels", "get-pip.py"));
-for (const requirement of wheelsMarker.requirements ?? []) {
-  const requirementName = path.basename(requirement);
-  await assertExists(path.join(resourcesDir, requirementName));
-}
+await assertExists(path.join(resourcesDir, "runtime_manifest.json"));
+await assertExists(path.join(resourcesDir, "requirements-runtime-core.txt"));
 
 console.log(`Verified Tauri resources for ${runtimeMarker.target} ${runtimeMarker.triple}`);
 

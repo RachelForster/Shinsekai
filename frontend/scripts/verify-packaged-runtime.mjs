@@ -14,7 +14,6 @@ const requireInstallers = args.requireInstallers;
 const installerBundles = args.installerBundles;
 
 const runtimeMarkerFile = ".shinsekai-runtime.json";
-const wheelsMarkerFile = ".shinsekai-wheels.json";
 const runtimeMarkerPaths = await findFiles(targetDir, runtimeMarkerFile);
 
 const appRoots = unique(
@@ -32,36 +31,21 @@ let packageSuffixes = null;
 const verifiedRoots = [];
 for (const appRoot of appRoots) {
   const runtimeRoot = path.join(appRoot, "runtime");
-  const wheelsRoot = path.join(appRoot, "wheels");
   const runtimeMarker = await readJson(path.join(runtimeRoot, runtimeMarkerFile));
-  const wheelsMarker = await readJson(path.join(wheelsRoot, wheelsMarkerFile));
 
   if (runtimeMarker.source !== "python-build-standalone") {
     throw new Error(`${relative(runtimeRoot)} has unexpected runtime source ${runtimeMarker.source}`);
   }
-  if (wheelsMarker.provider !== "python-build-standalone") {
-    throw new Error(`${relative(wheelsRoot)} has unexpected wheelhouse provider ${wheelsMarker.provider}`);
-  }
   if (expectedTarget && runtimeMarker.target !== expectedTarget) {
     throw new Error(`${relative(runtimeRoot)} target ${runtimeMarker.target} does not match ${expectedTarget}`);
-  }
-  if (runtimeMarker.target !== wheelsMarker.target) {
-    throw new Error(
-      `${relative(appRoot)} runtime target ${runtimeMarker.target} does not match wheels ${wheelsMarker.target}`,
-    );
-  }
-  if (runtimeMarker.triple !== wheelsMarker.triple) {
-    throw new Error(
-      `${relative(appRoot)} runtime triple ${runtimeMarker.triple} does not match wheels ${wheelsMarker.triple}`,
-    );
   }
 
   await assertExists(runtimePythonPath(runtimeRoot, runtimeMarker));
   for (const requiredFile of runtimeMarker.requiredFiles ?? []) {
     await assertExists(path.join(runtimeRoot, requiredFile));
   }
-  await assertExists(path.join(wheelsRoot, "get-pip.py"));
-  await assertWheelhouseHasInstallableEntries(wheelsRoot);
+  await assertExists(path.join(appRoot, "runtime_manifest.json"));
+  await assertExists(path.join(appRoot, "requirements-runtime-core.txt"));
   packageSuffixes ??= packageRequiredSuffixes(runtimeMarker);
   verifiedRoots.push(
     `${relative(appRoot)} target=${runtimeMarker.target} triple=${runtimeMarker.triple} python=${runtimeMarker.python}`,
@@ -185,14 +169,6 @@ async function assertExists(filePath) {
   }
 }
 
-async function assertWheelhouseHasInstallableEntries(wheelsRoot) {
-  const entries = await readdir(wheelsRoot);
-  const hasInstallable = entries.some((entry) => entry !== wheelsMarkerFile && !entry.startsWith("."));
-  if (!hasInstallable) {
-    throw new Error(`packaged wheelhouse has no installable entries: ${relative(wheelsRoot)}`);
-  }
-}
-
 async function verifyDebPackages(requiredSuffixes) {
   const debs = await findPackageFiles(path.join(targetDir, "bundle", "deb"), ".deb");
   const inspected = [];
@@ -305,9 +281,9 @@ function normalizeListingPath(entry) {
 
 function packageRequiredSuffixes(marker) {
   return [
+    "runtime_manifest.json",
+    "requirements-runtime-core.txt",
     "runtime/.shinsekai-runtime.json",
-    "wheels/.shinsekai-wheels.json",
-    "wheels/get-pip.py",
     ...new Set((marker.requiredFiles ?? []).map((requiredFile) => `runtime/${requiredFile}`)),
   ];
 }

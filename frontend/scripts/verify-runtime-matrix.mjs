@@ -12,6 +12,9 @@ const releaseWorkflowPath = path.join(repoRoot, ".github", "workflows", "release
 const packageJsonPath = path.join(frontendDir, "package.json");
 const tauriConfigPath = path.join(frontendDir, "src-tauri", "tauri.conf.json");
 const prepareRuntimeScriptPath = path.join(frontendDir, "scripts", "prepare-runtime.mjs");
+const prepareTauriResourcesScriptPath = path.join(frontendDir, "scripts", "prepare-tauri-resources.mjs");
+const verifyTauriResourcesScriptPath = path.join(frontendDir, "scripts", "verify-tauri-resources.mjs");
+const verifyPackagedRuntimeScriptPath = path.join(frontendDir, "scripts", "verify-packaged-runtime.mjs");
 const rustToolchainPath = path.join(repoRoot, "rust-toolchain.toml");
 
 const expectedRustToolchain = "1.96.0";
@@ -47,6 +50,9 @@ const releaseWorkflow = await readFile(releaseWorkflowPath, "utf8");
 const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
 const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
 const prepareRuntimeScript = await readFile(prepareRuntimeScriptPath, "utf8");
+const prepareTauriResourcesScript = await readFile(prepareTauriResourcesScriptPath, "utf8");
+const verifyTauriResourcesScript = await readFile(verifyTauriResourcesScriptPath, "utf8");
+const verifyPackagedRuntimeScript = await readFile(verifyPackagedRuntimeScriptPath, "utf8");
 const rustToolchainConfig = await readFile(rustToolchainPath, "utf8");
 
 const errors = [];
@@ -182,7 +188,7 @@ check(
 
 const beforeBuildCommand = tauriConfig.build?.beforeBuildCommand ?? "";
 for (const command of [
-  "pnpm prepare:runtime --verify",
+  "pnpm prepare:runtime --verify --skip-wheels",
   "pnpm prepare:tauri-resources",
   "pnpm verify:tauri-resources",
 ]) {
@@ -208,14 +214,19 @@ check(
 );
 check(!workflow.includes("needs: runtime-gate"), "desktop build matrix must run in parallel with runtime-gate");
 check(
-  workflow.includes("pnpm prepare:runtime --target ${{ matrix.platform }} --verify"),
-  "workflow build job must prepare and verify the target-specific embedded runtime before packaging",
+  workflow.includes("pnpm prepare:runtime --target ${{ matrix.platform }} --verify --skip-wheels") &&
+    releaseWorkflow.includes("pnpm prepare:runtime --target ${{ matrix.platform }} --verify --skip-wheels"),
+  "desktop and release workflows must prepare the target-specific embedded runtime without packaged wheels",
 );
 check(
   workflow.includes("actions/cache/restore@v4") &&
     workflow.includes("actions/cache/save@v4") &&
     workflow.includes("embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}"),
-  "workflow build job must cache embedded Python runtime and wheelhouse per target",
+  "workflow build job must cache embedded Python runtime per target",
+);
+check(
+  !workflow.includes("\n            wheels\n") && !releaseWorkflow.includes("\n            wheels\n"),
+  "embedded Python runtime cache must not include a packaged wheels directory",
 );
 check(
   workflow.includes(
@@ -246,17 +257,21 @@ check(
   "prepare-runtime must extract tar archives from extractRoot with a relative archive path",
 );
 check(
-  prepareRuntimeScript.includes("buildSourceArchivesIntoWheels(stagingWheels, python)"),
-  "prepare-runtime must build downloaded source archives into wheels before packaging",
+  prepareRuntimeScript.includes('"--skip-wheels"'),
+  "prepare-runtime must expose a --skip-wheels mode for installer builds",
 );
 check(
-  prepareRuntimeScript.includes("assertNoSourceArchives(stagingWheels)") &&
-    prepareRuntimeScript.includes("assertNoSourceArchives(wheelsDir)"),
-  "prepare-runtime must reject source archives in the packaged runtime wheelhouse",
+  !prepareTauriResourcesScript.includes("SHINSEKAI_TAURI_WHEELS_DIR") &&
+    !prepareTauriResourcesScript.includes('path.join(stageRoot, "wheels")') &&
+    prepareTauriResourcesScript.includes("Runtime dependency repair will use configured pip indexes."),
+  "prepare-tauri-resources must not stage runtime wheels into the installer",
 );
 check(
-  prepareRuntimeScript.includes('"pip", "wheel"') && prepareRuntimeScript.includes('"--no-deps"'),
-  "prepare-runtime must convert source archives with pip wheel --no-deps",
+  !verifyTauriResourcesScript.includes(".shinsekai-wheels.json") &&
+    !verifyPackagedRuntimeScript.includes(".shinsekai-wheels.json") &&
+    verifyTauriResourcesScript.includes("requirements-runtime-core.txt") &&
+    verifyPackagedRuntimeScript.includes("requirements-runtime-core.txt"),
+  "resource verification must require runtime requirements but no wheelhouse marker",
 );
 
 if (errors.length > 0) {

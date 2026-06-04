@@ -42,50 +42,6 @@ fn configure_pip_install_command_adds_selected_index_url_argument() {
     );
 }
 
-#[test]
-fn pip_install_wheelhouse_command_uses_offline_find_links() {
-    let command = pip_install_wheelhouse_command(
-        Path::new("python"),
-        Path::new("requirements-runtime-core.txt"),
-        Path::new("wheels"),
-    );
-
-    let args = command
-        .get_args()
-        .map(|arg| arg.to_string_lossy().to_string())
-        .collect::<Vec<_>>();
-    assert_eq!(
-        args,
-        vec![
-            "-m",
-            "pip",
-            "install",
-            "--no-index",
-            "--find-links",
-            "wheels",
-            "-r",
-            "requirements-runtime-core.txt"
-        ]
-    );
-}
-
-#[test]
-fn runtime_wheelhouse_requires_installable_entries() {
-    let temp_root = unique_temp_dir("runtime-wheelhouse");
-
-    assert_eq!(runtime_wheelhouse(&temp_root), None);
-
-    let wheels = temp_root.join("wheels");
-    fs::create_dir_all(&wheels).unwrap();
-    fs::write(wheels.join(".shinsekai-wheels.json"), "{}").unwrap();
-    assert_eq!(runtime_wheelhouse(&temp_root), None);
-
-    fs::write(wheels.join("pydantic-1.0.0-py3-none-any.whl"), "").unwrap();
-    assert_eq!(runtime_wheelhouse(&temp_root), Some(wheels));
-
-    let _ = fs::remove_dir_all(temp_root);
-}
-
 #[cfg(unix)]
 #[test]
 fn ensure_python_pip_available_bootstraps_with_ensurepip() {
@@ -116,7 +72,7 @@ exit 9
         ),
     );
 
-    ensure_python_pip_available(&fake_python, None).unwrap();
+    ensure_python_pip_available(&fake_python).unwrap();
 
     let log = fs::read_to_string(log).unwrap();
     assert!(log.contains("-m pip --version"));
@@ -127,65 +83,13 @@ exit 9
 
 #[cfg(unix)]
 #[test]
-fn ensure_python_pip_available_falls_back_to_bundled_get_pip() {
-    let temp_root = unique_temp_dir("runtime-get-pip");
-    fs::create_dir_all(&temp_root).unwrap();
-    let fake_python = temp_root.join("python");
-    let wheelhouse = temp_root.join("wheels");
-    let get_pip = wheelhouse.join("get-pip.py");
-    let log = temp_root.join("log.txt");
-    let state = temp_root.join("pip-ready");
-    fs::create_dir_all(&wheelhouse).unwrap();
-    fs::write(&get_pip, "").unwrap();
-    write_executable(
-        &fake_python,
-        &format!(
-            r#"#!/bin/sh
-printf '%s\n' "$*" >> "{log}"
-if [ "$*" = "-m pip --version" ]; then
-  if [ -f "{state}" ]; then
-    exit 0
-  fi
-  exit 7
-fi
-if [ "$*" = "-m ensurepip --upgrade --default-pip" ]; then
-  exit 8
-fi
-case "$*" in
-  "{get_pip}"*"--no-index"*"--find-links"*)
-    touch "{state}"
-    exit 0
-    ;;
-esac
-exit 9
-"#,
-            get_pip = get_pip.display(),
-            log = log.display(),
-            state = state.display()
-        ),
-    );
-
-    ensure_python_pip_available(&fake_python, Some(&wheelhouse)).unwrap();
-
-    let log = fs::read_to_string(log).unwrap();
-    assert!(log.contains("-m ensurepip --upgrade --default-pip"));
-    assert!(log.contains("get-pip.py --no-index --find-links"));
-
-    let _ = fs::remove_dir_all(temp_root);
-}
-
-#[cfg(unix)]
-#[test]
-fn install_runtime_requirements_prefers_bundled_wheels_before_indexes() {
-    let temp_root = unique_temp_dir("runtime-wheelhouse-install");
+fn install_runtime_requirements_tries_configured_indexes_in_order() {
+    let temp_root = unique_temp_dir("runtime-index-install");
     fs::create_dir_all(&temp_root).unwrap();
     let fake_python = temp_root.join("python");
     let requirements = temp_root.join("requirements.txt");
-    let wheelhouse = temp_root.join("wheels");
     let log = temp_root.join("log.txt");
     fs::write(&requirements, "pydantic\n").unwrap();
-    fs::create_dir_all(&wheelhouse).unwrap();
-    fs::write(wheelhouse.join("pydantic-1.0.0-py3-none-any.whl"), "").unwrap();
     write_executable(
         &fake_python,
         &format!(
@@ -195,11 +99,11 @@ case "$*" in
   "-m pip --version")
     exit 0
     ;;
-  *"--no-index"*"--find-links"*)
-    exit 0
-    ;;
-  *"-i"*)
+  *"-i https://bad.example/simple/"*)
     exit 12
+    ;;
+  *"-i https://good.example/simple/"*)
+    exit 0
     ;;
 esac
 exit 11
@@ -211,14 +115,18 @@ exit 11
     install_runtime_requirements(
         &fake_python,
         &requirements,
-        &["https://mirror.example/simple/".to_string()],
-        Some(&wheelhouse),
+        &[
+            "https://bad.example/simple/".to_string(),
+            "https://good.example/simple/".to_string(),
+        ],
     )
     .unwrap();
 
     let log = fs::read_to_string(log).unwrap();
-    assert!(log.contains("--no-index --find-links"));
-    assert!(!log.contains("-i https://mirror.example/simple/"));
+    assert!(log.contains("-i https://bad.example/simple/"));
+    assert!(log.contains("-i https://good.example/simple/"));
+    assert!(!log.contains("--no-index"));
+    assert!(!log.contains("--find-links"));
 
     let _ = fs::remove_dir_all(temp_root);
 }

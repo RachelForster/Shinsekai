@@ -8,8 +8,6 @@ const repoRoot = path.resolve(frontendDir, "..");
 const stageRoot = path.join(frontendDir, "src-tauri", "resources");
 const runtimeEnv = process.env.SHINSEKAI_TAURI_RUNTIME_DIR?.trim();
 const runtimeSource = runtimeEnv ? path.resolve(runtimeEnv) : path.join(repoRoot, "runtime");
-const wheelsEnv = process.env.SHINSEKAI_TAURI_WHEELS_DIR?.trim();
-const wheelsSource = wheelsEnv ? path.resolve(wheelsEnv) : path.join(repoRoot, "wheels");
 
 const files = [
   "VERSION",
@@ -109,18 +107,6 @@ if (await pathExists(runtimeSource)) {
   console.log("No embedded Python runtime found; packaged app will use configured or system Python.");
 }
 
-if (await pathExists(wheelsSource)) {
-  await cp(wheelsSource, path.join(stageRoot, "wheels"), {
-    errorOnExist: false,
-    filter,
-    force: true,
-    recursive: true,
-  });
-  console.log(`Prepared bundled runtime wheels from ${path.relative(repoRoot, wheelsSource) || "."}`);
-} else if (wheelsEnv) {
-  throw new Error(`SHINSEKAI_TAURI_WHEELS_DIR does not exist: ${wheelsSource}`);
-} else {
-  console.log("No bundled runtime wheels found; runtime dependency repair will use configured pip indexes.");
-}
+console.log("Runtime dependency repair will use configured pip indexes.");
 
 console.log(`Prepared Tauri resources in ${path.relative(repoRoot, stageRoot)}`);
