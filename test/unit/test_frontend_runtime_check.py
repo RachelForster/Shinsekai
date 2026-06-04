@@ -11,18 +11,14 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     optional_packages = (
         "PIL",
-        "PySide6",
         "fastembed",
-        "google",
         "mcp",
         "mem0",
         "onnxruntime",
-        "openai",
         "pandas",
         "qdrant_client",
         "rembg",
         "sentence_transformers",
-        "tiktoken",
     )
     script = textwrap.dedent(
         f"""
@@ -73,16 +69,13 @@ def test_runtime_requirements_parser_follows_recursive_includes(tmp_path):
     from frontend_bridge import _iter_requirement_names
 
     core = tmp_path / "requirements-runtime-core.txt"
-    media = tmp_path / "requirements-runtime-media.txt"
     local_ai = tmp_path / "requirements-runtime-local-ai.txt"
     core.write_text("pyyaml\npydantic>=2\n", encoding="utf-8")
-    media.write_text("-r requirements-runtime-core.txt\nopencv_python\n", encoding="utf-8")
-    local_ai.write_text("--requirement=requirements-runtime-media.txt\nfastembed\n", encoding="utf-8")
+    local_ai.write_text("--requirement=requirements-runtime-core.txt\nfastembed\n", encoding="utf-8")
 
     assert list(_iter_requirement_names(local_ai)) == [
         "pyyaml",
         "pydantic",
-        "opencv_python",
         "fastembed",
     ]
 
@@ -126,8 +119,20 @@ def test_runtime_manifest_defines_optional_requirement_profiles():
 
     assert "targets" not in manifest
     assert profiles["desktop-core"]["requirements"] == "requirements-runtime-core.txt"
-    assert profiles["media"]["extends"] == "desktop-core"
-    assert profiles["media"]["requirements"] == "requirements-runtime-media.txt"
+    assert "media" not in profiles
     assert profiles["local-ai"]["extends"] == "desktop-core"
     assert profiles["local-ai"]["requirements"] == "requirements-runtime-local-ai.txt"
     assert profiles["full"]["requirements"] == "requirements.txt"
+
+
+def test_runtime_core_requirements_include_bridge_startup_sdks():
+    from frontend_bridge import _iter_requirement_names
+
+    repo_root = Path(__file__).resolve().parents[2]
+    names = set(_iter_requirement_names(repo_root / "requirements-runtime-core.txt"))
+
+    assert "openai" in names
+    assert "google-genai" in names
+    assert "anthropic" in names
+    assert "tiktoken" in names
+    assert "PySide6" in names

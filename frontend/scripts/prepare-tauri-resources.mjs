@@ -16,7 +16,6 @@ const files = [
   "frontend_bridge.py",
   "requirements.txt",
   "requirements-runtime-core.txt",
-  "requirements-runtime-media.txt",
   "requirements-runtime-local-ai.txt",
   "requirements-dev.txt",
 ];

@@ -280,6 +280,15 @@ def _run_pip_install(
     return ("pip_failed", tail or f"exit {proc.returncode}")
 
 
+def _finish_install_result(
+    result: tuple[str, str],
+    pip_target: Path | None,
+) -> tuple[str, str]:
+    if result[0] == "pip_ok" and pip_target is not None:
+        ensure_plugin_site_packages_on_syspath()
+    return result
+
+
 def install_plugin_requirements_txt(
     plugin_root: Path,
     *,
@@ -375,7 +384,7 @@ def install_plugin_requirements_txt(
                 return (code1, detail1)
 
             if not _has_non_comment_requirement(other_lines):
-                return ("pip_ok", "")
+                return _finish_install_result(("pip_ok", ""), pip_target)
 
             fd_o, other_tf_str = tempfile.mkstemp(
                 prefix="easyai_other_req_", suffix=".txt"
@@ -385,19 +394,25 @@ def install_plugin_requirements_txt(
             other_tf.write_text("\n".join(other_lines) + "\n", encoding="utf-8")
 
             cmd_other = [*base_cmd, "-r", str(other_tf)]
-            return _run_pip_install(
-                cmd_other,
-                cwd=root,
-                timeout_sec=remaining_budget(),
-                on_output_line=on_output_line,
+            return _finish_install_result(
+                _run_pip_install(
+                    cmd_other,
+                    cwd=root,
+                    timeout_sec=remaining_budget(),
+                    on_output_line=on_output_line,
+                ),
+                pip_target,
             )
 
         cmd = [*base_cmd, "-r", str(req)]
-        return _run_pip_install(
-            cmd,
-            cwd=root,
-            timeout_sec=timeout_sec,
-            on_output_line=on_output_line,
+        return _finish_install_result(
+            _run_pip_install(
+                cmd,
+                cwd=root,
+                timeout_sec=timeout_sec,
+                on_output_line=on_output_line,
+            ),
+            pip_target,
         )
     finally:
         for path in (torch_tf, other_tf):

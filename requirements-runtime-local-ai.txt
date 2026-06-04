@@ -1,6 +1,5 @@
 -r requirements-runtime-core.txt
 onnxruntime
-tiktoken
 mem0ai
 mem0ai[nlp]
 sentence-transformers
