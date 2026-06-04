@@ -19,6 +19,28 @@ describe("PathDisplay", () => {
     expect(screen.getByText("readme.md")).toBeInTheDocument();
   });
 
+  it("keeps the Windows drive prefix separate from the file name", () => {
+    const prefixPath = ["C:", "Users", "Tester", "Pictures"].join("\\") + "\\";
+    const path = `${prefixPath}scene.png`;
+    const { container } = render(<PathDisplay path={path} />);
+    const prefix = container.querySelector(".path-display__prefix");
+    const name = container.querySelector(".path-display__name");
+
+    expect(prefix?.textContent).toBe(prefixPath);
+    expect(name?.textContent).toBe("scene.png");
+  });
+
+  it("keeps UNC prefixes separate from the file name", () => {
+    const prefixPath = "\\\\" + ["server", "share", "folder"].join("\\") + "\\";
+    const path = `${prefixPath}scene.png`;
+    const { container } = render(<PathDisplay path={path} />);
+    const prefix = container.querySelector(".path-display__prefix");
+    const name = container.querySelector(".path-display__name");
+
+    expect(prefix?.textContent).toBe(prefixPath);
+    expect(name?.textContent).toBe("scene.png");
+  });
+
   it("sets title attribute to full path", () => {
     const path = "/home/user/file.txt";
     render(<PathDisplay path={path} />);

@@ -82,6 +82,24 @@ describe("desktop API environment detection", () => {
     expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", { path: "/tmp", showHidden: true });
   });
 
+  it("passes desktop file browser defaults and Windows paths through unchanged", async () => {
+    mockInvoke.mockResolvedValue({ cwd: "", entries: [], parent: "", roots: [] });
+
+    await browseDesktopFiles();
+    await browseDesktopFiles({ path: "C:\\Users\\Tester\\Pictures", showHidden: false });
+    await browseDesktopFiles({ path: "\\\\server\\share\\folder", showHidden: true });
+
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", {});
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", {
+      path: "C:\\Users\\Tester\\Pictures",
+      showHidden: false,
+    });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", {
+      path: "\\\\server\\share\\folder",
+      showHidden: true,
+    });
+  });
+
   it("marks restart state while installing a desktop update", async () => {
     mockInvoke.mockResolvedValue(undefined);
 

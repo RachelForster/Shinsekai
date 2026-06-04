@@ -233,3 +233,45 @@ fn system_time_secs(value: SystemTime) -> Option<f64> {
         .ok()
         .map(|duration| duration.as_secs_f64())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn browse_desktop_files_resolves_relative_paths_and_filters_hidden_entries() {
+        let root = unique_temp_dir("desktop-files");
+        let project_root = root.join("project");
+        let app_root = root.join("app");
+        let target = project_root.join("data");
+        fs::create_dir_all(&target).unwrap();
+        fs::create_dir_all(&app_root).unwrap();
+        fs::write(target.join("visible.txt"), "visible").unwrap();
+        fs::write(target.join(".hidden.txt"), "hidden").unwrap();
+
+        let snapshot = browse_desktop_files(&project_root, &app_root, Some("data"), false).unwrap();
+
+        assert_eq!(snapshot.cwd, target.display().to_string());
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(snapshot.entries[0].name, "visible.txt");
+        assert_eq!(snapshot.entries[0].kind, "file");
+        assert_eq!(snapshot.parent, project_root.display().to_string());
+        assert!(snapshot.roots.iter().any(|root| root.label == "Shinsekai"));
+
+        let snapshot = browse_desktop_files(&project_root, &app_root, Some("data"), true).unwrap();
+        assert!(snapshot
+            .entries
+            .iter()
+            .any(|entry| entry.name == ".hidden.txt"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        env::temp_dir().join(format!("shinsekai-{name}-{nonce}"))
+    }
+}
