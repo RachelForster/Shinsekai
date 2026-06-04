@@ -112,7 +112,7 @@ def test_full_requirements_use_pygame_ce_on_windows_arm64(monkeypatch):
     assert "pygame" not in names
 
 
-def test_runtime_core_pyaudio_marker_skips_platforms_without_portaudio_wheels(monkeypatch):
+def test_runtime_core_asr_markers_skip_platforms_without_native_wheels(monkeypatch):
     import frontend_bridge
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -120,15 +120,64 @@ def test_runtime_core_pyaudio_marker_skips_platforms_without_portaudio_wheels(mo
 
     monkeypatch.setattr(frontend_bridge.sys, "platform", "darwin")
     monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "arm64")
-    assert "pyaudio" not in set(frontend_bridge._iter_requirement_names(requirements))
+    names = set(frontend_bridge._iter_requirement_names(requirements))
+    assert "pyaudio" not in names
+    assert "vosk" in names
 
     monkeypatch.setattr(frontend_bridge.sys, "platform", "win32")
     monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "ARM64")
-    assert "pyaudio" not in set(frontend_bridge._iter_requirement_names(requirements))
+    names = set(frontend_bridge._iter_requirement_names(requirements))
+    assert "pyaudio" not in names
+    assert "vosk" not in names
 
     monkeypatch.setattr(frontend_bridge.sys, "platform", "linux")
     monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "x86_64")
-    assert "pyaudio" in set(frontend_bridge._iter_requirement_names(requirements))
+    names = set(frontend_bridge._iter_requirement_names(requirements))
+    assert "pyaudio" in names
+    assert "vosk" in names
+
+
+def test_runtime_core_does_not_require_opencv_distribution():
+    from frontend_bridge import _iter_requirement_names
+
+    repo_root = Path(__file__).resolve().parents[2]
+    names = set(_iter_requirement_names(repo_root / "requirements-runtime-core.txt"))
+
+    assert "opencv_python" not in names
+    assert "opencv-python" not in names
+
+
+def test_ui_update_manager_import_does_not_require_cv2():
+    repo_root = Path(__file__).resolve().parents[2]
+    script = textwrap.dedent(
+        """
+        import builtins
+
+        real_import = builtins.__import__
+
+        def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if level == 0 and (name == "cv2" or name.startswith("cv2.")):
+                raise ModuleNotFoundError(name)
+            return real_import(name, globals, locals, fromlist, level)
+
+        builtins.__import__ = guarded_import
+
+        from core.runtime.ui_update_manager import HeadlessUIUpdateManager, format_context_token_estimate
+
+        HeadlessUIUpdateManager()
+        assert format_context_token_estimate({}) == "tokens sys 0 | hist 0 | tools 0 | total 0"
+        """
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_runtime_manifest_defines_optional_requirement_profiles():
