@@ -9,7 +9,15 @@ const stageRoot = path.join(frontendDir, "src-tauri", "resources");
 const runtimeEnv = process.env.SHINSEKAI_TAURI_RUNTIME_DIR?.trim();
 const runtimeSource = runtimeEnv ? path.resolve(runtimeEnv) : path.join(repoRoot, "runtime");
 
-const files = ["VERSION", "frontend_bridge.py", "requirements.txt"];
+const files = [
+  "VERSION",
+  "frontend_bridge.py",
+  "requirements.txt",
+  "requirements-runtime-core.txt",
+  "requirements-runtime-media.txt",
+  "requirements-runtime-local-ai.txt",
+  "requirements-dev.txt",
+];
 const directories = [
   "assets",
   "asr",
