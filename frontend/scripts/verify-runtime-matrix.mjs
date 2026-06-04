@@ -235,6 +235,21 @@ check(
   "workflow build job must verify the packaged embedded runtime and selected installer artifacts after packaging",
 );
 check(
+  releaseWorkflow.includes("Clear stale Tauri bundle outputs") &&
+    releaseWorkflow.includes("rm -rf src-tauri/target/release/bundle"),
+  "release workflow must clear stale Tauri bundle outputs before packaging",
+);
+check(
+  !releaseWorkflow.includes("find frontend/src-tauri/target/release/bundle -type f") &&
+    releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/appimage/*.AppImage"') &&
+    releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/deb/*.deb"') &&
+    releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/msi/*.msi"') &&
+    releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/nsis/*.exe"') &&
+    releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/dmg/*.dmg"') &&
+    releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz"'),
+  "release workflow must collect assets from platform-specific bundle directories only",
+);
+check(
   workflow.includes('if [[ "${{ matrix.bundles }}" == "none" ]]; then') &&
     workflow.includes("pnpm tauri build --ci --no-bundle") &&
     workflow.includes("pnpm tauri build --ci --bundles ${{ matrix.bundles }}") &&

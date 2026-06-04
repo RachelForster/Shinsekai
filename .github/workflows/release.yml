@@ -175,6 +175,14 @@ jobs:
             runtime
           key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs') }}
 
+      - name: Clear stale Tauri bundle outputs
+        working-directory: frontend
+        shell: bash
+        run: |
+          rm -rf src-tauri/target/release/bundle
+          rm -rf src-tauri/target/release/runtime src-tauri/target/release/wheels
+          rm -f src-tauri/target/release/requirements-runtime-*.txt
+
       - name: Build Tauri bundle
         working-directory: frontend
         shell: bash
@@ -217,18 +225,11 @@ jobs:
             ' "${target_key}" "${url}" "${signature_file}" "${output}"
             echo "latest fragment ${target_key} -> ${url}"
           }
-          count=0
-          while IFS= read -r asset; do
-            name="$(basename "$asset")"
-            case "$name" in
-              *.AppImage) target="${base}.AppImage"; updater_suffix="appimage"; generic_fallback=true ;;
-              *.deb) target="${base}.deb"; updater_suffix="deb"; generic_fallback=false ;;
-              *.app.tar.gz) target="${base}.app.tar.gz"; updater_suffix="app"; generic_fallback=true ;;
-              *.dmg) target="${base}.dmg"; updater_suffix=""; generic_fallback=false ;;
-              *.msi) target="${base}.msi"; updater_suffix="msi"; generic_fallback=false ;;
-              *.exe) target="${base}-setup.exe"; updater_suffix="nsis"; generic_fallback=true ;;
-              *) continue ;;
-            esac
+          collect_asset() {
+            local asset="$1"
+            local target="$2"
+            local updater_suffix="$3"
+            local generic_fallback="$4"
             cp "$asset" "release-assets/$target"
             echo "$asset -> release-assets/$target"
             if [[ -f "${asset}.sig" ]]; then
@@ -242,11 +243,44 @@ jobs:
               fi
             fi
             count=$((count + 1))
-          done < <(
-            find frontend/src-tauri/target/release/bundle -type f \
-              \( -name '*.AppImage' -o -name '*.deb' -o -name '*.app.tar.gz' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) \
-              | sort
-          )
+          }
+          collect_required() {
+            local pattern="$1"
+            local target="$2"
+            local updater_suffix="$3"
+            local generic_fallback="$4"
+            local matches=($pattern)
+            if [[ "${#matches[@]}" -eq 0 ]]; then
+              echo "Required release asset is missing: ${pattern}" >&2
+              exit 1
+            fi
+            if [[ "${#matches[@]}" -gt 1 ]]; then
+              echo "Required release asset is ambiguous: ${pattern}" >&2
+              printf '  %s\n' "${matches[@]}" >&2
+              exit 1
+            fi
+            collect_asset "${matches[0]}" "${target}" "${updater_suffix}" "${generic_fallback}"
+          }
+          shopt -s nullglob
+          count=0
+          case "${{ matrix.platform }}" in
+            linux-*)
+              collect_required "frontend/src-tauri/target/release/bundle/appimage/*.AppImage" "${base}.AppImage" "appimage" true
+              collect_required "frontend/src-tauri/target/release/bundle/deb/*.deb" "${base}.deb" "deb" false
+              ;;
+            windows-*)
+              collect_required "frontend/src-tauri/target/release/bundle/msi/*.msi" "${base}.msi" "msi" false
+              collect_required "frontend/src-tauri/target/release/bundle/nsis/*.exe" "${base}-setup.exe" "nsis" true
+              ;;
+            macos-*)
+              collect_required "frontend/src-tauri/target/release/bundle/dmg/*.dmg" "${base}.dmg" "" false
+              collect_required "frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz" "${base}.app.tar.gz" "app" true
+              ;;
+            *)
+              echo "Unsupported release platform: ${{ matrix.platform }}" >&2
+              exit 1
+              ;;
+          esac
           if [[ "$count" -eq 0 ]]; then
             echo "No release assets were collected." >&2
             exit 1
