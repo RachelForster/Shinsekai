@@ -187,13 +187,11 @@ check(
   `desktop and release workflows must use Rust ${expectedRustToolchain}`,
 );
 check(
-  workflow.includes("mozilla-actions/sccache-action@v0.0.9") &&
-    releaseWorkflow.includes("mozilla-actions/sccache-action@v0.0.9") &&
-    workflow.includes("SCCACHE_GHA_ENABLED=true") &&
-    releaseWorkflow.includes("SCCACHE_GHA_ENABLED=true") &&
-    workflow.includes("RUSTC_WRAPPER=sccache") &&
-    releaseWorkflow.includes("RUSTC_WRAPPER=sccache"),
-  "desktop and release workflows must enable sccache for Rust builds",
+  !workflow.includes("mozilla-actions/sccache-action") &&
+    !releaseWorkflow.includes("mozilla-actions/sccache-action") &&
+    !workflow.includes("RUSTC_WRAPPER=sccache") &&
+    !releaseWorkflow.includes("RUSTC_WRAPPER=sccache"),
+  "desktop and release workflows must rely on rust-cache target reuse instead of sccache",
 );
 check(!workflow.includes("needs: runtime-gate"), "desktop build matrix must run in parallel with runtime-gate");
 check(

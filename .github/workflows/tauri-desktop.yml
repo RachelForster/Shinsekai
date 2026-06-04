@@ -83,14 +83,6 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@1.96.0
 
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Configure sccache
-        shell: bash
-        run: |
-          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
@@ -172,14 +164,6 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - uses: dtolnay/rust-toolchain@1.96.0
-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Configure sccache
-        shell: bash
-        run: |
-          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 
       - uses: Swatinem/rust-cache@v2
         with:
