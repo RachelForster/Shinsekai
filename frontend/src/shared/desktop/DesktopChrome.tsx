@@ -13,12 +13,9 @@ import {
   minimizeDesktopWindow,
   onDesktopRuntimeProgress,
   repairDesktopRuntime,
-  selectDesktopRuntime,
   startDesktopWindowDrag,
   toggleMaximizeDesktopWindow,
   writeDesktopRestartDebugLog,
-  type DesktopRuntimeCandidate,
-  type DesktopRuntimeCandidateStatus,
   type DesktopRuntimeProgress,
   type DesktopRuntimeRepairAction,
   type DesktopRuntimeState,
@@ -197,27 +194,6 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const handleStartCandidate = useCallback(async (candidateId: string) => {
-    setBusy(true);
-    setRuntime((current) => ({ ...current, status: "checking" }));
-    try {
-      setRuntime(await selectDesktopRuntime(candidateId));
-    } catch (error) {
-      if (isDesktopBridgeConnectionError(error)) {
-        void writeDesktopRestartDebugLog(
-          `DesktopRuntimeGate start displayed bridge error: ${desktopRestartErrorMessage(error)}`,
-        );
-      }
-      setRuntime((current) => ({
-        ...current,
-        message: desktopRestartErrorMessage(error),
-        status: "error",
-      }));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
   const handleRepairCandidate = useCallback(async (candidateId: string, action: DesktopRuntimeRepairAction) => {
     setBusy(true);
     setRuntime((current) => ({ ...current, status: "updating" }));
@@ -250,7 +226,8 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
       : runtime.status === "updating"
         ? t("desktop.runtime.updating")
         : t("desktop.runtime.required");
-  const candidates = runtime.candidates ?? [];
+  const runtimeCandidate = runtime.candidates?.find((candidate) => candidate.selected) ?? runtime.candidates?.[0];
+  const canInstallDeps = runtimeCandidate?.repairActions.includes("installRuntimeDeps") ?? false;
 
   return (
     <main className="desktop-runtime">
@@ -264,113 +241,26 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
         </div>
         <p className="desktop-runtime__message">{detail}</p>
         {runtimeProgress ? <RuntimeProgressPanel progress={runtimeProgress} /> : null}
-        {candidates.length ? (
-          <div className="desktop-runtime__candidates">
-            <h2>{t("desktop.runtime.candidates")}</h2>
-            <div className="desktop-runtime__candidate-list">
-              {candidates.map((candidate) => (
-                <RuntimeCandidateRow
-                  busy={busy}
-                  candidate={candidate}
-                  key={candidate.id}
-                  onRepair={handleRepairCandidate}
-                  onStart={handleStartCandidate}
-                  statusLabel={runtimeCandidateStatusLabel(candidate.status, t)}
-                />
-              ))}
-            </div>
+        {runtimeCandidate ? (
+          <div className="desktop-runtime__runtime">
+            <span>{t("desktop.runtime.candidatePath")}</span>
+            <code>{runtimeCandidate.displayPath ?? runtimeCandidate.path}</code>
+          </div>
+        ) : null}
+        {runtimeCandidate && canInstallDeps ? (
+          <div className="desktop-runtime__actions">
+            <Button
+              disabled={busy}
+              onClick={() => handleRepairCandidate(runtimeCandidate.id, "installRuntimeDeps")}
+              variant="primary"
+            >
+              {t("desktop.runtime.installDepsButton")}
+            </Button>
           </div>
         ) : null}
       </section>
     </main>
   );
-}
-
-function RuntimeCandidateRow({
-  busy,
-  candidate,
-  onRepair,
-  onStart,
-  statusLabel,
-}: {
-  busy: boolean;
-  candidate: DesktopRuntimeCandidate;
-  onRepair: (candidateId: string, action: DesktopRuntimeRepairAction) => void;
-  onStart: (candidateId: string) => void;
-  statusLabel: string;
-}) {
-  const { t } = useI18n();
-  const missing = [...candidate.missingPackages, ...candidate.missingImports];
-  const canCreateManagedVenv = candidate.repairActions.includes("createManagedVenv");
-  const canInstallRuntimeDeps = candidate.repairActions.includes("installRuntimeDeps");
-  return (
-    <article className="desktop-runtime-candidate" data-status={candidate.status}>
-      <div className="desktop-runtime-candidate__header">
-        <div>
-          <h3>{candidate.label}</h3>
-          <p>{candidate.version || candidate.kind}</p>
-        </div>
-        <span className="desktop-runtime-candidate__status">{statusLabel}</span>
-      </div>
-      {candidate.pythonVersion ? (
-        <p className="desktop-runtime-candidate__message">
-          <span>{t("desktop.runtime.candidatePythonVersion")}: </span>
-          {candidate.pythonVersion}
-        </p>
-      ) : null}
-      {candidate.path ? (
-        <p className="desktop-runtime-candidate__path">
-          <span>{t("desktop.runtime.candidatePath")}</span>
-          <code>{candidate.displayPath ?? candidate.path}</code>
-        </p>
-      ) : null}
-      {candidate.message ? <p className="desktop-runtime-candidate__message">{candidate.message}</p> : null}
-      {missing.length ? (
-        <p className="desktop-runtime-candidate__message">
-          <span>{t("desktop.runtime.candidateMissing")}: </span>
-          {missing.join(", ")}
-        </p>
-      ) : null}
-      {candidate.warnings.length ? (
-        <p className="desktop-runtime-candidate__message">
-          <span>{t("desktop.runtime.candidateWarnings")}: </span>
-          {candidate.warnings.join(" ")}
-        </p>
-      ) : null}
-      {candidate.status === "ready" || canCreateManagedVenv || canInstallRuntimeDeps ? (
-        <div className="desktop-runtime-candidate__actions">
-          {candidate.status === "ready" ? (
-            <Button disabled={busy} onClick={() => onStart(candidate.id)}>
-              {t("desktop.runtime.useCandidate")}
-            </Button>
-          ) : null}
-          {canCreateManagedVenv ? (
-            <Button disabled={busy} onClick={() => onRepair(candidate.id, "createManagedVenv")} variant="primary">
-              {t("desktop.runtime.createVenvButton")}
-            </Button>
-          ) : null}
-          {canInstallRuntimeDeps ? (
-            <Button disabled={busy} onClick={() => onRepair(candidate.id, "installRuntimeDeps")} variant="primary">
-              {t("desktop.runtime.installDepsButton")}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-function runtimeCandidateStatusLabel(status: DesktopRuntimeCandidateStatus, t: ReturnType<typeof useI18n>["t"]) {
-  const keys: Record<DesktopRuntimeCandidateStatus, Parameters<typeof t>[0]> = {
-    brokenBridge: "desktop.runtime.status.brokenBridge",
-    brokenPython: "desktop.runtime.status.brokenPython",
-    missingCoreDeps: "desktop.runtime.status.missingCoreDeps",
-    missingOptionalDeps: "desktop.runtime.status.missingOptionalDeps",
-    ready: "desktop.runtime.status.ready",
-    unsupportedVersion: "desktop.runtime.status.unsupportedVersion",
-    wrongArchitecture: "desktop.runtime.status.wrongArchitecture",
-  };
-  return t(keys[status]);
 }
 
 export function DesktopChrome({ children }: { children: ReactNode }) {

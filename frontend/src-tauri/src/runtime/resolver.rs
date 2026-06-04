@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     manifest::{current_arch, runtime_requirements, RuntimeManifest},
     python_env,
-    python_probe::{scan_python_installs, PythonInstall, PythonKind},
+    python_probe::{scan_python_installs, PythonInstall, INSTALL_DIR_RUNTIME_ID},
 };
 
 #[derive(Clone, Debug, Serialize)]
@@ -42,12 +42,7 @@ pub struct RuntimeCandidateView {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RuntimeKind {
-    Explicit,
     Managed,
-    ManagedVenv,
-    Portable,
-    Conda,
-    Path,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -67,9 +62,7 @@ pub enum RuntimeCandidateStatus {
 #[serde(rename_all = "camelCase")]
 pub enum RuntimeRepairActionKind {
     Start,
-    CreateManagedVenv,
     InstallRuntimeDeps,
-    SelectDifferentRuntime,
 }
 
 #[derive(Debug)]
@@ -119,6 +112,71 @@ pub fn scan_runtime_candidates<R: tauri::Runtime>(
         recommended_action,
         candidates,
         message,
+    }
+}
+
+pub fn install_dir_runtime_view(source_root: &Path) -> RuntimeScanView {
+    let runtime_root = super::python_probe::install_dir_runtime_root(source_root);
+    let python = super::python_probe::python_in_prefix(&runtime_root);
+    let (path, display_path, status, message, recommended_action, repair_actions) =
+        if let Some(python) = python {
+            (
+                python.display().to_string(),
+                super::python_probe::display_path(&python),
+                RuntimeCandidateStatus::Ready,
+                Some("Using Shinsekai managed Python runtime.".to_string()),
+                None,
+                vec![RuntimeRepairActionKind::Start],
+            )
+        } else {
+            (
+                runtime_root.display().to_string(),
+                super::python_probe::display_path(&runtime_root),
+                RuntimeCandidateStatus::BrokenPython,
+                Some(format!(
+                    "Shinsekai managed Python runtime not found at {}",
+                    runtime_root.display()
+                )),
+                None,
+                Vec::new(),
+            )
+        };
+    let candidate = RuntimeCandidateView {
+        id: INSTALL_DIR_RUNTIME_ID.to_string(),
+        python_id: Some(INSTALL_DIR_RUNTIME_ID.to_string()),
+        label: format!(
+            "Shinsekai bundled runtime @ {}",
+            super::python_probe::display_path(&runtime_root)
+        ),
+        path,
+        display_path,
+        kind: RuntimeKind::Managed,
+        version: None,
+        status,
+        message: message.clone(),
+        score: if status == RuntimeCandidateStatus::Ready {
+            100_000
+        } else {
+            0
+        },
+        selected: status == RuntimeCandidateStatus::Ready,
+        managed: true,
+        missing_packages: Vec::new(),
+        missing_imports: Vec::new(),
+        python_version: None,
+        warnings: Vec::new(),
+        repair_actions,
+    };
+    RuntimeScanView {
+        selected_candidate_id: (status == RuntimeCandidateStatus::Ready)
+            .then(|| INSTALL_DIR_RUNTIME_ID.to_string()),
+        recommended_action,
+        candidates: vec![candidate],
+        message: if status == RuntimeCandidateStatus::Ready {
+            None
+        } else {
+            message
+        },
     }
 }
 
@@ -201,11 +259,6 @@ fn resolve_python_install(
     if install.externally_managed {
         warnings.push("Python reports an externally-managed environment; Shinsekai will not modify it by default.".to_string());
     }
-    if install.has_venv && !install.has_ensurepip {
-        warnings.push(
-            "Python has venv but not ensurepip; isolated runtime repair is disabled.".to_string(),
-        );
-    }
     if install.is_venv {
         warnings.push("This Python is already a virtual environment.".to_string());
     }
@@ -222,9 +275,7 @@ fn resolve_python_install(
         RuntimeCandidateStatus::BrokenPython
         | RuntimeCandidateStatus::BrokenBridge
         | RuntimeCandidateStatus::UnsupportedVersion
-        | RuntimeCandidateStatus::WrongArchitecture => {
-            repair_actions.push(RuntimeRepairActionKind::SelectDifferentRuntime);
-        }
+        | RuntimeCandidateStatus::WrongArchitecture => {}
         RuntimeCandidateStatus::MissingOptionalDeps => {}
     }
 
@@ -234,13 +285,13 @@ fn resolve_python_install(
         label: install.label.clone(),
         path: install.executable.display().to_string(),
         display_path: super::python_probe::display_path(&install.executable),
-        kind: runtime_kind(install.kind),
+        kind: RuntimeKind::Managed,
         version: install.version.clone(),
         status,
         message,
         score,
         selected: false,
-        managed: matches!(install.kind, PythonKind::Managed | PythonKind::ManagedVenv),
+        managed: true,
         missing_packages,
         missing_imports,
         python_version: None,
@@ -559,7 +610,7 @@ fn macos_rosetta_warning_for(
         return None;
     }
     Some(
-        "This macOS app appears to be running under Rosetta with an Intel Python; native arm64 Python or an isolated runtime may improve compatibility with native packages.".to_string(),
+        "This macOS app appears to be running under Rosetta with an Intel Python; native arm64 Python may improve compatibility with native packages.".to_string(),
     )
 }
 
@@ -580,27 +631,12 @@ fn macos_process_translated() -> bool {
     false
 }
 
-fn runtime_kind(kind: PythonKind) -> RuntimeKind {
-    match kind {
-        PythonKind::Managed => RuntimeKind::Managed,
-        PythonKind::ManagedVenv => RuntimeKind::ManagedVenv,
-    }
-}
-
 fn missing_core_deps_actions(install: &PythonInstall) -> Vec<RuntimeRepairActionKind> {
     let mut actions = Vec::new();
-    if can_create_managed_venv(install) {
-        actions.push(RuntimeRepairActionKind::CreateManagedVenv);
-    }
     if can_install_runtime_deps(install) {
         actions.push(RuntimeRepairActionKind::InstallRuntimeDeps);
     }
-    actions.push(RuntimeRepairActionKind::SelectDifferentRuntime);
     actions
-}
-
-fn can_create_managed_venv(install: &PythonInstall) -> bool {
-    install.has_venv && install.has_ensurepip
 }
 
 fn can_install_runtime_deps(install: &PythonInstall) -> bool {
@@ -617,18 +653,11 @@ fn recommended_action(
     if candidates.iter().any(|candidate| {
         candidate
             .repair_actions
-            .contains(&RuntimeRepairActionKind::CreateManagedVenv)
-    }) {
-        return Some(RuntimeRepairActionKind::CreateManagedVenv);
-    }
-    if candidates.iter().any(|candidate| {
-        candidate
-            .repair_actions
             .contains(&RuntimeRepairActionKind::InstallRuntimeDeps)
     }) {
         return Some(RuntimeRepairActionKind::InstallRuntimeDeps);
     }
-    Some(RuntimeRepairActionKind::SelectDifferentRuntime)
+    None
 }
 
 fn scan_message(

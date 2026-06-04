@@ -11,6 +11,7 @@ mod resolver;
 pub use resolver::{RuntimeCandidateView, RuntimeRepairActionKind, RuntimeScanView};
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
+pub const INSTALL_DIR_RUNTIME_ID: &str = python_probe::INSTALL_DIR_RUNTIME_ID;
 
 #[derive(Debug)]
 pub struct PythonRuntime {
@@ -23,6 +24,31 @@ pub fn scan_runtime_view<R: Runtime>(app: &impl Manager<R>, source_root: &Path) 
     let manifest = manifest::load_manifest(source_root).ok();
     let profile = runtime_profile();
     resolver::scan_runtime_candidates(app, source_root, manifest.as_ref(), &profile)
+}
+
+pub fn install_dir_runtime_view(source_root: &Path) -> RuntimeScanView {
+    resolver::install_dir_runtime_view(source_root)
+}
+
+pub fn find_install_dir_python_runtime(source_root: &Path) -> RuntimeResult<PythonRuntime> {
+    let runtime_root = python_probe::install_dir_runtime_root(source_root);
+    let path = python_probe::python_in_prefix(&runtime_root).ok_or_else(|| {
+        format!(
+            "Shinsekai managed Python runtime not found at {}",
+            runtime_root.display()
+        )
+    })?;
+    let launch_path = bridge_launch_python(&path);
+    let mut command = Command::new(&launch_path);
+    python_env::configure_python_command(&mut command, &path);
+    Ok(PythonRuntime {
+        command,
+        description: format!(
+            "Shinsekai bundled runtime @ {}",
+            python_probe::display_path(&runtime_root)
+        ),
+        candidate_id: Some(python_probe::INSTALL_DIR_RUNTIME_ID.to_string()),
+    })
 }
 
 #[allow(dead_code)]
@@ -43,7 +69,7 @@ pub fn find_python_runtime_for_candidate<R: Runtime>(
         return Err(view
             .message
             .unwrap_or_else(|| {
-                "no complete Shinsekai managed Python runtime found; provide bundled runtime/ or set SHINSEKAI_RUNTIME_DIR".to_string()
+                "no complete Shinsekai managed Python runtime found under runtime/".to_string()
             })
             .into());
     };
@@ -70,7 +96,7 @@ pub fn repair_runtime_candidate<R: Runtime, M: Manager<R> + Emitter<R>>(
         .iter()
         .find(|candidate| candidate.id == candidate_id)
         .ok_or_else(|| format!("runtime candidate not found: {candidate_id}"))?;
-    if !candidate.repair_actions.contains(&action) {
+    if !runtime_action_supported(candidate, action) {
         return Err(format!(
             "runtime action {action:?} is not supported for candidate {candidate_id}"
         )
@@ -81,29 +107,6 @@ pub fn repair_runtime_candidate<R: Runtime, M: Manager<R> + Emitter<R>>(
         RuntimeRepairActionKind::Start => {
             let runtime = find_python_runtime_for_candidate(app, source_root, Some(candidate_id))?;
             Ok(runtime.command.get_program().to_str().map(PathBuf::from))
-        }
-        RuntimeRepairActionKind::CreateManagedVenv => {
-            let manifest = manifest::load_manifest(source_root).ok();
-            let profile = runtime_profile();
-            let requirements =
-                manifest::runtime_requirements(source_root, manifest.as_ref(), &profile);
-            let pip_index_urls = manifest
-                .as_ref()
-                .map(|manifest| manifest::pip_index_urls_for_source(manifest, None))
-                .unwrap_or_default();
-            if candidate.path.trim().is_empty() {
-                return Err("runtime candidate does not have a Python path".into());
-            }
-            let venv = managed::create_managed_venv(
-                app,
-                source_root,
-                &PathBuf::from(&candidate.path),
-                candidate_id,
-                &profile,
-                &requirements,
-                &pip_index_urls,
-            )?;
-            Ok(Some(venv))
         }
         RuntimeRepairActionKind::InstallRuntimeDeps => {
             let manifest = manifest::load_manifest(source_root).ok();
@@ -128,10 +131,17 @@ pub fn repair_runtime_candidate<R: Runtime, M: Manager<R> + Emitter<R>>(
             )?;
             Ok(Some(python))
         }
-        RuntimeRepairActionKind::SelectDifferentRuntime => {
-            Err("this runtime action requires a dedicated command".into())
-        }
     }
+}
+
+fn runtime_action_supported(
+    candidate: &RuntimeCandidateView,
+    action: RuntimeRepairActionKind,
+) -> bool {
+    candidate.repair_actions.contains(&action)
+        || (action == RuntimeRepairActionKind::InstallRuntimeDeps
+            && candidate.managed
+            && !candidate.path.trim().is_empty())
 }
 
 pub fn install_runtime_profile<R: Runtime, M: Manager<R> + Emitter<R>>(
@@ -362,6 +372,17 @@ mod tests {
         let _ = fs::remove_dir_all(temp_root);
     }
 
+    #[test]
+    fn install_runtime_deps_is_supported_for_ready_runtime_candidate() {
+        let python = Path::new("/opt/Shinsekai/runtime/bin/python3");
+        let view = runtime_scan_view_with_ready_candidate("install-dir-runtime", python);
+
+        assert!(runtime_action_supported(
+            &view.candidates[0],
+            RuntimeRepairActionKind::InstallRuntimeDeps
+        ));
+    }
+
     fn runtime_scan_view_with_ready_candidate(id: &str, python: &Path) -> RuntimeScanView {
         RuntimeScanView {
             selected_candidate_id: Some(id.to_string()),
@@ -372,7 +393,7 @@ mod tests {
                 label: id.to_string(),
                 path: python.display().to_string(),
                 display_path: python_probe::display_path(python),
-                kind: resolver::RuntimeKind::ManagedVenv,
+                kind: resolver::RuntimeKind::Managed,
                 version: Some("3.11.9".to_string()),
                 status: resolver::RuntimeCandidateStatus::Ready,
                 message: None,

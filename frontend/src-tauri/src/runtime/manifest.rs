@@ -13,7 +13,18 @@ pub type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 
 pub const DEFAULT_PROFILE: &str = "desktop-core";
 pub const MANIFEST_FILE: &str = "runtime_manifest.json";
-const DEFAULT_REQUIRED_IMPORTS: &[&str] = &["yaml", "pydantic", "requests", "numpy", "pygame"];
+const DEFAULT_REQUIRED_IMPORTS: &[&str] = &[
+    "yaml",
+    "pydantic",
+    "requests",
+    "numpy",
+    "openai",
+    "google.genai",
+    "anthropic",
+    "tiktoken",
+    "PySide6",
+    "pygame",
+];
 const DEFAULT_REQUIREMENTS_FILE: &str = "requirements-runtime-core.txt";
 const FALLBACK_REQUIREMENTS_FILE: &str = "requirements.txt";
 const OFFICIAL_PROBE_URL: &str = "https://www.python.org/";
@@ -427,25 +438,6 @@ fn probe_urls(urls: &[String]) -> ProbeStats {
         }
     }
     stats
-}
-
-pub fn current_platform() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "windows"
-    }
-    #[cfg(target_os = "macos")]
-    {
-        "macos"
-    }
-    #[cfg(target_os = "linux")]
-    {
-        "linux"
-    }
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    {
-        "unknown"
-    }
 }
 
 pub fn current_arch() -> &'static str {

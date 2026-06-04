@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::python_probe::PythonKind;
 use std::{fs, path::PathBuf, time::SystemTime};
 
 #[cfg(unix)]
@@ -54,36 +55,19 @@ fn missing_core_deps_repair_actions_match_runtime_ownership() {
     let managed = python_install(PythonKind::Managed);
     assert_eq!(
         missing_core_deps_actions(&managed),
-        vec![
-            RuntimeRepairActionKind::CreateManagedVenv,
-            RuntimeRepairActionKind::InstallRuntimeDeps,
-            RuntimeRepairActionKind::SelectDifferentRuntime
-        ]
-    );
-
-    let managed_venv = python_install(PythonKind::ManagedVenv);
-    assert_eq!(
-        missing_core_deps_actions(&managed_venv),
-        vec![
-            RuntimeRepairActionKind::CreateManagedVenv,
-            RuntimeRepairActionKind::InstallRuntimeDeps,
-            RuntimeRepairActionKind::SelectDifferentRuntime
-        ]
+        vec![RuntimeRepairActionKind::InstallRuntimeDeps]
     );
 }
 
 #[test]
-fn managed_python_without_ensurepip_does_not_offer_managed_venv() {
+fn managed_python_without_ensurepip_can_use_existing_pip() {
     let mut install = python_install(PythonKind::Managed);
     install.has_venv = true;
     install.has_ensurepip = false;
 
     assert_eq!(
         missing_core_deps_actions(&install),
-        vec![
-            RuntimeRepairActionKind::InstallRuntimeDeps,
-            RuntimeRepairActionKind::SelectDifferentRuntime
-        ]
+        vec![RuntimeRepairActionKind::InstallRuntimeDeps]
     );
 }
 
@@ -92,13 +76,7 @@ fn externally_managed_python_does_not_offer_in_place_dependency_install() {
     let mut install = python_install(PythonKind::Managed);
     install.externally_managed = true;
 
-    assert_eq!(
-        missing_core_deps_actions(&install),
-        vec![
-            RuntimeRepairActionKind::CreateManagedVenv,
-            RuntimeRepairActionKind::SelectDifferentRuntime
-        ]
-    );
+    assert!(missing_core_deps_actions(&install).is_empty());
 }
 
 #[test]
@@ -110,10 +88,7 @@ fn managed_python_without_ensurepip_can_still_offer_in_place_dependency_install(
 
     assert_eq!(
         missing_core_deps_actions(&install),
-        vec![
-            RuntimeRepairActionKind::InstallRuntimeDeps,
-            RuntimeRepairActionKind::SelectDifferentRuntime
-        ]
+        vec![RuntimeRepairActionKind::InstallRuntimeDeps]
     );
 }
 
@@ -125,11 +100,7 @@ fn python_without_pip_can_offer_in_place_install_when_ensurepip_is_available() {
 
     assert_eq!(
         missing_core_deps_actions(&install),
-        vec![
-            RuntimeRepairActionKind::CreateManagedVenv,
-            RuntimeRepairActionKind::InstallRuntimeDeps,
-            RuntimeRepairActionKind::SelectDifferentRuntime
-        ]
+        vec![RuntimeRepairActionKind::InstallRuntimeDeps]
     );
 }
 
@@ -151,16 +122,40 @@ fn rosetta_warning_is_skipped_for_native_or_arch_mismatched_contexts() {
 }
 
 #[test]
-fn recommended_action_prefers_isolated_venv_over_in_place_dependency_install() {
+fn recommended_action_prefers_installing_into_the_bundled_runtime() {
     let candidates = vec![
-        runtime_candidate_with_actions("conda", vec![RuntimeRepairActionKind::InstallRuntimeDeps]),
-        runtime_candidate_with_actions("path", vec![RuntimeRepairActionKind::CreateManagedVenv]),
+        runtime_candidate_with_actions(
+            "runtime",
+            vec![RuntimeRepairActionKind::InstallRuntimeDeps],
+        ),
+        runtime_candidate_with_actions("broken", Vec::new()),
     ];
 
     assert_eq!(
         recommended_action(&candidates, None),
-        Some(RuntimeRepairActionKind::CreateManagedVenv)
+        Some(RuntimeRepairActionKind::InstallRuntimeDeps)
     );
+}
+
+#[test]
+fn install_dir_runtime_view_uses_fixed_candidate_id_without_full_probe() {
+    let temp_root = unique_temp_dir("runtime-fixed-view");
+    let python = temp_root.join("runtime").join("bin").join("python3");
+    fs::create_dir_all(python.parent().unwrap()).unwrap();
+    fs::write(&python, "").unwrap();
+
+    let view = install_dir_runtime_view(&temp_root);
+
+    assert_eq!(
+        view.selected_candidate_id.as_deref(),
+        Some(INSTALL_DIR_RUNTIME_ID)
+    );
+    assert_eq!(view.candidates.len(), 1);
+    assert_eq!(view.candidates[0].id, INSTALL_DIR_RUNTIME_ID);
+    assert_eq!(view.candidates[0].status, RuntimeCandidateStatus::Ready);
+    assert_eq!(view.candidates[0].path, python.display().to_string());
+
+    let _ = fs::remove_dir_all(temp_root);
 }
 
 #[cfg(unix)]

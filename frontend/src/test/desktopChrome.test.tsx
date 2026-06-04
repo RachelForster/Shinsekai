@@ -4,14 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const desktopApi = vi.hoisted(() => ({
   browseDesktopFiles: vi.fn(),
-  chooseDesktopRuntimePython: vi.fn(),
   closeDesktopWindow: vi.fn<() => Promise<void>>(),
   getDesktopRuntimeState: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn<() => Promise<void>>(),
   onDesktopRuntimeProgress: vi.fn(),
   repairDesktopRuntime: vi.fn(),
-  selectDesktopRuntime: vi.fn(),
   startDesktopWindowDrag: vi.fn<() => Promise<void>>(),
   toggleMaximizeDesktopWindow: vi.fn<() => Promise<void>>(),
 }));
@@ -40,11 +38,6 @@ describe("DesktopChrome", () => {
       }),
     );
     desktopApi.closeDesktopWindow.mockResolvedValue(undefined);
-    desktopApi.chooseDesktopRuntimePython.mockResolvedValue({
-      bridgeUrl: "http://127.0.0.1:8787",
-      candidates: [],
-      status: "ready",
-    });
     desktopApi.minimizeDesktopWindow.mockResolvedValue(undefined);
     desktopApi.onDesktopRuntimeProgress.mockResolvedValue(vi.fn());
     desktopApi.repairDesktopRuntime.mockResolvedValue({
@@ -53,11 +46,6 @@ describe("DesktopChrome", () => {
       status: "ready",
     });
     desktopApi.startDesktopWindowDrag.mockResolvedValue(undefined);
-    desktopApi.selectDesktopRuntime.mockResolvedValue({
-      bridgeUrl: "http://127.0.0.1:8787",
-      candidates: [],
-      status: "ready",
-    });
     desktopApi.toggleMaximizeDesktopWindow.mockResolvedValue(undefined);
     desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "http://127.0.0.1:8787",
@@ -112,7 +100,7 @@ describe("DesktopChrome", () => {
     expect(desktopApi.getDesktopRuntimeState).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the runtime gate open when no managed runtime candidate exists", async () => {
+  it("keeps the runtime gate open when the bundled runtime is unavailable", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
     desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "",
@@ -148,7 +136,7 @@ describe("DesktopChrome", () => {
     expect(desktopApi.startDesktopWindowDrag).toHaveBeenCalledTimes(1);
   });
 
-  it("shows runtime candidates and starts a ready candidate", async () => {
+  it("shows only the bundled runtime on the startup gate", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
     desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "",
@@ -162,27 +150,12 @@ describe("DesktopChrome", () => {
           missingImports: [],
           missingPackages: [],
           path: "\\\\?\\C:\\Shinsekai\\runtime\\python.exe",
-          repairActions: ["start"],
+          repairActions: ["installRuntimeDeps"],
           score: 100,
-          selected: false,
-          status: "ready",
+          selected: true,
+          status: "missingCoreDeps",
           version: "3.10.20",
           warnings: [],
-        },
-        {
-          id: "python-missing",
-          kind: "managed",
-          label: "Shinsekai managed runtime",
-          managed: true,
-          missingImports: ["pygame"],
-          missingPackages: ["pyyaml"],
-          path: "/home/user/.local/share/Shinsekai/runtime/bin/python3",
-          repairActions: ["createManagedVenv"],
-          score: 10,
-          selected: false,
-          status: "missingCoreDeps",
-          version: "3.11.9",
-          warnings: ["Python reports an externally-managed environment."],
         },
       ],
       message: "Python was found, but Shinsekai core dependencies are missing.",
@@ -191,17 +164,14 @@ describe("DesktopChrome", () => {
 
     renderChrome(<main>App content</main>);
 
-    expect(await screen.findByText("Runtime candidates")).toBeInTheDocument();
-    expect(screen.getByText("Shinsekai bundled runtime")).toBeInTheDocument();
-    expect(screen.getByText("Shinsekai managed runtime")).toBeInTheDocument();
+    expect(await screen.findByText("Runtime update required")).toBeInTheDocument();
     expect(screen.getByText("C:\\Shinsekai\\runtime\\python.exe")).toBeInTheDocument();
     expect(screen.queryByText(/\\\\\?/)).not.toBeInTheDocument();
-    expect(screen.getByText(/pyyaml, pygame/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Use this runtime" }));
+    fireEvent.click(screen.getByRole("button", { name: "Install dependencies" }));
 
     await waitFor(() => {
-      expect(desktopApi.selectDesktopRuntime).toHaveBeenCalledWith("python-ready");
+      expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-ready", "installRuntimeDeps");
     });
   });
 
@@ -227,41 +197,7 @@ describe("DesktopChrome", () => {
     expect(screen.getByRole("progressbar", { name: "Runtime progress" })).toBeInTheDocument();
   });
 
-  it("repairs a missing dependency candidate with an isolated runtime", async () => {
-    desktopApi.isTauriDesktop.mockReturnValue(true);
-    desktopApi.getDesktopRuntimeState.mockResolvedValue({
-      bridgeUrl: "",
-      candidates: [
-        {
-          id: "python-missing",
-          kind: "path",
-          label: "PATH python3",
-          managed: false,
-          missingImports: ["pygame"],
-          missingPackages: ["pyyaml"],
-          path: "/usr/bin/python3",
-          repairActions: ["createManagedVenv"],
-          score: 10,
-          selected: false,
-          status: "missingCoreDeps",
-          version: "3.11.9",
-          warnings: [],
-        },
-      ],
-      message: "Python was found, but Shinsekai core dependencies are missing.",
-      status: "needsAction",
-    });
-
-    renderChrome(<main>App content</main>);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Create isolated runtime" }));
-
-    await waitFor(() => {
-      expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-missing", "createManagedVenv");
-    });
-  });
-
-  it("installs missing dependencies into a managed runtime candidate", async () => {
+  it("installs missing dependencies into the bundled runtime", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
     desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "",

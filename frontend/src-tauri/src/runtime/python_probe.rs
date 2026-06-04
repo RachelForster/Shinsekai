@@ -1,5 +1,4 @@
 use std::{
-    env, fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -8,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{Manager, Runtime};
 
-use super::manifest::env_path;
+use super::python_env;
 
+pub const INSTALL_DIR_RUNTIME_ID: &str = "install-dir-runtime";
 const PRIORITY_INSTALL_DIR_RUNTIME: i32 = 9_000;
 
 #[derive(Clone, Debug, Serialize)]
@@ -41,20 +41,11 @@ pub struct PythonInstall {
 #[serde(rename_all = "camelCase")]
 pub enum PythonKind {
     Managed,
-    ManagedVenv,
 }
 
 #[derive(Clone, Debug)]
 pub struct RuntimeRootCandidate {
     pub root: PathBuf,
-    pub kind: RuntimeRootKind,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RuntimeRootKind {
-    Explicit,
-    InstallDir,
-    AppData,
 }
 
 #[derive(Clone, Debug)]
@@ -96,11 +87,7 @@ pub fn scan_python_installs<R: Runtime>(
     app: &impl Manager<R>,
     source_root: &Path,
 ) -> Vec<PythonInstall> {
-    let data_dir = app.path().app_data_dir().ok();
-    let sources = managed_python_sources(
-        runtime_root_candidates(app, source_root),
-        data_dir.as_deref(),
-    );
+    let sources = managed_python_sources(runtime_root_candidates(app, source_root));
     dedupe_python_sources(sources)
         .into_iter()
         .map(probe_python_source)
@@ -140,56 +127,12 @@ fn strip_case_insensitive_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a
 }
 
 pub fn runtime_root_candidates<R: Runtime>(
-    app: &impl Manager<R>,
+    _app: &impl Manager<R>,
     source_root: &Path,
 ) -> Vec<RuntimeRootCandidate> {
-    let mut candidates = Vec::new();
-    if let Some(root) = env_path("SHINSEKAI_RUNTIME_DIR") {
-        candidates.push(RuntimeRootCandidate {
-            root,
-            kind: RuntimeRootKind::Explicit,
-        });
-    }
-
-    if dev_project_root().as_deref() == Some(source_root) {
-        candidates.push(RuntimeRootCandidate {
-            root: source_root.join("runtime"),
-            kind: RuntimeRootKind::InstallDir,
-        });
-    } else {
-        for root in install_runtime_roots(source_root) {
-            candidates.push(RuntimeRootCandidate {
-                root,
-                kind: RuntimeRootKind::InstallDir,
-            });
-        }
-        candidates.push(RuntimeRootCandidate {
-            root: source_root.join("runtime"),
-            kind: RuntimeRootKind::InstallDir,
-        });
-    }
-
-    if let Some(exe_dir) = env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-    {
-        let runtime = exe_dir.join("runtime");
-        if runtime != source_root.join("runtime") {
-            candidates.push(RuntimeRootCandidate {
-                root: runtime,
-                kind: RuntimeRootKind::InstallDir,
-            });
-        }
-    }
-
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        candidates.push(RuntimeRootCandidate {
-            root: data_dir.join("runtime"),
-            kind: RuntimeRootKind::AppData,
-        });
-    }
-
-    dedupe_root_candidates(candidates)
+    vec![RuntimeRootCandidate {
+        root: install_dir_runtime_root(source_root),
+    }]
 }
 
 pub fn python_in_prefix(prefix: &Path) -> Option<PathBuf> {
@@ -234,12 +177,10 @@ fn probe_python_source(source: PythonSource) -> PythonInstall {
         };
     }
 
-    let output = Command::new(&source.executable)
-        .arg("-c")
-        .arg(PYTHON_PROBE_SCRIPT)
-        .env_remove("PYTHONHOME")
-        .env_remove("PYTHONPATH")
-        .output();
+    let mut command = Command::new(&source.executable);
+    command.arg("-c").arg(PYTHON_PROBE_SCRIPT);
+    python_env::configure_python_command(&mut command, &source.executable);
+    let output = command.output();
     match output {
         Ok(output) if output.status.success() => {
             let payload = serde_json::from_slice::<PythonProbePayload>(&output.stdout);
@@ -323,178 +264,24 @@ fn python_id(kind: &PythonKind, executable: &Path) -> String {
     format!("python-{:x}", hasher.finalize())
 }
 
-fn managed_python_sources(
-    runtime_roots: Vec<RuntimeRootCandidate>,
-    data_dir: Option<&Path>,
-) -> Vec<PythonSource> {
+fn managed_python_sources(runtime_roots: Vec<RuntimeRootCandidate>) -> Vec<PythonSource> {
     let mut sources = Vec::new();
     for root in runtime_roots {
         if let Some(python) = python_in_prefix(&root.root) {
             sources.push(PythonSource {
-                id_override: None,
+                id_override: Some(INSTALL_DIR_RUNTIME_ID.to_string()),
                 executable: python,
-                label: match root.kind {
-                    RuntimeRootKind::Explicit => {
-                        format!("SHINSEKAI_RUNTIME_DIR at {}", display_path(&root.root))
-                    }
-                    RuntimeRootKind::InstallDir => {
-                        format!("Shinsekai bundled runtime at {}", display_path(&root.root))
-                    }
-                    RuntimeRootKind::AppData => {
-                        format!("Shinsekai managed runtime at {}", display_path(&root.root))
-                    }
-                },
+                label: format!("Shinsekai bundled runtime @ {}", display_path(&root.root)),
                 kind: PythonKind::Managed,
-                priority: match root.kind {
-                    RuntimeRootKind::Explicit => 10_000,
-                    RuntimeRootKind::InstallDir => PRIORITY_INSTALL_DIR_RUNTIME,
-                    RuntimeRootKind::AppData => 8_000,
-                },
+                priority: PRIORITY_INSTALL_DIR_RUNTIME,
             });
-        } else if root.kind == RuntimeRootKind::Explicit {
-            sources.push(PythonSource {
-                id_override: None,
-                executable: root.root,
-                label: "SHINSEKAI_RUNTIME_DIR".to_string(),
-                kind: PythonKind::Managed,
-                priority: 10_000,
-            });
-        }
-    }
-
-    if let Some(data_dir) = data_dir {
-        sources.extend(app_data_runtime_sources(data_dir));
-    }
-    sources
-}
-
-fn app_data_runtime_sources(data_dir: &Path) -> Vec<PythonSource> {
-    let runtime_home = data_dir.join("runtime");
-    let mut sources = Vec::new();
-    if let Some(current_root) = current_runtime_root(&runtime_home) {
-        if let Some(python) = python_in_prefix(&current_root) {
-            sources.push(PythonSource {
-                id_override: None,
-                executable: python,
-                label: "Shinsekai managed runtime".to_string(),
-                kind: PythonKind::Managed,
-                priority: 8_000,
-            });
-        }
-    }
-
-    let runtimes_dir = runtime_home.join("runtimes");
-    if let Ok(entries) = fs::read_dir(runtimes_dir) {
-        for root in entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir() && !is_runtime_publish_artifact_dir(path))
-        {
-            if let Some(python) = python_in_prefix(&root) {
-                sources.push(PythonSource {
-                    id_override: None,
-                    executable: python,
-                    label: format!(
-                        "Shinsekai managed runtime {}",
-                        root.file_name()
-                            .and_then(|name| name.to_str())
-                            .unwrap_or("runtime")
-                    ),
-                    kind: PythonKind::Managed,
-                    priority: 7_600,
-                });
-            }
-        }
-    }
-
-    let venvs_dir = runtime_home.join("venvs");
-    if let Ok(entries) = fs::read_dir(venvs_dir) {
-        for root in entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir() && !is_runtime_publish_artifact_dir(path))
-        {
-            if let Some(python) = python_in_prefix(&root) {
-                sources.push(PythonSource {
-                    id_override: None,
-                    executable: python,
-                    label: format!(
-                        "Shinsekai managed venv {}",
-                        root.file_name()
-                            .and_then(|name| name.to_str())
-                            .unwrap_or("venv")
-                    ),
-                    kind: PythonKind::ManagedVenv,
-                    priority: 5_500,
-                });
-            }
         }
     }
     sources
 }
 
-fn is_runtime_publish_artifact_dir(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .map(|name| name.contains(".tmp-") || name.contains(".previous-"))
-        .unwrap_or(false)
-}
-
-fn current_runtime_root(runtime_home: &Path) -> Option<PathBuf> {
-    let current_path = runtime_home.join("current.json");
-    let text = fs::read_to_string(current_path).ok()?;
-    let value = serde_json::from_str::<serde_json::Value>(&text).ok()?;
-    if let Some(path) = value.get("path").and_then(|value| value.as_str()) {
-        let path = PathBuf::from(path);
-        if path.is_absolute() {
-            return Some(path);
-        }
-        return Some(runtime_home.join(path));
-    }
-    let runtime_id = value
-        .get("runtimeId")
-        .or_else(|| value.get("runtime_id"))
-        .and_then(|value| value.as_str())?;
-    Some(runtime_home.join("runtimes").join(runtime_id))
-}
-
-fn dev_project_root() -> Option<PathBuf> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir.parent()?.parent().map(Path::to_path_buf)
-}
-
-fn install_runtime_roots(source_root: &Path) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(parent) = source_root.parent() {
-        roots.push(parent.join("runtime"));
-        if source_root.file_name().and_then(|name| name.to_str()) != Some("resources") {
-            if let Some(grandparent) = parent.parent() {
-                roots.push(grandparent.join("runtime"));
-            }
-        }
-    }
-    roots
-}
-
-fn dedupe_root_candidates(candidates: Vec<RuntimeRootCandidate>) -> Vec<RuntimeRootCandidate> {
-    let mut deduped: Vec<RuntimeRootCandidate> = Vec::new();
-    for candidate in candidates {
-        let normalized = candidate
-            .root
-            .canonicalize()
-            .unwrap_or_else(|_| candidate.root.clone());
-        if deduped.iter().any(|existing| {
-            existing
-                .root
-                .canonicalize()
-                .unwrap_or_else(|_| existing.root.clone())
-                == normalized
-        }) {
-            continue;
-        }
-        deduped.push(candidate);
-    }
-    deduped
+pub fn install_dir_runtime_root(source_root: &Path) -> PathBuf {
+    source_root.join("runtime")
 }
 
 fn dedupe_python_sources(sources: Vec<PythonSource>) -> Vec<PythonSource> {

@@ -10,160 +10,12 @@ use std::{
 use serde::Serialize;
 use tauri::{Emitter, Manager, Runtime};
 
-use super::{
-    manifest::{current_arch, current_platform, RuntimeRequirements},
-    python_env,
-    python_probe::python_in_prefix,
-};
+use super::{manifest::RuntimeRequirements, python_env};
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
-const RUNTIME_MARKER_FILE: &str = ".shinsekai-runtime.json";
 const WHEELS_DIR: &str = "wheels";
 const WHEELS_MARKER_FILE: &str = ".shinsekai-wheels.json";
-
-pub fn create_managed_venv<R: Runtime, M: Manager<R> + Emitter<R>>(
-    app: &M,
-    source_root: &Path,
-    base_python: &Path,
-    candidate_id: &str,
-    profile: &str,
-    requirements: &RuntimeRequirements,
-    pip_index_urls: &[String],
-) -> RuntimeResult<PathBuf> {
-    let runtime_home = runtime_home(app)?;
-    let _install_lock = acquire_install_lock(&runtime_home)?;
-    let venvs_dir = runtime_home.join("venvs");
-    fs::create_dir_all(&venvs_dir)?;
-    let venv_id = safe_component(&format!("{candidate_id}-{profile}"));
-    let staging_root = venvs_dir.join(format!("{venv_id}.tmp-{}", std::process::id()));
-    if staging_root.exists() {
-        fs::remove_dir_all(&staging_root)?;
-    }
-
-    let result = (|| -> RuntimeResult<PathBuf> {
-        emit_runtime_progress(
-            app,
-            "installingDeps",
-            Some(venv_id.clone()),
-            Some("local".to_string()),
-            Some(0),
-            Some(4),
-            None,
-            Some("Creating isolated Python environment"),
-        );
-        let mut create = Command::new(base_python);
-        create.arg("-m").arg("venv").arg(&staging_root);
-        python_env::configure_python_command(&mut create, base_python);
-        run_command(&mut create, "create managed venv")?;
-
-        let python = python_in_prefix(&staging_root).ok_or_else(|| {
-            format!(
-                "created venv does not contain a Python executable: {}",
-                staging_root.display()
-            )
-        })?;
-        let requirements_path = requirements_path(source_root, &requirements.requirements_file);
-        let wheelhouse = runtime_wheelhouse(source_root);
-        emit_runtime_progress(
-            app,
-            "installingDeps",
-            Some(venv_id.clone()),
-            Some("local".to_string()),
-            Some(1),
-            Some(4),
-            None,
-            Some("Installing Shinsekai runtime dependencies"),
-        );
-        install_runtime_requirements(
-            &python,
-            &requirements_path,
-            pip_index_urls,
-            wheelhouse.as_deref(),
-        )?;
-
-        emit_runtime_progress(
-            app,
-            "checkingBridge",
-            Some(venv_id.clone()),
-            Some("local".to_string()),
-            Some(2),
-            Some(4),
-            None,
-            Some("Checking isolated runtime"),
-        );
-        verify_runtime_root(source_root, &staging_root, profile, requirements)?;
-        write_runtime_marker(
-            &staging_root,
-            RuntimeMarker {
-                version: "venv".to_string(),
-                schema: 2,
-                platform: current_platform().to_string(),
-                arch: current_arch().to_string(),
-                profile: profile.to_string(),
-                source: "managed-venv".to_string(),
-            },
-        )?;
-
-        publish_managed_venv(&venvs_dir, &staging_root, &venv_id)
-    })();
-    remove_staging_dir_after_error(&result, &staging_root);
-    let venv_root = result?;
-    emit_runtime_progress(
-        app,
-        "ready",
-        Some(venv_id),
-        Some("local".to_string()),
-        Some(4),
-        Some(4),
-        None,
-        Some("Isolated runtime is ready"),
-    );
-    Ok(venv_root)
-}
-
-fn remove_staging_dir_after_error<T>(result: &RuntimeResult<T>, staging_root: &Path) {
-    if result.is_err() && staging_root.exists() {
-        let _ = fs::remove_dir_all(staging_root);
-    }
-}
-
-fn publish_managed_venv(
-    venvs_dir: &Path,
-    staging_root: &Path,
-    venv_id: &str,
-) -> RuntimeResult<PathBuf> {
-    fs::create_dir_all(venvs_dir)?;
-    let venv_root = venvs_dir.join(venv_id);
-    let previous_root = if venv_root.exists() {
-        Some(previous_runtime_root(venvs_dir, venv_id))
-    } else {
-        None
-    };
-
-    if let Some(previous_root) = &previous_root {
-        fs::rename(&venv_root, previous_root)?;
-    }
-
-    let publish_result = fs::rename(staging_root, &venv_root);
-    if let Err(error) = publish_result {
-        if venv_root.exists() {
-            let _ = fs::remove_dir_all(&venv_root);
-        }
-        if let Some(previous_root) = &previous_root {
-            if previous_root.exists() && !venv_root.exists() {
-                let _ = fs::rename(previous_root, &venv_root);
-            }
-        }
-        return Err(error.into());
-    }
-
-    if let Some(previous_root) = &previous_root {
-        let _ = fs::remove_dir_all(previous_root);
-    }
-
-    Ok(venv_root)
-}
 
 fn configure_pip_install_command(
     command: &mut Command,
@@ -338,8 +190,8 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         "installingDeps",
         Some(candidate_id.clone()),
         Some("local".to_string()),
-        Some(0),
-        Some(3),
+        None,
+        None,
         None,
         Some("Installing Shinsekai runtime dependencies"),
     );
@@ -372,64 +224,6 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         Some("Runtime dependencies are ready"),
     );
     Ok(python.to_path_buf())
-}
-
-fn previous_runtime_root(runtimes_dir: &Path, runtime_id: &str) -> PathBuf {
-    let now = now_millis();
-    for attempt in 0..1000 {
-        let suffix = if attempt == 0 {
-            now.to_string()
-        } else {
-            format!("{now}-{attempt}")
-        };
-        let candidate = runtimes_dir.join(format!("{runtime_id}.previous-{suffix}"));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    runtimes_dir.join(format!(
-        "{runtime_id}.previous-{now}-{}",
-        std::process::id()
-    ))
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RuntimeMarker {
-    version: String,
-    schema: u32,
-    platform: String,
-    arch: String,
-    profile: String,
-    source: String,
-}
-
-fn write_runtime_marker(runtime_root: &Path, marker: RuntimeMarker) -> RuntimeResult<()> {
-    let marker_path = runtime_root.join(RUNTIME_MARKER_FILE);
-    fs::write(marker_path, serde_json::to_string_pretty(&marker)?)?;
-    Ok(())
-}
-
-fn now_millis() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0)
-}
-
-fn verify_runtime_root(
-    source_root: &Path,
-    runtime_root: &Path,
-    profile: &str,
-    requirements: &RuntimeRequirements,
-) -> RuntimeResult<()> {
-    let python = python_in_prefix(runtime_root).ok_or_else(|| {
-        format!(
-            "runtime does not contain a Python executable: {}",
-            runtime_root.display()
-        )
-    })?;
-    verify_python_runtime(source_root, &python, profile, requirements)
 }
 
 fn verify_python_runtime(

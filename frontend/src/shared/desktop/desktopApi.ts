@@ -2,7 +2,7 @@ import type { FileBrowserSnapshot } from "../platform/types";
 
 export type DesktopRuntimeStatus = "checking" | "missing" | "needsAction" | "updating" | "ready" | "error";
 
-export type DesktopRuntimeCandidateKind = "explicit" | "managed" | "managedVenv" | "portable" | "conda" | "path";
+export type DesktopRuntimeCandidateKind = "managed";
 
 export type DesktopRuntimeCandidateStatus =
   | "ready"
@@ -13,13 +13,9 @@ export type DesktopRuntimeCandidateStatus =
   | "brokenBridge"
   | "brokenPython";
 
-export type DesktopRuntimeRepairAction =
-  | "start"
-  | "createManagedVenv"
-  | "installRuntimeDeps"
-  | "selectDifferentRuntime";
+export type DesktopRuntimeRepairAction = "start" | "installRuntimeDeps";
 
-export type DesktopRuntimeProfile = "media" | "local-ai" | "full";
+export type DesktopRuntimeProfile = "local-ai" | "full";
 
 export interface DesktopRuntimeCandidate {
   id: string;
@@ -109,22 +105,6 @@ async function invokeDesktop<T>(command: string, args?: Record<string, unknown>)
 
 export function getDesktopRuntimeState() {
   return invokeDesktop<DesktopRuntimeState>("desktop_runtime_state");
-}
-
-export function scanDesktopRuntime() {
-  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_scan");
-}
-
-export function startDesktopRuntime(candidateId?: string | null) {
-  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_start", { candidateId });
-}
-
-export function selectDesktopRuntime(candidateId: string) {
-  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_select", { candidateId });
-}
-
-export function chooseDesktopRuntimePython(path: string) {
-  return invokeDesktop<DesktopRuntimeState>("desktop_runtime_choose_python", { path });
 }
 
 export function repairDesktopRuntime(candidateId: string, action: DesktopRuntimeRepairAction) {

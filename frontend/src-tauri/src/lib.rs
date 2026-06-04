@@ -41,6 +41,7 @@ const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
 #[cfg(desktop)]
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
+const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -64,9 +65,47 @@ impl BridgeProcess {
         if let Ok(mut child) = self.child.lock() {
             if let Some(mut child) = child.take() {
                 restart_debug_log(format!("bridge stop requested child_pid={}", child.id()));
-                let _ = child.kill();
-                let _ = child.wait();
-                restart_debug_log("bridge stop completed");
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        restart_debug_log(format!(
+                            "bridge stop skipped; child already exited status={status}"
+                        ));
+                        return;
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        restart_debug_log(format!(
+                            "bridge stop initial status failed error={error}"
+                        ));
+                    }
+                }
+                if let Err(error) = child.kill() {
+                    restart_debug_log(format!("bridge stop kill failed error={error}"));
+                }
+                let started = Instant::now();
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            restart_debug_log(format!("bridge stop completed status={status}"));
+                            break;
+                        }
+                        Ok(None) if started.elapsed() < BRIDGE_STOP_TIMEOUT => {
+                            thread::sleep(Duration::from_millis(50));
+                        }
+                        Ok(None) => {
+                            restart_debug_log(format!(
+                                "bridge stop timed out child_pid={} elapsed_ms={}",
+                                child.id(),
+                                started.elapsed().as_millis()
+                            ));
+                            break;
+                        }
+                        Err(error) => {
+                            restart_debug_log(format!("bridge stop wait failed error={error}"));
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
@@ -275,10 +314,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_state,
-            desktop_runtime_scan,
-            desktop_runtime_start,
-            desktop_runtime_select,
-            desktop_runtime_choose_python,
             desktop_runtime_repair,
             desktop_runtime_install_profile,
             desktop_files_browse,
@@ -417,48 +452,6 @@ where
     }
 }
 
-fn runtime_task_error_view(app: &AppHandle, message: String) -> DesktopRuntimeView {
-    restart_debug_log(format!("desktop_runtime command error message={message}"));
-    let state = app.state::<DesktopState>();
-    let view = runtime::scan_runtime_view(app, &state.source_root);
-    state.set_runtime(DesktopRuntimePhase::Error {
-        message,
-        view: Some(view),
-    });
-    state.runtime_view()
-}
-
-#[tauri::command]
-async fn desktop_runtime_scan(app: AppHandle) -> DesktopRuntimeView {
-    match run_runtime_blocking("desktop_runtime_scan", app.clone(), |app, state| {
-        Ok(desktop_runtime_scan_blocking(app, state))
-    })
-    .await
-    {
-        Ok(view) => view,
-        Err(message) => runtime_task_error_view(&app, message),
-    }
-}
-
-fn desktop_runtime_scan_blocking(app: &AppHandle, state: &DesktopState) -> DesktopRuntimeView {
-    emit_runtime_progress(
-        app,
-        "probing",
-        None,
-        None,
-        Some("Scanning runtime candidates"),
-    );
-    restart_debug_log("desktop_runtime_scan scanning candidates");
-    let view = runtime::scan_runtime_view(app, &state.source_root);
-    restart_debug_log(format!(
-        "desktop_runtime_scan candidates={} selected={:?}",
-        view.candidates.len(),
-        view.selected_candidate_id
-    ));
-    state.set_runtime(phase_after_runtime_scan(state.has_bridge(), view));
-    state.runtime_view()
-}
-
 fn phase_after_runtime_scan(
     has_bridge: bool,
     view: runtime::RuntimeScanView,
@@ -468,43 +461,6 @@ fn phase_after_runtime_scan(
     } else {
         DesktopRuntimePhase::NeedsAction { view }
     }
-}
-
-#[tauri::command]
-async fn desktop_runtime_start(
-    app: AppHandle,
-    candidate_id: Option<String>,
-) -> Result<DesktopRuntimeView, String> {
-    run_runtime_blocking("desktop_runtime_start", app, move |app, state| {
-        start_runtime_candidate_for_state(app, state, candidate_id.as_deref())
-    })
-    .await
-}
-
-#[tauri::command]
-async fn desktop_runtime_select(
-    app: AppHandle,
-    candidate_id: String,
-) -> Result<DesktopRuntimeView, String> {
-    run_runtime_blocking("desktop_runtime_select", app, move |app, state| {
-        start_runtime_candidate_for_state(app, state, Some(&candidate_id))
-    })
-    .await
-}
-
-#[tauri::command]
-fn desktop_runtime_choose_python(
-    app: AppHandle,
-    state: State<'_, DesktopState>,
-    path: String,
-) -> Result<DesktopRuntimeView, String> {
-    restart_debug_log(format!("desktop_runtime_choose_python ignored path={path}"));
-    Err(set_runtime_error_state(
-        &app,
-        &state,
-        "Manual Python selection is disabled; Shinsekai uses its managed Python runtime."
-            .to_string(),
-    ))
 }
 
 #[tauri::command]
@@ -776,12 +732,11 @@ fn desktop_app_restart(app: AppHandle, state: State<'_, DesktopState>) -> Result
 }
 
 #[tauri::command]
-fn desktop_bridge_restart(
-    app: AppHandle,
-    state: State<'_, DesktopState>,
-) -> Result<DesktopRuntimeView, String> {
-    restart_debug_log("desktop_bridge_restart command received");
-    restart_bridge_for_state(&app, &state)
+async fn desktop_bridge_restart(app: AppHandle) -> Result<DesktopRuntimeView, String> {
+    run_runtime_blocking("desktop_bridge_restart", app, |app, state| {
+        restart_bridge_for_state(app, state)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -814,9 +769,16 @@ fn start_runtime_candidate_for_state(
         "start_runtime_candidate begin candidate_id={}",
         candidate_id.unwrap_or("")
     ));
-    let scan = runtime::scan_runtime_view(app, &state.source_root);
+    if candidate_id.is_some_and(|id| id != runtime::INSTALL_DIR_RUNTIME_ID) {
+        return Err(set_runtime_error_state(
+            app,
+            state,
+            "Shinsekai only starts the managed Python runtime under runtime/.".to_string(),
+        ));
+    }
+    let scan = runtime::install_dir_runtime_view(&state.source_root);
     restart_debug_log(format!(
-        "start_runtime_candidate scan candidates={} selected={:?}",
+        "start_runtime_candidate fixed runtime candidates={} selected={:?}",
         scan.candidates.len(),
         scan.selected_candidate_id
     ));
@@ -835,7 +797,16 @@ fn start_runtime_candidate_for_state(
         bridge.stop();
     }
 
-    let result = runtime::find_python_runtime_for_candidate(app, &state.source_root, candidate_id)
+    if scan.selected_candidate_id.is_none() {
+        let message = scan
+            .message
+            .clone()
+            .unwrap_or_else(|| "Shinsekai managed Python runtime is not ready.".to_string());
+        state.set_runtime(DesktopRuntimePhase::NeedsAction { view: scan });
+        return Err(message);
+    }
+
+    let result = runtime::find_install_dir_python_runtime(&state.source_root)
         .map_err(|error| error.to_string())
         .and_then(|runtime| {
             restart_debug_log(format!(
@@ -848,7 +819,7 @@ fn start_runtime_candidate_for_state(
 
     match result {
         Ok(()) => {
-            let view = runtime::scan_runtime_view(app, &state.source_root);
+            let view = runtime::install_dir_runtime_view(&state.source_root);
             restart_debug_log("start_runtime_candidate ready");
             emit_runtime_progress(app, "ready", None, None, Some("Runtime is ready"));
             state.set_runtime(DesktopRuntimePhase::Ready { view: Some(view) });
@@ -1115,40 +1086,10 @@ fn open_external_url(url: &str) -> Result<(), String> {
 fn bootstrap_runtime(app: AppHandle) {
     restart_debug_log("bootstrap_runtime start");
     let state = app.state::<DesktopState>();
-    restart_debug_log("bootstrap_runtime scanning runtime candidates");
-    let scan = runtime::scan_runtime_view(&app, &state.source_root);
-    restart_debug_log(format!(
-        "bootstrap_runtime scan candidates={} selected={:?} message={:?}",
-        scan.candidates.len(),
-        scan.selected_candidate_id,
-        scan.message
-    ));
-    state.set_runtime(DesktopRuntimePhase::Checking {
-        view: Some(scan.clone()),
-    });
-    if scan.selected_candidate_id.is_none() {
-        restart_debug_log("bootstrap_runtime needs action; no ready runtime candidate");
-        state.set_runtime(DesktopRuntimePhase::NeedsAction { view: scan });
-        return;
-    }
-
-    restart_debug_log(format!(
-        "bootstrap_runtime starting selected_candidate_id={:?}",
-        scan.selected_candidate_id
-    ));
-    let result = runtime::find_python_runtime_for_candidate(
-        &app,
-        &state.source_root,
-        scan.selected_candidate_id.as_deref(),
-    )
-    .map_err(|error| error.to_string())
-    .and_then(|runtime| start_bridge_for_state(&state, runtime).map_err(|error| error.to_string()));
-
-    match result {
-        Ok(()) => {
-            let view = runtime::scan_runtime_view(&app, &state.source_root);
+    restart_debug_log("bootstrap_runtime starting fixed managed runtime");
+    match start_runtime_candidate_for_state(&app, &state, None) {
+        Ok(_) => {
             restart_debug_log("bootstrap_runtime ready");
-            state.set_runtime(DesktopRuntimePhase::Ready { view: Some(view) });
             if let Err(error) = navigate_main_window_to_live_frontend(&app, state.bridge_port) {
                 restart_debug_log(format!(
                     "bootstrap_runtime frontend navigate failed error={error}"
@@ -1156,12 +1097,7 @@ fn bootstrap_runtime(app: AppHandle) {
             }
         }
         Err(message) => {
-            let view = runtime::scan_runtime_view(&app, &state.source_root);
             restart_debug_log(format!("bootstrap_runtime missing/error message={message}"));
-            state.set_runtime(DesktopRuntimePhase::Error {
-                message,
-                view: Some(view),
-            })
         }
     }
 }

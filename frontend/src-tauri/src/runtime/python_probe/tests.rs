@@ -60,7 +60,7 @@ fn display_path_strips_windows_verbatim_prefixes() {
 }
 
 #[test]
-fn managed_python_sources_use_only_runtime_roots_and_app_data() {
+fn managed_python_sources_use_only_install_dir_runtime_root() {
     let temp_root = unique_temp_dir("runtime-managed-sources");
     let install_root = temp_root.join("resources").join("runtime");
     let app_data = temp_root.join("app-data");
@@ -75,24 +75,29 @@ fn managed_python_sources_use_only_runtime_roots_and_app_data() {
         fs::write(python, "").unwrap();
     }
 
-    let sources = managed_python_sources(
-        vec![RuntimeRootCandidate {
-            root: install_root,
-            kind: RuntimeRootKind::InstallDir,
-        }],
-        Some(&app_data),
-    );
+    let sources = managed_python_sources(vec![RuntimeRootCandidate { root: install_root }]);
 
-    assert_eq!(sources.len(), 2);
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0].id(), INSTALL_DIR_RUNTIME_ID);
     assert!(sources
         .iter()
         .all(|source| matches!(source.kind, PythonKind::Managed)));
     assert!(sources
         .iter()
         .any(|source| source.executable == install_python));
-    assert!(sources.iter().any(|source| source.executable == app_python));
+    assert!(!sources.iter().any(|source| source.executable == app_python));
 
     let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn install_dir_runtime_root_is_source_root_runtime() {
+    let source_root = std::path::Path::new("/opt/Shinsekai/resources");
+
+    assert_eq!(
+        install_dir_runtime_root(source_root),
+        source_root.join("runtime")
+    );
 }
 
 #[test]
@@ -103,68 +108,6 @@ fn python_in_prefix_accepts_versioned_pbs_binary() {
     fs::write(&python, "").unwrap();
 
     assert_eq!(python_in_prefix(&temp_root), Some(python));
-
-    let _ = fs::remove_dir_all(temp_root);
-}
-
-#[test]
-fn app_data_runtime_sources_skip_staging_and_previous_artifacts() {
-    let temp_root = unique_temp_dir("runtime-app-data-artifacts");
-    let data_dir = temp_root.join("app-data");
-    let runtime_root = data_dir
-        .join("runtime")
-        .join("runtimes")
-        .join("runtime-current");
-    let previous_runtime_root = data_dir
-        .join("runtime")
-        .join("runtimes")
-        .join("runtime-current.previous-1");
-    let staging_runtime_root = data_dir
-        .join("runtime")
-        .join("runtimes")
-        .join("runtime-current.tmp-1");
-    let venv_root = data_dir.join("runtime").join("venvs").join("venv-current");
-    let previous_venv_root = data_dir
-        .join("runtime")
-        .join("venvs")
-        .join("venv-current.previous-1");
-    let staging_venv_root = data_dir
-        .join("runtime")
-        .join("venvs")
-        .join("venv-current.tmp-1");
-
-    for root in [
-        &runtime_root,
-        &previous_runtime_root,
-        &staging_runtime_root,
-        &venv_root,
-        &previous_venv_root,
-        &staging_venv_root,
-    ] {
-        let python = root.join("bin").join("python3");
-        fs::create_dir_all(python.parent().unwrap()).unwrap();
-        fs::write(python, "").unwrap();
-    }
-
-    let sources = app_data_runtime_sources(&data_dir);
-
-    assert_eq!(sources.len(), 2);
-    assert!(sources
-        .iter()
-        .any(|source| source.executable == runtime_root.join("bin").join("python3")));
-    assert!(sources
-        .iter()
-        .any(|source| source.executable == venv_root.join("bin").join("python3")));
-    assert!(!sources.iter().any(|source| source
-        .executable
-        .display()
-        .to_string()
-        .contains(".previous-")));
-    assert!(!sources.iter().any(|source| source
-        .executable
-        .display()
-        .to_string()
-        .contains(".tmp-")));
 
     let _ = fs::remove_dir_all(temp_root);
 }

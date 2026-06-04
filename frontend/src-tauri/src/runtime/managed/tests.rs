@@ -224,74 +224,6 @@ exit 11
 }
 
 #[test]
-fn publish_managed_venv_replaces_existing_venv_without_leaving_previous_candidate() {
-    let temp_root = unique_temp_dir("runtime-venv-publish-success");
-    let venvs_dir = temp_root.join("venvs");
-    let venv_id = "venv-test";
-    let venv_root = venvs_dir.join(venv_id);
-    let staging_root = venvs_dir.join("venv-test.tmp");
-    fs::create_dir_all(&venv_root).unwrap();
-    fs::create_dir_all(&staging_root).unwrap();
-    fs::write(venv_root.join("old.txt"), "old venv").unwrap();
-    fs::write(staging_root.join("new.txt"), "new venv").unwrap();
-
-    let published = publish_managed_venv(&venvs_dir, &staging_root, venv_id).unwrap();
-
-    assert_eq!(published, venv_root);
-    assert_eq!(
-        fs::read_to_string(venv_root.join("new.txt")).unwrap(),
-        "new venv"
-    );
-    assert!(!staging_root.exists());
-    assert!(previous_runtime_dirs(&venvs_dir, venv_id).is_empty());
-
-    let _ = fs::remove_dir_all(temp_root);
-}
-
-#[test]
-fn publish_managed_venv_restores_existing_venv_when_publish_fails() {
-    let temp_root = unique_temp_dir("runtime-venv-publish-rollback");
-    let venvs_dir = temp_root.join("venvs");
-    let venv_id = "venv-test";
-    let venv_root = venvs_dir.join(venv_id);
-    let missing_staging_root = venvs_dir.join("missing-staging");
-    fs::create_dir_all(&venv_root).unwrap();
-    fs::write(venv_root.join("old.txt"), "old venv").unwrap();
-
-    let error = publish_managed_venv(&venvs_dir, &missing_staging_root, venv_id).unwrap_err();
-
-    assert!(!error.to_string().is_empty());
-    assert_eq!(
-        fs::read_to_string(venv_root.join("old.txt")).unwrap(),
-        "old venv"
-    );
-    assert!(previous_runtime_dirs(&venvs_dir, venv_id).is_empty());
-
-    let _ = fs::remove_dir_all(temp_root);
-}
-
-#[test]
-fn remove_staging_dir_after_error_only_cleans_failed_venv_staging() {
-    let temp_root = unique_temp_dir("runtime-venv-staging-cleanup");
-    let failed_staging_root = temp_root.join("failed.tmp");
-    let ok_staging_root = temp_root.join("ok.tmp");
-    fs::create_dir_all(&failed_staging_root).unwrap();
-    fs::write(failed_staging_root.join("partial.txt"), "partial venv").unwrap();
-    fs::create_dir_all(&ok_staging_root).unwrap();
-    fs::write(ok_staging_root.join("ready.txt"), "ready venv").unwrap();
-
-    let failed: RuntimeResult<PathBuf> = Err("venv creation failed".into());
-    remove_staging_dir_after_error(&failed, &failed_staging_root);
-    let ok: RuntimeResult<PathBuf> = Ok(ok_staging_root.clone());
-    remove_staging_dir_after_error(&ok, &ok_staging_root);
-
-    assert!(!failed_staging_root.exists());
-    assert!(ok_staging_root.join("ready.txt").is_file());
-
-    let _ = fs::remove_dir_all(temp_root);
-}
-
-#[test]
 fn lock_pid_parser_reads_install_lock_pid() {
     assert_eq!(
         lock_pid_from_text("pid=12345\ncreated_at_ms=10\n"),
@@ -369,22 +301,6 @@ fn verify_python_imports_reports_missing_modules() {
 fn safe_component_rejects_parent_directory_components() {
     assert_eq!(safe_component(".."), "runtime");
     assert_eq!(safe_component("../runtime test"), "runtime-test");
-}
-
-fn previous_runtime_dirs(runtimes_dir: &Path, runtime_id: &str) -> Vec<PathBuf> {
-    let mut dirs = fs::read_dir(runtimes_dir)
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| name.starts_with(&format!("{runtime_id}.previous-")))
-                .unwrap_or(false)
-        })
-        .collect::<Vec<_>>();
-    dirs.sort();
-    dirs
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {

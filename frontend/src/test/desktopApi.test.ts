@@ -16,16 +16,13 @@ vi.mock("@tauri-apps/api/event", () => ({
 import {
   browseDesktopFiles,
   checkDesktopUpdate,
-  chooseDesktopRuntimePython,
+  getDesktopRuntimeState,
   installDesktopRuntimeProfile,
   installDesktopUpdate,
   isTauriDesktop,
   onDesktopRuntimeProgress,
   onDesktopUpdateProgress,
   repairDesktopRuntime,
-  scanDesktopRuntime,
-  selectDesktopRuntime,
-  startDesktopRuntime,
 } from "../shared/desktop/desktopApi";
 
 describe("desktop API environment detection", () => {
@@ -57,31 +54,20 @@ describe("desktop API environment detection", () => {
     expect(mockInvoke).toHaveBeenCalledWith("desktop_update_check", undefined);
   });
 
-  it("invokes desktop runtime scan and start commands", async () => {
+  it("invokes desktop runtime state and dependency commands", async () => {
     mockInvoke.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
 
-    await scanDesktopRuntime();
-    await startDesktopRuntime("python-ready");
-    await selectDesktopRuntime("python-ready");
-    await repairDesktopRuntime("python-missing", "createManagedVenv");
-    await repairDesktopRuntime("python-conda", "installRuntimeDeps");
-    await chooseDesktopRuntimePython("/opt/python/bin/python");
-    await installDesktopRuntimeProfile("media");
+    await getDesktopRuntimeState();
+    await repairDesktopRuntime("install-runtime", "installRuntimeDeps");
+    await installDesktopRuntimeProfile("local-ai");
     await browseDesktopFiles({ path: "/tmp", showHidden: true });
 
-    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_scan", undefined);
-    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_start", { candidateId: "python-ready" });
-    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_select", { candidateId: "python-ready" });
-    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_repair", {
-      action: "createManagedVenv",
-      candidateId: "python-missing",
-    });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_state", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_repair", {
       action: "installRuntimeDeps",
-      candidateId: "python-conda",
+      candidateId: "install-runtime",
     });
-    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_choose_python", { path: "/opt/python/bin/python" });
-    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_install_profile", { profile: "media" });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_install_profile", { profile: "local-ai" });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", { path: "/tmp", showHidden: true });
   });
 
