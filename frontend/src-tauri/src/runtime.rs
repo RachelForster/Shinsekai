@@ -4,6 +4,7 @@ use tauri::{Emitter, Manager, Runtime};
 
 mod managed;
 mod manifest;
+mod python_env;
 mod python_probe;
 mod resolver;
 
@@ -54,8 +55,10 @@ pub fn find_python_runtime_for_candidate<R: Runtime>(
             .into());
     };
     let path = PathBuf::from(&candidate.path);
+    let mut command = Command::new(&path);
+    python_env::configure_python_command(&mut command, &path);
     Ok(PythonRuntime {
-        command: Command::new(path),
+        command,
         description: candidate.label.clone(),
         candidate_id: Some(candidate.id.clone()),
     })

@@ -13,6 +13,8 @@ use super::manifest::{env_path, home_dir};
 
 pub const DEFAULT_CONDA_ENV: &str = "shinsekai";
 const RUNTIME_PREFERENCE_FILE: &str = "preference.json";
+const PRIORITY_INSTALL_DIR_RUNTIME: i32 = 900;
+const PRIORITY_PATH_PYTHON: i32 = 1_000;
 
 pub type RuntimeResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -144,7 +146,7 @@ pub fn scan_python_installs<R: Runtime>(
                 priority: match root.kind {
                     RuntimeRootKind::Explicit => 9_000,
                     RuntimeRootKind::AppData => 8_000,
-                    RuntimeRootKind::InstallDir => 7_000,
+                    RuntimeRootKind::InstallDir => PRIORITY_INSTALL_DIR_RUNTIME,
                 },
             });
         } else if root.kind == RuntimeRootKind::Explicit {
@@ -261,6 +263,10 @@ pub fn python_in_prefix(prefix: &Path) -> Option<PathBuf> {
     let candidates = [
         prefix.join("bin").join("python3"),
         prefix.join("bin").join("python"),
+        prefix.join("bin").join("python3.13"),
+        prefix.join("bin").join("python3.12"),
+        prefix.join("bin").join("python3.11"),
+        prefix.join("bin").join("python3.10"),
         prefix.join("Scripts").join("python.exe"),
         prefix.join("Scripts").join("python"),
         prefix.join("python.exe"),
@@ -567,7 +573,7 @@ fn path_python_sources() -> Vec<PythonSource> {
                 executable: path,
                 label: format!("PATH python {name}"),
                 kind: PythonKind::Path,
-                priority: 1_000,
+                priority: PRIORITY_PATH_PYTHON,
             });
         }
     }

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     manifest::{current_arch, runtime_requirements, RuntimeManifest},
+    python_env,
     python_probe::{scan_python_installs, PythonInstall, PythonKind},
 };
 
@@ -265,12 +266,10 @@ print(json.dumps({"missing_imports": missing}))
 raise SystemExit(1 if missing else 0)
 "#
     );
-    let output = Command::new(python)
-        .arg("-c")
-        .arg(script)
-        .env_remove("PYTHONHOME")
-        .env_remove("PYTHONPATH")
-        .output();
+    let mut command = Command::new(python);
+    command.arg("-c").arg(script);
+    python_env::configure_python_command(&mut command, python);
+    let output = command.output();
     match output {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -337,7 +336,8 @@ fn check_bridge_runtime(
         };
     }
 
-    let output = Command::new(python)
+    let mut command = Command::new(python);
+    command
         .arg(&bridge)
         .arg("--check-runtime")
         .arg("--json")
@@ -347,10 +347,9 @@ fn check_bridge_runtime(
         .arg(source_root)
         .arg("--requirements-file")
         .arg(&requirements)
-        .current_dir(source_root)
-        .env_remove("PYTHONHOME")
-        .env_remove("PYTHONPATH")
-        .output();
+        .current_dir(source_root);
+    python_env::configure_python_command(&mut command, python);
+    let output = command.output();
     match output {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -607,7 +606,7 @@ fn can_create_managed_venv(install: &PythonInstall) -> bool {
 }
 
 fn can_install_runtime_deps(install: &PythonInstall) -> bool {
-    install.has_pip && !install.externally_managed
+    (install.has_pip || install.has_ensurepip) && !install.externally_managed
 }
 
 fn recommended_action(

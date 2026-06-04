@@ -45,6 +45,7 @@ runtime/
 !core/runtime/**
 !/frontend/src-tauri/src/runtime
 !/frontend/src-tauri/src/runtime/**
+/wheels
 # 项目构建、临时导出文件 / Build & temp export files
 /out
 /output
@@ -79,6 +80,7 @@ node_modules/
 **/*.pyc
 # 项目运行缓存 / Runtime cache
 /cache
+/.cache
 /onnx
 # 测试缓存 / Test cache
 /.pytest_cache

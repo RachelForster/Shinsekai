@@ -153,6 +153,22 @@ fn conda_without_ensurepip_can_still_offer_in_place_dependency_install() {
 }
 
 #[test]
+fn python_without_pip_can_offer_in_place_install_when_ensurepip_is_available() {
+    let mut install = python_install(PythonKind::Path);
+    install.has_pip = false;
+    install.has_ensurepip = true;
+
+    assert_eq!(
+        missing_core_deps_actions(&install),
+        vec![
+            RuntimeRepairActionKind::CreateManagedVenv,
+            RuntimeRepairActionKind::InstallRuntimeDeps,
+            RuntimeRepairActionKind::SelectDifferentRuntime
+        ]
+    );
+}
+
+#[test]
 fn rosetta_warning_is_diagnostic_only_for_intel_python_under_translated_macos_process() {
     let warning = macos_rosetta_warning_for("x64", Some("x86_64"), true)
         .expect("translated x64 app with Intel Python should warn");

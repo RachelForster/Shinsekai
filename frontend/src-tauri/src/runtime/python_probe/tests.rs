@@ -154,6 +154,23 @@ fn active_conda_priority_stays_above_managed_venv_fallback() {
 }
 
 #[test]
+fn install_dir_runtime_priority_stays_below_path_python() {
+    assert!(PRIORITY_INSTALL_DIR_RUNTIME < PRIORITY_PATH_PYTHON);
+}
+
+#[test]
+fn python_in_prefix_accepts_versioned_pbs_binary() {
+    let temp_root = unique_temp_dir("runtime-versioned-python");
+    let python = temp_root.join("bin").join("python3.10");
+    fs::create_dir_all(python.parent().unwrap()).unwrap();
+    fs::write(&python, "").unwrap();
+
+    assert_eq!(python_in_prefix(&temp_root), Some(python));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn pyenv_asdf_and_uv_sources_find_common_python_layouts() {
     let temp_root = unique_temp_dir("runtime-shims");
     let pyenv = temp_root.join("pyenv");

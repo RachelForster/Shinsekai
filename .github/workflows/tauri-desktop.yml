@@ -118,6 +118,10 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Verify embedded Python runtime matrix
+        working-directory: frontend
+        run: pnpm verify:runtime-matrix
+
       - name: Desktop runtime UI contract tests
         working-directory: frontend
         run: pnpm exec vitest run src/test/desktopApi.test.ts src/test/desktopChrome.test.tsx src/test/features/system-settings/SystemSettingsPage.test.tsx
@@ -191,10 +195,22 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare embedded Python runtime
+        working-directory: frontend
+        shell: bash
+        env:
+          SHINSEKAI_PBS_DOWNLOAD_BASES: ${{ vars.SHINSEKAI_PBS_DOWNLOAD_BASES }}
+          SHINSEKAI_PIP_INDEX_URLS: ${{ vars.SHINSEKAI_PIP_INDEX_URLS }}
+        run: pnpm prepare:runtime --target ${{ matrix.platform }} --verify
+
       - name: Build Tauri bundle
         working-directory: frontend
         shell: bash
         run: pnpm tauri build --ci --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Verify packaged embedded Python runtime
+        working-directory: frontend
+        run: pnpm verify:packaged-runtime --target ${{ matrix.platform }} --require-installers
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
