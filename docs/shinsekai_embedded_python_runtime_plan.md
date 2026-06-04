@@ -101,7 +101,7 @@
 
 ## 验证方法
 
-- 6 平台 ×「无 Python+断网」/「无 Python+有网(china、official)」干净环境全链路。
+- 5 个构建平台 ×「无 Python+断网」/「无 Python+有网(china、official)」干净环境全链路。
 - 回归:有合格 Python 走快路径不变。
 - 自动化:`pnpm --dir frontend verify:runtime-matrix`;
   `pnpm --dir frontend verify:packaged-runtime --target <matrix-platform>`;
