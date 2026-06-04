@@ -79,4 +79,18 @@ describe("ImageAssetGallery", () => {
 
     expect(container.querySelector(".image-asset-card__media")).toHaveAttribute("data-state", "loaded");
   });
+
+  it("notifies when the scroll container reaches the end", () => {
+    const onNearEnd = vi.fn();
+    const { container } = render(
+      <ImageAssetGallery items={items} onNearEnd={onNearEnd} onSelect={() => {}} selectedIndex={0} />,
+    );
+    const gallery = container.querySelector(".image-asset-gallery") as HTMLDivElement;
+    Object.defineProperty(gallery, "scrollHeight", { configurable: true, value: 600 });
+    Object.defineProperty(gallery, "clientHeight", { configurable: true, value: 300 });
+    Object.defineProperty(gallery, "scrollTop", { configurable: true, value: 150 });
+
+    fireEvent.scroll(gallery);
+    expect(onNearEnd).toHaveBeenCalledTimes(1);
+  });
 });

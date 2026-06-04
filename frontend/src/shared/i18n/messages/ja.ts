@@ -136,6 +136,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "background.asset.emptyImages": "背景画像がありません",
   "background.asset.filename": "ファイル名",
   "background.asset.index": "番号",
+  "background.asset.loadMoreImages": "画像をさらに表示 ({shown}/{total})",
   "background.asset.noSelectedBgm": "先に BGM 行を選択してください。",
   "background.asset.path": "パス",
   "background.asset.preview": "再生",

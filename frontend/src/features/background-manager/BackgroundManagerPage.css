@@ -52,13 +52,26 @@
   aspect-ratio: 16 / 9;
 }
 
-.asset-gallery-layout--background > .image-asset-gallery {
+.asset-gallery-layout--background > .background-image-list {
   grid-area: gallery;
   position: sticky;
   top: 10px;
+  display: grid;
+  min-width: 0;
   max-height: min(560px, calc(100vh - 220px));
+  align-content: start;
+  gap: var(--space-2);
+}
+
+.asset-gallery-layout--background .background-image-list > .image-asset-gallery {
+  max-height: min(520px, calc(100vh - 270px));
   grid-template-columns: minmax(0, 1fr);
   padding-right: 4px;
+}
+
+.background-image-list__more {
+  width: 100%;
+  justify-content: center;
 }
 
 .asset-gallery-layout--background .image-asset-card {

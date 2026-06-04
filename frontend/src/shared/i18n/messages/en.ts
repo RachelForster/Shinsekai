@@ -137,6 +137,7 @@ export const enMessages: Record<MessageKey, string> = {
   "background.asset.emptyImages": "No background images",
   "background.asset.filename": "File name",
   "background.asset.index": "Index",
+  "background.asset.loadMoreImages": "Show more images ({shown}/{total})",
   "background.asset.noSelectedBgm": "Select BGM rows first.",
   "background.asset.path": "Path",
   "background.asset.preview": "Preview",

@@ -129,6 +129,7 @@ export type MessageKey =
   | "background.asset.emptyImages"
   | "background.asset.filename"
   | "background.asset.index"
+  | "background.asset.loadMoreImages"
   | "background.asset.noSelectedBgm"
   | "background.asset.path"
   | "background.asset.preview"

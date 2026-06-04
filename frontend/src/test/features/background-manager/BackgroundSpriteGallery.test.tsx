@@ -146,4 +146,42 @@ describe("BackgroundSpriteGallery", () => {
       }),
     );
   });
+
+  it("renders large background image lists in batches", async () => {
+    const sprites = Array.from({ length: 130 }, (_, index) => ({ path: `D:/bg/scene-${index}.png` }));
+    const { container } = renderGallery({
+      imageRowTags: sprites.map(() => ""),
+      sprites,
+    });
+
+    await waitFor(() => {
+      expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalledTimes(1);
+    });
+    expect(container.querySelectorAll(".image-asset-card")).toHaveLength(96);
+    expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenLastCalledWith(
+      sprites.slice(0, 96).map((sprite) => sprite.path),
+      160,
+      expect.objectContaining({
+        batchSize: 128,
+        delivery: "url",
+        onBatch: expect.any(Function),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more images (96/130)" }));
+
+    await waitFor(() => {
+      expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalledTimes(2);
+    });
+    expect(container.querySelectorAll(".image-asset-card")).toHaveLength(130);
+    expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenLastCalledWith(
+      sprites.map((sprite) => sprite.path),
+      160,
+      expect.objectContaining({
+        batchSize: 128,
+        delivery: "url",
+        onBatch: expect.any(Function),
+      }),
+    );
+  });
 });

@@ -1,5 +1,6 @@
 import "./ImageAssetGallery.css";
 import { useEffect, useState } from "react";
+import type { UIEvent } from "react";
 import { Image as ImageIcon } from "lucide-react";
 
 export interface ImageAssetGalleryItem {
@@ -15,6 +16,8 @@ interface ImageAssetGalleryProps {
   imageDecoding?: "async" | "auto" | "sync";
   imageLoading?: "eager" | "lazy";
   items: ImageAssetGalleryItem[];
+  nearEndThreshold?: number;
+  onNearEnd?: () => void;
   onSelect: (index: number) => void;
   selectedIndex: number;
 }
@@ -69,11 +72,23 @@ export function ImageAssetGallery({
   imageDecoding = "async",
   imageLoading = "lazy",
   items,
+  nearEndThreshold = 160,
+  onNearEnd,
   onSelect,
   selectedIndex,
 }: ImageAssetGalleryProps) {
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    if (!onNearEnd) {
+      return;
+    }
+    const element = event.currentTarget;
+    if (element.scrollHeight - element.scrollTop - element.clientHeight <= nearEndThreshold) {
+      onNearEnd();
+    }
+  };
+
   return (
-    <div className="image-asset-gallery">
+    <div className="image-asset-gallery" onScroll={handleScroll}>
       {items.map((item, index) => (
         <button
           aria-selected={index === selectedIndex}

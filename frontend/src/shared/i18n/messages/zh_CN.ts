@@ -133,6 +133,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "background.asset.emptyImages": "暂无背景图片",
   "background.asset.filename": "文件名",
   "background.asset.index": "序号",
+  "background.asset.loadMoreImages": "继续显示图片（{shown}/{total}）",
   "background.asset.noSelectedBgm": "请先勾选要删除的音乐条。",
   "background.asset.path": "路径",
   "background.asset.preview": "试听",

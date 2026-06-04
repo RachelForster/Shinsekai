@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image as ImageIcon, Save, Tags, Trash2, Upload } from "lucide-react";
 
 import type { Background } from "../../entities/config/types";
@@ -33,6 +33,15 @@ interface BackgroundSpriteGalleryProps {
 }
 
 const BACKGROUND_THUMBNAIL_BATCH_SIZE = 128;
+const BACKGROUND_VISIBLE_IMAGE_INITIAL_COUNT = 96;
+const BACKGROUND_VISIBLE_IMAGE_STEP = 96;
+
+function visibleImageCountForSelection(total: number, selectedIndex: number) {
+  if (total <= 0) {
+    return 0;
+  }
+  return Math.min(total, Math.max(BACKGROUND_VISIBLE_IMAGE_INITIAL_COUNT, selectedIndex + 1));
+}
 
 export function BackgroundSpriteGallery({
   currentBackgroundName,
@@ -54,12 +63,40 @@ export function BackgroundSpriteGallery({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [thumbnailBatchReady, setThumbnailBatchReady] = useState(false);
   const [thumbnailSources, setThumbnailSources] = useState<Record<string, string>>({});
+  const [visibleImageCount, setVisibleImageCount] = useState(() =>
+    visibleImageCountForSelection(sprites.length, selectedImageIndex),
+  );
   const selectedImage = sprites[selectedImageIndex];
   const spritePathKey = sprites
     .map((sprite) => sprite.path)
     .filter(Boolean)
     .join("\0");
+  const previousSpritePathKey = useRef(spritePathKey);
+  const visibleSprites = useMemo(() => sprites.slice(0, visibleImageCount), [sprites, visibleImageCount]);
   const spritePaths = useMemo(() => (spritePathKey ? [...new Set(spritePathKey.split("\0"))] : []), [spritePathKey]);
+  const visibleSpritePathKey = visibleSprites
+    .map((sprite) => sprite.path)
+    .filter(Boolean)
+    .join("\0");
+  const visibleSpritePaths = useMemo(
+    () => (visibleSpritePathKey ? [...new Set(visibleSpritePathKey.split("\0"))] : []),
+    [visibleSpritePathKey],
+  );
+  const hasMoreImages = visibleImageCount < sprites.length;
+  const loadMoreImages = useCallback(() => {
+    setVisibleImageCount((current) => Math.min(sprites.length, current + BACKGROUND_VISIBLE_IMAGE_STEP));
+  }, [sprites.length]);
+
+  useEffect(() => {
+    const requiredCount = visibleImageCountForSelection(sprites.length, selectedImageIndex);
+    setVisibleImageCount((current) => {
+      if (previousSpritePathKey.current !== spritePathKey) {
+        return requiredCount;
+      }
+      return Math.min(sprites.length, Math.max(current, requiredCount));
+    });
+    previousSpritePathKey.current = spritePathKey;
+  }, [selectedImageIndex, spritePathKey, sprites.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,13 +110,13 @@ export function BackgroundSpriteGallery({
       }
       return next;
     });
-    if (!spritePaths.length) {
+    if (!visibleSpritePaths.length) {
       setThumbnailBatchReady(true);
       return () => {
         cancelled = true;
       };
     }
-    fileThumbnailBatch(spritePaths, 160, {
+    fileThumbnailBatch(visibleSpritePaths, 160, {
       batchSize: BACKGROUND_THUMBNAIL_BATCH_SIZE,
       delivery: "url",
       onBatch: (sources) => {
@@ -103,9 +140,9 @@ export function BackgroundSpriteGallery({
     return () => {
       cancelled = true;
     };
-  }, [spritePaths]);
+  }, [spritePaths, visibleSpritePaths]);
 
-  const backgroundImageItems: ImageAssetGalleryItem[] = sprites.map((sprite, index) => ({
+  const backgroundImageItems: ImageAssetGalleryItem[] = visibleSprites.map((sprite, index) => ({
     id: `${sprite.path}-${index}`,
     imageSrc: sprite.path
       ? (thumbnailSources[sprite.path] ?? (thumbnailBatchReady ? fileThumbnailUrl(sprite.path, 160) : ""))
@@ -155,12 +192,23 @@ export function BackgroundSpriteGallery({
         {!sprites.length ? <EmptyState title={t("background.asset.emptyImages")} /> : null}
         {selectedImage ? (
           <div className="asset-gallery-layout asset-gallery-layout--background">
-            <ImageAssetGallery
-              imageLoading="eager"
-              items={backgroundImageItems}
-              onSelect={onSelectImage}
-              selectedIndex={selectedImageIndex}
-            />
+            <div className="background-image-list">
+              <ImageAssetGallery
+                imageLoading="eager"
+                items={backgroundImageItems}
+                onNearEnd={hasMoreImages ? loadMoreImages : undefined}
+                onSelect={onSelectImage}
+                selectedIndex={selectedImageIndex}
+              />
+              {hasMoreImages ? (
+                <Button className="background-image-list__more" onClick={loadMoreImages} variant="ghost">
+                  {t("background.asset.loadMoreImages", {
+                    shown: Math.min(visibleImageCount, sprites.length),
+                    total: sprites.length,
+                  })}
+                </Button>
+              ) : null}
+            </div>
             <aside className="asset-inspector asset-inspector--background">
               <div className="asset-inspector__preview asset-inspector__preview--background">
                 {selectedImage.path ? (
