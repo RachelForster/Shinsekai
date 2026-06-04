@@ -4,9 +4,13 @@ use std::{
     process::Command,
 };
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 pub(super) fn configure_python_command(command: &mut Command, python: &Path) {
     sanitize_python_environment(command);
     command.env("PYTHONUTF8", "1");
+    hide_python_child_window(command);
     configure_certifi_bundle(command, python);
 }
 
@@ -17,6 +21,18 @@ pub(super) fn configure_pip_command(command: &mut Command, python: &Path) {
 
 fn sanitize_python_environment(command: &mut Command) {
     command.env_remove("PYTHONHOME").env_remove("PYTHONPATH");
+}
+
+fn hide_python_child_window(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = command;
+    }
 }
 
 fn configure_certifi_bundle(command: &mut Command, python: &Path) {

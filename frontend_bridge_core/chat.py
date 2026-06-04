@@ -23,6 +23,12 @@ _main_chat_process: subprocess.Popen[bytes] | None = None
 _main_chat_process_lock = threading.Lock()
 
 
+def _hidden_subprocess_kwargs() -> dict[str, int]:
+    if os.name != "nt":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
 def _release_root() -> Path:
     if os.environ.get("EASYAI_PROJECT_ROOT"):
         return Path(os.environ["EASYAI_PROJECT_ROOT"])
@@ -82,12 +88,20 @@ def _launch_chat(
             if exe is None:
                 checked = " 与 ".join(str(item) for item in candidates)
                 return f"启动失败: 未找到 main.exe（已检查 {checked}）。"
-            _main_chat_process = subprocess.Popen([str(exe)] + args, cwd=str(root))
+            _main_chat_process = subprocess.Popen(
+                [str(exe)] + args,
+                cwd=str(root),
+                **_hidden_subprocess_kwargs(),
+            )
         else:
             main_py = root / "main.py"
             if not main_py.is_file():
                 return f"启动失败: 未找到 main.py（已检查 {main_py}）。"
-            _main_chat_process = subprocess.Popen([sys.executable, str(main_py)] + args, cwd=str(root))
+            _main_chat_process = subprocess.Popen(
+                [sys.executable, str(main_py)] + args,
+                cwd=str(root),
+                **_hidden_subprocess_kwargs(),
+            )
         return f"聊天进程已启动！PID: {_main_chat_process.pid}"
 
 

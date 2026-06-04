@@ -18,6 +18,13 @@ from i18n import tr as tr_i18n
 _main_chat_process = None
 _main_chat_log_file = None
 
+
+def _hidden_subprocess_kwargs() -> dict[str, int]:
+    if os.name != "nt":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
 # 模板文件分节（保存到 .txt）；无标记的旧文件解析为 (全文, "")。
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
 MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
@@ -216,6 +223,7 @@ def _popen_chat_process(cmd: list[str], *, cwd: Path) -> tuple[subprocess.Popen,
         stdout=_main_chat_log_file,
         stderr=subprocess.STDOUT,
         env=env,
+        **_hidden_subprocess_kwargs(),
     )
     return proc, log_path
 
