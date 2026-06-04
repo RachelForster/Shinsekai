@@ -12,6 +12,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use desktop_files::{browse_desktop_files, DesktopFileBrowserSnapshot};
 use serde::Serialize;
 use tauri::{
     http::{header, Response, StatusCode},
@@ -26,6 +27,7 @@ use std::os::unix::process::CommandExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+mod desktop_files;
 mod runtime;
 
 type DesktopResult<T> = Result<T, Box<dyn Error>>;
@@ -36,7 +38,6 @@ const RESTART_DEBUG_LOG_FILE: &str = "shinsekai-restart-debug.log";
 const LIVE_FRONTEND_SCHEME: &str = "shinsekai";
 const FRONTEND_DIST_MARKER: &str = ".dist-current";
 const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
-const MAX_DESKTOP_FILE_BROWSER_ENTRIES: usize = 2000;
 #[cfg(desktop)]
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
@@ -238,32 +239,6 @@ struct DesktopRuntimeProgress {
     total: Option<u64>,
     speed_bytes_per_sec: Option<f64>,
     message: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DesktopFileBrowserEntry {
-    kind: &'static str,
-    modified_at: Option<f64>,
-    name: String,
-    path: String,
-    size: Option<u64>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DesktopFileBrowserRoot {
-    label: String,
-    path: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DesktopFileBrowserSnapshot {
-    cwd: String,
-    entries: Vec<DesktopFileBrowserEntry>,
-    parent: String,
-    roots: Vec<DesktopFileBrowserRoot>,
 }
 
 #[cfg(desktop)]
@@ -512,8 +487,13 @@ fn desktop_files_browse(
     path: Option<String>,
     show_hidden: Option<bool>,
 ) -> Result<DesktopFileBrowserSnapshot, String> {
-    browse_desktop_files(state.inner(), path.as_deref(), show_hidden.unwrap_or(false))
-        .map_err(|error| error.to_string())
+    browse_desktop_files(
+        &state.project_root,
+        &state.app_root,
+        path.as_deref(),
+        show_hidden.unwrap_or(false),
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[cfg(desktop)]
@@ -991,203 +971,6 @@ fn open_external_url(url: &str) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|error| error.to_string())
-}
-
-fn browse_desktop_files(
-    state: &DesktopState,
-    raw_path: Option<&str>,
-    show_hidden: bool,
-) -> DesktopResult<DesktopFileBrowserSnapshot> {
-    let mut target = desktop_browse_target(&state.project_root, &state.app_root, raw_path)?;
-    if target.is_file() {
-        target = target
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| state.app_root.clone());
-    }
-    if !target.exists() {
-        return Err(format!("path does not exist: {}", target.display()).into());
-    }
-    if !target.is_dir() {
-        return Err(format!("path is not a directory: {}", target.display()).into());
-    }
-
-    let mut entries = Vec::new();
-    for child in fs::read_dir(&target)? {
-        if entries.len() >= MAX_DESKTOP_FILE_BROWSER_ENTRIES {
-            break;
-        }
-        let child = child?;
-        let name = child.file_name().to_string_lossy().to_string();
-        if !show_hidden && name.starts_with('.') {
-            continue;
-        }
-        let file_type = match child.file_type() {
-            Ok(file_type) => file_type,
-            Err(_) => continue,
-        };
-        let metadata = match child.metadata() {
-            Ok(metadata) => metadata,
-            Err(_) => continue,
-        };
-        let is_dir = file_type.is_dir();
-        entries.push(DesktopFileBrowserEntry {
-            kind: if is_dir { "directory" } else { "file" },
-            modified_at: metadata.modified().ok().and_then(system_time_secs),
-            name,
-            path: child.path().display().to_string(),
-            size: if is_dir { None } else { Some(metadata.len()) },
-        });
-    }
-    entries.sort_by(|left, right| {
-        (left.kind != "directory")
-            .cmp(&(right.kind != "directory"))
-            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
-    });
-    let parent = target
-        .parent()
-        .filter(|parent| *parent != target)
-        .map(|parent| parent.display().to_string())
-        .unwrap_or_default();
-    Ok(DesktopFileBrowserSnapshot {
-        cwd: target.display().to_string(),
-        entries,
-        parent,
-        roots: desktop_file_browser_roots(state),
-    })
-}
-
-fn desktop_browse_target(
-    project_root: &Path,
-    app_root: &Path,
-    raw_path: Option<&str>,
-) -> DesktopResult<PathBuf> {
-    let trimmed = raw_path.unwrap_or("").trim();
-    let mut target = if trimmed.is_empty() {
-        app_root.to_path_buf()
-    } else {
-        expand_home_path(PathBuf::from(trimmed))
-    };
-    if !target.is_absolute() {
-        target = project_root.join(target);
-    }
-    Ok(target.canonicalize().unwrap_or(target))
-}
-
-fn desktop_file_browser_roots(state: &DesktopState) -> Vec<DesktopFileBrowserRoot> {
-    let mut roots = Vec::new();
-    let mut seen = Vec::new();
-    push_desktop_file_browser_root(&mut roots, &mut seen, "Shinsekai", state.app_root.clone());
-    push_desktop_file_browser_root(&mut roots, &mut seen, "Data", state.app_root.join("data"));
-    if let Some(home) = desktop_home_dir() {
-        push_desktop_file_browser_root(&mut roots, &mut seen, "Home", home);
-    }
-    for root in [&state.app_root, &state.project_root] {
-        if let Some(anchor) = root
-            .canonicalize()
-            .unwrap_or_else(|_| root.to_path_buf())
-            .ancestors()
-            .last()
-            .map(Path::to_path_buf)
-        {
-            let label = anchor.display().to_string();
-            push_desktop_file_browser_root(&mut roots, &mut seen, &label, anchor);
-        }
-    }
-    #[cfg(windows)]
-    {
-        for letter in b'A'..=b'Z' {
-            let label = format!("{}:", letter as char);
-            push_desktop_file_browser_root(
-                &mut roots,
-                &mut seen,
-                &label,
-                PathBuf::from(format!("{label}/")),
-            );
-        }
-    }
-    roots
-}
-
-fn push_desktop_file_browser_root(
-    roots: &mut Vec<DesktopFileBrowserRoot>,
-    seen: &mut Vec<String>,
-    label: &str,
-    path: PathBuf,
-) {
-    let resolved = path.canonicalize().unwrap_or(path);
-    if !resolved.exists() {
-        return;
-    }
-    let value = resolved.display().to_string();
-    let key = desktop_file_browser_root_key(&value);
-    if seen.iter().any(|item| item == &key) {
-        return;
-    }
-    seen.push(key);
-    roots.push(DesktopFileBrowserRoot {
-        label: desktop_file_browser_root_label(label, &value),
-        path: value,
-    });
-}
-
-fn desktop_file_browser_root_key(value: &str) -> String {
-    #[cfg(windows)]
-    {
-        value.to_ascii_lowercase().replace('\\', "/")
-    }
-    #[cfg(not(windows))]
-    {
-        value.to_string()
-    }
-}
-
-fn desktop_file_browser_root_label(label: &str, path: &str) -> String {
-    if label == "Home" {
-        return "Home".to_string();
-    }
-    if label == "Data" {
-        return "Data".to_string();
-    }
-    if label == "Shinsekai" {
-        return "Shinsekai".to_string();
-    }
-    if label.trim().is_empty() {
-        path.to_string()
-    } else {
-        label.to_string()
-    }
-}
-
-fn expand_home_path(path: PathBuf) -> PathBuf {
-    let raw = path.as_os_str().to_string_lossy();
-    if raw == "~" {
-        return desktop_home_dir().unwrap_or(path);
-    }
-    if let Some(rest) = raw.strip_prefix("~/") {
-        if let Some(home) = desktop_home_dir() {
-            return home.join(rest);
-        }
-    }
-    path
-}
-
-fn desktop_home_dir() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        env::var_os("USERPROFILE").map(PathBuf::from)
-    }
-    #[cfg(not(windows))]
-    {
-        env::var_os("HOME").map(PathBuf::from)
-    }
-}
-
-fn system_time_secs(value: SystemTime) -> Option<f64> {
-    value
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .map(|duration| duration.as_secs_f64())
 }
 
 fn bootstrap_runtime(app: AppHandle) {
