@@ -38,7 +38,9 @@ import { BackgroundMusicSection } from "./BackgroundMusicSection";
 import { BackgroundSpriteGallery } from "./BackgroundSpriteGallery";
 import { BackgroundTagsDialog } from "./BackgroundTagsDialog";
 import {
+  backgroundDeleteDialogCopy,
   createBackground,
+  runBackgroundDeleteTarget,
   type BackgroundBgmItem,
   type BackgroundDeleteTarget,
   type BgmSortDirection,
@@ -461,71 +463,17 @@ export function BackgroundManagerPage() {
     }
     const target = pendingDelete;
     setPendingDelete(null);
-    if (target.kind === "background") {
-      deleteMutation.mutate(target.name);
-      return;
-    }
-    if (target.kind === "image") {
-      imageDeleteMutation.mutate({ index: target.index, name: target.name });
-      return;
-    }
-    if (target.kind === "all-images") {
-      imageDeleteAllMutation.mutate(target.name);
-      return;
-    }
-    if (target.kind === "bgm") {
-      bgmDeleteMutation.mutate({ index: target.index, name: target.name });
-      return;
-    }
-    if (target.kind === "selected-bgm") {
-      bgmBatchDeleteMutation.mutate({ indexes: target.indexes, name: target.name });
-      return;
-    }
-    bgmDeleteAllMutation.mutate(target.name);
+    runBackgroundDeleteTarget(target, {
+      deleteAllBgm: bgmDeleteAllMutation.mutate,
+      deleteAllImages: imageDeleteAllMutation.mutate,
+      deleteBackground: deleteMutation.mutate,
+      deleteBgm: bgmDeleteMutation.mutate,
+      deleteImage: imageDeleteMutation.mutate,
+      deleteSelectedBgm: bgmBatchDeleteMutation.mutate,
+    });
   };
 
-  const pendingDeleteCopy = pendingDelete
-    ? {
-        body:
-          pendingDelete.kind === "background"
-            ? t("background.delete.confirmBody", { name: pendingDelete.name })
-            : pendingDelete.kind === "image"
-              ? t("background.asset.deleteImageConfirmBody", {
-                  filename: pendingDelete.filename,
-                  index: pendingDelete.index + 1,
-                  name: pendingDelete.name,
-                })
-              : pendingDelete.kind === "all-images"
-                ? t("background.asset.clearImagesConfirmBody", { count: pendingDelete.count, name: pendingDelete.name })
-                : pendingDelete.kind === "bgm"
-                  ? t("background.asset.deleteBgmConfirmBody", {
-                      filename: pendingDelete.filename,
-                      index: pendingDelete.index + 1,
-                      name: pendingDelete.name,
-                    })
-                  : pendingDelete.kind === "selected-bgm"
-                    ? t("background.asset.deleteSelectedBgmConfirmBody", {
-                        count: pendingDelete.count,
-                        name: pendingDelete.name,
-                      })
-                    : t("background.asset.clearBgmConfirmBody", {
-                        count: pendingDelete.count,
-                        name: pendingDelete.name,
-                      }),
-        confirmLabel:
-          pendingDelete.kind === "image" || pendingDelete.kind === "bgm" ? t("common.remove") : t("common.delete"),
-        title:
-          pendingDelete.kind === "background"
-            ? t("background.delete.confirmTitle")
-            : pendingDelete.kind === "all-images"
-              ? t("background.asset.clearImages")
-              : pendingDelete.kind === "selected-bgm"
-                ? t("background.asset.deleteSelectedBgm")
-                : pendingDelete.kind === "all-bgm"
-                  ? t("background.asset.clearBgm")
-                  : t("common.remove"),
-      }
-    : null;
+  const pendingDeleteCopy = pendingDelete ? backgroundDeleteDialogCopy(pendingDelete, t) : null;
 
   const saveDraft = () => {
     if (!draft.name.trim()) {
