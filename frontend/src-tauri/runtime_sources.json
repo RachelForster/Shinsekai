@@ -39,6 +39,14 @@
       "sha256": "fff291cc5832518659e94e3935cc80d637ebd9a85b1b6c37a9a6796696432ebf",
       "required_files": ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll", "vcruntime140_threads.dll"]
     },
+    "windows-arm64": {
+      "python": "3.11.15",
+      "triple": "aarch64-pc-windows-msvc",
+      "asset": "cpython-3.11.15+20260602-aarch64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "sha256": "246d222bfb487f341d0caaf5e89337a0704b4b02da3f632de5cb6bac5b1fdbde",
+      "required_files": ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll"],
+      "note": "PBS does not publish CPython 3.10 aarch64-pc-windows-msvc assets; 3.11 stays within the app's >=3.10,<3.14 runtime range."
+    },
     "macos-arm64": {
       "python": "3.10.20",
       "triple": "aarch64-apple-darwin",

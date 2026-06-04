@@ -80,6 +80,9 @@ jobs:
           - platform: windows-x64
             os: windows-latest
             bundles: msi,nsis
+          - platform: windows-arm64
+            os: windows-11-arm
+            bundles: msi,nsis
           - platform: macos-arm64
             os: macos-14
             bundles: dmg,app
@@ -195,6 +198,7 @@ jobs:
             linux-x64) updater_os="linux"; updater_arch="x86_64" ;;
             linux-arm64) updater_os="linux"; updater_arch="aarch64" ;;
             windows-x64) updater_os="windows"; updater_arch="x86_64" ;;
+            windows-arm64) updater_os="windows"; updater_arch="aarch64" ;;
             macos-arm64) updater_os="darwin"; updater_arch="aarch64" ;;
             *) updater_os=""; updater_arch="" ;;
           esac

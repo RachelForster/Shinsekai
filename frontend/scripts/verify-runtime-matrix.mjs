@@ -15,7 +15,7 @@ const prepareRuntimeScriptPath = path.join(frontendDir, "scripts", "prepare-runt
 const rustToolchainPath = path.join(repoRoot, "rust-toolchain.toml");
 
 const expectedRustToolchain = "1.96.0";
-const expectedTargets = ["linux-x64", "linux-arm64", "windows-x64", "macos-arm64"];
+const expectedTargets = ["linux-x64", "linux-arm64", "windows-x64", "windows-arm64", "macos-arm64"];
 const linuxTriples = new Map([
   ["linux-x64", "x86_64-unknown-linux-gnu"],
   ["linux-arm64", "aarch64-unknown-linux-gnu"],
@@ -23,11 +23,13 @@ const linuxTriples = new Map([
 const linuxRuntimePruneFiles = ["lib/python*/lib-dynload/_tkinter.*.so"];
 const windowsRequiredFiles = new Map([
   ["windows-x64", ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll", "vcruntime140_threads.dll"]],
+  ["windows-arm64", ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll"]],
 ]);
 const expectedBundles = new Map([
   ["linux-x64", ["deb"]],
   ["linux-arm64", ["deb"]],
   ["windows-x64", ["none"]],
+  ["windows-arm64", ["none"]],
   ["macos-arm64", ["dmg"]],
 ]);
 const expectedArtifactPaths = [
@@ -137,6 +139,17 @@ for (const targetName of expectedTargets) {
 
   if (targetName === "windows-x64") {
     check(target.python.startsWith("3.10."), "windows-x64 should stay on Python 3.10");
+  }
+
+  if (targetName === "windows-arm64") {
+    check(
+      target.python === "3.11.15",
+      "windows-arm64 must explicitly use the documented PBS 3.11 fallback until a 3.10 asset exists",
+    );
+    check(
+      !(target.required_files ?? []).includes("vcruntime140_threads.dll"),
+      "windows-arm64 PBS archive must not require vcruntime140_threads.dll because that asset does not include it",
+    );
   }
 
   if (targetName.startsWith("windows-")) {

@@ -146,6 +146,9 @@ jobs:
           - platform: windows-x64
             os: windows-latest
             bundles: none
+          - platform: windows-arm64
+            os: windows-11-arm
+            bundles: none
           - platform: macos-arm64
             os: macos-14
             bundles: dmg
