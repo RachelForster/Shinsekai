@@ -67,7 +67,10 @@ async function prepareRuntime(targetName, target) {
   await rm(extractRoot, { force: true, recursive: true });
   await mkdir(extractRoot, { recursive: true });
   try {
-    const extract = spawnSync("tar", ["-xzf", archivePath, "-C", extractRoot], {
+    const tarArchivePathArg = toPosixRelativePath(extractRoot, archivePath);
+    console.log(`Extracting ${target.asset} into ${relative(extractRoot)}`);
+    const extract = spawnSync("tar", ["-xzf", tarArchivePathArg], {
+      cwd: extractRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -529,4 +532,12 @@ function envFlag(name) {
 
 function relative(target) {
   return path.relative(repoRoot, target) || ".";
+}
+
+function toPosixRelativePath(fromDir, target) {
+  const relativePath = path.relative(fromDir, target);
+  if (!relativePath || path.isAbsolute(relativePath)) {
+    throw new Error(`cannot express ${target} as a relative path from ${fromDir}`);
+  }
+  return relativePath.split(path.sep).join("/");
 }

@@ -10,6 +10,7 @@ const runtimeSourcesPath = path.join(frontendDir, "src-tauri", "runtime_sources.
 const workflowPath = path.join(repoRoot, ".github", "workflows", "tauri-desktop.yml");
 const packageJsonPath = path.join(frontendDir, "package.json");
 const tauriConfigPath = path.join(frontendDir, "src-tauri", "tauri.conf.json");
+const prepareRuntimeScriptPath = path.join(frontendDir, "scripts", "prepare-runtime.mjs");
 
 const expectedTargets = ["linux-x64", "linux-arm64", "windows-x64", "windows-arm64", "macos-x64", "macos-arm64"];
 const linuxTriples = new Map([
@@ -38,6 +39,7 @@ const runtimeSources = JSON.parse(await readFile(runtimeSourcesPath, "utf8"));
 const workflow = await readFile(workflowPath, "utf8");
 const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
 const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
+const prepareRuntimeScript = await readFile(prepareRuntimeScriptPath, "utf8");
 
 const errors = [];
 
@@ -178,6 +180,15 @@ check(
 check(
   workflow.includes("pnpm verify:packaged-runtime --target ${{ matrix.platform }} --require-installers"),
   "workflow build job must verify the packaged embedded runtime and installer artifacts after packaging",
+);
+check(
+  !prepareRuntimeScript.includes('["-xzf", archivePath, "-C", extractRoot]'),
+  "prepare-runtime must not pass an absolute archivePath directly to tar on Windows",
+);
+check(
+  prepareRuntimeScript.includes("toPosixRelativePath(extractRoot, archivePath)") &&
+    prepareRuntimeScript.includes("cwd: extractRoot"),
+  "prepare-runtime must extract tar archives from extractRoot with a relative archive path",
 );
 
 if (errors.length > 0) {
