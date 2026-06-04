@@ -6,12 +6,13 @@ import { useI18n } from "../i18n";
 import "./PathPickerDialog.css";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
-import { FileManager } from "./FileManager";
+import { FileManager, type FileBrowseHandler } from "./FileManager";
 
 interface PathPickerDialogProps {
   acceptedExtensions?: string[];
   mode?: PathPickerMode;
   multiple?: boolean;
+  onBrowse?: FileBrowseHandler;
   onClose: () => void;
   onSelect: (path: string) => void;
   onSelectMany?: (paths: string[]) => void;
@@ -20,10 +21,21 @@ interface PathPickerDialogProps {
   value?: string;
 }
 
+function confirmLabelForMode(mode: PathPickerMode, t: ReturnType<typeof useI18n>["t"]) {
+  if (mode === "directory") {
+    return t("filePicker.selectCurrent");
+  }
+  if (mode === "path") {
+    return t("filePicker.selectPath");
+  }
+  return t("filePicker.selectFile");
+}
+
 export function PathPickerDialog({
   acceptedExtensions,
   mode = "file",
   multiple = false,
+  onBrowse,
   onClose,
   onSelect,
   onSelectMany,
@@ -82,7 +94,7 @@ export function PathPickerDialog({
             onClick={handleConfirm}
             variant="primary"
           >
-            {mode === "directory" ? t("filePicker.selectCurrent") : t("filePicker.selectFile")}
+            {confirmLabelForMode(mode, t)}
           </Button>
         </>
       }
@@ -94,6 +106,7 @@ export function PathPickerDialog({
         acceptedExtensions={acceptedExtensions}
         mode={mode}
         multiple={multiple}
+        onBrowse={onBrowse}
         onOpenFile={handleOpenFile}
         onSelectionChange={handleSelectionChange}
         value={value}

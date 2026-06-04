@@ -1,10 +1,26 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BackgroundSpriteGallery } from "../../../features/background-manager/BackgroundSpriteGallery";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
+const filesRepositoryMock = vi.hoisted(() => ({
+  fileThumbnailBatch: vi.fn(
+    (
+      paths: string[],
+      size?: number,
+      options?: { batchSize?: number; delivery?: "data" | "url"; onBatch?: (sources: Record<string, string>) => void },
+    ) => {
+      const delivery = options?.delivery ?? "url";
+      const sources = Object.fromEntries(paths.map((path) => [path, `${delivery}://thumb/${size ?? 0}/${path}`]));
+      options?.onBatch?.(sources);
+      return Promise.resolve(sources);
+    },
+  ),
+}));
+
 vi.mock("../../../entities/files/repository", () => ({
+  fileThumbnailBatch: filesRepositoryMock.fileThumbnailBatch,
   fileUrl: (path: string) => `asset://${path}`,
   fileThumbnailUrl: (path: string, size?: number) => `thumb://${size ?? 0}/${path}`,
 }));
@@ -38,6 +54,10 @@ function renderGallery(overrides: Partial<Parameters<typeof BackgroundSpriteGall
 }
 
 describe("BackgroundSpriteGallery", () => {
+  beforeEach(() => {
+    filesRepositoryMock.fileThumbnailBatch.mockClear();
+  });
+
   it("shows empty image state and disables actions without a background context", () => {
     renderGallery({
       currentBackgroundName: "",
@@ -48,8 +68,21 @@ describe("BackgroundSpriteGallery", () => {
     expect(screen.getByRole("button", { name: "Delete all images" })).toBeDisabled();
   });
 
-  it("routes selected image inspection actions by the selected sprite index", () => {
-    const { props } = renderGallery();
+  it("routes selected image inspection actions by the selected sprite index", async () => {
+    const { container, props } = renderGallery();
+
+    expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalledWith(
+      ["D:/bg/scene-a.png", "D:/bg/scene-b.png"],
+      160,
+      expect.objectContaining({
+        batchSize: 128,
+        delivery: "url",
+        onBatch: expect.any(Function),
+      }),
+    );
+    await waitFor(() => {
+      expect(container.querySelectorAll('img[src^="url://thumb"]').length).toBe(2);
+    });
 
     fireEvent.click(screen.getByRole("button", { name: /scene-a\.png/ }));
     expect(props.onSelectImage).toHaveBeenCalledWith(0);
@@ -70,5 +103,47 @@ describe("BackgroundSpriteGallery", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Batch image tags" }));
     expect(props.onOpenBulkTags).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps loaded thumbnails when parent rerenders with the same sprite paths", async () => {
+    const { container, props, rerender } = renderGallery();
+
+    await waitFor(() => {
+      expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <I18nProvider language="en">
+        <BackgroundSpriteGallery
+          {...props}
+          imageRowTags={["day", "dusk"]}
+          sprites={[{ path: "D:/bg/scene-a.png" }, { path: "D:/bg/scene-b.png" }]}
+        />
+      </I18nProvider>,
+    );
+
+    expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalledTimes(1);
+    expect(container.querySelectorAll('img[src^="url://thumb"]').length).toBe(2);
+  });
+
+  it("preheats background thumbnails through cache URL batches", async () => {
+    const sprites = Array.from({ length: 30 }, (_, index) => ({ path: `D:/bg/scene-${index}.png` }));
+    renderGallery({
+      imageRowTags: sprites.map(() => ""),
+      sprites,
+    });
+
+    await waitFor(() => {
+      expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalledTimes(1);
+    });
+    expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalledWith(
+      sprites.map((sprite) => sprite.path),
+      160,
+      expect.objectContaining({
+        batchSize: 128,
+        delivery: "url",
+        onBatch: expect.any(Function),
+      }),
+    );
   });
 });

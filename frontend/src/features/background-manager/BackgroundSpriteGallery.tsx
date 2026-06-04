@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Image as ImageIcon, Save, Tags, Trash2, Upload } from "lucide-react";
 
 import type { Background } from "../../entities/config/types";
-import { fileThumbnailUrl, fileUrl } from "../../entities/files/repository";
+import { fileThumbnailBatch, fileThumbnailUrl, fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
@@ -32,6 +32,8 @@ interface BackgroundSpriteGalleryProps {
   uploadPending: boolean;
 }
 
+const BACKGROUND_THUMBNAIL_BATCH_SIZE = 128;
+
 export function BackgroundSpriteGallery({
   currentBackgroundName,
   deletePending,
@@ -50,10 +52,64 @@ export function BackgroundSpriteGallery({
 }: BackgroundSpriteGalleryProps) {
   const { t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [thumbnailBatchReady, setThumbnailBatchReady] = useState(false);
+  const [thumbnailSources, setThumbnailSources] = useState<Record<string, string>>({});
   const selectedImage = sprites[selectedImageIndex];
+  const spritePathKey = sprites
+    .map((sprite) => sprite.path)
+    .filter(Boolean)
+    .join("\0");
+  const spritePaths = useMemo(() => (spritePathKey ? [...new Set(spritePathKey.split("\0"))] : []), [spritePathKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setThumbnailBatchReady(false);
+    setThumbnailSources((current) => {
+      const next: Record<string, string> = {};
+      for (const path of spritePaths) {
+        if (current[path]) {
+          next[path] = current[path];
+        }
+      }
+      return next;
+    });
+    if (!spritePaths.length) {
+      setThumbnailBatchReady(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+    fileThumbnailBatch(spritePaths, 160, {
+      batchSize: BACKGROUND_THUMBNAIL_BATCH_SIZE,
+      delivery: "url",
+      onBatch: (sources) => {
+        if (!cancelled) {
+          setThumbnailSources((current) => ({ ...current, ...sources }));
+        }
+      },
+    })
+      .then((sources) => {
+        if (!cancelled) {
+          setThumbnailSources((current) => ({ ...current, ...sources }));
+          setThumbnailBatchReady(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setThumbnailSources({});
+          setThumbnailBatchReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [spritePaths]);
+
   const backgroundImageItems: ImageAssetGalleryItem[] = sprites.map((sprite, index) => ({
     id: `${sprite.path}-${index}`,
-    imageSrc: sprite.path ? fileThumbnailUrl(sprite.path, 160) : "",
+    imageSrc: sprite.path
+      ? (thumbnailSources[sprite.path] ?? (thumbnailBatchReady ? fileThumbnailUrl(sprite.path, 160) : ""))
+      : "",
     meta: imageRowTags[index] || "",
     title: sprite.path ? sprite.path.split(/[\\/]/).pop() || `${index + 1}` : `${index + 1}`,
   }));

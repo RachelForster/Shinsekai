@@ -103,6 +103,36 @@ describe("FileManager", () => {
     });
   });
 
+  it("allows path mode to select files and directories", async () => {
+    const onSelectionChange = vi.fn();
+
+    renderFileManager({ mode: "path", onSelectionChange });
+
+    const folder = await screen.findByText("assets");
+    const file = await screen.findByText("hero.png");
+    fireEvent.click(folder.closest("tr")!);
+
+    await waitFor(() => {
+      expect(onSelectionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          confirmPaths: ["/project/assets"],
+          selectedPaths: ["/project/assets"],
+        }),
+      );
+    });
+
+    fireEvent.click(file.closest("tr")!);
+
+    await waitFor(() => {
+      expect(onSelectionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          confirmPaths: ["/project/hero.png"],
+          selectedPaths: ["/project/hero.png"],
+        }),
+      );
+    });
+  });
+
   it("navigates to a typed address with Enter", async () => {
     renderFileManager({});
 

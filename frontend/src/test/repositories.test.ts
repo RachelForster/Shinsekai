@@ -50,6 +50,9 @@ describe("entity repositories", () => {
       files: {
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
+        thumbnailBatch: vi.fn((paths: string[], options?: { size?: number }) =>
+          Promise.resolve(Object.fromEntries(paths.map((path) => [path, `batch://${options?.size ?? 0}/${path}`]))),
+        ),
         thumbnailUrl: vi.fn((path: string, options?: { size?: number }) => `thumb://${options?.size ?? 0}/${path}`),
         openExternal: vi.fn().mockResolvedValue(undefined),
       },
@@ -73,6 +76,9 @@ describe("entity repositories", () => {
     await files.browseFiles({ path: "/tmp", showHidden: true });
     expect(files.fileUrl("/tmp/a.png")).toBe("file:///tmp/a.png");
     expect(files.fileThumbnailUrl("/tmp/a.png", 160)).toBe("thumb://160//tmp/a.png");
+    await expect(files.fileThumbnailBatch(["/tmp/a.png", "/tmp/a.png"], 160)).resolves.toEqual({
+      "/tmp/a.png": "batch://160//tmp/a.png",
+    });
     await files.openExternal("https://example.test");
     await templates.listTemplates();
     await templates.saveTemplate(template);
@@ -113,6 +119,7 @@ describe("entity repositories", () => {
     expect(platform.config.downloadTtsBundle).toHaveBeenCalledWith({ kind: "genie" }, taskOptions);
     expect(platform.config.cancelTtsBundleDownload).toHaveBeenCalledWith("task-1");
     expect(platform.files.browse).toHaveBeenCalledWith({ path: "/tmp", showHidden: true });
+    expect(platform.files.thumbnailBatch).toHaveBeenCalledWith(["/tmp/a.png"], { delivery: "url", size: 160 });
     expect(platform.files.openExternal).toHaveBeenCalledWith("https://example.test");
     expect(platform.templates.generate).toHaveBeenCalledWith({
       backgroundName: "默认房间",
@@ -120,6 +127,92 @@ describe("entity repositories", () => {
       name: "新模板",
       scenario: "scene",
     });
+  });
+
+  it("chunks and caches thumbnail batch requests", async () => {
+    const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
+    const platform = {
+      files: {
+        browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
+        fileUrl: vi.fn((path: string) => `file://${path}`),
+        thumbnailBatch: vi.fn((batch: string[], options?: { size?: number }) =>
+          Promise.resolve(Object.fromEntries(batch.map((path) => [path, `batch://${options?.size ?? 0}/${path}`]))),
+        ),
+        thumbnailUrl: vi.fn((path: string, options?: { size?: number }) => `thumb://${options?.size ?? 0}/${path}`),
+        openExternal: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+    const { files } = await loadRepositories(platform);
+
+    const firstResult = await files.fileThumbnailBatch(paths, 160);
+    const secondResult = await files.fileThumbnailBatch(paths, 160);
+
+    expect(Object.keys(firstResult)).toHaveLength(130);
+    expect(secondResult).toEqual(firstResult);
+    expect(platform.files.thumbnailBatch).toHaveBeenCalledTimes(2);
+    expect(platform.files.thumbnailBatch.mock.calls.map(([batch]) => batch.length)).toEqual([128, 2]);
+  });
+
+  it("reports thumbnail batch chunks as they resolve", async () => {
+    const paths = ["/tmp/background-a.png", "/tmp/background-b.png"];
+    const platform = {
+      files: {
+        browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
+        fileUrl: vi.fn((path: string) => `file://${path}`),
+        thumbnailBatch: vi.fn((batch: string[], options?: { delivery?: "data" | "url"; size?: number }) =>
+          Promise.resolve(
+            Object.fromEntries(
+              batch.map((path) => [path, `${options?.delivery ?? "url"}://${options?.size ?? 0}/${path}`]),
+            ),
+          ),
+        ),
+        thumbnailUrl: vi.fn((path: string, options?: { size?: number }) => `thumb://${options?.size ?? 0}/${path}`),
+        openExternal: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+    const { files } = await loadRepositories(platform);
+    const onBatch = vi.fn();
+
+    const result = await files.fileThumbnailBatch(paths, 160, { batchSize: 1, delivery: "data", onBatch });
+
+    expect(result).toEqual({
+      "/tmp/background-a.png": "data://160//tmp/background-a.png",
+      "/tmp/background-b.png": "data://160//tmp/background-b.png",
+    });
+    expect(onBatch).toHaveBeenCalledTimes(2);
+    expect(onBatch).toHaveBeenNthCalledWith(1, { "/tmp/background-a.png": "data://160//tmp/background-a.png" });
+    expect(onBatch).toHaveBeenNthCalledWith(2, { "/tmp/background-b.png": "data://160//tmp/background-b.png" });
+    expect(platform.files.thumbnailBatch).toHaveBeenCalledWith(["/tmp/background-a.png"], {
+      delivery: "data",
+      size: 160,
+    });
+  });
+
+  it("falls back per thumbnail batch chunk when the platform batch fails", async () => {
+    const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
+    const platform = {
+      files: {
+        browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
+        fileUrl: vi.fn((path: string) => `file://${path}`),
+        thumbnailBatch: vi.fn((batch: string[], options?: { size?: number }) => {
+          if (batch.length === 2) {
+            return Promise.reject(new Error("batch failed"));
+          }
+          return Promise.resolve(
+            Object.fromEntries(batch.map((path) => [path, `batch://${options?.size ?? 0}/${path}`])),
+          );
+        }),
+        thumbnailUrl: vi.fn((path: string, options?: { size?: number }) => `thumb://${options?.size ?? 0}/${path}`),
+        openExternal: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+    const { files } = await loadRepositories(platform);
+
+    const result = await files.fileThumbnailBatch(paths, 160);
+
+    expect(result["/tmp/background-0.png"]).toBe("batch://160//tmp/background-0.png");
+    expect(result["/tmp/background-128.png"]).toBe("thumb://160//tmp/background-128.png");
+    expect(result["/tmp/background-129.png"]).toBe("thumb://160//tmp/background-129.png");
   });
 
   it("delegates character and background asset operations", async () => {

@@ -380,6 +380,64 @@ describe("http platform", () => {
     );
   });
 
+  it("fetches local media thumbnails in one batch", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({
+        items: [
+          { cachePath: ".cache/frontend-media-thumbnails/aaa.png", path: "data/backgrounds/a.png" },
+          { error: "missing", path: "data/backgrounds/missing.png" },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(
+      platform.files.thumbnailBatch!(["data/backgrounds/a.png", "https://example.test/remote.png"], { size: 160 }),
+    ).resolves.toEqual({
+      "data/backgrounds/a.png": "http://127.0.0.1:8787/api/media?path=.cache%2Ffrontend-media-thumbnails%2Faaa.png",
+      "https://example.test/remote.png": "https://example.test/remote.png",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/media/thumbnails",
+      expect.objectContaining({
+        body: JSON.stringify({ mode: "url", paths: ["data/backgrounds/a.png"], size: 160 }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("can request embedded thumbnail data for eager image batches", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({
+        items: [
+          {
+            cachePath: ".cache/frontend-media-thumbnails/aaa.png",
+            dataUrl: "data:image/png;base64,AAA",
+            path: "data/backgrounds/a.png",
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(
+      platform.files.thumbnailBatch!(["data/backgrounds/a.png"], { delivery: "data", size: 160 }),
+    ).resolves.toEqual({
+      "data/backgrounds/a.png": "data:image/png;base64,AAA",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/media/thumbnails",
+      expect.objectContaining({
+        body: JSON.stringify({ mode: "data", paths: ["data/backgrounds/a.png"], size: 160 }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("calls character sprite image endpoints", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       mockJsonResponse(sampleConfig.characters[0]),

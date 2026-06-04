@@ -25,11 +25,18 @@ interface ImageAssetThumbProps {
   src?: string;
 }
 
+function imageThumbStateForSource(src?: string): "empty" | "loaded" | "loading" {
+  if (!src) {
+    return "empty";
+  }
+  return src.startsWith("data:image/") ? "loaded" : "loading";
+}
+
 function ImageAssetThumb({ decoding, loading, src }: ImageAssetThumbProps) {
-  const [state, setState] = useState<"empty" | "error" | "loaded" | "loading">(src ? "loading" : "empty");
+  const [state, setState] = useState<"empty" | "error" | "loaded" | "loading">(() => imageThumbStateForSource(src));
 
   useEffect(() => {
-    setState(src ? "loading" : "empty");
+    setState(imageThumbStateForSource(src));
   }, [src]);
 
   const showPlaceholder = state !== "loaded";

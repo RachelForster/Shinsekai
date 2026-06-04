@@ -1,12 +1,16 @@
+from __future__ import annotations
+
 import os
 import shutil
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional, Union
+from typing import TYPE_CHECKING, List, Dict, Any, Tuple, Optional, Union
 from config.schema import Background, Sprite # 确保导入了 Background 和 Sprite
 from config.config_manager import ConfigManager
 import tools.file_util as fu
-import pandas as pd
 import yaml
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 # 不在此模块顶层 import gradio：设置界面（webui_qt）会 import 本类，Gradio 会拖入巨大依赖链且
 # PyInstaller 需为各子包补数据文件。旧 Gradio WebUI 仍通过本类；仅 handle_bgm_selection 在 Gradio 下使用。
@@ -14,6 +18,13 @@ import yaml
 BACKGROUND_CONFIG_PATH = ConfigManager._BACKGOUND_CONFIG_PATH # 更正为背景配置路径
 BACKGROUND_UPLOAD_DIR = "data/backgrounds"
 BGM_UPLOAD_DIR = "data/bgm"
+
+
+def _pd():
+    import pandas as pd
+
+    return pd
+
 
 class BackgroundManager:
     """
@@ -345,14 +356,14 @@ class BackgroundManager:
             Tuple[str, List[str], str]: (操作结果消息, 所有背景音乐路径列表, 更新后的标签文本)
         """
         if not background_name:
-            return "请先选择或创建背景组！", pd.DataFrame(), ''
+            return "请先选择或创建背景组！", _pd().DataFrame(), ''
         
         if not bgm_files:
-            return "请选择要上传的背景音乐文件！", pd.DataFrame(), ''
+            return "请选择要上传的背景音乐文件！", _pd().DataFrame(), ''
         
         background: Optional[Background] = self._config_manager.get_background_by_name(background_name)
         if not background:
-            return f"找不到背景组: {background_name}", pd.DataFrame(), ''
+            return f"找不到背景组: {background_name}", _pd().DataFrame(), ''
         
         # 修正目录，使用 Background 的 prefix 和 BGM_UPLOAD_DIR
         bgm_dir = os.path.join(BGM_UPLOAD_DIR, background.sprite_prefix) # 使用 sprite_prefix 作为子目录名
@@ -484,14 +495,14 @@ class BackgroundManager:
                 "路径": path,
                 "标签描述": tag_content
             })
-        return pd.DataFrame(data)
+        return _pd().DataFrame(data)
     
     def load_bgms_and_tags(self, background_name: str):
         """
         根据选择的背景组加载并显示 BGM 列表和标签。
         """
         if not background_name:
-            return pd.DataFrame(), ""
+            return _pd().DataFrame(), ""
             
         bgm_paths, bgm_tags, _ = self.get_background_bgms(background_name)
         
@@ -559,10 +570,10 @@ class BackgroundManager:
         根据 Dataframe 中的复选框状态批量删除选定的背景音乐。
         """
         if not background_name:
-            return "请先选择背景组！", pd.DataFrame(), bgm_tags
+            return "请先选择背景组！", _pd().DataFrame(), bgm_tags
 
         if bgm_dataframe.empty:
-            return "没有音乐条可供删除。", pd.DataFrame(), ""
+            return "没有音乐条可供删除。", _pd().DataFrame(), ""
 
         # 1. 确定要删除的索引
         try:

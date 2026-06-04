@@ -626,6 +626,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       fileUrl(path) {
         return path;
       },
+      thumbnailBatch(paths, _options) {
+        return delay(Object.fromEntries(paths.filter(Boolean).map((path) => [path, path])));
+      },
       thumbnailUrl(path) {
         return path;
       },

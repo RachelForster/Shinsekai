@@ -514,6 +514,45 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         }
         return `${apiBase}/api/media?path=${encodeURIComponent(path)}`;
       },
+      async thumbnailBatch(paths, options) {
+        const localPaths = paths.filter((path) => path && !/^(?:https?:|blob:|data:|\/assets\/)/.test(path));
+        const directEntries = paths
+          .filter((path) => /^(?:https?:|blob:|data:|\/assets\/)/.test(path))
+          .map((path) => [path, path] as const);
+        if (!localPaths.length) {
+          return Object.fromEntries(directEntries);
+        }
+        const response = await requestJson<{
+          items: Array<{ cachePath?: string; dataUrl?: string; path: string }>;
+        }>(apiBase, "/api/media/thumbnails", {
+          body: JSON.stringify({
+            mode: options?.delivery === "data" ? "data" : "url",
+            paths: [...new Set(localPaths)],
+            size: options?.size ?? 160,
+          }),
+          method: "POST",
+        });
+        const preferDataUrl = options?.delivery === "data";
+        return {
+          ...Object.fromEntries(directEntries),
+          ...Object.fromEntries(
+            response.items
+              .map((item) => {
+                if (preferDataUrl && item.dataUrl) {
+                  return [item.path, item.dataUrl] as const;
+                }
+                if (item.cachePath) {
+                  return [item.path, `${apiBase}/api/media?path=${encodeURIComponent(item.cachePath)}`] as const;
+                }
+                if (item.dataUrl) {
+                  return [item.path, item.dataUrl] as const;
+                }
+                return null;
+              })
+              .filter((entry): entry is readonly [string, string] => entry !== null),
+          ),
+        };
+      },
       thumbnailUrl(path, options) {
         if (!path) {
           return "";

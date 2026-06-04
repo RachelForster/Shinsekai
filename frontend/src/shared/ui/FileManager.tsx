@@ -196,6 +196,9 @@ function isSelectable(entry: FileBrowserEntry, mode: PathPickerMode, acceptedExt
   if (mode === "file") {
     return entry.kind === "file" && matchesExtension(entry, acceptedExtensions);
   }
+  if (mode === "path") {
+    return entry.kind === "directory" || matchesExtension(entry, acceptedExtensions);
+  }
   return entry.kind === "directory";
 }
 
@@ -265,9 +268,11 @@ export function FileManager({
       ? selectedEntry?.kind === "directory"
         ? selectedEntry.path
         : normalizeFileManagerPath(snapshot?.cwd || address)
-      : selectedEntry?.kind === "file"
-        ? selectedEntry.path
-        : normalizeFileManagerPath(address);
+      : mode === "path"
+        ? (selectedEntry?.path ?? normalizeFileManagerPath(address))
+        : selectedEntry?.kind === "file"
+          ? selectedEntry.path
+          : normalizeFileManagerPath(address);
   const confirmPaths = multiple && mode === "file" ? selectedPaths : confirmPath ? [confirmPath] : [];
   const confirmPathsKey = confirmPaths.join("\0");
 
@@ -322,6 +327,9 @@ export function FileManager({
         setEditingAddress(false);
         if (mode === "directory") {
           updateSelectedPaths([next.cwd]);
+        } else if (mode === "path") {
+          const visiblePaths = new Set(next.entries.map((entry) => entry.path));
+          updateSelectedPaths(desiredSelection.filter((item) => visiblePaths.has(item)));
         } else {
           const visibleFilePaths = new Set(
             next.entries
@@ -354,7 +362,7 @@ export function FileManager({
   }, [displayAddress]);
 
   useEffect(() => {
-    const initialSelection = mode === "file" && normalizedValue && !multiple ? [normalizedValue] : [];
+    const initialSelection = mode !== "directory" && normalizedValue && !multiple ? [normalizedValue] : [];
     setAddress(normalizedValue);
     updateSelectedPaths(initialSelection);
     void browse(normalizedValue, initialSelection, showHiddenRef.current);

@@ -596,7 +596,7 @@ export interface ChatCommand {
 
 export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
-export type PathPickerMode = "directory" | "file";
+export type PathPickerMode = "directory" | "file" | "path";
 
 export interface FileBrowserEntry {
   kind: PathPickerMode;
@@ -707,6 +707,10 @@ export interface ShinsekaiPlatform {
   files: {
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;
+    thumbnailBatch?: (
+      paths: string[],
+      options?: { delivery?: "data" | "url"; size?: number },
+    ) => Promise<Record<string, string>>;
     thumbnailUrl: (path: string, options?: { size?: number }) => string;
     openExternal: (url: string) => Promise<void>;
   };

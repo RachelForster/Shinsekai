@@ -55,7 +55,7 @@ from .characters import (
 )
 from .config import _app_config_response, _fetch_llm_models, _save_api_config
 from .logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
-from .media import _media_thumbnail
+from .media import _media_thumbnail, _media_thumbnail_batch
 from .mcp import (
     _mcp_config_response,
     _open_mcp_config_file,
@@ -407,6 +407,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_fetch_llm_models(body))
             elif method == "POST" and path == "/api/files/browse":
                 self._send_json(_browse_local_files(self.state, body))
+            elif method == "POST" and path == "/api/media/thumbnails":
+                self._send_json(self._media_thumbnail_batch_response(body))
             elif method == "POST" and path == "/api/logs/read":
                 self._send_json(_log_snapshot(self._resolve_project_path(str(body.get("path") or ""))))
             elif method == "POST" and path == "/api/logs/import-upload":
@@ -873,6 +875,40 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if base not in target.parents and target != base:
             raise PermissionError("path is outside static root")
         return target
+
+    def _media_thumbnail_batch_response(self, body: dict[str, Any]) -> dict[str, Any]:
+        raw_paths = body.get("paths") or []
+        if not isinstance(raw_paths, list):
+            raise ValueError("paths must be a list")
+        size = int(body.get("size") or "160")
+        if len(raw_paths) > 1000:
+            raise ValueError("too many thumbnail paths")
+        mode = str(body.get("mode") or "").strip().lower()
+        include_data_url = mode != "url" and body.get("embedDataUrls") is not False
+        items: list[tuple[str, Path]] = []
+        failures: list[dict[str, str]] = []
+        for path in raw_paths:
+            raw_path = str(path or "").strip()
+            if not raw_path:
+                continue
+            try:
+                items.append((raw_path, self._resolve_project_path(raw_path)))
+            except Exception as exc:
+                failures.append(
+                    {
+                        "error": str(exc),
+                        "path": raw_path,
+                        "type": exc.__class__.__name__,
+                    }
+                )
+        payload = _media_thumbnail_batch(
+            items,
+            include_data_url=include_data_url,
+            project_root=Path.cwd().resolve(),
+            size=size,
+        )
+        payload["items"].extend(failures)
+        return payload
 
     def _send_local_file(
         self,

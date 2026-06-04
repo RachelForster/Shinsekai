@@ -5,6 +5,7 @@ import { FolderOpen } from "lucide-react";
 import type { PathPickerMode } from "../platform/types";
 import { CustomSelect } from "./CustomSelect";
 import "./FormControls.css";
+import type { FileBrowseHandler } from "./FileManager";
 import { IconButton } from "./IconButton";
 import { PathDisplay } from "./PathDisplay";
 import { PathPickerDialog } from "./PathPickerDialog";
@@ -39,6 +40,7 @@ interface FilePickerProps extends InputHTMLAttributes<HTMLInputElement> {
   onPathChange?: (path: string) => void;
   onPathsChange?: (paths: string[]) => void;
   pickLabel?: string;
+  pickerBrowse?: FileBrowseHandler;
   pickerMode?: PathPickerMode;
   pickerTitle?: string;
 }
@@ -52,6 +54,7 @@ export function FilePicker({
   onPathsChange,
   onPick,
   pickLabel = "Choose file",
+  pickerBrowse,
   pickerMode = "file",
   pickerTitle,
   readOnly,
@@ -82,6 +85,7 @@ export function FilePicker({
         acceptedExtensions={acceptedExtensions}
         multiple={Boolean(multiple)}
         mode={pickerMode}
+        onBrowse={pickerBrowse}
         onClose={() => setPickerOpen(false)}
         onSelect={(path) => onPathChange?.(path)}
         onSelectMany={(paths) => {

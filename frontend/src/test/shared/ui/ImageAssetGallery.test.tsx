@@ -61,4 +61,22 @@ describe("ImageAssetGallery", () => {
     fireEvent.error(img);
     expect(media).toHaveAttribute("data-state", "error");
   });
+
+  it("shows embedded image data thumbnails without waiting for load events", () => {
+    const { container } = render(
+      <ImageAssetGallery
+        items={[
+          {
+            id: "embedded",
+            imageSrc: "data:image/png;base64,AAA",
+            title: "Embedded image",
+          },
+        ]}
+        onSelect={() => {}}
+        selectedIndex={0}
+      />,
+    );
+
+    expect(container.querySelector(".image-asset-card__media")).toHaveAttribute("data-state", "loaded");
+  });
 });
