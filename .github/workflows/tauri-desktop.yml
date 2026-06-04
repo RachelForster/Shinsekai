@@ -111,12 +111,16 @@ jobs:
       - name: Runtime manifest tests
         run: python -m pytest test/unit/test_frontend_runtime_check.py
 
-      - name: Rust runtime tests
-        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml runtime
-
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
+
+      - name: Build frontend for Tauri context
+        working-directory: frontend
+        run: pnpm build
+
+      - name: Rust runtime tests
+        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml runtime
 
       - name: Verify embedded Python runtime matrix
         working-directory: frontend
