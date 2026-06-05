@@ -1,7 +1,7 @@
 {
   "name": "shinsekai-frontend",
   "private": true,
-  "version": "2.0.1-beta.2",
+  "version": "2.0.1-2",
   "type": "module",
   "scripts": {
     "dev": "vite",
