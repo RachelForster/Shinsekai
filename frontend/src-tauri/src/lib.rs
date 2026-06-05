@@ -351,8 +351,8 @@ pub fn run() {
             }
 
             let source_root = resolve_source_root(app)?;
-            let project_root = resolve_project_root(app)?;
             let app_root = resolve_app_root(app, &source_root)?;
+            let project_root = resolve_project_root(app, &app_root)?;
             let frontend_dist = resolve_frontend_dist(&source_root)?;
             let bridge_port = choose_bridge_port()?;
             let url = app_window_url(bridge_port);
@@ -1398,6 +1398,60 @@ mod tests {
     }
 
     #[test]
+    fn install_dir_project_root_migrates_app_data_when_install_data_is_empty() {
+        let root = temp_test_dir("install-project-root-migrate");
+        let app_root = root.join("Shinsekai");
+        let app_data_project = root.join("app-data").join("project");
+        let old_config = app_data_project.join("data").join("config");
+        fs::create_dir_all(&old_config).unwrap();
+        fs::create_dir_all(&app_root).unwrap();
+        fs::write(old_config.join("system_config.yaml"), "ok").unwrap();
+
+        let selected = install_dir_project_root(&app_root, &app_data_project)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(selected, app_root);
+        assert!(selected
+            .join("data")
+            .join("config")
+            .join("system_config.yaml")
+            .is_file());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn install_dir_project_root_keeps_existing_install_data() {
+        let root = temp_test_dir("install-project-root-existing-data");
+        let app_root = root.join("Shinsekai");
+        let app_data_project = root.join("app-data").join("project");
+        fs::create_dir_all(app_data_project.join("data").join("config")).unwrap();
+        fs::create_dir_all(app_root.join("data")).unwrap();
+        fs::write(
+            app_data_project
+                .join("data")
+                .join("config")
+                .join("old.yaml"),
+            "old",
+        )
+        .unwrap();
+        fs::write(app_root.join("data").join("existing.txt"), "existing").unwrap();
+
+        let selected = install_dir_project_root(&app_root, &app_data_project)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(selected, app_root);
+        assert!(selected.join("data").join("existing.txt").is_file());
+        assert!(!selected
+            .join("data")
+            .join("config")
+            .join("old.yaml")
+            .is_file());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn runtime_scan_keeps_ready_state_when_bridge_is_running() {
         let phase = phase_after_runtime_scan(true, runtime_scan_view(Some("python-ready")));
 
@@ -1582,15 +1636,89 @@ fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
     Err("could not locate Shinsekai application resources; set SHINSEKAI_SOURCE_ROOT".into())
 }
 
-fn resolve_project_root(app: &tauri::App) -> DesktopResult<PathBuf> {
+fn resolve_project_root(app: &tauri::App, app_root: &Path) -> DesktopResult<PathBuf> {
     if let Some(root) = env_path("SHINSEKAI_PROJECT_ROOT") {
         fs::create_dir_all(&root)?;
         return Ok(root);
     }
 
-    let data_dir = app.path().app_data_dir()?.join("project");
-    fs::create_dir_all(&data_dir)?;
-    Ok(data_dir)
+    let app_data_project_root = app.path().app_data_dir()?.join("project");
+    if let Some(root) = install_dir_project_root(app_root, &app_data_project_root)? {
+        return Ok(root);
+    }
+
+    fs::create_dir_all(&app_data_project_root)?;
+    Ok(app_data_project_root)
+}
+
+fn install_dir_project_root(
+    app_root: &Path,
+    app_data_project_root: &Path,
+) -> DesktopResult<Option<PathBuf>> {
+    let data_root = app_root.join("data");
+    if fs::create_dir_all(&data_root).is_err() || !can_write_directory(&data_root) {
+        return Ok(None);
+    }
+    migrate_project_data_if_empty(app_data_project_root, app_root)?;
+    Ok(Some(app_root.to_path_buf()))
+}
+
+fn can_write_directory(path: &Path) -> bool {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let probe = path.join(format!(
+        ".shinsekai-write-test-{}-{nonce}",
+        std::process::id()
+    ));
+    let ok = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+        .and_then(|mut file| file.write_all(b"ok"))
+        .is_ok();
+    let _ = fs::remove_file(probe);
+    ok
+}
+
+fn migrate_project_data_if_empty(
+    app_data_project_root: &Path,
+    install_project_root: &Path,
+) -> DesktopResult<()> {
+    let old_data = app_data_project_root.join("data");
+    let new_data = install_project_root.join("data");
+    if !old_data.is_dir() || !directory_is_empty(&new_data)? {
+        return Ok(());
+    }
+    copy_dir_missing(&old_data, &new_data)?;
+    Ok(())
+}
+
+fn directory_is_empty(path: &Path) -> DesktopResult<bool> {
+    if !path.is_dir() {
+        return Ok(true);
+    }
+    Ok(fs::read_dir(path)?.next().is_none())
+}
+
+fn copy_dir_missing(src: &Path, dst: &Path) -> DesktopResult<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if dst_path.exists() {
+            continue;
+        }
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            copy_dir_missing(&src_path, &dst_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 fn resolve_app_root(app: &tauri::App, source_root: &Path) -> DesktopResult<PathBuf> {
