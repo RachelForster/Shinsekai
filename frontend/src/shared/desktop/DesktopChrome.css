@@ -268,6 +268,23 @@
   line-height: 1.4;
 }
 
+.desktop-runtime-progress__log {
+  max-height: 190px;
+  min-height: 70px;
+  margin: 2px 0 0;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 9px;
+  color: var(--color-text-secondary);
+  background: color-mix(in oklch, var(--color-bg-app) 90%, black);
+  font-family: var(--font-mono, "Cascadia Mono", Consolas, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .desktop-runtime__actions {
   display: flex;
   justify-content: flex-end;

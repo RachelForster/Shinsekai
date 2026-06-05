@@ -185,6 +185,12 @@ describe("DesktopChrome", () => {
     });
     desktopApi.onDesktopRuntimeProgress.mockImplementation(async (listener) => {
       listener({
+        logLine: "Collecting pydantic",
+        message: "Installing Shinsekai runtime dependencies",
+        phase: "installingDeps",
+      });
+      listener({
+        logLine: "Installing collected packages: pydantic",
         message: "Installing Shinsekai runtime dependencies",
         phase: "installingDeps",
       });
@@ -194,6 +200,8 @@ describe("DesktopChrome", () => {
     renderChrome(<main>App content</main>);
 
     expect(await screen.findByText("Installing Shinsekai runtime dependencies")).toBeInTheDocument();
+    expect(screen.getByText(/Collecting pydantic/)).toBeInTheDocument();
+    expect(screen.getByText(/Installing collected packages: pydantic/)).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Runtime progress" })).toBeInTheDocument();
   });
 

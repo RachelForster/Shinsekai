@@ -21,6 +21,7 @@ import {
   type DesktopRuntimeState,
 } from "./desktopApi";
 import { RuntimeProgressPanel } from "./RuntimeProgressPanel";
+import { appendRuntimeProgressLog } from "./runtimeProgressLog";
 
 function DesktopTitleBar() {
   const { t } = useI18n();
@@ -175,7 +176,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
     let dispose: (() => void) | null = null;
     void onDesktopRuntimeProgress((progress) => {
       if (!stopped) {
-        setRuntimeProgress(progress);
+        setRuntimeProgress((current) => appendRuntimeProgressLog(current, progress));
       }
     })
       .then((unlisten) => {

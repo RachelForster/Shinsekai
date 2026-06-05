@@ -1,10 +1,12 @@
 use std::{
     error::Error,
     fs::{self, OpenOptions},
-    io::Write,
+    io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
-    process::Command,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    process::{Command, ExitStatus, Stdio},
+    sync::mpsc::{self, RecvTimeoutError},
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde::Serialize;
@@ -63,22 +65,35 @@ fn check_python_pip(python: &Path) -> RuntimeResult<()> {
     run_command(&mut command, "check Python pip")
 }
 
-fn install_runtime_requirements(
+fn install_runtime_requirements<F>(
     python: &Path,
     requirements_path: &Path,
     pip_index_urls: &[String],
-) -> RuntimeResult<()> {
+    mut on_log_line: F,
+) -> RuntimeResult<()>
+where
+    F: FnMut(&str),
+{
     ensure_python_pip_available(python)?;
     let mut errors = Vec::new();
 
     if pip_index_urls.is_empty() {
         let mut install = pip_install_command(python, requirements_path, None);
-        return run_command(&mut install, "install Shinsekai runtime dependencies");
+        return run_command_with_live_log(
+            &mut install,
+            "install Shinsekai runtime dependencies",
+            on_log_line,
+        );
     }
 
     for pip_index_url in pip_index_urls {
         let mut install = pip_install_command(python, requirements_path, Some(pip_index_url));
-        match run_command(&mut install, "install Shinsekai runtime dependencies") {
+        on_log_line(&format!("Using pip index: {}", pip_index_url.trim()));
+        match run_command_with_live_log(
+            &mut install,
+            "install Shinsekai runtime dependencies",
+            &mut on_log_line,
+        ) {
             Ok(()) => return Ok(()),
             Err(error) => errors.push(format!("{}: {}", pip_index_url.trim(), error)),
         }
@@ -127,8 +142,26 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         None,
         None,
         Some("Installing Shinsekai runtime dependencies"),
+        None,
     );
-    install_runtime_requirements(python, &requirements_path, pip_index_urls)?;
+    install_runtime_requirements(
+        python,
+        &requirements_path,
+        pip_index_urls,
+        |line| {
+            emit_runtime_progress(
+                app,
+                "installingDeps",
+                Some(candidate_id.to_string()),
+                Some("local".to_string()),
+                None,
+                None,
+                None,
+                Some("Installing Shinsekai runtime dependencies"),
+                Some(line),
+            );
+        },
+    )?;
 
     emit_runtime_progress(
         app,
@@ -139,6 +172,7 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         Some(3),
         None,
         Some("Checking repaired runtime"),
+        None,
     );
     verify_python_runtime(source_root, python, profile, requirements)?;
     emit_runtime_progress(
@@ -150,6 +184,7 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         Some(3),
         None,
         Some("Runtime dependencies are ready"),
+        None,
     );
     Ok(python.to_path_buf())
 }
@@ -218,6 +253,144 @@ fn run_command(command: &mut Command, label: &str) -> RuntimeResult<()> {
         stderr.trim()
     )
     .into())
+}
+
+fn run_command_with_live_log<F>(
+    command: &mut Command,
+    label: &str,
+    mut on_log_line: F,
+) -> RuntimeResult<()>
+where
+    F: FnMut(&str),
+{
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command.spawn()?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let (tx, rx) = mpsc::channel::<(OutputStream, String)>();
+    let mut readers = Vec::new();
+
+    if let Some(stdout) = stdout {
+        readers.push(spawn_output_reader(OutputStream::Stdout, stdout, tx.clone()));
+    }
+    if let Some(stderr) = stderr {
+        readers.push(spawn_output_reader(OutputStream::Stderr, stderr, tx.clone()));
+    }
+    drop(tx);
+
+    let mut stdout_lines = Vec::new();
+    let mut stderr_lines = Vec::new();
+    let status = wait_for_command_with_live_log(
+        &mut child,
+        &rx,
+        &mut stdout_lines,
+        &mut stderr_lines,
+        &mut on_log_line,
+    )?;
+    for entry in rx {
+        push_output_line(entry, &mut stdout_lines, &mut stderr_lines, &mut on_log_line);
+    }
+    for reader in readers {
+        let _ = reader.join();
+    }
+
+    if status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "{label} failed with status {}. stdout: {} stderr: {}",
+        status
+            .code()
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "terminated".to_string()),
+        stdout_lines.join("\n").trim(),
+        stderr_lines.join("\n").trim()
+    )
+    .into())
+}
+
+fn wait_for_command_with_live_log<F>(
+    child: &mut std::process::Child,
+    rx: &mpsc::Receiver<(OutputStream, String)>,
+    stdout_lines: &mut Vec<String>,
+    stderr_lines: &mut Vec<String>,
+    on_log_line: &mut F,
+) -> RuntimeResult<ExitStatus>
+where
+    F: FnMut(&str),
+{
+    let mut last_status_check = Instant::now();
+    loop {
+        match rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(entry) => push_output_line(entry, stdout_lines, stderr_lines, on_log_line),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                return Ok(child.wait()?);
+            }
+        }
+        if last_status_check.elapsed() >= Duration::from_millis(50) {
+            if let Some(status) = child.try_wait()? {
+                return Ok(status);
+            }
+            last_status_check = Instant::now();
+        }
+    }
+}
+
+fn push_output_line<F>(
+    (stream, line): (OutputStream, String),
+    stdout_lines: &mut Vec<String>,
+    stderr_lines: &mut Vec<String>,
+    on_log_line: &mut F,
+) where
+    F: FnMut(&str),
+{
+    if line.trim().is_empty() {
+        return;
+    }
+    on_log_line(&line);
+    match stream {
+        OutputStream::Stdout => stdout_lines.push(line),
+        OutputStream::Stderr => stderr_lines.push(line),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+fn spawn_output_reader<R>(
+    stream: OutputStream,
+    reader: R,
+    tx: mpsc::Sender<(OutputStream, String)>,
+) -> thread::JoinHandle<()>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut buffer = Vec::new();
+        loop {
+            buffer.clear();
+            match reader.read_until(b'\n', &mut buffer) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let text = String::from_utf8_lossy(&buffer)
+                        .trim_end_matches(|ch| matches!(ch, '\r' | '\n'))
+                        .to_string();
+                    if tx.send((stream, text)).is_err() {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    let _ = tx.send((stream, format!("failed to read pip output: {error}")));
+                    break;
+                }
+            }
+        }
+    })
 }
 
 fn runtime_home<R: Runtime>(app: &impl Manager<R>) -> RuntimeResult<PathBuf> {
@@ -342,6 +515,7 @@ struct RuntimeProgressPayload {
     total: Option<u64>,
     speed_bytes_per_sec: Option<f64>,
     message: Option<String>,
+    log_line: Option<String>,
 }
 
 fn emit_runtime_progress<R: Runtime, M: Manager<R> + Emitter<R>>(
@@ -353,6 +527,7 @@ fn emit_runtime_progress<R: Runtime, M: Manager<R> + Emitter<R>>(
     total: Option<u64>,
     speed_bytes_per_sec: Option<f64>,
     message: Option<&str>,
+    log_line: Option<&str>,
 ) {
     let _ = app.emit(
         RUNTIME_PROGRESS_EVENT,
@@ -364,6 +539,7 @@ fn emit_runtime_progress<R: Runtime, M: Manager<R> + Emitter<R>>(
             total,
             speed_bytes_per_sec,
             message: message.map(ToString::to_string),
+            log_line: log_line.map(ToString::to_string),
         },
     );
 }

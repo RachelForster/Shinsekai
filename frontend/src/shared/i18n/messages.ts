@@ -173,6 +173,7 @@ export type MessageKey =
   | "desktop.runtime.progressLabel"
   | "desktop.runtime.progressPercent"
   | "desktop.runtime.progressSpeed"
+  | "desktop.runtime.pipLogLabel"
   | "desktop.runtime.required"
   | "desktop.runtime.status.brokenBridge"
   | "desktop.runtime.status.brokenPython"
