@@ -4,10 +4,12 @@ requests
 numpy
 openai
 socksio
+opencc-python-reimplemented
 google-genai
 anthropic
 tiktoken
 PySide6
+Pillow
 pygame-ce>=2.5.7; sys_platform == "win32" and platform_machine == "ARM64"
 pygame; sys_platform != "win32" or platform_machine != "ARM64"
 pandas

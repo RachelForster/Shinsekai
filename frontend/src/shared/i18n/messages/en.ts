@@ -372,6 +372,11 @@ export const enMessages: Record<MessageKey, string> = {
   "launch.toast.failed": "Launch failed",
   "launch.toast.started": "Chat launched",
   "launch.validation.historyJson": "History path must point to a .json file.",
+  "runtimeDeps.installConfirm":
+    "main.py failed because a Python module is missing:\n{module}\n\nInstall package {package} now?",
+  "runtimeDeps.installFailed": "Dependency install failed",
+  "runtimeDeps.installSucceeded": "Dependency installed. Launch chat again.",
+  "runtimeDeps.installTitle": "Missing Python dependency",
   "mcp.action.openYaml": "Open YAML",
   "mcp.action.previewTools": "Preview tools",
   "mcp.action.saveServer": "Save server",

@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -15,6 +16,7 @@ from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
 
 from .state import BridgeState
+from .runtime_dependencies import runtime_dependency_error_from_text
 from .templates import (
     TEMP_SPLIT_META,
     _compose_for_llm,
@@ -25,12 +27,77 @@ from .templates import (
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _main_chat_process: subprocess.Popen[bytes] | None = None
 _main_chat_process_lock = threading.Lock()
+_main_chat_log_file: Any = None
 
 
 def _hidden_subprocess_kwargs() -> dict[str, int]:
     if os.name != "nt":
         return {}
     return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
+def _chat_log_path() -> Path:
+    log_dir = _project_root() / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir / "main.log"
+
+
+def _tail_text(path: Path, max_chars: int = 2400) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+def _close_chat_log_if_needed() -> None:
+    global _main_chat_log_file
+    if _main_chat_log_file is None:
+        return
+    try:
+        _main_chat_log_file.close()
+    except OSError:
+        pass
+    _main_chat_log_file = None
+
+
+def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tuple[subprocess.Popen[bytes], Path]:
+    global _main_chat_log_file
+    _close_chat_log_if_needed()
+    log_path = _chat_log_path()
+    _main_chat_log_file = log_path.open("a", encoding="utf-8", buffering=1)
+    _main_chat_log_file.write(
+        "\n"
+        + "=" * 60
+        + f"\n{datetime.now().isoformat(sep=' ', timespec='seconds')}  main.py launch\n"
+        + f"cwd: {cwd}\n"
+        + f"cmd: {' '.join(cmd)}\n"
+    )
+    env = {**env, "PYTHONUNBUFFERED": "1"}
+    process = subprocess.Popen(
+        cmd,
+        cwd=str(cwd),
+        env=env,
+        stdout=_main_chat_log_file,
+        stderr=subprocess.STDOUT,
+        **_hidden_subprocess_kwargs(),
+    )
+    return process, log_path
+
+
+def _failed_launch_message(exit_code: int, log_path: Path) -> str:
+    tail = _tail_text(log_path).strip()
+    detail = f"\n\n日志尾部:\n{tail}" if tail else ""
+    dependency_error = runtime_dependency_error_from_text(tail, log_path=log_path)
+    dependency_hint = ""
+    if dependency_error:
+        dependency_hint = (
+            f"\n缺少 Python 模块: {dependency_error['moduleName']}"
+            f"\n建议安装包: {dependency_error['packageName']}"
+        )
+    return f"启动失败: 聊天进程已退出，退出码 {exit_code}。\n日志: {log_path}{dependency_hint}{detail}"
 
 
 def _release_root() -> Path:
@@ -98,6 +165,8 @@ def _launch_chat(
     global _main_chat_process
 
     with _main_chat_process_lock:
+        if _main_chat_process is not None and _main_chat_process.poll() is not None:
+            _close_chat_log_if_needed()
         if _main_chat_process is not None and _main_chat_process.poll() is None:
             return f"进程已经在运行中！PID: {_main_chat_process.pid}"
 
@@ -139,23 +208,22 @@ def _launch_chat(
             if exe is None:
                 checked = " 与 ".join(str(item) for item in candidates)
                 return f"启动失败: 未找到 main.exe（已检查 {checked}）。"
-            _main_chat_process = subprocess.Popen(
-                [str(exe)] + args,
-                cwd=str(project_root),
-                env=env,
-                **_hidden_subprocess_kwargs(),
-            )
+            _main_chat_process, log_path = _popen_chat_process([str(exe)] + args, cwd=project_root, env=env)
         else:
             main_py = _main_py_path()
             if not main_py.is_file():
                 return f"启动失败: 未找到 main.py（已检查 {main_py}）。"
-            _main_chat_process = subprocess.Popen(
+            _main_chat_process, log_path = _popen_chat_process(
                 [sys.executable, str(main_py)] + args,
-                cwd=str(project_root),
+                cwd=project_root,
                 env=env,
-                **_hidden_subprocess_kwargs(),
             )
-        return f"聊天进程已启动！PID: {_main_chat_process.pid}"
+        try:
+            exit_code = _main_chat_process.wait(timeout=1.2)
+        except subprocess.TimeoutExpired:
+            return f"聊天进程已启动！PID: {_main_chat_process.pid}"
+        _close_chat_log_if_needed()
+        return _failed_launch_message(exit_code, log_path)
 
 
 def _resolve_project_file(raw_path: str | Path) -> Path:

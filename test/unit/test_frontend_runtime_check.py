@@ -203,4 +203,6 @@ def test_runtime_core_requirements_include_bridge_startup_sdks():
     assert "google-genai" in names
     assert "anthropic" in names
     assert "tiktoken" in names
+    assert "opencc-python-reimplemented" in names
     assert "PySide6" in names
+    assert "Pillow" in names

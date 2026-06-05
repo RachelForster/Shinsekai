@@ -1,6 +1,11 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "runtimeDeps.installConfirm":
+    "main.py は Python モジュール不足で終了しました:\n{module}\n\nパッケージ {package} を今すぐインストールしますか?",
+  "runtimeDeps.installFailed": "依存関係のインストールに失敗しました",
+  "runtimeDeps.installSucceeded": "依存関係をインストールしました。もう一度チャットを起動してください。",
+  "runtimeDeps.installTitle": "不足している Python 依存関係",
   "app.brandSubtitle": "AI RPG Tools",
   "app.preview": "設定",
   "app.shellMeta": "AI RPG Tools",

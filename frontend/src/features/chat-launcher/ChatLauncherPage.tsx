@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
-import { launchChat } from "../../entities/chat/repository";
+import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
   getTemplateSession,
@@ -15,7 +15,7 @@ import {
 } from "../../entities/template/repository";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import type { ChatLaunchPayload, TemplateLaunchSession } from "../../shared/platform/types";
+import type { ChatLaunchPayload, ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -136,6 +136,38 @@ export function ChatLauncherPage() {
     voiceLanguage: launchSession?.voiceLanguage || appConfig?.system_config.voice_language || "ja",
   });
 
+  const handleRuntimeDependencyError = async (snapshot: ChatSnapshot) => {
+    const dependencyError = snapshot.runtimeDependencyError;
+    if (!dependencyError) {
+      return false;
+    }
+    const shouldInstall = window.confirm(
+      t("runtimeDeps.installConfirm", {
+        module: dependencyError.moduleName,
+        package: dependencyError.packageName,
+      }),
+    );
+    if (!shouldInstall) {
+      showToast({ kind: "error", message: snapshot.dialogText, title: t("launch.toast.failed") });
+      return true;
+    }
+    try {
+      const result = await installMissingRuntimeDependency({ moduleName: dependencyError.moduleName });
+      showToast({
+        kind: "success",
+        message: result.message || t("runtimeDeps.installSucceeded"),
+        title: t("runtimeDeps.installTitle"),
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("runtimeDeps.installFailed"),
+        title: t("runtimeDeps.installFailed"),
+      });
+    }
+    return true;
+  };
+
   const launchMutation = useMutation({
     mutationFn: async (payload: ChatLaunchPayload) => {
       const session = buildSession();
@@ -151,6 +183,10 @@ export function ChatLauncherPage() {
       });
     },
     onSuccess(snapshot) {
+      if (snapshot.runtimeDependencyError) {
+        void handleRuntimeDependencyError(snapshot);
+        return;
+      }
       showToast({ kind: "success", message: snapshot.dialogText, title: t("launch.toast.started") });
       navigate("/chat");
     },

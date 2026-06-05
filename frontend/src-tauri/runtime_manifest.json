@@ -7,10 +7,12 @@
     "requests",
     "numpy",
     "openai",
+    "opencc",
     "google.genai",
     "anthropic",
     "tiktoken",
     "PySide6",
+    "PIL",
     "pygame"
   ],
   "profiles": {
@@ -22,10 +24,12 @@
         "requests",
         "numpy",
         "openai",
+        "opencc",
         "google.genai",
         "anthropic",
         "tiktoken",
         "PySide6",
+        "PIL",
         "pygame"
       ],
       "requirements": "requirements-runtime-core.txt",

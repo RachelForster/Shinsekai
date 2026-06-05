@@ -1,5 +1,13 @@
 import { getPlatform } from "../../shared/platform/platform";
-import type { ChatCommand, ChatCommandResult, ChatLaunchPayload, ChatSnapshot } from "../../shared/platform/types";
+import type {
+  ChatCommand,
+  ChatCommandResult,
+  ChatLaunchPayload,
+  ChatSnapshot,
+  RuntimeDependencyInstallInput,
+  RuntimeDependencyInstallResult,
+  TaskProgressOptions,
+} from "../../shared/platform/types";
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
 
 export const chatQueryKey = ["chat"] as const;
@@ -14,6 +22,13 @@ export function getChatTheme(): Promise<ChatThemePayload> {
 
 export function launchChat(payload: ChatLaunchPayload): Promise<ChatSnapshot> {
   return getPlatform().chat.launch(payload);
+}
+
+export function installMissingRuntimeDependency(
+  input: RuntimeDependencyInstallInput,
+  options?: TaskProgressOptions<RuntimeDependencyInstallResult>,
+): Promise<RuntimeDependencyInstallResult> {
+  return getPlatform().runtime.installMissingDependency(input, options);
 }
 
 export function resumeLastChat(): Promise<ChatSnapshot> {
