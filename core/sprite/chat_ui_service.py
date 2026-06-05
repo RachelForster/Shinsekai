@@ -139,16 +139,35 @@ def restore_session_ui(
     window: Any,
     config: ConfigManager,
     tr_i18n: Callable[..., str],
-) -> None:
+) -> bool:
     """Re-queue last dialog / bgm / background after loading a history file."""
-    if not messages:
-        return
-
     def _tr(key: str, **kwargs: Any) -> str:
         if kwargs:
             return tr_i18n(key, **kwargs)
         return tr_i18n(key)
 
+    try:
+        bgm_path = config.config.system_config.bgm_path
+        bg_path = config.config.system_config.background_path
+        if bgm_path:
+            audio_path_queue.put(
+                TTSOutputMessage(
+                    audio_path=bgm_path,
+                    character_name="bgm",
+                    sprite="-1",
+                    is_system_message=True,
+                )
+            )
+        if bg_path:
+            window.setBackgroundImage(bg_path)
+    except Exception as e:
+        print(_tr("main.print_bg_fail", e=str(e)))
+        traceback.print_exc()
+
+    if not messages:
+        return False
+
+    restored_character_sprite = False
     try:
         dialog = extract_valid_dialog_from_messages(messages)
         if not dialog:
@@ -198,6 +217,7 @@ def restore_session_ui(
                     timeout=0,
                 )
             )
+            restored_character_sprite = True
 
         # finally, re-queue the choice so that OptionsUiHandler picks it up
         if last_choice is not None:
@@ -213,21 +233,6 @@ def restore_session_ui(
     except Exception as e:
         traceback.print_exc()
         print(_tr("main.print_restore_fail", e=str(e)))
+        return False
 
-    try:
-        bgm_path = config.config.system_config.bgm_path
-        bg_path = config.config.system_config.background_path
-        if bgm_path:
-            audio_path_queue.put(
-                TTSOutputMessage(
-                    audio_path=bgm_path,
-                    character_name="bgm",
-                    sprite="-1",
-                    is_system_message=True,
-                )
-            )
-        if bg_path:
-            window.setBackgroundImage(bg_path)
-    except Exception as e:
-        print(_tr("main.print_bg_fail", e=str(e)))
-        traceback.print_exc()
+    return restored_character_sprite
