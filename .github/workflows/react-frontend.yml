@@ -1,0 +1,67 @@
+name: React Frontend
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/react-frontend.yml"
+      - "frontend/**"
+      - "frontend_bridge.py"
+      - "webui_react.py"
+      - "start-react.*"
+      - "scripts/start.*"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/react-frontend.yml"
+      - "frontend/**"
+      - "frontend_bridge.py"
+      - "webui_react.py"
+      - "start-react.*"
+      - "scripts/start.*"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: react-frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Type check
+        run: pnpm lint:types
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import shutil
 import subprocess
 import sys
@@ -21,7 +22,7 @@ from ui.settings_ui.tts.tts_bundle_manifest import (
 from ui.settings_ui.tts.tts_env_probe import get_default_project_root
 
 _WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-_DOWNLOAD_CHUNK_SIZE = 512 * 1024
+_DOWNLOAD_CHUNK_SIZE = 128 * 1024
 _HASH_CHUNK_SIZE = 4 * 1024 * 1024
 _SEVEN_ZIP_COMMANDS = (
     "7zz.exe",
@@ -78,7 +79,13 @@ def _seven_zip_exe() -> Path | None:
     return None
 
 
-def _extract_7za(exe: Path, archive: Path, out_dir: Path) -> str | None:
+def _extract_7za(
+    exe: Path,
+    archive: Path,
+    out_dir: Path,
+    *,
+    is_interrupted: Any | None = None,
+) -> str | None:
     """用 7-Zip 独立程序解压。成功返回 None，失败返回短错误信息。"""
     out_dir.mkdir(parents=True, exist_ok=True)
     # -o 后路径末尾：7z 对目录参数要求
@@ -87,19 +94,49 @@ def _extract_7za(exe: Path, archive: Path, out_dir: Path) -> str | None:
         odir = odir + ("\\" if sys.platform == "win32" else "/")
     cmd = [str(exe), "x", "-y", f"-o{odir}", str(archive)]
     try:
-        r = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=3600,
             creationflags=_WIN_NO_WINDOW if sys.platform == "win32" else 0,
         )
     except OSError as e:  # pragma: no cover
         return str(e)[:2000]
-    if r.returncode != 0:
-        err = (r.stderr or r.stdout or "").strip() or f"exit {r.returncode}"
+    while True:
+        try:
+            stdout, stderr = proc.communicate(timeout=0.25)
+            break
+        except subprocess.TimeoutExpired:
+            if is_interrupted is None or not is_interrupted():
+                continue
+            proc.terminate()
+            try:
+                proc.communicate(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+            raise _ExtractionInterrupted()
+    if proc.returncode != 0:
+        err = (stderr or stdout or "").strip() or f"exit {proc.returncode}"
         return err[:2000]
     return None
+
+
+def _call_extract_7za(
+    exe: Path,
+    archive: Path,
+    out_dir: Path,
+    *,
+    is_interrupted: Any | None = None,
+) -> str | None:
+    try:
+        params = inspect.signature(_extract_7za).parameters
+    except (TypeError, ValueError):  # pragma: no cover
+        params = {}
+    if is_interrupted is not None and "is_interrupted" in params:
+        return _extract_7za(exe, archive, out_dir, is_interrupted=is_interrupted)
+    return _extract_7za(exe, archive, out_dir)
 
 
 def _extract_py7zz(archive: Path, out_dir: Path) -> str | None:
@@ -146,17 +183,30 @@ def _extract_archive(
     on_progress: Any | None = None,
 ) -> str | None:
     """Extract with external 7-Zip first; py7zr is only a last fallback."""
+    sz = _seven_zip_exe()
+    if is_interrupted is not None and sz is not None:
+        cli_err = _call_extract_7za(sz, archive, out_dir, is_interrupted=is_interrupted)
+        if cli_err is None:
+            if on_progress is not None:
+                on_progress(100)
+            return None
+        _rmtree(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
     py7zz_err = _extract_py7zz(archive, out_dir)
     if py7zz_err is None:
+        if on_progress is not None:
+            on_progress(100)
         return None
 
-    sz = _seven_zip_exe()
     if sz is not None:
         if py7zz_err != "missing":
             _rmtree(out_dir)
             out_dir.mkdir(parents=True, exist_ok=True)
-        cli_err = _extract_7za(sz, archive, out_dir)
+        cli_err = _call_extract_7za(sz, archive, out_dir, is_interrupted=is_interrupted)
         if cli_err is None:
+            if on_progress is not None:
+                on_progress(100)
             return None
         if py7zz_err != "missing":
             return f"py7zz: {py7zz_err}\n7-Zip: {cli_err}"[:2000]
@@ -188,16 +238,21 @@ def _archive_filename(url: str) -> str:
     return path.rsplit("/", 1)[-1] or "bundle.7z"
 
 
-def _sha256_file(path: Path) -> str:
+def _sha256_file(path: Path, *, is_interrupted: Any | None = None) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(_HASH_CHUNK_SIZE), b""):
+            if is_interrupted is not None and is_interrupted():
+                raise _DownloadInterrupted()
             h.update(chunk)
     return h.hexdigest()
 
 
 def _archive_verification_error(
-    archive: Path, manifest: TtsBundleManifestEntry
+    archive: Path,
+    manifest: TtsBundleManifestEntry,
+    *,
+    is_interrupted: Any | None = None,
 ) -> str | None:
     if not archive.is_file():
         return "archive is missing"
@@ -208,7 +263,7 @@ def _archive_verification_error(
     if actual_size != manifest.size:
         return f"size mismatch: expected {manifest.size}, got {actual_size}"
     try:
-        actual_sha256 = _sha256_file(archive)
+        actual_sha256 = _sha256_file(archive, is_interrupted=is_interrupted)
     except OSError as e:
         return str(e)
     if actual_sha256.lower() != manifest.sha256.lower():
@@ -228,13 +283,14 @@ def _download_archive(
     expected_sha256: str | None = None,
     is_interrupted: Any | None = None,
     on_progress: Any | None = None,
+    timeout: tuple[float, float] = (15, 600),
 ) -> None:
     part = archive.with_name(f"{archive.name}.part")
     if part.exists():
         part.unlink()
     try:
         hasher = hashlib.sha256() if expected_sha256 is not None else None
-        with requests.get(url, stream=True, timeout=(15, 600), headers=headers) as r:
+        with requests.get(url, stream=True, timeout=timeout, headers=headers) as r:
             r.raise_for_status()
             total = int(r.headers.get("Content-Length", "0") or 0)
             if total <= 0 and expected_size is not None:
@@ -269,6 +325,12 @@ def _download_archive(
                 )
         archive.parent.mkdir(parents=True, exist_ok=True)
         part.replace(archive)
+    except requests.exceptions.ReadTimeout:
+        if part.exists():
+            part.unlink()
+        if is_interrupted is not None and is_interrupted():
+            raise _DownloadInterrupted()
+        raise
     except Exception:
         if part.exists():
             part.unlink()

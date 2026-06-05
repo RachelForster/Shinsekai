@@ -20,6 +20,8 @@ from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry, PluginDiscoveryRegistry
 from sdk.types import (
     ChatUIContribution,
+    FrontendConfigContribution,
+    FrontendPageContribution,
     OutputContractPatch,
     PluginDescriptor,
     SettingsUIContribution,
@@ -246,17 +248,23 @@ class PluginManager:
             return []
         return self._capabilities.tools_tab_contributions
 
+    def collect_frontend_config_contributions(self) -> list[FrontendConfigContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.frontend_config_contributions
+
+    def collect_frontend_page_contributions(self) -> list[FrontendPageContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.frontend_page_contributions
+
     def collect_chat_ui_contributions(self) -> list[ChatUIContribution]:
         self._ensure_plugins_initialized()
         if self._capabilities is None:
             return []
         return self._capabilities.chat_ui_contributions
-
-    def collect_dag_node_factories(self) -> list[tuple[Callable[[], list], bool]]:
-        self._ensure_plugins_initialized()
-        if self._capabilities is None:
-            return []
-        return self._capabilities.dag_node_factories
 
     def collect_dag_yaml_paths(self) -> list[str]:
         self._ensure_plugins_initialized()

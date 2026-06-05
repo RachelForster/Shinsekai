@@ -1,7 +1,8 @@
 numpy
-pygame
-opencv_python
+pygame-ce>=2.5.7; sys_platform == "win32" and platform_machine == "ARM64"
+pygame; sys_platform != "win32" or platform_machine != "ARM64"
 openai
+socksio
 opencc-python-reimplemented
 pydantic
 pandas
@@ -10,14 +11,15 @@ onnxruntime
 rembg
 google-genai
 tiktoken
-pyaudio
+pyaudio; sys_platform == "linux"
+pyaudio; sys_platform == "win32" and platform_machine != "ARM64"
 anthropic
 mcp>=1.2.0
 PySide6
 QtPy>=2.4.1
 pyqt-toast-notification>=1.3.3
 pyyaml
-vosk
+vosk; sys_platform != "win32" or platform_machine != "ARM64"
 gpu-list
 py7zr
 py7zz>=1.1.4; sys_platform == "darwin" or platform_machine == "x86_64" or platform_machine == "AMD64"

@@ -1,0 +1,23 @@
+:root {
+  --radius-control: 5px;
+  --radius-toast: 12px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --shell-sidebar-width: 220px;
+  --shell-brand-height: 82px;
+  --settings-content-max-width: 1012px;
+  --settings-page-gutter: 24px;
+  --shell-topbar-height: 50px;
+  --shell-bottombar-height: 22px;
+  --focus-ring: 0 0 0 2px var(--color-accent-border);
+}
+
+[data-density="compact"] {
+  --space-3: 10px;
+  --space-4: 14px;
+  --space-5: 18px;
+}

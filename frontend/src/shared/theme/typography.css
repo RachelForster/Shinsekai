@@ -1,0 +1,28 @@
+/* ── Shinsekai typography tokens ── */
+
+:root {
+  /* ── Font families ── */
+  --font-settings: "Segoe UI", "Microsoft YaHei", "Microsoft Yahei", "微软雅黑", Arial, sans-serif;
+  --font-chat: "Microsoft YaHei", "SimHei", Arial, sans-serif;
+
+  /* ── Font sizes ── */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+
+  /* ── Font weights ── */
+  --font-normal: 400;
+  --font-medium: 520;
+  --font-semibold: 650;
+  --font-bold: 700;
+
+  /* ── Line heights ── */
+  --leading-tight: 1.25;
+  --leading-snug: 1.35;
+  --leading-normal: 1.45;
+  --leading-relaxed: 1.5;
+  --leading-loose: 1.65;
+}

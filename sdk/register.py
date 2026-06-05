@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 from sdk.plugin import PluginBase
 from sdk.types import (
     ChatUIContribution,
+    FrontendConfigContribution,
+    FrontendPageContribution,
     OutputContractPatch,
     PluginDescriptor,
     SettingsUIContribution,
@@ -130,8 +132,9 @@ class PluginCapabilityRegistry:
         self._settings_contributions: list[SettingsUIContribution] = []
         self._settings_ui_plugin_ctx: tuple[str, str] | None = None
         self._tools_tab_contributions: list[ToolsTabContribution] = []
+        self._frontend_config_contributions: list[FrontendConfigContribution] = []
+        self._frontend_page_contributions: list[FrontendPageContribution] = []
         self._chat_ui_contributions: list[ChatUIContribution] = []
-        self._dag_node_factories: list[tuple[Callable[[], list], bool]] = []
         self._workflow_contributions: list[WorkflowContribution] = []
         self._output_contract_patches: list[OutputContractPatch] = []
 
@@ -201,23 +204,38 @@ class PluginCapabilityRegistry:
             )
         self._tools_tab_contributions.append(contribution)
 
+    def register_frontend_config_page(self, contribution: FrontendConfigContribution) -> None:
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
+        self._frontend_config_contributions.append(contribution)
+
+    def register_frontend_page(self, contribution: FrontendPageContribution) -> None:
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
+        self._frontend_page_contributions.append(contribution)
+
     def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
         self._chat_ui_contributions.append(contribution)
-
-    def register_dag_node(
-        self,
-        factory: Callable[[], list],
-        *,
-        skip_default: bool = False,
-    ) -> None:
-        """Register DAG node candidates for plugin tooling.
-
-        Runtime workflow execution no longer auto-merges registered nodes.
-        Users select exactly one workflow YAML, and that YAML references node
-        classes directly by dotted import path. ``skip_default`` is kept for
-        compatibility and is not used by the runtime builder.
-        """
-        self._dag_node_factories.append((factory, skip_default))
 
     def register_dag_yaml(self, path: str) -> None:
         """Register a workflow YAML path.
@@ -288,12 +306,16 @@ class PluginCapabilityRegistry:
         return sorted(self._tools_tab_contributions, key=lambda c: c.order)
 
     @property
-    def chat_ui_contributions(self) -> list[ChatUIContribution]:
-        return sorted(self._chat_ui_contributions, key=lambda c: c.order)
+    def frontend_config_contributions(self) -> list[FrontendConfigContribution]:
+        return sorted(self._frontend_config_contributions, key=lambda c: c.order)
 
     @property
-    def dag_node_factories(self) -> list[tuple[Callable[[], list], bool]]:
-        return list(self._dag_node_factories)
+    def frontend_page_contributions(self) -> list[FrontendPageContribution]:
+        return sorted(self._frontend_page_contributions, key=lambda c: c.order)
+
+    @property
+    def chat_ui_contributions(self) -> list[ChatUIContribution]:
+        return sorted(self._chat_ui_contributions, key=lambda c: c.order)
 
     @property
     def dag_yaml_paths(self) -> list[str]:

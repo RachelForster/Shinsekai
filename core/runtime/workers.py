@@ -1,9 +1,9 @@
 import re
-import traceback
 from pathlib import Path
 from typing import Optional
 
 from i18n import tr
+from sdk.logging import get_logger, log_context, new_log_id
 from sdk.logging.timing import tracker
 
 from queue import Queue
@@ -29,6 +29,8 @@ from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from core.runtime.app_runtime import get_app_runtime, try_get_app_runtime, tts_emit_to_ui_queue
 from core.messaging.stream_parser import LlmResponseStreamParser
 from core.handlers.handler_registry import default_tts_handler_chain, default_ui_output_handler_chain
+
+logger = get_logger(__name__)
 
 # --- QThread + DagNode 基类 ---
 
@@ -110,13 +112,22 @@ class LLMWorker(QThreadDagNode):
         self._init_app()
         while self.running:
             got_item = False
+            turn_scope = None
             try:
                 message: UserInputMessage = self.user_input_queue.get()
                 got_item = True
                 if message is None:
                     break
 
-                print(f"LLMWorker: 开始处理消息: {message.text}")
+                turn_scope = log_context(turn_id=new_log_id("turn_"))
+                turn_scope.__enter__()
+                logger.info(
+                    "LLM worker processing user message",
+                    extra={
+                        "event": "chat.turn.started",
+                        "input_chars": len(message.text or ""),
+                    },
+                )
                 tracker.start_cross("e2e")
                 self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
 
@@ -169,8 +180,7 @@ class LLMWorker(QThreadDagNode):
                     print(f"LLMWorker: {_warn}")
 
             except Exception as e:
-                print(f"LLMWorker: 任务处理失败: {e}")
-                traceback.print_exc()
+                logger.exception("LLM worker task failed", extra={"event": "llm.worker.failed"})
                 try:
                     from sdk.messages import TTSOutputMessage
                     _err = tr("desktop.llm_parse_empty") + f"\n{e}"
@@ -181,6 +191,8 @@ class LLMWorker(QThreadDagNode):
                 except Exception:
                     pass
             finally:
+                if turn_scope is not None:
+                    turn_scope.__exit__(None, None, None)
                 if got_item:
                     self.user_input_queue.task_done()
 
@@ -247,8 +259,7 @@ class TTSWorker(QThreadDagNode):
                 with tracker.track("TTS dispatch"):
                     self.tts_message_dispatcher.dispatch(item)
             except Exception as e:
-                print(f"TTSWorker: 任务处理失败: {e}")
-                traceback.print_exc()
+                logger.exception("TTS worker task failed", extra={"event": "tts.worker.failed"})
                 if item is not None:
                     self.put_data(
                         get_app_runtime().opencc.convert(item.name),
@@ -340,8 +351,7 @@ class UIWorker(QThreadDagNode):
                     break
                 self.ui_out_dispatcher.dispatch(output_data)
             except Exception as e:
-                traceback.print_exc()
-                print(f"UIWorker: 任务处理失败: {e}")
+                logger.exception("UI worker task failed", extra={"event": "ui.worker.failed"})
                 try:
                     self.ui_update_manager.post_notification(f"界面更新失败: {e}")
                 except Exception:

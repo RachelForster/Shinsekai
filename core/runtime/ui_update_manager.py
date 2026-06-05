@@ -10,7 +10,6 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, MutableSequence, Optional
 
-import cv2
 import numpy as np
 import pygame
 
@@ -68,6 +67,22 @@ def format_context_token_estimate(estimate: Dict[str, Any]) -> str:
         f"tools {_format_token_count(estimate.get('tool_definition_tokens'))} | "
         f"total {_format_token_count(estimate.get('estimated_total_tokens'))}"
     )
+
+
+def _load_image_rgba_array(image_path: str) -> Optional[np.ndarray]:
+    from PySide6.QtGui import QImage
+
+    image = QImage(str(Path(image_path)))
+    if image.isNull():
+        return None
+    image_format = getattr(getattr(QImage, "Format", QImage), "Format_RGBA8888")
+    rgba_image = image.convertToFormat(image_format)
+    width = rgba_image.width()
+    height = rgba_image.height()
+    bytes_per_line = rgba_image.bytesPerLine()
+    image_bytes = rgba_image.bits()
+    array = np.frombuffer(image_bytes, dtype=np.uint8).reshape((height, bytes_per_line))
+    return array[:, : width * 4].reshape((height, width, 4)).copy()
 
 
 def _format_dialog_html(name: str, speech: str, color: str, is_system: bool) -> str:
@@ -244,19 +259,11 @@ class UIUpdateManager(QObject):
             if character_config is None:
                 raise ValueError(f"未找到角色配置: {character_name}")
             image_path = str(Path(character_config.sprites[sprite_id]["path"]))
-            # cv2.imread 不支持中文路径，改用 np.fromfile + cv2.imdecode
-            img_data = np.fromfile(image_path, dtype=np.uint8)
-            cv_image = cv2.imdecode(img_data, cv2.IMREAD_UNCHANGED)
-            if cv_image is not None:
-                if cv_image.shape[2] == 3:
-                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-                    alpha_channel = np.full((cv_image.shape[0], cv_image.shape[1]), 255, dtype=np.uint8)
-                    cv_image = cv2.merge([cv_image, alpha_channel])
-                elif cv_image.shape[2] == 4:
-                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGRA2RGBA)
-                self.post_sprite_update(cv_image, character_name, character_config.sprite_scale)
-            else:
+            image = _load_image_rgba_array(image_path)
+            if image is None:
                 print(f"UIUpdateManager: 无法加载图片: {image_path}")
+                return
+            self.post_sprite_update(image, character_name, character_config.sprite_scale)
         except Exception as e:
             traceback.print_exc()
             print(f"UIUpdateManager: 加载图片时出错: {e}")

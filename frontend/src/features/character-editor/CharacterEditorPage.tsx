@@ -1,0 +1,897 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { WheelEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import {
+  charactersQueryKey,
+  deleteCharacter,
+  deleteAllCharacterSprites,
+  deleteCharacterMemory,
+  deleteCharacterSprite,
+  deleteSpriteVoice,
+  exportCharacter,
+  generateCharacterSetting,
+  importCharacters,
+  listCharacterMemories,
+  listCharacters,
+  rememberCharacterMemory,
+  saveCharacter,
+  saveCharacterEmotionTags,
+  saveSpriteScale,
+  saveSpriteVoiceText,
+  translateCharacterFields,
+  uploadCharacterSprites,
+  uploadSpriteVoice,
+} from "../../entities/character/repository";
+import type { Character, Sprite } from "../../entities/config/types";
+import { fileUrl } from "../../entities/files/repository";
+import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
+import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
+import { useI18n } from "../../shared/i18n";
+import { AlertDialog, useToast } from "../../shared/ui";
+import { CharacterBasicSection } from "./CharacterBasicSection";
+import { CharacterMemorySection } from "./CharacterMemorySection";
+import { CharacterPageHeader } from "./CharacterPageHeader";
+import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
+import { CharacterSpritesSection } from "./CharacterSpritesSection";
+import { CharacterVoiceSection } from "./CharacterVoiceSection";
+import { SpriteTagsDialog } from "./SpriteTagsDialog";
+import {
+  SPRITE_SCALE_STEP,
+  clampSpriteScale,
+  createCharacter,
+  pronunciationMapToText,
+  pronunciationTextToMap,
+  type CharacterResourceDeleteTarget,
+} from "./characterEditorUtils";
+import "./CharacterEditorPage.css";
+
+export function CharacterEditorPage() {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const { t } = useI18n();
+  const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const data = charactersQuery.data ?? [];
+  const isLoading = charactersQuery.isLoading;
+  const [selectedName, setSelectedName] = useState("");
+  const [draft, setDraft] = useState<Character>(createCharacter());
+  const [isCreating, setIsCreating] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [pendingResourceDelete, setPendingResourceDelete] = useState<CharacterResourceDeleteTarget | null>(null);
+  const [pendingSpritePaths, setPendingSpritePaths] = useState<string[]>([]);
+  const [pendingVoicePaths, setPendingVoicePaths] = useState<Record<number, string>>({});
+  const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
+  const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
+  const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [pronunciationText, setPronunciationText] = useState("");
+  const [memoryInput, setMemoryInput] = useState("");
+  const colorInputRef = useRef<HTMLInputElement | null>(null);
+  const memoryName = draft.name.trim();
+  const currentCharacterName = isCreating ? "" : selectedName;
+  const isSavedCharacter = Boolean(
+    currentCharacterName && data.some((character) => character.name === currentCharacterName),
+  );
+  const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(draft.color || "") ? draft.color : DEFAULT_CHARACTER_COLOR;
+  const setColorInputElement = useCallback((element: HTMLInputElement | null) => {
+    colorInputRef.current = element;
+  }, []);
+  const openColorPicker = useCallback(() => {
+    colorInputRef.current?.click();
+  }, []);
+
+  const selected = useMemo(
+    () => (isCreating ? undefined : (data.find((character) => character.name === selectedName) ?? data[0])),
+    [data, isCreating, selectedName],
+  );
+
+  useEffect(() => {
+    if (selected) {
+      setSelectedName(selected.name);
+      setDraft(structuredClone(selected));
+      setPronunciationText(pronunciationMapToText(selected.pronunciation_map));
+      setPendingSpritePaths([]);
+      setPendingVoicePaths({});
+      setSelectedSpriteIndex(0);
+      setNameError("");
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    setSelectedSpriteIndex((current) => Math.min(current, Math.max(0, draft.sprites.length - 1)));
+  }, [draft.sprites.length]);
+
+  const memoryQuery = useQuery({
+    enabled: false,
+    queryFn: () => listCharacterMemories(memoryName),
+    queryKey: ["character-memories", memoryName],
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: ({ character, originalName }: { character: Character; originalName?: string }) =>
+      saveCharacter(character, originalName),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.error.saveFallback"),
+        title: t("common.saveFailed"),
+      });
+    },
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setIsCreating(false);
+      setSelectedName(character.name);
+      showToast({ kind: "success", title: t("character.toast.saved") });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteCharacter,
+    onSuccess() {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setPendingDelete(null);
+      showToast({ kind: "success", title: t("character.toast.deleted") });
+    },
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.error.deleteFallback"),
+        title: t("common.deleteFailed"),
+      });
+    },
+  });
+
+  const importMutation = useMutation({
+    mutationFn: importCharacters,
+    onSuccess(imported) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      const lastImported = imported[imported.length - 1];
+      if (lastImported) {
+        setIsCreating(false);
+        setSelectedName(lastImported.name);
+      }
+      showToast({ kind: "success", title: t("character.toast.importComplete", { count: imported.length }) });
+    },
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.error.importFallback"),
+        title: t("common.importFailed"),
+      });
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: exportCharacter,
+    onSuccess(path) {
+      showToast({ kind: "success", message: path, title: t("character.toast.exportComplete") });
+    },
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.error.exportFallback"),
+        title: t("common.exportFailed"),
+      });
+    },
+  });
+
+  const aiSettingMutation = useMutation({
+    mutationFn: () => generateCharacterSetting({ name: draft.name.trim(), setting: draft.character_setting }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.error.aiFallback"),
+        title: t("character.action.aiWrite"),
+      });
+    },
+    onSuccess(result) {
+      update("character_setting", result.characterSetting);
+      showToast({ kind: "success", message: result.message, title: t("character.action.aiWrite") });
+    },
+  });
+
+  const translateMutation = useMutation({
+    mutationFn: () =>
+      translateCharacterFields({
+        characterSetting: draft.character_setting,
+        emotionTags: draft.emotion_tags,
+        name: draft.name,
+      }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.error.translateFallback"),
+        title: t("character.action.aiTranslate"),
+      });
+    },
+    onSuccess(result) {
+      if (result.error) {
+        showToast({ kind: "error", message: result.error, title: t("character.action.aiTranslate") });
+        return;
+      }
+      setDraft((current) => ({
+        ...current,
+        character_setting: result.characterSetting,
+        emotion_tags: result.emotionTags,
+        name: result.name,
+      }));
+      if (result.name.trim()) {
+        setNameError("");
+      }
+      showToast({ kind: "success", title: t("character.action.aiTranslate") });
+    },
+  });
+
+  const memoryAddMutation = useMutation({
+    mutationFn: () => rememberCharacterMemory(memoryName, memoryInput),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.memory.error"),
+        title: t("character.memory.add"),
+      });
+    },
+    onSuccess(result) {
+      setMemoryInput("");
+      queryClient.setQueryData(["character-memories", memoryName], result);
+      showToast({ kind: "success", title: t("character.memory.add") });
+    },
+  });
+
+  const memoryDeleteMutation = useMutation({
+    mutationFn: ({ memoryId, name }: { memoryId: string; name: string }) => deleteCharacterMemory(name, memoryId),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.memory.error"),
+        title: t("character.memory.delete"),
+      });
+    },
+    onSuccess(result, variables) {
+      queryClient.setQueryData(["character-memories", variables.name], result);
+    },
+  });
+
+  const voiceUploadMutation = useMutation({
+    mutationFn: ({ index, voicePath, voiceText }: { index: number; voicePath: string; voiceText: string }) =>
+      uploadSpriteVoice({
+        name: currentCharacterName,
+        spriteIndex: index,
+        voicePath,
+        voiceText,
+      }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+        title: t("character.sprite.uploadVoice"),
+      });
+    },
+    onSuccess(character, variables) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, sprites: character.sprites }));
+      setPendingVoicePaths((current) => {
+        const next = { ...current };
+        delete next[variables.index];
+        return next;
+      });
+      showToast({ kind: "success", title: t("character.sprite.uploadVoice") });
+    },
+  });
+
+  const voiceTextMutation = useMutation({
+    mutationFn: ({ index, text }: { index: number; text: string }) =>
+      saveSpriteVoiceText(currentCharacterName, index, text),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+        title: t("character.sprite.saveVoiceText"),
+      });
+    },
+    onSuccess(character, variables) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => {
+        const sprites = [...current.sprites];
+        const returned = character.sprites[variables.index];
+        if (returned && sprites[variables.index]) {
+          sprites[variables.index] = {
+            ...sprites[variables.index],
+            voice_path: returned.voice_path || sprites[variables.index].voice_path,
+            voice_text: returned.voice_text ?? "",
+          };
+        }
+        return { ...current, sprites };
+      });
+      showToast({ kind: "success", title: t("character.sprite.saveVoiceText") });
+    },
+  });
+
+  const voiceDeleteMutation = useMutation({
+    mutationFn: ({ index, name }: { index: number; name: string }) => deleteSpriteVoice(name, index),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+        title: t("character.sprite.deleteVoice"),
+      });
+    },
+    onSuccess(character, variables) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, sprites: character.sprites }));
+      setPendingVoicePaths((current) => {
+        const next = { ...current };
+        delete next[variables.index];
+        return next;
+      });
+      showToast({ kind: "success", title: t("character.sprite.deleteVoice") });
+    },
+  });
+
+  const spriteUploadMutation = useMutation({
+    mutationFn: () => {
+      return uploadCharacterSprites({
+        emotionTags: draft.emotion_tags,
+        name: currentCharacterName,
+        paths: pendingSpritePaths,
+      });
+    },
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.imageError"),
+        title: t("character.sprite.uploadImages"),
+      });
+    },
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+      setPendingSpritePaths([]);
+      showToast({ kind: "success", title: t("character.sprite.uploadImages") });
+    },
+  });
+
+  const emotionTagsMutation = useMutation({
+    mutationFn: () => saveCharacterEmotionTags(currentCharacterName, draft.emotion_tags),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.imageError"),
+        title: t("character.sprite.saveTags"),
+      });
+    },
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags }));
+      showToast({ kind: "success", title: t("character.sprite.saveTags") });
+    },
+  });
+
+  const spriteDeleteMutation = useMutation({
+    mutationFn: ({ index, name }: { index: number; name: string }) => deleteCharacterSprite(name, index),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.imageError"),
+        title: t("common.remove"),
+      });
+    },
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+      showToast({ kind: "success", title: t("common.remove") });
+    },
+  });
+
+  const spriteDeleteAllMutation = useMutation({
+    mutationFn: (name: string) => deleteAllCharacterSprites(name),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.imageError"),
+        title: t("character.sprite.clear"),
+      });
+    },
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+      showToast({ kind: "success", title: t("character.sprite.clear") });
+    },
+  });
+
+  const spriteScaleMutation = useMutation({
+    mutationFn: () => saveSpriteScale(currentCharacterName, Number(draft.sprite_scale) || 0),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.imageError"),
+        title: t("character.sprite.saveScale"),
+      });
+    },
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, sprite_scale: character.sprite_scale }));
+      showToast({ kind: "success", title: t("character.sprite.saveScale") });
+    },
+  });
+
+  const update = <K extends keyof Character>(name: K, value: Character[K]) => {
+    setDraft((current) => ({ ...current, [name]: value }));
+    if (name === "name" && String(value).trim()) {
+      setNameError("");
+    }
+  };
+
+  const updateSprite = (index: number, patch: Partial<Sprite>) => {
+    setDraft((current) => {
+      const sprites = [...current.sprites];
+      sprites[index] = { ...sprites[index], ...patch };
+      return { ...current, sprites };
+    });
+  };
+
+  const updateSpriteTag = (index: number, value: string) => {
+    setDraft((current) => {
+      const tags = tagContents(current.emotion_tags, current.sprites.length);
+      tags[index] = value;
+      return { ...current, emotion_tags: numberedTags("立绘", tags) };
+    });
+  };
+
+  const openBulkSpriteTagsDialog = () => {
+    setBulkSpriteTagsDraft(draft.emotion_tags);
+    setBulkSpriteTagsOpen(true);
+  };
+
+  const handleSpriteScaleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const direction = event.deltaY < 0 ? 1 : -1;
+    const current = Number(draft.sprite_scale) || 0;
+    update("sprite_scale", clampSpriteScale(current + direction * SPRITE_SCALE_STEP));
+  };
+
+  const saveDraft = () => {
+    if (!draft.name.trim()) {
+      setNameError(t("character.validation.nameRequired"));
+      showToast({
+        kind: "error",
+        message: t("common.fixInvalidFields"),
+        title: t("common.validationFailed"),
+      });
+      return;
+    }
+    const spritePrefix = draft.sprite_prefix.trim();
+    const pathFields = [draft.gpt_model_path, draft.sovits_model_path, draft.refer_audio_path]
+      .filter(Boolean)
+      .map(String);
+    const validationMessages = [
+      !spritePrefix ? t("character.validation.spritePrefixRequired") : "",
+      spritePrefix && !/^[\x00-\x7F]+$/.test(spritePrefix) ? t("character.validation.spritePrefixAscii") : "",
+      pathFields.some((path) => path.trim().startsWith('"') || path.trim().endsWith('"'))
+        ? t("character.validation.noQuotedPaths")
+        : "",
+      draft.gpt_model_path?.trim() && !draft.gpt_model_path.trim().toLowerCase().endsWith(".ckpt")
+        ? t("character.validation.gptModelExt")
+        : "",
+      draft.sovits_model_path?.trim() && !draft.sovits_model_path.trim().toLowerCase().endsWith(".pth")
+        ? t("character.validation.sovitsModelExt")
+        : "",
+    ].filter(Boolean);
+    if (validationMessages.length) {
+      showToast({
+        kind: "error",
+        message: validationMessages.join("\n"),
+        title: t("common.validationFailed"),
+      });
+      return;
+    }
+    saveMutation.mutate({
+      character: {
+        ...draft,
+        character_setting: draft.character_setting.trim(),
+        color: draft.color.trim() || DEFAULT_CHARACTER_COLOR,
+        gpt_model_path: draft.gpt_model_path?.trim() || "",
+        name: draft.name.trim(),
+        prompt_lang: draft.prompt_lang?.trim() || "",
+        prompt_text: draft.prompt_text?.trim() || "",
+        pronunciation_map: pronunciationTextToMap(pronunciationText),
+        refer_audio_path: draft.refer_audio_path?.trim() || "",
+        sovits_model_path: draft.sovits_model_path?.trim() || "",
+        sprite_prefix: spritePrefix,
+      },
+      originalName: isCreating ? undefined : selectedName,
+    });
+  };
+
+  const spriteTags = useMemo(
+    () => tagContents(draft.emotion_tags, draft.sprites.length),
+    [draft.emotion_tags, draft.sprites.length],
+  );
+  const selectedSprite = draft.sprites[selectedSpriteIndex];
+  const selectedSpriteTag = spriteTags[selectedSpriteIndex] ?? "";
+  const spriteGalleryItems = useMemo(
+    () =>
+      draft.sprites.map((sprite, index) => ({
+        badge: sprite.voice_path ? t("character.sprite.hasVoice") : t("character.sprite.noVoice"),
+        badgeTone: sprite.voice_path ? ("default" as const) : ("muted" as const),
+        id: `${sprite.path}-${index}`,
+        imageSrc: sprite.path ? fileUrl(sprite.path) : "",
+        meta: spriteTags[index] || sprite.voice_text || "",
+        title: baseName(sprite.path) || `${index + 1}`,
+      })),
+    [draft.sprites, spriteTags, t],
+  );
+
+  const confirmPendingResourceDelete = () => {
+    if (!pendingResourceDelete) {
+      return;
+    }
+    const target = pendingResourceDelete;
+    setPendingResourceDelete(null);
+    if (target.kind === "memory") {
+      memoryDeleteMutation.mutate({ memoryId: target.memoryId, name: target.characterName });
+      return;
+    }
+    if (target.kind === "sprite") {
+      spriteDeleteMutation.mutate({ index: target.index, name: target.characterName });
+      return;
+    }
+    if (target.kind === "all-sprites") {
+      spriteDeleteAllMutation.mutate(target.characterName);
+      return;
+    }
+    voiceDeleteMutation.mutate({ index: target.index, name: target.characterName });
+  };
+
+  const pendingResourceDeleteCopy = pendingResourceDelete
+    ? {
+        body:
+          pendingResourceDelete.kind === "memory"
+            ? t("character.memory.deleteConfirmBody", {
+                memory: pendingResourceDelete.memory,
+                name: pendingResourceDelete.characterName,
+              })
+            : pendingResourceDelete.kind === "sprite"
+              ? t("character.sprite.deleteConfirmBody", {
+                  filename: pendingResourceDelete.filename,
+                  index: pendingResourceDelete.index + 1,
+                  name: pendingResourceDelete.characterName,
+                })
+              : pendingResourceDelete.kind === "all-sprites"
+                ? t("character.sprite.clearConfirmBody", {
+                    count: pendingResourceDelete.count,
+                    name: pendingResourceDelete.characterName,
+                  })
+                : t("character.sprite.deleteVoiceConfirmBody", {
+                    filename: pendingResourceDelete.filename,
+                    index: pendingResourceDelete.index + 1,
+                  }),
+        confirmLabel:
+          pendingResourceDelete.kind === "sprite" || pendingResourceDelete.kind === "sprite-voice"
+            ? t("common.remove")
+            : t("common.delete"),
+        title:
+          pendingResourceDelete.kind === "memory"
+            ? t("character.memory.delete")
+            : pendingResourceDelete.kind === "all-sprites"
+              ? t("character.sprite.clear")
+              : pendingResourceDelete.kind === "sprite-voice"
+                ? t("character.sprite.deleteVoice")
+                : t("common.remove"),
+      }
+    : null;
+
+  const selectExistingCharacter = (name: string) => {
+    setIsCreating(false);
+    setSelectedName(name);
+  };
+
+  const startCreatingCharacter = () => {
+    setIsCreating(true);
+    setSelectedName("");
+    setDraft(createCharacter());
+    setPronunciationText("");
+    setPendingSpritePaths([]);
+    setPendingVoicePaths({});
+    setSelectedSpriteIndex(0);
+    setNameError("");
+  };
+
+  const exportCurrentCharacter = () => {
+    if (!currentCharacterName) {
+      showToast({
+        kind: "error",
+        message: t("character.validation.nameRequired"),
+        title: t("common.export"),
+      });
+      return;
+    }
+    exportMutation.mutate(currentCharacterName);
+  };
+
+  const requestCharacterDelete = () => {
+    if (!currentCharacterName) {
+      showToast({
+        kind: "error",
+        message: t("character.validation.nameRequired"),
+        title: t("common.delete"),
+      });
+      return;
+    }
+    setPendingDelete(currentCharacterName);
+  };
+
+  const generateSetting = () => {
+    if (!draft.name.trim()) {
+      setNameError(t("character.validation.nameRequired"));
+      showToast({
+        kind: "error",
+        message: t("common.fixInvalidFields"),
+        title: t("common.validationFailed"),
+      });
+      return;
+    }
+    aiSettingMutation.mutate();
+  };
+
+  const translateDraft = () => {
+    if (!draft.name.trim() && !draft.character_setting.trim() && !draft.emotion_tags.trim()) {
+      showToast({
+        kind: "error",
+        message: t("common.fixInvalidFields"),
+        title: t("common.validationFailed"),
+      });
+      return;
+    }
+    translateMutation.mutate();
+  };
+
+  const uploadSprites = () => {
+    if (!isSavedCharacter) {
+      showToast({
+        kind: "error",
+        message: t("character.validation.nameRequired"),
+        title: t("character.sprite.uploadImages"),
+      });
+      return;
+    }
+    if (!pendingSpritePaths.length) {
+      showToast({ kind: "error", title: t("character.sprite.selectImages") });
+      return;
+    }
+    spriteUploadMutation.mutate();
+  };
+
+  const requestClearSprites = () => {
+    if (!isSavedCharacter || !draft.sprites.length) {
+      showToast({ kind: "error", title: t("character.sprite.clear") });
+      return;
+    }
+    setPendingResourceDelete({
+      characterName: currentCharacterName,
+      count: draft.sprites.length,
+      kind: "all-sprites",
+    });
+  };
+
+  const saveSpriteScaleValue = () => {
+    if (!isSavedCharacter) {
+      showToast({
+        kind: "error",
+        message: t("character.validation.nameRequired"),
+        title: t("character.sprite.saveScale"),
+      });
+      return;
+    }
+    spriteScaleMutation.mutate();
+  };
+
+  const saveSpriteTags = () => {
+    if (!isSavedCharacter || !draft.emotion_tags) {
+      showToast({
+        kind: "error",
+        message: t("common.fixInvalidFields"),
+        title: t("character.sprite.saveTags"),
+      });
+      return;
+    }
+    emotionTagsMutation.mutate();
+  };
+
+  const updatePendingVoicePath = (path: string) => {
+    setPendingVoicePaths((current) => ({ ...current, [selectedSpriteIndex]: path }));
+  };
+
+  const saveSelectedSpriteVoiceText = (text: string) => {
+    const savedText = selected?.sprites[selectedSpriteIndex]?.voice_text ?? "";
+    if (currentCharacterName && text !== savedText && !voiceTextMutation.isPending) {
+      voiceTextMutation.mutate({ index: selectedSpriteIndex, text });
+    }
+  };
+
+  const uploadSelectedSpriteVoice = () => {
+    const voicePath = pendingVoicePaths[selectedSpriteIndex]?.trim() ?? "";
+    if (!isSavedCharacter) {
+      showToast({
+        kind: "error",
+        message: t("character.validation.nameRequired"),
+        title: t("character.sprite.uploadVoice"),
+      });
+      return;
+    }
+    if (!voicePath) {
+      showToast({ kind: "error", title: t("character.sprite.voiceUploadPath") });
+      return;
+    }
+    voiceUploadMutation.mutate({
+      index: selectedSpriteIndex,
+      voicePath,
+      voiceText: selectedSprite?.voice_text ?? "",
+    });
+  };
+
+  const requestSelectedSpriteVoiceDelete = () => {
+    if (!currentCharacterName || !selectedSprite?.voice_path) {
+      showToast({ kind: "error", title: t("character.sprite.deleteVoice") });
+      return;
+    }
+    setPendingResourceDelete({
+      characterName: currentCharacterName,
+      filename: baseName(selectedSprite.path) || `${selectedSpriteIndex + 1}`,
+      index: selectedSpriteIndex,
+      kind: "sprite-voice",
+    });
+  };
+
+  const requestSelectedSpriteDelete = () => {
+    if (!currentCharacterName || !selectedSprite) {
+      showToast({ kind: "error", title: t("common.remove") });
+      return;
+    }
+    setPendingResourceDelete({
+      characterName: currentCharacterName,
+      filename: baseName(selectedSprite.path) || `${selectedSpriteIndex + 1}`,
+      index: selectedSpriteIndex,
+      kind: "sprite",
+    });
+  };
+
+  const requestMemoryDelete = (memory: { id: string; memory: string }) => {
+    setPendingResourceDelete({
+      characterName: memoryName,
+      kind: "memory",
+      memory: memory.memory,
+      memoryId: memory.id,
+    });
+  };
+
+  const confirmBulkSpriteTags = () => {
+    update("emotion_tags", bulkSpriteTagsDraft);
+    setBulkSpriteTagsOpen(false);
+  };
+
+  return (
+    <div className="page character-page">
+      <CharacterPageHeader
+        characters={data}
+        exportPending={exportMutation.isPending}
+        importPending={importMutation.isPending}
+        isCreating={isCreating}
+        isLoading={isLoading}
+        onCreate={startCreatingCharacter}
+        onExport={exportCurrentCharacter}
+        onImport={(items) => importMutation.mutate(items)}
+        onSave={saveDraft}
+        onSelectCharacter={selectExistingCharacter}
+        savePending={saveMutation.isPending}
+        selectedName={selectedName}
+      />
+
+      <div className="settings-grid character-page__content">
+        <div className="character-page__top-grid">
+          <CharacterBasicSection
+            colorPickerValue={colorPickerValue}
+            draft={draft}
+            nameError={nameError}
+            onChange={update}
+            onColorInputRef={setColorInputElement}
+            onDelete={requestCharacterDelete}
+            onPickColor={openColorPicker}
+            onPronunciationTextChange={setPronunciationText}
+            pronunciationText={pronunciationText}
+          />
+
+          <CharacterPersonalitySection
+            aiPending={aiSettingMutation.isPending}
+            draft={draft}
+            onAiWrite={generateSetting}
+            onChange={update}
+            onTranslate={translateDraft}
+            translatePending={translateMutation.isPending}
+          />
+        </div>
+
+        <CharacterVoiceSection draft={draft} onChange={update} />
+
+        <CharacterSpritesSection
+          draft={draft}
+          emotionTagsPending={emotionTagsMutation.isPending}
+          onClearSprites={requestClearSprites}
+          onOpenBulkTags={openBulkSpriteTagsDialog}
+          onPendingSpritePathsChange={setPendingSpritePaths}
+          onPendingVoicePathChange={updatePendingVoicePath}
+          onSaveScale={saveSpriteScaleValue}
+          onSaveTags={saveSpriteTags}
+          onScaleChange={update}
+          onScaleWheel={handleSpriteScaleWheel}
+          onSelectSprite={setSelectedSpriteIndex}
+          onSpriteDelete={requestSelectedSpriteDelete}
+          onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
+          onSpriteUpload={uploadSprites}
+          onSpriteVoiceDelete={requestSelectedSpriteVoiceDelete}
+          onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
+          onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
+          onSpriteVoiceUpload={uploadSelectedSpriteVoice}
+          pendingSpritePaths={pendingSpritePaths}
+          pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
+          selectedSprite={selectedSprite}
+          selectedSpriteIndex={selectedSpriteIndex}
+          selectedSpriteTag={selectedSpriteTag}
+          spriteDeletePending={spriteDeleteMutation.isPending}
+          spriteGalleryItems={spriteGalleryItems}
+          spriteScalePending={spriteScaleMutation.isPending}
+          spriteUploadPending={spriteUploadMutation.isPending}
+          voiceDeletePending={voiceDeleteMutation.isPending}
+          voiceUploadPending={voiceUploadMutation.isPending}
+        />
+
+        <CharacterMemorySection
+          addPending={memoryAddMutation.isPending}
+          data={memoryQuery.data}
+          deletePending={memoryDeleteMutation.isPending}
+          error={memoryQuery.error}
+          isError={memoryQuery.isError}
+          isFetched={memoryQuery.isFetched}
+          isFetching={memoryQuery.isFetching}
+          isLoading={memoryQuery.isLoading}
+          memoryInput={memoryInput}
+          memoryName={memoryName}
+          onAddMemory={() => memoryAddMutation.mutate()}
+          onDeleteMemory={requestMemoryDelete}
+          onMemoryInputChange={setMemoryInput}
+          onRefresh={() => void memoryQuery.refetch()}
+        />
+      </div>
+
+      <SpriteTagsDialog
+        draft={bulkSpriteTagsDraft}
+        onChange={setBulkSpriteTagsDraft}
+        onClose={() => setBulkSpriteTagsOpen(false)}
+        onConfirm={confirmBulkSpriteTags}
+        open={bulkSpriteTagsOpen}
+      />
+
+      <AlertDialog
+        body={t("character.delete.confirmBody", { name: pendingDelete ?? "" })}
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={t("common.delete")}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => pendingDelete && deleteMutation.mutate(pendingDelete)}
+        open={Boolean(pendingDelete)}
+        title={t("character.delete.confirmTitle")}
+      />
+      <AlertDialog
+        body={pendingResourceDeleteCopy?.body ?? ""}
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={pendingResourceDeleteCopy?.confirmLabel ?? t("common.delete")}
+        onCancel={() => setPendingResourceDelete(null)}
+        onConfirm={confirmPendingResourceDelete}
+        open={Boolean(pendingResourceDelete)}
+        title={pendingResourceDeleteCopy?.title ?? t("common.delete")}
+      />
+    </div>
+  );
+}

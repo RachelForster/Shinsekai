@@ -1,22 +1,43 @@
 @echo off
 chcp 65001 > nul
+cd /d "%~dp0"
 echo ========================================
 echo   Installing...
 echo ========================================
 echo.
 
-REM Check for embedded python, fall back to system python
+set "CONDA_ENV_NAME=shinsekai"
+if not "%SHINSEKAI_CONDA_ENV%"=="" set "CONDA_ENV_NAME=%SHINSEKAI_CONDA_ENV%"
+
+REM Check for embedded python, then the project conda env, then system python
+set "PYTHON_CMD="
 if exist "runtime\python.exe" (
-    set "PYTHON_EXE=runtime\python.exe"
-) else (
-    echo Embedded Python not found, falling back to system python...
-    where python > nul 2>&1
-    if %errorlevel% neq 0 (
-        echo Error: python not found in PATH either
-        pause
-        exit /b 1
+    set "PYTHON_CMD=runtime\python.exe"
+)
+if "%PYTHON_CMD%"=="" if "%CONDA_DEFAULT_ENV%"=="%CONDA_ENV_NAME%" if exist "%CONDA_PREFIX%\python.exe" (
+    echo Embedded Python not found, using active conda env %CONDA_ENV_NAME%...
+    set PYTHON_CMD="%CONDA_PREFIX%\python.exe"
+)
+if "%PYTHON_CMD%"=="" (
+    set "CONDA_CMD="
+    if not "%CONDA_EXE%"=="" if exist "%CONDA_EXE%" set "CONDA_CMD=%CONDA_EXE%"
+    if "%CONDA_CMD%"=="" (
+        where conda > nul 2>&1
+        if not errorlevel 1 set "CONDA_CMD=conda"
     )
-    set "PYTHON_EXE=python"
+    if not "%CONDA_CMD%"=="" (
+        echo Embedded Python not found, using conda env %CONDA_ENV_NAME%...
+        set PYTHON_CMD="%CONDA_CMD%" run -n %CONDA_ENV_NAME% python
+    ) else (
+        echo Embedded Python not found, falling back to system python...
+        where python > nul 2>&1
+        if errorlevel 1 (
+            echo Error: neither conda env %CONDA_ENV_NAME% nor python was found
+            pause
+            exit /b 1
+        )
+        set "PYTHON_CMD=python"
+    )
 )
 
 REM Check if requirements.txt exists
@@ -30,7 +51,7 @@ if not exist "requirements.txt" (
 echo Installing dependencies...
 echo.
 
-%PYTHON_EXE% -m pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple  --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple  --extra-index-url https://pypi.org/simple
+%PYTHON_CMD% -m pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple  --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple  --extra-index-url https://pypi.org/simple
 
 REM Check if installation succeeded
 if %errorlevel% neq 0 (
@@ -65,5 +86,5 @@ echo ========================================
 echo   Installation complete!
 echo ========================================
 echo.
-echo You can now run start.bat to launch the application
+echo You can now run start.bat to launch the React settings center
 pause

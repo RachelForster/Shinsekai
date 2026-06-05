@@ -4,187 +4,348 @@ on:
   schedule:
     - cron: "0 9 1,15 * *"
   workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   tag:
     runs-on: ubuntu-latest
     outputs:
-      TAG: ${{ steps.gen.outputs.TAG }}
+      tag: ${{ steps.gen.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate tag
+      - name: Resolve release tag
         id: gen
+        shell: bash
         run: |
-          VER=$(head -1 VERSION | sed 's/-dev//' | sed 's/^v//')
-          TAG="v${VER}"
-          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            VER="$(head -1 VERSION | sed 's/-dev//' | sed 's/^v//')"
+            TAG="v${VER}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-  test:
+  release:
     needs: tag
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Create or update release (tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
-          python-version: "3.10"
+          tag_name: ${{ needs.tag.outputs.tag }}
+          name: ${{ needs.tag.outputs.tag }}
+          generate_release_notes: true
+          prerelease: false
 
-      - name: Install system dependencies
+      - name: Create or update release (scheduled/manual)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.tag }}
+          name: ${{ needs.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          prerelease: false
+
+  package:
+    needs: [tag, release]
+    name: Package ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            os: ubuntu-latest
+            bundles: deb,appimage
+          - platform: linux-arm64
+            os: ubuntu-24.04-arm
+            bundles: deb,appimage
+          - platform: windows-x64
+            os: windows-latest
+            bundles: msi,nsis
+          - platform: windows-arm64
+            os: windows-11-arm
+            bundles: msi,nsis
+          - platform: macos-arm64
+            os: macos-14
+            bundles: dmg,app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri -> target
+
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
-            libegl1 libxkbcommon0 libxcb-cursor0 libxcb-icccm4 \
-            libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
-            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
-            libglib2.0-0 libportaudio2 portaudio19-dev
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev patchelf
+          if apt-cache show libfuse2t64 >/dev/null 2>&1; then
+            sudo apt-get install -y -qq libfuse2t64
+          else
+            sudo apt-get install -y -qq libfuse2
+          fi
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip -q
-          pip install -r requirements.txt -q
-          pip install pytest pytest-qt pytest-mock pytest-env -q
+      - name: Install Windows installer dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install wixtoolset nsis --no-progress -y
 
-      - name: Run tests
-        env:
-          QT_QPA_PLATFORM: offscreen
-          PYTHONIOENCODING: utf-8
-        run: python -m pytest -v --tb=short --strict-markers -p no:warnings
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
 
-  release:
-    needs: [tag, test]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.tag.outputs.TAG }}
-          name: ${{ needs.tag.outputs.TAG }}
-          generate_release_notes: true
-          prerelease: true
-
-  bundle:
-    needs: [tag, test]
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows-x64
-            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-windows-x64.zip
-            embed_url: https://www.python.org/ftp/python/3.10.8/python-3.10.8-embed-amd64.zip
-            embed_archive: python-embed.zip
-            pth_file: python310._pth
-          - os: macos-latest
-            platform: macos-arm64
-            artifact: Shinsekai-${{ needs.tag.outputs.TAG }}-macos-arm64.zip
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python 3.10 (Windows download embeddable)
-        if: matrix.platform == 'windows-x64'
+      - name: Verify release version consistency
         shell: bash
         run: |
-          curl -fL -o python-embed.zip "https://www.python.org/ftp/python/3.10.8/python-3.10.8-embed-amd64.zip"
-
-      - name: Setup Python 3.10 (macOS via python-build-standalone)
-        if: matrix.platform != 'windows-x64'
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          RELEASES_URL="https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/20221002"
-          echo "Fetching release metadata: $RELEASES_URL"
-          RESP=$(curl -sS --connect-timeout 15 --max-time 30 \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "$RELEASES_URL")
-          if [ -z "$RESP" ]; then
-            echo "ERROR: empty response from GitHub API"
+          repo_version="$(head -1 VERSION | sed 's/-dev//' | sed 's/^v//')"
+          tauri_version="$(node -p "require('./frontend/package.json').version")"
+          if [[ "${repo_version}" != "${tauri_version}" ]]; then
+            echo "VERSION (${repo_version}) must match frontend/package.json (${tauri_version}) for Tauri updater releases." >&2
             exit 1
           fi
-          ASSET_URL=$(echo "$RESP" | python3 -c "
-          import sys, json
-          rel = json.load(sys.stdin)
-          if not isinstance(rel, dict):
-              err = rel.get('message', 'unknown error')
-              raise SystemExit(f'GitHub API error: {err}')
-          for a in rel.get('assets', []):
-              n = a.get('name', '')
-              if 'aarch64-apple-darwin' in n and n.endswith('.tar.gz'):
-                  print(a['browser_download_url'])
-                  raise SystemExit(0)
-          raise SystemExit('no matching asset found')
-          ")
-          echo "Downloading: $ASSET_URL"
-          curl -fL --connect-timeout 15 --max-time 600 -o python-standalone.tar.gz "$ASSET_URL"
 
-      - name: Extract Python to runtime/
+      - name: Verify updater signing key
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          rm -rf runtime
-          if [[ "${{ matrix.platform }}" == "windows-x64" ]]; then
-            mkdir -p runtime
-            unzip -q python-embed.zip -d runtime/
-          else
-            mkdir -p runtime
-            tar -xzf python-standalone.tar.gz -C runtime/ --strip-components=1
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY secret is required for release builds with updater artifacts." >&2
+            exit 1
           fi
 
-      - name: Setup pip and modify _pth (Windows)
-        if: matrix.platform == 'windows-x64'
+      - name: Restore embedded Python runtime cache
+        id: embedded-python-runtime-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/python-build-standalone
+            runtime
+          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs') }}
+
+      - name: Prepare embedded Python runtime
+        working-directory: frontend
+        shell: bash
+        env:
+          SHINSEKAI_PBS_DOWNLOAD_BASES: ${{ vars.SHINSEKAI_PBS_DOWNLOAD_BASES }}
+          SHINSEKAI_PIP_INDEX_URLS: ${{ vars.SHINSEKAI_PIP_INDEX_URLS }}
+        run: pnpm prepare:runtime --target ${{ matrix.platform }} --verify --skip-wheels
+
+      - name: Save embedded Python runtime cache
+        if: steps.embedded-python-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/python-build-standalone
+            runtime
+          key: embedded-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs') }}
+
+      - name: Clear stale Tauri bundle outputs
+        working-directory: frontend
         shell: bash
         run: |
-          curl -fL -o runtime/get-pip.py https://bootstrap.pypa.io/get-pip.py
-          ./runtime/python.exe runtime/get-pip.py --no-warn-script-location
-          sed -i 's/^#import site/import site/' runtime/python310._pth
+          rm -rf src-tauri/target/release/bundle
+          rm -rf src-tauri/target/release/runtime src-tauri/target/release/wheels
+          rm -f src-tauri/target/release/requirements-runtime-*.txt
 
-      - name: Setup pip (macOS)
-        if: matrix.platform != 'windows-x64'
+      - name: Build Tauri bundle
+        working-directory: frontend
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --ci --bundles ${{ matrix.bundles }}
+
+      - name: Collect release assets
         shell: bash
         run: |
-          ./runtime/bin/python3 -m pip install --upgrade pip -q
+          rm -rf release-assets
+          mkdir -p release-assets
+          mkdir -p latest-fragments
+          version="$(node -p "require('./frontend/package.json').version")"
+          base="Shinsekai-${version}_${{ matrix.platform }}"
+          release_url_base="https://github.com/${{ github.repository }}/releases/download/${{ needs.tag.outputs.tag }}"
+          case "${{ matrix.platform }}" in
+            linux-x64) updater_os="linux"; updater_arch="x86_64" ;;
+            linux-arm64) updater_os="linux"; updater_arch="aarch64" ;;
+            windows-x64) updater_os="windows"; updater_arch="x86_64" ;;
+            windows-arm64) updater_os="windows"; updater_arch="aarch64" ;;
+            macos-arm64) updater_os="darwin"; updater_arch="aarch64" ;;
+            *) updater_os=""; updater_arch="" ;;
+          esac
+          write_latest_fragment() {
+            local target_key="$1"
+            local asset_name="$2"
+            local signature_file="release-assets/${asset_name}.sig"
+            if [[ -z "${target_key}" || ! -f "${signature_file}" ]]; then
+              return
+            fi
+            local url="${release_url_base}/${asset_name}"
+            local output="latest-fragments/${target_key}.json"
+            node -e '
+              const fs = require("fs");
+              const [target, url, signaturePath, output] = process.argv.slice(1);
+              const signature = fs.readFileSync(signaturePath, "utf8").trim();
+              fs.writeFileSync(output, JSON.stringify({ [target]: { url, signature } }, null, 2));
+            ' "${target_key}" "${url}" "${signature_file}" "${output}"
+            echo "latest fragment ${target_key} -> ${url}"
+          }
+          collect_asset() {
+            local asset="$1"
+            local target="$2"
+            local updater_suffix="$3"
+            local generic_fallback="$4"
+            cp "$asset" "release-assets/$target"
+            echo "$asset -> release-assets/$target"
+            if [[ -f "${asset}.sig" ]]; then
+              cp "${asset}.sig" "release-assets/${target}.sig"
+              echo "${asset}.sig -> release-assets/${target}.sig"
+              if [[ -n "${updater_os}" && -n "${updater_arch}" && -n "${updater_suffix}" ]]; then
+                write_latest_fragment "${updater_os}-${updater_arch}-${updater_suffix}" "${target}"
+              fi
+              if [[ "${generic_fallback}" == "true" && -n "${updater_os}" && -n "${updater_arch}" ]]; then
+                write_latest_fragment "${updater_os}-${updater_arch}" "${target}"
+              fi
+            fi
+            count=$((count + 1))
+          }
+          collect_required() {
+            local pattern="$1"
+            local target="$2"
+            local updater_suffix="$3"
+            local generic_fallback="$4"
+            local matches=($pattern)
+            if [[ "${#matches[@]}" -eq 0 ]]; then
+              echo "Required release asset is missing: ${pattern}" >&2
+              exit 1
+            fi
+            if [[ "${#matches[@]}" -gt 1 ]]; then
+              echo "Required release asset is ambiguous: ${pattern}" >&2
+              printf '  %s\n' "${matches[@]}" >&2
+              exit 1
+            fi
+            collect_asset "${matches[0]}" "${target}" "${updater_suffix}" "${generic_fallback}"
+          }
+          shopt -s nullglob
+          count=0
+          case "${{ matrix.platform }}" in
+            linux-*)
+              collect_required "frontend/src-tauri/target/release/bundle/appimage/*.AppImage" "${base}.AppImage" "appimage" true
+              collect_required "frontend/src-tauri/target/release/bundle/deb/*.deb" "${base}.deb" "deb" false
+              ;;
+            windows-*)
+              collect_required "frontend/src-tauri/target/release/bundle/msi/*.msi" "${base}.msi" "msi" false
+              collect_required "frontend/src-tauri/target/release/bundle/nsis/*.exe" "${base}-setup.exe" "nsis" true
+              ;;
+            macos-*)
+              collect_required "frontend/src-tauri/target/release/bundle/dmg/*.dmg" "${base}.dmg" "" false
+              collect_required "frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz" "${base}.app.tar.gz" "app" true
+              ;;
+            *)
+              echo "Unsupported release platform: ${{ matrix.platform }}" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$count" -eq 0 ]]; then
+            echo "No release assets were collected." >&2
+            exit 1
+          fi
+          ls -lh release-assets
 
-      - name: Make scripts executable (macOS)
-        if: matrix.platform != 'windows-x64'
-        shell: bash
-        run: chmod +x scripts/install.sh scripts/start.sh scripts/install.command scripts/start.command
-
-      - name: Tidy macOS bundle layout
-        if: matrix.platform != 'windows-x64'
-        shell: bash
-        run: |
-          cp scripts/install.command install.command
-          cp scripts/start.command start.command
-          rm -f install.bat start.bat
-
-      - name: Tidy Windows bundle layout
-        if: matrix.platform == 'windows-x64'
-        shell: bash
-        run: rm -f install.command start.command
-
-      - name: Create bundle archive (Windows)
-        if: matrix.platform == 'windows-x64'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path * -DestinationPath "${{ matrix.artifact }}" -Force
-
-      - name: Create bundle archive (macOS)
-        if: matrix.platform != 'windows-x64'
-        shell: bash
-        run: |
-          zip -rq "${{ matrix.artifact }}" . \
-            -x '.git/*' '*.pyc' '__pycache__/*' \
-            'data/tts_bundles/*' '*.egg-info/*' '*.dist-info/*'
-
-      - name: Upload bundle to release
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.tag.outputs.TAG }}
-          files: ${{ matrix.artifact }}
+          tag_name: ${{ needs.tag.outputs.tag }}
+          files: release-assets/*
+
+      - name: Upload latest manifest fragments
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-fragment-${{ matrix.platform }}
+          if-no-files-found: error
+          path: latest-fragments/*.json
+
+  latest:
+    needs: [tag, release, package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download latest manifest fragments
+        uses: actions/download-artifact@v4
+        with:
+          pattern: latest-fragment-*
+          path: latest-fragments
+          merge-multiple: true
+
+      - name: Generate latest.json
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          version="$(node -p "require('./frontend/package.json').version")"
+          export RELEASE_VERSION="$version"
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const dir = "latest-fragments";
+            const platforms = {};
+            for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".json")).sort()) {
+              Object.assign(platforms, JSON.parse(fs.readFileSync(path.join(dir, file), "utf8")));
+            }
+            if (Object.keys(platforms).length === 0) {
+              throw new Error("No updater platforms were generated.");
+            }
+            const manifest = {
+              version: process.env.RELEASE_VERSION,
+              notes: `Shinsekai ${process.env.RELEASE_TAG}`,
+              pub_date: new Date().toISOString(),
+              platforms,
+            };
+            fs.writeFileSync("latest.json", `${JSON.stringify(manifest, null, 2)}\n`);
+          '
+
+      - name: Upload latest.json
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.tag }}
+          files: latest.json

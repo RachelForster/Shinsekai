@@ -30,14 +30,15 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_user_input_processor` | `(str) -> str | None` filter before `UserInputMessage`     |
 | `register_settings_ui`          | Extra Settings sidebar page                                |
 | `register_tools_tab`            | Extra tab under **Settings → Tools**                       |
+| `register_frontend_config_page` | React-renderable plugin config page (schema + load/save callbacks) |
+| `register_frontend_page`        | Plugin-owned static frontend page embedded by iframe       |
 | `register_chat_ui_widget`       | Chat window widget + placement hint                        |
 | `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
 | `register_workflow`             | Workflow with optional output contract/schema              |
 | `register_output_contract_patch` | Patch an LLM output contract (fields, requirements, …)     |
-| `register_dag_node`             | DAG node candidates for plugin tooling                     |
 
 
-**Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
+**Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` / `FrontendPageContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
 
 ---
 
@@ -242,6 +243,28 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 | `r_translate` | Translation field (when LLM translation enabled) |
 | `r_effect` | Emotion effect field |
 | `r_cot` | Chain-of-thought (when enabled) |
+
+### Logging
+
+Plugins should use the SDK logging facade instead of configuring Python logging
+handlers directly:
+
+```python
+from sdk.logging import get_logger, log_context
+
+logger = get_logger(__name__, plugin_id="example.my-plugin")
+
+logger.info("Plugin initialized", extra={"event": "plugin.initialized"})
+
+with log_context(task_id="task-123"):
+    logger.info("Background work started", extra={"event": "plugin.task.started"})
+```
+
+The host owns log levels, files, rotation, formatting, and redaction. Plugins
+must not call `logging.basicConfig()`, add handlers, or write API keys, user
+messages, prompts, tool arguments, or model responses to logs. Prefer stable
+`event` names and summary fields such as character counts, item counts, and
+durations.
 
 ### Adapter classes: schemas and “extra” kwargs
 
@@ -581,6 +604,135 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
         )
     )
 ```
+
+---
+
+### `register_frontend_config_page(contribution)`
+
+Use this when the React settings frontend should render your plugin page. Keep
+the existing Qt `register_settings_ui` / `register_tools_tab` page if you still
+support the PySide settings window.
+
+```python
+from dataclasses import asdict
+from pathlib import Path
+from sdk.types import FrontendConfigContribution
+
+
+def initialize(self, register, plugin_root: Path, host) -> None:
+    def load_values():
+        return asdict(load_config(plugin_root / "config.json"))
+
+    def save_values(values):
+        save_config(plugin_root / "config.json", MyConfig(enabled=bool(values.get("enabled"))))
+
+    register.register_frontend_config_page(
+        FrontendConfigContribution(
+            page_id="my_plugin.settings",
+            title="My plugin",
+            kind="settings",
+            schema=[
+                {
+                    "id": "main",
+                    "title": "Main",
+                    "fields": [
+                        {
+                            "key": "enabled",
+                            "label": "Enabled",
+                            "type": "boolean",
+                            "defaultValue": False,
+                        }
+                    ],
+                }
+            ],
+            i18n={
+                "zh_CN": {
+                    "title": "我的插件",
+                    "groups": {
+                        "main": {
+                            "title": "主要",
+                            "fields": {
+                                "enabled": {"label": "启用"},
+                            },
+                        }
+                    },
+                },
+                "ja": {
+                    "title": "マイプラグイン",
+                    "groups": {
+                        "main": {
+                            "title": "メイン",
+                            "fields": {
+                                "enabled": {"label": "有効"},
+                            },
+                        }
+                    },
+                },
+            },
+            load_values=load_values,
+            save_values=save_values,
+            order=120.0,
+        )
+    )
+```
+
+The schema must be JSON-safe. Supported field types match the React
+`PluginConfigFieldType`: `boolean`, `integer`, `json`, `number`, `password`,
+`select`, `text`, `textarea`, and `url`.
+
+The optional `i18n` map is keyed by frontend language (`zh_CN`, `en`, `ja`).
+It can override page `title`, `description`, `restartHint`, group
+`title` / `description`, and field `label` / `description` / `placeholder`.
+For select fields, use `options` keyed by option `value`, for example
+`{"options": {"chromium": "Chromium（Playwright）"}}`.
+
+---
+
+### `register_frontend_page(contribution)`
+
+Use this when a plugin needs its own richer frontend than the schema renderer
+can provide. Ship a built static page in the plugin directory, usually
+`plugins/<package>/frontend/dist/index.html`, and register that file as the
+entry. The host serves files from the entry directory and embeds the page in an
+iframe.
+
+If you also register a `FrontendConfigContribution` with the same `page_id` and
+`kind`, the page payload includes that schema and current values. The iframe can
+read `/api/plugins/<plugin_id>/ui` and save to
+`/api/plugins/<plugin_id>/ui/<page_id>/config`.
+
+```python
+from pathlib import Path
+from sdk.types import FrontendConfigContribution, FrontendPageContribution
+
+
+def initialize(self, register, plugin_root: Path, host) -> None:
+    page_id = "my_plugin.tools"
+
+    register.register_frontend_config_page(
+        FrontendConfigContribution(
+            page_id=page_id,
+            title="My tool",
+            kind="tools",
+            schema=[...],
+            load_values=load_values,
+            save_values=save_values,
+        )
+    )
+    register.register_frontend_page(
+        FrontendPageContribution(
+            page_id=page_id,
+            title="My tool",
+            kind="tools",
+            entry=(Path(__file__).parent / "frontend" / "dist" / "index.html").as_posix(),
+            order=80.0,
+        )
+    )
+```
+
+This keeps downloaded plugins self-contained: after install and app restart, the
+host discovers the contribution from the plugin's Python entry point and serves
+the bundled frontend files without rebuilding the main React app.
 
 ---
 

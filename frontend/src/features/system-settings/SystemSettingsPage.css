@@ -1,0 +1,125 @@
+/* System settings inherit the SVG-style settings surface while keeping current theme colors. */
+
+.system-page > .settings-grid {
+  gap: var(--space-4);
+}
+
+.system-page .schema-section .form-grid--two {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+.desktop-runtime-settings {
+  gap: var(--space-3);
+}
+
+.desktop-runtime-settings > .section__header {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.desktop-runtime-settings__message,
+.desktop-runtime-settings__progress,
+.desktop-runtime-settings__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.desktop-runtime-settings__progress {
+  color: var(--color-info);
+}
+
+.desktop-runtime-settings__list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.desktop-runtime-settings__primary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.desktop-runtime-settings__candidate {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.desktop-runtime-settings__candidate-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.desktop-runtime-settings__candidate h3,
+.desktop-runtime-settings__candidate p {
+  margin: 0;
+}
+
+.desktop-runtime-settings__candidate h3 {
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.desktop-runtime-settings__candidate p,
+.desktop-runtime-settings__candidate code {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.desktop-runtime-settings__candidate code {
+  overflow-wrap: anywhere;
+}
+
+.desktop-runtime-settings__candidate-main > span {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.desktop-runtime-settings__candidate[data-status="ready"] .desktop-runtime-settings__candidate-main > span {
+  border-color: var(--color-success-border);
+  color: var(--color-success);
+}
+
+@media (max-width: 860px) {
+  .system-page .schema-section .form-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desktop-runtime-settings__candidate-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .desktop-runtime-settings > .section__header {
+    flex-direction: column;
+  }
+
+  .desktop-runtime-settings__primary-actions {
+    width: 100%;
+    justify-content: flex-start;
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .desktop-runtime-settings__primary-actions .button {
+    flex: 1 1 160px;
+  }
+
+  .desktop-runtime-settings__primary-actions .button__label {
+    max-width: none;
+  }
+}

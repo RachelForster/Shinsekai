@@ -1,0 +1,31 @@
+/* Music cover page: use the same dense workbench layout as the SVG settings refs. */
+
+.music-cover-layout {
+  display: grid;
+  min-width: 0;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: var(--space-4);
+}
+
+.music-cover-page .settings-grid {
+  gap: var(--space-4);
+}
+
+.music-cover-page .section textarea[readonly] {
+  min-height: 96px;
+}
+
+.music-cover-page .task-progress {
+  margin: 0;
+}
+
+.music-cover-player {
+  margin-top: var(--space-1);
+}
+
+@media (max-width: 980px) {
+  .music-cover-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

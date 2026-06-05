@@ -43,6 +43,9 @@
 runtime/
 !core/runtime
 !core/runtime/**
+!/frontend/src-tauri/src/runtime
+!/frontend/src-tauri/src/runtime/**
+/wheels
 # 项目构建、临时导出文件 / Build & temp export files
 /out
 /output
@@ -54,6 +57,18 @@ runtime/
 /temp_export_*
 /packaging
 /build_exe
+# 前端构建与测试产物 / Frontend build and test output
+node_modules/
+/frontend/node_modules
+/frontend/.vite
+/frontend/dist
+/frontend/coverage
+/frontend/playwright-report
+/frontend/test-results
+/frontend/src-tauri/gen
+/frontend/src-tauri/resources/*
+!/frontend/src-tauri/resources/.gitkeep
+/frontend/src-tauri/target
 # 打包编译产物 / Packaging artifacts
 **/*.spec
 **/*.exe
@@ -66,6 +81,7 @@ runtime/
 **/*.pyc
 # 项目运行缓存 / Runtime cache
 /cache
+/.cache
 /onnx
 # 测试缓存 / Test cache
 /.pytest_cache

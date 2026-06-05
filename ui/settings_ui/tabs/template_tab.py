@@ -38,7 +38,7 @@ from ui.settings_ui.services.chat_template_handlers import (
 )
 from i18n import tr as tr_i18n
 from ui.settings_ui.context import SettingsUIContext
-from ui.settings_ui.feedback import feedback_result, message_fail, toast_success
+from ui.settings_ui.feedback import feedback_result, message_fail
 from ui.settings_ui.services.template_tab_session import (
     load_template_session,
     save_template_session,
@@ -697,7 +697,7 @@ class TemplateSettingsTab(QWidget):
             self.room_id.text().strip(),
         )
         if msg:
-            toast_success(self, "启动聊天", msg)
+            feedback_result(self, "启动聊天", msg)
 
     def _on_quick_restart(self) -> None:
         """清空聊天记录并启动新的聊天。"""
@@ -744,7 +744,7 @@ class TemplateSettingsTab(QWidget):
             self.room_id.text().strip(),
         )
         if msg:
-            toast_success(self, "启动聊天", msg)
+            feedback_result(self, "启动聊天", msg)
 
     def _refresh_template_combo(self, names: list[str] | None = None) -> None:
         self.template_combo.clear()

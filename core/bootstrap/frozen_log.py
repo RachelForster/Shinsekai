@@ -26,7 +26,7 @@ def _should_redirect_stdio_to_file() -> bool:
 def init_frozen_stdio(log_name: str) -> None:
     """
     在 sys.frozen 为 True 且当前 stdout 非 TTY 时，把 stdout/stderr 指到
-    <发行根>/logs/<log_name>.log，并若根 logger 尚无处理器则 basicConfig（与现有 logging 用法兼容）。
+    <发行根>/logs/<log_name>.log，并为尚未迁移到统一 logging 的旧入口保留 basicConfig。
     """
     if (
         not getattr(sys, "frozen", False)

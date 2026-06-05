@@ -26,7 +26,9 @@ import time
 from contextlib import contextmanager
 from typing import Dict, Optional, Tuple
 
-_log = logging.getLogger("stopwatch")
+from sdk.logging.api import get_logger
+
+_log = get_logger(__name__)
 
 
 class TimingTracker:
