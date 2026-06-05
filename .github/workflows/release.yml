@@ -50,7 +50,8 @@ jobs:
           tag_name: ${{ needs.tag.outputs.tag }}
           name: ${{ needs.tag.outputs.tag }}
           generate_release_notes: true
-          prerelease: false
+          prerelease: true
+          make_latest: false
 
       - name: Create or update release (scheduled/manual)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -60,7 +61,8 @@ jobs:
           name: ${{ needs.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
-          prerelease: false
+          prerelease: true
+          make_latest: false
 
   package:
     needs: [tag, release]
@@ -291,6 +293,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
+          prerelease: true
+          make_latest: false
           files: release-assets/*
 
       - name: Upload latest manifest fragments
@@ -348,4 +352,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
+          prerelease: true
+          make_latest: false
           files: latest.json
