@@ -2,12 +2,16 @@ import os
 from pathlib import Path
 import sys
 
-# 打包后须在任何会触发 ConfigManager 的 import 之前设发行根 cwd（同 webui_qt）
+# Frozen standalone keeps the old release-root data behavior. Desktop bridge
+# launches can provide EASYAI_PROJECT_ROOT to keep chat data under app data.
 if getattr(sys, "frozen", False):
     try:
         _rel = Path(sys.executable).resolve().parent.parent
-        os.environ["EASYAI_PROJECT_ROOT"] = str(_rel)
-        os.chdir(_rel)
+        _data_root = Path(os.environ.get("EASYAI_PROJECT_ROOT") or _rel).expanduser().resolve(strict=False)
+        _data_root.mkdir(parents=True, exist_ok=True)
+        os.environ["EASYAI_PROJECT_ROOT"] = str(_data_root)
+        os.environ.setdefault("SHINSEKAI_APP_ROOT", str(_rel))
+        os.chdir(_data_root)
     except OSError:
         pass
 
@@ -35,6 +39,7 @@ from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
 from core.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
+from core.paths import resource_path
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from config.config_manager import ConfigManager
 from t2i.t2i_manager import T2IAdapterFactory, T2IManager
@@ -239,7 +244,7 @@ def main():
         pass
 
     if args.headless and not (args.workflow or "").strip():
-        headless_workflow = "assets/system/workflow/headless.yaml"
+        headless_workflow = str(resource_path("assets/system/workflow/headless.yaml"))
     else:
         headless_workflow = None
 
@@ -331,7 +336,7 @@ def main():
     init_sprite_path = args.init_sprite_path
     print(init_sprite_path)
     if not init_sprite_path:
-        init_sprite_path = "./assets/system/picture/shinsekai.png"
+        init_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
 
     if system_config_to_asr_lang(config.config.system_config) == "zh":
         _welcome_html = tr_in_bundle("main.welcome_html", "zh_CN")
@@ -402,7 +407,7 @@ def main():
 
     # 确保在程序退出时停止所有线程
     try:
-        appIcon = QIcon("./assets/system/picture/icon.png")
+        appIcon = QIcon(str(resource_path("assets/system/picture/Icon.png")))
         app.setWindowIcon(appIcon)
     except Exception as e:
         print(tr_i18n("main.print_icon_fail", e=str(e)))

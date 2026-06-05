@@ -122,7 +122,9 @@ fn desktop_file_browser_roots(project_root: &Path, app_root: &Path) -> Vec<Deskt
     let mut roots = Vec::new();
     let mut seen = Vec::new();
     push_desktop_file_browser_root(&mut roots, &mut seen, "Shinsekai", app_root.to_path_buf());
-    push_desktop_file_browser_root(&mut roots, &mut seen, "Data", app_root.join("data"));
+    let data_root = project_root.join("data");
+    let _ = fs::create_dir_all(&data_root);
+    push_desktop_file_browser_root(&mut roots, &mut seen, "Data", data_root);
     if let Some(home) = desktop_home_dir() {
         push_desktop_file_browser_root(&mut roots, &mut seen, "Home", home);
     }
@@ -257,6 +259,10 @@ mod tests {
         assert_eq!(snapshot.entries[0].kind, "file");
         assert_eq!(snapshot.parent, project_root.display().to_string());
         assert!(snapshot.roots.iter().any(|root| root.label == "Shinsekai"));
+        assert!(snapshot
+            .roots
+            .iter()
+            .any(|root| root.label == "Data" && root.path == target.display().to_string()));
 
         let snapshot = browse_desktop_files(&project_root, &app_root, Some("data"), true).unwrap();
         assert!(snapshot

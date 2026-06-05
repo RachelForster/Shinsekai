@@ -32,7 +32,7 @@ def test_windows_drive_root_labels_drop_verbatim_prefixes():
 def test_file_browser_uses_app_root_for_shinsekai_location(tmp_path, monkeypatch):
     project_root = tmp_path / "project"
     app_root = tmp_path / "Shinsekai"
-    data_root = app_root / "data"
+    data_root = project_root / "data"
     app_root.mkdir()
     (app_root / "Shinsekai.exe").write_text("", encoding="utf-8")
 

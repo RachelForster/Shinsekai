@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from core.paths import resource_path
 from sdk.logging.environment import runtime_environment
 
 MAX_LOG_BYTES = 4 * 1024 * 1024
@@ -63,7 +64,7 @@ def _diagnostic_bundle(project_root: Path) -> dict[str, Any]:
         "platform": runtime.get("os", "unknown"),
         "python": runtime.get("python_version", "unknown"),
         "runtime": runtime,
-        "version": _read_text(project_root / "VERSION"),
+        "version": _read_version(project_root),
     }
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
@@ -149,6 +150,14 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8").strip()
     except OSError:
         return "unknown"
+
+
+def _read_version(project_root: Path) -> str:
+    for path in (project_root / "VERSION", resource_path("VERSION")):
+        text = _read_text(path)
+        if text and text != "unknown":
+            return text
+    return "unknown"
 
 
 def _mtime(path: Path) -> float:

@@ -38,6 +38,8 @@ from PySide6.QtWidgets import (
 )
 import os
 
+from core.paths import resource_path
+
 
 # 交叉渐变立绘组件
 # 交叉渐变立绘组件
@@ -785,7 +787,7 @@ class ClickableLabel(QLabel):
         super().__init__(*args, **kwargs)
         try:
             # 播放短音效使用 pygame.mixer.Sound，而不是 pygame.mixer.music
-            self.click_sound = pygame.mixer.Sound('./assets/system/sound/switch.ogg')
+            self.click_sound = pygame.mixer.Sound(str(resource_path("assets/system/sound/switch.ogg")))
         except Exception as e:
             print(f"Error loading sound effect: {e}")
             self.click_sound = None
