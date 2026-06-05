@@ -268,6 +268,20 @@ class UIUpdateManager(QObject):
             traceback.print_exc()
             print(f"UIUpdateManager: 加载图片时出错: {e}")
 
+    def update_sprite_from_path(
+        self,
+        image_path: str,
+        *,
+        character_name: str = "",
+        scale: float = 1.0,
+    ) -> bool:
+        image = _load_image_rgba_array(image_path)
+        if image is None:
+            print(f"UIUpdateManager: 无法加载图片: {image_path}")
+            return False
+        self.post_sprite_update(image, character_name, scale)
+        return True
+
     def remove_character_sprite(self, character_name: str) -> None:
         self.post_sprite_update(np.empty((0,), dtype=np.uint8), character_name, 1.0)
 
