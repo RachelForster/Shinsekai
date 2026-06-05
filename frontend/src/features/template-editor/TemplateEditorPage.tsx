@@ -4,9 +4,8 @@ import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
-import { launchChat } from "../../entities/chat/repository";
+import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
-import { installMissingRuntimeDependency } from "../../entities/runtime/repository";
 import {
   generateTemplate,
   getTemplateSession,

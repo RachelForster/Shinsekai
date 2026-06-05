@@ -5,9 +5,8 @@ import { useNavigate } from "react-router-dom";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
-import { launchChat } from "../../entities/chat/repository";
+import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
-import { installMissingRuntimeDependency } from "../../entities/runtime/repository";
 import {
   getTemplateSession,
   listTemplates,
