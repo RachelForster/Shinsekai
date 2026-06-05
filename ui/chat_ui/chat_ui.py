@@ -39,6 +39,7 @@ project_root = current_script.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+from core.paths import resource_path
 from ui.chat_ui import styles
 from ui.chat_ui.components import CGWidget, ClickableLabel, TypingLabel, SpritePanel
 from ui.chat_ui.desktop_menu import DesktopMenuMixin
@@ -55,7 +56,7 @@ config_manager = ConfigManager()
 
 _logger = logging.getLogger(__name__)
 
-DIALOG_FRAME_PATH = Path('./assets/system/picture/dialog_frame.png').absolute().as_posix()
+DIALOG_FRAME_PATH = resource_path("assets/system/picture/dialog_frame.png").as_posix()
 class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     """桌面助手主窗口"""
     message_submitted = Signal(str)  # 定义信号用于发送消息

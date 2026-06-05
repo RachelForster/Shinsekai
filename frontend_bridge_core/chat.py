@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from core.paths import app_root as runtime_app_root
+from core.paths import project_root as runtime_project_root
+from core.paths import source_root as runtime_source_root
+
 from .state import BridgeState
 from .templates import (
     TEMP_SPLIT_META,
@@ -30,11 +34,54 @@ def _hidden_subprocess_kwargs() -> dict[str, int]:
 
 
 def _release_root() -> Path:
-    if os.environ.get("EASYAI_PROJECT_ROOT"):
-        return Path(os.environ["EASYAI_PROJECT_ROOT"])
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent.parent
-    return Path(__file__).resolve().parent.parent
+    return runtime_source_root()
+
+
+def _project_root() -> Path:
+    return runtime_project_root()
+
+
+def _source_root() -> Path:
+    return runtime_source_root()
+
+
+def _app_root(state: BridgeState) -> Path:
+    for raw in (
+        str(getattr(state, "app_root_dir", "") or "").strip(),
+        os.environ.get("SHINSEKAI_APP_ROOT", "").strip(),
+    ):
+        if not raw:
+            continue
+        path = Path(raw).expanduser().resolve(strict=False)
+        if path.exists() and path.is_dir():
+            return path
+    return runtime_app_root()
+
+
+def _unique_paths(paths: list[Path]) -> list[Path]:
+    result: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        resolved = path.resolve(strict=False)
+        key = os.path.normcase(str(resolved))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(resolved)
+    return result
+
+
+def _main_exe_candidates(state: BridgeState) -> list[Path]:
+    roots = _unique_paths([_app_root(state), _source_root()])
+    return _unique_paths(
+        [candidate for root in roots for candidate in (root / "main" / "main.exe", root / "main.exe")]
+    )
+
+
+def _main_py_path() -> Path:
+    return _source_root() / "main.py"
 
 
 def _launch_chat(
@@ -70,7 +117,8 @@ def _launch_chat(
         template_hash = _history_id_from_scenario(user_scenario, system_template)
         history_path = Path(history_file) if history_file else Path(state.history_dir) / f"{template_hash}.json"
         history_path.parent.mkdir(parents=True, exist_ok=True)
-        root = _release_root()
+        project_root = _project_root()
+        app_root = _app_root(state)
         tts_slug = str(state.config_manager.config.api_config.tts_provider or "gpt-sovits").strip() or "gpt-sovits"
         args = [
             "--template=_temp",
@@ -81,25 +129,30 @@ def _launch_chat(
             f"--room_id={room_id}",
             f"--tts={tts_slug}",
         ]
+        env = os.environ.copy()
+        env["EASYAI_PROJECT_ROOT"] = str(project_root)
+        env["SHINSEKAI_APP_ROOT"] = str(app_root)
 
         if getattr(sys, "frozen", False):
-            candidates = [root / "main" / "main.exe", root / "main.exe"]
+            candidates = _main_exe_candidates(state)
             exe = next((item for item in candidates if item.is_file()), None)
             if exe is None:
                 checked = " 与 ".join(str(item) for item in candidates)
                 return f"启动失败: 未找到 main.exe（已检查 {checked}）。"
             _main_chat_process = subprocess.Popen(
                 [str(exe)] + args,
-                cwd=str(root),
+                cwd=str(project_root),
+                env=env,
                 **_hidden_subprocess_kwargs(),
             )
         else:
-            main_py = root / "main.py"
+            main_py = _main_py_path()
             if not main_py.is_file():
                 return f"启动失败: 未找到 main.py（已检查 {main_py}）。"
             _main_chat_process = subprocess.Popen(
                 [sys.executable, str(main_py)] + args,
-                cwd=str(root),
+                cwd=str(project_root),
+                env=env,
                 **_hidden_subprocess_kwargs(),
             )
         return f"聊天进程已启动！PID: {_main_chat_process.pid}"

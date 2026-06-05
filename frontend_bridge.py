@@ -54,6 +54,7 @@ def _configure_runtime_context(
     app_root: str | None = None,
 ) -> tuple[Path, str, str]:
     repo_root = _repo_root()
+    os.environ["SHINSEKAI_SOURCE_ROOT"] = str(repo_root)
     resolved_frontend_dist = ""
     resolved_app_root = ""
     if frontend_dist:

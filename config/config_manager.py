@@ -52,11 +52,29 @@ class ConfigManager:
     @property
     def version(self) -> str:
         """读取项目根目录 VERSION 文件，缺失时返回占位字符串。"""
+        candidates = [self._VERSION_PATH]
         try:
-            text = self._VERSION_PATH.read_text(encoding="utf-8").strip()
-            return text if text else "unknown"
+            from core.paths import resource_path
+
+            candidates.append(resource_path("VERSION"))
         except Exception:
-            return "unknown"
+            pass
+        seen: set[Path] = set()
+        for candidate in candidates:
+            try:
+                path = candidate.resolve(strict=False)
+            except OSError:
+                path = candidate
+            if path in seen:
+                continue
+            seen.add(path)
+            try:
+                text = path.read_text(encoding="utf-8").strip()
+            except Exception:
+                continue
+            if text:
+                return text
+        return "unknown"
 
     @property
     def config(self) -> AppConfig:

@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from queue import Queue
+from pathlib import Path
 from typing import Any
 
+from core.paths import resource_path
 from sdk.graph import Dag
 
 DEFAULT_WORKFLOW_PATH = "assets/system/workflow/default.yaml"
@@ -62,6 +64,7 @@ def build_runtime_workflow(
     selected_workflow = (workflow_path or "").strip()
 
     selected_workflow = selected_workflow or DEFAULT_WORKFLOW_PATH
+    selected_workflow = _resolve_workflow_path(selected_workflow)
     dag.load_yaml(selected_workflow)
 
     dag.build()
@@ -71,6 +74,15 @@ def build_runtime_workflow(
         exports=_resolve_exports(dag),
         workflow_path=selected_workflow,
     )
+
+
+def _resolve_workflow_path(workflow_path: str) -> str:
+    if "\n" in workflow_path or "\r" in workflow_path:
+        return workflow_path
+    path = Path(workflow_path).expanduser()
+    if path.is_absolute() or path.is_file():
+        return str(path)
+    return str(resource_path(path))
 
 
 def get_chat_workflow_handles(workflow: RuntimeWorkflow) -> ChatWorkflowHandles:

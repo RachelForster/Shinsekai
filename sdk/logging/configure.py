@@ -58,11 +58,29 @@ def _safe_name(value: str) -> str:
 
 
 def _read_version(project_root: Path) -> str:
+    candidates = [project_root / "VERSION"]
     try:
-        value = (project_root / "VERSION").read_text(encoding="utf-8").strip()
-        return value or "unknown"
-    except OSError:
-        return "unknown"
+        from core.paths import resource_path
+
+        candidates.append(resource_path("VERSION"))
+    except Exception:
+        pass
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            path = candidate.resolve(strict=False)
+        except OSError:
+            path = candidate
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if value:
+            return value
+    return "unknown"
 
 
 def _parse_level(value: str | int | None) -> int:

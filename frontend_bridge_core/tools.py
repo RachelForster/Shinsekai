@@ -170,8 +170,8 @@ def _state_app_root(state: BridgeState, project_root: Path) -> Path:
     return project_root
 
 
-def _app_data_root(app_root: Path) -> Path:
-    data_root = _resolve_path(app_root / "data")
+def _project_data_root(project_root: Path) -> Path:
+    data_root = _resolve_path(project_root / "data")
     try:
         data_root.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -195,7 +195,7 @@ def _filesystem_roots(project_root: Path, app_root: Path) -> list[dict[str, str]
         roots.append({"label": _file_browser_root_label(label, value), "path": value})
 
     add("Shinsekai", app_root)
-    add("Data", _app_data_root(app_root))
+    add("Data", _project_data_root(project_root))
     add("Home", Path.home())
 
     for root in (app_root, project_root):

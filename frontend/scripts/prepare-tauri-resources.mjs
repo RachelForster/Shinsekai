@@ -11,6 +11,7 @@ const runtimeSource = runtimeEnv ? path.resolve(runtimeEnv) : path.join(repoRoot
 
 const files = [
   "VERSION",
+  "main.py",
   "frontend_bridge.py",
   "requirements.txt",
   "requirements-runtime-core.txt",
