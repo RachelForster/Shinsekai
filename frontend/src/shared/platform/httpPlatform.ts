@@ -37,6 +37,7 @@ import type {
   PluginManifest,
   PluginUninstallResult,
   PluginUIDetail,
+  RuntimeDependencyInstallResult,
   ShinsekaiPlatform,
   SpriteGenerationResult,
   SpritePromptResult,
@@ -588,6 +589,19 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         });
       },
       list: () => requestJson<LogFileList>(apiBase, "/api/logs"),
+    },
+    runtime: {
+      async installMissingDependency(input, options) {
+        const task = await requestJson<TaskSnapshot<RuntimeDependencyInstallResult>>(
+          apiBase,
+          "/api/runtime/install-missing-dependency",
+          {
+            body: JSON.stringify(input),
+            method: "POST",
+          },
+        );
+        return waitForTask(apiBase, task, options);
+      },
     },
     musicCover: {
       async run(input, options) {

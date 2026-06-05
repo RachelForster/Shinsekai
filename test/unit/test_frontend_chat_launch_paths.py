@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from frontend_bridge_core import chat
+from frontend_bridge_core.runtime_dependencies import runtime_dependency_error_from_text
 
 
 class _SystemConfig:
@@ -34,6 +35,9 @@ class _DummyProcess:
 
     def poll(self):
         return None
+
+    def wait(self, timeout=None):
+        raise chat.subprocess.TimeoutExpired("main.py", timeout)
 
 
 def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch):
@@ -82,3 +86,13 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     assert captured["env"]["EASYAI_PROJECT_ROOT"] == str(project_root)
     assert captured["env"]["SHINSEKAI_APP_ROOT"] == str(app_root)
     assert captured["cmd"][1] != str(project_root / "main.py")
+
+
+def test_runtime_dependency_error_maps_opencc_package():
+    error = runtime_dependency_error_from_text("ModuleNotFoundError: No module named 'opencc'")
+
+    assert error == {
+        "message": "Missing Python module: opencc",
+        "moduleName": "opencc",
+        "packageName": "opencc-python-reimplemented",
+    }

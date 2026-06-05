@@ -679,6 +679,16 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ],
         }),
     },
+    runtime: {
+      installMissingDependency: (input) =>
+        delay({
+          message: `Preview installed ${input.moduleName}`,
+          moduleName: input.moduleName,
+          packageName: input.moduleName,
+          pipCode: 0,
+          pipOutput: "",
+        }),
+    },
     musicCover: {
       async run(input, options) {
         const taskId = `preview-music-cover-${Date.now()}`;

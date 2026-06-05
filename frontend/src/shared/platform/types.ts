@@ -557,6 +557,25 @@ export interface TtsBundleDownloadResult {
 
 export type ChatRuntimeStatus = "idle" | "listening" | "generating" | "streaming" | "speaking" | "paused" | "error";
 
+export interface RuntimeDependencyError {
+  logPath?: string;
+  message: string;
+  moduleName: string;
+  packageName: string;
+}
+
+export interface RuntimeDependencyInstallInput {
+  moduleName: string;
+}
+
+export interface RuntimeDependencyInstallResult {
+  message: string;
+  moduleName: string;
+  packageName: string;
+  pipCode?: number;
+  pipOutput?: string;
+}
+
 export interface ChatSprite {
   id: string;
   label: string;
@@ -571,6 +590,7 @@ export interface ChatSnapshot {
   inputDraft: string;
   numericInfo?: string;
   options: string[];
+  runtimeDependencyError?: RuntimeDependencyError;
   sprites: ChatSprite[];
   status: ChatRuntimeStatus;
 }
@@ -719,6 +739,12 @@ export interface ShinsekaiPlatform {
     getDefault: () => Promise<LogSnapshot>;
     import: (items: File[] | string[]) => Promise<LogSnapshot>;
     list: () => Promise<LogFileList>;
+  };
+  runtime: {
+    installMissingDependency: (
+      input: RuntimeDependencyInstallInput,
+      options?: TaskProgressOptions<RuntimeDependencyInstallResult>,
+    ) => Promise<RuntimeDependencyInstallResult>;
   };
   musicCover: {
     run: (
