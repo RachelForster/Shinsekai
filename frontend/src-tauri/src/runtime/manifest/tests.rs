@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn pip_index_urls_honor_explicit_source_preference() {
     let manifest = RuntimeManifest {
-        version: "2.0.0".to_string(),
+        version: "2.0.1".to_string(),
         schema: Some(2),
         required_modules: Vec::new(),
         profiles: HashMap::new(),
@@ -32,7 +32,7 @@ fn pip_index_urls_honor_explicit_source_preference() {
 #[test]
 fn pip_index_urls_respect_user_pip_configuration() {
     let manifest = RuntimeManifest {
-        version: "2.0.0".to_string(),
+        version: "2.0.1".to_string(),
         schema: Some(2),
         required_modules: Vec::new(),
         profiles: HashMap::new(),
@@ -49,7 +49,7 @@ fn pip_index_urls_respect_user_pip_configuration() {
 #[test]
 fn pip_index_urls_allow_shinsekai_override() {
     let manifest = RuntimeManifest {
-        version: "2.0.0".to_string(),
+        version: "2.0.1".to_string(),
         schema: Some(2),
         required_modules: Vec::new(),
         profiles: HashMap::new(),
@@ -87,7 +87,7 @@ fn runtime_requirements_include_profile_python_range() {
         },
     );
     let manifest = RuntimeManifest {
-        version: "2.0.0".to_string(),
+        version: "2.0.1".to_string(),
         schema: Some(2),
         required_modules: Vec::new(),
         profiles,
@@ -112,7 +112,7 @@ fn runtime_requirements_preserve_profile_metadata_when_imports_use_manifest_fall
         },
     );
     let manifest = RuntimeManifest {
-        version: "2.0.0".to_string(),
+        version: "2.0.1".to_string(),
         schema: Some(2),
         required_modules: vec!["yaml".to_string(), "requests".to_string()],
         profiles,
