@@ -80,6 +80,9 @@
     background: #fff; border: 2px solid var(--pink); color: var(--pink-deep); box-shadow: none;
   }
   .download-card .btn-alt:hover { background: #fff0f5; box-shadow: 0 0 20px rgba(212, 120, 142, 0.2); }
+  .download-card .platform-downloads { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .download-card .platform-downloads .btn { min-width: 176px; }
+  .download-card .download-note { margin-top: 12px; color: var(--muted); font-size: 0.9em; }
   .download-card .assets { margin-top: 22px; text-align: left; display: inline-block; }
   .download-card .assets a { color: var(--pink-deep); text-decoration: none; display: block; padding: 4px 0; font-size: 0.9em; }
   .download-card .assets a:hover { text-decoration: underline; }
@@ -143,8 +146,12 @@
     <div id="error" style="display:none"><span data-i18n="error_release">无法获取版本信息，请前往</span> <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--pink-deep)">Releases</a> <span data-i18n="error_release_manual">手动下载。</span></div>
     <div id="release-info" style="display:none">
       <div class="version" id="version-text"></div>
-      <a id="dl-source" class="btn" href="#" data-i18n="dl_zip">下载源码 (zip)</a>
-      <a id="dl-tar" class="btn btn-alt" href="#" data-i18n="dl_tar">下载源码 (tar.gz)</a>
+      <div class="platform-downloads">
+        <a id="dl-windows" class="btn" href="#" data-i18n="dl_windows">下载 Windows 版</a>
+        <a id="dl-macos" class="btn btn-alt" href="#" data-i18n="dl_macos">下载 macOS 版</a>
+        <a id="dl-linux" class="btn btn-alt" href="#" data-i18n="dl_linux">下载 Linux 版</a>
+      </div>
+      <p class="download-note" data-i18n="download_note">按你的系统选择发行包；若按钮未匹配到文件，会跳转到 Releases 页面。</p>
       <div class="assets" id="assets-list"></div>
       <p style="margin-top:14px;color:var(--muted);font-size:0.85em">
         <span data-i18n="or_browse">或浏览</span> <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--pink-deep)" data-i18n="all_versions">全部版本</a>
@@ -185,7 +192,7 @@
   <section>
     <h2 data-i18n="dev_title">开发者安装（源码）</h2>
     <ol>
-      <li data-i18n_html="dev_step1"><strong>下载</strong>上方最新版源码并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code></li>
+      <li data-i18n_html="dev_step1"><strong>下载</strong> GitHub 源码包（<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>）并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code></li>
       <li><strong data-i18n="dev_step2_title">创建环境</strong><span data-i18n="dev_step2_desc">（推荐 Python 3.10）</span>：
         <pre><code>conda create -n shinsekai python=3.10
 conda activate shinsekai
@@ -237,12 +244,14 @@ var L = {
     loading_release: '正在获取最新版本…',
     error_release: '无法获取版本信息，请前往',
     error_release_manual: '手动下载。',
-    dl_zip: '下载源码 (zip)',
-    dl_tar: '下载源码 (tar.gz)',
+    dl_windows: '下载 Windows 版',
+    dl_macos: '下载 macOS 版',
+    dl_linux: '下载 Linux 版',
+    download_note: '按你的系统选择发行包；若按钮未匹配到文件，会跳转到 Releases 页面。',
     or_browse: '或浏览',
     all_versions: '全部版本',
-    fallback_version: '🌸 最新源码',
-    extra_files: '附加文件：',
+    fallback_version: '🌸 最新发行版',
+    extra_files: '其他发行文件：',
     community_resources: '📦 浏览社区角色包 & 背景包资源',
     quick_start_title: '快速上手（整合包 · 无需技术背景）',
     qs_step1: '下载整合包',
@@ -258,7 +267,7 @@ var L = {
     qs_guide_prefix: '详细图文教程：',
     qs_guide_link: '新世界程序使用指南（语雀）',
     dev_title: '开发者安装（源码）',
-    dev_step1: '<strong>下载</strong>上方最新版源码并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code>',
+    dev_step1: '<strong>下载</strong> GitHub 源码包（<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>）并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code>',
     dev_step2_title: '创建环境',
     dev_step2_desc: '（推荐 Python 3.10）',
     dev_step3: '启动设置界面',
@@ -292,12 +301,14 @@ var L = {
     loading_release: 'Fetching latest release…',
     error_release: 'Unable to fetch release info. Please visit',
     error_release_manual: 'to download manually.',
-    dl_zip: 'Download Source (zip)',
-    dl_tar: 'Download Source (tar.gz)',
+    dl_windows: 'Download for Windows',
+    dl_macos: 'Download for macOS',
+    dl_linux: 'Download for Linux',
+    download_note: 'Choose the release package for your system. If a file is not matched, the button opens Releases.',
     or_browse: 'or browse',
     all_versions: 'all releases',
-    fallback_version: '🌸 Latest Source',
-    extra_files: 'Assets:',
+    fallback_version: '🌸 Latest Release',
+    extra_files: 'Other release files:',
     community_resources: '📦 Browse Community Character & Background Packs',
     quick_start_title: 'Quick Start (All-in-One Bundle · No Tech Skills Needed)',
     qs_step1: 'Download the bundle',
@@ -313,7 +324,7 @@ var L = {
     qs_guide_prefix: 'Detailed guide: ',
     qs_guide_link: 'Shinsekai User Guide (Yuque)',
     dev_title: 'Developer Setup (Source)',
-    dev_step1: '<strong>Download</strong> the latest source above, or <code>git clone https://github.com/RachelForster/Shinsekai</code>',
+    dev_step1: '<strong>Download</strong> the GitHub source package (<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>), or <code>git clone https://github.com/RachelForster/Shinsekai</code>',
     dev_step2_title: 'Create environment',
     dev_step2_desc: ' (Python 3.10 recommended)',
     dev_step3: 'Launch Settings',
@@ -382,6 +393,79 @@ if (!saved) { saved = navigator.language.startsWith('zh') ? 'zh' : 'en'; }
 setLang(saved);
 
 // ── Release fetching ─────────────────────────────────────────────────────────
+var RELEASES_URL = 'https://github.com/RachelForster/Shinsekai/releases';
+var PLATFORM_MATCHERS = {
+  windows: [
+    ['x64', '.msi'], ['amd64', '.msi'], ['x86_64', '.msi'],
+    ['windows', '.msi'], ['win', '.msi'],
+    ['x64', 'setup', '.exe'], ['amd64', 'setup', '.exe'],
+    ['setup', '.exe'], ['.msi'], ['.exe']
+  ],
+  macos: [
+    ['aarch64', '.dmg'], ['arm64', '.dmg'],
+    ['x64', '.dmg'], ['amd64', '.dmg'], ['x86_64', '.dmg'],
+    ['macos', '.dmg'], ['darwin', '.dmg'], ['.dmg'], ['.app.tar.gz']
+  ],
+  linux: [
+    ['x64', '.appimage'], ['amd64', '.appimage'], ['x86_64', '.appimage'],
+    ['linux', '.appimage'],
+    ['x64', '.deb'], ['amd64', '.deb'], ['x86_64', '.deb'],
+    ['linux', '.deb'], ['.appimage'], ['.deb'], ['.rpm']
+  ]
+};
+
+function findPlatformAsset(assets, platform) {
+  var matchers = PLATFORM_MATCHERS[platform] || [];
+  for (var i = 0; i < matchers.length; i += 1) {
+    var terms = matchers[i];
+    for (var j = 0; j < assets.length; j += 1) {
+      var name = String(assets[j].name || '').toLowerCase();
+      if (terms.every(function (term) { return name.indexOf(term) !== -1; })) {
+        return assets[j];
+      }
+    }
+  }
+  return null;
+}
+
+function setPlatformDownload(platform, asset, selectedUrls) {
+  var link = document.getElementById('dl-' + platform);
+  if (!link) return;
+  if (asset && asset.browser_download_url) {
+    link.href = asset.browser_download_url;
+    link.title = asset.name;
+    selectedUrls[asset.browser_download_url] = true;
+  } else {
+    link.href = RELEASES_URL;
+    link.title = t('all_versions');
+  }
+}
+
+function renderAssetList(assets, selectedUrls) {
+  var list = document.getElementById('assets-list');
+  var extras = assets.filter(function (asset) {
+    return !selectedUrls[asset.browser_download_url];
+  });
+  list.innerHTML = '';
+  if (extras.length > 0) {
+    list.innerHTML = '<p style="margin-top:6px;color:var(--muted)">' + t('extra_files') + '</p>';
+    extras.forEach(function (a) {
+      var size = a.size ? ' (' + (a.size / 1024 / 1024).toFixed(1) + ' MB)' : '';
+      list.innerHTML +=
+        '<a href="' + a.browser_download_url + '">' + a.name + '</a>' +
+        '<span style="color:var(--muted);font-size:0.8em">' + size + '</span>';
+    });
+  }
+}
+
+function bindPlatformDownloads(assets) {
+  var selectedUrls = {};
+  ['windows', 'macos', 'linux'].forEach(function (platform) {
+    setPlatformDownload(platform, findPlatformAsset(assets, platform), selectedUrls);
+  });
+  renderAssetList(assets, selectedUrls);
+}
+
 (async function () {
   var loading = document.getElementById('loading');
   var info = document.getElementById('release-info');
@@ -394,26 +478,13 @@ setLang(saved);
     document.getElementById('version-text').textContent =
       '🌸 ' + release.tag_name + ' · ' + new Date(release.published_at).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US');
 
-    document.getElementById('dl-source').href = release.zipball_url;
-    document.getElementById('dl-tar').href = release.tarball_url;
-
-    var list = document.getElementById('assets-list');
-    if (release.assets && release.assets.length > 0) {
-      list.innerHTML = '<p style="margin-top:6px;color:var(--muted)">' + t('extra_files') + '</p>';
-      release.assets.forEach(function (a) {
-        var size = (a.size / 1024 / 1024).toFixed(1);
-        list.innerHTML +=
-          '<a href="' + a.browser_download_url + '">' + a.name + '</a>' +
-          '<span style="color:var(--muted);font-size:0.8em"> (' + size + ' MB)</span>';
-      });
-    }
+    bindPlatformDownloads(release.assets || []);
 
     loading.style.display = 'none';
     info.style.display = 'block';
   } catch (e) {
     document.getElementById('version-text').textContent = t('fallback_version');
-    document.getElementById('dl-source').href = 'https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip';
-    document.getElementById('dl-tar').href = 'https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz';
+    bindPlatformDownloads([]);
     loading.style.display = 'none';
     info.style.display = 'block';
   }
