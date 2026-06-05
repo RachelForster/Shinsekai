@@ -181,6 +181,7 @@ export const enMessages: Record<MessageKey, string> = {
   "desktop.runtime.progressLabel": "Runtime progress",
   "desktop.runtime.progressPercent": "{percent}%",
   "desktop.runtime.progressSpeed": "{speed}/s",
+  "desktop.runtime.pipLogLabel": "pip output log",
   "desktop.runtime.required": "Runtime update required",
   "desktop.runtime.status.brokenBridge": "Bridge check failed",
   "desktop.runtime.status.brokenPython": "Python unavailable",

@@ -56,6 +56,8 @@ export interface DesktopRuntimeProgress {
   total?: number | null;
   speedBytesPerSec?: number | null;
   message?: string | null;
+  logLine?: string | null;
+  logLines?: string[];
 }
 
 export interface DesktopUpdate {
