@@ -1,8 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
-  "runtimeDeps.installConfirm":
-    "main.py 因缺少 Python 模块退出：\n{module}\n\n是否立即安装包 {package}？",
+  "runtimeDeps.installConfirm": "main.py 因缺少 Python 模块退出：\n{module}\n\n是否立即安装包 {package}？",
   "runtimeDeps.installFailed": "依赖安装失败",
   "runtimeDeps.installSucceeded": "依赖已安装，请重新启动聊天。",
   "runtimeDeps.installTitle": "缺少 Python 依赖",
