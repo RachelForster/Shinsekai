@@ -227,7 +227,13 @@ describe("SystemSettingsPage", () => {
 
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "修复核心依赖" }));
+    const repairButton = await screen.findByRole("button", { name: "修复核心依赖" });
+    await screen.findByText("Shinsekai bundled runtime");
+    await waitFor(() => {
+      expect(repairButton).toBeEnabled();
+    });
+
+    fireEvent.click(repairButton);
     await waitFor(() => {
       expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("install-dir-runtime", "installRuntimeDeps");
     });
