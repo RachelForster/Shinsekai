@@ -77,6 +77,7 @@ from .plugin_updates import (
     _repo_tags,
     _run_app_update,
 )
+from .runtime_dependencies import install_runtime_dependency, runtime_dependency_error_from_text
 from .state import BridgeState, _jsonify, plugin_load_snapshot
 from .static import _frontend_dist_root
 from .tasks import _create_task, _get_task, _is_running_task, _request_task_cancel, _run_background_task, _update_task
@@ -683,6 +684,17 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "DELETE" and path.startswith("/api/plugins/"):
                 plugin_id = unquote(path[len("/api/plugins/") :])
                 self._send_json(_uninstall_plugin(plugin_id))
+            elif method == "POST" and path == "/api/runtime/install-missing-dependency":
+                module_name = str(body.get("moduleName") or "").strip()
+                if not module_name:
+                    raise ValueError("moduleName is required")
+                self._enqueue_background_task(
+                    kind="runtime-dependency-install",
+                    message=f"Installing dependency for {module_name}",
+                    title=f"Install {module_name}",
+                    task_updates={"source": module_name},
+                    worker=lambda task_id: install_runtime_dependency(module_name),
+                )
             elif method == "POST" and path == "/api/chat/launch":
                 self._send_json(self._launch_chat(body))
             elif method == "POST" and path == "/api/chat/resume-last":
@@ -767,6 +779,20 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             use_cg=bool(body.get("useCg")),
             user_scenario=user_scenario,
         )
+        dependency_error = runtime_dependency_error_from_text(message)
+        if dependency_error:
+            self.state.chat_session = {
+                "backgroundName": str(body.get("backgroundName") or ""),
+                "characterName": first_character,
+                "historyPath": (default_history_path if reset_history else history_path).as_posix(),
+                "templateId": template_id,
+            }
+            return _chat_snapshot(
+                self.state,
+                "error",
+                message,
+                extra={"runtimeDependencyError": dependency_error},
+            )
         if message.startswith("启动失败"):
             raise RuntimeError(message)
         self.state.chat_session = {
@@ -822,6 +848,20 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             use_cg=bool(session.get("useCg", False)),
             user_scenario=scenario,
         )
+        dependency_error = runtime_dependency_error_from_text(message)
+        if dependency_error:
+            self.state.chat_session = {
+                "backgroundName": selected_bg,
+                "characterName": first_character,
+                "historyPath": history_path.as_posix(),
+                "templateId": template_id,
+            }
+            return _chat_snapshot(
+                self.state,
+                "error",
+                message,
+                extra={"runtimeDependencyError": dependency_error},
+            )
         if message.startswith("启动失败"):
             raise RuntimeError(message)
         self.state.chat_session = {

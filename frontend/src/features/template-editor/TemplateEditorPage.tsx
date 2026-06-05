@@ -6,6 +6,7 @@ import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
+import { installMissingRuntimeDependency } from "../../entities/runtime/repository";
 import {
   generateTemplate,
   getTemplateSession,
@@ -17,7 +18,7 @@ import {
 } from "../../entities/template/repository";
 import { DEFAULT_CHARACTER_COLOR, TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import type { TemplateLaunchSession } from "../../shared/platform/types";
+import type { ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -263,6 +264,38 @@ export function TemplateEditorPage() {
     voiceLanguage,
   });
 
+  const handleRuntimeDependencyError = async (snapshot: ChatSnapshot) => {
+    const dependencyError = snapshot.runtimeDependencyError;
+    if (!dependencyError) {
+      return false;
+    }
+    const shouldInstall = window.confirm(
+      t("runtimeDeps.installConfirm", {
+        module: dependencyError.moduleName,
+        package: dependencyError.packageName,
+      }),
+    );
+    if (!shouldInstall) {
+      showToast({ kind: "error", message: snapshot.dialogText, title: t("template.error.launchFailed") });
+      return true;
+    }
+    try {
+      const result = await installMissingRuntimeDependency({ moduleName: dependencyError.moduleName });
+      showToast({
+        kind: "success",
+        message: result.message || t("runtimeDeps.installSucceeded"),
+        title: t("runtimeDeps.installTitle"),
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("runtimeDeps.installFailed"),
+        title: t("runtimeDeps.installFailed"),
+      });
+    }
+    return true;
+  };
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!validateName()) {
@@ -410,6 +443,10 @@ export function TemplateEditorPage() {
       const normalized = normalizeTemplate(template);
       setSessionDraftActive(true);
       setDraft(normalized);
+      if (snapshot.runtimeDependencyError) {
+        void handleRuntimeDependencyError(snapshot);
+        return;
+      }
       showToast({ kind: "success", message: snapshot.dialogText, title: t("template.toast.launched") });
     },
   });

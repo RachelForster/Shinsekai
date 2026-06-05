@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from llm.template_generator import TRANSPARENT_BG
+from frontend_bridge_core.runtime_dependencies import install_runtime_dependency, runtime_dependency_error_from_text
 from ui.settings_ui.services.chat_template_handlers import (
     generate_template,
     launch_chat,
@@ -697,7 +698,39 @@ class TemplateSettingsTab(QWidget):
             self.room_id.text().strip(),
         )
         if msg:
+            if self._prompt_install_missing_runtime_dependency(msg):
+                return
             feedback_result(self, "启动聊天", msg)
+
+    def _prompt_install_missing_runtime_dependency(self, msg: str) -> bool:
+        error = runtime_dependency_error_from_text(msg)
+        if not error:
+            return False
+        from PySide6.QtWidgets import QMessageBox
+
+        module_name = str(error.get("moduleName") or "")
+        package_name = str(error.get("packageName") or module_name)
+        result = QMessageBox.question(
+            self,
+            "缺少 Python 依赖",
+            f"检测到 main.py 缺少模块：{module_name}\n将安装包：{package_name}\n\n是否立即安装？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if result != QMessageBox.Yes:
+            return False
+        try:
+            install_result = install_runtime_dependency(module_name)
+        except Exception as exc:
+            message_fail(self, "安装依赖失败", str(exc))
+            return True
+        feedback_result(
+            self,
+            "安装依赖",
+            str(install_result.get("message") or "依赖已安装，请重新启动聊天。"),
+            success_style=True,
+        )
+        return True
 
     def _on_quick_restart(self) -> None:
         """清空聊天记录并启动新的聊天。"""
