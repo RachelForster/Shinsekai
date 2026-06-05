@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 import { useI18n } from "../i18n";
 import type { DesktopRuntimeProgress } from "./desktopApi";
 
@@ -8,6 +10,7 @@ interface RuntimeProgressPanelProps {
 
 export function RuntimeProgressPanel({ className, progress }: RuntimeProgressPanelProps) {
   const { t } = useI18n();
+  const logRef = useRef<HTMLPreElement | null>(null);
   const hasTotal = typeof progress.total === "number" && progress.total > 0;
   const percent = hasTotal
     ? Math.max(0, Math.min(100, Math.round(((progress.downloaded ?? 0) / progress.total!) * 100)))
@@ -16,6 +19,13 @@ export function RuntimeProgressPanel({ className, progress }: RuntimeProgressPan
   const showTransferMeta =
     hasTotal &&
     ((progress.total ?? 0) > 1024 || (typeof progress.speedBytesPerSec === "number" && progress.speedBytesPerSec > 0));
+  const logText = progress.logLines?.filter(Boolean).join("\n") ?? "";
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logText]);
 
   return (
     <div className={progressClassName} aria-live="polite">
@@ -44,6 +54,11 @@ export function RuntimeProgressPanel({ className, progress }: RuntimeProgressPan
             ? ` · ${t("desktop.runtime.progressSpeed", { speed: formatRuntimeBytes(progress.speedBytesPerSec) })}`
             : ""}
         </p>
+      ) : null}
+      {logText ? (
+        <pre aria-label={t("desktop.runtime.pipLogLabel")} className="desktop-runtime-progress__log" ref={logRef}>
+          {logText}
+        </pre>
       ) : null}
     </div>
   );

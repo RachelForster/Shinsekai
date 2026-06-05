@@ -119,6 +119,7 @@ exit 11
             "https://bad.example/simple/".to_string(),
             "https://good.example/simple/".to_string(),
         ],
+        |_| {},
     )
     .unwrap();
 
@@ -127,6 +128,45 @@ exit 11
     assert!(log.contains("-i https://good.example/simple/"));
     assert!(!log.contains("--no-index"));
     assert!(!log.contains("--find-links"));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn install_runtime_requirements_streams_pip_output() {
+    let temp_root = unique_temp_dir("runtime-stream-install");
+    fs::create_dir_all(&temp_root).unwrap();
+    let fake_python = temp_root.join("python");
+    let requirements = temp_root.join("requirements.txt");
+    fs::write(&requirements, "pydantic\n").unwrap();
+    write_executable(
+        &fake_python,
+        r#"#!/bin/sh
+case "$*" in
+  "-m pip --version")
+    exit 0
+    ;;
+  *"-m pip install"*)
+    echo "Collecting pydantic"
+    echo "Installing collected packages: pydantic" >&2
+    exit 0
+    ;;
+esac
+exit 11
+"#,
+    );
+    let mut lines = Vec::new();
+
+    install_runtime_requirements(&fake_python, &requirements, &[], |line| {
+        lines.push(line.to_string());
+    })
+    .unwrap();
+
+    assert!(lines.iter().any(|line| line == "Collecting pydantic"));
+    assert!(lines
+        .iter()
+        .any(|line| line == "Installing collected packages: pydantic"));
 
     let _ = fs::remove_dir_all(temp_root);
 }

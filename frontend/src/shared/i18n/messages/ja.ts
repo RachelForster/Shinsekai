@@ -180,6 +180,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "desktop.runtime.progressLabel": "実行環境の進捗",
   "desktop.runtime.progressPercent": "{percent}%",
   "desktop.runtime.progressSpeed": "{speed}/s",
+  "desktop.runtime.pipLogLabel": "pip 出力ログ",
   "desktop.runtime.required": "実行環境の更新が必要です",
   "desktop.runtime.status.brokenBridge": "Bridge チェック失敗",
   "desktop.runtime.status.brokenPython": "Python を使用できません",

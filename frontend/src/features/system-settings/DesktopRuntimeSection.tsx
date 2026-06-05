@@ -14,6 +14,7 @@ import {
   type DesktopRuntimeState,
 } from "../../shared/desktop/desktopApi";
 import { RuntimeProgressPanel } from "../../shared/desktop/RuntimeProgressPanel";
+import { appendRuntimeProgressLog } from "../../shared/desktop/runtimeProgressLog";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton } from "../../shared/ui";
 
@@ -81,7 +82,7 @@ export function DesktopRuntimeSection() {
     let dispose: (() => void) | null = null;
     void onDesktopRuntimeProgress((progress) => {
       if (!stopped) {
-        setRuntimeProgress(progress);
+        setRuntimeProgress((current) => appendRuntimeProgressLog(current, progress));
       }
     }).then((unlisten) => {
       if (stopped) {
