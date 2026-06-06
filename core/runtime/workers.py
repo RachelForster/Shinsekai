@@ -5,6 +5,8 @@ from typing import Optional
 from i18n import tr
 from sdk.logging import get_logger, log_context, new_log_id
 from sdk.logging.timing import tracker
+from sdk.exception.types import classify_exception
+from sdk.exception.presenter import format_llm_exception_message
 
 from queue import Queue
 
@@ -68,6 +70,10 @@ def _busy_preview_reasoning(raw: str, max_len: int = 200) -> str:
     if len(s) > max_len:
         s = s[: max_len - 1] + "…"
     return s
+
+
+def _format_llm_worker_error(exc: BaseException) -> str:
+    return format_llm_exception_message(exc, fallback_message=tr("desktop.llm_parse_empty"))
 
 
 class LLMWorker(QThreadDagNode):
@@ -180,10 +186,20 @@ class LLMWorker(QThreadDagNode):
                     print(f"LLMWorker: {_warn}")
 
             except Exception as e:
-                logger.exception("LLM worker task failed", extra={"event": "llm.worker.failed"})
+                error_info = classify_exception(e)
+                logger.exception(
+                    "LLM worker task failed",
+                    extra={
+                        "event": "llm.worker.failed",
+                        "error_kind": error_info["kind"] if error_info else "",
+                        "http_status_code": error_info.get("statusCode") if error_info else None,
+                        "http_url": error_info.get("url", "") if error_info else "",
+                        "http_timeout": error_info.get("timeout") if error_info else None,
+                    },
+                )
                 try:
                     from sdk.messages import TTSOutputMessage
-                    _err = tr("desktop.llm_parse_empty") + f"\n{e}"
+                    _err = _format_llm_worker_error(e)
                     get_app_runtime().audio_path_queue.put(TTSOutputMessage(
                         audio_path="", name="system", asset_id="-1",
                         text=_err, is_system_message=True, effect="",

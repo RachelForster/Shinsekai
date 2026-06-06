@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from sdk.exception import handler, types
+from sdk.exception import handler, presenter, types
 
 
 def test_runtime_dependency_error_maps_opencc_package():
@@ -56,6 +56,18 @@ class _FakeRequest:
 class _FakeResponse:
     request = _FakeRequest()
     status_code = 502
+
+
+def _http_status_error(message: str, status_code: int):
+    error_cls = type("APIStatusError", (Exception,), {"__module__": "openai"})
+
+    class _Response:
+        request = _FakeRequest()
+
+    _Response.status_code = status_code
+    exc = error_cls(message)
+    exc.response = _Response()
+    return exc
 
 
 def test_classify_exception_maps_httpx_timeout():
@@ -165,6 +177,36 @@ def test_report_main_exception_writes_http_client_error(capsys):
     captured = capsys.readouterr()
     assert "HTTP client error: _FakeHttpxStatusError" in captured.err
     assert "Status code: 502" in captured.err
+
+
+def test_llm_presenter_gives_balance_action_for_402():
+    text = presenter.format_llm_exception_message(
+        _http_status_error("payment required", 402),
+        fallback_message="fallback",
+    )
+
+    assert "额度或余额不足" in text
+    assert "充值" in text
+    assert "payment required" in text
+
+
+def test_llm_presenter_gives_auth_action_for_unauthorized_keyword():
+    exc = APITimeoutError("unauthorized: invalid api key")
+    exc.request = _FakeRequest()
+    text = presenter.format_llm_exception_message(exc, fallback_message="fallback")
+
+    assert "未授权" in text
+    assert "API Key" in text
+
+
+def test_llm_presenter_gives_rate_limit_action_for_429():
+    text = presenter.format_llm_exception_message(
+        _http_status_error("too many requests", 429),
+        fallback_message="fallback",
+    )
+
+    assert "请求过于频繁" in text
+    assert "限流" in text
 
 
 def test_handle_main_exception_exits_after_reporting(capsys):

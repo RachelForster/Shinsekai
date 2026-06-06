@@ -201,6 +201,49 @@ class TestLLMWorker:
         worker.stop()
         worker.wait(3000)
 
+    def test_worker_reports_llm_http_402_as_system_message(self, qtbot):
+        """LLM API 402 errors are surfaced as clear system messages."""
+        error_cls = type("APIStatusError", (Exception,), {"__module__": "openai"})
+
+        class _Request:
+            url = "https://api.example.test/v1/chat/completions"
+
+        class _Response:
+            request = _Request()
+            status_code = 402
+
+        class _FailingAdapter(MockLLMAdapter):
+            def chat(self, *args, **kwargs):
+                exc = error_cls("payment required")
+                exc.response = _Response()
+                raise exc
+
+        rt = _make_runtime_for_workers(mock_llm_adapter=_FailingAdapter(), is_streaming=False)
+        set_app_runtime(rt)
+
+        worker = LLMWorker(
+            input_queue=rt.user_input_queue,
+            output_queue=rt.tts_queue,
+        )
+        worker.start()
+        rt.user_input_queue.put(UserInputMessage(text="Trigger 402"))
+
+        try:
+            out = rt.audio_path_queue.get(timeout=5)
+        except Exception:
+            worker.stop()
+            worker.wait(3000)
+            pytest.fail("Timed out waiting for HTTP error system message")
+
+        assert isinstance(out, TTSOutputMessage)
+        assert out.is_system_message is True
+        assert "402" in (out.text or "")
+        assert "额度" in (out.text or "")
+        assert "payment required" in (out.text or "")
+
+        worker.stop()
+        worker.wait(3000)
+
 
 # ---------------------------------------------------------------------------
 # TTSWorker

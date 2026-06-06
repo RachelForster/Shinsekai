@@ -49,6 +49,43 @@ class TestLlmResponseStreamParser:
         results = list(parser.feed('{broken json} {"character_name": "X", "speech": "Ok", "sprite": "0"}'))
         assert len(results) == 1
         assert results[0].name == "X"
+        assert parser.has_errors
+
+    def test_brace_inside_string_does_not_end_json(self):
+        parser = LlmResponseStreamParser()
+        results = list(parser.feed('{"character_name": "A", "speech": "brace } in text", "sprite": "0"}'))
+
+        assert len(results) == 1
+        assert results[0].text == "brace } in text"
+        assert not parser.has_errors
+
+    def test_nested_extra_object_is_parsed_as_single_json(self):
+        parser = LlmResponseStreamParser()
+        results = list(
+            parser.feed(
+                '{"character_name": "A", "speech": "Hi", "sprite": "0", '
+                '"metadata": {"mood": "calm", "score": 2}}'
+            )
+        )
+
+        assert len(results) == 1
+        assert results[0].model_extra == {"metadata": {"mood": "calm", "score": 2}}
+
+    def test_split_json_with_brace_inside_string(self):
+        parser = LlmResponseStreamParser()
+        results = []
+        results += list(parser.feed('{"character_name": "A", "speech": "part }'))
+        results += list(parser.feed(' still string", "sprite": "0"}'))
+
+        assert len(results) == 1
+        assert results[0].text == "part } still string"
+
+    def test_unclosed_bad_prefix_can_recover_later_json(self):
+        parser = LlmResponseStreamParser()
+        results = list(parser.feed('{broken {"character_name": "X", "speech": "Recovered", "sprite": "0"}'))
+
+        assert len(results) == 1
+        assert results[0].name == "X"
 
     def test_empty_chunk_yields_nothing(self):
         parser = LlmResponseStreamParser()
