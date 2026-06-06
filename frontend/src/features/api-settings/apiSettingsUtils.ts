@@ -287,6 +287,19 @@ export function applyT2iSetupMode(config: ApiConfig, mode: T2iSetupMode): ApiCon
   };
 }
 
+export function isT2iReadyForSprites(config: Pick<ApiConfig, "t2i_api_url" | "t2i_default_workflow_path" | "t2i_provider">) {
+  const provider = String(config.t2i_provider || "").trim().toLowerCase();
+  const apiUrl = String(config.t2i_api_url || "").trim();
+  const workflow = String(config.t2i_default_workflow_path || "").trim();
+  if (!provider || !apiUrl) {
+    return false;
+  }
+  if (provider === DEFAULT_T2I_PROVIDER) {
+    return Boolean(workflow);
+  }
+  return true;
+}
+
 export function mergeModelOptions(...groups: Array<LlmModelOption[] | undefined>) {
   const out: LlmModelOption[] = [];
   const seen = new Set<string>();
