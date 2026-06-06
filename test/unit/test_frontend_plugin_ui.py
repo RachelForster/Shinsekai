@@ -14,8 +14,8 @@ from frontend_bridge_core.plugin_ui import (
 
 def test_plugin_data_root_sanitizes_plugin_ids():
     assert _plugin_data_root(" com.example/demo ") == _plugin_data_root("com.example_demo")
-    assert str(_plugin_data_root(" / ")) == "data/plugins/_"
-    assert str(_plugin_data_root("  ")) == "data/plugins/unknown"
+    assert _plugin_data_root(" / ").as_posix() == "data/plugins/_"
+    assert _plugin_data_root("  ").as_posix() == "data/plugins/unknown"
 
 
 def test_plugin_config_field_omits_empty_optional_metadata():
