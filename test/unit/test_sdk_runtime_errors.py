@@ -1,0 +1,91 @@
+import logging
+
+import pytest
+
+from sdk.exception import handler, types
+
+
+def test_runtime_dependency_error_maps_opencc_package():
+    error = types.runtime_dependency_error_from_text(
+        "ModuleNotFoundError: No module named 'opencc'"
+    )
+
+    assert error == {
+        "message": "Missing Python module: opencc",
+        "moduleName": "opencc",
+        "packageName": "opencc-python-reimplemented",
+    }
+
+
+def test_missing_module_from_exception_prefers_module_name():
+    exc = ModuleNotFoundError("No module named 'opencc'", name="opencc")
+
+    assert types.missing_module_from_exception(exc) == "opencc"
+    assert types.package_for_module("opencc") == "opencc-python-reimplemented"
+
+
+def test_runtime_dependency_error_maps_mem0_package():
+    error = types.runtime_dependency_error_from_text("ModuleNotFoundError: No module named 'mem0'")
+
+    assert error == {
+        "message": "Missing Python module: mem0",
+        "moduleName": "mem0",
+        "packageName": "mem0ai",
+    }
+
+
+def test_report_main_exception_writes_bridge_detectable_dependency_error(capsys):
+    logger = logging.getLogger("test.runtime_errors")
+
+    try:
+        raise ModuleNotFoundError("No module named 'opencc'", name="opencc")
+    except ModuleNotFoundError as exc:
+        handler.report_main_exception(
+            type(exc),
+            exc,
+            exc.__traceback__,
+            app_name="Shinsekai Chat",
+            logger=logger,
+            show_dialog=False,
+        )
+
+    captured = capsys.readouterr()
+    assert "Missing Python module: opencc" in captured.err
+    assert "Suggested package: opencc-python-reimplemented" in captured.err
+
+
+def test_handle_main_exception_exits_after_reporting(capsys):
+    try:
+        raise RuntimeError("boom")
+    except RuntimeError as exc:
+        with pytest.raises(SystemExit) as raised:
+            handler.handle_main_exception(
+                exc,
+                app_name="Shinsekai Chat",
+                logger=logging.getLogger("test.runtime_errors"),
+                show_dialog=False,
+                exit_code=7,
+            )
+
+    assert raised.value.code == 7
+    assert "Shinsekai Chat startup failed: RuntimeError: boom" in capsys.readouterr().err
+
+
+def test_report_main_exception_can_suppress_dialog_from_bridge(monkeypatch):
+    calls = []
+    monkeypatch.setenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", "1")
+    monkeypatch.setattr(handler, "show_error_dialog", lambda *args, **kwargs: calls.append(args) or True)
+
+    try:
+        raise RuntimeError("boom")
+    except RuntimeError as exc:
+        handler.report_main_exception(
+            type(exc),
+            exc,
+            exc.__traceback__,
+            app_name="Shinsekai Chat",
+            logger=logging.getLogger("test.runtime_errors"),
+            show_dialog=True,
+        )
+
+    assert calls == []

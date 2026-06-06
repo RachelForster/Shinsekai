@@ -201,6 +201,7 @@ def _launch_chat(
         env = os.environ.copy()
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
+        env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"
 
         if getattr(sys, "frozen", False):
             candidates = _main_exe_candidates(state)
