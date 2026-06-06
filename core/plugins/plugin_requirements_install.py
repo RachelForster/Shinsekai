@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import IO
 
+import importlib.metadata as importlib_metadata
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -15,11 +17,26 @@ import threading
 import time
 from pathlib import Path
 
+from core.plugins.pip_index_config import (
+    has_explicit_pip_index as _has_explicit_pip_index,
+    pip_index_args as _configured_pip_index_args,
+)
+
+try:
+    from packaging.requirements import InvalidRequirement, Requirement
+except Exception:  # pragma: no cover - fallback for minimal embedded runtimes.
+    InvalidRequirement = ValueError  # type: ignore[assignment]
+    Requirement = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 _PIP_DETAIL_MAX = 1600
 _TORCH_PROJECT_NAMES = frozenset({"torch", "torchvision", "torchaudio"})
 _CUDA_VER_LINE_RE = re.compile(r"CUDA Version:\s*(\d+)\.(\d+)")
+_PIP_CONFLICT_RE = re.compile(
+    r"\b(conflict(?:ing)? dependencies|resolutionimpossible|cannot install|dependency conflict)\b",
+    re.IGNORECASE,
+)
 
 
 def frozen_release_root() -> Path | None:
@@ -213,6 +230,140 @@ def _pip_base_install_cmd(py: Path, pip_target: Path | None) -> list[str]:
     return cmd
 
 
+def _strip_inline_requirement_comment(raw_input: str) -> str:
+    if raw_input.lstrip().startswith("#"):
+        return ""
+    return re.split(r"[ \t]+#", raw_input, maxsplit=1)[0].strip()
+
+
+def _canonical_distribution_name(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).strip("-").lower()
+
+
+def _requirements_lines_define_index(lines: list[str]) -> bool:
+    for raw_line in lines:
+        line = _strip_inline_requirement_comment(raw_line)
+        if not line:
+            continue
+        try:
+            tokens = shlex.split(line)
+        except ValueError:
+            continue
+        if _has_explicit_pip_index(tokens):
+            return True
+    return False
+
+
+def _extra_pip_install_args() -> list[str]:
+    raw = os.environ.get("SHINSEKAI_PIP_INSTALL_ARGS", "").strip()
+    if not raw:
+        return []
+    return shlex.split(raw)
+
+
+def _apply_pip_index_and_extra_args(cmd: list[str], requirement_lines: list[str]) -> list[str]:
+    final_cmd = list(cmd)
+    extra_args = _extra_pip_install_args()
+    index_args = _configured_pip_index_args(primary_flag="--index-url")
+    if (
+        index_args
+        and not _has_explicit_pip_index(final_cmd)
+        and not _requirements_lines_define_index(requirement_lines)
+        and not _has_explicit_pip_index(extra_args)
+    ):
+        final_cmd.extend(index_args)
+    final_cmd.extend(extra_args)
+    return final_cmd
+
+
+def _looks_like_direct_reference(line: str) -> bool:
+    candidate = line.strip()
+    if not candidate:
+        return False
+    first = candidate.split(maxsplit=1)[0]
+    return (
+        first in {".", ".."}
+        or first.startswith(("./", "../", "/", "~/", ".\\", "..\\", "\\"))
+        or first.startswith("git+")
+        or "://" in first
+        or " @ " in candidate
+    )
+
+
+def _requirement_line_can_be_pruned(line: str) -> bool:
+    stripped = _strip_inline_requirement_comment(line)
+    if not stripped:
+        return True
+    if stripped.startswith("-"):
+        return False
+    if _looks_like_direct_reference(stripped):
+        return False
+    return True
+
+
+def _requirement_distribution_version(name: str) -> str | None:
+    canonical = _canonical_distribution_name(name)
+    paths = list(sys.path)
+    target = plugin_pip_target_directory()
+    if target is not None and target.is_dir():
+        # 打包版插件依赖会装进 data/plugin_site_packages，先查这里再看系统路径。
+        target_s = str(target.resolve())
+        paths = [target_s, *[path for path in paths if path != target_s]]
+    for distribution in importlib_metadata.distributions(path=paths):
+        dist_name = distribution.metadata.get("Name")
+        if not dist_name:
+            continue
+        if _canonical_distribution_name(dist_name) == canonical:
+            return distribution.version
+    return None
+
+
+def _requirement_line_is_satisfied(line: str) -> bool:
+    # 这里尽量按 PEP 508 判断：marker 不匹配就视为无需安装，版本不满足才进入 pip。
+    stripped = _strip_inline_requirement_comment(line)
+    if not stripped:
+        return True
+    if Requirement is None:
+        name = _requirement_line_project_name(stripped)
+        return bool(name and _requirement_distribution_version(name) is not None)
+    try:
+        requirement = Requirement(stripped)
+    except InvalidRequirement:
+        name = _requirement_line_project_name(stripped)
+        return bool(name and _requirement_distribution_version(name) is not None)
+    if requirement.marker and not requirement.marker.evaluate():
+        return True
+    installed_version = _requirement_distribution_version(requirement.name)
+    if installed_version is None:
+        return False
+    if requirement.specifier:
+        return requirement.specifier.contains(installed_version, prereleases=True)
+    return True
+
+
+def _install_lines_after_precheck(lines: list[str]) -> tuple[bool, list[str]]:
+    # requirements 里出现 -e、--find-links、direct reference 等全局/本地语义时，不做裁剪。
+    # 这些行可能影响后续包解析，强行只装“缺失行”反而会破坏作者的安装意图。
+    if not all(_requirement_line_can_be_pruned(line) for line in lines):
+        return False, lines
+    install_lines: list[str] = []
+    for line in lines:
+        stripped = _strip_inline_requirement_comment(line)
+        if not stripped:
+            continue
+        if not _requirement_line_is_satisfied(stripped):
+            install_lines.append(line.rstrip("\r\n"))
+    return True, install_lines
+
+
+def _classify_pip_result(result: tuple[str, str]) -> tuple[str, str]:
+    # 依赖求解冲突单独分类，前端可以提示“版本冲突”，而不是笼统显示 pip failed。
+    code, detail = result
+    if code == "pip_failed" and _PIP_CONFLICT_RE.search(detail or ""):
+        return ("pip_conflict", detail)
+    return result
+
+
 def _run_pip_install(
     cmd: list[str],
     *,
@@ -284,6 +435,7 @@ def _finish_install_result(
     result: tuple[str, str],
     pip_target: Path | None,
 ) -> tuple[str, str]:
+    result = _classify_pip_result(result)
     if result[0] == "pip_ok" and pip_target is not None:
         ensure_plugin_site_packages_on_syspath()
     return result
@@ -346,13 +498,36 @@ def install_plugin_requirements_txt(
         logger.warning("Could not read %s: %s", req, exc)
         return ("pip_exception", str(exc))
 
-    torch_lines, other_lines = _partition_torch_requirement_lines(lines)
+    # 先在本地分发信息里做预检，普通包只把“缺失或版本不满足”的行交给 pip。
+    # 这样已安装依赖不会反复下载，国内用户装插件时能少等很多。
+    can_prune, install_lines = _install_lines_after_precheck(lines)
+    if can_prune and not install_lines:
+        logger.info("Plugin pip: all requirements already satisfied, skipping install.")
+        return ("pip_ok", "")
+
+    active_req = req
+    active_lines = lines
+    precheck_tf: Path | None = None
+    if can_prune:
+        # pip 仍然只认识 requirements 文件，所以把裁剪后的缺失列表写入临时文件。
+        fd, precheck_tf_str = tempfile.mkstemp(
+            prefix="easyai_missing_req_", suffix=".txt"
+        )
+        os.close(fd)
+        precheck_tf = Path(precheck_tf_str)
+        precheck_tf.write_text("\n".join(install_lines) + "\n", encoding="utf-8")
+        active_req = precheck_tf
+        active_lines = install_lines
+
+    torch_lines, other_lines = _partition_torch_requirement_lines(active_lines)
     split_torch = bool(torch_lines) and sys.platform != "darwin"
 
     torch_tf: Path | None = None
     other_tf: Path | None = None
     try:
         if split_torch:
+            # torch/torchvision/torchaudio 不走普通 PyPI 镜像。
+            # 这里先按本机 CUDA/CPU 选择 PyTorch 官方 wheel index，再安装剩余依赖。
             idx_url, idx_reason = _pytorch_wheel_index_url_for_this_machine()
             logger.info(
                 "Plugin pip: PyTorch packages use index %s (%s)",
@@ -375,11 +550,14 @@ def install_plugin_requirements_txt(
                 "-r",
                 str(torch_tf),
             ]
-            code1, detail1 = _run_pip_install(
-                cmd_torch,
-                cwd=root,
-                timeout_sec=remaining_budget(),
-                on_output_line=on_output_line,
+            code1, detail1 = _finish_install_result(
+                _run_pip_install(
+                    _apply_pip_index_and_extra_args(cmd_torch, torch_lines),
+                    cwd=root,
+                    timeout_sec=remaining_budget(),
+                    on_output_line=on_output_line,
+                ),
+                pip_target,
             )
             if code1 != "pip_ok":
                 return (code1, detail1)
@@ -394,7 +572,10 @@ def install_plugin_requirements_txt(
             other_tf = Path(other_tf_str)
             other_tf.write_text("\n".join(other_lines) + "\n", encoding="utf-8")
 
-            cmd_other = [*base_cmd, "-r", str(other_tf)]
+            cmd_other = _apply_pip_index_and_extra_args(
+                [*base_cmd, "-r", str(other_tf)],
+                other_lines,
+            )
             return _finish_install_result(
                 _run_pip_install(
                     cmd_other,
@@ -405,7 +586,10 @@ def install_plugin_requirements_txt(
                 pip_target,
             )
 
-        cmd = [*base_cmd, "-r", str(req)]
+        cmd = _apply_pip_index_and_extra_args(
+            [*base_cmd, "-r", str(active_req)],
+            active_lines,
+        )
         return _finish_install_result(
             _run_pip_install(
                 cmd,
@@ -416,7 +600,7 @@ def install_plugin_requirements_txt(
             pip_target,
         )
     finally:
-        for path in (torch_tf, other_tf):
+        for path in (precheck_tf, torch_tf, other_tf):
             if path is not None:
                 try:
                     path.unlink(missing_ok=True)
