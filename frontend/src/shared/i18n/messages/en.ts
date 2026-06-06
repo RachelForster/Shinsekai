@@ -51,6 +51,7 @@ export const enMessages: Record<MessageKey, string> = {
   "api.llm.thinkingUnsupported": "This model does not support thinking mode.",
   "api.loading": "Loading API settings",
   "aiSprites.addToCharacter": "Add to character",
+  "aiSprites.addedToCharacter": "Added {count} sprite(s) to the character sprite list.",
   "aiSprites.candidatePlaceholder": "Generated image will appear here",
   "aiSprites.configureT2i": "Configure image generation",
   "aiSprites.description": "Turn character settings into editable sprite prompts, then prepare candidates for generation.",

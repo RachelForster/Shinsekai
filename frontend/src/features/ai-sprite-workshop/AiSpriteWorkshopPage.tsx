@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, useSearchParams } from "react-router-dom";
 import { ImagePlus, RefreshCw, Sparkles, WandSparkles } from "lucide-react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
+import {
+  charactersQueryKey,
+  listCharacters,
+  registerGeneratedCharacterSprites,
+} from "../../entities/character/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import { generateSpriteImage, generateSpritePrompts } from "../../entities/tools/repository";
 import { fileUrl } from "../../entities/files/repository";
@@ -30,7 +34,7 @@ interface SpritePromptDraft {
   imagePath?: string;
   label: string;
   prompt: string;
-  status: "draft" | "failed" | "ready";
+  status: "added" | "draft" | "failed" | "ready";
   index: number;
 }
 
@@ -130,6 +134,7 @@ function buildDraftsFromLlmItems(
 export function AiSpriteWorkshopPage() {
   const { language, t } = useI18n();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
@@ -144,7 +149,8 @@ export function AiSpriteWorkshopPage() {
   const t2iReady = configQuery.data ? isT2iReadyForSprites(configQuery.data.api_config) : false;
   const llmProvider = configQuery.data?.api_config.llm_provider ?? "";
   const t2iProvider = configQuery.data?.api_config.t2i_provider ?? "";
-  const hasReadyDraft = drafts.some((draft) => draft.status === "ready");
+  const readyDrafts = drafts.filter((draft) => draft.status === "ready" && draft.imagePath);
+  const hasReadyDraft = readyDrafts.length > 0;
   const isGeneratingImages = generatingIds.size > 0;
 
   const promptMutation = useMutation({
@@ -266,6 +272,44 @@ export function AiSpriteWorkshopPage() {
       await generateOneSprite(draft);
     }
   };
+
+  const registerSpritesMutation = useMutation({
+    mutationFn: () => {
+      if (!character) {
+        throw new Error(t("character.emptyTitle"));
+      }
+      return registerGeneratedCharacterSprites({
+        items: readyDrafts.map((draft) => ({
+          label: draft.label,
+          path: draft.imagePath ?? "",
+        })),
+        name: character.name,
+      });
+    },
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.imageError"),
+        title: t("aiSprites.addToCharacter"),
+      });
+    },
+    onSuccess(savedCharacter) {
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current) =>
+        current?.map((item) => (item.name === savedCharacter.name ? savedCharacter : item)) ?? current,
+      );
+      void queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      const addedPaths = new Set(readyDrafts.map((draft) => draft.imagePath).filter(Boolean));
+      setDrafts((current) =>
+        current.map((draft) => (draft.imagePath && addedPaths.has(draft.imagePath) ? { ...draft, status: "added" } : draft)),
+      );
+      setGenerationNote(t("aiSprites.addedToCharacter", { count: addedPaths.size }));
+      showToast({
+        kind: "success",
+        message: t("aiSprites.addedToCharacter", { count: addedPaths.size }),
+        title: t("aiSprites.addToCharacter"),
+      });
+    },
+  });
 
   if (configQuery.isError) {
     return (
@@ -458,7 +502,13 @@ export function AiSpriteWorkshopPage() {
         >
           {t("aiSprites.generateAllImages")}
         </AsyncButton>
-        <Button disabled={!hasReadyDraft}>{t("aiSprites.addToCharacter")}</Button>
+        <AsyncButton
+          disabled={!hasReadyDraft || registerSpritesMutation.isPending}
+          loading={registerSpritesMutation.isPending}
+          onClick={() => registerSpritesMutation.mutate()}
+        >
+          {t("aiSprites.addToCharacter")}
+        </AsyncButton>
         <p>{generationNote || t("aiSprites.safeSaveHint")}</p>
       </section>
     </div>
