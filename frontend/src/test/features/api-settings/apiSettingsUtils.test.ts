@@ -7,6 +7,7 @@ import {
   DEFAULT_T2I_OUTPUT_NODE_ID,
   DEFAULT_T2I_PROMPT_NODE_ID,
   inferT2iSetupMode,
+  isT2iReadyForSprites,
   isTaskRunning,
   mergeModelOptions,
   normalizeApiAsrForSave,
@@ -179,5 +180,9 @@ describe("API settings utilities", () => {
       t2i_prompt_node_id: DEFAULT_T2I_PROMPT_NODE_ID,
       t2i_provider: "comfyui",
     });
+
+    expect(isT2iReadyForSprites(emptyComfy)).toBe(false);
+    expect(isT2iReadyForSprites({ ...emptyComfy, t2i_default_workflow_path: "D:/workflows/sprite.json" })).toBe(true);
+    expect(isT2iReadyForSprites(stableDiffusion)).toBe(true);
   });
 });

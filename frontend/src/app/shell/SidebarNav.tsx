@@ -14,6 +14,8 @@ import type { MessageKey } from "../../shared/i18n";
 import { useI18n } from "../../shared/i18n";
 import { useAppUpdateInfo } from "./useAppUpdateInfo";
 
+type SidebarLink = { icon: typeof Settings; labelKey: MessageKey; to: string };
+
 const links = [
   { icon: Settings, labelKey: "nav.api", to: "/settings/api" },
   { icon: Gamepad2, labelKey: "nav.character", to: "/settings/characters" },
@@ -22,7 +24,7 @@ const links = [
   { icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" },
   { icon: ScrollText, labelKey: "nav.logs", to: "/settings/logs" },
   { icon: SlidersHorizontal, labelKey: "nav.system", to: "/settings/system" },
-] satisfies Array<{ icon: typeof Settings; labelKey: MessageKey; to: string }>;
+] satisfies SidebarLink[];
 
 type SidebarNavProps = {
   toolsOpen: boolean;
