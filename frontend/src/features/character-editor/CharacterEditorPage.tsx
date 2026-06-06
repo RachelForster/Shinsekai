@@ -29,13 +29,9 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-<<<<<<< HEAD
 import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
-=======
-import { AlertDialog, useToast } from "../../shared/ui";
 import { isT2iReadyForSprites } from "../api-settings/apiSettingsUtils";
 import { CharacterAiSpriteCard } from "./CharacterAiSpriteCard";
->>>>>>> d12b1041 (Add AI Sprite card and page to generate sprites)
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
