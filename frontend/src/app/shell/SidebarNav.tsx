@@ -21,12 +21,14 @@ import { useAppUpdateInfo } from "./useAppUpdateInfo";
 const GITHUB_REPO_URL = "https://github.com/RachelForster/Shinsekai";
 const GITHUB_REPO_API_URL = "https://api.github.com/repos/RachelForster/Shinsekai";
 
+type SidebarLink = { icon: typeof Settings; labelKey: MessageKey; to: string };
+
 const settingsLinks = [
   { icon: Settings, labelKey: "nav.api", to: "/settings/api" },
   { icon: Gamepad2, labelKey: "nav.character", to: "/settings/characters" },
   { icon: FileImage, labelKey: "nav.background", to: "/settings/backgrounds" },
   { icon: LayoutTemplate, labelKey: "nav.template", to: "/settings/templates" },
-] satisfies Array<{ icon: typeof Settings; labelKey: MessageKey; to: string }>;
+] satisfies SidebarLink[];
 
 const extensionLinks = [{ icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" }] satisfies Array<{
   icon: typeof Settings;
@@ -37,7 +39,7 @@ const extensionLinks = [{ icon: Plug, labelKey: "nav.plugins", to: "/settings/pl
 const maintenanceLinks = [
   { icon: ScrollText, labelKey: "nav.logs", to: "/settings/logs" },
   { icon: SlidersHorizontal, labelKey: "nav.system", to: "/settings/system" },
-] satisfies Array<{ icon: typeof Settings; labelKey: MessageKey; to: string }>;
+] satisfies SidebarLink[];
 
 type SidebarNavProps = {
   toolsOpen: boolean;
