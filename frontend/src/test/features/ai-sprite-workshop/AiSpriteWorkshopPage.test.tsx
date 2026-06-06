@@ -10,6 +10,7 @@ import type { AppConfig } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
 const mocks = {
+  generateSpriteImage: vi.fn(),
   generateSpritePrompts: vi.fn(),
   getAppConfig: vi.fn(),
   listCharacters: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("../../../entities/character/repository", () => ({
 }));
 
 vi.mock("../../../entities/tools/repository", () => ({
+  generateSpriteImage: (input: unknown, options: unknown) => mocks.generateSpriteImage(input, options),
   generateSpritePrompts: (input: unknown, options: unknown) => mocks.generateSpritePrompts(input, options),
 }));
 
@@ -64,27 +66,33 @@ describe("AiSpriteWorkshopPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getAppConfig.mockResolvedValue(readyConfig());
+    mocks.generateSpriteImage.mockResolvedValue({
+      file: "data/sprite/mika/ai_smile.png",
+      files: ["data/sprite/mika/ai_smile.png"],
+      message: "Sprite generated.",
+      outputDir: "data/sprite/mika",
+    });
     mocks.generateSpritePrompts.mockResolvedValue({
       items: [
         {
           label: "smile, hand wave",
           prompt:
-            "masterpiece, best quality, anime visual novel sprite, Mika, full body, transparent background, hand wave, character name: Mika",
+            "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, hand wave, character name: Mika",
         },
         {
           label: "serious, upright pose",
           prompt:
-            "masterpiece, best quality, anime visual novel sprite, Mika, full body, transparent background, upright pose, character name: Mika",
+            "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, upright pose, character name: Mika",
         },
         {
           label: "surprised, hand gesture",
           prompt:
-            "masterpiece, best quality, anime visual novel sprite, Mika, full body, transparent background, hand gesture, character name: Mika",
+            "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, hand gesture, character name: Mika",
         },
         {
           label: "calm, relaxed pose",
           prompt:
-            "masterpiece, best quality, anime visual novel sprite, Mika, full body, transparent background, relaxed pose, character name: Mika",
+            "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, relaxed pose, character name: Mika",
         },
       ],
       prompts: [],
@@ -116,8 +124,23 @@ describe("AiSpriteWorkshopPage", () => {
     expect(prompts).toHaveLength(4);
     prompts.forEach((prompt) => {
       expect(prompt.value).toMatch(/^[\x20-\x7E]+$/);
+      expect(prompt.value).toMatch(/^masterpiece, best quality, highres, solo, 1 person, single character/);
       expect(prompt.value).toContain("anime visual novel sprite");
     });
     expect(screen.getByText("Generated 4 prompt candidate(s).")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Generate sprite" })[0]);
+
+    expect(await screen.findByRole("button", { name: "Retry image" })).toBeInTheDocument();
+    expect(mocks.generateSpriteImage).toHaveBeenCalledWith(
+      {
+        characterName: "Mika",
+        label: "smile, hand wave",
+        negativePrompt: "low quality, blurry, extra limbs, text, watermark",
+        prompt:
+          "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, hand wave, character name: Mika",
+      },
+      undefined,
+    );
   });
 });

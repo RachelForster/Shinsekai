@@ -82,6 +82,7 @@
 
 .ai-sprite-card__preview {
   display: grid;
+  overflow: hidden;
   min-height: 160px;
   place-items: center;
   gap: var(--space-2);
@@ -90,6 +91,13 @@
   color: var(--color-text-muted);
   background: var(--color-surface-raised);
   text-align: center;
+}
+
+.ai-sprite-card__preview img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
 }
 
 .ai-sprite-card__icon {

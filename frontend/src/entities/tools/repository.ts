@@ -20,6 +20,13 @@ export function generateSprites(
   return getPlatform().tools.generateSprites(input, options);
 }
 
+export function generateSpriteImage(
+  input: { characterName: string; label?: string; negativePrompt?: string; outputDir?: string; prompt: string },
+  options?: TaskProgressOptions<SpriteGenerationResult>,
+) {
+  return getPlatform().tools.generateSpriteImage(input, options);
+}
+
 export function cropSprites(
   input: { inputDir: string; outputDir?: string; ratio: number },
   options?: TaskProgressOptions<BatchToolResult>,
