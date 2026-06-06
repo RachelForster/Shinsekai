@@ -170,7 +170,11 @@ function PluginPagePanel({ lookupId, page }: { lookupId: string; page: PluginUIP
       </section>
     );
   }
-  return <PluginConfigPanel lookupId={lookupId} page={page} />;
+  return <PluginConfigPanel key={pluginConfigPageStateKey(page)} lookupId={lookupId} page={page} />;
+}
+
+function pluginConfigPageStateKey(page: PluginUIPage) {
+  return `${pluginUiPageKey(page)}:${page.schema?.length ?? 0}:${JSON.stringify(page.values ?? {})}`;
 }
 
 /* ── Detail page ── */
