@@ -238,6 +238,24 @@ export function ApiSettingsPage() {
     },
   });
 
+  const llmConnectionTestMutation = useMutation({
+    mutationFn: (input: { apiKey: string; baseUrl: string; provider: string }) => fetchLlmModels(input),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("api.llm.testFailed"),
+        title: t("api.llm.testTitle"),
+      });
+    },
+    onSuccess(options) {
+      showToast({
+        kind: "success",
+        message: t("api.llm.testDone", { count: options.length }),
+        title: t("api.llm.testTitle"),
+      });
+    },
+  });
+
   const ttsBundleMutation = useMutation({
     mutationFn: () => downloadTtsBundle({ kind: ttsBundleKind }, { onTaskUpdate: setTtsBundleTask }),
     onError(error) {
@@ -449,6 +467,18 @@ export function ApiSettingsPage() {
     });
   };
 
+  const handleTestLlmConnection = () => {
+    if (!draft.llm_base_url.trim() || !activeApiKey.trim()) {
+      showToast({ kind: "error", message: t("api.llm.fetchMissing"), title: t("api.llm.testTitle") });
+      return;
+    }
+    llmConnectionTestMutation.mutate({
+      apiKey: activeApiKey,
+      baseUrl: draft.llm_base_url,
+      provider: draft.llm_provider,
+    });
+  };
+
   const updateAsrExtra = (provider: string, key: string, value: unknown) => {
     setDraft(updateAsrExtraConfig(draft, provider, key, value));
   };
@@ -549,6 +579,7 @@ export function ApiSettingsPage() {
         availableModelOptions={availableModelOptions}
         disabled={saveMutation.isPending}
         draft={draft}
+        connectionTestPending={llmConnectionTestMutation.isPending}
         fetchModelsPending={modelFetchMutation.isPending}
         llmExtraSchema={llmExtraSchema}
         llmProviderSelectOptions={llmProviderSelectOptions}
@@ -557,6 +588,7 @@ export function ApiSettingsPage() {
         onAdapterExtraChange={(key, value) => updateAdapterExtra("llm_extra_configs", draft.llm_provider, key, value)}
         onDraftPatch={updateDraftAndResetModelFetch}
         onFetchModels={handleFetchModels}
+        onTestConnection={handleTestLlmConnection}
         onProviderChange={updateProvider}
         onProviderMapChange={updateProviderMap}
         selectedOption={selectedOption}

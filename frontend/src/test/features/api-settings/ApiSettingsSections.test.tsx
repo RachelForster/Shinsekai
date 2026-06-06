@@ -132,6 +132,7 @@ describe("API settings sections", () => {
     const onProviderChange = vi.fn();
     const onProviderMapChange = vi.fn();
     const onFetchModels = vi.fn();
+    const onTestConnection = vi.fn();
 
     renderZh(
       <LlmConnectionSection
@@ -140,6 +141,7 @@ describe("API settings sections", () => {
         availableModelOptions={[{ id: "deepseek-chat", tags: ["text", "vision"] }]}
         disabled={false}
         draft={sampleConfig.api_config}
+        connectionTestPending={false}
         fetchModelsPending={false}
         llmExtraSchema={{ thinking_enabled: { default: true, label: "Thinking", type: "bool" } }}
         llmProviderSelectOptions={[{ label: "Deepseek", value: "Deepseek" }]}
@@ -148,6 +150,7 @@ describe("API settings sections", () => {
         onAdapterExtraChange={() => {}}
         onDraftPatch={onDraftPatch}
         onFetchModels={onFetchModels}
+        onTestConnection={onTestConnection}
         onProviderChange={onProviderChange}
         onProviderMapChange={onProviderMapChange}
         selectedOption={{ id: "deepseek-chat", tags: ["text", "vision"] }}
@@ -164,6 +167,8 @@ describe("API settings sections", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "获取可用模型" }));
     expect(onFetchModels).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /连通检测/ }));
+    expect(onTestConnection).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Text")).toBeInTheDocument();
     expect(screen.getByText("Vision")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Thinking/ })).toBeDisabled();

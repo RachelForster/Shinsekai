@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Wifi } from "lucide-react";
 
 import type { AdapterExtraFieldSchema, ApiConfig } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
@@ -13,6 +13,7 @@ interface LlmConnectionSectionProps {
   availableModelOptions: LlmModelOption[];
   disabled: boolean;
   draft: ApiConfig;
+  connectionTestPending: boolean;
   fetchModelsPending: boolean;
   llmExtraSchema: Record<string, AdapterExtraFieldSchema>;
   llmProviderSelectOptions: Array<{ label: string; value: string }>;
@@ -21,6 +22,7 @@ interface LlmConnectionSectionProps {
   onAdapterExtraChange: (key: string, value: unknown) => void;
   onDraftPatch: (patch: Partial<ApiConfig>) => void;
   onFetchModels: () => void;
+  onTestConnection: () => void;
   onProviderChange: (provider: string) => void;
   onProviderMapChange: (key: "llm_api_key" | "llm_model", value: string) => void;
   selectedOption?: LlmModelOption;
@@ -32,6 +34,7 @@ export function LlmConnectionSection({
   availableModelOptions,
   disabled,
   draft,
+  connectionTestPending,
   fetchModelsPending,
   llmExtraSchema,
   llmProviderSelectOptions,
@@ -40,6 +43,7 @@ export function LlmConnectionSection({
   onAdapterExtraChange,
   onDraftPatch,
   onFetchModels,
+  onTestConnection,
   onProviderChange,
   onProviderMapChange,
   selectedOption,
@@ -48,8 +52,18 @@ export function LlmConnectionSection({
 
   return (
     <section className="section">
-      <div className="section__header">
+      <div className="section__header api-page__llm-header">
         <h2 className="section__title">{t("api.llm.connectionTitle")}</h2>
+        <AsyncButton
+          className="api-page__llm-test-button"
+          disabled={disabled}
+          icon={<Wifi aria-hidden className="button__icon" />}
+          loading={connectionTestPending}
+          onClick={onTestConnection}
+          tooltip={t("api.llm.testConnection")}
+        >
+          {connectionTestPending ? t("api.llm.testingConnection") : t("api.llm.testConnection")}
+        </AsyncButton>
       </div>
       <label className="field-row">
         <span className="field-row__label">{t("api.llm.provider")}</span>
