@@ -7,7 +7,7 @@ import threading
 import traceback
 from typing import Any, NoReturn
 
-from sdk.exception.types import RuntimeDependencyError, runtime_dependency_error_from_exception
+from sdk.exception.types import ExceptionInfo, classify_exception
 
 
 _dialog_shown = False
@@ -25,14 +25,23 @@ def _traceback_text(
 def _format_dialog_message(
     app_name: str,
     exc: BaseException,
-    dependency_error: RuntimeDependencyError | None,
+    error_info: ExceptionInfo | None,
 ) -> str:
-    if dependency_error:
+    if error_info and error_info["kind"] == "missing_dependency":
         return (
-            f"{app_name} 启动失败，缺少 Python 模块：{dependency_error['moduleName']}\n\n"
-            f"建议安装包：{dependency_error['packageName']}\n"
+            f"{app_name} 启动失败，缺少 Python 模块：{error_info['moduleName']}\n\n"
+            f"建议安装包：{error_info['packageName']}\n"
             "安装依赖后请重新启动聊天。"
         )
+    if error_info and error_info["kind"] == "http_client":
+        detail = f"请求地址：{error_info['url']}\n" if error_info["url"] else ""
+        if error_info["timeout"]:
+            reason = "网络请求超时"
+        elif error_info["statusCode"] is not None:
+            reason = f"网络请求返回 HTTP {error_info['statusCode']}"
+        else:
+            reason = "网络请求失败"
+        return f"{app_name} 启动失败：{reason}\n\n{detail}{error_info['message']}"
     return f"{app_name} 启动失败：{type(exc).__name__}: {exc}"
 
 
@@ -41,12 +50,19 @@ def _write_stderr(
     exc_type: type[BaseException],
     exc: BaseException,
     detail: str,
-    dependency_error: RuntimeDependencyError | None,
+    error_info: ExceptionInfo | None,
 ) -> None:
-    if dependency_error:
+    if error_info and error_info["kind"] == "missing_dependency":
         header = (
-            f"{app_name} startup failed: Missing Python module: {dependency_error['moduleName']}\n"
-            f"Suggested package: {dependency_error['packageName']}\n"
+            f"{app_name} startup failed: Missing Python module: {error_info['moduleName']}\n"
+            f"Suggested package: {error_info['packageName']}\n"
+        )
+    elif error_info and error_info["kind"] == "http_client":
+        header = (
+            f"{app_name} startup failed: HTTP client error: {error_info['errorType']}\n"
+            f"URL: {error_info['url']}\n"
+            f"Status code: {error_info['statusCode']}\n"
+            f"Timeout: {error_info['timeout']}\n"
         )
     else:
         header = f"{app_name} startup failed: {exc_type.__name__}: {exc}\n"
@@ -138,8 +154,9 @@ def report_main_exception(
         return
 
     detail = _traceback_text(exc_type, exc, tb)
-    dependency_error = runtime_dependency_error_from_exception(exc)
-    event = "main.missing_dependency" if dependency_error else "main.uncaught_exception"
+    error_info = classify_exception(exc)
+    error_kind = error_info["kind"] if error_info else ""
+    event = f"main.{error_kind}" if error_kind else "main.uncaught_exception"
     target_logger = logger or logging.getLogger("shinsekai.main")
 
     try:
@@ -148,18 +165,22 @@ def report_main_exception(
             exc_info=(exc_type, exc, tb),
             extra={
                 "event": event,
-                "module_name": dependency_error.get("moduleName", "") if dependency_error else "",
-                "package_name": dependency_error.get("packageName", "") if dependency_error else "",
+                "error_kind": error_kind,
+                "module_name": error_info.get("moduleName", "") if error_info else "",
+                "package_name": error_info.get("packageName", "") if error_info else "",
+                "http_status_code": error_info.get("statusCode") if error_info else None,
+                "http_url": error_info.get("url", "") if error_info else "",
+                "http_timeout": error_info.get("timeout") if error_info else None,
             },
         )
     except Exception:
         pass
 
-    _write_stderr(app_name, exc_type, exc, detail, dependency_error)
+    _write_stderr(app_name, exc_type, exc, detail, error_info)
     if _should_show_dialog(show_dialog):
         show_error_dialog(
             f"{app_name} 启动失败",
-            _format_dialog_message(app_name, exc, dependency_error),
+            _format_dialog_message(app_name, exc, error_info),
             detail,
         )
 

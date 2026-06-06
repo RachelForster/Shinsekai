@@ -93,6 +93,7 @@ def test_runtime_dependency_error_maps_opencc_package():
     error = runtime_dependency_error_from_text("ModuleNotFoundError: No module named 'opencc'")
 
     assert error == {
+        "kind": "missing_dependency",
         "message": "Missing Python module: opencc",
         "moduleName": "opencc",
         "packageName": "opencc-python-reimplemented",

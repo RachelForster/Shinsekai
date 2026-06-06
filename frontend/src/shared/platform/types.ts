@@ -558,6 +558,7 @@ export interface TtsBundleDownloadResult {
 export type ChatRuntimeStatus = "idle" | "listening" | "generating" | "streaming" | "speaking" | "paused" | "error";
 
 export interface RuntimeDependencyError {
+  kind?: "missing_dependency";
   logPath?: string;
   message: string;
   moduleName: string;

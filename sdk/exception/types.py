@@ -2,14 +2,27 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 
-class RuntimeDependencyError(TypedDict, total=False):
+class RuntimeDependencyError(TypedDict):
+    kind: Literal["missing_dependency"]
     message: str
     moduleName: str
     packageName: str
-    logPath: str
+    logPath: NotRequired[str]
+
+
+class HttpClientError(TypedDict):
+    kind: Literal["http_client"]
+    message: str
+    errorType: str
+    timeout: bool
+    statusCode: int | None
+    url: str
+
+
+ExceptionInfo = RuntimeDependencyError | HttpClientError
 
 
 _NO_MODULE_PATTERNS = (
@@ -92,6 +105,7 @@ def runtime_dependency_error_from_module(
     module_name = (module_name or "").strip()
     package_name = package_for_module(module_name)
     error: RuntimeDependencyError = {
+        "kind": "missing_dependency",
         "message": f"Missing Python module: {module_name}",
         "moduleName": module_name,
         "packageName": package_name,
@@ -99,3 +113,57 @@ def runtime_dependency_error_from_module(
     if log_path:
         error["logPath"] = str(log_path)
     return error
+
+
+def _is_httpx_exception(exc: BaseException) -> bool:
+    module_name = type(exc).__module__
+    return module_name == "httpx" or module_name.startswith("httpx.")
+
+
+def _httpx_url(exc: BaseException) -> str:
+    for owner in (exc, getattr(exc, "response", None)):
+        request = getattr(owner, "request", None)
+        url = getattr(request, "url", None)
+        if url is not None:
+            return str(url)
+    return ""
+
+
+def _httpx_status_code(exc: BaseException) -> int | None:
+    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+    return None
+
+
+def http_client_error_from_exception(exc: BaseException) -> HttpClientError | None:
+    if not _is_httpx_exception(exc):
+        return None
+
+    error_type = type(exc).__name__
+    timeout = "timeout" in error_type.lower() or error_type in {
+        "ConnectTimeout",
+        "PoolTimeout",
+        "ReadTimeout",
+        "TimeoutException",
+        "WriteTimeout",
+    }
+    message = str(exc).strip() or error_type
+    return {
+        "kind": "http_client",
+        "message": f"HTTP request failed: {message}",
+        "errorType": error_type,
+        "timeout": timeout,
+        "statusCode": _httpx_status_code(exc),
+        "url": _httpx_url(exc),
+    }
+
+
+def classify_exception(exc: BaseException) -> ExceptionInfo | None:
+    dependency_error = runtime_dependency_error_from_exception(exc)
+    if dependency_error:
+        return dependency_error
+    http_error = http_client_error_from_exception(exc)
+    if http_error:
+        return http_error
+    return None

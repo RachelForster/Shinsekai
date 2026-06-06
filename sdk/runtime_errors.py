@@ -8,7 +8,11 @@ from sdk.exception.handler import (
 )
 from sdk.exception.types import (
     MODULE_PACKAGE_MAP,
+    ExceptionInfo,
+    HttpClientError,
     RuntimeDependencyError,
+    classify_exception,
+    http_client_error_from_exception,
     missing_module_from_exception,
     missing_module_from_text,
     package_for_module,
@@ -19,8 +23,12 @@ from sdk.exception.types import (
 
 __all__ = [
     "MODULE_PACKAGE_MAP",
+    "ExceptionInfo",
+    "HttpClientError",
     "RuntimeDependencyError",
+    "classify_exception",
     "handle_main_exception",
+    "http_client_error_from_exception",
     "install_main_exception_hook",
     "missing_module_from_exception",
     "missing_module_from_text",
