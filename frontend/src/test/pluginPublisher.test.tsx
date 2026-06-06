@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createBrowserPreviewPlatform } from "../shared/platform/browserPreviewPlatform";
 import { createHttpPlatform } from "../shared/platform/httpPlatform";
 import type { PluginSubmissionInput } from "../shared/platform/types";
 
@@ -88,5 +89,24 @@ describe("plugin publisher bridge", () => {
 
     expect(result.clipboardText).toBe(clipboardText);
     expect(writeText).toHaveBeenCalledWith(clipboardText);
+  });
+
+  it("keeps optional Shinsekai version in browser preview issue payload", async () => {
+    const platform = createBrowserPreviewPlatform();
+    const result = await platform.plugins.buildSubmissionIssueUrl({
+      ...submission,
+      display_name: " Shinsekai Plugin ",
+      repo: "https://github.com/shinsekai/plugin-example.git",
+      shinsekai_version: " >=0.2.0 ",
+    });
+
+    expect(result.submission).toEqual({
+      ...submission,
+      repo: "https://github.com/shinsekai/plugin-example",
+      shinsekai_version: ">=0.2.0",
+    });
+    const pluginInfo = new URL(result.issueUrl).searchParams.get("plugin-info") ?? "";
+    expect(result.json).toContain('"shinsekai_version": ">=0.2.0"');
+    expect(pluginInfo).toContain('"shinsekai_version": ">=0.2.0"');
   });
 });
