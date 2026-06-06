@@ -155,12 +155,38 @@ export interface PluginManifest {
 
 export interface PluginCatalogItem {
   author: string;
+  commitSha?: string;
   description: string;
+  displayName?: string;
+  downloadUrl?: string;
   downloaded: boolean;
   entry: string;
+  forks?: number;
+  id?: string;
   installed: boolean;
+  logo?: string;
   name: string;
+  packageR2Key?: string;
+  packageSha256?: string;
+  packageSize?: number | null;
+  packageSource?: string;
+  packageUrl?: string;
+  readmeUrl?: string;
   repo: string;
+  review?: Record<string, unknown>;
+  securityScan?: Record<string, unknown>;
+  sha256?: string;
+  shinsekaiVersion?: string;
+  shortDescription?: string;
+  size?: number | null;
+  socialLink?: string;
+  sourceUrl?: string;
+  stars?: number;
+  tags?: string[];
+  trustLevel?: string;
+  updatedAt?: string;
+  verified?: boolean;
+  version?: string;
 }
 
 export type PluginUIPageKind = "settings" | "tools";
