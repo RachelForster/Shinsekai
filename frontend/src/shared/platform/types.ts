@@ -470,7 +470,13 @@ export interface TemplateLaunchSession {
   voiceLanguage: string;
 }
 
+export interface SpritePromptItem {
+  label: string;
+  prompt: string;
+}
+
 export interface SpritePromptResult {
+  items?: SpritePromptItem[];
   prompts: string[];
 }
 
@@ -912,7 +918,7 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<BatchToolResult>,
     ) => Promise<BatchToolResult>;
     generateSpritePrompts: (
-      input: { characterName: string; count: number },
+      input: { characterName: string; count: number; language?: string },
       options?: TaskProgressOptions<SpritePromptResult>,
     ) => Promise<SpritePromptResult>;
     generateSprites: (

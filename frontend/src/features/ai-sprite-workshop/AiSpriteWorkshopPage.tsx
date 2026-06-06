@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, useSearchParams } from "react-router-dom";
 import { ImagePlus, RefreshCw, Sparkles, WandSparkles } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
+import { generateSpritePrompts } from "../../entities/tools/repository";
 import type { Character } from "../../entities/config/types";
 import { isT2iReadyForSprites } from "../api-settings/apiSettingsUtils";
 import { useI18n } from "../../shared/i18n";
 import type { FrontendLanguage } from "../../shared/i18n";
+import type { SpritePromptItem } from "../../shared/platform/types";
 import {
   AsyncButton,
   Button,
@@ -18,6 +20,7 @@ import {
   Select,
   TextArea,
   TextInput,
+  useToast,
 } from "../../shared/ui";
 import "./AiSpriteWorkshopPage.css";
 
@@ -29,21 +32,37 @@ interface SpritePromptDraft {
   index: number;
 }
 
-const POSE_VARIATIONS = [
-  "neutral expression, relaxed standing pose",
-  "gentle smile, one hand near chest",
-  "serious expression, confident upright pose",
-  "surprised expression, dynamic hand gesture",
-  "soft sad expression, slightly lowered shoulders",
-  "determined expression, dramatic visual novel pose",
-  "playful expression, light body turn",
-  "calm expression, elegant standing pose",
-] as const;
-
 const TAG_PRESETS: Record<FrontendLanguage, string[]> = {
-  en: ["Neutral", "Smile", "Serious", "Surprised", "Sad", "Determined", "Playful", "Calm"],
-  ja: ["通常", "笑顔", "真剣", "驚き", "悲しみ", "決意", "遊び心", "穏やか"],
-  zh_CN: ["默认", "微笑", "严肃", "惊讶", "难过", "坚定", "俏皮", "平静"],
+  en: [
+    "neutral, relaxed pose",
+    "smile, hand near chest",
+    "serious, upright pose",
+    "surprised, hand gesture",
+    "sad, lowered shoulders",
+    "determined, dramatic pose",
+    "playful, body turn",
+    "calm, elegant pose",
+  ],
+  ja: [
+    "\u901a\u5e38, \u30ea\u30e9\u30c3\u30af\u30b9\u7acb\u3061",
+    "\u7b11\u9854, \u80f8\u306b\u624b",
+    "\u771f\u5263, \u59ff\u52e2\u826f\u304f",
+    "\u9a5a\u304d, \u624b\u632f\u308a",
+    "\u60b2\u3057\u307f, \u80a9\u3092\u843d\u3068\u3059",
+    "\u6c7a\u610f, \u5287\u7684\u306a\u7acb\u3061",
+    "\u904a\u3073\u5fc3, \u4f53\u3092\u3072\u306d\u308b",
+    "\u7a4f\u3084\u304b, \u4e0a\u54c1\u306a\u7acb\u3061",
+  ],
+  zh_CN: [
+    "\u9ed8\u8ba4, \u653e\u677e\u7ad9\u59ff",
+    "\u5fae\u7b11, \u624b\u653e\u80f8\u524d",
+    "\u4e25\u8083, \u633a\u76f4\u7ad9\u59ff",
+    "\u60ca\u8bb6, \u624b\u52bf",
+    "\u96be\u8fc7, \u5782\u80a9",
+    "\u575a\u5b9a, \u620f\u5267\u6027\u7ad9\u59ff",
+    "\u4fcf\u76ae, \u8f6c\u8eab",
+    "\u5e73\u9759, \u4f18\u96c5\u7ad9\u59ff",
+  ],
 };
 
 function selectedCharacter(characters: Character[], selectedName: string) {
@@ -62,62 +81,53 @@ function spriteLabelSeed(language: FrontendLanguage, index: number) {
   return presets[index % presets.length];
 }
 
-function sdPromptSeed(character: Character, index: number) {
-  const setting = character.character_setting.trim();
-  const name = character.name.trim() || "character";
-  const variation = POSE_VARIATIONS[index % POSE_VARIATIONS.length];
-  return [
-    "masterpiece",
-    "best quality",
-    "highres",
-    "anime visual novel sprite",
-    name,
-    "single character sprite",
-    "solo",
-    "full body",
-    "standing",
-    "front view or three-quarter view",
-    "transparent background",
-    "clean lineart",
-    "soft cel shading",
-    "consistent character design",
-    variation,
-    `character name: ${name}`,
-    setting ? `character personality and design: ${setting}` : "",
-  ]
-    .filter(Boolean)
-    .join(", ");
+function englishPromptText(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7E]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function buildPromptDraft(
-  character: Character,
-  index: number,
-  language: FrontendLanguage,
-): SpritePromptDraft {
+function splitPromptLine(value: string): SpritePromptItem {
+  const text = value.trim();
+  const match = text.match(/^(?:\d+[.)]\s*)?([^:：|]+)[:：|]\s*(.+)$/);
+  if (match) {
+    return {
+      label: match[1].trim(),
+      prompt: englishPromptText(match[2]),
+    };
+  }
   return {
-    id: `sprite-${index + 1}`,
-    index,
-    label: spriteLabelSeed(language, index),
-    prompt: sdPromptSeed(character, index),
-    status: "draft",
+    label: "",
+    prompt: englishPromptText(text),
   };
 }
 
-function buildPromptDrafts(
-  character: Character | null,
-  count: number,
+function buildDraftsFromLlmItems(
   language: FrontendLanguage,
+  items: SpritePromptItem[],
 ): SpritePromptDraft[] {
-  if (!character) {
-    return [];
-  }
-  return Array.from({ length: normalizeSpriteCount(count) }, (_, index) =>
-    buildPromptDraft(character, index, language),
-  );
+  return items
+    .map<SpritePromptDraft | null>((item, index) => {
+      const prompt = englishPromptText(item.prompt || "");
+      if (!prompt) {
+        return null;
+      }
+      return {
+        id: `sprite-${index + 1}`,
+        index,
+        label: item.label?.trim() || spriteLabelSeed(language, index),
+        prompt,
+        status: "draft" as const,
+      };
+    })
+    .filter((item): item is SpritePromptDraft => item !== null);
 }
 
 export function AiSpriteWorkshopPage() {
   const { language, t } = useI18n();
+  const { showToast } = useToast();
   const [searchParams] = useSearchParams();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
@@ -133,6 +143,33 @@ export function AiSpriteWorkshopPage() {
   const t2iProvider = configQuery.data?.api_config.t2i_provider ?? "";
   const hasReadyDraft = drafts.some((draft) => draft.status === "ready");
 
+  const promptMutation = useMutation({
+    mutationFn: () =>
+      generateSpritePrompts({
+        characterName: character?.name ?? "",
+        count: normalizeSpriteCount(spriteCount),
+        language,
+      }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("tools.msgNoPrompts"),
+        title: t("tools.msgTitlePrompts"),
+      });
+    },
+    onSuccess(result) {
+      if (!character) {
+        return;
+      }
+      const items = result.items?.length
+        ? result.items
+        : result.prompts.map((prompt) => splitPromptLine(prompt));
+      const nextDrafts = buildDraftsFromLlmItems(language, items);
+      setDrafts(nextDrafts);
+      setGenerationNote(t("aiSprites.promptGenerated", { count: nextDrafts.length }));
+    },
+  });
+
   useEffect(() => {
     if (!selectedName && characters[0]) {
       setSelectedName(characters[0].name);
@@ -140,25 +177,41 @@ export function AiSpriteWorkshopPage() {
   }, [characters, selectedName]);
 
   useEffect(() => {
-    setDrafts(buildPromptDrafts(character, spriteCount, language));
-  }, [character, language, spriteCount]);
+    setDrafts([]);
+    setGenerationNote("");
+  }, [character?.name, language, spriteCount]);
 
   const updateDraft = (id: string, patch: Partial<SpritePromptDraft>) => {
     setDrafts((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   };
 
   const refreshPrompts = () => {
-    setDrafts(buildPromptDrafts(character, spriteCount, language));
-    setGenerationNote(t("aiSprites.promptRefreshed"));
-  };
-
-  const refreshOnePrompt = (draft: SpritePromptDraft) => {
     if (!character) {
       return;
     }
-    const next = buildPromptDraft(character, draft.index, language);
-    updateDraft(draft.id, { label: next.label, prompt: next.prompt, status: "draft" });
-    setGenerationNote(t("aiSprites.promptRefreshed"));
+    promptMutation.mutate();
+  };
+
+  const refreshOnePrompt = async (draft: SpritePromptDraft) => {
+    if (!character) {
+      return;
+    }
+    try {
+      const result = await generateSpritePrompts({ characterName: character.name, count: 1, language });
+      const items = result.items?.length ? result.items : result.prompts.map((prompt) => splitPromptLine(prompt));
+      const [next] = buildDraftsFromLlmItems(language, items);
+      if (!next) {
+        throw new Error(t("tools.msgNoPrompts"));
+      }
+      updateDraft(draft.id, { label: next.label, prompt: next.prompt, status: "draft" });
+      setGenerationNote(t("aiSprites.promptRefreshed"));
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("tools.msgNoPrompts"),
+        title: t("tools.msgTitlePrompts"),
+      });
+    }
   };
 
   if (configQuery.isError) {
@@ -270,7 +323,7 @@ export function AiSpriteWorkshopPage() {
             <p className="section__description">{t("aiSprites.promptDraftsHint")}</p>
           </div>
           <AsyncButton
-            disabled={!character}
+            disabled={!character || promptMutation.isPending}
             icon={<WandSparkles aria-hidden className="button__icon" />}
             onClick={refreshPrompts}
           >
@@ -279,6 +332,9 @@ export function AiSpriteWorkshopPage() {
         </div>
 
         {!characters.length ? <EmptyState title={t("character.emptyTitle")} body={t("character.emptyBody")} /> : null}
+        {characters.length && !drafts.length ? (
+          <EmptyState title={t("aiSprites.promptEmptyTitle")} body={t("aiSprites.promptEmptyBody")} />
+        ) : null}
         {drafts.length ? (
           <div className="ai-sprite-page__prompt-grid">
             {drafts.map((draft) => (
@@ -290,7 +346,7 @@ export function AiSpriteWorkshopPage() {
                   </div>
                   <Button
                     icon={<RefreshCw aria-hidden className="button__icon" />}
-                    onClick={() => refreshOnePrompt(draft)}
+                    onClick={() => void refreshOnePrompt(draft)}
                     tooltip={t("aiSprites.retryOne")}
                     variant="ghost"
                   >

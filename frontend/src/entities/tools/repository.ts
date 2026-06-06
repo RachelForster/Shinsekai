@@ -7,7 +7,7 @@ import type {
 } from "../../shared/platform/types";
 
 export function generateSpritePrompts(
-  input: { characterName: string; count: number },
+  input: { characterName: string; count: number; language?: string },
   options?: TaskProgressOptions<SpritePromptResult>,
 ) {
   return getPlatform().tools.generateSpritePrompts(input, options);
