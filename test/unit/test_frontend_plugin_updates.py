@@ -206,7 +206,7 @@ def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, mo
         "packageStatus": "verified",
         "packageUrl": "https://packages.example/demo.zip",
         "repo": "owner/demo",
-        "sourceLabel": "Official package (R2)",
+        "sourceLabel": "官方包体 (R2)",
         "sourceType": "package",
     }
     assert calls == [("package", True), ("pip", package_root)]

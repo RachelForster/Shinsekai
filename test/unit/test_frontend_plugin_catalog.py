@@ -62,12 +62,12 @@ def test_plugin_rows_include_persisted_install_metadata(monkeypatch):
     monkeypatch.setattr(plugin_host, "collect_frontend_page_contributions", lambda: [])
     monkeypatch.setattr(
         "core.plugins.registry_download.load_plugin_install_metadata",
-        lambda value: {"packageSha256": "abc123", "sourceLabel": "Official package (R2)"} if value == entry else {},
+        lambda value: {"packageSha256": "abc123", "sourceLabel": "官方包体 (R2)"} if value == entry else {},
     )
 
     rows = _plugin_rows()
 
-    assert rows[0]["install"] == {"packageSha256": "abc123", "sourceLabel": "Official package (R2)"}
+    assert rows[0]["install"] == {"packageSha256": "abc123", "sourceLabel": "官方包体 (R2)"}
 
 
 def test_plugin_registry_rows_expose_market_metadata(monkeypatch):

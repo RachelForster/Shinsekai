@@ -163,7 +163,7 @@ describe("PluginManagerPage", () => {
       options?.onTaskUpdate?.({
         createdAt: 1,
         id: "previous-install-task",
-        installSourceLabel: "Official package (R2)",
+        installSourceLabel: "官方包体 (R2)",
         kind: "plugin-install",
         logs: ["previous install log"],
         message: "Previous install completed",

@@ -32,22 +32,38 @@ function taskPercent(progress: number | null | undefined) {
 }
 
 const phaseLabels: Record<string, string> = {
+  cancelled: "已取消",
   completed: "完成",
+  crop: "裁剪",
   download: "下载包",
   extract: "解压",
   failed: "失败",
+  generate: "生成",
+  install: "安装",
+  installingDeps: "安装依赖",
   manifest: "登记插件",
+  merge: "合并文件",
+  pipeline: "执行流程",
   pip: "安装依赖",
+  probe: "探测",
+  prompt: "生成提示词",
   queued: "排队",
+  reload: "重新加载",
+  "remove-background": "抠图",
   registry: "读取索引",
+  run: "运行中",
   running: "运行中",
+  verify: "校验",
+  write: "写入配置",
 };
 
 const packageStatusLabels: Record<string, string> = {
+  checking: "包体校验中",
   downloading: "包体下载中",
   failed: "包体失败",
   installed: "包体已校验",
   pending: "包体等待中",
+  verified: "包体已校验",
 };
 
 const dependencyStatusLabels: Record<string, string> = {
@@ -60,6 +76,15 @@ const dependencyStatusLabels: Record<string, string> = {
   pip_skip_no_requirements: "无 requirements",
   pip_timeout: "依赖超时",
   running: "依赖安装中",
+};
+
+const installSourceLabels: Record<string, string> = {
+  github: "GitHub 源码",
+  local: "本地插件",
+  package: "官方包体",
+  registry: "Registry",
+  repository: "GitHub 源码",
+  source: "源码安装",
 };
 
 function statusLabel(value: string | undefined, labels: Record<string, string>) {
@@ -86,7 +111,7 @@ export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
   const noticeKind = task.noticeKind || (task.status === "failed" ? "error" : "info");
   const message = task.message || task.status;
   const showMessage = message !== notice;
-  const sourceLabel = task.installSourceLabel || task.installSource || "";
+  const sourceLabel = task.installSourceLabel || statusLabel(task.installSource, installSourceLabels);
   const packageLabel = statusLabel(task.packageStatus, packageStatusLabels);
   const dependencyLabel = statusLabel(task.dependencyInstallStatus, dependencyStatusLabels);
   const packageSourceLabel = task.packageSource ? task.packageSource.toUpperCase() : "";

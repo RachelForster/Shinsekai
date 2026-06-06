@@ -284,7 +284,7 @@ def _registry_package_metadata(
         "packageSource": package_source if is_verified_package else "local",
         "packageStatus": package_status,
         "repo": str(getattr(record, "repo", "") or "").strip(),
-        "sourceLabel": "Official package (R2)" if is_verified_package else "Existing plugin directory",
+        "sourceLabel": "官方包体 (R2)" if is_verified_package else "已有插件目录",
         "sourceType": "package" if is_verified_package else "existing",
     }
     if is_verified_package:
@@ -391,10 +391,11 @@ def _install_registry_package_source(
     _update_task(
         state,
         task_id,
-        message=f"Downloading official package for {display_name or repo_slug or target.name}.",
+        message=f"正在下载 {display_name or repo_slug or target.name} 的官方包体。",
         phase="download",
         progress=0.12,
         installSource="package",
+        installSourceLabel="官方包体 (R2)",
         packageStatus="downloading",
     )
 
@@ -411,9 +412,9 @@ def _install_registry_package_source(
             plugins_parent=Path("plugins"),
         )
         package_message = (
-            "Existing plugin directory found. Skipping official package verification."
+            "检测到已有插件目录，跳过官方包体校验。"
             if package_status == "existing"
-            else "Official package verified. Installing plugin dependencies."
+            else "官方包体已校验，正在安装插件依赖。"
         )
         _update_task(
             state,
@@ -451,7 +452,7 @@ def _install_registry_package_source(
         _update_task(
             state,
             task_id,
-            message="Registering official package install.",
+            message="正在登记官方包体安装状态。",
             phase="manifest",
             progress=0.9,
             dependencyInstallStatus=dependency_status,
@@ -460,19 +461,19 @@ def _install_registry_package_source(
             result = _plugin_result_from_manifest(entry)
             if repo_slug:
                 mark_repo_downloaded(repo_slug, manifest_entry=entry, install_metadata=metadata)
-            _update_task(state, task_id, message="Official package installed.", phase="completed", progress=1)
+            _update_task(state, task_id, message="官方包体安装完成。", phase="completed", progress=1)
             if backup is not None:
                 shutil.rmtree(backup, ignore_errors=True)
             return _with_install_metadata(result, metadata)
         if repo_slug:
             mark_repo_downloaded(repo_slug, manifest_entry=None)
         result = _synthetic_plugin_result(
-            description=description or f"Package was downloaded to {plugin_root.as_posix()}, but no manifest entry was found.",
+            description=description or f"包体已下载到 {plugin_root.as_posix()}，但没有找到可登记的插件入口。",
             enabled=False,
             plugin_id=repo_slug or str(getattr(record, "id", "") or target.name),
             title=display_name or target.name,
         )
-        _update_task(state, task_id, message="Official package downloaded, but no manifest entry was found.", progress=1)
+        _update_task(state, task_id, message="官方包体已下载，但没有找到可登记的插件入口。", progress=1)
         if backup is not None:
             shutil.rmtree(backup, ignore_errors=True)
         return _with_install_metadata(result, metadata)
@@ -507,7 +508,9 @@ def _install_plugin_source(
             repo = str(getattr(registry_rec, "repo", "") or "").strip()
             if repo and _package_error_allows_github_fallback(exc):
                 details = _package_error_details(exc)
-                fallback_message = str(details.get("errorUserMessage") or "官方包体暂时无法访问，正在自动尝试 GitHub 源码安装。")
+                fallback_message = str(
+                    details.get("errorUserMessage") or "官方包体暂时无法访问，正在自动尝试 GitHub 源码安装。"
+                )
                 _update_task(
                     state,
                     task_id,

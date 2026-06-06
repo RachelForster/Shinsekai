@@ -24,7 +24,7 @@ describe("TaskProgress", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("install");
+    expect(screen.getByRole("status")).toHaveTextContent("安装");
     expect(screen.getByRole("status")).toHaveTextContent("100%");
     expect(screen.getByText("Almost there")).toBeInTheDocument();
     expect(screen.queryByText("prepare")).not.toBeInTheDocument();
@@ -77,7 +77,7 @@ describe("TaskProgress", () => {
       <TaskProgress
         task={{
           dependencyInstallStatus: "pip_ok",
-          installSourceLabel: "Official package (R2)",
+          installSourceLabel: "官方包体 (R2)",
           message: "Installing demo plugin",
           packageSha256: "abcdef1234567890fedcba",
           packageSource: "r2",
@@ -92,12 +92,34 @@ describe("TaskProgress", () => {
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("安装依赖");
     expect(status).toHaveTextContent("来源");
-    expect(status).toHaveTextContent("Official package (R2)");
+    expect(status).toHaveTextContent("官方包体 (R2)");
     expect(status).toHaveTextContent("包体");
     expect(status).toHaveTextContent("包体已校验 / R2");
     expect(status).toHaveTextContent("依赖");
     expect(status).toHaveTextContent("依赖完成");
     expect(status).toHaveTextContent("SHA256");
     expect(status).toHaveTextContent("abcdef123456...");
+  });
+
+  it("maps plugin install internal status keys to user-facing labels", () => {
+    render(
+      <TaskProgress
+        task={{
+          dependencyInstallStatus: "pip_ok",
+          installSource: "package",
+          message: "官方包体安装完成。",
+          packageSource: "r2",
+          packageStatus: "verified",
+          phase: "completed",
+          progress: 1,
+          status: "succeeded",
+        }}
+      />,
+    );
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("官方包体");
+    expect(status).toHaveTextContent("包体已校验 / R2");
+    expect(status).toHaveTextContent("依赖完成");
   });
 });
