@@ -31,6 +31,7 @@ import { ApiLanguageSection } from "./ApiLanguageSection";
 import { AsrSettingsSection } from "./AsrSettingsSection";
 import { LlmConnectionSection } from "./LlmConnectionSection";
 import { ResourceLinksSection } from "./ResourceLinksSection";
+import { T2iSetupSection } from "./T2iSetupSection";
 import { TtsBundleSection } from "./TtsBundleSection";
 import {
   activeMapValue,
@@ -56,6 +57,7 @@ import {
   resolveAsrWhisperPresetValue,
   syncCompactRatioDraft,
   thinkingUnsupported,
+  t2iProviderSelectOptions,
   updateAsrExtraConfig,
   withCurrentOption,
   VOSK_MODEL_PATH,
@@ -507,6 +509,7 @@ export function ApiSettingsPage() {
     catalogOptions(adapterCatalog?.llm, llmProviderOptions),
     draft.llm_provider,
   );
+  const t2iProviderOptions = t2iProviderSelectOptions(adapterCatalog, draft.t2i_provider);
   const llmExtraSchema = adapterSchema(adapterCatalog?.llm, draft.llm_provider);
   const ttsExtraSchema = adapterSchema(adapterCatalog?.tts, draft.tts_provider);
   const t2iExtraSchema = adapterSchema(adapterCatalog?.t2i, draft.t2i_provider);
@@ -644,12 +647,21 @@ export function ApiSettingsPage() {
         task={ttsBundleTask}
       />
       <SchemaDrivenForm
-        collapsedGroupIds={["t2i"]}
         disabled={saveMutation.isPending}
         errors={errors}
-        groups={apiSchema.filter((g) => g.id !== "llm")}
+        groups={apiSchema.filter((g) => g.id === "tts")}
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
         value={draft}
+      />
+      <T2iSetupSection
+        disabled={saveMutation.isPending}
+        draft={draft}
+        errors={errors}
+        extraSchema={t2iExtraSchema}
+        extraValues={draft.t2i_extra_configs?.[draft.t2i_provider] ?? {}}
+        onAdapterExtraChange={(key, value) => updateAdapterExtra("t2i_extra_configs", draft.t2i_provider, key, value)}
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
+        providerOptions={t2iProviderOptions}
       />
       <AsrSettingsSection
         activeAsrProvider={activeAsrProvider}
@@ -676,15 +688,15 @@ export function ApiSettingsPage() {
           values={draft.tts_extra_configs?.[draft.tts_provider] ?? {}}
         />
       ) : null}
-      {hasAdapterSchema(t2iExtraSchema) ? (
+      {/* Legacy T2I extra panel moved into T2iSetupSection.
         <AdapterExtraSection
           disabled={saveMutation.isPending}
-          onChange={(key, value) => updateAdapterExtra("t2i_extra_configs", draft.t2i_provider, key, value)}
+          onChange={(key, value) => updateAdapterExtra("t2i_extra_configs", draft!.t2i_provider, key, value)}
           schema={t2iExtraSchema}
           title={`${draft.t2i_provider} 扩展参数`}
-          values={draft.t2i_extra_configs?.[draft.t2i_provider] ?? {}}
+          values={draft!.t2i_extra_configs?.[draft!.t2i_provider] ?? {}}
         />
-      ) : null}
+      ) : null} */}
       <ResourceLinksSection />
       <Dialog
         closeLabel={t("common.close")}

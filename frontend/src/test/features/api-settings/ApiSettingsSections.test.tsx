@@ -7,6 +7,7 @@ import { ApiLanguageSection } from "../../../features/api-settings/ApiLanguageSe
 import { AsrSettingsSection } from "../../../features/api-settings/AsrSettingsSection";
 import { LlmConnectionSection } from "../../../features/api-settings/LlmConnectionSection";
 import { ResourceLinksSection } from "../../../features/api-settings/ResourceLinksSection";
+import { T2iSetupSection } from "../../../features/api-settings/T2iSetupSection";
 import { TtsBundleSection } from "../../../features/api-settings/TtsBundleSection";
 import { resourceLinks } from "../../../features/api-settings/apiSettingsUtils";
 import { I18nProvider } from "../../../shared/i18n";
@@ -173,6 +174,44 @@ describe("API settings sections", () => {
     expect(screen.getByText("Text")).toBeInTheDocument();
     expect(screen.getByText("Vision")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Thinking/ })).toBeDisabled();
+  });
+
+  it("makes T2I setup optional and applies local ComfyUI defaults", () => {
+    const onChange = vi.fn();
+    const draft = {
+      ...sampleConfig.api_config,
+      t2i_api_url: "",
+      t2i_default_workflow_path: "",
+      t2i_output_node_id: "",
+      t2i_prompt_node_id: "",
+      t2i_work_path: "",
+    };
+
+    renderZh(
+      <T2iSetupSection
+        disabled={false}
+        draft={draft}
+        errors={{}}
+        extraSchema={{}}
+        extraValues={{}}
+        onAdapterExtraChange={() => {}}
+        onChange={onChange}
+        providerOptions={[{ label: "ComfyUI", value: "comfyui" }]}
+      />,
+    );
+
+    expect(screen.getByRole("radio", { name: /暂不配置/ })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(screen.getByRole("radio", { name: /本机 ComfyUI/ }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        t2i_api_url: "http://127.0.0.1:8188",
+        t2i_output_node_id: "9",
+        t2i_prompt_node_id: "6",
+        t2i_provider: "comfyui",
+      }),
+    );
   });
 
   it("opens resource links through the platform adapter", () => {
