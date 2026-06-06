@@ -59,6 +59,7 @@ from core.sprite.chat_ui_service import (
     restore_session_ui,
     wire_chat_ui_bridge,
 )
+from core.sprite.initial_sprite import display_initial_sprite
 from core.sprite.sprite_cli import parse_sprite_args
 try:
     from live.danmuku_handler import start_bilibili_service
@@ -373,13 +374,20 @@ def main():
 
     chat_ui_ctx = install_chat_ui_context(window, emit_user_text=emit_user_text)
 
+    restored_sprite = False
     if audio_path_queue is not None:
-        restore_session_ui(
+        restored_sprite = restore_session_ui(
             messages,
             audio_path_queue=audio_path_queue,
             window=window,
             config=config,
             tr_i18n=tr_i18n,
+        )
+    if not restored_sprite:
+        display_initial_sprite(
+            init_sprite_path,
+            config=config,
+            ui_updates=ui_updates,
         )
 
     wire_chat_ui_bridge(
