@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
 
 fake_openai = types.ModuleType("openai")
@@ -15,8 +17,9 @@ sys.modules.setdefault("tiktoken", fake_tiktoken)
 
 from frontend_bridge_core.state import BridgeState
 from frontend_bridge_core.tasks import _create_task
-from frontend_bridge_core.tools import _generate_sprite_prompts
+from frontend_bridge_core.tools import _generate_sprite_image, _generate_sprite_prompts
 from llm.llm_manager import LLMAdapterFactory
+from t2i.t2i_manager import T2IAdapterFactory
 from test.mocks import MockLLMAdapter
 
 
@@ -54,6 +57,17 @@ class _ConfigManager:
             name="Mika",
             sprite_prefix="mika",
         )
+        self.config = SimpleNamespace(
+            api_config=SimpleNamespace(
+                t2i_api_url="https://t2i.example",
+                t2i_default_workflow_path="D:/workflow.json",
+                t2i_extra_configs={"mockt2i": {"ignored": True}},
+                t2i_output_node_id="9",
+                t2i_prompt_node_id="6",
+                t2i_provider="mockt2i",
+                t2i_work_path="D:/ComfyUI",
+            )
+        )
 
     def get_character_by_name(self, name):
         return self.character if name == "Mika" else None
@@ -63,6 +77,25 @@ class _ConfigManager:
 
     def merged_llm_factory_kwargs(self, provider, base_kwargs):
         return {**base_kwargs, "extra_flag": "from-config"}
+
+    def merged_t2i_factory_kwargs(self, provider, base_kwargs):
+        return {**base_kwargs, "extra_flag": "from-config"}
+
+
+class RecordingT2IAdapter:
+    last_instance = None
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.calls = []
+        RecordingT2IAdapter.last_instance = self
+
+    def generate_image(self, prompt, file_path=None, **kwargs):
+        self.calls.append({"file_path": file_path, "kwargs": kwargs, "prompt": prompt})
+        return file_path
+
+    def switch_model(self, model_info):
+        self.model_info = model_info
 
 
 def test_generate_sprite_prompts_uses_selected_llm(monkeypatch):
@@ -81,11 +114,11 @@ def test_generate_sprite_prompts_uses_selected_llm(monkeypatch):
     assert result["items"] == [
         {
             "label": "微笑, 挥手",
-            "prompt": "masterpiece, Mika, smile, hand wave, character name: Mika",
+            "prompt": "masterpiece, best quality, highres, solo, 1 person, single character, Mika, smile, hand wave, character name: Mika",
         },
         {
             "label": "严肃, 站立",
-            "prompt": "best quality, Mika, serious pose, character name: Mika",
+            "prompt": "masterpiece, best quality, highres, solo, 1 person, single character, Mika, serious pose, character name: Mika",
         },
     ]
     assert result["prompts"] == [item["prompt"] for item in result["items"]]
@@ -99,3 +132,43 @@ def test_generate_sprite_prompts_uses_selected_llm(monkeypatch):
     assert call["stream"] is False
     assert call["kwargs"]["response_format"] == {"type": "json_object"}
     assert "Label language: Simplified Chinese" in call["messages"][1]["content"]
+    assert "masterpiece, best quality, highres, solo, 1 person, single character" in call["messages"][0]["content"]
+    assert "Prompt prefix: masterpiece, best quality, highres, solo, 1 person, single character" in call["messages"][1]["content"]
+
+
+def test_generate_sprite_image_uses_selected_t2i(monkeypatch):
+    monkeypatch.setitem(T2IAdapterFactory._adapters, "mockt2i", RecordingT2IAdapter)
+    state = BridgeState(_ConfigManager(), None, None, None)
+    task = _create_task(state, kind="test", title="test")
+    output_dir = Path(".tmp_pytest_sprite_prompts").resolve()
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+
+    try:
+        result = _generate_sprite_image(
+            state,
+            task["id"],
+            {
+                "characterName": "Mika",
+                "label": "微笑, 挥手",
+                "negativePrompt": "low quality",
+                "outputDir": output_dir.as_posix(),
+                "prompt": "masterpiece, Mika, hand wave, character name: Mika",
+            },
+        )
+    finally:
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+
+    assert result["file"].startswith(output_dir.as_posix())
+    assert result["files"] == [result["file"]]
+    assert result["label"] == "微笑, 挥手"
+    assert result["prompt"] == "masterpiece, best quality, highres, solo, 1 person, single character, Mika, hand wave, character name: Mika"
+    assert RecordingT2IAdapter.last_instance.kwargs == {"extra_flag": "from-config"}
+    assert RecordingT2IAdapter.last_instance.calls == [
+        {
+            "file_path": result["file"],
+            "kwargs": {"negative_prompt": "low quality"},
+            "prompt": "masterpiece, best quality, highres, solo, 1 person, single character, Mika, hand wave, character name: Mika",
+        }
+    ]

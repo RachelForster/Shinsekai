@@ -101,6 +101,7 @@ from .templates import (
 from .tools import (
     _browse_local_files,
     _crop_sprites,
+    _generate_sprite_image,
     _generate_sprite_prompts,
     _generate_sprites,
     _remove_sprite_background,
@@ -599,6 +600,13 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     message="立绘批量生成任务已排队。",
                     title="批量生成立绘",
                     worker=lambda task_id: _generate_sprites(self.state, task_id, body),
+                )
+            elif method == "POST" and path == "/api/tools/sprites/generate-one":
+                self._enqueue_background_task(
+                    kind="tools-sprite",
+                    message="立绘生成任务已排队。",
+                    title="生成立绘",
+                    worker=lambda task_id: _generate_sprite_image(self.state, task_id, body),
                 )
             elif method == "POST" and path == "/api/tools/sprites/crop":
                 self._enqueue_background_task(

@@ -5,7 +5,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
-import { generateSpritePrompts } from "../../entities/tools/repository";
+import { generateSpriteImage, generateSpritePrompts } from "../../entities/tools/repository";
+import { fileUrl } from "../../entities/files/repository";
 import type { Character } from "../../entities/config/types";
 import { isT2iReadyForSprites } from "../api-settings/apiSettingsUtils";
 import { useI18n } from "../../shared/i18n";
@@ -26,6 +27,7 @@ import "./AiSpriteWorkshopPage.css";
 
 interface SpritePromptDraft {
   id: string;
+  imagePath?: string;
   label: string;
   prompt: string;
   status: "draft" | "failed" | "ready";
@@ -136,12 +138,14 @@ export function AiSpriteWorkshopPage() {
   const [spriteCount, setSpriteCount] = useState(4);
   const character = useMemo(() => selectedCharacter(characters, selectedName), [characters, selectedName]);
   const [drafts, setDrafts] = useState<SpritePromptDraft[]>([]);
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(() => new Set());
   const [negativePrompt, setNegativePrompt] = useState("low quality, blurry, extra limbs, text, watermark");
   const [generationNote, setGenerationNote] = useState("");
   const t2iReady = configQuery.data ? isT2iReadyForSprites(configQuery.data.api_config) : false;
   const llmProvider = configQuery.data?.api_config.llm_provider ?? "";
   const t2iProvider = configQuery.data?.api_config.t2i_provider ?? "";
   const hasReadyDraft = drafts.some((draft) => draft.status === "ready");
+  const isGeneratingImages = generatingIds.size > 0;
 
   const promptMutation = useMutation({
     mutationFn: () =>
@@ -185,6 +189,18 @@ export function AiSpriteWorkshopPage() {
     setDrafts((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   };
 
+  const setDraftGenerating = (id: string, generating: boolean) => {
+    setGeneratingIds((current) => {
+      const next = new Set(current);
+      if (generating) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
   const refreshPrompts = () => {
     if (!character) {
       return;
@@ -211,6 +227,43 @@ export function AiSpriteWorkshopPage() {
         message: error instanceof Error ? error.message : t("tools.msgNoPrompts"),
         title: t("tools.msgTitlePrompts"),
       });
+    }
+  };
+
+  const generateOneSprite = async (draft: SpritePromptDraft) => {
+    if (!character) {
+      return;
+    }
+    setDraftGenerating(draft.id, true);
+    updateDraft(draft.id, { status: "draft" });
+    try {
+      const result = await generateSpriteImage({
+        characterName: character.name,
+        label: draft.label,
+        negativePrompt,
+        prompt: draft.prompt,
+      });
+      const imagePath = result.file ?? result.files[0] ?? "";
+      if (!imagePath) {
+        throw new Error(t("aiSprites.imageFailed"));
+      }
+      updateDraft(draft.id, { imagePath, status: "ready" });
+      setGenerationNote(result.message || t("aiSprites.imageGenerated"));
+    } catch (error) {
+      updateDraft(draft.id, { status: "failed" });
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("aiSprites.imageFailed"),
+        title: t("aiSprites.imageTitle"),
+      });
+    } finally {
+      setDraftGenerating(draft.id, false);
+    }
+  };
+
+  const generateAllSprites = async () => {
+    for (const draft of drafts) {
+      await generateOneSprite(draft);
     }
   };
 
@@ -373,9 +426,22 @@ export function AiSpriteWorkshopPage() {
                   </span>
                 </label>
                 <div className="ai-sprite-card__preview" data-status={draft.status}>
-                  <ImagePlus aria-hidden className="ai-sprite-card__icon" />
-                  <span>{t("aiSprites.candidatePlaceholder")}</span>
+                  {draft.imagePath ? (
+                    <img alt={draft.label || t("aiSprites.promptCandidate", { n: draft.index + 1 })} src={fileUrl(draft.imagePath)} />
+                  ) : (
+                    <>
+                      <ImagePlus aria-hidden className="ai-sprite-card__icon" />
+                      <span>{t("aiSprites.candidatePlaceholder")}</span>
+                    </>
+                  )}
                 </div>
+                <Button
+                  loading={generatingIds.has(draft.id)}
+                  onClick={() => void generateOneSprite(draft)}
+                  variant={draft.imagePath ? "default" : "primary"}
+                >
+                  {draft.imagePath ? t("aiSprites.retryImage") : t("aiSprites.generateImage")}
+                </Button>
               </article>
             ))}
           </div>
@@ -384,11 +450,13 @@ export function AiSpriteWorkshopPage() {
 
       <section className="section ai-sprite-page__actions">
         <AsyncButton
-          disabled={!hasReadyDraft}
+          disabled={!drafts.length || isGeneratingImages}
           icon={<Sparkles aria-hidden className="button__icon" />}
+          loading={isGeneratingImages}
+          onClick={() => void generateAllSprites()}
           variant="primary"
         >
-          {t("aiSprites.generateSelected")}
+          {t("aiSprites.generateAllImages")}
         </AsyncButton>
         <Button disabled={!hasReadyDraft}>{t("aiSprites.addToCharacter")}</Button>
         <p>{generationNote || t("aiSprites.safeSaveHint")}</p>

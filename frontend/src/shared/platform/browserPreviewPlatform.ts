@@ -1321,6 +1321,38 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         );
         return delay(result);
       },
+      async generateSpriteImage(input, options) {
+        const taskId = `tools-sprite-${Date.now()}`;
+        const outputDir = input.outputDir || `data/sprite/${input.characterName || "preview"}`;
+        const file = `${outputDir}/ai_${Date.now()}.png`;
+        const result: SpriteGenerationResult = {
+          file,
+          files: [file],
+          label: input.label,
+          message: `Generated sprite: ${file}`,
+          outputDir,
+          prompt: input.prompt,
+        };
+        previewTask(
+          taskId,
+          { kind: "tools-sprite", message: "Generating sprite.", phase: "generate", progress: 0.35, status: "running" },
+          options,
+        );
+        await delay(null, 260);
+        previewTask(
+          taskId,
+          {
+            kind: "tools-sprite",
+            message: result.message,
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+          },
+          options,
+        );
+        return delay(result);
+      },
       async removeSpriteBackground(input, options) {
         const taskId = `tools-rmbg-${Date.now()}`;
         const outputDir = input.outputDir || `${input.inputDir}/removed_backgrounds`;

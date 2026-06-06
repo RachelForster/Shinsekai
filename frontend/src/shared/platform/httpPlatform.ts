@@ -781,6 +781,13 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         });
         return waitForTask(apiBase, task, options);
       },
+      async generateSpriteImage(input, options) {
+        const task = await requestJson<TaskSnapshot<SpriteGenerationResult>>(apiBase, "/api/tools/sprites/generate-one", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task, options);
+      },
       async removeSpriteBackground(input, options) {
         const task = await requestJson<TaskSnapshot<BatchToolResult>>(apiBase, "/api/tools/sprites/remove-background", {
           body: JSON.stringify(input),
