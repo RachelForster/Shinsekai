@@ -49,6 +49,7 @@ export type MessageKey =
   | "api.llm.thinkingUnsupported"
   | "api.loading"
   | "aiSprites.addToCharacter"
+  | "aiSprites.addedToCharacter"
   | "aiSprites.candidatePlaceholder"
   | "aiSprites.configureT2i"
   | "aiSprites.description"

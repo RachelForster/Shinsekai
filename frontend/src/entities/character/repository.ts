@@ -47,6 +47,10 @@ export function uploadCharacterSprites(input: { emotionTags: string; name: strin
   return getPlatform().characters.uploadSprites(input);
 }
 
+export function registerGeneratedCharacterSprites(input: { items: { label: string; path: string }[]; name: string }) {
+  return getPlatform().characters.registerSprites(input);
+}
+
 export function saveCharacterEmotionTags(name: string, emotionTags: string) {
   return getPlatform().characters.saveEmotionTags(name, emotionTags);
 }

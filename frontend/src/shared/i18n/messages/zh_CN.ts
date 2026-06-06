@@ -54,6 +54,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "api.llm.thinkingUnsupported": "该模型不支持思考模式。",
   "api.loading": "正在读取 API 设定",
   "aiSprites.addToCharacter": "\u6dfb\u52a0\u5230\u4eba\u7269",
+  "aiSprites.addedToCharacter": "\u5df2\u6dfb\u52a0 {count} \u5f20\u7acb\u7ed8\u5230\u4eba\u7269\u7acb\u7ed8\u5217\u8868\u3002",
   "aiSprites.candidatePlaceholder": "\u751f\u6210\u540e\u7684\u7acb\u7ed8\u4f1a\u663e\u793a\u5728\u8fd9\u91cc",
   "aiSprites.configureT2i": "\u53bb\u914d\u7f6e\u751f\u56fe",
   "aiSprites.description": "\u628a\u4eba\u7269\u8bbe\u5b9a\u8f6c\u6210\u53ef\u7f16\u8f91\u7684\u7acb\u7ed8\u63d0\u793a\u8bcd\uff0c\u518d\u751f\u6210\u5019\u9009\u7acb\u7ed8\u3002",

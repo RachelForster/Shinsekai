@@ -38,6 +38,21 @@ function delay<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => window.setTimeout(() => resolve(clone(value)), ms));
 }
 
+function previewSpriteTagContents(block: string, count: number) {
+  const lines = block.split(/\r?\n/).filter(Boolean);
+  return Array.from({ length: count }, (_, index) => {
+    const line = lines[index] ?? "";
+    const fullWidth = line.indexOf("：");
+    const ascii = line.indexOf(":");
+    const separator = fullWidth >= 0 && ascii >= 0 ? Math.min(fullWidth, ascii) : Math.max(fullWidth, ascii);
+    return separator >= 0 ? line.slice(separator + 1).trim() : line.trim();
+  });
+}
+
+function previewNumberedSpriteTags(tags: string[]) {
+  return tags.map((tag, index) => `立绘 ${index + 1}：${tag}`).join("\n") + (tags.length ? "\n" : "");
+}
+
 function previewTask<TResult>(
   taskId: string,
   patch: Partial<TaskSnapshot<TResult>>,
@@ -665,6 +680,31 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           emotionTags: input.emotionTags,
           name: input.name,
         });
+      },
+      async registerSprites(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character) {
+          throw new Error(`角色不存在：${input.name}`);
+        }
+        const tags = previewSpriteTagContents(character.emotion_tags || "", character.sprites.length);
+        const existingPaths = new Set(character.sprites.map((sprite) => sprite.path));
+        input.items.forEach((item) => {
+          if (!item.path) {
+            return;
+          }
+          if (existingPaths.has(item.path)) {
+            const index = character.sprites.findIndex((sprite) => sprite.path === item.path);
+            if (index >= 0 && item.label.trim()) {
+              tags[index] = item.label.trim();
+            }
+            return;
+          }
+          character.sprites.push({ path: item.path });
+          existingPaths.add(item.path);
+          tags.push(item.label.trim());
+        });
+        character.emotion_tags = previewNumberedSpriteTags(tags);
+        return delay(character);
       },
       async uploadSprites(input) {
         const character = config.characters.find((item) => item.name === input.name);

@@ -56,6 +56,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.llm.thinkingUnsupported": "このモデルは思考モードに対応していません。",
   "api.loading": "API 設定を読み込み中",
   "aiSprites.addToCharacter": "Add to character",
+  "aiSprites.addedToCharacter": "Added {count} sprite(s) to the character sprite list.",
   "aiSprites.candidatePlaceholder": "Generated image will appear here",
   "aiSprites.configureT2i": "Configure image generation",
   "aiSprites.description": "Turn character settings into editable sprite prompts, then prepare candidates for generation.",
