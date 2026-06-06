@@ -145,6 +145,10 @@ def _is_http_client_exception(exc: BaseException) -> bool:
     module_name = type(exc).__module__
     if _module_is(module_name, "httpx") or _module_is(module_name, "httpcore"):
         return True
+    if _module_is(module_name, "urllib.error") and type(exc).__name__ in {"HTTPError", "URLError"}:
+        return True
+    if any(getattr(exc, attr, None) is not None for attr in ("status_code", "url")):
+        return True
     if not (_module_is(module_name, "openai") or _module_is(module_name, "anthropic")):
         return False
 
@@ -160,6 +164,9 @@ def _is_http_client_exception(exc: BaseException) -> bool:
 
 
 def _httpx_url(exc: BaseException) -> str:
+    direct_url = getattr(exc, "url", None)
+    if direct_url is not None:
+        return str(direct_url)
     for owner in (exc, getattr(exc, "response", None)):
         request = getattr(owner, "request", None)
         url = getattr(request, "url", None)
@@ -172,6 +179,9 @@ def _httpx_status_code(exc: BaseException) -> int | None:
     direct_status_code = getattr(exc, "status_code", None)
     if isinstance(direct_status_code, int):
         return direct_status_code
+    direct_code = getattr(exc, "code", None)
+    if isinstance(direct_code, int):
+        return direct_code
     status_code = getattr(getattr(exc, "response", None), "status_code", None)
     if isinstance(status_code, int):
         return status_code
@@ -183,7 +193,8 @@ def http_client_error_from_exception(exc: BaseException) -> HttpClientError | No
         return None
 
     error_type = type(exc).__name__
-    timeout = "timeout" in error_type.lower() or error_type in {
+    lowered_message = str(exc).lower()
+    timeout = "timeout" in error_type.lower() or "timed out" in lowered_message or error_type in {
         "ConnectTimeout",
         "PoolTimeout",
         "ReadTimeout",

@@ -1,4 +1,4 @@
-import { RefreshCw, Wifi } from "lucide-react";
+import { CheckCircle2, RefreshCw, Wifi } from "lucide-react";
 
 import type { AdapterExtraFieldSchema, ApiConfig } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
@@ -14,6 +14,7 @@ interface LlmConnectionSectionProps {
   disabled: boolean;
   draft: ApiConfig;
   connectionTestPending: boolean;
+  connectionOk: boolean;
   fetchModelsPending: boolean;
   llmExtraSchema: Record<string, AdapterExtraFieldSchema>;
   llmProviderSelectOptions: Array<{ label: string; value: string }>;
@@ -35,6 +36,7 @@ export function LlmConnectionSection({
   disabled,
   draft,
   connectionTestPending,
+  connectionOk,
   fetchModelsPending,
   llmExtraSchema,
   llmProviderSelectOptions,
@@ -55,14 +57,29 @@ export function LlmConnectionSection({
       <div className="section__header api-page__llm-header">
         <h2 className="section__title">{t("api.llm.connectionTitle")}</h2>
         <AsyncButton
-          className="api-page__llm-test-button"
+          className={[
+            "api-page__llm-test-button",
+            connectionOk && !connectionTestPending ? "api-page__llm-test-button--connected" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           disabled={disabled}
-          icon={<Wifi aria-hidden className="button__icon" />}
+          icon={
+            connectionOk && !connectionTestPending ? (
+              <CheckCircle2 aria-hidden className="button__icon" />
+            ) : (
+              <Wifi aria-hidden className="button__icon" />
+            )
+          }
           loading={connectionTestPending}
           onClick={onTestConnection}
           tooltip={t("api.llm.testConnection")}
         >
-          {connectionTestPending ? t("api.llm.testingConnection") : t("api.llm.testConnection")}
+          {connectionTestPending
+            ? t("api.llm.testingConnection")
+            : connectionOk
+              ? t("api.llm.connected")
+              : t("api.llm.testConnection")}
         </AsyncButton>
       </div>
       <label className="field-row">

@@ -32,6 +32,7 @@ function renderSection(overrides: Partial<Parameters<typeof LlmConnectionSection
     ],
     disabled: false,
     draft: apiConfig(),
+    connectionOk: false,
     connectionTestPending: false,
     fetchModelsPending: false,
     llmExtraSchema: {},
@@ -94,5 +95,11 @@ describe("LlmConnectionSection", () => {
 
     fireEvent.click(screen.getByRole("checkbox"));
     expect(props.onDraftPatch).toHaveBeenCalledWith({ is_streaming: false });
+  });
+
+  it("shows connected state after a successful connection test", () => {
+    renderSection({ connectionOk: true });
+
+    expect(screen.getByRole("button", { name: "Connected" })).toHaveClass("api-page__llm-test-button--connected");
   });
 });

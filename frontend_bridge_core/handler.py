@@ -53,7 +53,7 @@ from .characters import (
     _upload_character_sprites,
     _upload_sprite_voice,
 )
-from .config import _app_config_response, _fetch_llm_models, _save_api_config
+from .config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
 from .logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
 from .media import _media_thumbnail, _media_thumbnail_batch
 from .mcp import (
@@ -407,7 +407,21 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     pass
                 self._send_json(config)
             elif method == "POST" and path == "/api/config/llm-models":
-                self._send_json(_fetch_llm_models(body))
+                try:
+                    self._send_json(_fetch_llm_models(body))
+                except Exception as exc:
+                    from sdk.exception.presenter import format_llm_exception_message
+
+                    message = format_llm_exception_message(exc, fallback_message="获取模型列表失败。")
+                    self._send_json({"error": message, "type": exc.__class__.__name__}, HTTPStatus.BAD_REQUEST)
+            elif method == "POST" and path == "/api/config/llm-connection-test":
+                try:
+                    self._send_json(_test_llm_connection(body))
+                except Exception as exc:
+                    from sdk.exception.presenter import format_llm_exception_message
+
+                    message = format_llm_exception_message(exc, fallback_message="LLM 连通检测失败。")
+                    self._send_json({"error": message, "type": exc.__class__.__name__}, HTTPStatus.BAD_REQUEST)
             elif method == "POST" and path == "/api/files/browse":
                 self._send_json(_browse_local_files(self.state, body))
             elif method == "POST" and path == "/api/media/thumbnails":

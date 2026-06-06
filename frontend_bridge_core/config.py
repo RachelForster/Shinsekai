@@ -34,6 +34,20 @@ _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
 _PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion")
 
 
+class LlmModelDiscoveryHttpError(RuntimeError):
+    def __init__(self, status_code: int, url: str, detail: str) -> None:
+        self.status_code = status_code
+        self.url = url
+        message = detail.strip() or f"HTTP {status_code}"
+        super().__init__(message)
+
+
+class LlmModelDiscoveryConnectionError(RuntimeError):
+    def __init__(self, url: str, detail: str) -> None:
+        self.url = url
+        super().__init__(detail.strip() or "connection failed")
+
+
 def _adapter_schema(adapter_class: Any | None) -> dict[str, Any]:
     if adapter_class is None:
         return {}
@@ -277,6 +291,24 @@ def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
     return _openai_models_endpoint(base)
 
 
+def _openai_chat_endpoint(base_url: str) -> str:
+    base = base_url.strip().rstrip("/")
+    if not base:
+        raise ValueError("请先填写 LLM 基础地址和 API Key。")
+    if base.lower().endswith("/chat/completions"):
+        return base
+    return f"{base}/chat/completions"
+
+
+def _anthropic_messages_endpoint(base_url: str) -> str:
+    base = base_url.strip().rstrip("/")
+    if not base:
+        raise ValueError("请先填写 LLM 基础地址和 API Key。")
+    if base.lower().endswith("/messages"):
+        return base
+    return f"{base}/messages"
+
+
 def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> dict[str, str]:
     key = api_key.strip()
     if not key:
@@ -300,6 +332,77 @@ def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> di
     if kind == "dashscope":
         headers["Content-Type"] = "application/json"
     return headers
+
+
+def _llm_chat_request_headers(provider: str, base_url: str, api_key: str) -> dict[str, str]:
+    headers = _llm_model_request_headers(provider, base_url, api_key)
+    kind = _llm_model_provider_kind(provider, base_url)
+    if kind == "gemini":
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
+    return headers
+
+
+def _request_json(endpoint: str, headers: dict[str, str], payload: dict[str, Any], *, timeout: int = 20) -> Any:
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={**headers, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            text = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise LlmModelDiscoveryHttpError(exc.code, endpoint, detail or str(exc.reason or exc)) from exc
+    except urllib.error.URLError as exc:
+        raise LlmModelDiscoveryConnectionError(endpoint, str(exc.reason or exc)) from exc
+    if not text.strip():
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid JSON response: {exc}") from exc
+
+
+def _test_llm_connection(payload: dict[str, Any]) -> dict[str, str]:
+    provider = str(payload.get("provider") or "").strip()
+    base_url = str(payload.get("baseUrl") or "").strip()
+    api_key = str(payload.get("apiKey") or "").strip()
+    model = str(payload.get("model") or "").strip()
+    if not base_url or not api_key:
+        raise ValueError("请先填写 LLM 基础地址和 API Key。")
+    if not model:
+        raise ValueError("请先填写 LLM 模型 ID。")
+
+    kind = _llm_model_provider_kind(provider, base_url)
+    if kind == "anthropic":
+        endpoint = _anthropic_messages_endpoint(base_url)
+        headers = _llm_model_request_headers(provider, base_url, api_key)
+        _request_json(
+            endpoint,
+            headers,
+            {
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "ping"}],
+                "model": model,
+            },
+        )
+        return {"message": "LLM 连通检测通过。"}
+
+    endpoint = _openai_chat_endpoint(base_url)
+    headers = _llm_chat_request_headers(provider, base_url, api_key)
+    _request_json(
+        endpoint,
+        headers,
+        {
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "ping"}],
+            "model": model,
+            "stream": False,
+        },
+    )
+    return {"message": "LLM 连通检测通过。"}
 
 
 def _iter_llm_model_items(payload: Any):
@@ -416,9 +519,9 @@ def _fetch_llm_models(payload: dict[str, Any]) -> list[dict[str, Any]]:
             data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"HTTP {exc.code}: {detail or exc.reason}") from exc
+        raise LlmModelDiscoveryHttpError(exc.code, endpoint, detail or str(exc.reason or exc)) from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(str(exc.reason or exc)) from exc
+        raise LlmModelDiscoveryConnectionError(endpoint, str(exc.reason or exc)) from exc
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Invalid JSON response: {exc}") from exc
     out: list[dict[str, Any]] = []

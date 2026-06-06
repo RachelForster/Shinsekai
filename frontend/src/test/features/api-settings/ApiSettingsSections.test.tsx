@@ -141,6 +141,7 @@ describe("API settings sections", () => {
         availableModelOptions={[{ id: "deepseek-chat", tags: ["text", "vision"] }]}
         disabled={false}
         draft={sampleConfig.api_config}
+        connectionOk={false}
         connectionTestPending={false}
         fetchModelsPending={false}
         llmExtraSchema={{ thinking_enabled: { default: true, label: "Thinking", type: "bool" } }}

@@ -603,6 +603,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           "当前页面未连接 Shinsekai Python bridge，无法获取真实模型列表。请使用 start-react 启动，或为 Vite 设置 VITE_SHINSEKAI_API_BASE。",
         );
       },
+      testLlmConnection: async () => {
+        throw new Error(
+          "当前页面未连接 Shinsekai Python bridge，无法进行真实 LLM 连通检测。请使用 start-react 启动，或为 Vite 设置 VITE_SHINSEKAI_API_BASE。",
+        );
+      },
       get: () => delay(config),
       getTtsBundleRecommendation: () =>
         delay({

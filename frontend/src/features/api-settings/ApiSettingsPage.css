@@ -58,6 +58,26 @@
   margin-left: auto;
 }
 
+.api-page__llm-test-button--connected {
+  border-color: var(--color-success-border);
+  color: var(--color-success);
+  background: color-mix(in oklch, var(--color-success) 12%, transparent);
+}
+
+.api-page__llm-test-button--connected:hover:not(:disabled) {
+  border-color: var(--color-success);
+  background: color-mix(in oklch, var(--color-success) 18%, transparent);
+}
+
+.api-page__llm-test-dialog-body {
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.api-page__llm-test-dialog-body[data-kind="success"] {
+  color: var(--color-success);
+}
+
 /* Model fetch combo */
 .api-page__model-control {
   display: flex;

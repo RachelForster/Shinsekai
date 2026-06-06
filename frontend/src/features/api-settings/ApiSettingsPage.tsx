@@ -17,6 +17,7 @@ import {
   getTtsBundleRecommendation,
   saveApiConfig,
   saveSystemConfig,
+  testLlmConnection,
   ttsBundleRecommendationQueryKey,
 } from "../../entities/config/repository";
 import type { ApiConfig, SystemConfig } from "../../entities/config/types";
@@ -24,7 +25,7 @@ import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
 import { resumeLastChat } from "../../entities/chat/repository";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
-import { AsyncButton, EmptyState, QueryErrorState, SchemaDrivenForm, useToast } from "../../shared/ui";
+import { AsyncButton, Button, Dialog, EmptyState, QueryErrorState, SchemaDrivenForm, useToast } from "../../shared/ui";
 import { AdapterExtraSection } from "./AdapterExtraSection";
 import { ApiLanguageSection } from "./ApiLanguageSection";
 import { AsrSettingsSection } from "./AsrSettingsSection";
@@ -99,6 +100,10 @@ export function ApiSettingsPage() {
   const [systemDraft, setSystemDraft] = useState<SystemConfig | null>(null);
   const [errors, setErrors] = useState<SchemaErrorMap<ApiConfig>>({});
   const [modelOptions, setModelOptions] = useState<LlmModelOption[]>([]);
+  const [llmConnectionDialog, setLlmConnectionDialog] = useState<{ kind: "error" | "success"; message: string } | null>(
+    null,
+  );
+  const [llmConnectionOk, setLlmConnectionOk] = useState(false);
   const activeModelFetchKey = useRef<string | null>(null);
   const [ttsBundleKind, setTtsBundleKind] = useState<TtsBundleKind>("genie");
   const [ttsBundleKindTouched, setTtsBundleKindTouched] = useState(false);
@@ -239,19 +244,20 @@ export function ApiSettingsPage() {
   });
 
   const llmConnectionTestMutation = useMutation({
-    mutationFn: (input: { apiKey: string; baseUrl: string; provider: string }) => fetchLlmModels(input),
+    mutationFn: (input: { apiKey: string; baseUrl: string; model: string; provider: string }) =>
+      testLlmConnection(input),
     onError(error) {
-      showToast({
+      setLlmConnectionOk(false);
+      setLlmConnectionDialog({
         kind: "error",
         message: error instanceof Error ? error.message : t("api.llm.testFailed"),
-        title: t("api.llm.testTitle"),
       });
     },
-    onSuccess(options) {
-      showToast({
+    onSuccess(result) {
+      setLlmConnectionOk(true);
+      setLlmConnectionDialog({
         kind: "success",
-        message: t("api.llm.testDone", { count: options.length }),
-        title: t("api.llm.testTitle"),
+        message: result.message || t("api.llm.testDone"),
       });
     },
   });
@@ -382,10 +388,15 @@ export function ApiSettingsPage() {
     setDraft({ ...draft, ...patch });
   };
 
+  const resetLlmConnectionState = () => {
+    setLlmConnectionOk(false);
+  };
+
   const updateDraftAndResetModelFetch = (patch: Partial<ApiConfig>) => {
     if (Object.prototype.hasOwnProperty.call(patch, "llm_base_url")) {
       activeModelFetchKey.current = null;
       setModelOptions([]);
+      resetLlmConnectionState();
     }
     updateDraft(patch);
   };
@@ -402,6 +413,7 @@ export function ApiSettingsPage() {
   const updateProvider = (provider: string) => {
     activeModelFetchKey.current = null;
     setModelOptions([]);
+    resetLlmConnectionState();
     setDraft({
       ...draft,
       llm_base_url: llmDefaultBaseUrls[provider] ?? "",
@@ -414,6 +426,7 @@ export function ApiSettingsPage() {
       activeModelFetchKey.current = null;
       setModelOptions([]);
     }
+    resetLlmConnectionState();
     const nextExtra =
       key === "llm_model" && thinkingUnsupported(value)
         ? {
@@ -469,12 +482,19 @@ export function ApiSettingsPage() {
 
   const handleTestLlmConnection = () => {
     if (!draft.llm_base_url.trim() || !activeApiKey.trim()) {
-      showToast({ kind: "error", message: t("api.llm.fetchMissing"), title: t("api.llm.testTitle") });
+      setLlmConnectionOk(false);
+      setLlmConnectionDialog({ kind: "error", message: t("api.llm.fetchMissing") });
+      return;
+    }
+    if (!activeModel.trim()) {
+      setLlmConnectionOk(false);
+      setLlmConnectionDialog({ kind: "error", message: t("api.llm.testMissingModel") });
       return;
     }
     llmConnectionTestMutation.mutate({
       apiKey: activeApiKey,
       baseUrl: draft.llm_base_url,
+      model: activeModel,
       provider: draft.llm_provider,
     });
   };
@@ -579,6 +599,7 @@ export function ApiSettingsPage() {
         availableModelOptions={availableModelOptions}
         disabled={saveMutation.isPending}
         draft={draft}
+        connectionOk={llmConnectionOk}
         connectionTestPending={llmConnectionTestMutation.isPending}
         fetchModelsPending={modelFetchMutation.isPending}
         llmExtraSchema={llmExtraSchema}
@@ -665,6 +686,21 @@ export function ApiSettingsPage() {
         />
       ) : null}
       <ResourceLinksSection />
+      <Dialog
+        closeLabel={t("common.close")}
+        footer={
+          <Button onClick={() => setLlmConnectionDialog(null)} variant="primary">
+            {t("common.close")}
+          </Button>
+        }
+        onClose={() => setLlmConnectionDialog(null)}
+        open={llmConnectionDialog !== null}
+        title={t("api.llm.testTitle")}
+      >
+        <div className="api-page__llm-test-dialog-body" data-kind={llmConnectionDialog?.kind ?? "error"}>
+          {llmConnectionDialog?.message ?? ""}
+        </div>
+      </Dialog>
     </div>
   );
 }
