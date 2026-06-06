@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyT2iSetupMode,
   containsPathQuotes,
+  DEFAULT_T2I_API_URL,
+  DEFAULT_T2I_OUTPUT_NODE_ID,
+  DEFAULT_T2I_PROMPT_NODE_ID,
+  inferT2iSetupMode,
   isTaskRunning,
   mergeModelOptions,
   normalizeApiAsrForSave,
@@ -149,5 +154,30 @@ describe("API settings utilities", () => {
 
     expect(containsPathQuotes('D:/Models/"bad"')).toBe(true);
     expect(containsPathQuotes("D:/Models/good")).toBe(false);
+  });
+
+  it("keeps T2I setup skippable without hiding configured engines", () => {
+    const emptyComfy = apiConfig({
+      t2i_api_url: DEFAULT_T2I_API_URL,
+      t2i_default_workflow_path: "",
+      t2i_provider: "comfyui",
+      t2i_work_path: "",
+    });
+    const stableDiffusion = apiConfig({
+      t2i_api_url: "http://127.0.0.1:7860/sdapi/v1/txt2img",
+      t2i_default_workflow_path: "",
+      t2i_provider: "stable diffusion",
+      t2i_work_path: "",
+    });
+
+    expect(inferT2iSetupMode(emptyComfy)).toBe("skip");
+    expect(inferT2iSetupMode(stableDiffusion)).toBe("local");
+
+    expect(applyT2iSetupMode(emptyComfy, "local")).toMatchObject({
+      t2i_api_url: DEFAULT_T2I_API_URL,
+      t2i_output_node_id: DEFAULT_T2I_OUTPUT_NODE_ID,
+      t2i_prompt_node_id: DEFAULT_T2I_PROMPT_NODE_ID,
+      t2i_provider: "comfyui",
+    });
   });
 });
