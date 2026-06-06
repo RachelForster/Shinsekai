@@ -13,7 +13,7 @@ _SETTINGS_UI_DIR = Path(__file__).resolve().parent
 
 from PySide6.QtCore import QObject, Qt, QSize, QThread, QTimer, Signal
 from PySide6.QtGui import QCursor, QIcon, QShowEvent
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QPushButton, QWidget
 
 # Dracula 壳层：需与 modules/__init__ 的星号导出一致（含 Qt 与 UIFunctions 等）。勿用 `from
 # modules import *`：那依赖把 settings_ui 加进 sys.path 的顶层名 `modules`，PyInstaller
@@ -52,6 +52,25 @@ def _install_plugins_top_nav_button(ui: Ui_MainWindow) -> None:
     ui.btn_plugins = btn
 
 
+def _format_app_version(version: object) -> str:
+    raw = str(version).strip()
+    if not raw:
+        return ""
+    return raw if raw.lower().startswith("v") else f"v{raw}"
+
+
+def _install_logo_version_label(ui: Ui_MainWindow, version: object) -> None:
+    label = QLabel(ui.topLogoInfo)
+    label.setObjectName("titleLeftVersion")
+    label.setGeometry(70, 43, 160, 14)
+    label.setStyleSheet("color: rgb(113, 126, 149); font: 8pt \"Segoe UI\";")
+    label.setAlignment(Qt.AlignmentFlag.AlignLeading | Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+    label.setText(_format_app_version(version))
+    ui.topLogoInfo.setMinimumSize(QSize(0, 64))
+    ui.topLogoInfo.setMaximumSize(QSize(16777215, 64))
+    ui.titleLeftVersion = label
+
+
 class MainWindow(QMainWindow):
     """
     左侧主菜单（topMenu）：API、人物、背景、模板、插件；
@@ -75,7 +94,8 @@ class MainWindow(QMainWindow):
         widgets = self.ui
 
         Settings.ENABLE_CUSTOM_TITLE_BAR = True
-        self.ui.version.setText(f"v{self._ctx.config_manager.version}")
+        self.ui.version.setText(_format_app_version(self._ctx.config_manager.version))
+        _install_logo_version_label(self.ui, self._ctx.config_manager.version)
 
         _install_plugins_top_nav_button(self.ui)
 

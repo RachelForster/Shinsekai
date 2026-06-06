@@ -62,6 +62,13 @@
   line-height: 1.25;
 }
 
+.sidebar__brand-version {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
 .sidebar__nav {
   display: grid;
   align-content: start;

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { MessageKey } from "../../shared/i18n";
 import { useI18n } from "../../shared/i18n";
+import { useAppUpdateInfo } from "./useAppUpdateInfo";
 
 const links = [
   { icon: Settings, labelKey: "nav.api", to: "/settings/api" },
@@ -30,6 +31,9 @@ type SidebarNavProps = {
 
 export function SidebarNav({ onToolsToggle, toolsOpen }: SidebarNavProps) {
   const { t } = useI18n();
+  const versionQuery = useAppUpdateInfo();
+  const rawVersion = versionQuery.data?.version?.trim() ?? "";
+  const version = rawVersion ? (rawVersion.toLowerCase().startsWith("v") ? rawVersion : `v${rawVersion}`) : "";
 
   return (
     <aside className="sidebar">
@@ -40,6 +44,7 @@ export function SidebarNav({ onToolsToggle, toolsOpen }: SidebarNavProps) {
         <div className="sidebar__brand-text">
           <p className="sidebar__brand-title">{t("app.title")}</p>
           <p className="sidebar__brand-subtitle">{t("app.brandSubtitle")}</p>
+          {version ? <p className="sidebar__brand-version">{version}</p> : null}
         </div>
       </div>
       <nav aria-label={t("nav.settingsCenter")} className="sidebar__nav">
