@@ -479,6 +479,10 @@ describe("http platform", () => {
       name: "Nanami",
       paths: ["data/source/nanami.png"],
     });
+    await platform.characters.registerSprites({
+      items: [{ label: "smile, hand wave", path: "data/sprite/nanami/ai_smile.png" }],
+      name: "Nanami",
+    });
     await platform.characters.saveSpriteScale("Nanami", 1.25);
     await platform.characters.saveEmotionTags("Nanami", "立绘 1：开心");
     await platform.characters.deleteSprite("Nanami", 0);
@@ -486,6 +490,7 @@ describe("http platform", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://127.0.0.1:8787/api/characters/sprites/upload",
+      "http://127.0.0.1:8787/api/characters/sprites/register",
       "http://127.0.0.1:8787/api/characters/sprite-scale",
       "http://127.0.0.1:8787/api/characters/emotion-tags",
       "http://127.0.0.1:8787/api/characters/sprites/delete",
@@ -493,11 +498,20 @@ describe("http platform", () => {
     ]);
     expect(fetchMock.mock.calls[1][1]).toEqual(
       expect.objectContaining({
-        body: JSON.stringify({ name: "Nanami", scale: 1.25 }),
+        body: JSON.stringify({
+          items: [{ label: "smile, hand wave", path: "data/sprite/nanami/ai_smile.png" }],
+          name: "Nanami",
+        }),
         method: "POST",
       }),
     );
     expect(fetchMock.mock.calls[2][1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ name: "Nanami", scale: 1.25 }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock.mock.calls[3][1]).toEqual(
       expect.objectContaining({
         body: JSON.stringify({ emotionTags: "立绘 1：开心", name: "Nanami" }),
         method: "POST",

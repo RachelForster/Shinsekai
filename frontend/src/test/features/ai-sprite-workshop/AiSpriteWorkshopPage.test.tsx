@@ -14,6 +14,7 @@ const mocks = {
   generateSpritePrompts: vi.fn(),
   getAppConfig: vi.fn(),
   listCharacters: vi.fn(),
+  registerGeneratedCharacterSprites: vi.fn(),
 };
 
 vi.mock("../../../entities/config/repository", () => ({
@@ -24,6 +25,7 @@ vi.mock("../../../entities/config/repository", () => ({
 vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
   listCharacters: () => mocks.listCharacters(),
+  registerGeneratedCharacterSprites: (input: unknown) => mocks.registerGeneratedCharacterSprites(input),
 }));
 
 vi.mock("../../../entities/tools/repository", () => ({
@@ -66,6 +68,12 @@ describe("AiSpriteWorkshopPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getAppConfig.mockResolvedValue(readyConfig());
+    mocks.registerGeneratedCharacterSprites.mockResolvedValue({
+      ...createCharacter(),
+      emotion_tags: "立绘 1：smile, hand wave\n",
+      name: "Mika",
+      sprites: [{ path: "data/sprite/mika/ai_smile.png" }],
+    });
     mocks.generateSpriteImage.mockResolvedValue({
       file: "data/sprite/mika/ai_smile.png",
       files: ["data/sprite/mika/ai_smile.png"],
@@ -142,5 +150,13 @@ describe("AiSpriteWorkshopPage", () => {
       },
       undefined,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to character" }));
+
+    expect(await screen.findAllByText("Added 1 sprite(s) to the character sprite list.")).toHaveLength(2);
+    expect(mocks.registerGeneratedCharacterSprites).toHaveBeenCalledWith({
+      items: [{ label: "smile, hand wave", path: "data/sprite/mika/ai_smile.png" }],
+      name: "Mika",
+    });
   });
 });

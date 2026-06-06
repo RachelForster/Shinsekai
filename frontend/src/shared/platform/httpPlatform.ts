@@ -439,6 +439,11 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           body: JSON.stringify({ emotionTags, name }),
           method: "POST",
         }),
+      registerSprites: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/sprites/register", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
       saveSpriteScale: (name, scale) =>
         requestJson<Character>(apiBase, "/api/characters/sprite-scale", {
           body: JSON.stringify({ name, scale }),

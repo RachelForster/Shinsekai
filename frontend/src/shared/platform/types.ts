@@ -718,6 +718,7 @@ export interface ShinsekaiPlatform {
       emotionTags: string;
       name: string;
     }) => Promise<CharacterTranslateResult>;
+    registerSprites: (input: { items: { label: string; path: string }[]; name: string }) => Promise<Character>;
     uploadSprites: (input: { emotionTags: string; name: string; paths: string[] }) => Promise<Character>;
     uploadSpriteVoice: (input: {
       name: string;

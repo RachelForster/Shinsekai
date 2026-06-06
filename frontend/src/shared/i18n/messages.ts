@@ -66,6 +66,7 @@ export type MessageKey =
   | "api.t2i.workflow"
   | "api.t2i.workflowPick"
   | "aiSprites.addToCharacter"
+  | "aiSprites.addedToCharacter"
   | "aiSprites.candidatePlaceholder"
   | "aiSprites.configureT2i"
   | "aiSprites.description"
