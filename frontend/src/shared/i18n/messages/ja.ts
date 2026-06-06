@@ -71,6 +71,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "aiSprites.promptDraftsHint":
     "Set how many sprites you need, then generate SD-style prompts from the character personality.",
   "aiSprites.promptCandidate": "Sprite {n}",
+  "aiSprites.promptEmptyBody": "Choose a character and count, then click Generate prompts.",
+  "aiSprites.promptEmptyTitle": "No prompt candidates yet",
+  "aiSprites.promptGenerated": "Generated {count} prompt candidate(s).",
   "aiSprites.promptRefreshed": "Prompt candidates refreshed.",
   "aiSprites.retry": "Retry",
   "aiSprites.retryOne": "Retry this image",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -10,6 +11,12 @@ from .tasks import _update_task
 
 MAX_FILE_BROWSER_ENTRIES = 2000
 
+_LABEL_LANGUAGE_NAMES = {
+    "en": "English",
+    "ja": "Japanese",
+    "zh_CN": "Simplified Chinese",
+}
+
 
 def _extract_prompt_from_line(line: str) -> str:
     text = line.strip()
@@ -19,6 +26,148 @@ def _extract_prompt_from_line(line: str) -> str:
     if match:
         return match.group(1).strip()
     return text
+
+
+def _ascii_prompt_text(value: Any) -> str:
+    return (
+        str(value or "")
+        .encode("ascii", errors="ignore")
+        .decode("ascii")
+        .replace("\n", " ")
+        .strip()
+    )
+
+
+def _split_sprite_prompt_line(value: str) -> dict[str, str]:
+    text = str(value or "").strip()
+    match = re.match(r"^(?:\d+[.)]\s*)?([^:：|]+)[:：|]\s*(.+)$", text)
+    if match:
+        return {"label": match.group(1).strip(), "prompt": _ascii_prompt_text(match.group(2))}
+    return {"label": "", "prompt": _ascii_prompt_text(text)}
+
+
+def _response_text(response: Any) -> str:
+    if response is None:
+        return ""
+    if hasattr(response, "text") and isinstance(response.text, str):
+        return response.text
+    choices = getattr(response, "choices", None)
+    if choices:
+        message = getattr(choices[0], "message", None)
+        content = getattr(message, "content", "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "\n".join(str(getattr(part, "text", part)) for part in content)
+    blocks = getattr(response, "content", None)
+    if blocks:
+        parts: list[str] = []
+        for block in blocks:
+            text = getattr(block, "text", None)
+            if text:
+                parts.append(str(text))
+        return "\n".join(parts)
+    return str(response)
+
+
+def _load_sprite_prompt_payload(text: str) -> Any:
+    raw = text.strip().replace("```json", "").replace("```", "").strip()
+    if not raw:
+        raise ValueError("LLM returned an empty prompt response")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(raw[start : end + 1])
+        start = raw.find("[")
+        end = raw.rfind("]")
+        if start >= 0 and end > start:
+            return json.loads(raw[start : end + 1])
+        raise
+
+
+def _normalize_sprite_prompt_items(payload: Any, count: int) -> list[dict[str, str]]:
+    if isinstance(payload, dict):
+        raw_items = payload.get("items") or payload.get("prompts") or []
+    else:
+        raw_items = payload
+    if not isinstance(raw_items, list):
+        raise ValueError("LLM prompt response must contain a JSON list")
+
+    items: list[dict[str, str]] = []
+    for raw_item in raw_items[:count]:
+        if isinstance(raw_item, dict):
+            label = str(raw_item.get("label") or raw_item.get("tag") or "").strip()
+            prompt = _ascii_prompt_text(raw_item.get("prompt") or raw_item.get("sd_prompt") or "")
+        else:
+            parsed = _split_sprite_prompt_line(str(raw_item))
+            label = parsed["label"]
+            prompt = parsed["prompt"]
+        if prompt:
+            items.append({"label": label, "prompt": prompt})
+    if not items:
+        raise ValueError("LLM did not return any usable sprite prompts")
+    return items
+
+
+def _generate_sprite_prompt_items_with_llm(
+    state: BridgeState,
+    *,
+    character_name: str,
+    character_settings: str,
+    count: int,
+    language: str,
+) -> dict[str, Any]:
+    from llm.llm_manager import LLMAdapterFactory
+
+    llm_provider, llm_model, llm_base_url, api_key = state.config_manager.get_llm_api_config()
+    if not llm_provider or not llm_model or not api_key:
+        raise RuntimeError("LLM config is incomplete. Configure provider, model, and API key first.")
+
+    base_kwargs = {
+        "llm_provider": llm_provider,
+        "api_key": api_key,
+        "base_url": llm_base_url,
+        "model": llm_model,
+    }
+    if hasattr(state.config_manager, "merged_llm_factory_kwargs"):
+        base_kwargs = state.config_manager.merged_llm_factory_kwargs(llm_provider, base_kwargs)
+    adapter = LLMAdapterFactory.create_adapter(**base_kwargs)
+    label_language = _LABEL_LANGUAGE_NAMES.get(language, "Simplified Chinese")
+    system_prompt = (
+        "You generate visual novel character sprite generation data. "
+        "Return only a valid JSON object with an items array. "
+        "Each item must be an object with label and prompt. "
+        "The label must be short comma-separated emotion/action tags in the requested UI language. "
+        "The prompt must be a pure English Stable Diffusion style prompt, ASCII only, and must include the character name. "
+        "Do not include markdown, explanations, or non-English text inside prompt."
+    )
+    user_prompt = (
+        f"Character name: {character_name}\n"
+        f"Character settings:\n{character_settings}\n\n"
+        f"Generate {count} different sprite candidates.\n"
+        f"Label language: {label_language}\n"
+        "Prompt requirements: full body, solo, visual novel sprite, transparent background, clean lineart, "
+        "soft cel shading, consistent character design, expressive emotion and clear action.\n"
+        'JSON shape: {"items":[{"label":"emotion, action","prompt":"English SD prompt with character name"}]}'
+    )
+    response = adapter.chat(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        stream=False,
+        response_format={"type": "json_object"},
+        max_tokens=1800,
+    )
+    payload = _load_sprite_prompt_payload(_response_text(response))
+    return {
+        "items": _normalize_sprite_prompt_items(payload, count),
+        "model": llm_model,
+        "provider": llm_provider,
+    }
 
 
 def _sprite_output_dir(state: BridgeState, character_name: str, requested: Any = "") -> Path:
@@ -32,21 +181,32 @@ def _sprite_output_dir(state: BridgeState, character_name: str, requested: Any =
 
 
 def _generate_sprite_prompts(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    from tools.generate_sprites import ImageGenerator
-
     character_name = str(payload.get("characterName") or "").strip()
     if not character_name:
         raise ValueError("characterName is required")
     count = int(payload.get("count") or 1)
     if count < 1 or count > 100:
         raise ValueError("count must be between 1 and 100")
+    language = str(payload.get("language") or "zh_CN").strip()
     character = state.config_manager.get_character_by_name(character_name)
     if character is None:
         raise KeyError(f"character not found: {character_name}")
 
     _update_task(state, task_id, message="正在生成立绘提示词。", phase="prompt", progress=0.18)
-    prompts = ImageGenerator().generate_prompts(count, str(character.character_setting or ""))
-    result = {"prompts": [str(item) for item in prompts]}
+    llm_result = _generate_sprite_prompt_items_with_llm(
+        state,
+        character_name=str(character.name or character_name),
+        character_settings=str(character.character_setting or ""),
+        count=count,
+        language=language,
+    )
+    items = llm_result["items"]
+    result = {
+        "items": items,
+        "model": llm_result["model"],
+        "prompts": [item["prompt"] for item in items],
+        "provider": llm_result["provider"],
+    }
     _update_task(state, task_id, message="提示词已生成。", phase="completed", progress=1, result=result)
     return result
 
