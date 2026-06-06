@@ -44,6 +44,11 @@ class _FakeHttpxStatusError(Exception):
     __module__ = "httpx"
 
 
+APITimeoutError = type("APITimeoutError", (Exception,), {"__module__": "openai"})
+RateLimitError = type("RateLimitError", (Exception,), {"__module__": "openai._exceptions"})
+AnthropicAPITimeoutError = type("APITimeoutError", (Exception,), {"__module__": "anthropic"})
+
+
 class _FakeRequest:
     url = "https://example.test/api"
 
@@ -77,6 +82,48 @@ def test_classify_exception_maps_httpx_status_error():
         "errorType": "_FakeHttpxStatusError",
         "timeout": False,
         "statusCode": 502,
+        "url": "https://example.test/api",
+    }
+
+
+def test_classify_exception_maps_openai_timeout():
+    exc = APITimeoutError("request timed out")
+    exc.request = _FakeRequest()
+
+    assert types.classify_exception(exc) == {
+        "kind": "http_client",
+        "message": "HTTP request failed: request timed out",
+        "errorType": "APITimeoutError",
+        "timeout": True,
+        "statusCode": None,
+        "url": "https://example.test/api",
+    }
+
+
+def test_classify_exception_maps_openai_status_error():
+    exc = RateLimitError("rate limited")
+    exc.response = _FakeResponse()
+
+    assert types.http_client_error_from_exception(exc) == {
+        "kind": "http_client",
+        "message": "HTTP request failed: rate limited",
+        "errorType": "RateLimitError",
+        "timeout": False,
+        "statusCode": 502,
+        "url": "https://example.test/api",
+    }
+
+
+def test_classify_exception_maps_anthropic_timeout():
+    exc = AnthropicAPITimeoutError("anthropic timeout")
+    exc.request = _FakeRequest()
+
+    assert types.http_client_error_from_exception(exc) == {
+        "kind": "http_client",
+        "message": "HTTP request failed: anthropic timeout",
+        "errorType": "APITimeoutError",
+        "timeout": True,
+        "statusCode": None,
         "url": "https://example.test/api",
     }
 

@@ -1,5 +1,6 @@
 # llm_adapter.py
 from sdk.adapters import LLMAdapter
+from sdk.exception.types import http_client_error_from_exception
 from openai import OpenAI
 import time
 import json
@@ -27,6 +28,11 @@ SUPPORTED_CHAT_PARAMS = {
 def filter_supported_chat_params(adapter_name: str, kwargs: dict) -> dict:
     supported = SUPPORTED_CHAT_PARAMS.get(adapter_name, set())
     return {k: v for k, v in kwargs.items() if k in supported}
+
+
+def _raise_if_http_client_error(exc: BaseException) -> None:
+    if http_client_error_from_exception(exc):
+        raise exc
 
 
 class DeepSeekAdapter(LLMAdapter):
@@ -107,6 +113,7 @@ class DeepSeekAdapter(LLMAdapter):
             response = self.client.chat.completions.create(**create_kwargs)
             return response
         except Exception as e:
+            _raise_if_http_client_error(e)
             print(f"DeepSeek chat error: {e}")
             return None
 
@@ -151,6 +158,7 @@ class OpenAIAdapter(LLMAdapter):
             response = self.client.chat.completions.create(**create_kwargs)
             return response
         except Exception as e:
+            _raise_if_http_client_error(e)
             import traceback
             print(f"OpenAI chat error[{type(e).__name__}]: {e}")
             traceback.print_exc()
@@ -181,6 +189,7 @@ class GeminiAdapter(LLMAdapter):
             )
             return response
         except Exception as e:
+            _raise_if_http_client_error(e)
             print(f"Gemini chat error: {e}")
             return None
     
@@ -322,5 +331,6 @@ class ClaudeAdapter(LLMAdapter):
                     temperature=kwargs.get("temperature", 0.7)
                 )
         except Exception as e:
+            _raise_if_http_client_error(e)
             print(f"Claude API Error: {e}")
             return None

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, TypedDict
+
+try:
+    from typing import NotRequired
+except ImportError:  # Python 3.10
+    from typing_extensions import NotRequired
 
 
 class RuntimeDependencyError(TypedDict):
@@ -115,9 +120,43 @@ def runtime_dependency_error_from_module(
     return error
 
 
-def _is_httpx_exception(exc: BaseException) -> bool:
+_HTTP_CLIENT_ERROR_NAMES = {
+    "APIConnectionError",
+    "APIError",
+    "APIResponseValidationError",
+    "APIStatusError",
+    "APITimeoutError",
+    "AuthenticationError",
+    "BadRequestError",
+    "ConflictError",
+    "InternalServerError",
+    "NotFoundError",
+    "PermissionDeniedError",
+    "RateLimitError",
+    "UnprocessableEntityError",
+}
+
+
+def _module_is(module_name: str, package: str) -> bool:
+    return module_name == package or module_name.startswith(f"{package}.")
+
+
+def _is_http_client_exception(exc: BaseException) -> bool:
     module_name = type(exc).__module__
-    return module_name == "httpx" or module_name.startswith("httpx.")
+    if _module_is(module_name, "httpx") or _module_is(module_name, "httpcore"):
+        return True
+    if not (_module_is(module_name, "openai") or _module_is(module_name, "anthropic")):
+        return False
+
+    error_type = type(exc).__name__
+    if error_type in _HTTP_CLIENT_ERROR_NAMES:
+        return True
+    if "timeout" in error_type.lower() or "connection" in error_type.lower():
+        return True
+    return any(
+        getattr(exc, attr, None) is not None
+        for attr in ("request", "response", "status_code")
+    )
 
 
 def _httpx_url(exc: BaseException) -> str:
@@ -130,6 +169,9 @@ def _httpx_url(exc: BaseException) -> str:
 
 
 def _httpx_status_code(exc: BaseException) -> int | None:
+    direct_status_code = getattr(exc, "status_code", None)
+    if isinstance(direct_status_code, int):
+        return direct_status_code
     status_code = getattr(getattr(exc, "response", None), "status_code", None)
     if isinstance(status_code, int):
         return status_code
@@ -137,7 +179,7 @@ def _httpx_status_code(exc: BaseException) -> int | None:
 
 
 def http_client_error_from_exception(exc: BaseException) -> HttpClientError | None:
-    if not _is_httpx_exception(exc):
+    if not _is_http_client_exception(exc):
         return None
 
     error_type = type(exc).__name__
