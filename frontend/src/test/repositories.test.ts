@@ -42,6 +42,7 @@ describe("entity repositories", () => {
         cancelTtsBundleDownload: vi.fn().mockResolvedValue({ id: "task-1", status: "cancelled" }),
         downloadTtsBundle: vi.fn().mockResolvedValue({ path: "/runtime", provider: "genie-tts" }),
         fetchLlmModels: vi.fn().mockResolvedValue([{ id: "deepseek-chat", tags: ["chat"] }]),
+        testLlmConnection: vi.fn().mockResolvedValue({ message: "ok" }),
         get: vi.fn().mockResolvedValue(sampleConfig),
         getTtsBundleRecommendation: vi.fn().mockResolvedValue({ gpus: [], kind: "genie", platform: "linux" }),
         saveApi: vi.fn().mockResolvedValue(apiConfig),
@@ -68,6 +69,12 @@ describe("entity repositories", () => {
 
     await expect(config.getAppConfig()).resolves.toBe(sampleConfig);
     await config.fetchLlmModels({ apiKey: "key", baseUrl: "https://api.example.test", provider: "Deepseek" });
+    await config.testLlmConnection({
+      apiKey: "key",
+      baseUrl: "https://api.example.test",
+      model: "deepseek-chat",
+      provider: "Deepseek",
+    });
     await config.downloadTtsBundle({ kind: "genie" }, taskOptions);
     await config.cancelTtsBundleDownload("task-1");
     await config.getTtsBundleRecommendation();
@@ -114,6 +121,12 @@ describe("entity repositories", () => {
     expect(platform.config.fetchLlmModels).toHaveBeenCalledWith({
       apiKey: "key",
       baseUrl: "https://api.example.test",
+      provider: "Deepseek",
+    });
+    expect(platform.config.testLlmConnection).toHaveBeenCalledWith({
+      apiKey: "key",
+      baseUrl: "https://api.example.test",
+      model: "deepseek-chat",
       provider: "Deepseek",
     });
     expect(platform.config.downloadTtsBundle).toHaveBeenCalledWith({ kind: "genie" }, taskOptions);

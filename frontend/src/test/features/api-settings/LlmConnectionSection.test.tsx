@@ -32,6 +32,8 @@ function renderSection(overrides: Partial<Parameters<typeof LlmConnectionSection
     ],
     disabled: false,
     draft: apiConfig(),
+    connectionOk: false,
+    connectionTestPending: false,
     fetchModelsPending: false,
     llmExtraSchema: {},
     llmProviderSelectOptions: [
@@ -43,6 +45,7 @@ function renderSection(overrides: Partial<Parameters<typeof LlmConnectionSection
     onAdapterExtraChange: vi.fn(),
     onDraftPatch: vi.fn(),
     onFetchModels: vi.fn(),
+    onTestConnection: vi.fn(),
     onProviderChange: vi.fn(),
     onProviderMapChange: vi.fn(),
     selectedOption: { id: "deepseek-chat", tags: ["text"] },
@@ -80,6 +83,9 @@ describe("LlmConnectionSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Fetch available models" }));
     expect(props.onFetchModels).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    expect(props.onTestConnection).toHaveBeenCalledTimes(1);
   });
 
   it("displays selected model capability badges and streams toggle changes", () => {
@@ -89,5 +95,11 @@ describe("LlmConnectionSection", () => {
 
     fireEvent.click(screen.getByRole("checkbox"));
     expect(props.onDraftPatch).toHaveBeenCalledWith({ is_streaming: false });
+  });
+
+  it("shows connected state after a successful connection test", () => {
+    renderSection({ connectionOk: true });
+
+    expect(screen.getByRole("button", { name: "Connected" })).toHaveClass("api-page__llm-test-button--connected");
   });
 });

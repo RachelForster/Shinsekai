@@ -13,6 +13,10 @@ export function fetchLlmModels(input: { apiKey: string; baseUrl: string; provide
   return getPlatform().config.fetchLlmModels(input);
 }
 
+export function testLlmConnection(input: { apiKey: string; baseUrl: string; model: string; provider: string }) {
+  return getPlatform().config.testLlmConnection(input);
+}
+
 export function downloadTtsBundle(
   input: { kind: TtsBundleKind },
   options?: TaskProgressOptions<TtsBundleDownloadResult>,

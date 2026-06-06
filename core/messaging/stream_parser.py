@@ -6,6 +6,42 @@ from typing import Iterator
 from sdk.messages import LLMDialogMessage
 
 
+def _complete_json_object_span(text: str) -> tuple[int, int] | None:
+    """Return the first complete top-level JSON object span, if one exists.
+
+    The scanner ignores braces inside JSON strings and supports nested objects.
+    If an earlier malformed ``{`` never closes, later candidate starts are still
+    considered so the stream can recover from bad prose or broken JSON prefixes.
+    """
+    starts = [index for index, char in enumerate(text) if char == "{"]
+    for start_index in starts:
+        depth = 0
+        in_string = False
+        escaped = False
+        for index in range(start_index, len(text)):
+            char = text[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                continue
+
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return start_index, index + 1
+                if depth < 0:
+                    break
+    return None
+
+
 class LlmResponseStreamParser:
     """
     消费文本 chunk，在缓冲区中查找完整的 `{...}` JSON 片段，解析为对话消息。
@@ -39,10 +75,10 @@ class LlmResponseStreamParser:
 
     def _iter_drain_complete_objects(self) -> Iterator[LLMDialogMessage]:
         while "}" in self._buffer:
-            end_index = self._buffer.find("}") + 1
-            start_index = self._buffer.rfind("{", 0, end_index)
-            if start_index == -1:
+            span = _complete_json_object_span(self._buffer)
+            if span is None:
                 break
+            start_index, end_index = span
             json_str = self._buffer[start_index:end_index]
             try:
                 dialog_item = json.loads(json_str)

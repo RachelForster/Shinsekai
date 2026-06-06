@@ -86,6 +86,35 @@ describe("http platform", () => {
     );
   });
 
+  it("tests LLM connectivity through a dedicated bridge endpoint", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({ message: "LLM 连通检测通过。" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const result = await platform.config.testLlmConnection({
+      apiKey: "sk-test",
+      baseUrl: "http://127.0.0.1:1234/v1",
+      model: "local-model",
+      provider: "Local",
+    });
+
+    expect(result.message).toBe("LLM 连通检测通过。");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/config/llm-connection-test",
+      expect.objectContaining({
+        body: JSON.stringify({
+          apiKey: "sk-test",
+          baseUrl: "http://127.0.0.1:1234/v1",
+          model: "local-model",
+          provider: "Local",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("starts TTS bundle download tasks through the bridge", async () => {
     const task = {
       createdAt: 1,

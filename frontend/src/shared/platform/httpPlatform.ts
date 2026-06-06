@@ -27,6 +27,7 @@ import type {
   LogFileList,
   LogSnapshot,
   LlmModelOption,
+  LlmConnectionTestResult,
   McpConfig,
   McpToolPreview,
   MusicCoverRunResult,
@@ -482,6 +483,11 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
       },
       fetchLlmModels: (input) =>
         requestJson<LlmModelOption[]>(apiBase, "/api/config/llm-models", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      testLlmConnection: (input) =>
+        requestJson<LlmConnectionTestResult>(apiBase, "/api/config/llm-connection-test", {
           body: JSON.stringify(input),
           method: "POST",
         }),

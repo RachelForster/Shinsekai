@@ -26,9 +26,11 @@ if getattr(sys, "frozen", False):
     init_frozen_stdio("main")
 
 from sdk.logging import configure_logging, get_logger
+from sdk.exception.handler import handle_main_exception, install_main_exception_hook
 
 configure_logging("chat", project_root=os.environ.get("EASYAI_PROJECT_ROOT") or project_root)
 logger = get_logger(__name__)
+install_main_exception_hook(app_name="Shinsekai Chat", logger=logger)
 
 import llm.tools.character_tools
 import llm.tools.memory_tools
@@ -438,4 +440,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as exc:
+        handle_main_exception(exc, app_name="Shinsekai Chat", logger=logger)

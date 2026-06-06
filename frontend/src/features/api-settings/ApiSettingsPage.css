@@ -41,6 +41,43 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* LLM section header actions */
+.api-page__llm-header {
+  min-width: 0;
+}
+
+.api-page__llm-header .section__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.api-page__llm-test-button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.api-page__llm-test-button--connected {
+  border-color: var(--color-success-border);
+  color: var(--color-success);
+  background: color-mix(in oklch, var(--color-success) 12%, transparent);
+}
+
+.api-page__llm-test-button--connected:hover:not(:disabled) {
+  border-color: var(--color-success);
+  background: color-mix(in oklch, var(--color-success) 18%, transparent);
+}
+
+.api-page__llm-test-dialog-body {
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.api-page__llm-test-dialog-body[data-kind="success"] {
+  color: var(--color-success);
+}
+
 /* Model fetch combo */
 .api-page__model-control {
   display: flex;
@@ -223,6 +260,10 @@
 @media (max-width: 640px) {
   .api-page > .section:not(.api-page__language) .form-grid--two {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .api-page__llm-test-button {
+    padding-inline: 9px;
   }
 
   .tts-bundle-summary__row {

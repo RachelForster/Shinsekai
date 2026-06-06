@@ -1,13 +1,30 @@
 """Unit tests for LLM adapters — parameter filtering, config schema, mocks."""
 
+import sys
+from types import ModuleType, SimpleNamespace
+
 import pytest
 
+try:
+    import openai as _openai  # noqa: F401
+except ModuleNotFoundError:
+    fake_openai = ModuleType("openai")
+
+    class _OpenAI:
+        def __init__(self, api_key=None, base_url=None):
+            self.api_key = api_key
+            self.base_url = base_url
+
+    fake_openai.OpenAI = _OpenAI
+    sys.modules["openai"] = fake_openai
+
 from llm.llm_adapter import (
+    _raise_if_http_client_error,
+    SUPPORTED_CHAT_PARAMS,
+    ClaudeAdapter,
     DeepSeekAdapter,
     OpenAIAdapter,
-    ClaudeAdapter,
     filter_supported_chat_params,
-    SUPPORTED_CHAT_PARAMS,
 )
 
 
@@ -37,6 +54,33 @@ class TestDeepSeekAdapter:
     def test_thinking_disabled_by_default(self):
         adapter = DeepSeekAdapter(api_key="sk-test", base_url="https://api.deepseek.com", model="deepseek-chat")
         assert adapter.thinking_enabled is False
+
+    def test_rethrows_openai_http_client_errors(self):
+        error_cls = type("APITimeoutError", (Exception,), {"__module__": "openai"})
+
+        class _Completions:
+            def create(self, **kwargs):
+                raise error_cls("request timed out")
+
+        adapter = DeepSeekAdapter(api_key="sk-test", base_url="https://api.deepseek.com", model="deepseek-chat")
+        adapter.client = SimpleNamespace(chat=SimpleNamespace(completions=_Completions()))
+
+        with pytest.raises(error_cls):
+            adapter.chat(messages=[{"role": "user", "content": "Hi"}], stream=False)
+
+    def test_keeps_legacy_none_for_non_http_errors(self):
+        class _Completions:
+            def create(self, **kwargs):
+                raise ValueError("bad payload")
+
+        adapter = DeepSeekAdapter(api_key="sk-test", base_url="https://api.deepseek.com", model="deepseek-chat")
+        adapter.client = SimpleNamespace(chat=SimpleNamespace(completions=_Completions()))
+
+        assert adapter.chat(messages=[{"role": "user", "content": "Hi"}], stream=False) is None
+
+
+def test_raise_if_http_client_error_ignores_non_http_errors():
+    assert _raise_if_http_client_error(ValueError("plain")) is None
 
 
 class TestOpenAIAdapter:
