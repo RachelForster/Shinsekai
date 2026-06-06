@@ -366,6 +366,7 @@ describe("entity repositories", () => {
       },
       tools: {
         cropSprites: vi.fn().mockResolvedValue({ count: 1, message: "ok" }),
+        generateSpriteImage: vi.fn().mockResolvedValue({ file: "/tmp/sprite.png", files: ["/tmp/sprite.png"], message: "ok" }),
         generateSpritePrompts: vi.fn().mockResolvedValue({ prompts: ["smile"] }),
         generateSprites: vi.fn().mockResolvedValue({ count: 1, message: "ok" }),
         removeSpriteBackground: vi.fn().mockResolvedValue({ count: 1, message: "ok" }),
@@ -400,6 +401,7 @@ describe("entity repositories", () => {
       { characterName: "Nanami", prompts: ["smile"], referenceImage: "/tmp/ref.png" },
       taskOptions,
     );
+    await tools.generateSpriteImage({ characterName: "Nanami", prompt: "smile" }, taskOptions);
     await tools.cropSprites({ inputDir: "/tmp/in", ratio: 1.5 }, taskOptions);
     await tools.removeSpriteBackground({ inputDir: "/tmp/in" }, taskOptions);
     await musicCover.saveMusicCoverConfig(sampleConfig.system_config);
@@ -412,6 +414,10 @@ describe("entity repositories", () => {
     expect(platform.mcp.previewTools).toHaveBeenCalledWith(sampleMcpConfig, taskOptions);
     expect(platform.tools.generateSprites).toHaveBeenCalledWith(
       { characterName: "Nanami", prompts: ["smile"], referenceImage: "/tmp/ref.png" },
+      taskOptions,
+    );
+    expect(platform.tools.generateSpriteImage).toHaveBeenCalledWith(
+      { characterName: "Nanami", prompt: "smile" },
       taskOptions,
     );
     expect(platform.musicCover.run).toHaveBeenCalledWith(

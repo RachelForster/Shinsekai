@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,15 @@ _LABEL_LANGUAGE_NAMES = {
     "ja": "Japanese",
     "zh_CN": "Simplified Chinese",
 }
+
+_SD_PROMPT_REQUIRED_PREFIX = (
+    "masterpiece",
+    "best quality",
+    "highres",
+    "solo",
+    "1 person",
+    "single character",
+)
 
 
 def _extract_prompt_from_line(line: str) -> str:
@@ -38,12 +48,23 @@ def _ascii_prompt_text(value: Any) -> str:
     )
 
 
+def _with_required_sd_prompt_prefix(value: Any) -> str:
+    prompt = _ascii_prompt_text(value)
+    if not prompt:
+        return ""
+
+    required = {tag.lower() for tag in _SD_PROMPT_REQUIRED_PREFIX}
+    parts = [part.strip() for part in prompt.split(",") if part.strip()]
+    remaining = [part for part in parts if part.lower() not in required]
+    return ", ".join([*_SD_PROMPT_REQUIRED_PREFIX, *remaining])
+
+
 def _split_sprite_prompt_line(value: str) -> dict[str, str]:
     text = str(value or "").strip()
     match = re.match(r"^(?:\d+[.)]\s*)?([^:：|]+)[:：|]\s*(.+)$", text)
     if match:
-        return {"label": match.group(1).strip(), "prompt": _ascii_prompt_text(match.group(2))}
-    return {"label": "", "prompt": _ascii_prompt_text(text)}
+        return {"label": match.group(1).strip(), "prompt": _with_required_sd_prompt_prefix(match.group(2))}
+    return {"label": "", "prompt": _with_required_sd_prompt_prefix(text)}
 
 
 def _response_text(response: Any) -> str:
@@ -100,7 +121,7 @@ def _normalize_sprite_prompt_items(payload: Any, count: int) -> list[dict[str, s
     for raw_item in raw_items[:count]:
         if isinstance(raw_item, dict):
             label = str(raw_item.get("label") or raw_item.get("tag") or "").strip()
-            prompt = _ascii_prompt_text(raw_item.get("prompt") or raw_item.get("sd_prompt") or "")
+            prompt = _with_required_sd_prompt_prefix(raw_item.get("prompt") or raw_item.get("sd_prompt") or "")
         else:
             parsed = _split_sprite_prompt_line(str(raw_item))
             label = parsed["label"]
@@ -142,6 +163,7 @@ def _generate_sprite_prompt_items_with_llm(
         "Each item must be an object with label and prompt. "
         "The label must be short comma-separated emotion/action tags in the requested UI language. "
         "The prompt must be a pure English Stable Diffusion style prompt, ASCII only, and must include the character name. "
+        "Every prompt must start with: masterpiece, best quality, highres, solo, 1 person, single character. "
         "Do not include markdown, explanations, or non-English text inside prompt."
     )
     user_prompt = (
@@ -149,7 +171,8 @@ def _generate_sprite_prompt_items_with_llm(
         f"Character settings:\n{character_settings}\n\n"
         f"Generate {count} different sprite candidates.\n"
         f"Label language: {label_language}\n"
-        "Prompt requirements: full body, solo, visual novel sprite, transparent background, clean lineart, "
+        "Prompt prefix: masterpiece, best quality, highres, solo, 1 person, single character.\n"
+        "Prompt requirements: full body, visual novel sprite, transparent background, clean lineart, "
         "soft cel shading, consistent character design, expressive emotion and clear action.\n"
         'JSON shape: {"items":[{"label":"emotion, action","prompt":"English SD prompt with character name"}]}'
     )
@@ -178,6 +201,42 @@ def _sprite_output_dir(state: BridgeState, character_name: str, requested: Any =
     if character is None:
         raise KeyError(f"character not found: {character_name}")
     return Path("data/sprite") / str(character.sprite_prefix or character.name or "sprites")
+
+
+def _safe_filename_part(value: Any, fallback: str = "sprite") -> str:
+    text = re.sub(r"[^0-9A-Za-z_\-\u4e00-\u9fff]+", "_", str(value or "").strip())
+    text = text.strip("._-")
+    return (text or fallback)[:48]
+
+
+def _t2i_factory_kwargs(state: BridgeState) -> tuple[str, dict[str, Any]]:
+    from t2i.t2i_manager import T2IAdapterFactory
+
+    api_config = state.config_manager.config.api_config
+    provider = str(api_config.t2i_provider or "").strip().lower()
+    if not provider:
+        raise RuntimeError("T2I provider is not configured")
+    if provider not in T2IAdapterFactory._adapters:
+        raise RuntimeError(f"Unsupported T2I adapter: {provider}")
+
+    if provider == "comfyui":
+        base_kwargs = {
+            "api_url": str(api_config.t2i_api_url or "").strip(),
+            "work_path": str(api_config.t2i_work_path or "").strip(),
+            "workflow_path": str(api_config.t2i_default_workflow_path or "").strip(),
+            "prompt_node_id": str(api_config.t2i_prompt_node_id or "6").strip(),
+            "output_node_id": str(api_config.t2i_output_node_id or "9").strip(),
+        }
+    elif provider == "stable diffusion":
+        base_kwargs = {
+            "api_url": str(api_config.t2i_api_url or "").strip(),
+        }
+    else:
+        base_kwargs = {}
+
+    if hasattr(state.config_manager, "merged_t2i_factory_kwargs"):
+        base_kwargs = state.config_manager.merged_t2i_factory_kwargs(provider, base_kwargs)
+    return provider, base_kwargs
 
 
 def _generate_sprite_prompts(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -239,6 +298,50 @@ def _generate_sprites(state: BridgeState, task_id: str, payload: dict[str, Any])
         "files": paths,
         "message": f"已生成 {len(paths)} 张（输出目录: {output_dir.as_posix()}）",
         "outputDir": output_dir.as_posix(),
+    }
+    _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
+    return result
+
+
+def _generate_sprite_image(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    from t2i.t2i_manager import T2IAdapterFactory
+
+    character_name = str(payload.get("characterName") or "").strip()
+    if not character_name:
+        raise ValueError("characterName is required")
+    prompt = _with_required_sd_prompt_prefix(payload.get("prompt"))
+    if not prompt:
+        raise ValueError("prompt is required")
+    label = str(payload.get("label") or "").strip()
+    negative_prompt = str(payload.get("negativePrompt") or "").strip()
+    character = state.config_manager.get_character_by_name(character_name)
+    if character is None:
+        raise KeyError(f"character not found: {character_name}")
+
+    provider, kwargs = _t2i_factory_kwargs(state)
+    output_dir = _sprite_output_dir(state, character_name, payload.get("outputDir"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"ai_{_safe_filename_part(label, 'sprite')}_{int(time.time() * 1000)}.png"
+    output_path = output_dir / filename
+
+    _update_task(state, task_id, message="正在生成立绘。", phase="generate", progress=0.18)
+    adapter = T2IAdapterFactory.create_adapter(provider, **kwargs)
+    generated_path = adapter.generate_image(
+        prompt,
+        output_path.as_posix(),
+        negative_prompt=negative_prompt,
+    )
+    if not generated_path:
+        raise RuntimeError("T2I did not return a generated image")
+
+    result_path = Path(generated_path).as_posix()
+    result = {
+        "file": result_path,
+        "files": [result_path],
+        "label": label,
+        "message": f"已生成立绘：{result_path}",
+        "outputDir": output_dir.as_posix(),
+        "prompt": prompt,
     }
     _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
     return result

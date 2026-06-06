@@ -399,9 +399,12 @@ export interface SpritePromptResult {
 }
 
 export interface SpriteGenerationResult {
+  file?: string;
   files: string[];
+  label?: string;
   message: string;
   outputDir: string;
+  prompt?: string;
 }
 
 export interface BatchToolResult {
@@ -823,6 +826,10 @@ export interface ShinsekaiPlatform {
     ) => Promise<SpritePromptResult>;
     generateSprites: (
       input: { characterName: string; outputDir?: string; prompts: string[]; referenceImage: string },
+      options?: TaskProgressOptions<SpriteGenerationResult>,
+    ) => Promise<SpriteGenerationResult>;
+    generateSpriteImage: (
+      input: { characterName: string; label?: string; negativePrompt?: string; outputDir?: string; prompt: string },
       options?: TaskProgressOptions<SpriteGenerationResult>,
     ) => Promise<SpriteGenerationResult>;
     removeSpriteBackground: (
