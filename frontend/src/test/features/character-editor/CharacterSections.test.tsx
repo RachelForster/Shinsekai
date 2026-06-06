@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CharacterAiSpriteCard } from "../../../features/character-editor/CharacterAiSpriteCard";
 import { CharacterBasicSection } from "../../../features/character-editor/CharacterBasicSection";
 import { CharacterListPanel } from "../../../features/character-editor/CharacterListPanel";
 import { CharacterMemorySection } from "../../../features/character-editor/CharacterMemorySection";
@@ -12,6 +14,14 @@ import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
 function renderEn(children: ReactNode) {
   return render(<I18nProvider language="en">{children}</I18nProvider>);
+}
+
+function renderEnWithRouter(children: ReactNode) {
+  return render(
+    <I18nProvider language="en">
+      <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>{children}</MemoryRouter>
+    </I18nProvider>,
+  );
 }
 
 const characterDraft: Character = {
@@ -182,6 +192,16 @@ describe("Character editor sections", () => {
     expect(actions.onSpriteDelete).toHaveBeenCalledTimes(1);
     expect(actions.onOpenBulkTags).toHaveBeenCalledTimes(1);
     expect(actions.onClearSprites).toHaveBeenCalledTimes(1);
+  });
+
+  it("links the AI sprite card to the workshop for the current character", () => {
+    renderEnWithRouter(<CharacterAiSpriteCard characterName="Mika" />);
+
+    expect(screen.getByRole("heading", { name: "AI sprite generation" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open AI sprite workshop" })).toHaveAttribute(
+      "href",
+      "/settings/ai-sprites?character=Mika",
+    );
   });
 
   it("renders memory rows and protects disabled memory actions", () => {

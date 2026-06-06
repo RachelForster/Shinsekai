@@ -23,12 +23,19 @@ import {
   uploadCharacterSprites,
   uploadSpriteVoice,
 } from "../../entities/character/repository";
+import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
+<<<<<<< HEAD
 import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
+=======
+import { AlertDialog, useToast } from "../../shared/ui";
+import { isT2iReadyForSprites } from "../api-settings/apiSettingsUtils";
+import { CharacterAiSpriteCard } from "./CharacterAiSpriteCard";
+>>>>>>> d12b1041 (Add AI Sprite card and page to generate sprites)
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
@@ -51,6 +58,7 @@ export function CharacterEditorPage() {
   const { showToast } = useToast();
   const { t } = useI18n();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const data = charactersQuery.data ?? [];
   const isLoading = charactersQuery.isLoading;
   const [selectedName, setSelectedName] = useState("");
@@ -72,6 +80,7 @@ export function CharacterEditorPage() {
   const isSavedCharacter = Boolean(
     currentCharacterName && data.some((character) => character.name === currentCharacterName),
   );
+  const showAiSpriteWorkshop = configQuery.data ? isT2iReadyForSprites(configQuery.data.api_config) : false;
   const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(draft.color || "") ? draft.color : DEFAULT_CHARACTER_COLOR;
   const setColorInputElement = useCallback((element: HTMLInputElement | null) => {
     colorInputRef.current = element;
@@ -867,6 +876,8 @@ export function CharacterEditorPage() {
         </div>
 
         <CharacterVoiceSection draft={draft} id="character-voice" onChange={update} />
+
+        {showAiSpriteWorkshop ? <CharacterAiSpriteCard characterName={currentCharacterName || draft.name} /> : null}
 
         <CharacterSpritesSection
           draft={draft}

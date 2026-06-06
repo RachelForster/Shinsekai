@@ -1,0 +1,121 @@
+.ai-sprite-page {
+  gap: var(--space-4);
+}
+
+.ai-sprite-page__setup {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.ai-sprite-page__summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.ai-sprite-page__summary > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-raised);
+}
+
+.ai-sprite-page__summary span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.ai-sprite-page__summary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-sprite-page__prompt-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.ai-sprite-card {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.ai-sprite-card__header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ai-sprite-card__header h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.ai-sprite-card__header span {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.ai-sprite-card__prompt {
+  min-height: 116px;
+  resize: vertical;
+}
+
+.ai-sprite-card__preview {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  gap: var(--space-2);
+  border: 1px dashed var(--color-border-hover);
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  background: var(--color-surface-raised);
+  text-align: center;
+}
+
+.ai-sprite-card__icon {
+  width: 28px;
+  height: 28px;
+  color: var(--color-accent-primary);
+}
+
+.ai-sprite-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ai-sprite-page__actions p {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 780px) {
+  .ai-sprite-page__summary,
+  .ai-sprite-page__prompt-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

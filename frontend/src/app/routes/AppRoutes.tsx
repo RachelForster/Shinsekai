@@ -10,6 +10,11 @@ const ApiSettingsPage = lazy(() =>
     default: ApiSettingsPage,
   })),
 );
+const AiSpriteWorkshopPage = lazy(() =>
+  import("../../features/ai-sprite-workshop/AiSpriteWorkshopPage").then(({ AiSpriteWorkshopPage }) => ({
+    default: AiSpriteWorkshopPage,
+  })),
+);
 const BackgroundManagerPage = lazy(() =>
   import("../../features/background-manager/BackgroundManagerPage").then(({ BackgroundManagerPage }) => ({
     default: BackgroundManagerPage,
@@ -91,6 +96,7 @@ export function AppRoutes() {
           <Route element={lazyRouteElement(<OnboardingPage />)} path="onboarding" />
           <Route element={lazyRouteElement(<ApiSettingsPage />)} path="api" />
           <Route element={lazyRouteElement(<CharacterEditorPage />)} path="characters" />
+          <Route element={lazyRouteElement(<AiSpriteWorkshopPage />)} path="ai-sprites" />
           <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
           <Route element={lazyRouteElement(<TemplateEditorPage />)} path="templates" />
           <Route element={lazyRouteElement(<PluginManagerPage />)} path="plugins" />

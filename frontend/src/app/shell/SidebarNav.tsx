@@ -22,12 +22,16 @@ import { useAppUpdateInfo } from "./useAppUpdateInfo";
 const GITHUB_REPO_URL = "https://github.com/RachelForster/Shinsekai";
 const GITHUB_REPO_API_URL = "https://api.github.com/repos/RachelForster/Shinsekai";
 
+<<<<<<< HEAD
 type SidebarLink = {
   icon: typeof Settings;
   label?: Record<FrontendLanguage, string>;
   labelKey?: MessageKey;
   to: string;
 };
+=======
+type SidebarLink = { icon: typeof Settings; labelKey: MessageKey; to: string };
+>>>>>>> d12b1041 (Add AI Sprite card and page to generate sprites)
 
 const settingsLinks = [
   { icon: Sparkles, label: { en: "Guide", ja: "ガイド", zh_CN: "新手引导" }, to: "/settings/onboarding" },
