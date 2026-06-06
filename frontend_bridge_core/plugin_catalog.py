@@ -42,6 +42,7 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
             infer_plugin_package_directory,
             read_plugin_manifest_items,
         )
+        from core.plugins.registry_download import load_plugin_install_metadata
     except Exception:
         return []
 
@@ -182,6 +183,9 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
             )
             if slots:
                 row["slots"] = sorted(set(row["slots"]) | slots)
+            install_metadata = load_plugin_install_metadata(entry)
+            if install_metadata:
+                row["install"] = install_metadata
             rows.append(row)
     else:
         for plugin in getattr(manager, "plugins", []) if manager is not None else []:

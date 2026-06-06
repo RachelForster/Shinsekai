@@ -69,6 +69,12 @@ from .plugin_catalog import (
     _set_plugin_enabled,
     _uninstall_plugin,
 )
+from .plugin_publisher import (
+    _build_plugin_submission_issue_url,
+    _copy_plugin_submission_json,
+    _scan_local_plugin,
+    _validate_plugin_submission,
+)
 from .plugin_ui import _plugin_ui_detail, _resolve_plugin_frontend_file, _run_plugin_ui_action, _save_plugin_ui_config
 from .plugin_updates import (
     _app_update_info,
@@ -656,6 +662,14 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 )
             elif method == "POST" and path == "/api/plugins/repo-tags":
                 self._send_json(_repo_tags(body))
+            elif method == "POST" and path == "/api/plugins/publisher/scan":
+                self._send_json(_scan_local_plugin(body))
+            elif method == "POST" and path == "/api/plugins/publisher/validate":
+                self._send_json(_validate_plugin_submission(body))
+            elif method == "POST" and path == "/api/plugins/publisher/issue-url":
+                self._send_json(_build_plugin_submission_issue_url(body))
+            elif method == "POST" and path == "/api/plugins/publisher/copy-json":
+                self._send_json(_copy_plugin_submission_json(body))
             elif method == "POST" and path == "/api/plugins/app-update/tags":
                 self._send_json(_app_update_tags())
             elif method == "POST" and path == "/api/plugins/app-update/run":

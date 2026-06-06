@@ -36,6 +36,11 @@ import type {
   PluginConfigActionResult,
   PluginConfigSaveResult,
   PluginManifest,
+  PluginLocalScanResult,
+  PluginSubmissionClipboardResult,
+  PluginSubmissionInput,
+  PluginSubmissionIssueResult,
+  PluginSubmissionValidationResult,
   PluginUninstallResult,
   PluginUIDetail,
   RuntimeDependencyInstallResult,
@@ -660,6 +665,31 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           method: "POST",
         });
         return result.tags;
+      },
+      scanLocal: (input) =>
+        requestJson<PluginLocalScanResult>(apiBase, "/api/plugins/publisher/scan", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      validateSubmission: (input: PluginSubmissionInput) =>
+        requestJson<PluginSubmissionValidationResult>(apiBase, "/api/plugins/publisher/validate", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      buildSubmissionIssueUrl: (input: PluginSubmissionInput) =>
+        requestJson<PluginSubmissionIssueResult>(apiBase, "/api/plugins/publisher/issue-url", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      async copySubmissionJson(input: PluginSubmissionInput) {
+        const result = await requestJson<PluginSubmissionClipboardResult>(apiBase, "/api/plugins/publisher/copy-json", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(result.clipboardText);
+        }
+        return result;
       },
       runUiAction: (id, pageId, actionId, values) =>
         requestJson<PluginConfigActionResult>(

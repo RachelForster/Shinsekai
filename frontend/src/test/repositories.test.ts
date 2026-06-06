@@ -347,6 +347,47 @@ describe("entity repositories", () => {
         install: vi.fn().mockResolvedValue({ id: "core-tools" }),
         list: vi.fn().mockResolvedValue([]),
         repoTags: vi.fn().mockResolvedValue(["v0.1.0"]),
+        scanLocal: vi.fn().mockResolvedValue({
+          author: "Shinsekai Contributors",
+          desc: "Example plugin",
+          display_name: "Shinsekai Plugin",
+          entry: "plugins.plugin_example.plugin:ExamplePlugin",
+          path: "/tmp/plugin-example",
+          repo: "https://github.com/shinsekai/plugin-example",
+          shinsekai_version: ">=0.2.0",
+          social_link: "https://github.com/shinsekai",
+          tags: ["shinsekai"],
+          warnings: [],
+        }),
+        validateSubmission: vi.fn().mockResolvedValue({ errors: [], json: "{}", ok: true }),
+        buildSubmissionIssueUrl: vi.fn().mockResolvedValue({
+          issueUrl: "https://github.com/RachelForster/Shinsekai-Plugin-Registry/issues/new",
+          json: "{}",
+          submission: {
+            author: "Shinsekai Contributors",
+            desc: "Example plugin",
+            display_name: "Shinsekai Plugin",
+            repo: "https://github.com/shinsekai/plugin-example",
+            shinsekai_version: ">=0.2.0",
+            social_link: "",
+            tags: ["shinsekai"],
+          },
+          submitUrl: "https://github.com/RachelForster/Shinsekai-Plugin-Registry/issues/new",
+        }),
+        copySubmissionJson: vi.fn().mockResolvedValue({
+          clipboardText: "{}",
+          json: "{}",
+          message: "copied",
+          submission: {
+            author: "Shinsekai Contributors",
+            desc: "Example plugin",
+            display_name: "Shinsekai Plugin",
+            repo: "https://github.com/shinsekai/plugin-example",
+            shinsekai_version: ">=0.2.0",
+            social_link: "",
+            tags: ["shinsekai"],
+          },
+        }),
         runUiAction: vi.fn().mockResolvedValue({
           message: "ok",
           page: {
@@ -385,6 +426,34 @@ describe("entity repositories", () => {
     await plugin.runPluginUiAction("core-tools", "settings", "reload", { enabled: true });
     await plugin.listPluginCatalog();
     await plugin.listRepoTags("myouo/Shinsekai");
+    await plugin.scanLocalPlugin("/tmp/plugin-example");
+    await plugin.validatePluginSubmission({
+      author: "Shinsekai Contributors",
+      desc: "Example plugin",
+      display_name: "Shinsekai Plugin",
+      repo: "https://github.com/shinsekai/plugin-example",
+      shinsekai_version: ">=0.2.0",
+      social_link: "",
+      tags: ["shinsekai"],
+    });
+    await plugin.buildPluginSubmissionIssueUrl({
+      author: "Shinsekai Contributors",
+      desc: "Example plugin",
+      display_name: "Shinsekai Plugin",
+      repo: "https://github.com/shinsekai/plugin-example",
+      shinsekai_version: ">=0.2.0",
+      social_link: "",
+      tags: ["shinsekai"],
+    });
+    await plugin.copyPluginSubmissionJson({
+      author: "Shinsekai Contributors",
+      desc: "Example plugin",
+      display_name: "Shinsekai Plugin",
+      repo: "https://github.com/shinsekai/plugin-example",
+      shinsekai_version: ">=0.2.0",
+      social_link: "",
+      tags: ["shinsekai"],
+    });
     await plugin.getAppUpdateInfo();
     await plugin.listAppUpdateTags();
     await plugin.runAppUpdate({ refKind: "tag", tagName: "v0.1.0" }, taskOptions);

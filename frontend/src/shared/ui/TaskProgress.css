@@ -72,6 +72,44 @@
   background: color-mix(in srgb, var(--color-danger) 10%, transparent);
 }
 
+.task-progress__details {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.task-progress__detail {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 24px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-accent-primary) 24%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent-primary) 8%, var(--color-btn-surface));
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.task-progress__detail dt {
+  flex: 0 0 auto;
+  color: var(--color-accent-primary);
+  font-weight: 650;
+}
+
+.task-progress__detail dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-progress__log {
   max-height: 132px;
   min-width: 0;

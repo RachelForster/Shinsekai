@@ -45,6 +45,22 @@ describe("plugin manager utilities", () => {
         repo: "owner/demo",
       }),
     ).toBe("owner/demo");
+    expect(
+      catalogInstallSource({
+        author: "Tester",
+        description: "",
+        displayName: "Demo",
+        downloaded: false,
+        downloadUrl: "https://plugins-cdn.shinsekai.end0rph1n.icu/plugins/demo.zip",
+        entry: "plugins.demo:Plugin",
+        id: "demo",
+        installed: false,
+        name: "demo",
+        packageSource: "r2",
+        packageUrl: "https://plugins-cdn.shinsekai.end0rph1n.icu/plugins/demo.zip",
+        repo: "owner/demo",
+      }),
+    ).toBe("demo");
     expect(githubUrl("owner/demo")).toBe("https://github.com/owner/demo");
     expect(githubUrl("https://github.com/owner/demo.git")).toBe("https://github.com/owner/demo");
     expect(githubUrl("github.com/owner/demo/tree/main")).toBe("https://github.com/owner/demo/tree/main");

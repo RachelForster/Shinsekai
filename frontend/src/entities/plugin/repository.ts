@@ -9,6 +9,7 @@ import type {
   McpToolPreview,
   PluginInstallInput,
   PluginManifest,
+  PluginSubmissionInput,
   PluginUIDetail,
 } from "./types";
 
@@ -51,6 +52,22 @@ export function listPluginCatalog() {
 
 export function listRepoTags(repo: string) {
   return getPlatform().plugins.repoTags(repo);
+}
+
+export function scanLocalPlugin(path: string) {
+  return getPlatform().plugins.scanLocal({ path });
+}
+
+export function validatePluginSubmission(input: PluginSubmissionInput) {
+  return getPlatform().plugins.validateSubmission(input);
+}
+
+export function buildPluginSubmissionIssueUrl(input: PluginSubmissionInput) {
+  return getPlatform().plugins.buildSubmissionIssueUrl(input);
+}
+
+export function copyPluginSubmissionJson(input: PluginSubmissionInput) {
+  return getPlatform().plugins.copySubmissionJson(input);
 }
 
 export function getAppUpdateInfo() {
