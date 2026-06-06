@@ -1,5 +1,5 @@
 import { Maximize2, Minus, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
@@ -113,6 +113,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   });
   const [runtimeProgress, setRuntimeProgress] = useState<DesktopRuntimeProgress | null>(null);
   const [busy, setBusy] = useState(false);
+  const autoRepairKeys = useRef(new Set<string>());
 
   useEffect(() => {
     let stopped = false;
@@ -215,6 +216,26 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (busy || runtime.status === "checking" || runtime.status === "updating" || runtime.status === "ready") {
+      return;
+    }
+    const candidate = runtime.candidates?.find((candidate) => candidate.selected) ?? runtime.candidates?.[0];
+    if (!candidate || candidate.status !== "missingCoreDeps") {
+      return;
+    }
+    if (!candidate.managed || !candidate.repairActions.includes("installRuntimeDeps")) {
+      return;
+    }
+    const missing = [...candidate.missingPackages, ...candidate.missingImports].filter(Boolean).sort();
+    const repairKey = `${candidate.id}:${missing.join(",")}`;
+    if (autoRepairKeys.current.has(repairKey)) {
+      return;
+    }
+    autoRepairKeys.current.add(repairKey);
+    void handleRepairCandidate(candidate.id, "installRuntimeDeps");
+  }, [busy, handleRepairCandidate, runtime]);
 
   if (runtime.status === "ready") {
     return <>{children}</>;

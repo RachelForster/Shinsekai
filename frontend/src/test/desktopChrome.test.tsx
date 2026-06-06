@@ -136,7 +136,7 @@ describe("DesktopChrome", () => {
     expect(desktopApi.startDesktopWindowDrag).toHaveBeenCalledTimes(1);
   });
 
-  it("shows only the bundled runtime on the startup gate", async () => {
+  it("auto-installs missing dependencies for the bundled runtime on the startup gate", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
     desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "",
@@ -164,15 +164,10 @@ describe("DesktopChrome", () => {
 
     renderChrome(<main>App content</main>);
 
-    expect(await screen.findByText("Runtime update required")).toBeInTheDocument();
-    expect(screen.getByText("C:\\Shinsekai\\runtime\\python.exe")).toBeInTheDocument();
-    expect(screen.queryByText(/\\\\\?/)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Install dependencies" }));
-
     await waitFor(() => {
       expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-ready", "installRuntimeDeps");
     });
+    expect(await screen.findByText("App content")).toBeInTheDocument();
   });
 
   it("shows runtime dependency install progress events", async () => {
@@ -205,7 +200,7 @@ describe("DesktopChrome", () => {
     expect(screen.getByRole("progressbar", { name: "Runtime progress" })).toBeInTheDocument();
   });
 
-  it("installs missing dependencies into the bundled runtime", async () => {
+  it("auto-installs missing dependencies into the bundled runtime", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
     desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "",
@@ -231,8 +226,6 @@ describe("DesktopChrome", () => {
     });
 
     renderChrome(<main>App content</main>);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Install dependencies" }));
 
     await waitFor(() => {
       expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-managed", "installRuntimeDeps");
