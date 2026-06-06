@@ -70,6 +70,9 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "aiSprites.promptDraftsHint":
     "\u5148\u8f93\u5165\u8981\u751f\u6210\u51e0\u5f20\u7acb\u7ed8\uff0c\u518d\u6839\u636e\u4eba\u7269\u6027\u683c\u6574\u7406 SD \u98ce\u683c\u63d0\u793a\u8bcd\u3002",
   "aiSprites.promptCandidate": "\u7acb\u7ed8 {n}",
+  "aiSprites.promptEmptyBody": "\u9009\u62e9\u4eba\u7269\u548c\u751f\u6210\u5f20\u6570\u540e\uff0c\u70b9\u51fb\u751f\u6210\u63d0\u793a\u8bcd\u3002",
+  "aiSprites.promptEmptyTitle": "\u8fd8\u6ca1\u6709\u63d0\u793a\u8bcd\u5019\u9009",
+  "aiSprites.promptGenerated": "\u5df2\u751f\u6210 {count} \u7ec4\u7acb\u7ed8\u6807\u7b7e\u548c SD \u63d0\u793a\u8bcd\u3002",
   "aiSprites.promptRefreshed": "\u5df2\u91cd\u65b0\u6574\u7406\u63d0\u793a\u8bcd\u5019\u9009\u3002",
   "aiSprites.retry": "\u91cd\u8bd5",
   "aiSprites.retryOne": "\u91cd\u8bd5\u8fd9\u4e00\u5f20",

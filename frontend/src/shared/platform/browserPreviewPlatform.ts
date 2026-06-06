@@ -1263,11 +1263,15 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async generateSpritePrompts(input, options) {
         const taskId = `tools-prompts-${Date.now()}`;
+        const items = Array.from({ length: input.count }, (_, index) => ({
+          label: `preview, pose ${index + 1}`,
+          prompt: `masterpiece, best quality, anime visual novel sprite, Preview, full body, transparent background, pose ${
+            index + 1
+          }, character name: Preview`,
+        }));
         const result: SpritePromptResult = {
-          prompts: Array.from(
-            { length: input.count },
-            (_, index) => `Make the character pose ${index + 1}, pure white background.`,
-          ),
+          items,
+          prompts: items.map((item) => item.prompt),
         };
         previewTask(
           taskId,
