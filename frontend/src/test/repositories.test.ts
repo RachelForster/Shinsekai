@@ -260,6 +260,7 @@ describe("entity repositories", () => {
         list: vi.fn().mockResolvedValue([character]),
         listMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
         remember: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 1, memories: [] }),
+        registerSprites: vi.fn().mockResolvedValue(character),
         save: vi.fn().mockResolvedValue(character),
         saveEmotionTags: vi.fn().mockResolvedValue(character),
         saveSpriteScale: vi.fn().mockResolvedValue(character),
@@ -289,6 +290,10 @@ describe("entity repositories", () => {
     await characters.listCharacterMemories("Nanami");
     await characters.rememberCharacterMemory("Nanami", "likes tea");
     await characters.deleteCharacterMemory("Nanami", "memory-1");
+    await characters.registerGeneratedCharacterSprites({
+      items: [{ label: "smile, hand wave", path: "data/sprite/nanami/ai_smile.png" }],
+      name: "Nanami",
+    });
     await characters.uploadCharacterSprites({ emotionTags: "happy", name: "Nanami", paths: ["/tmp/a.png"] });
     await characters.saveCharacterEmotionTags("Nanami", "happy");
     await characters.deleteCharacterSprite("Nanami", 0);
@@ -307,6 +312,10 @@ describe("entity repositories", () => {
     });
     expect(platform.characters.save).toHaveBeenCalledWith(character, "Old Nanami");
     expect(platform.characters.remember).toHaveBeenCalledWith("Nanami", "likes tea");
+    expect(platform.characters.registerSprites).toHaveBeenCalledWith({
+      items: [{ label: "smile, hand wave", path: "data/sprite/nanami/ai_smile.png" }],
+      name: "Nanami",
+    });
     expect(platform.characters.uploadSpriteVoice).toHaveBeenCalledWith({
       name: "Nanami",
       spriteIndex: 0,

@@ -17,6 +17,7 @@ sys.modules.setdefault("tiktoken", fake_tiktoken)
 
 from frontend_bridge_core.state import BridgeState
 from frontend_bridge_core.tasks import _create_task
+from frontend_bridge_core.characters import _register_character_sprites
 from frontend_bridge_core.tools import _generate_sprite_image, _generate_sprite_prompts
 from llm.llm_manager import LLMAdapterFactory
 from t2i.t2i_manager import T2IAdapterFactory
@@ -68,6 +69,7 @@ class _ConfigManager:
                 t2i_work_path="D:/ComfyUI",
             )
         )
+        self.saved = False
 
     def get_character_by_name(self, name):
         return self.character if name == "Mika" else None
@@ -80,6 +82,12 @@ class _ConfigManager:
 
     def merged_t2i_factory_kwargs(self, provider, base_kwargs):
         return {**base_kwargs, "extra_flag": "from-config"}
+
+    def reload(self):
+        return None
+
+    def save_characters_config(self):
+        self.saved = True
 
 
 class RecordingT2IAdapter:
@@ -172,3 +180,35 @@ def test_generate_sprite_image_uses_selected_t2i(monkeypatch):
             "prompt": "masterpiece, best quality, highres, solo, 1 person, single character, Mika, hand wave, character name: Mika",
         }
     ]
+
+
+def test_register_character_sprites_adds_generated_paths_and_labels():
+    config_manager = _ConfigManager()
+    config_manager.character.sprites = [{"path": "data/sprite/mika/existing.png"}]
+    config_manager.character.emotion_tags = "立绘 1：neutral\n"
+    state = BridgeState(config_manager, None, None, None)
+    output_dir = Path(".tmp_pytest_sprite_prompts").resolve()
+    image_path = output_dir / "ai_smile.png"
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True)
+    image_path.write_bytes(b"png")
+
+    try:
+        _register_character_sprites(
+            state,
+            {
+                "items": [{"label": "smile, hand wave", "path": image_path.as_posix()}],
+                "name": "Mika",
+            },
+        )
+    finally:
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+
+    assert config_manager.saved is True
+    assert config_manager.character.sprites == [
+        {"path": "data/sprite/mika/existing.png"},
+        {"path": image_path.as_posix()},
+    ]
+    assert config_manager.character.emotion_tags == "立绘 1：neutral\n立绘 2：smile, hand wave\n"

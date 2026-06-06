@@ -73,6 +73,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.t2i.workflow": "Workflow JSON",
   "api.t2i.workflowPick": "Choose workflow JSON",
   "aiSprites.addToCharacter": "Add to character",
+  "aiSprites.addedToCharacter": "Added {count} sprite(s) to the character sprite list.",
   "aiSprites.candidatePlaceholder": "Generated image will appear here",
   "aiSprites.configureT2i": "Configure image generation",
   "aiSprites.description": "Turn character settings into editable sprite prompts, then prepare candidates for generation.",

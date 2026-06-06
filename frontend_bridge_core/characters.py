@@ -205,6 +205,73 @@ def _upload_character_sprites(state: BridgeState, payload: dict[str, Any]) -> di
     return _character_json_after_reload(state, name)
 
 
+def _sprite_path_value(sprite: Any) -> str:
+    if hasattr(sprite, "path"):
+        return str(sprite.path or "")
+    if isinstance(sprite, dict):
+        return str(sprite.get("path") or "")
+    return ""
+
+
+def _sprite_tag_contents(block: str, count: int) -> list[str]:
+    lines = [line for line in str(block or "").splitlines() if line.strip()]
+    tags: list[str] = []
+    for index in range(count):
+        line = lines[index] if index < len(lines) else ""
+        separator_positions = [position for position in (line.find(":"), line.find("\uff1a")) if position >= 0]
+        separator = min(separator_positions) if separator_positions else -1
+        tags.append(line[separator + 1 :].strip() if separator >= 0 else line.strip())
+    return tags
+
+
+def _numbered_sprite_tags(tags: list[str]) -> str:
+    return "".join(f"\u7acb\u7ed8 {index + 1}\uff1a{tag}\n" for index, tag in enumerate(tags))
+
+
+def _register_character_sprites(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    items = payload.get("items") or []
+    if not name:
+        raise ValueError("name is required")
+    if not isinstance(items, list) or not items:
+        raise ValueError("items must be a non-empty list")
+
+    character = _character_by_name(state, name)
+    if character.sprites is None:
+        character.sprites = []
+
+    existing_paths = {_sprite_path_value(sprite) for sprite in character.sprites}
+    tags = _sprite_tag_contents(str(character.emotion_tags or ""), len(character.sprites))
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        if not Path(path).exists():
+            raise FileNotFoundError(f"sprite file not found: {path}")
+        label = str(item.get("label") or "").strip()
+        if path in existing_paths:
+            index = next(
+                (sprite_index for sprite_index, sprite in enumerate(character.sprites) if _sprite_path_value(sprite) == path),
+                -1,
+            )
+            if index >= 0 and label:
+                tags[index] = label
+            continue
+        character.sprites.append({"path": path})
+        existing_paths.add(path)
+        tags.append(label)
+
+    if not character.sprites:
+        raise ValueError("no usable sprite paths were provided")
+
+    character.emotion_tags = _numbered_sprite_tags(tags)
+    state.config_manager.save_characters_config()
+    return _character_json_after_reload(state, name)
+
+
 def _save_character_emotion_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name") or "").strip()
     emotion_tags = str(payload.get("emotionTags") or "")
