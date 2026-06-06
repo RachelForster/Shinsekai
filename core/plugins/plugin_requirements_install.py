@@ -292,11 +292,12 @@ def _finish_install_result(
 def install_plugin_requirements_txt(
     plugin_root: Path,
     *,
+    requirements_file: str = "requirements.txt",
     timeout_sec: float = 900.0,
     on_output_line: Callable[[str], None] | None = None,
 ) -> tuple[str, str]:
     """
-    Run ``python -m pip install -r requirements.txt`` if ``plugin_root/requirements.txt`` exists.
+    Run ``python -m pip install -r requirements_file`` if it exists under ``plugin_root``.
 
     冻结版使用 :func:`pip_python_executable`（默认 ``<发行根>/runtime/python.exe``）执行
     ``pip install --target <发行根>/data/plugin_site_packages``；宿主须在启动时调用
@@ -320,7 +321,7 @@ def install_plugin_requirements_txt(
     as pip runs, for UI logs.
     """
     root = plugin_root.resolve()
-    req = root / "requirements.txt"
+    req = root / requirements_file
     if not req.is_file():
         return ("pip_skip_no_requirements", "")
 

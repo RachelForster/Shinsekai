@@ -92,6 +92,29 @@ def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -
     pip_code, detail = install_plugin_requirements_txt(resolve_project_root(), on_output_line=_pip_line)
     if detail:
         _append_task_log(state, task_id, detail)
+    _update_task(
+        state,
+        task_id,
+        message="正在检查主程序 requirements-runtime-core.txt。",
+        phase="pip",
+        progress=0.92,
+    )
+    runtime_pip_code, runtime_detail = install_plugin_requirements_txt(
+        resolve_project_root(),
+        requirements_file="requirements-runtime-core.txt",
+        on_output_line=_pip_line,
+    )
+    if runtime_detail:
+        _append_task_log(state, task_id, f"requirements-runtime-core.txt: {runtime_detail}")
+    detail = "\n".join(
+        item
+        for item in (
+            detail,
+            f"requirements-runtime-core.txt: {runtime_detail}" if runtime_detail else "",
+        )
+        if item
+    )
+    pip_code = f"requirements.txt:{pip_code};requirements-runtime-core.txt:{runtime_pip_code}"
     version = read_local_version(resolve_project_root()).strip()
     result = {
         "detail": detail,
