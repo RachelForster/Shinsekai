@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import shutil
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -158,7 +160,11 @@ def _lookup_registry_plugin(source: str) -> Any | None:
         rec_repo = normalize_repo_slug(rec.repo)
         if rec_repo and rec_repo == repo_slug:
             return rec
+        if str(getattr(rec, "id", "") or "").strip().lower() == source_key:
+            return rec
         if rec.name.strip().lower() == source_key:
+            return rec
+        if str(getattr(rec, "display_name", "") or "").strip().lower() == source_key:
             return rec
         if rec.entry.strip().lower() == source_key:
             return rec
@@ -231,7 +237,230 @@ def _synthetic_plugin_result(
     }
 
 
+def _has_registry_package(record: Any | None) -> bool:
+    if record is None:
+        return False
+    import os
+
+    if os.environ.get("SHINSEKAI_PLUGIN_DISABLE_PACKAGE_INSTALL") == "1":
+        return False
+    package_url = str(
+        getattr(record, "package_url", "") or getattr(record, "download_url", "") or ""
+    ).strip()
+    package_sha256 = str(
+        getattr(record, "package_sha256", "") or getattr(record, "sha256", "") or ""
+    ).strip()
+    return bool(package_url and package_sha256)
+
+
+def _registry_package_metadata(record: Any, *, dependency_status: str = "", dependency_detail: str = "") -> dict[str, Any]:
+    package_source = str(getattr(record, "package_source", "") or "r2").strip()
+    package_url = str(getattr(record, "package_url", "") or getattr(record, "download_url", "") or "").strip()
+    package_sha256 = str(getattr(record, "package_sha256", "") or getattr(record, "sha256", "") or "").strip()
+    package_size = getattr(record, "package_size", None)
+    if package_size is None:
+        package_size = getattr(record, "size", None)
+    metadata: dict[str, Any] = {
+        "dependencyDetail": dependency_detail,
+        "dependencyStatus": dependency_status,
+        "entry": str(getattr(record, "entry", "") or "").strip(),
+        "packageSha256": package_sha256,
+        "packageSize": package_size,
+        "packageSource": package_source,
+        "packageStatus": "verified",
+        "packageUrl": package_url,
+        "repo": str(getattr(record, "repo", "") or "").strip(),
+        "sourceLabel": "Official package (R2)",
+        "sourceType": "package",
+    }
+    return {key: value for key, value in metadata.items() if value not in (None, "")}
+
+
+def _with_install_metadata(result: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    out = dict(result)
+    out["install"] = dict(metadata)
+    return out
+
+
+def _package_error_allows_github_fallback(exc: BaseException) -> bool:
+    from core.plugins.package_download import PluginPackageNetworkError, PluginPackageNonFallbackError
+
+    current: BaseException | None = exc
+    saw_network_error = False
+    while current is not None:
+        if isinstance(current, PluginPackageNonFallbackError):
+            return False
+        if isinstance(current, PluginPackageNetworkError):
+            saw_network_error = True
+        current = current.__cause__
+    return saw_network_error
+
+
+def _restore_package_target(target: Path, backup: Path | None, *, remove_new_target: bool) -> None:
+    if remove_new_target and target.exists():
+        shutil.rmtree(target, ignore_errors=True)
+    if backup is not None and backup.exists() and not target.exists():
+        backup.rename(target)
+
+
+def _install_registry_package_source(
+    state: BridgeState,
+    task_id: str,
+    record: Any,
+    *,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    from core.plugins.package_download import install_registry_package_under_plugins, registry_package_target
+    from core.plugins.plugin_requirements_install import install_plugin_requirements_txt
+    from core.plugins.registry_download import mark_repo_downloaded, normalize_repo_slug
+
+    repo_slug = normalize_repo_slug(str(getattr(record, "repo", "") or ""))
+    entry = str(getattr(record, "entry", "") or "").strip()
+    display_name = str(getattr(record, "display_name", "") or getattr(record, "name", "") or "").strip()
+    description = str(getattr(record, "description", "") or "").strip()
+    target = registry_package_target(record, plugins_parent=Path("plugins"))
+    existed_before = target.is_dir()
+    backup: Path | None = None
+    if overwrite and existed_before:
+        backup = target.with_name(f".{target.name}.backup-{uuid.uuid4().hex}")
+        target.rename(backup)
+
+    _update_task(
+        state,
+        task_id,
+        message=f"Downloading official package for {display_name or repo_slug or target.name}.",
+        phase="download",
+        progress=0.12,
+        installSource="package",
+        packageStatus="downloading",
+    )
+
+    def _pip_line(line: str) -> None:
+        _append_task_log(state, task_id, line)
+
+    dependency_status = ""
+    dependency_detail = ""
+    try:
+        plugin_root = install_registry_package_under_plugins(
+            record,
+            overwrite=overwrite,
+            plugins_parent=Path("plugins"),
+        )
+        _update_task(
+            state,
+            task_id,
+            message="Official package verified. Installing plugin dependencies.",
+            phase="pip",
+            progress=0.72,
+            packageStatus="verified",
+        )
+        dependency_status, dependency_detail = install_plugin_requirements_txt(plugin_root, on_output_line=_pip_line)
+        if dependency_detail:
+            _append_task_log(state, task_id, dependency_detail)
+        if dependency_status in {"pip_failed", "pip_timeout", "pip_exception", "pip_conflict"}:
+            raise RuntimeError(f"Plugin dependency installation failed: {dependency_detail or dependency_status}")
+        if not entry:
+            entry = _infer_plugin_entry(plugin_root)
+        metadata = _registry_package_metadata(
+            record,
+            dependency_status=dependency_status,
+            dependency_detail=dependency_detail,
+        )
+        if entry:
+            metadata["entry"] = entry
+        _update_task(
+            state,
+            task_id,
+            message="Registering official package install.",
+            phase="manifest",
+            progress=0.9,
+            dependencyInstallStatus=dependency_status,
+        )
+        if entry:
+            result = _plugin_result_from_manifest(entry)
+            if repo_slug:
+                mark_repo_downloaded(repo_slug, manifest_entry=entry, install_metadata=metadata)
+            _update_task(state, task_id, message="Official package installed.", phase="completed", progress=1)
+            if backup is not None:
+                shutil.rmtree(backup, ignore_errors=True)
+            return _with_install_metadata(result, metadata)
+        if repo_slug:
+            mark_repo_downloaded(repo_slug, manifest_entry=None)
+        result = _synthetic_plugin_result(
+            description=description or f"Package was downloaded to {plugin_root.as_posix()}, but no manifest entry was found.",
+            enabled=False,
+            plugin_id=repo_slug or str(getattr(record, "id", "") or target.name),
+            title=display_name or target.name,
+        )
+        _update_task(state, task_id, message="Official package downloaded, but no manifest entry was found.", progress=1)
+        if backup is not None:
+            shutil.rmtree(backup, ignore_errors=True)
+        return _with_install_metadata(result, metadata)
+    except Exception:
+        _restore_package_target(target, backup, remove_new_target=(not existed_before or backup is not None))
+        _update_task(state, task_id, packageStatus="failed")
+        raise
+
+
 def _install_plugin_source(
+    state: BridgeState,
+    task_id: str,
+    source: str,
+    *,
+    ref_kind: str = "latest",
+    tag_name: str = "",
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    source = source.strip()
+    if not source:
+        raise ValueError("plugin id is required")
+    ref_kind = ref_kind if ref_kind in {"latest", "head", "tag"} else "latest"
+    tag_name = tag_name.strip()
+    if ref_kind == "tag" and not tag_name:
+        raise ValueError("tagName is required when refKind is tag")
+
+    registry_rec = _lookup_registry_plugin(source)
+    if ref_kind == "latest" and _has_registry_package(registry_rec):
+        try:
+            return _install_registry_package_source(state, task_id, registry_rec, overwrite=overwrite)
+        except Exception as exc:
+            repo = str(getattr(registry_rec, "repo", "") or "").strip()
+            if repo and _package_error_allows_github_fallback(exc):
+                _append_task_log(state, task_id, f"Official package download failed; falling back to GitHub: {exc}")
+                return _install_github_plugin_source(
+                    state,
+                    task_id,
+                    repo,
+                    ref_kind=ref_kind,
+                    tag_name=tag_name,
+                    overwrite=overwrite,
+                )
+            _append_task_log(state, task_id, f"Official package install failed; GitHub fallback blocked: {exc}")
+            raise RuntimeError(str(exc) or type(exc).__name__) from exc
+
+    if not _is_repo_source(source) and registry_rec is not None:
+        repo = str(getattr(registry_rec, "repo", "") or "").strip()
+        if repo:
+            return _install_github_plugin_source(
+                state,
+                task_id,
+                repo,
+                ref_kind=ref_kind,
+                tag_name=tag_name,
+                overwrite=overwrite,
+            )
+
+    return _install_github_plugin_source(
+        state,
+        task_id,
+        source,
+        ref_kind=ref_kind,
+        tag_name=tag_name,
+        overwrite=overwrite,
+    )
+
+
+def _install_github_plugin_source(
     state: BridgeState,
     task_id: str,
     source: str,
