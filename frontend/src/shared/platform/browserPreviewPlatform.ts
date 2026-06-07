@@ -1372,6 +1372,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           message: `Generated sprite: ${file}`,
           outputDir,
           prompt: input.prompt,
+          seed: Math.floor(Math.random() * 2 ** 32),
         };
         previewTask(
           taskId,

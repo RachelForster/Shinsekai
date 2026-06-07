@@ -32,6 +32,7 @@ import "./AiSpriteWorkshopPage.css";
 interface SpritePromptDraft {
   id: string;
   imagePath?: string;
+  imageVersion?: number;
   label: string;
   prompt: string;
   status: "added" | "draft" | "failed" | "ready";
@@ -95,6 +96,14 @@ function englishPromptText(value: string) {
     .trim();
 }
 
+function versionedImageUrl(path: string, version?: number) {
+  const url = fileUrl(path);
+  if (!url || !version || /^(?:blob:|data:)/.test(url)) {
+    return url;
+  }
+  return `${url}${url.includes("?") ? "&" : "?"}v=${version}`;
+}
+
 function splitPromptLine(value: string): SpritePromptItem {
   const text = value.trim();
   const match = text.match(/^(?:\d+[.)]\s*)?([^:\uFF1A|]+)[:\uFF1A|]\s*(.+)$/);
@@ -144,7 +153,9 @@ export function AiSpriteWorkshopPage() {
   const character = useMemo(() => selectedCharacter(characters, selectedName), [characters, selectedName]);
   const [drafts, setDrafts] = useState<SpritePromptDraft[]>([]);
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(() => new Set());
-  const [negativePrompt, setNegativePrompt] = useState("low quality, blurry, extra limbs, text, watermark");
+  const [negativePrompt, setNegativePrompt] = useState(
+    "low quality, blurry, extra limbs, text, watermark, multiple views, multiple angles, turnaround, character sheet, reference sheet, expression sheet, pose sheet, multiple panels, collage",
+  );
   const [generationNote, setGenerationNote] = useState("");
   const t2iReady = configQuery.data ? isT2iReadyForSprites(configQuery.data.api_config) : false;
   const llmProvider = configQuery.data?.api_config.llm_provider ?? "";
@@ -253,7 +264,7 @@ export function AiSpriteWorkshopPage() {
       if (!imagePath) {
         throw new Error(t("aiSprites.imageFailed"));
       }
-      updateDraft(draft.id, { imagePath, status: "ready" });
+      updateDraft(draft.id, { imagePath, imageVersion: Date.now(), status: "ready" });
       setGenerationNote(result.message || t("aiSprites.imageGenerated"));
     } catch (error) {
       updateDraft(draft.id, { status: "failed" });
@@ -471,7 +482,10 @@ export function AiSpriteWorkshopPage() {
                 </label>
                 <div className="ai-sprite-card__preview" data-status={draft.status}>
                   {draft.imagePath ? (
-                    <img alt={draft.label || t("aiSprites.promptCandidate", { n: draft.index + 1 })} src={fileUrl(draft.imagePath)} />
+                    <img
+                      alt={draft.label || t("aiSprites.promptCandidate", { n: draft.index + 1 })}
+                      src={versionedImageUrl(draft.imagePath, draft.imageVersion)}
+                    />
                   ) : (
                     <>
                       <ImagePlus aria-hidden className="ai-sprite-card__icon" />
