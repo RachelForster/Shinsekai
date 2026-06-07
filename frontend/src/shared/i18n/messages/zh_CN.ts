@@ -94,6 +94,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "aiSprites.promptEmptyTitle": "\u8fd8\u6ca1\u6709\u63d0\u793a\u8bcd\u5019\u9009",
   "aiSprites.promptGenerated": "\u5df2\u751f\u6210 {count} \u7ec4\u7acb\u7ed8\u6807\u7b7e\u548c SD \u63d0\u793a\u8bcd\u3002",
   "aiSprites.promptRefreshed": "\u5df2\u91cd\u65b0\u6574\u7406\u63d0\u793a\u8bcd\u5019\u9009\u3002",
+  "aiSprites.positivePromptReference": "\u6b63\u5411\u63d0\u793a\u8bcd\u53c2\u8003",
+  "aiSprites.positivePromptReferencePlaceholder": "\u8f93\u5165\u5e0c\u671b LLM \u5c3d\u91cf\u5305\u542b\u7684\u98ce\u683c\u6216\u8d28\u91cf\u8bcd\uff0c\u4f8b\u5982\uff1aanime style, detailed eyes, soft lighting",
   "aiSprites.retry": "\u91cd\u8bd5",
   "aiSprites.retryImage": "\u91cd\u8bd5\u51fa\u56fe",
   "aiSprites.retryOne": "\u91cd\u8bd5\u8fd9\u4e00\u5f20",

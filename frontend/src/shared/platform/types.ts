@@ -823,7 +823,7 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<BatchToolResult>,
     ) => Promise<BatchToolResult>;
     generateSpritePrompts: (
-      input: { characterName: string; count: number; language?: string },
+      input: { characterName: string; count: number; language?: string; positivePromptReference?: string },
       options?: TaskProgressOptions<SpritePromptResult>,
     ) => Promise<SpritePromptResult>;
     generateSprites: (
