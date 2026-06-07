@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 import shutil
 import sys
 import types
@@ -20,6 +21,7 @@ from frontend_bridge_core.tasks import _create_task
 from frontend_bridge_core.characters import _register_character_sprites
 from frontend_bridge_core.tools import _generate_sprite_image, _generate_sprite_prompts, _resolve_comfyui_workflow_node_ids
 from llm.llm_manager import LLMAdapterFactory
+from t2i import t2i_adapter
 from t2i.t2i_adapter import ComfyUIT2IAdapter
 from t2i.t2i_manager import T2IAdapterFactory
 from test.mocks import MockLLMAdapter
@@ -207,6 +209,39 @@ def test_comfyui_adapter_applies_seed_to_sampler_nodes():
     assert workflow["4"]["inputs"]["noise_seed"] == 987654321
     assert workflow["4"]["inputs"]["seed"] == 987654321
     assert workflow["5"]["inputs"] == {"text": "prompt"}
+
+
+def test_comfyui_adapter_waits_until_server_is_ready(monkeypatch):
+    adapter = ComfyUIT2IAdapter.__new__(ComfyUIT2IAdapter)
+    adapter.api_url = "http://127.0.0.1:8188"
+    calls = {"count": 0}
+
+    def fake_get(_url, timeout=None):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise t2i_adapter.requests.exceptions.ConnectionError("not ready")
+        return SimpleNamespace(status_code=200)
+
+    monkeypatch.setattr(t2i_adapter.requests, "get", fake_get)
+    monkeypatch.setattr(t2i_adapter.time, "sleep", lambda _seconds: None)
+
+    assert adapter._wait_for_server_ready(timeout_seconds=5) is True
+    assert calls["count"] == 2
+
+
+def test_comfyui_adapter_reports_friendly_error_when_server_is_not_ready(monkeypatch):
+    adapter = ComfyUIT2IAdapter.__new__(ComfyUIT2IAdapter)
+    adapter.api_url = "http://127.0.0.1:8188"
+    adapter.prompt_node_id = "6"
+    adapter.output_node_id = "9"
+    adapter.workflow_template = {
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "old prompt"}},
+        "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0]}},
+    }
+    monkeypatch.setattr(adapter, "_wait_for_server_ready", lambda *args, **kwargs: False)
+
+    with pytest.raises(RuntimeError, match="ComfyUI is still starting"):
+        adapter.generate_image("new prompt", "sprite.png")
 
 
 def test_register_character_sprites_adds_generated_paths_and_labels():

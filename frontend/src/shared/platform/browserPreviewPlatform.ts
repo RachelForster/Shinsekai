@@ -1376,10 +1376,28 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         };
         previewTask(
           taskId,
-          { kind: "tools-sprite", message: "Generating sprite.", phase: "generate", progress: 0.35, status: "running" },
+          {
+            kind: "tools-sprite",
+            message: "请稍等，生图后端正在启动中。",
+            phase: "startup",
+            progress: 0.18,
+            status: "running",
+          },
           options,
         );
         await delay(null, 260);
+        previewTask(
+          taskId,
+          {
+            kind: "tools-sprite",
+            message: "正在提交立绘生成任务。",
+            phase: "generate",
+            progress: 0.45,
+            status: "running",
+          },
+          options,
+        );
+        await delay(null, 180);
         previewTask(
           taskId,
           {
