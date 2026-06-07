@@ -487,6 +487,7 @@ export interface SpriteGenerationResult {
   message: string;
   outputDir: string;
   prompt?: string;
+  seed?: number;
 }
 
 export interface BatchToolResult {
