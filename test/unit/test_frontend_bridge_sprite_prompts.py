@@ -115,7 +115,12 @@ def test_generate_sprite_prompts_uses_selected_llm(monkeypatch):
     result = _generate_sprite_prompts(
         state,
         task["id"],
-        {"characterName": "Mika", "count": 2, "language": "zh_CN"},
+        {
+            "characterName": "Mika",
+            "count": 2,
+            "language": "zh_CN",
+            "positivePromptReference": "anime key visual, detailed eyes, soft rim lighting",
+        },
     )
 
     assert result["provider"] == "MockSpriteLLM"
@@ -144,6 +149,9 @@ def test_generate_sprite_prompts_uses_selected_llm(monkeypatch):
     assert "masterpiece, best quality, highres, official art, solo, 1 person, single character" in call["messages"][0]["content"]
     assert "Required prompt terms: full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character" in call["messages"][1]["content"]
     assert "multiple views, multiple angles, turnaround sheets, reference sheets" in call["messages"][1]["content"]
+    assert "Positive prompt reference from user:" in call["messages"][1]["content"]
+    assert "anime key visual, detailed eyes, soft rim lighting" in call["messages"][1]["content"]
+    assert "Prefer including applicable terms from this reference" in call["messages"][1]["content"]
 
 
 def test_generate_sprite_image_uses_selected_t2i(monkeypatch):
