@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { Outlet } from "react-router-dom";
 
 import { SidebarNav } from "./SidebarNav";
+import { StartupUpdatePrompt } from "./StartupUpdatePrompt";
 
 const ToolsDrawer = lazy(() =>
   import("../../features/tools/ToolsDrawer").then(({ ToolsDrawer }) => ({
@@ -27,6 +28,7 @@ export function AppShell() {
           <ToolsDrawer onClose={() => setToolsOpen(false)} open={toolsOpen} />
         </Suspense>
       ) : null}
+      <StartupUpdatePrompt />
     </div>
   );
 }
