@@ -51,8 +51,9 @@ describe("FileManager", () => {
       entries: [{ kind: "directory", modifiedAt: 1, name: "Media", path: "\\\\?\\D:\\Media" }],
       parent: "",
       roots: [
-        { label: "Home", path: "\\\\?\\C:\\Users\\Tester" },
         { label: "Data", path: "\\\\?\\D:\\data" },
+        { label: "Downloads", path: "\\\\?\\C:\\Users\\Tester\\Downloads" },
+        { label: "Home", path: "\\\\?\\C:\\Users\\Tester" },
         { label: "\\\\?\\D:\\", path: "\\\\?\\D:\\" },
         { label: "D:", path: "\\\\?\\D:\\" },
       ],
@@ -64,13 +65,26 @@ describe("FileManager", () => {
     const roots = screen.getByLabelText("位置");
     expect(screen.getByRole("button", { name: "用户目录" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "数据目录" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载目录" })).toBeInTheDocument();
     expect(within(roots).getAllByRole("button", { name: "D:" })).toHaveLength(1);
     expect(screen.queryByText(/\\\\\?/)).toBeNull();
+
+    const rootLabels = within(roots)
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(rootLabels.indexOf("数据目录")).toBeLessThan(rootLabels.indexOf("下载目录"));
+    expect(rootLabels.indexOf("下载目录")).toBeLessThan(rootLabels.indexOf("用户目录"));
 
     fireEvent.click(screen.getByRole("button", { name: "用户目录" }));
 
     await waitFor(() => {
       expect(browseFiles).toHaveBeenLastCalledWith({ path: "C:/Users/Tester", showHidden: false });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "下载目录" }));
+
+    await waitFor(() => {
+      expect(browseFiles).toHaveBeenLastCalledWith({ path: "C:/Users/Tester/Downloads", showHidden: false });
     });
   });
 

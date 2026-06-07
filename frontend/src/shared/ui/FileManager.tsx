@@ -103,7 +103,9 @@ function driveRootName(path: string) {
 
 function rootLabel(
   root: FileBrowserRoot,
-  t: (key: "filePicker.rootData" | "filePicker.rootHome" | "filePicker.rootUserProfile") => string,
+  t: (
+    key: "filePicker.rootData" | "filePicker.rootDownloads" | "filePicker.rootHome" | "filePicker.rootUserProfile",
+  ) => string,
 ) {
   const label = root.label.trim();
   const driveLabel = driveRootName(label) ?? driveRootName(root.path);
@@ -115,6 +117,9 @@ function rootLabel(
   }
   if (/^data$/i.test(label)) {
     return t("filePicker.rootData");
+  }
+  if (/^downloads$/i.test(label)) {
+    return t("filePicker.rootDownloads");
   }
   return label || normalizeFileManagerPath(root.path);
 }

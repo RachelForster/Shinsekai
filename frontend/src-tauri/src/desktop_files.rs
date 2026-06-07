@@ -50,10 +50,10 @@ pub(crate) fn browse_desktop_files(
             .unwrap_or_else(|| app_root.to_path_buf());
     }
     if !target.exists() {
-        return Err(format!("path does not exist: {}", target.display()).into());
+        return Err(format!("path does not exist: {}", desktop_display_path(&target)).into());
     }
     if !target.is_dir() {
-        return Err(format!("path is not a directory: {}", target.display()).into());
+        return Err(format!("path is not a directory: {}", desktop_display_path(&target)).into());
     }
 
     let mut entries = Vec::new();
@@ -79,7 +79,7 @@ pub(crate) fn browse_desktop_files(
             kind: if is_dir { "directory" } else { "file" },
             modified_at: metadata.modified().ok().and_then(system_time_secs),
             name,
-            path: child.path().display().to_string(),
+            path: desktop_display_path(&child.path()),
             size: if is_dir { None } else { Some(metadata.len()) },
         });
     }
@@ -91,10 +91,10 @@ pub(crate) fn browse_desktop_files(
     let parent = target
         .parent()
         .filter(|parent| *parent != target)
-        .map(|parent| parent.display().to_string())
+        .map(desktop_display_path)
         .unwrap_or_default();
     Ok(DesktopFileBrowserSnapshot {
-        cwd: target.display().to_string(),
+        cwd: desktop_display_path(&target),
         entries,
         parent,
         roots: desktop_file_browser_roots(project_root, app_root),
@@ -125,6 +125,9 @@ fn desktop_file_browser_roots(project_root: &Path, app_root: &Path) -> Vec<Deskt
     let data_root = project_root.join("data");
     let _ = fs::create_dir_all(&data_root);
     push_desktop_file_browser_root(&mut roots, &mut seen, "Data", data_root);
+    if let Some(downloads) = desktop_downloads_dir() {
+        push_desktop_file_browser_root(&mut roots, &mut seen, "Downloads", downloads);
+    }
     if let Some(home) = desktop_home_dir() {
         push_desktop_file_browser_root(&mut roots, &mut seen, "Home", home);
     }
@@ -165,7 +168,7 @@ fn push_desktop_file_browser_root(
     if !resolved.exists() {
         return;
     }
-    let value = resolved.display().to_string();
+    let value = desktop_display_path(&resolved);
     let key = desktop_file_browser_root_key(&value);
     if seen.iter().any(|item| item == &key) {
         return;
@@ -178,30 +181,36 @@ fn push_desktop_file_browser_root(
 }
 
 fn desktop_file_browser_root_key(value: &str) -> String {
+    let normalized = strip_windows_verbatim_prefix(value);
     #[cfg(windows)]
     {
-        value.to_ascii_lowercase().replace('\\', "/")
+        normalized.to_ascii_lowercase().replace('\\', "/")
     }
     #[cfg(not(windows))]
     {
-        value.to_string()
+        normalized
     }
 }
 
 fn desktop_file_browser_root_label(label: &str, path: &str) -> String {
-    if label == "Home" {
+    let normalized_label = strip_windows_verbatim_prefix(label);
+    let normalized_path = strip_windows_verbatim_prefix(path);
+    if normalized_label == "Home" {
         return "Home".to_string();
     }
-    if label == "Data" {
+    if normalized_label == "Data" {
         return "Data".to_string();
     }
-    if label == "Shinsekai" {
+    if normalized_label == "Downloads" {
+        return "Downloads".to_string();
+    }
+    if normalized_label == "Shinsekai" {
         return "Shinsekai".to_string();
     }
-    if label.trim().is_empty() {
-        path.to_string()
+    if normalized_label.trim().is_empty() {
+        normalized_path
     } else {
-        label.to_string()
+        normalized_label
     }
 }
 
@@ -218,6 +227,58 @@ fn expand_home_path(path: PathBuf) -> PathBuf {
     path
 }
 
+fn desktop_downloads_dir() -> Option<PathBuf> {
+    let home = desktop_home_dir()?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if let Some(path) = xdg_downloads_dir(&home) {
+            return Some(path);
+        }
+    }
+    Some(home.join("Downloads"))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn xdg_downloads_dir(home: &Path) -> Option<PathBuf> {
+    let config_home = env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
+    let contents = fs::read_to_string(config_home.join("user-dirs.dirs")).ok()?;
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("XDG_DOWNLOAD_DIR=") {
+            continue;
+        }
+        let value = trimmed
+            .split_once('=')
+            .map(|(_, value)| value.trim().trim_matches('"').trim_matches('\''))?;
+        return expand_xdg_user_dir(value, home);
+    }
+    None
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn expand_xdg_user_dir(value: &str, home: &Path) -> Option<PathBuf> {
+    if value.is_empty() {
+        return None;
+    }
+    if value == "$HOME" {
+        return Some(home.to_path_buf());
+    }
+    if let Some(rest) = value.strip_prefix("$HOME/") {
+        return Some(home.join(rest));
+    }
+    if let Some(rest) = value.strip_prefix("${HOME}/") {
+        return Some(home.join(rest));
+    }
+    let path = PathBuf::from(value);
+    Some(if path.is_absolute() {
+        path
+    } else {
+        home.join(path)
+    })
+}
+
 fn desktop_home_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
@@ -227,6 +288,26 @@ fn desktop_home_dir() -> Option<PathBuf> {
     {
         env::var_os("HOME").map(PathBuf::from)
     }
+}
+
+fn desktop_display_path(path: &Path) -> String {
+    strip_windows_verbatim_prefix(&path.display().to_string())
+}
+
+fn strip_windows_verbatim_prefix(value: &str) -> String {
+    if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{}", rest);
+    }
+    if let Some(rest) = value.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    if let Some(rest) = value.strip_prefix("//?/UNC/") {
+        return format!("//{}", rest);
+    }
+    if let Some(rest) = value.strip_prefix("//?/") {
+        return rest.to_string();
+    }
+    value.to_string()
 }
 
 fn system_time_secs(value: SystemTime) -> Option<f64> {
@@ -271,6 +352,26 @@ mod tests {
             .any(|entry| entry.name == ".hidden.txt"));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn strips_windows_verbatim_prefixes_from_display_paths() {
+        assert_eq!(
+            strip_windows_verbatim_prefix(r"\\?\D:\Downloads"),
+            r"D:\Downloads"
+        );
+        assert_eq!(
+            strip_windows_verbatim_prefix(r"\\?\UNC\server\share\asset.png"),
+            r"\\server\share\asset.png"
+        );
+        assert_eq!(
+            strip_windows_verbatim_prefix("//?/D:/Downloads"),
+            "D:/Downloads"
+        );
+        assert_eq!(
+            strip_windows_verbatim_prefix("//?/UNC/server/share/asset.png"),
+            "//server/share/asset.png"
+        );
     }
 
     fn unique_temp_dir(name: &str) -> PathBuf {

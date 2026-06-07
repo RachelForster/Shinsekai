@@ -179,6 +179,50 @@ def _project_data_root(project_root: Path) -> Path:
     return data_root
 
 
+def _xdg_downloads_dir(home: Path) -> Path | None:
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config").expanduser()
+    user_dirs = config_home / "user-dirs.dirs"
+    try:
+        lines = user_dirs.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    for line in lines:
+        raw = line.strip()
+        if not raw.startswith("XDG_DOWNLOAD_DIR="):
+            continue
+        value = raw.split("=", 1)[1].strip().strip('"').strip("'")
+        if not value:
+            return None
+        if value == "$HOME":
+            return home
+        if value.startswith("$HOME/"):
+            return home / value[len("$HOME/") :]
+        if value.startswith("${HOME}/"):
+            return home / value[len("${HOME}/") :]
+        path = Path(value).expanduser()
+        return path if path.is_absolute() else home / path
+    return None
+
+
+def _user_downloads_dir() -> Path | None:
+    try:
+        home = Path.home()
+    except RuntimeError:
+        raw_home = os.environ.get("USERPROFILE") if os.name == "nt" else os.environ.get("HOME")
+        if not raw_home:
+            return None
+        home = Path(raw_home).expanduser()
+
+    if os.name != "nt":
+        return _xdg_downloads_dir(home) or home / "Downloads"
+
+    user_profile = os.environ.get("USERPROFILE")
+    if user_profile:
+        return Path(user_profile).expanduser() / "Downloads"
+    return home / "Downloads"
+
+
 def _filesystem_roots(project_root: Path, app_root: Path) -> list[dict[str, str]]:
     roots: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -196,6 +240,9 @@ def _filesystem_roots(project_root: Path, app_root: Path) -> list[dict[str, str]
 
     add("Shinsekai", app_root)
     add("Data", _project_data_root(project_root))
+    downloads_dir = _user_downloads_dir()
+    if downloads_dir is not None:
+        add("Downloads", downloads_dir)
     add("Home", Path.home())
 
     for root in (app_root, project_root):
