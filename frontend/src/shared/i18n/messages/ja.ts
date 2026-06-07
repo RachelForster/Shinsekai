@@ -80,6 +80,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "aiSprites.promptEmptyTitle": "No prompt candidates yet",
   "aiSprites.promptGenerated": "Generated {count} prompt candidate(s).",
   "aiSprites.promptRefreshed": "Prompt candidates refreshed.",
+  "aiSprites.positivePromptReference": "Positive prompt reference",
+  "aiSprites.positivePromptReferencePlaceholder":
+    "Prompt terms the LLM should preferably include, e.g. anime style, detailed eyes, soft lighting",
   "aiSprites.retry": "Retry",
   "aiSprites.retryImage": "Retry image",
   "aiSprites.retryOne": "Retry this image",

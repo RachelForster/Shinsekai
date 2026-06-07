@@ -72,6 +72,8 @@ export type MessageKey =
   | "aiSprites.promptEmptyTitle"
   | "aiSprites.promptGenerated"
   | "aiSprites.promptRefreshed"
+  | "aiSprites.positivePromptReference"
+  | "aiSprites.positivePromptReferencePlaceholder"
   | "aiSprites.retry"
   | "aiSprites.retryImage"
   | "aiSprites.retryOne"

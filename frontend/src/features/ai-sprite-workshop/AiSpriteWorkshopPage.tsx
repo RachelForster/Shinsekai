@@ -153,6 +153,7 @@ export function AiSpriteWorkshopPage() {
   const character = useMemo(() => selectedCharacter(characters, selectedName), [characters, selectedName]);
   const [drafts, setDrafts] = useState<SpritePromptDraft[]>([]);
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(() => new Set());
+  const [positivePromptReference, setPositivePromptReference] = useState("");
   const [negativePrompt, setNegativePrompt] = useState(
     "low quality, blurry, extra limbs, text, watermark, multiple views, multiple angles, turnaround, character sheet, reference sheet, expression sheet, pose sheet, multiple panels, collage",
   );
@@ -163,6 +164,7 @@ export function AiSpriteWorkshopPage() {
   const readyDrafts = drafts.filter((draft) => draft.status === "ready" && draft.imagePath);
   const hasReadyDraft = readyDrafts.length > 0;
   const isGeneratingImages = generatingIds.size > 0;
+  const promptReferenceInput = positivePromptReference.trim();
 
   const promptMutation = useMutation({
     mutationFn: () =>
@@ -170,6 +172,7 @@ export function AiSpriteWorkshopPage() {
         characterName: character?.name ?? "",
         count: normalizeSpriteCount(spriteCount),
         language,
+        ...(promptReferenceInput ? { positivePromptReference: promptReferenceInput } : {}),
       }),
     onError(error) {
       showToast({
@@ -200,7 +203,7 @@ export function AiSpriteWorkshopPage() {
   useEffect(() => {
     setDrafts([]);
     setGenerationNote("");
-  }, [character?.name, language, spriteCount]);
+  }, [character?.name, language, promptReferenceInput, spriteCount]);
 
   const updateDraft = (id: string, patch: Partial<SpritePromptDraft>) => {
     setDrafts((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -230,7 +233,12 @@ export function AiSpriteWorkshopPage() {
       return;
     }
     try {
-      const result = await generateSpritePrompts({ characterName: character.name, count: 1, language });
+      const result = await generateSpritePrompts({
+        characterName: character.name,
+        count: 1,
+        language,
+        ...(promptReferenceInput ? { positivePromptReference: promptReferenceInput } : {}),
+      });
       const items = result.items?.length ? result.items : result.prompts.map((prompt) => splitPromptLine(prompt));
       const [next] = buildDraftsFromLlmItems(language, items);
       if (!next) {
@@ -412,6 +420,17 @@ export function AiSpriteWorkshopPage() {
                 onChange={(event) => setSpriteCount(normalizeSpriteCount(Number(event.target.value)))}
                 step={1}
                 value={spriteCount}
+              />
+            </span>
+          </label>
+          <label className="field-row">
+            <span className="field-row__label">{t("aiSprites.positivePromptReference")}</span>
+            <span className="field-row__control">
+              <TextArea
+                onChange={(event) => setPositivePromptReference(event.target.value)}
+                placeholder={t("aiSprites.positivePromptReferencePlaceholder")}
+                rows={3}
+                value={positivePromptReference}
               />
             </span>
           </label>
