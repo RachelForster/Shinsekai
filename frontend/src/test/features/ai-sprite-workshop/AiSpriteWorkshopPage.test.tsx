@@ -120,11 +120,19 @@ describe("AiSpriteWorkshopPage", () => {
     expect(await screen.findByText("No prompt candidates yet")).toBeInTheDocument();
     expect(screen.queryByText("Sprite 1")).not.toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText("Positive prompt reference"), {
+      target: { value: "anime key visual, detailed eyes, soft rim lighting" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Generate prompts" }));
 
     expect(await screen.findByText("Sprite 1")).toBeInTheDocument();
     expect(mocks.generateSpritePrompts).toHaveBeenCalledWith(
-      { characterName: "Mika", count: 4, language: "en" },
+      {
+        characterName: "Mika",
+        count: 4,
+        language: "en",
+        positivePromptReference: "anime key visual, detailed eyes, soft rim lighting",
+      },
       undefined,
     );
     expect(screen.getByDisplayValue("smile, hand wave")).toBeInTheDocument();

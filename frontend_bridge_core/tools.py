@@ -178,6 +178,7 @@ def _generate_sprite_prompt_items_with_llm(
     character_settings: str,
     count: int,
     language: str,
+    positive_prompt_reference: str = "",
 ) -> dict[str, Any]:
     from llm.llm_manager import LLMAdapterFactory
 
@@ -195,6 +196,13 @@ def _generate_sprite_prompt_items_with_llm(
         base_kwargs = state.config_manager.merged_llm_factory_kwargs(llm_provider, base_kwargs)
     adapter = LLMAdapterFactory.create_adapter(**base_kwargs)
     label_language = _LABEL_LANGUAGE_NAMES.get(language, "Simplified Chinese")
+    reference_prompt = str(positive_prompt_reference or "").strip()
+    reference_block = (
+        f"Positive prompt reference from user:\n{reference_prompt}\n"
+        "Prefer including applicable terms from this reference in each English SD prompt, while keeping the required prefix, required terms, character consistency, and composition restriction above.\n"
+        if reference_prompt
+        else ""
+    )
     system_prompt = (
         "You generate visual novel character sprite generation data. "
         "Return only a valid JSON object with an items array. "
@@ -214,6 +222,7 @@ def _generate_sprite_prompt_items_with_llm(
         "Prompt prefix: masterpiece, best quality, highres, official art, solo, 1 person, single character.\n"
         "Required prompt terms: full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character.\n"
         "Composition restriction: one standalone character sprite per image; do not write prompts for multiple views, multiple angles, turnaround sheets, reference sheets, expression sheets, or pose sheets.\n"
+        f"{reference_block}"
         "Prompt requirements: consistent character design, expressive emotion and clear action.\n"
         'JSON shape: {"items":[{"label":"emotion, action","prompt":"English SD prompt with character name"}]}'
     )
@@ -395,6 +404,7 @@ def _generate_sprite_prompts(state: BridgeState, task_id: str, payload: dict[str
     if count < 1 or count > 100:
         raise ValueError("count must be between 1 and 100")
     language = str(payload.get("language") or "zh_CN").strip()
+    positive_prompt_reference = str(payload.get("positivePromptReference") or "").strip()
     character = state.config_manager.get_character_by_name(character_name)
     if character is None:
         raise KeyError(f"character not found: {character_name}")
@@ -406,6 +416,7 @@ def _generate_sprite_prompts(state: BridgeState, task_id: str, payload: dict[str
         character_settings=str(character.character_setting or ""),
         count=count,
         language=language,
+        positive_prompt_reference=positive_prompt_reference,
     )
     items = llm_result["items"]
     result = {
