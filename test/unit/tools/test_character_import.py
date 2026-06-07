@@ -277,6 +277,22 @@ class TestExport:
             manifest = json.loads(zf.read("manifest.json"))
         assert "original_paths" in manifest
 
+    def test_export_accepts_open_folder_false(self, tmp_path, monkeypatch):
+        """React bridge exports should not open a native folder."""
+        from config.character_config import CharacterConfig
+
+        def fail_open_folder(output_path):
+            pytest.fail(f"export opened folder for {output_path}")
+
+        monkeypatch.setattr(file_util, "_open_export_folder", fail_open_folder)
+        cc = CharacterConfig.parse_dic(char_data=BASIC_CHAR)
+        output = tmp_path / "out.char"
+
+        with _mock_dirs(tmp_path):
+            file_util.export_character([cc], str(output), open_folder=False)
+
+        assert output.is_file()
+
 
 def _run_export(char_data: dict, tmp_path: Path, output: str | None = None) -> str:
     """Export a CharacterConfig and return the path."""

@@ -51,6 +51,20 @@ def test_export_background_writes_package_filenames(tmp_path, monkeypatch):
     assert data[0]["bgm_list"] == ["theme.mp3"]
 
 
+def test_export_background_accepts_open_folder_false(tmp_path, monkeypatch):
+    _mock_background_dirs(tmp_path, monkeypatch)
+
+    def fail_open_folder(output_path):
+        pytest.fail(f"export opened folder for {output_path}")
+
+    monkeypatch.setattr(file_util, "_open_export_folder", fail_open_folder)
+    output = tmp_path / "room.bg"
+
+    file_util.export_background([Background(name="Room", sprite_prefix="scene")], str(output), open_folder=False)
+
+    assert output.is_file()
+
+
 def test_import_background_accepts_legacy_export_with_absolute_asset_paths(tmp_path, monkeypatch):
     """Old .bg exports may keep host absolute paths; import should restore by basename."""
     background_dir, bgm_dir = _mock_background_dirs(tmp_path, monkeypatch)
