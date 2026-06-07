@@ -85,22 +85,22 @@ describe("AiSpriteWorkshopPage", () => {
         {
           label: "smile, hand wave",
           prompt:
-            "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, hand wave, character name: Mika",
+            "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, anime visual novel sprite, Mika, hand wave, character name: Mika",
         },
         {
           label: "serious, upright pose",
           prompt:
-            "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, upright pose, character name: Mika",
+            "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, anime visual novel sprite, Mika, upright pose, character name: Mika",
         },
         {
           label: "surprised, hand gesture",
           prompt:
-            "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, hand gesture, character name: Mika",
+            "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, anime visual novel sprite, Mika, hand gesture, character name: Mika",
         },
         {
           label: "calm, relaxed pose",
           prompt:
-            "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, relaxed pose, character name: Mika",
+            "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, anime visual novel sprite, Mika, relaxed pose, character name: Mika",
         },
       ],
       prompts: [],
@@ -132,7 +132,10 @@ describe("AiSpriteWorkshopPage", () => {
     expect(prompts).toHaveLength(4);
     prompts.forEach((prompt) => {
       expect(prompt.value).toMatch(/^[\x20-\x7E]+$/);
-      expect(prompt.value).toMatch(/^masterpiece, best quality, highres, solo, 1 person, single character/);
+      expect(prompt.value).toMatch(/^masterpiece, best quality, highres, official art, solo, 1 person, single character/);
+      expect(prompt.value).toContain("official art");
+      expect(prompt.value).toContain("clean lineart");
+      expect(prompt.value).toContain("single view");
       expect(prompt.value).toContain("anime visual novel sprite");
     });
     expect(screen.getByText("Generated 4 prompt candidate(s).")).toBeInTheDocument();
@@ -140,13 +143,15 @@ describe("AiSpriteWorkshopPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Generate sprite" })[0]);
 
     expect(await screen.findByRole("button", { name: "Retry image" })).toBeInTheDocument();
+    expect(screen.getByAltText("smile, hand wave")).toHaveAttribute("src", expect.stringMatching(/[?&]v=\d+/));
     expect(mocks.generateSpriteImage).toHaveBeenCalledWith(
       {
         characterName: "Mika",
         label: "smile, hand wave",
-        negativePrompt: "low quality, blurry, extra limbs, text, watermark",
+        negativePrompt:
+          "low quality, blurry, extra limbs, text, watermark, multiple views, multiple angles, turnaround, character sheet, reference sheet, expression sheet, pose sheet, multiple panels, collage",
         prompt:
-          "masterpiece, best quality, highres, solo, 1 person, single character, anime visual novel sprite, Mika, full body, transparent background, hand wave, character name: Mika",
+          "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, anime visual novel sprite, Mika, hand wave, character name: Mika",
       },
       undefined,
     );
