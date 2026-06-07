@@ -26,6 +26,14 @@ def require_string(payload: dict[str, Any], field: str) -> str:
     return value
 
 
+def optional_string(payload: dict[str, Any], *fields: str) -> str:
+    for field in fields:
+        value = as_string(payload.get(field))
+        if value:
+            return value
+    return ""
+
+
 def normalize_github_repo_url(value: Any) -> str:
     repo_url = as_string(value)
     if not repo_url:
@@ -81,9 +89,15 @@ def normalize_submission(payload: dict[str, Any]) -> dict[str, Any]:
         "repo": normalize_github_repo_url(payload.get("repo")),
         "tags": normalize_tags(payload.get("tags")),
     }
-    shinsekai_version = as_string(payload.get("shinsekai_version"))
-    if shinsekai_version:
-        normalized["shinsekai_version"] = shinsekai_version
+    lowest_shinsekai_version = optional_string(
+        payload,
+        "lowest_shinsekai_version",
+        "lowestShinsekaiVersion",
+        "shinsekai_version",
+        "shinsekaiVersion",
+    )
+    if lowest_shinsekai_version:
+        normalized["lowest_shinsekai_version"] = lowest_shinsekai_version
     return normalized
 
 

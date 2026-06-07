@@ -59,7 +59,8 @@ def scan_local_plugin(path: str | Path) -> dict[str, Any]:
         "path": root.as_posix(),
         "repo": repo,
         "requirements": requirements.as_posix() if requirements.exists() else "",
-        "shinsekai_version": metadata_string(metadata, "shinsekai_version"),
+        "lowest_shinsekai_version": metadata_string(metadata, "lowest_shinsekai_version")
+        or metadata_string(metadata, "shinsekai_version"),
         "social_link": metadata_string(metadata, "social_link") or infer_social_link(repo),
         "tags": metadata_list(metadata, "tags"),
         "warnings": warnings,

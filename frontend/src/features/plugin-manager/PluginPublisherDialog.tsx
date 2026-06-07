@@ -51,8 +51,8 @@ function buildSubmission(form: PublisherFormState): PluginSubmissionInput {
     author: form.author.trim(),
     desc: form.desc.trim(),
     display_name: form.displayName.trim(),
+    lowest_shinsekai_version: form.shinsekaiVersion.trim() || undefined,
     repo: form.repo.trim(),
-    shinsekai_version: form.shinsekaiVersion.trim() || undefined,
     social_link: form.socialLink.trim(),
     tags: splitTags(form.tags),
   };
@@ -109,7 +109,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
         desc: result.desc || current.desc,
         displayName: result.display_name || current.displayName,
         repo: result.repo || current.repo,
-        shinsekaiVersion: result.shinsekai_version || current.shinsekaiVersion,
+        shinsekaiVersion: result.lowest_shinsekai_version || result.shinsekai_version || current.shinsekaiVersion,
         socialLink: result.social_link || current.socialLink,
         tags: result.tags?.length ? result.tags.join(", ") : current.tags,
       }));

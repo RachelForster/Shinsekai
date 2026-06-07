@@ -234,8 +234,8 @@ export interface PluginSubmissionInput {
   author: string;
   desc: string;
   display_name: string;
+  lowest_shinsekai_version?: string;
   repo: string;
-  shinsekai_version?: string;
   social_link?: string;
   tags: string[];
 }
@@ -245,6 +245,7 @@ export interface PluginLocalScanResult extends PluginSubmissionInput {
   logo?: string;
   path: string;
   requirements?: string;
+  shinsekai_version?: string;
   warnings: string[];
 }
 

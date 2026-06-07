@@ -76,6 +76,11 @@ class RegistryPluginRecord:
     def normalized_tags(self) -> list[str]:
         return list(self.tags or [])
 
+    @property
+    def shinsekai_version(self) -> str:
+        """Backward-compatible alias for older registry payload consumers."""
+        return self.lowest_shinsekai_version
+
 
 def _relax_json_trailing_commas(text: str) -> str:
     """Strip trailing commas before ``}`` / ``]`` (common in hand-edited JSON)."""

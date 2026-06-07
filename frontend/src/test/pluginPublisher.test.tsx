@@ -17,8 +17,8 @@ const submission: PluginSubmissionInput = {
   author: "Shinsekai Contributors",
   desc: "Example plugin for Shinsekai.",
   display_name: "Shinsekai Plugin",
+  lowest_shinsekai_version: ">=0.2.0",
   repo: "https://github.com/shinsekai/plugin-example",
-  shinsekai_version: ">=0.2.0",
   social_link: "https://github.com/shinsekai",
   tags: ["shinsekai", "example"],
 };
@@ -97,16 +97,16 @@ describe("plugin publisher bridge", () => {
       ...submission,
       display_name: " Shinsekai Plugin ",
       repo: "https://github.com/shinsekai/plugin-example.git",
-      shinsekai_version: " >=0.2.0 ",
+      lowest_shinsekai_version: " >=0.2.0 ",
     });
 
     expect(result.submission).toEqual({
       ...submission,
       repo: "https://github.com/shinsekai/plugin-example",
-      shinsekai_version: ">=0.2.0",
+      lowest_shinsekai_version: ">=0.2.0",
     });
     const pluginInfo = new URL(result.issueUrl).searchParams.get("plugin-info") ?? "";
-    expect(result.json).toContain('"shinsekai_version": ">=0.2.0"');
-    expect(pluginInfo).toContain('"shinsekai_version": ">=0.2.0"');
+    expect(result.json).toContain('"lowest_shinsekai_version": ">=0.2.0"');
+    expect(pluginInfo).toContain('"lowest_shinsekai_version": ">=0.2.0"');
   });
 });

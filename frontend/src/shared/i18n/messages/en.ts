@@ -551,7 +551,7 @@ export const enMessages: Record<MessageKey, string> = {
   "plugin.publisher.repo": "GitHub repository",
   "plugin.publisher.scan": "Read metadata",
   "plugin.publisher.scanDone": "Metadata loaded from local source",
-  "plugin.publisher.shinsekaiVersion": "Supported Shinsekai version",
+  "plugin.publisher.shinsekaiVersion": "Lowest supported Shinsekai version",
   "plugin.publisher.socialLink": "Author link",
   "plugin.publisher.subtitle":
     "Fill plugin metadata and generate the same Registry Issue payload used by the market. The local source path only prefills the form and is never uploaded; GitHub CI still pulls code from the repository URL.",

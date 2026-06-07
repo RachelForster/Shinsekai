@@ -548,7 +548,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "plugin.publisher.repo": "GitHub リポジトリ",
   "plugin.publisher.scan": "メタデータを読む",
   "plugin.publisher.scanDone": "ローカルソースからメタデータを読み込みました",
-  "plugin.publisher.shinsekaiVersion": "対応 Shinsekai バージョン",
+  "plugin.publisher.shinsekaiVersion": "最低対応 Shinsekai バージョン",
   "plugin.publisher.socialLink": "作者リンク",
   "plugin.publisher.subtitle":
     "プラグインメタデータを入力し、マーケットと同じ Registry Issue Payload を生成します。ローカルソースパスはフォーム補完だけに使い、アップロードされません。最終的な梱包は GitHub CI がリポジトリ URL から取得して行います。",

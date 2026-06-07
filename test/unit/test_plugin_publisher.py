@@ -114,7 +114,7 @@ def test_normalize_submission_keeps_only_basic_issue_fields():
         entry="plugins.demo_plugin.plugin:DemoPlugin",
         logo="https://example.invalid/logo.png",
         plugin_name="demo-plugin",
-        shinsekai_version=">=2.0.0",
+        lowest_shinsekai_version=">=2.0.0",
         version="1.2.3",
     )
 
@@ -127,14 +127,23 @@ def test_normalize_submission_keeps_only_basic_issue_fields():
         "social_link",
         "repo",
         "tags",
-        "shinsekai_version",
+        "lowest_shinsekai_version",
     }
-    assert normalized["shinsekai_version"] == ">=2.0.0"
+    assert normalized["lowest_shinsekai_version"] == ">=2.0.0"
     assert "entry" not in normalized
     assert "logo" not in normalized
     assert "plugin_name" not in normalized
     assert "version" not in normalized
     assert json.loads(submission_json(payload)) == normalized
+
+
+def test_normalize_submission_accepts_legacy_shinsekai_version_alias():
+    payload = valid_submission(shinsekai_version=">=2.0.0")
+
+    normalized = normalize_submission(payload)
+
+    assert normalized["lowest_shinsekai_version"] == ">=2.0.0"
+    assert "shinsekai_version" not in normalized
 
 
 @pytest.mark.parametrize("field", ("display_name", "desc", "author", "repo"))

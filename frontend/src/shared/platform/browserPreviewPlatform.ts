@@ -139,9 +139,9 @@ function normalizePreviewPluginSubmission(input: PluginSubmissionInput): PluginS
       .filter(Boolean)
       .slice(0, 5),
   };
-  const shinsekaiVersion = (input.shinsekai_version ?? "").trim();
+  const shinsekaiVersion = (input.lowest_shinsekai_version ?? "").trim();
   if (shinsekaiVersion) {
-    submission.shinsekai_version = shinsekaiVersion;
+    submission.lowest_shinsekai_version = shinsekaiVersion;
   }
   return submission;
 }
