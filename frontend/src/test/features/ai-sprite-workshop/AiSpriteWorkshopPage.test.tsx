@@ -161,7 +161,7 @@ describe("AiSpriteWorkshopPage", () => {
         prompt:
           "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, anime visual novel sprite, Mika, hand wave, character name: Mika",
       },
-      undefined,
+      expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Add to character" }));

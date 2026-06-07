@@ -93,6 +93,8 @@ class ComfyUIT2IAdapter(T2IAdapter):
     # NOTE: You must have a ComfyUI instance running with the API enabled.
     PROMPT_ENDPOINT = "/prompt"
     HISTORY_ENDPOINT = "/history"
+    STARTUP_TIMEOUT_SECONDS = 120
+    REQUEST_TIMEOUT_SECONDS = 10
     
     def __init__(self, 
                  api_url: str = "http://127.0.0.1:8188", 
@@ -117,19 +119,31 @@ class ComfyUIT2IAdapter(T2IAdapter):
         self.workflow_template = self._load_workflow_template()
         self._start_server_process()
 
+    def _is_server_ready(self) -> bool:
+        try:
+            response = requests.get(self.api_url, timeout=self.REQUEST_TIMEOUT_SECONDS)
+            return response.status_code < 500
+        except requests.exceptions.RequestException:
+            return False
+
+    def _wait_for_server_ready(self, timeout_seconds: int = STARTUP_TIMEOUT_SECONDS) -> bool:
+        deadline = time.time() + timeout_seconds
+        while time.time() < deadline:
+            if self._is_server_ready():
+                return True
+            time.sleep(2)
+        return self._is_server_ready()
+
     def _start_server_process(self):
         """
         Starts the GPT-SoVITS server process if it's not running.
         This is now the adapter's responsibility.
         """
-        try:
-            # You might want to add a check here to see if the process is already running
-            response = requests.get(self.api_url)
-            if response.status_code == 200:
-                print("ComfyUI server is already running.")
-                return
-        except requests.exceptions.ConnectionError:
-            print("ComfyUI server not found, attempting to start...")
+        if self._is_server_ready():
+            print("ComfyUI server is already running.")
+            return
+
+        print("ComfyUI server not found, attempting to start...")
 
         if self.work_path=="":
             return
@@ -141,6 +155,10 @@ class ComfyUIT2IAdapter(T2IAdapter):
         # Use subprocess.Popen to start the server in the background
         subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
         print("ComfyUI server starting...")
+        if self._wait_for_server_ready():
+            print("ComfyUI server is ready.")
+        else:
+            print("ComfyUI server is still not ready after waiting.")
 
     def _load_workflow_template(self) -> Dict[str, Any]:
         """加载 ComfyUI 工作流 JSON 文件作为模板。"""
@@ -190,7 +208,15 @@ class ComfyUIT2IAdapter(T2IAdapter):
         }
 
         try:
-            response = requests.post(self.api_url + self.PROMPT_ENDPOINT, json=payload)
+            if not self._wait_for_server_ready():
+                raise RuntimeError(
+                    "ComfyUI is still starting or is not reachable. Please wait until ComfyUI finishes loading, then retry image generation."
+                )
+            response = requests.post(
+                self.api_url + self.PROMPT_ENDPOINT,
+                json=payload,
+                timeout=self.REQUEST_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
             prompt_data = response.json()
             prompt_id = prompt_data.get("prompt_id")
@@ -202,6 +228,10 @@ class ComfyUIT2IAdapter(T2IAdapter):
             print(f"Workflow submitted. Prompt ID: {prompt_id}. Waiting for completion...")
             return self._wait_for_and_get_image(prompt_id, file_path)
 
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(
+                "ComfyUI is not ready yet or refused the connection. Please wait until ComfyUI finishes starting, then retry image generation."
+            ) from exc
         except Exception:
             raise
 
