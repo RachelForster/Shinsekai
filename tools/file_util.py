@@ -26,6 +26,21 @@ BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
 
+def _open_export_folder(output_path: str | os.PathLike) -> None:
+    folder_path = Path(output_path).parent.resolve()
+
+    try:
+        system = platform.system()
+        if system == 'Windows':
+            os.startfile(folder_path)  # type: ignore[attr-defined]
+        elif system == 'Darwin':  # macOS
+            subprocess.Popen(['open', str(folder_path)])
+        elif system == 'Linux':
+            subprocess.Popen(['xdg-open', str(folder_path)])
+    except Exception as e:
+        print(f"Failed to open export folder {folder_path}: {e}")
+
+
 def _safe_package_relpath(path: str | os.PathLike | None, field_name: str) -> Path:
     """Interpret package paths written on Windows or POSIX as safe relative paths."""
     raw = str(path or "").replace("\\", "/").strip()
@@ -107,13 +122,14 @@ def _sanitize_background_package_paths(bg_data: dict) -> None:
             for path in bgm_list
         ]
 
-def export_character(character_configs: list[CharacterConfig], output_path: str):
+def export_character(character_configs: list[CharacterConfig], output_path: str, open_folder: bool = True):
     """
     将人物配置及其依赖文件打包成一个 .cha 文件。
     
     Args:
         character_configs (list[CharacterConfig]): 要导出的 CharacterConfig 对象列表。
         output_path (str): 导出的 .cha 文件路径。
+        open_folder (bool): 导出后是否打开输出目录。
     """
     temp_dir = Path(f'./temp_export_{os.getpid()}')
     temp_dir.mkdir(exist_ok=True)
@@ -215,18 +231,8 @@ def export_character(character_configs: list[CharacterConfig], output_path: str)
                     arcname = file_path.relative_to(temp_dir)
                     zf.write(file_path, arcname)
         
-        folder_path = Path(output_path).parent.resolve()
-        
-        try:
-            system = platform.system()
-            if system == 'Windows':
-                os.startfile(folder_path)
-            elif system == 'Darwin':  # macOS
-                subprocess.Popen(['open', folder_path])
-            elif system == 'Linux':
-                subprocess.Popen(['xdg-open', folder_path])
-        except Exception as e:
-            print(f"Failed to open export folder {folder_path}: {e}")
+        if open_folder:
+            _open_export_folder(output_path)
 
         print(f"人物成功导出到: {output_path}")
 
@@ -442,13 +448,18 @@ def import_character(input_path: str) -> list[CharacterConfig]:
 # ---------------------------------------------
 
 
-def export_background(background_configs: List[Background], output_path: str = './output/background.bg'):
+def export_background(
+    background_configs: List[Background],
+    output_path: str = './output/background.bg',
+    open_folder: bool = True,
+):
     """
     将背景配置及其依赖文件（图片和音乐）打包成一个 .bg 文件。
     
     Args:
         background_configs (List[Background]): 要导出的 Background 对象列表。
         output_path (str): 导出的 .bg 文件路径 (默认路径为 ./output/background.bg)。
+        open_folder (bool): 导出后是否打开输出目录。
     """
     Path('./output').mkdir(exist_ok=True) # 确保输出目录存在
     temp_dir = Path(f'./temp_export_bg_{os.getpid()}')
@@ -492,16 +503,8 @@ def export_background(background_configs: List[Background], output_path: str = '
                     arcname = file_path.relative_to(temp_dir)
                     zf.write(file_path, arcname)
         
-        folder_path = Path(output_path).parent.resolve()
-        
-        # 尝试打开导出目录
-        system = platform.system()
-        if system == 'Windows':
-            subprocess.Popen(['explorer', str(folder_path)])
-        elif system == 'Darwin':  # macOS
-            subprocess.Popen(['open', str(folder_path)])
-        elif system == 'Linux':
-            subprocess.Popen(['xdg-open', str(folder_path)])
+        if open_folder:
+            _open_export_folder(output_path)
 
         print(f"背景包成功导出到: {output_path}")
 
