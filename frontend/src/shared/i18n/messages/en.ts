@@ -355,6 +355,7 @@ export const enMessages: Record<MessageKey, string> = {
   "filePicker.parent": "Parent folder",
   "filePicker.roots": "Locations",
   "filePicker.rootData": "Data",
+  "filePicker.rootDownloads": "Downloads",
   "filePicker.rootHome": "Home",
   "filePicker.rootUserProfile": "User profile",
   "filePicker.selectCurrent": "Select folder",

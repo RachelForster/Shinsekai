@@ -359,6 +359,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "filePicker.parent": "親フォルダ",
   "filePicker.roots": "場所",
   "filePicker.rootData": "データ",
+  "filePicker.rootDownloads": "ダウンロード",
   "filePicker.rootHome": "ホーム",
   "filePicker.rootUserProfile": "ユーザーフォルダ",
   "filePicker.selectCurrent": "フォルダを選択",

@@ -345,6 +345,7 @@ export type MessageKey =
   | "filePicker.parent"
   | "filePicker.roots"
   | "filePicker.rootData"
+  | "filePicker.rootDownloads"
   | "filePicker.rootHome"
   | "filePicker.rootUserProfile"
   | "filePicker.selectCurrent"

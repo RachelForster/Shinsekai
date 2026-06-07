@@ -67,7 +67,14 @@ function previewFileBrowser(path?: string) {
       { kind: "directory", name: "tmp" },
     ],
     "/home": [{ kind: "directory", name: "shinsekai" }],
-    "/home/shinsekai": [{ kind: "directory", name: "project" }],
+    "/home/shinsekai": [
+      { kind: "directory", name: "Downloads" },
+      { kind: "directory", name: "project" },
+    ],
+    "/home/shinsekai/Downloads": [
+      { kind: "file", name: "reference.png" },
+      { kind: "file", name: "voice.wav" },
+    ],
     "/home/shinsekai/project": [
       { kind: "directory", name: "assets" },
       { kind: "directory", name: "data" },
@@ -109,6 +116,7 @@ function previewFileBrowser(path?: string) {
     roots: [
       { label: "Shinsekai", path: "/home/shinsekai/project" },
       { label: "Data", path: "/home/shinsekai/project/data" },
+      { label: "Downloads", path: "/home/shinsekai/Downloads" },
       { label: "Home", path: "/home/shinsekai" },
       { label: "/", path: "/" },
     ],
