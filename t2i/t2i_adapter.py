@@ -1,4 +1,5 @@
 # t2i_adapter.py (ComfyUI-specific Adapter)
+import copy
 import os
 import subprocess
 import base64
@@ -166,15 +167,21 @@ class ComfyUIT2IAdapter(T2IAdapter):
             return None
 
         # 1. 深度复制模板以避免修改原始结构
-        prompt_workflow = self.workflow_template.copy()
+        prompt_workflow = copy.deepcopy(self.workflow_template)
         
         # 2. 注入主 Prompt
         # 假设 CLIPTextEncode 节点 (ID: self.prompt_node_id) 的输入是 index 1
         if self.prompt_node_id in prompt_workflow:
             prompt_workflow[self.prompt_node_id]["inputs"]["text"] = prompt
         else:
-            print(f"Error: Prompt node ID '{self.prompt_node_id}' not found in workflow.")
-            return None
+            raise ValueError(f"Prompt node ID '{self.prompt_node_id}' not found in workflow.")
+
+        negative_prompt = str(kwargs.get("negative_prompt") or "").strip()
+        negative_node_id = self._find_ksampler_conditioning_node_id(prompt_workflow, "negative")
+        if negative_prompt and negative_node_id:
+            prompt_workflow[negative_node_id]["inputs"]["text"] = negative_prompt
+        if "seed" in kwargs and kwargs["seed"] is not None:
+            self._apply_sampler_seed(prompt_workflow, kwargs["seed"])
 
         payload = {
             "prompt": prompt_workflow,
@@ -195,9 +202,40 @@ class ComfyUIT2IAdapter(T2IAdapter):
             print(f"Workflow submitted. Prompt ID: {prompt_id}. Waiting for completion...")
             return self._wait_for_and_get_image(prompt_id, file_path)
 
-        except Exception as e:
-            print(f"ComfyUI T2I generation failed: {e}")
-            return None
+        except Exception:
+            raise
+
+    def _find_ksampler_conditioning_node_id(self, workflow: Dict[str, Any], input_name: str) -> str:
+        for node in workflow.values():
+            if not isinstance(node, dict):
+                continue
+            class_type = str(node.get("class_type") or "").lower()
+            if "ksampler" not in class_type:
+                continue
+            linked = (node.get("inputs") or {}).get(input_name)
+            if isinstance(linked, list) and linked:
+                node_id = str(linked[0])
+                target = workflow.get(node_id)
+                if isinstance(target, dict) and isinstance((target.get("inputs") or {}).get("text"), str):
+                    return node_id
+        return ""
+
+    @staticmethod
+    def _apply_sampler_seed(workflow: Dict[str, Any], seed: Any) -> None:
+        seed_value = int(seed)
+        for node in workflow.values():
+            if not isinstance(node, dict):
+                continue
+            class_type = str(node.get("class_type") or "").lower()
+            if "ksampler" not in class_type and "sampler" not in class_type:
+                continue
+            inputs = node.setdefault("inputs", {})
+            if not isinstance(inputs, dict):
+                continue
+            if "noise_seed" in inputs:
+                inputs["noise_seed"] = seed_value
+            if "seed" in inputs or "ksampler" in class_type:
+                inputs["seed"] = seed_value
 
     def _wait_for_and_get_image(self, prompt_id: str, file_path: Optional[str]) -> Optional[str]:
         """轮询历史记录以查找生成的图像文件。"""

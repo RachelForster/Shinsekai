@@ -18,8 +18,9 @@ sys.modules.setdefault("tiktoken", fake_tiktoken)
 from frontend_bridge_core.state import BridgeState
 from frontend_bridge_core.tasks import _create_task
 from frontend_bridge_core.characters import _register_character_sprites
-from frontend_bridge_core.tools import _generate_sprite_image, _generate_sprite_prompts
+from frontend_bridge_core.tools import _generate_sprite_image, _generate_sprite_prompts, _resolve_comfyui_workflow_node_ids
 from llm.llm_manager import LLMAdapterFactory
+from t2i.t2i_adapter import ComfyUIT2IAdapter
 from t2i.t2i_manager import T2IAdapterFactory
 from test.mocks import MockLLMAdapter
 
@@ -122,11 +123,11 @@ def test_generate_sprite_prompts_uses_selected_llm(monkeypatch):
     assert result["items"] == [
         {
             "label": "微笑, 挥手",
-            "prompt": "masterpiece, best quality, highres, solo, 1 person, single character, Mika, smile, hand wave, character name: Mika",
+            "prompt": "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, smile, hand wave, character name: Mika",
         },
         {
             "label": "严肃, 站立",
-            "prompt": "masterpiece, best quality, highres, solo, 1 person, single character, Mika, serious pose, character name: Mika",
+            "prompt": "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, serious pose, character name: Mika",
         },
     ]
     assert result["prompts"] == [item["prompt"] for item in result["items"]]
@@ -140,8 +141,9 @@ def test_generate_sprite_prompts_uses_selected_llm(monkeypatch):
     assert call["stream"] is False
     assert call["kwargs"]["response_format"] == {"type": "json_object"}
     assert "Label language: Simplified Chinese" in call["messages"][1]["content"]
-    assert "masterpiece, best quality, highres, solo, 1 person, single character" in call["messages"][0]["content"]
-    assert "Prompt prefix: masterpiece, best quality, highres, solo, 1 person, single character" in call["messages"][1]["content"]
+    assert "masterpiece, best quality, highres, official art, solo, 1 person, single character" in call["messages"][0]["content"]
+    assert "Required prompt terms: full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character" in call["messages"][1]["content"]
+    assert "multiple views, multiple angles, turnaround sheets, reference sheets" in call["messages"][1]["content"]
 
 
 def test_generate_sprite_image_uses_selected_t2i(monkeypatch):
@@ -171,15 +173,32 @@ def test_generate_sprite_image_uses_selected_t2i(monkeypatch):
     assert result["file"].startswith(output_dir.as_posix())
     assert result["files"] == [result["file"]]
     assert result["label"] == "微笑, 挥手"
-    assert result["prompt"] == "masterpiece, best quality, highres, solo, 1 person, single character, Mika, hand wave, character name: Mika"
+    assert result["prompt"] == "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, hand wave, character name: Mika"
+    assert isinstance(result["seed"], int)
     assert RecordingT2IAdapter.last_instance.kwargs == {"extra_flag": "from-config"}
-    assert RecordingT2IAdapter.last_instance.calls == [
-        {
-            "file_path": result["file"],
-            "kwargs": {"negative_prompt": "low quality"},
-            "prompt": "masterpiece, best quality, highres, solo, 1 person, single character, Mika, hand wave, character name: Mika",
-        }
-    ]
+    assert len(RecordingT2IAdapter.last_instance.calls) == 1
+    call = RecordingT2IAdapter.last_instance.calls[0]
+    assert call["file_path"] == result["file"]
+    assert call["prompt"] == "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, hand wave, character name: Mika"
+    assert call["kwargs"] == {
+        "negative_prompt": "low quality, multiple views, multiple angles, turnaround, character sheet, reference sheet, expression sheet, pose sheet, model sheet, split view, multiple panels, collage, duplicated character, clone",
+        "seed": result["seed"],
+    }
+
+
+def test_comfyui_adapter_applies_seed_to_sampler_nodes():
+    workflow = {
+        "3": {"class_type": "KSampler", "inputs": {"seed": 123, "steps": 20}},
+        "4": {"class_type": "KSamplerAdvanced", "inputs": {"noise_seed": 456, "steps": 20}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": "prompt"}},
+    }
+
+    ComfyUIT2IAdapter._apply_sampler_seed(workflow, 987654321)
+
+    assert workflow["3"]["inputs"]["seed"] == 987654321
+    assert workflow["4"]["inputs"]["noise_seed"] == 987654321
+    assert workflow["4"]["inputs"]["seed"] == 987654321
+    assert workflow["5"]["inputs"] == {"text": "prompt"}
 
 
 def test_register_character_sprites_adds_generated_paths_and_labels():
@@ -212,3 +231,92 @@ def test_register_character_sprites_adds_generated_paths_and_labels():
         {"path": image_path.as_posix()},
     ]
     assert config_manager.character.emotion_tags == "立绘 1：neutral\n立绘 2：smile, hand wave\n"
+
+
+def test_resolve_comfyui_workflow_node_ids_auto_detects_api_workflow_nodes():
+    output_dir = Path(".tmp_pytest_sprite_prompts").resolve()
+    workflow_path = output_dir / "workflow.json"
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True)
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "3": {"class_type": "KSampler", "inputs": {"negative": ["43", 0], "positive": ["42", 0]}},
+                "17": {"class_type": "SaveImage", "inputs": {"images": ["8", 0]}},
+                "42": {"class_type": "CLIPTextEncode", "inputs": {"text": "positive prompt"}},
+                "43": {"class_type": "CLIPTextEncode", "inputs": {"text": "negative prompt"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        result = _resolve_comfyui_workflow_node_ids(
+            {
+                "output_node_id": "9",
+                "prompt_node_id": "6",
+                "workflow_path": workflow_path.as_posix(),
+            }
+        )
+    finally:
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+
+    assert result["prompt_node_id"] == "42"
+    assert result["output_node_id"] == "17"
+
+
+def test_resolve_comfyui_workflow_node_ids_converts_ui_format_workflow():
+    output_dir = Path(".tmp_pytest_sprite_prompts").resolve()
+    workflow_path = output_dir / "workflow.json"
+    cache_dir = Path(".cache") / "comfyui-api-workflows"
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+    output_dir.mkdir(parents=True)
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "nodes": [
+                    {"id": 2, "type": "CLIPTextEncode", "widgets_values": ["positive"]},
+                    {"id": 3, "type": "CLIPTextEncode", "widgets_values": ["negative"]},
+                    {
+                        "id": 4,
+                        "inputs": [
+                            {"link": 1, "name": "positive"},
+                            {"link": 2, "name": "negative"},
+                        ],
+                        "type": "KSampler",
+                        "widgets_values": [123, "fixed", 20, 7.5, "euler", "normal", 1.0],
+                    },
+                    {"id": 5, "inputs": [{"link": 3, "name": "images"}], "type": "SaveImage"},
+                ],
+                "links": [
+                    [1, 2, 0, 4, 0, "CONDITIONING"],
+                    [2, 3, 0, 4, 1, "CONDITIONING"],
+                    [3, 4, 0, 5, 0, "IMAGE"],
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        result = _resolve_comfyui_workflow_node_ids(
+            {
+                "output_node_id": "9",
+                "prompt_node_id": "6",
+                "workflow_path": workflow_path.as_posix(),
+            }
+        )
+    finally:
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+
+    assert result["prompt_node_id"] == "2"
+    assert result["output_node_id"] == "5"
+    assert result["workflow_path"].endswith(".api.json")

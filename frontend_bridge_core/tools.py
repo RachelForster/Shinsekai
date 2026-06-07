@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import secrets
 import time
 from pathlib import Path
 from typing import Any
@@ -22,9 +24,37 @@ _SD_PROMPT_REQUIRED_PREFIX = (
     "masterpiece",
     "best quality",
     "highres",
+    "official art",
     "solo",
     "1 person",
     "single character",
+)
+
+_SD_PROMPT_REQUIRED_TERMS = (
+    "full body",
+    "visual novel sprite",
+    "transparent background",
+    "clean lineart",
+    "soft cel shading",
+    "single view",
+    "one pose",
+    "centered character",
+)
+
+_SPRITE_NEGATIVE_PROMPT_REQUIRED_TERMS = (
+    "multiple views",
+    "multiple angles",
+    "turnaround",
+    "character sheet",
+    "reference sheet",
+    "expression sheet",
+    "pose sheet",
+    "model sheet",
+    "split view",
+    "multiple panels",
+    "collage",
+    "duplicated character",
+    "clone",
 )
 
 
@@ -53,10 +83,18 @@ def _with_required_sd_prompt_prefix(value: Any) -> str:
     if not prompt:
         return ""
 
-    required = {tag.lower() for tag in _SD_PROMPT_REQUIRED_PREFIX}
+    required = {tag.lower() for tag in (*_SD_PROMPT_REQUIRED_PREFIX, *_SD_PROMPT_REQUIRED_TERMS)}
     parts = [part.strip() for part in prompt.split(",") if part.strip()]
     remaining = [part for part in parts if part.lower() not in required]
-    return ", ".join([*_SD_PROMPT_REQUIRED_PREFIX, *remaining])
+    return ", ".join([*_SD_PROMPT_REQUIRED_PREFIX, *_SD_PROMPT_REQUIRED_TERMS, *remaining])
+
+
+def _with_required_sprite_negative_prompt(value: Any) -> str:
+    prompt = _ascii_prompt_text(value)
+    parts = [part.strip() for part in prompt.split(",") if part.strip()]
+    required = {tag.lower() for tag in _SPRITE_NEGATIVE_PROMPT_REQUIRED_TERMS}
+    remaining = [part for part in parts if part.lower() not in required]
+    return ", ".join([*remaining, *_SPRITE_NEGATIVE_PROMPT_REQUIRED_TERMS])
 
 
 def _split_sprite_prompt_line(value: str) -> dict[str, str]:
@@ -163,7 +201,9 @@ def _generate_sprite_prompt_items_with_llm(
         "Each item must be an object with label and prompt. "
         "The label must be short comma-separated emotion/action tags in the requested UI language. "
         "The prompt must be a pure English Stable Diffusion style prompt, ASCII only, and must include the character name. "
-        "Every prompt must start with: masterpiece, best quality, highres, solo, 1 person, single character. "
+        "Every prompt must start with: masterpiece, best quality, highres, official art, solo, 1 person, single character. "
+        "Every prompt must include these exact terms: full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character. "
+        "Each item must describe exactly one standalone sprite image, not a character sheet, not a turnaround, and not multiple views or multiple angles. "
         "Do not include markdown, explanations, or non-English text inside prompt."
     )
     user_prompt = (
@@ -171,9 +211,10 @@ def _generate_sprite_prompt_items_with_llm(
         f"Character settings:\n{character_settings}\n\n"
         f"Generate {count} different sprite candidates.\n"
         f"Label language: {label_language}\n"
-        "Prompt prefix: masterpiece, best quality, highres, solo, 1 person, single character.\n"
-        "Prompt requirements: full body, visual novel sprite, transparent background, clean lineart, "
-        "soft cel shading, consistent character design, expressive emotion and clear action.\n"
+        "Prompt prefix: masterpiece, best quality, highres, official art, solo, 1 person, single character.\n"
+        "Required prompt terms: full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character.\n"
+        "Composition restriction: one standalone character sprite per image; do not write prompts for multiple views, multiple angles, turnaround sheets, reference sheets, expression sheets, or pose sheets.\n"
+        "Prompt requirements: consistent character design, expressive emotion and clear action.\n"
         'JSON shape: {"items":[{"label":"emotion, action","prompt":"English SD prompt with character name"}]}'
     )
     response = adapter.chat(
@@ -209,6 +250,111 @@ def _safe_filename_part(value: Any, fallback: str = "sprite") -> str:
     return (text or fallback)[:48]
 
 
+def _numeric_node_sort_key(node_id: str) -> tuple[int, str]:
+    return (int(node_id), node_id) if str(node_id).isdigit() else (10**9, str(node_id))
+
+
+def _cached_comfyui_api_workflow_path(source_path: Path, prompt: dict[str, dict[str, Any]]) -> Path:
+    cache_dir = Path(".cache") / "comfyui-api-workflows"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    fingerprint = hashlib.sha256(
+        f"{source_path.resolve()}:{source_path.stat().st_mtime_ns}".encode("utf-8", errors="ignore")
+    ).hexdigest()[:16]
+    output_path = cache_dir / f"{source_path.stem}.{fingerprint}.api.json"
+    output_path.write_text(json.dumps(prompt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return output_path
+
+
+def _load_comfyui_api_workflow(workflow_path: str) -> tuple[dict[str, dict[str, Any]], str]:
+    from tools.comfyui_workflow2api import convert_workflow
+
+    source_path = Path(workflow_path)
+    workflow = json.loads(source_path.read_text(encoding="utf-8"))
+    result = convert_workflow(workflow)
+    if result.source_format == "native":
+        converted_path = _cached_comfyui_api_workflow_path(source_path, result.prompt)
+        return result.prompt, converted_path.as_posix()
+    return result.prompt, source_path.as_posix()
+
+
+def _comfyui_api_workflow_nodes(workflow: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(workflow, dict):
+        raise ValueError("ComfyUI workflow must be a JSON object")
+    nodes = {str(node_id): node for node_id, node in workflow.items() if isinstance(node, dict)}
+    if not nodes:
+        raise ValueError("ComfyUI workflow does not contain any API-format nodes")
+    return nodes
+
+
+def _linked_node_id(value: Any) -> str:
+    if isinstance(value, list) and value:
+        return str(value[0])
+    if isinstance(value, str):
+        return value
+    return ""
+
+
+def _infer_comfyui_prompt_node_id(nodes: dict[str, dict[str, Any]]) -> str:
+    for node in nodes.values():
+        class_type = str(node.get("class_type") or "").lower()
+        if "ksampler" not in class_type:
+            continue
+        linked = _linked_node_id((node.get("inputs") or {}).get("positive"))
+        if linked in nodes:
+            return linked
+
+    candidates = [
+        node_id
+        for node_id, node in nodes.items()
+        if "cliptextencode" in str(node.get("class_type") or "").lower()
+        and isinstance((node.get("inputs") or {}).get("text"), str)
+    ]
+    return sorted(candidates, key=_numeric_node_sort_key)[0] if candidates else ""
+
+
+def _infer_comfyui_output_node_id(nodes: dict[str, dict[str, Any]]) -> str:
+    candidates = [
+        node_id
+        for node_id, node in nodes.items()
+        if str(node.get("class_type") or "").lower() in {"saveimage", "previewimage"}
+    ]
+    return sorted(candidates, key=_numeric_node_sort_key)[0] if candidates else ""
+
+
+def _resolve_comfyui_workflow_node_ids(kwargs: dict[str, Any]) -> dict[str, Any]:
+    workflow_path = str(kwargs.get("workflow_path") or "").strip()
+    if not workflow_path:
+        return kwargs
+
+    workflow, api_workflow_path = _load_comfyui_api_workflow(workflow_path)
+    nodes = _comfyui_api_workflow_nodes(workflow)
+    resolved = dict(kwargs)
+    resolved["workflow_path"] = api_workflow_path
+
+    prompt_node_id = str(resolved.get("prompt_node_id") or "").strip()
+    prompt_node = nodes.get(prompt_node_id)
+    if not prompt_node or not isinstance((prompt_node.get("inputs") or {}).get("text"), str):
+        inferred = _infer_comfyui_prompt_node_id(nodes)
+        if not inferred:
+            raise ValueError(
+                f"Prompt node ID '{prompt_node_id or '(empty)'}' was not found as a text prompt node in the ComfyUI workflow, "
+                "and no CLIPTextEncode node connected to a KSampler positive input could be auto-detected."
+            )
+        resolved["prompt_node_id"] = inferred
+
+    output_node_id = str(resolved.get("output_node_id") or "").strip()
+    if output_node_id not in nodes:
+        inferred = _infer_comfyui_output_node_id(nodes)
+        if not inferred:
+            raise ValueError(
+                f"Output node ID '{output_node_id or '(empty)'}' was not found in the ComfyUI workflow, "
+                "and no SaveImage or PreviewImage node could be auto-detected."
+            )
+        resolved["output_node_id"] = inferred
+
+    return resolved
+
+
 def _t2i_factory_kwargs(state: BridgeState) -> tuple[str, dict[str, Any]]:
     from t2i.t2i_manager import T2IAdapterFactory
 
@@ -236,6 +382,8 @@ def _t2i_factory_kwargs(state: BridgeState) -> tuple[str, dict[str, Any]]:
 
     if hasattr(state.config_manager, "merged_t2i_factory_kwargs"):
         base_kwargs = state.config_manager.merged_t2i_factory_kwargs(provider, base_kwargs)
+    if provider == "comfyui":
+        base_kwargs = _resolve_comfyui_workflow_node_ids(base_kwargs)
     return provider, base_kwargs
 
 
@@ -313,7 +461,8 @@ def _generate_sprite_image(state: BridgeState, task_id: str, payload: dict[str, 
     if not prompt:
         raise ValueError("prompt is required")
     label = str(payload.get("label") or "").strip()
-    negative_prompt = str(payload.get("negativePrompt") or "").strip()
+    negative_prompt = _with_required_sprite_negative_prompt(payload.get("negativePrompt"))
+    seed = int(payload.get("seed") or secrets.randbelow(2**32))
     character = state.config_manager.get_character_by_name(character_name)
     if character is None:
         raise KeyError(f"character not found: {character_name}")
@@ -330,6 +479,7 @@ def _generate_sprite_image(state: BridgeState, task_id: str, payload: dict[str, 
         prompt,
         output_path.as_posix(),
         negative_prompt=negative_prompt,
+        seed=seed,
     )
     if not generated_path:
         raise RuntimeError("T2I did not return a generated image")
@@ -342,6 +492,7 @@ def _generate_sprite_image(state: BridgeState, task_id: str, payload: dict[str, 
         "message": f"已生成立绘：{result_path}",
         "outputDir": output_dir.as_posix(),
         "prompt": prompt,
+        "seed": seed,
     }
     _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
     return result
