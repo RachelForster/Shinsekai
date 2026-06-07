@@ -484,8 +484,12 @@ def _generate_sprite_image(state: BridgeState, task_id: str, payload: dict[str, 
     filename = f"ai_{_safe_filename_part(label, 'sprite')}_{int(time.time() * 1000)}.png"
     output_path = output_dir / filename
 
-    _update_task(state, task_id, message="正在生成立绘。", phase="generate", progress=0.18)
+    if provider == "comfyui":
+        _update_task(state, task_id, message="请稍等，生图后端正在启动中。", phase="startup", progress=0.12)
+    else:
+        _update_task(state, task_id, message="正在生成立绘。", phase="generate", progress=0.18)
     adapter = T2IAdapterFactory.create_adapter(provider, **kwargs)
+    _update_task(state, task_id, message="正在提交立绘生成任务。", phase="generate", progress=0.28)
     generated_path = adapter.generate_image(
         prompt,
         output_path.as_posix(),

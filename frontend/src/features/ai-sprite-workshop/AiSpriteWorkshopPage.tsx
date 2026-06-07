@@ -262,12 +262,21 @@ export function AiSpriteWorkshopPage() {
     setDraftGenerating(draft.id, true);
     updateDraft(draft.id, { status: "draft" });
     try {
-      const result = await generateSpriteImage({
-        characterName: character.name,
-        label: draft.label,
-        negativePrompt,
-        prompt: draft.prompt,
-      });
+      const result = await generateSpriteImage(
+        {
+          characterName: character.name,
+          label: draft.label,
+          negativePrompt,
+          prompt: draft.prompt,
+        },
+        {
+          onTaskUpdate(task) {
+            if (task.message) {
+              setGenerationNote(task.message);
+            }
+          },
+        },
+      );
       const imagePath = result.file ?? result.files[0] ?? "";
       if (!imagePath) {
         throw new Error(t("aiSprites.imageFailed"));
