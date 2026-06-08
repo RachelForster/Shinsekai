@@ -160,7 +160,7 @@ describe("PluginDetailPanel", () => {
 
     expect(await screen.findByText("Localized page description")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Localized Group" })).toBeInTheDocument();
-    expect((screen.getByLabelText(/Endpoint URL/) as HTMLInputElement).value).toMatch(/^https:\/\/saved\.test\/?$/);
+    await screen.findByDisplayValue("https://saved.test");
     expect(screen.getByRole("combobox")).toHaveTextContent("Automatic");
     expect(screen.getByLabelText("Extra JSON")).toHaveValue(JSON.stringify({ retries: 1 }, null, 2));
   });
