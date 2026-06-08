@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import socket
 import shutil
 import tempfile
 import uuid
 import zipfile
+from http.client import IncompleteRead
 from pathlib import Path, PurePosixPath
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -60,6 +63,41 @@ def _validate_package_url(url: str) -> None:
         raise PluginPackageNonFallbackError(f"plugin package host is not allowed: {parsed.hostname}")
 
 
+def _is_transient_network_error(exc: BaseException) -> bool:
+    """Return True for failures where GitHub source fallback is acceptable."""
+    if isinstance(exc, HTTPError):
+        return False
+    if isinstance(exc, URLError):
+        reason = exc.reason
+        if isinstance(reason, BaseException):
+            return _is_transient_network_error(reason)
+        text = str(reason).lower()
+        return any(
+            marker in text
+            for marker in (
+                "connection refused",
+                "connection reset",
+                "network is unreachable",
+                "temporary failure",
+                "timed out",
+                "timeout",
+                "name or service not known",
+                "nodename nor servname provided",
+                "getaddrinfo failed",
+            )
+        )
+    return isinstance(
+        exc,
+        (
+            ConnectionError,
+            IncompleteRead,
+            TimeoutError,
+            socket.gaierror,
+            socket.timeout,
+        ),
+    )
+
+
 def _read_url(url: str, *, timeout_sec: float = 180.0, max_bytes: int | None = None) -> bytes:
     limit = max_bytes if max_bytes is not None else _max_bytes()
     req = Request(url, headers={"User-Agent": _PACKAGE_USER_AGENT})
@@ -80,8 +118,16 @@ def _read_url(url: str, *, timeout_sec: float = 180.0, max_bytes: int | None = N
                 chunks.append(block)
     except PluginPackageError:
         raise
+    except HTTPError as exc:
+        raise PluginPackageNonFallbackError(f"plugin package HTTP error: {exc.code}") from exc
+    except URLError as exc:
+        if _is_transient_network_error(exc):
+            raise PluginPackageNetworkError(f"plugin package download failed: {exc}") from exc
+        raise PluginPackageNonFallbackError(f"plugin package URL error: {exc}") from exc
     except Exception as exc:
-        raise PluginPackageNetworkError(f"plugin package download failed: {exc}") from exc
+        if _is_transient_network_error(exc):
+            raise PluginPackageNetworkError(f"plugin package download failed: {exc}") from exc
+        raise PluginPackageNonFallbackError(f"plugin package download failed: {exc}") from exc
     return b"".join(chunks)
 
 

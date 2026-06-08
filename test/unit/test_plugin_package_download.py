@@ -3,13 +3,16 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import socket
 import zipfile
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 
 import pytest
 
 from core.plugins import package_download, registry_download
 from core.plugins.package_download import (
+    PluginPackageNetworkError,
     PluginPackageNonFallbackError,
     install_registry_package_under_plugins,
 )
@@ -147,6 +150,54 @@ def test_registry_package_install_rejects_hosts_outside_allowlist(tmp_path, monk
     with pytest.raises(PluginPackageNonFallbackError, match="host is not allowed"):
         install_registry_package_under_plugins(
             _record(url="https://evil.example/demo.zip", sha256="0" * 64, size=1),
+            plugins_parent=tmp_path,
+        )
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404])
+def test_registry_package_install_blocks_http_errors_from_github_fallback(tmp_path, monkeypatch, status):
+    def fail_urlopen(request, *_args, **_kwargs):
+        raise HTTPError(
+            request.full_url,
+            status,
+            "explicit HTTP failure",
+            hdrs=None,
+            fp=io.BytesIO(b""),
+        )
+
+    monkeypatch.setenv("SHINSEKAI_PLUGIN_PACKAGE_HOSTS", "packages.example")
+    monkeypatch.setattr(package_download, "urlopen", fail_urlopen)
+
+    with pytest.raises(PluginPackageNonFallbackError, match=f"HTTP error: {status}"):
+        install_registry_package_under_plugins(
+            _record(sha256="0" * 64, size=1),
+            plugins_parent=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
+    "network_error",
+    [
+        URLError(socket.gaierror("getaddrinfo failed")),
+        URLError(ConnectionRefusedError("connection refused")),
+        URLError(ConnectionResetError("connection reset by peer")),
+        TimeoutError("timed out"),
+    ],
+)
+def test_registry_package_install_allows_github_fallback_for_transient_network_errors(
+    tmp_path,
+    monkeypatch,
+    network_error,
+):
+    def fail_urlopen(*_args, **_kwargs):
+        raise network_error
+
+    monkeypatch.setenv("SHINSEKAI_PLUGIN_PACKAGE_HOSTS", "packages.example")
+    monkeypatch.setattr(package_download, "urlopen", fail_urlopen)
+
+    with pytest.raises(PluginPackageNetworkError, match="download failed"):
+        install_registry_package_under_plugins(
+            _record(sha256="0" * 64, size=1),
             plugins_parent=tmp_path,
         )
 
