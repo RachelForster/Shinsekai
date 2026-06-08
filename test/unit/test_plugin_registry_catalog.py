@@ -8,9 +8,9 @@ from core.plugins.registry_catalog import (
 )
 
 
-def test_default_registry_url_points_to_upstream_generated_cache():
+def test_default_registry_url_points_to_r2_generated_cache():
     assert DEFAULT_REGISTRY_JSON_URL == (
-        "https://raw.githubusercontent.com/RachelForster/Shinsekai-Plugin-Registry/main/plugin_cache_original.json"
+        "https://r2.shinsekai.studio/registry/plugin_cache_original.json"
     )
     assert LEGACY_REGISTRY_JSON_URL == (
         "https://raw.githubusercontent.com/RachelForster/Shinsekai-Plugin-Registry/main/plugins.json"

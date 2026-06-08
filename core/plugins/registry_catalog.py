@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 logger = logging.getLogger(__name__)
 
 DEFAULT_REGISTRY_JSON_URL = (
-    "https://raw.githubusercontent.com/RachelForster/Shinsekai-Plugin-Registry/main/plugin_cache_original.json"
+    "https://r2.shinsekai.studio/registry/plugin_cache_original.json"
 )
 LEGACY_REGISTRY_JSON_URL = (
     "https://raw.githubusercontent.com/RachelForster/Shinsekai-Plugin-Registry/main/plugins.json"
