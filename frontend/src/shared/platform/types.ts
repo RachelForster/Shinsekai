@@ -176,7 +176,7 @@ export interface PluginCatalogItem {
   review?: Record<string, unknown>;
   securityScan?: Record<string, unknown>;
   sha256?: string;
-  shinsekaiVersion?: string;
+  lowestShinsekaiVersion?: string;
   shortDescription?: string;
   size?: number | null;
   socialLink?: string;

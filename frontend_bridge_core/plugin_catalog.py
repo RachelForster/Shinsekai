@@ -264,7 +264,7 @@ def _plugin_registry_rows() -> list[dict[str, Any]]:
                 "repo": repo,
                 "securityScan": dict(getattr(rec, "security_scan", None) or {}),
                 "sha256": str(getattr(rec, "sha256", "") or ""),
-                "shinsekaiVersion": str(getattr(rec, "shinsekai_version", "") or ""),
+                "lowestShinsekaiVersion": str(getattr(rec, "lowest_shinsekai_version", "") or ""),
                 "shortDescription": str(getattr(rec, "short_description", "") or ""),
                 "size": getattr(rec, "size", None),
                 "socialLink": str(getattr(rec, "social_link", "") or ""),

@@ -60,7 +60,7 @@ def test_parse_registry_plugins_accepts_market_object_payload():
                 "repo": "https://github.com/example/shinsekai-plugin-demo",
                 "entry": "plugins.demo.plugin:DemoPlugin",
                 "version": "v0.1.0",
-                "shinsekai_version": ">=2.0.0",
+                "lowest_shinsekai_version": ">=2.0.0",
                 "download_url": "https://plugins.example.invalid/plugins/demo.zip",
                 "sha256": "abc123",
                 "commit_sha": "deadbeef",
@@ -85,7 +85,7 @@ def test_parse_registry_plugins_accepts_market_object_payload():
     assert rec.description == "Long detail text"
     assert rec.repo == "https://github.com/example/shinsekai-plugin-demo"
     assert rec.version == "v0.1.0"
-    assert rec.shinsekai_version == ">=2.0.0"
+    assert rec.lowest_shinsekai_version == ">=2.0.0"
     assert rec.download_url == "https://plugins.example.invalid/plugins/demo.zip"
     assert rec.package_url == rec.download_url
     assert rec.sha256 == "abc123"
