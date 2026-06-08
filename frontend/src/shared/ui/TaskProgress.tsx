@@ -60,7 +60,9 @@ const phaseLabels: Record<string, string> = {
 const packageStatusLabels: Record<string, string> = {
   checking: "包体校验中",
   downloading: "包体下载中",
+  existing: "已有目录",
   failed: "包体失败",
+  fallback: "已切换源码",
   installed: "包体已校验",
   pending: "包体等待中",
   verified: "包体已校验",

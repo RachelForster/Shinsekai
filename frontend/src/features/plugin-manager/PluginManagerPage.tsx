@@ -1,16 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowUpCircle,
-  BookOpen,
-  DownloadCloud,
-  ExternalLink,
-  Power,
-  RotateCcw,
-  Send,
-  Settings,
-  Trash2,
-} from "lucide-react";
+import { ArrowUpCircle, BookOpen, DownloadCloud, Power, RotateCcw, Send, Settings, Trash2 } from "lucide-react";
 
 import { openExternal } from "../../entities/files/repository";
 import {
@@ -555,11 +545,6 @@ export function PluginManagerPage() {
                     ? plugin.loadError || t("plugin.loadError.unavailable")
                     : catalogDescription(catalog) || plugin.description;
                 const docsUrl = catalog?.readmeUrl || (catalog?.repo ? githubUrl(catalog.repo) : "");
-                const repoUrl = catalog?.repo
-                  ? githubUrl(catalog.repo)
-                  : plugin.install?.repo
-                    ? githubUrl(plugin.install.repo)
-                    : "";
                 const authorUrl = catalog?.socialLink?.trim() || "";
                 const updateSource = catalog ? catalogInstallSource(catalog) : "";
                 const updateAvailable = hasCatalogUpdate(catalog, plugin);
@@ -668,15 +653,6 @@ export function PluginManagerPage() {
                           variant="ghost"
                         >
                           文档
-                        </Button>
-                      ) : null}
-                      {repoUrl && repoUrl !== docsUrl ? (
-                        <Button
-                          icon={<ExternalLink aria-hidden className="button__icon" />}
-                          onClick={() => openExternal(repoUrl)}
-                          variant="ghost"
-                        >
-                          GitHub
                         </Button>
                       ) : null}
                       {pluginSettingsPages(plugin).length || pluginToolsTabs(plugin).length ? (
