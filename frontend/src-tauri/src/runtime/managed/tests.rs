@@ -96,7 +96,10 @@ fn install_runtime_requirements_tries_configured_indexes_in_order() {
             r#"#!/bin/sh
 printf '%s\n' "$*" >> "{log}"
 case "$*" in
-  "-m pip --version")
+  *"-m pip --version"*)
+    exit 0
+    ;;
+  *"-m ensurepip --upgrade --default-pip"*)
     exit 0
     ;;
   *"-i https://bad.example/simple/"*)
