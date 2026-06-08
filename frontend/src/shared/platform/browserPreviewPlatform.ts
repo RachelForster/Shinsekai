@@ -17,6 +17,7 @@ import type {
   ChatSnapshot,
   LogSnapshot,
   MusicCoverRunResult,
+  PluginCatalogItem,
   PluginManifest,
   PluginSubmissionInput,
   PluginUIPage,
@@ -58,6 +59,78 @@ function previewTask<TResult>(
     updatedAt: now,
     ...patch,
   });
+}
+
+function previewNormalizePluginKey(value: string | null | undefined) {
+  return (value ?? "")
+    .trim()
+    .replace(/\.git$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function previewModuleToken(value: string | null | undefined) {
+  const moduleName = (value ?? "").split(":", 1)[0] ?? "";
+  const parts = moduleName.split(".").filter(Boolean);
+  if (!parts.length) {
+    return "";
+  }
+  if (parts.at(-1) === "plugin" && parts.length > 1) {
+    return parts.at(-2) ?? "";
+  }
+  return parts.at(-1) ?? "";
+}
+
+function previewPluginDirectory(entry: string, fallback: string) {
+  const token = previewModuleToken(entry) || previewNormalizePluginKey(fallback) || "preview";
+  return `plugins/${token.replace(/[^A-Za-z0-9_]+/g, "_")}`;
+}
+
+function previewCatalogKeys(plugin: PluginCatalogItem) {
+  return new Set(
+    [plugin.id, plugin.name, plugin.displayName, plugin.repo, plugin.entry, previewModuleToken(plugin.entry)]
+      .map(previewNormalizePluginKey)
+      .filter(Boolean),
+  );
+}
+
+function previewManifestKeys(plugin: PluginManifest) {
+  return new Set(
+    [
+      plugin.id,
+      plugin.title,
+      plugin.entry,
+      plugin.directory?.split(/[\\/]/).filter(Boolean).at(-1),
+      plugin.install?.repo,
+      plugin.install?.entry,
+      previewModuleToken(plugin.entry),
+    ]
+      .map(previewNormalizePluginKey)
+      .filter(Boolean),
+  );
+}
+
+function previewCatalogForSource(source: string, catalogItems: PluginCatalogItem[]) {
+  const sourceKey = previewNormalizePluginKey(source);
+  return catalogItems.find((item) => previewCatalogKeys(item).has(sourceKey));
+}
+
+function previewUpsertPlugin(currentPlugins: PluginManifest[], plugin: PluginManifest, catalog?: PluginCatalogItem) {
+  const keys = new Set([...previewManifestKeys(plugin), ...(catalog ? previewCatalogKeys(catalog) : [])]);
+  let replaced = false;
+  const nextPlugins = currentPlugins.map((item) => {
+    for (const key of previewManifestKeys(item)) {
+      if (keys.has(key)) {
+        replaced = true;
+        return plugin;
+      }
+    }
+    return item;
+  });
+  if (!replaced) {
+    return [...nextPlugins, plugin];
+  }
+  return nextPlugins;
 }
 
 function previewFileBrowser(path?: string) {
@@ -884,6 +957,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async install(input, options) {
         const id = typeof input === "string" ? input : input.source;
+        const catalog = previewCatalogForSource(id, pluginCatalog);
+        const entry = catalog?.entry || id;
+        const title = catalog?.displayName || catalog?.name || id;
+        const repo = catalog?.repo || "";
+        const packageSha256 = catalog?.packageSha256 || catalog?.sha256 || "";
         const taskId = `preview-${Date.now()}`;
         previewTask(
           taskId,
@@ -894,23 +972,36 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         previewTask(taskId, { message: "正在安装依赖。", phase: "pip", progress: 0.72, status: "running" }, options);
         await delay(null, 220);
         const plugin: PluginManifest = {
-          author: "Preview",
+          author: catalog?.author || "Preview",
           description: "浏览器预览安装的插件。",
-          directory: "plugins/preview",
+          directory: previewPluginDirectory(entry, id),
           enabled: true,
-          entry: id,
-          id,
+          entry,
+          id: catalog?.id || catalog?.name || id,
+          install: {
+            entry,
+            packageSha256,
+            packageSize: catalog?.packageSize ?? catalog?.size ?? null,
+            packageSource: catalog?.packageSource || (catalog?.packageUrl ? "r2" : ""),
+            packageStatus: packageSha256 ? "verified" : "installed",
+            packageUrl: catalog?.packageUrl || catalog?.downloadUrl || "",
+            repo,
+            sourceLabel: catalog?.packageUrl ? "Official package (R2)" : repo ? "GitHub" : "Preview",
+            sourceType: catalog?.packageUrl ? "package" : repo ? "github" : "preview",
+          },
           loaded: true,
           permissions: ["settings"],
           settingsPages: ["预览设置"],
           slots: ["settings-extension"],
-          title: id,
+          title,
           toolsTabs: [],
-          version: "preview",
+          version: catalog?.version || "preview",
         };
-        plugins = [...plugins, plugin];
+        plugins = previewUpsertPlugin(plugins, plugin, catalog);
         pluginCatalog = pluginCatalog.map((item) =>
-          item.repo === id || item.entry === id ? { ...item, downloaded: true, installed: true } : item,
+          previewCatalogKeys(item).has(previewNormalizePluginKey(id))
+            ? { ...item, downloaded: true, installed: true }
+            : item,
         );
         previewTask(
           taskId,
