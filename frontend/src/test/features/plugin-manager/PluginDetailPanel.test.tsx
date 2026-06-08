@@ -168,8 +168,7 @@ describe("PluginDetailPanel", () => {
   it("saves the edited draft and shows the localized restart hint", async () => {
     renderPanel();
 
-    const endpointInput = (await screen.findByLabelText(/Endpoint URL/)) as HTMLInputElement;
-    expect(endpointInput.value).toMatch(/^https:\/\/saved\.test\/?$/);
+    const endpointInput = (await screen.findByDisplayValue("https://saved.test")) as HTMLInputElement;
     fireEvent.change(endpointInput, {
       target: { value: "https://edited.test" },
     });
