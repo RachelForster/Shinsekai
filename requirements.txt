@@ -27,3 +27,4 @@ mem0ai
 mem0ai[nlp]
 sentence-transformers
 fastembed
+gradio
