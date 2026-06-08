@@ -600,9 +600,9 @@ export function PluginManagerPage() {
                               可更新到 v{versionLabel(catalog.version)}
                             </span>
                           ) : null}
-                          {catalog?.shinsekaiVersion ? (
+                          {catalog?.lowestShinsekaiVersion ? (
                             <span className="plugin-card__badge plugin-card__badge--support">
-                              支持 {catalog.shinsekaiVersion}
+                              支持 {catalog.lowestShinsekaiVersion}
                             </span>
                           ) : null}
                         </div>

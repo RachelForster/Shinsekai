@@ -102,7 +102,7 @@ const catalogItem: PluginCatalogItem = {
   repo: "owner/registry-display",
   securityScan: { static: { pass: true } },
   sha256: "abcdef1234567890",
-  shinsekaiVersion: ">=0.2.0",
+  lowestShinsekaiVersion: ">=0.2.0",
   shortDescription: "Registry short description",
   size: 12345,
   stars: 1,

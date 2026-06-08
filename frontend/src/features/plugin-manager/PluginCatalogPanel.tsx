@@ -620,8 +620,10 @@ export function PluginCatalogPanel({
             </span>
             <div className="plugin-market-card__version-row">
               {plugin.version ? <span className="plugin-card__badge">v{plugin.version.replace(/^v/i, "")}</span> : null}
-              {plugin.shinsekaiVersion ? (
-                <span className="plugin-card__badge plugin-card__badge--support">支持 {plugin.shinsekaiVersion}</span>
+              {plugin.lowestShinsekaiVersion ? (
+                <span className="plugin-card__badge plugin-card__badge--support">
+                  支持 {plugin.lowestShinsekaiVersion}
+                </span>
               ) : null}
             </div>
           </div>
