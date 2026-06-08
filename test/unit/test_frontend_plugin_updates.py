@@ -216,6 +216,45 @@ def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, mo
     assert marks[0]["install_metadata"] == result["install"]
 
 
+def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_path, monkeypatch):
+    record = _registry_record()
+    marks: list[dict] = []
+    calls: list[tuple[str, object]] = []
+    package_root = _plugin_root(tmp_path, "package-plugin")
+
+    monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
+    monkeypatch.setattr("core.plugins.package_download.registry_package_target", lambda *_args, **_kwargs: package_root)
+    _patch_manifest_and_state(monkeypatch, marks)
+
+    def fake_package_install(rec, **kwargs):
+        calls.append(("package", kwargs.get("overwrite")))
+        assert rec is record
+        return package_root
+
+    monkeypatch.setattr(
+        "core.plugins.package_download.install_registry_package_under_plugins",
+        fake_package_install,
+    )
+    monkeypatch.setattr(
+        "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
+        lambda root, **_kwargs: calls.append(("pip", root)) or ("pip_ok", ""),
+    )
+
+    result = _install_plugin_source(_state_with_task(), "task", "owner/demo", overwrite=False)
+
+    assert result["install"] == {
+        "dependencyStatus": "pip_ok",
+        "entry": "plugins.demo.plugin:DemoPlugin",
+        "packageSource": "local",
+        "packageStatus": "existing",
+        "repo": "owner/demo",
+        "sourceLabel": "Existing plugin directory",
+        "sourceType": "existing",
+    }
+    assert calls == [("package", False), ("pip", package_root)]
+    assert marks[0]["install_metadata"] == result["install"]
+
+
 def test_install_plugin_source_falls_back_to_github_for_registry_package_network_error(
     tmp_path,
     monkeypatch,
@@ -248,23 +287,44 @@ def test_install_plugin_source_falls_back_to_github_for_registry_package_network
         lambda *_args, **_kwargs: ("pip_ok", ""),
     )
 
-    result = _install_plugin_source(_state_with_task(), "task", "owner/demo")
+    state = _state_with_task()
+
+    result = _install_plugin_source(state, "task", "owner/demo")
 
     assert result == {"entry": "plugins.demo.plugin:DemoPlugin", "enabled": True}
     assert calls == ["package", "github"]
     assert marks[0]["manifest_entry"] == "plugins.demo.plugin:DemoPlugin"
+    assert any("官方包体暂时无法访问，正在自动尝试 GitHub 源码安装。" in line for line in state.tasks["task"]["logs"])
 
 
 @pytest.mark.parametrize(
-    "package_error",
+    ("package_error", "expected_code", "expected_message"),
     [
-        PluginPackageNonFallbackError("checksum mismatch"),
-        PluginPackageNonFallbackError("unsafe plugin package path"),
+        (
+            PluginPackageNonFallbackError(
+                "checksum mismatch",
+                code="package_checksum_mismatch",
+                user_message="包体校验未通过，已阻止安装。",
+            ),
+            "package_checksum_mismatch",
+            "包体校验未通过，已阻止安装。",
+        ),
+        (
+            PluginPackageNonFallbackError(
+                "unsafe plugin package path",
+                code="package_unsafe_path",
+                user_message="包体校验未通过，已阻止安装。",
+            ),
+            "package_unsafe_path",
+            "包体校验未通过，已阻止安装。",
+        ),
     ],
 )
 def test_install_plugin_source_does_not_fallback_to_github_for_package_safety_errors(
     monkeypatch,
     package_error,
+    expected_code,
+    expected_message,
 ):
     record = _registry_record()
     monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
@@ -281,8 +341,16 @@ def test_install_plugin_source_does_not_fallback_to_github_for_package_safety_er
     )
     monkeypatch.setattr("core.plugins.github_bundle_update.install_github_plugin_under_plugins", fail_github)
 
-    with pytest.raises(Exception, match=str(package_error)):
-        _install_plugin_source(_state_with_task(), "task", "owner/demo")
+    state = _state_with_task()
+
+    with pytest.raises(Exception, match=expected_message):
+        _install_plugin_source(state, "task", "owner/demo")
+
+    task = state.tasks["task"]
+    assert task["errorCode"] == expected_code
+    assert task["errorUserMessage"] == expected_message
+    assert task["fallbackAllowed"] is False
+    assert str(package_error) in task["errorDetail"]
 
 
 def test_install_plugin_source_does_not_fallback_to_github_when_package_dependency_install_fails(
@@ -306,5 +374,13 @@ def test_install_plugin_source_does_not_fallback_to_github_when_package_dependen
         lambda *_args, **_kwargs: ("pip_failed", "dependency boom"),
     )
 
-    with pytest.raises(RuntimeError, match="dependency boom"):
-        _install_plugin_source(_state_with_task(), "task", "owner/demo")
+    state = _state_with_task()
+
+    with pytest.raises(RuntimeError, match="包体已通过校验，但依赖安装失败，请查看日志。"):
+        _install_plugin_source(state, "task", "owner/demo")
+
+    task = state.tasks["task"]
+    assert task["errorCode"] == "package_dependency_failed"
+    assert task["errorUserMessage"] == "包体已通过校验，但依赖安装失败，请查看日志。"
+    assert task["errorDetail"] == "dependency boom"
+    assert task["fallbackAllowed"] is False

@@ -11,6 +11,16 @@ from .state import BridgeState
 from .tasks import _append_task_log, _update_task
 
 
+class PluginPackageDependencyInstallError(RuntimeError):
+    code = "package_dependency_failed"
+    fallback_allowed = False
+    user_message = "包体已通过校验，但依赖安装失败，请查看日志。"
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(self.user_message)
+        self.detail = detail.strip() or self.user_message
+
+
 def _app_update_info() -> dict[str, Any]:
     from core.plugins.github_bundle_update import default_app_github_repo_slug, read_local_version, resolve_project_root
 
@@ -253,26 +263,38 @@ def _has_registry_package(record: Any | None) -> bool:
     return bool(package_url and package_sha256)
 
 
-def _registry_package_metadata(record: Any, *, dependency_status: str = "", dependency_detail: str = "") -> dict[str, Any]:
+def _registry_package_metadata(
+    record: Any,
+    *,
+    dependency_status: str = "",
+    dependency_detail: str = "",
+    package_status: str = "verified",
+) -> dict[str, Any]:
     package_source = str(getattr(record, "package_source", "") or "r2").strip()
     package_url = str(getattr(record, "package_url", "") or getattr(record, "download_url", "") or "").strip()
     package_sha256 = str(getattr(record, "package_sha256", "") or getattr(record, "sha256", "") or "").strip()
     package_size = getattr(record, "package_size", None)
     if package_size is None:
         package_size = getattr(record, "size", None)
+    is_verified_package = package_status == "verified"
     metadata: dict[str, Any] = {
         "dependencyDetail": dependency_detail,
         "dependencyStatus": dependency_status,
         "entry": str(getattr(record, "entry", "") or "").strip(),
-        "packageSha256": package_sha256,
-        "packageSize": package_size,
-        "packageSource": package_source,
-        "packageStatus": "verified",
-        "packageUrl": package_url,
+        "packageSource": package_source if is_verified_package else "local",
+        "packageStatus": package_status,
         "repo": str(getattr(record, "repo", "") or "").strip(),
-        "sourceLabel": "Official package (R2)",
-        "sourceType": "package",
+        "sourceLabel": "Official package (R2)" if is_verified_package else "Existing plugin directory",
+        "sourceType": "package" if is_verified_package else "existing",
     }
+    if is_verified_package:
+        metadata.update(
+            {
+                "packageSha256": package_sha256,
+                "packageSize": package_size,
+                "packageUrl": package_url,
+            }
+        )
     return {key: value for key, value in metadata.items() if value not in (None, "")}
 
 
@@ -280,6 +302,35 @@ def _with_install_metadata(result: dict[str, Any], metadata: dict[str, Any]) -> 
     out = dict(result)
     out["install"] = dict(metadata)
     return out
+
+
+def _package_error_details(exc: BaseException) -> dict[str, Any]:
+    from core.plugins.package_download import PluginPackageError
+
+    current: BaseException | None = exc
+    while current is not None:
+        code = getattr(current, "code", "")
+        user_message = getattr(current, "user_message", "")
+        if isinstance(current, PluginPackageError) or code or user_message:
+            detail = str(getattr(current, "detail", "") or current or current.__class__.__name__)
+            out: dict[str, Any] = {
+                "detail": detail,
+                "errorCode": str(code or "plugin_package_error"),
+                "errorUserMessage": str(user_message or detail),
+                "fallbackAllowed": bool(getattr(current, "fallback_allowed", False)),
+            }
+            status_code = getattr(current, "status_code", None)
+            if status_code is not None:
+                out["httpStatus"] = status_code
+            return out
+        current = current.__cause__
+    detail = str(exc) or exc.__class__.__name__
+    return {
+        "detail": detail,
+        "errorCode": "plugin_install_error",
+        "errorUserMessage": detail,
+        "fallbackAllowed": False,
+    }
 
 
 def _package_error_allows_github_fallback(exc: BaseException) -> bool:
@@ -294,6 +345,18 @@ def _package_error_allows_github_fallback(exc: BaseException) -> bool:
             saw_network_error = True
         current = current.__cause__
     return saw_network_error
+
+
+def _update_task_package_error(state: BridgeState, task_id: str, details: dict[str, Any]) -> None:
+    updates = {
+        "errorCode": details.get("errorCode", ""),
+        "errorDetail": details.get("detail", ""),
+        "errorUserMessage": details.get("errorUserMessage", ""),
+        "fallbackAllowed": bool(details.get("fallbackAllowed")),
+    }
+    if details.get("httpStatus") is not None:
+        updates["httpStatus"] = details["httpStatus"]
+    _update_task(state, task_id, **updates)
 
 
 def _restore_package_target(target: Path, backup: Path | None, *, remove_new_target: bool) -> None:
@@ -341,30 +404,47 @@ def _install_registry_package_source(
     dependency_status = ""
     dependency_detail = ""
     try:
+        package_status = "existing" if existed_before and not overwrite else "verified"
         plugin_root = install_registry_package_under_plugins(
             record,
             overwrite=overwrite,
             plugins_parent=Path("plugins"),
         )
+        package_message = (
+            "Existing plugin directory found. Skipping official package verification."
+            if package_status == "existing"
+            else "Official package verified. Installing plugin dependencies."
+        )
         _update_task(
             state,
             task_id,
-            message="Official package verified. Installing plugin dependencies.",
+            message=package_message,
             phase="pip",
             progress=0.72,
-            packageStatus="verified",
+            packageStatus=package_status,
         )
         dependency_status, dependency_detail = install_plugin_requirements_txt(plugin_root, on_output_line=_pip_line)
         if dependency_detail:
             _append_task_log(state, task_id, dependency_detail)
         if dependency_status in {"pip_failed", "pip_timeout", "pip_exception", "pip_conflict"}:
-            raise RuntimeError(f"Plugin dependency installation failed: {dependency_detail or dependency_status}")
+            dependency_error = PluginPackageDependencyInstallError(dependency_detail or dependency_status)
+            error_message = dependency_error.user_message
+            _update_task(
+                state,
+                task_id,
+                errorCode=dependency_error.code,
+                errorDetail=dependency_error.detail,
+                errorUserMessage=error_message,
+                fallbackAllowed=dependency_error.fallback_allowed,
+            )
+            raise dependency_error
         if not entry:
             entry = _infer_plugin_entry(plugin_root)
         metadata = _registry_package_metadata(
             record,
             dependency_status=dependency_status,
             dependency_detail=dependency_detail,
+            package_status=package_status,
         )
         if entry:
             metadata["entry"] = entry
@@ -426,7 +506,23 @@ def _install_plugin_source(
         except Exception as exc:
             repo = str(getattr(registry_rec, "repo", "") or "").strip()
             if repo and _package_error_allows_github_fallback(exc):
-                _append_task_log(state, task_id, f"Official package download failed; falling back to GitHub: {exc}")
+                details = _package_error_details(exc)
+                fallback_message = str(details.get("errorUserMessage") or "官方包体暂时无法访问，正在自动尝试 GitHub 源码安装。")
+                _update_task(
+                    state,
+                    task_id,
+                    errorCode=details.get("errorCode", ""),
+                    errorDetail=details.get("detail", ""),
+                    errorUserMessage=fallback_message,
+                    fallbackAllowed=True,
+                    message=fallback_message,
+                    notice=fallback_message,
+                    noticeKind="info",
+                    phase="download",
+                    installSource="github",
+                    packageStatus="fallback",
+                )
+                _append_task_log(state, task_id, f"{fallback_message} {details.get('detail', exc)}")
                 return _install_github_plugin_source(
                     state,
                     task_id,
@@ -435,8 +531,11 @@ def _install_plugin_source(
                     tag_name=tag_name,
                     overwrite=overwrite,
                 )
-            _append_task_log(state, task_id, f"Official package install failed; GitHub fallback blocked: {exc}")
-            raise RuntimeError(str(exc) or type(exc).__name__) from exc
+            details = _package_error_details(exc)
+            _update_task_package_error(state, task_id, details)
+            message = str(details.get("errorUserMessage") or details.get("detail") or exc)
+            _append_task_log(state, task_id, f"{message} {details.get('detail', '')}".strip())
+            raise RuntimeError(message) from exc
 
     if not _is_repo_source(source) and registry_rec is not None:
         repo = str(getattr(registry_rec, "repo", "") or "").strip()

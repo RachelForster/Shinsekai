@@ -673,10 +673,17 @@ export interface TaskSnapshot<TResult = unknown> {
   cancelRequested?: boolean;
   createdAt: number;
   error?: string;
+  errorCode?: string;
+  errorDetail?: string;
+  errorUserMessage?: string;
+  fallbackAllowed?: boolean;
+  httpStatus?: number;
   id: string;
   kind: string;
   logs: string[];
   message: string;
+  notice?: string;
+  noticeKind?: "error" | "info" | "warning";
   phase: string;
   progress?: number | null;
   result?: TResult | null;
