@@ -1,8 +1,12 @@
 import "./TaskProgress.css";
 
 interface TaskProgressSnapshot {
+  errorUserMessage?: string;
+  fallbackAllowed?: boolean;
   logs?: readonly string[];
   message?: string;
+  notice?: string;
+  noticeKind?: "error" | "info" | "warning";
   phase: string;
   progress?: number | null;
   status: string;
@@ -27,6 +31,10 @@ export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
 
   const percent = taskPercent(task.progress);
   const logs = logLimit > 0 ? (task.logs ?? []).slice(-logLimit) : [];
+  const notice = task.notice || (task.status === "failed" ? task.errorUserMessage : "");
+  const noticeKind = task.noticeKind || (task.status === "failed" ? "error" : "info");
+  const message = task.message || task.status;
+  const showMessage = message !== notice;
 
   return (
     <div className="task-progress" role="status" aria-live="polite">
@@ -39,7 +47,13 @@ export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
           <span className="task-progress__fill" style={{ width: `${percent}%` }} />
         </div>
       )}
-      <div className="task-progress__message">{task.message || task.status}</div>
+      {showMessage ? <div className="task-progress__message">{message}</div> : null}
+      {notice ? (
+        <div className={`task-progress__notice task-progress__notice--${noticeKind}`}>
+          {notice}
+          {task.fallbackAllowed && task.status === "failed" ? " 可稍后重试。" : ""}
+        </div>
+      ) : null}
       {logs.length ? <pre className="task-progress__log">{logs.join("\n")}</pre> : null}
     </div>
   );

@@ -37,4 +37,38 @@ describe("TaskProgress", () => {
     expect(screen.getByRole("status")).toHaveTextContent("waiting");
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
+
+  it("renders fallback notices and failed package guidance", () => {
+    const { rerender } = render(
+      <TaskProgress
+        task={{
+          fallbackAllowed: true,
+          logs: [],
+          message: "正在下载源码",
+          notice: "官方包体暂时无法访问，正在自动尝试 GitHub 源码安装。",
+          noticeKind: "info",
+          phase: "download",
+          progress: 0.2,
+          status: "running",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("官方包体暂时无法访问，正在自动尝试 GitHub 源码安装。")).toBeInTheDocument();
+
+    rerender(
+      <TaskProgress
+        task={{
+          errorUserMessage: "包体校验未通过，已阻止安装。",
+          fallbackAllowed: false,
+          logs: [],
+          message: "包体校验未通过，已阻止安装。",
+          phase: "failed",
+          status: "failed",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("包体校验未通过，已阻止安装。")).toBeInTheDocument();
+  });
 });
