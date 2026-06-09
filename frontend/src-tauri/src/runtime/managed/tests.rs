@@ -147,7 +147,7 @@ fn install_runtime_requirements_streams_pip_output() {
         &fake_python,
         r#"#!/bin/sh
 case "$*" in
-  "-m pip --version")
+  *"-m pip --version"*)
     exit 0
     ;;
   *"-m pip install"*)
