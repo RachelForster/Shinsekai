@@ -66,3 +66,20 @@ def test_pip_index_urls_prefers_china_mirrors_by_default(monkeypatch):
 
     assert urls[0] == "https://pypi.tuna.tsinghua.edu.cn/simple/"
     assert "https://pypi.org/simple/" in urls
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "-r sub-requirements.txt",
+        "-rsub-requirements.txt",
+        "--requirement sub-requirements.txt",
+        "--requirement=sub-requirements.txt",
+        "-c constraints.txt",
+        "-cconstraints.txt",
+        "--constraint constraints.txt",
+        "--constraint=constraints.txt",
+    ],
+)
+def test_requirements_lines_define_index_keeps_nested_requirement_intent(line):
+    assert pip_index_config.requirements_lines_define_index([line]) is True

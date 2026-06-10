@@ -211,11 +211,33 @@ def test_runtime_core_requirements_include_bridge_startup_sdks():
 
 
 def _fake_runtime_pip_install(calls):
-    def fake_run_pip_install(cmd, *, cwd, timeout_sec, on_output_line=None):
+    def fake_run_pip_install(cmd, *, cwd, timeout_sec, detail_max=1600, on_output_line=None):
         calls.append(cmd)
         return ("pip_ok", "")
 
     return fake_run_pip_install
+
+
+def test_install_runtime_dependency_requests_long_failure_detail(monkeypatch):
+    from frontend_bridge_core import runtime_dependencies
+
+    captured: dict[str, int] = {}
+
+    def fake_run_pip_install(cmd, *, cwd, timeout_sec, detail_max=1600, on_output_line=None):
+        captured["detail_max"] = detail_max
+        return ("pip_failed", "x" * 3999)
+
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_run_pip_install)
+
+    try:
+        runtime_dependencies.install_runtime_dependency("openai")
+    except RuntimeError as exc:
+        error = exc
+    else:
+        raise AssertionError("install_runtime_dependency should raise on pip failure")
+
+    assert captured["detail_max"] == 4000
+    assert len(str(error)) >= 3999
 
 
 def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkeypatch):

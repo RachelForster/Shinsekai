@@ -58,6 +58,8 @@ def test_apply_pip_index_and_extra_args_uses_primary_flag(monkeypatch):
     [
         (["--extra-index-url", "https://private.example/simple"], [], ""),
         ([], ["--extra-index-url https://private.example/simple"], ""),
+        ([], ["-r sub-requirements.txt"], ""),
+        ([], ["--constraint constraints.txt"], ""),
         ([], [], "--extra-index-url=https://private.example/simple"),
         ([], [], "--no-index"),
     ],
@@ -180,3 +182,19 @@ def test_run_pip_install_reports_redacted_failure_tail(monkeypatch, tmp_path):
     assert code == "pip_failed"
     assert "secret" not in detail
     assert "https://user:***@private.example/simple" in detail
+
+
+def test_run_pip_install_allows_longer_failure_detail(monkeypatch, tmp_path):
+    output = "A" * 2000 + "KEEP-ME"
+    _patch_popen(monkeypatch, output, 1)
+
+    code, detail = pip_runner.run_pip_install(
+        ["python", "-m", "pip", "install", "demo"],
+        cwd=tmp_path,
+        timeout_sec=30,
+        detail_max=4000,
+    )
+
+    assert code == "pip_failed"
+    assert "KEEP-ME" in detail
+    assert len(detail) > 1600

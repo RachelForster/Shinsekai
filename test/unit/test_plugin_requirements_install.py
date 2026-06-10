@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+import pytest
 
 
 def _prepare_installer(monkeypatch, tmp_path):
@@ -90,7 +93,7 @@ def test_install_plugin_requirements_prunes_installed_plain_packages(
     monkeypatch.setattr(
         installer,
         "_requirement_line_is_satisfied",
-        lambda line: line.startswith("already-there"),
+        lambda line, installed_versions=None: line.startswith("already-there"),
         raising=False,
     )
 
@@ -303,7 +306,7 @@ def test_install_plugin_requirements_falls_back_to_original_file_for_unsafe_prun
     monkeypatch.setattr(
         installer,
         "_requirement_line_is_satisfied",
-        lambda line: line.startswith("already-there"),
+        lambda line, installed_versions=None: line.startswith("already-there"),
         raising=False,
     )
 
@@ -312,3 +315,53 @@ def test_install_plugin_requirements_falls_back_to_original_file_for_unsafe_prun
     assert result == ("pip_ok", "")
     assert calls[0]["requirements_path"] == original_req
     assert calls[0]["requirements_text"] == original_req.read_text(encoding="utf-8")
+
+
+def test_install_lines_after_precheck_scans_installed_distributions_once(monkeypatch):
+    from core.plugins import plugin_requirements_install as installer
+
+    calls: list[object] = []
+
+    class Dist:
+        metadata = {"Name": "already-there"}
+        version = "1.0"
+
+    monkeypatch.setattr(installer, "plugin_pip_target_directory", lambda: None)
+    monkeypatch.setattr(
+        installer.importlib_metadata,
+        "distributions",
+        lambda path=None: calls.append(path) or [Dist()],
+    )
+
+    can_prune, install_lines = installer._install_lines_after_precheck(
+        ["already-there==1.0", "missing-package>=2"],
+    )
+
+    assert can_prune is True
+    assert install_lines == ["missing-package>=2"]
+    assert len(calls) == 1
+
+
+def test_write_temp_requirements_removes_file_when_write_fails(monkeypatch, tmp_path):
+    from core.plugins import plugin_requirements_install as installer
+
+    created = tmp_path / "easyai_missing_req_fail.txt"
+
+    def fake_mkstemp(prefix, suffix):
+        fd = os.open(str(created), os.O_CREAT | os.O_TRUNC | os.O_RDWR)
+        return fd, str(created)
+
+    original_write_text = Path.write_text
+
+    def fail_write_text(self, *args, **kwargs):
+        if self == created:
+            raise OSError("disk full")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(installer.tempfile, "mkstemp", fake_mkstemp)
+    monkeypatch.setattr(Path, "write_text", fail_write_text)
+
+    with pytest.raises(OSError, match="disk full"):
+        installer._write_temp_requirements("easyai_missing_req_", ["missing-package>=2"])
+
+    assert not created.exists()

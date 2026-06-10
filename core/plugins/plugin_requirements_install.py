@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import importlib.metadata as importlib_metadata
 import logging
@@ -251,39 +251,51 @@ def _requirement_line_can_be_pruned(line: str) -> bool:
     return True
 
 
-def _requirement_distribution_version(name: str) -> str | None:
-    canonical = _canonical_distribution_name(name)
+def _installed_distribution_versions() -> dict[str, str]:
     paths = list(sys.path)
     target = plugin_pip_target_directory()
     if target is not None and target.is_dir():
         # 打包版插件依赖会装进 data/plugin_site_packages，先查这里再看系统路径。
         target_s = str(target.resolve())
         paths = [target_s, *[path for path in paths if path != target_s]]
+    versions: dict[str, str] = {}
     for distribution in importlib_metadata.distributions(path=paths):
         dist_name = distribution.metadata.get("Name")
         if not dist_name:
             continue
-        if _canonical_distribution_name(dist_name) == canonical:
-            return distribution.version
-    return None
+        versions.setdefault(_canonical_distribution_name(dist_name), distribution.version)
+    return versions
 
 
-def _requirement_line_is_satisfied(line: str) -> bool:
+def _requirement_distribution_version(
+    name: str,
+    installed_versions: Mapping[str, str] | None = None,
+) -> str | None:
+    canonical = _canonical_distribution_name(name)
+    if installed_versions is None:
+        installed_versions = _installed_distribution_versions()
+    return installed_versions.get(canonical)
+
+
+def _requirement_line_is_satisfied(
+    line: str,
+    installed_versions: Mapping[str, str] | None = None,
+) -> bool:
     # 这里尽量按 PEP 508 判断：marker 不匹配就视为无需安装，版本不满足才进入 pip。
     stripped = _strip_inline_requirement_comment(line)
     if not stripped:
         return True
     if Requirement is None:
         name = _requirement_line_project_name(stripped)
-        return bool(name and _requirement_distribution_version(name) is not None)
+        return bool(name and _requirement_distribution_version(name, installed_versions) is not None)
     try:
         requirement = Requirement(stripped)
     except InvalidRequirement:
         name = _requirement_line_project_name(stripped)
-        return bool(name and _requirement_distribution_version(name) is not None)
+        return bool(name and _requirement_distribution_version(name, installed_versions) is not None)
     if requirement.marker and not requirement.marker.evaluate():
         return True
-    installed_version = _requirement_distribution_version(requirement.name)
+    installed_version = _requirement_distribution_version(requirement.name, installed_versions)
     if installed_version is None:
         return False
     if requirement.specifier:
@@ -296,14 +308,30 @@ def _install_lines_after_precheck(lines: list[str]) -> tuple[bool, list[str]]:
     # 这些行可能影响后续包解析，强行只装“缺失行”反而会破坏作者的安装意图。
     if not all(_requirement_line_can_be_pruned(line) for line in lines):
         return False, lines
+    installed_versions = _installed_distribution_versions()
     install_lines: list[str] = []
     for line in lines:
         stripped = _strip_inline_requirement_comment(line)
         if not stripped:
             continue
-        if not _requirement_line_is_satisfied(stripped):
+        if not _requirement_line_is_satisfied(stripped, installed_versions):
             install_lines.append(line.rstrip("\r\n"))
     return True, install_lines
+
+
+def _write_temp_requirements(prefix: str, lines: list[str]) -> Path:
+    fd, temp_path_str = tempfile.mkstemp(prefix=prefix, suffix=".txt")
+    path = Path(temp_path_str)
+    try:
+        os.close(fd)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+    except BaseException:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def _finish_install_result(
@@ -383,23 +411,19 @@ def install_plugin_requirements_txt(
     active_req = req
     active_lines = lines
     precheck_tf: Path | None = None
-    if can_prune:
-        # pip 仍然只认识 requirements 文件，所以把裁剪后的缺失列表写入临时文件。
-        fd, precheck_tf_str = tempfile.mkstemp(
-            prefix="easyai_missing_req_", suffix=".txt"
-        )
-        os.close(fd)
-        precheck_tf = Path(precheck_tf_str)
-        precheck_tf.write_text("\n".join(install_lines) + "\n", encoding="utf-8")
-        active_req = precheck_tf
-        active_lines = install_lines
-
-    torch_lines, other_lines = _partition_torch_requirement_lines(active_lines)
-    split_torch = bool(torch_lines) and sys.platform != "darwin"
-
     torch_tf: Path | None = None
     other_tf: Path | None = None
     try:
+        if can_prune:
+            # pip 仍然只认识 requirements 文件；在 finally 生效后再写临时文件，
+            # 确保写入成功后任何后续异常都会清理掉它。
+            precheck_tf = _write_temp_requirements("easyai_missing_req_", install_lines)
+            active_req = precheck_tf
+            active_lines = install_lines
+
+        torch_lines, other_lines = _partition_torch_requirement_lines(active_lines)
+        split_torch = bool(torch_lines) and sys.platform != "darwin"
+
         if split_torch:
             # torch/torchvision/torchaudio 不走普通 PyPI 镜像。
             # 这里先按本机 CUDA/CPU 选择 PyTorch 官方 wheel index，再安装剩余依赖。
@@ -409,12 +433,7 @@ def install_plugin_requirements_txt(
                 idx_url,
                 idx_reason,
             )
-            fd_t, torch_tf_str = tempfile.mkstemp(
-                prefix="easyai_torch_req_", suffix=".txt"
-            )
-            os.close(fd_t)
-            torch_tf = Path(torch_tf_str)
-            torch_tf.write_text("\n".join(torch_lines) + "\n", encoding="utf-8")
+            torch_tf = _write_temp_requirements("easyai_torch_req_", torch_lines)
 
             cmd_torch = [
                 *base_cmd,
@@ -440,12 +459,7 @@ def install_plugin_requirements_txt(
             if not _has_non_comment_requirement(other_lines):
                 return _finish_install_result(("pip_ok", ""), pip_target)
 
-            fd_o, other_tf_str = tempfile.mkstemp(
-                prefix="easyai_other_req_", suffix=".txt"
-            )
-            os.close(fd_o)
-            other_tf = Path(other_tf_str)
-            other_tf.write_text("\n".join(other_lines) + "\n", encoding="utf-8")
+            other_tf = _write_temp_requirements("easyai_other_req_", other_lines)
 
             cmd_other = _apply_pip_index_and_extra_args(
                 [*base_cmd, "-r", str(other_tf)],

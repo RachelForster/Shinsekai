@@ -39,6 +39,7 @@ def install_runtime_dependency(module_name: str) -> dict[str, Any]:
     code, detail = _run_pip_install(
         _runtime_pip_install_cmd(package_name),
         cwd=Path.cwd(),
+        detail_max=4000,
         timeout_sec=900,
         on_output_line=output_lines.append,
     )

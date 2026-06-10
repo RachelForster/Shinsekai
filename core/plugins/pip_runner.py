@@ -92,6 +92,7 @@ def run_pip_install(
     cmd: list[str],
     *,
     cwd: Path,
+    detail_max: int = _PIP_DETAIL_MAX,
     timeout_sec: float,
     on_output_line: Callable[[str], None] | None = None,
 ) -> tuple[str, str]:
@@ -149,7 +150,7 @@ def run_pip_install(
         t_out.join(timeout=3.0)
         t_err.join(timeout=3.0)
         combined = "".join(combined_chunks)
-        tail = combined.strip()[-_PIP_DETAIL_MAX:]
+        tail = combined.strip()[-max(1, detail_max):]
         logger.warning("pip install timed out (timeout_sec=%s)", timeout_sec)
         return ("pip_timeout", tail or "pip install timed out")
 
@@ -159,6 +160,6 @@ def run_pip_install(
     if proc.returncode == 0:
         logger.info("pip install ok")
         return ("pip_ok", "")
-    tail = combined[-_PIP_DETAIL_MAX:] if combined else ""
+    tail = combined[-max(1, detail_max):] if combined else ""
     logger.warning("pip install failed (exit %s)", proc.returncode)
     return classify_pip_result(("pip_failed", tail or f"exit {proc.returncode}"))

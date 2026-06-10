@@ -12,6 +12,8 @@ from pathlib import Path
 # 这时再注入国内镜像当 primary index 会改变包解析来源。
 _PIP_INDEX_FLAGS = frozenset({"-i", "--index-url", "--extra-index-url", "--no-index"})
 _PIP_INDEX_FLAG_PREFIXES = ("--index-url=", "--extra-index-url=")
+_NESTED_REQUIREMENT_FLAGS = frozenset({"-r", "--requirement", "-c", "--constraint"})
+_NESTED_REQUIREMENT_FLAG_PREFIXES = ("--requirement=", "--constraint=")
 _PIP_ENV_OVERRIDES = ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_NO_INDEX", "PIP_CONFIG_FILE")
 _DEFAULT_OFFICIAL_INDEXES = ["https://pypi.org/simple/"]
 _DEFAULT_CHINA_INDEXES = [
@@ -39,7 +41,25 @@ def strip_inline_requirement_comment(raw_input: str) -> str:
     return re.split(r"[ \t]+#", raw_input, maxsplit=1)[0].strip()
 
 
+def _has_nested_requirement_reference(args: list[str]) -> bool:
+    for arg in args:
+        if arg in _NESTED_REQUIREMENT_FLAGS:
+            return True
+        if arg.startswith(_NESTED_REQUIREMENT_FLAG_PREFIXES):
+            return True
+        if arg.startswith(("-r", "-c")) and arg not in {"-r", "-c"}:
+            return True
+    return False
+
+
 def requirements_lines_define_index(lines: list[str]) -> bool:
+    """Return True when requirements should keep pip's own index resolution.
+
+    We intentionally do not follow nested ``-r`` / ``-c`` files here. If a plugin
+    delegates requirements to another file, that nested file may define a private
+    index, so injecting Shinsekai's mirror as the primary index would risk
+    changing the author's dependency source.
+    """
     for raw_line in lines:
         line = strip_inline_requirement_comment(raw_line)
         if not line:
@@ -48,7 +68,7 @@ def requirements_lines_define_index(lines: list[str]) -> bool:
             tokens = shlex.split(line)
         except ValueError:
             continue
-        if has_explicit_pip_index(tokens):
+        if has_explicit_pip_index(tokens) or _has_nested_requirement_reference(tokens):
             return True
     return False
 
@@ -76,8 +96,6 @@ def pip_index_urls(source_root: Path | None = None) -> list[str]:
     source = os.environ.get("SHINSEKAI_RUNTIME_SOURCE", "").strip().lower()
     if source == "official":
         return official
-    if source == "china":
-        return _ordered_urls(china, official)
     return _ordered_urls(china, official)
 
 
