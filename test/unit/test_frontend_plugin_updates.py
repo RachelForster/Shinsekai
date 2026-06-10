@@ -248,7 +248,7 @@ def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_
         "packageSource": "local",
         "packageStatus": "existing",
         "repo": "owner/demo",
-        "sourceLabel": "Existing plugin directory",
+        "sourceLabel": "已有插件目录",
         "sourceType": "existing",
     }
     assert calls == [("package", False), ("pip", package_root)]
