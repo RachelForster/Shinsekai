@@ -74,6 +74,7 @@
 }
 
 .plugin-card {
+  container-type: inline-size;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 0;
@@ -305,10 +306,12 @@
 
 .plugin-card__actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
   align-self: end;
   margin-top: auto;
+  min-width: 0;
+  overflow: hidden;
   padding-top: var(--space-1);
 }
 
@@ -515,46 +518,53 @@
 .plugin-market-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
 .plugin-market-card {
   display: grid;
   min-width: 0;
-  min-height: 244px;
+  min-height: 278px;
   gap: var(--space-3);
-  padding: 14px;
+  padding: var(--space-4);
+  overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(255 255 255 / 0.78), rgba(255 255 255 / 0.54)), var(--color-surface);
-  box-shadow: var(--shadow-sm);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  transition: border-color 120ms ease;
 }
 
-[data-theme="dark"] .plugin-market-card {
-  background: linear-gradient(180deg, rgba(36 30 42 / 0.9), rgba(24 21 30 / 0.72)), var(--color-surface);
+:root[data-color-scheme="dark"] .plugin-page {
+  --plugin-market-dark-surface-muted: color-mix(in oklch, var(--theme-accent) 13%, rgb(255 255 255 / 0.055));
+  --plugin-market-dark-surface-tinted: color-mix(in oklch, var(--theme-accent) 17%, rgb(255 255 255 / 0.07));
+  --plugin-market-dark-border-muted: color-mix(in oklch, var(--theme-accent) 28%, rgb(255 255 255 / 0.08));
+}
+
+.plugin-market-card:hover {
+  border-color: var(--color-border-hover);
 }
 
 .plugin-market-card__header,
 .plugin-market-install-summary .plugin-market-card__header {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  align-items: center;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: start;
   gap: var(--space-3);
   min-width: 0;
 }
 
 .plugin-market-card__logo {
   display: grid;
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--color-accent-border);
   border-radius: 12px;
   background: var(--color-accent-bg);
   color: var(--color-accent-primary);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .plugin-market-card__logo img {
@@ -580,9 +590,9 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: var(--color-text);
+  color: var(--color-accent-primary);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 650;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -650,8 +660,7 @@
 .plugin-market-card__foot {
   justify-content: space-between;
   margin-top: auto;
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--color-border-subtle);
+  padding-top: var(--space-1);
 }
 
 .plugin-market-card__source {
@@ -725,6 +734,53 @@
 
 .plugin-market-chip--muted {
   color: var(--color-text-subtle);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-card__logo {
+  background: var(--plugin-market-dark-surface-tinted);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-card__title-row h3 {
+  color: var(--color-accent-primary);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-badge,
+:root[data-color-scheme="dark"] .plugin-market-chip {
+  border-color: var(--plugin-market-dark-border-muted);
+  background: var(--plugin-market-dark-surface-muted);
+  color: var(--color-text-muted);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-badge--official {
+  border-color: var(--color-accent-border-strong);
+  background: color-mix(in oklch, var(--theme-accent) 14%, transparent);
+  color: var(--color-accent-primary);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-badge--safe,
+:root[data-color-scheme="dark"] .plugin-market-badge--trust-verified {
+  border-color: var(--color-success-border);
+  background: color-mix(in oklch, var(--color-success) 13%, transparent);
+  color: var(--color-success);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-badge--installed,
+:root[data-color-scheme="dark"] .plugin-market-badge--trust-community {
+  border-color: var(--color-info-border);
+  background: color-mix(in oklch, var(--color-info) 12%, transparent);
+  color: var(--color-info);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-badge--trust-pending {
+  border-color: var(--color-warning-border);
+  background: color-mix(in oklch, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-badge--trust-blocked {
+  border-color: var(--color-danger-border);
+  background: color-mix(in oklch, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
 }
 
 .plugin-market-install-dialog {
@@ -837,6 +893,26 @@
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+:root[data-color-scheme="dark"] .plugin-market-install-warning {
+  border-color: var(--color-info-border);
+  background: color-mix(in oklch, var(--color-info) 9%, transparent);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-install-warning[data-kind="pending"] {
+  border-color: var(--color-warning-border);
+  background: color-mix(in oklch, var(--color-warning) 9%, transparent);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-install-warning[data-kind="blocked"] {
+  border-color: var(--color-danger-border);
+  background: color-mix(in oklch, var(--color-danger) 10%, transparent);
+}
+
+:root[data-color-scheme="dark"] .plugin-market-package-grid div {
+  border-color: var(--plugin-market-dark-border-muted);
+  background: var(--plugin-market-dark-surface-muted);
 }
 
 @media (max-width: 720px) {
@@ -1087,5 +1163,26 @@
 
   .plugin-publisher-preview pre {
     min-height: 220px;
+  }
+}
+
+@container (max-width: 560px) {
+  .plugin-card__actions {
+    gap: var(--space-1);
+  }
+
+  .plugin-card__actions .button {
+    width: 34px;
+    min-width: 34px;
+    padding-inline: 0;
+  }
+
+  .plugin-card__actions .button__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }

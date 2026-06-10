@@ -78,13 +78,13 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
   const localErrors = useMemo(() => {
     const errors: string[] = [];
     if (form.desc.trim().length > MAX_DESC_CHARS) {
-      errors.push("简介最多 200 字符。");
+      errors.push(t("plugin.publisher.descTooLong"));
     }
     if (tagCount > 5) {
-      errors.push("标签最多 5 个。");
+      errors.push(t("plugin.publisher.tagsTooMany"));
     }
     return errors;
-  }, [form.desc, tagCount]);
+  }, [form.desc, tagCount, t]);
   const warnings = formatScanWarnings(scanResult);
 
   const updateForm = (field: keyof PublisherFormState, value: string) => {
@@ -95,7 +95,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
 
   const handleScan = async () => {
     if (!localPath.trim()) {
-      setServerErrors(["请选择本地源码路径。"]);
+      setServerErrors([t("plugin.publisher.localPathRequired")]);
       return;
     }
     setBusyAction("scan");
@@ -116,7 +116,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
       }));
       showToast({ kind: "success", title: t("plugin.publisher.scanDone") });
     } catch (error) {
-      setServerErrors([error instanceof Error ? error.message : "读取元数据失败。"]);
+      setServerErrors([error instanceof Error ? error.message : t("plugin.publisher.metadataReadFailed")]);
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : "",
@@ -140,7 +140,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
       }
       return result.ok;
     } catch (error) {
-      setServerErrors([error instanceof Error ? error.message : "校验失败。"]);
+      setServerErrors([error instanceof Error ? error.message : t("plugin.publisher.validateFailed")]);
       return false;
     } finally {
       setBusyAction(null);
@@ -155,7 +155,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
       setPayloadPreview(result.json);
       showToast({ kind: "success", title: t("plugin.publisher.copied") });
     } catch (error) {
-      setServerErrors([error instanceof Error ? error.message : "复制失败。"]);
+      setServerErrors([error instanceof Error ? error.message : t("common.operationFailed")]);
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : "",
@@ -175,7 +175,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
       await openExternal(result.issueUrl);
       showToast({ kind: "success", title: t("plugin.publisher.opened") });
     } catch (error) {
-      setServerErrors([error instanceof Error ? error.message : "生成 Issue 链接失败。"]);
+      setServerErrors([error instanceof Error ? error.message : t("plugin.publisher.issueUrlFailed")]);
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : "",
@@ -261,7 +261,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
             <TextInput
               autoComplete="off"
               onChange={(event) => updateForm("displayName", event.target.value)}
-              placeholder="Shinsekai Plugin"
+              placeholder={t("plugin.publisher.displayNamePlaceholder")}
               value={form.displayName}
             />
           </label>
@@ -297,7 +297,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
             <TextArea
               maxLength={MAX_DESC_CHARS + 80}
               onChange={(event) => updateForm("desc", event.target.value)}
-              placeholder="面向 Shinsekai 的示例插件，说明核心能力和适用场景。"
+              placeholder={t("plugin.publisher.descPlaceholder")}
               rows={4}
               value={form.desc}
             />
@@ -310,7 +310,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
             <TextInput
               autoComplete="off"
               onChange={(event) => updateForm("tags", event.target.value)}
-              placeholder="shinsekai, example"
+              placeholder={t("plugin.publisher.tagsPlaceholder")}
               value={form.tags}
             />
           </label>
@@ -319,7 +319,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
             <TextInput
               autoComplete="off"
               onChange={(event) => updateForm("socialLink", event.target.value)}
-              placeholder="你的 B 站、GitHub 主页或个人网站"
+              placeholder={t("plugin.publisher.socialLinkPlaceholder")}
               value={form.socialLink}
             />
           </label>
@@ -328,7 +328,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
         <aside className="plugin-publisher-preview" aria-label={t("plugin.publisher.preview")}>
           <div className="plugin-publisher-preview__header">
             <strong>{t("plugin.publisher.preview")}</strong>
-            <span>{tagCount} 个标签</span>
+            <span>{t("plugin.publisher.previewTagCount", { count: tagCount })}</span>
           </div>
           <pre>{previewJson}</pre>
           {[...localErrors, ...serverErrors].length ? (

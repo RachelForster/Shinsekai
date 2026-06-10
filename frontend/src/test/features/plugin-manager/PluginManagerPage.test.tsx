@@ -240,7 +240,7 @@ describe("PluginManagerPage", () => {
     const card = await findPluginCard("playwright browser");
     expect(card.querySelector(".plugin-card__title strong")).toHaveTextContent("playwright browser");
     expect(card.querySelector(".plugin-card__title .inline-status")).toHaveTextContent("playwright_browser");
-    expect(within(card).getByText("版本 0.1.0")).toBeInTheDocument();
+    expect(within(card).getByText("Version 0.1.0")).toBeInTheDocument();
   });
 
   it("uses raw registry display_name as the discovery card title when the bridge has not camel-cased it", async () => {
@@ -259,7 +259,7 @@ describe("PluginManagerPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Moondream Vision" })).toBeInTheDocument();
     expect(screen.getByText("moondream_vision")).toBeInTheDocument();
-    expect(screen.getByText("版本 0.2.0")).toBeInTheDocument();
+    expect(screen.getByText("Version 0.2.0")).toBeInTheDocument();
   });
 
   it("opens the shared install dialog for installed-plugin updates and clears the previous completed task", async () => {
@@ -275,7 +275,7 @@ describe("PluginManagerPage", () => {
 
     renderPage();
 
-    fireEvent.click(await within(await findPluginCard("Registry Display")).findByRole("button", { name: /可更新到/ }));
+    fireEvent.click(await within(await findPluginCard("Registry Display")).findByRole("button", { name: /Update to/ }));
     expect(await screen.findByRole("heading", { name: "Choose plugin version" })).toBeInTheDocument();
     expect(mockInstallPlugin).not.toHaveBeenCalled();
 
@@ -288,7 +288,7 @@ describe("PluginManagerPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(screen.queryByText("Previous install completed")).not.toBeInTheDocument());
 
-    fireEvent.click(await within(await findPluginCard("Registry Display")).findByRole("button", { name: /可更新到/ }));
+    fireEvent.click(await within(await findPluginCard("Registry Display")).findByRole("button", { name: /Update to/ }));
     expect(await screen.findByRole("heading", { name: "Choose plugin version" })).toBeInTheDocument();
     expect(screen.queryByText("Previous install completed")).not.toBeInTheDocument();
   });
@@ -313,7 +313,7 @@ describe("PluginManagerPage", () => {
     renderPage();
 
     const card = await findPluginCard("Registry Display");
-    expect(within(card).queryByRole("button", { name: /可更新到/ })).toBeNull();
+    expect(within(card).queryByRole("button", { name: /Update to/ })).toBeNull();
   });
 
   it("does not show an update action on the discover card when the installed package hash matches", async () => {
@@ -403,6 +403,6 @@ describe("PluginManagerPage", () => {
     renderPage();
 
     const card = await findPluginCard("Registry Display");
-    expect(await within(card).findByRole("button", { name: /可更新到/ })).toBeInTheDocument();
+    expect(await within(card).findByRole("button", { name: /Update to/ })).toBeInTheDocument();
   });
 });

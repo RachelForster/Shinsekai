@@ -549,7 +549,9 @@ export function PluginManagerPage() {
                 const updateSource = catalog ? catalogInstallSource(catalog) : "";
                 const updateAvailable = hasCatalogUpdate(catalog, plugin);
                 const updateVersion = versionLabel(catalog?.version);
-                const updateLabel = updateVersion ? `可更新到 ${updateVersion}` : "可更新";
+                const updateLabel = updateVersion
+                  ? t("plugin.updateBadge", { version: updateVersion })
+                  : t("plugin.updateBadgeUnknown");
                 const statusLabel = !plugin.enabled
                   ? t("plugin.status.disabled")
                   : loaded
@@ -576,7 +578,9 @@ export function PluginManagerPage() {
                           </span>
                         </div>
                         <div className="plugin-card__badges">
-                          <span className="plugin-card__badge">版本 {versionLabel(plugin.version) || "-"}</span>
+                          <span className="plugin-card__badge">
+                            {t("plugin.versionBadge", { version: versionLabel(plugin.version) || "-" })}
+                          </span>
                           {updateAvailable && updateSource ? (
                             <button
                               className="plugin-card__badge plugin-card__badge--update"
@@ -591,7 +595,7 @@ export function PluginManagerPage() {
                           ) : null}
                           {catalog?.lowestShinsekaiVersion ? (
                             <span className="plugin-card__badge plugin-card__badge--support">
-                              支持 {catalog.lowestShinsekaiVersion}
+                              {t("plugin.supportBadge", { version: catalog.lowestShinsekaiVersion })}
                             </span>
                           ) : null}
                         </div>
@@ -628,6 +632,7 @@ export function PluginManagerPage() {
                         disabled={pluginBusy || !pluginHasManifestEntry(plugin)}
                         icon={<Trash2 aria-hidden className="button__icon" />}
                         onClick={() => setPendingUninstall(plugin)}
+                        tooltip={t("plugin.action.uninstall")}
                         variant="danger"
                       >
                         {t("plugin.action.uninstall")}
@@ -637,6 +642,7 @@ export function PluginManagerPage() {
                         disabled={pluginBusy || !pluginHasManifestEntry(plugin)}
                         icon={<Power aria-hidden className="button__icon" />}
                         onClick={() => toggleMutation.mutate({ enabled: !plugin.enabled, id: pluginActionId(plugin) })}
+                        tooltip={plugin.enabled ? t("plugin.toggle.disable") : t("plugin.toggle.enable")}
                         variant={plugin.enabled ? "default" : "ghost"}
                       >
                         {plugin.enabled ? t("plugin.toggle.disable") : t("plugin.toggle.enable")}
@@ -645,9 +651,10 @@ export function PluginManagerPage() {
                         <Button
                           icon={<BookOpen aria-hidden className="button__icon" />}
                           onClick={() => openExternal(docsUrl)}
+                          tooltip={t("plugin.action.docs")}
                           variant="ghost"
                         >
-                          文档
+                          {t("plugin.action.docs")}
                         </Button>
                       ) : null}
                       {pluginSettingsPages(plugin).length || pluginToolsTabs(plugin).length ? (
@@ -655,6 +662,7 @@ export function PluginManagerPage() {
                           disabled={pluginBusy || !loaded}
                           icon={<Settings aria-hidden className="button__icon" />}
                           onClick={() => setDetailPlugin(plugin)}
+                          tooltip={t("plugin.action.viewConfig")}
                           variant="ghost"
                         >
                           {t("plugin.action.viewConfig")}

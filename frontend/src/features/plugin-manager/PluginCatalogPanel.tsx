@@ -107,9 +107,9 @@ function catalogAuthorLink(plugin: PluginCatalogItem) {
   return plugin.socialLink?.trim() || "";
 }
 
-function pluginVersionBadgeLabel(value: string | null | undefined) {
+function pluginVersionBadgeLabel(value: string | null | undefined, t: I18nT) {
   const version = (value ?? "").trim().replace(/^v/i, "");
-  return version ? `版本 ${version}` : "";
+  return version ? t("plugin.versionBadge", { version }) : "";
 }
 
 function hasOfficialPackage(plugin: PluginCatalogItem | null | undefined) {
@@ -162,27 +162,27 @@ function pluginTrustState(plugin: PluginCatalogItem | null | undefined): PluginT
   return "community";
 }
 
-function catalogTrustNotice(plugin: PluginCatalogItem | null | undefined) {
+function catalogTrustNotice(plugin: PluginCatalogItem | null | undefined, t: I18nT) {
   const state = pluginTrustState(plugin);
   if (state === "community") {
     return {
-      body: "该插件尚未经过人工复核，我们不能完全保证插件的稳定性和安全性。使用前请谨慎核查作者、仓库和权限来源。",
+      body: t("plugin.trust.communityBody"),
       kind: "community",
-      title: "Community 插件",
+      title: t("plugin.trust.communityTitle"),
     };
   }
   if (state === "pending") {
     return {
-      body: "该插件曾通过人工复核，但当前版本或提交仍在等待复核。建议确认更新内容与来源后再安装。",
+      body: t("plugin.trust.pendingBody"),
       kind: "pending",
-      title: "待复核版本",
+      title: t("plugin.trust.pendingTitle"),
     };
   }
   if (state === "blocked") {
     return {
-      body: "该插件已从索引下架或被标记为不建议安装。请刷新索引，或联系维护者确认后再处理。",
+      body: t("plugin.trust.blockedBody"),
       kind: "blocked",
-      title: "已下架",
+      title: t("plugin.trust.blockedTitle"),
     };
   }
   return null;
@@ -193,17 +193,18 @@ function catalogKey(plugin: PluginCatalogItem) {
 }
 
 function CatalogTrustBadge({ plugin }: { plugin: PluginCatalogItem }) {
+  const { t } = useI18n();
   const state = pluginTrustState(plugin);
   if (state === "verified") {
     return (
-      <span className="plugin-market-badge plugin-market-badge--trust-verified">
+      <span className="plugin-market-badge plugin-market-badge--trust-verified" title={t("plugin.trust.verifiedHint")}>
         <ShieldCheck aria-hidden size={13} />
         Verified
       </span>
     );
   }
   return (
-    <span className="plugin-market-badge plugin-market-badge--trust-community">
+    <span className="plugin-market-badge plugin-market-badge--trust-community" title={t("plugin.trust.communityHint")}>
       <Globe2 aria-hidden size={13} />
       Community
     </span>
@@ -230,7 +231,7 @@ export function PluginCatalogInstallDialog({
   const pluginKey = plugin ? catalogKey(plugin) : "";
   const officialPackage = hasOfficialPackage(plugin);
   const installDone = Boolean(plugin) && installMutation.isSuccess && !installMutation.isPending;
-  const installNotice = catalogTrustNotice(plugin);
+  const installNotice = catalogTrustNotice(plugin, t);
   const installAsUpdate = Boolean(plugin?.downloaded || plugin?.installed);
   const catalogTagsQuery = useQuery({
     enabled: Boolean(plugin?.repo) && !officialPackage,
@@ -321,7 +322,7 @@ export function PluginCatalogInstallDialog({
                 <div className="plugin-market-card__title-row">
                   <h3>{catalogDisplayName(plugin)}</h3>
                   {plugin.version ? (
-                    <span className="plugin-market-badge">{pluginVersionBadgeLabel(plugin.version)}</span>
+                    <span className="plugin-market-badge">{pluginVersionBadgeLabel(plugin.version, t)}</span>
                   ) : null}
                   <CatalogTrustBadge plugin={plugin} />
                 </div>
@@ -342,21 +343,21 @@ export function PluginCatalogInstallDialog({
             {officialPackage ? (
               <dl className="plugin-market-package-grid">
                 <div>
-                  <dt>来源</dt>
+                  <dt>{t("plugin.package.source")}</dt>
                   <dd>{plugin.packageSource?.toUpperCase() || "R2"}</dd>
                 </div>
                 <div>
-                  <dt>大小</dt>
+                  <dt>{t("plugin.package.size")}</dt>
                   <dd>{formatBytes(plugin.packageSize ?? plugin.size) || "-"}</dd>
                 </div>
                 <div>
-                  <dt>SHA256</dt>
+                  <dt>{t("plugin.package.sha256")}</dt>
                   <dd title={plugin.packageSha256 || plugin.sha256 || ""}>
                     {compactSha(plugin.packageSha256 || plugin.sha256) || "-"}
                   </dd>
                 </div>
                 <div>
-                  <dt>更新日期</dt>
+                  <dt>{t("plugin.package.updatedAt")}</dt>
                   <dd>{plugin.updatedAt ? plugin.updatedAt.slice(0, 10) : "-"}</dd>
                 </div>
               </dl>
@@ -625,11 +626,11 @@ export function PluginCatalogPanel({
             </span>
             <div className="plugin-market-card__version-row">
               {plugin.version ? (
-                <span className="plugin-card__badge">{pluginVersionBadgeLabel(plugin.version)}</span>
+                <span className="plugin-card__badge">{pluginVersionBadgeLabel(plugin.version, t)}</span>
               ) : null}
               {plugin.lowestShinsekaiVersion ? (
                 <span className="plugin-card__badge plugin-card__badge--support">
-                  支持 {plugin.lowestShinsekaiVersion}
+                  {t("plugin.supportBadge", { version: plugin.lowestShinsekaiVersion })}
                 </span>
               ) : null}
             </div>
@@ -638,7 +639,7 @@ export function PluginCatalogPanel({
 
         <p className="plugin-market-card__description">{catalogDescription(plugin) || plugin.repo || plugin.entry}</p>
 
-        <div className="plugin-market-card__badges" aria-label="插件元数据">
+        <div className="plugin-market-card__badges" aria-label={t("plugin.catalog.metadataLabel")}>
           {officialPackage ? (
             <span className="plugin-market-badge plugin-market-badge--official">
               <PackageCheck aria-hidden size={13} />
@@ -653,7 +654,7 @@ export function PluginCatalogPanel({
           {scanPassed ? (
             <span className="plugin-market-badge plugin-market-badge--safe">
               <ShieldCheck aria-hidden size={13} />
-              扫描通过
+              {t("plugin.catalog.securityScanPassed")}
             </span>
           ) : null}
           {installed ? (
@@ -714,7 +715,7 @@ export function PluginCatalogPanel({
         <div className="plugin-market-card__foot">
           <span className="plugin-market-card__source" title={plugin.repo || plugin.entry || ""}>
             {officialPackage
-              ? compactSha(plugin.packageSha256 || plugin.sha256) || "官方包体"
+              ? compactSha(plugin.packageSha256 || plugin.sha256) || t("plugin.catalog.officialPackage")
               : plugin.repo || plugin.entry}
           </span>
           <div className="inline-actions">
