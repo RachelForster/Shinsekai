@@ -235,6 +235,17 @@ class CompactManager:
             recent_messages = messages_to_compact[recent_start:]
         if not older_messages:
             return messages
+
+        # [MemorySystem] 触发所有已注册的精简前钩子（插件可在此阶段执行归档写入等操作）
+        try:
+            from sdk.register import PluginCapabilityRegistry
+            for hook in PluginCapabilityRegistry().compact_hooks:
+                try:
+                    hook(messages)
+                except Exception as e:
+                    logger.warning(f"精简前钩子执行失败（已跳过，不影响精简流程）: {e}")
+        except Exception:
+            pass
         
         # 准备压缩提示
         compact_prompt = self._create_compact_prompt(older_messages)

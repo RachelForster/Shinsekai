@@ -155,12 +155,38 @@ export interface PluginManifest {
 
 export interface PluginCatalogItem {
   author: string;
+  commitSha?: string;
   description: string;
+  displayName?: string;
+  downloadUrl?: string;
   downloaded: boolean;
   entry: string;
+  forks?: number;
+  id?: string;
   installed: boolean;
+  logo?: string;
   name: string;
+  packageR2Key?: string;
+  packageSha256?: string;
+  packageSize?: number | null;
+  packageSource?: string;
+  packageUrl?: string;
+  readmeUrl?: string;
   repo: string;
+  review?: Record<string, unknown>;
+  securityScan?: Record<string, unknown>;
+  sha256?: string;
+  lowestShinsekaiVersion?: string;
+  shortDescription?: string;
+  size?: number | null;
+  socialLink?: string;
+  sourceUrl?: string;
+  stars?: number;
+  tags?: string[];
+  trustLevel?: string;
+  updatedAt?: string;
+  verified?: boolean;
+  version?: string;
 }
 
 export type PluginUIPageKind = "settings" | "tools";
@@ -647,10 +673,17 @@ export interface TaskSnapshot<TResult = unknown> {
   cancelRequested?: boolean;
   createdAt: number;
   error?: string;
+  errorCode?: string;
+  errorDetail?: string;
+  errorUserMessage?: string;
+  fallbackAllowed?: boolean;
+  httpStatus?: number;
   id: string;
   kind: string;
   logs: string[];
   message: string;
+  notice?: string;
+  noticeKind?: "error" | "info" | "warning";
   phase: string;
   progress?: number | null;
   result?: TResult | null;
