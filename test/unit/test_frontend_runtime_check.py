@@ -23,6 +23,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
     script = textwrap.dedent(
         f"""
         import builtins
+        import importlib.metadata
         import json
         import sys
 
@@ -37,6 +38,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
             return real_import(name, globals, locals, fromlist, level)
 
         builtins.__import__ = guarded_import
+        importlib.metadata.version = lambda _name: "0.0.0"
 
         from frontend_bridge import runtime_check_report
 
