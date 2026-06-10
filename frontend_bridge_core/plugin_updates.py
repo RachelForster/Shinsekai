@@ -653,7 +653,7 @@ def _install_github_plugin_source(
         _append_task_log(state, task_id, line)
 
     pip_code, pip_detail = install_plugin_requirements_txt(plugin_root, on_output_line=_pip_line)
-    if pip_code in {"pip_failed", "pip_timeout", "pip_exception"}:
+    if pip_code in {"pip_failed", "pip_timeout", "pip_exception", "pip_conflict"}:
         detail = pip_detail or pip_code
         raise RuntimeError(f"插件依赖安装失败：{detail}")
 

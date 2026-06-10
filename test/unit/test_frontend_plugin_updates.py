@@ -384,3 +384,23 @@ def test_install_plugin_source_does_not_fallback_to_github_when_package_dependen
     assert task["errorUserMessage"] == "包体已通过校验，但依赖安装失败，请查看日志。"
     assert task["errorDetail"] == "dependency boom"
     assert task["fallbackAllowed"] is False
+
+
+def test_install_plugin_source_treats_github_dependency_conflicts_as_failures(
+    tmp_path,
+    monkeypatch,
+):
+    record = _registry_record(package_url="")
+    github_root = _plugin_root(tmp_path, "github-plugin")
+    monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
+    monkeypatch.setattr(
+        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        lambda *_args, **_kwargs: github_root,
+    )
+    monkeypatch.setattr(
+        "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
+        lambda *_args, **_kwargs: ("pip_conflict", "dependency conflict"),
+    )
+
+    with pytest.raises(RuntimeError, match="dependency conflict"):
+        _install_plugin_source(_state_with_task(), "task", "owner/demo")
