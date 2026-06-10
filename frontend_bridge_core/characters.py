@@ -7,6 +7,17 @@ from .media_utils import _optional_suffix_check, _path_namespace_list
 from .state import BridgeState, _jsonify
 
 
+def _validate_reference_audio(voice_path: str) -> None:
+    """Validate reference audio for TTS voice cloning (WAV only, 3.0–10.0 s)."""
+    if not voice_path.lower().endswith(".wav"):
+        raise ValueError("参考语音必须是 WAV 格式")
+    from sdk.ui.validators import audio_duration_between
+
+    ok, err = audio_duration_between(voice_path, 3.0, 10.0, "参考语音")
+    if not ok:
+        raise ValueError(err)
+
+
 def _as_character_config(character: Any) -> Any:
     from config.character_config import CharacterConfig
 
@@ -181,10 +192,14 @@ def _upload_sprite_voice(state: BridgeState, payload: dict[str, Any]) -> dict[st
     sprite_index = int(payload.get("spriteIndex") or 0)
     voice_path = str(payload.get("voicePath") or "").strip()
     voice_text = str(payload.get("voiceText") or "").strip()
+    voice_type = str(payload.get("voiceType") or "").strip().lower()
     if not voice_path:
         raise ValueError("voice path is required")
-    _validate_sprite_voice_duration(voice_path, voice_text)
-    message, _path = state.character_manager.upload_voice(name, sprite_index, voice_path, voice_text)
+    if voice_type == "reference":
+        _validate_reference_audio(voice_path)
+    elif voice_type != "preset" and voice_text.strip():
+        _validate_sprite_voice_duration(voice_path, voice_text)
+    message, _path = state.character_manager.upload_voice(name, sprite_index, voice_path, voice_text, voice_type)
     if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请选择") or message.startswith("请先"):
         raise RuntimeError(message)
     return _character_json_after_reload(state, name)
@@ -254,10 +269,28 @@ def _save_sprite_voice_text(state: BridgeState, payload: dict[str, Any]) -> dict
     character = _character_by_name(state, name)
     sprites = getattr(character, "sprites", []) or []
     if 0 <= sprite_index < len(sprites):
-        voice_path = _sprite_voice_path(sprites[sprite_index])
-        if voice_path and Path(voice_path).is_file():
-            _validate_sprite_voice_duration(voice_path, voice_text)
+        _s = sprites[sprite_index]
+        if hasattr(_s, "voice_type"):
+            _vt = _s.voice_type
+        else:
+            _vt = _s.get("voice_type") if isinstance(_s, dict) else None
+        if _vt != "preset":
+            voice_path = _sprite_voice_path(_s)
+            if voice_path and Path(voice_path).is_file():
+                _validate_sprite_voice_duration(voice_path, voice_text)
     message = state.character_manager.save_sprite_voice_text(name, sprite_index, voice_text)
+    if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _save_sprite_voice_type(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    sprite_index = int(payload.get("spriteIndex") or 0)
+    voice_type = str(payload.get("voiceType") or "").strip()
+    if not voice_type:
+        raise ValueError("voice type is required")
+    message = state.character_manager.save_sprite_voice_type(name, sprite_index, voice_type)
     if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
         raise RuntimeError(message)
     return _character_json_after_reload(state, name)

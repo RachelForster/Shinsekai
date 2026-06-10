@@ -134,6 +134,7 @@ describe("Character editor sections", () => {
         onSpriteTagChange={onSpriteTagChange}
         onSpriteVoiceTextBlur={onSpriteVoiceTextBlur}
         onSpriteVoiceTextChange={onSpriteVoiceTextChange}
+        onSpriteVoiceTypeChange={vi.fn()}
         pendingSpritePaths={["/tmp/new.webp"]}
         pendingVoicePath="/tmp/new.wav"
         selectedSprite={characterDraft.sprites[0]}
