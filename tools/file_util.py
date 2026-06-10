@@ -190,21 +190,27 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
             sprites = char_data.get('sprites') or []
             normalized_sprites = []
             for s in sprites if isinstance(sprites, list) else []:
-                if isinstance(s, dict):
+                # 统一转为 dict（Pydantic Sprite 对象需显式转换，否则 yaml.dump 可能丢失数据）
+                if hasattr(s, 'model_dump'):
+                    sprite_data = s.model_dump()
+                elif isinstance(s, dict):
                     sprite_data = dict(s)
-                    if sprite_data.get('path'):
-                        sprite_data['path'] = _safe_package_basename_or_legacy_absolute(
-                            sprite_data['path'], "sprite path"
-                        )
-                    else:
-                        sprite_data['path'] = ""
-                    if sprite_data.get('voice_path'):
-                        sprite_data['voice_path'] = _safe_package_basename_or_legacy_absolute(
-                            sprite_data['voice_path'], "voice_path"
-                        )
-                    normalized_sprites.append(sprite_data)
                 else:
-                    normalized_sprites.append(s)
+                    sprite_data = {"path": str(getattr(s, "path", ""))}
+                if sprite_data.get('path'):
+                    sprite_data['path'] = _safe_package_basename_or_legacy_absolute(
+                        sprite_data['path'], "sprite path"
+                    )
+                else:
+                    sprite_data['path'] = ""
+                if sprite_data.get('voice_path'):
+                    sprite_data['voice_path'] = _safe_package_basename_or_legacy_absolute(
+                        sprite_data['voice_path'], "voice_path"
+                    )
+                # 清理 voice_type 的 None 值，避免 YAML 中多余的 null
+                if 'voice_type' in sprite_data and sprite_data['voice_type'] is None:
+                    del sprite_data['voice_type']
+                normalized_sprites.append(sprite_data)
             if isinstance(sprites, list):
                 char_data['sprites'] = normalized_sprites
 

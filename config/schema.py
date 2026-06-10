@@ -38,6 +38,7 @@ class Sprite(BaseModel):
     path: FilePath = Field(..., description="立绘图片的文件路径")
     voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
+    voice_type: Optional[str] = Field(None, description="语音类型: preset 或 reference")
 
 class Character(BaseModel):
     """单个角色配置的实体模型"""

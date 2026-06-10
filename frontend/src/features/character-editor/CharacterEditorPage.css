@@ -172,6 +172,34 @@
   margin-top: var(--space-1);
 }
 
+/* ── Voice type selector ── */
+
+.voice-type-selector {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.radio-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.radio-row input[type="radio"] {
+  accent-color: var(--color-accent-primary);
+  cursor: pointer;
+}
+
+.field-row__hint--voice-ref {
+  margin: var(--space-1) 0 0;
+  font-size: 12px;
+  color: var(--color-accent-secondary);
+  line-height: 1.5;
+}
+
 /* ── Character memory ── */
 
 .memory-table {
