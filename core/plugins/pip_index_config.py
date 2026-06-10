@@ -6,7 +6,11 @@ import json
 import os
 from pathlib import Path
 
-_PIP_INDEX_FLAGS = frozenset({"-i", "--index-url", "--no-index"})
+# --extra-index-url 也算用户主动声明：只补 extra 源说明作者希望保持默认主源不变，
+# 这时再注入国内镜像当 primary index 会改变包解析来源。
+_PIP_INDEX_FLAGS = frozenset({"-i", "--index-url", "--extra-index-url", "--no-index"})
+_PIP_INDEX_FLAG_PREFIXES = ("--index-url=", "--extra-index-url=")
+_PIP_ENV_OVERRIDES = ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_NO_INDEX", "PIP_CONFIG_FILE")
 _DEFAULT_OFFICIAL_INDEXES = ["https://pypi.org/simple/"]
 _DEFAULT_CHINA_INDEXES = [
     "https://pypi.tuna.tsinghua.edu.cn/simple/",
@@ -20,7 +24,7 @@ def has_explicit_pip_index(args: list[str]) -> bool:
     for arg in args:
         if arg in _PIP_INDEX_FLAGS:
             return True
-        if arg.startswith("--index-url="):
+        if arg.startswith(_PIP_INDEX_FLAG_PREFIXES):
             return True
         if arg.startswith("-i") and arg != "-i":
             return True
@@ -39,7 +43,7 @@ def pip_index_args(*, primary_flag: str = "--index-url") -> list[str]:
 
 def pip_index_urls(source_root: Path | None = None) -> list[str]:
     """Return pip indexes for this install, preferring China mirrors by default."""
-    if os.environ.get("PIP_INDEX_URL") or os.environ.get("PIP_CONFIG_FILE"):
+    if any(os.environ.get(name) for name in _PIP_ENV_OVERRIDES):
         return []
 
     custom_urls = _configured_urls_from_env()

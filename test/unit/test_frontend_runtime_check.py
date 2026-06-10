@@ -253,6 +253,8 @@ def test_install_runtime_dependency_uses_manifest_china_index_by_default(monkeyp
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.delenv("PIP_INDEX_URL", raising=False)
+    monkeypatch.delenv("PIP_EXTRA_INDEX_URL", raising=False)
+    monkeypatch.delenv("PIP_NO_INDEX", raising=False)
     monkeypatch.delenv("PIP_CONFIG_FILE", raising=False)
     monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URL", raising=False)
     monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URLS", raising=False)

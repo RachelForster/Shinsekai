@@ -127,6 +127,8 @@ def test_install_plugin_requirements_uses_manifest_china_index_by_default(
     _write_requirements(plugin_root, "missing-package>=2\n")
     calls = _capture_pip_invocation(monkeypatch, installer)
     monkeypatch.delenv("PIP_INDEX_URL", raising=False)
+    monkeypatch.delenv("PIP_EXTRA_INDEX_URL", raising=False)
+    monkeypatch.delenv("PIP_NO_INDEX", raising=False)
     monkeypatch.delenv("PIP_CONFIG_FILE", raising=False)
     monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URL", raising=False)
     monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URLS", raising=False)
@@ -160,6 +162,47 @@ def test_install_plugin_requirements_does_not_add_env_index_when_requirements_ha
     assert result == ("pip_ok", "")
     cmd = calls[0]["cmd"]
     assert "https://mirror.example/simple" not in cmd
+
+
+def test_install_plugin_requirements_keeps_default_index_when_requirements_add_extra_index(
+    monkeypatch,
+    tmp_path,
+):
+    installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
+    _write_requirements(
+        plugin_root,
+        "--extra-index-url https://private.example/simple\nmissing-package>=2\n",
+    )
+    calls = _capture_pip_invocation(monkeypatch, installer)
+    monkeypatch.setenv("SHINSEKAI_PIP_INDEX_URL", "https://mirror.example/simple")
+
+    result = installer.install_plugin_requirements_txt(plugin_root)
+
+    assert result == ("pip_ok", "")
+    cmd = calls[0]["cmd"]
+    assert "https://mirror.example/simple" not in cmd
+    assert "--index-url" not in cmd
+
+
+def test_install_plugin_requirements_extra_pip_args_extra_index_suppresses_env_index(
+    monkeypatch,
+    tmp_path,
+):
+    installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
+    _write_requirements(plugin_root, "missing-package>=2\n")
+    calls = _capture_pip_invocation(monkeypatch, installer)
+    monkeypatch.setenv("SHINSEKAI_PIP_INDEX_URL", "https://env.example/simple")
+    monkeypatch.setenv(
+        "SHINSEKAI_PIP_INSTALL_ARGS",
+        "--extra-index-url=https://private.example/simple",
+    )
+
+    result = installer.install_plugin_requirements_txt(plugin_root)
+
+    assert result == ("pip_ok", "")
+    cmd = calls[0]["cmd"]
+    assert "--extra-index-url=https://private.example/simple" in cmd
+    assert "https://env.example/simple" not in cmd
 
 
 def test_install_plugin_requirements_shlex_parses_extra_pip_args(
