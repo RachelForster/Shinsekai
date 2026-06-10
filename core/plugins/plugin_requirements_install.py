@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import IO
 
 import importlib.metadata as importlib_metadata
 import logging
 import os
 import re
-import shlex
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from pathlib import Path
 
 from core.plugins.pip_index_config import (
-    has_explicit_pip_index as _has_explicit_pip_index,
-    pip_index_args as _configured_pip_index_args,
+    strip_inline_requirement_comment as _strip_inline_requirement_comment,
+)
+from core.plugins.pip_runner import (
+    apply_pip_index_and_extra_args as _apply_pip_index_and_extra_args,
+    pip_win_creationflags as _pip_win_creationflags,
+    run_pip_install as _run_pip_install,
 )
 
 try:
@@ -30,13 +31,8 @@ except Exception:  # pragma: no cover - fallback for minimal embedded runtimes.
 
 logger = logging.getLogger(__name__)
 
-_PIP_DETAIL_MAX = 1600
 _TORCH_PROJECT_NAMES = frozenset({"torch", "torchvision", "torchaudio"})
 _CUDA_VER_LINE_RE = re.compile(r"CUDA Version:\s*(\d+)\.(\d+)")
-_PIP_CONFLICT_RE = re.compile(
-    r"\b(conflict(?:ing)? dependencies|resolutionimpossible|cannot install|dependency conflict)\b",
-    re.IGNORECASE,
-)
 
 
 def frozen_release_root() -> Path | None:
@@ -117,10 +113,6 @@ def ensure_plugins_namespace_on_syspath() -> None:
         if s not in sys.path:
             sys.path.insert(0, s)
             logger.info("Prepended cwd for plugins namespace: %s", s)
-
-
-def _pip_win_creationflags() -> int:
-    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def _nvidia_smi_cuda_driver_version() -> tuple[int, int] | None:
@@ -230,50 +222,8 @@ def _pip_base_install_cmd(py: Path, pip_target: Path | None) -> list[str]:
     return cmd
 
 
-def _strip_inline_requirement_comment(raw_input: str) -> str:
-    if raw_input.lstrip().startswith("#"):
-        return ""
-    return re.split(r"[ \t]+#", raw_input, maxsplit=1)[0].strip()
-
-
 def _canonical_distribution_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).strip("-").lower()
-
-
-def _requirements_lines_define_index(lines: list[str]) -> bool:
-    for raw_line in lines:
-        line = _strip_inline_requirement_comment(raw_line)
-        if not line:
-            continue
-        try:
-            tokens = shlex.split(line)
-        except ValueError:
-            continue
-        if _has_explicit_pip_index(tokens):
-            return True
-    return False
-
-
-def _extra_pip_install_args() -> list[str]:
-    raw = os.environ.get("SHINSEKAI_PIP_INSTALL_ARGS", "").strip()
-    if not raw:
-        return []
-    return shlex.split(raw)
-
-
-def _apply_pip_index_and_extra_args(cmd: list[str], requirement_lines: list[str]) -> list[str]:
-    final_cmd = list(cmd)
-    extra_args = _extra_pip_install_args()
-    index_args = _configured_pip_index_args(primary_flag="--index-url")
-    if (
-        index_args
-        and not _has_explicit_pip_index(final_cmd)
-        and not _requirements_lines_define_index(requirement_lines)
-        and not _has_explicit_pip_index(extra_args)
-    ):
-        final_cmd.extend(index_args)
-    final_cmd.extend(extra_args)
-    return final_cmd
 
 
 def _looks_like_direct_reference(line: str) -> bool:
@@ -356,86 +306,10 @@ def _install_lines_after_precheck(lines: list[str]) -> tuple[bool, list[str]]:
     return True, install_lines
 
 
-def _classify_pip_result(result: tuple[str, str]) -> tuple[str, str]:
-    # 依赖求解冲突单独分类，前端可以提示“版本冲突”，而不是笼统显示 pip failed。
-    code, detail = result
-    if code == "pip_failed" and _PIP_CONFLICT_RE.search(detail or ""):
-        return ("pip_conflict", detail)
-    return result
-
-
-def _run_pip_install(
-    cmd: list[str],
-    *,
-    cwd: Path,
-    timeout_sec: float,
-    on_output_line: Callable[[str], None] | None,
-) -> tuple[str, str]:
-    """Run one pip subprocess; same return convention as :func:`install_plugin_requirements_txt`."""
-    pop_kw: dict[str, object] = {
-        "cwd": str(cwd),
-        "stdout": subprocess.PIPE,
-        "stderr": subprocess.PIPE,
-        "text": True,
-        "env": _pip_subprocess_env(),
-    }
-    flags = _pip_win_creationflags()
-    if sys.platform == "win32" and flags:
-        pop_kw["creationflags"] = flags
-    try:
-        proc = subprocess.Popen(cmd, **pop_kw)
-    except OSError as exc:
-        logger.warning("pip install could not run (cmd=%s): %s", cmd[:8], exc)
-        return ("pip_exception", str(exc))
-
-    combined_chunks: list[str] = []
-    lock = threading.Lock()
-
-    def relay(stream: IO[str] | None) -> None:
-        if stream is None:
-            return
-        try:
-            for line in iter(stream.readline, ""):
-                with lock:
-                    combined_chunks.append(line)
-                if on_output_line:
-                    on_output_line(line.rstrip("\r\n"))
-        finally:
-            stream.close()
-
-    t_out = threading.Thread(target=relay, args=(proc.stdout,))
-    t_err = threading.Thread(target=relay, args=(proc.stderr,))
-    t_out.daemon = True
-    t_err.daemon = True
-    t_out.start()
-    t_err.start()
-    try:
-        proc.wait(timeout=timeout_sec)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        t_out.join(timeout=3.0)
-        t_err.join(timeout=3.0)
-        combined = "".join(combined_chunks)
-        tail = combined.strip()[-_PIP_DETAIL_MAX:]
-        logger.warning("pip install timed out (timeout_sec=%s)", timeout_sec)
-        return ("pip_timeout", tail or "pip install timed out")
-
-    t_out.join()
-    t_err.join()
-    combined = "".join(combined_chunks).strip()
-    if proc.returncode == 0:
-        logger.info("pip install ok")
-        return ("pip_ok", "")
-    tail = combined[-_PIP_DETAIL_MAX:] if combined else ""
-    logger.warning("pip install failed (exit %s)", proc.returncode)
-    return ("pip_failed", tail or f"exit {proc.returncode}")
-
-
 def _finish_install_result(
     result: tuple[str, str],
     pip_target: Path | None,
 ) -> tuple[str, str]:
-    result = _classify_pip_result(result)
     if result[0] == "pip_ok" and pip_target is not None:
         ensure_plugin_site_packages_on_syspath()
     return result
@@ -464,6 +338,7 @@ def install_plugin_requirements_txt(
     - ``pip_ok`` — successful install (or pip reported nothing to do).
     - ``pip_skip_no_requirements`` — no ``requirements.txt``.
     - ``pip_failed`` — non-zero exit.
+    - ``pip_conflict`` — non-zero exit caused by a dependency resolution conflict.
     - ``pip_timeout`` — killed after ``timeout_sec``.
     - ``pip_exception`` — could not start subprocess (missing ``runtime/python.exe`` or pip).
 
@@ -606,10 +481,3 @@ def install_plugin_requirements_txt(
                     path.unlink(missing_ok=True)
                 except OSError:
                     pass
-
-
-def _pip_subprocess_env() -> dict[str, str]:
-    env = dict(os.environ)
-    env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
-    env.setdefault("PYTHONUTF8", "1")
-    return env

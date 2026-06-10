@@ -5,7 +5,6 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
-from types import SimpleNamespace
 
 
 def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
@@ -211,23 +210,27 @@ def test_runtime_core_requirements_include_bridge_startup_sdks():
     assert "Pillow" in names
 
 
+def _fake_runtime_pip_install(calls):
+    def fake_run_pip_install(cmd, *, cwd, timeout_sec, on_output_line=None):
+        calls.append(cmd)
+        return ("pip_ok", "")
+
+    return fake_run_pip_install
+
+
 def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkeypatch):
     from frontend_bridge_core import runtime_dependencies
 
     calls = []
 
-    def fake_run(cmd, **kwargs):
-        calls.append((cmd, kwargs))
-        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
-
     monkeypatch.setenv("SHINSEKAI_PIP_INDEX_URL", "https://mirror.example/simple")
     monkeypatch.setenv("SHINSEKAI_PIP_INSTALL_ARGS", "--timeout 60 --trusted-host mirror.example")
-    monkeypatch.setattr(runtime_dependencies.subprocess, "run", fake_run)
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
 
     result = runtime_dependencies.install_runtime_dependency("openai")
 
     assert result["packageName"] == "openai"
-    assert calls[0][0] == [
+    assert calls[0] == [
         sys.executable,
         "-m",
         "pip",
@@ -240,17 +243,12 @@ def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkey
         "--trusted-host",
         "mirror.example",
     ]
-    assert calls[0][1]["env"]["PYTHONUTF8"] == "1"
 
 
 def test_install_runtime_dependency_uses_manifest_china_index_by_default(monkeypatch):
     from frontend_bridge_core import runtime_dependencies
 
     calls = []
-
-    def fake_run(cmd, **kwargs):
-        calls.append(cmd)
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.delenv("PIP_INDEX_URL", raising=False)
     monkeypatch.delenv("PIP_EXTRA_INDEX_URL", raising=False)
@@ -260,7 +258,7 @@ def test_install_runtime_dependency_uses_manifest_china_index_by_default(monkeyp
     monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URLS", raising=False)
     monkeypatch.delenv("SHINSEKAI_PIP_INSTALL_ARGS", raising=False)
     monkeypatch.delenv("SHINSEKAI_RUNTIME_SOURCE", raising=False)
-    monkeypatch.setattr(runtime_dependencies.subprocess, "run", fake_run)
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
 
     runtime_dependencies.install_runtime_dependency("openai")
 
@@ -275,13 +273,9 @@ def test_install_runtime_dependency_does_not_add_index_when_pip_args_pick_one(mo
 
     calls = []
 
-    def fake_run(cmd, **kwargs):
-        calls.append(cmd)
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
-
     monkeypatch.setenv("SHINSEKAI_PIP_INDEX_URL", "https://mirror.example/simple")
     monkeypatch.setenv("SHINSEKAI_PIP_INSTALL_ARGS", "--index-url=https://custom.example/simple")
-    monkeypatch.setattr(runtime_dependencies.subprocess, "run", fake_run)
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
 
     runtime_dependencies.install_runtime_dependency("openai")
 
@@ -295,13 +289,9 @@ def test_install_runtime_dependency_does_not_add_index_when_pip_args_disable_ind
 
     calls = []
 
-    def fake_run(cmd, **kwargs):
-        calls.append(cmd)
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
-
     monkeypatch.setenv("SHINSEKAI_PIP_INDEX_URL", "https://mirror.example/simple")
     monkeypatch.setenv("SHINSEKAI_PIP_INSTALL_ARGS", "--no-index --find-links C:\\wheelhouse")
-    monkeypatch.setattr(runtime_dependencies.subprocess, "run", fake_run)
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
 
     runtime_dependencies.install_runtime_dependency("openai")
 
@@ -311,18 +301,28 @@ def test_install_runtime_dependency_does_not_add_index_when_pip_args_disable_ind
 
 
 def test_install_runtime_dependency_redacts_credential_urls_from_output(monkeypatch):
+    import io
+
+    from core.plugins import pip_runner
     from frontend_bridge_core import runtime_dependencies
 
-    def fake_run(cmd, **kwargs):
-        return SimpleNamespace(
-            returncode=0,
-            stdout="Looking in indexes: https://user:secret-token@mirror.example/simple",
-            stderr="",
-        )
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            self.stdout = io.StringIO(
+                "Looking in indexes: https://user:secret-token@mirror.example/simple\n"
+            )
+            self.stderr = io.StringIO("")
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            pass
 
     monkeypatch.setenv("SHINSEKAI_PIP_INDEX_URL", "https://user:secret-token@mirror.example/simple")
     monkeypatch.delenv("SHINSEKAI_PIP_INSTALL_ARGS", raising=False)
-    monkeypatch.setattr(runtime_dependencies.subprocess, "run", fake_run)
+    monkeypatch.setattr(pip_runner.subprocess, "Popen", FakePopen)
 
     result = runtime_dependencies.install_runtime_dependency("openai")
 

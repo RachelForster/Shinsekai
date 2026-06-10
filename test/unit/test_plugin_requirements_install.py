@@ -250,17 +250,35 @@ def test_install_plugin_requirements_classifies_pip_dependency_conflicts(
     monkeypatch,
     tmp_path,
 ):
+    import io
+
+    from core.plugins import pip_runner
+
     installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
-    _write_requirements(plugin_root, "a==1\nb==2\n")
+    _write_requirements(plugin_root, "pkg-a==1\npkg-b==2\n")
     conflict_detail = (
-        "ERROR: Cannot install a==1 and b==2 because these package versions "
+        "ERROR: Cannot install pkg-a==1 and pkg-b==2 because these package versions "
         "have conflicting dependencies."
     )
-    _capture_pip_invocation(monkeypatch, installer, result=("pip_failed", conflict_detail))
 
-    result = installer.install_plugin_requirements_txt(plugin_root)
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            self.stdout = io.StringIO(conflict_detail + "\n")
+            self.stderr = io.StringIO("")
+            self.returncode = 1
 
-    assert result == ("pip_conflict", conflict_detail)
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            pass
+
+    monkeypatch.setattr(pip_runner.subprocess, "Popen", FakePopen)
+
+    code, detail = installer.install_plugin_requirements_txt(plugin_root)
+
+    assert code == "pip_conflict"
+    assert "conflicting dependencies" in detail
 
 
 def test_install_plugin_requirements_falls_back_to_original_file_for_unsafe_pruning(

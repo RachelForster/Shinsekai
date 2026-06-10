@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 from pathlib import Path
 
 # --extra-index-url 也算用户主动声明：只补 extra 源说明作者希望保持默认主源不变，
@@ -27,6 +29,26 @@ def has_explicit_pip_index(args: list[str]) -> bool:
         if arg.startswith(_PIP_INDEX_FLAG_PREFIXES):
             return True
         if arg.startswith("-i") and arg != "-i":
+            return True
+    return False
+
+
+def strip_inline_requirement_comment(raw_input: str) -> str:
+    if raw_input.lstrip().startswith("#"):
+        return ""
+    return re.split(r"[ \t]+#", raw_input, maxsplit=1)[0].strip()
+
+
+def requirements_lines_define_index(lines: list[str]) -> bool:
+    for raw_line in lines:
+        line = strip_inline_requirement_comment(raw_line)
+        if not line:
+            continue
+        try:
+            tokens = shlex.split(line)
+        except ValueError:
+            continue
+        if has_explicit_pip_index(tokens):
             return True
     return False
 
