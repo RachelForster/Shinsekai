@@ -212,9 +212,9 @@ function normalizePreviewPluginSubmission(input: PluginSubmissionInput): PluginS
       .filter(Boolean)
       .slice(0, 5),
   };
-  const shinsekaiVersion = (input.lowest_shinsekai_version ?? "").trim();
-  if (shinsekaiVersion) {
-    submission.lowest_shinsekai_version = shinsekaiVersion;
+  const lowestShinsekaiVersion = (input.lowest_shinsekai_version ?? "").trim();
+  if (lowestShinsekaiVersion) {
+    submission.lowest_shinsekai_version = lowestShinsekaiVersion;
   }
   return submission;
 }

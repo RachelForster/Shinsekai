@@ -23,8 +23,8 @@ interface PublisherFormState {
   author: string;
   desc: string;
   displayName: string;
+  lowestShinsekaiVersion: string;
   repo: string;
-  shinsekaiVersion: string;
   socialLink: string;
   tags: string;
 }
@@ -33,8 +33,8 @@ const emptyForm: PublisherFormState = {
   author: "",
   desc: "",
   displayName: "",
+  lowestShinsekaiVersion: "",
   repo: "",
-  shinsekaiVersion: "",
   socialLink: "",
   tags: "",
 };
@@ -51,7 +51,7 @@ function buildSubmission(form: PublisherFormState): PluginSubmissionInput {
     author: form.author.trim(),
     desc: form.desc.trim(),
     display_name: form.displayName.trim(),
-    lowest_shinsekai_version: form.shinsekaiVersion.trim() || undefined,
+    lowest_shinsekai_version: form.lowestShinsekaiVersion.trim() || undefined,
     repo: form.repo.trim(),
     social_link: form.socialLink.trim(),
     tags: splitTags(form.tags),
@@ -108,8 +108,9 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
         author: result.author || current.author,
         desc: result.desc || current.desc,
         displayName: result.display_name || current.displayName,
+        lowestShinsekaiVersion:
+          result.lowest_shinsekai_version || result.shinsekai_version || current.lowestShinsekaiVersion,
         repo: result.repo || current.repo,
-        shinsekaiVersion: result.lowest_shinsekai_version || result.shinsekai_version || current.shinsekaiVersion,
         socialLink: result.social_link || current.socialLink,
         tags: result.tags?.length ? result.tags.join(", ") : current.tags,
       }));
@@ -283,12 +284,12 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
             />
           </label>
           <label className="form-field">
-            <span>{t("plugin.publisher.shinsekaiVersion")}</span>
+            <span>{t("plugin.publisher.lowestShinsekaiVersion")}</span>
             <TextInput
               autoComplete="off"
-              onChange={(event) => updateForm("shinsekaiVersion", event.target.value)}
+              onChange={(event) => updateForm("lowestShinsekaiVersion", event.target.value)}
               placeholder=">=0.2.0"
-              value={form.shinsekaiVersion}
+              value={form.lowestShinsekaiVersion}
             />
           </label>
           <label className="form-field plugin-publisher-form__wide">

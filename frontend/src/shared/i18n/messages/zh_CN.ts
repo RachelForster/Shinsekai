@@ -542,7 +542,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "plugin.publisher.repo": "GitHub 仓库",
   "plugin.publisher.scan": "读取元数据",
   "plugin.publisher.scanDone": "已从本地源码读取元数据",
-  "plugin.publisher.shinsekaiVersion": "最低支持 Shinsekai 版本",
+  "plugin.publisher.lowestShinsekaiVersion": "最低支持 Shinsekai 版本",
   "plugin.publisher.socialLink": "社交链接（可选）",
   "plugin.publisher.subtitle":
     "填写插件元数据，生成与插件市场一致的 Registry Issue Payload。本地源码路径只用于自动填表，不会被上传；最终仍由 GitHub CI 从仓库拉取源码打包。",

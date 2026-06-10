@@ -501,7 +501,7 @@ export type MessageKey =
   | "plugin.publisher.repo"
   | "plugin.publisher.scan"
   | "plugin.publisher.scanDone"
-  | "plugin.publisher.shinsekaiVersion"
+  | "plugin.publisher.lowestShinsekaiVersion"
   | "plugin.publisher.socialLink"
   | "plugin.publisher.subtitle"
   | "plugin.publisher.tags"
