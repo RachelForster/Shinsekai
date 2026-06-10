@@ -165,6 +165,7 @@ class LLMAdapterFactory:
         "Claude": ClaudeAdapter,
         "豆包": OpenAIAdapter,
         "通义千问": OpenAIAdapter,
+        "Ollama": OpenAIAdapter
     }
 
     @staticmethod
