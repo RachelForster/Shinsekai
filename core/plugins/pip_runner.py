@@ -57,7 +57,11 @@ def extra_pip_install_args() -> list[str]:
     raw = os.environ.get("SHINSEKAI_PIP_INSTALL_ARGS", "").strip()
     if not raw:
         return []
-    return shlex.split(raw)
+    try:
+        return shlex.split(raw)
+    except ValueError as exc:
+        logger.warning("Ignoring invalid SHINSEKAI_PIP_INSTALL_ARGS: %s", exc)
+        return []
 
 
 def apply_pip_index_and_extra_args(

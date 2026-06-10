@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 
 import pytest
 
@@ -81,6 +82,15 @@ def test_apply_pip_index_and_extra_args_respects_existing_intent(
     )
 
     assert "https://mirror.example/simple" not in cmd
+
+
+def test_extra_pip_install_args_ignores_invalid_env_and_logs(monkeypatch, caplog):
+    _clear_index_env(monkeypatch)
+    monkeypatch.setenv("SHINSEKAI_PIP_INSTALL_ARGS", '--trusted-host "mirror.example')
+    caplog.set_level(logging.WARNING, logger=pip_runner.logger.name)
+
+    assert pip_runner.extra_pip_install_args() == []
+    assert "Ignoring invalid SHINSEKAI_PIP_INSTALL_ARGS" in caplog.text
 
 
 def test_redact_url_credentials_masks_password_and_bare_tokens():
