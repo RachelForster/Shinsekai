@@ -557,6 +557,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "plugin.publisher.preview": "送信プレビュー",
   "plugin.publisher.previewTagCount": "{count} 個のタグ",
   "plugin.publisher.repo": "GitHub リポジトリ",
+  "plugin.publisher.requiredField": "{field}を入力してください。",
   "plugin.publisher.scan": "メタデータを読む",
   "plugin.publisher.scanDone": "ローカルソースからメタデータを読み込みました",
   "plugin.publisher.lowestShinsekaiVersion": "最低対応 Shinsekai バージョン",

@@ -81,7 +81,7 @@ def test_scan_local_plugin_normalizes_root_directory_name_to_lowercase_entry():
 def test_normalize_submission_normalizes_repo_url_and_serializes_contract_json():
     payload = valid_submission(
         display_name="  Demo Plugin  ",
-        repo="https://github.com/sample-owner/demo-plugin/",
+        repo="https://github.com/sample-owner/demo-plugin.git",
         tags="utility, voice, tools",
         social_link="  https://github.com/sample-owner  ",
     )
@@ -160,7 +160,6 @@ def test_normalize_submission_rejects_missing_required_fields(field):
         ({"desc": "x" * 201}, "desc must be 200 characters or fewer"),
         ({"tags": ["one", "two", "three", "four", "five", "six"]}, "at most 5 items"),
         ({"repo": "http://github.com/sample-owner/demo-plugin"}, "must use https://github.com"),
-        ({"repo": "https://github.com/sample-owner/demo-plugin.git"}, "must not end with .git"),
     ],
 )
 def test_normalize_submission_rejects_invalid_bounds_and_repo_urls(overrides, message):

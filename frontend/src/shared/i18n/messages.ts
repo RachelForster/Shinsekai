@@ -510,6 +510,7 @@ export type MessageKey =
   | "plugin.publisher.preview"
   | "plugin.publisher.previewTagCount"
   | "plugin.publisher.repo"
+  | "plugin.publisher.requiredField"
   | "plugin.publisher.scan"
   | "plugin.publisher.scanDone"
   | "plugin.publisher.lowestShinsekaiVersion"

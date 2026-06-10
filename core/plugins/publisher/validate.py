@@ -46,9 +46,10 @@ def normalize_github_repo_url(value: Any) -> str:
     parts = parsed.path.strip("/").split("/")
     if len(parts) != 2 or not all(SLUG_PART_RE.fullmatch(part) for part in parts):
         raise PluginSubmissionError("repo must use https://github.com/{owner}/{repo}.")
-    if parts[1].endswith(".git"):
-        raise PluginSubmissionError("repo URL must not end with .git.")
-    return f"https://github.com/{parts[0]}/{parts[1]}"
+    repo_name = parts[1][:-4] if parts[1].lower().endswith(".git") else parts[1]
+    if not repo_name or not SLUG_PART_RE.fullmatch(repo_name):
+        raise PluginSubmissionError("repo must use https://github.com/{owner}/{repo}.")
+    return f"https://github.com/{parts[0]}/{repo_name}"
 
 
 def normalize_tags(value: Any) -> list[str]:

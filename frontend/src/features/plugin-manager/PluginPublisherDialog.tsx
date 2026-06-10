@@ -58,6 +58,17 @@ function buildSubmission(form: PublisherFormState): PluginSubmissionInput {
   };
 }
 
+function RequiredLabel({ children }: { children: string }) {
+  return (
+    <>
+      {children}
+      <span aria-hidden className="plugin-publisher-form__required">
+        *
+      </span>
+    </>
+  );
+}
+
 function formatScanWarnings(scanResult: PluginLocalScanResult | null) {
   return scanResult?.warnings?.filter(Boolean) ?? [];
 }
@@ -77,6 +88,17 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
   const tagCount = submission.tags.length;
   const localErrors = useMemo(() => {
     const errors: string[] = [];
+    const requiredFields = [
+      { label: t("plugin.publisher.displayName"), value: form.displayName },
+      { label: t("plugin.publisher.author"), value: form.author },
+      { label: t("plugin.publisher.repo"), value: form.repo },
+      { label: t("plugin.publisher.desc"), value: form.desc },
+    ];
+    for (const field of requiredFields) {
+      if (!field.value.trim()) {
+        errors.push(t("plugin.publisher.requiredField", { field: field.label }));
+      }
+    }
     if (form.desc.trim().length > MAX_DESC_CHARS) {
       errors.push(t("plugin.publisher.descTooLong"));
     }
@@ -84,7 +106,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
       errors.push(t("plugin.publisher.tagsTooMany"));
     }
     return errors;
-  }, [form.desc, tagCount, t]);
+  }, [form.author, form.desc, form.displayName, form.repo, tagCount, t]);
   const warnings = formatScanWarnings(scanResult);
 
   const updateForm = (field: keyof PublisherFormState, value: string) => {
@@ -257,7 +279,9 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
       <div className="plugin-publisher-layout">
         <form className="plugin-publisher-form" onSubmit={(event) => event.preventDefault()}>
           <label className="form-field">
-            <span>{t("plugin.publisher.displayName")}</span>
+            <span>
+              <RequiredLabel>{t("plugin.publisher.displayName")}</RequiredLabel>
+            </span>
             <TextInput
               autoComplete="off"
               onChange={(event) => updateForm("displayName", event.target.value)}
@@ -266,7 +290,9 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
             />
           </label>
           <label className="form-field">
-            <span>{t("plugin.publisher.author")}</span>
+            <span>
+              <RequiredLabel>{t("plugin.publisher.author")}</RequiredLabel>
+            </span>
             <TextInput
               autoComplete="off"
               onChange={(event) => updateForm("author", event.target.value)}
@@ -275,7 +301,9 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
             />
           </label>
           <label className="form-field plugin-publisher-form__wide">
-            <span>{t("plugin.publisher.repo")}</span>
+            <span>
+              <RequiredLabel>{t("plugin.publisher.repo")}</RequiredLabel>
+            </span>
             <TextInput
               autoComplete="off"
               onChange={(event) => updateForm("repo", event.target.value)}
@@ -293,9 +321,11 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
             />
           </label>
           <label className="form-field plugin-publisher-form__wide">
-            <span>{t("plugin.publisher.desc")}</span>
+            <span>
+              <RequiredLabel>{t("plugin.publisher.desc")}</RequiredLabel>
+            </span>
             <TextArea
-              maxLength={MAX_DESC_CHARS + 80}
+              maxLength={MAX_DESC_CHARS}
               onChange={(event) => updateForm("desc", event.target.value)}
               placeholder={t("plugin.publisher.descPlaceholder")}
               rows={4}

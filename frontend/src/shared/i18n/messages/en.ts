@@ -560,6 +560,7 @@ export const enMessages: Record<MessageKey, string> = {
   "plugin.publisher.preview": "Submission preview",
   "plugin.publisher.previewTagCount": "{count} tags",
   "plugin.publisher.repo": "GitHub repository",
+  "plugin.publisher.requiredField": "{field} is required.",
   "plugin.publisher.scan": "Read metadata",
   "plugin.publisher.scanDone": "Metadata loaded from local source",
   "plugin.publisher.lowestShinsekaiVersion": "Lowest supported Shinsekai version",

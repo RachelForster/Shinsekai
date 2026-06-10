@@ -552,6 +552,9 @@ export function PluginManagerPage() {
                 const updateLabel = updateVersion
                   ? t("plugin.updateBadge", { version: updateVersion })
                   : t("plugin.updateBadgeUnknown");
+                const hasDocsLink = Boolean(docsUrl);
+                const hasPluginSettings = Boolean(pluginSettingsPages(plugin).length || pluginToolsTabs(plugin).length);
+                const actionCount = 2 + (hasDocsLink ? 1 : 0) + (hasPluginSettings ? 1 : 0);
                 const statusLabel = !plugin.enabled
                   ? t("plugin.status.disabled")
                   : loaded
@@ -626,7 +629,7 @@ export function PluginManagerPage() {
                         </span>
                       ) : null}
                     </div>
-                    <div className="plugin-card__actions">
+                    <div className="plugin-card__actions" data-action-count={actionCount}>
                       <Button
                         aria-label={t("plugin.action.uninstall")}
                         disabled={pluginBusy || !pluginHasManifestEntry(plugin)}
@@ -647,7 +650,7 @@ export function PluginManagerPage() {
                       >
                         {plugin.enabled ? t("plugin.toggle.disable") : t("plugin.toggle.enable")}
                       </Button>
-                      {docsUrl ? (
+                      {hasDocsLink ? (
                         <Button
                           icon={<BookOpen aria-hidden className="button__icon" />}
                           onClick={() => openExternal(docsUrl)}
@@ -657,7 +660,7 @@ export function PluginManagerPage() {
                           {t("plugin.action.docs")}
                         </Button>
                       ) : null}
-                      {pluginSettingsPages(plugin).length || pluginToolsTabs(plugin).length ? (
+                      {hasPluginSettings ? (
                         <Button
                           disabled={pluginBusy || !loaded}
                           icon={<Settings aria-hidden className="button__icon" />}

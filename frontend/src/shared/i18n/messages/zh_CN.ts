@@ -551,6 +551,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "plugin.publisher.preview": "提交预览",
   "plugin.publisher.previewTagCount": "{count} 个标签",
   "plugin.publisher.repo": "GitHub 仓库",
+  "plugin.publisher.requiredField": "请填写{field}。",
   "plugin.publisher.scan": "读取元数据",
   "plugin.publisher.scanDone": "已从本地源码读取元数据",
   "plugin.publisher.lowestShinsekaiVersion": "最低支持 Shinsekai 版本",
