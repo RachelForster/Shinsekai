@@ -107,6 +107,11 @@ function catalogAuthorLink(plugin: PluginCatalogItem) {
   return plugin.socialLink?.trim() || "";
 }
 
+function pluginVersionBadgeLabel(value: string | null | undefined) {
+  const version = (value ?? "").trim().replace(/^v/i, "");
+  return version ? `版本 ${version}` : "";
+}
+
 function hasOfficialPackage(plugin: PluginCatalogItem | null | undefined) {
   return Boolean(plugin?.packageUrl || plugin?.downloadUrl);
 }
@@ -316,7 +321,7 @@ export function PluginCatalogInstallDialog({
                 <div className="plugin-market-card__title-row">
                   <h3>{catalogDisplayName(plugin)}</h3>
                   {plugin.version ? (
-                    <span className="plugin-market-badge">v{plugin.version.replace(/^v/i, "")}</span>
+                    <span className="plugin-market-badge">{pluginVersionBadgeLabel(plugin.version)}</span>
                   ) : null}
                   <CatalogTrustBadge plugin={plugin} />
                 </div>
@@ -619,7 +624,9 @@ export function PluginCatalogPanel({
               {plugin.name}
             </span>
             <div className="plugin-market-card__version-row">
-              {plugin.version ? <span className="plugin-card__badge">v{plugin.version.replace(/^v/i, "")}</span> : null}
+              {plugin.version ? (
+                <span className="plugin-card__badge">{pluginVersionBadgeLabel(plugin.version)}</span>
+              ) : null}
               {plugin.lowestShinsekaiVersion ? (
                 <span className="plugin-card__badge plugin-card__badge--support">
                   支持 {plugin.lowestShinsekaiVersion}

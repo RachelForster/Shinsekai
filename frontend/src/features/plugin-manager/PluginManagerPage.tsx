@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, BookOpen, DownloadCloud, Power, RotateCcw, Send, Settings, Trash2 } from "lucide-react";
+import { ArrowUpCircle, BookOpen, Power, RotateCcw, Send, Settings, Trash2 } from "lucide-react";
 
 import { openExternal } from "../../entities/files/repository";
 import {
@@ -548,6 +548,8 @@ export function PluginManagerPage() {
                 const authorUrl = catalog?.socialLink?.trim() || "";
                 const updateSource = catalog ? catalogInstallSource(catalog) : "";
                 const updateAvailable = hasCatalogUpdate(catalog, plugin);
+                const updateVersion = versionLabel(catalog?.version);
+                const updateLabel = updateVersion ? `可更新到 ${updateVersion}` : "可更新";
                 const statusLabel = !plugin.enabled
                   ? t("plugin.status.disabled")
                   : loaded
@@ -569,21 +571,23 @@ export function PluginManagerPage() {
                             <strong>{displayTitle}</strong>
                             {secondaryTitle ? <span className="inline-status">{secondaryTitle}</span> : null}
                           </div>
-                          <span
-                            className="plugin-card__status"
-                            data-enabled={plugin.enabled && loaded}
-                            data-loaded={loaded}
-                          >
+                          <span className="plugin-card__status" data-enabled={plugin.enabled} data-loaded={loaded}>
                             {statusLabel}
                           </span>
                         </div>
                         <div className="plugin-card__badges">
-                          <span className="plugin-card__badge">版本 {plugin.version || "-"}</span>
-                          {updateAvailable && catalog?.version ? (
-                            <span className="plugin-card__badge plugin-card__badge--update">
+                          <span className="plugin-card__badge">版本 {versionLabel(plugin.version) || "-"}</span>
+                          {updateAvailable && updateSource ? (
+                            <button
+                              className="plugin-card__badge plugin-card__badge--update"
+                              disabled={installMutation.isPending}
+                              onClick={() => catalog && openCatalogInstallDialog(catalog)}
+                              title={updateLabel}
+                              type="button"
+                            >
                               <ArrowUpCircle aria-hidden size={13} />
-                              可更新到 v{versionLabel(catalog.version)}
-                            </span>
+                              {updateLabel}
+                            </button>
                           ) : null}
                           {catalog?.lowestShinsekaiVersion ? (
                             <span className="plugin-card__badge plugin-card__badge--support">
@@ -619,18 +623,8 @@ export function PluginManagerPage() {
                       ) : null}
                     </div>
                     <div className="plugin-card__actions">
-                      {updateAvailable && updateSource ? (
-                        <AsyncButton
-                          disabled={installMutation.isPending}
-                          icon={<DownloadCloud aria-hidden className="button__icon" />}
-                          loading={installMutation.isPending && installingSource === updateSource}
-                          onClick={() => catalog && openCatalogInstallDialog(catalog)}
-                          variant="primary"
-                        >
-                          {t("plugin.action.update")}
-                        </AsyncButton>
-                      ) : null}
                       <Button
+                        aria-label={t("plugin.action.uninstall")}
                         disabled={pluginBusy || !pluginHasManifestEntry(plugin)}
                         icon={<Trash2 aria-hidden className="button__icon" />}
                         onClick={() => setPendingUninstall(plugin)}
@@ -639,6 +633,7 @@ export function PluginManagerPage() {
                         {t("plugin.action.uninstall")}
                       </Button>
                       <Button
+                        aria-label={plugin.enabled ? t("plugin.toggle.disable") : t("plugin.toggle.enable")}
                         disabled={pluginBusy || !pluginHasManifestEntry(plugin)}
                         icon={<Power aria-hidden className="button__icon" />}
                         onClick={() => toggleMutation.mutate({ enabled: !plugin.enabled, id: pluginActionId(plugin) })}

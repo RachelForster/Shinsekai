@@ -75,10 +75,12 @@
 
 .plugin-card {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 0;
+  height: 278px;
   gap: var(--space-3);
-  align-content: start;
   padding: var(--space-4);
+  overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-surface-raised);
@@ -164,6 +166,7 @@
 
 .plugin-card__badge {
   display: inline-flex;
+  position: relative;
   max-width: 100%;
   align-items: center;
   gap: 4px;
@@ -173,15 +176,47 @@
   border-radius: 999px;
   background: var(--color-surface-muted);
   color: var(--color-text-muted);
+  cursor: default;
+  font: inherit;
   font-size: 11px;
   font-weight: 650;
   line-height: 1.2;
+  text-decoration: none;
 }
 
 .plugin-card__badge--update {
+  appearance: none;
   border-color: var(--color-warning-border);
   background: rgba(237 168 64 / 0.14);
   color: var(--color-warning);
+  cursor: pointer;
+}
+
+.plugin-card__badge--update::after {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--color-surface-raised);
+  border-radius: 999px;
+  background: var(--color-danger);
+  content: "";
+}
+
+.plugin-card__badge--update:hover {
+  border-color: var(--color-warning);
+  background: rgba(237 168 64 / 0.2);
+}
+
+.plugin-card__badge--update:focus-visible {
+  outline: 2px solid var(--color-warning);
+  outline-offset: 2px;
+}
+
+.plugin-card__badge--update:disabled {
+  cursor: progress;
+  opacity: 0.72;
 }
 
 .plugin-card__badge--support {
@@ -207,6 +242,12 @@
   background: var(--color-accent-bg);
 }
 
+.plugin-card__status[data-enabled="false"] {
+  border-color: var(--color-danger-border);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
 .plugin-card__status[data-loaded="false"][data-enabled="true"] {
   border-color: var(--color-warning-border);
   color: var(--color-warning);
@@ -214,15 +255,23 @@
 }
 
 .plugin-card__description {
+  display: -webkit-box;
+  min-height: 38px;
   margin: 0;
+  overflow: hidden;
   color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .plugin-card__meta {
   display: grid;
+  min-height: 0;
+  align-content: start;
   gap: 4px;
+  overflow: hidden;
   color: var(--color-text-muted);
   font-size: 12px;
 }
@@ -258,7 +307,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-1);
+  align-self: end;
+  margin-top: auto;
+  padding-top: var(--space-1);
+}
+
+.plugin-card__actions .button {
+  flex: 0 0 auto;
 }
 
 .plugin-page__actions {

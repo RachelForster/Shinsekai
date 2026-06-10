@@ -235,6 +235,7 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
             onPathChange={setLocalPath}
             pickLabel={t("plugin.publisher.localPath")}
             pickerBrowse={browseFiles}
+            pickerInitialPath="plugins"
             pickerMode="directory"
             pickerTitle={t("plugin.publisher.localPath")}
             readOnly
