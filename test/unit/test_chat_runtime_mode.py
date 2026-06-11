@@ -25,7 +25,9 @@ class _Config:
     def __init__(self):
         self.system_config = _SystemConfig()
         self.characters = []
-        self.background_list = []
+        self.background_list = [
+            SimpleNamespace(name="默认房间", sprites=[{"path": "asset://default-bg.png"}])
+        ]
 
 
 class _ConfigManager:
@@ -36,6 +38,9 @@ class _ConfigManager:
         return None
 
     def get_background_by_name(self, _name: str):
+        for background in self.config.background_list:
+            if background.name == _name:
+                return background
         return None
 
     def save_system_config(self):
@@ -100,6 +105,39 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(snapshot["runtimeMode"], "native")
         self.assertEqual(snapshot["dialogText"], "native started")
+
+    def test_chat_snapshot_keeps_transparent_background_empty(self):
+        state = SimpleNamespace(
+            chat_session={"backgroundName": "透明场景"},
+            chat_stream=None,
+            config_manager=_ConfigManager(),
+        )
+
+        snapshot = _chat_snapshot(state, "idle", "")
+
+        self.assertEqual(snapshot["backgroundPath"], "")
+
+    def test_chat_snapshot_does_not_fallback_empty_background_to_first_config_background(self):
+        state = SimpleNamespace(
+            chat_session={"backgroundName": ""},
+            chat_stream=None,
+            config_manager=_ConfigManager(),
+        )
+
+        snapshot = _chat_snapshot(state, "idle", "")
+
+        self.assertEqual(snapshot["backgroundPath"], "")
+
+    def test_chat_snapshot_uses_explicit_real_background(self):
+        state = SimpleNamespace(
+            chat_session={"backgroundName": "默认房间"},
+            chat_stream=None,
+            config_manager=_ConfigManager(),
+        )
+
+        snapshot = _chat_snapshot(state, "idle", "")
+
+        self.assertEqual(snapshot["backgroundPath"], "asset://default-bg.png")
 
     def test_launch_chat_skips_stream_session_in_native_mode(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)

@@ -259,7 +259,7 @@ export const sampleMcpTools: McpToolPreview[] = [
 ];
 
 export const sampleChatSnapshot: ChatSnapshot = {
-  backgroundPath: "/assets/system/picture/shinsekai.png",
+  backgroundPath: "",
   characterName: "Nanami",
   dialogText: "欢迎来到新世界。这里是 React 舞台预览，真实聊天事件会从 platform adapter 进入状态机。",
   historyEntries: [

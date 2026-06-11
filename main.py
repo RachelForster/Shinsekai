@@ -21,6 +21,29 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
+
+def _early_cli_option(name: str) -> str:
+    args = sys.argv[1:]
+    for index, arg in enumerate(args):
+        if arg == name and index + 1 < len(args):
+            return args[index + 1]
+        prefix = f"{name}="
+        if arg.startswith(prefix):
+            return arg[len(prefix):]
+    return ""
+
+
+_EARLY_STREAM_ENDPOINT = _early_cli_option("--stream-endpoint")
+_EARLY_STREAM_SINK = None
+if _EARLY_STREAM_ENDPOINT:
+    try:
+        from core.runtime.event_sink import WSClientSink
+
+        _EARLY_STREAM_SINK = WSClientSink(_EARLY_STREAM_ENDPOINT)
+        _EARLY_STREAM_SINK.emit({"type": "status.change", "status": "idle"})
+    except Exception:
+        _EARLY_STREAM_SINK = None
+
 if getattr(sys, "frozen", False):
     from core.bootstrap.frozen_log import init_frozen_stdio
 
@@ -163,8 +186,8 @@ def main():
     ensure_plugins_loaded(config)
 
     args = parse_sprite_args(tr_i18n)
-    stream_sink = None
-    if args.stream_endpoint:
+    stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None
+    if args.stream_endpoint and stream_sink is None:
         from core.runtime.event_sink import WSClientSink
 
         stream_sink = WSClientSink(args.stream_endpoint)
@@ -496,7 +519,7 @@ def main():
         workflow.start()
 
         init_sprite_path = args.init_sprite_path
-        if not init_sprite_path:
+        if not init_sprite_path and not is_transparent_background(args.bg):
             init_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
 
         if system_config_to_asr_lang(config.config.system_config) == "zh":
@@ -668,7 +691,7 @@ def main():
 
     init_sprite_path = args.init_sprite_path
     print(init_sprite_path)
-    if not init_sprite_path:
+    if not init_sprite_path and not is_transparent_background(args.bg):
         init_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
 
     if system_config_to_asr_lang(config.config.system_config) == "zh":

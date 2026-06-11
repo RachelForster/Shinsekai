@@ -38,6 +38,7 @@ from .templates import (
 )
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
+_TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
 _RUNTIME_CHAT_COMMANDS = {
     "change-voice-language",
     "clear-history",
@@ -54,6 +55,11 @@ _main_chat_process: subprocess.Popen[bytes] | None = None
 _main_chat_process_lock = threading.Lock()
 _main_chat_log_file: Any = None
 _SYSTEM_HISTORY_NAMES = COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
+
+
+def _is_transparent_background_name(name: str | None) -> bool:
+    value = str(name or "").strip()
+    return not value or value in {TRANSPARENT_BACKGROUND_NAME, _TRANSPARENT_BACKGROUND_ALIAS}
 
 
 def _chat_runtime_mode(state: BridgeState) -> str:
@@ -349,11 +355,13 @@ def _chat_session_media(state: BridgeState) -> tuple[str, str, list[dict[str, st
     character_name = str(state.chat_session.get("characterName") or "")
     background_name = str(state.chat_session.get("backgroundName") or "")
     character = state.config_manager.get_character_by_name(character_name) if character_name else None
-    background = state.config_manager.get_background_by_name(background_name) if background_name else None
+    background = (
+        None
+        if _is_transparent_background_name(background_name)
+        else state.config_manager.get_background_by_name(background_name)
+    )
     if character is None:
         character = config.characters[0] if config.characters else None
-    if background is None:
-        background = config.background_list[0] if config.background_list else None
     sprites = []
     if character and character.sprites:
         sprite = character.sprites[0]
