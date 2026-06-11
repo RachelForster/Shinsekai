@@ -327,6 +327,7 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.toolbar.resumeAsr": "Resume ASR",
   "chat.toolbar.reroll": "Retry reply",
   "chat.toolbar.skipSpeech": "Skip",
+  "chat.toolbar.tools": "Chat tools",
   "chat.theme.active": "Active",
   "chat.theme.apply": "Apply",
   "chat.theme.delete": "Delete",

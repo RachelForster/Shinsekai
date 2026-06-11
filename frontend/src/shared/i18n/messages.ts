@@ -317,6 +317,7 @@ export type MessageKey =
   | "chat.toolbar.resumeAsr"
   | "chat.toolbar.reroll"
   | "chat.toolbar.skipSpeech"
+  | "chat.toolbar.tools"
   | "chat.theme.active"
   | "chat.theme.apply"
   | "chat.theme.delete"

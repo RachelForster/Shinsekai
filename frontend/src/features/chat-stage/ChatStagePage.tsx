@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type MouseEvent, type SyntheticEvent } from "react";
-import { Copy, GripHorizontal, History, Languages, Maximize2, Mic, MicOff, Minus, RotateCcw, Send, SkipForward, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type SyntheticEvent } from "react";
+import { Copy, GripHorizontal, History, Languages, Maximize2, Mic, MicOff, Minus, MoreHorizontal, RotateCcw, Send, SkipForward, Trash2, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { closeChat, getChatHistory, getChatSnapshot, sendChatCommand, subscribeChatEvents } from "../../entities/chat/repository";
@@ -115,10 +115,15 @@ function transportStatusText(
   return t("chat.transport.connecting");
 }
 
-function BackgroundLayer({ hidden, path }: { hidden: boolean; path?: string }) {
+function BackgroundLayer({ hidden, path, transparent }: { hidden: boolean; path?: string; transparent: boolean }) {
   return (
-    <div aria-hidden={hidden} className={layerClassName("chat-stage__background", hidden)} hidden={hidden}>
-      <div aria-hidden className="chat-stage__fallback" />
+    <div
+      aria-hidden={hidden}
+      className={layerClassName("chat-stage__background", hidden)}
+      data-transparent={transparent ? "true" : "false"}
+      hidden={hidden}
+    >
+      {transparent ? null : <div aria-hidden className="chat-stage__fallback" />}
       {path ? <img alt="" onError={hideBrokenStageAsset} src={path} /> : null}
     </div>
   );
@@ -354,8 +359,10 @@ function FloatingToolbar({
   closeLabel,
   hidden,
   hideCloseButton,
+  open,
   onCloseSurface,
   onCommand,
+  onOpenChange,
   onOpenHistory,
   status,
   transportMode,
@@ -366,8 +373,10 @@ function FloatingToolbar({
   closeLabel: string;
   hidden: boolean;
   hideCloseButton: boolean;
+  open: boolean;
   onCloseSurface: () => void;
   onCommand: (command: ChatCommand) => void;
+  onOpenChange: (open: boolean) => void;
   onOpenHistory: () => void;
   status: string;
   transportMode: ChatTransportMode;
@@ -379,67 +388,102 @@ function FloatingToolbar({
     return null;
   }
   const transportText = transportStatusText(t, transportState, transportMode);
+  const closeTools = (event: FocusEvent<HTMLDivElement>) => {
+    const nextTarget = event.relatedTarget;
+    if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+      onOpenChange(false);
+    }
+  };
+  const closeToolsWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      onOpenChange(false);
+    }
+  };
   return (
     <div
       className="floating-toolbar"
+      data-open={open ? "true" : "false"}
       data-transport-mode={transportMode}
       data-transport-state={transportState}
+      onBlur={closeTools}
+      onKeyDown={closeToolsWithKeyboard}
     >
-      {hideCloseButton ? null : (
-        <IconButton label={closeLabel} onClick={onCloseSurface}>
-          <X aria-hidden className="icon-button__icon" />
-        </IconButton>
-      )}
-      <IconButton label={t("chat.toolbar.reroll")} onClick={() => onCommand({ type: "reroll" })}>
-        <RotateCcw aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.copyHistory")} onClick={() => onCommand({ type: "copy-history" })}>
-        <Copy aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.openHistory")} onClick={onOpenHistory}>
-        <History aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.clearHistory")} onClick={() => onCommand({ type: "clear-history" })}>
-        <Trash2 aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <ChatThemePicker />
-      <label className="floating-toolbar__voice">
-        <span className="visually-hidden">{t("template.field.voiceLanguage")}</span>
-        <Languages aria-hidden className="floating-toolbar__voice-icon" />
-        <Select
-          aria-label={t("template.field.voiceLanguage")}
-          className="floating-toolbar__voice-select"
-          onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
-          value={voiceLanguage}
+      <div className="floating-toolbar__summary">
+        <span className="floating-toolbar__meta">
+          <span className="floating-toolbar__transport">{transportText}</span>
+          <span className="floating-toolbar__status">{status}</span>
+        </span>
+        <IconButton
+          aria-controls="chat-stage-toolbar-panel"
+          aria-expanded={open}
+          className="floating-toolbar__menu-trigger"
+          label={t("chat.toolbar.tools")}
+          onClick={() => onOpenChange(!open)}
         >
-          {chatVoiceLanguages.map((option) => (
-            <option key={option.value} value={option.value}>
-              {t(option.labelKey)}
-            </option>
-          ))}
-        </Select>
-      </label>
-      <IconButton
-        label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
-        onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
+          <MoreHorizontal aria-hidden className="icon-button__icon" />
+        </IconButton>
+      </div>
+      <div
+        aria-hidden={!open}
+        className="floating-toolbar__panel"
+        hidden={!open}
+        id="chat-stage-toolbar-panel"
       >
-        {asrPaused ? (
-          <Mic aria-hidden className="icon-button__icon" />
-        ) : (
-          <MicOff aria-hidden className="icon-button__icon" />
-        )}
-      </IconButton>
-      <ToolbarButton
-        icon={<SkipForward aria-hidden className="button__icon" />}
-        onClick={() => onCommand({ type: "skip-speech" })}
-      >
-        {t("chat.toolbar.skipSpeech")}
-      </ToolbarButton>
-      <span className="floating-toolbar__meta">
-        <span className="floating-toolbar__transport">{transportText}</span>
-        <span className="floating-toolbar__status">{status}</span>
-      </span>
-      <PluginSlot slot="chat-toolbar" />
+        <div className="floating-toolbar__actions">
+          {hideCloseButton ? null : (
+            <IconButton label={closeLabel} onClick={onCloseSurface}>
+              <X aria-hidden className="icon-button__icon" />
+            </IconButton>
+          )}
+          <IconButton label={t("chat.toolbar.reroll")} onClick={() => onCommand({ type: "reroll" })}>
+            <RotateCcw aria-hidden className="icon-button__icon" />
+          </IconButton>
+          <IconButton label={t("chat.toolbar.copyHistory")} onClick={() => onCommand({ type: "copy-history" })}>
+            <Copy aria-hidden className="icon-button__icon" />
+          </IconButton>
+          <IconButton label={t("chat.toolbar.openHistory")} onClick={onOpenHistory}>
+            <History aria-hidden className="icon-button__icon" />
+          </IconButton>
+          <IconButton label={t("chat.toolbar.clearHistory")} onClick={() => onCommand({ type: "clear-history" })}>
+            <Trash2 aria-hidden className="icon-button__icon" />
+          </IconButton>
+          <ChatThemePicker />
+          <IconButton
+            label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+            onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
+          >
+            {asrPaused ? (
+              <Mic aria-hidden className="icon-button__icon" />
+            ) : (
+              <MicOff aria-hidden className="icon-button__icon" />
+            )}
+          </IconButton>
+          <ToolbarButton
+            className="floating-toolbar__skip"
+            icon={<SkipForward aria-hidden className="button__icon" />}
+            onClick={() => onCommand({ type: "skip-speech" })}
+          >
+            {t("chat.toolbar.skipSpeech")}
+          </ToolbarButton>
+        </div>
+        <label className="floating-toolbar__voice">
+          <span className="visually-hidden">{t("template.field.voiceLanguage")}</span>
+          <Languages aria-hidden className="floating-toolbar__voice-icon" />
+          <Select
+            aria-label={t("template.field.voiceLanguage")}
+            className="floating-toolbar__voice-select"
+            onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
+            value={voiceLanguage}
+          >
+            {chatVoiceLanguages.map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.labelKey)}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <PluginSlot slot="chat-toolbar" />
+      </div>
     </div>
   );
 }
@@ -610,6 +654,7 @@ export function ChatStagePage() {
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [toolbarOpen, setToolbarOpen] = useState(false);
   const [visibleDialogCharacters, setVisibleDialogCharacters] = useState(0);
   const { showToast } = useToast();
   const { t } = useI18n();
@@ -617,6 +662,7 @@ export function ChatStagePage() {
   const themeStyle = theme?.style ?? {};
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
+  const transparentBackground = !viewModel.backgroundPath;
   const eventSeqRef = useRef(0);
   eventSeqRef.current = state.eventSeq;
   const pendingAnimatedDialogKeyRef = useRef<string | null>(null);
@@ -635,6 +681,26 @@ export function ChatStagePage() {
     [dialogSource, visibleDialogCharacters],
   );
   const typingDialog = visibleDialogCharacters < dialogSource.totalCharacters;
+
+  useEffect(() => {
+    if (transparentBackground) {
+      document.documentElement.dataset.chatStageTransparent = "true";
+      document.body.dataset.chatStageTransparent = "true";
+    } else {
+      delete document.documentElement.dataset.chatStageTransparent;
+      delete document.body.dataset.chatStageTransparent;
+    }
+    return () => {
+      delete document.documentElement.dataset.chatStageTransparent;
+      delete document.body.dataset.chatStageTransparent;
+    };
+  }, [transparentBackground]);
+
+  useEffect(() => {
+    if (!viewModel.layers.toolbar) {
+      setToolbarOpen(false);
+    }
+  }, [viewModel.layers.toolbar]);
 
   useEffect(() => {
     let mounted = true;
@@ -766,9 +832,13 @@ export function ChatStagePage() {
 
   return (
     <>
-      <main className="chat-stage" style={themeStyle}>
+      <main className="chat-stage" data-background={transparentBackground ? "transparent" : "media"} style={themeStyle}>
         <StandaloneDesktopWindowControls hidden={!standaloneDesktopWindow} />
-        <BackgroundLayer hidden={!viewModel.layers.background} path={viewModel.backgroundPath} />
+        <BackgroundLayer
+          hidden={!viewModel.layers.background}
+          path={viewModel.backgroundPath}
+          transparent={transparentBackground}
+        />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer hidden={!viewModel.layers.sprites} sprites={viewModel.sprites} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
@@ -793,8 +863,10 @@ export function ChatStagePage() {
           closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
           hidden={!viewModel.layers.toolbar}
           hideCloseButton={standaloneDesktopWindow}
+          open={toolbarOpen}
           onCloseSurface={closeSurface}
           onCommand={sendCommand}
+          onOpenChange={setToolbarOpen}
           onOpenHistory={openHistoryDialog}
           status={viewModel.statusText}
           transportMode={viewModel.transportMode}

@@ -325,6 +325,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.toolbar.resumeAsr": "恢复识别",
   "chat.toolbar.reroll": "重试回复",
   "chat.toolbar.skipSpeech": "跳过",
+  "chat.toolbar.tools": "聊天工具",
   "chat.theme.active": "当前使用",
   "chat.theme.apply": "应用",
   "chat.theme.delete": "删除",

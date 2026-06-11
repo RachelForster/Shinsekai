@@ -331,6 +331,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.toolbar.resumeAsr": "ASR を再開",
   "chat.toolbar.reroll": "返答を再生成",
   "chat.toolbar.skipSpeech": "スキップ",
+  "chat.toolbar.tools": "チャットツール",
   "chat.theme.active": "適用中",
   "chat.theme.apply": "適用",
   "chat.theme.delete": "削除",

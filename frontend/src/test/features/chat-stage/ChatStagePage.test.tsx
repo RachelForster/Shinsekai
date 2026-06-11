@@ -89,6 +89,10 @@ function renderPage(initialEntries = ["/"]) {
   );
 }
 
+async function openToolbarMenu() {
+  fireEvent.click(await screen.findByRole("button", { name: "Chat tools" }));
+}
+
 describe("ChatStagePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -139,9 +143,22 @@ describe("ChatStagePage", () => {
     );
   });
 
+  it("keeps the stage transparent when the snapshot has no background path", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ backgroundPath: "" }));
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    expect(document.querySelector(".chat-stage")).toHaveAttribute("data-background", "transparent");
+    expect(document.querySelector(".chat-stage__background")).toHaveAttribute("data-transparent", "true");
+    expect(document.querySelector(".chat-stage__fallback")).toBeNull();
+    expect(document.body.dataset.chatStageTransparent).toBe("true");
+  });
+
   it("requires confirmation before clearing chat history", async () => {
     renderPage();
 
+    await openToolbarMenu();
     fireEvent.click(await screen.findByRole("button", { name: "Clear history" }));
     expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "clear-history" });
 
@@ -156,6 +173,7 @@ describe("ChatStagePage", () => {
 
     renderPage();
 
+    await openToolbarMenu();
     fireEvent.click(await screen.findByRole("button", { name: "Resume ASR" }));
 
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
@@ -165,6 +183,7 @@ describe("ChatStagePage", () => {
     renderPage();
 
     expect(await screen.findByText("Snapshot")).toBeInTheDocument();
+    await openToolbarMenu();
 
     fireEvent.click(await screen.findByRole("combobox"));
     fireEvent.click(screen.getByRole("option", { name: "English" }));
@@ -180,6 +199,7 @@ describe("ChatStagePage", () => {
   it("loads runtime history into the dialog and sends revert-history after confirmation", async () => {
     renderPage();
 
+    await openToolbarMenu();
     fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
 
     await waitFor(() => expect(mocks.getChatHistory).toHaveBeenCalledTimes(1));
@@ -379,6 +399,7 @@ describe("ChatStagePage", () => {
     await screen.findByText("聊天会话已结束。");
     expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
 
+    await openToolbarMenu();
     fireEvent.click(screen.getByRole("button", { name: "Resume ASR" }));
 
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
@@ -397,6 +418,7 @@ describe("ChatStagePage", () => {
 
     renderPage();
     await screen.findByText("Ready");
+    await openToolbarMenu();
     fireEvent.click(screen.getByRole("button", { name: "Close chat" }));
 
     await waitFor(() => expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1));
