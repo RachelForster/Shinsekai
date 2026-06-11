@@ -741,7 +741,11 @@ describe("http platform", () => {
     const platform = createHttpPlatform("http://127.0.0.1:8787");
     const catalog = await platform.plugins.catalog();
 
-    expect(catalog[0].repo).toBe("RachelForster/Shinsekai-Vision-Demo");
+    expect(catalog).toContainEqual(
+      expect.objectContaining({
+        repo: "RachelForster/Shinsekai-Vision-Demo",
+      }),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8787/api/plugins/registry",
       expect.objectContaining({

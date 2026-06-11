@@ -13,6 +13,7 @@ interface DialogProps {
   className?: string;
   closeLabel?: string;
   footer?: ReactNode;
+  headerActions?: ReactNode;
   onClose: () => void;
   open: boolean;
   title: string;
@@ -24,6 +25,7 @@ export function Dialog({
   className = "",
   closeLabel = "Close",
   footer,
+  headerActions,
   onClose,
   open,
   title,
@@ -64,9 +66,12 @@ export function Dialog({
           <h2 className="dialog__title" id={titleId}>
             {title}
           </h2>
-          <IconButton label={closeLabel} onClick={onClose} ref={closeButtonRef}>
-            <X aria-hidden className="icon-button__icon" />
-          </IconButton>
+          <div className="dialog__header-actions">
+            {headerActions}
+            <IconButton label={closeLabel} onClick={onClose} ref={closeButtonRef}>
+              <X aria-hidden className="icon-button__icon" />
+            </IconButton>
+          </div>
         </header>
         <div className={["dialog__body", bodyClassName].filter(Boolean).join(" ")}>{children}</div>
         {footer ? <footer className="dialog__footer">{footer}</footer> : null}

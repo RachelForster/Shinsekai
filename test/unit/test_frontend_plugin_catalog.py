@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from core.plugins.registry_catalog import RegistryPluginRecord
 from frontend_bridge_core.plugin_catalog import (
     _display_title_for_offline_plugin_entry,
+    _plugin_rows,
     _plugin_registry_rows,
     _resolve_loaded_plugin_for_manifest_entry,
 )
@@ -36,6 +37,79 @@ def test_resolve_loaded_plugin_for_manifest_entry_handles_manager_errors():
             raise RuntimeError("unavailable")
 
     assert _resolve_loaded_plugin_for_manifest_entry("anything", BrokenManager()) is None
+
+
+def test_plugin_rows_include_persisted_install_metadata(monkeypatch):
+    from core.plugins import plugin_host
+
+    plugin = SimpleNamespace(
+        plugin_author="Tester",
+        plugin_description="Demo description",
+        plugin_id="demo",
+        plugin_name="Demo Plugin",
+        plugin_version="0.1.0",
+    )
+    manager = SimpleNamespace(plugins=[plugin])
+    entry = f"{DemoPlugin.__module__}:{DemoPlugin.__qualname__}"
+
+    monkeypatch.setattr(plugin_host, "get_plugin_manager", lambda: manager)
+    monkeypatch.setattr(plugin_host, "read_plugin_manifest_items", lambda: [{"enabled": True, "entry": entry}])
+    monkeypatch.setattr(plugin_host, "infer_plugin_package_directory", lambda _entry: None)
+    monkeypatch.setattr(plugin_host, "collect_settings_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_tools_tab_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_chat_ui_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_frontend_config_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_frontend_page_contributions", lambda: [])
+    monkeypatch.setattr(
+        "core.plugins.registry_download.load_plugin_install_metadata",
+        lambda value: {"packageSha256": "abc123", "sourceLabel": "官方包体 (R2)"} if value == entry else {},
+    )
+
+    rows = _plugin_rows()
+
+    assert rows[0]["install"] == {"packageSha256": "abc123", "sourceLabel": "官方包体 (R2)"}
+
+
+def test_plugin_rows_fall_back_to_registry_author_when_manifest_author_is_missing(monkeypatch):
+    from core.plugins import plugin_host
+
+    entry = f"{DemoPlugin.__module__}:{DemoPlugin.__qualname__}"
+    plugin = SimpleNamespace(
+        plugin_author="",
+        plugin_description="Demo description",
+        plugin_id="demo",
+        plugin_name="Demo Plugin",
+        plugin_version="0.1.0",
+    )
+    manager = SimpleNamespace(plugins=[plugin])
+    record = RegistryPluginRecord(
+        id="demo",
+        name="demo",
+        display_name="Demo Plugin",
+        author="Registry Author",
+        repo="owner/demo",
+        description="Registry description",
+        short_description="Registry short description",
+        entry=entry,
+    )
+
+    monkeypatch.setattr(plugin_host, "get_plugin_manager", lambda: manager)
+    monkeypatch.setattr(plugin_host, "read_plugin_manifest_items", lambda: [{"enabled": True, "entry": entry}])
+    monkeypatch.setattr(plugin_host, "infer_plugin_package_directory", lambda _entry: None)
+    monkeypatch.setattr(plugin_host, "collect_settings_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_tools_tab_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_chat_ui_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_frontend_config_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_frontend_page_contributions", lambda: [])
+    monkeypatch.setattr(
+        "core.plugins.registry_download.load_plugin_install_metadata",
+        lambda value: {"entry": entry, "repo": "owner/demo"} if value == entry else {},
+    )
+    monkeypatch.setattr("core.plugins.registry_catalog.fetch_registry_plugins", lambda **_kwargs: [record])
+
+    rows = _plugin_rows()
+
+    assert rows[0]["author"] == "Registry Author"
 
 
 def test_plugin_registry_rows_expose_market_metadata(monkeypatch):

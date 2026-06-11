@@ -14,6 +14,9 @@ export type PluginView = "installed" | "discover" | "mcp";
 export type PluginConfigDraft = Record<string, unknown>;
 
 export function catalogInstallSource(item: PluginCatalogItem) {
+  if (item.packageUrl || item.downloadUrl) {
+    return (item.id || item.name).trim();
+  }
   return githubRepoSlug(item.repo) || item.repo.trim();
 }
 
