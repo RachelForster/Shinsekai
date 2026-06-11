@@ -34,17 +34,17 @@ ASSETS_DIR = "assets"
 
 #: 每个可视化块允许的属性。
 ALLOWED_VISUAL_PROPS = frozenset(
-    {"background", "borderColor", "borderRadius", "color", "padding", "boxShadow"}
+    {"background", "backgroundImage", "borderColor", "borderRadius", "color", "padding", "boxShadow"}
 )
 
 #: 每个可写 token 块允许的额外字段（在可视化属性之外）。
 EXTRA_BLOCK_PROPS = {
-    "dialog": frozenset({"backgroundImage", "widthPct", "offsetY"}),
+    "dialog": frozenset({"widthPct", "offsetY"}),
     "fileItem": frozenset({"active", "hover"}),
     "options": frozenset({"gap", "hover"}),
     "input": frozenset({"fieldBackground"}),
     "line": frozenset({"expanded", "hover"}),
-    "name": frozenset({"color"}),
+    "name": frozenset(),
 }
 
 #: tokens 顶层允许的块名（= 统一设计规范的全集）。
@@ -143,7 +143,12 @@ def _validate_visual_block(
         return out
     for key, value in block.items():
         if key in ALLOWED_VISUAL_PROPS:
-            if key == "padding":
+            if key == "backgroundImage":
+                if isinstance(value, str) and _is_safe_asset_ref(value):
+                    out[key] = value
+                else:
+                    errors.append(f"tokens.{name}.backgroundImage 必须是主题目录内相对路径")
+            elif key == "padding":
                 out[key] = _clamp_numeric("padding", value, errors, f"tokens.{name}.padding")
             elif isinstance(value, str) and _is_safe_css_value(value):
                 out[key] = value
@@ -300,11 +305,6 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
         block = tokens[block_name] if isinstance(tokens[block_name], dict) else {}
         # 额外字段语义校验
         if block_name == "dialog":
-            if "backgroundImage" in block:
-                if _is_safe_asset_ref(str(block["backgroundImage"])):
-                    out["backgroundImage"] = block["backgroundImage"]
-                else:
-                    errors.append("tokens.dialog.backgroundImage 必须是主题目录内相对路径")
             for nf in ("widthPct", "offsetY"):
                 if nf in block:
                     val = _clamp_numeric(nf, block[nf], errors, f"tokens.dialog.{nf}")
@@ -387,13 +387,24 @@ def _iter_asset_refs(manifest: Dict[str, Any]):
     if manifest.get("preview"):
         yield manifest["preview"]
     tokens = manifest.get("tokens", {})
-    if tokens.get("dialog", {}).get("backgroundImage"):
-        yield tokens["dialog"]["backgroundImage"]
+    yield from _iter_background_image_refs(tokens)
     if tokens.get("typewriter", {}).get("sound"):
         yield tokens["typewriter"]["sound"]
     for fnt in tokens.get("fonts", []) or []:
         if fnt.get("src"):
             yield fnt["src"]
+
+
+def _iter_background_image_refs(value: Any):
+    if isinstance(value, dict):
+        ref = value.get("backgroundImage")
+        if isinstance(ref, str) and ref:
+            yield ref
+        for child in value.values():
+            yield from _iter_background_image_refs(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _iter_background_image_refs(child)
 
 
 # --------------------------------------------------------------------------- #

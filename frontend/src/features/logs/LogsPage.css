@@ -62,7 +62,12 @@
   gap: 16px;
   margin: 0 auto;
   color: var(--logs-gal-text);
-  background: var(--logs-page-background, transparent);
+  background:
+    var(--logs-page-background-image, none),
+    var(--logs-page-background, transparent);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-toolbar,
@@ -71,7 +76,12 @@
   border: 1px solid var(--logs-panel-border-color, var(--logs-gal-border));
   border-radius: var(--logs-panel-border-radius, var(--logs-radius));
   color: var(--logs-panel-color, var(--logs-gal-text));
-  background: var(--logs-gal-panel);
+  background:
+    var(--logs-panel-background-image, none),
+    var(--logs-gal-panel);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-panel-box-shadow, 0 18px 44px rgba(0, 0, 0, 0.28));
   backdrop-filter: blur(18px) saturate(1.08);
 }
@@ -85,7 +95,12 @@
   border-color: var(--logs-badge-border-color, var(--logs-gal-border));
   border-radius: var(--logs-badge-border-radius, 7px);
   color: var(--logs-badge-color, var(--logs-gal-text));
-  background: var(--logs-badge-background, rgba(255, 255, 255, 0.05));
+  background:
+    var(--logs-badge-background-image, none),
+    var(--logs-badge-background, rgba(255, 255, 255, 0.05));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
@@ -162,7 +177,12 @@
 .logs-page .empty-state {
   min-height: 100%;
   color: var(--logs-code-color, var(--logs-gal-text));
-  background: var(--logs-code-background, var(--logs-gal-control));
+  background:
+    var(--logs-code-background-image, none),
+    var(--logs-code-background, var(--logs-gal-control));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-page .empty-state__title {
@@ -186,7 +206,12 @@
   padding: 10px var(--logs-page-gutter) 12px;
   border-bottom: 1px solid var(--logs-toolbar-border-color, var(--logs-gal-border));
   color: var(--logs-toolbar-color, var(--logs-gal-text));
-  background: var(--logs-toolbar-background, rgba(12, 13, 19, 0.88));
+  background:
+    var(--logs-toolbar-background-image, var(--logs-panel-background-image, none)),
+    var(--logs-toolbar-background, rgba(12, 13, 19, 0.88));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-toolbar-box-shadow, 0 14px 38px rgba(0, 0, 0, 0.25));
   backdrop-filter: blur(18px) saturate(1.08);
 }
@@ -253,7 +278,12 @@
   padding: var(--logs-toolbar-padding, var(--logs-space-4));
   border-color: var(--logs-toolbar-border-color, var(--logs-panel-border-color, var(--logs-gal-border)));
   color: var(--logs-toolbar-color, var(--logs-panel-color, var(--logs-gal-text)));
-  background: var(--logs-toolbar-background, var(--logs-gal-panel-raised));
+  background:
+    var(--logs-toolbar-background-image, var(--logs-panel-background-image, none)),
+    var(--logs-toolbar-background, var(--logs-gal-panel-raised));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-toolbar-box-shadow, var(--logs-panel-box-shadow, none));
 }
 
@@ -298,7 +328,12 @@
   padding: var(--logs-sidebar-padding, var(--logs-space-4));
   border-color: var(--logs-sidebar-border-color, var(--logs-panel-border-color, var(--logs-gal-border)));
   color: var(--logs-sidebar-color, var(--logs-panel-color, var(--logs-gal-text)));
-  background: var(--logs-sidebar-background, var(--logs-panel-background, var(--logs-gal-panel)));
+  background:
+    var(--logs-sidebar-background-image, var(--logs-panel-background-image, none)),
+    var(--logs-sidebar-background, var(--logs-panel-background, var(--logs-gal-panel)));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-sidebar-box-shadow, var(--logs-panel-box-shadow, none));
 }
 
@@ -316,7 +351,12 @@
   border: 1px solid var(--logs-source-border-color, var(--logs-accent-border));
   border-radius: var(--logs-radius);
   color: var(--logs-source-color, var(--logs-gal-accent));
-  background: var(--logs-source-background, var(--logs-accent-bg));
+  background:
+    var(--logs-source-background-image, none),
+    var(--logs-source-background, var(--logs-accent-bg));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-source-box-shadow, none);
 }
 
@@ -388,32 +428,57 @@
   border: 1px solid var(--logs-badge-border-color, var(--logs-gal-border));
   border-radius: var(--logs-badge-border-radius, 999px);
   color: var(--logs-badge-color, var(--logs-gal-muted));
-  background: var(--logs-badge-background, transparent);
+  background:
+    var(--logs-badge-background-image, none),
+    var(--logs-badge-background, transparent);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   font-size: 11px;
 }
 
 .logs-levels span[data-level="error"] {
   border-color: var(--logs-level-error-border-color, var(--logs-danger-border));
   color: var(--logs-level-error-color, var(--logs-danger));
-  background: var(--logs-level-error-background, var(--logs-danger-bg));
+  background:
+    var(--logs-level-error-background-image, none),
+    var(--logs-level-error-background, var(--logs-danger-bg));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-levels span[data-level="warn"] {
   border-color: var(--logs-level-warn-border-color, var(--logs-warning-border));
   color: var(--logs-level-warn-color, var(--logs-warning));
-  background: var(--logs-level-warn-background, var(--logs-warning-bg));
+  background:
+    var(--logs-level-warn-background-image, none),
+    var(--logs-level-warn-background, var(--logs-warning-bg));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-levels span[data-level="info"] {
   border-color: var(--logs-level-info-border-color, var(--logs-success-border));
   color: var(--logs-level-info-color, var(--logs-success));
-  background: var(--logs-level-info-background, var(--logs-accent-bg));
+  background:
+    var(--logs-level-info-background-image, none),
+    var(--logs-level-info-background, var(--logs-accent-bg));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-levels span[data-level="debug"] {
   border-color: var(--logs-level-debug-border-color, var(--logs-badge-border-color, var(--logs-gal-border)));
   color: var(--logs-level-debug-color, var(--logs-badge-color, var(--logs-gal-muted)));
-  background: var(--logs-level-debug-background, var(--logs-badge-background, transparent));
+  background:
+    var(--logs-level-debug-background-image, none),
+    var(--logs-level-debug-background, var(--logs-badge-background, transparent));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-file-list {
@@ -430,7 +495,12 @@
   border: 1px solid var(--logs-file-border-color, var(--logs-gal-border));
   border-radius: var(--logs-file-border-radius, var(--logs-radius));
   color: var(--logs-file-color, var(--logs-gal-text));
-  background: var(--logs-file-background, transparent);
+  background:
+    var(--logs-file-background-image, none),
+    var(--logs-file-background, transparent);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-file-box-shadow, none);
   cursor: pointer;
   font: inherit;
@@ -440,14 +510,24 @@
 .logs-file-list__item:hover:not(:disabled) {
   border-color: var(--logs-file-hover-border-color, var(--logs-border-hover));
   color: var(--logs-file-hover-color, var(--logs-file-color, var(--logs-gal-text)));
-  background: var(--logs-file-hover-background, var(--logs-surface-hover));
+  background:
+    var(--logs-file-hover-background-image, none),
+    var(--logs-file-hover-background, var(--logs-surface-hover));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-file-hover-box-shadow, var(--logs-file-box-shadow, none));
 }
 
 .logs-file-list__item[data-active="true"] {
   border-color: var(--logs-file-active-border-color, var(--logs-accent-border-strong));
   color: var(--logs-file-active-color, var(--logs-gal-accent));
-  background: var(--logs-file-active-background, var(--logs-accent-bg-hover));
+  background:
+    var(--logs-file-active-background-image, none),
+    var(--logs-file-active-background, var(--logs-accent-bg-hover));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-file-active-box-shadow, var(--logs-file-box-shadow, none));
 }
 
@@ -486,7 +566,12 @@
   padding: var(--logs-viewer-padding, 0);
   border-color: var(--logs-viewer-border-color, var(--logs-panel-border-color, var(--logs-gal-border)));
   color: var(--logs-viewer-color, var(--logs-panel-color, var(--logs-gal-text)));
-  background: var(--logs-viewer-background, var(--logs-panel-background, var(--logs-gal-panel)));
+  background:
+    var(--logs-viewer-background-image, var(--logs-panel-background-image, none)),
+    var(--logs-viewer-background, var(--logs-panel-background, var(--logs-gal-panel)));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-viewer-box-shadow, var(--logs-panel-box-shadow, none));
   overflow: hidden;
 }
@@ -496,7 +581,12 @@
   min-height: 540px;
   overflow: auto;
   color: var(--logs-code-color, var(--logs-gal-text));
-  background: var(--logs-code-background, var(--logs-gal-control));
+  background:
+    var(--logs-code-background-image, none),
+    var(--logs-code-background, var(--logs-gal-control));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   font-family: var(--logs-code-font-family, var(--logs-mono-font));
   font-size: 12px;
   line-height: 1.5;
@@ -509,25 +599,50 @@
   grid-template-columns: 58px minmax(0, 1fr);
   border-bottom: 1px solid var(--logs-line-border-color, color-mix(in oklch, var(--logs-gal-border) 58%, transparent));
   color: var(--logs-line-color, inherit);
-  background: var(--logs-line-background, transparent);
+  background:
+    var(--logs-line-background-image, none),
+    var(--logs-line-background, transparent);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__line[data-level="error"] {
-  background: var(--logs-level-error-background, color-mix(in oklch, var(--logs-danger-bg) 64%, transparent));
+  background:
+    var(--logs-level-error-background-image, none),
+    var(--logs-level-error-background, color-mix(in oklch, var(--logs-danger-bg) 64%, transparent));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__line[data-level="warn"] {
-  background: var(--logs-level-warn-background, color-mix(in oklch, var(--logs-warning-bg) 64%, transparent));
+  background:
+    var(--logs-level-warn-background-image, none),
+    var(--logs-level-warn-background, color-mix(in oklch, var(--logs-warning-bg) 64%, transparent));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__line:hover {
   color: var(--logs-line-hover-color, var(--logs-line-color, inherit));
-  background: var(--logs-line-hover-background, var(--logs-surface-hover));
+  background:
+    var(--logs-line-hover-background-image, none),
+    var(--logs-line-hover-background, var(--logs-surface-hover));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__line[data-expanded="true"] {
   color: var(--logs-line-expanded-color, var(--logs-line-hover-color, var(--logs-line-color, inherit)));
-  background: var(--logs-line-expanded-background, var(--logs-surface-hover));
+  background:
+    var(--logs-line-expanded-background-image, none),
+    var(--logs-line-expanded-background, var(--logs-surface-hover));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__number {
@@ -535,7 +650,12 @@
   padding: 9px 8px;
   border-right: 1px solid var(--logs-number-border-color, var(--logs-gal-border));
   color: var(--logs-number-color, var(--logs-gal-muted));
-  background: var(--logs-number-background, transparent);
+  background:
+    var(--logs-number-background-image, none),
+    var(--logs-number-background, transparent);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -597,7 +717,12 @@
   border: 1px solid var(--logs-badge-border-color, var(--logs-gal-border));
   border-radius: var(--logs-badge-border-radius, 6px);
   color: var(--logs-badge-color, var(--logs-gal-muted));
-  background: var(--logs-badge-background, transparent);
+  background:
+    var(--logs-badge-background-image, none),
+    var(--logs-badge-background, transparent);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   font-size: 11px;
   line-height: 1.35;
   white-space: nowrap;
@@ -612,31 +737,56 @@
 .logs-code__line[data-level="error"] .logs-code__level {
   border-color: var(--logs-level-error-border-color, var(--logs-danger-border));
   color: var(--logs-level-error-color, var(--logs-danger));
-  background: var(--logs-level-error-background, var(--logs-danger-bg));
+  background:
+    var(--logs-level-error-background-image, none),
+    var(--logs-level-error-background, var(--logs-danger-bg));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__line[data-level="warn"] .logs-code__level {
   border-color: var(--logs-level-warn-border-color, var(--logs-warning-border));
   color: var(--logs-level-warn-color, var(--logs-warning));
-  background: var(--logs-level-warn-background, var(--logs-warning-bg));
+  background:
+    var(--logs-level-warn-background-image, none),
+    var(--logs-level-warn-background, var(--logs-warning-bg));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__line[data-level="info"] .logs-code__level {
   border-color: var(--logs-level-info-border-color, var(--logs-success-border));
   color: var(--logs-level-info-color, var(--logs-success));
-  background: var(--logs-level-info-background, var(--logs-accent-bg));
+  background:
+    var(--logs-level-info-background-image, none),
+    var(--logs-level-info-background, var(--logs-accent-bg));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__line[data-level="debug"] .logs-code__level {
   border-color: var(--logs-level-debug-border-color, var(--logs-badge-border-color, var(--logs-gal-border)));
   color: var(--logs-level-debug-color, var(--logs-badge-color, var(--logs-gal-muted)));
-  background: var(--logs-level-debug-background, var(--logs-badge-background, transparent));
+  background:
+    var(--logs-level-debug-background-image, none),
+    var(--logs-level-debug-background, var(--logs-badge-background, transparent));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__line[data-level="default"] .logs-code__level {
   border-color: var(--logs-level-default-border-color, var(--logs-badge-border-color, var(--logs-gal-border)));
   color: var(--logs-level-default-color, var(--logs-badge-color, var(--logs-gal-muted)));
-  background: var(--logs-level-default-background, var(--logs-badge-background, transparent));
+  background:
+    var(--logs-level-default-background-image, none),
+    var(--logs-level-default-background, var(--logs-badge-background, transparent));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 .logs-code__logger {
@@ -651,7 +801,12 @@
   overflow: hidden;
   border-color: var(--logs-event-border-color, var(--logs-accent-border));
   color: var(--logs-event-color, var(--logs-gal-accent));
-  background: var(--logs-event-background, var(--logs-accent-bg));
+  background:
+    var(--logs-event-background-image, none),
+    var(--logs-event-background, var(--logs-accent-bg));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-event-box-shadow, none);
   text-overflow: ellipsis;
 }
@@ -711,7 +866,12 @@
   border: 1px solid var(--logs-detail-border-color, var(--logs-gal-border));
   border-radius: var(--logs-detail-border-radius, var(--logs-radius));
   color: var(--logs-detail-color, var(--logs-code-color, var(--logs-gal-text)));
-  background: var(--logs-detail-background, color-mix(in oklch, var(--logs-gal-panel) 82%, transparent));
+  background:
+    var(--logs-detail-background-image, none),
+    var(--logs-detail-background, color-mix(in oklch, var(--logs-gal-panel) 82%, transparent));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
   box-shadow: var(--logs-detail-box-shadow, none);
 }
 
@@ -728,7 +888,12 @@
 .logs-hidden-count {
   padding: var(--logs-space-3) var(--logs-space-4);
   border-top: 1px solid var(--logs-viewer-border-color, var(--logs-gal-border));
-  background: var(--logs-viewer-background, var(--logs-gal-panel));
+  background:
+    var(--logs-viewer-background-image, var(--logs-panel-background-image, none)),
+    var(--logs-viewer-background, var(--logs-gal-panel));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, auto;
 }
 
 @media (max-width: 1180px) {

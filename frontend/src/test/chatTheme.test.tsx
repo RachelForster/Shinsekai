@@ -103,7 +103,14 @@ describe("chat theme runtime", () => {
             color: "#ffffff",
             fieldBackground: "rgba(50,50,50,0.78)",
           },
-          name: { color: "#9c8cff" },
+          name: {
+            background: "rgba(28,22,48,0.92)",
+            backgroundImage: "assets/name-plate.png",
+            borderColor: "rgba(156,140,255,0.6)",
+            borderRadius: "6px",
+            boxShadow: "0 12px 28px rgba(0,0,0,0.36)",
+            color: "#9c8cff",
+          },
           options: {
             background: "rgba(50,50,50,0.68)",
             color: "#ffffff",
@@ -116,6 +123,7 @@ describe("chat theme runtime", () => {
             badge: { background: "rgba(255,255,255,0.06)", color: "#c8c2df" },
             code: {
               background: "rgba(8,9,14,0.9)",
+              backgroundImage: "assets/log-code.png",
               color: "#f3f0ff",
               fontFamily: "JetBrains Mono, ui-monospace, monospace",
             },
@@ -134,7 +142,7 @@ describe("chat theme runtime", () => {
               expanded: { background: "rgba(100,74,227,0.15)" },
               hover: { background: "rgba(100,74,227,0.1)" },
             },
-            panel: { background: "rgba(20,20,28,0.78)", borderRadius: "8px" },
+            panel: { background: "rgba(20,20,28,0.78)", backgroundImage: "assets/log-panel.png", borderRadius: "8px" },
           },
           typewriter: { cps: 240, sound: "assets/sfx/type.wav" },
         },
@@ -156,10 +164,17 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-toolbar-color"]).toBe("#ffffff");
     expect(resolved.style["--chat-send-background"]).toBe("#644ae3");
     expect(resolved.style["--chat-send-color"]).toBe("#ffffff");
+    expect(resolved.style["--chat-name-background"]).toBe("rgba(28,22,48,0.92)");
+    expect(resolved.style["--chat-name-background-image"]).toBe('url("asset://assets/name-plate.png")');
+    expect(resolved.style["--chat-name-border-color"]).toBe("rgba(156,140,255,0.6)");
+    expect(resolved.style["--chat-name-border-radius"]).toBe("6px");
+    expect(resolved.style["--chat-name-box-shadow"]).toBe("0 12px 28px rgba(0,0,0,0.36)");
     expect(resolved.style["--chat-name-color"]).toBe("#9c8cff");
     expect(resolved.style["--logs-panel-background"]).toBe("rgba(20,20,28,0.78)");
+    expect(resolved.style["--logs-panel-background-image"]).toBe('url("asset://assets/log-panel.png")');
     expect(resolved.style["--logs-panel-border-radius"]).toBe("8px");
     expect(resolved.style["--logs-code-background"]).toBe("rgba(8,9,14,0.9)");
+    expect(resolved.style["--logs-code-background-image"]).toBe('url("asset://assets/log-code.png")');
     expect(resolved.style["--logs-code-font-family"]).toBe("JetBrains Mono, ui-monospace, monospace");
     expect(resolved.style["--logs-line-hover-background"]).toBe("rgba(100,74,227,0.1)");
     expect(resolved.style["--logs-line-expanded-background"]).toBe("rgba(100,74,227,0.15)");
@@ -204,10 +219,19 @@ describe("chat theme runtime", () => {
             gap: 999,
             hover: { background: "rgba(50,50,50,0.9); position:absolute" },
           },
+          name: {
+            background: "rgba(25,25,30,0.9)",
+            backgroundImage: "../name.png",
+            color: "#ffffff",
+          },
           logs: {
             code: {
               background: "rgba(8,9,14,0.9)",
+              backgroundImage: "/tmp/log-code.png",
               fontFamily: 'Bad"; color:red',
+            },
+            panel: {
+              backgroundImage: "https://example.com/log-panel.png",
             },
             line: {
               hover: { background: "rgba(50,50,50,0.9); position:absolute" },
@@ -232,7 +256,11 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-field-background"]).toBeUndefined();
     expect(resolved.style["--chat-options-gap"]).toBe("36px");
     expect(resolved.style["--chat-option-hover-background"]).toBeUndefined();
+    expect(resolved.style["--chat-name-background"]).toBe("rgba(25,25,30,0.9)");
+    expect(resolved.style["--chat-name-background-image"]).toBeUndefined();
     expect(resolved.style["--logs-code-background"]).toBe("rgba(8,9,14,0.9)");
+    expect(resolved.style["--logs-code-background-image"]).toBeUndefined();
+    expect(resolved.style["--logs-panel-background-image"]).toBeUndefined();
     expect(resolved.style["--logs-code-font-family"]).toBeUndefined();
     expect(resolved.style["--logs-line-hover-background"]).toBeUndefined();
     expect(resolved.typewriter.cps).toBe(1);

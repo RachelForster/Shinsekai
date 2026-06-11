@@ -13,9 +13,11 @@ export type { ChatStageStyle } from "./chatChromeTheme";
 /** 当前 manifest schema 版本。后端校验与前端解析都以此为准。 */
 export const CHAT_THEME_SCHEMA = 1 as const;
 
-/** 一组可视化声明（颜色 / 边框 / 圆角 / 阴影 / 内边距），对应一块 UI 的 --chat-<block>-* 变量。 */
+/** 一组可视化声明（颜色 / 背景图 / 边框 / 圆角 / 阴影 / 内边距），对应一块 UI 的 --chat-<block>-* 变量。 */
 export interface VisualBlock {
   background?: string;
+  /** 背景图，主题目录内相对路径（沙箱）。 */
+  backgroundImage?: string;
   borderColor?: string;
   borderRadius?: string;
   color?: string;
@@ -37,8 +39,6 @@ export interface ChatThemeTokens {
   global?: { themeColor?: string; fontFamily?: string };
   fonts?: ChatThemeFontFace[];
   dialog?: VisualBlock & {
-    /** 对话框背景图，主题目录内相对路径（沙箱）。 */
-    backgroundImage?: string;
     /** 对话框宽度占比（vw），clamp 30–100。 */
     widthPct?: number;
     /** 垂直偏移（px），clamp -240–240。 */
@@ -48,7 +48,7 @@ export interface ChatThemeTokens {
   input?: VisualBlock & { fieldBackground?: string };
   toolbar?: VisualBlock;
   send?: VisualBlock;
-  name?: { color?: string };
+  name?: VisualBlock;
   logs?: LogsThemeTokens;
   /** 打字机：每秒字数 + 可选打字音效（主题目录内相对路径）。 */
   typewriter?: { cps?: number; sound?: string };
@@ -167,11 +167,22 @@ function setStyleVar(style: ChatStageStyle, name: `--${string}`, value: unknown)
   style[name] = value.trim();
 }
 
-function applyVisualBlock(style: ChatStageStyle, prefix: string, block?: VisualBlock | null) {
+function applyVisualBlock(
+  style: ChatStageStyle,
+  prefix: string,
+  block?: VisualBlock | null,
+  assetUrl?: (rel: string) => string,
+) {
   if (!block) {
     return;
   }
   setStyleVar(style, `--chat-${prefix}-background`, block.background);
+  if (assetUrl && block.backgroundImage) {
+    const backgroundImage = resolveThemeAssetUrl(block.backgroundImage, assetUrl);
+    if (backgroundImage) {
+      style[`--chat-${prefix}-background-image`] = `url("${backgroundImage}")`;
+    }
+  }
   setStyleVar(style, `--chat-${prefix}-border-color`, block.borderColor);
   setStyleVar(style, `--chat-${prefix}-border-radius`, block.borderRadius);
   setStyleVar(style, `--chat-${prefix}-color`, block.color);
@@ -181,11 +192,22 @@ function applyVisualBlock(style: ChatStageStyle, prefix: string, block?: VisualB
   }
 }
 
-function applyLogsVisualBlock(style: ChatStageStyle, prefix: string, block?: VisualBlock | null) {
+function applyLogsVisualBlock(
+  style: ChatStageStyle,
+  prefix: string,
+  block?: VisualBlock | null,
+  assetUrl?: (rel: string) => string,
+) {
   if (!block) {
     return;
   }
   setStyleVar(style, `--logs-${prefix}-background`, block.background);
+  if (assetUrl && block.backgroundImage) {
+    const backgroundImage = resolveThemeAssetUrl(block.backgroundImage, assetUrl);
+    if (backgroundImage) {
+      style[`--logs-${prefix}-background-image`] = `url("${backgroundImage}")`;
+    }
+  }
   setStyleVar(style, `--logs-${prefix}-border-color`, block.borderColor);
   setStyleVar(style, `--logs-${prefix}-border-radius`, block.borderRadius);
   setStyleVar(style, `--logs-${prefix}-color`, block.color);
@@ -280,13 +302,7 @@ export function resolveChatTheme(
   }
 
   const dialog = tokens.dialog;
-  applyVisualBlock(style, "dialog", dialog);
-  if (dialog?.backgroundImage) {
-    const dialogBackgroundImage = resolveThemeAssetUrl(dialog.backgroundImage, assetUrl);
-    if (dialogBackgroundImage) {
-      style["--chat-dialog-background-image"] = `url("${dialogBackgroundImage}")`;
-    }
-  }
+  applyVisualBlock(style, "dialog", dialog, assetUrl);
   if (typeof dialog?.widthPct === "number") {
     style["--chat-dialog-width"] = `min(${clampNumber(dialog.widthPct, 86, 30, 100)}vw, 980px)`;
   }
@@ -295,9 +311,9 @@ export function resolveChatTheme(
   }
 
   const options = tokens.options;
-  applyVisualBlock(style, "option", options);
-  applyVisualBlock(style, "option-hover", options?.hover);
-  if (options?.color) {
+  applyVisualBlock(style, "option", options, assetUrl);
+  applyVisualBlock(style, "option-hover", options?.hover, assetUrl);
+  if (isSafeCssValue(options?.color)) {
     style["--chat-options-color"] = options.color;
   }
   if (typeof options?.gap === "number") {
@@ -305,36 +321,33 @@ export function resolveChatTheme(
   }
 
   const input = tokens.input;
-  applyVisualBlock(style, "input", input);
+  applyVisualBlock(style, "input", input, assetUrl);
   if (isSafeCssValue(input?.fieldBackground)) {
     style["--chat-input-field-background"] = input.fieldBackground;
   }
 
-  applyVisualBlock(style, "toolbar", tokens.toolbar);
-  applyVisualBlock(style, "send", tokens.send);
-
-  if (isSafeCssValue(tokens.name?.color)) {
-    style["--chat-name-color"] = tokens.name.color;
-  }
+  applyVisualBlock(style, "toolbar", tokens.toolbar, assetUrl);
+  applyVisualBlock(style, "send", tokens.send, assetUrl);
+  applyVisualBlock(style, "name", tokens.name, assetUrl);
 
   const logs = resolveLogsThemeTokens(tokens);
-  applyLogsVisualBlock(style, "page", logs?.page);
-  applyLogsVisualBlock(style, "panel", logs?.panel);
-  applyLogsVisualBlock(style, "toolbar", logs?.toolbar);
-  applyLogsVisualBlock(style, "sidebar", logs?.sidebar);
-  applyLogsVisualBlock(style, "source", logs?.source);
-  applyLogsVisualBlock(style, "viewer", logs?.viewer);
-  applyLogsVisualBlock(style, "code", logs?.code);
-  applyLogsVisualBlock(style, "line", logs?.line);
-  applyLogsVisualBlock(style, "line-hover", logs?.line?.hover);
-  applyLogsVisualBlock(style, "line-expanded", logs?.line?.expanded);
-  applyLogsVisualBlock(style, "number", logs?.number);
-  applyLogsVisualBlock(style, "detail", logs?.detail);
-  applyLogsVisualBlock(style, "badge", logs?.badge);
-  applyLogsVisualBlock(style, "event", logs?.event);
-  applyLogsVisualBlock(style, "file", logs?.fileItem);
-  applyLogsVisualBlock(style, "file-hover", logs?.fileItem?.hover);
-  applyLogsVisualBlock(style, "file-active", logs?.fileItem?.active);
+  applyLogsVisualBlock(style, "page", logs?.page, assetUrl);
+  applyLogsVisualBlock(style, "panel", logs?.panel, assetUrl);
+  applyLogsVisualBlock(style, "toolbar", logs?.toolbar, assetUrl);
+  applyLogsVisualBlock(style, "sidebar", logs?.sidebar, assetUrl);
+  applyLogsVisualBlock(style, "source", logs?.source, assetUrl);
+  applyLogsVisualBlock(style, "viewer", logs?.viewer, assetUrl);
+  applyLogsVisualBlock(style, "code", logs?.code, assetUrl);
+  applyLogsVisualBlock(style, "line", logs?.line, assetUrl);
+  applyLogsVisualBlock(style, "line-hover", logs?.line?.hover, assetUrl);
+  applyLogsVisualBlock(style, "line-expanded", logs?.line?.expanded, assetUrl);
+  applyLogsVisualBlock(style, "number", logs?.number, assetUrl);
+  applyLogsVisualBlock(style, "detail", logs?.detail, assetUrl);
+  applyLogsVisualBlock(style, "badge", logs?.badge, assetUrl);
+  applyLogsVisualBlock(style, "event", logs?.event, assetUrl);
+  applyLogsVisualBlock(style, "file", logs?.fileItem, assetUrl);
+  applyLogsVisualBlock(style, "file-hover", logs?.fileItem?.hover, assetUrl);
+  applyLogsVisualBlock(style, "file-active", logs?.fileItem?.active, assetUrl);
   if (typeof logs?.code?.fontFamily === "string") {
     const fontFamily = quotedFontFamily(logs.code.fontFamily);
     if (fontFamily) {
@@ -342,7 +355,7 @@ export function resolveChatTheme(
     }
   }
   for (const level of ["debug", "default", "error", "info", "warn"] as const) {
-    applyLogsVisualBlock(style, `level-${level}`, logs?.levels?.[level]);
+    applyLogsVisualBlock(style, `level-${level}`, logs?.levels?.[level], assetUrl);
   }
 
   const fontFaces = (tokens.fonts ?? [])
