@@ -279,6 +279,13 @@ function applyStageEvent(state: ChatStageState, event: ChatStageEvent): ChatStag
         dialogText: htmlToText(event.fullHtml),
         eventSeq: Math.max(state.eventSeq, event.seq),
         error: undefined,
+        options: event.speaker.trim() || !event.isSystem ? [] : state.options,
+      });
+    case "user.display_name.change":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        userDisplayName: event.name.trim() || state.userDisplayName,
       });
     case "history.replace":
       return withResolvedLayers({

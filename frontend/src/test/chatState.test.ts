@@ -160,6 +160,21 @@ describe("chatStageReducer", () => {
     expect(viewModel.dialogText).toBe("这是一句用户输入");
   });
 
+  it("applies user display name events to the nameplate", () => {
+    const state = chatStageReducer(emptyChatState, {
+      event: {
+        name: "澪",
+        seq: 1,
+        ts: 1,
+        type: "user.display_name.change",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(buildChatStageViewModel(state).userDisplayName).toBe("澪");
+  });
+
   it("tracks transport state separately from business runtime status", () => {
     const hydrated = chatStageReducer(emptyChatState, {
       snapshot: {
@@ -291,10 +306,26 @@ describe("chatStageReducer", () => {
     expect(withOptions.options).toEqual(["继续"]);
     expect(withOptions.layers.options).toBe(true);
 
-    const cleared = chatStageReducer(withOptions, {
+    const firstLine = chatStageReducer(withOptions, {
       event: {
+        color: "#84C2D5",
+        fullHtml: "<p><b>旁白</b>：正式首句</p>",
+        isSystem: true,
         seq: 3,
+        speaker: "旁白",
         ts: 3,
+        type: "dialog.end",
+        v: 1,
+      },
+      type: "event",
+    });
+    expect(firstLine.options).toEqual([]);
+    expect(firstLine.layers.options).toBe(false);
+
+    const cleared = chatStageReducer(firstLine, {
+      event: {
+        seq: 4,
+        ts: 4,
         type: "options.clear",
         v: 1,
       },
@@ -305,8 +336,8 @@ describe("chatStageReducer", () => {
 
     const hidden = chatStageReducer(cleared, {
       event: {
-        seq: 4,
-        ts: 4,
+        seq: 5,
+        ts: 5,
         type: "busy.hide",
         v: 1,
       },

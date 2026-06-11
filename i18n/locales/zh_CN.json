@@ -667,6 +667,7 @@
     "bgm_block_header": "BGM说明：\n",
     "bgm_count": "现在有{n}个可用BGM：\n",
     "r_format": "格式严格：输出内容必须严格且仅为 JSON 格式，不得包含任何附加的解释、说明或问候语。",
+    "r_user_display_name_tool": "用户名牌：若用户情景或系统设定明确给出用户姓名/称呼/希望被叫的名字，必须在首句可见对话前调用 set_user_display_name(name=...) 设置名牌；不得凭推测设置。",
     "r_cname": "角色名限制：character_name 字段只能是以下之一：{names} 以及其他可能出现的人物名, 或者固定关键字：{cot_part}{fixed_roles}{opt_scene}{opt_bgm}{opt_cg}。",
     "r_sprite": "立绘规范：sprite 字段必须填写一个两位数字代号（例如 01, 02），并根据当前台词语气和情绪自动选择最合适的立绘。",
     "r_non_sprite": "非立绘角色：当 character_name 为 {fixed_roles_non_sprite} 之一时，sprite 字段必须固定为 -1。",

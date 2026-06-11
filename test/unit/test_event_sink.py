@@ -89,6 +89,57 @@ class EventSinkSnapshotTests(unittest.TestCase):
         self.assertEqual(next_snapshot.get("notificationText"), "")
         self.assertEqual(next_snapshot.get("status"), "idle")
 
+    def test_user_display_name_change_updates_snapshot(self):
+        snapshot = make_empty_chat_snapshot()
+
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 6,
+                "ts": 6,
+                "type": "user.display_name.change",
+                "name": "澪",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(next_snapshot.get("userDisplayName"), "澪")
+
+    def test_dialog_end_clears_start_options_after_first_real_line(self):
+        snapshot = make_empty_chat_snapshot()
+        snapshot["options"] = ["开始"]
+
+        welcome_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 6,
+                "ts": 6,
+                "type": "dialog.end",
+                "speaker": "",
+                "color": "#84C2D5",
+                "isSystem": True,
+                "fullHtml": "<p>欢迎</p>",
+                "v": 1,
+            },
+        )
+        self.assertEqual(welcome_snapshot.get("options"), ["开始"])
+
+        next_snapshot = fold_event_into_snapshot(
+            welcome_snapshot,
+            {
+                "seq": 7,
+                "ts": 7,
+                "type": "dialog.end",
+                "speaker": "旁白",
+                "color": "#84C2D5",
+                "isSystem": True,
+                "fullHtml": "<p><b>旁白</b>：正式首句</p>",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(next_snapshot.get("options"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

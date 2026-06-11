@@ -28,6 +28,7 @@ from core.paths import app_root as runtime_app_root
 from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
 from llm.history_manager import parse_assistant_dialog_content
+from llm.tools.chat_ui_tools import sanitize_user_display_name
 
 from .state import BridgeState
 from .runtime_dependencies import runtime_dependency_error_from_text
@@ -57,21 +58,6 @@ _main_chat_process_lock = threading.Lock()
 _main_chat_log_file: Any = None
 _SYSTEM_HISTORY_NAMES = COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
 _DEFAULT_USER_DISPLAY_NAME = "你"
-_USER_DISPLAY_NAME_PATTERNS = (
-    re.compile(
-        r"(?:请|以后|今后|之后|可以)?(?:叫|称呼)我(?:为|叫|作)?"
-        r"\s*[\"'“”‘’「」『』《》]?([^，。！？,.!?\n\r]{1,24})"
-    ),
-    re.compile(
-        r"我(?:的)?(?:名字|姓名|称呼)(?:是|叫|为|：|:)"
-        r"\s*[\"'“”‘’「」『』《》]?([^，。！？,.!?\n\r]{1,24})"
-    ),
-    re.compile(r"我叫\s*[\"'“”‘’「」『』《》]?([^，。！？,.!?\n\r]{1,24})"),
-    re.compile(
-        r"(?:call me|my name is|user(?:'s)? name is)\s+[\"']?([^,.!?\n\r]{1,24})",
-        re.IGNORECASE,
-    ),
-)
 
 
 def _is_transparent_background_name(name: str | None) -> bool:
@@ -453,33 +439,29 @@ def _chat_voice_language(state: BridgeState) -> str:
 
 
 def _sanitize_user_display_name(value: Any) -> str:
-    name = re.sub(r"<[^>]+>", "", str(value or "")).strip()
-    name = name.strip(" \t\r\n\"'“”‘’「」『』《》[]()（）")
-    name = re.sub(r"\s+", " ", name).strip()
-    if not name or name == _DEFAULT_USER_DISPLAY_NAME:
-        return ""
-    if len(name) > 24 or any(ch in name for ch in "\r\n<>"):
-        return ""
-    return name
-
-
-def _extract_user_display_name(*texts: Any) -> str:
-    for raw_text in texts:
-        text = str(raw_text or "")
-        if not text.strip():
-            continue
-        for pattern in _USER_DISPLAY_NAME_PATTERNS:
-            match = pattern.search(text)
-            if not match:
-                continue
-            name = _sanitize_user_display_name(match.group(1))
-            if name:
-                return name
-    return ""
+    return sanitize_user_display_name(value)
 
 
 def _chat_user_display_name(state: BridgeState) -> str:
     return _sanitize_user_display_name(state.chat_session.get("userDisplayName")) or _DEFAULT_USER_DISPLAY_NAME
+
+
+def _chat_user_display_name_from_snapshot(
+    state: BridgeState,
+    snapshot: dict[str, Any] | None = None,
+) -> str:
+    if snapshot is None:
+        session_id = str(state.chat_session.get("sessionId") or "").strip()
+        chat_stream = getattr(state, "chat_stream", None)
+        if session_id and chat_stream is not None:
+            candidate = chat_stream.get_snapshot(session_id)
+            if isinstance(candidate, dict):
+                snapshot = candidate
+    stream_name = _sanitize_user_display_name((snapshot or {}).get("userDisplayName"))
+    if stream_name:
+        state.chat_session = {**state.chat_session, "userDisplayName": stream_name}
+        return stream_name
+    return _chat_user_display_name(state)
 
 
 def _history_entry_role_from_text(text: str) -> str:
@@ -608,6 +590,7 @@ def _chat_snapshot(
         snapshot = chat_stream.get_snapshot(session_id)
         if snapshot is not None:
             next_snapshot = dict(snapshot)
+            user_display_name = _chat_user_display_name_from_snapshot(state, next_snapshot)
             next_snapshot["runtimeMode"] = runtime_mode
             next_snapshot["userDisplayName"] = user_display_name
             if voice_language and not str(next_snapshot.get("voiceLanguage") or "").strip():
@@ -767,12 +750,10 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         text = str(body.get("payload") or "").strip()
         if not text:
             raise ValueError("消息内容不能为空。")
-        extracted_user_name = _extract_user_display_name(text)
-        user_display_name = extracted_user_name or _chat_user_display_name(state)
+        user_display_name = _chat_user_display_name_from_snapshot(state)
         return _forward_runtime_command(
             "generating",
             text,
-            session_patch={"userDisplayName": extracted_user_name} if extracted_user_name else None,
             snapshot_patch={
                 "characterName": user_display_name,
                 "inputDraft": "",

@@ -667,6 +667,7 @@
     "bgm_block_header": "BGM：\n",
     "bgm_count": "利用可能な BGM は {n} 曲です：\n",
     "r_format": "形式：出力は有効な JSON のみ。JSON 外に説明・挨拶は付けない。",
+    "r_user_display_name_tool": "ユーザー名札：ユーザー情景またはシステム設定にユーザー名・呼称・呼ばれたい名前が明記されている場合、最初の可視会話行の前に set_user_display_name(name=...) を呼び出して名札を設定する。推測で設定しない。",
     "r_cname": "character_name は {names} または劇中の他名、固定トークン {cot_part}{fixed_roles}{opt_scene}{opt_bgm}{opt_cg}（旧 CJK 名も実行時互換）のみ。",
     "r_sprite": "立ち絵：sprite は 2 桁 ID（例 01, 02）。台詞の感情に合うものを選ぶ。",
     "r_non_sprite": "character_name が {fixed_roles_non_sprite} のいずれかのときは sprite=-1。",

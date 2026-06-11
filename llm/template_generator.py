@@ -8,6 +8,7 @@ from sdk.lang import normalize_lang
 from config.character_manager import ConfigManager
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 from llm.tools.tool_manager import ToolManager
+from sdk.tool_registry import apply_registered_tools
 from sdk.types import (
     FieldPatch,
     OutputContractPatch,
@@ -21,6 +22,7 @@ import llm.tools.character_tools  # noqa: F401
 import llm.tools.memory_tools    # noqa: F401
 import llm.tools.tool_search      # noqa: F401
 import llm.tools.file_tools       # noqa: F401
+import llm.tools.chat_ui_tools    # noqa: F401
 
 config_manager = ConfigManager()
 DEFAULT_DIALOG_CONTRACT_ID = "default.dialog.v1"
@@ -76,6 +78,7 @@ def _summarize_tool_parameters(parameters: Any) -> str:
 def _format_llm_tools_block() -> str:
     """Only include default-group tools in the system prompt.
     Use search_tools to discover tools from other groups on demand."""
+    apply_registered_tools(ToolManager())
     definitions = ToolManager().get_definitions(groups="default")
     if not definitions:
         return ""
@@ -408,6 +411,7 @@ class TemplateGenerator:
 
         requirements: list[RequirementSpec] = [
             RequirementSpec("r_format", _T("r_format"), 10),
+            RequirementSpec("r_user_display_name_tool", _T("r_user_display_name_tool"), 15),
             RequirementSpec(
                 "r_cname",
                 _T(

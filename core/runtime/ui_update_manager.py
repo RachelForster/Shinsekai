@@ -138,6 +138,7 @@ class HeadlessUIUpdateManager:
         self.current_bgm_path: Optional[str] = None
         self.current_background_path: Optional[str] = None
         self.bg_group: List = []
+        self.user_display_name: str = "你"
 
     def post_notification(self, text: str) -> None:
         if text:
@@ -184,6 +185,11 @@ class HeadlessUIUpdateManager:
 
     def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
         self.post_notification(reason)
+
+    def set_user_display_name(self, name: str) -> None:
+        value = str(name or "").strip()
+        if value:
+            self.user_display_name = value
 
     def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
         formatted = _format_dialog_html(name, speech, color, is_system)
@@ -234,6 +240,7 @@ class UIUpdateManager(QObject):
         self.bg_group: List = list(bg_group or [])
         self.current_bgm_path: Optional[str] = None
         self.current_background_path: Optional[str] = None
+        self.user_display_name: str = "你"
 
     # --- 低层：仅发信号 ---
 
@@ -295,6 +302,11 @@ class UIUpdateManager(QObject):
 
     def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
         self.post_notification(reason)
+
+    def set_user_display_name(self, name: str) -> None:
+        value = str(name or "").strip()
+        if value:
+            self.user_display_name = value
 
     # --- 高层：业务组装（原 UIWorker 上的逻辑） ---
 
@@ -512,6 +524,12 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
         self._sink.emit({"type": "session.closed", "reason": str(reason or "聊天会话已结束。")})
 
+    def set_user_display_name(self, name: str) -> None:
+        super().set_user_display_name(name)
+        value = str(name or "").strip()
+        if value:
+            self._sink.emit({"type": "user.display_name.change", "name": value})
+
     # --- 高层业务组装 → 事件 ---
 
     def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
@@ -635,6 +653,7 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
     original_post_tts_play = getattr(ui, "post_tts_play", None)
     original_post_tts_skip = getattr(ui, "post_tts_skip", None)
     original_post_session_closed = getattr(ui, "post_session_closed", None)
+    original_set_user_display_name = getattr(ui, "set_user_display_name", None)
 
     def update_dialog(name: str, speech: str, color: str, is_system: bool = True) -> None:
         original_update_dialog(name, speech, color, is_system)
@@ -724,6 +743,11 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
             original_post_session_closed(reason)
         mirror.post_session_closed(reason)
 
+    def set_user_display_name(name: str) -> None:
+        if callable(original_set_user_display_name):
+            original_set_user_display_name(name)
+        mirror.set_user_display_name(name)
+
     ui.update_dialog = update_dialog
     ui.record_user_message = record_user_message
     ui.update_sprite = update_sprite
@@ -742,3 +766,4 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
     ui.post_tts_play = post_tts_play
     ui.post_tts_skip = post_tts_skip
     ui.post_session_closed = post_session_closed
+    ui.set_user_display_name = set_user_display_name

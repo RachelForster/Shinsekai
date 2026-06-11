@@ -36,7 +36,6 @@ from .chat import (
     _chat_runtime_mode,
     _chat_snapshot,
     _chat_theme_payload,
-    _extract_user_display_name,
     _handle_chat_command,
     _launch_chat,
     _sanitize_user_display_name,
@@ -859,10 +858,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             user_scenario,
             system_template,
         )
-        user_display_name = (
-            _sanitize_user_display_name(body.get("userDisplayName"))
-            or _extract_user_display_name(user_scenario, system_template)
-        )
+        user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
         session_base = {
             "backgroundName": str(body.get("backgroundName") or ""),
             "characterName": first_character,
@@ -970,10 +966,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 init_sprite_path = _sprite_path(character.sprites[0])
         room_id = str(session.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
         selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
-        user_display_name = (
-            _sanitize_user_display_name(session.get("userDisplayName"))
-            or _extract_user_display_name(scenario, system_template)
-        )
+        user_display_name = _sanitize_user_display_name(session.get("userDisplayName"))
         session_base = {
             "backgroundName": selected_bg,
             "characterName": first_character,

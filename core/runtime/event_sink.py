@@ -52,6 +52,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "options": [],
         "sprites": [],
         "status": "idle",
+        "userDisplayName": "你",
     }
 
 
@@ -101,6 +102,14 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             next_snapshot["characterName"] = ""
         else:
             next_snapshot["characterName"] = str(event.get("speaker") or "")
+        if str(event.get("speaker") or "").strip() or not bool(event.get("isSystem")):
+            next_snapshot["options"] = []
+        return next_snapshot
+
+    if event_type == "user.display_name.change":
+        name = str(event.get("name") or "").strip()
+        if name:
+            next_snapshot["userDisplayName"] = name
         return next_snapshot
 
     if event_type == "sprite.show":
