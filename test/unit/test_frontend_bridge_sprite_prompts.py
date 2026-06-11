@@ -130,11 +130,11 @@ def test_generate_sprite_prompts_uses_selected_llm(monkeypatch):
     assert result["items"] == [
         {
             "label": "微笑, 挥手",
-            "prompt": "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, smile, hand wave, character name: Mika",
+            "prompt": "masterpiece, best quality, highres, official art, solo, 1 person, single character, thigh up, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, smile, hand wave, character name: Mika",
         },
         {
             "label": "严肃, 站立",
-            "prompt": "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, serious pose, character name: Mika",
+            "prompt": "masterpiece, best quality, highres, official art, solo, 1 person, single character, thigh up, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, serious pose, character name: Mika",
         },
     ]
     assert result["prompts"] == [item["prompt"] for item in result["items"]]
@@ -149,11 +149,35 @@ def test_generate_sprite_prompts_uses_selected_llm(monkeypatch):
     assert call["kwargs"]["response_format"] == {"type": "json_object"}
     assert "Label language: Simplified Chinese" in call["messages"][1]["content"]
     assert "masterpiece, best quality, highres, official art, solo, 1 person, single character" in call["messages"][0]["content"]
-    assert "Required prompt terms: full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character" in call["messages"][1]["content"]
+    assert "Required prompt terms: thigh up, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character" in call["messages"][1]["content"]
     assert "multiple views, multiple angles, turnaround sheets, reference sheets" in call["messages"][1]["content"]
     assert "Positive prompt reference from user:" in call["messages"][1]["content"]
     assert "anime key visual, detailed eyes, soft rim lighting" in call["messages"][1]["content"]
     assert "Prefer including applicable terms from this reference" in call["messages"][1]["content"]
+
+
+def test_generate_sprite_prompts_respects_explicit_composition(monkeypatch):
+    monkeypatch.setitem(LLMAdapterFactory._adapters, "MockSpriteLLM", RecordingLLMAdapter)
+    state = BridgeState(_ConfigManager(), None, None, None)
+    task = _create_task(state, kind="test", title="test")
+
+    result = _generate_sprite_prompts(
+        state,
+        task["id"],
+        {
+            "characterName": "Mika",
+            "composition": "upper_body",
+            "count": 1,
+            "language": "en",
+        },
+    )
+
+    assert result["items"][0]["prompt"].startswith("masterpiece, best quality, highres, official art, solo, 1 person, single character, upper body, visual novel sprite")
+    assert result["prompts"][0] == result["items"][0]["prompt"]
+    call = RecordingLLMAdapter.last_instance.call_history[0]
+    assert "Required prompt terms: upper body, visual novel sprite" in call["messages"][1]["content"]
+
+
 
 
 def test_generate_sprite_image_uses_selected_t2i(monkeypatch):
@@ -183,13 +207,13 @@ def test_generate_sprite_image_uses_selected_t2i(monkeypatch):
     assert result["file"].startswith(output_dir.as_posix())
     assert result["files"] == [result["file"]]
     assert result["label"] == "微笑, 挥手"
-    assert result["prompt"] == "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, hand wave, character name: Mika"
+    assert result["prompt"] == "masterpiece, best quality, highres, official art, solo, 1 person, single character, thigh up, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, hand wave, character name: Mika"
     assert isinstance(result["seed"], int)
     assert RecordingT2IAdapter.last_instance.kwargs == {"extra_flag": "from-config"}
     assert len(RecordingT2IAdapter.last_instance.calls) == 1
     call = RecordingT2IAdapter.last_instance.calls[0]
     assert call["file_path"] == result["file"]
-    assert call["prompt"] == "masterpiece, best quality, highres, official art, solo, 1 person, single character, full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, hand wave, character name: Mika"
+    assert call["prompt"] == "masterpiece, best quality, highres, official art, solo, 1 person, single character, thigh up, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character, Mika, hand wave, character name: Mika"
     assert call["kwargs"] == {
         "negative_prompt": "low quality, multiple views, multiple angles, turnaround, character sheet, reference sheet, expression sheet, pose sheet, model sheet, split view, multiple panels, collage, duplicated character, clone",
         "seed": result["seed"],

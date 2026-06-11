@@ -30,16 +30,30 @@ _SD_PROMPT_REQUIRED_PREFIX = (
     "single character",
 )
 
-_SD_PROMPT_REQUIRED_TERMS = (
-    "full body",
-    "visual novel sprite",
-    "transparent background",
-    "clean lineart",
-    "soft cel shading",
-    "single view",
-    "one pose",
-    "centered character",
-)
+_SPRITE_COMPOSITION_TERMS: dict[str, str] = {
+    "full_body": "full body",
+    "thigh_up": "thigh up",
+    "upper_body": "upper body",
+}
+
+_DEFAULT_SPRITE_COMPOSITION = "thigh_up"
+
+
+def _sd_composition_term(composition: str) -> str:
+    return _SPRITE_COMPOSITION_TERMS.get(composition.strip().lower(), _SPRITE_COMPOSITION_TERMS[_DEFAULT_SPRITE_COMPOSITION])
+
+
+def _sd_required_terms(composition: str = _DEFAULT_SPRITE_COMPOSITION) -> tuple[str, ...]:
+    return (
+        _sd_composition_term(composition),
+        "visual novel sprite",
+        "transparent background",
+        "clean lineart",
+        "soft cel shading",
+        "single view",
+        "one pose",
+        "centered character",
+    )
 
 _SPRITE_NEGATIVE_PROMPT_REQUIRED_TERMS = (
     "multiple views",
@@ -78,15 +92,16 @@ def _ascii_prompt_text(value: Any) -> str:
     )
 
 
-def _with_required_sd_prompt_prefix(value: Any) -> str:
+def _with_required_sd_prompt_prefix(value: Any, composition: str = _DEFAULT_SPRITE_COMPOSITION) -> str:
     prompt = _ascii_prompt_text(value)
     if not prompt:
         return ""
 
-    required = {tag.lower() for tag in (*_SD_PROMPT_REQUIRED_PREFIX, *_SD_PROMPT_REQUIRED_TERMS)}
+    terms = _sd_required_terms(composition)
+    required = {tag.lower() for tag in (*_SD_PROMPT_REQUIRED_PREFIX, *terms)}
     parts = [part.strip() for part in prompt.split(",") if part.strip()]
     remaining = [part for part in parts if part.lower() not in required]
-    return ", ".join([*_SD_PROMPT_REQUIRED_PREFIX, *_SD_PROMPT_REQUIRED_TERMS, *remaining])
+    return ", ".join([*_SD_PROMPT_REQUIRED_PREFIX, *terms, *remaining])
 
 
 def _with_required_sprite_negative_prompt(value: Any) -> str:
@@ -97,12 +112,12 @@ def _with_required_sprite_negative_prompt(value: Any) -> str:
     return ", ".join([*remaining, *_SPRITE_NEGATIVE_PROMPT_REQUIRED_TERMS])
 
 
-def _split_sprite_prompt_line(value: str) -> dict[str, str]:
+def _split_sprite_prompt_line(value: str, composition: str = _DEFAULT_SPRITE_COMPOSITION) -> dict[str, str]:
     text = str(value or "").strip()
     match = re.match(r"^(?:\d+[.)]\s*)?([^:：|]+)[:：|]\s*(.+)$", text)
     if match:
-        return {"label": match.group(1).strip(), "prompt": _with_required_sd_prompt_prefix(match.group(2))}
-    return {"label": "", "prompt": _with_required_sd_prompt_prefix(text)}
+        return {"label": match.group(1).strip(), "prompt": _with_required_sd_prompt_prefix(match.group(2), composition)}
+    return {"label": "", "prompt": _with_required_sd_prompt_prefix(text, composition)}
 
 
 def _response_text(response: Any) -> str:
@@ -147,7 +162,7 @@ def _load_sprite_prompt_payload(text: str) -> Any:
         raise
 
 
-def _normalize_sprite_prompt_items(payload: Any, count: int) -> list[dict[str, str]]:
+def _normalize_sprite_prompt_items(payload: Any, count: int, composition: str = _DEFAULT_SPRITE_COMPOSITION) -> list[dict[str, str]]:
     if isinstance(payload, dict):
         raw_items = payload.get("items") or payload.get("prompts") or []
     else:
@@ -159,9 +174,9 @@ def _normalize_sprite_prompt_items(payload: Any, count: int) -> list[dict[str, s
     for raw_item in raw_items[:count]:
         if isinstance(raw_item, dict):
             label = str(raw_item.get("label") or raw_item.get("tag") or "").strip()
-            prompt = _with_required_sd_prompt_prefix(raw_item.get("prompt") or raw_item.get("sd_prompt") or "")
+            prompt = _with_required_sd_prompt_prefix(raw_item.get("prompt") or raw_item.get("sd_prompt") or "", composition)
         else:
-            parsed = _split_sprite_prompt_line(str(raw_item))
+            parsed = _split_sprite_prompt_line(str(raw_item), composition)
             label = parsed["label"]
             prompt = parsed["prompt"]
         if prompt:
@@ -179,6 +194,7 @@ def _generate_sprite_prompt_items_with_llm(
     count: int,
     language: str,
     positive_prompt_reference: str = "",
+    composition: str = _DEFAULT_SPRITE_COMPOSITION,
 ) -> dict[str, Any]:
     from llm.llm_manager import LLMAdapterFactory
 
@@ -203,6 +219,7 @@ def _generate_sprite_prompt_items_with_llm(
         if reference_prompt
         else ""
     )
+    required_terms = ", ".join(_sd_required_terms(composition))
     system_prompt = (
         "You generate visual novel character sprite generation data. "
         "Return only a valid JSON object with an items array. "
@@ -210,7 +227,7 @@ def _generate_sprite_prompt_items_with_llm(
         "The label must be short comma-separated emotion/action tags in the requested UI language. "
         "The prompt must be a pure English Stable Diffusion style prompt, ASCII only, and must include the character name. "
         "Every prompt must start with: masterpiece, best quality, highres, official art, solo, 1 person, single character. "
-        "Every prompt must include these exact terms: full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character. "
+        f"Every prompt must include these exact terms: {required_terms}. "
         "Each item must describe exactly one standalone sprite image, not a character sheet, not a turnaround, and not multiple views or multiple angles. "
         "Do not include markdown, explanations, or non-English text inside prompt."
     )
@@ -220,7 +237,7 @@ def _generate_sprite_prompt_items_with_llm(
         f"Generate {count} different sprite candidates.\n"
         f"Label language: {label_language}\n"
         "Prompt prefix: masterpiece, best quality, highres, official art, solo, 1 person, single character.\n"
-        "Required prompt terms: full body, visual novel sprite, transparent background, clean lineart, soft cel shading, single view, one pose, centered character.\n"
+        f"Required prompt terms: {required_terms}.\n"
         "Composition restriction: one standalone character sprite per image; do not write prompts for multiple views, multiple angles, turnaround sheets, reference sheets, expression sheets, or pose sheets.\n"
         f"{reference_block}"
         "Prompt requirements: consistent character design, expressive emotion and clear action.\n"
@@ -237,7 +254,7 @@ def _generate_sprite_prompt_items_with_llm(
     )
     payload = _load_sprite_prompt_payload(_response_text(response))
     return {
-        "items": _normalize_sprite_prompt_items(payload, count),
+        "items": _normalize_sprite_prompt_items(payload, count, composition),
         "model": llm_model,
         "provider": llm_provider,
     }
@@ -405,6 +422,7 @@ def _generate_sprite_prompts(state: BridgeState, task_id: str, payload: dict[str
         raise ValueError("count must be between 1 and 100")
     language = str(payload.get("language") or "zh_CN").strip()
     positive_prompt_reference = str(payload.get("positivePromptReference") or "").strip()
+    composition = str(payload.get("composition") or _DEFAULT_SPRITE_COMPOSITION).strip()
     character = state.config_manager.get_character_by_name(character_name)
     if character is None:
         raise KeyError(f"character not found: {character_name}")
@@ -417,6 +435,7 @@ def _generate_sprite_prompts(state: BridgeState, task_id: str, payload: dict[str
         count=count,
         language=language,
         positive_prompt_reference=positive_prompt_reference,
+        composition=composition,
     )
     items = llm_result["items"]
     result = {
@@ -533,10 +552,12 @@ def _remove_sprite_background(state: BridgeState, task_id: str, payload: dict[st
 
     input_dir = Path(str(payload.get("inputDir") or "").strip())
     requested_output = str(payload.get("outputDir") or "").strip()
+    raw_files = payload.get("files")
+    files = [str(f) for f in raw_files] if isinstance(raw_files, list) else None
     output_dir = Path(requested_output) if requested_output else input_dir / "removed_backgrounds"
 
     _update_task(state, task_id, message="正在批量抠出立绘。", phase="remove-background", progress=0.25)
-    message = batch_remove_background(input_dir.as_posix(), requested_output or None)
+    message = batch_remove_background(input_dir.as_posix(), requested_output or None, files=files)
     result = {"message": str(message), "outputDir": output_dir.as_posix()}
     _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
     return result
