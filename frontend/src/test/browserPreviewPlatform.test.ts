@@ -17,6 +17,7 @@ describe("browser preview platform chat themes", () => {
 
     const classicManifest = await platform.chat.getThemeManifest("classic-dark");
     expect(classicManifest.tokens.global?.themeColor).toBe("#644ae3");
+    expect(classicManifest.tokens.logs?.code?.background).toBe("rgba(8,9,14,0.9)");
 
     const classicTheme = await platform.chat.getTheme();
     expect(classicTheme.themeColor).toBe("#644ae3");
@@ -26,6 +27,7 @@ describe("browser preview platform chat themes", () => {
     await expect(platform.chat.getActiveThemeId()).resolves.toBe("light-paper");
     const lightManifest = await platform.chat.getThemeManifest("light-paper");
     expect(lightManifest.tokens.dialog?.background).toBe("rgba(250,248,244,0.92)");
+    expect(lightManifest.tokens.logs?.code?.background).toBe("rgba(253,251,255,0.95)");
 
     const lightTheme = await platform.chat.getTheme();
     expect(lightTheme.themeColor).toBe("#c77dff");

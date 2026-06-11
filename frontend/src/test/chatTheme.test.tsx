@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../shared/i18n";
@@ -32,6 +32,7 @@ vi.mock("../shared/platform/platform", () => ({
 }));
 
 import { ChatThemeProvider, useChatTheme } from "../features/chat-stage/theme/ChatThemeProvider";
+import { ChatThemePicker } from "../features/chat-stage/theme/ChatThemePicker";
 import { resolveChatTheme, type ChatThemeManifest } from "../shared/theme/chatTheme";
 
 function Probe() {
@@ -41,6 +42,7 @@ function Probe() {
       data-active={theme.activeId ?? ""}
       data-cps={String(theme.resolved?.typewriter.cps ?? "")}
       data-gap={theme.style["--chat-options-gap"] ?? ""}
+      data-logs-code={theme.style["--logs-code-background"] ?? ""}
       data-theme-count={String(theme.themes.length)}
       data-testid="theme-probe"
       data-theme-color={theme.style["--chat-theme-color"] ?? ""}
@@ -110,6 +112,30 @@ describe("chat theme runtime", () => {
           },
           send: { background: "#644ae3", color: "#ffffff" },
           toolbar: { background: "rgba(34,34,40,0.9)", color: "#ffffff" },
+          logs: {
+            badge: { background: "rgba(255,255,255,0.06)", color: "#c8c2df" },
+            code: {
+              background: "rgba(8,9,14,0.9)",
+              color: "#f3f0ff",
+              fontFamily: "JetBrains Mono, ui-monospace, monospace",
+            },
+            event: { background: "rgba(100,74,227,0.16)", color: "#cfc7ff" },
+            fileItem: {
+              background: "rgba(255,255,255,0.03)",
+              active: { background: "rgba(100,74,227,0.18)" },
+              hover: { background: "rgba(255,255,255,0.07)" },
+            },
+            levels: {
+              error: { background: "rgba(255,95,109,0.14)", color: "#ff9ca7" },
+              debug: { borderColor: "rgba(91,173,255,0.34)" },
+            },
+            line: {
+              borderColor: "rgba(255,255,255,0.08)",
+              expanded: { background: "rgba(100,74,227,0.15)" },
+              hover: { background: "rgba(100,74,227,0.1)" },
+            },
+            panel: { background: "rgba(20,20,28,0.78)", borderRadius: "8px" },
+          },
           typewriter: { cps: 240, sound: "assets/sfx/type.wav" },
         },
       },
@@ -131,6 +157,15 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-send-background"]).toBe("#644ae3");
     expect(resolved.style["--chat-send-color"]).toBe("#ffffff");
     expect(resolved.style["--chat-name-color"]).toBe("#9c8cff");
+    expect(resolved.style["--logs-panel-background"]).toBe("rgba(20,20,28,0.78)");
+    expect(resolved.style["--logs-panel-border-radius"]).toBe("8px");
+    expect(resolved.style["--logs-code-background"]).toBe("rgba(8,9,14,0.9)");
+    expect(resolved.style["--logs-code-font-family"]).toBe("JetBrains Mono, ui-monospace, monospace");
+    expect(resolved.style["--logs-line-hover-background"]).toBe("rgba(100,74,227,0.1)");
+    expect(resolved.style["--logs-line-expanded-background"]).toBe("rgba(100,74,227,0.15)");
+    expect(resolved.style["--logs-file-active-background"]).toBe("rgba(100,74,227,0.18)");
+    expect(resolved.style["--logs-level-error-color"]).toBe("#ff9ca7");
+    expect(resolved.style["--logs-level-debug-border-color"]).toBe("rgba(91,173,255,0.34)");
     expect(resolved.typewriter.cps).toBe(200);
     expect(resolved.typewriter.soundUrl).toBe("asset://assets/sfx/type.wav");
     expect(resolved.fontFaces).toContain("@font-face");
@@ -169,6 +204,15 @@ describe("chat theme runtime", () => {
             gap: 999,
             hover: { background: "rgba(50,50,50,0.9); position:absolute" },
           },
+          logs: {
+            code: {
+              background: "rgba(8,9,14,0.9)",
+              fontFamily: 'Bad"; color:red',
+            },
+            line: {
+              hover: { background: "rgba(50,50,50,0.9); position:absolute" },
+            },
+          },
           typewriter: {
             cps: 0,
             sound: "/tmp/type.wav",
@@ -188,6 +232,9 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-field-background"]).toBeUndefined();
     expect(resolved.style["--chat-options-gap"]).toBe("36px");
     expect(resolved.style["--chat-option-hover-background"]).toBeUndefined();
+    expect(resolved.style["--logs-code-background"]).toBe("rgba(8,9,14,0.9)");
+    expect(resolved.style["--logs-code-font-family"]).toBeUndefined();
+    expect(resolved.style["--logs-line-hover-background"]).toBeUndefined();
     expect(resolved.typewriter.cps).toBe(1);
     expect(resolved.typewriter.soundUrl).toBeUndefined();
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/theme.woff2")');
@@ -202,6 +249,7 @@ describe("chat theme runtime", () => {
       tokens: {
         global: { themeColor: "#644ae3" },
         fonts: [{ family: "Theme Font", src: "assets/fonts/theme.woff2" }],
+        logs: { code: { background: "rgba(8,9,14,0.9)" } },
         typewriter: { cps: 48 },
       },
     };
@@ -220,37 +268,79 @@ describe("chat theme runtime", () => {
     await waitFor(() => expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-active", "classic-dark"));
     expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-cps", "48");
     expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-gap", "22px");
+    expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-logs-code", "rgba(8,9,14,0.9)");
     expect(document.documentElement.style.getPropertyValue("--chat-theme-color")).toBe("#644ae3");
+    expect(document.documentElement.style.getPropertyValue("--logs-code-background")).toBe("rgba(8,9,14,0.9)");
     expect(document.documentElement.style.getPropertyValue("--chat-options-gap")).toBe("22px");
     expect(document.getElementById("shinsekai-chat-theme-fonts")?.textContent).toContain(
       'url("asset://data/chat_ui_themes/classic-dark/assets/fonts/theme.woff2")',
     );
   });
 
-  it("locks the chat stage runtime to the built-in dark theme", async () => {
+  it("supports upload, switch, and delete flows through the theme picker", async () => {
     const classicManifest: ChatThemeManifest = {
       schema: 1,
       id: "classic-dark",
       name: { en: "Classic Dark" },
       tokens: { global: { themeColor: "#644ae3" } },
     };
+    const uploadedManifest: ChatThemeManifest = {
+      schema: 1,
+      id: "my-theme",
+      name: { en: "My Theme" },
+      tokens: {
+        global: { themeColor: "#22aa88" },
+        logs: { code: { background: "rgba(5,30,25,0.9)" } },
+      },
+    };
 
-    repoMocks.listChatThemes.mockResolvedValue([
-      { id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" },
-      { id: "light-paper", name: { en: "Light Paper" }, source: "builtin" },
-      { id: "my-theme", name: { en: "My Theme" }, source: "user" },
-    ]);
-    repoMocks.getActiveChatThemeId.mockResolvedValue("light-paper");
+    repoMocks.listChatThemes
+      .mockResolvedValueOnce([{ id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" }])
+      .mockResolvedValueOnce([
+        { id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" },
+        { id: "my-theme", name: { en: "My Theme" }, source: "user" },
+      ])
+      .mockResolvedValueOnce([{ id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" }]);
+    repoMocks.getActiveChatThemeId.mockResolvedValue("classic-dark");
     repoMocks.getChatTheme.mockResolvedValue({});
-    repoMocks.getChatThemeManifest.mockResolvedValue(classicManifest);
+    repoMocks.getChatThemeManifest.mockImplementation(async (id: string) =>
+      id === "my-theme" ? uploadedManifest : classicManifest,
+    );
+    repoMocks.uploadChatTheme.mockResolvedValue({
+      id: "my-theme",
+      name: { en: "My Theme" },
+      source: "user",
+      version: "1.0.0",
+    });
     repoMocks.setActiveChatTheme.mockResolvedValue(undefined);
+    repoMocks.deleteChatTheme.mockResolvedValue(undefined);
 
-    renderThemeTree(<Probe />);
+    renderThemeTree(<ChatThemePicker />);
 
-    await waitFor(() => expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-active", "classic-dark"));
-    expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-theme-count", "1");
-    expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-theme-color", "#644ae3");
-    expect(repoMocks.getChatThemeManifest).toHaveBeenCalledWith("classic-dark");
-    expect(repoMocks.setActiveChatTheme).toHaveBeenCalledWith("classic-dark");
+    fireEvent.click(await screen.findByRole("button", { name: "Manage themes" }));
+    expect(await screen.findByRole("dialog", { name: "Chat themes" })).toBeInTheDocument();
+
+    const uploadInput = document.querySelector(".chat-theme-picker__file-input") as HTMLInputElement;
+    const file = new File(["theme"], "my-theme.zip", { type: "application/zip" });
+    fireEvent.change(uploadInput, { target: { files: [file] } });
+
+    await waitFor(() => expect(repoMocks.uploadChatTheme).toHaveBeenCalled());
+    await waitFor(() => expect(repoMocks.setActiveChatTheme).toHaveBeenCalledWith("my-theme"));
+    await waitFor(() =>
+      expect(document.documentElement.style.getPropertyValue("--logs-code-background")).toBe("rgba(5,30,25,0.9)"),
+    );
+    expect(await screen.findByText("Theme uploaded")).toBeInTheDocument();
+    expect(await screen.findByText("Theme applied")).toBeInTheDocument();
+
+    const dialog = screen.getByRole("dialog", { name: "Chat themes" });
+    const myThemeCard = within(dialog).getByText("My Theme").closest(".chat-theme-picker__card");
+    expect(myThemeCard).not.toBeNull();
+    fireEvent.click(within(myThemeCard as HTMLElement).getByRole("button", { name: "Delete" }));
+
+    const confirm = await screen.findByRole("dialog", { name: "Delete theme" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(repoMocks.deleteChatTheme).toHaveBeenCalledWith("my-theme"));
+    expect(await screen.findByText("Theme deleted")).toBeInTheDocument();
   });
 });

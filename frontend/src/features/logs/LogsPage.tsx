@@ -13,6 +13,7 @@ import {
 } from "../../entities/logs/repository";
 import type { LogFileInfo, LogSnapshot, LogStructuredEntry } from "../../shared/platform/types";
 import { AsyncButton, Button, EmptyState, QueryErrorState, Select, Switch, TextInput, useToast } from "../../shared/ui";
+import { useOptionalChatTheme } from "../chat-stage/theme/ChatThemeProvider";
 import "./LogsPage.css";
 
 type LogLevel = "debug" | "error" | "info" | "warn" | "default";
@@ -283,6 +284,7 @@ function LogLineBody({ expanded, line, onToggle }: { expanded: boolean; line: Lo
 
 export function LogsPage() {
   const { showToast } = useToast();
+  const theme = useOptionalChatTheme();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [activeLog, setActiveLog] = useState<LogSnapshot | null>(null);
   const [activePath, setActivePath] = useState("");
@@ -400,7 +402,7 @@ export function LogsPage() {
   };
 
   return (
-    <div className="page logs-page">
+    <div className="page logs-page" style={theme?.style}>
       <header className="page__header">
         <div>
           <h1 className="page__title">日志</h1>

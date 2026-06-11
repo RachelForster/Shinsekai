@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from frontend_bridge_core.chat_themes import (
     delete_chat_theme,
@@ -39,6 +40,21 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 self.assertEqual(theme_index["classic-dark"]["source"], "builtin")
                 self.assertEqual(theme_index["light-paper"]["source"], "builtin")
                 self.assertTrue((Path(tempdir) / "data" / "chat_ui_themes" / "classic-dark" / "theme.json").is_file())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_list_chat_themes_falls_back_to_tracked_builtin_manifests(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=Path(tempdir) / "missing"):
+                    themes = list_chat_themes(state)
+                theme_index = {item["id"]: item for item in themes}
+                self.assertIn("classic-dark", theme_index)
+                manifest = get_chat_theme_manifest(state, "classic-dark")
+                self.assertEqual(manifest["tokens"]["logs"]["code"]["background"], "rgba(8,9,14,0.9)")
             finally:
                 os.chdir(previous_cwd)
 
@@ -105,6 +121,18 @@ class ChatThemeBridgeTests(unittest.TestCase):
                           "padding": 100,
                           "widthPct": 120
                         },
+                        "logs": {
+                          "code": {
+                            "background": "rgba(8,9,14,0.9)",
+                            "fontFamily": "JetBrains Mono, monospace"
+                          },
+                          "line": {
+                            "hover": { "background": "rgba(80,80,100,0.2)" }
+                          },
+                          "levels": {
+                            "error": { "color": "#ff8890" }
+                          }
+                        },
                         "typewriter": { "cps": 500 }
                       }
                     }
@@ -116,6 +144,13 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 self.assertEqual(manifest["id"], "custom-theme")
                 self.assertEqual(manifest["tokens"]["dialog"]["padding"], 72)
                 self.assertEqual(manifest["tokens"]["dialog"]["widthPct"], 100)
+                self.assertEqual(manifest["tokens"]["logs"]["code"]["background"], "rgba(8,9,14,0.9)")
+                self.assertEqual(manifest["tokens"]["logs"]["code"]["fontFamily"], "JetBrains Mono, monospace")
+                self.assertEqual(
+                    manifest["tokens"]["logs"]["line"]["hover"]["background"],
+                    "rgba(80,80,100,0.2)",
+                )
+                self.assertEqual(manifest["tokens"]["logs"]["levels"]["error"]["color"], "#ff8890")
                 self.assertEqual(manifest["tokens"]["typewriter"]["cps"], 200)
             finally:
                 os.chdir(previous_cwd)

@@ -40,15 +40,33 @@ ALLOWED_VISUAL_PROPS = frozenset(
 #: 每个可写 token 块允许的额外字段（在可视化属性之外）。
 EXTRA_BLOCK_PROPS = {
     "dialog": frozenset({"backgroundImage", "widthPct", "offsetY"}),
+    "fileItem": frozenset({"active", "hover"}),
     "options": frozenset({"gap", "hover"}),
     "input": frozenset({"fieldBackground"}),
+    "line": frozenset({"expanded", "hover"}),
     "name": frozenset({"color"}),
 }
 
 #: tokens 顶层允许的块名（= 统一设计规范的全集）。
 ALLOWED_TOKEN_BLOCKS = frozenset(
-    {"global", "fonts", "dialog", "options", "input", "toolbar", "send", "name", "typewriter"}
+    {"global", "fonts", "dialog", "options", "input", "toolbar", "send", "name", "logs", "typewriter"}
 )
+
+LOG_VISUAL_BLOCKS = frozenset(
+    {
+        "badge",
+        "detail",
+        "event",
+        "number",
+        "page",
+        "panel",
+        "sidebar",
+        "source",
+        "toolbar",
+        "viewer",
+    }
+)
+LOG_LEVEL_BLOCKS = frozenset({"debug", "default", "error", "info", "warn"})
 
 #: 引用资源的字段（值必须是沙箱内相对路径）。
 ASSET_REF_FIELDS = ("backgroundImage", "sound", "src", "preview")
@@ -135,6 +153,69 @@ def _validate_visual_block(
             out[key] = value  # 额外字段在下方按语义单独校验
         else:
             errors.append(f"tokens.{name}.{key} 不是规范允许的字段")
+    return out
+
+
+def _validate_logs_block(block: Any, errors: List[str]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    if not isinstance(block, dict):
+        errors.append("tokens.logs 必须是对象")
+        return out
+
+    allowed = LOG_VISUAL_BLOCKS | {"code", "fileItem", "levels", "line"}
+    for key in block:
+        if key not in allowed:
+            errors.append(f"tokens.logs.{key} 不是规范允许的字段")
+
+    for key in LOG_VISUAL_BLOCKS:
+        if key in block:
+            out[key] = _validate_visual_block(f"logs.{key}", block[key], errors, frozenset())
+
+    if "code" in block:
+        code = _validate_visual_block("logs.code", block["code"], errors, frozenset({"fontFamily"}))
+        font_family = block["code"].get("fontFamily") if isinstance(block["code"], dict) else None
+        if font_family is not None:
+            if isinstance(font_family, str) and _is_safe_css_value(font_family):
+                code["fontFamily"] = font_family
+            else:
+                errors.append("tokens.logs.code.fontFamily 非法")
+        out["code"] = code
+
+    if "fileItem" in block:
+        file_item = _validate_visual_block("logs.fileItem", block["fileItem"], errors, EXTRA_BLOCK_PROPS["fileItem"])
+        raw = block["fileItem"] if isinstance(block["fileItem"], dict) else {}
+        for nested in ("active", "hover"):
+            if nested in raw:
+                file_item[nested] = _validate_visual_block(
+                    f"logs.fileItem.{nested}", raw[nested], errors, frozenset()
+                )
+        out["fileItem"] = file_item
+
+    if "line" in block:
+        line = _validate_visual_block("logs.line", block["line"], errors, EXTRA_BLOCK_PROPS["line"])
+        raw = block["line"] if isinstance(block["line"], dict) else {}
+        for nested in ("expanded", "hover"):
+            if nested in raw:
+                line[nested] = _validate_visual_block(
+                    f"logs.line.{nested}", raw[nested], errors, frozenset()
+                )
+        out["line"] = line
+
+    if "levels" in block:
+        levels = block["levels"]
+        level_out: Dict[str, Any] = {}
+        if not isinstance(levels, dict):
+            errors.append("tokens.logs.levels 必须是对象")
+        else:
+            for level, value in levels.items():
+                if level not in LOG_LEVEL_BLOCKS:
+                    errors.append(f"tokens.logs.levels.{level} 不是规范允许的字段")
+                    continue
+                level_out[level] = _validate_visual_block(
+                    f"logs.levels.{level}", value, errors, frozenset()
+                )
+        out["levels"] = level_out
+
     return out
 
 
@@ -245,6 +326,9 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
             else:
                 errors.append("tokens.input.fieldBackground 非法")
         normalized_tokens[block_name] = out
+
+    if "logs" in tokens:
+        normalized_tokens["logs"] = _validate_logs_block(tokens["logs"], errors)
 
     # typewriter
     if isinstance(tokens.get("typewriter"), dict):

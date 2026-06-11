@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .builtin_chat_themes import BUILTIN_THEME_MANIFESTS
 from sdk.chat_ui_theme import (
     MANIFEST_NAME,
     locate_manifest_root,
@@ -57,14 +58,20 @@ def _seed_builtin_themes() -> None:
     root = _themes_root()
     builtin_root = _builtin_themes_root()
     root.mkdir(parents=True, exist_ok=True)
-    if not builtin_root.is_dir():
-        return
     for theme_id in BUILTIN_THEME_IDS:
         source = builtin_root / theme_id
         target = root / theme_id
-        if not source.is_dir() or target.exists():
+        if target.exists():
             continue
-        shutil.copytree(source, target)
+        if source.is_dir():
+            shutil.copytree(source, target)
+            continue
+        manifest = BUILTIN_THEME_MANIFESTS.get(theme_id)
+        if manifest:
+            target.mkdir(parents=True, exist_ok=True)
+            (target / MANIFEST_NAME).write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
 
 def _read_manifest(theme_dir: Path) -> Optional[Dict[str, Any]]:

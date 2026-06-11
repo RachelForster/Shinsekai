@@ -49,8 +49,28 @@ export interface ChatThemeTokens {
   toolbar?: VisualBlock;
   send?: VisualBlock;
   name?: { color?: string };
+  logs?: LogsThemeTokens;
   /** 打字机：每秒字数 + 可选打字音效（主题目录内相对路径）。 */
   typewriter?: { cps?: number; sound?: string };
+}
+
+type LogsLevelThemeTokens = Partial<Record<"debug" | "default" | "error" | "info" | "warn", VisualBlock>>;
+
+export interface LogsThemeTokens {
+  badge?: VisualBlock;
+  code?: VisualBlock & { fontFamily?: string };
+  detail?: VisualBlock;
+  event?: VisualBlock;
+  fileItem?: VisualBlock & { active?: VisualBlock; hover?: VisualBlock };
+  levels?: LogsLevelThemeTokens;
+  line?: VisualBlock & { expanded?: VisualBlock; hover?: VisualBlock };
+  number?: VisualBlock;
+  page?: VisualBlock;
+  panel?: VisualBlock;
+  sidebar?: VisualBlock;
+  source?: VisualBlock;
+  toolbar?: VisualBlock;
+  viewer?: VisualBlock;
 }
 
 /** 完整主题清单（theme.json）。 */
@@ -161,6 +181,56 @@ function applyVisualBlock(style: ChatStageStyle, prefix: string, block?: VisualB
   }
 }
 
+function applyLogsVisualBlock(style: ChatStageStyle, prefix: string, block?: VisualBlock | null) {
+  if (!block) {
+    return;
+  }
+  setStyleVar(style, `--logs-${prefix}-background`, block.background);
+  setStyleVar(style, `--logs-${prefix}-border-color`, block.borderColor);
+  setStyleVar(style, `--logs-${prefix}-border-radius`, block.borderRadius);
+  setStyleVar(style, `--logs-${prefix}-color`, block.color);
+  setStyleVar(style, `--logs-${prefix}-box-shadow`, block.boxShadow);
+  if (typeof block.padding === "number") {
+    style[`--logs-${prefix}-padding`] = `${clampNumber(block.padding, 40, 8, 72)}px`;
+  }
+}
+
+function mergeVisualBlock<T extends VisualBlock>(base?: T | null, override?: T | null): T | undefined {
+  if (!base && !override) {
+    return undefined;
+  }
+  return { ...(base ?? {}), ...(override ?? {}) } as T;
+}
+
+function resolveLogsThemeTokens(tokens: ChatThemeTokens): LogsThemeTokens {
+  const logs = tokens.logs ?? {};
+  const accentBlock: VisualBlock = {
+    background: tokens.options?.background,
+    borderColor: tokens.options?.borderColor,
+    color: tokens.name?.color ?? tokens.global?.themeColor,
+  };
+  const codeFallback: LogsThemeTokens["code"] = {
+    background: tokens.input?.fieldBackground ?? tokens.input?.background ?? tokens.dialog?.background,
+    color: tokens.input?.color ?? tokens.dialog?.color,
+  };
+  return {
+    page: mergeVisualBlock({ color: tokens.dialog?.color }, logs.page),
+    panel: mergeVisualBlock(tokens.toolbar ?? tokens.dialog, logs.panel),
+    toolbar: mergeVisualBlock(tokens.toolbar, logs.toolbar),
+    sidebar: mergeVisualBlock(tokens.toolbar ?? tokens.input, logs.sidebar),
+    source: mergeVisualBlock(accentBlock, logs.source),
+    viewer: mergeVisualBlock(tokens.dialog, logs.viewer),
+    code: mergeVisualBlock(codeFallback, logs.code),
+    line: logs.line,
+    number: logs.number,
+    detail: mergeVisualBlock(tokens.input, logs.detail),
+    badge: mergeVisualBlock({ color: tokens.options?.color ?? tokens.dialog?.color }, logs.badge),
+    event: mergeVisualBlock(accentBlock, logs.event),
+    fileItem: logs.fileItem,
+    levels: logs.levels,
+  };
+}
+
 function quotedFontFamily(value: string) {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -245,6 +315,34 @@ export function resolveChatTheme(
 
   if (isSafeCssValue(tokens.name?.color)) {
     style["--chat-name-color"] = tokens.name.color;
+  }
+
+  const logs = resolveLogsThemeTokens(tokens);
+  applyLogsVisualBlock(style, "page", logs?.page);
+  applyLogsVisualBlock(style, "panel", logs?.panel);
+  applyLogsVisualBlock(style, "toolbar", logs?.toolbar);
+  applyLogsVisualBlock(style, "sidebar", logs?.sidebar);
+  applyLogsVisualBlock(style, "source", logs?.source);
+  applyLogsVisualBlock(style, "viewer", logs?.viewer);
+  applyLogsVisualBlock(style, "code", logs?.code);
+  applyLogsVisualBlock(style, "line", logs?.line);
+  applyLogsVisualBlock(style, "line-hover", logs?.line?.hover);
+  applyLogsVisualBlock(style, "line-expanded", logs?.line?.expanded);
+  applyLogsVisualBlock(style, "number", logs?.number);
+  applyLogsVisualBlock(style, "detail", logs?.detail);
+  applyLogsVisualBlock(style, "badge", logs?.badge);
+  applyLogsVisualBlock(style, "event", logs?.event);
+  applyLogsVisualBlock(style, "file", logs?.fileItem);
+  applyLogsVisualBlock(style, "file-hover", logs?.fileItem?.hover);
+  applyLogsVisualBlock(style, "file-active", logs?.fileItem?.active);
+  if (typeof logs?.code?.fontFamily === "string") {
+    const fontFamily = quotedFontFamily(logs.code.fontFamily);
+    if (fontFamily) {
+      style["--logs-code-font-family"] = fontFamily;
+    }
+  }
+  for (const level of ["debug", "default", "error", "info", "warn"] as const) {
+    applyLogsVisualBlock(style, `level-${level}`, logs?.levels?.[level]);
   }
 
   const fontFaces = (tokens.fonts ?? [])

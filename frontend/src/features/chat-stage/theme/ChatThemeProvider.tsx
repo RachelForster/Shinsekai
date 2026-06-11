@@ -1,6 +1,6 @@
-// chat stage 主题热切换 Provider（M0 占位骨架）。
+// UI 主题热切换 Provider（chat stage + logs）。
 //
-// 负责：拉取主题列表 + 当前 active → 解析为 CSS 变量/字体/打字机 → 提供给 ChatStagePage；
+// 负责：拉取主题列表 + 当前 active → 解析为 CSS 变量/字体/打字机 → 提供给主题化页面；
 // 切换时**无重载**应用并持久化。M0 仅搭好 context/状态机与解析调用，真实热切换副作用（注入
 // @font-face、写 documentElement 变量、文件 watch）在 M5 补全。
 
@@ -14,6 +14,7 @@ import {
   getChatThemeManifest,
   listChatThemes,
   setActiveChatTheme,
+  uploadChatTheme,
 } from "../../../entities/chat/repository";
 import { getPlatform } from "../../../shared/platform/platform";
 import { parseChatChromeTheme } from "../../../shared/theme/chatChromeTheme";
@@ -30,7 +31,7 @@ import type {
 } from "../../../shared/theme/chatTheme";
 
 export interface ChatThemeContextValue {
-  /** 当前聊天舞台可选主题；迁移期仅暴露内置暗色。 */
+  /** 可选主题列表（含内置 + 用户 mod）。 */
   themes: ChatThemeSummary[];
   /** 当前激活的主题 id。 */
   activeId: string | null;
@@ -39,17 +40,17 @@ export interface ChatThemeContextValue {
   /** 仅 style 部分的便捷别名（写到 stage 根元素 style）。 */
   style: ChatStageStyle;
   loading: boolean;
-  /** 切换主题；迁移期仅接受内置暗色。 */
+  /** 热切换到指定主题（无重载）。 */
   switchTheme: (id: string) => Promise<void>;
   /** 重新扫描主题目录（拾取新装的 mod）。 */
   refresh: () => Promise<void>;
-  /** 主题上传入口暂时关闭，保留接口以兼容主题选择器实现。 */
+  /** 上传 .zip 安装一个主题，安装后刷新列表并返回其概要。 */
   uploadTheme: (file: File) => Promise<ChatThemeSummary>;
   /** 删除一个用户主题，删除后刷新列表。 */
   removeTheme: (id: string) => Promise<void>;
 }
 
-const DEFAULT_CHAT_STAGE_THEME_ID = "classic-dark";
+const DEFAULT_CHAT_THEME_ID = "classic-dark";
 
 const ChatThemeContext = createContext<ChatThemeContextValue | null>(null);
 
@@ -63,10 +64,6 @@ function themeAssetUrl(themeId: string, rel: string): string {
   return assetUrl(`data/chat_ui_themes/${normalizedThemeId}/${normalizedRel}`);
 }
 
-function darkChatStageThemes(themes: ChatThemeSummary[]) {
-  return themes.filter((theme) => theme.id === DEFAULT_CHAT_STAGE_THEME_ID);
-}
-
 export function ChatThemeProvider({ children }: { children: ReactNode }) {
   const [themes, setThemes] = useState<ChatThemeSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -76,7 +73,7 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     const list = await listChatThemes();
-    setThemes(darkChatStageThemes(list));
+    setThemes(list);
   }, []);
 
   const applyManifest = useCallback((next: ChatThemeManifest | null) => {
@@ -85,12 +82,9 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
 
   const switchTheme = useCallback(
     async (id: string) => {
-      if (id !== DEFAULT_CHAT_STAGE_THEME_ID) {
-        throw new Error("当前聊天舞台仅启用内置暗色主题。");
-      }
-      const next = await getChatThemeManifest(DEFAULT_CHAT_STAGE_THEME_ID);
-      await setActiveChatTheme(DEFAULT_CHAT_STAGE_THEME_ID);
-      setActiveId(DEFAULT_CHAT_STAGE_THEME_ID);
+      const next = await getChatThemeManifest(id);
+      await setActiveChatTheme(id);
+      setActiveId(id);
       applyManifest(next);
     },
     [applyManifest],
@@ -98,10 +92,11 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
 
   const uploadTheme = useCallback(
     async (file: File) => {
-      void file;
-      throw new Error("当前聊天舞台仅启用内置暗色主题。");
+      const summary = await uploadChatTheme(file);
+      await refresh();
+      return summary;
     },
-    [],
+    [refresh],
   );
 
   const removeTheme = useCallback(
@@ -120,21 +115,26 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     (async () => {
       try {
-        const [persistedId, legacyPayload, defaultManifest] = await Promise.all([
+        const [persistedId, legacyPayload] = await Promise.all([
           getActiveChatThemeId().catch(() => ""),
           getChatTheme().catch(() => null),
-          getChatThemeManifest(DEFAULT_CHAT_STAGE_THEME_ID).catch(() => null),
           refresh().then(() => undefined, () => undefined),
         ]);
         if (!mounted) {
           return;
         }
-        setLegacyTheme(legacyPayload);
-        setActiveId(DEFAULT_CHAT_STAGE_THEME_ID);
-        applyManifest(defaultManifest);
-        if (persistedId !== DEFAULT_CHAT_STAGE_THEME_ID) {
-          void setActiveChatTheme(DEFAULT_CHAT_STAGE_THEME_ID).catch(() => undefined);
+        const themeId = persistedId || DEFAULT_CHAT_THEME_ID;
+        const nextManifest = await getChatThemeManifest(themeId).catch(() =>
+          themeId === DEFAULT_CHAT_THEME_ID
+            ? null
+            : getChatThemeManifest(DEFAULT_CHAT_THEME_ID).catch(() => null),
+        );
+        if (!mounted) {
+          return;
         }
+        setLegacyTheme(legacyPayload);
+        setActiveId(nextManifest?.id ?? null);
+        applyManifest(nextManifest);
       } catch {
         // 占位：主题不可用时回退到 chat-stage.css 默认变量。
       } finally {

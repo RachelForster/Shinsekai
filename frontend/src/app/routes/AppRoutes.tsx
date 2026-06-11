@@ -2,7 +2,6 @@ import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import { ChatThemeProvider } from "../../features/chat-stage/theme/ChatThemeProvider";
 import { AppShell } from "../shell/AppShell";
 
 const ApiSettingsPage = lazy(() =>
@@ -74,11 +73,7 @@ function lazyRouteElement(children: ReactNode) {
 }
 
 function chatStageRouteElement() {
-  return lazyRouteElement(
-    <ChatThemeProvider>
-      <ChatStagePage />
-    </ChatThemeProvider>,
-  );
+  return lazyRouteElement(<ChatStagePage />);
 }
 
 export function AppRoutes() {
