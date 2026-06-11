@@ -286,7 +286,7 @@ def _save_sprite_voice_text(state: BridgeState, payload: dict[str, Any]) -> dict
 def _save_sprite_voice_type(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name") or "").strip()
     sprite_index = int(payload.get("spriteIndex") or 0)
-    voice_type = str(payload.get("voiceType") or "").strip()
+    voice_type = str(payload.get("voiceType") or "").strip().lower()
     if not voice_type:
         raise ValueError("voice type is required")
     message = state.character_manager.save_sprite_voice_type(name, sprite_index, voice_type)
