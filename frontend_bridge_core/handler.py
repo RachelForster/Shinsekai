@@ -121,6 +121,8 @@ from .tts import _download_tts_bundle, _tts_bundle_recommendation
 
 logger = get_logger(__name__)
 
+CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
+
 
 class _RangeNotSatisfiable(Exception):
     pass
@@ -202,7 +204,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
 
-    def _wait_for_chat_runtime_ready(self, stream_info: dict[str, Any], *, timeout: float = 5.0) -> None:
+    def _wait_for_chat_runtime_ready(
+        self,
+        stream_info: dict[str, Any],
+        *,
+        timeout: float = CHAT_RUNTIME_READY_TIMEOUT_SECONDS,
+    ) -> None:
         session_id = str(stream_info.get("sessionId") or "").strip()
         chat_stream = getattr(self.state, "chat_stream", None)
         if not session_id or chat_stream is None:

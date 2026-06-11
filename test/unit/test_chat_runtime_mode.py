@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from frontend_bridge_core.chat import _chat_runtime_mode, _chat_snapshot
-from frontend_bridge_core.handler import FrontendBridgeHandler
+from frontend_bridge_core.handler import CHAT_RUNTIME_READY_TIMEOUT_SECONDS, FrontendBridgeHandler
 
 
 class _SystemConfig:
@@ -190,7 +190,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 snapshot = handler._resume_last_chat()
 
         self.assertEqual(len(chat_stream.create_session_calls), 1)
-        self.assertEqual(chat_stream.wait_calls, [("session-1", 5.0)])
+        self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["sessionId"], "session-1")
 
@@ -233,7 +233,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["sessionId"], "session-1")
-        self.assertEqual(chat_stream.wait_calls, [("session-1", 5.0)])
+        self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
         self.assertEqual(launch_chat.call_args.kwargs["workflow_path"], "test/e2e/live_bridge_runtime.yaml")
 
     def test_launch_chat_raises_when_runtime_stream_never_becomes_ready(self):
@@ -277,7 +277,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "实时聊天会话未就绪"):
                     handler._launch_chat(body)
 
-        self.assertEqual(chat_stream.wait_calls, [("session-1", 5.0)])
+        self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
         self.assertEqual(chat_stream.deleted_sessions, ["session-1"])
         self.assertEqual(handler.server.state.chat_session.get("sessionId"), "")
         close_chat.assert_called_once()

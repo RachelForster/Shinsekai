@@ -163,6 +163,12 @@ def main():
     ensure_plugins_loaded(config)
 
     args = parse_sprite_args(tr_i18n)
+    stream_sink = None
+    if args.stream_endpoint:
+        from core.runtime.event_sink import WSClientSink
+
+        stream_sink = WSClientSink(args.stream_endpoint)
+        stream_sink.emit({"type": "status.change", "status": "idle"})
 
     # T2I manager
     t2i_manager = None
@@ -327,10 +333,12 @@ def main():
     _um = chat_handles.ui_worker
 
     if args.stream_endpoint:
-        from core.runtime.event_sink import WSClientSink
         from core.runtime.ui_update_manager import StreamingUIUpdateManager
 
-        stream_sink = WSClientSink(args.stream_endpoint)
+        if stream_sink is None:
+            from core.runtime.event_sink import WSClientSink
+
+            stream_sink = WSClientSink(args.stream_endpoint)
         ui_updates = StreamingUIUpdateManager(stream_sink, chat_history=chat_history)
         set_app_runtime(
             AppRuntime(
