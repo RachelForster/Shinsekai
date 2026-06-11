@@ -868,7 +868,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         }
         if _chat_process_running():
             self.state.chat_session = {**self.state.chat_session, **session_base}
-            return _chat_snapshot(self.state, None, "进程已经在运行中。")
+            return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_snapshot(self.state, "idle", "")
         use_react_runtime = _chat_runtime_mode(self.state) == "react"
@@ -917,14 +917,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 {
                     "backgroundPath": _chat_snapshot(self.state).get("backgroundPath", ""),
                     "characterName": first_character,
-                    "dialogText": message,
+                    "dialogText": "",
                     "historyPath": (default_history_path if reset_history else history_path).as_posix(),
                     "status": "idle",
+                    "statusMessage": message,
                     "voiceLanguage": str(self.state.chat_session.get("voiceLanguage") or "ja"),
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
-        return _chat_snapshot(self.state, "idle", message)
+        return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
 
     def _resume_last_chat(self) -> dict[str, Any]:
         session = _load_template_session_payload(self.state) or {}
@@ -972,7 +973,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         }
         if _chat_process_running():
             self.state.chat_session = {**self.state.chat_session, **session_base}
-            return _chat_snapshot(self.state, None, "进程已经在运行中。")
+            return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_snapshot(self.state, "idle", "")
         use_react_runtime = _chat_runtime_mode(self.state) == "react"
@@ -1021,14 +1022,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 {
                     "backgroundPath": _chat_snapshot(self.state).get("backgroundPath", ""),
                     "characterName": first_character,
-                    "dialogText": message,
+                    "dialogText": "",
                     "historyPath": history_path.as_posix(),
                     "status": "idle",
+                    "statusMessage": message,
                     "voiceLanguage": str(self.state.chat_session.get("voiceLanguage") or "ja"),
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
-        return _chat_snapshot(self.state, "idle", message)
+        return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
 
     def _resolve_project_path(self, raw_path: str) -> Path:
         root = Path.cwd().resolve()

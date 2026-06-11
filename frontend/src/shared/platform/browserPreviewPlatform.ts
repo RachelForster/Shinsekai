@@ -702,12 +702,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
           characterName: character?.name,
-          dialogText: `${payload.templateId} 已启动：${historyPath}`,
+          dialogText: "",
           historyPath,
           sprites: character?.sprites[0]
             ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
             : [],
           status: "idle",
+          statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
         };
         emitChat();
         return delay(chat);
@@ -720,12 +721,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...chat,
           backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
           characterName: character?.name ?? chat.characterName,
-          dialogText: `已恢复上次启动：${historyPath}`,
+          dialogText: "",
           historyPath,
           sprites: character?.sprites[0]
             ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
             : chat.sprites,
           status: "idle",
+          statusMessage: `已恢复上次启动：${historyPath}`,
         };
         emitChat();
         return delay(chat);

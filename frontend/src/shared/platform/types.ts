@@ -702,6 +702,7 @@ export interface ChatSnapshot {
   sessionId?: string;
   sprites: ChatSprite[];
   status: ChatRuntimeStatus;
+  statusMessage?: string;
   voiceLanguage?: string;
   wsUrl?: string;
 }

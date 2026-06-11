@@ -188,7 +188,11 @@ export function ChatLauncherPage() {
         void handleRuntimeDependencyError(snapshot);
         return;
       }
-      showToast({ kind: "success", message: snapshot.dialogText, title: t("launch.toast.started") });
+      showToast({
+        kind: "success",
+        message: snapshot.statusMessage || snapshot.dialogText,
+        title: t("launch.toast.started"),
+      });
       void showChatSurface({ navigate, snapshot });
     },
   });

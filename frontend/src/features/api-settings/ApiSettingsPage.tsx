@@ -187,7 +187,11 @@ export function ApiSettingsPage() {
       });
     },
     onSuccess(snapshot) {
-      showToast({ kind: "success", message: snapshot.dialogText, title: t("api.resume.title") });
+      showToast({
+        kind: "success",
+        message: snapshot.statusMessage || snapshot.dialogText,
+        title: t("api.resume.title"),
+      });
       void showChatSurface({ snapshot });
     },
   });

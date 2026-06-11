@@ -447,7 +447,11 @@ export function TemplateEditorPage() {
         void handleRuntimeDependencyError(snapshot);
         return;
       }
-      showToast({ kind: "success", message: snapshot.dialogText, title: t("template.toast.launched") });
+      showToast({
+        kind: "success",
+        message: snapshot.statusMessage || snapshot.dialogText,
+        title: t("template.toast.launched"),
+      });
       void showChatSurface({ snapshot });
     },
   });

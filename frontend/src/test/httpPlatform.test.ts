@@ -533,12 +533,13 @@ describe("http platform", () => {
     const snapshot = {
       backgroundPath: "/assets/bg.png",
       characterName: "Nanami",
-      dialogText: "聊天进程已启动！PID: 123",
+      dialogText: "",
       historyPath: "data/chat_history/default.json",
       inputDraft: "",
       options: [],
       sprites: [],
       status: "idle",
+      statusMessage: "聊天进程已启动！PID: 123",
     };
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
     vi.stubGlobal("fetch", fetchMock);
@@ -551,7 +552,8 @@ describe("http platform", () => {
       templateId: "default",
     });
 
-    expect(result.dialogText).toContain("聊天进程已启动");
+    expect(result.dialogText).toBe("");
+    expect(result.statusMessage).toContain("聊天进程已启动");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8787/api/chat/launch",
       expect.objectContaining({
@@ -570,12 +572,13 @@ describe("http platform", () => {
     const snapshot = {
       backgroundPath: "",
       characterName: "Nanami",
-      dialogText: "聊天进程已启动！PID: 123",
+      dialogText: "",
       historyPath: "data/chat_history/default.json",
       inputDraft: "",
       options: [],
       sprites: [],
       status: "idle",
+      statusMessage: "聊天进程已启动！PID: 123",
     };
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
     vi.stubGlobal("fetch", fetchMock);
@@ -661,12 +664,13 @@ describe("http platform", () => {
     const snapshot = {
       backgroundPath: "",
       characterName: "",
-      dialogText: "聊天进程已启动！PID: 456",
+      dialogText: "",
       historyPath: "data/chat_history/default.json",
       inputDraft: "",
       options: [],
       sprites: [],
       status: "idle",
+      statusMessage: "聊天进程已启动！PID: 456",
     };
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
     vi.stubGlobal("fetch", fetchMock);
@@ -674,7 +678,8 @@ describe("http platform", () => {
     const platform = createHttpPlatform("http://127.0.0.1:8787");
     const result = await platform.chat.resumeLast();
 
-    expect(result.dialogText).toContain("聊天进程已启动");
+    expect(result.dialogText).toBe("");
+    expect(result.statusMessage).toContain("聊天进程已启动");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8787/api/chat/resume-last",
       expect.objectContaining({

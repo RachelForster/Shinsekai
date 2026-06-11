@@ -7,6 +7,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -69,10 +70,13 @@ def _chat_runtime_mode(state: BridgeState) -> str:
     return "native" if mode == "native" else "react"
 
 
-def _hidden_subprocess_kwargs() -> dict[str, int]:
+def _hidden_subprocess_kwargs() -> dict[str, Any]:
     if os.name != "nt":
-        return {}
-    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+        return {"start_new_session": True}
+    return {
+        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    }
 
 
 def _chat_process_running() -> bool:
@@ -142,6 +146,67 @@ def _failed_launch_message(exit_code: int, log_path: Path) -> str:
             f"\n建议安装包: {dependency_error['packageName']}"
         )
     return f"启动失败: 聊天进程已退出，退出码 {exit_code}。\n日志: {log_path}{dependency_hint}{detail}"
+
+
+def _chat_process_started_message(process: subprocess.Popen[bytes]) -> str:
+    return f"聊天进程已启动！PID: {process.pid}"
+
+
+def _signal_process_tree(process: subprocess.Popen[bytes], signum: int) -> None:
+    if os.name != "nt":
+        try:
+            os.killpg(process.pid, signum)
+            return
+        except ProcessLookupError:
+            return
+        except OSError:
+            pass
+    try:
+        process.send_signal(signum)
+    except (OSError, ValueError):
+        pass
+
+
+def _wait_process_exit(process: subprocess.Popen[bytes], timeout: float) -> bool:
+    try:
+        process.wait(timeout=max(timeout, 0.0))
+        return True
+    except subprocess.TimeoutExpired:
+        return False
+
+
+def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float) -> None:
+    if process.poll() is not None:
+        return
+
+    deadline = time.monotonic() + max(wait_timeout, 0.15)
+    steps: list[tuple[int | str, float]] = [
+        (signal.SIGINT, 0.45),
+        (signal.SIGTERM, 0.35),
+        ("kill", 0.35),
+    ]
+    for action, step_timeout in steps:
+        if process.poll() is not None:
+            return
+        if action == "kill":
+            if os.name != "nt":
+                _signal_process_tree(process, signal.SIGKILL)
+            else:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+        else:
+            if os.name == "nt" and action == signal.SIGINT:
+                try:
+                    process.terminate()
+                except OSError:
+                    pass
+            else:
+                _signal_process_tree(process, int(action))
+        remaining = max(0.05, min(step_timeout, deadline - time.monotonic()))
+        if _wait_process_exit(process, remaining):
+            return
 
 
 def _release_root() -> Path:
@@ -272,7 +337,7 @@ def _launch_chat(
         try:
             exit_code = _main_chat_process.wait(timeout=1.2)
         except subprocess.TimeoutExpired:
-            return f"聊天进程已启动！PID: {_main_chat_process.pid}"
+            return _chat_process_started_message(_main_chat_process)
         _close_chat_log_if_needed()
         return _failed_launch_message(exit_code, log_path)
 
@@ -281,9 +346,16 @@ def _close_chat(
     state: BridgeState,
     *,
     reason: str = "聊天会话已结束。",
-    wait_timeout: float = 5.0,
+    wait_timeout: float = 1.2,
 ) -> dict[str, Any]:
     global _main_chat_process
+
+    session_id = str(state.chat_session.get("sessionId") or "").strip()
+    chat_stream = getattr(state, "chat_stream", None)
+    if session_id and chat_stream is not None:
+        snapshot = chat_stream.get_snapshot(session_id)
+        if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
+            chat_stream.close_session(session_id, reason=reason)
 
     process: subprocess.Popen[bytes] | None = None
     with _main_chat_process_lock:
@@ -294,31 +366,12 @@ def _close_chat(
 
     if process is not None and process.poll() is None:
         try:
-            if os.name != "nt" and hasattr(process, "send_signal"):
-                process.send_signal(signal.SIGINT)
-            else:
-                process.terminate()
-            try:
-                process.wait(timeout=wait_timeout)
-            except subprocess.TimeoutExpired:
-                process.terminate()
-                try:
-                    process.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=2.0)
+            _stop_chat_process(process, wait_timeout=wait_timeout)
         finally:
             with _main_chat_process_lock:
                 if _main_chat_process is process:
                     _main_chat_process = None
                 _close_chat_log_if_needed()
-
-    session_id = str(state.chat_session.get("sessionId") or "").strip()
-    chat_stream = getattr(state, "chat_stream", None)
-    if session_id and chat_stream is not None:
-        snapshot = chat_stream.get_snapshot(session_id)
-        if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
-            chat_stream.close_session(session_id, reason=reason)
 
     return _chat_snapshot(state, "idle", "")
 
@@ -489,6 +542,7 @@ def _chat_snapshot(
                 next_snapshot["dialogText"] = message
                 next_snapshot.pop("dialogHtml", None)
                 next_snapshot["characterName"] = ""
+                next_snapshot["statusMessage"] = message
             if status is not None:
                 next_snapshot["status"] = status
                 next_snapshot["numericInfo"] = status
@@ -500,7 +554,7 @@ def _chat_snapshot(
     return {
         "backgroundPath": bg_path,
         "characterName": "" if message else character_name,
-        "dialogText": message or "React bridge 已连接，启动聊天后主进程会接管实时演出窗口。",
+        "dialogText": message,
         "eventSeq": 0,
         "historyEntries": _chat_history_entries(state),
         "historyPath": history_path,
@@ -510,6 +564,7 @@ def _chat_snapshot(
         "runtimeMode": runtime_mode,
         "sprites": sprites,
         "status": status or "idle",
+        "statusMessage": message,
         "voiceLanguage": voice_language,
         **(extra or {}),
     }

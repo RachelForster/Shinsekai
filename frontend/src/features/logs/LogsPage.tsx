@@ -37,6 +37,15 @@ const MAX_VISIBLE_LINES = 3000;
 const DETAIL_FIELD_LIMIT = 36;
 const RESERVED_DETAIL_FIELDS = new Set(["event", "level", "line", "logger", "message", "timestamp"]);
 
+type ParsedTextLogLine = {
+  detailPairs: Array<[string, string]>;
+  event: string;
+  level: string;
+  logger: string;
+  message: string;
+  timestamp: string;
+};
+
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) {
     return "0 B";
@@ -107,6 +116,83 @@ function entryDetailPairs(entry: LogStructuredEntry | undefined) {
     .filter(([, value]) => value.trim());
 }
 
+function cleanLogDetailValue(value: string) {
+  return value.replace(/^["']|["']$/g, "").replace(/[,:;]+$/g, "");
+}
+
+function extractKeyValuePairs(text: string) {
+  const pairs: Array<[string, string]> = [];
+  const seen = new Set<string>();
+  const pattern = /([A-Za-z_][\w.-]*)=("[^"]*"|'[^']*'|[^\s\]]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    const key = match[1];
+    const value = cleanLogDetailValue(match[2] ?? "");
+    if (!key || !value || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    pairs.push([key, value]);
+    if (pairs.length >= DETAIL_FIELD_LIMIT) {
+      break;
+    }
+  }
+  return pairs;
+}
+
+function stripKeyValueNoise(text: string) {
+  return text
+    .replace(/\[[^\]]*[A-Za-z_][\w.-]*=(?:"[^"]*"|'[^']*'|[^\s\]]+)[^\]]*\]\s*:?\s*/g, "")
+    .replace(/\b[A-Za-z_][\w.-]*=(?:"[^"]*"|'[^']*'|[^\s\]]+)/g, "")
+    .replace(/^\s*[:：-]\s*/, "")
+    .trim();
+}
+
+function parseRestartDebugLine(text: string): ParsedTextLogLine | undefined {
+  if (!text.startsWith("[restart-debug]")) {
+    return undefined;
+  }
+  const detailPairs = extractKeyValuePairs(text);
+  const detail = Object.fromEntries(detailPairs);
+  return {
+    detailPairs,
+    event: "restart-debug",
+    level: "debug",
+    logger: detail.component || "restart",
+    message: stripKeyValueNoise(text.replace(/^\[restart-debug\]\s*/, "")) || text,
+    timestamp: detail.ts || "",
+  };
+}
+
+function parseTextLogLine(text: string): ParsedTextLogLine | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const restart = parseRestartDebugLine(trimmed);
+  if (restart) {
+    return restart;
+  }
+  const match = trimmed.match(/^(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,6})?)\s+\[([A-Za-z]+)\]\s+([A-Za-z0-9_.:-]+)(?:\s+([\s\S]*))?$/);
+  if (!match) {
+    return undefined;
+  }
+  const [, timestamp = "", level = "", logger = "", rest = ""] = match;
+  const firstTokenMatch = rest.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
+  const firstToken = firstTokenMatch?.[1] ?? "";
+  const firstTokenLooksLikeEvent = /^[A-Za-z_][\w.-]*$/.test(firstToken) && /[.:]/.test(firstToken);
+  const event = firstTokenLooksLikeEvent ? firstToken : "";
+  const messageSource = firstTokenLooksLikeEvent ? firstTokenMatch?.[2] ?? "" : rest;
+  return {
+    detailPairs: extractKeyValuePairs(rest),
+    event,
+    level,
+    logger,
+    message: stripKeyValueNoise(messageSource) || messageSource.trim() || trimmed,
+    timestamp,
+  };
+}
+
 function normalizeLevel(value: unknown, fallbackText = ""): LogLevel {
   const raw = String(value || "").toLowerCase();
   if (raw.includes("error") || raw.includes("critical") || /\b(exception|failed|traceback)\b/i.test(fallbackText)) {
@@ -147,20 +233,21 @@ function buildLines(snapshot?: LogSnapshot): LogLine[] {
   return (snapshot?.content ?? "").split(/\r?\n/).map((text, index) => {
     const number = index + 1;
     const entry = entryByLine.get(number) ?? parseJsonLine(text);
-    const message = entryMessage(entry, text);
+    const parsedText = entry ? undefined : parseTextLogLine(text);
+    const message = entry ? entryMessage(entry, text) : parsedText?.message || text;
     return {
-      detailPairs: entryDetailPairs(entry),
+      detailPairs: entry ? entryDetailPairs(entry) : parsedText?.detailPairs ?? [],
       entry,
-      event: entryString(entry, "event"),
-      level: normalizeLevel(entry?.level, text),
-      logger: entryString(entry, "logger"),
+      event: entryString(entry, "event") || parsedText?.event || "",
+      level: normalizeLevel(entry?.level ?? parsedText?.level, text),
+      logger: entryString(entry, "logger") || parsedText?.logger || "",
       message,
       number,
       pluginId: entryString(entry, "plugin_id"),
       rawText: text,
       taskId: entryString(entry, "task_id"),
       text: message,
-      timestamp: entryString(entry, "timestamp"),
+      timestamp: entryString(entry, "timestamp") || parsedText?.timestamp || "",
     };
   });
 }

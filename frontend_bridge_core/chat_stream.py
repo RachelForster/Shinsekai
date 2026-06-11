@@ -207,7 +207,7 @@ class ChatStreamService:
 
         future = asyncio.run_coroutine_threadsafe(self._publish_event(session_id, event), loop)
         try:
-            future.result(timeout=1.5)
+            future.result(timeout=0.35)
         except Exception:
             with self._lock:
                 session = self._sessions.get(session_id)

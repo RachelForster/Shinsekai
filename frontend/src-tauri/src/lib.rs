@@ -44,7 +44,7 @@ const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 const BRIDGE_RESTART_STATE_EVENT: &str = "shinsekai:bridge-restart-state";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
-const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(12);
+const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[cfg(unix)]
 unsafe extern "C" {
