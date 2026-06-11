@@ -183,14 +183,14 @@ class ChatStreamCommandTests(unittest.TestCase):
         snapshot = _handle_chat_command(state, {"payload": "hello", "type": "send-message"})
 
         self.assertEqual(snapshot["status"], "generating")
-        self.assertEqual(snapshot["dialogText"], "你：hello")
+        self.assertEqual(snapshot["dialogText"], "hello")
         self.assertEqual(snapshot["inputDraft"], "")
         self.assertNotIn("dialogHtml", snapshot)
-        self.assertEqual(snapshot["characterName"], "")
-        self.assertEqual(chat_stream.snapshot["dialogText"], "你：hello")
+        self.assertEqual(snapshot["characterName"], "你")
+        self.assertEqual(chat_stream.snapshot["dialogText"], "hello")
         self.assertEqual(chat_stream.snapshot["inputDraft"], "")
         self.assertIsNone(chat_stream.snapshot["dialogHtml"])
-        self.assertEqual(chat_stream.snapshot["characterName"], "")
+        self.assertEqual(chat_stream.snapshot["characterName"], "你")
 
     def test_handle_chat_command_updates_voice_language_for_runtime_session(self):
         chat_stream = _StubChatStream()
@@ -221,7 +221,8 @@ class ChatStreamCommandTests(unittest.TestCase):
         snapshot = _handle_chat_command(state, {"payload": "hello again", "type": "send-message"})
 
         self.assertEqual(snapshot["status"], "generating")
-        self.assertEqual(snapshot["dialogText"], "你：hello again")
+        self.assertEqual(snapshot["dialogText"], "hello again")
+        self.assertEqual(snapshot["characterName"], "你")
         self.assertEqual(snapshot["sessionClosedReason"], "")
         self.assertEqual(snapshot["notificationText"], "")
         self.assertEqual(chat_stream.snapshot["sessionClosedReason"], "")

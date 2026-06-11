@@ -550,6 +550,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             ) + 1;
           chat = {
             ...chat,
+            characterName: "你",
             dialogText: payload,
             historyEntries: [
               ...cloneHistoryEntries(chat.historyEntries),
@@ -568,7 +569,8 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           emitChat();
           scheduleChatUpdate(700, (current) => ({
             ...current,
-            dialogText: `Nanami: 收到：${payload}`,
+            characterName: "Nanami",
+            dialogText: `收到：${payload}`,
             historyEntries: [
               ...cloneHistoryEntries(current.historyEntries),
               { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 收到：${payload}` },

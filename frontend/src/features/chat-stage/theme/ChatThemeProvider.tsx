@@ -14,7 +14,6 @@ import {
   getChatThemeManifest,
   listChatThemes,
   setActiveChatTheme,
-  uploadChatTheme,
 } from "../../../entities/chat/repository";
 import { getPlatform } from "../../../shared/platform/platform";
 import { parseChatChromeTheme } from "../../../shared/theme/chatChromeTheme";
@@ -31,7 +30,7 @@ import type {
 } from "../../../shared/theme/chatTheme";
 
 export interface ChatThemeContextValue {
-  /** 可选主题列表（含内置 + 用户 mod）。 */
+  /** 当前聊天舞台可选主题；迁移期仅暴露内置暗色。 */
   themes: ChatThemeSummary[];
   /** 当前激活的主题 id。 */
   activeId: string | null;
@@ -40,21 +39,17 @@ export interface ChatThemeContextValue {
   /** 仅 style 部分的便捷别名（写到 stage 根元素 style）。 */
   style: ChatStageStyle;
   loading: boolean;
-  /** 热切换到指定主题（无重载）。 */
+  /** 切换主题；迁移期仅接受内置暗色。 */
   switchTheme: (id: string) => Promise<void>;
   /** 重新扫描主题目录（拾取新装的 mod）。 */
   refresh: () => Promise<void>;
-  /** 上传 .zip 安装一个主题，安装后刷新列表并返回其概要。 */
+  /** 主题上传入口暂时关闭，保留接口以兼容主题选择器实现。 */
   uploadTheme: (file: File) => Promise<ChatThemeSummary>;
   /** 删除一个用户主题，删除后刷新列表。 */
   removeTheme: (id: string) => Promise<void>;
 }
 
-const EMPTY_RESOLVED: ResolvedChatTheme = {
-  style: {},
-  fontFaces: "",
-  typewriter: { cps: DEFAULT_TYPEWRITER_CPS },
-};
+const DEFAULT_CHAT_STAGE_THEME_ID = "classic-dark";
 
 const ChatThemeContext = createContext<ChatThemeContextValue | null>(null);
 
@@ -68,6 +63,10 @@ function themeAssetUrl(themeId: string, rel: string): string {
   return assetUrl(`data/chat_ui_themes/${normalizedThemeId}/${normalizedRel}`);
 }
 
+function darkChatStageThemes(themes: ChatThemeSummary[]) {
+  return themes.filter((theme) => theme.id === DEFAULT_CHAT_STAGE_THEME_ID);
+}
+
 export function ChatThemeProvider({ children }: { children: ReactNode }) {
   const [themes, setThemes] = useState<ChatThemeSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -77,7 +76,7 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     const list = await listChatThemes();
-    setThemes(list);
+    setThemes(darkChatStageThemes(list));
   }, []);
 
   const applyManifest = useCallback((next: ChatThemeManifest | null) => {
@@ -86,9 +85,12 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
 
   const switchTheme = useCallback(
     async (id: string) => {
-      const next = await getChatThemeManifest(id);
-      await setActiveChatTheme(id);
-      setActiveId(id);
+      if (id !== DEFAULT_CHAT_STAGE_THEME_ID) {
+        throw new Error("当前聊天舞台仅启用内置暗色主题。");
+      }
+      const next = await getChatThemeManifest(DEFAULT_CHAT_STAGE_THEME_ID);
+      await setActiveChatTheme(DEFAULT_CHAT_STAGE_THEME_ID);
+      setActiveId(DEFAULT_CHAT_STAGE_THEME_ID);
       applyManifest(next);
     },
     [applyManifest],
@@ -96,11 +98,10 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
 
   const uploadTheme = useCallback(
     async (file: File) => {
-      const summary = await uploadChatTheme(file);
-      await refresh();
-      return summary;
+      void file;
+      throw new Error("当前聊天舞台仅启用内置暗色主题。");
     },
-    [refresh],
+    [],
   );
 
   const removeTheme = useCallback(
@@ -119,14 +120,20 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     (async () => {
       try {
-        const [_, id, legacyPayload] = await Promise.all([refresh(), getActiveChatThemeId(), getChatTheme()]);
+        const [persistedId, legacyPayload, defaultManifest] = await Promise.all([
+          getActiveChatThemeId().catch(() => ""),
+          getChatTheme().catch(() => null),
+          getChatThemeManifest(DEFAULT_CHAT_STAGE_THEME_ID).catch(() => null),
+          refresh().then(() => undefined, () => undefined),
+        ]);
         if (!mounted) {
           return;
         }
         setLegacyTheme(legacyPayload);
-        setActiveId(id || null);
-        if (id) {
-          applyManifest(await getChatThemeManifest(id));
+        setActiveId(DEFAULT_CHAT_STAGE_THEME_ID);
+        applyManifest(defaultManifest);
+        if (persistedId !== DEFAULT_CHAT_STAGE_THEME_ID) {
+          void setActiveChatTheme(DEFAULT_CHAT_STAGE_THEME_ID).catch(() => undefined);
         }
       } catch {
         // 占位：主题不可用时回退到 chat-stage.css 默认变量。

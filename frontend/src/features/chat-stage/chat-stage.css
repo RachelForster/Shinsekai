@@ -705,7 +705,7 @@ body[data-chat-stage-transparent="true"] #root {
 
 .floating-toolbar__actions {
   display: grid;
-  grid-template-columns: repeat(7, 34px) minmax(76px, auto);
+  grid-template-columns: repeat(6, 34px) minmax(76px, auto);
   align-items: stretch;
   gap: 7px;
 }

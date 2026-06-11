@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../shared/i18n";
@@ -32,7 +32,6 @@ vi.mock("../shared/platform/platform", () => ({
 }));
 
 import { ChatThemeProvider, useChatTheme } from "../features/chat-stage/theme/ChatThemeProvider";
-import { ChatThemePicker } from "../features/chat-stage/theme/ChatThemePicker";
 import { resolveChatTheme, type ChatThemeManifest } from "../shared/theme/chatTheme";
 
 function Probe() {
@@ -42,6 +41,7 @@ function Probe() {
       data-active={theme.activeId ?? ""}
       data-cps={String(theme.resolved?.typewriter.cps ?? "")}
       data-gap={theme.style["--chat-options-gap"] ?? ""}
+      data-theme-count={String(theme.themes.length)}
       data-testid="theme-probe"
       data-theme-color={theme.style["--chat-theme-color"] ?? ""}
     />
@@ -227,64 +227,30 @@ describe("chat theme runtime", () => {
     );
   });
 
-  it("supports upload, switch, and delete flows through the theme picker", async () => {
+  it("locks the chat stage runtime to the built-in dark theme", async () => {
     const classicManifest: ChatThemeManifest = {
       schema: 1,
       id: "classic-dark",
       name: { en: "Classic Dark" },
       tokens: { global: { themeColor: "#644ae3" } },
     };
-    const uploadedManifest: ChatThemeManifest = {
-      schema: 1,
-      id: "my-theme",
-      name: { en: "My Theme" },
-      tokens: { global: { themeColor: "#22aa88" } },
-    };
 
-    repoMocks.listChatThemes
-      .mockResolvedValueOnce([{ id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" }])
-      .mockResolvedValueOnce([
-        { id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" },
-        { id: "my-theme", name: { en: "My Theme" }, source: "user" },
-      ])
-      .mockResolvedValueOnce([{ id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" }]);
-    repoMocks.getActiveChatThemeId.mockResolvedValue("classic-dark");
+    repoMocks.listChatThemes.mockResolvedValue([
+      { id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" },
+      { id: "light-paper", name: { en: "Light Paper" }, source: "builtin" },
+      { id: "my-theme", name: { en: "My Theme" }, source: "user" },
+    ]);
+    repoMocks.getActiveChatThemeId.mockResolvedValue("light-paper");
     repoMocks.getChatTheme.mockResolvedValue({});
-    repoMocks.getChatThemeManifest.mockImplementation(async (id: string) =>
-      id === "my-theme" ? uploadedManifest : classicManifest,
-    );
-    repoMocks.uploadChatTheme.mockResolvedValue({
-      id: "my-theme",
-      name: { en: "My Theme" },
-      source: "user",
-      version: "1.0.0",
-    });
+    repoMocks.getChatThemeManifest.mockResolvedValue(classicManifest);
     repoMocks.setActiveChatTheme.mockResolvedValue(undefined);
-    repoMocks.deleteChatTheme.mockResolvedValue(undefined);
 
-    renderThemeTree(<ChatThemePicker />);
+    renderThemeTree(<Probe />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Manage themes" }));
-    expect(await screen.findByRole("dialog", { name: "Chat themes" })).toBeInTheDocument();
-
-    const uploadInput = document.querySelector(".chat-theme-picker__file-input") as HTMLInputElement;
-    const file = new File(["theme"], "my-theme.zip", { type: "application/zip" });
-    fireEvent.change(uploadInput, { target: { files: [file] } });
-
-    await waitFor(() => expect(repoMocks.uploadChatTheme).toHaveBeenCalled());
-    await waitFor(() => expect(repoMocks.setActiveChatTheme).toHaveBeenCalledWith("my-theme"));
-    expect(await screen.findByText("Theme uploaded")).toBeInTheDocument();
-    expect(await screen.findByText("Theme applied")).toBeInTheDocument();
-
-    const dialog = screen.getByRole("dialog", { name: "Chat themes" });
-    const myThemeCard = within(dialog).getByText("My Theme").closest(".chat-theme-picker__card");
-    expect(myThemeCard).not.toBeNull();
-    fireEvent.click(within(myThemeCard as HTMLElement).getByRole("button", { name: "Delete" }));
-
-    const confirm = await screen.findByRole("dialog", { name: "Delete theme" });
-    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
-
-    await waitFor(() => expect(repoMocks.deleteChatTheme).toHaveBeenCalledWith("my-theme"));
-    expect(await screen.findByText("Theme deleted")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-active", "classic-dark"));
+    expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-theme-count", "1");
+    expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-theme-color", "#644ae3");
+    expect(repoMocks.getChatThemeManifest).toHaveBeenCalledWith("classic-dark");
+    expect(repoMocks.setActiveChatTheme).toHaveBeenCalledWith("classic-dark");
   });
 });

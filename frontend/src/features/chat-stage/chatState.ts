@@ -93,6 +93,32 @@ function htmlToText(value: string) {
     .trim();
 }
 
+const userDialogSpeaker = "你";
+const userDialogPrefixPattern = /^\s*你\s*[：:]\s*/;
+
+function normalizeDialogView(characterName: string | undefined, dialogText: string, dialogHtml?: string) {
+  const normalizedName = characterName?.trim();
+  if (normalizedName === userDialogSpeaker) {
+    return {
+      characterName: userDialogSpeaker,
+      dialogHtml,
+      dialogText: dialogText.replace(userDialogPrefixPattern, ""),
+    };
+  }
+  if (!normalizedName && dialogHtml === undefined && userDialogPrefixPattern.test(dialogText)) {
+    return {
+      characterName: userDialogSpeaker,
+      dialogHtml,
+      dialogText: dialogText.replace(userDialogPrefixPattern, ""),
+    };
+  }
+  return {
+    characterName,
+    dialogHtml,
+    dialogText,
+  };
+}
+
 function sortSprites(sprites: ChatStageSprite[]) {
   return [...sprites].sort((left, right) => {
     const slotDiff = (left.slot ?? Number.MAX_SAFE_INTEGER) - (right.slot ?? Number.MAX_SAFE_INTEGER);
@@ -388,13 +414,18 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
 }
 
 export function buildChatStageViewModel(state: ChatStageState): ChatStageViewModel {
+  const dialog = normalizeDialogView(
+    state.error ? undefined : state.characterName,
+    state.error ?? state.dialogText,
+    state.error ? undefined : state.dialogHtml,
+  );
   return {
     backgroundPath: state.backgroundPath,
     busyText: state.busyText,
     cgPath: state.cgPath,
-    dialogCharacterName: state.characterName,
-    dialogHtml: state.error ? undefined : state.dialogHtml,
-    dialogText: state.error ?? state.dialogText,
+    dialogCharacterName: dialog.characterName,
+    dialogHtml: dialog.dialogHtml,
+    dialogText: dialog.dialogText,
     inputDisabled: !state.layers.input || state.status === "generating" || state.status === "streaming",
     inputDraft: state.inputDraft,
     layers: state.layers,

@@ -66,7 +66,6 @@ import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./cha
 import type { ChatStageSprite } from "./chatState";
 import { buildDialogTypewriterSource, renderDialogTypewriterFrame } from "./dialogTypewriter";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
-import { ChatThemePicker } from "./theme/ChatThemePicker";
 
 const chatVoiceLanguages = [
   { labelKey: "system.asr.langJa", value: "ja" },
@@ -572,7 +571,6 @@ function FloatingToolbar({
           <IconButton label={t("chat.toolbar.clearHistory")} onClick={() => onCommand({ type: "clear-history" })}>
             <Trash2 aria-hidden className="icon-button__icon" />
           </IconButton>
-          <ChatThemePicker />
           <IconButton
             label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
             onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}

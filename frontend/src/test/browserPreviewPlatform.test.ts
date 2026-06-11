@@ -76,6 +76,8 @@ describe("browser preview platform chat themes", () => {
     await vi.advanceTimersByTimeAsync(120);
     const sendingSnapshot = await sendPromise;
     expect(sendingSnapshot.status).toBe("streaming");
+    expect(sendingSnapshot.characterName).toBe("你");
+    expect(sendingSnapshot.dialogText).toBe("你好");
     expect(sendingSnapshot.inputDraft).toBe("");
 
     await vi.advanceTimersByTimeAsync(700);
@@ -86,7 +88,8 @@ describe("browser preview platform chat themes", () => {
     await vi.advanceTimersByTimeAsync(120);
     const finalSnapshot = await finalSnapshotPromise;
     expect(finalSnapshot.status).toBe("idle");
-    expect(finalSnapshot.dialogText).toContain("收到：你好");
+    expect(finalSnapshot.characterName).toBe("Nanami");
+    expect(finalSnapshot.dialogText).toBe("收到：你好");
 
     unsubscribe();
   });

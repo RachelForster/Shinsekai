@@ -636,7 +636,11 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         text = str(body.get("payload") or "").strip()
         if not text:
             raise ValueError("消息内容不能为空。")
-        return _forward_runtime_command("generating", f"你：{text}", snapshot_patch={"inputDraft": ""})
+        return _forward_runtime_command(
+            "generating",
+            text,
+            snapshot_patch={"characterName": "你", "inputDraft": ""},
+        )
 
     if command == "submit-option":
         option = str(body.get("payload") or "").strip()

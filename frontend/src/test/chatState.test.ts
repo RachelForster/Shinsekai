@@ -139,6 +139,26 @@ describe("chatStageReducer", () => {
     expect(viewModel.transportState).toBe("connecting");
   });
 
+  it("projects user dialog text into a nameplate and pure body text", () => {
+    const state = chatStageReducer(emptyChatState, {
+      snapshot: {
+        characterName: "",
+        dialogText: "你：这是一句用户输入",
+        eventSeq: 1,
+        inputDraft: "",
+        options: [],
+        sprites: [],
+        status: "generating",
+      },
+      type: "hydrate",
+    });
+
+    const viewModel = buildChatStageViewModel(state);
+
+    expect(viewModel.dialogCharacterName).toBe("你");
+    expect(viewModel.dialogText).toBe("这是一句用户输入");
+  });
+
   it("tracks transport state separately from business runtime status", () => {
     const hydrated = chatStageReducer(emptyChatState, {
       snapshot: {
