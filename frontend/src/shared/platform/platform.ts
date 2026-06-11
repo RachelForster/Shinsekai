@@ -23,10 +23,10 @@ export function getPlatform(): ShinsekaiPlatform {
       !import.meta.env.DEV && /^https?:$/.test(window.location.protocol) ? window.location.origin : "";
     platform =
       window.__SHINSEKAI_IPC__ ??
-      (httpBase
-        ? createHttpPlatform(httpBase)
-        : desktopBridge
-          ? createHttpPlatform(desktopBridge)
+      (desktopBridge
+        ? createHttpPlatform(desktopBridge)
+        : httpBase
+          ? createHttpPlatform(httpBase)
           : sameOriginBridge
             ? createHttpPlatform(sameOriginBridge)
             : createBrowserPreviewPlatform());

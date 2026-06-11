@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { mockInvoke, mockListen } = vi.hoisted(() => ({
@@ -20,15 +21,23 @@ import {
   installDesktopRuntimeProfile,
   installDesktopUpdate,
   isTauriDesktop,
+  minimizeDesktopWindow,
+  openDesktopChatWindow,
   onDesktopRuntimeProgress,
   onDesktopUpdateProgress,
   repairDesktopRuntime,
+  reloadDesktopFrontend,
+  startDesktopWindowDrag,
+  toggleMaximizeDesktopWindow,
+  closeDesktopWindow,
 } from "../shared/desktop/desktopApi";
 
 describe("desktop API environment detection", () => {
   afterEach(() => {
     delete window.__TAURI_INTERNALS__;
     delete window.__SHINSEKAI_RESTARTING__;
+    delete window.__SHINSEKAI_BRIDGE_RESTARTING__;
+    delete window.__SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__;
     mockInvoke.mockReset();
     mockListen.mockReset();
   });
@@ -41,6 +50,31 @@ describe("desktop API environment detection", () => {
   it("detects Tauri internals when the desktop shell injects them", () => {
     window.__TAURI_INTERNALS__ = {};
     expect(isTauriDesktop()).toBe(true);
+  });
+
+  it("subscribes to bridge restart state events and mirrors them into window state", async () => {
+    let bridgeRestartListener: (event: { payload: boolean }) => void = (_event) => {
+      throw new Error("bridge restart listener was not bound");
+    };
+    mockListen.mockImplementation(async (eventName, callback) => {
+      if (eventName === "shinsekai:bridge-restart-state") {
+        bridgeRestartListener = callback as (event: { payload: boolean }) => void;
+      }
+      return vi.fn();
+    });
+
+    window.__TAURI_INTERNALS__ = {};
+    expect(isTauriDesktop()).toBe(true);
+    await waitFor(() =>
+      expect(mockListen).toHaveBeenCalledWith("shinsekai:bridge-restart-state", expect.any(Function)),
+    );
+    expect(window.__SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__).toBe(true);
+
+    bridgeRestartListener({ payload: true });
+    expect(window.__SHINSEKAI_BRIDGE_RESTARTING__).toBe(true);
+
+    bridgeRestartListener({ payload: false });
+    expect(window.__SHINSEKAI_BRIDGE_RESTARTING__).toBe(false);
   });
 
   it("invokes the desktop updater check command", async () => {
@@ -61,6 +95,12 @@ describe("desktop API environment detection", () => {
     await repairDesktopRuntime("install-runtime", "installRuntimeDeps");
     await installDesktopRuntimeProfile("local-ai");
     await browseDesktopFiles({ path: "/tmp", showHidden: true });
+    await minimizeDesktopWindow();
+    await toggleMaximizeDesktopWindow();
+    await startDesktopWindowDrag();
+    await closeDesktopWindow();
+    await openDesktopChatWindow();
+    await reloadDesktopFrontend();
 
     expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_state", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_repair", {
@@ -69,6 +109,12 @@ describe("desktop API environment detection", () => {
     });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_install_profile", { profile: "local-ai" });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", { path: "/tmp", showHidden: true });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_window_minimize", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_window_toggle_maximize", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_window_start_drag", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_window_close", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_open_chat_window", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_frontend_reload", undefined);
   });
 
   it("passes desktop file browser defaults and Windows paths through unchanged", async () => {

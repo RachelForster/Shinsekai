@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpPlatform } from "../shared/platform/httpPlatform";
@@ -14,7 +15,10 @@ function mockJsonResponse(body: unknown, ok = true) {
 
 describe("http platform", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
+    delete window.__SHINSEKAI_BRIDGE_RESTARTING__;
+    delete window.__SHINSEKAI_RESTARTING__;
   });
 
   it("reads app config through the bridge", async () => {
@@ -680,6 +684,334 @@ describe("http platform", () => {
     );
   });
 
+  it("closes the live chat session through the bridge with keepalive enabled", async () => {
+    const snapshot = {
+      dialogText: "聊天会话已结束。",
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sessionClosedReason: "聊天会话已结束。",
+      sprites: [],
+      status: "idle",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const result = await platform.chat.close();
+
+    expect(result.sessionClosedReason).toBe("聊天会话已结束。");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/close",
+      expect.objectContaining({
+        body: JSON.stringify({}),
+        keepalive: true,
+        method: "POST",
+      }),
+    );
+  });
+
+  it("subscribes to chat events over websocket when the snapshot exposes a session", async () => {
+    const snapshot = {
+      backgroundPath: "",
+      characterName: "Nanami",
+      dialogText: "聊天已连接。",
+      eventSeq: 0,
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sessionId: "session-1",
+      sprites: [],
+      status: "idle",
+      wsUrl: "ws://127.0.0.1:8788/ws",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+
+    class FakeWebSocket {
+      static instances: FakeWebSocket[] = [];
+
+      onclose: ((event: Event) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent<string>) => void) | null = null;
+      url: string;
+      close = vi.fn(() => undefined);
+
+      constructor(url: string) {
+        this.url = url;
+        FakeWebSocket.instances.push(this);
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const listener = vi.fn();
+    const unsubscribe = platform.chat.subscribeEvents(listener);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/snapshot",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
+    );
+    expect(FakeWebSocket.instances[0]?.url).toBe("ws://127.0.0.1:8788/ws?sessionId=session-1&role=viewer");
+    expect(listener).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        snapshot,
+        type: "snapshot",
+        v: 1,
+      }),
+    );
+
+    FakeWebSocket.instances[0]?.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          seq: 7,
+          text: "正在回复……",
+          ts: 123,
+          type: "notification.change",
+          v: 1,
+        }),
+      }),
+    );
+
+    expect(listener).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        state: "connected",
+        transport: "websocket",
+        type: "transport.state",
+        v: 1,
+      }),
+    );
+    expect(listener).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        seq: 7,
+        text: "正在回复……",
+        type: "notification.change",
+        v: 1,
+      }),
+    );
+
+    FakeWebSocket.instances[0]?.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          cmdId: "cmd-1",
+          commandType: "resume-asr",
+          ok: true,
+          seq: 8,
+          ts: 124,
+          type: "cmd.ack",
+          v: 1,
+        }),
+      }),
+    );
+
+    expect(listener).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        cmdId: "cmd-1",
+        commandType: "resume-asr",
+        ok: true,
+        seq: 8,
+        type: "cmd.ack",
+        v: 1,
+      }),
+    );
+
+    unsubscribe();
+    expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalled();
+  });
+
+  it("recovers by reloading snapshot when websocket event seq has a gap", async () => {
+    const initialSnapshot = {
+      backgroundPath: "",
+      characterName: "Nanami",
+      dialogText: "聊天已连接。",
+      eventSeq: 2,
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sessionId: "session-1",
+      sprites: [],
+      status: "idle",
+      wsUrl: "ws://127.0.0.1:8788/ws",
+    };
+    const recoveredSnapshot = {
+      ...initialSnapshot,
+      dialogText: "Recovered from gap",
+      eventSeq: 5,
+      options: ["继续"],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(initialSnapshot))
+      .mockImplementationOnce((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(recoveredSnapshot));
+    vi.stubGlobal("fetch", fetchMock);
+
+    class FakeWebSocket {
+      static instances: FakeWebSocket[] = [];
+
+      onclose: ((event: Event) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent<string>) => void) | null = null;
+      url: string;
+      close = vi.fn(() => undefined);
+
+      constructor(url: string) {
+        this.url = url;
+        FakeWebSocket.instances.push(this);
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const listener = vi.fn();
+    const unsubscribe = platform.chat.subscribeEvents(listener);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    FakeWebSocket.instances[0]?.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          seq: 5,
+          text: "gap event",
+          ts: 123,
+          type: "notification.change",
+          v: 1,
+        }),
+      }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(listener).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          snapshot: recoveredSnapshot,
+          type: "snapshot",
+          v: 1,
+        }),
+      ),
+    );
+
+    unsubscribe();
+  });
+
+  it("falls back to snapshot polling when websocket handshake stays pending", async () => {
+    vi.useFakeTimers();
+
+    const snapshot = {
+      backgroundPath: "",
+      characterName: "Nanami",
+      dialogText: "聊天已连接。",
+      eventSeq: 0,
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sessionId: "session-1",
+      sprites: [],
+      status: "idle",
+      wsUrl: "ws://127.0.0.1:8788/ws",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+
+    class FakeWebSocket {
+      static instances: FakeWebSocket[] = [];
+
+      onclose: ((event: Event) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent<string>) => void) | null = null;
+      onopen: ((event: Event) => void) | null = null;
+      url: string;
+      close = vi.fn(() => undefined);
+
+      constructor(url: string) {
+        this.url = url;
+        FakeWebSocket.instances.push(this);
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const listener = vi.fn();
+    const unsubscribe = platform.chat.subscribeEvents(listener);
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(
+      listener.mock.calls.some(
+        ([event]) =>
+          event &&
+          typeof event === "object" &&
+          "type" in event &&
+          event.type === "transport.state" &&
+          "state" in event &&
+          event.state === "polling" &&
+          "transport" in event &&
+          event.transport === "snapshot",
+      ),
+    ).toBe(true);
+    expect(FakeWebSocket.instances.length).toBeGreaterThan(0);
+    expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalled();
+
+    unsubscribe();
+  });
+
+  it("falls back to polling transport state when websocket is unavailable", async () => {
+    const snapshot = {
+      backgroundPath: "",
+      characterName: "Nanami",
+      dialogText: "聊天已连接。",
+      eventSeq: 0,
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", undefined);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const listener = vi.fn();
+    const unsubscribe = platform.chat.subscribeEvents(listener);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(listener).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        snapshot,
+        type: "snapshot",
+        v: 1,
+      }),
+    );
+    expect(listener).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        state: "polling",
+        transport: "snapshot",
+        type: "transport.state",
+        v: 1,
+      }),
+    );
+
+    unsubscribe();
+  });
+
   it("hydrates chat command responses and copies history text", async () => {
     const clipboard = { writeText: vi.fn(() => Promise.resolve()) };
     const snapshot = {
@@ -705,6 +1037,204 @@ describe("http platform", () => {
       expect.objectContaining({
         body: JSON.stringify({ type: "copy-history" }),
         method: "POST",
+      }),
+    );
+  });
+
+  it("adds cmdId to realtime chat commands before posting to the bridge", async () => {
+    const snapshot = {
+      dialogText: "语音识别已恢复。",
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "listening",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "cmd-fixed-1") });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.chat.command({ type: "resume-asr" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/command",
+      expect.objectContaining({
+        body: JSON.stringify({ type: "resume-asr", cmdId: "cmd-fixed-1" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("returns reopened chat snapshots from realtime commands after a closed session", async () => {
+    const reopenedSnapshot = {
+      dialogText: "语音识别已恢复。",
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      notificationText: "",
+      options: [],
+      sessionClosedReason: "",
+      sprites: [],
+      status: "listening",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(reopenedSnapshot));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "cmd-fixed-reopen") });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const result = await platform.chat.command({ type: "resume-asr" });
+
+    expect(result).toMatchObject({
+      dialogText: "语音识别已恢复。",
+      notificationText: "",
+      sessionClosedReason: "",
+      status: "listening",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/command",
+      expect.objectContaining({
+        body: JSON.stringify({ type: "resume-asr", cmdId: "cmd-fixed-reopen" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("retries realtime chat commands after a desktop bridge restart finishes", async () => {
+    const snapshot = {
+      dialogText: "已继续生成。",
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "generating",
+    };
+    let calls = 0;
+    const fetchMock = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error("Failed to fetch http://127.0.0.1:8787/api/chat/command");
+      }
+      return mockJsonResponse(snapshot);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "cmd-fixed-restart") });
+    window.__SHINSEKAI_BRIDGE_RESTARTING__ = true;
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const commandPromise = platform.chat.command({ type: "resume-asr" });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    window.__SHINSEKAI_BRIDGE_RESTARTING__ = false;
+    window.dispatchEvent(new Event("shinsekai:bridge-restart-finished"));
+
+    await expect(commandPromise).resolves.toMatchObject({
+      dialogText: "已继续生成。",
+      status: "generating",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8787/api/chat/command",
+      expect.objectContaining({
+        body: JSON.stringify({ type: "resume-asr", cmdId: "cmd-fixed-restart" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("treats dialog-advance as a realtime chat command and adds cmdId", async () => {
+    const snapshot = {
+      dialogText: "Ready",
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "cmd-fixed-2") });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.chat.command({ type: "dialog-advance" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/command",
+      expect.objectContaining({
+        body: JSON.stringify({ type: "dialog-advance", cmdId: "cmd-fixed-2" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("treats change-voice-language as a realtime chat command and adds cmdId", async () => {
+    const snapshot = {
+      dialogText: "Ready",
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+      voiceLanguage: "en",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "cmd-fixed-3") });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.chat.command({ payload: "en", type: "change-voice-language" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/command",
+      expect.objectContaining({
+        body: JSON.stringify({ payload: "en", type: "change-voice-language", cmdId: "cmd-fixed-3" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("treats revert-history as a realtime chat command and adds cmdId", async () => {
+    const snapshot = {
+      dialogText: "Ready",
+      historyEntries: [{ id: "history-0", role: "assistant", text: "Mio: Ready" }],
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "cmd-fixed-4") });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.chat.command({ payload: 1, type: "revert-history" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/command",
+      expect.objectContaining({
+        body: JSON.stringify({ payload: 1, type: "revert-history", cmdId: "cmd-fixed-4" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("loads runtime chat history through the bridge", async () => {
+    const history = [
+      { id: "history-0", role: "assistant", text: "Mio: Ready" },
+      { id: "history-1", revertUserIndex: 0, role: "user", text: "你: hello" },
+    ];
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(history));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const result = await platform.chat.getHistory();
+
+    expect(result).toEqual(history);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/history",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
       }),
     );
   });

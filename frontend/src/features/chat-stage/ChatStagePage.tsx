@@ -1,15 +1,32 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Copy, History, Mic, MicOff, RotateCcw, Send, SkipForward, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useReducer, useRef, useState, type MouseEvent } from "react";
+import { Copy, GripHorizontal, History, Languages, Maximize2, Mic, MicOff, Minus, RotateCcw, Send, SkipForward, Trash2, X } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { getChatSnapshot, getChatTheme, sendChatCommand, subscribeChat } from "../../entities/chat/repository";
+import { closeChat, getChatHistory, getChatSnapshot, sendChatCommand, subscribeChatEvents } from "../../entities/chat/repository";
+import { closeDesktopWindow, isTauriDesktop, minimizeDesktopWindow, startDesktopWindowDrag, toggleMaximizeDesktopWindow } from "../../shared/desktop/desktopApi";
+import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
+import type { MessageKey } from "../../shared/i18n";
 import { PluginSlot } from "../../shared/plugin/PluginSlot";
-import type { ChatCommand, ChatSnapshot, ChatSprite } from "../../shared/platform/types";
-import { parseChatChromeTheme } from "../../shared/theme/chatChromeTheme";
-import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
-import { AlertDialog, Button, IconButton, TextArea, ToolbarButton, useToast } from "../../shared/ui";
+import type { ChatCommand, ChatHistoryEntry, ChatSnapshot, ChatTransportMode, ChatTransportState } from "../../shared/platform/types";
+import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
+import { AlertDialog, Button, Dialog, IconButton, Select, TextArea, ToolbarButton, useToast } from "../../shared/ui";
 import "./chat-stage.css";
-import { chatStageReducer, emptyChatState } from "./chatState";
+import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
+import type { ChatStageSprite } from "./chatState";
+import {
+  buildDialogTypewriterSource,
+  renderDialogTypewriterFrame,
+} from "./dialogTypewriter";
+import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
+import { ChatThemePicker } from "./theme/ChatThemePicker";
+
+const chatVoiceLanguages = [
+  { labelKey: "system.asr.langJa", value: "ja" },
+  { labelKey: "system.asr.langEn", value: "en" },
+  { labelKey: "system.asr.langZh", value: "zh" },
+  { labelKey: "system.asr.langYue", value: "yue" },
+] as const;
 
 interface BrowserSpeechRecognition {
   abort: () => void;
@@ -69,19 +86,52 @@ function appendTranscript(base: string, transcript: string, language: string) {
   return `${current}${separator}${text}`;
 }
 
-function BackgroundLayer({ path }: { path?: string }) {
+function layerClassName(base: string, hidden: boolean) {
+  return hidden ? `${base} chat-stage__layer--hidden` : base;
+}
+
+function transportStatusText(
+  t: (key: MessageKey) => string,
+  state: ChatTransportState,
+  mode: ChatTransportMode,
+) {
+  if (state === "connected") {
+    return mode === "websocket" ? t("chat.transport.connected") : t("chat.transport.snapshot");
+  }
+  if (state === "polling") {
+    return t("chat.transport.polling");
+  }
+  if (state === "reconnecting") {
+    return t("chat.transport.reconnecting");
+  }
+  return t("chat.transport.connecting");
+}
+
+function BackgroundLayer({ hidden, path }: { hidden: boolean; path?: string }) {
   return (
-    <div className="chat-stage__background">
+    <div aria-hidden={hidden} className={layerClassName("chat-stage__background", hidden)} hidden={hidden}>
       {path ? <img alt="" src={path} /> : <div className="chat-stage__fallback">Background</div>}
     </div>
   );
 }
 
-function SpriteLayer({ sprites }: { sprites: ChatSprite[] }) {
+function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
   return (
-    <div className="sprite-layer">
+    <div aria-hidden={hidden} className={layerClassName("chat-stage__cg", hidden)} hidden={hidden}>
+      {path ? <img alt="" src={path} /> : null}
+    </div>
+  );
+}
+
+function SpriteLayer({ hidden, sprites }: { hidden: boolean; sprites: ChatStageSprite[] }) {
+  return (
+    <div aria-hidden={hidden} className={layerClassName("sprite-layer", hidden)} hidden={hidden}>
       {sprites.map((sprite) => (
-        <figure className="sprite-layer__figure" key={sprite.id}>
+        <figure
+          className="sprite-layer__figure"
+          key={sprite.id}
+          style={sprite.scale ? { transform: `scale(${sprite.scale})` } : undefined}
+        >
           <img alt={sprite.label} className="sprite-layer__image" src={sprite.path} />
         </figure>
       ))}
@@ -89,19 +139,55 @@ function SpriteLayer({ sprites }: { sprites: ChatSprite[] }) {
   );
 }
 
-function DialogLayer({ characterName, text }: { characterName?: string; text: string }) {
+function DialogLayer({
+  canAdvance,
+  characterName,
+  hidden,
+  html,
+  onAdvance,
+  onSkip,
+  text,
+  typing,
+}: {
+  canAdvance: boolean;
+  characterName?: string;
+  hidden: boolean;
+  html?: string;
+  onAdvance?: () => void;
+  onSkip?: () => void;
+  text: string;
+  typing: boolean;
+}) {
   const { t } = useI18n();
   return (
-    <section aria-live="polite" className="dialog-layer">
+    <section
+      aria-hidden={hidden}
+      aria-live="polite"
+      className={layerClassName("dialog-layer", hidden)}
+      hidden={hidden}
+      onClick={typing ? onSkip : canAdvance ? onAdvance : undefined}
+    >
       {characterName ? <p className="dialog-layer__name">{characterName}</p> : null}
-      <p className="dialog-layer__text">{text || t("chat.emptyDialog")}</p>
+      {html !== undefined ? (
+        <p className="dialog-layer__text" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <p className="dialog-layer__text">{text || t("chat.emptyDialog")}</p>
+      )}
       <PluginSlot slot="chat-output" />
     </section>
   );
 }
 
-function OptionsLayer({ onSelect, options }: { onSelect: (option: string) => void; options: string[] }) {
-  if (!options.length) {
+function OptionsLayer({
+  hidden,
+  onSelect,
+  options,
+}: {
+  hidden: boolean;
+  onSelect: (option: string) => void;
+  options: string[];
+}) {
+  if (hidden || !options.length) {
     return null;
   }
   return (
@@ -115,24 +201,198 @@ function OptionsLayer({ onSelect, options }: { onSelect: (option: string) => voi
   );
 }
 
-function FloatingToolbar({ onCommand, status }: { onCommand: (command: ChatCommand) => void; status: string }) {
+function BusyLayer({ hidden, text }: { hidden: boolean; text?: string }) {
+  if (hidden || !text) {
+    return null;
+  }
+  return (
+    <div className="chat-stage__busy" role="status">
+      {text}
+    </div>
+  );
+}
+
+function NotificationLayer({ hidden, text }: { hidden: boolean; text?: string }) {
+  if (hidden || !text) {
+    return null;
+  }
+  return <div className="chat-stage__notification">{text}</div>;
+}
+
+function StandaloneDesktopWindowControls({ hidden }: { hidden: boolean }) {
+  const { t } = useI18n();
+
+  if (hidden) {
+    return null;
+  }
+
+  const runWindowAction = (action: () => Promise<void>) => {
+    void action().catch((error) => {
+      console.error("Desktop chat window action failed", error);
+    });
+  };
+
+  const handleDragStart = (event: MouseEvent<HTMLElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    void startDesktopWindowDrag().catch((error) => {
+      console.error("Desktop chat window drag failed", error);
+    });
+  };
+
+  return (
+    <div className="desktop-chat-controls">
+      <div className="desktop-chat-controls__drag" data-tauri-drag-region onMouseDown={handleDragStart}>
+        <GripHorizontal aria-hidden className="desktop-chat-controls__drag-icon" />
+      </div>
+      <div className="desktop-chat-controls__buttons">
+        <IconButton label={t("desktop.titlebar.minimize")} onClick={() => runWindowAction(minimizeDesktopWindow)}>
+          <Minus aria-hidden className="icon-button__icon" />
+        </IconButton>
+        <IconButton label={t("desktop.titlebar.maximize")} onClick={() => runWindowAction(toggleMaximizeDesktopWindow)}>
+          <Maximize2 aria-hidden className="icon-button__icon" />
+        </IconButton>
+        <IconButton label={t("desktop.titlebar.close")} onClick={() => runWindowAction(closeDesktopWindow)}>
+          <X aria-hidden className="icon-button__icon" />
+        </IconButton>
+      </div>
+    </div>
+  );
+}
+
+function HistoryDialog({
+  entries,
+  loading,
+  onClose,
+  onRefresh,
+  onRevert,
+  open,
+}: {
+  entries: ChatHistoryEntry[];
+  loading: boolean;
+  onClose: () => void;
+  onRefresh: () => void;
+  onRevert: (userIndex: number) => void;
+  open: boolean;
+}) {
   const { t } = useI18n();
   return (
+    <Dialog
+      bodyClassName="chat-history-dialog__body"
+      className="chat-history-dialog"
+      closeLabel={t("common.close")}
+      footer={
+        <>
+          <Button onClick={onRefresh}>{t("common.refresh")}</Button>
+          <Button onClick={onClose}>{t("common.close")}</Button>
+        </>
+      }
+      onClose={onClose}
+      open={open}
+      title={t("chat.history.title")}
+    >
+      {loading ? <p className="chat-history__empty">{t("chat.history.loading")}</p> : null}
+      {!loading && entries.length === 0 ? <p className="chat-history__empty">{t("chat.history.empty")}</p> : null}
+      {!loading && entries.length > 0 ? (
+        <div className="chat-history__list">
+          {entries.map((entry) => (
+            <section className="chat-history__entry" data-role={entry.role} key={entry.id}>
+              <p className="chat-history__text">{entry.text}</p>
+              {entry.role === "user" && entry.revertUserIndex != null ? (
+                <div className="chat-history__actions">
+                  <Button
+                    className="chat-history__revert"
+                    icon={<RotateCcw aria-hidden className="button__icon" />}
+                    onClick={() => onRevert(entry.revertUserIndex!)}
+                  >
+                    {t("chat.history.revert")}
+                  </Button>
+                </div>
+              ) : null}
+            </section>
+          ))}
+        </div>
+      ) : null}
+    </Dialog>
+  );
+}
+
+function FloatingToolbar({
+  asrPaused,
+  closeLabel,
+  hidden,
+  hideCloseButton,
+  onCloseSurface,
+  onCommand,
+  onOpenHistory,
+  status,
+  transportMode,
+  transportState,
+  voiceLanguage,
+}: {
+  asrPaused: boolean;
+  closeLabel: string;
+  hidden: boolean;
+  hideCloseButton: boolean;
+  onCloseSurface: () => void;
+  onCommand: (command: ChatCommand) => void;
+  onOpenHistory: () => void;
+  status: string;
+  transportMode: ChatTransportMode;
+  transportState: ChatTransportState;
+  voiceLanguage: string;
+}) {
+  if (hidden) {
+    return null;
+  }
+  const { t } = useI18n();
+  const transportText = transportStatusText(t, transportState, transportMode);
+  return (
     <div className="floating-toolbar">
+      {hideCloseButton ? null : (
+        <IconButton label={closeLabel} onClick={onCloseSurface}>
+          <X aria-hidden className="icon-button__icon" />
+        </IconButton>
+      )}
       <IconButton label={t("chat.toolbar.reroll")} onClick={() => onCommand({ type: "reroll" })}>
         <RotateCcw aria-hidden className="icon-button__icon" />
       </IconButton>
       <IconButton label={t("chat.toolbar.copyHistory")} onClick={() => onCommand({ type: "copy-history" })}>
         <Copy aria-hidden className="icon-button__icon" />
       </IconButton>
-      <IconButton label={t("chat.toolbar.openHistory")} onClick={() => onCommand({ type: "open-history" })}>
+      <IconButton label={t("chat.toolbar.openHistory")} onClick={onOpenHistory}>
         <History aria-hidden className="icon-button__icon" />
       </IconButton>
       <IconButton label={t("chat.toolbar.clearHistory")} onClick={() => onCommand({ type: "clear-history" })}>
         <Trash2 aria-hidden className="icon-button__icon" />
       </IconButton>
-      <IconButton label={t("chat.toolbar.pauseAsr")} onClick={() => onCommand({ type: "pause-asr" })}>
-        <MicOff aria-hidden className="icon-button__icon" />
+      <ChatThemePicker />
+      <label className="floating-toolbar__voice">
+        <span className="visually-hidden">{t("template.field.voiceLanguage")}</span>
+        <Languages aria-hidden className="floating-toolbar__voice-icon" />
+        <Select
+          aria-label={t("template.field.voiceLanguage")}
+          className="floating-toolbar__voice-select"
+          onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
+          value={voiceLanguage}
+        >
+          {chatVoiceLanguages.map((option) => (
+            <option key={option.value} value={option.value}>
+              {t(option.labelKey)}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <IconButton
+        label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+        onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
+      >
+        {asrPaused ? (
+          <Mic aria-hidden className="icon-button__icon" />
+        ) : (
+          <MicOff aria-hidden className="icon-button__icon" />
+        )}
       </IconButton>
       <ToolbarButton
         icon={<SkipForward aria-hidden className="button__icon" />}
@@ -140,7 +400,10 @@ function FloatingToolbar({ onCommand, status }: { onCommand: (command: ChatComma
       >
         {t("chat.toolbar.skipSpeech")}
       </ToolbarButton>
-      <span className="floating-toolbar__status">{status}</span>
+      <span className="floating-toolbar__meta">
+        <span className="floating-toolbar__transport">{transportText}</span>
+        <span className="floating-toolbar__status">{status}</span>
+      </span>
       <PluginSlot slot="chat-toolbar" />
     </div>
   );
@@ -148,11 +411,13 @@ function FloatingToolbar({ onCommand, status }: { onCommand: (command: ChatComma
 
 function InputLayer({
   disabled,
+  hidden,
   onChange,
   onSubmit,
   value,
 }: {
   disabled: boolean;
+  hidden: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
   value: string;
@@ -253,6 +518,10 @@ function InputLayer({
     }
   };
 
+  if (hidden) {
+    return null;
+  }
+
   return (
     <div className="input-layer">
       <TextArea
@@ -299,26 +568,41 @@ function InputLayer({
 }
 
 export function ChatStagePage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [state, dispatch] = useReducer(chatStageReducer, emptyChatState);
-  const [themePayload, setThemePayload] = useState<ChatThemePayload | null>(null);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+  const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [visibleDialogCharacters, setVisibleDialogCharacters] = useState(0);
   const { showToast } = useToast();
   const { t } = useI18n();
-  const themeStyle = useMemo(() => parseChatChromeTheme(themePayload), [themePayload]);
+  const theme = useOptionalChatTheme();
+  const themeStyle = theme?.style ?? {};
+  const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
+  const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
+  const eventSeqRef = useRef(0);
+  eventSeqRef.current = state.eventSeq;
+  const pendingAnimatedDialogKeyRef = useRef<string | null>(null);
+  const dialogSource = useMemo(
+    () =>
+      buildDialogTypewriterSource({
+        characterName: viewModel.dialogCharacterName,
+        html: viewModel.dialogHtml,
+        text: viewModel.dialogText,
+      }),
+    [viewModel.dialogCharacterName, viewModel.dialogHtml, viewModel.dialogText],
+  );
+  const typewriterCps = theme?.resolved?.typewriter.cps ?? DEFAULT_TYPEWRITER_CPS;
+  const displayedDialog = useMemo(
+    () => renderDialogTypewriterFrame(dialogSource, visibleDialogCharacters),
+    [dialogSource, visibleDialogCharacters],
+  );
+  const typingDialog = visibleDialogCharacters < dialogSource.totalCharacters;
 
   useEffect(() => {
     let mounted = true;
-    getChatTheme()
-      .then((theme) => {
-        if (mounted) {
-          setThemePayload(theme);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setThemePayload(null);
-        }
-      });
     getChatSnapshot()
       .then((snapshot: ChatSnapshot) => {
         if (mounted) {
@@ -328,12 +612,57 @@ export function ChatStagePage() {
       .catch((error) => {
         dispatch({ message: error instanceof Error ? error.message : t("chat.error.loadFallback"), type: "error" });
       });
-    const unsubscribe = subscribeChat((snapshot) => dispatch({ snapshot, type: "hydrate" }));
+    const unsubscribe = subscribeChatEvents((event) => {
+      if (event.type === "dialog.end" && event.seq > eventSeqRef.current) {
+        pendingAnimatedDialogKeyRef.current = buildDialogTypewriterSource({
+          characterName: event.isSystem ? undefined : event.speaker,
+          html: event.fullHtml,
+        }).cacheKey;
+        setVisibleDialogCharacters(0);
+      }
+      dispatch({ event, type: "event" });
+    });
     return () => {
       mounted = false;
       unsubscribe();
     };
   }, [t]);
+
+  useEffect(() => {
+    const pendingKey = pendingAnimatedDialogKeyRef.current;
+    if (pendingKey === dialogSource.cacheKey) {
+      pendingAnimatedDialogKeyRef.current = null;
+      return;
+    }
+    setVisibleDialogCharacters(dialogSource.totalCharacters);
+  }, [dialogSource.cacheKey, dialogSource.totalCharacters]);
+
+  useEffect(() => {
+    if (visibleDialogCharacters >= dialogSource.totalCharacters) {
+      return;
+    }
+    const delayMs = Math.max(16, Math.round(1000 / Math.max(1, typewriterCps)));
+    const timeoutId = window.setTimeout(() => {
+      setVisibleDialogCharacters((current) => Math.min(dialogSource.totalCharacters, current + 1));
+    }, delayMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [dialogSource.totalCharacters, typewriterCps, visibleDialogCharacters]);
+
+  const refreshHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const historyEntries = await getChatHistory();
+      dispatch({ historyEntries, type: "setHistoryEntries" });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("chat.error.commandFallback"),
+        title: t("common.operationFailed"),
+      });
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const sendCommand = async (command: ChatCommand) => {
     if (command.type === "clear-history" && !confirmClearHistory) {
@@ -358,6 +687,7 @@ export function ChatStagePage() {
         showToast({ kind: "success", title: t("chat.toast.historyCleared") });
       }
     } catch (error) {
+      dispatch({ status: "idle", type: "setStatus" });
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("chat.error.commandFallback"),
@@ -367,7 +697,7 @@ export function ChatStagePage() {
   };
 
   const submit = () => {
-    const text = state.inputDraft.trim();
+    const text = viewModel.inputDraft.trim();
     if (!text) {
       return;
     }
@@ -375,24 +705,85 @@ export function ChatStagePage() {
     sendCommand({ payload: text, type: "send-message" });
   };
 
+  const advanceDialog = () => {
+    if (typingDialog) {
+      setVisibleDialogCharacters(dialogSource.totalCharacters);
+      return;
+    }
+    if (!viewModel.layers.dialog || !dialogSource.totalCharacters) {
+      return;
+    }
+    void sendCommand({ type: "dialog-advance" });
+  };
+
+  const openHistoryDialog = () => {
+    setHistoryDialogOpen(true);
+    void refreshHistory();
+  };
+
+  const closeSurface = () => {
+    void closeChatSurface({
+      closeRuntime: closeChat,
+      navigate,
+      snapshot: state,
+    });
+  };
+
   return (
     <>
       <main className="chat-stage" style={themeStyle}>
-        <BackgroundLayer path={state.backgroundPath} />
-        <SpriteLayer sprites={state.sprites} />
-        <DialogLayer characterName={state.characterName} text={state.error ?? state.dialogText} />
-        <OptionsLayer
-          onSelect={(option) => sendCommand({ payload: option, type: "submit-option" })}
-          options={state.options}
+        <StandaloneDesktopWindowControls hidden={!standaloneDesktopWindow} />
+        <BackgroundLayer hidden={!viewModel.layers.background} path={viewModel.backgroundPath} />
+        <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
+        <SpriteLayer hidden={!viewModel.layers.sprites} sprites={viewModel.sprites} />
+        <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
+        <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />
+        <DialogLayer
+          canAdvance={viewModel.layers.dialog && !typingDialog && dialogSource.totalCharacters > 0}
+          characterName={viewModel.dialogCharacterName}
+          hidden={!viewModel.layers.dialog}
+          html={displayedDialog.html}
+          onAdvance={advanceDialog}
+          onSkip={typingDialog ? advanceDialog : undefined}
+          text={typingDialog ? displayedDialog.text : viewModel.dialogText}
+          typing={typingDialog}
         />
-        <FloatingToolbar onCommand={sendCommand} status={state.numericInfo ?? state.status} />
+        <OptionsLayer
+          hidden={!viewModel.layers.options}
+          onSelect={(option) => sendCommand({ payload: option, type: "submit-option" })}
+          options={viewModel.options}
+        />
+        <FloatingToolbar
+          asrPaused={viewModel.status === "paused"}
+          closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
+          hidden={!viewModel.layers.toolbar}
+          hideCloseButton={standaloneDesktopWindow}
+          onCloseSurface={closeSurface}
+          onCommand={sendCommand}
+          onOpenHistory={openHistoryDialog}
+          status={viewModel.statusText}
+          transportMode={viewModel.transportMode}
+          transportState={viewModel.transportState}
+          voiceLanguage={viewModel.voiceLanguage || "ja"}
+        />
         <InputLayer
-          disabled={state.status === "generating" || state.status === "streaming"}
+          disabled={viewModel.inputDisabled}
+          hidden={!viewModel.layers.input}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
           onSubmit={submit}
-          value={state.inputDraft}
+          value={viewModel.inputDraft}
         />
       </main>
+      <HistoryDialog
+        entries={state.historyEntries ?? []}
+        loading={historyLoading}
+        onClose={() => setHistoryDialogOpen(false)}
+        onRefresh={() => {
+          void refreshHistory();
+        }}
+        onRevert={(userIndex) => setConfirmRevertUserIndex(userIndex)}
+        open={historyDialogOpen}
+      />
       <AlertDialog
         body={t("chat.clear.confirmBody")}
         cancelLabel={t("common.cancel")}
@@ -402,6 +793,23 @@ export function ChatStagePage() {
         onConfirm={() => sendCommand({ type: "clear-history" })}
         open={confirmClearHistory}
         title={t("chat.clear.confirmTitle")}
+      />
+      <AlertDialog
+        body={t("chat.history.revertConfirmBody")}
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={t("chat.history.revertConfirmAction")}
+        onCancel={() => setConfirmRevertUserIndex(null)}
+        onConfirm={() => {
+          if (confirmRevertUserIndex == null) {
+            return;
+          }
+          setConfirmRevertUserIndex(null);
+          setHistoryDialogOpen(false);
+          void sendCommand({ payload: confirmRevertUserIndex, type: "revert-history" });
+        }}
+        open={confirmRevertUserIndex != null}
+        title={t("chat.history.revertConfirmTitle")}
       />
     </>
   );

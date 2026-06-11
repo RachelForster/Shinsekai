@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
 
 export interface Sprite {
   path: string;
@@ -84,6 +85,7 @@ export interface SystemConfig {
   live_room_id: string;
   chat_window_geometry_b64: string;
   chat_ui_theme_path: string;
+  chat_ui_runtime_mode: string;
   music_cover_work_dir: string;
   music_cover_yt_dlp_exe: string;
   music_cover_ffmpeg_exe: string;
@@ -669,17 +671,39 @@ export interface ChatSprite {
   path: string;
 }
 
+export type ChatHistoryRole = "assistant" | "options" | "system" | "user";
+
+export interface ChatHistoryEntry {
+  id: string;
+  revertUserIndex?: number;
+  role: ChatHistoryRole;
+  text: string;
+}
+
 export interface ChatSnapshot {
   backgroundPath?: string;
+  busyDurationSeconds?: number;
+  busyText?: string;
   characterName?: string;
+  cgPath?: string;
+  dialogHtml?: string;
   dialogText: string;
+  /** 后端已折叠进该 snapshot 的最新事件 seq，用于重连恢复幂等处理。 */
+  eventSeq?: number;
+  historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
   inputDraft: string;
   numericInfo?: string;
+  notificationText?: string;
   options: string[];
   runtimeDependencyError?: RuntimeDependencyError;
+  runtimeMode?: "native" | "react";
+  sessionClosedReason?: string;
+  sessionId?: string;
   sprites: ChatSprite[];
   status: ChatRuntimeStatus;
+  voiceLanguage?: string;
+  wsUrl?: string;
 }
 
 export interface ChatCommandResult extends ChatSnapshot {
@@ -688,18 +712,74 @@ export interface ChatCommandResult extends ChatSnapshot {
   openedPath?: string;
 }
 
+export type ChatTransportState = "connected" | "connecting" | "polling" | "reconnecting";
+export type ChatTransportMode = "snapshot" | "websocket";
+
 export interface ChatCommand {
+  cmdId?: string;
   payload?: unknown;
   type:
+    | "change-voice-language"
     | "clear-history"
     | "copy-history"
+    | "dialog-advance"
     | "open-history"
     | "pause-asr"
+    | "revert-history"
+    | "resume-asr"
     | "reroll"
     | "send-message"
     | "skip-speech"
     | "submit-option";
 }
+
+export type ChatRealtimeCommandType =
+  | Exclude<ChatCommand["type"], "copy-history" | "open-history">
+  | "revert-history";
+
+/** 上行命令（React→server，WebSocket），沿用并扩展 ChatCommand。 */
+export interface ChatUpstreamCommand {
+  /** 客户端生成，用于 ack 关联。 */
+  cmdId: string;
+  payload?: unknown;
+  type: ChatRealtimeCommandType;
+}
+
+// --- chat stage 实时事件协议（下行 server→React，WebSocket）。详见设计文档"参考接口输出 · C"。 ---
+
+interface ChatEventBase {
+  v: 1;
+  /** 单调递增，用于缺口检测 + 重连重放。 */
+  seq: number;
+  /** epoch 毫秒。 */
+  ts: number;
+}
+
+export type ChatStageEvent =
+  | (ChatEventBase & { type: "snapshot"; snapshot: ChatSnapshot })
+  | (ChatEventBase & { type: "transport.state"; state: ChatTransportState; transport: ChatTransportMode })
+  | (ChatEventBase & { type: "cmd.ack"; cmdId: string; commandType: ChatRealtimeCommandType; error?: string; ok: boolean })
+  | (ChatEventBase & { type: "dialog.end"; speaker: string; color: string; isSystem: boolean; fullHtml: string })
+  | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })
+  | (ChatEventBase & { type: "sprite.show"; characterName: string; url: string; scale: number; slot?: number })
+  | (ChatEventBase & { type: "sprite.remove"; characterName: string })
+  | (ChatEventBase & { type: "background.change"; url: string })
+  | (ChatEventBase & { type: "cg.show"; url: string })
+  | (ChatEventBase & { type: "cg.hide" })
+  | (ChatEventBase & { type: "options.show"; options: string[] })
+  | (ChatEventBase & { type: "options.clear" })
+  | (ChatEventBase & { type: "numeric.update"; html: string })
+  | (ChatEventBase & { type: "busy.show"; text: string; durationSeconds: number })
+  | (ChatEventBase & { type: "busy.hide" })
+  | (ChatEventBase & { type: "notification.change"; text: string })
+  | (ChatEventBase & { type: "status.change"; status: ChatRuntimeStatus })
+  | (ChatEventBase & { type: "tts.play"; url: string; characterName: string })
+  | (ChatEventBase & { type: "tts.skip" })
+  | (ChatEventBase & { type: "asr.partial"; text: string })
+  | (ChatEventBase & { type: "asr.final"; text: string })
+  | (ChatEventBase & { type: "asr.state"; running: boolean })
+  | (ChatEventBase & { type: "reply.finished" })
+  | (ChatEventBase & { type: "session.closed"; reason: string });
 
 export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
@@ -777,12 +857,25 @@ export interface ShinsekaiPlatform {
     uploadImages: (input: { bgTags: string; name: string; paths: string[] }) => Promise<Background>;
   };
   chat: {
+    close: () => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
+    getHistory: () => Promise<ChatHistoryEntry[]>;
     getSnapshot: () => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
     launch: (payload: ChatLaunchPayload) => Promise<ChatSnapshot>;
     resumeLast: () => Promise<ChatSnapshot>;
     subscribe: (listener: (snapshot: ChatSnapshot) => void) => () => void;
+    // --- 主题 mod 系统 ---
+    listThemes: () => Promise<ChatThemeSummary[]>;
+    getThemeManifest: (id: string) => Promise<ChatThemeManifest>;
+    getActiveThemeId: () => Promise<string>;
+    setActiveThemeId: (id: string) => Promise<void>;
+    /** 上传一个主题 .zip 安装（multipart）；返回安装后的概要。 */
+    uploadTheme: (file: File) => Promise<ChatThemeSummary>;
+    /** 删除一个用户主题。 */
+    deleteTheme: (id: string) => Promise<void>;
+    // --- 实时事件流（WebSocket）；M0 占位，M2/M3 接真实 WS ---
+    subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
   };
   characters: {
     delete: (name: string) => Promise<void>;

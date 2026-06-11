@@ -40,8 +40,10 @@ const FRONTEND_DIST_MARKER: &str = ".dist-current";
 const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
 #[cfg(desktop)]
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
+const BRIDGE_RESTART_STATE_EVENT: &str = "shinsekai:bridge-restart-state";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
+const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(12);
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -325,6 +327,7 @@ pub fn run() {
             desktop_window_toggle_maximize,
             desktop_window_start_drag,
             desktop_window_close,
+            desktop_open_chat_window,
             desktop_open_external_url,
             #[cfg(desktop)]
             desktop_update_check,
@@ -332,14 +335,26 @@ pub fn run() {
             desktop_update_install
         ])
         .on_window_event(|window, event| {
-            if window.label() != "main" {
-                return;
-            }
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let app = window.app_handle().clone();
-                let state = app.state::<DesktopState>();
-                shutdown_desktop_app(&app, state.inner(), "main window close requested");
+                match window.label() {
+                    "main" => {
+                        api.prevent_close();
+                        let app = window.app_handle().clone();
+                        let state = app.state::<DesktopState>();
+                        shutdown_desktop_app(&app, state.inner(), "main window close requested");
+                    }
+                    "chat" => {
+                        api.prevent_close();
+                        let app = window.app_handle().clone();
+                        let state = app.state::<DesktopState>();
+                        request_bridge_chat_close(
+                            state.inner(),
+                            "chat window close requested",
+                        );
+                        let _ = window.destroy();
+                    }
+                    _ => {}
+                }
             }
         })
         .setup(move |app| {
@@ -720,6 +735,10 @@ fn emit_runtime_progress(
     );
 }
 
+fn emit_bridge_restart_state(app: &AppHandle, restarting: bool) {
+    let _ = app.emit(BRIDGE_RESTART_STATE_EVENT, restarting);
+}
+
 #[cfg(desktop)]
 fn desktop_update_error(error: impl std::fmt::Display) -> String {
     error.to_string()
@@ -733,16 +752,19 @@ fn desktop_app_restart(app: AppHandle, state: State<'_, DesktopState>) -> Result
 
 #[tauri::command]
 async fn desktop_bridge_restart(app: AppHandle) -> Result<DesktopRuntimeView, String> {
-    run_runtime_blocking("desktop_bridge_restart", app, |app, state| {
+    emit_bridge_restart_state(&app, true);
+    let result = run_runtime_blocking("desktop_bridge_restart", app.clone(), |app, state| {
         restart_bridge_for_state(app, state)
     })
-    .await
+    .await;
+    emit_bridge_restart_state(&app, false);
+    result
 }
 
 #[tauri::command]
 fn desktop_frontend_reload(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
     restart_debug_log("desktop_frontend_reload command received");
-    navigate_main_window_to_live_frontend(&app, state.bridge_port)
+    reload_live_frontend_windows(&app, state.bridge_port)
 }
 
 fn restart_bridge_for_state(
@@ -750,6 +772,7 @@ fn restart_bridge_for_state(
     state: &DesktopState,
 ) -> Result<DesktopRuntimeView, String> {
     state.set_runtime(DesktopRuntimePhase::Checking { view: None });
+    request_bridge_chat_close(state, "desktop bridge restart");
     if let Some(bridge) = state.take_bridge() {
         restart_debug_log("desktop_bridge_restart stopping existing bridge");
         bridge.stop();
@@ -792,6 +815,7 @@ fn start_runtime_candidate_for_state(
     state.set_runtime(DesktopRuntimePhase::Checking {
         view: Some(scan.clone()),
     });
+    request_bridge_chat_close(state, "runtime candidate restart");
     if let Some(bridge) = state.take_bridge() {
         restart_debug_log("start_runtime_candidate stopping existing bridge");
         bridge.stop();
@@ -879,6 +903,7 @@ fn restart_desktop_app(app: &AppHandle, state: &DesktopState) -> Result<(), Stri
         let _ = window.hide();
         let _ = window.destroy();
     }
+    request_bridge_chat_close(state, "desktop app restart");
     if let Some(bridge) = state.take_bridge() {
         restart_debug_log("restart stopping bridge before app exit");
         bridge.stop();
@@ -890,6 +915,7 @@ fn restart_desktop_app(app: &AppHandle, state: &DesktopState) -> Result<(), Stri
 
 fn shutdown_desktop_app(app: &AppHandle, state: &DesktopState, reason: &str) {
     restart_debug_log(format!("shutdown requested reason={reason}"));
+    request_bridge_chat_close(state, reason);
     if let Some(bridge) = state.take_bridge() {
         restart_debug_log("shutdown stopping bridge");
         bridge.stop();
@@ -898,6 +924,55 @@ fn shutdown_desktop_app(app: &AppHandle, state: &DesktopState, reason: &str) {
     }
     restart_debug_log("shutdown requested app.exit(0)");
     app.exit(0);
+}
+
+fn request_bridge_chat_close(state: &DesktopState, reason: &str) {
+    if !state.has_bridge() {
+        restart_debug_log(format!(
+            "request_bridge_chat_close skipped reason={reason} bridge_running=false"
+        ));
+        return;
+    }
+    match send_bridge_chat_close(state.bridge_port) {
+        Ok(()) => restart_debug_log(format!(
+            "request_bridge_chat_close dispatched reason={reason} port={}",
+            state.bridge_port
+        )),
+        Err(error) => restart_debug_log(format!(
+            "request_bridge_chat_close failed reason={reason} port={} error={error}",
+            state.bridge_port
+        )),
+    }
+}
+
+fn send_bridge_chat_close(port: u16) -> Result<(), String> {
+    let addr: SocketAddr = format!("{BRIDGE_HOST}:{port}")
+        .parse::<SocketAddr>()
+        .map_err(|error| error.to_string())?;
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(200))
+        .map_err(|error| error.to_string())?;
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_read_timeout(Some(BRIDGE_CHAT_CLOSE_TIMEOUT));
+    let request = format!(
+        "POST /api/chat/close HTTP/1.1\r\nHost: {BRIDGE_HOST}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| error.to_string())?;
+    stream.flush().map_err(|error| error.to_string())?;
+
+    let mut response = String::new();
+    stream
+        .read_to_string(&mut response)
+        .map_err(|error| error.to_string())?;
+    if response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200") {
+        return Ok(());
+    }
+    if response.is_empty() {
+        return Err("bridge closed connection before responding".to_string());
+    }
+    let status_line = response.lines().next().unwrap_or_default();
+    Err(format!("unexpected bridge response: {status_line}"))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1040,8 +1115,48 @@ fn desktop_window_start_drag(window: WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn desktop_window_close(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
-    shutdown_desktop_app(&app, state.inner(), "desktop_window_close command");
+fn desktop_window_close(
+    window: WebviewWindow,
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
+    if window.label() == "main" {
+        shutdown_desktop_app(&app, state.inner(), "desktop_window_close command");
+        return Ok(());
+    }
+    if window.label() == "chat" {
+        request_bridge_chat_close(state.inner(), "desktop_window_close command");
+        return window.destroy().map_err(|error| error.to_string());
+    }
+    window.close().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_open_chat_window(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
+    let chat_window = if let Some(window) = app.get_webview_window("chat") {
+        restart_debug_log("desktop_open_chat_window reuse existing window");
+        window
+    } else {
+        let url = chat_window_url(state.bridge_port);
+        restart_debug_log(format!("desktop_open_chat_window create url={url}"));
+        WebviewWindowBuilder::new(&app, "chat", WebviewUrl::App(url.into()))
+            .title("Shinsekai Chat")
+            .inner_size(1280.0, 820.0)
+            .min_inner_size(960.0, 620.0)
+            .transparent(true)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .center()
+            .build()
+            .map_err(|error| error.to_string())?
+    };
+
+    navigate_chat_window_to_live_frontend(&app, state.bridge_port)?;
+    let _ = chat_window.show();
+    let _ = chat_window.unminimize();
+    let _ = chat_window.set_focus();
     Ok(())
 }
 
@@ -1102,29 +1217,75 @@ fn bootstrap_runtime(app: AppHandle) {
     }
 }
 
-fn app_window_url(port: u16) -> String {
-    let bridge_url = format!("http://{BRIDGE_HOST}:{port}");
-    let encoded = bridge_url.replace(':', "%3A").replace('/', "%2F");
-    format!("index.html?shinsekai_bridge={encoded}#/settings/api")
+fn encode_bridge_url(port: u16) -> String {
+    format!("http://{BRIDGE_HOST}:{port}")
+        .replace(':', "%3A")
+        .replace('/', "%2F")
 }
 
-fn live_frontend_url(port: u16) -> String {
-    let bridge_url = format!("http://{BRIDGE_HOST}:{port}");
-    let encoded = bridge_url.replace(':', "%3A").replace('/', "%2F");
+fn app_window_url_for_route(port: u16, route: &str) -> String {
+    let encoded = encode_bridge_url(port);
+    format!("index.html?shinsekai_bridge={encoded}#{route}")
+}
+
+fn app_window_url(port: u16) -> String {
+    app_window_url_for_route(port, "/settings/api")
+}
+
+fn chat_window_url(port: u16) -> String {
+    app_window_url_for_route(port, "/chat-stage")
+}
+
+fn live_frontend_url_for_route(port: u16, route: &str) -> String {
+    let encoded = encode_bridge_url(port);
     let reload_token = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().to_string())
         .unwrap_or_else(|_| "0".to_string());
     format!(
-        "{LIVE_FRONTEND_SCHEME}://localhost/?shinsekai_bridge={encoded}&shinsekai_reload={reload_token}#/settings/api"
+        "{LIVE_FRONTEND_SCHEME}://localhost/?shinsekai_bridge={encoded}&shinsekai_reload={reload_token}#{route}"
     )
 }
 
-fn navigate_main_window_to_live_frontend(app: &AppHandle, bridge_port: u16) -> Result<(), String> {
-    let url = Url::parse(&live_frontend_url(bridge_port)).map_err(|error| error.to_string())?;
-    if let Some(window) = app.get_webview_window("main") {
-        restart_debug_log(format!("navigate live frontend url={url}"));
+fn live_frontend_url(port: u16) -> String {
+    live_frontend_url_for_route(port, "/settings/api")
+}
+
+fn live_chat_frontend_url(port: u16) -> String {
+    live_frontend_url_for_route(port, "/chat-stage")
+}
+
+fn navigate_window_to_live_frontend(
+    app: &AppHandle,
+    label: &str,
+    target_url: &str,
+) -> Result<(), String> {
+    let url = Url::parse(target_url).map_err(|error| error.to_string())?;
+    if let Some(window) = app.get_webview_window(label) {
+        restart_debug_log(format!("navigate {label} live frontend url={url}"));
         window.navigate(url).map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn navigate_main_window_to_live_frontend(app: &AppHandle, bridge_port: u16) -> Result<(), String> {
+    navigate_window_to_live_frontend(app, "main", &live_frontend_url(bridge_port))
+}
+
+fn navigate_chat_window_to_live_frontend(app: &AppHandle, bridge_port: u16) -> Result<(), String> {
+    navigate_window_to_live_frontend(app, "chat", &live_chat_frontend_url(bridge_port))
+}
+
+fn live_frontend_reload_targets(bridge_port: u16) -> [(&'static str, String); 2] {
+    [
+        ("main", live_frontend_url(bridge_port)),
+        ("chat", live_chat_frontend_url(bridge_port)),
+    ]
+}
+
+fn reload_live_frontend_windows(app: &AppHandle, bridge_port: u16) -> Result<(), String> {
+    for (label, target_url) in live_frontend_reload_targets(bridge_port) {
+        navigate_window_to_live_frontend(app, label, &target_url)?;
     }
     Ok(())
 }
@@ -1473,6 +1634,65 @@ mod tests {
             }
             _ => panic!("scan without a ready candidate should enter runtime guidance"),
         }
+    }
+
+    #[test]
+    fn window_urls_encode_bridge_and_route() {
+        assert_eq!(
+            app_window_url(8787),
+            "index.html?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787#/settings/api"
+        );
+        assert_eq!(
+            chat_window_url(8787),
+            "index.html?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787#/chat-stage"
+        );
+    }
+
+    #[test]
+    fn live_frontend_urls_target_expected_routes() {
+        let main = live_frontend_url(8787);
+        let chat = live_chat_frontend_url(8787);
+
+        assert!(main
+            .starts_with("shinsekai://localhost/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"));
+        assert!(main.contains("#/settings/api"));
+        assert!(chat
+            .starts_with("shinsekai://localhost/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"));
+        assert!(chat.contains("#/chat-stage"));
+    }
+
+    #[test]
+    fn live_frontend_reload_targets_cover_main_and_chat_windows() {
+        let targets = live_frontend_reload_targets(8787);
+
+        assert_eq!(targets[0].0, "main");
+        assert!(targets[0].1.contains("#/settings/api"));
+        assert_eq!(targets[1].0, "chat");
+        assert!(targets[1].1.contains("#/chat-stage"));
+    }
+
+    #[test]
+    fn send_bridge_chat_close_posts_local_close_request() {
+        let listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0_u8; 1024];
+            let read = stream.read(&mut buffer).unwrap();
+            let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                .unwrap();
+            request
+        });
+
+        send_bridge_chat_close(port).unwrap();
+
+        let request = handle.join().unwrap();
+        assert!(request.starts_with("POST /api/chat/close HTTP/1.1\r\n"));
+        assert!(request.contains("Host: 127.0.0.1\r\n"));
+        assert!(request.contains("Content-Type: application/json\r\n"));
+        assert!(request.ends_with("\r\n\r\n{}"));
     }
 
     fn runtime_scan_view(selected_candidate_id: Option<&str>) -> runtime::RuntimeScanView {

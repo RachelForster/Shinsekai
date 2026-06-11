@@ -22,6 +22,7 @@ import {
 } from "../../entities/config/repository";
 import type { ApiConfig, SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
+import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { resumeLastChat } from "../../entities/chat/repository";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
@@ -187,6 +188,7 @@ export function ApiSettingsPage() {
     },
     onSuccess(snapshot) {
       showToast({ kind: "success", message: snapshot.dialogText, title: t("api.resume.title") });
+      void showChatSurface({ snapshot });
     },
   });
 

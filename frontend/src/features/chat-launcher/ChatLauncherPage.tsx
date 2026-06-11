@@ -14,6 +14,7 @@ import {
   templatesQueryKey,
 } from "../../entities/template/repository";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
+import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import type { ChatLaunchPayload, ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
 import {
@@ -188,7 +189,7 @@ export function ChatLauncherPage() {
         return;
       }
       showToast({ kind: "success", message: snapshot.dialogText, title: t("launch.toast.started") });
-      navigate("/chat");
+      void showChatSurface({ navigate, snapshot });
     },
   });
 

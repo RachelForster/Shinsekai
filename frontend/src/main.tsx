@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { HashRouter } from "react-router-dom";
 
 import { AppRootProviders, AppRuntimeProviders } from "./app/providers/AppProviders";
 import { AppRoutes } from "./app/routes/AppRoutes";
@@ -103,11 +104,13 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>
       <AppRootProviders>
-        <DesktopChrome>
-          <AppRuntimeProviders>
-            <AppRoutes />
-          </AppRuntimeProviders>
-        </DesktopChrome>
+        <HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+          <DesktopChrome>
+            <AppRuntimeProviders>
+              <AppRoutes />
+            </AppRuntimeProviders>
+          </DesktopChrome>
+        </HashRouter>
       </AppRootProviders>
     </ErrorBoundary>
   </React.StrictMode>,

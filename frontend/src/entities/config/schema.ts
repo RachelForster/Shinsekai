@@ -157,6 +157,16 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
         type: "select",
       },
       { label: "主题色", name: "theme_color", type: "color" },
+      {
+        label: "聊天界面模式",
+        name: "chat_ui_runtime_mode",
+        options: [
+          { label: "React Stage", value: "react" },
+          { label: "原生窗口", value: "native" },
+        ],
+        required: true,
+        type: "select",
+      },
       { label: "聊天主题 JSON", name: "chat_ui_theme_path", type: "file" },
     ],
   },

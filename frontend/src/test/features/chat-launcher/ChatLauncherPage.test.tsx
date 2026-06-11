@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChatLauncherPage } from "../../../features/chat-launcher/ChatLauncherPage";
@@ -17,6 +17,13 @@ const mocks = {
   listTemplates: vi.fn(),
   saveTemplateSession: vi.fn(),
 };
+
+const desktopMocks = vi.hoisted(() => ({
+  isTauriDesktop: vi.fn(),
+  isDesktopBridgeConnectionError: vi.fn(),
+  openDesktopChatWindow: vi.fn(),
+  writeDesktopRestartDebugLog: vi.fn(),
+}));
 
 vi.mock("../../../entities/background/repository", () => ({
   backgroundsQueryKey: ["backgrounds"],
@@ -39,6 +46,17 @@ vi.mock("../../../entities/config/repository", () => ({
 vi.mock("../../../entities/chat/repository", () => ({
   launchChat: (payload: unknown) => mocks.launchChat(payload),
 }));
+vi.mock("../../../shared/desktop/desktopApi", () => ({
+  isDesktopBridgeConnectionError: desktopMocks.isDesktopBridgeConnectionError,
+  isTauriDesktop: desktopMocks.isTauriDesktop,
+  openDesktopChatWindow: desktopMocks.openDesktopChatWindow,
+  writeDesktopRestartDebugLog: desktopMocks.writeDesktopRestartDebugLog,
+}));
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}</output>;
+}
 
 function renderPage() {
   return render(
@@ -47,6 +65,7 @@ function renderPage() {
         <I18nProvider language="en">
           <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
             <ChatLauncherPage />
+            <LocationProbe />
           </MemoryRouter>
         </I18nProvider>
       </ToastProvider>
@@ -57,6 +76,11 @@ function renderPage() {
 describe("ChatLauncherPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.location.hash = "";
+    desktopMocks.isDesktopBridgeConnectionError.mockReturnValue(false);
+    desktopMocks.isTauriDesktop.mockReturnValue(false);
+    desktopMocks.openDesktopChatWindow.mockResolvedValue(undefined);
+    desktopMocks.writeDesktopRestartDebugLog.mockResolvedValue(undefined);
     mocks.listBackgrounds.mockResolvedValue([]);
     mocks.listCharacters.mockResolvedValue([]);
     mocks.listTemplates.mockResolvedValue([]);
@@ -77,6 +101,87 @@ describe("ChatLauncherPage", () => {
   it("renders the page title", async () => {
     renderPage();
     expect(await screen.findByText("Launch chat")).toBeInTheDocument();
+  });
+
+  it("navigates to /chat after a successful browser launch", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-browser",
+        name: "Browser Template",
+        path: "D:/templates/browser.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.listCharacters.mockResolvedValue([{ name: "Mio" }]);
+
+    renderPage();
+
+    expect(await screen.findByText("Browser Template")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/chat"));
+    expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
+  });
+
+  it("opens the standalone desktop chat window after a successful desktop launch", async () => {
+    desktopMocks.isTauriDesktop.mockReturnValue(true);
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-desktop",
+        name: "Desktop Template",
+        path: "D:/templates/desktop.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.listCharacters.mockResolvedValue([{ name: "Mio" }]);
+
+    renderPage();
+
+    expect(await screen.findByText("Desktop Template")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(desktopMocks.openDesktopChatWindow).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
+  });
+
+  it("does not navigate to the React chat surface when launch falls back to native chat", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-native",
+        name: "Native Template",
+        path: "D:/templates/native.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.listCharacters.mockResolvedValue([{ name: "Mio" }]);
+    mocks.launchChat.mockResolvedValue({
+      dialogText: "Native chat started",
+      inputDraft: "",
+      options: [],
+      runtimeMode: "native",
+      sprites: [],
+      status: "idle",
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("Native Template")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
   });
 
   it("restores saved launch session values before starting chat", async () => {

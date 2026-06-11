@@ -81,14 +81,16 @@ declare global {
     __TAURI_INTERNALS__?: unknown;
     __SHINSEKAI_RESTARTING__?: boolean;
     __SHINSEKAI_BRIDGE_RESTARTING__?: boolean;
+    __SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__?: boolean;
   }
 }
 
 const bridgeRestartFinishedEvent = "shinsekai:bridge-restart-finished";
+const bridgeRestartStateEvent = "shinsekai:bridge-restart-state";
 const desktopUpdateProgressEvent = "shinsekai:update-progress";
 const desktopRuntimeProgressEvent = "shinsekai:runtime-progress";
 
-export function isTauriDesktop() {
+function detectTauriDesktopEnvironment() {
   if (typeof window === "undefined") {
     return false;
   }
@@ -98,6 +100,37 @@ export function isTauriDesktop() {
     window.location.protocol === "tauri:" ||
     window.location.hostname === "tauri.localhost"
   );
+}
+
+async function ensureDesktopBridgeRestartEvents() {
+  if (!detectTauriDesktopEnvironment() || typeof window === "undefined") {
+    return;
+  }
+  if (window.__SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__) {
+    return;
+  }
+  window.__SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__ = true;
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    await listen<boolean>(bridgeRestartStateEvent, (event) => {
+      if (event.payload) {
+        markDesktopBridgeRestarting();
+      } else {
+        clearDesktopBridgeRestarting();
+      }
+    });
+  } catch (error) {
+    window.__SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__ = false;
+    console.error("Desktop bridge restart listener failed", error);
+  }
+}
+
+export function isTauriDesktop() {
+  const tauri = detectTauriDesktopEnvironment();
+  if (tauri) {
+    void ensureDesktopBridgeRestartEvents();
+  }
+  return tauri;
 }
 
 async function invokeDesktop<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -307,6 +340,10 @@ export function startDesktopWindowDrag() {
 
 export function closeDesktopWindow() {
   return invokeDesktop<void>("desktop_window_close");
+}
+
+export function openDesktopChatWindow() {
+  return invokeDesktop<void>("desktop_open_chat_window");
 }
 
 export function openDesktopExternalUrl(url: string) {

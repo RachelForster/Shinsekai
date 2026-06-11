@@ -16,6 +16,7 @@ import {
   type TemplateSummary,
 } from "../../entities/template/repository";
 import { DEFAULT_CHARACTER_COLOR, TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
+import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import type { ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
 import {
@@ -447,6 +448,7 @@ export function TemplateEditorPage() {
         return;
       }
       showToast({ kind: "success", message: snapshot.dialogText, title: t("template.toast.launched") });
+      void showChatSurface({ snapshot });
     },
   });
 

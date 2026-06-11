@@ -144,24 +144,19 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         Some("Installing Shinsekai runtime dependencies"),
         None,
     );
-    install_runtime_requirements(
-        python,
-        &requirements_path,
-        pip_index_urls,
-        |line| {
-            emit_runtime_progress(
-                app,
-                "installingDeps",
-                Some(candidate_id.to_string()),
-                Some("local".to_string()),
-                None,
-                None,
-                None,
-                Some("Installing Shinsekai runtime dependencies"),
-                Some(line),
-            );
-        },
-    )?;
+    install_runtime_requirements(python, &requirements_path, pip_index_urls, |line| {
+        emit_runtime_progress(
+            app,
+            "installingDeps",
+            Some(candidate_id.to_string()),
+            Some("local".to_string()),
+            None,
+            None,
+            None,
+            Some("Installing Shinsekai runtime dependencies"),
+            Some(line),
+        );
+    })?;
 
     emit_runtime_progress(
         app,
@@ -271,10 +266,18 @@ where
     let mut readers = Vec::new();
 
     if let Some(stdout) = stdout {
-        readers.push(spawn_output_reader(OutputStream::Stdout, stdout, tx.clone()));
+        readers.push(spawn_output_reader(
+            OutputStream::Stdout,
+            stdout,
+            tx.clone(),
+        ));
     }
     if let Some(stderr) = stderr {
-        readers.push(spawn_output_reader(OutputStream::Stderr, stderr, tx.clone()));
+        readers.push(spawn_output_reader(
+            OutputStream::Stderr,
+            stderr,
+            tx.clone(),
+        ));
     }
     drop(tx);
 
@@ -288,7 +291,12 @@ where
         &mut on_log_line,
     )?;
     for entry in rx {
-        push_output_line(entry, &mut stdout_lines, &mut stderr_lines, &mut on_log_line);
+        push_output_line(
+            entry,
+            &mut stdout_lines,
+            &mut stderr_lines,
+            &mut on_log_line,
+        );
     }
     for reader in readers {
         let _ = reader.join();

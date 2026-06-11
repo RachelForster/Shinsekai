@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
 import type {
   AppConfig,
@@ -146,6 +147,7 @@ export const sampleConfig: AppConfig = {
     live_room_id: "",
     chat_window_geometry_b64: "",
     chat_ui_theme_path: "",
+    chat_ui_runtime_mode: "react",
     music_cover_work_dir: "./data/music_cover",
     music_cover_yt_dlp_exe: "",
     music_cover_ffmpeg_exe: "",
@@ -260,12 +262,19 @@ export const sampleChatSnapshot: ChatSnapshot = {
   backgroundPath: "/assets/system/picture/shinsekai.png",
   characterName: "Nanami",
   dialogText: "欢迎来到新世界。这里是 React 舞台预览，真实聊天事件会从 platform adapter 进入状态机。",
+  historyEntries: [
+    { id: "history-0", role: "system", text: "旁白: 欢迎来到新世界。" },
+    { id: "history-1", revertUserIndex: 0, role: "user", text: "你: 你好，Nanami。" },
+    { id: "history-2", role: "assistant", text: "Nanami: 欢迎来到新世界。" },
+  ],
   historyPath: "./data/chat_history/preview.json",
   inputDraft: "",
   numericInfo: "idle",
   options: ["继续", "查看历史", "切换角色"],
+  runtimeMode: "react",
   sprites: [{ id: "nanami-default", path: "/assets/present_example.png", label: "Nanami" }],
   status: "idle",
+  voiceLanguage: "ja",
 };
 
 export const sampleChatTheme: ChatThemePayload = {
@@ -284,6 +293,107 @@ export const sampleChatTheme: ChatThemePayload = {
   },
   themeColor: "rgba(50,50,50,200)",
 };
+
+export const sampleChatThemeManifests: Record<string, ChatThemeManifest> = {
+  "classic-dark": {
+    schema: 1,
+    id: "classic-dark",
+    name: { zh_CN: "经典暗色", en: "Classic Dark", ja: "クラシック・ダーク" },
+    author: "Shinsekai",
+    version: "1.0.0",
+    description: {
+      zh_CN: "默认深色主题，半透明对话框",
+      en: "Default dark theme with a translucent dialog box",
+    },
+    tokens: {
+      global: { themeColor: "#644ae3" },
+      dialog: {
+        background: "rgba(20,20,28,0.86)",
+        borderColor: "rgba(255,255,255,0.32)",
+        borderRadius: "8px",
+        color: "#ffffff",
+        padding: 40,
+        widthPct: 86,
+        offsetY: 0,
+        boxShadow: "0 16px 44px rgba(0,0,0,0.5)",
+      },
+      options: {
+        background: "rgba(50,50,50,0.68)",
+        borderColor: "rgba(255,255,255,0.28)",
+        color: "#ffffff",
+        gap: 10,
+        hover: { background: "rgba(70,70,70,0.74)" },
+      },
+      input: {
+        background: "rgba(34,34,40,0.9)",
+        borderColor: "rgba(255,255,255,0.22)",
+        fieldBackground: "rgba(50,50,50,0.78)",
+        color: "#ffffff",
+      },
+      toolbar: {
+        background: "rgba(34,34,40,0.9)",
+        borderColor: "rgba(255,255,255,0.22)",
+        color: "#ffffff",
+      },
+      send: { background: "#644ae3", color: "#ffffff" },
+      name: { color: "#9c8cff" },
+      typewriter: { cps: 40 },
+    },
+  },
+  "light-paper": {
+    schema: 1,
+    id: "light-paper",
+    name: { zh_CN: "浅色纸张", en: "Light Paper", ja: "ライトペーパー" },
+    author: "Shinsekai",
+    version: "1.0.0",
+    description: {
+      zh_CN: "明亮纸张风格，适合白天",
+      en: "Bright paper-like theme for daytime",
+    },
+    tokens: {
+      global: { themeColor: "#c77dff" },
+      dialog: {
+        background: "rgba(250,248,244,0.92)",
+        borderColor: "rgba(0,0,0,0.16)",
+        borderRadius: "12px",
+        color: "#2a2730",
+        padding: 36,
+        widthPct: 82,
+        offsetY: 0,
+        boxShadow: "0 12px 36px rgba(0,0,0,0.18)",
+      },
+      options: {
+        background: "rgba(255,255,255,0.86)",
+        borderColor: "rgba(0,0,0,0.14)",
+        color: "#2a2730",
+        gap: 10,
+        hover: { background: "rgba(240,236,250,0.94)" },
+      },
+      input: {
+        background: "rgba(255,255,255,0.9)",
+        borderColor: "rgba(0,0,0,0.14)",
+        fieldBackground: "rgba(255,255,255,0.96)",
+        color: "#2a2730",
+      },
+      toolbar: {
+        background: "rgba(255,255,255,0.9)",
+        borderColor: "rgba(0,0,0,0.14)",
+        color: "#2a2730",
+      },
+      send: { background: "#c77dff", color: "#ffffff" },
+      name: { color: "#9d4edd" },
+      typewriter: { cps: 36 },
+    },
+  },
+};
+
+export const sampleChatThemeSummaries: ChatThemeSummary[] = Object.values(sampleChatThemeManifests).map((manifest) => ({
+  id: manifest.id,
+  name: manifest.name,
+  author: manifest.author,
+  version: manifest.version,
+  source: "builtin",
+}));
 
 export const sampleLastLaunch: ChatLaunchPayload = {
   backgroundName: "默认房间",
