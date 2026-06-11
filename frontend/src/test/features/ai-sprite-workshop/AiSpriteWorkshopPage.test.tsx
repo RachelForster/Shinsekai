@@ -129,6 +129,7 @@ describe("AiSpriteWorkshopPage", () => {
     expect(mocks.generateSpritePrompts).toHaveBeenCalledWith(
       {
         characterName: "Mika",
+        composition: "thigh_up",
         count: 4,
         language: "en",
         positivePromptReference: "anime key visual, detailed eyes, soft rim lighting",

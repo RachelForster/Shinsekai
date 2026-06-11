@@ -19,9 +19,10 @@ def ai_remove_background(input_path, output_path):
         print(f"处理出错：{e}, ")
 
 
-def batch_remove_background(input_dir, output_dir=None):
+def batch_remove_background(input_dir, output_dir=None, files=None):
     """
     Batch-process images in a directory, removing backgrounds.
+    If *files* is provided (list of absolute paths), only those images are processed.
     """
     import os
     import glob
@@ -32,12 +33,14 @@ def batch_remove_background(input_dir, output_dir=None):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    supported_formats = ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.tiff", "*.webp"]
-
-    image_files = []
-    for fmt in supported_formats:
-        image_files.extend(glob.glob(os.path.join(input_dir, fmt)))
-        image_files.extend(glob.glob(os.path.join(input_dir, fmt.upper())))
+    if files:
+        image_files = [f for f in files if os.path.isfile(f)]
+    else:
+        supported_formats = ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.tiff", "*.webp"]
+        image_files = []
+        for fmt in supported_formats:
+            image_files.extend(glob.glob(os.path.join(input_dir, fmt)))
+            image_files.extend(glob.glob(os.path.join(input_dir, fmt.upper())))
 
     if not image_files:
         print(f"在目录 '{input_dir}' 中未找到支持的图片文件")

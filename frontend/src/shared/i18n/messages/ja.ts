@@ -84,6 +84,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "aiSprites.positivePromptReference": "Positive prompt reference",
   "aiSprites.positivePromptReferencePlaceholder":
     "Prompt terms the LLM should preferably include, e.g. anime style, detailed eyes, soft lighting",
+  "aiSprites.removeBackground": "背景除去",
   "aiSprites.retry": "Retry",
   "aiSprites.retryImage": "Retry image",
   "aiSprites.retryOne": "Retry this image",
@@ -95,6 +96,10 @@ export const jaMessages: Record<MessageKey, string> = {
   "aiSprites.tag.normal": "Normal",
   "aiSprites.tag.sad": "Sad",
   "aiSprites.spriteCount": "Sprites to generate",
+  "aiSprites.composition": "構図",
+  "aiSprites.composition.fullBody": "全身",
+  "aiSprites.composition.thighUp": "膝上",
+  "aiSprites.composition.upperBody": "バストアップ",
   "aiSprites.spriteTag": "Sprite tag",
   "aiSprites.title": "AI Sprite Workshop",
   "character.aiSprites.cardAction": "Open AI sprite workshop",

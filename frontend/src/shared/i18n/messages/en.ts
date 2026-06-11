@@ -79,6 +79,7 @@ export const enMessages: Record<MessageKey, string> = {
   "aiSprites.positivePromptReference": "Positive prompt reference",
   "aiSprites.positivePromptReferencePlaceholder":
     "Prompt terms the LLM should preferably include, e.g. anime style, detailed eyes, soft lighting",
+  "aiSprites.removeBackground": "Remove background",
   "aiSprites.retry": "Retry",
   "aiSprites.retryImage": "Retry image",
   "aiSprites.retryOne": "Retry this image",
@@ -90,6 +91,10 @@ export const enMessages: Record<MessageKey, string> = {
   "aiSprites.tag.normal": "Normal",
   "aiSprites.tag.sad": "Sad",
   "aiSprites.spriteCount": "Sprites to generate",
+  "aiSprites.composition": "Composition",
+  "aiSprites.composition.fullBody": "Full body",
+  "aiSprites.composition.thighUp": "Thigh up",
+  "aiSprites.composition.upperBody": "Upper body",
   "aiSprites.spriteTag": "Sprite tag",
   "aiSprites.title": "AI Sprite Workshop",
   "api.resume.btn": "Resume last chat & launch",
