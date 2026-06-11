@@ -41,6 +41,7 @@ interface FilePickerProps extends InputHTMLAttributes<HTMLInputElement> {
   onPathsChange?: (paths: string[]) => void;
   pickLabel?: string;
   pickerBrowse?: FileBrowseHandler;
+  pickerInitialPath?: string;
   pickerMode?: PathPickerMode;
   pickerTitle?: string;
 }
@@ -55,6 +56,7 @@ export function FilePicker({
   onPick,
   pickLabel = "Choose file",
   pickerBrowse,
+  pickerInitialPath = "",
   pickerMode = "file",
   pickerTitle,
   readOnly,
@@ -99,7 +101,7 @@ export function FilePicker({
         }}
         open={pickerOpen}
         title={pickerTitle || pickLabel}
-        value={!multiple && typeof value === "string" ? value : ""}
+        value={!multiple && typeof value === "string" ? value || pickerInitialPath : pickerInitialPath}
       />
     </>
   );

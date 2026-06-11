@@ -137,6 +137,8 @@ class PluginCapabilityRegistry:
         self._chat_ui_contributions: list[ChatUIContribution] = []
         self._workflow_contributions: list[WorkflowContribution] = []
         self._output_contract_patches: list[OutputContractPatch] = []
+        # [MemorySystem] 精简前钩子存储列表
+        self._compact_hooks: list[Callable[[list], None]] = []
 
     def register_llm_adapter(self, provider: str, adapter_cls: Type[LLMAdapter]) -> None:
         self._llm_adapters[provider] = adapter_cls
@@ -271,6 +273,11 @@ class PluginCapabilityRegistry:
             raise ValueError("OutputContractPatch.target_contract cannot be empty")
         self._output_contract_patches.append(patch)
 
+    # [MemorySystem] 注册精简前回调钩子
+    def register_compact_hook(self, hook: Callable[[list], None]) -> None:
+        """注册精简前回调。回调接收即将被精简的完整消息列表，在 compact_messages() 执行前调用。"""
+        self._compact_hooks.append(hook)
+
     @property
     def llm_adapters(self) -> dict[str, Type[LLMAdapter]]:
         return dict(self._llm_adapters)
@@ -329,10 +336,15 @@ class PluginCapabilityRegistry:
     def output_contract_patches(self) -> list[OutputContractPatch]:
         return sorted(self._output_contract_patches, key=lambda p: p.priority)
 
+    # [MemorySystem] 暴露已注册的精简前钩子列表
+    @property
+    def compact_hooks(self) -> list[Callable[[list], None]]:
+        return list(self._compact_hooks)
+
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
         for registrar in self._llm_tool_registrars:
             registrar(tool_manager)
 
 
 # Backward-compatible name: plugins should type-hint this in ``initialize(register, ...)``.
-PluginRegister = PluginCapabilityRegistry
+PluginRegister = PluginCapabilityRegistry 

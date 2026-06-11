@@ -143,6 +143,7 @@ export interface PluginManifest {
   enabled: boolean;
   entry: string;
   id: string;
+  install?: PluginInstallMetadata;
   loadError?: string;
   loaded: boolean;
   permissions: string[];
@@ -151,6 +152,22 @@ export interface PluginManifest {
   title: string;
   toolsTabs: string[];
   version: string;
+}
+
+export interface PluginInstallMetadata {
+  dependencyDetail?: string;
+  dependencyStatus?: string;
+  entry?: string;
+  packageSha256?: string;
+  packageSize?: number | null;
+  packageSource?: string;
+  packageStatus?: string;
+  packageUrl?: string;
+  refKind?: AppUpdateRefKind;
+  repo?: string;
+  sourceLabel?: string;
+  sourceType?: string;
+  tagName?: string;
 }
 
 export interface PluginCatalogItem {
@@ -211,6 +228,45 @@ export interface PluginInstallInput {
   refKind?: AppUpdateRefKind;
   source: string;
   tagName?: string;
+}
+
+export interface PluginSubmissionInput {
+  author: string;
+  desc: string;
+  display_name: string;
+  lowest_shinsekai_version?: string;
+  repo: string;
+  social_link?: string;
+  tags: string[];
+}
+
+export interface PluginLocalScanResult extends PluginSubmissionInput {
+  entry?: string;
+  logo?: string;
+  path: string;
+  requirements?: string;
+  shinsekai_version?: string;
+  warnings: string[];
+}
+
+export interface PluginSubmissionPayload {
+  json: string;
+  submission: PluginSubmissionInput;
+}
+
+export interface PluginSubmissionValidationResult extends Partial<PluginSubmissionPayload> {
+  errors: string[];
+  ok: boolean;
+}
+
+export interface PluginSubmissionIssueResult extends PluginSubmissionPayload {
+  issueUrl: string;
+  submitUrl: string;
+}
+
+export interface PluginSubmissionClipboardResult extends PluginSubmissionPayload {
+  clipboardText: string;
+  message: string;
 }
 
 export type McpTransport = "sse" | "stdio" | "streamable_http";
@@ -672,11 +728,25 @@ export interface FileBrowserSnapshot {
 export interface TaskSnapshot<TResult = unknown> {
   cancelRequested?: boolean;
   createdAt: number;
+  dependencyInstallStatus?: string;
   error?: string;
+  errorCode?: string;
+  errorDetail?: string;
+  errorUserMessage?: string;
+  fallbackAllowed?: boolean;
+  httpStatus?: number;
   id: string;
+  installSource?: string;
+  installSourceLabel?: string;
   kind: string;
   logs: string[];
   message: string;
+  notice?: string;
+  noticeKind?: "error" | "info" | "warning";
+  packageSha256?: string;
+  packageSource?: string;
+  packageStatus?: string;
+  packageUrl?: string;
   phase: string;
   progress?: number | null;
   result?: TResult | null;
@@ -806,6 +876,10 @@ export interface ShinsekaiPlatform {
     getUi: (id: string) => Promise<PluginUIDetail>;
     list: () => Promise<PluginManifest[]>;
     repoTags: (repo: string) => Promise<string[]>;
+    scanLocal: (input: { path: string }) => Promise<PluginLocalScanResult>;
+    validateSubmission: (input: PluginSubmissionInput) => Promise<PluginSubmissionValidationResult>;
+    buildSubmissionIssueUrl: (input: PluginSubmissionInput) => Promise<PluginSubmissionIssueResult>;
+    copySubmissionJson: (input: PluginSubmissionInput) => Promise<PluginSubmissionClipboardResult>;
     runUiAction: (
       id: string,
       pageId: string,

@@ -17,7 +17,9 @@ import type {
   ChatSnapshot,
   LogSnapshot,
   MusicCoverRunResult,
+  PluginCatalogItem,
   PluginManifest,
+  PluginSubmissionInput,
   PluginUIPage,
   ShinsekaiPlatform,
   TemplateLaunchSession,
@@ -57,6 +59,78 @@ function previewTask<TResult>(
     updatedAt: now,
     ...patch,
   });
+}
+
+function previewNormalizePluginKey(value: string | null | undefined) {
+  return (value ?? "")
+    .trim()
+    .replace(/\.git$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function previewModuleToken(value: string | null | undefined) {
+  const moduleName = (value ?? "").split(":", 1)[0] ?? "";
+  const parts = moduleName.split(".").filter(Boolean);
+  if (!parts.length) {
+    return "";
+  }
+  if (parts.at(-1) === "plugin" && parts.length > 1) {
+    return parts.at(-2) ?? "";
+  }
+  return parts.at(-1) ?? "";
+}
+
+function previewPluginDirectory(entry: string, fallback: string) {
+  const token = previewModuleToken(entry) || previewNormalizePluginKey(fallback) || "preview";
+  return `plugins/${token.replace(/[^A-Za-z0-9_]+/g, "_")}`;
+}
+
+function previewCatalogKeys(plugin: PluginCatalogItem) {
+  return new Set(
+    [plugin.id, plugin.name, plugin.displayName, plugin.repo, plugin.entry, previewModuleToken(plugin.entry)]
+      .map(previewNormalizePluginKey)
+      .filter(Boolean),
+  );
+}
+
+function previewManifestKeys(plugin: PluginManifest) {
+  return new Set(
+    [
+      plugin.id,
+      plugin.title,
+      plugin.entry,
+      plugin.directory?.split(/[\\/]/).filter(Boolean).at(-1),
+      plugin.install?.repo,
+      plugin.install?.entry,
+      previewModuleToken(plugin.entry),
+    ]
+      .map(previewNormalizePluginKey)
+      .filter(Boolean),
+  );
+}
+
+function previewCatalogForSource(source: string, catalogItems: PluginCatalogItem[]) {
+  const sourceKey = previewNormalizePluginKey(source);
+  return catalogItems.find((item) => previewCatalogKeys(item).has(sourceKey));
+}
+
+function previewUpsertPlugin(currentPlugins: PluginManifest[], plugin: PluginManifest, catalog?: PluginCatalogItem) {
+  const keys = new Set([...previewManifestKeys(plugin), ...(catalog ? previewCatalogKeys(catalog) : [])]);
+  let replaced = false;
+  const nextPlugins = currentPlugins.map((item) => {
+    for (const key of previewManifestKeys(item)) {
+      if (keys.has(key)) {
+        replaced = true;
+        return plugin;
+      }
+    }
+    return item;
+  });
+  if (!replaced) {
+    return [...nextPlugins, plugin];
+  }
+  return nextPlugins;
 }
 
 function previewFileBrowser(path?: string) {
@@ -121,6 +195,62 @@ function previewFileBrowser(path?: string) {
       { label: "/", path: "/" },
     ],
   };
+}
+
+const PREVIEW_PLUGIN_SUBMIT_URL =
+  "https://github.com/RachelForster/Shinsekai-Plugin-Registry/issues/new?template=PLUGIN_PUBLISH.yml";
+
+function normalizePreviewPluginSubmission(input: PluginSubmissionInput): PluginSubmissionInput {
+  const submission: PluginSubmissionInput = {
+    author: input.author.trim(),
+    desc: input.desc.trim(),
+    display_name: input.display_name.trim(),
+    repo: input.repo.trim().replace(/\.git$/i, ""),
+    social_link: (input.social_link ?? "").trim(),
+    tags: (input.tags ?? [])
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+      .slice(0, 5),
+  };
+  const lowestShinsekaiVersion = (input.lowest_shinsekai_version ?? "").trim();
+  if (lowestShinsekaiVersion) {
+    submission.lowest_shinsekai_version = lowestShinsekaiVersion;
+  }
+  return submission;
+}
+
+function previewPluginSubmissionErrors(input: PluginSubmissionInput) {
+  const submission = normalizePreviewPluginSubmission(input);
+  const errors: string[] = [];
+  for (const field of ["display_name", "desc", "author", "repo"] as const) {
+    if (!submission[field]) {
+      errors.push(`${field} is required`);
+    }
+  }
+  if (submission.desc.length > 200) {
+    errors.push("desc must be 200 characters or less");
+  }
+  if (!/^https:\/\/github\.com\/[^/\s]+\/[^/\s]+$/i.test(submission.repo)) {
+    errors.push("repo must be a GitHub repository URL");
+  }
+  if ((input.tags ?? []).filter((tag) => tag.trim()).length > 5) {
+    errors.push("tags must contain 5 items or fewer");
+  }
+  return errors;
+}
+
+function previewPluginSubmissionJson(input: PluginSubmissionInput) {
+  return JSON.stringify(normalizePreviewPluginSubmission(input), null, 2);
+}
+
+function previewPluginIssueUrl(input: PluginSubmissionInput) {
+  const submission = normalizePreviewPluginSubmission(input);
+  const params = new URLSearchParams({
+    "plugin-info": ["```json", previewPluginSubmissionJson(submission), "```", ""].join("\n"),
+    template: "PLUGIN_PUBLISH.yml",
+    title: `[Plugin] ${submission.display_name}`,
+  });
+  return `${PREVIEW_PLUGIN_SUBMIT_URL.split("?")[0]}?${params.toString()}`;
 }
 
 function previewLogSnapshot(): LogSnapshot {
@@ -827,6 +957,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async install(input, options) {
         const id = typeof input === "string" ? input : input.source;
+        const catalog = previewCatalogForSource(id, pluginCatalog);
+        const entry = catalog?.entry || id;
+        const title = catalog?.displayName || catalog?.name || id;
+        const repo = catalog?.repo || "";
+        const packageSha256 = catalog?.packageSha256 || catalog?.sha256 || "";
         const taskId = `preview-${Date.now()}`;
         previewTask(
           taskId,
@@ -837,23 +972,36 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         previewTask(taskId, { message: "正在安装依赖。", phase: "pip", progress: 0.72, status: "running" }, options);
         await delay(null, 220);
         const plugin: PluginManifest = {
-          author: "Preview",
+          author: catalog?.author || "Preview",
           description: "浏览器预览安装的插件。",
-          directory: "plugins/preview",
+          directory: previewPluginDirectory(entry, id),
           enabled: true,
-          entry: id,
-          id,
+          entry,
+          id: catalog?.id || catalog?.name || id,
+          install: {
+            entry,
+            packageSha256,
+            packageSize: catalog?.packageSize ?? catalog?.size ?? null,
+            packageSource: catalog?.packageSource || (catalog?.packageUrl ? "r2" : ""),
+            packageStatus: packageSha256 ? "verified" : "installed",
+            packageUrl: catalog?.packageUrl || catalog?.downloadUrl || "",
+            repo,
+            sourceLabel: catalog?.packageUrl ? "Official package (R2)" : repo ? "GitHub" : "Preview",
+            sourceType: catalog?.packageUrl ? "package" : repo ? "github" : "preview",
+          },
           loaded: true,
           permissions: ["settings"],
           settingsPages: ["预览设置"],
           slots: ["settings-extension"],
-          title: id,
+          title,
           toolsTabs: [],
-          version: "preview",
+          version: catalog?.version || "preview",
         };
-        plugins = [...plugins, plugin];
+        plugins = previewUpsertPlugin(plugins, plugin, catalog);
         pluginCatalog = pluginCatalog.map((item) =>
-          item.repo === id || item.entry === id ? { ...item, downloaded: true, installed: true } : item,
+          previewCatalogKeys(item).has(previewNormalizePluginKey(id))
+            ? { ...item, downloaded: true, installed: true }
+            : item,
         );
         previewTask(
           taskId,
@@ -870,6 +1018,62 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       list: () => delay(plugins),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
+      scanLocal(input) {
+        const baseName = input.path.split(/[\\/]/).filter(Boolean).pop() || "preview-plugin";
+        return delay({
+          author: "Shinsekai Contributors",
+          desc: "从本地插件目录生成的示例提交信息。",
+          display_name: baseName.replace(/[-_]+/g, " "),
+          entry: `plugins.${baseName.replace(/[^A-Za-z0-9_]/g, "_")}.plugin:PreviewPlugin`,
+          logo: "logo.png",
+          path: input.path,
+          repo: `https://github.com/shinsekai/${baseName}`,
+          requirements: "",
+          social_link: "https://github.com/shinsekai",
+          tags: ["preview"],
+          warnings: ["浏览器预览使用示例元数据，不会读取真实本地文件。"],
+        });
+      },
+      validateSubmission(input) {
+        const errors = previewPluginSubmissionErrors(input);
+        const submission = normalizePreviewPluginSubmission(input);
+        return delay({
+          errors,
+          json: errors.length ? undefined : previewPluginSubmissionJson(submission),
+          ok: errors.length === 0,
+          submission: errors.length ? undefined : submission,
+        });
+      },
+      buildSubmissionIssueUrl(input) {
+        const errors = previewPluginSubmissionErrors(input);
+        if (errors.length) {
+          return Promise.reject(new Error(errors.join("; ")));
+        }
+        const submission = normalizePreviewPluginSubmission(input);
+        return delay({
+          issueUrl: previewPluginIssueUrl(submission),
+          json: previewPluginSubmissionJson(submission),
+          submission,
+          submitUrl: PREVIEW_PLUGIN_SUBMIT_URL,
+        });
+      },
+      copySubmissionJson(input) {
+        const errors = previewPluginSubmissionErrors(input);
+        if (errors.length) {
+          return Promise.reject(new Error(errors.join("; ")));
+        }
+        const submission = normalizePreviewPluginSubmission(input);
+        const json = previewPluginSubmissionJson(submission);
+        if (navigator.clipboard?.writeText) {
+          void navigator.clipboard.writeText(json);
+        }
+        return delay({
+          clipboardText: json,
+          json,
+          message: "Preview plugin submission copied.",
+          submission,
+        });
+      },
       runUiAction(id, pageId, actionId, values) {
         const plugin = plugins.find((item) => item.id === id || item.entry === id);
         if (!plugin) {

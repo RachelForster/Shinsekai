@@ -30,6 +30,51 @@ def _display_title_for_offline_plugin_entry(entry: str) -> str:
     return value.rpartition(".")[2] if "." in value else value
 
 
+def _apply_registry_author_fallback(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not any(not str(row.get("author") or "").strip() for row in rows):
+        return rows
+    try:
+        from core.plugins.registry_catalog import fetch_registry_plugins
+        from core.plugins.registry_download import normalize_manifest_entry, normalize_repo_slug
+
+        records = fetch_registry_plugins(timeout_sec=5.0)
+    except Exception:
+        return rows
+
+    authors_by_entry: dict[str, str] = {}
+    authors_by_repo: dict[str, str] = {}
+    for record in records:
+        author = str(getattr(record, "author", "") or "").strip()
+        if not author:
+            continue
+        entry = normalize_manifest_entry(str(getattr(record, "entry", "") or ""))
+        repo = normalize_repo_slug(str(getattr(record, "repo", "") or ""))
+        if entry:
+            authors_by_entry.setdefault(entry, author)
+        if repo:
+            authors_by_repo.setdefault(repo, author)
+
+    for row in rows:
+        if str(row.get("author") or "").strip():
+            continue
+        install = row.get("install") if isinstance(row.get("install"), dict) else {}
+        entries = [
+            str(row.get("entry") or ""),
+            str(install.get("entry") or ""),
+        ]
+        for entry in entries:
+            author = authors_by_entry.get(normalize_manifest_entry(entry))
+            if author:
+                row["author"] = author
+                break
+        if str(row.get("author") or "").strip():
+            continue
+        repo_author = authors_by_repo.get(normalize_repo_slug(str(install.get("repo") or "")))
+        if repo_author:
+            row["author"] = repo_author
+    return rows
+
+
 def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     try:
         from core.plugins.plugin_host import (
@@ -42,6 +87,7 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
             infer_plugin_package_directory,
             read_plugin_manifest_items,
         )
+        from core.plugins.registry_download import load_plugin_install_metadata
     except Exception:
         return []
 
@@ -182,6 +228,9 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
             )
             if slots:
                 row["slots"] = sorted(set(row["slots"]) | slots)
+            install_metadata = load_plugin_install_metadata(entry)
+            if install_metadata:
+                row["install"] = install_metadata
             rows.append(row)
     else:
         for plugin in getattr(manager, "plugins", []) if manager is not None else []:
@@ -220,7 +269,7 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
                     version="",
                 )
             )
-    return rows
+    return _apply_registry_author_fallback(rows)
 
 
 def _plugin_registry_rows() -> list[dict[str, Any]]:
@@ -264,7 +313,11 @@ def _plugin_registry_rows() -> list[dict[str, Any]]:
                 "repo": repo,
                 "securityScan": dict(getattr(rec, "security_scan", None) or {}),
                 "sha256": str(getattr(rec, "sha256", "") or ""),
-                "lowestShinsekaiVersion": str(getattr(rec, "lowest_shinsekai_version", "") or ""),
+                "lowestShinsekaiVersion": str(
+                    getattr(rec, "lowest_shinsekai_version", "")
+                    or getattr(rec, "shinsekai_version", "")
+                    or ""
+                ),
                 "shortDescription": str(getattr(rec, "short_description", "") or ""),
                 "size": getattr(rec, "size", None),
                 "socialLink": str(getattr(rec, "social_link", "") or ""),

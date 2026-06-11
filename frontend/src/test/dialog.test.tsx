@@ -79,6 +79,28 @@ describe("FilePicker", () => {
     expect(browseFiles).toHaveBeenCalledWith({ path: "", showHidden: false });
   });
 
+  it("uses an initial picker path without changing the empty input value", async () => {
+    const onPathChange = vi.fn();
+
+    renderWithFileBrowser(
+      <FilePicker
+        onPathChange={onPathChange}
+        pickLabel="Select local plugin directory"
+        pickerInitialPath="plugins"
+        pickerMode="directory"
+        readOnly
+        value=""
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Select local plugin directory"));
+
+    await waitFor(() => {
+      expect(browseFiles).toHaveBeenCalledWith({ path: "plugins", showHidden: false });
+    });
+    expect(screen.getByRole("button", { name: "Select local plugin directory" })).toBeInTheDocument();
+  });
+
   it("opens parent folders from the address breadcrumbs", async () => {
     browseFiles.mockResolvedValueOnce({
       cwd: "/home/shinsekai/project/data/config",

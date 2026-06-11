@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import ast
+import shutil
+import uuid
 from pathlib import Path
 from typing import Any
 
 from .plugin_catalog import _set_plugin_enabled
 from .state import BridgeState
 from .tasks import _append_task_log, _update_task
+
+
+class PluginPackageDependencyInstallError(RuntimeError):
+    code = "package_dependency_failed"
+    fallback_allowed = False
+    user_message = "包体已通过校验，但依赖安装失败，请查看日志。"
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(self.user_message)
+        self.detail = detail.strip() or self.user_message
 
 
 def _app_update_info() -> dict[str, Any]:
@@ -158,7 +170,11 @@ def _lookup_registry_plugin(source: str) -> Any | None:
         rec_repo = normalize_repo_slug(rec.repo)
         if rec_repo and rec_repo == repo_slug:
             return rec
+        if str(getattr(rec, "id", "") or "").strip().lower() == source_key:
+            return rec
         if rec.name.strip().lower() == source_key:
+            return rec
+        if str(getattr(rec, "display_name", "") or "").strip().lower() == source_key:
             return rec
         if rec.entry.strip().lower() == source_key:
             return rec
@@ -231,7 +247,322 @@ def _synthetic_plugin_result(
     }
 
 
+def _has_registry_package(record: Any | None) -> bool:
+    if record is None:
+        return False
+    import os
+
+    if os.environ.get("SHINSEKAI_PLUGIN_DISABLE_PACKAGE_INSTALL") == "1":
+        return False
+    package_url = str(
+        getattr(record, "package_url", "") or getattr(record, "download_url", "") or ""
+    ).strip()
+    package_sha256 = str(
+        getattr(record, "package_sha256", "") or getattr(record, "sha256", "") or ""
+    ).strip()
+    return bool(package_url and package_sha256)
+
+
+def _registry_package_metadata(
+    record: Any,
+    *,
+    dependency_status: str = "",
+    dependency_detail: str = "",
+    package_status: str = "verified",
+) -> dict[str, Any]:
+    package_source = str(getattr(record, "package_source", "") or "r2").strip()
+    package_url = str(getattr(record, "package_url", "") or getattr(record, "download_url", "") or "").strip()
+    package_sha256 = str(getattr(record, "package_sha256", "") or getattr(record, "sha256", "") or "").strip()
+    package_size = getattr(record, "package_size", None)
+    if package_size is None:
+        package_size = getattr(record, "size", None)
+    is_verified_package = package_status == "verified"
+    metadata: dict[str, Any] = {
+        "dependencyDetail": dependency_detail,
+        "dependencyStatus": dependency_status,
+        "entry": str(getattr(record, "entry", "") or "").strip(),
+        "packageSource": package_source if is_verified_package else "local",
+        "packageStatus": package_status,
+        "repo": str(getattr(record, "repo", "") or "").strip(),
+        "sourceLabel": "官方包体 (R2)" if is_verified_package else "已有插件目录",
+        "sourceType": "package" if is_verified_package else "existing",
+    }
+    if is_verified_package:
+        metadata.update(
+            {
+                "packageSha256": package_sha256,
+                "packageSize": package_size,
+                "packageUrl": package_url,
+            }
+        )
+    return {key: value for key, value in metadata.items() if value not in (None, "")}
+
+
+def _with_install_metadata(result: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    out = dict(result)
+    out["install"] = dict(metadata)
+    return out
+
+
+def _package_error_details(exc: BaseException) -> dict[str, Any]:
+    from core.plugins.package_download import PluginPackageError
+
+    current: BaseException | None = exc
+    while current is not None:
+        code = getattr(current, "code", "")
+        user_message = getattr(current, "user_message", "")
+        if isinstance(current, PluginPackageError) or code or user_message:
+            detail = str(getattr(current, "detail", "") or current or current.__class__.__name__)
+            out: dict[str, Any] = {
+                "detail": detail,
+                "errorCode": str(code or "plugin_package_error"),
+                "errorUserMessage": str(user_message or detail),
+                "fallbackAllowed": bool(getattr(current, "fallback_allowed", False)),
+            }
+            status_code = getattr(current, "status_code", None)
+            if status_code is not None:
+                out["httpStatus"] = status_code
+            return out
+        current = current.__cause__
+    detail = str(exc) or exc.__class__.__name__
+    return {
+        "detail": detail,
+        "errorCode": "plugin_install_error",
+        "errorUserMessage": detail,
+        "fallbackAllowed": False,
+    }
+
+
+def _package_error_allows_github_fallback(exc: BaseException) -> bool:
+    from core.plugins.package_download import PluginPackageNetworkError, PluginPackageNonFallbackError
+
+    current: BaseException | None = exc
+    saw_network_error = False
+    while current is not None:
+        if isinstance(current, PluginPackageNonFallbackError):
+            return False
+        if isinstance(current, PluginPackageNetworkError):
+            saw_network_error = True
+        current = current.__cause__
+    return saw_network_error
+
+
+def _update_task_package_error(state: BridgeState, task_id: str, details: dict[str, Any]) -> None:
+    updates = {
+        "errorCode": details.get("errorCode", ""),
+        "errorDetail": details.get("detail", ""),
+        "errorUserMessage": details.get("errorUserMessage", ""),
+        "fallbackAllowed": bool(details.get("fallbackAllowed")),
+    }
+    if details.get("httpStatus") is not None:
+        updates["httpStatus"] = details["httpStatus"]
+    _update_task(state, task_id, **updates)
+
+
+def _restore_package_target(target: Path, backup: Path | None, *, remove_new_target: bool) -> None:
+    if remove_new_target and target.exists():
+        shutil.rmtree(target, ignore_errors=True)
+    if backup is not None and backup.exists() and not target.exists():
+        backup.rename(target)
+
+
+def _install_registry_package_source(
+    state: BridgeState,
+    task_id: str,
+    record: Any,
+    *,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    from core.plugins.package_download import install_registry_package_under_plugins, registry_package_target
+    from core.plugins.plugin_requirements_install import install_plugin_requirements_txt
+    from core.plugins.registry_download import mark_repo_downloaded, normalize_repo_slug
+
+    repo_slug = normalize_repo_slug(str(getattr(record, "repo", "") or ""))
+    entry = str(getattr(record, "entry", "") or "").strip()
+    display_name = str(getattr(record, "display_name", "") or getattr(record, "name", "") or "").strip()
+    description = str(getattr(record, "description", "") or "").strip()
+    target = registry_package_target(record, plugins_parent=Path("plugins"))
+    existed_before = target.is_dir()
+    backup: Path | None = None
+    if overwrite and existed_before:
+        backup = target.with_name(f".{target.name}.backup-{uuid.uuid4().hex}")
+        target.rename(backup)
+
+    _update_task(
+        state,
+        task_id,
+        message=f"正在下载 {display_name or repo_slug or target.name} 的官方包体。",
+        phase="download",
+        progress=0.12,
+        installSource="package",
+        installSourceLabel="官方包体 (R2)",
+        packageStatus="downloading",
+    )
+
+    def _pip_line(line: str) -> None:
+        _append_task_log(state, task_id, line)
+
+    dependency_status = ""
+    dependency_detail = ""
+    try:
+        package_status = "existing" if existed_before and not overwrite else "verified"
+        plugin_root = install_registry_package_under_plugins(
+            record,
+            overwrite=overwrite,
+            plugins_parent=Path("plugins"),
+        )
+        package_message = (
+            "检测到已有插件目录，跳过官方包体校验。"
+            if package_status == "existing"
+            else "官方包体已校验，正在安装插件依赖。"
+        )
+        _update_task(
+            state,
+            task_id,
+            message=package_message,
+            phase="pip",
+            progress=0.72,
+            packageStatus=package_status,
+        )
+        dependency_status, dependency_detail = install_plugin_requirements_txt(plugin_root, on_output_line=_pip_line)
+        if dependency_detail:
+            _append_task_log(state, task_id, dependency_detail)
+        if dependency_status in {"pip_failed", "pip_timeout", "pip_exception", "pip_conflict"}:
+            dependency_error = PluginPackageDependencyInstallError(dependency_detail or dependency_status)
+            error_message = dependency_error.user_message
+            _update_task(
+                state,
+                task_id,
+                errorCode=dependency_error.code,
+                errorDetail=dependency_error.detail,
+                errorUserMessage=error_message,
+                fallbackAllowed=dependency_error.fallback_allowed,
+            )
+            raise dependency_error
+        if not entry:
+            entry = _infer_plugin_entry(plugin_root)
+        metadata = _registry_package_metadata(
+            record,
+            dependency_status=dependency_status,
+            dependency_detail=dependency_detail,
+            package_status=package_status,
+        )
+        if entry:
+            metadata["entry"] = entry
+        _update_task(
+            state,
+            task_id,
+            message="正在登记官方包体安装状态。",
+            phase="manifest",
+            progress=0.9,
+            dependencyInstallStatus=dependency_status,
+        )
+        if entry:
+            result = _plugin_result_from_manifest(entry)
+            if repo_slug:
+                mark_repo_downloaded(repo_slug, manifest_entry=entry, install_metadata=metadata)
+            _update_task(state, task_id, message="官方包体安装完成。", phase="completed", progress=1)
+            if backup is not None:
+                shutil.rmtree(backup, ignore_errors=True)
+            return _with_install_metadata(result, metadata)
+        if repo_slug:
+            mark_repo_downloaded(repo_slug, manifest_entry=None)
+        result = _synthetic_plugin_result(
+            description=description or f"包体已下载到 {plugin_root.as_posix()}，但没有找到可登记的插件入口。",
+            enabled=False,
+            plugin_id=repo_slug or str(getattr(record, "id", "") or target.name),
+            title=display_name or target.name,
+        )
+        _update_task(state, task_id, message="官方包体已下载，但没有找到可登记的插件入口。", progress=1)
+        if backup is not None:
+            shutil.rmtree(backup, ignore_errors=True)
+        return _with_install_metadata(result, metadata)
+    except Exception:
+        _restore_package_target(target, backup, remove_new_target=(not existed_before or backup is not None))
+        _update_task(state, task_id, packageStatus="failed")
+        raise
+
+
 def _install_plugin_source(
+    state: BridgeState,
+    task_id: str,
+    source: str,
+    *,
+    ref_kind: str = "latest",
+    tag_name: str = "",
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    source = source.strip()
+    if not source:
+        raise ValueError("plugin id is required")
+    ref_kind = ref_kind if ref_kind in {"latest", "head", "tag"} else "latest"
+    tag_name = tag_name.strip()
+    if ref_kind == "tag" and not tag_name:
+        raise ValueError("tagName is required when refKind is tag")
+
+    registry_rec = _lookup_registry_plugin(source)
+    if ref_kind == "latest" and _has_registry_package(registry_rec):
+        try:
+            return _install_registry_package_source(state, task_id, registry_rec, overwrite=overwrite)
+        except Exception as exc:
+            repo = str(getattr(registry_rec, "repo", "") or "").strip()
+            if repo and _package_error_allows_github_fallback(exc):
+                details = _package_error_details(exc)
+                fallback_message = str(
+                    details.get("errorUserMessage") or "官方包体暂时无法访问，正在自动尝试 GitHub 源码安装。"
+                )
+                _update_task(
+                    state,
+                    task_id,
+                    errorCode=details.get("errorCode", ""),
+                    errorDetail=details.get("detail", ""),
+                    errorUserMessage=fallback_message,
+                    fallbackAllowed=True,
+                    message=fallback_message,
+                    notice=fallback_message,
+                    noticeKind="info",
+                    phase="download",
+                    installSource="github",
+                    packageStatus="fallback",
+                )
+                _append_task_log(state, task_id, f"{fallback_message} {details.get('detail', exc)}")
+                return _install_github_plugin_source(
+                    state,
+                    task_id,
+                    repo,
+                    ref_kind=ref_kind,
+                    tag_name=tag_name,
+                    overwrite=overwrite,
+                )
+            details = _package_error_details(exc)
+            _update_task_package_error(state, task_id, details)
+            message = str(details.get("errorUserMessage") or details.get("detail") or exc)
+            _append_task_log(state, task_id, f"{message} {details.get('detail', '')}".strip())
+            raise RuntimeError(message) from exc
+
+    if not _is_repo_source(source) and registry_rec is not None:
+        repo = str(getattr(registry_rec, "repo", "") or "").strip()
+        if repo:
+            return _install_github_plugin_source(
+                state,
+                task_id,
+                repo,
+                ref_kind=ref_kind,
+                tag_name=tag_name,
+                overwrite=overwrite,
+            )
+
+    return _install_github_plugin_source(
+        state,
+        task_id,
+        source,
+        ref_kind=ref_kind,
+        tag_name=tag_name,
+        overwrite=overwrite,
+    )
+
+
+def _install_github_plugin_source(
     state: BridgeState,
     task_id: str,
     source: str,
@@ -325,7 +656,7 @@ def _install_plugin_source(
         _append_task_log(state, task_id, line)
 
     pip_code, pip_detail = install_plugin_requirements_txt(plugin_root, on_output_line=_pip_line)
-    if pip_code in {"pip_failed", "pip_timeout", "pip_exception"}:
+    if pip_code in {"pip_failed", "pip_timeout", "pip_exception", "pip_conflict"}:
         detail = pip_detail or pip_code
         raise RuntimeError(f"插件依赖安装失败：{detail}")
 
