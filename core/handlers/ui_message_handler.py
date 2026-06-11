@@ -152,10 +152,22 @@ class SystemMiscUiHandler(UIOutputMessageHandler):
     def handle(self, out: TTSOutputMessage) -> None:
         _ui().hide_busy_bar()
         _ui().update_dialog(out.name, out.text or "", "#84C2D5")
+        _ui().resolve_effect(
+            effect=out.effect, args={"character_name": out.name}, after_dialog=False
+        )
         ev = _play().task_done_requested
         if ev and not ev.is_set():
             sp = out.text or ""
             ev.wait(timeout=max(len(sp) / 10, 0.5))
+
+    def post_process(self, out: TTSOutputMessage) -> None:
+        if not out.is_final_segment:
+            return
+        get_app_runtime().ui_update_manager.resolve_effect(
+            effect=out.effect,
+            args={"character_name": out.name},
+            after_dialog=True,
+        )
 
 
 class CharacterDialogUiHandler(UIOutputMessageHandler):
