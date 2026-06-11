@@ -29,6 +29,10 @@ class BusyBar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet("#BusyBar { background: transparent; border: none; }")
 
+        self._thinking_visible = True
+        self._last_text = ""
+        self._last_duration = 0.0
+
         self._label_fs = "12px;"
         self._label_chrome_extra = ""
         self._breathe_phase = 0.0
@@ -139,6 +143,11 @@ class BusyBar(QWidget):
 
     def show_with(self, text: str, duration_seconds: float) -> None:
         """duration_seconds > 0 时自动隐藏；<= 0 则直到 ``hide_bar``。"""
+        self._last_text = text
+        self._last_duration = duration_seconds
+        if not self._thinking_visible:
+            self.hide_bar()
+            return
         self._timer.stop()
         self._label.setText(text)
         self._apply_label_skeleton_style()
@@ -148,6 +157,14 @@ class BusyBar(QWidget):
         self.raise_()
         if duration_seconds > 0:
             self._timer.start(int(max(0.05, duration_seconds) * 1000))
+
+    def set_thinking_visible(self, visible: bool) -> None:
+        self._thinking_visible = visible
+        if visible:
+            if self._last_text:
+                self.show_with(self._last_text, self._last_duration)
+        else:
+            self.hide_bar()
 
     def hide_bar(self) -> None:
         self._timer.stop()

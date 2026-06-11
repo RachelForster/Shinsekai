@@ -311,6 +311,18 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self.setup_context_token_label()
         self._busy_bar = BusyBar(self)
         self._busy_bar.hide()
+
+        self._thinking_btn = QPushButton("▼", self)
+        self._thinking_btn.setFixedSize(20, 20)
+        self._thinking_btn.setStyleSheet(
+            "QPushButton { color: rgba(180,190,210,180); background: rgba(20,22,28,120);"
+            " border: 1px solid rgba(100,110,130,80); border-radius: 3px;"
+            " font-size: 10px; padding: 0; }"
+            "QPushButton:hover { color: rgba(220,225,235,240);"
+            " background: rgba(30,33,40,160); border-color: rgba(140,150,170,140); }"
+        )
+        self._thinking_btn.clicked.connect(self._toggle_thinking)
+        self._thinking_btn.hide()
         
         # 将组件添加到主布局
         main_layout.addWidget(self.image_container, 1)
@@ -632,6 +644,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         self._last_input_inner_w = inner_w
         self._last_input_x = x
         self._layout_busy_bar()
+        self._layout_thinking_btn()
         # 对话/选项要避开整段底栏 + 与窗口底边之间的留白
         self._bottom_chrome_h = row_h + inset_b
 
@@ -653,6 +666,26 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         y_bb = max(0, y_input - gap - bh)
         bb.setGeometry(x_bb, y_bb, bb_w, bh)
         self._layout_context_token_label()
+
+    def _layout_thinking_btn(self) -> None:
+        """思考文本显隐按钮：置于输入行左侧，顶部与输入行齐平。"""
+        btn = getattr(self, "_thinking_btn", None)
+        if btn is None:
+            return
+        if not hasattr(self, "_last_input_row_y"):
+            return
+        gap = 4
+        btn_x = max(0, self._last_input_x - gap - btn.width())
+        btn_y = self._last_input_row_y
+        btn.move(btn_x, btn_y)
+
+    def _toggle_thinking(self) -> None:
+        bb = getattr(self, "_busy_bar", None)
+        if bb is None:
+            return
+        visible = not bb._thinking_visible
+        bb.set_thinking_visible(visible)
+        self._thinking_btn.setText("▼" if visible else "▲")
 
     def setup_context_token_label(self) -> None:
         self.context_token_label = QLabel(self)
@@ -843,6 +876,9 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         bb = getattr(self, "_busy_bar", None)
         if bb is not None and bb.isVisible():
             bb.raise_()
+        btn = getattr(self, "_thinking_btn", None)
+        if btn is not None and btn.isVisible():
+            btn.raise_()
 
     def _setup_resize_corner_hit_widgets(self) -> None:
         """左下/右下：分层透明时 α=0 区域不命中；极小 α>0 叠在最上层抓落实控。"""
@@ -1187,10 +1223,17 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         if not (text or "").strip():
             bb.hide_bar()
             self._layout_context_token_label()
+            btn = getattr(self, "_thinking_btn", None)
+            if btn is not None:
+                btn.hide()
             return
         # 先更新文案再算高度，否则 heightForWidth 仍按旧文本排版
         bb.show_with((text or "").strip(), duration_seconds)
         self._layout_busy_bar()
+        btn = getattr(self, "_thinking_btn", None)
+        if btn is not None:
+            btn.show()
+            btn.raise_()
         self._raise_input_and_toolbar()
 
     def setContextTokenEstimate(self, text: str) -> None:
