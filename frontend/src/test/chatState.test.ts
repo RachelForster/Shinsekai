@@ -139,7 +139,7 @@ describe("chatStageReducer", () => {
     expect(viewModel.transportState).toBe("connecting");
   });
 
-  it("projects user dialog text into a nameplate and pure body text", () => {
+  it("projects user dialog text into a custom nameplate and pure body text", () => {
     const state = chatStageReducer(emptyChatState, {
       snapshot: {
         characterName: "",
@@ -149,13 +149,14 @@ describe("chatStageReducer", () => {
         options: [],
         sprites: [],
         status: "generating",
+        userDisplayName: "澪",
       },
       type: "hydrate",
     });
 
     const viewModel = buildChatStageViewModel(state);
 
-    expect(viewModel.dialogCharacterName).toBe("你");
+    expect(viewModel.dialogCharacterName).toBe("澪");
     expect(viewModel.dialogText).toBe("这是一句用户输入");
   });
 

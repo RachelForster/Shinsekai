@@ -56,6 +56,22 @@ _main_chat_process: subprocess.Popen[bytes] | None = None
 _main_chat_process_lock = threading.Lock()
 _main_chat_log_file: Any = None
 _SYSTEM_HISTORY_NAMES = COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
+_DEFAULT_USER_DISPLAY_NAME = "你"
+_USER_DISPLAY_NAME_PATTERNS = (
+    re.compile(
+        r"(?:请|以后|今后|之后|可以)?(?:叫|称呼)我(?:为|叫|作)?"
+        r"\s*[\"'“”‘’「」『』《》]?([^，。！？,.!?\n\r]{1,24})"
+    ),
+    re.compile(
+        r"我(?:的)?(?:名字|姓名|称呼)(?:是|叫|为|：|:)"
+        r"\s*[\"'“”‘’「」『』《》]?([^，。！？,.!?\n\r]{1,24})"
+    ),
+    re.compile(r"我叫\s*[\"'“”‘’「」『』《》]?([^，。！？,.!?\n\r]{1,24})"),
+    re.compile(
+        r"(?:call me|my name is|user(?:'s)? name is)\s+[\"']?([^,.!?\n\r]{1,24})",
+        re.IGNORECASE,
+    ),
+)
 
 
 def _is_transparent_background_name(name: str | None) -> bool:
@@ -436,6 +452,36 @@ def _chat_voice_language(state: BridgeState) -> str:
     return configured_language or "ja"
 
 
+def _sanitize_user_display_name(value: Any) -> str:
+    name = re.sub(r"<[^>]+>", "", str(value or "")).strip()
+    name = name.strip(" \t\r\n\"'“”‘’「」『』《》[]()（）")
+    name = re.sub(r"\s+", " ", name).strip()
+    if not name or name == _DEFAULT_USER_DISPLAY_NAME:
+        return ""
+    if len(name) > 24 or any(ch in name for ch in "\r\n<>"):
+        return ""
+    return name
+
+
+def _extract_user_display_name(*texts: Any) -> str:
+    for raw_text in texts:
+        text = str(raw_text or "")
+        if not text.strip():
+            continue
+        for pattern in _USER_DISPLAY_NAME_PATTERNS:
+            match = pattern.search(text)
+            if not match:
+                continue
+            name = _sanitize_user_display_name(match.group(1))
+            if name:
+                return name
+    return ""
+
+
+def _chat_user_display_name(state: BridgeState) -> str:
+    return _sanitize_user_display_name(state.chat_session.get("userDisplayName")) or _DEFAULT_USER_DISPLAY_NAME
+
+
 def _history_entry_role_from_text(text: str) -> str:
     raw = str(text or "")
     if "你：" in raw or "你:" in raw:
@@ -448,12 +494,37 @@ def _history_entry_role_from_text(text: str) -> str:
     return "assistant"
 
 
-def _serialize_history_entries_from_messages(messages: Any) -> list[dict[str, Any]]:
+def _message_created_at_ms(message: dict[str, Any]) -> int | None:
+    for key in ("createdAt", "created_at", "timestamp", "ts"):
+        raw = message.get(key)
+        if raw is None:
+            continue
+        if isinstance(raw, (int, float)):
+            return int(raw * 1000) if raw < 10_000_000_000 else int(raw)
+        if isinstance(raw, str):
+            text = raw.strip()
+            if not text:
+                continue
+            if text.isdigit():
+                num = int(text)
+                return num * 1000 if num < 10_000_000_000 else num
+            try:
+                return int(datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp() * 1000)
+            except ValueError:
+                continue
+    return None
+
+
+def _serialize_history_entries_from_messages(
+    messages: Any,
+    user_display_name: str = _DEFAULT_USER_DISPLAY_NAME,
+) -> list[dict[str, Any]]:
     if not isinstance(messages, list):
         return []
     entries: list[dict[str, Any]] = []
     user_index = 0
     row_index = 0
+    user_name = _sanitize_user_display_name(user_display_name) or _DEFAULT_USER_DISPLAY_NAME
     for message in messages:
         if not isinstance(message, dict):
             continue
@@ -462,14 +533,16 @@ def _serialize_history_entries_from_messages(messages: Any) -> list[dict[str, An
             text = str(message.get("content") or "").strip()
             if not text:
                 continue
-            entries.append(
-                {
-                    "id": f"history-{row_index}",
-                    "revertUserIndex": user_index,
-                    "role": "user",
-                    "text": f"你: {text}",
-                }
-            )
+            entry = {
+                "id": f"history-{row_index}",
+                "revertUserIndex": user_index,
+                "role": "user",
+                "text": f"{user_name}: {text}",
+            }
+            created_at = _message_created_at_ms(message)
+            if created_at is not None:
+                entry["createdAt"] = created_at
+            entries.append(entry)
             user_index += 1
             row_index += 1
             continue
@@ -512,7 +585,7 @@ def _chat_history_entries(state: BridgeState) -> list[dict[str, Any]]:
     history_path = _resolve_project_file(history_raw) if history_raw else None
     if history_path is None or not history_path.is_file():
         return []
-    return _serialize_history_entries_from_messages(_read_history_file(history_path))
+    return _serialize_history_entries_from_messages(_read_history_file(history_path), _chat_user_display_name(state))
 
 
 def _chat_history(state: BridgeState) -> list[dict[str, Any]]:
@@ -530,11 +603,13 @@ def _chat_snapshot(
     chat_stream = getattr(state, "chat_stream", None)
     voice_language = _chat_voice_language(state)
     runtime_mode = _chat_runtime_mode(state)
+    user_display_name = _chat_user_display_name(state)
     if session_id and chat_stream is not None:
         snapshot = chat_stream.get_snapshot(session_id)
         if snapshot is not None:
             next_snapshot = dict(snapshot)
             next_snapshot["runtimeMode"] = runtime_mode
+            next_snapshot["userDisplayName"] = user_display_name
             if voice_language and not str(next_snapshot.get("voiceLanguage") or "").strip():
                 next_snapshot["voiceLanguage"] = voice_language
             next_snapshot["historyEntries"] = _chat_history_entries(state)
@@ -565,6 +640,7 @@ def _chat_snapshot(
         "sprites": sprites,
         "status": status or "idle",
         "statusMessage": message,
+        "userDisplayName": user_display_name,
         "voiceLanguage": voice_language,
         **(extra or {}),
     }
@@ -691,10 +767,17 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         text = str(body.get("payload") or "").strip()
         if not text:
             raise ValueError("消息内容不能为空。")
+        extracted_user_name = _extract_user_display_name(text)
+        user_display_name = extracted_user_name or _chat_user_display_name(state)
         return _forward_runtime_command(
             "generating",
             text,
-            snapshot_patch={"characterName": "你", "inputDraft": ""},
+            session_patch={"userDisplayName": extracted_user_name} if extracted_user_name else None,
+            snapshot_patch={
+                "characterName": user_display_name,
+                "inputDraft": "",
+                "userDisplayName": user_display_name,
+            },
         )
 
     if command == "submit-option":

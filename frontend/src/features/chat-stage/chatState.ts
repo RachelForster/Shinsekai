@@ -40,6 +40,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
   sprites: ChatStageSprite[];
   transportMode: ChatTransportMode;
   transportState: ChatTransportState;
+  userDisplayName: string;
 }
 
 export interface ChatStageViewModel {
@@ -59,6 +60,7 @@ export interface ChatStageViewModel {
   statusText: string;
   transportMode: ChatTransportMode;
   transportState: ChatTransportState;
+  userDisplayName: string;
   voiceLanguage?: string;
 }
 
@@ -93,23 +95,46 @@ function htmlToText(value: string) {
     .trim();
 }
 
-const userDialogSpeaker = "你";
-const userDialogPrefixPattern = /^\s*你\s*[：:]\s*/;
+const defaultUserDialogSpeaker = "你";
 
-function normalizeDialogView(characterName: string | undefined, dialogText: string, dialogHtml?: string) {
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizedUserDisplayName(value?: string) {
+  return value?.trim() || defaultUserDialogSpeaker;
+}
+
+function userDialogPrefixPattern(userDisplayName: string) {
+  const names = [defaultUserDialogSpeaker, userDisplayName]
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .filter((name, index, list) => list.indexOf(name) === index)
+    .map(escapeRegExp);
+  return new RegExp(`^\\s*(?:${names.join("|")})\\s*[：:]\\s*`);
+}
+
+function normalizeDialogView(
+  characterName: string | undefined,
+  dialogText: string,
+  dialogHtml: string | undefined,
+  userDisplayName: string,
+) {
   const normalizedName = characterName?.trim();
-  if (normalizedName === userDialogSpeaker) {
+  const userName = normalizedUserDisplayName(userDisplayName);
+  const prefixPattern = userDialogPrefixPattern(userName);
+  if (normalizedName === defaultUserDialogSpeaker || normalizedName === userName) {
     return {
-      characterName: userDialogSpeaker,
+      characterName: userName,
       dialogHtml,
-      dialogText: dialogText.replace(userDialogPrefixPattern, ""),
+      dialogText: dialogText.replace(prefixPattern, ""),
     };
   }
-  if (!normalizedName && dialogHtml === undefined && userDialogPrefixPattern.test(dialogText)) {
+  if (!normalizedName && dialogHtml === undefined && prefixPattern.test(dialogText)) {
     return {
-      characterName: userDialogSpeaker,
+      characterName: userName,
       dialogHtml,
-      dialogText: dialogText.replace(userDialogPrefixPattern, ""),
+      dialogText: dialogText.replace(prefixPattern, ""),
     };
   }
   return {
@@ -418,6 +443,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     state.error ? undefined : state.characterName,
     state.error ?? state.dialogText,
     state.error ? undefined : state.dialogHtml,
+    state.userDisplayName,
   );
   return {
     backgroundPath: state.backgroundPath,
@@ -436,6 +462,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     statusText: state.numericInfo ?? state.status,
     transportMode: state.transportMode,
     transportState: state.transportState,
+    userDisplayName: normalizedUserDisplayName(state.userDisplayName),
     voiceLanguage: state.voiceLanguage,
   };
 }
@@ -450,4 +477,5 @@ export const emptyChatState: ChatStageState = {
   status: "idle",
   transportMode: "snapshot",
   transportState: "connecting",
+  userDisplayName: defaultUserDialogSpeaker,
 };

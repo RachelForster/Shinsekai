@@ -542,6 +542,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (command.type === "send-message") {
           clearScheduledChatUpdates();
           const payload = String(command.payload ?? "").trim();
+          const userDisplayName = chat.userDisplayName?.trim() || "你";
           const nextUserIndex =
             Math.max(
               -1,
@@ -550,15 +551,16 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             ) + 1;
           chat = {
             ...chat,
-            characterName: "你",
+            characterName: userDisplayName,
             dialogText: payload,
             historyEntries: [
               ...cloneHistoryEntries(chat.historyEntries),
               {
+                createdAt: Date.now(),
                 id: `history-${Date.now()}-user`,
                 revertUserIndex: nextUserIndex,
                 role: "user",
-                text: `你: ${payload}`,
+                text: `${userDisplayName}: ${payload}`,
               },
             ],
             inputDraft: "",

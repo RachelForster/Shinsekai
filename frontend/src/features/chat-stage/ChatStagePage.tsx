@@ -426,9 +426,24 @@ function StandaloneDesktopResizeHandles({ hidden }: { hidden: boolean }) {
   );
 }
 
-function historySpeakerFallback(role: ChatHistoryEntry["role"]) {
+const defaultUserDisplayName = "你";
+
+function normalizeUserDisplayName(value?: string) {
+  return value?.trim() || defaultUserDisplayName;
+}
+
+function userSpeakerPrefixPattern(userDisplayName: string) {
+  const names = [defaultUserDisplayName, userDisplayName]
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .filter((name, index, list) => list.indexOf(name) === index)
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`^\\s*(${names.join("|")})\\s*[：:]\\s*([\\s\\S]*)$`);
+}
+
+function historySpeakerFallback(role: ChatHistoryEntry["role"], userDisplayName: string) {
   if (role === "user") {
-    return "你";
+    return userDisplayName;
   }
   if (role === "assistant") {
     return "角色";
@@ -452,14 +467,36 @@ function historyRoleLabel(role: ChatHistoryEntry["role"]) {
   return "SYSTEM";
 }
 
-function splitHistoryEntryText(entry: ChatHistoryEntry) {
+function historyEntryLocalTime(entry: ChatHistoryEntry) {
+  const raw = entry.createdAt;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return "";
+  }
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function splitHistoryEntryText(entry: ChatHistoryEntry, userDisplayName: string) {
+  const userName = normalizeUserDisplayName(userDisplayName);
+  if (entry.role === "user") {
+    const userMatch = entry.text.match(userSpeakerPrefixPattern(userName));
+    return {
+      body: (userMatch?.[2] ?? entry.text).trimStart(),
+      localTime: historyEntryLocalTime(entry),
+      speaker: userMatch?.[1] === defaultUserDisplayName ? userName : userMatch?.[1]?.trim() || userName,
+    };
+  }
   const match = entry.text.match(/^\s*([^：:\n]{1,36})\s*[：:]\s*([\s\S]*)$/);
   if (!match) {
-    return { body: entry.text, speaker: historySpeakerFallback(entry.role) };
+    return { body: entry.text, localTime: "", speaker: historySpeakerFallback(entry.role, userName) };
   }
   return {
     body: match[2]?.trimStart() ?? "",
-    speaker: match[1]?.trim() || historySpeakerFallback(entry.role),
+    localTime: "",
+    speaker: match[1]?.trim() || historySpeakerFallback(entry.role, userName),
   };
 }
 
@@ -470,6 +507,7 @@ function HistoryDialog({
   onRefresh,
   onRevert,
   open,
+  userDisplayName,
 }: {
   entries: ChatHistoryEntry[];
   loading: boolean;
@@ -477,6 +515,7 @@ function HistoryDialog({
   onRefresh: () => void;
   onRevert: (userIndex: number) => void;
   open: boolean;
+  userDisplayName: string;
 }) {
   const { t } = useI18n();
   const titleId = useId();
@@ -539,11 +578,14 @@ function HistoryDialog({
           {!loading && entries.length > 0 ? (
             <div className="chat-history__list">
               {entries.map((entry) => {
-                const dialog = splitHistoryEntryText(entry);
+                const dialog = splitHistoryEntryText(entry, userDisplayName);
                 return (
                   <section className="chat-history__entry" data-role={entry.role} key={entry.id}>
                     <div className="chat-history__speaker-row">
                       <span className="chat-history__speaker">{dialog.speaker}</span>
+                      {entry.role === "user" && dialog.localTime ? (
+                        <span className="chat-history__time">{dialog.localTime}</span>
+                      ) : null}
                       <span className="chat-history__role">{historyRoleLabel(entry.role)}</span>
                     </div>
                     <p className="chat-history__text">{dialog.body}</p>
@@ -1240,6 +1282,7 @@ export function ChatStagePage() {
           }}
           onRevert={(userIndex) => setConfirmRevertUserIndex(userIndex)}
           open={historyDialogOpen}
+          userDisplayName={viewModel.userDisplayName}
         />
       </main>
       <AlertDialog

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import traceback
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 
@@ -120,8 +121,9 @@ def _format_dialog_html(name: str, speech: str, color: str, is_system: bool) -> 
 
 
 def _format_user_html(text: str) -> str:
+    created_at = int(time.time() * 1000)
     return (
-        "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+        f"<p data-created-at='{created_at}' style='line-height: 135%; letter-spacing: 2px; color:white;'>"
         f"<b style='color:white;'>你</b>: {text}</p>"
     )
 

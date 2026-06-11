@@ -44,6 +44,8 @@ const desktopApiMocks = vi.hoisted(() => ({
   toggleMaximizeDesktopWindow: vi.fn(),
 }));
 
+const userHistoryCreatedAt = new Date(2026, 0, 2, 3, 4).getTime();
+
 vi.mock("../../../shared/desktop/chatWindow", () => ({
   closeChatSurface: (options: unknown) => chatWindowMocks.closeChatSurface(options),
 }));
@@ -70,7 +72,13 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     dialogText: "Ready",
     historyEntries: [
       { id: "history-0", role: "assistant", text: "Mio: Ready" },
-      { id: "history-1", revertUserIndex: 0, role: "user", text: "你: hello" },
+      {
+        createdAt: userHistoryCreatedAt,
+        id: "history-1",
+        revertUserIndex: 0,
+        role: "user",
+        text: "你: hello",
+      },
     ],
     historyPath: "D:/history/session.json",
     inputDraft: "",
@@ -78,6 +86,7 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     options: ["Take the shortcut"],
     sprites: [{ id: "mio", label: "Mio", path: "asset://mio.png" }],
     status: "idle",
+    userDisplayName: "Aoi",
     voiceLanguage: "ja",
     ...overrides,
   };
@@ -279,7 +288,12 @@ describe("ChatStagePage", () => {
     const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
     expect(within(dialog).getByText("Mio")).toBeInTheDocument();
     expect(within(dialog).getByText("Ready")).toBeInTheDocument();
-    expect(within(dialog).getByText("你")).toBeInTheDocument();
+    expect(within(dialog).getByText("Aoi")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        new Date(userHistoryCreatedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+      ),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText("hello")).toBeInTheDocument();
     expect(within(dialog).queryByText("Mio: Ready")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("你: hello")).not.toBeInTheDocument();

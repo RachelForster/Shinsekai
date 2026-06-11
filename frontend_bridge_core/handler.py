@@ -36,8 +36,10 @@ from .chat import (
     _chat_runtime_mode,
     _chat_snapshot,
     _chat_theme_payload,
+    _extract_user_display_name,
     _handle_chat_command,
     _launch_chat,
+    _sanitize_user_display_name,
     _sprite_path,
 )
 from .chat_themes import (
@@ -857,12 +859,17 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             user_scenario,
             system_template,
         )
+        user_display_name = (
+            _sanitize_user_display_name(body.get("userDisplayName"))
+            or _extract_user_display_name(user_scenario, system_template)
+        )
         session_base = {
             "backgroundName": str(body.get("backgroundName") or ""),
             "characterName": first_character,
             "historyPath": (default_history_path if reset_history else history_path).as_posix(),
             "sessionId": "",
             "templateId": template_id,
+            "userDisplayName": user_display_name,
             "voiceLanguage": str(self.state.config_manager.config.system_config.voice_language or "ja"),
             "workflowPath": str(body.get("workflowPath") or ""),
         }
@@ -921,6 +928,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     "historyPath": (default_history_path if reset_history else history_path).as_posix(),
                     "status": "idle",
                     "statusMessage": message,
+                    "userDisplayName": user_display_name,
                     "voiceLanguage": str(self.state.chat_session.get("voiceLanguage") or "ja"),
                 },
             )
@@ -962,12 +970,17 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 init_sprite_path = _sprite_path(character.sprites[0])
         room_id = str(session.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
         selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
+        user_display_name = (
+            _sanitize_user_display_name(session.get("userDisplayName"))
+            or _extract_user_display_name(scenario, system_template)
+        )
         session_base = {
             "backgroundName": selected_bg,
             "characterName": first_character,
             "historyPath": history_path.as_posix(),
             "sessionId": "",
             "templateId": template_id,
+            "userDisplayName": user_display_name,
             "voiceLanguage": str(session.get("voiceLanguage") or self.state.config_manager.config.system_config.voice_language or "ja"),
             "workflowPath": str(session.get("workflowPath") or ""),
         }
@@ -1026,6 +1039,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     "historyPath": history_path.as_posix(),
                     "status": "idle",
                     "statusMessage": message,
+                    "userDisplayName": user_display_name,
                     "voiceLanguage": str(self.state.chat_session.get("voiceLanguage") or "ja"),
                 },
             )

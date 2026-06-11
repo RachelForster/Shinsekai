@@ -264,7 +264,13 @@ export const sampleChatSnapshot: ChatSnapshot = {
   dialogText: "欢迎来到新世界。这里是 React 舞台预览，真实聊天事件会从 platform adapter 进入状态机。",
   historyEntries: [
     { id: "history-0", role: "system", text: "旁白: 欢迎来到新世界。" },
-    { id: "history-1", revertUserIndex: 0, role: "user", text: "你: 你好，Nanami。" },
+    {
+      createdAt: new Date(2026, 0, 2, 15, 4).getTime(),
+      id: "history-1",
+      revertUserIndex: 0,
+      role: "user",
+      text: "你: 你好，Nanami。",
+    },
     { id: "history-2", role: "assistant", text: "Nanami: 欢迎来到新世界。" },
   ],
   historyPath: "./data/chat_history/preview.json",
@@ -274,6 +280,7 @@ export const sampleChatSnapshot: ChatSnapshot = {
   runtimeMode: "react",
   sprites: [{ id: "nanami-default", path: "/assets/present_example.png", label: "Nanami" }],
   status: "idle",
+  userDisplayName: "你",
   voiceLanguage: "ja",
 };
 

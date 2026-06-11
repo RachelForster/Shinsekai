@@ -674,6 +674,7 @@ export interface ChatSprite {
 export type ChatHistoryRole = "assistant" | "options" | "system" | "user";
 
 export interface ChatHistoryEntry {
+  createdAt?: number;
   id: string;
   revertUserIndex?: number;
   role: ChatHistoryRole;
@@ -703,6 +704,7 @@ export interface ChatSnapshot {
   sprites: ChatSprite[];
   status: ChatRuntimeStatus;
   statusMessage?: string;
+  userDisplayName?: string;
   voiceLanguage?: string;
   wsUrl?: string;
 }

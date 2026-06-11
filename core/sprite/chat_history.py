@@ -118,6 +118,17 @@ def _history_entry_color(history_entry: Any, role: str) -> str:
     return "#84C2D5"
 
 
+def _history_entry_created_at(history_entry: Any) -> int | None:
+    raw = str(history_entry or "")
+    match = re.search(r"\bdata-created-at=['\"](\d{10,})['\"]", raw, flags=re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
 def serialize_chat_history_entries(history: list[Any]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     user_index = 0
@@ -131,6 +142,9 @@ def serialize_chat_history_entries(history: list[Any]) -> list[dict[str, Any]]:
             "role": role,
             "text": text,
         }
+        created_at = _history_entry_created_at(history_entry)
+        if created_at is not None:
+            item["createdAt"] = created_at
         if role == "user":
             item["revertUserIndex"] = user_index
             user_index += 1
