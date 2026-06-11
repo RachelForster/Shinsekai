@@ -929,7 +929,7 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<BatchToolResult>,
     ) => Promise<BatchToolResult>;
     generateSpritePrompts: (
-      input: { characterName: string; count: number; language?: string; positivePromptReference?: string },
+      input: { characterName: string; count: number; language?: string; composition?: string; positivePromptReference?: string },
       options?: TaskProgressOptions<SpritePromptResult>,
     ) => Promise<SpritePromptResult>;
     generateSprites: (
@@ -941,7 +941,7 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<SpriteGenerationResult>,
     ) => Promise<SpriteGenerationResult>;
     removeSpriteBackground: (
-      input: { inputDir: string; outputDir?: string },
+      input: { inputDir: string; outputDir?: string; files?: string[] },
       options?: TaskProgressOptions<BatchToolResult>,
     ) => Promise<BatchToolResult>;
   };

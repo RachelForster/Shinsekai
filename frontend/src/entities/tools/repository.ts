@@ -7,7 +7,7 @@ import type {
 } from "../../shared/platform/types";
 
 export function generateSpritePrompts(
-  input: { characterName: string; count: number; language?: string; positivePromptReference?: string },
+  input: { characterName: string; count: number; language?: string; composition?: string; positivePromptReference?: string },
   options?: TaskProgressOptions<SpritePromptResult>,
 ) {
   return getPlatform().tools.generateSpritePrompts(input, options);
@@ -35,7 +35,7 @@ export function cropSprites(
 }
 
 export function removeSpriteBackground(
-  input: { inputDir: string; outputDir?: string },
+  input: { inputDir: string; outputDir?: string; files?: string[] },
   options?: TaskProgressOptions<BatchToolResult>,
 ) {
   return getPlatform().tools.removeSpriteBackground(input, options);

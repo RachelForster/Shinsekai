@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, useSearchParams } from "react-router-dom";
-import { ImagePlus, RefreshCw, Sparkles, WandSparkles } from "lucide-react";
+import { Eraser, ImagePlus, RefreshCw, Sparkles, WandSparkles } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -9,7 +9,7 @@ import {
   registerGeneratedCharacterSprites,
 } from "../../entities/character/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
-import { generateSpriteImage, generateSpritePrompts } from "../../entities/tools/repository";
+import { generateSpriteImage, generateSpritePrompts, removeSpriteBackground } from "../../entities/tools/repository";
 import { fileUrl } from "../../entities/files/repository";
 import type { Character } from "../../entities/config/types";
 import { isT2iReadyForSprites } from "../api-settings/apiSettingsUtils";
@@ -153,6 +153,8 @@ export function AiSpriteWorkshopPage() {
   const character = useMemo(() => selectedCharacter(characters, selectedName), [characters, selectedName]);
   const [drafts, setDrafts] = useState<SpritePromptDraft[]>([]);
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(() => new Set());
+  const [bgRemovingIds, setBgRemovingIds] = useState<Set<string>>(() => new Set());
+  const [composition, setComposition] = useState("thigh_up");
   const [positivePromptReference, setPositivePromptReference] = useState("");
   const [negativePrompt, setNegativePrompt] = useState(
     "low quality, blurry, extra limbs, text, watermark, multiple views, multiple angles, turnaround, character sheet, reference sheet, expression sheet, pose sheet, multiple panels, collage",
@@ -170,6 +172,7 @@ export function AiSpriteWorkshopPage() {
     mutationFn: () =>
       generateSpritePrompts({
         characterName: character?.name ?? "",
+        composition,
         count: normalizeSpriteCount(spriteCount),
         language,
         ...(promptReferenceInput ? { positivePromptReference: promptReferenceInput } : {}),
@@ -203,7 +206,7 @@ export function AiSpriteWorkshopPage() {
   useEffect(() => {
     setDrafts([]);
     setGenerationNote("");
-  }, [character?.name, language, promptReferenceInput, spriteCount]);
+  }, [character?.name, composition, language, promptReferenceInput, spriteCount]);
 
   const updateDraft = (id: string, patch: Partial<SpritePromptDraft>) => {
     setDrafts((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -235,6 +238,7 @@ export function AiSpriteWorkshopPage() {
     try {
       const result = await generateSpritePrompts({
         characterName: character.name,
+        composition,
         count: 1,
         language,
         ...(promptReferenceInput ? { positivePromptReference: promptReferenceInput } : {}),
@@ -292,6 +296,37 @@ export function AiSpriteWorkshopPage() {
       });
     } finally {
       setDraftGenerating(draft.id, false);
+    }
+  };
+
+  const removeBgForReady = async () => {
+    const filePaths = readyDrafts.map((d) => d.imagePath).filter(Boolean) as string[];
+    if (!filePaths.length) {
+      showToast({ kind: "error", message: t("tools.rmbgFirst"), title: t("tools.rmbgTitle") });
+      return;
+    }
+    setBgRemovingIds(new Set(readyDrafts.map((d) => d.id)));
+    try {
+      const result = await removeSpriteBackground(
+        { files: filePaths, inputDir: filePaths[0].split("/").slice(0, -1).join("/") },
+        {
+          onTaskUpdate(task) {
+            if (task.message) {
+              setGenerationNote(task.message);
+            }
+          },
+        },
+      );
+      setGenerationNote(result.message);
+      showToast({ kind: "success", message: result.message, title: t("tools.rmbgTitle") });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("common.operationFailed"),
+        title: t("tools.rmbgTitle"),
+      });
+    } finally {
+      setBgRemovingIds(new Set());
     }
   };
 
@@ -433,6 +468,16 @@ export function AiSpriteWorkshopPage() {
             </span>
           </label>
           <label className="field-row">
+            <span className="field-row__label">{t("aiSprites.composition")}</span>
+            <span className="field-row__control">
+              <Select onChange={(event) => setComposition(event.target.value)} value={composition}>
+                <option value="thigh_up">{t("aiSprites.composition.thighUp")}</option>
+                <option value="upper_body">{t("aiSprites.composition.upperBody")}</option>
+                <option value="full_body">{t("aiSprites.composition.fullBody")}</option>
+              </Select>
+            </span>
+          </label>
+          <label className="field-row">
             <span className="field-row__label">{t("aiSprites.positivePromptReference")}</span>
             <span className="field-row__control">
               <TextArea
@@ -550,6 +595,15 @@ export function AiSpriteWorkshopPage() {
           onClick={() => registerSpritesMutation.mutate()}
         >
           {t("aiSprites.addToCharacter")}
+        </AsyncButton>
+        <AsyncButton
+          disabled={!hasReadyDraft || bgRemovingIds.size > 0}
+          icon={<Eraser aria-hidden className="button__icon" />}
+          loading={bgRemovingIds.size > 0}
+          onClick={() => void removeBgForReady()}
+          variant="ghost"
+        >
+          {t("aiSprites.removeBackground")}
         </AsyncButton>
         <p>{generationNote || t("aiSprites.safeSaveHint")}</p>
       </section>
