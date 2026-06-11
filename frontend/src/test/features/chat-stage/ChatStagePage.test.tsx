@@ -277,8 +277,12 @@ describe("ChatStagePage", () => {
 
     await waitFor(() => expect(mocks.getChatHistory).toHaveBeenCalledTimes(1));
     const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
-    expect(within(dialog).getByText("Mio: Ready")).toBeInTheDocument();
-    expect(within(dialog).getByText("你: hello")).toBeInTheDocument();
+    expect(within(dialog).getByText("Mio")).toBeInTheDocument();
+    expect(within(dialog).getByText("Ready")).toBeInTheDocument();
+    expect(within(dialog).getByText("你")).toBeInTheDocument();
+    expect(within(dialog).getByText("hello")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Mio: Ready")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("你: hello")).not.toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Revert to previous turn" }));
 
