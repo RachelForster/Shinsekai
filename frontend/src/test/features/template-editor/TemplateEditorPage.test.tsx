@@ -171,6 +171,7 @@ describe("TemplateEditorPage", () => {
   it("launches restored sessions only after quick restart confirmation", async () => {
     mockGetTemplateSession.mockResolvedValue({
       background: "默认房间",
+      effectNames: [],
       filenameStub: "Session Draft",
       historyPath: " D:/history/session.json ",
       initSpritePath: " D:/sprites/init.png ",
@@ -204,6 +205,7 @@ describe("TemplateEditorPage", () => {
     expect(mockSaveTemplateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         background: "默认房间",
+      effectNames: [],
         historyPath: "D:/history/session.json",
         initSpritePath: "D:/sprites/init.png",
         roomId: "room-9",

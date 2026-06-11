@@ -214,6 +214,7 @@ describe("ChatLauncherPage", () => {
     mocks.listCharacters.mockResolvedValue([{ name: "Mio" }, { name: "Aki" }]);
     mocks.getTemplateSession.mockResolvedValue({
       background: "school",
+      effectNames: [],
       filenameStub: "Session Template",
       historyPath: " D:/history/session.json ",
       initSpritePath: " D:/sprites/init.png ",
@@ -246,6 +247,7 @@ describe("ChatLauncherPage", () => {
     expect(mocks.saveTemplateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         background: "school",
+      effectNames: [],
         historyPath: "D:/history/session.json",
         initSpritePath: "D:/sprites/init.png",
         roomId: "room-7",

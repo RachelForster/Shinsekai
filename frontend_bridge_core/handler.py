@@ -29,6 +29,14 @@ from .backgrounds import (
     _upload_background_bgm,
     _upload_background_images,
 )
+from .effects import (
+    _delete_all_effect_audio,
+    _delete_effect,
+    _delete_effect_audio,
+    _save_effect,
+    _save_effect_audio_tags,
+    _upload_effect_audio,
+)
 from .chat import (
     _chat_history,
     _close_chat,
@@ -360,6 +368,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(self.state.config_manager.config.characters)
             elif path == "/api/backgrounds":
                 self._send_json(self.state.config_manager.config.background_list)
+            elif path == "/api/effects":
+                self._send_json(self.state.config_manager.config.effect_list)
             elif path == "/api/templates":
                 self._send_json(_list_templates(self.state))
             elif path == "/api/templates/session":
@@ -687,6 +697,42 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
 
                 file_util.export_background([background], output.as_posix(), open_folder=False)
                 self._send_json({"downloadUrl": f"/api/download?path={output.as_posix()}", "path": output.as_posix()})
+            # --- effects ---
+            elif method == "POST" and path == "/api/effects/audio/upload":
+                self._send_json(_upload_effect_audio(self.state, body))
+            elif method == "POST" and path == "/api/effects/audio/delete":
+                self._send_json(_delete_effect_audio(self.state, body))
+            elif method == "POST" and path == "/api/effects/audio/delete-all":
+                self._send_json(_delete_all_effect_audio(self.state, body))
+            elif method == "POST" and path == "/api/effects/audio-tags":
+                self._send_json(_save_effect_audio_tags(self.state, body))
+            elif method in {"POST", "PUT"} and path == "/api/effects":
+                self._send_json(_save_effect(self.state, body))
+            elif method == "DELETE" and path.startswith("/api/effects/"):
+                name = unquote(path.rsplit("/", 1)[-1])
+                self._send_json(_delete_effect(self.state, name))
+            elif method == "POST" and path == "/api/effects/import":
+                paths = body.get("paths") or []
+                if not isinstance(paths, list):
+                    raise ValueError("paths must be a list")
+                self._send_json(self._import_effect_paths([str(item) for item in paths]))
+            elif method == "POST" and path == "/api/effects/import-upload":
+                temp_dir, paths = self._read_upload_files()
+                try:
+                    self._send_json(self._import_effect_paths([str(item) for item in paths]))
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            elif method == "POST" and path == "/api/effects/export":
+                name = str(body.get("name") or "")
+                effect = self.state.config_manager.get_effect_by_name(name)
+                if effect is None:
+                    raise KeyError(f"effect not found: {name}")
+                output = Path("output") / f"{name}.ef"
+                import tools.file_util as file_util
+
+                file_util.export_effect([effect], output.as_posix(), open_folder=False)
+                self._send_json({"downloadUrl": f"/api/download?path={output.as_posix()}", "path": output.as_posix()})
+            # --- templates ---
             elif method in {"POST", "PUT"} and path == "/api/templates":
                 self._send_json(_save_template_summary(self.state, body))
             elif method == "POST" and path == "/api/templates/session":
@@ -877,6 +923,25 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.config_manager.reload()
         return [_jsonify(item) for item in imported]
 
+    def _import_effect_paths(self, paths: list[str]) -> list[dict[str, Any]]:
+        import tools.file_util as file_util
+        from pathlib import Path
+
+        existing = self.state.config_manager.config.effect_list
+        imported = []
+        for item in paths:
+            batch = file_util.import_effect(str(item), existing)
+            imported.extend(batch)
+            for effect in batch:
+                if effect not in existing:
+                    existing.append(effect)
+                # Ensure managed directory exists for each imported effect
+                ef_dir = Path("data/effects") / effect.name
+                ef_dir.mkdir(parents=True, exist_ok=True)
+        self.state.config_manager.save_effect_config()
+        self.state.config_manager.reload()
+        return [_jsonify(item) for item in imported]
+
     def _launch_chat(self, body: dict[str, Any]) -> dict[str, Any]:
         template_id = str(body.get("templateId") or "")
         rows = _list_templates(self.state)
@@ -940,8 +1005,14 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if use_react_runtime and self.state.chat_stream is not None
             else {}
         )
+        effect_names_list = body.get("effectNames") or []
+        if isinstance(effect_names_list, list):
+            effect_names_str = ",".join(str(n) for n in effect_names_list)
+        else:
+            effect_names_str = ""
         message = _launch_chat(
             self.state,
+            effect_names=effect_names_str,
             history_file=(default_history_path if reset_history else history_path).as_posix(),
             init_sprite_path=init_sprite_path,
             room_id=room_id,

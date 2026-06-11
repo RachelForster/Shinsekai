@@ -81,7 +81,10 @@ def test_apply_network_proxy_environment_restores_original_vars(monkeypatch):
     apply_network_proxy_environment(SystemConfig())
 
     assert os.environ["HTTP_PROXY"] == "http://original:8080"
-    assert "http_proxy" not in os.environ
+    if os.name == "nt":
+        assert os.environ["http_proxy"] == "http://original:8080"
+    else:
+        assert "http_proxy" not in os.environ
 
 
 def test_apply_network_proxy_environment_from_system_config_reads_yaml(monkeypatch, tmp_path):

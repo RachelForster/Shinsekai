@@ -220,7 +220,7 @@ def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float)
                 except OSError:
                     pass
         else:
-            if os.name == "nt" and action == signal.SIGINT:
+            if os.name == "nt" and action == signal.SIGTERM:
                 try:
                     process.terminate()
                 except OSError:
@@ -314,6 +314,7 @@ def _main_py_path() -> Path:
 def _launch_chat(
     state: BridgeState,
     *,
+    effect_names: str = "",
     history_file: str,
     init_sprite_path: str,
     room_id: str,
@@ -359,6 +360,7 @@ def _launch_chat(
             f"--init_sprite_path={init_sprite_path or ''}",
             f"--history={history_path.resolve()}",
             f"--bg={selected_bg}",
+            f"--effect_names={effect_names}",
             f"--t2i={'ComfyUI' if use_cg else ''}",
             f"--room_id={room_id}",
             f"--tts={tts_slug}",
