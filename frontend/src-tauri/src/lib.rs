@@ -307,6 +307,13 @@ struct DesktopUpdateDownloadProgress {
     content_length: Option<u64>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopWindowCursorPosition {
+    x: f64,
+    y: f64,
+}
+
 pub fn run() {
     restart_debug_log("run enter");
     let protocol_frontend_dist = Arc::new(Mutex::new(None::<PathBuf>));
@@ -329,6 +336,7 @@ pub fn run() {
             desktop_window_start_drag,
             desktop_window_start_resize,
             desktop_window_set_ignore_cursor_events,
+            desktop_window_cursor_position,
             desktop_window_close,
             desktop_open_chat_window,
             desktop_open_external_url,
@@ -1147,6 +1155,22 @@ fn desktop_window_set_ignore_cursor_events(
     window
         .set_ignore_cursor_events(ignore)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_cursor_position(
+    window: WebviewWindow,
+) -> Result<DesktopWindowCursorPosition, String> {
+    let cursor = window
+        .cursor_position()
+        .map_err(|error| error.to_string())?;
+    let origin = window.outer_position().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    Ok(DesktopWindowCursorPosition {
+        x: (cursor.x - f64::from(origin.x)) / scale,
+        y: (cursor.y - f64::from(origin.y)) / scale,
+    })
 }
 
 #[tauri::command]

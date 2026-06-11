@@ -27,6 +27,11 @@ export type DesktopResizeDirection =
   | "SouthWest"
   | "West";
 
+export interface DesktopWindowCursorPosition {
+  x: number;
+  y: number;
+}
+
 export interface DesktopRuntimeCandidate {
   id: string;
   pythonId?: string | null;
@@ -354,6 +359,10 @@ export function startDesktopWindowResize(direction: DesktopResizeDirection) {
 
 export function setDesktopWindowClickThrough(ignore: boolean) {
   return invokeDesktop<void>("desktop_window_set_ignore_cursor_events", { ignore });
+}
+
+export function getDesktopWindowCursorPosition() {
+  return invokeDesktop<DesktopWindowCursorPosition>("desktop_window_cursor_position");
 }
 
 export function closeDesktopWindow() {

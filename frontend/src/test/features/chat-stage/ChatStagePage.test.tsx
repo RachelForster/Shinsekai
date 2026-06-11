@@ -35,6 +35,7 @@ const chatWindowMocks = vi.hoisted(() => ({
 
 const desktopApiMocks = vi.hoisted(() => ({
   closeDesktopWindow: vi.fn(),
+  getDesktopWindowCursorPosition: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn(),
   setDesktopWindowClickThrough: vi.fn(),
@@ -52,6 +53,7 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
   return {
     ...actual,
     closeDesktopWindow: () => desktopApiMocks.closeDesktopWindow(),
+    getDesktopWindowCursorPosition: () => desktopApiMocks.getDesktopWindowCursorPosition(),
     isTauriDesktop: () => desktopApiMocks.isTauriDesktop(),
     minimizeDesktopWindow: () => desktopApiMocks.minimizeDesktopWindow(),
     setDesktopWindowClickThrough: (ignore: boolean) => desktopApiMocks.setDesktopWindowClickThrough(ignore),
@@ -108,6 +110,7 @@ describe("ChatStagePage", () => {
     mocks.getChatSnapshot.mockResolvedValue(snapshot());
     mocks.getChatHistory.mockResolvedValue(snapshot().historyEntries as ChatHistoryEntry[]);
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
+    desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 0, y: 0 });
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
     desktopApiMocks.setDesktopWindowClickThrough.mockResolvedValue(undefined);
     mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
@@ -175,6 +178,7 @@ describe("ChatStagePage", () => {
   it("enables click-through transparent desktop space and custom resize handles", async () => {
     desktopApiMocks.isTauriDesktop.mockReturnValue(true);
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ backgroundPath: "" }));
+    desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 320, y: 180 });
 
     renderPage(["/chat-stage"]);
 
@@ -186,7 +190,26 @@ describe("ChatStagePage", () => {
     fireEvent.pointerMove(stage!);
     await waitFor(() => expect(desktopApiMocks.setDesktopWindowClickThrough).toHaveBeenCalledWith(true));
 
-    fireEvent.pointerMove(screen.getByRole("textbox"));
+    const input = screen.getByRole("textbox");
+    const inputLayer = input.closest("[data-chat-stage-hitbox='true']") as HTMLElement;
+    vi.spyOn(inputLayer, "getBoundingClientRect").mockReturnValue({
+      bottom: 88,
+      height: 64,
+      left: 24,
+      right: 480,
+      toJSON: () => ({}),
+      top: 24,
+      width: 456,
+      x: 24,
+      y: 24,
+    });
+    desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 64, y: 48 });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 60));
+    });
+    await waitFor(() => expect(desktopApiMocks.setDesktopWindowClickThrough).toHaveBeenCalledWith(false));
+
+    fireEvent.pointerMove(input);
     await waitFor(() => expect(desktopApiMocks.setDesktopWindowClickThrough).toHaveBeenCalledWith(false));
 
     fireEvent.mouseDown(document.querySelector(".desktop-resize-handle--se")!, { button: 0 });

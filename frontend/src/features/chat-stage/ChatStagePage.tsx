@@ -39,6 +39,7 @@ import {
 } from "../../entities/chat/repository";
 import {
   closeDesktopWindow,
+  getDesktopWindowCursorPosition,
   isTauriDesktop,
   minimizeDesktopWindow,
   setDesktopWindowClickThrough,
@@ -150,11 +151,28 @@ function isChatStageHitbox(target: EventTarget | null) {
   return Boolean(eventTargetElement(target)?.closest("[data-chat-stage-hitbox='true']"));
 }
 
+function isPointInsideChatStageHitbox(x: number, y: number) {
+  const hitboxes = document.querySelectorAll<HTMLElement>("[data-chat-stage-hitbox='true']");
+  for (const hitbox of hitboxes) {
+    if (hitbox.hidden || hitbox.getAttribute("aria-hidden") === "true") {
+      continue;
+    }
+    const rect = hitbox.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      continue;
+    }
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function layerClassName(base: string, hidden: boolean) {
   return classNames(base, hidden && "chat-stage__layer--hidden");
 }
 
-const clickThroughAutoRestoreMs = 500;
+const clickThroughGuardIntervalMs = 32;
 
 const desktopResizeHandles: Array<{ className: string; direction: DesktopResizeDirection }> = [
   { className: "desktop-resize-handle--n", direction: "North" },
@@ -395,7 +413,7 @@ function StandaloneDesktopResizeHandles({ hidden }: { hidden: boolean }) {
   };
 
   return (
-    <div aria-hidden className="desktop-resize-handles" data-chat-stage-hitbox="true">
+    <div aria-hidden className="desktop-resize-handles">
       {desktopResizeHandles.map((handle) => (
         <div
           className={classNames("desktop-resize-handle", handle.className)}
@@ -776,7 +794,8 @@ export function ChatStagePage() {
   eventSeqRef.current = state.eventSeq;
   const pendingAnimatedDialogKeyRef = useRef<string | null>(null);
   const clickThroughIgnoredRef = useRef(false);
-  const clickThroughResetTimerRef = useRef<number | null>(null);
+  const clickThroughGuardIntervalRef = useRef<number | null>(null);
+  const clickThroughGuardPollingRef = useRef(false);
   const dialogSource = useMemo(
     () =>
       buildDialogTypewriterSource({
@@ -793,47 +812,68 @@ export function ChatStagePage() {
   );
   const typingDialog = visibleDialogCharacters < dialogSource.totalCharacters;
 
-  const clearClickThroughResetTimer = useCallback(() => {
-    if (clickThroughResetTimerRef.current == null) {
+  const stopClickThroughGuard = useCallback(() => {
+    if (clickThroughGuardIntervalRef.current == null) {
       return;
     }
-    window.clearTimeout(clickThroughResetTimerRef.current);
-    clickThroughResetTimerRef.current = null;
+    window.clearInterval(clickThroughGuardIntervalRef.current);
+    clickThroughGuardIntervalRef.current = null;
   }, []);
+
+  const applyClickThroughIgnored = useCallback((ignore: boolean) => {
+    if (clickThroughIgnoredRef.current === ignore) {
+      return;
+    }
+    clickThroughIgnoredRef.current = ignore;
+    void setDesktopWindowClickThrough(ignore).catch((error) => {
+      console.error("Desktop chat window click-through update failed", error);
+    });
+  }, []);
+
+  const disableClickThrough = useCallback(() => {
+    stopClickThroughGuard();
+    applyClickThroughIgnored(false);
+  }, [applyClickThroughIgnored, stopClickThroughGuard]);
+
+  const startClickThroughGuard = useCallback(() => {
+    if (clickThroughGuardIntervalRef.current != null) {
+      return;
+    }
+    const pollCursor = async () => {
+      if (clickThroughGuardPollingRef.current) {
+        return;
+      }
+      clickThroughGuardPollingRef.current = true;
+      try {
+        const cursor = await getDesktopWindowCursorPosition();
+        if (isPointInsideChatStageHitbox(cursor.x, cursor.y)) {
+          disableClickThrough();
+        }
+      } catch (error) {
+        console.error("Desktop chat window cursor guard failed", error);
+        disableClickThrough();
+      } finally {
+        clickThroughGuardPollingRef.current = false;
+      }
+    };
+    clickThroughGuardIntervalRef.current = window.setInterval(pollCursor, clickThroughGuardIntervalMs);
+    void pollCursor();
+  }, [disableClickThrough]);
+
+  const enableClickThrough = useCallback(() => {
+    applyClickThroughIgnored(true);
+    startClickThroughGuard();
+  }, [applyClickThroughIgnored, startClickThroughGuard]);
 
   const setClickThroughIgnored = useCallback(
     (ignore: boolean) => {
-      clearClickThroughResetTimer();
-      if (clickThroughIgnoredRef.current === ignore) {
-        return;
+      if (ignore) {
+        enableClickThrough();
+      } else {
+        disableClickThrough();
       }
-      clickThroughIgnoredRef.current = ignore;
-      void setDesktopWindowClickThrough(ignore).catch((error) => {
-        console.error("Desktop chat window click-through update failed", error);
-      });
     },
-    [clearClickThroughResetTimer],
-  );
-
-  const setTemporaryClickThroughIgnored = useCallback(
-    (ignore: boolean) => {
-      setClickThroughIgnored(ignore);
-      if (!ignore) {
-        return;
-      }
-      clearClickThroughResetTimer();
-      clickThroughResetTimerRef.current = window.setTimeout(() => {
-        clickThroughResetTimerRef.current = null;
-        if (!clickThroughIgnoredRef.current) {
-          return;
-        }
-        clickThroughIgnoredRef.current = false;
-        void setDesktopWindowClickThrough(false).catch((error) => {
-          console.error("Desktop chat window click-through restore failed", error);
-        });
-      }, clickThroughAutoRestoreMs);
-    },
-    [clearClickThroughResetTimer, setClickThroughIgnored],
+    [disableClickThrough, enableClickThrough],
   );
 
   useEffect(() => {
@@ -864,9 +904,9 @@ export function ChatStagePage() {
 
   useEffect(
     () => () => {
-      clearClickThroughResetTimer();
+      stopClickThroughGuard();
     },
-    [clearClickThroughResetTimer],
+    [stopClickThroughGuard],
   );
 
   useEffect(() => {
@@ -1012,9 +1052,9 @@ export function ChatStagePage() {
         setClickThroughIgnored(false);
         return;
       }
-      setTemporaryClickThroughIgnored(true);
+      setClickThroughIgnored(true);
     },
-    [clickThroughEnabled, setClickThroughIgnored, setTemporaryClickThroughIgnored],
+    [clickThroughEnabled, setClickThroughIgnored],
   );
 
   const handleStagePointerDown = useCallback(
@@ -1022,9 +1062,9 @@ export function ChatStagePage() {
       if (!clickThroughEnabled || isChatStageHitbox(event.target)) {
         return;
       }
-      setTemporaryClickThroughIgnored(true);
+      setClickThroughIgnored(true);
     },
-    [clickThroughEnabled, setTemporaryClickThroughIgnored],
+    [clickThroughEnabled, setClickThroughIgnored],
   );
 
   const handleStagePointerLeave = useCallback(() => {
