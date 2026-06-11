@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type MouseEvent, type SyntheticEvent } from "react";
 import { Copy, GripHorizontal, History, Languages, Maximize2, Mic, MicOff, Minus, RotateCcw, Send, SkipForward, Trash2, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -86,8 +86,16 @@ function appendTranscript(base: string, transcript: string, language: string) {
   return `${current}${separator}${text}`;
 }
 
+function classNames(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
+
 function layerClassName(base: string, hidden: boolean) {
-  return hidden ? `${base} chat-stage__layer--hidden` : base;
+  return classNames(base, hidden && "chat-stage__layer--hidden");
+}
+
+function hideBrokenStageAsset(event: SyntheticEvent<HTMLImageElement>) {
+  event.currentTarget.dataset.loadState = "error";
 }
 
 function transportStatusText(
@@ -110,7 +118,8 @@ function transportStatusText(
 function BackgroundLayer({ hidden, path }: { hidden: boolean; path?: string }) {
   return (
     <div aria-hidden={hidden} className={layerClassName("chat-stage__background", hidden)} hidden={hidden}>
-      {path ? <img alt="" src={path} /> : <div className="chat-stage__fallback">Background</div>}
+      <div aria-hidden className="chat-stage__fallback" />
+      {path ? <img alt="" onError={hideBrokenStageAsset} src={path} /> : null}
     </div>
   );
 }
@@ -118,21 +127,38 @@ function BackgroundLayer({ hidden, path }: { hidden: boolean; path?: string }) {
 function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
   return (
     <div aria-hidden={hidden} className={layerClassName("chat-stage__cg", hidden)} hidden={hidden}>
-      {path ? <img alt="" src={path} /> : null}
+      {path ? <img alt="" onError={hideBrokenStageAsset} src={path} /> : null}
     </div>
   );
 }
 
 function SpriteLayer({ hidden, sprites }: { hidden: boolean; sprites: ChatStageSprite[] }) {
   return (
-    <div aria-hidden={hidden} className={layerClassName("sprite-layer", hidden)} hidden={hidden}>
-      {sprites.map((sprite) => (
+    <div
+      aria-hidden={hidden}
+      className={layerClassName("sprite-layer", hidden)}
+      data-count={sprites.length}
+      hidden={hidden}
+    >
+      {sprites.map((sprite, index) => (
         <figure
           className="sprite-layer__figure"
+          data-slot={sprite.slot ?? index}
           key={sprite.id}
-          style={sprite.scale ? { transform: `scale(${sprite.scale})` } : undefined}
+          style={
+            {
+              "--sprite-count": sprites.length,
+              "--sprite-index": index,
+              "--sprite-scale": sprite.scale ?? 1,
+            } as CSSProperties
+          }
         >
-          <img alt={sprite.label} className="sprite-layer__image" src={sprite.path} />
+          <img
+            alt={sprite.label}
+            className="sprite-layer__image"
+            onError={hideBrokenStageAsset}
+            src={sprite.path}
+          />
         </figure>
       ))}
     </div>
@@ -164,6 +190,7 @@ function DialogLayer({
       aria-hidden={hidden}
       aria-live="polite"
       className={layerClassName("dialog-layer", hidden)}
+      data-typing={typing ? "true" : "false"}
       hidden={hidden}
       onClick={typing ? onSkip : canAdvance ? onAdvance : undefined}
     >
@@ -191,7 +218,7 @@ function OptionsLayer({
     return null;
   }
   return (
-    <div className="options-layer">
+    <div aria-hidden={hidden} className={layerClassName("options-layer", hidden)} hidden={hidden}>
       {options.map((option) => (
         <Button className="options-layer__button" key={option} onClick={() => onSelect(option)}>
           {option}
@@ -206,7 +233,7 @@ function BusyLayer({ hidden, text }: { hidden: boolean; text?: string }) {
     return null;
   }
   return (
-    <div className="chat-stage__busy" role="status">
+    <div aria-hidden={hidden} className={layerClassName("chat-stage__busy", hidden)} hidden={hidden} role="status">
       {text}
     </div>
   );
@@ -216,7 +243,11 @@ function NotificationLayer({ hidden, text }: { hidden: boolean; text?: string })
   if (hidden || !text) {
     return null;
   }
-  return <div className="chat-stage__notification">{text}</div>;
+  return (
+    <div aria-hidden={hidden} className={layerClassName("chat-stage__notification", hidden)} hidden={hidden}>
+      {text}
+    </div>
+  );
 }
 
 function StandaloneDesktopWindowControls({ hidden }: { hidden: boolean }) {
@@ -343,13 +374,17 @@ function FloatingToolbar({
   transportState: ChatTransportState;
   voiceLanguage: string;
 }) {
+  const { t } = useI18n();
   if (hidden) {
     return null;
   }
-  const { t } = useI18n();
   const transportText = transportStatusText(t, transportState, transportMode);
   return (
-    <div className="floating-toolbar">
+    <div
+      className="floating-toolbar"
+      data-transport-mode={transportMode}
+      data-transport-state={transportState}
+    >
       {hideCloseButton ? null : (
         <IconButton label={closeLabel} onClick={onCloseSurface}>
           <X aria-hidden className="icon-button__icon" />
@@ -523,7 +558,7 @@ function InputLayer({
   }
 
   return (
-    <div className="input-layer">
+    <div className="input-layer" data-listening={listening ? "true" : "false"}>
       <TextArea
         className="input-layer__input"
         disabled={disabled}
