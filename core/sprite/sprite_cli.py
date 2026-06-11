@@ -44,6 +44,18 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
         default="",
         help=tr_i18n("main.arg_room_help"),
     )
+    parser.add_argument(
+        "--stream-endpoint",
+        type=str,
+        default="",
+        help="Connect the chat worker to a bridge WebSocket endpoint instead of opening the desktop chat window.",
+    )
+    parser.add_argument(
+        "--mirror-stream-endpoint",
+        type=str,
+        default="",
+        help="Mirror desktop chat UI updates to a bridge WebSocket endpoint while keeping the native Qt chat window.",
+    )
     return parser
 
 

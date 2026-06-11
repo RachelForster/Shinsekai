@@ -140,6 +140,7 @@ def run(
     from i18n import init_i18n
     from llm.template_generator import TemplateGenerator
 
+    from frontend_bridge_core.chat_stream import ChatStreamService
     from frontend_bridge_core.handler import FrontendBridgeHandler
     from frontend_bridge_core.state import BridgeState
     from frontend_bridge_core.static import _schedule_browser_open
@@ -155,6 +156,8 @@ def run(
         frontend_dist_dir=resolved_frontend_dist,
         app_root_dir=resolved_app_root,
     )
+    state.chat_stream = ChatStreamService(host=host, bridge_port=port)
+    state.chat_stream.start()
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
     server.state = state  # type: ignore[attr-defined]
     _restart_debug_log(f"server listening host={host} port={port} frontend_dist={resolved_frontend_dist}")

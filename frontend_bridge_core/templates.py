@@ -232,6 +232,7 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         "selectedCharacters": [str(item) for item in (raw.get("selected_characters") or []) if str(item)],
         "system": str(raw.get("system_template_text") or ""),
         "templateFileDropdown": str(raw.get("template_file_dropdown") or ""),
+        "workflowPath": str(raw.get("workflow_path") or ""),
         "useCg": bool(raw.get("use_cg_yes", False)),
         "useChoice": bool(raw.get("use_choice_yes", True)),
         "useCot": bool(raw.get("use_cot_yes", False)),
@@ -274,6 +275,7 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         "init_sprite_path": str(payload.get("initSpritePath") or ""),
         "history_file": str(payload.get("historyPath") or ""),
         "room_id": str(payload.get("roomId") or ""),
+        "workflow_path": str(payload.get("workflowPath") or ""),
     }
     save_template_session(state.template_dir_path, data)
     loaded = _load_template_session_payload(state)

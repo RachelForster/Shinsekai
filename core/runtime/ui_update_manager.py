@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, MutableSequence, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 
-import numpy as np
-import pygame
+if TYPE_CHECKING:
+    from core.runtime.event_sink import ChatEventSink
 
 try:
     from PySide6.QtCore import QObject, Signal
@@ -30,7 +30,7 @@ except ImportError:
     def Signal(*args: Any, **kwargs: Any) -> _NoopSignal:
         return _NoopSignal()
 
-from config.config_manager import ConfigManager
+from core.sprite.chat_history import serialize_chat_history_entries
 
 SOUND_EFFECT_CHANNEL_ID = 6
 SOUND_EFFECTS_PATH = {
@@ -39,11 +39,23 @@ SOUND_EFFECTS_PATH = {
     "ATTENTION": "./assets/system/sound/attention.wav",
 }
 
-_config_manager = ConfigManager()
+_config_manager = None
+
+
+def _get_config_manager():
+    global _config_manager
+    if _config_manager is None:
+        from config.config_manager import ConfigManager
+
+        _config_manager = ConfigManager()
+    return _config_manager
 
 
 def get_character_by_name(name: str):
-    return _config_manager.get_character_by_name(name)
+    try:
+        return _get_config_manager().get_character_by_name(name)
+    except ModuleNotFoundError:
+        return None
 
 
 def _format_token_count(value: Any) -> str:
@@ -69,7 +81,16 @@ def format_context_token_estimate(estimate: Dict[str, Any]) -> str:
     )
 
 
-def _load_image_rgba_array(image_path: str) -> Optional[np.ndarray]:
+class _EmptyImagePayload:
+    size = 0
+
+
+def _load_image_rgba_array(image_path: str) -> Optional[Any]:
+    try:
+        import numpy as np
+    except ModuleNotFoundError:
+        return None
+
     from PySide6.QtGui import QImage
 
     image = QImage(str(Path(image_path)))
@@ -98,6 +119,13 @@ def _format_dialog_html(name: str, speech: str, color: str, is_system: bool) -> 
     )
 
 
+def _format_user_html(text: str) -> str:
+    return (
+        "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+        f"<b style='color:white;'>你</b>: {text}</p>"
+    )
+
+
 class HeadlessUIUpdateManager:
     """Console/no-op UI facade for workflows that run without a desktop window."""
 
@@ -106,6 +134,7 @@ class HeadlessUIUpdateManager:
             chat_history if chat_history is not None else []
         )
         self.current_bgm_path: Optional[str] = None
+        self.current_background_path: Optional[str] = None
         self.bg_group: List = []
 
     def post_notification(self, text: str) -> None:
@@ -131,6 +160,7 @@ class HeadlessUIUpdateManager:
         pass
 
     def post_background(self, path: str) -> None:
+        self.current_background_path = path or None
         if path:
             print(f"background: {path}")
 
@@ -144,11 +174,27 @@ class HeadlessUIUpdateManager:
     def post_pause_asr(self) -> None:
         pass
 
+    def post_tts_play(self, character_name: str, audio_path: str) -> None:
+        pass
+
+    def post_tts_skip(self) -> None:
+        pass
+
+    def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
+        self.post_notification(reason)
+
     def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
             print(f"{name}: {speech}" if name else str(speech or ""))
+
+    def record_user_message(self, text: str) -> None:
+        value = str(text or "").strip()
+        if not value:
+            return
+        self.chat_history.append(_format_user_html(value))
+        print(f"你: {value}")
 
     def update_sprite(self, character_name: str, sprite_id: int) -> None:
         pass
@@ -163,7 +209,7 @@ class HeadlessUIUpdateManager:
 
 
 class UIUpdateManager(QObject):
-    update_sprite_signal = Signal(np.ndarray, str, float)  # 图像, 角色名, 缩放
+    update_sprite_signal = Signal(object, str, float)  # 图像, 角色名, 缩放
     update_dialog_signal = Signal(str)
     update_notification_signal = Signal(str)
     update_busy_bar_signal = Signal(str, float)  # 文案, 显示秒数（<=0 则不定时隐藏）；空文案表示关闭
@@ -185,10 +231,11 @@ class UIUpdateManager(QObject):
         self.chat_history: MutableSequence[str] = chat_history if chat_history is not None else []
         self.bg_group: List = list(bg_group or [])
         self.current_bgm_path: Optional[str] = None
+        self.current_background_path: Optional[str] = None
 
     # --- 低层：仅发信号 ---
 
-    def post_sprite_update(self, image: np.ndarray, character_name: str, scale: float) -> None:
+    def post_sprite_update(self, image: Any, character_name: str, scale: float) -> None:
         self.update_sprite_signal.emit(image, character_name, scale)
 
     def post_dialog(self, formatted_html: str) -> None:
@@ -214,6 +261,7 @@ class UIUpdateManager(QObject):
         self.update_context_token_estimate_signal.emit(format_context_token_estimate(estimate))
 
     def post_background(self, path: str) -> None:
+        self.current_background_path = path or None
         self.update_bg.emit(path)
 
     def post_cg(self, path: str) -> None:
@@ -237,6 +285,15 @@ class UIUpdateManager(QObject):
             pass
         self.pause_asr_signal.emit()
 
+    def post_tts_play(self, character_name: str, audio_path: str) -> None:
+        return None
+
+    def post_tts_skip(self) -> None:
+        return None
+
+    def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
+        self.post_notification(reason)
+
     # --- 高层：业务组装（原 UIWorker 上的逻辑） ---
 
     def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
@@ -252,6 +309,12 @@ class UIUpdateManager(QObject):
             )
         self.chat_history.append(formatted)
         self.post_dialog(formatted)
+
+    def record_user_message(self, text: str) -> None:
+        value = str(text or "").strip()
+        if not value:
+            return
+        self.chat_history.append(_format_user_html(value))
 
     def update_sprite(self, character_name: str, sprite_id: int) -> None:
         try:
@@ -283,9 +346,13 @@ class UIUpdateManager(QObject):
         return True
 
     def remove_character_sprite(self, character_name: str) -> None:
-        self.post_sprite_update(np.empty((0,), dtype=np.uint8), character_name, 1.0)
+        self.post_sprite_update(_EmptyImagePayload(), character_name, 1.0)
 
     def switch_bgm(self, new_bgm_path: str) -> None:
+        try:
+            import pygame
+        except ModuleNotFoundError:
+            return
         if not new_bgm_path or not Path(new_bgm_path).exists():
             return
         new_bgm_path = Path(new_bgm_path).as_posix()
@@ -300,7 +367,7 @@ class UIUpdateManager(QObject):
                 pygame.mixer.music.stop()
             pygame.mixer.music.unload()
             pygame.mixer.music.load(new_bgm_path)
-            volume = _config_manager.config.system_config.music_volumn / 100
+            volume = _get_config_manager().config.system_config.music_volumn / 100
             pygame.mixer.music.set_volume(volume)
             pygame.mixer.music.play(-1)
             self.current_bgm_path = new_bgm_path
@@ -312,6 +379,10 @@ class UIUpdateManager(QObject):
             traceback.print_exc()
 
     def play_sound_effect(self, sound_effect_path: str) -> None:
+        try:
+            import pygame
+        except ModuleNotFoundError:
+            return
         if not Path(sound_effect_path).exists():
             print(f"音效文件不存在: {sound_effect_path}")
             return
@@ -351,3 +422,321 @@ def connect_to_desktop_window(ui: UIUpdateManager, window: Any) -> None:
     # 与主窗口均为 PySide6 Signal 时可直连中继。
     ui.llm_reply_finished_signal.connect(window.llm_reply_finished)
     ui.pause_asr_signal.connect(window.pause_asr_signal)
+
+
+class StreamingUIUpdateManager(HeadlessUIUpdateManager):
+    """把演出输出序列化成 chat stage 事件流的无 Qt 实现（M0 占位骨架）。
+
+    复刻 ``connect_to_desktop_window`` 的下行契约：生产者（``core/handlers`` 的
+    ``*UiHandler`` 等）照旧调用 ``post_*``/``update_*``，本类把每次调用翻译成事件 dict
+    并 ``emit`` 到 ``ChatEventSink``。详见设计文档"演出方法→事件映射"表。
+
+    M0：事件映射搭好骨架；立绘 URL 转换、CG 显隐区分、token 估算等在 M2 补全。
+    """
+
+    def __init__(
+        self,
+        sink: "ChatEventSink",
+        chat_history: Optional[MutableSequence[str]] = None,
+    ) -> None:
+        super().__init__(chat_history=chat_history)
+        self._sink = sink
+
+    def _media_url(self, raw_path: str) -> str:
+        if hasattr(self._sink, "media_url"):
+            return str(getattr(self._sink, "media_url")(raw_path) or "")
+        return str(raw_path or "")
+
+    def sync_history_entries(self) -> None:
+        self._sink.emit({"type": "history.replace", "entries": serialize_chat_history_entries(list(self.chat_history))})
+
+    # --- 低层 post_* → 事件 ---
+
+    def post_notification(self, text: str) -> None:
+        self._sink.emit({"type": "notification.change", "text": text})
+
+    def post_busy_bar(self, text: str, timeout: float = 0.0) -> None:
+        if text:
+            self._sink.emit({"type": "busy.show", "text": text, "durationSeconds": float(timeout)})
+        else:
+            self._sink.emit({"type": "busy.hide"})
+
+    def hide_busy_bar(self) -> None:
+        self._sink.emit({"type": "busy.hide"})
+
+    def post_options(self, option_list: List[str]) -> None:
+        options = [str(x) for x in (option_list or [])]
+        if options:
+            self._sink.emit({"type": "options.show", "options": options})
+        else:
+            self._sink.emit({"type": "options.clear"})
+        self.sync_history_entries()
+
+    def post_numeric_value(self, text: str) -> None:
+        self._sink.emit({"type": "numeric.update", "html": text})
+
+    def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
+        self._sink.emit({"type": "numeric.update", "html": format_context_token_estimate(estimate)})
+
+    def post_background(self, path: str) -> None:
+        self.current_background_path = path or None
+        self._sink.emit({"type": "background.change", "url": self._media_url(path)})
+
+    def post_cg(self, path: str) -> None:
+        if path:
+            self._sink.emit({"type": "cg.show", "url": self._media_url(path)})
+        else:
+            self._sink.emit({"type": "cg.hide"})
+
+    def post_llm_reply_finished(self) -> None:
+        self._sink.emit({"type": "reply.finished"})
+        self._sink.emit({"type": "status.change", "status": "idle"})
+
+    def post_pause_asr(self) -> None:
+        self._sink.emit({"type": "asr.state", "running": False})
+
+    def post_tts_play(self, character_name: str, audio_path: str) -> None:
+        self._sink.emit(
+            {
+                "type": "tts.play",
+                "characterName": str(character_name or ""),
+                "url": self._media_url(audio_path),
+            }
+        )
+
+    def post_tts_skip(self) -> None:
+        self._sink.emit({"type": "tts.skip"})
+
+    def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
+        self._sink.emit({"type": "session.closed", "reason": str(reason or "聊天会话已结束。")})
+
+    # --- 高层业务组装 → 事件 ---
+
+    def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
+        formatted = _format_dialog_html(name, speech, color, is_system)
+        if str(speech or "").strip() or str(name or "").strip():
+            self.chat_history.append(formatted)
+        self._sink.emit(
+            {
+                "type": "dialog.end",
+                "speaker": name or "",
+                "color": color or "",
+                "isSystem": bool(is_system),
+                "fullHtml": formatted,
+            }
+        )
+        self.sync_history_entries()
+
+    def record_user_message(self, text: str) -> None:
+        super().record_user_message(text)
+        self.sync_history_entries()
+
+    def post_dialog_html(
+        self,
+        full_html: str,
+        *,
+        append_history: bool = True,
+        speaker: str = "",
+        color: str = "",
+        is_system: bool = True,
+    ) -> None:
+        if append_history and str(full_html or "").strip():
+            self.chat_history.append(full_html)
+        self._sink.emit(
+            {
+                "type": "dialog.end",
+                "speaker": speaker,
+                "color": color,
+                "isSystem": bool(is_system),
+                "fullHtml": full_html,
+            }
+        )
+        self.sync_history_entries()
+
+    def update_sprite(self, character_name: str, sprite_id: int) -> None:
+        try:
+            character_config = get_character_by_name(character_name)
+            if character_config is None:
+                raise ValueError(f"未找到角色配置: {character_name}")
+            sprite = character_config.sprites[sprite_id]
+            image_path = str(
+                Path(sprite.get("path", "")) if isinstance(sprite, dict) else Path(getattr(sprite, "path", ""))
+            )
+            scale = float(getattr(character_config, "sprite_scale", 1.0) or 1.0)
+        except Exception as e:
+            print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
+            return
+        self._sink.emit(
+            {
+                "type": "sprite.show",
+                "characterName": character_name,
+                "url": self._media_url(image_path),
+                "scale": scale,
+                "slot": int(sprite_id),
+            }
+        )
+
+    def update_sprite_from_path(
+        self,
+        image_path: str,
+        *,
+        character_name: str = "",
+        scale: float = 1.0,
+    ) -> bool:
+        path = str(image_path or "").strip()
+        if not path:
+            return False
+        self._sink.emit(
+            {
+                "type": "sprite.show",
+                "characterName": character_name or Path(path).stem or "initial",
+                "url": self._media_url(path),
+                "scale": float(scale or 1.0),
+            }
+        )
+        return True
+
+    def remove_character_sprite(self, character_name: str) -> None:
+        self._sink.emit({"type": "sprite.remove", "characterName": character_name})
+
+    def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> None:
+        if str(effect or "").upper() == "LEAVE" and after_dialog:
+            self.remove_character_sprite(str(args.get("character_name") or ""))
+
+
+def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
+    """把 ``UIUpdateManager`` 的 10 个输出信号接到事件 sink（Option B：与原生窗口并行输出，用于 M2 观察期比对）。
+
+    需要存活的 ``QApplication``。M5 切默认后改用无 Qt 的 ``StreamingUIUpdateManager``（Option A）。
+    """
+    mirror = StreamingUIUpdateManager(sink, chat_history=ui.chat_history)
+    mirror.current_background_path = ui.current_background_path
+    mirror.current_bgm_path = ui.current_bgm_path
+    mirror.bg_group = ui.bg_group
+    mirror.sync_history_entries()
+
+    original_update_dialog = ui.update_dialog
+    original_record_user_message = ui.record_user_message
+    original_update_sprite = ui.update_sprite
+    original_update_sprite_from_path = ui.update_sprite_from_path
+    original_remove_character_sprite = ui.remove_character_sprite
+    original_post_notification = ui.post_notification
+    original_post_busy_bar = ui.post_busy_bar
+    original_hide_busy_bar = ui.hide_busy_bar
+    original_post_options = ui.post_options
+    original_post_numeric_value = ui.post_numeric_value
+    original_post_context_token_estimate = ui.post_context_token_estimate
+    original_post_background = ui.post_background
+    original_post_cg = ui.post_cg
+    original_post_llm_reply_finished = ui.post_llm_reply_finished
+    original_post_pause_asr = ui.post_pause_asr
+    original_post_tts_play = getattr(ui, "post_tts_play", None)
+    original_post_tts_skip = getattr(ui, "post_tts_skip", None)
+    original_post_session_closed = getattr(ui, "post_session_closed", None)
+
+    def update_dialog(name: str, speech: str, color: str, is_system: bool = True) -> None:
+        original_update_dialog(name, speech, color, is_system)
+        mirror.post_dialog_html(
+            _format_dialog_html(name, speech, color, is_system),
+            append_history=False,
+            speaker=name or "",
+            color=color or "",
+            is_system=is_system,
+        )
+
+    def record_user_message(text: str) -> None:
+        original_record_user_message(text)
+        mirror.sync_history_entries()
+
+    def update_sprite(character_name: str, sprite_id: int) -> None:
+        original_update_sprite(character_name, sprite_id)
+        mirror.update_sprite(character_name, sprite_id)
+
+    def update_sprite_from_path(
+        image_path: str,
+        *,
+        character_name: str = "",
+        scale: float = 1.0,
+    ) -> bool:
+        ok = original_update_sprite_from_path(image_path, character_name=character_name, scale=scale)
+        if ok:
+            mirror.update_sprite_from_path(image_path, character_name=character_name, scale=scale)
+        return ok
+
+    def remove_character_sprite(character_name: str) -> None:
+        original_remove_character_sprite(character_name)
+        mirror.remove_character_sprite(character_name)
+
+    def post_notification(text: str) -> None:
+        original_post_notification(text)
+        mirror.post_notification(text)
+
+    def post_busy_bar(text: str, duration_seconds: float = 3.0) -> None:
+        original_post_busy_bar(text, duration_seconds)
+        mirror.post_busy_bar(text, duration_seconds)
+
+    def hide_busy_bar() -> None:
+        original_hide_busy_bar()
+        mirror.hide_busy_bar()
+
+    def post_options(option_list: List[str]) -> None:
+        original_post_options(option_list)
+        mirror.post_options(option_list)
+
+    def post_numeric_value(text: str) -> None:
+        original_post_numeric_value(text)
+        mirror.post_numeric_value(text)
+
+    def post_context_token_estimate(estimate: Dict[str, Any]) -> None:
+        original_post_context_token_estimate(estimate)
+        mirror.post_context_token_estimate(estimate)
+
+    def post_background(path: str) -> None:
+        original_post_background(path)
+        mirror.post_background(path)
+
+    def post_cg(path: str) -> None:
+        original_post_cg(path)
+        mirror.post_cg(path)
+
+    def post_llm_reply_finished() -> None:
+        original_post_llm_reply_finished()
+        mirror.post_llm_reply_finished()
+
+    def post_pause_asr() -> None:
+        original_post_pause_asr()
+        mirror.post_pause_asr()
+
+    def post_tts_play(character_name: str, audio_path: str) -> None:
+        if callable(original_post_tts_play):
+            original_post_tts_play(character_name, audio_path)
+        mirror.post_tts_play(character_name, audio_path)
+
+    def post_tts_skip() -> None:
+        if callable(original_post_tts_skip):
+            original_post_tts_skip()
+        mirror.post_tts_skip()
+
+    def post_session_closed(reason: str = "聊天会话已结束。") -> None:
+        if callable(original_post_session_closed):
+            original_post_session_closed(reason)
+        mirror.post_session_closed(reason)
+
+    ui.update_dialog = update_dialog
+    ui.record_user_message = record_user_message
+    ui.update_sprite = update_sprite
+    ui.update_sprite_from_path = update_sprite_from_path
+    ui.remove_character_sprite = remove_character_sprite
+    ui.post_notification = post_notification
+    ui.post_busy_bar = post_busy_bar
+    ui.hide_busy_bar = hide_busy_bar
+    ui.post_options = post_options
+    ui.post_numeric_value = post_numeric_value
+    ui.post_context_token_estimate = post_context_token_estimate
+    ui.post_background = post_background
+    ui.post_cg = post_cg
+    ui.post_llm_reply_finished = post_llm_reply_finished
+    ui.post_pause_asr = post_pause_asr
+    ui.post_tts_play = post_tts_play
+    ui.post_tts_skip = post_tts_skip
+    ui.post_session_closed = post_session_closed

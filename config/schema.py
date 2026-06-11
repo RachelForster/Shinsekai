@@ -181,6 +181,14 @@ class SystemConfig(BaseModel):
         default="",
         description="聊天主窗外观补丁 JSON 路径，留空则使用 data/chat_ui_theme.json（若存在）",
     )
+    chat_ui_theme_id: DefaultIfNone[str] = Field(
+        default="",
+        description="React chat stage 当前激活的主题 mod id（对应 data/chat_ui_themes/<id>/），留空则用默认主题",
+    )
+    chat_ui_runtime_mode: DefaultIfNone[str] = Field(
+        default="react",
+        description="聊天界面运行模式：react 使用流式 React chat stage；native 回退到原生 Qt 聊天窗口",
+    )
 
     # 音乐翻唱流水线（YouTube/B站下载 → UVR 分离 → RVC 转换 → pydub 合成）
     music_cover_work_dir: DefaultIfNone[str] = Field(

@@ -3,17 +3,30 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from core.messaging.dialog_tokens import (
+    BGM_ALIASES,
+    CG_ALIASES,
+    COT_ALIASES,
+    NARR_ALIASES,
+    SCENE_ALIASES,
+    STAT_ALIASES,
+    is_option_history_name,
+    normalize_character_name,
+)
 from core.paths import app_root as runtime_app_root
 from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
+from llm.history_manager import parse_assistant_dialog_content
 
 from .state import BridgeState
 from .runtime_dependencies import runtime_dependency_error_from_text
@@ -25,15 +38,40 @@ from .templates import (
 )
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
+_RUNTIME_CHAT_COMMANDS = {
+    "change-voice-language",
+    "clear-history",
+    "dialog-advance",
+    "pause-asr",
+    "resume-asr",
+    "reroll",
+    "revert-history",
+    "send-message",
+    "skip-speech",
+    "submit-option",
+}
 _main_chat_process: subprocess.Popen[bytes] | None = None
 _main_chat_process_lock = threading.Lock()
 _main_chat_log_file: Any = None
+_SYSTEM_HISTORY_NAMES = COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
+
+
+def _chat_runtime_mode(state: BridgeState) -> str:
+    config_manager = getattr(state, "config_manager", None)
+    system_config = getattr(getattr(config_manager, "config", None), "system_config", None)
+    mode = str(getattr(system_config, "chat_ui_runtime_mode", "") or "").strip().lower()
+    return "native" if mode == "native" else "react"
 
 
 def _hidden_subprocess_kwargs() -> dict[str, int]:
     if os.name != "nt":
         return {}
     return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
+def _chat_process_running() -> bool:
+    with _main_chat_process_lock:
+        return _main_chat_process is not None and _main_chat_process.poll() is None
 
 
 def _chat_log_path() -> Path:
@@ -161,6 +199,8 @@ def _launch_chat(
     system_template: str,
     use_cg: bool,
     user_scenario: str,
+    stream_endpoint: str = "",
+    workflow_path: str = "",
 ) -> str:
     global _main_chat_process
 
@@ -198,6 +238,10 @@ def _launch_chat(
             f"--room_id={room_id}",
             f"--tts={tts_slug}",
         ]
+        if stream_endpoint:
+            args.append(f"--stream-endpoint={stream_endpoint}")
+        if workflow_path:
+            args.append(f"--workflow={workflow_path}")
         env = os.environ.copy()
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
@@ -225,6 +269,52 @@ def _launch_chat(
             return f"聊天进程已启动！PID: {_main_chat_process.pid}"
         _close_chat_log_if_needed()
         return _failed_launch_message(exit_code, log_path)
+
+
+def _close_chat(
+    state: BridgeState,
+    *,
+    reason: str = "聊天会话已结束。",
+    wait_timeout: float = 5.0,
+) -> dict[str, Any]:
+    global _main_chat_process
+
+    process: subprocess.Popen[bytes] | None = None
+    with _main_chat_process_lock:
+        if _main_chat_process is not None and _main_chat_process.poll() is not None:
+            _close_chat_log_if_needed()
+            _main_chat_process = None
+        process = _main_chat_process
+
+    if process is not None and process.poll() is None:
+        try:
+            if os.name != "nt" and hasattr(process, "send_signal"):
+                process.send_signal(signal.SIGINT)
+            else:
+                process.terminate()
+            try:
+                process.wait(timeout=wait_timeout)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                try:
+                    process.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2.0)
+        finally:
+            with _main_chat_process_lock:
+                if _main_chat_process is process:
+                    _main_chat_process = None
+                _close_chat_log_if_needed()
+
+    session_id = str(state.chat_session.get("sessionId") or "").strip()
+    chat_stream = getattr(state, "chat_stream", None)
+    if session_id and chat_stream is not None:
+        snapshot = chat_stream.get_snapshot(session_id)
+        if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
+            chat_stream.close_session(session_id, reason=reason)
+
+    return _chat_snapshot(state, "idle", "")
 
 
 def _resolve_project_file(raw_path: str | Path) -> Path:
@@ -275,25 +365,144 @@ def _chat_session_media(state: BridgeState) -> tuple[str, str, list[dict[str, st
     return bg_path, character.name if character else "", sprites
 
 
+def _chat_voice_language(state: BridgeState) -> str:
+    session_language = str(state.chat_session.get("voiceLanguage") or "").strip().lower()
+    if session_language:
+        return session_language
+    config_manager = getattr(state, "config_manager", None)
+    system_config = getattr(getattr(config_manager, "config", None), "system_config", None)
+    configured_language = str(getattr(system_config, "voice_language", "") or "").strip().lower()
+    return configured_language or "ja"
+
+
+def _history_entry_role_from_text(text: str) -> str:
+    raw = str(text or "")
+    if "你：" in raw or "你:" in raw:
+        return "user"
+    if is_option_history_name(raw.split("：", 1)[0].split(":", 1)[0].strip()):
+        return "options"
+    speaker = normalize_character_name(raw.split("：", 1)[0].split(":", 1)[0].strip())
+    if speaker in _SYSTEM_HISTORY_NAMES:
+        return "system"
+    return "assistant"
+
+
+def _serialize_history_entries_from_messages(messages: Any) -> list[dict[str, Any]]:
+    if not isinstance(messages, list):
+        return []
+    entries: list[dict[str, Any]] = []
+    user_index = 0
+    row_index = 0
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "").strip()
+        if role == "user":
+            text = str(message.get("content") or "").strip()
+            if not text:
+                continue
+            entries.append(
+                {
+                    "id": f"history-{row_index}",
+                    "revertUserIndex": user_index,
+                    "role": "user",
+                    "text": f"你: {text}",
+                }
+            )
+            user_index += 1
+            row_index += 1
+            continue
+        if role != "assistant":
+            continue
+        for item in parse_assistant_dialog_content(message.get("content", "")):
+            if not isinstance(item, dict):
+                continue
+            speaker = str(item.get("character_name") or "").strip()
+            speech = str(item.get("speech") or "").strip()
+            if not speech:
+                continue
+            plain = f"{speaker}: {speech}" if speaker else speech
+            entries.append(
+                {
+                    "id": f"history-{row_index}",
+                    "role": _history_entry_role_from_text(plain),
+                    "text": plain,
+                }
+            )
+            row_index += 1
+    return entries
+
+
+def _history_entries_from_snapshot(snapshot: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(snapshot, dict):
+        return []
+    return [dict(item) for item in (snapshot.get("historyEntries") or []) if isinstance(item, dict)]
+
+
+def _chat_history_entries(state: BridgeState) -> list[dict[str, Any]]:
+    session_id = str(state.chat_session.get("sessionId") or "").strip()
+    chat_stream = getattr(state, "chat_stream", None)
+    if session_id and chat_stream is not None:
+        snapshot = chat_stream.get_snapshot(session_id)
+        if isinstance(snapshot, dict) and "historyEntries" in snapshot:
+            entries = _history_entries_from_snapshot(snapshot)
+            return entries
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    history_path = _resolve_project_file(history_raw) if history_raw else None
+    if history_path is None or not history_path.is_file():
+        return []
+    return _serialize_history_entries_from_messages(_read_history_file(history_path))
+
+
+def _chat_history(state: BridgeState) -> list[dict[str, Any]]:
+    return _chat_history_entries(state)
+
+
 def _chat_snapshot(
     state: BridgeState,
-    status: str = "idle",
+    status: str | None = None,
     message: str = "",
     *,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    session_id = str(state.chat_session.get("sessionId") or "").strip()
+    chat_stream = getattr(state, "chat_stream", None)
+    voice_language = _chat_voice_language(state)
+    runtime_mode = _chat_runtime_mode(state)
+    if session_id and chat_stream is not None:
+        snapshot = chat_stream.get_snapshot(session_id)
+        if snapshot is not None:
+            next_snapshot = dict(snapshot)
+            next_snapshot["runtimeMode"] = runtime_mode
+            if voice_language and not str(next_snapshot.get("voiceLanguage") or "").strip():
+                next_snapshot["voiceLanguage"] = voice_language
+            next_snapshot["historyEntries"] = _chat_history_entries(state)
+            if message:
+                next_snapshot["dialogText"] = message
+                next_snapshot.pop("dialogHtml", None)
+                next_snapshot["characterName"] = ""
+            if status is not None:
+                next_snapshot["status"] = status
+                next_snapshot["numericInfo"] = status
+            if extra:
+                next_snapshot.update(extra)
+            return next_snapshot
     bg_path, character_name, sprites = _chat_session_media(state)
     history_path = str(state.chat_session.get("historyPath") or "")
     return {
         "backgroundPath": bg_path,
-        "characterName": character_name,
+        "characterName": "" if message else character_name,
         "dialogText": message or "React bridge 已连接，启动聊天后主进程会接管实时演出窗口。",
+        "eventSeq": 0,
+        "historyEntries": _chat_history_entries(state),
         "historyPath": history_path,
         "inputDraft": "",
         "numericInfo": status,
         "options": [],
+        "runtimeMode": runtime_mode,
         "sprites": sprites,
-        "status": status,
+        "status": status or "idle",
+        "voiceLanguage": voice_language,
         **(extra or {}),
     }
 
@@ -315,6 +524,15 @@ def _plain_history_text(raw: Any) -> str:
     return "\n".join(rows)
 
 
+def _plain_history_text_from_entries(entries: list[dict[str, Any]]) -> str:
+    rows: list[str] = []
+    for item in entries:
+        text = str(item.get("text") or "").strip()
+        if text:
+            rows.append(text)
+    return "\n".join(rows)
+
+
 def _read_history_file(path: Path) -> Any:
     if not path.is_file():
         return []
@@ -326,18 +544,59 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
     command = str(body.get("type") or "").strip()
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
     history_path = _resolve_project_file(history_raw) if history_raw else None
+    session_id = str(state.chat_session.get("sessionId") or "").strip()
+    chat_stream = getattr(state, "chat_stream", None)
+
+    def _forward_runtime_command(
+        next_status: str,
+        next_message: str = "",
+        *,
+        session_patch: dict[str, Any] | None = None,
+        snapshot_patch: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if command not in _RUNTIME_CHAT_COMMANDS:
+            raise ValueError(f"未知实时聊天命令：{command}")
+        if not session_id or chat_stream is None:
+            raise RuntimeError("当前聊天会话未连接到实时流。")
+        runtime_command = dict(body)
+        runtime_command["cmdId"] = str(body.get("cmdId") or uuid.uuid4().hex)
+        if not chat_stream.send_command(session_id, runtime_command):
+            raise RuntimeError("实时聊天会话未就绪，无法发送命令。")
+        if session_patch:
+            state.chat_session = {**state.chat_session, **session_patch}
+        next_snapshot = {
+            "numericInfo": next_status,
+            "sessionClosedReason": "",
+            "status": next_status,
+        }
+        current_snapshot = chat_stream.get_snapshot(session_id)
+        if isinstance(current_snapshot, dict) and str(current_snapshot.get("sessionClosedReason") or "").strip():
+            next_snapshot["notificationText"] = ""
+        if next_message:
+            next_snapshot["dialogText"] = next_message
+            next_snapshot["dialogHtml"] = None
+            next_snapshot["characterName"] = ""
+        if snapshot_patch:
+            next_snapshot.update(snapshot_patch)
+        chat_stream.update_session_snapshot(session_id, next_snapshot)
+        return _chat_snapshot(state, next_status, next_message, extra=snapshot_patch)
 
     if command == "copy-history":
-        if history_path is None:
-            raise FileNotFoundError("没有已关联的聊天历史文件。")
-        if not history_path.exists():
-            raise FileNotFoundError(history_path.as_posix())
-        text = _plain_history_text(_read_history_file(history_path))
+        entries = _chat_history_entries(state)
+        text = _plain_history_text_from_entries(entries)
+        opened_path = history_path.as_posix() if history_path is not None else str(state.chat_session.get("historyPath") or "")
+        if not text:
+            if history_path is None:
+                raise FileNotFoundError("没有已关联的聊天历史文件。")
+            if not history_path.exists():
+                raise FileNotFoundError(history_path.as_posix())
+            text = _plain_history_text(_read_history_file(history_path))
+            opened_path = history_path.as_posix()
         return _chat_snapshot(
             state,
             "idle",
             "历史记录已复制。",
-            extra={"clipboardText": text, "openedPath": history_path.as_posix()},
+            extra={"clipboardText": text, "openedPath": opened_path},
         )
 
     if command == "open-history":
@@ -356,27 +615,52 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
     if command == "clear-history":
         if history_path is None:
             raise FileNotFoundError("没有已关联的聊天历史文件。")
+        if session_id and chat_stream is not None:
+            return _forward_runtime_command(
+                "idle",
+                "历史记录已经清空。",
+                snapshot_patch={"historyEntries": [], "options": []},
+            )
         history_path.unlink(missing_ok=True)
-        return _chat_snapshot(state, "idle", "历史记录已经清空。")
+        return _chat_snapshot(state, "idle", "历史记录已经清空。", extra={"historyEntries": [], "options": []})
 
     if command == "send-message":
         text = str(body.get("payload") or "").strip()
         if not text:
             raise ValueError("消息内容不能为空。")
-        return _chat_snapshot(state, "generating", f"已提交：{text}")
+        return _forward_runtime_command("generating", f"已提交：{text}")
 
     if command == "submit-option":
         option = str(body.get("payload") or "").strip()
         if not option:
             raise ValueError("选项不能为空。")
-        return _chat_snapshot(state, "generating", f"已选择：{option}")
+        return _forward_runtime_command("generating", f"已选择：{option}")
 
     if command == "skip-speech":
-        return _chat_snapshot(state, "idle", "已跳过当前语音。")
+        return _forward_runtime_command("idle", "已跳过当前语音。")
+    if command == "dialog-advance":
+        return _forward_runtime_command("idle")
+    if command == "change-voice-language":
+        voice_language = str(body.get("payload") or "").strip().lower()
+        if not voice_language:
+            raise ValueError("语音语言不能为空。")
+        return _forward_runtime_command(
+            "idle",
+            session_patch={"voiceLanguage": voice_language},
+            snapshot_patch={"voiceLanguage": voice_language},
+        )
     if command == "pause-asr":
-        return _chat_snapshot(state, "paused", "语音识别已暂停。")
+        return _forward_runtime_command("paused", "语音识别已暂停。")
+    if command == "resume-asr":
+        return _forward_runtime_command("listening", "语音识别已恢复。")
     if command == "reroll":
-        return _chat_snapshot(state, "generating", "正在请求重新生成。")
+        return _forward_runtime_command("generating", "正在请求重新生成。")
+    if command == "revert-history":
+        try:
+            int(body.get("payload"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("回溯索引无效。") from exc
+        return _forward_runtime_command("idle")
 
     raise ValueError(f"未知聊天命令：{command}")
 
