@@ -97,6 +97,7 @@ body[data-chat-stage-transparent="true"] #root {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .chat-stage__background {
@@ -438,6 +439,95 @@ body[data-chat-stage-transparent="true"] #root {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.desktop-resize-handles {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  pointer-events: none;
+}
+
+.desktop-resize-handle {
+  position: absolute;
+  pointer-events: auto;
+}
+
+.desktop-resize-handle::after {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: rgba(255, 255, 255, 0.14);
+  content: "";
+  transition: opacity 120ms ease;
+}
+
+.desktop-resize-handle:hover::after {
+  opacity: 1;
+}
+
+.desktop-resize-handle--n {
+  top: 0;
+  right: 18px;
+  left: 18px;
+  height: 8px;
+  cursor: n-resize;
+}
+
+.desktop-resize-handle--e {
+  top: 18px;
+  right: 0;
+  bottom: 18px;
+  width: 8px;
+  cursor: e-resize;
+}
+
+.desktop-resize-handle--s {
+  right: 18px;
+  bottom: 0;
+  left: 18px;
+  height: 8px;
+  cursor: s-resize;
+}
+
+.desktop-resize-handle--w {
+  top: 18px;
+  bottom: 18px;
+  left: 0;
+  width: 8px;
+  cursor: w-resize;
+}
+
+.desktop-resize-handle--ne,
+.desktop-resize-handle--nw,
+.desktop-resize-handle--se,
+.desktop-resize-handle--sw {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-resize-handle--ne {
+  top: 0;
+  right: 0;
+  cursor: ne-resize;
+}
+
+.desktop-resize-handle--nw {
+  top: 0;
+  left: 0;
+  cursor: nw-resize;
+}
+
+.desktop-resize-handle--se {
+  right: 0;
+  bottom: 0;
+  cursor: se-resize;
+}
+
+.desktop-resize-handle--sw {
+  bottom: 0;
+  left: 0;
+  cursor: sw-resize;
 }
 
 .chat-stage .icon-button,

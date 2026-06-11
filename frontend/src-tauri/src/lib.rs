@@ -17,10 +17,11 @@ use serde::Serialize;
 use tauri::{
     http::{header, Response, StatusCode},
     AppHandle, Emitter, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-    WindowEvent,
+    Window, WindowEvent,
 };
 #[cfg(desktop)]
 use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri_runtime::ResizeDirection;
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -326,6 +327,8 @@ pub fn run() {
             desktop_window_minimize,
             desktop_window_toggle_maximize,
             desktop_window_start_drag,
+            desktop_window_start_resize,
+            desktop_window_set_ignore_cursor_events,
             desktop_window_close,
             desktop_open_chat_window,
             desktop_open_external_url,
@@ -1114,6 +1117,38 @@ fn desktop_window_start_drag(window: WebviewWindow) -> Result<(), String> {
     window.start_dragging().map_err(|error| error.to_string())
 }
 
+fn parse_resize_direction(direction: &str) -> Result<ResizeDirection, String> {
+    match direction {
+        "East" => Ok(ResizeDirection::East),
+        "North" => Ok(ResizeDirection::North),
+        "NorthEast" => Ok(ResizeDirection::NorthEast),
+        "NorthWest" => Ok(ResizeDirection::NorthWest),
+        "South" => Ok(ResizeDirection::South),
+        "SouthEast" => Ok(ResizeDirection::SouthEast),
+        "SouthWest" => Ok(ResizeDirection::SouthWest),
+        "West" => Ok(ResizeDirection::West),
+        _ => Err(format!("unknown resize direction: {direction}")),
+    }
+}
+
+#[tauri::command]
+fn desktop_window_start_resize(window: Window, direction: String) -> Result<(), String> {
+    let direction = parse_resize_direction(direction.trim())?;
+    window
+        .start_resize_dragging(direction)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_set_ignore_cursor_events(
+    window: WebviewWindow,
+    ignore: bool,
+) -> Result<(), String> {
+    window
+        .set_ignore_cursor_events(ignore)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn desktop_window_close(
     window: WebviewWindow,
@@ -1143,6 +1178,7 @@ fn desktop_open_chat_window(app: AppHandle, state: State<'_, DesktopState>) -> R
             .title("Shinsekai Chat")
             .inner_size(1280.0, 820.0)
             .min_inner_size(960.0, 620.0)
+            .resizable(true)
             .transparent(true)
             .decorations(false)
             .always_on_top(true)

@@ -1,23 +1,69 @@
-import { useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type SyntheticEvent } from "react";
-import { Copy, GripHorizontal, History, Languages, Maximize2, Mic, MicOff, Minus, MoreHorizontal, RotateCcw, Send, SkipForward, Trash2, X } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FocusEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type SyntheticEvent,
+} from "react";
+import {
+  Copy,
+  GripHorizontal,
+  History,
+  Languages,
+  Maximize2,
+  Mic,
+  MicOff,
+  Minus,
+  MoreHorizontal,
+  RotateCcw,
+  Send,
+  SkipForward,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { closeChat, getChatHistory, getChatSnapshot, sendChatCommand, subscribeChatEvents } from "../../entities/chat/repository";
-import { closeDesktopWindow, isTauriDesktop, minimizeDesktopWindow, startDesktopWindowDrag, toggleMaximizeDesktopWindow } from "../../shared/desktop/desktopApi";
+import {
+  closeChat,
+  getChatHistory,
+  getChatSnapshot,
+  sendChatCommand,
+  subscribeChatEvents,
+} from "../../entities/chat/repository";
+import {
+  closeDesktopWindow,
+  isTauriDesktop,
+  minimizeDesktopWindow,
+  setDesktopWindowClickThrough,
+  startDesktopWindowDrag,
+  startDesktopWindowResize,
+  toggleMaximizeDesktopWindow,
+  type DesktopResizeDirection,
+} from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import type { MessageKey } from "../../shared/i18n";
 import { PluginSlot } from "../../shared/plugin/PluginSlot";
-import type { ChatCommand, ChatHistoryEntry, ChatSnapshot, ChatTransportMode, ChatTransportState } from "../../shared/platform/types";
+import type {
+  ChatCommand,
+  ChatHistoryEntry,
+  ChatSnapshot,
+  ChatTransportMode,
+  ChatTransportState,
+} from "../../shared/platform/types";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, Button, Dialog, IconButton, Select, TextArea, ToolbarButton, useToast } from "../../shared/ui";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
 import type { ChatStageSprite } from "./chatState";
-import {
-  buildDialogTypewriterSource,
-  renderDialogTypewriterFrame,
-} from "./dialogTypewriter";
+import { buildDialogTypewriterSource, renderDialogTypewriterFrame } from "./dialogTypewriter";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 import { ChatThemePicker } from "./theme/ChatThemePicker";
 
@@ -90,19 +136,42 @@ function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
+function eventTargetElement(target: EventTarget | null) {
+  if (target instanceof Element) {
+    return target;
+  }
+  if (target instanceof Node) {
+    return target.parentElement;
+  }
+  return null;
+}
+
+function isChatStageHitbox(target: EventTarget | null) {
+  return Boolean(eventTargetElement(target)?.closest("[data-chat-stage-hitbox='true']"));
+}
+
 function layerClassName(base: string, hidden: boolean) {
   return classNames(base, hidden && "chat-stage__layer--hidden");
 }
+
+const clickThroughAutoRestoreMs = 500;
+
+const desktopResizeHandles: Array<{ className: string; direction: DesktopResizeDirection }> = [
+  { className: "desktop-resize-handle--n", direction: "North" },
+  { className: "desktop-resize-handle--e", direction: "East" },
+  { className: "desktop-resize-handle--s", direction: "South" },
+  { className: "desktop-resize-handle--w", direction: "West" },
+  { className: "desktop-resize-handle--ne", direction: "NorthEast" },
+  { className: "desktop-resize-handle--nw", direction: "NorthWest" },
+  { className: "desktop-resize-handle--se", direction: "SouthEast" },
+  { className: "desktop-resize-handle--sw", direction: "SouthWest" },
+];
 
 function hideBrokenStageAsset(event: SyntheticEvent<HTMLImageElement>) {
   event.currentTarget.dataset.loadState = "error";
 }
 
-function transportStatusText(
-  t: (key: MessageKey) => string,
-  state: ChatTransportState,
-  mode: ChatTransportMode,
-) {
+function transportStatusText(t: (key: MessageKey) => string, state: ChatTransportState, mode: ChatTransportMode) {
   if (state === "connected") {
     return mode === "websocket" ? t("chat.transport.connected") : t("chat.transport.snapshot");
   }
@@ -158,12 +227,7 @@ function SpriteLayer({ hidden, sprites }: { hidden: boolean; sprites: ChatStageS
             } as CSSProperties
           }
         >
-          <img
-            alt={sprite.label}
-            className="sprite-layer__image"
-            onError={hideBrokenStageAsset}
-            src={sprite.path}
-          />
+          <img alt={sprite.label} className="sprite-layer__image" onError={hideBrokenStageAsset} src={sprite.path} />
         </figure>
       ))}
     </div>
@@ -195,6 +259,7 @@ function DialogLayer({
       aria-hidden={hidden}
       aria-live="polite"
       className={layerClassName("dialog-layer", hidden)}
+      data-chat-stage-hitbox="true"
       data-typing={typing ? "true" : "false"}
       hidden={hidden}
       onClick={typing ? onSkip : canAdvance ? onAdvance : undefined}
@@ -223,7 +288,12 @@ function OptionsLayer({
     return null;
   }
   return (
-    <div aria-hidden={hidden} className={layerClassName("options-layer", hidden)} hidden={hidden}>
+    <div
+      aria-hidden={hidden}
+      className={layerClassName("options-layer", hidden)}
+      data-chat-stage-hitbox="true"
+      hidden={hidden}
+    >
       {options.map((option) => (
         <Button className="options-layer__button" key={option} onClick={() => onSelect(option)}>
           {option}
@@ -238,7 +308,13 @@ function BusyLayer({ hidden, text }: { hidden: boolean; text?: string }) {
     return null;
   }
   return (
-    <div aria-hidden={hidden} className={layerClassName("chat-stage__busy", hidden)} hidden={hidden} role="status">
+    <div
+      aria-hidden={hidden}
+      className={layerClassName("chat-stage__busy", hidden)}
+      data-chat-stage-hitbox="true"
+      hidden={hidden}
+      role="status"
+    >
       {text}
     </div>
   );
@@ -249,7 +325,12 @@ function NotificationLayer({ hidden, text }: { hidden: boolean; text?: string })
     return null;
   }
   return (
-    <div aria-hidden={hidden} className={layerClassName("chat-stage__notification", hidden)} hidden={hidden}>
+    <div
+      aria-hidden={hidden}
+      className={layerClassName("chat-stage__notification", hidden)}
+      data-chat-stage-hitbox="true"
+      hidden={hidden}
+    >
       {text}
     </div>
   );
@@ -278,7 +359,7 @@ function StandaloneDesktopWindowControls({ hidden }: { hidden: boolean }) {
   };
 
   return (
-    <div className="desktop-chat-controls">
+    <div className="desktop-chat-controls" data-chat-stage-hitbox="true">
       <div className="desktop-chat-controls__drag" data-tauri-drag-region onMouseDown={handleDragStart}>
         <GripHorizontal aria-hidden className="desktop-chat-controls__drag-icon" />
       </div>
@@ -293,6 +374,36 @@ function StandaloneDesktopWindowControls({ hidden }: { hidden: boolean }) {
           <X aria-hidden className="icon-button__icon" />
         </IconButton>
       </div>
+    </div>
+  );
+}
+
+function StandaloneDesktopResizeHandles({ hidden }: { hidden: boolean }) {
+  if (hidden) {
+    return null;
+  }
+
+  const handleResizeStart = (direction: DesktopResizeDirection) => (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    void startDesktopWindowResize(direction).catch((error) => {
+      console.error("Desktop chat window resize failed", error);
+    });
+  };
+
+  return (
+    <div aria-hidden className="desktop-resize-handles" data-chat-stage-hitbox="true">
+      {desktopResizeHandles.map((handle) => (
+        <div
+          className={classNames("desktop-resize-handle", handle.className)}
+          data-chat-stage-hitbox="true"
+          key={handle.direction}
+          onMouseDown={handleResizeStart(handle.direction)}
+        />
+      ))}
     </div>
   );
 }
@@ -402,6 +513,7 @@ function FloatingToolbar({
   return (
     <div
       className="floating-toolbar"
+      data-chat-stage-hitbox="true"
       data-open={open ? "true" : "false"}
       data-transport-mode={transportMode}
       data-transport-state={transportState}
@@ -423,12 +535,7 @@ function FloatingToolbar({
           <MoreHorizontal aria-hidden className="icon-button__icon" />
         </IconButton>
       </div>
-      <div
-        aria-hidden={!open}
-        className="floating-toolbar__panel"
-        hidden={!open}
-        id="chat-stage-toolbar-panel"
-      >
+      <div aria-hidden={!open} className="floating-toolbar__panel" hidden={!open} id="chat-stage-toolbar-panel">
         <div className="floating-toolbar__actions">
           {hideCloseButton ? null : (
             <IconButton label={closeLabel} onClick={onCloseSurface}>
@@ -602,13 +709,13 @@ function InputLayer({
   }
 
   return (
-    <div className="input-layer" data-listening={listening ? "true" : "false"}>
+    <div className="input-layer" data-chat-stage-hitbox="true" data-listening={listening ? "true" : "false"}>
       <TextArea
         className="input-layer__input"
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
             event.preventDefault();
             onSubmit();
           }
@@ -663,9 +770,13 @@ export function ChatStagePage() {
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
   const transparentBackground = !viewModel.backgroundPath;
+  const modalOpen = historyDialogOpen || confirmClearHistory || confirmRevertUserIndex != null;
+  const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
   const eventSeqRef = useRef(0);
   eventSeqRef.current = state.eventSeq;
   const pendingAnimatedDialogKeyRef = useRef<string | null>(null);
+  const clickThroughIgnoredRef = useRef(false);
+  const clickThroughResetTimerRef = useRef<number | null>(null);
   const dialogSource = useMemo(
     () =>
       buildDialogTypewriterSource({
@@ -682,6 +793,49 @@ export function ChatStagePage() {
   );
   const typingDialog = visibleDialogCharacters < dialogSource.totalCharacters;
 
+  const clearClickThroughResetTimer = useCallback(() => {
+    if (clickThroughResetTimerRef.current == null) {
+      return;
+    }
+    window.clearTimeout(clickThroughResetTimerRef.current);
+    clickThroughResetTimerRef.current = null;
+  }, []);
+
+  const setClickThroughIgnored = useCallback(
+    (ignore: boolean) => {
+      clearClickThroughResetTimer();
+      if (clickThroughIgnoredRef.current === ignore) {
+        return;
+      }
+      clickThroughIgnoredRef.current = ignore;
+      void setDesktopWindowClickThrough(ignore).catch((error) => {
+        console.error("Desktop chat window click-through update failed", error);
+      });
+    },
+    [clearClickThroughResetTimer],
+  );
+
+  const setTemporaryClickThroughIgnored = useCallback(
+    (ignore: boolean) => {
+      setClickThroughIgnored(ignore);
+      if (!ignore) {
+        return;
+      }
+      clearClickThroughResetTimer();
+      clickThroughResetTimerRef.current = window.setTimeout(() => {
+        clickThroughResetTimerRef.current = null;
+        if (!clickThroughIgnoredRef.current) {
+          return;
+        }
+        clickThroughIgnoredRef.current = false;
+        void setDesktopWindowClickThrough(false).catch((error) => {
+          console.error("Desktop chat window click-through restore failed", error);
+        });
+      }, clickThroughAutoRestoreMs);
+    },
+    [clearClickThroughResetTimer, setClickThroughIgnored],
+  );
+
   useEffect(() => {
     if (transparentBackground) {
       document.documentElement.dataset.chatStageTransparent = "true";
@@ -695,6 +849,25 @@ export function ChatStagePage() {
       delete document.body.dataset.chatStageTransparent;
     };
   }, [transparentBackground]);
+
+  useEffect(() => {
+    if (!standaloneDesktopWindow) {
+      return;
+    }
+    if (!clickThroughEnabled) {
+      setClickThroughIgnored(false);
+    }
+    return () => {
+      setClickThroughIgnored(false);
+    };
+  }, [clickThroughEnabled, setClickThroughIgnored, standaloneDesktopWindow]);
+
+  useEffect(
+    () => () => {
+      clearClickThroughResetTimer();
+    },
+    [clearClickThroughResetTimer],
+  );
 
   useEffect(() => {
     if (!viewModel.layers.toolbar) {
@@ -830,10 +1003,59 @@ export function ChatStagePage() {
     });
   };
 
+  const handleStagePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (!clickThroughEnabled) {
+        return;
+      }
+      if (isChatStageHitbox(event.target)) {
+        setClickThroughIgnored(false);
+        return;
+      }
+      setTemporaryClickThroughIgnored(true);
+    },
+    [clickThroughEnabled, setClickThroughIgnored, setTemporaryClickThroughIgnored],
+  );
+
+  const handleStagePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (!clickThroughEnabled || isChatStageHitbox(event.target)) {
+        return;
+      }
+      setTemporaryClickThroughIgnored(true);
+    },
+    [clickThroughEnabled, setTemporaryClickThroughIgnored],
+  );
+
+  const handleStagePointerLeave = useCallback(() => {
+    if (standaloneDesktopWindow) {
+      setClickThroughIgnored(false);
+    }
+  }, [setClickThroughIgnored, standaloneDesktopWindow]);
+
+  const handleStageFocus = useCallback(
+    (event: FocusEvent<HTMLElement>) => {
+      if (clickThroughEnabled && isChatStageHitbox(event.target)) {
+        setClickThroughIgnored(false);
+      }
+    },
+    [clickThroughEnabled, setClickThroughIgnored],
+  );
+
   return (
     <>
-      <main className="chat-stage" data-background={transparentBackground ? "transparent" : "media"} style={themeStyle}>
+      <main
+        className="chat-stage"
+        data-background={transparentBackground ? "transparent" : "media"}
+        data-click-through={clickThroughEnabled ? "true" : "false"}
+        onFocusCapture={handleStageFocus}
+        onPointerDownCapture={handleStagePointerDown}
+        onPointerLeave={handleStagePointerLeave}
+        onPointerMoveCapture={handleStagePointerMove}
+        style={themeStyle}
+      >
         <StandaloneDesktopWindowControls hidden={!standaloneDesktopWindow} />
+        <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow} />
         <BackgroundLayer
           hidden={!viewModel.layers.background}
           path={viewModel.backgroundPath}

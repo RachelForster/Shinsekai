@@ -183,10 +183,12 @@ class ChatStreamCommandTests(unittest.TestCase):
         snapshot = _handle_chat_command(state, {"payload": "hello", "type": "send-message"})
 
         self.assertEqual(snapshot["status"], "generating")
-        self.assertEqual(snapshot["dialogText"], "已提交：hello")
+        self.assertEqual(snapshot["dialogText"], "你：hello")
+        self.assertEqual(snapshot["inputDraft"], "")
         self.assertNotIn("dialogHtml", snapshot)
         self.assertEqual(snapshot["characterName"], "")
-        self.assertEqual(chat_stream.snapshot["dialogText"], "已提交：hello")
+        self.assertEqual(chat_stream.snapshot["dialogText"], "你：hello")
+        self.assertEqual(chat_stream.snapshot["inputDraft"], "")
         self.assertIsNone(chat_stream.snapshot["dialogHtml"])
         self.assertEqual(chat_stream.snapshot["characterName"], "")
 
@@ -219,7 +221,7 @@ class ChatStreamCommandTests(unittest.TestCase):
         snapshot = _handle_chat_command(state, {"payload": "hello again", "type": "send-message"})
 
         self.assertEqual(snapshot["status"], "generating")
-        self.assertEqual(snapshot["dialogText"], "已提交：hello again")
+        self.assertEqual(snapshot["dialogText"], "你：hello again")
         self.assertEqual(snapshot["sessionClosedReason"], "")
         self.assertEqual(snapshot["notificationText"], "")
         self.assertEqual(chat_stream.snapshot["sessionClosedReason"], "")

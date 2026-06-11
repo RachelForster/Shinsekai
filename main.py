@@ -384,16 +384,18 @@ def main():
         emit_user_text = wire_user_input_plugins(user_input_queue) if user_input_queue is not None else None
         last_user_message = {"text": ""}
 
-        def submit_runtime_text(text: str, *, notify_key: str = "main.notify_submitted") -> None:
+        def submit_runtime_text(text: str, *, notify_key: str | None = "main.notify_submitted") -> None:
             value = str(text or "").strip()
             if not value:
                 return
             last_user_message["text"] = value
             if emit_user_text is None:
-                ui_updates.post_notification(tr_i18n("main.notify_chat"))
+                if notify_key:
+                    ui_updates.post_notification(tr_i18n("main.notify_chat"))
                 return
             emit_user_text(value)
-            ui_updates.post_notification(tr_i18n(notify_key))
+            if notify_key:
+                ui_updates.post_notification(tr_i18n(notify_key))
 
         def handle_stream_command(command: dict[str, object]) -> None:
             command_type = str(command.get("type") or "").strip()
@@ -418,7 +420,7 @@ def main():
 
             try:
                 if command_type == "send-message":
-                    submit_runtime_text(str(payload or ""))
+                    submit_runtime_text(str(payload or ""), notify_key=None)
                     emit_ack(ok=True)
                     return
                 if command_type == "submit-option":

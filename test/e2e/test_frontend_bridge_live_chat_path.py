@@ -156,7 +156,7 @@ def test_live_bridge_launch_snapshot_ws_and_close_path():
 
         sent_snapshot = _request_json("POST", "/api/chat/command", {"type": "send-message", "payload": "第一句测试消息"})
         assert sent_snapshot["status"] == "generating"
-        assert sent_snapshot["dialogText"] == "已提交：第一句测试消息"
+        assert sent_snapshot["dialogText"] == "你：第一句测试消息"
 
         sent_ack = _wait_for_event(
             viewer,
@@ -231,7 +231,7 @@ def test_live_bridge_launch_snapshot_ws_and_close_path():
 
         speaking_snapshot = _request_json("POST", "/api/chat/command", {"type": "send-message", "payload": "触发打断测试"})
         assert speaking_snapshot["status"] == "generating"
-        assert speaking_snapshot["dialogText"] == "已提交：触发打断测试"
+        assert speaking_snapshot["dialogText"] == "你：触发打断测试"
 
         speaking_ack = _wait_for_event(
             viewer,
@@ -549,7 +549,7 @@ def test_live_bridge_closed_marker_can_be_cleared_by_followup_runtime_command():
             {"type": "send-message", "payload": "触发关闭恢复测试"},
         )
         assert closed_trigger_snapshot["status"] == "generating"
-        assert closed_trigger_snapshot["dialogText"] == "已提交：触发关闭恢复测试"
+        assert closed_trigger_snapshot["dialogText"] == "你：触发关闭恢复测试"
 
         closed_trigger_ack = _wait_for_event(
             viewer,

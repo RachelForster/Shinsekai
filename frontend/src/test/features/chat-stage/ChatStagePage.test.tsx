@@ -37,7 +37,9 @@ const desktopApiMocks = vi.hoisted(() => ({
   closeDesktopWindow: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn(),
+  setDesktopWindowClickThrough: vi.fn(),
   startDesktopWindowDrag: vi.fn(),
+  startDesktopWindowResize: vi.fn(),
   toggleMaximizeDesktopWindow: vi.fn(),
 }));
 
@@ -52,7 +54,9 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
     closeDesktopWindow: () => desktopApiMocks.closeDesktopWindow(),
     isTauriDesktop: () => desktopApiMocks.isTauriDesktop(),
     minimizeDesktopWindow: () => desktopApiMocks.minimizeDesktopWindow(),
+    setDesktopWindowClickThrough: (ignore: boolean) => desktopApiMocks.setDesktopWindowClickThrough(ignore),
     startDesktopWindowDrag: () => desktopApiMocks.startDesktopWindowDrag(),
+    startDesktopWindowResize: (direction: string) => desktopApiMocks.startDesktopWindowResize(direction),
     toggleMaximizeDesktopWindow: () => desktopApiMocks.toggleMaximizeDesktopWindow(),
   };
 });
@@ -105,6 +109,7 @@ describe("ChatStagePage", () => {
     mocks.getChatHistory.mockResolvedValue(snapshot().historyEntries as ChatHistoryEntry[]);
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
+    desktopApiMocks.setDesktopWindowClickThrough.mockResolvedValue(undefined);
     mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
       snapshot({
         dialogText: command.type,
@@ -113,6 +118,7 @@ describe("ChatStagePage", () => {
       }),
     );
     desktopApiMocks.startDesktopWindowDrag.mockResolvedValue(undefined);
+    desktopApiMocks.startDesktopWindowResize.mockResolvedValue(undefined);
     mocks.subscribeChatEvents.mockReturnValue(vi.fn());
     desktopApiMocks.toggleMaximizeDesktopWindow.mockResolvedValue(undefined);
   });
@@ -141,6 +147,50 @@ describe("ChatStagePage", () => {
         type: "send-message",
       }),
     );
+  });
+
+  it("submits typed dialogue with Enter while preserving Shift+Enter for line breaks", async () => {
+    renderPage();
+
+    const input = await screen.findByRole("textbox");
+    fireEvent.change(input, { target: { value: "  enter submit  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: "enter submit",
+        type: "send-message",
+      }),
+    );
+
+    fireEvent.change(input, { target: { value: "draft line" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({
+      payload: "draft line",
+      type: "send-message",
+    });
+  });
+
+  it("enables click-through transparent desktop space and custom resize handles", async () => {
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ backgroundPath: "" }));
+
+    renderPage(["/chat-stage"]);
+
+    await screen.findByText("Ready");
+    const stage = document.querySelector(".chat-stage");
+    expect(stage).toHaveAttribute("data-click-through", "true");
+    expect(document.querySelector(".desktop-resize-handles")).not.toBeNull();
+
+    fireEvent.pointerMove(stage!);
+    await waitFor(() => expect(desktopApiMocks.setDesktopWindowClickThrough).toHaveBeenCalledWith(true));
+
+    fireEvent.pointerMove(screen.getByRole("textbox"));
+    await waitFor(() => expect(desktopApiMocks.setDesktopWindowClickThrough).toHaveBeenCalledWith(false));
+
+    fireEvent.mouseDown(document.querySelector(".desktop-resize-handle--se")!, { button: 0 });
+    expect(desktopApiMocks.startDesktopWindowResize).toHaveBeenCalledWith("SouthEast");
   });
 
   it("keeps the stage transparent when the snapshot has no background path", async () => {

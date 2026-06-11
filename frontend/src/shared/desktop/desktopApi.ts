@@ -17,6 +17,16 @@ export type DesktopRuntimeRepairAction = "start" | "installRuntimeDeps";
 
 export type DesktopRuntimeProfile = "local-ai" | "full";
 
+export type DesktopResizeDirection =
+  | "East"
+  | "North"
+  | "NorthEast"
+  | "NorthWest"
+  | "South"
+  | "SouthEast"
+  | "SouthWest"
+  | "West";
+
 export interface DesktopRuntimeCandidate {
   id: string;
   pythonId?: string | null;
@@ -336,6 +346,14 @@ export function toggleMaximizeDesktopWindow() {
 
 export function startDesktopWindowDrag() {
   return invokeDesktop<void>("desktop_window_start_drag");
+}
+
+export function startDesktopWindowResize(direction: DesktopResizeDirection) {
+  return invokeDesktop<void>("desktop_window_start_resize", { direction });
+}
+
+export function setDesktopWindowClickThrough(ignore: boolean) {
+  return invokeDesktop<void>("desktop_window_set_ignore_cursor_events", { ignore });
 }
 
 export function closeDesktopWindow() {
