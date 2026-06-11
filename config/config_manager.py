@@ -8,6 +8,7 @@ from config.schema import (
     ApiConfig,
     SystemConfig,
     Background,
+    Effect,
     clamp_compact_target_ratio,
 )
 from llm.constants import LLM_BASE_URLS
@@ -39,6 +40,7 @@ class ConfigManager:
     _CHARACTERS_CONFIG_PATH = Path("data/config/characters.yaml")
     _SYSTEM_CONFIG_PATH = Path("data/config/system_config.yaml")
     _BACKGOUND_CONFIG_PATH = Path("data/config/background.yaml")
+    _EFFECT_CONFIG_PATH = Path("data/config/effect.yaml")
     _VERSION_PATH = Path("VERSION")
 
     def __new__(cls, *args, **kwargs):
@@ -106,6 +108,7 @@ class ConfigManager:
             characters_data = self._load_yaml(self._CHARACTERS_CONFIG_PATH)
             system_data = self._load_yaml(self._SYSTEM_CONFIG_PATH)
             background_data = self._load_yaml(self._BACKGOUND_CONFIG_PATH)
+            effect_data = self._load_yaml(self._EFFECT_CONFIG_PATH)
 
             # 通过 Pydantic 进行验证和结构化
             api_config = ApiConfig.model_validate(api_data)
@@ -117,13 +120,17 @@ class ConfigManager:
                 
             character_list = [Character.model_validate(item) for item in characters_data]
             background = [Background.model_validate(item) for item in background_data]
+            if not isinstance(effect_data, list):
+                effect_data = []
+            effect_list = [Effect.model_validate(item) for item in effect_data]
 
             # 构建顶层 AppConfig 实体
             self._config = AppConfig(
                 api_config=api_config,
                 system_config=system_config,
                 characters=character_list,
-                background_list=background
+                background_list=background,
+                effect_list=effect_list,
             )
             print("配置加载成功！")
         except ValidationError as e:
@@ -317,12 +324,21 @@ class ConfigManager:
         if self._config is None:
             print("警告：配置未加载或加载失败，无法保存角色配置。")
             return
-            
+
         print("正在保存 background.yaml...")
-        # 角色列表需要将每个 Character 实体转换为字典
         background_data = [char.model_dump(by_alias=True) for char in self.config.background_list]
         self._save_single_config(self._BACKGOUND_CONFIG_PATH, background_data)
         print("background.yaml 保存完成。")
+
+    def save_effect_config(self) -> None:
+        if self._config is None:
+            print("警告：配置未加载或加载失败，无法保存特效配置。")
+            return
+
+        print("正在保存 effect.yaml...")
+        effect_data = [ef.model_dump(by_alias=True) for ef in self.config.effect_list]
+        self._save_single_config(self._EFFECT_CONFIG_PATH, effect_data)
+        print("effect.yaml 保存完成。")
 
     def _save_single_config(self, file_path: Path, data: Union[Dict, List]) -> None:
         """保存单个配置到 YAML 文件"""
@@ -338,6 +354,12 @@ class ConfigManager:
         for char in self.config.background_list:
             if char.name.lower() == name.lower():
                 return char
+        return None
+
+    def get_effect_by_name(self, name: str) -> Optional[Effect]:
+        for ef in self.config.effect_list:
+            if ef.name.lower() == name.lower():
+                return ef
         return None
 
     def get_character_by_name(self, name: str) -> Optional[Character]:

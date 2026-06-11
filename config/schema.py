@@ -255,10 +255,19 @@ class SystemConfig(BaseModel):
         description="清辅音保护 protect",
     )
 
+class Effect(BaseModel):
+    """单个特效方案的实体模型"""
+    name: str = Field(..., description="特效方案名称")
+    color: str = Field(default="#5b8def", description="特效方案标识颜色")
+    prompt_text: DefaultIfNone[str] = Field(default="", description="通用提示词")
+    audio_list: Optional[List[str]] = Field(default_factory=list, description="特效音频列表")
+    audio_tags: DefaultIfNone[str] = Field(default="", description="特效音频信息")
+
 # Main Config Model
 class AppConfig(BaseModel):
     """应用的整体配置模型，包含角色列表、API 配置和系统配置"""
     characters: List[Character] = Field(..., description="角色配置列表")
     background_list: List[Background] = Field(..., description="背景组设置")
+    effect_list: List[Effect] = Field(default_factory=list, description="特效方案列表")
     api_config: ApiConfig = Field(..., description="API 相关配置")
     system_config: SystemConfig = Field(..., description="系统相关配置")

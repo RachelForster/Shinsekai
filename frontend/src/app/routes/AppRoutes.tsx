@@ -14,6 +14,11 @@ const BackgroundManagerPage = lazy(() =>
     default: BackgroundManagerPage,
   })),
 );
+const EffectManagerPage = lazy(() =>
+  import("../../features/effect-manager/EffectManagerPage").then(({ EffectManagerPage }) => ({
+    default: EffectManagerPage,
+  })),
+);
 const CharacterEditorPage = lazy(() =>
   import("../../features/character-editor/CharacterEditorPage").then(({ CharacterEditorPage }) => ({
     default: CharacterEditorPage,
@@ -81,6 +86,7 @@ export function AppRoutes() {
           <Route element={lazyRouteElement(<ApiSettingsPage />)} path="api" />
           <Route element={lazyRouteElement(<CharacterEditorPage />)} path="characters" />
           <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
+          <Route element={lazyRouteElement(<EffectManagerPage />)} path="effects" />
           <Route element={lazyRouteElement(<TemplateEditorPage />)} path="templates" />
           <Route element={lazyRouteElement(<PluginManagerPage />)} path="plugins" />
           <Route element={lazyRouteElement(<LogsPage />)} path="logs" />

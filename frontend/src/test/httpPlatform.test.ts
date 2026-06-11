@@ -613,6 +613,7 @@ describe("http platform", () => {
   it("reads and saves template launch sessions through the bridge", async () => {
     const session = {
       background: "透明场景",
+      effectNames: [],
       filenameStub: "session-only",
       historyPath: "",
       initSpritePath: "",

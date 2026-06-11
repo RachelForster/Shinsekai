@@ -98,6 +98,7 @@ describe("entity repositories", () => {
     await templates.getTemplateSession();
     await templates.saveTemplateSession({
       background: "默认房间",
+      effectNames: [],
       filenameStub: "default",
       historyPath: "",
       initSpritePath: "",

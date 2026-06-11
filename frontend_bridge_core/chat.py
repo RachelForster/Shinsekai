@@ -154,6 +154,7 @@ def _main_py_path() -> Path:
 def _launch_chat(
     state: BridgeState,
     *,
+    effect_names: str = "",
     history_file: str,
     init_sprite_path: str,
     room_id: str,
@@ -194,6 +195,7 @@ def _launch_chat(
             f"--init_sprite_path={init_sprite_path or ''}",
             f"--history={history_path.resolve()}",
             f"--bg={selected_bg}",
+            f"--effect_names={effect_names}",
             f"--t2i={'ComfyUI' if use_cg else ''}",
             f"--room_id={room_id}",
             f"--tts={tts_slug}",

@@ -15,6 +15,7 @@ import type {
   Character,
   CharacterMemoryList,
   ChatSnapshot,
+  Effect,
   LogSnapshot,
   MusicCoverRunResult,
   PluginCatalogItem,
@@ -418,6 +419,86 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         background.sprites = [...background.sprites, ...input.paths.map((path) => ({ path }))];
         background.bg_tags = `${input.bgTags || ""}${input.paths.map((_, index) => `场景 ${background.sprites.length - input.paths.length + index + 1}：`).join("\n")}\n`;
         return delay(background);
+      },
+    },
+    effects: {
+      async delete(name) {
+        config.effect_list = config.effect_list.filter((effect) => effect.name !== name);
+      },
+      async deleteAllAudio(name) {
+        const effect = config.effect_list.find((item) => item.name === name);
+        if (!effect) {
+          throw new Error("特效方案不存在。");
+        }
+        effect.audio_list = [];
+        effect.audio_tags = "";
+        return delay(effect);
+      },
+      async deleteAudio(name, index) {
+        const effect = config.effect_list.find((item) => item.name === name);
+        if (!effect || index < 0 || index >= effect.audio_list.length) {
+          throw new Error("特效音频不存在。");
+        }
+        effect.audio_list = effect.audio_list.filter((_, itemIndex) => itemIndex !== index);
+        effect.audio_tags = effect.audio_tags
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .filter((_, itemIndex) => itemIndex !== index)
+          .map((line, itemIndex) => `特效 ${itemIndex + 1}：${line.split(/\：|:/).slice(1).join("：")}`)
+          .join("\n");
+        if (effect.audio_tags) {
+          effect.audio_tags += "\n";
+        }
+        return delay(effect);
+      },
+      export: (name) => delay(`./data/export/${name}.ef`),
+      import: async (items) => {
+        const imported = items.map<Effect>((item, index) => {
+          const label = item instanceof File ? item.name : item.split("/").pop() || `effect-${index + 1}`;
+          return {
+            name: label.replace(/\.ef$/i, ""),
+            color: "#5b8def",
+            prompt_text: "",
+            audio_list: [],
+            audio_tags: "",
+          };
+        });
+        config.effect_list = [...config.effect_list, ...imported];
+        return delay(imported);
+      },
+      list: () => delay(clone(config.effect_list)),
+      async save(effect, originalName) {
+        if (originalName && originalName !== effect.name) {
+          const existing = config.effect_list.find((item) => item.name === originalName);
+          if (existing) {
+            Object.assign(existing, effect);
+            return delay(clone(existing));
+          }
+        }
+        const existing = config.effect_list.find((item) => item.name === effect.name);
+        if (existing) {
+          Object.assign(existing, effect);
+          return delay(clone(existing));
+        }
+        config.effect_list = [...config.effect_list, clone(effect)];
+        return delay(clone(effect));
+      },
+      async saveAudioTags(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) {
+          throw new Error("特效方案不存在。");
+        }
+        effect.audio_tags = input.audioTags;
+        return delay(effect);
+      },
+      async uploadAudio(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) {
+          throw new Error("特效方案不存在。");
+        }
+        effect.audio_list = [...effect.audio_list, ...input.paths];
+        effect.audio_tags = `${input.audioTags || ""}${input.paths.map((_, index) => `特效 ${effect.audio_list.length - input.paths.length + index + 1}：`).join("\n")}\n`;
+        return delay(effect);
       },
     },
     chat: {

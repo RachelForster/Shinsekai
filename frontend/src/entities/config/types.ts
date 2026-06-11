@@ -6,6 +6,7 @@ export type {
   AppConfig,
   Background,
   Character,
+  Effect,
   Sprite,
   SystemConfig,
 } from "../../shared/platform/types";

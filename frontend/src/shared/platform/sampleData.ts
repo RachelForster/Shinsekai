@@ -108,6 +108,15 @@ export const sampleConfig: AppConfig = {
       bgm_tags: "音乐 1：安静、夜晚\n",
     },
   ],
+  effect_list: [
+    {
+      name: "默认特效",
+      color: "#5b8def",
+      prompt_text: "通用场景音效",
+      audio_list: [],
+      audio_tags: "",
+    },
+  ],
   characters: [
     {
       name: "Nanami",
