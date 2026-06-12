@@ -234,10 +234,7 @@ function transportFromSnapshot(snapshot: ChatSnapshot): Pick<ChatStageState, "tr
 }
 
 function shouldPreserveTransportState(state: ChatStageState) {
-  return (
-    state.transportMode !== emptyChatState.transportMode ||
-    state.transportState !== emptyChatState.transportState
-  );
+  return state.transportMode !== emptyChatState.transportMode || state.transportState !== emptyChatState.transportState;
 }
 
 function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapshot): ChatStageState {
@@ -245,10 +242,9 @@ function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapshot): Cha
   if (nextEventSeq < state.eventSeq) {
     return state;
   }
-  const transport =
-    shouldPreserveTransportState(state)
-      ? { transportMode: state.transportMode, transportState: state.transportState }
-      : transportFromSnapshot(snapshot);
+  const transport = shouldPreserveTransportState(state)
+    ? { transportMode: state.transportMode, transportState: state.transportState }
+    : transportFromSnapshot(snapshot);
   return withResolvedLayers({
     ...emptyChatState,
     ...snapshot,
@@ -270,9 +266,10 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     scale: event.scale,
     slot: event.slot,
   };
-  const sprites = sortSprites(
-    [...state.sprites.filter((sprite) => sprite.id !== id && sprite.label !== event.characterName), nextSprite],
-  );
+  const sprites = sortSprites([
+    ...state.sprites.filter((sprite) => sprite.id !== id && sprite.label !== event.characterName),
+    nextSprite,
+  ]);
   return withResolvedLayers({
     ...clearTransientNotificationState(state),
     eventSeq: Math.max(state.eventSeq, event.seq),
@@ -280,7 +277,10 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
   });
 }
 
-function removeSprite(state: ChatStageState, event: Extract<ChatStageEvent, { type: "sprite.remove" }>): ChatStageState {
+function removeSprite(
+  state: ChatStageState,
+  event: Extract<ChatStageEvent, { type: "sprite.remove" }>,
+): ChatStageState {
   return withResolvedLayers({
     ...state,
     eventSeq: Math.max(state.eventSeq, event.seq),
