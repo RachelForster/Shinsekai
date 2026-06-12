@@ -271,7 +271,6 @@ function DialogLayer({
   text: string;
   typing: boolean;
 }) {
-  const { t } = useI18n();
   return (
     <section
       aria-hidden={hidden}
@@ -286,7 +285,7 @@ function DialogLayer({
       {html !== undefined ? (
         <p className="dialog-layer__text" dangerouslySetInnerHTML={{ __html: html }} />
       ) : (
-        <p className="dialog-layer__text">{text || t("chat.emptyDialog")}</p>
+        <p className="dialog-layer__text">{text}</p>
       )}
       <PluginSlot slot="chat-output" />
     </section>
@@ -1059,11 +1058,13 @@ export function ChatStagePage() {
       });
     const unsubscribe = subscribeChatEvents((event) => {
       if (event.type === "dialog.end" && event.seq > eventSeqRef.current) {
-        pendingAnimatedDialogKeyRef.current = buildDialogTypewriterSource({
-          characterName: event.isSystem ? undefined : event.speaker,
-          html: event.fullHtml,
-        }).cacheKey;
-        setVisibleDialogCharacters(0);
+        if (!event.isSystem || event.speaker.trim()) {
+          pendingAnimatedDialogKeyRef.current = buildDialogTypewriterSource({
+            characterName: event.speaker,
+            html: event.fullHtml,
+          }).cacheKey;
+          setVisibleDialogCharacters(0);
+        }
       }
       dispatch({ event, type: "event" });
     });

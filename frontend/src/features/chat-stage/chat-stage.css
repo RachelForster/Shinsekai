@@ -777,7 +777,8 @@ body[data-chat-stage-transparent="true"] #root {
 }
 
 .chat-stage__notification {
-  bottom: calc(var(--stage-input-height) + 20px);
+  top: calc(var(--stage-safe-top) + 46px);
+  bottom: auto;
   padding: 9px 14px;
   font-size: 13px;
   line-height: 1.45;
@@ -1113,7 +1114,8 @@ body[data-chat-stage-transparent="true"] #root {
   }
 
   .chat-stage__notification {
-    bottom: calc(var(--stage-input-height) + 12px);
+    top: 58px;
+    bottom: auto;
     border-radius: 8px;
   }
 
