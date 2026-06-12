@@ -219,24 +219,32 @@ class _StreamWindowProxy:
 
 
 def main():
+    main_started = time.perf_counter()
     logger.info("Chat application starting", extra={"event": "app.started"})
-    config = ConfigManager()
-    from i18n import init_i18n, tr as tr_i18n, tr_in_bundle
-    from asr.asr_adapter import system_config_to_asr_lang
+    with _startup_phase("config.load"):
+        config = ConfigManager()
+    with _startup_phase("i18n.import"):
+        from i18n import init_i18n, tr as tr_i18n, tr_in_bundle
+        from asr.asr_adapter import system_config_to_asr_lang
 
-    init_i18n(config.config.system_config.ui_language)
+    with _startup_phase("i18n.init"):
+        init_i18n(config.config.system_config.ui_language)
 
-    from core.plugins.plugin_host import ensure_plugins_loaded, wire_user_input_plugins
+    with _startup_phase("plugins.import"):
+        from core.plugins.plugin_host import ensure_plugins_loaded, wire_user_input_plugins
 
-    ensure_plugins_loaded(config)
+    with _startup_phase("plugins.load"):
+        ensure_plugins_loaded(config)
 
-    args = parse_sprite_args(tr_i18n)
+    with _startup_phase("args.parse"):
+        args = parse_sprite_args(tr_i18n)
     stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None
     if args.stream_endpoint and stream_sink is None:
-        from core.runtime.event_sink import WSClientSink
+        with _startup_phase("stream.sink.init"):
+            from core.runtime.event_sink import WSClientSink
 
-        stream_sink = WSClientSink(args.stream_endpoint)
-        stream_sink.emit({"type": "status.change", "status": "idle"})
+            stream_sink = WSClientSink(args.stream_endpoint)
+            stream_sink.emit({"type": "status.change", "status": "idle"})
 
     # T2I manager
     t2i_manager = None
@@ -270,36 +278,38 @@ def main():
     adapter_name = (args.tts or "").strip() or config_tts_provider
     tts_manager = None
     if adapter_name and str(adapter_name).strip().lower() not in ("none",):
-        try:
-            adapter = TTSAdapterFactory.create_adapter(
-                adapter_name=adapter_name,
-                **config.merged_tts_factory_kwargs(
-                    adapter_name,
-                    {
-                        "gpt_sovits_work_path": gsv_api_path,
-                        "tts_server_url": gsv_url,
-                    },
-                ),
-            )
-            tts_manager = TTSManager(tts_server_url=gsv_url)
-            tts_manager.set_tts_adapter(adapter=adapter)
-            _voice_lang = str(config.config.system_config.voice_language or "ja").strip() or "ja"
-            tts_manager.set_language(_voice_lang)
-        except Exception:
-            logger.exception("TTS initialization failed", extra={"event": "tts.init.failed"})
+        with _startup_phase("tts.init"):
+            try:
+                adapter = TTSAdapterFactory.create_adapter(
+                    adapter_name=adapter_name,
+                    **config.merged_tts_factory_kwargs(
+                        adapter_name,
+                        {
+                            "gpt_sovits_work_path": gsv_api_path,
+                            "tts_server_url": gsv_url,
+                        },
+                    ),
+                )
+                tts_manager = TTSManager(tts_server_url=gsv_url)
+                tts_manager.set_tts_adapter(adapter=adapter)
+                _voice_lang = str(config.config.system_config.voice_language or "ja").strip() or "ja"
+                tts_manager.set_language(_voice_lang)
+            except Exception:
+                logger.exception("TTS initialization failed", extra={"event": "tts.init.failed"})
 
     print(tr_i18n("main.print_load_template", a=args))
 
-    messages = []
-    if args.history:
-        print(tr_i18n("main.print_load_history", path=args.history))
-        messages = load_chat_history(args.history)
+    with _startup_phase("template.load"):
+        messages = []
+        if args.history:
+            print(tr_i18n("main.print_load_history", path=args.history))
+            messages = load_chat_history(args.history)
 
-    user_template = ""
-    with open(
-        f"./data/character_templates/{args.template}.txt", "r", encoding="utf-8"
-    ) as f:
-        user_template = f.read()
+        user_template = ""
+        with open(
+            f"./data/character_templates/{args.template}.txt", "r", encoding="utf-8"
+        ) as f:
+            user_template = f.read()
 
     # Init LLMManager before UI, so that handlers can access it via get_app_runtime().llm_manager
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
@@ -316,34 +326,35 @@ def main():
     if not llm_provider:
         print(tr_i18n("main.err_select_llm"))
         return
-    llm_adapter = LLMAdapterFactory.create_adapter(
-        **config.merged_llm_factory_kwargs(
-            llm_provider,
-            {
-                "llm_provider": llm_provider,
-                "api_key": api_key,
-                "base_url": base_url,
-                "model": llm_model,
+    with _startup_phase("llm.init"):
+        llm_adapter = LLMAdapterFactory.create_adapter(
+            **config.merged_llm_factory_kwargs(
+                llm_provider,
+                {
+                    "llm_provider": llm_provider,
+                    "api_key": api_key,
+                    "base_url": base_url,
+                    "model": llm_model,
+                },
+            )
+        )
+        llm_manager = LLMManager(
+            adapter=llm_adapter,
+            user_template=user_template,
+            max_tokens=int(config.config.api_config.max_context_tokens),
+            compact_threshold=float(config.config.api_config.compact_threshold),
+            compact_target_ratio=float(config.config.api_config.compact_target_ratio),
+            history_recent_messages=int(config.config.api_config.history_recent_messages),
+            max_tool_result_chars=int(config.config.api_config.max_tool_result_chars),
+            max_active_tool_groups=int(config.config.api_config.max_active_tool_groups),
+            generation_config={
+                "temperature": float(config.config.api_config.temperature),
+                "repetition_penalty": float(config.config.api_config.repetition_penalty),
+                "presence_penalty": float(config.config.api_config.presence_penalty),
+                "frequency_penalty": float(config.config.api_config.frequency_penalty),
+                "max_tokens": 4096,
             },
         )
-    )
-    llm_manager = LLMManager(
-        adapter=llm_adapter,
-        user_template=user_template,
-        max_tokens=int(config.config.api_config.max_context_tokens),
-        compact_threshold=float(config.config.api_config.compact_threshold),
-        compact_target_ratio=float(config.config.api_config.compact_target_ratio),
-        history_recent_messages=int(config.config.api_config.history_recent_messages),
-        max_tool_result_chars=int(config.config.api_config.max_tool_result_chars),
-        max_active_tool_groups=int(config.config.api_config.max_active_tool_groups),
-        generation_config={
-            "temperature": float(config.config.api_config.temperature),
-            "repetition_penalty": float(config.config.api_config.repetition_penalty),
-            "presence_penalty": float(config.config.api_config.presence_penalty),
-            "frequency_penalty": float(config.config.api_config.frequency_penalty),
-            "max_tokens": 4096,
-        },
-    )
 
     if messages:
         llm_manager.set_messages(messages)
@@ -353,7 +364,8 @@ def main():
     emotion_queue = Queue()
 
     if should_init_desktop_mixer(headless=bool(args.headless), stream_endpoint=str(args.stream_endpoint or "")):
-        pygame.mixer.init()
+        with _startup_phase("pygame.mixer.init"):
+            pygame.mixer.init()
 
     text_processor = TextProcessor()
 
@@ -390,43 +402,45 @@ def main():
     else:
         headless_workflow = None
 
-    workflow = build_runtime_workflow(
-        workflow_path=args.workflow or headless_workflow,
-        queue_factory=Queue,
-    )
-    chat_handles = get_chat_workflow_handles(workflow)
+    with _startup_phase("workflow.build"):
+        workflow = build_runtime_workflow(
+            workflow_path=args.workflow or headless_workflow,
+            queue_factory=Queue,
+        )
+        chat_handles = get_chat_workflow_handles(workflow)
     user_input_queue = chat_handles.input_queue
     audio_path_queue = chat_handles.audio_queue
     tts_queue = chat_handles.tts_queue
     _um = chat_handles.ui_worker
 
     if args.stream_endpoint:
-        from core.runtime.ui_update_manager import StreamingUIUpdateManager
+        with _startup_phase("stream.runtime.setup"):
+            from core.runtime.ui_update_manager import StreamingUIUpdateManager
 
-        if stream_sink is None:
-            from core.runtime.event_sink import WSClientSink
+            if stream_sink is None:
+                from core.runtime.event_sink import WSClientSink
 
-            stream_sink = WSClientSink(args.stream_endpoint)
-        ui_updates = StreamingUIUpdateManager(stream_sink, chat_history=chat_history)
-        set_app_runtime(
-            AppRuntime(
-                config=config,
-                ui_update_manager=ui_updates,
-                llm_manager=llm_manager,
-                tts_manager=tts_manager,
-                t2i_manager=t2i_manager,
-                bgm_list=bgm_list,
-                user_input_queue=user_input_queue,
-                tts_queue=tts_queue,
-                audio_path_queue=audio_path_queue,
-                text_processor=text_processor,
-                opencc=cc,
+                stream_sink = WSClientSink(args.stream_endpoint)
+            ui_updates = StreamingUIUpdateManager(stream_sink, chat_history=chat_history)
+            set_app_runtime(
+                AppRuntime(
+                    config=config,
+                    ui_update_manager=ui_updates,
+                    llm_manager=llm_manager,
+                    tts_manager=tts_manager,
+                    t2i_manager=t2i_manager,
+                    bgm_list=bgm_list,
+                    user_input_queue=user_input_queue,
+                    tts_queue=tts_queue,
+                    audio_path_queue=audio_path_queue,
+                    text_processor=text_processor,
+                    opencc=cc,
+                )
             )
-        )
-        if hasattr(ui_updates, "sync_history_entries"):
-            ui_updates.sync_history_entries()
+            if hasattr(ui_updates, "sync_history_entries"):
+                ui_updates.sync_history_entries()
 
-        emit_user_text = wire_user_input_plugins(user_input_queue) if user_input_queue is not None else None
+            emit_user_text = wire_user_input_plugins(user_input_queue) if user_input_queue is not None else None
         last_user_message = {"text": ""}
 
         def submit_runtime_text(text: str, *, notify_key: str | None = "main.notify_submitted") -> None:
@@ -563,57 +577,59 @@ def main():
 
         stream_sink.set_command_handler(handle_stream_command)
 
-        workflow.start()
+        with _startup_phase("workflow.start"):
+            workflow.start()
 
-        init_sprite_path = args.init_sprite_path
-        if not init_sprite_path and not is_transparent_background(args.bg):
-            init_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
+        with _startup_phase("stream.initial_ui"):
+            init_sprite_path = args.init_sprite_path
+            if not init_sprite_path and not is_transparent_background(args.bg):
+                init_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
 
-        if system_config_to_asr_lang(config.config.system_config) == "zh":
-            _welcome_html = tr_in_bundle("main.welcome_html", "zh_CN")
-            _option_start = tr_in_bundle("main.option_start", "zh_CN")
-        else:
-            _welcome_html = tr_i18n("main.welcome_html")
-            _option_start = tr_i18n("main.option_start")
+            if system_config_to_asr_lang(config.config.system_config) == "zh":
+                _welcome_html = tr_in_bundle("main.welcome_html", "zh_CN")
+                _option_start = tr_in_bundle("main.option_start", "zh_CN")
+            else:
+                _welcome_html = tr_i18n("main.welcome_html")
+                _option_start = tr_i18n("main.option_start")
 
-        sc = config.config.system_config.model_copy(deep=True)
-        if bg_group:
-            sc.bgm_path = bgm_list[0] if bgm_list else ""
-            sc.background_path = bg_group[0].get("path", "") if bg_group else ""
-        else:
-            sc.bgm_path = ""
-            sc.background_path = ""
-        config.config.system_config = sc
-        config.save_system_config()
+            sc = config.config.system_config.model_copy(deep=True)
+            if bg_group:
+                sc.bgm_path = bgm_list[0] if bgm_list else ""
+                sc.background_path = bg_group[0].get("path", "") if bg_group else ""
+            else:
+                sc.bgm_path = ""
+                sc.background_path = ""
+            config.config.system_config = sc
+            config.save_system_config()
 
-        if bg_group:
-            try:
-                ui_updates.post_background(bg_group[0].get("path", ""))
-            except Exception:
-                pass
+            if bg_group:
+                try:
+                    ui_updates.post_background(bg_group[0].get("path", ""))
+                except Exception:
+                    pass
 
-        restored_sprite = False
-        if audio_path_queue is not None:
-            restored_sprite = restore_session_ui(
-                messages,
-                audio_path_queue=audio_path_queue,
-                window=_StreamWindowProxy(ui_updates),
-                config=config,
-                tr_i18n=tr_i18n,
-            )
+            restored_sprite = False
+            if audio_path_queue is not None:
+                restored_sprite = restore_session_ui(
+                    messages,
+                    audio_path_queue=audio_path_queue,
+                    window=_StreamWindowProxy(ui_updates),
+                    config=config,
+                    tr_i18n=tr_i18n,
+                )
 
-        if not messages:
-            ui_updates.post_dialog_html(_welcome_html, is_system=True, color="#84C2D5")
-            if len(get_history()) <= 1:
-                ui_updates.post_options([_option_start])
-        ui_updates.post_notification(tr_i18n("main.notify_chat"))
+            if not messages:
+                ui_updates.post_dialog_html(_welcome_html, is_system=True, color="#84C2D5")
+                if len(get_history()) <= 1:
+                    ui_updates.post_options([_option_start])
+            ui_updates.post_notification(tr_i18n("main.notify_chat"))
 
-        if not restored_sprite:
-            display_initial_sprite(
-                init_sprite_path,
-                config=config,
-                ui_updates=ui_updates,
-            )
+            if not restored_sprite:
+                display_initial_sprite(
+                    init_sprite_path,
+                    config=config,
+                    ui_updates=ui_updates,
+                )
 
         if args.room_id:
             print(tr_i18n("main.print_bili_start", id=args.room_id))
@@ -623,9 +639,15 @@ def main():
                 except ImportError:
                     pass
 
+        logger.info(
+            "Chat application ready",
+            extra={
+                "event": "chat.startup.ready",
+                "mode": "stream",
+                "duration_ms": round((time.perf_counter() - main_started) * 1000, 2),
+            },
+        )
         try:
-            import time
-
             restore_interrupt_handlers = _install_interrupt_handlers()
             while True:
                 time.sleep(1)
@@ -672,8 +694,6 @@ def main():
         workflow.start()
         print(f"Workflow started: {args.workflow or 'default'}")
         try:
-            import time
-
             restore_interrupt_handlers = _install_interrupt_handlers()
             while True:
                 time.sleep(1)
