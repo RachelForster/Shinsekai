@@ -160,7 +160,8 @@ def _signal_process_tree(process: subprocess.Popen[bytes], signum: int) -> None:
             os.killpg(process.pid, signum)
             return
         except ProcessLookupError:
-            return
+            if process.poll() is not None:
+                return
         except OSError:
             pass
     try:
