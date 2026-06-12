@@ -182,14 +182,21 @@ const runtimeTextSpeedMax = 200;
 const runtimeDialogOpacityMin = 0.35;
 const runtimeDialogOpacityMax = 1;
 const runtimeDialogOpacityStep = 0.05;
+const runtimeSpriteOffsetMin = -240;
+const runtimeSpriteOffsetMax = 240;
+const runtimeSpriteOffsetStep = 4;
 
 interface ChatStageRuntimeConfig {
   dialogOpacity: number;
+  spriteOffsetX: number;
+  spriteOffsetY: number;
   typewriterCps: number | null;
 }
 
 const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   dialogOpacity: 1,
+  spriteOffsetX: 0,
+  spriteOffsetY: 0,
   typewriterCps: null,
 };
 
@@ -229,6 +236,22 @@ function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
                 runtimeTextSpeedMax,
               ),
             ),
+      spriteOffsetX: Math.round(
+        clampRuntimeNumber(
+          parsed.spriteOffsetX,
+          defaultChatStageRuntimeConfig.spriteOffsetX,
+          runtimeSpriteOffsetMin,
+          runtimeSpriteOffsetMax,
+        ),
+      ),
+      spriteOffsetY: Math.round(
+        clampRuntimeNumber(
+          parsed.spriteOffsetY,
+          defaultChatStageRuntimeConfig.spriteOffsetY,
+          runtimeSpriteOffsetMin,
+          runtimeSpriteOffsetMax,
+        ),
+      ),
     };
   } catch {
     return defaultChatStageRuntimeConfig;
@@ -313,6 +336,8 @@ function SpriteLayer({ hidden, sprites }: { hidden: boolean; sprites: ChatStageS
             {
               "--sprite-count": sprites.length,
               "--sprite-index": index,
+              "--sprite-offset-x": `${sprite.x ?? 0}px`,
+              "--sprite-offset-y": `${sprite.y ?? 0}px`,
               "--sprite-scale": sprite.scale ?? 1,
             } as CSSProperties
           }
@@ -730,9 +755,13 @@ function FloatingToolbar({
   onDialogOpacityChange,
   onOpenChange,
   onOpenHistory,
+  onSpriteOffsetXChange,
+  onSpriteOffsetYChange,
   onTextSpeedChange,
   onTokenUsageOpenChange,
   status,
+  spriteOffsetX,
+  spriteOffsetY,
   textSpeed,
   tokenUsageAvailable,
   tokenUsageOpen,
@@ -753,9 +782,13 @@ function FloatingToolbar({
   onDialogOpacityChange: (value: number) => void;
   onOpenChange: (open: boolean) => void;
   onOpenHistory: () => void;
+  onSpriteOffsetXChange: (value: number) => void;
+  onSpriteOffsetYChange: (value: number) => void;
   onTextSpeedChange: (value: number) => void;
   onTokenUsageOpenChange: (open: boolean) => void;
   status: string;
+  spriteOffsetX: number;
+  spriteOffsetY: number;
   textSpeed: number;
   tokenUsageAvailable: boolean;
   tokenUsageOpen: boolean;
@@ -819,6 +852,20 @@ function FloatingToolbar({
   const handleDialogOpacityChange = (event: ChangeEvent<HTMLInputElement>) => {
     onDialogOpacityChange(
       clampRuntimeNumber(event.target.value, dialogOpacity, runtimeDialogOpacityMin, runtimeDialogOpacityMax),
+    );
+  };
+  const handleSpriteOffsetXChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onSpriteOffsetXChange(
+      Math.round(
+        clampRuntimeNumber(event.target.value, spriteOffsetX, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax),
+      ),
+    );
+  };
+  const handleSpriteOffsetYChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onSpriteOffsetYChange(
+      Math.round(
+        clampRuntimeNumber(event.target.value, spriteOffsetY, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax),
+      ),
     );
   };
   return (
@@ -966,6 +1013,42 @@ function FloatingToolbar({
               />
               <span className="floating-toolbar__range-value">
                 {t("chat.config.dialogOpacityValue", { value: dialogOpacityPercent })}
+              </span>
+            </span>
+          </label>
+          <label className="floating-toolbar__config-row floating-toolbar__range-row">
+            <span className="floating-toolbar__config-label">{t("chat.config.spriteOffsetX")}</span>
+            <span className="floating-toolbar__range-control">
+              <input
+                aria-label={t("chat.config.spriteOffsetX")}
+                className="floating-toolbar__range"
+                max={runtimeSpriteOffsetMax}
+                min={runtimeSpriteOffsetMin}
+                onChange={handleSpriteOffsetXChange}
+                step={runtimeSpriteOffsetStep}
+                type="range"
+                value={spriteOffsetX}
+              />
+              <span className="floating-toolbar__range-value">
+                {t("chat.config.spriteOffsetValue", { value: spriteOffsetX })}
+              </span>
+            </span>
+          </label>
+          <label className="floating-toolbar__config-row floating-toolbar__range-row">
+            <span className="floating-toolbar__config-label">{t("chat.config.spriteOffsetY")}</span>
+            <span className="floating-toolbar__range-control">
+              <input
+                aria-label={t("chat.config.spriteOffsetY")}
+                className="floating-toolbar__range"
+                max={runtimeSpriteOffsetMax}
+                min={runtimeSpriteOffsetMin}
+                onChange={handleSpriteOffsetYChange}
+                step={runtimeSpriteOffsetStep}
+                type="range"
+                value={spriteOffsetY}
+              />
+              <span className="floating-toolbar__range-value">
+                {t("chat.config.spriteOffsetValue", { value: spriteOffsetY })}
               </span>
             </span>
           </label>
@@ -1156,8 +1239,10 @@ export function ChatStagePage() {
       ({
         ...themeStyle,
         "--chat-dialog-runtime-opacity": String(runtimeConfig.dialogOpacity),
+        "--chat-sprite-runtime-offset-x": `${runtimeConfig.spriteOffsetX}px`,
+        "--chat-sprite-runtime-offset-y": `${runtimeConfig.spriteOffsetY}px`,
       }) as CSSProperties,
-    [runtimeConfig.dialogOpacity, themeStyle],
+    [runtimeConfig.dialogOpacity, runtimeConfig.spriteOffsetX, runtimeConfig.spriteOffsetY, themeStyle],
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
@@ -1421,6 +1506,14 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, dialogOpacity }));
   };
 
+  const updateRuntimeSpriteOffsetX = (spriteOffsetX: number) => {
+    setRuntimeConfig((current) => ({ ...current, spriteOffsetX }));
+  };
+
+  const updateRuntimeSpriteOffsetY = (spriteOffsetY: number) => {
+    setRuntimeConfig((current) => ({ ...current, spriteOffsetY }));
+  };
+
   const advanceDialog = () => {
     if (typingDialog) {
       setVisibleDialogCharacters(dialogSource.totalCharacters);
@@ -1538,9 +1631,13 @@ export function ChatStagePage() {
           onDialogOpacityChange={updateRuntimeDialogOpacity}
           onOpenChange={setToolbarOpen}
           onOpenHistory={openHistoryDialog}
+          onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
+          onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onTextSpeedChange={updateRuntimeTextSpeed}
           onTokenUsageOpenChange={setTokenUsageOpen}
           status={viewModel.statusText}
+          spriteOffsetX={runtimeConfig.spriteOffsetX}
+          spriteOffsetY={runtimeConfig.spriteOffsetY}
           textSpeed={typewriterCps}
           tokenUsageAvailable={Boolean(viewModel.tokenUsageText)}
           tokenUsageOpen={tokenUsageOpen}

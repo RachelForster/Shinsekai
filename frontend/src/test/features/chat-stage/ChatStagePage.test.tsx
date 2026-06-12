@@ -317,13 +317,24 @@ describe("ChatStagePage", () => {
     fireEvent.change(dialogOpacity, { target: { value: "0.55" } });
     expect(await screen.findByText("55%")).toBeInTheDocument();
 
+    const spriteX = screen.getByRole("slider", { name: "Sprite X" });
+    fireEvent.change(spriteX, { target: { value: "72" } });
+    expect(await screen.findByText("72px")).toBeInTheDocument();
+
+    const spriteY = screen.getByRole("slider", { name: "Sprite Y" });
+    fireEvent.change(spriteY, { target: { value: "-48" } });
+    expect(await screen.findByText("-48px")).toBeInTheDocument();
+
     await waitFor(() => {
-      expect(
-        (document.querySelector(".chat-stage") as HTMLElement).style.getPropertyValue("--chat-dialog-runtime-opacity"),
-      ).toBe("0.55");
+      const stage = document.querySelector(".chat-stage") as HTMLElement;
+      expect(stage.style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe("0.55");
+      expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-x")).toBe("72px");
+      expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-y")).toBe("-48px");
     });
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
       dialogOpacity: 0.55,
+      spriteOffsetX: 72,
+      spriteOffsetY: -48,
       typewriterCps: 96,
     });
   });
@@ -331,21 +342,24 @@ describe("ChatStagePage", () => {
   it("loads persisted runtime config before opening chat config", async () => {
     window.localStorage.setItem(
       "shinsekai-chat-stage-runtime-config",
-      JSON.stringify({ dialogOpacity: 0.65, typewriterCps: 42 }),
+      JSON.stringify({ dialogOpacity: 0.65, spriteOffsetX: 36, spriteOffsetY: -24, typewriterCps: 42 }),
     );
 
     renderPage();
 
     await screen.findByText("Ready");
-    expect((document.querySelector(".chat-stage") as HTMLElement).style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe(
-      "0.65",
-    );
+    const stage = document.querySelector(".chat-stage") as HTMLElement;
+    expect(stage.style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe("0.65");
+    expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-x")).toBe("36px");
+    expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-y")).toBe("-24px");
 
     await openToolbarMenu();
     fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
 
     expect(screen.getByRole("slider", { name: "Text speed" })).toHaveValue("42");
     expect(screen.getByRole("slider", { name: "Dialog opacity" })).toHaveValue("0.65");
+    expect(screen.getByRole("slider", { name: "Sprite X" })).toHaveValue("36");
+    expect(screen.getByRole("slider", { name: "Sprite Y" })).toHaveValue("-24");
   });
 
   it("loads runtime history into the dialog and sends revert-history after confirmation", async () => {

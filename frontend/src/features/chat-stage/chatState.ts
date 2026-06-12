@@ -265,6 +265,8 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     path: event.url,
     scale: event.scale,
     slot: event.slot,
+    x: event.x,
+    y: event.y,
   };
   const sprites = sortSprites([
     ...state.sprites.filter((sprite) => sprite.id !== id && sprite.label !== event.characterName),

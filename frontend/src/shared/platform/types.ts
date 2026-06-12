@@ -669,6 +669,8 @@ export interface ChatSprite {
   id: string;
   label: string;
   path: string;
+  x?: number;
+  y?: number;
 }
 
 export type ChatHistoryRole = "assistant" | "options" | "system" | "user";
@@ -765,7 +767,15 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "dialog.end"; speaker: string; color: string; isSystem: boolean; fullHtml: string })
   | (ChatEventBase & { type: "user.display_name.change"; name: string })
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })
-  | (ChatEventBase & { type: "sprite.show"; characterName: string; url: string; scale: number; slot?: number })
+  | (ChatEventBase & {
+      type: "sprite.show";
+      characterName: string;
+      url: string;
+      scale: number;
+      slot?: number;
+      x?: number;
+      y?: number;
+    })
   | (ChatEventBase & { type: "sprite.remove"; characterName: string })
   | (ChatEventBase & { type: "background.change"; url: string })
   | (ChatEventBase & { type: "cg.show"; url: string })

@@ -358,11 +358,19 @@ describe("chatStageReducer", () => {
         type: "sprite.show",
         url: "asset://mio.png",
         v: 1,
+        x: 24,
+        y: -18,
       },
       type: "event",
     });
     expect(withSprite.layers.sprites).toBe(true);
     expect(withSprite.sprites).toHaveLength(1);
+    expect(withSprite.sprites[0]).toEqual(
+      expect.objectContaining({
+        x: 24,
+        y: -18,
+      }),
+    );
 
     const withNumeric = chatStageReducer(withSprite, {
       event: {

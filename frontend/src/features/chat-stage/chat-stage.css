@@ -33,6 +33,8 @@
   --chat-dialog-padding: 18px 20px;
   --chat-dialog-runtime-opacity: 1;
   --chat-dialog-width: min(86vw, 1040px);
+  --chat-sprite-runtime-offset-x: 0px;
+  --chat-sprite-runtime-offset-y: 0px;
   --chat-name-background: linear-gradient(90deg, rgba(22, 31, 43, 0.98), rgba(9, 12, 19, 0.92));
   --chat-name-background-image: none;
   --chat-name-border-color: rgba(255, 255, 255, 0.34);
@@ -169,11 +171,17 @@ body[data-chat-stage-transparent="true"] #root {
 }
 
 .sprite-layer__figure {
+  --sprite-offset-x: 0px;
+  --sprite-offset-y: 0px;
   --sprite-scale: 1;
   height: min(74vh, 760px);
   max-width: min(38vw, 430px);
   margin: 0;
-  transform: translateY(10px) scale(var(--sprite-scale));
+  transform: translate(
+      calc(var(--chat-sprite-runtime-offset-x) + var(--sprite-offset-x)),
+      calc(10px + var(--chat-sprite-runtime-offset-y) + var(--sprite-offset-y))
+    )
+    scale(var(--sprite-scale));
   transform-origin: bottom center;
   transition: transform 160ms ease;
 }
