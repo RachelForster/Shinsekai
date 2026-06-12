@@ -301,6 +301,25 @@ describe("ChatStagePage", () => {
     expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "false");
   });
 
+  it("moves core chat actions into the stage action bar", async () => {
+    renderPage();
+
+    await screen.findByText("Ready");
+    const actionBar = screen.getByRole("toolbar", { name: "Chat stage actions" });
+    expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("LOG");
+    expect(within(actionBar).getByRole("button", { name: "Skip" })).toHaveTextContent("SKIP");
+    expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
+    expect(within(actionBar).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
+    expect(within(actionBar).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
+
+    await openToolbarMenu();
+    const toolbarPanel = document.querySelector(".floating-toolbar__panel") as HTMLElement;
+    expect(within(toolbarPanel).queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
+    expect(within(toolbarPanel).queryByRole("button", { name: "Clear history" })).not.toBeInTheDocument();
+    expect(within(toolbarPanel).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
+    expect(within(toolbarPanel).getByRole("button", { name: "Chat config" })).toBeInTheDocument();
+  });
+
   it("applies runtime text speed and dialog opacity from chat config", async () => {
     renderPage();
 

@@ -13,6 +13,11 @@
   --stage-safe-top: clamp(12px, 2.2vw, 24px);
   --stage-safe-bottom: max(12px, env(safe-area-inset-bottom));
   --stage-input-height: 78px;
+  --stage-action-gap: 8px;
+  --stage-action-height: 38px;
+  --stage-control-stack-height: calc(
+    var(--stage-safe-bottom) + var(--stage-input-height) + var(--stage-action-height) + var(--stage-action-gap)
+  );
   --stage-line: rgba(255, 255, 255, 0.18);
   --stage-line-strong: rgba(255, 255, 255, 0.3);
   --stage-glass: rgba(13, 17, 24, 0.66);
@@ -21,11 +26,11 @@
   --stage-muted: rgba(247, 243, 234, 0.68);
   --stage-shadow: rgba(0, 0, 0, 0.34);
   --stage-shadow-heavy: rgba(0, 0, 0, 0.48);
-  --stage-accent: var(--chat-theme-color, #7dd8ff);
+  --stage-accent: var(--chat-theme-color, var(--color-accent-primary, #d4788e));
   --stage-success: #88e0a2;
-  --chat-dialog-background: rgba(13, 17, 24, 0.7);
+  --chat-dialog-background: color-mix(in oklch, var(--stage-accent) 8%, rgba(13, 17, 24, 0.72));
   --chat-dialog-background-image: none;
-  --chat-dialog-border-color: rgba(255, 255, 255, 0.22);
+  --chat-dialog-border-color: color-mix(in oklch, var(--stage-accent) 26%, rgba(255, 255, 255, 0.2));
   --chat-dialog-border-radius: 8px;
   --chat-dialog-box-shadow: 0 22px 70px var(--stage-shadow-heavy), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   --chat-dialog-color: #fffaf0;
@@ -41,8 +46,8 @@
   --chat-name-border-radius: 7px 7px 4px 4px;
   --chat-name-box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.22);
   --chat-name-color: #fffaf0;
-  --chat-input-background: rgba(11, 15, 21, 0.76);
-  --chat-input-border-color: rgba(255, 255, 255, 0.2);
+  --chat-input-background: color-mix(in oklch, var(--stage-accent) 7%, rgba(11, 15, 21, 0.78));
+  --chat-input-border-color: color-mix(in oklch, var(--stage-accent) 22%, rgba(255, 255, 255, 0.18));
   --chat-input-color: #fffaf0;
   --chat-input-field-background: rgba(255, 255, 255, 0.08);
   --chat-option-background: rgba(11, 15, 21, 0.72);
@@ -51,8 +56,8 @@
   --chat-option-hover-background: rgba(255, 255, 255, 0.13);
   --chat-options-gap: 8px;
   --chat-send-background: var(--stage-accent);
-  --chat-toolbar-background: rgba(11, 15, 21, 0.64);
-  --chat-toolbar-border-color: rgba(255, 255, 255, 0.18);
+  --chat-toolbar-background: color-mix(in oklch, var(--stage-accent) 7%, rgba(11, 15, 21, 0.68));
+  --chat-toolbar-border-color: color-mix(in oklch, var(--stage-accent) 18%, rgba(255, 255, 255, 0.16));
 }
 
 html[data-chat-stage-transparent="true"],
@@ -160,7 +165,7 @@ body[data-chat-stage-transparent="true"] #root {
 
 .sprite-layer {
   position: absolute;
-  inset: 0 0 calc(var(--stage-input-height) + 92px);
+  inset: 0 0 calc(var(--stage-control-stack-height) + 72px);
   z-index: 3;
   display: flex;
   align-items: flex-end;
@@ -198,7 +203,7 @@ body[data-chat-stage-transparent="true"] #root {
 .dialog-layer {
   position: absolute;
   left: 50%;
-  bottom: max(16px, calc(var(--stage-input-height) + 28px - var(--chat-dialog-offset-y)));
+  bottom: max(16px, calc(var(--stage-control-stack-height) + 14px - var(--chat-dialog-offset-y)));
   z-index: 5;
   width: var(--chat-dialog-width);
   max-width: calc(100vw - 40px);
@@ -292,7 +297,7 @@ body[data-chat-stage-transparent="true"] #root {
 .options-layer {
   position: absolute;
   right: clamp(16px, 4vw, 48px);
-  bottom: calc(var(--stage-input-height) + 228px);
+  bottom: calc(var(--stage-control-stack-height) + 178px);
   z-index: 6;
   display: grid;
   width: min(360px, calc(100vw - 32px));
@@ -410,6 +415,80 @@ body[data-chat-stage-transparent="true"] #root {
   border-color: var(--chat-send-border-color, var(--stage-accent));
   color: var(--chat-send-color, #061016);
   background: var(--chat-send-background);
+}
+
+.stage-action-bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--stage-safe-bottom) + var(--stage-input-height) + var(--stage-action-gap));
+  z-index: 7;
+  display: flex;
+  width: var(--chat-dialog-width);
+  max-width: calc(100vw - 40px);
+  justify-content: flex-end;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.stage-action-bar__rail {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  min-height: var(--stage-action-height);
+  align-items: center;
+  gap: 5px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--chat-toolbar-border-color);
+  border-radius: 8px;
+  color: var(--chat-toolbar-color, #fffaf0);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.025)), var(--chat-toolbar-background);
+  box-shadow:
+    0 12px 34px var(--stage-shadow),
+    var(--chat-toolbar-box-shadow, none);
+  pointer-events: auto;
+  scrollbar-width: none;
+  backdrop-filter: blur(16px) saturate(1.08);
+}
+
+.stage-action-bar__rail::-webkit-scrollbar {
+  display: none;
+}
+
+.stage-action-bar__button.button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  min-width: 0;
+  padding: 0 10px;
+  border-radius: 6px;
+  gap: 6px;
+}
+
+.stage-action-bar__button .button__icon {
+  width: 14px;
+  height: 14px;
+}
+
+.stage-action-bar__button .button__label {
+  max-width: 72px;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 820;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.stage-action-bar__button[data-active="true"] {
+  border-color: var(--stage-line-strong);
+  color: var(--stage-accent);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.stage-action-bar__button--danger:hover:not(:disabled) {
+  border-color: var(--color-danger-border-strong, rgba(237, 122, 134, 0.65));
+  color: var(--color-danger, #ed7a86);
 }
 
 .desktop-chat-controls,
@@ -552,7 +631,8 @@ body[data-chat-stage-transparent="true"] #root {
 }
 
 .chat-stage .icon-button,
-.floating-toolbar .button {
+.floating-toolbar .button,
+.stage-action-bar .button {
   border-color: rgba(255, 255, 255, 0.14);
   border-radius: 7px;
   color: #fffaf0;
@@ -566,14 +646,16 @@ body[data-chat-stage-transparent="true"] #root {
 }
 
 .chat-stage .icon-button:hover:not(:disabled),
-.floating-toolbar .button:hover:not(:disabled) {
+.floating-toolbar .button:hover:not(:disabled),
+.stage-action-bar .button:hover:not(:disabled) {
   border-color: var(--stage-line-strong);
   background: rgba(255, 255, 255, 0.14);
   transform: translateY(-1px);
 }
 
 .chat-stage .icon-button:active:not(:disabled),
-.floating-toolbar .button:active:not(:disabled) {
+.floating-toolbar .button:active:not(:disabled),
+.stage-action-bar .button:active:not(:disabled) {
   transform: translateY(0);
 }
 
@@ -719,27 +801,9 @@ body[data-chat-stage-transparent="true"] #root {
   background: rgba(255, 255, 255, 0.16);
 }
 
-.floating-toolbar__actions {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 7px;
-}
-
-.floating-toolbar__actions .icon-button {
-  width: 36px;
-  height: 36px;
-}
-
 .floating-toolbar .button {
   min-height: 36px;
   padding: 5px 10px;
-}
-
-.floating-toolbar__skip {
-  flex: 1 1 92px;
-  min-width: 92px;
 }
 
 .floating-toolbar .button__label {
@@ -1167,7 +1231,7 @@ body[data-chat-stage-transparent="true"] #root {
   }
 
   .sprite-layer {
-    bottom: calc(var(--stage-input-height) + 92px);
+    bottom: calc(var(--stage-control-stack-height) + 64px);
     gap: 8px;
   }
 
@@ -1181,7 +1245,7 @@ body[data-chat-stage-transparent="true"] #root {
   }
 
   .dialog-layer {
-    bottom: max(12px, calc(var(--stage-input-height) + 18px - var(--chat-dialog-offset-y)));
+    bottom: max(12px, calc(var(--stage-control-stack-height) + 12px - var(--chat-dialog-offset-y)));
     width: calc(100vw - 24px);
     max-width: calc(100vw - 24px);
     min-height: 104px;
@@ -1196,9 +1260,28 @@ body[data-chat-stage-transparent="true"] #root {
 
   .options-layer {
     right: 12px;
-    bottom: calc(var(--stage-input-height) + 142px);
+    bottom: calc(var(--stage-control-stack-height) + 104px);
     left: 12px;
     width: auto;
+  }
+
+  .stage-action-bar {
+    bottom: calc(var(--stage-safe-bottom) + var(--stage-input-height) + var(--stage-action-gap));
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+  }
+
+  .stage-action-bar__rail {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .stage-action-bar__button.button {
+    padding: 0 9px;
+  }
+
+  .stage-action-bar__button .button__label {
+    max-width: 58px;
   }
 
   .input-layer {
@@ -1297,11 +1380,6 @@ body[data-chat-stage-transparent="true"] #root {
 
   .floating-toolbar__summary {
     min-width: 148px;
-  }
-
-  .floating-toolbar__skip {
-    flex-basis: 78px;
-    min-width: 78px;
   }
 
   .floating-toolbar .button__label {

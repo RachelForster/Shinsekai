@@ -742,19 +742,14 @@ function HistoryDialog({
 }
 
 function FloatingToolbar({
-  asrPaused,
-  closeLabel,
   configOpen,
   dialogOpacity,
   hidden,
-  hideCloseButton,
   open,
-  onCloseSurface,
   onCommand,
   onConfigOpenChange,
   onDialogOpacityChange,
   onOpenChange,
-  onOpenHistory,
   onSpriteOffsetXChange,
   onSpriteOffsetYChange,
   onTextSpeedChange,
@@ -769,19 +764,14 @@ function FloatingToolbar({
   transportState,
   voiceLanguage,
 }: {
-  asrPaused: boolean;
-  closeLabel: string;
   configOpen: boolean;
   dialogOpacity: number;
   hidden: boolean;
-  hideCloseButton: boolean;
   open: boolean;
-  onCloseSurface: () => void;
   onCommand: (command: ChatCommand) => void;
   onConfigOpenChange: (open: boolean) => void;
   onDialogOpacityChange: (value: number) => void;
   onOpenChange: (open: boolean) => void;
-  onOpenHistory: () => void;
   onSpriteOffsetXChange: (value: number) => void;
   onSpriteOffsetYChange: (value: number) => void;
   onTextSpeedChange: (value: number) => void;
@@ -920,42 +910,6 @@ function FloatingToolbar({
             </IconButton>
           </div>
         </div>
-        <div aria-label={t("chat.toolbar.tools")} className="floating-toolbar__actions" role="group">
-          <IconButton label={t("chat.toolbar.openHistory")} onClick={onOpenHistory}>
-            <History aria-hidden className="icon-button__icon" />
-          </IconButton>
-          <IconButton label={t("chat.toolbar.reroll")} onClick={() => onCommand({ type: "reroll" })}>
-            <RotateCcw aria-hidden className="icon-button__icon" />
-          </IconButton>
-          <IconButton
-            label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
-            onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
-          >
-            {asrPaused ? (
-              <Mic aria-hidden className="icon-button__icon" />
-            ) : (
-              <MicOff aria-hidden className="icon-button__icon" />
-            )}
-          </IconButton>
-          <IconButton label={t("chat.toolbar.copyHistory")} onClick={() => onCommand({ type: "copy-history" })}>
-            <Copy aria-hidden className="icon-button__icon" />
-          </IconButton>
-          <IconButton label={t("chat.toolbar.clearHistory")} onClick={() => onCommand({ type: "clear-history" })}>
-            <Trash2 aria-hidden className="icon-button__icon" />
-          </IconButton>
-          {hideCloseButton ? null : (
-            <IconButton label={closeLabel} onClick={onCloseSurface}>
-              <X aria-hidden className="icon-button__icon" />
-            </IconButton>
-          )}
-          <ToolbarButton
-            className="floating-toolbar__skip"
-            icon={<SkipForward aria-hidden className="button__icon" />}
-            onClick={() => onCommand({ type: "skip-speech" })}
-          >
-            {t("chat.toolbar.skipSpeech")}
-          </ToolbarButton>
-        </div>
         <div
           aria-hidden={!configOpen}
           className="floating-toolbar__config-panel"
@@ -1054,6 +1008,109 @@ function FloatingToolbar({
           </label>
           <PluginSlot slot="chat-toolbar" />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function StageActionBar({
+  asrPaused,
+  closeLabel,
+  hidden,
+  hideCloseButton,
+  onCloseSurface,
+  onCommand,
+  onOpenHistory,
+}: {
+  asrPaused: boolean;
+  closeLabel: string;
+  hidden: boolean;
+  hideCloseButton: boolean;
+  onCloseSurface: () => void;
+  onCommand: (command: ChatCommand) => void;
+  onOpenHistory: () => void;
+}) {
+  const { t } = useI18n();
+
+  if (hidden) {
+    return null;
+  }
+
+  return (
+    <div className="stage-action-bar" data-chat-stage-hitbox="true">
+      <div aria-label={t("chat.actionBar.title")} className="stage-action-bar__rail" role="toolbar">
+        <ToolbarButton
+          aria-label={t("chat.toolbar.openHistory")}
+          className="stage-action-bar__button"
+          icon={<History aria-hidden className="button__icon" />}
+          onClick={onOpenHistory}
+          tooltip={t("chat.toolbar.openHistory")}
+        >
+          {t("chat.actionBar.history")}
+        </ToolbarButton>
+        <ToolbarButton
+          aria-label={t("chat.toolbar.skipSpeech")}
+          className="stage-action-bar__button"
+          icon={<SkipForward aria-hidden className="button__icon" />}
+          onClick={() => onCommand({ type: "skip-speech" })}
+          tooltip={t("chat.toolbar.skipSpeech")}
+        >
+          {t("chat.actionBar.skip")}
+        </ToolbarButton>
+        <ToolbarButton
+          aria-label={t("chat.toolbar.reroll")}
+          className="stage-action-bar__button"
+          icon={<RotateCcw aria-hidden className="button__icon" />}
+          onClick={() => onCommand({ type: "reroll" })}
+          tooltip={t("chat.toolbar.reroll")}
+        >
+          {t("chat.actionBar.reroll")}
+        </ToolbarButton>
+        <ToolbarButton
+          aria-label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+          className="stage-action-bar__button"
+          data-active={asrPaused ? "true" : "false"}
+          icon={
+            asrPaused ? (
+              <Mic aria-hidden className="button__icon" />
+            ) : (
+              <MicOff aria-hidden className="button__icon" />
+            )
+          }
+          onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
+          tooltip={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+        >
+          {t(asrPaused ? "chat.actionBar.resumeAsr" : "chat.actionBar.pauseAsr")}
+        </ToolbarButton>
+        <ToolbarButton
+          aria-label={t("chat.toolbar.copyHistory")}
+          className="stage-action-bar__button"
+          icon={<Copy aria-hidden className="button__icon" />}
+          onClick={() => onCommand({ type: "copy-history" })}
+          tooltip={t("chat.toolbar.copyHistory")}
+        >
+          {t("chat.actionBar.copy")}
+        </ToolbarButton>
+        <ToolbarButton
+          aria-label={t("chat.toolbar.clearHistory")}
+          className="stage-action-bar__button stage-action-bar__button--danger"
+          icon={<Trash2 aria-hidden className="button__icon" />}
+          onClick={() => onCommand({ type: "clear-history" })}
+          tooltip={t("chat.toolbar.clearHistory")}
+        >
+          {t("chat.actionBar.clear")}
+        </ToolbarButton>
+        {hideCloseButton ? null : (
+          <ToolbarButton
+            aria-label={closeLabel}
+            className="stage-action-bar__button"
+            icon={<X aria-hidden className="button__icon" />}
+            onClick={onCloseSurface}
+            tooltip={closeLabel}
+          >
+            {t("chat.actionBar.close")}
+          </ToolbarButton>
+        )}
       </div>
     </div>
   );
@@ -1612,25 +1669,29 @@ export function ChatStagePage() {
           text={typingDialog ? displayedDialog.text : viewModel.dialogText}
           typing={typingDialog}
         />
+        <StageActionBar
+          asrPaused={viewModel.status === "paused"}
+          closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
+          hidden={!viewModel.layers.toolbar}
+          hideCloseButton={standaloneDesktopWindow}
+          onCloseSurface={closeSurface}
+          onCommand={sendCommand}
+          onOpenHistory={openHistoryDialog}
+        />
         <OptionsLayer
           hidden={!viewModel.layers.options}
           onSelect={(option) => sendCommand({ payload: option, type: "submit-option" })}
           options={viewModel.options}
         />
         <FloatingToolbar
-          asrPaused={viewModel.status === "paused"}
-          closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
           configOpen={toolbarConfigOpen}
           dialogOpacity={runtimeConfig.dialogOpacity}
           hidden={!viewModel.layers.toolbar}
-          hideCloseButton={standaloneDesktopWindow}
           open={toolbarOpen}
-          onCloseSurface={closeSurface}
           onCommand={sendCommand}
           onConfigOpenChange={setToolbarConfigOpen}
           onDialogOpacityChange={updateRuntimeDialogOpacity}
           onOpenChange={setToolbarOpen}
-          onOpenHistory={openHistoryDialog}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onTextSpeedChange={updateRuntimeTextSpeed}
