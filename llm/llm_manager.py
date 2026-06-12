@@ -755,10 +755,140 @@ class LLMManager:
         """清理不完整的 tool call 对：删孤立的 tool，补缺失的回执。"""
         strip_orphaned_tool_calls(self.get_messages())
 
+    def _budget_exhausted_tool_result(self, tool_name: str) -> str:
+        return json.dumps(
+            {
+                "status": "skipped",
+                "reason": "first_turn_tool_budget_exhausted",
+                "message": (
+                    f"首轮工具调用预算已用完，已跳过 {tool_name}。"
+                    "请基于已有信息直接回复用户，不要继续调用工具。"
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    def _cooldown_skipped_tool_result(self, tool_name: str, cooldown_message: str) -> str:
+        try:
+            parsed = json.loads(cooldown_message)
+        except (json.JSONDecodeError, TypeError):
+            parsed = {"status": "loading", "message": str(cooldown_message or "")}
+        if isinstance(parsed, dict):
+            parsed.setdefault("status", "skipped")
+            parsed["tool"] = tool_name
+            parsed["reason"] = "tool_group_in_cooldown"
+            parsed["message"] = (
+                str(parsed.get("message") or "")
+                + " 请基于已有信息直接回复用户，不要继续调用这个工具组。"
+            ).strip()
+        return json.dumps(parsed, ensure_ascii=False)
+
+    def _repeated_failure_tool_result(self, tool_name: str, previous_status: str) -> str:
+        return json.dumps(
+            {
+                "status": "skipped",
+                "reason": "tool_failed_earlier_in_turn",
+                "tool": tool_name,
+                "previous_status": previous_status,
+                "message": (
+                    f"{tool_name} 已在本轮失败或不可用，已跳过重复调用。"
+                    "请基于已有信息直接回复用户。"
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    def _execute_formatted_tool_call(self, call: dict) -> tuple[str, str]:
+        func_name = call["function"]["name"]
+        func_args = call["function"]["arguments"]
+        if isinstance(func_args, str) and not func_args.strip():
+            func_args = "{}"
+
+        state = self._turn_state
+        if state is not None and state.tool_budget_exhausted():
+            state.tool_calls_skipped += 1
+            result = self._budget_exhausted_tool_result(func_name)
+            self.logger.info(
+                "Tool call skipped by first-turn budget",
+                extra={
+                    "event": "tool.call.skipped",
+                    "tool_name": func_name,
+                    "reason": "first_turn_tool_budget_exhausted",
+                    "tool_call_attempts": state.tool_call_attempts,
+                    "first_turn_tool_call_limit": state.first_turn_tool_call_limit,
+                },
+            )
+            return func_name, result
+
+        if state is not None:
+            state.tool_call_attempts += 1
+            previous_failure = state.tool_failures.get(func_name)
+            if previous_failure:
+                state.tool_calls_skipped += 1
+                result = self._repeated_failure_tool_result(func_name, previous_failure)
+                self.logger.info(
+                    "Tool call skipped after previous failure in same turn",
+                    extra={
+                        "event": "tool.call.skipped",
+                        "tool_name": func_name,
+                        "reason": "tool_failed_earlier_in_turn",
+                        "previous_status": previous_failure,
+                    },
+                )
+                return func_name, result
+
+        cooldown_message = self.tool_executor.cooldown_message_for_tool(func_name)
+        if cooldown_message is not None:
+            if state is not None:
+                state.tool_calls_skipped += 1
+            result = self._cooldown_skipped_tool_result(func_name, cooldown_message)
+            self.logger.info(
+                "Tool call skipped because group is in cooldown",
+                extra={
+                    "event": "tool.call.skipped",
+                    "tool_name": func_name,
+                    "tool_group": tool_manager.get_tool_group(func_name),
+                    "reason": "tool_group_in_cooldown",
+                },
+            )
+            return func_name, result
+
+        _notify_tool_call_hint(func_name)
+        result = self.tool_executor.execute(
+            func_name,
+            func_args,
+            risk_confirm=self._confirm_risky_tool,
+        )
+
+        if func_name == "search_tools":
+            self._activate_tool_group_from_search(func_args)
+
+        if result is None:
+            result = json.dumps({"status": "success", "result": "no return value"})
+        elif not isinstance(result, str):
+            result = json.dumps(result)
+
+        status = _tool_result_status(result)
+        if state is not None:
+            state.tool_calls_executed += 1
+            if status in {"error", "loading", "cancelled"}:
+                state.tool_failures[func_name] = status
+        self.logger.info(
+            "Tool call handled",
+            extra={
+                "event": "tool.call.handled",
+                "tool_name": func_name,
+                "tool_group": tool_manager.get_tool_group(func_name),
+                "status": status,
+                "result_chars": len(result or ""),
+            },
+        )
+        return func_name, result
+
     # llm_manager.py 修正核心片段
 
     def _chat_with_tools_stream(self, **kwargs) -> Generator[Union[str, dict[str, str]], None, None]:
-        tools_defs = tool_manager.get_definitions(groups=self._active_tool_groups)
+        tools_defs = self._current_tool_definitions()
 
         # Gemini's OpenAI-compatible streaming endpoint omits thought_signature from
         # tool call deltas. Fall back to non-streaming so the field is preserved.
@@ -882,31 +1012,11 @@ class LLMManager:
             # --- 然后添加 Tool 结果消息 ---
             for call in formatted_calls:
                 try:
-                    func_name = call['function']['name']
-                    func_args = call['function']['arguments']
-                    if isinstance(func_args, str):
-                        if not func_args.strip():
-                            func_args = "{}"  # 修正为空 JSON 对象字符串
-
-                    _notify_tool_call_hint(func_name)
-                    result = self.tool_executor.execute(
-                        func_name, func_args,
-                        risk_confirm=self._confirm_risky_tool,
-                    )
-
-                    # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
-                    if func_name == "search_tools":
-                        self._activate_tool_group_from_search(func_args)
-
-                    # 3. 确保结果不为空且为字符串（以便 LLM 接收）
-                    if result is None:
-                        result = json.dumps({"status": "success", "result": "no return value"})
-                    elif not isinstance(result, str):
-                        result = json.dumps(result)
-
+                    func_name, result = self._execute_formatted_tool_call(call)
                 except Exception as e:
                     self.logger.error(f"Tool execution failed: {e}")
                     result = json.dumps({"error": str(e)})
+                    func_name = call['function']['name']
                 self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
 
             yield from self._chat_with_tools_stream(**kwargs)
@@ -914,7 +1024,7 @@ class LLMManager:
             self._persist_plain_assistant_turn(collected_content, collected_reasoning)
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
-        tools_defs = tool_manager.get_definitions(groups=self._active_tool_groups)
+        tools_defs = self._current_tool_definitions()
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
         estimate = self._estimate_context_tokens(tools_defs)
@@ -993,31 +1103,11 @@ class LLMManager:
             self.add_message("assistant", content, tool_calls=formatted_calls, **assistant_sync_kw)
             for call in formatted_calls:
                 try:
-                    func_name = call['function']['name']
-                    func_args = call['function']['arguments']
-                    if isinstance(func_args, str):
-                        if not func_args.strip():
-                            func_args = "{}"  # 修正为空 JSON 对象字符串
-
-                    _notify_tool_call_hint(func_name)
-                    result = self.tool_executor.execute(
-                        func_name, func_args,
-                        risk_confirm=self._confirm_risky_tool,
-                    )
-
-                    # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
-                    if func_name == "search_tools":
-                        self._activate_tool_group_from_search(func_args)
-
-                    # 3. 确保结果不为空且为字符串（以便 LLM 接收）
-                    if result is None:
-                        result = json.dumps({"status": "success", "result": "no return value"})
-                    elif not isinstance(result, str):
-                        result = json.dumps(result)
-
+                    func_name, result = self._execute_formatted_tool_call(call)
                 except Exception as e:
                     self.logger.error(f"Tool execution failed: {e}")
                     result = json.dumps({"error": str(e)})
+                    func_name = call['function']['name']
                 self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
 
             return self._chat_with_tools_sync(**kwargs)
