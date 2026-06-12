@@ -201,8 +201,11 @@ def read_git_remote(root: Path) -> str:
     else:
         return ""
 
-    parser = configparser.ConfigParser()
-    parser.read(current / ".git" / "config", encoding="utf-8")
+    parser = configparser.ConfigParser(strict=False)
+    try:
+        parser.read(current / ".git" / "config", encoding="utf-8")
+    except (configparser.Error, OSError):
+        return ""
     for section in ("remote \"origin\"", "remote \"upstream\""):
         if parser.has_option(section, "url"):
             return normalize_remote_url(parser.get(section, "url"))
