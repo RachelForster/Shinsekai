@@ -182,6 +182,10 @@ const runtimeTextSpeedMax = 200;
 const runtimeDialogOpacityMin = 0.35;
 const runtimeDialogOpacityMax = 1;
 const runtimeDialogOpacityStep = 0.05;
+const runtimeDialogScaleMin = 0.8;
+const runtimeDialogScaleMax = 1.2;
+const runtimeDialogScaleStep = 0.05;
+const runtimeSpriteDefaultScaleKey = "__default__";
 const runtimeSpriteScaleMin = 0;
 const runtimeSpriteScaleMax = 3;
 const runtimeSpriteScaleStep = 0.05;
@@ -194,7 +198,8 @@ const runtimeWindowScaleStep = 0.05;
 
 interface ChatStageRuntimeConfig {
   dialogOpacity: number;
-  spriteScale: number;
+  dialogScale: number;
+  spriteScales: Record<string, number>;
   spriteOffsetX: number;
   spriteOffsetY: number;
   typewriterCps: number | null;
@@ -203,7 +208,8 @@ interface ChatStageRuntimeConfig {
 
 const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   dialogOpacity: 1,
-  spriteScale: 1,
+  dialogScale: 1,
+  spriteScales: {},
   spriteOffsetX: 0,
   spriteOffsetY: 0,
   typewriterCps: null,
@@ -216,6 +222,29 @@ function clampRuntimeNumber(value: unknown, fallback: number, min: number, max: 
     return fallback;
   }
   return Math.min(max, Math.max(min, next));
+}
+
+function readRuntimeSpriteScales(parsed: Partial<ChatStageRuntimeConfig> & { spriteScale?: unknown }) {
+  const spriteScales: Record<string, number> = {};
+  const rawSpriteScales = parsed.spriteScales;
+  if (rawSpriteScales && typeof rawSpriteScales === "object" && !Array.isArray(rawSpriteScales)) {
+    for (const [key, value] of Object.entries(rawSpriteScales)) {
+      const trimmedKey = key.trim();
+      if (!trimmedKey) {
+        continue;
+      }
+      spriteScales[trimmedKey] = clampRuntimeNumber(value, 1, runtimeSpriteScaleMin, runtimeSpriteScaleMax);
+    }
+  }
+  if (!Object.keys(spriteScales).length && parsed.spriteScale != null) {
+    spriteScales[runtimeSpriteDefaultScaleKey] = clampRuntimeNumber(
+      parsed.spriteScale,
+      1,
+      runtimeSpriteScaleMin,
+      runtimeSpriteScaleMax,
+    );
+  }
+  return spriteScales;
 }
 
 function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
@@ -235,6 +264,12 @@ function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
         runtimeDialogOpacityMin,
         runtimeDialogOpacityMax,
       ),
+      dialogScale: clampRuntimeNumber(
+        parsed.dialogScale,
+        defaultChatStageRuntimeConfig.dialogScale,
+        runtimeDialogScaleMin,
+        runtimeDialogScaleMax,
+      ),
       typewriterCps:
         parsed.typewriterCps == null
           ? null
@@ -246,12 +281,7 @@ function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
                 runtimeTextSpeedMax,
               ),
             ),
-      spriteScale: clampRuntimeNumber(
-        parsed.spriteScale,
-        defaultChatStageRuntimeConfig.spriteScale,
-        runtimeSpriteScaleMin,
-        runtimeSpriteScaleMax,
-      ),
+      spriteScales: readRuntimeSpriteScales(parsed),
       spriteOffsetX: Math.round(
         clampRuntimeNumber(
           parsed.spriteOffsetX,
@@ -289,6 +319,19 @@ function writeChatStageRuntimeConfig(config: ChatStageRuntimeConfig) {
   } catch {
     // localStorage may be unavailable in hardened webviews.
   }
+}
+
+function runtimeSpriteKey(sprite: ChatStageSprite, index: number) {
+  return sprite.id || sprite.characterName || sprite.label || `slot-${sprite.slot ?? index}`;
+}
+
+function runtimeSpriteLabel(sprite: ChatStageSprite, index: number) {
+  return sprite.label || sprite.characterName || sprite.id || `#${index + 1}`;
+}
+
+function runtimeSpriteScale(config: ChatStageRuntimeConfig, sprite: ChatStageSprite, index: number) {
+  const key = runtimeSpriteKey(sprite, index);
+  return config.spriteScales[key] ?? config.spriteScales[runtimeSpriteDefaultScaleKey] ?? 1;
 }
 
 const desktopResizeHandles: Array<{ className: string; direction: DesktopResizeDirection }> = [
@@ -343,11 +386,11 @@ function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
 
 function SpriteLayer({
   hidden,
-  runtimeScale,
+  runtimeScaleForSprite,
   sprites,
 }: {
   hidden: boolean;
-  runtimeScale: number;
+  runtimeScaleForSprite: (sprite: ChatStageSprite, index: number) => number;
   sprites: ChatStageSprite[];
 }) {
   return (
@@ -368,7 +411,7 @@ function SpriteLayer({
               "--sprite-index": index,
               "--sprite-offset-x": `${sprite.x ?? 0}px`,
               "--sprite-offset-y": `${sprite.y ?? 0}px`,
-              "--sprite-scale": (sprite.scale ?? 1) * runtimeScale,
+              "--sprite-scale": (sprite.scale ?? 1) * runtimeScaleForSprite(sprite, index),
             } as CSSProperties
           }
         >
@@ -412,12 +455,16 @@ function DialogLayer({
     >
       {characterName ? <p className="dialog-layer__name">{characterName}</p> : null}
       {html !== undefined ? (
-        <p className="dialog-layer__text" dangerouslySetInnerHTML={{ __html: html }} />
+        <div className="dialog-layer__body">
+          <p className="dialog-layer__text" dangerouslySetInnerHTML={{ __html: html }} />
+        </div>
       ) : (
-        <p className="dialog-layer__text">{text}</p>
+        <div className="dialog-layer__body">
+          <p className="dialog-layer__text">{text}</p>
+        </div>
       )}
       <PluginSlot slot="chat-output" />
-      {controls}
+      {controls ? <div className="dialog-layer__controls">{controls}</div> : null}
     </section>
   );
 }
@@ -836,86 +883,27 @@ function DialogStageControls({
   asrPaused,
   closeLabel,
   configOpen,
-  dialogOpacity,
   hideCloseButton,
   onCloseSurface,
   onCommand,
   onConfigOpenChange,
-  onDialogOpacityChange,
   onOpenHistory,
-  onSpriteOffsetXChange,
-  onSpriteOffsetYChange,
-  onSpriteScaleChange,
-  onTextSpeedChange,
-  onWindowScaleChange,
-  spriteOffsetX,
-  spriteOffsetY,
-  spriteScale,
-  textSpeed,
-  voiceLanguage,
-  windowScale,
 }: {
   asrPaused: boolean;
   closeLabel: string;
   configOpen: boolean;
-  dialogOpacity: number;
   hideCloseButton: boolean;
   onCloseSurface: () => void;
   onCommand: (command: ChatCommand) => void;
   onConfigOpenChange: (open: boolean) => void;
-  onDialogOpacityChange: (value: number) => void;
   onOpenHistory: () => void;
-  onSpriteOffsetXChange: (value: number) => void;
-  onSpriteOffsetYChange: (value: number) => void;
-  onSpriteScaleChange: (value: number) => void;
-  onTextSpeedChange: (value: number) => void;
-  onWindowScaleChange: (value: number) => void;
-  spriteOffsetX: number;
-  spriteOffsetY: number;
-  spriteScale: number;
-  textSpeed: number;
-  voiceLanguage: string;
-  windowScale: number;
 }) {
   const { t } = useI18n();
-  const dialogOpacityPercent = Math.round(dialogOpacity * 100);
-  const spriteScalePercent = Math.round(spriteScale * 100);
-  const windowScalePercent = Math.round(windowScale * 100);
   const stopDialogActionPropagation = (event: MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
   };
   const stopDialogPointerPropagation = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.stopPropagation();
-  };
-  const handleTextSpeedChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onTextSpeedChange(
-      Math.round(clampRuntimeNumber(event.target.value, textSpeed, runtimeTextSpeedMin, runtimeTextSpeedMax)),
-    );
-  };
-  const handleDialogOpacityChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onDialogOpacityChange(
-      clampRuntimeNumber(event.target.value, dialogOpacity, runtimeDialogOpacityMin, runtimeDialogOpacityMax),
-    );
-  };
-  const handleSpriteOffsetXChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onSpriteOffsetXChange(
-      Math.round(clampRuntimeNumber(event.target.value, spriteOffsetX, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax)),
-    );
-  };
-  const handleSpriteOffsetYChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onSpriteOffsetYChange(
-      Math.round(clampRuntimeNumber(event.target.value, spriteOffsetY, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax)),
-    );
-  };
-  const handleSpriteScaleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onSpriteScaleChange(
-      clampRuntimeNumber(event.target.value, spriteScale, runtimeSpriteScaleMin, runtimeSpriteScaleMax),
-    );
-  };
-  const handleWindowScaleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onWindowScaleChange(
-      clampRuntimeNumber(event.target.value, windowScale, runtimeWindowScaleMin, runtimeWindowScaleMax),
-    );
   };
 
   return (
@@ -1009,140 +997,311 @@ function DialogStageControls({
         )}
         <PluginSlot slot="chat-dialog-actions" />
       </div>
-      <div
-        aria-hidden={!configOpen}
-        className="dialog-stage-controls__config-panel"
-        hidden={!configOpen}
-        id="chat-stage-dialog-config"
+    </div>
+  );
+}
+
+function ChatConfigDialog({
+  dialogOpacity,
+  dialogScale,
+  onClose,
+  onCommand,
+  onDialogOpacityChange,
+  onDialogScaleChange,
+  onSpriteOffsetXChange,
+  onSpriteOffsetYChange,
+  onSpriteScaleChange,
+  onTextSpeedChange,
+  onWindowScaleChange,
+  open,
+  spriteOffsetX,
+  spriteOffsetY,
+  spriteScales,
+  sprites,
+  textSpeed,
+  voiceLanguage,
+  windowScale,
+}: {
+  dialogOpacity: number;
+  dialogScale: number;
+  onClose: () => void;
+  onCommand: (command: ChatCommand) => void;
+  onDialogOpacityChange: (value: number) => void;
+  onDialogScaleChange: (value: number) => void;
+  onSpriteOffsetXChange: (value: number) => void;
+  onSpriteOffsetYChange: (value: number) => void;
+  onSpriteScaleChange: (spriteKey: string, value: number) => void;
+  onTextSpeedChange: (value: number) => void;
+  onWindowScaleChange: (value: number) => void;
+  open: boolean;
+  spriteOffsetX: number;
+  spriteOffsetY: number;
+  spriteScales: Record<string, number>;
+  sprites: ChatStageSprite[];
+  textSpeed: number;
+  voiceLanguage: string;
+  windowScale: number;
+}) {
+  const { t } = useI18n();
+  const titleId = useId();
+  const dialogOpacityPercent = Math.round(dialogOpacity * 100);
+  const dialogScalePercent = Math.round(dialogScale * 100);
+  const windowScalePercent = Math.round(windowScale * 100);
+
+  if (!open) {
+    return null;
+  }
+
+  const handleBackdropMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      onClose();
+    }
+  };
+  const handleTextSpeedChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onTextSpeedChange(
+      Math.round(clampRuntimeNumber(event.target.value, textSpeed, runtimeTextSpeedMin, runtimeTextSpeedMax)),
+    );
+  };
+  const handleDialogOpacityChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onDialogOpacityChange(
+      clampRuntimeNumber(event.target.value, dialogOpacity, runtimeDialogOpacityMin, runtimeDialogOpacityMax),
+    );
+  };
+  const handleDialogScaleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onDialogScaleChange(
+      clampRuntimeNumber(event.target.value, dialogScale, runtimeDialogScaleMin, runtimeDialogScaleMax),
+    );
+  };
+  const handleSpriteOffsetXChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onSpriteOffsetXChange(
+      Math.round(clampRuntimeNumber(event.target.value, spriteOffsetX, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax)),
+    );
+  };
+  const handleSpriteOffsetYChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onSpriteOffsetYChange(
+      Math.round(clampRuntimeNumber(event.target.value, spriteOffsetY, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax)),
+    );
+  };
+  const handleWindowScaleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onWindowScaleChange(
+      clampRuntimeNumber(event.target.value, windowScale, runtimeWindowScaleMin, runtimeWindowScaleMax),
+    );
+  };
+
+  return (
+    <div
+      className="chat-config-backdrop"
+      data-chat-stage-hitbox="true"
+      onMouseDown={handleBackdropMouseDown}
+      role="presentation"
+    >
+      <section
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className="chat-config-dialog"
+        onKeyDown={handleKeyDown}
+        role="dialog"
       >
-        <label className="dialog-stage-controls__config-row dialog-stage-controls__voice">
-          <span className="dialog-stage-controls__config-label">
-            <Languages aria-hidden className="dialog-stage-controls__voice-icon" />
-            {t("template.field.voiceLanguage")}
-          </span>
-          <Select
-            aria-label={t("template.field.voiceLanguage")}
-            className="dialog-stage-controls__voice-select"
-            onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
-            value={voiceLanguage}
-          >
-            {chatVoiceLanguages.map((option) => (
-              <option key={option.value} value={option.value}>
-                {t(option.labelKey)}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
-          <span className="dialog-stage-controls__config-label">{t("chat.config.textSpeed")}</span>
-          <span className="dialog-stage-controls__range-control">
-            <input
-              aria-label={t("chat.config.textSpeed")}
-              className="dialog-stage-controls__range"
-              max={runtimeTextSpeedMax}
-              min={runtimeTextSpeedMin}
-              onChange={handleTextSpeedChange}
-              step={1}
-              type="range"
-              value={textSpeed}
-            />
-            <span className="dialog-stage-controls__range-value">
-              {t("chat.config.textSpeedValue", { value: textSpeed })}
-            </span>
-          </span>
-        </label>
-        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
-          <span className="dialog-stage-controls__config-label">{t("chat.config.dialogOpacity")}</span>
-          <span className="dialog-stage-controls__range-control">
-            <input
-              aria-label={t("chat.config.dialogOpacity")}
-              className="dialog-stage-controls__range"
-              max={runtimeDialogOpacityMax}
-              min={runtimeDialogOpacityMin}
-              onChange={handleDialogOpacityChange}
-              step={runtimeDialogOpacityStep}
-              type="range"
-              value={dialogOpacity}
-            />
-            <span className="dialog-stage-controls__range-value">
-              {t("chat.config.dialogOpacityValue", { value: dialogOpacityPercent })}
-            </span>
-          </span>
-        </label>
-        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
-          <span className="dialog-stage-controls__config-label">{t("chat.config.spriteScale")}</span>
-          <span className="dialog-stage-controls__range-control">
-            <input
-              aria-label={t("chat.config.spriteScale")}
-              className="dialog-stage-controls__range"
-              max={runtimeSpriteScaleMax}
-              min={runtimeSpriteScaleMin}
-              onChange={handleSpriteScaleChange}
-              step={runtimeSpriteScaleStep}
-              type="range"
-              value={spriteScale}
-            />
-            <span className="dialog-stage-controls__range-value">
-              {t("chat.config.scaleValue", { value: spriteScalePercent })}
-            </span>
-          </span>
-        </label>
-        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
-          <span className="dialog-stage-controls__config-label">{t("chat.config.spriteOffsetX")}</span>
-          <span className="dialog-stage-controls__range-control">
-            <input
-              aria-label={t("chat.config.spriteOffsetX")}
-              className="dialog-stage-controls__range"
-              max={runtimeSpriteOffsetMax}
-              min={runtimeSpriteOffsetMin}
-              onChange={handleSpriteOffsetXChange}
-              step={runtimeSpriteOffsetStep}
-              type="range"
-              value={spriteOffsetX}
-            />
-            <span className="dialog-stage-controls__range-value">
-              {t("chat.config.spriteOffsetValue", { value: spriteOffsetX })}
-            </span>
-          </span>
-        </label>
-        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
-          <span className="dialog-stage-controls__config-label">{t("chat.config.spriteOffsetY")}</span>
-          <span className="dialog-stage-controls__range-control">
-            <input
-              aria-label={t("chat.config.spriteOffsetY")}
-              className="dialog-stage-controls__range"
-              max={runtimeSpriteOffsetMax}
-              min={runtimeSpriteOffsetMin}
-              onChange={handleSpriteOffsetYChange}
-              step={runtimeSpriteOffsetStep}
-              type="range"
-              value={spriteOffsetY}
-            />
-            <span className="dialog-stage-controls__range-value">
-              {t("chat.config.spriteOffsetValue", { value: spriteOffsetY })}
-            </span>
-          </span>
-        </label>
-        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
-          <span className="dialog-stage-controls__config-label">{t("chat.config.windowScale")}</span>
-          <span className="dialog-stage-controls__range-control">
-            <input
-              aria-label={t("chat.config.windowScale")}
-              className="dialog-stage-controls__range"
-              max={runtimeWindowScaleMax}
-              min={runtimeWindowScaleMin}
-              onChange={handleWindowScaleChange}
-              step={runtimeWindowScaleStep}
-              type="range"
-              value={windowScale}
-            />
-            <span className="dialog-stage-controls__range-value">
-              {t("chat.config.scaleValue", { value: windowScalePercent })}
-            </span>
-          </span>
-        </label>
-        <PluginSlot slot="chat-toolbar" />
-      </div>
+        <header className="chat-config-dialog__header">
+          <div className="chat-config-dialog__heading">
+            <p className="chat-config-dialog__eyebrow">CONFIG</p>
+            <h2 className="chat-config-dialog__title" id={titleId}>
+              {t("chat.toolbar.config")}
+            </h2>
+          </div>
+          <IconButton className="chat-config-dialog__close" label={t("common.close")} onClick={onClose}>
+            <X aria-hidden className="icon-button__icon" />
+          </IconButton>
+        </header>
+        <div className="chat-config-dialog__body">
+          <section className="chat-config-dialog__section">
+            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionConversation")}</h3>
+            <label className="chat-config-dialog__row chat-config-dialog__voice">
+              <span className="chat-config-dialog__label">
+                <Languages aria-hidden className="chat-config-dialog__voice-icon" />
+                {t("template.field.voiceLanguage")}
+              </span>
+              <Select
+                aria-label={t("template.field.voiceLanguage")}
+                className="chat-config-dialog__voice-select"
+                onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
+                value={voiceLanguage}
+              >
+                {chatVoiceLanguages.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.labelKey)}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <label className="chat-config-dialog__row chat-config-dialog__range-row">
+              <span className="chat-config-dialog__label">{t("chat.config.textSpeed")}</span>
+              <span className="chat-config-dialog__range-control">
+                <input
+                  aria-label={t("chat.config.textSpeed")}
+                  className="chat-config-dialog__range"
+                  max={runtimeTextSpeedMax}
+                  min={runtimeTextSpeedMin}
+                  onChange={handleTextSpeedChange}
+                  step={1}
+                  type="range"
+                  value={textSpeed}
+                />
+                <span className="chat-config-dialog__range-value">
+                  {t("chat.config.textSpeedValue", { value: textSpeed })}
+                </span>
+              </span>
+            </label>
+          </section>
+
+          <section className="chat-config-dialog__section">
+            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionLayout")}</h3>
+            <label className="chat-config-dialog__row chat-config-dialog__range-row">
+              <span className="chat-config-dialog__label">{t("chat.config.windowScale")}</span>
+              <span className="chat-config-dialog__range-control">
+                <input
+                  aria-label={t("chat.config.windowScale")}
+                  className="chat-config-dialog__range"
+                  max={runtimeWindowScaleMax}
+                  min={runtimeWindowScaleMin}
+                  onChange={handleWindowScaleChange}
+                  step={runtimeWindowScaleStep}
+                  type="range"
+                  value={windowScale}
+                />
+                <span className="chat-config-dialog__range-value">
+                  {t("chat.config.scaleValue", { value: windowScalePercent })}
+                </span>
+              </span>
+            </label>
+            <label className="chat-config-dialog__row chat-config-dialog__range-row">
+              <span className="chat-config-dialog__label">{t("chat.config.dialogScale")}</span>
+              <span className="chat-config-dialog__range-control">
+                <input
+                  aria-label={t("chat.config.dialogScale")}
+                  className="chat-config-dialog__range"
+                  max={runtimeDialogScaleMax}
+                  min={runtimeDialogScaleMin}
+                  onChange={handleDialogScaleChange}
+                  step={runtimeDialogScaleStep}
+                  type="range"
+                  value={dialogScale}
+                />
+                <span className="chat-config-dialog__range-value">
+                  {t("chat.config.scaleValue", { value: dialogScalePercent })}
+                </span>
+              </span>
+            </label>
+            <label className="chat-config-dialog__row chat-config-dialog__range-row">
+              <span className="chat-config-dialog__label">{t("chat.config.dialogOpacity")}</span>
+              <span className="chat-config-dialog__range-control">
+                <input
+                  aria-label={t("chat.config.dialogOpacity")}
+                  className="chat-config-dialog__range"
+                  max={runtimeDialogOpacityMax}
+                  min={runtimeDialogOpacityMin}
+                  onChange={handleDialogOpacityChange}
+                  step={runtimeDialogOpacityStep}
+                  type="range"
+                  value={dialogOpacity}
+                />
+                <span className="chat-config-dialog__range-value">
+                  {t("chat.config.dialogOpacityValue", { value: dialogOpacityPercent })}
+                </span>
+              </span>
+            </label>
+          </section>
+
+          <section className="chat-config-dialog__section">
+            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionSprites")}</h3>
+            {sprites.length ? (
+              <div className="chat-config-dialog__sprite-list">
+                {sprites.map((sprite, index) => {
+                  const spriteKey = runtimeSpriteKey(sprite, index);
+                  const spriteLabel = runtimeSpriteLabel(sprite, index);
+                  const value = spriteScales[spriteKey] ?? spriteScales[runtimeSpriteDefaultScaleKey] ?? 1;
+                  return (
+                    <label className="chat-config-dialog__row chat-config-dialog__range-row" key={spriteKey}>
+                      <span className="chat-config-dialog__label">{spriteLabel}</span>
+                      <span className="chat-config-dialog__range-control">
+                        <input
+                          aria-label={`${t("chat.config.spriteScale")}: ${spriteLabel}`}
+                          className="chat-config-dialog__range"
+                          max={runtimeSpriteScaleMax}
+                          min={runtimeSpriteScaleMin}
+                          onChange={(event) =>
+                            onSpriteScaleChange(
+                              spriteKey,
+                              clampRuntimeNumber(
+                                event.target.value,
+                                value,
+                                runtimeSpriteScaleMin,
+                                runtimeSpriteScaleMax,
+                              ),
+                            )
+                          }
+                          step={runtimeSpriteScaleStep}
+                          type="range"
+                          value={value}
+                        />
+                        <span className="chat-config-dialog__range-value">
+                          {t("chat.config.scaleValue", { value: Math.round(value * 100) })}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="chat-config-dialog__empty">{t("chat.config.spriteEmpty")}</p>
+            )}
+            <label className="chat-config-dialog__row chat-config-dialog__range-row">
+              <span className="chat-config-dialog__label">{t("chat.config.spriteOffsetX")}</span>
+              <span className="chat-config-dialog__range-control">
+                <input
+                  aria-label={t("chat.config.spriteOffsetX")}
+                  className="chat-config-dialog__range"
+                  max={runtimeSpriteOffsetMax}
+                  min={runtimeSpriteOffsetMin}
+                  onChange={handleSpriteOffsetXChange}
+                  step={runtimeSpriteOffsetStep}
+                  type="range"
+                  value={spriteOffsetX}
+                />
+                <span className="chat-config-dialog__range-value">
+                  {t("chat.config.spriteOffsetValue", { value: spriteOffsetX })}
+                </span>
+              </span>
+            </label>
+            <label className="chat-config-dialog__row chat-config-dialog__range-row">
+              <span className="chat-config-dialog__label">{t("chat.config.spriteOffsetY")}</span>
+              <span className="chat-config-dialog__range-control">
+                <input
+                  aria-label={t("chat.config.spriteOffsetY")}
+                  className="chat-config-dialog__range"
+                  max={runtimeSpriteOffsetMax}
+                  min={runtimeSpriteOffsetMin}
+                  onChange={handleSpriteOffsetYChange}
+                  step={runtimeSpriteOffsetStep}
+                  type="range"
+                  value={spriteOffsetY}
+                />
+                <span className="chat-config-dialog__range-value">
+                  {t("chat.config.spriteOffsetValue", { value: spriteOffsetY })}
+                </span>
+              </span>
+            </label>
+          </section>
+
+          <PluginSlot slot="chat-toolbar" />
+        </div>
+      </section>
     </div>
   );
 }
@@ -1326,12 +1485,16 @@ export function ChatStagePage() {
       ({
         ...themeStyle,
         "--chat-dialog-runtime-opacity": String(runtimeConfig.dialogOpacity),
+        "--chat-dialog-runtime-scale": String(runtimeConfig.dialogScale),
+        "--chat-dialog-runtime-width": `${Math.round(1040 * runtimeConfig.windowScale)}px`,
         "--chat-sprite-runtime-offset-x": `${runtimeConfig.spriteOffsetX}px`,
         "--chat-sprite-runtime-offset-y": `${runtimeConfig.spriteOffsetY}px`,
-        "--chat-window-runtime-scale": String(runtimeConfig.windowScale),
+        "--chat-ui-runtime-width": `${Math.round(1120 * runtimeConfig.windowScale)}px`,
+        "--chat-ui-window-scale": String(runtimeConfig.windowScale),
       }) as CSSProperties,
     [
       runtimeConfig.dialogOpacity,
+      runtimeConfig.dialogScale,
       runtimeConfig.spriteOffsetX,
       runtimeConfig.spriteOffsetY,
       runtimeConfig.windowScale,
@@ -1342,7 +1505,7 @@ export function ChatStagePage() {
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
   const transparentBackground = !viewModel.backgroundPath;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
-  const modalOpen = historyDialogOpen || confirmClearHistory || confirmRevertUserIndex != null;
+  const modalOpen = toolbarConfigOpen || historyDialogOpen || confirmClearHistory || confirmRevertUserIndex != null;
   const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
   const eventSeqRef = useRef(0);
   eventSeqRef.current = state.eventSeq;
@@ -1593,6 +1756,10 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, dialogOpacity }));
   };
 
+  const updateRuntimeDialogScale = (dialogScale: number) => {
+    setRuntimeConfig((current) => ({ ...current, dialogScale }));
+  };
+
   const updateRuntimeSpriteOffsetX = (spriteOffsetX: number) => {
     setRuntimeConfig((current) => ({ ...current, spriteOffsetX }));
   };
@@ -1601,8 +1768,14 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, spriteOffsetY }));
   };
 
-  const updateRuntimeSpriteScale = (spriteScale: number) => {
-    setRuntimeConfig((current) => ({ ...current, spriteScale }));
+  const updateRuntimeSpriteScale = (spriteKey: string, spriteScale: number) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      spriteScales: {
+        ...current.spriteScales,
+        [spriteKey]: spriteScale,
+      },
+    }));
   };
 
   const updateRuntimeWindowScale = (windowScale: number) => {
@@ -1704,7 +1877,7 @@ export function ChatStagePage() {
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}
-          runtimeScale={runtimeConfig.spriteScale}
+          runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
           sprites={viewModel.sprites}
         />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
@@ -1718,24 +1891,11 @@ export function ChatStagePage() {
               asrPaused={viewModel.status === "paused"}
               closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
               configOpen={toolbarConfigOpen}
-              dialogOpacity={runtimeConfig.dialogOpacity}
               hideCloseButton={standaloneDesktopWindow}
               onCloseSurface={closeSurface}
               onCommand={sendCommand}
               onConfigOpenChange={setToolbarConfigOpen}
-              onDialogOpacityChange={updateRuntimeDialogOpacity}
               onOpenHistory={openHistoryDialog}
-              onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
-              onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
-              onSpriteScaleChange={updateRuntimeSpriteScale}
-              onTextSpeedChange={updateRuntimeTextSpeed}
-              onWindowScaleChange={updateRuntimeWindowScale}
-              spriteOffsetX={runtimeConfig.spriteOffsetX}
-              spriteOffsetY={runtimeConfig.spriteOffsetY}
-              spriteScale={runtimeConfig.spriteScale}
-              textSpeed={typewriterCps}
-              voiceLanguage={viewModel.voiceLanguage || "ja"}
-              windowScale={runtimeConfig.windowScale}
             />
           }
           hidden={!viewModel.layers.dialog}
@@ -1767,6 +1927,27 @@ export function ChatStagePage() {
           onRevert={(userIndex) => setConfirmRevertUserIndex(userIndex)}
           open={historyDialogOpen}
           userDisplayName={viewModel.userDisplayName}
+        />
+        <ChatConfigDialog
+          dialogOpacity={runtimeConfig.dialogOpacity}
+          dialogScale={runtimeConfig.dialogScale}
+          onClose={() => setToolbarConfigOpen(false)}
+          onCommand={sendCommand}
+          onDialogOpacityChange={updateRuntimeDialogOpacity}
+          onDialogScaleChange={updateRuntimeDialogScale}
+          onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
+          onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
+          onSpriteScaleChange={updateRuntimeSpriteScale}
+          onTextSpeedChange={updateRuntimeTextSpeed}
+          onWindowScaleChange={updateRuntimeWindowScale}
+          open={toolbarConfigOpen}
+          spriteOffsetX={runtimeConfig.spriteOffsetX}
+          spriteOffsetY={runtimeConfig.spriteOffsetY}
+          spriteScales={runtimeConfig.spriteScales}
+          sprites={viewModel.sprites}
+          textSpeed={typewriterCps}
+          voiceLanguage={viewModel.voiceLanguage || "ja"}
+          windowScale={runtimeConfig.windowScale}
         />
       </main>
       <AlertDialog

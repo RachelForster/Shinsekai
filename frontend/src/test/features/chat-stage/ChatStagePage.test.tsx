@@ -264,7 +264,8 @@ describe("ChatStagePage", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
 
-    fireEvent.click(await screen.findByRole("combobox"));
+    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    fireEvent.click(within(config).getByRole("combobox"));
     fireEvent.click(screen.getByRole("option", { name: "English" }));
 
     await waitFor(() =>
@@ -306,6 +307,7 @@ describe("ChatStagePage", () => {
     expect(within(actionBar).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
     expect(within(actionBar).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
     expect(within(actionBar).getByRole("button", { name: "Chat config" })).toHaveTextContent("CONFIG");
+    expect(within(dialog).queryByRole("slider")).not.toBeInTheDocument();
 
     const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
     expect(within(topTools).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
@@ -313,49 +315,74 @@ describe("ChatStagePage", () => {
   });
 
   it("applies runtime text speed and dialog opacity from chat config", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        sprites: [
+          { id: "mio", label: "Mio", path: "asset://mio.png" },
+          { id: "ren", label: "Ren", path: "asset://ren.png" },
+        ],
+      }),
+    );
     renderPage();
 
     await screen.findByText("Ready");
     fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
+    const config = await screen.findByRole("dialog", { name: "Chat config" });
 
-    expect(screen.queryByRole("button", { name: "Manage themes" })).not.toBeInTheDocument();
+    expect(within(config).queryByRole("button", { name: "Manage themes" })).not.toBeInTheDocument();
 
-    const textSpeed = screen.getByRole("slider", { name: "Text speed" });
+    const textSpeed = within(config).getByRole("slider", { name: "Text speed" });
     fireEvent.change(textSpeed, { target: { value: "96" } });
-    expect(await screen.findByText("96 chars/s")).toBeInTheDocument();
+    expect(await within(config).findByText("96 chars/s")).toBeInTheDocument();
 
-    const dialogOpacity = screen.getByRole("slider", { name: "Dialog opacity" });
+    const dialogOpacity = within(config).getByRole("slider", { name: "Dialog opacity" });
     fireEvent.change(dialogOpacity, { target: { value: "0.55" } });
-    expect(await screen.findByText("55%")).toBeInTheDocument();
+    expect(await within(config).findByText("55%")).toBeInTheDocument();
 
-    const spriteScale = screen.getByRole("slider", { name: "Sprite scale" });
-    fireEvent.change(spriteScale, { target: { value: "1.35" } });
-    expect(await screen.findByText("135%")).toBeInTheDocument();
+    const dialogScale = within(config).getByRole("slider", { name: "Dialog size" });
+    fireEvent.change(dialogScale, { target: { value: "1.05" } });
+    expect(await within(config).findByText("105%")).toBeInTheDocument();
 
-    const spriteX = screen.getByRole("slider", { name: "Sprite X" });
+    const mioScale = within(config).getByRole("slider", { name: "Sprite scale: Mio" });
+    fireEvent.change(mioScale, { target: { value: "1.35" } });
+    expect(await within(config).findByText("135%")).toBeInTheDocument();
+
+    const renScale = within(config).getByRole("slider", { name: "Sprite scale: Ren" });
+    fireEvent.change(renScale, { target: { value: "0.8" } });
+    expect(await within(config).findByText("80%")).toBeInTheDocument();
+
+    const spriteX = within(config).getByRole("slider", { name: "Sprite X" });
     fireEvent.change(spriteX, { target: { value: "72" } });
-    expect(await screen.findByText("72px")).toBeInTheDocument();
+    expect(await within(config).findByText("72px")).toBeInTheDocument();
 
-    const spriteY = screen.getByRole("slider", { name: "Sprite Y" });
+    const spriteY = within(config).getByRole("slider", { name: "Sprite Y" });
     fireEvent.change(spriteY, { target: { value: "-48" } });
-    expect(await screen.findByText("-48px")).toBeInTheDocument();
+    expect(await within(config).findByText("-48px")).toBeInTheDocument();
 
-    const windowScale = screen.getByRole("slider", { name: "Window scale" });
+    const windowScale = within(config).getByRole("slider", { name: "Chat UI window size" });
     fireEvent.change(windowScale, { target: { value: "1.1" } });
-    expect(await screen.findByText("110%")).toBeInTheDocument();
+    expect(await within(config).findByText("110%")).toBeInTheDocument();
 
     await waitFor(() => {
       const stage = document.querySelector(".chat-stage") as HTMLElement;
       expect(stage.style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe("0.55");
+      expect(stage.style.getPropertyValue("--chat-dialog-runtime-scale")).toBe("1.05");
+      expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1144px");
       expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-x")).toBe("72px");
       expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-y")).toBe("-48px");
-      expect(stage.style.getPropertyValue("--chat-window-runtime-scale")).toBe("1.1");
-      const sprite = document.querySelector(".sprite-layer__figure") as HTMLElement;
-      expect(sprite.style.getPropertyValue("--sprite-scale")).toBe("1.35");
+      expect(stage.style.getPropertyValue("--chat-ui-runtime-width")).toBe("1232px");
+      expect(stage.style.getPropertyValue("--chat-ui-window-scale")).toBe("1.1");
+      const sprites = document.querySelectorAll<HTMLElement>(".sprite-layer__figure");
+      expect(sprites[0]?.style.getPropertyValue("--sprite-scale")).toBe("1.35");
+      expect(sprites[1]?.style.getPropertyValue("--sprite-scale")).toBe("0.8");
     });
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
       dialogOpacity: 0.55,
-      spriteScale: 1.35,
+      dialogScale: 1.05,
+      spriteScales: {
+        mio: 1.35,
+        ren: 0.8,
+      },
       spriteOffsetX: 72,
       spriteOffsetY: -48,
       typewriterCps: 96,
@@ -364,11 +391,23 @@ describe("ChatStagePage", () => {
   });
 
   it("loads persisted runtime config before opening chat config", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        sprites: [
+          { id: "mio", label: "Mio", path: "asset://mio.png" },
+          { id: "ren", label: "Ren", path: "asset://ren.png" },
+        ],
+      }),
+    );
     window.localStorage.setItem(
       "shinsekai-chat-stage-runtime-config",
       JSON.stringify({
         dialogOpacity: 0.65,
-        spriteScale: 1.4,
+        dialogScale: 1.1,
+        spriteScales: {
+          mio: 1.4,
+          ren: 0.75,
+        },
         spriteOffsetX: 36,
         spriteOffsetY: -24,
         typewriterCps: 42,
@@ -383,19 +422,24 @@ describe("ChatStagePage", () => {
     expect(stage.style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe("0.65");
     expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-x")).toBe("36px");
     expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-y")).toBe("-24px");
-    expect(stage.style.getPropertyValue("--chat-window-runtime-scale")).toBe("1.15");
-    expect(
-      (document.querySelector(".sprite-layer__figure") as HTMLElement).style.getPropertyValue("--sprite-scale"),
-    ).toBe("1.4");
+    expect(stage.style.getPropertyValue("--chat-dialog-runtime-scale")).toBe("1.1");
+    expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1196px");
+    expect(stage.style.getPropertyValue("--chat-ui-runtime-width")).toBe("1288px");
+    const sprites = document.querySelectorAll<HTMLElement>(".sprite-layer__figure");
+    expect(sprites[0]?.style.getPropertyValue("--sprite-scale")).toBe("1.4");
+    expect(sprites[1]?.style.getPropertyValue("--sprite-scale")).toBe("0.75");
 
     fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
+    const config = screen.getByRole("dialog", { name: "Chat config" });
 
-    expect(screen.getByRole("slider", { name: "Text speed" })).toHaveValue("42");
-    expect(screen.getByRole("slider", { name: "Dialog opacity" })).toHaveValue("0.65");
-    expect(screen.getByRole("slider", { name: "Sprite scale" })).toHaveValue("1.4");
-    expect(screen.getByRole("slider", { name: "Sprite X" })).toHaveValue("36");
-    expect(screen.getByRole("slider", { name: "Sprite Y" })).toHaveValue("-24");
-    expect(screen.getByRole("slider", { name: "Window scale" })).toHaveValue("1.15");
+    expect(within(config).getByRole("slider", { name: "Text speed" })).toHaveValue("42");
+    expect(within(config).getByRole("slider", { name: "Dialog opacity" })).toHaveValue("0.65");
+    expect(within(config).getByRole("slider", { name: "Dialog size" })).toHaveValue("1.1");
+    expect(within(config).getByRole("slider", { name: "Sprite scale: Mio" })).toHaveValue("1.4");
+    expect(within(config).getByRole("slider", { name: "Sprite scale: Ren" })).toHaveValue("0.75");
+    expect(within(config).getByRole("slider", { name: "Sprite X" })).toHaveValue("36");
+    expect(within(config).getByRole("slider", { name: "Sprite Y" })).toHaveValue("-24");
+    expect(within(config).getByRole("slider", { name: "Chat UI window size" })).toHaveValue("1.15");
   });
 
   it("loads runtime history into the dialog and sends revert-history after confirmation", async () => {
