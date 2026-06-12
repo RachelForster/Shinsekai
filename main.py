@@ -1,7 +1,11 @@
 import os
+from contextlib import contextmanager
 from pathlib import Path
 import signal
 import sys
+import time
+
+_PROCESS_STARTED_AT = time.perf_counter()
 
 # Frozen standalone keeps the old release-root data behavior. Desktop bridge
 # launches can provide EASYAI_PROJECT_ROOT to keep chat data under app data.
@@ -56,6 +60,7 @@ configure_logging("chat", project_root=os.environ.get("EASYAI_PROJECT_ROOT") or 
 logger = get_logger(__name__)
 install_main_exception_hook(app_name="Shinsekai Chat", logger=logger)
 
+_STARTUP_IMPORTS_STARTED_AT = time.perf_counter()
 import llm.tools.character_tools
 import llm.tools.memory_tools
 import llm.tools.tool_search
@@ -95,6 +100,14 @@ from core.sprite.chat_ui_service import (
 )
 from core.sprite.initial_sprite import display_initial_sprite
 from core.sprite.sprite_cli import parse_sprite_args
+logger.info(
+    "Chat startup imports completed",
+    extra={
+        "event": "chat.startup.imports.completed",
+        "duration_ms": round((time.perf_counter() - _STARTUP_IMPORTS_STARTED_AT) * 1000, 2),
+        "process_elapsed_ms": round((time.perf_counter() - _PROCESS_STARTED_AT) * 1000, 2),
+    },
+)
 try:
     from live.danmuku_handler import start_bilibili_service
 except ImportError as e:
@@ -123,6 +136,37 @@ def _log_shutdown_error(step: str, exc: Exception) -> None:
         extra={"event": "chat.shutdown.failed", "step": step},
         exc_info=(type(exc), exc, exc.__traceback__),
     )
+
+
+@contextmanager
+def _startup_phase(step: str):
+    started = time.perf_counter()
+    logger.info(
+        "Chat startup step started",
+        extra={"event": "chat.startup.step.started", "step": step},
+    )
+    try:
+        yield
+    except Exception as exc:
+        logger.exception(
+            "Chat startup step failed",
+            extra={
+                "event": "chat.startup.step.failed",
+                "step": step,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise
+    else:
+        logger.info(
+            "Chat startup step completed",
+            extra={
+                "event": "chat.startup.step.completed",
+                "step": step,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            },
+        )
 
 
 def _install_interrupt_handlers():
