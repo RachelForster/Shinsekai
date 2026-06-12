@@ -347,7 +347,7 @@ describe("chatStageReducer", () => {
     expect(hidden.layers.busy).toBe(false);
   });
 
-  it("updates numeric status text and clears sprites by character name", () => {
+  it("updates token usage text and clears sprites by character name", () => {
     const withSprite = chatStageReducer(emptyChatState, {
       event: {
         characterName: "Mio",
@@ -375,7 +375,8 @@ describe("chatStageReducer", () => {
       type: "event",
     });
     const viewModel = buildChatStageViewModel(withNumeric);
-    expect(viewModel.statusText).toBe("tokens\n42");
+    expect(viewModel.statusText).toBe("idle");
+    expect(viewModel.tokenUsageText).toBe("tokens\n42");
 
     const withoutSprite = chatStageReducer(withNumeric, {
       event: {
@@ -389,6 +390,99 @@ describe("chatStageReducer", () => {
     });
     expect(withoutSprite.sprites).toEqual([]);
     expect(withoutSprite.layers.sprites).toBe(false);
+  });
+
+  it("ignores runtime status labels when building token usage text", () => {
+    const streaming = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        status: "streaming",
+        ts: 1,
+        type: "status.change",
+        v: 1,
+      },
+      type: "event",
+    });
+    const withStatusNumeric = chatStageReducer(streaming, {
+      event: {
+        html: "streaming",
+        seq: 2,
+        ts: 2,
+        type: "numeric.update",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(buildChatStageViewModel(withStatusNumeric).tokenUsageText).toBeUndefined();
+    expect(buildChatStageViewModel(withStatusNumeric).statusText).toBe("streaming");
+  });
+
+  it("projects command feedback into notifications instead of the dialog layer", () => {
+    const state = chatStageReducer(emptyChatState, {
+      snapshot: {
+        characterName: "",
+        dialogText: "已跳过当前语音。",
+        eventSeq: 1,
+        inputDraft: "",
+        options: [],
+        sprites: [],
+        status: "idle",
+        statusMessage: "已跳过当前语音。",
+      },
+      type: "hydrate",
+    });
+
+    const viewModel = buildChatStageViewModel(state);
+
+    expect(viewModel.layers.dialog).toBe(false);
+    expect(viewModel.dialogText).toBe("");
+    expect(viewModel.layers.notification).toBe(true);
+    expect(viewModel.notificationText).toBe("已跳过当前语音。");
+  });
+
+  it("routes speakerless system dialog events to notifications", () => {
+    const state = chatStageReducer(emptyChatState, {
+      event: {
+        color: "#fff",
+        fullHtml: "<p>等待对话开始</p>",
+        isSystem: true,
+        seq: 1,
+        speaker: "",
+        ts: 1,
+        type: "dialog.end",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    const viewModel = buildChatStageViewModel(state);
+
+    expect(viewModel.layers.dialog).toBe(false);
+    expect(viewModel.notificationText).toBe("等待对话开始");
+  });
+
+  it("keeps named system narrators in the dialog layer", () => {
+    const state = chatStageReducer(emptyChatState, {
+      event: {
+        color: "#fff",
+        fullHtml: "<p><b>旁白</b>：等待对话开始</p>",
+        isSystem: true,
+        seq: 1,
+        speaker: "旁白",
+        ts: 1,
+        type: "dialog.end",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    const viewModel = buildChatStageViewModel(state);
+
+    expect(viewModel.layers.dialog).toBe(true);
+    expect(viewModel.dialogCharacterName).toBe("旁白");
+    expect(viewModel.dialogText).toContain("等待对话开始");
+    expect(viewModel.layers.notification).toBe(false);
   });
 
   it("lets reply.finished and status.change control runtime status without fighting each other", () => {

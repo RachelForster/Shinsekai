@@ -58,6 +58,7 @@ export interface ChatStageViewModel {
   sprites: ChatStageSprite[];
   status: ChatRuntimeStatus;
   statusText: string;
+  tokenUsageText?: string;
   transportMode: ChatTransportMode;
   transportState: ChatTransportState;
   userDisplayName: string;
@@ -103,6 +104,41 @@ function escapeRegExp(value: string) {
 
 function normalizedUserDisplayName(value?: string) {
   return value?.trim() || defaultUserDialogSpeaker;
+}
+
+function isSystemPromptText(value: string) {
+  const text = value.trim();
+  if (!text) {
+    return false;
+  }
+  return /^(已跳过|已选择|选择：|历史|浏览器预览历史|语音识别|正在请求|聊天会话|您的消息已提交|进程已经|当前聊天会话|实时聊天会话)/.test(
+    text,
+  );
+}
+
+function normalizeTokenUsageText(value: string | undefined, status: ChatRuntimeStatus) {
+  const text = value?.trim();
+  if (!text || text === status) {
+    return undefined;
+  }
+  if (/^(idle|listening|paused|generating|streaming|speaking|error)$/i.test(text)) {
+    return undefined;
+  }
+  return text;
+}
+
+function systemPromptTextFromState(state: ChatStageState, dialogText: string) {
+  if (state.error) {
+    return state.error;
+  }
+  const statusMessage = state.statusMessage?.trim();
+  if (statusMessage && !state.characterName?.trim()) {
+    return statusMessage;
+  }
+  if (!state.characterName?.trim() && state.dialogHtml === undefined && isSystemPromptText(dialogText)) {
+    return dialogText.trim();
+  }
+  return undefined;
 }
 
 function userDialogPrefixPattern(userDisplayName: string) {
@@ -274,12 +310,16 @@ function applyStageEvent(state: ChatStageState, event: ChatStageEvent): ChatStag
     case "dialog.end":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
-        characterName: event.isSystem ? undefined : event.speaker,
-        dialogHtml: event.fullHtml,
-        dialogText: htmlToText(event.fullHtml),
         eventSeq: Math.max(state.eventSeq, event.seq),
         error: undefined,
-        options: event.speaker.trim() || !event.isSystem ? [] : state.options,
+        ...(event.isSystem && !event.speaker.trim()
+          ? { notificationText: htmlToText(event.fullHtml) }
+          : {
+              characterName: event.speaker,
+              dialogHtml: event.fullHtml,
+              dialogText: htmlToText(event.fullHtml),
+              options: [],
+            }),
       });
     case "user.display_name.change":
       return withResolvedLayers({
@@ -452,21 +492,29 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     state.error ? undefined : state.dialogHtml,
     state.userDisplayName,
   );
+  const tokenUsageText = normalizeTokenUsageText(state.numericInfo, state.status);
+  const systemPromptText = systemPromptTextFromState(state, dialog.dialogText);
+  const layers = {
+    ...state.layers,
+    dialog: state.layers.dialog && !systemPromptText && Boolean(dialog.dialogHtml || dialog.dialogText),
+    notification: Boolean(state.notificationText || systemPromptText),
+  };
   return {
     backgroundPath: state.backgroundPath,
     busyText: state.busyText,
     cgPath: state.cgPath,
-    dialogCharacterName: dialog.characterName,
-    dialogHtml: dialog.dialogHtml,
-    dialogText: dialog.dialogText,
+    dialogCharacterName: systemPromptText ? undefined : dialog.characterName,
+    dialogHtml: systemPromptText ? undefined : dialog.dialogHtml,
+    dialogText: systemPromptText ? "" : dialog.dialogText,
     inputDisabled: !state.layers.input || state.status === "generating" || state.status === "streaming",
     inputDraft: state.inputDraft,
-    layers: state.layers,
-    notificationText: state.notificationText,
+    layers,
+    notificationText: state.notificationText || systemPromptText,
     options: state.options,
     sprites: state.sprites,
     status: state.status,
-    statusText: state.numericInfo ?? state.status,
+    statusText: state.status,
+    tokenUsageText,
     transportMode: state.transportMode,
     transportState: state.transportState,
     userDisplayName: normalizedUserDisplayName(state.userDisplayName),
