@@ -85,10 +85,6 @@ function renderPage() {
   );
 }
 
-async function openToolbarMenu() {
-  fireEvent.click(await screen.findByRole("button", { name: "Chat tools" }));
-}
-
 describe("ChatStagePage http platform integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -149,7 +145,6 @@ describe("ChatStagePage http platform integration", () => {
 
     await screen.findByText("聊天会话已结束。");
     expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
-    await openToolbarMenu();
     expect(screen.getByRole("button", { name: "Resume ASR" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Resume ASR" }));

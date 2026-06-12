@@ -104,10 +104,6 @@ function renderPage(initialEntries = ["/"]) {
   );
 }
 
-async function openToolbarMenu() {
-  fireEvent.click(await screen.findByRole("button", { name: "Chat tools" }));
-}
-
 describe("ChatStagePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -241,7 +237,7 @@ describe("ChatStagePage", () => {
   it("requires confirmation before clearing chat history", async () => {
     renderPage();
 
-    await openToolbarMenu();
+    await screen.findByText("Ready");
     fireEvent.click(await screen.findByRole("button", { name: "Clear history" }));
     expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "clear-history" });
 
@@ -256,7 +252,6 @@ describe("ChatStagePage", () => {
 
     renderPage();
 
-    await openToolbarMenu();
     fireEvent.click(await screen.findByRole("button", { name: "Resume ASR" }));
 
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
@@ -266,7 +261,6 @@ describe("ChatStagePage", () => {
     renderPage();
 
     expect(await screen.findByText("Snapshot")).toBeInTheDocument();
-    await openToolbarMenu();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
 
@@ -287,7 +281,6 @@ describe("ChatStagePage", () => {
     await screen.findByText("Ready");
     expect(screen.queryByText("idle / 2")).not.toBeInTheDocument();
 
-    await openToolbarMenu();
     fireEvent.click(screen.getByRole("button", { name: "Token usage" }));
 
     const tokenLayer = document.querySelector(".token-usage-layer") as HTMLElement;
@@ -301,30 +294,29 @@ describe("ChatStagePage", () => {
     expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "false");
   });
 
-  it("moves core chat actions into the stage action bar", async () => {
+  it("renders core chat actions inside the dialog controls", async () => {
     renderPage();
 
     await screen.findByText("Ready");
-    const actionBar = screen.getByRole("toolbar", { name: "Chat stage actions" });
+    const dialog = document.querySelector(".dialog-layer") as HTMLElement;
+    const actionBar = within(dialog).getByRole("toolbar", { name: "Chat stage actions" });
     expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("LOG");
     expect(within(actionBar).getByRole("button", { name: "Skip" })).toHaveTextContent("SKIP");
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
     expect(within(actionBar).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
     expect(within(actionBar).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
+    expect(within(actionBar).getByRole("button", { name: "Chat config" })).toHaveTextContent("CONFIG");
 
-    await openToolbarMenu();
-    const toolbarPanel = document.querySelector(".floating-toolbar__panel") as HTMLElement;
-    expect(within(toolbarPanel).queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
-    expect(within(toolbarPanel).queryByRole("button", { name: "Clear history" })).not.toBeInTheDocument();
-    expect(within(toolbarPanel).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
-    expect(within(toolbarPanel).getByRole("button", { name: "Chat config" })).toBeInTheDocument();
+    const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
+    expect(within(topTools).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
+    expect(within(topTools).queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
   });
 
   it("applies runtime text speed and dialog opacity from chat config", async () => {
     renderPage();
 
-    await openToolbarMenu();
-    fireEvent.click(await screen.findByRole("button", { name: "Chat config" }));
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
 
     expect(screen.queryByRole("button", { name: "Manage themes" })).not.toBeInTheDocument();
 
@@ -336,6 +328,10 @@ describe("ChatStagePage", () => {
     fireEvent.change(dialogOpacity, { target: { value: "0.55" } });
     expect(await screen.findByText("55%")).toBeInTheDocument();
 
+    const spriteScale = screen.getByRole("slider", { name: "Sprite scale" });
+    fireEvent.change(spriteScale, { target: { value: "1.35" } });
+    expect(await screen.findByText("135%")).toBeInTheDocument();
+
     const spriteX = screen.getByRole("slider", { name: "Sprite X" });
     fireEvent.change(spriteX, { target: { value: "72" } });
     expect(await screen.findByText("72px")).toBeInTheDocument();
@@ -344,24 +340,40 @@ describe("ChatStagePage", () => {
     fireEvent.change(spriteY, { target: { value: "-48" } });
     expect(await screen.findByText("-48px")).toBeInTheDocument();
 
+    const windowScale = screen.getByRole("slider", { name: "Window scale" });
+    fireEvent.change(windowScale, { target: { value: "1.1" } });
+    expect(await screen.findByText("110%")).toBeInTheDocument();
+
     await waitFor(() => {
       const stage = document.querySelector(".chat-stage") as HTMLElement;
       expect(stage.style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe("0.55");
       expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-x")).toBe("72px");
       expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-y")).toBe("-48px");
+      expect(stage.style.getPropertyValue("--chat-window-runtime-scale")).toBe("1.1");
+      const sprite = document.querySelector(".sprite-layer__figure") as HTMLElement;
+      expect(sprite.style.getPropertyValue("--sprite-scale")).toBe("1.35");
     });
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
       dialogOpacity: 0.55,
+      spriteScale: 1.35,
       spriteOffsetX: 72,
       spriteOffsetY: -48,
       typewriterCps: 96,
+      windowScale: 1.1,
     });
   });
 
   it("loads persisted runtime config before opening chat config", async () => {
     window.localStorage.setItem(
       "shinsekai-chat-stage-runtime-config",
-      JSON.stringify({ dialogOpacity: 0.65, spriteOffsetX: 36, spriteOffsetY: -24, typewriterCps: 42 }),
+      JSON.stringify({
+        dialogOpacity: 0.65,
+        spriteScale: 1.4,
+        spriteOffsetX: 36,
+        spriteOffsetY: -24,
+        typewriterCps: 42,
+        windowScale: 1.15,
+      }),
     );
 
     renderPage();
@@ -371,20 +383,24 @@ describe("ChatStagePage", () => {
     expect(stage.style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe("0.65");
     expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-x")).toBe("36px");
     expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-y")).toBe("-24px");
+    expect(stage.style.getPropertyValue("--chat-window-runtime-scale")).toBe("1.15");
+    expect(
+      (document.querySelector(".sprite-layer__figure") as HTMLElement).style.getPropertyValue("--sprite-scale"),
+    ).toBe("1.4");
 
-    await openToolbarMenu();
     fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
 
     expect(screen.getByRole("slider", { name: "Text speed" })).toHaveValue("42");
     expect(screen.getByRole("slider", { name: "Dialog opacity" })).toHaveValue("0.65");
+    expect(screen.getByRole("slider", { name: "Sprite scale" })).toHaveValue("1.4");
     expect(screen.getByRole("slider", { name: "Sprite X" })).toHaveValue("36");
     expect(screen.getByRole("slider", { name: "Sprite Y" })).toHaveValue("-24");
+    expect(screen.getByRole("slider", { name: "Window scale" })).toHaveValue("1.15");
   });
 
   it("loads runtime history into the dialog and sends revert-history after confirmation", async () => {
     renderPage();
 
-    await openToolbarMenu();
     fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
 
     await waitFor(() => expect(mocks.getChatHistory).toHaveBeenCalledTimes(1));
@@ -593,7 +609,6 @@ describe("ChatStagePage", () => {
     await screen.findByText("聊天会话已结束。");
     expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
 
-    await openToolbarMenu();
     fireEvent.click(screen.getByRole("button", { name: "Resume ASR" }));
 
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
@@ -612,7 +627,6 @@ describe("ChatStagePage", () => {
 
     renderPage();
     await screen.findByText("Ready");
-    await openToolbarMenu();
     fireEvent.click(screen.getByRole("button", { name: "Close chat" }));
 
     await waitFor(() => expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1));
@@ -645,7 +659,7 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Minimize" }));
     fireEvent.click(screen.getByRole("button", { name: "Maximize" }));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    fireEvent.mouseDown(container.querySelector(".desktop-chat-controls__drag")!, { button: 0 });
+    fireEvent.mouseDown(container.querySelector(".top-stage-tools__drag")!, { button: 0 });
 
     await waitFor(() => expect(desktopApiMocks.minimizeDesktopWindow).toHaveBeenCalledTimes(1));
     expect(desktopApiMocks.toggleMaximizeDesktopWindow).toHaveBeenCalledTimes(1);

@@ -136,7 +136,12 @@ export interface AdapterCatalog {
   tts: AdapterOption[];
 }
 
-export type PluginSlotId = "chat-output" | "chat-toolbar" | "settings-extension" | "settings-tools";
+export type PluginSlotId =
+  | "chat-dialog-actions"
+  | "chat-output"
+  | "chat-toolbar"
+  | "settings-extension"
+  | "settings-tools";
 
 export interface PluginManifest {
   author: string;
@@ -738,9 +743,7 @@ export interface ChatCommand {
     | "submit-option";
 }
 
-export type ChatRealtimeCommandType =
-  | Exclude<ChatCommand["type"], "copy-history" | "open-history">
-  | "revert-history";
+export type ChatRealtimeCommandType = Exclude<ChatCommand["type"], "copy-history" | "open-history"> | "revert-history";
 
 /** 上行命令（React→server，WebSocket），沿用并扩展 ChatCommand。 */
 export interface ChatUpstreamCommand {
@@ -763,7 +766,13 @@ interface ChatEventBase {
 export type ChatStageEvent =
   | (ChatEventBase & { type: "snapshot"; snapshot: ChatSnapshot })
   | (ChatEventBase & { type: "transport.state"; state: ChatTransportState; transport: ChatTransportMode })
-  | (ChatEventBase & { type: "cmd.ack"; cmdId: string; commandType: ChatRealtimeCommandType; error?: string; ok: boolean })
+  | (ChatEventBase & {
+      type: "cmd.ack";
+      cmdId: string;
+      commandType: ChatRealtimeCommandType;
+      error?: string;
+      ok: boolean;
+    })
   | (ChatEventBase & { type: "dialog.end"; speaker: string; color: string; isSystem: boolean; fullHtml: string })
   | (ChatEventBase & { type: "user.display_name.change"; name: string })
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })

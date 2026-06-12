@@ -12,6 +12,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type SyntheticEvent,
 } from "react";
 import {
@@ -24,7 +25,6 @@ import {
   Mic,
   MicOff,
   Minus,
-  MoreHorizontal,
   RotateCcw,
   Send,
   SlidersHorizontal,
@@ -182,22 +182,32 @@ const runtimeTextSpeedMax = 200;
 const runtimeDialogOpacityMin = 0.35;
 const runtimeDialogOpacityMax = 1;
 const runtimeDialogOpacityStep = 0.05;
+const runtimeSpriteScaleMin = 0;
+const runtimeSpriteScaleMax = 3;
+const runtimeSpriteScaleStep = 0.05;
 const runtimeSpriteOffsetMin = -240;
 const runtimeSpriteOffsetMax = 240;
 const runtimeSpriteOffsetStep = 4;
+const runtimeWindowScaleMin = 0.8;
+const runtimeWindowScaleMax = 1.2;
+const runtimeWindowScaleStep = 0.05;
 
 interface ChatStageRuntimeConfig {
   dialogOpacity: number;
+  spriteScale: number;
   spriteOffsetX: number;
   spriteOffsetY: number;
   typewriterCps: number | null;
+  windowScale: number;
 }
 
 const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   dialogOpacity: 1,
+  spriteScale: 1,
   spriteOffsetX: 0,
   spriteOffsetY: 0,
   typewriterCps: null,
+  windowScale: 1,
 };
 
 function clampRuntimeNumber(value: unknown, fallback: number, min: number, max: number) {
@@ -236,6 +246,12 @@ function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
                 runtimeTextSpeedMax,
               ),
             ),
+      spriteScale: clampRuntimeNumber(
+        parsed.spriteScale,
+        defaultChatStageRuntimeConfig.spriteScale,
+        runtimeSpriteScaleMin,
+        runtimeSpriteScaleMax,
+      ),
       spriteOffsetX: Math.round(
         clampRuntimeNumber(
           parsed.spriteOffsetX,
@@ -251,6 +267,12 @@ function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
           runtimeSpriteOffsetMin,
           runtimeSpriteOffsetMax,
         ),
+      ),
+      windowScale: clampRuntimeNumber(
+        parsed.windowScale,
+        defaultChatStageRuntimeConfig.windowScale,
+        runtimeWindowScaleMin,
+        runtimeWindowScaleMax,
       ),
     };
   } catch {
@@ -319,7 +341,15 @@ function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
   );
 }
 
-function SpriteLayer({ hidden, sprites }: { hidden: boolean; sprites: ChatStageSprite[] }) {
+function SpriteLayer({
+  hidden,
+  runtimeScale,
+  sprites,
+}: {
+  hidden: boolean;
+  runtimeScale: number;
+  sprites: ChatStageSprite[];
+}) {
   return (
     <div
       aria-hidden={hidden}
@@ -338,7 +368,7 @@ function SpriteLayer({ hidden, sprites }: { hidden: boolean; sprites: ChatStageS
               "--sprite-index": index,
               "--sprite-offset-x": `${sprite.x ?? 0}px`,
               "--sprite-offset-y": `${sprite.y ?? 0}px`,
-              "--sprite-scale": sprite.scale ?? 1,
+              "--sprite-scale": (sprite.scale ?? 1) * runtimeScale,
             } as CSSProperties
           }
         >
@@ -352,6 +382,7 @@ function SpriteLayer({ hidden, sprites }: { hidden: boolean; sprites: ChatStageS
 function DialogLayer({
   canAdvance,
   characterName,
+  controls,
   hidden,
   html,
   onAdvance,
@@ -361,6 +392,7 @@ function DialogLayer({
 }: {
   canAdvance: boolean;
   characterName?: string;
+  controls?: ReactNode;
   hidden: boolean;
   html?: string;
   onAdvance?: () => void;
@@ -385,6 +417,7 @@ function DialogLayer({
         <p className="dialog-layer__text">{text}</p>
       )}
       <PluginSlot slot="chat-output" />
+      {controls}
     </section>
   );
 }
@@ -477,48 +510,6 @@ function TokenUsageLayer({ hidden, text }: { hidden: boolean; text?: string }) {
         )}
       </div>
     </section>
-  );
-}
-
-function StandaloneDesktopWindowControls({ hidden }: { hidden: boolean }) {
-  const { t } = useI18n();
-
-  if (hidden) {
-    return null;
-  }
-
-  const runWindowAction = (action: () => Promise<void>) => {
-    void action().catch((error) => {
-      console.error("Desktop chat window action failed", error);
-    });
-  };
-
-  const handleDragStart = (event: MouseEvent<HTMLElement>) => {
-    if (event.button !== 0) {
-      return;
-    }
-    void startDesktopWindowDrag().catch((error) => {
-      console.error("Desktop chat window drag failed", error);
-    });
-  };
-
-  return (
-    <div className="desktop-chat-controls" data-chat-stage-hitbox="true">
-      <div className="desktop-chat-controls__drag" data-tauri-drag-region onMouseDown={handleDragStart}>
-        <GripHorizontal aria-hidden className="desktop-chat-controls__drag-icon" />
-      </div>
-      <div className="desktop-chat-controls__buttons">
-        <IconButton label={t("desktop.titlebar.minimize")} onClick={() => runWindowAction(minimizeDesktopWindow)}>
-          <Minus aria-hidden className="icon-button__icon" />
-        </IconButton>
-        <IconButton label={t("desktop.titlebar.maximize")} onClick={() => runWindowAction(toggleMaximizeDesktopWindow)}>
-          <Maximize2 aria-hidden className="icon-button__icon" />
-        </IconButton>
-        <IconButton label={t("desktop.titlebar.close")} onClick={() => runWindowAction(closeDesktopWindow)}>
-          <X aria-hidden className="icon-button__icon" />
-        </IconButton>
-      </div>
-    </div>
   );
 }
 
@@ -741,98 +732,160 @@ function HistoryDialog({
   );
 }
 
-function FloatingToolbar({
-  configOpen,
-  dialogOpacity,
+function TopStageTools({
   hidden,
-  open,
-  onCommand,
-  onConfigOpenChange,
-  onDialogOpacityChange,
-  onOpenChange,
-  onSpriteOffsetXChange,
-  onSpriteOffsetYChange,
-  onTextSpeedChange,
   onTokenUsageOpenChange,
+  standaloneDesktopWindow,
   status,
-  spriteOffsetX,
-  spriteOffsetY,
-  textSpeed,
   tokenUsageAvailable,
   tokenUsageOpen,
   transportMode,
   transportState,
-  voiceLanguage,
 }: {
-  configOpen: boolean;
-  dialogOpacity: number;
   hidden: boolean;
-  open: boolean;
-  onCommand: (command: ChatCommand) => void;
-  onConfigOpenChange: (open: boolean) => void;
-  onDialogOpacityChange: (value: number) => void;
-  onOpenChange: (open: boolean) => void;
-  onSpriteOffsetXChange: (value: number) => void;
-  onSpriteOffsetYChange: (value: number) => void;
-  onTextSpeedChange: (value: number) => void;
   onTokenUsageOpenChange: (open: boolean) => void;
+  standaloneDesktopWindow: boolean;
   status: string;
-  spriteOffsetX: number;
-  spriteOffsetY: number;
-  textSpeed: number;
   tokenUsageAvailable: boolean;
   tokenUsageOpen: boolean;
   transportMode: ChatTransportMode;
   transportState: ChatTransportState;
-  voiceLanguage: string;
 }) {
   const { t } = useI18n();
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const dialogOpacityPercent = Math.round(dialogOpacity * 100);
-  const setToolsOpen = useCallback(
-    (nextOpen: boolean) => {
-      onOpenChange(nextOpen);
-      if (!nextOpen) {
-        onConfigOpenChange(false);
-      }
-    },
-    [onConfigOpenChange, onOpenChange],
-  );
-
-  useEffect(() => {
-    if (hidden || !open) {
-      return;
-    }
-
-    const closeIfOutside = (event: globalThis.PointerEvent) => {
-      const target = eventTargetElement(event.target);
-      if (!target) {
-        return;
-      }
-      if (toolbarRef.current?.contains(target)) {
-        return;
-      }
-      if (target.closest(".custom-select__menu, .dialog-backdrop")) {
-        return;
-      }
-      setToolsOpen(false);
-    };
-
-    document.addEventListener("pointerdown", closeIfOutside, true);
-    return () => {
-      document.removeEventListener("pointerdown", closeIfOutside, true);
-    };
-  }, [hidden, open, setToolsOpen]);
 
   if (hidden) {
     return null;
   }
 
   const transportText = transportStatusText(t, transportState, transportMode);
-  const closeToolsWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      setToolsOpen(false);
+  const runWindowAction = (action: () => Promise<void>) => {
+    void action().catch((error) => {
+      console.error("Desktop chat window action failed", error);
+    });
+  };
+
+  const handleDragStart = (event: MouseEvent<HTMLElement>) => {
+    if (event.button !== 0) {
+      return;
     }
+    void startDesktopWindowDrag().catch((error) => {
+      console.error("Desktop chat window drag failed", error);
+    });
+  };
+
+  return (
+    <div
+      className="top-stage-tools"
+      data-chat-stage-hitbox="true"
+      data-transport-mode={transportMode}
+      data-transport-state={transportState}
+    >
+      <div className="top-stage-tools__status">
+        <span className="top-stage-tools__transport">{transportText}</span>
+        <span className="top-stage-tools__state">{status}</span>
+      </div>
+      <IconButton
+        aria-pressed={tokenUsageOpen}
+        className="top-stage-tools__button"
+        data-active={tokenUsageOpen ? "true" : "false"}
+        disabled={!tokenUsageAvailable}
+        label={t("chat.toolbar.tokens")}
+        onClick={() => onTokenUsageOpenChange(!tokenUsageOpen)}
+      >
+        <Activity aria-hidden className="icon-button__icon" />
+      </IconButton>
+      {standaloneDesktopWindow ? (
+        <>
+          <button
+            aria-label={t("desktop.titlebar.drag")}
+            className="top-stage-tools__drag"
+            data-tauri-drag-region
+            onMouseDown={handleDragStart}
+            type="button"
+          >
+            <GripHorizontal aria-hidden className="top-stage-tools__drag-icon" />
+          </button>
+          <IconButton
+            className="top-stage-tools__button"
+            label={t("desktop.titlebar.minimize")}
+            onClick={() => runWindowAction(minimizeDesktopWindow)}
+          >
+            <Minus aria-hidden className="icon-button__icon" />
+          </IconButton>
+          <IconButton
+            className="top-stage-tools__button"
+            label={t("desktop.titlebar.maximize")}
+            onClick={() => runWindowAction(toggleMaximizeDesktopWindow)}
+          >
+            <Maximize2 aria-hidden className="icon-button__icon" />
+          </IconButton>
+          <IconButton
+            className="top-stage-tools__button"
+            label={t("desktop.titlebar.close")}
+            onClick={() => runWindowAction(closeDesktopWindow)}
+          >
+            <X aria-hidden className="icon-button__icon" />
+          </IconButton>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function DialogStageControls({
+  asrPaused,
+  closeLabel,
+  configOpen,
+  dialogOpacity,
+  hideCloseButton,
+  onCloseSurface,
+  onCommand,
+  onConfigOpenChange,
+  onDialogOpacityChange,
+  onOpenHistory,
+  onSpriteOffsetXChange,
+  onSpriteOffsetYChange,
+  onSpriteScaleChange,
+  onTextSpeedChange,
+  onWindowScaleChange,
+  spriteOffsetX,
+  spriteOffsetY,
+  spriteScale,
+  textSpeed,
+  voiceLanguage,
+  windowScale,
+}: {
+  asrPaused: boolean;
+  closeLabel: string;
+  configOpen: boolean;
+  dialogOpacity: number;
+  hideCloseButton: boolean;
+  onCloseSurface: () => void;
+  onCommand: (command: ChatCommand) => void;
+  onConfigOpenChange: (open: boolean) => void;
+  onDialogOpacityChange: (value: number) => void;
+  onOpenHistory: () => void;
+  onSpriteOffsetXChange: (value: number) => void;
+  onSpriteOffsetYChange: (value: number) => void;
+  onSpriteScaleChange: (value: number) => void;
+  onTextSpeedChange: (value: number) => void;
+  onWindowScaleChange: (value: number) => void;
+  spriteOffsetX: number;
+  spriteOffsetY: number;
+  spriteScale: number;
+  textSpeed: number;
+  voiceLanguage: string;
+  windowScale: number;
+}) {
+  const { t } = useI18n();
+  const dialogOpacityPercent = Math.round(dialogOpacity * 100);
+  const spriteScalePercent = Math.round(spriteScale * 100);
+  const windowScalePercent = Math.round(windowScale * 100);
+  const stopDialogActionPropagation = (event: MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+  const stopDialogPointerPropagation = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.stopPropagation();
   };
   const handleTextSpeedChange = (event: ChangeEvent<HTMLInputElement>) => {
     onTextSpeedChange(
@@ -846,202 +899,36 @@ function FloatingToolbar({
   };
   const handleSpriteOffsetXChange = (event: ChangeEvent<HTMLInputElement>) => {
     onSpriteOffsetXChange(
-      Math.round(
-        clampRuntimeNumber(event.target.value, spriteOffsetX, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax),
-      ),
+      Math.round(clampRuntimeNumber(event.target.value, spriteOffsetX, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax)),
     );
   };
   const handleSpriteOffsetYChange = (event: ChangeEvent<HTMLInputElement>) => {
     onSpriteOffsetYChange(
-      Math.round(
-        clampRuntimeNumber(event.target.value, spriteOffsetY, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax),
-      ),
+      Math.round(clampRuntimeNumber(event.target.value, spriteOffsetY, runtimeSpriteOffsetMin, runtimeSpriteOffsetMax)),
     );
   };
+  const handleSpriteScaleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onSpriteScaleChange(
+      clampRuntimeNumber(event.target.value, spriteScale, runtimeSpriteScaleMin, runtimeSpriteScaleMax),
+    );
+  };
+  const handleWindowScaleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onWindowScaleChange(
+      clampRuntimeNumber(event.target.value, windowScale, runtimeWindowScaleMin, runtimeWindowScaleMax),
+    );
+  };
+
   return (
     <div
-      className="floating-toolbar"
+      className="dialog-stage-controls"
       data-chat-stage-hitbox="true"
-      data-open={open ? "true" : "false"}
-      data-transport-mode={transportMode}
-      data-transport-state={transportState}
-      onKeyDown={closeToolsWithKeyboard}
-      ref={toolbarRef}
+      onClick={stopDialogActionPropagation}
+      onPointerDown={stopDialogPointerPropagation}
     >
-      <div className="floating-toolbar__summary">
-        <span className="floating-toolbar__meta">
-          <span className="floating-toolbar__transport">{transportText}</span>
-          <span className="floating-toolbar__status">{status}</span>
-        </span>
-        <IconButton
-          aria-controls="chat-stage-toolbar-panel"
-          aria-expanded={open}
-          className="floating-toolbar__menu-trigger"
-          label={t("chat.toolbar.tools")}
-          onClick={() => setToolsOpen(!open)}
-        >
-          <MoreHorizontal aria-hidden className="icon-button__icon" />
-        </IconButton>
-      </div>
-      <div aria-hidden={!open} className="floating-toolbar__panel" hidden={!open} id="chat-stage-toolbar-panel">
-        <div className="floating-toolbar__panel-head">
-          <span className="floating-toolbar__panel-title">{t("chat.toolbar.tools")}</span>
-          <div className="floating-toolbar__panel-toggles">
-            <IconButton
-              aria-pressed={tokenUsageOpen}
-              className="floating-toolbar__token-trigger"
-              data-active={tokenUsageOpen ? "true" : "false"}
-              disabled={!tokenUsageAvailable}
-              label={t("chat.toolbar.tokens")}
-              onClick={() => onTokenUsageOpenChange(!tokenUsageOpen)}
-            >
-              <Activity aria-hidden className="icon-button__icon" />
-            </IconButton>
-            <IconButton
-              aria-controls="chat-stage-toolbar-config"
-              aria-expanded={configOpen}
-              aria-pressed={configOpen}
-              className="floating-toolbar__config-trigger"
-              data-active={configOpen ? "true" : "false"}
-              label={t("chat.toolbar.config")}
-              onClick={() => onConfigOpenChange(!configOpen)}
-            >
-              <SlidersHorizontal aria-hidden className="icon-button__icon" />
-            </IconButton>
-          </div>
-        </div>
-        <div
-          aria-hidden={!configOpen}
-          className="floating-toolbar__config-panel"
-          hidden={!configOpen}
-          id="chat-stage-toolbar-config"
-        >
-          <label className="floating-toolbar__config-row floating-toolbar__voice">
-            <span className="floating-toolbar__config-label">
-              <Languages aria-hidden className="floating-toolbar__voice-icon" />
-              {t("template.field.voiceLanguage")}
-            </span>
-            <Select
-              aria-label={t("template.field.voiceLanguage")}
-              className="floating-toolbar__voice-select"
-              onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
-              value={voiceLanguage}
-            >
-              {chatVoiceLanguages.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {t(option.labelKey)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="floating-toolbar__config-row floating-toolbar__range-row">
-            <span className="floating-toolbar__config-label">{t("chat.config.textSpeed")}</span>
-            <span className="floating-toolbar__range-control">
-              <input
-                aria-label={t("chat.config.textSpeed")}
-                className="floating-toolbar__range"
-                max={runtimeTextSpeedMax}
-                min={runtimeTextSpeedMin}
-                onChange={handleTextSpeedChange}
-                step={1}
-                type="range"
-                value={textSpeed}
-              />
-              <span className="floating-toolbar__range-value">
-                {t("chat.config.textSpeedValue", { value: textSpeed })}
-              </span>
-            </span>
-          </label>
-          <label className="floating-toolbar__config-row floating-toolbar__range-row">
-            <span className="floating-toolbar__config-label">{t("chat.config.dialogOpacity")}</span>
-            <span className="floating-toolbar__range-control">
-              <input
-                aria-label={t("chat.config.dialogOpacity")}
-                className="floating-toolbar__range"
-                max={runtimeDialogOpacityMax}
-                min={runtimeDialogOpacityMin}
-                onChange={handleDialogOpacityChange}
-                step={runtimeDialogOpacityStep}
-                type="range"
-                value={dialogOpacity}
-              />
-              <span className="floating-toolbar__range-value">
-                {t("chat.config.dialogOpacityValue", { value: dialogOpacityPercent })}
-              </span>
-            </span>
-          </label>
-          <label className="floating-toolbar__config-row floating-toolbar__range-row">
-            <span className="floating-toolbar__config-label">{t("chat.config.spriteOffsetX")}</span>
-            <span className="floating-toolbar__range-control">
-              <input
-                aria-label={t("chat.config.spriteOffsetX")}
-                className="floating-toolbar__range"
-                max={runtimeSpriteOffsetMax}
-                min={runtimeSpriteOffsetMin}
-                onChange={handleSpriteOffsetXChange}
-                step={runtimeSpriteOffsetStep}
-                type="range"
-                value={spriteOffsetX}
-              />
-              <span className="floating-toolbar__range-value">
-                {t("chat.config.spriteOffsetValue", { value: spriteOffsetX })}
-              </span>
-            </span>
-          </label>
-          <label className="floating-toolbar__config-row floating-toolbar__range-row">
-            <span className="floating-toolbar__config-label">{t("chat.config.spriteOffsetY")}</span>
-            <span className="floating-toolbar__range-control">
-              <input
-                aria-label={t("chat.config.spriteOffsetY")}
-                className="floating-toolbar__range"
-                max={runtimeSpriteOffsetMax}
-                min={runtimeSpriteOffsetMin}
-                onChange={handleSpriteOffsetYChange}
-                step={runtimeSpriteOffsetStep}
-                type="range"
-                value={spriteOffsetY}
-              />
-              <span className="floating-toolbar__range-value">
-                {t("chat.config.spriteOffsetValue", { value: spriteOffsetY })}
-              </span>
-            </span>
-          </label>
-          <PluginSlot slot="chat-toolbar" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StageActionBar({
-  asrPaused,
-  closeLabel,
-  hidden,
-  hideCloseButton,
-  onCloseSurface,
-  onCommand,
-  onOpenHistory,
-}: {
-  asrPaused: boolean;
-  closeLabel: string;
-  hidden: boolean;
-  hideCloseButton: boolean;
-  onCloseSurface: () => void;
-  onCommand: (command: ChatCommand) => void;
-  onOpenHistory: () => void;
-}) {
-  const { t } = useI18n();
-
-  if (hidden) {
-    return null;
-  }
-
-  return (
-    <div className="stage-action-bar" data-chat-stage-hitbox="true">
-      <div aria-label={t("chat.actionBar.title")} className="stage-action-bar__rail" role="toolbar">
+      <div aria-label={t("chat.actionBar.title")} className="dialog-stage-controls__rail" role="toolbar">
         <ToolbarButton
           aria-label={t("chat.toolbar.openHistory")}
-          className="stage-action-bar__button"
+          className="dialog-stage-controls__button"
           icon={<History aria-hidden className="button__icon" />}
           onClick={onOpenHistory}
           tooltip={t("chat.toolbar.openHistory")}
@@ -1050,7 +937,7 @@ function StageActionBar({
         </ToolbarButton>
         <ToolbarButton
           aria-label={t("chat.toolbar.skipSpeech")}
-          className="stage-action-bar__button"
+          className="dialog-stage-controls__button"
           icon={<SkipForward aria-hidden className="button__icon" />}
           onClick={() => onCommand({ type: "skip-speech" })}
           tooltip={t("chat.toolbar.skipSpeech")}
@@ -1059,7 +946,7 @@ function StageActionBar({
         </ToolbarButton>
         <ToolbarButton
           aria-label={t("chat.toolbar.reroll")}
-          className="stage-action-bar__button"
+          className="dialog-stage-controls__button"
           icon={<RotateCcw aria-hidden className="button__icon" />}
           onClick={() => onCommand({ type: "reroll" })}
           tooltip={t("chat.toolbar.reroll")}
@@ -1068,14 +955,10 @@ function StageActionBar({
         </ToolbarButton>
         <ToolbarButton
           aria-label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
-          className="stage-action-bar__button"
+          className="dialog-stage-controls__button"
           data-active={asrPaused ? "true" : "false"}
           icon={
-            asrPaused ? (
-              <Mic aria-hidden className="button__icon" />
-            ) : (
-              <MicOff aria-hidden className="button__icon" />
-            )
+            asrPaused ? <Mic aria-hidden className="button__icon" /> : <MicOff aria-hidden className="button__icon" />
           }
           onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
           tooltip={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
@@ -1084,7 +967,7 @@ function StageActionBar({
         </ToolbarButton>
         <ToolbarButton
           aria-label={t("chat.toolbar.copyHistory")}
-          className="stage-action-bar__button"
+          className="dialog-stage-controls__button"
           icon={<Copy aria-hidden className="button__icon" />}
           onClick={() => onCommand({ type: "copy-history" })}
           tooltip={t("chat.toolbar.copyHistory")}
@@ -1093,17 +976,30 @@ function StageActionBar({
         </ToolbarButton>
         <ToolbarButton
           aria-label={t("chat.toolbar.clearHistory")}
-          className="stage-action-bar__button stage-action-bar__button--danger"
+          className="dialog-stage-controls__button dialog-stage-controls__button--danger"
           icon={<Trash2 aria-hidden className="button__icon" />}
           onClick={() => onCommand({ type: "clear-history" })}
           tooltip={t("chat.toolbar.clearHistory")}
         >
           {t("chat.actionBar.clear")}
         </ToolbarButton>
+        <ToolbarButton
+          aria-controls="chat-stage-dialog-config"
+          aria-expanded={configOpen}
+          aria-label={t("chat.toolbar.config")}
+          aria-pressed={configOpen}
+          className="dialog-stage-controls__button"
+          data-active={configOpen ? "true" : "false"}
+          icon={<SlidersHorizontal aria-hidden className="button__icon" />}
+          onClick={() => onConfigOpenChange(!configOpen)}
+          tooltip={t("chat.toolbar.config")}
+        >
+          {t("chat.actionBar.config")}
+        </ToolbarButton>
         {hideCloseButton ? null : (
           <ToolbarButton
             aria-label={closeLabel}
-            className="stage-action-bar__button"
+            className="dialog-stage-controls__button"
             icon={<X aria-hidden className="button__icon" />}
             onClick={onCloseSurface}
             tooltip={closeLabel}
@@ -1111,6 +1007,141 @@ function StageActionBar({
             {t("chat.actionBar.close")}
           </ToolbarButton>
         )}
+        <PluginSlot slot="chat-dialog-actions" />
+      </div>
+      <div
+        aria-hidden={!configOpen}
+        className="dialog-stage-controls__config-panel"
+        hidden={!configOpen}
+        id="chat-stage-dialog-config"
+      >
+        <label className="dialog-stage-controls__config-row dialog-stage-controls__voice">
+          <span className="dialog-stage-controls__config-label">
+            <Languages aria-hidden className="dialog-stage-controls__voice-icon" />
+            {t("template.field.voiceLanguage")}
+          </span>
+          <Select
+            aria-label={t("template.field.voiceLanguage")}
+            className="dialog-stage-controls__voice-select"
+            onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
+            value={voiceLanguage}
+          >
+            {chatVoiceLanguages.map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.labelKey)}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
+          <span className="dialog-stage-controls__config-label">{t("chat.config.textSpeed")}</span>
+          <span className="dialog-stage-controls__range-control">
+            <input
+              aria-label={t("chat.config.textSpeed")}
+              className="dialog-stage-controls__range"
+              max={runtimeTextSpeedMax}
+              min={runtimeTextSpeedMin}
+              onChange={handleTextSpeedChange}
+              step={1}
+              type="range"
+              value={textSpeed}
+            />
+            <span className="dialog-stage-controls__range-value">
+              {t("chat.config.textSpeedValue", { value: textSpeed })}
+            </span>
+          </span>
+        </label>
+        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
+          <span className="dialog-stage-controls__config-label">{t("chat.config.dialogOpacity")}</span>
+          <span className="dialog-stage-controls__range-control">
+            <input
+              aria-label={t("chat.config.dialogOpacity")}
+              className="dialog-stage-controls__range"
+              max={runtimeDialogOpacityMax}
+              min={runtimeDialogOpacityMin}
+              onChange={handleDialogOpacityChange}
+              step={runtimeDialogOpacityStep}
+              type="range"
+              value={dialogOpacity}
+            />
+            <span className="dialog-stage-controls__range-value">
+              {t("chat.config.dialogOpacityValue", { value: dialogOpacityPercent })}
+            </span>
+          </span>
+        </label>
+        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
+          <span className="dialog-stage-controls__config-label">{t("chat.config.spriteScale")}</span>
+          <span className="dialog-stage-controls__range-control">
+            <input
+              aria-label={t("chat.config.spriteScale")}
+              className="dialog-stage-controls__range"
+              max={runtimeSpriteScaleMax}
+              min={runtimeSpriteScaleMin}
+              onChange={handleSpriteScaleChange}
+              step={runtimeSpriteScaleStep}
+              type="range"
+              value={spriteScale}
+            />
+            <span className="dialog-stage-controls__range-value">
+              {t("chat.config.scaleValue", { value: spriteScalePercent })}
+            </span>
+          </span>
+        </label>
+        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
+          <span className="dialog-stage-controls__config-label">{t("chat.config.spriteOffsetX")}</span>
+          <span className="dialog-stage-controls__range-control">
+            <input
+              aria-label={t("chat.config.spriteOffsetX")}
+              className="dialog-stage-controls__range"
+              max={runtimeSpriteOffsetMax}
+              min={runtimeSpriteOffsetMin}
+              onChange={handleSpriteOffsetXChange}
+              step={runtimeSpriteOffsetStep}
+              type="range"
+              value={spriteOffsetX}
+            />
+            <span className="dialog-stage-controls__range-value">
+              {t("chat.config.spriteOffsetValue", { value: spriteOffsetX })}
+            </span>
+          </span>
+        </label>
+        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
+          <span className="dialog-stage-controls__config-label">{t("chat.config.spriteOffsetY")}</span>
+          <span className="dialog-stage-controls__range-control">
+            <input
+              aria-label={t("chat.config.spriteOffsetY")}
+              className="dialog-stage-controls__range"
+              max={runtimeSpriteOffsetMax}
+              min={runtimeSpriteOffsetMin}
+              onChange={handleSpriteOffsetYChange}
+              step={runtimeSpriteOffsetStep}
+              type="range"
+              value={spriteOffsetY}
+            />
+            <span className="dialog-stage-controls__range-value">
+              {t("chat.config.spriteOffsetValue", { value: spriteOffsetY })}
+            </span>
+          </span>
+        </label>
+        <label className="dialog-stage-controls__config-row dialog-stage-controls__range-row">
+          <span className="dialog-stage-controls__config-label">{t("chat.config.windowScale")}</span>
+          <span className="dialog-stage-controls__range-control">
+            <input
+              aria-label={t("chat.config.windowScale")}
+              className="dialog-stage-controls__range"
+              max={runtimeWindowScaleMax}
+              min={runtimeWindowScaleMin}
+              onChange={handleWindowScaleChange}
+              step={runtimeWindowScaleStep}
+              type="range"
+              value={windowScale}
+            />
+            <span className="dialog-stage-controls__range-value">
+              {t("chat.config.scaleValue", { value: windowScalePercent })}
+            </span>
+          </span>
+        </label>
+        <PluginSlot slot="chat-toolbar" />
       </div>
     </div>
   );
@@ -1285,7 +1316,6 @@ export function ChatStagePage() {
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
-  const [toolbarOpen, setToolbarOpen] = useState(false);
   const [visibleDialogCharacters, setVisibleDialogCharacters] = useState(0);
   const { showToast } = useToast();
   const { t } = useI18n();
@@ -1298,8 +1328,15 @@ export function ChatStagePage() {
         "--chat-dialog-runtime-opacity": String(runtimeConfig.dialogOpacity),
         "--chat-sprite-runtime-offset-x": `${runtimeConfig.spriteOffsetX}px`,
         "--chat-sprite-runtime-offset-y": `${runtimeConfig.spriteOffsetY}px`,
+        "--chat-window-runtime-scale": String(runtimeConfig.windowScale),
       }) as CSSProperties,
-    [runtimeConfig.dialogOpacity, runtimeConfig.spriteOffsetX, runtimeConfig.spriteOffsetY, themeStyle],
+    [
+      runtimeConfig.dialogOpacity,
+      runtimeConfig.spriteOffsetX,
+      runtimeConfig.spriteOffsetY,
+      runtimeConfig.windowScale,
+      themeStyle,
+    ],
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
@@ -1427,17 +1464,10 @@ export function ChatStagePage() {
   );
 
   useEffect(() => {
-    if (!viewModel.layers.toolbar) {
-      setToolbarOpen(false);
+    if (!viewModel.layers.dialog) {
       setToolbarConfigOpen(false);
     }
-  }, [viewModel.layers.toolbar]);
-
-  useEffect(() => {
-    if (!toolbarOpen) {
-      setToolbarConfigOpen(false);
-    }
-  }, [toolbarOpen]);
+  }, [viewModel.layers.dialog]);
 
   useEffect(() => {
     if (!viewModel.tokenUsageText) {
@@ -1571,6 +1601,14 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, spriteOffsetY }));
   };
 
+  const updateRuntimeSpriteScale = (spriteScale: number) => {
+    setRuntimeConfig((current) => ({ ...current, spriteScale }));
+  };
+
+  const updateRuntimeWindowScale = (windowScale: number) => {
+    setRuntimeConfig((current) => ({ ...current, windowScale }));
+  };
+
   const advanceDialog = () => {
     if (typingDialog) {
       setVisibleDialogCharacters(dialogSource.totalCharacters);
@@ -1647,21 +1685,59 @@ export function ChatStagePage() {
         onPointerMoveCapture={handleStagePointerMove}
         style={stageStyle}
       >
-        <StandaloneDesktopWindowControls hidden={!standaloneDesktopWindow} />
         <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow} />
+        <TopStageTools
+          hidden={!viewModel.layers.toolbar}
+          onTokenUsageOpenChange={setTokenUsageOpen}
+          standaloneDesktopWindow={standaloneDesktopWindow}
+          status={viewModel.statusText}
+          tokenUsageAvailable={Boolean(viewModel.tokenUsageText)}
+          tokenUsageOpen={tokenUsageOpen}
+          transportMode={viewModel.transportMode}
+          transportState={viewModel.transportState}
+        />
         <BackgroundLayer
           hidden={!viewModel.layers.background}
           path={viewModel.backgroundPath}
           transparent={transparentBackground}
         />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
-        <SpriteLayer hidden={!viewModel.layers.sprites} sprites={viewModel.sprites} />
+        <SpriteLayer
+          hidden={!viewModel.layers.sprites}
+          runtimeScale={runtimeConfig.spriteScale}
+          sprites={viewModel.sprites}
+        />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
         <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />
         <DialogLayer
           canAdvance={viewModel.layers.dialog && !typingDialog && dialogSource.totalCharacters > 0}
           characterName={viewModel.dialogCharacterName}
+          controls={
+            <DialogStageControls
+              asrPaused={viewModel.status === "paused"}
+              closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
+              configOpen={toolbarConfigOpen}
+              dialogOpacity={runtimeConfig.dialogOpacity}
+              hideCloseButton={standaloneDesktopWindow}
+              onCloseSurface={closeSurface}
+              onCommand={sendCommand}
+              onConfigOpenChange={setToolbarConfigOpen}
+              onDialogOpacityChange={updateRuntimeDialogOpacity}
+              onOpenHistory={openHistoryDialog}
+              onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
+              onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
+              onSpriteScaleChange={updateRuntimeSpriteScale}
+              onTextSpeedChange={updateRuntimeTextSpeed}
+              onWindowScaleChange={updateRuntimeWindowScale}
+              spriteOffsetX={runtimeConfig.spriteOffsetX}
+              spriteOffsetY={runtimeConfig.spriteOffsetY}
+              spriteScale={runtimeConfig.spriteScale}
+              textSpeed={typewriterCps}
+              voiceLanguage={viewModel.voiceLanguage || "ja"}
+              windowScale={runtimeConfig.windowScale}
+            />
+          }
           hidden={!viewModel.layers.dialog}
           html={displayedDialog.html}
           onAdvance={advanceDialog}
@@ -1669,42 +1745,10 @@ export function ChatStagePage() {
           text={typingDialog ? displayedDialog.text : viewModel.dialogText}
           typing={typingDialog}
         />
-        <StageActionBar
-          asrPaused={viewModel.status === "paused"}
-          closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
-          hidden={!viewModel.layers.toolbar}
-          hideCloseButton={standaloneDesktopWindow}
-          onCloseSurface={closeSurface}
-          onCommand={sendCommand}
-          onOpenHistory={openHistoryDialog}
-        />
         <OptionsLayer
           hidden={!viewModel.layers.options}
           onSelect={(option) => sendCommand({ payload: option, type: "submit-option" })}
           options={viewModel.options}
-        />
-        <FloatingToolbar
-          configOpen={toolbarConfigOpen}
-          dialogOpacity={runtimeConfig.dialogOpacity}
-          hidden={!viewModel.layers.toolbar}
-          open={toolbarOpen}
-          onCommand={sendCommand}
-          onConfigOpenChange={setToolbarConfigOpen}
-          onDialogOpacityChange={updateRuntimeDialogOpacity}
-          onOpenChange={setToolbarOpen}
-          onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
-          onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
-          onTextSpeedChange={updateRuntimeTextSpeed}
-          onTokenUsageOpenChange={setTokenUsageOpen}
-          status={viewModel.statusText}
-          spriteOffsetX={runtimeConfig.spriteOffsetX}
-          spriteOffsetY={runtimeConfig.spriteOffsetY}
-          textSpeed={typewriterCps}
-          tokenUsageAvailable={Boolean(viewModel.tokenUsageText)}
-          tokenUsageOpen={tokenUsageOpen}
-          transportMode={viewModel.transportMode}
-          transportState={viewModel.transportState}
-          voiceLanguage={viewModel.voiceLanguage || "ja"}
         />
         <InputLayer
           disabled={viewModel.inputDisabled}
