@@ -8,12 +8,14 @@ import {
   useState,
   type CSSProperties,
   type FocusEvent,
+  type ChangeEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
   type SyntheticEvent,
 } from "react";
 import {
+  Activity,
   Copy,
   GripHorizontal,
   History,
@@ -25,6 +27,7 @@ import {
   MoreHorizontal,
   RotateCcw,
   Send,
+  SlidersHorizontal,
   SkipForward,
   Trash2,
   X,
@@ -173,6 +176,75 @@ function layerClassName(base: string, hidden: boolean) {
 }
 
 const clickThroughGuardIntervalMs = 32;
+const runtimeConfigStorageKey = "shinsekai-chat-stage-runtime-config";
+const runtimeTextSpeedMin = 1;
+const runtimeTextSpeedMax = 200;
+const runtimeDialogOpacityMin = 0.35;
+const runtimeDialogOpacityMax = 1;
+const runtimeDialogOpacityStep = 0.05;
+
+interface ChatStageRuntimeConfig {
+  dialogOpacity: number;
+  typewriterCps: number | null;
+}
+
+const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
+  dialogOpacity: 1,
+  typewriterCps: null,
+};
+
+function clampRuntimeNumber(value: unknown, fallback: number, min: number, max: number) {
+  const next = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(next)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, next));
+}
+
+function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
+  if (typeof window === "undefined") {
+    return defaultChatStageRuntimeConfig;
+  }
+  try {
+    const raw = window.localStorage.getItem(runtimeConfigStorageKey);
+    if (!raw) {
+      return defaultChatStageRuntimeConfig;
+    }
+    const parsed = JSON.parse(raw) as Partial<ChatStageRuntimeConfig>;
+    return {
+      dialogOpacity: clampRuntimeNumber(
+        parsed.dialogOpacity,
+        defaultChatStageRuntimeConfig.dialogOpacity,
+        runtimeDialogOpacityMin,
+        runtimeDialogOpacityMax,
+      ),
+      typewriterCps:
+        parsed.typewriterCps == null
+          ? null
+          : Math.round(
+              clampRuntimeNumber(
+                parsed.typewriterCps,
+                DEFAULT_TYPEWRITER_CPS,
+                runtimeTextSpeedMin,
+                runtimeTextSpeedMax,
+              ),
+            ),
+    };
+  } catch {
+    return defaultChatStageRuntimeConfig;
+  }
+}
+
+function writeChatStageRuntimeConfig(config: ChatStageRuntimeConfig) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(runtimeConfigStorageKey, JSON.stringify(config));
+  } catch {
+    // localStorage may be unavailable in hardened webviews.
+  }
+}
 
 const desktopResizeHandles: Array<{ className: string; direction: DesktopResizeDirection }> = [
   { className: "desktop-resize-handle--n", direction: "North" },
@@ -350,6 +422,36 @@ function NotificationLayer({ hidden, text }: { hidden: boolean; text?: string })
     >
       {text}
     </div>
+  );
+}
+
+function tokenUsageSegments(text: string) {
+  return text
+    .split(/\n|\|/g)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function TokenUsageLayer({ hidden, text }: { hidden: boolean; text?: string }) {
+  if (hidden || !text) {
+    return null;
+  }
+  const segments = tokenUsageSegments(text);
+  return (
+    <section className="token-usage-layer" data-chat-stage-hitbox="true" role="status">
+      <span className="token-usage-layer__title">TOKENS</span>
+      <div className="token-usage-layer__content">
+        {segments.length > 1 ? (
+          segments.map((segment, index) => (
+            <span className="token-usage-layer__chip" key={`${segment}-${index}`}>
+              {segment}
+            </span>
+          ))
+        ) : (
+          <span className="token-usage-layer__raw">{text}</span>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -617,47 +719,107 @@ function HistoryDialog({
 function FloatingToolbar({
   asrPaused,
   closeLabel,
+  configOpen,
+  dialogOpacity,
   hidden,
   hideCloseButton,
   open,
   onCloseSurface,
   onCommand,
+  onConfigOpenChange,
+  onDialogOpacityChange,
   onOpenChange,
   onOpenHistory,
+  onTextSpeedChange,
+  onTokenUsageOpenChange,
   status,
+  textSpeed,
+  tokenUsageAvailable,
+  tokenUsageOpen,
   transportMode,
   transportState,
   voiceLanguage,
 }: {
   asrPaused: boolean;
   closeLabel: string;
+  configOpen: boolean;
+  dialogOpacity: number;
   hidden: boolean;
   hideCloseButton: boolean;
   open: boolean;
   onCloseSurface: () => void;
   onCommand: (command: ChatCommand) => void;
+  onConfigOpenChange: (open: boolean) => void;
+  onDialogOpacityChange: (value: number) => void;
   onOpenChange: (open: boolean) => void;
   onOpenHistory: () => void;
+  onTextSpeedChange: (value: number) => void;
+  onTokenUsageOpenChange: (open: boolean) => void;
   status: string;
+  textSpeed: number;
+  tokenUsageAvailable: boolean;
+  tokenUsageOpen: boolean;
   transportMode: ChatTransportMode;
   transportState: ChatTransportState;
   voiceLanguage: string;
 }) {
   const { t } = useI18n();
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const dialogOpacityPercent = Math.round(dialogOpacity * 100);
+  const setToolsOpen = useCallback(
+    (nextOpen: boolean) => {
+      onOpenChange(nextOpen);
+      if (!nextOpen) {
+        onConfigOpenChange(false);
+      }
+    },
+    [onConfigOpenChange, onOpenChange],
+  );
+
+  useEffect(() => {
+    if (hidden || !open) {
+      return;
+    }
+
+    const closeIfOutside = (event: globalThis.PointerEvent) => {
+      const target = eventTargetElement(event.target);
+      if (!target) {
+        return;
+      }
+      if (toolbarRef.current?.contains(target)) {
+        return;
+      }
+      if (target.closest(".custom-select__menu, .dialog-backdrop")) {
+        return;
+      }
+      setToolsOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeIfOutside, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeIfOutside, true);
+    };
+  }, [hidden, open, setToolsOpen]);
+
   if (hidden) {
     return null;
   }
+
   const transportText = transportStatusText(t, transportState, transportMode);
-  const closeTools = (event: FocusEvent<HTMLDivElement>) => {
-    const nextTarget = event.relatedTarget;
-    if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
-      onOpenChange(false);
-    }
-  };
   const closeToolsWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
-      onOpenChange(false);
+      setToolsOpen(false);
     }
+  };
+  const handleTextSpeedChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onTextSpeedChange(
+      Math.round(clampRuntimeNumber(event.target.value, textSpeed, runtimeTextSpeedMin, runtimeTextSpeedMax)),
+    );
+  };
+  const handleDialogOpacityChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onDialogOpacityChange(
+      clampRuntimeNumber(event.target.value, dialogOpacity, runtimeDialogOpacityMin, runtimeDialogOpacityMax),
+    );
   };
   return (
     <div
@@ -666,8 +828,8 @@ function FloatingToolbar({
       data-open={open ? "true" : "false"}
       data-transport-mode={transportMode}
       data-transport-state={transportState}
-      onBlur={closeTools}
       onKeyDown={closeToolsWithKeyboard}
+      ref={toolbarRef}
     >
       <div className="floating-toolbar__summary">
         <span className="floating-toolbar__meta">
@@ -679,29 +841,44 @@ function FloatingToolbar({
           aria-expanded={open}
           className="floating-toolbar__menu-trigger"
           label={t("chat.toolbar.tools")}
-          onClick={() => onOpenChange(!open)}
+          onClick={() => setToolsOpen(!open)}
         >
           <MoreHorizontal aria-hidden className="icon-button__icon" />
         </IconButton>
       </div>
       <div aria-hidden={!open} className="floating-toolbar__panel" hidden={!open} id="chat-stage-toolbar-panel">
-        <div className="floating-toolbar__actions">
-          {hideCloseButton ? null : (
-            <IconButton label={closeLabel} onClick={onCloseSurface}>
-              <X aria-hidden className="icon-button__icon" />
+        <div className="floating-toolbar__panel-head">
+          <span className="floating-toolbar__panel-title">{t("chat.toolbar.tools")}</span>
+          <div className="floating-toolbar__panel-toggles">
+            <IconButton
+              aria-pressed={tokenUsageOpen}
+              className="floating-toolbar__token-trigger"
+              data-active={tokenUsageOpen ? "true" : "false"}
+              disabled={!tokenUsageAvailable}
+              label={t("chat.toolbar.tokens")}
+              onClick={() => onTokenUsageOpenChange(!tokenUsageOpen)}
+            >
+              <Activity aria-hidden className="icon-button__icon" />
             </IconButton>
-          )}
-          <IconButton label={t("chat.toolbar.reroll")} onClick={() => onCommand({ type: "reroll" })}>
-            <RotateCcw aria-hidden className="icon-button__icon" />
-          </IconButton>
-          <IconButton label={t("chat.toolbar.copyHistory")} onClick={() => onCommand({ type: "copy-history" })}>
-            <Copy aria-hidden className="icon-button__icon" />
-          </IconButton>
+            <IconButton
+              aria-controls="chat-stage-toolbar-config"
+              aria-expanded={configOpen}
+              aria-pressed={configOpen}
+              className="floating-toolbar__config-trigger"
+              data-active={configOpen ? "true" : "false"}
+              label={t("chat.toolbar.config")}
+              onClick={() => onConfigOpenChange(!configOpen)}
+            >
+              <SlidersHorizontal aria-hidden className="icon-button__icon" />
+            </IconButton>
+          </div>
+        </div>
+        <div aria-label={t("chat.toolbar.tools")} className="floating-toolbar__actions" role="group">
           <IconButton label={t("chat.toolbar.openHistory")} onClick={onOpenHistory}>
             <History aria-hidden className="icon-button__icon" />
           </IconButton>
-          <IconButton label={t("chat.toolbar.clearHistory")} onClick={() => onCommand({ type: "clear-history" })}>
-            <Trash2 aria-hidden className="icon-button__icon" />
+          <IconButton label={t("chat.toolbar.reroll")} onClick={() => onCommand({ type: "reroll" })}>
+            <RotateCcw aria-hidden className="icon-button__icon" />
           </IconButton>
           <IconButton
             label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
@@ -713,6 +890,17 @@ function FloatingToolbar({
               <MicOff aria-hidden className="icon-button__icon" />
             )}
           </IconButton>
+          <IconButton label={t("chat.toolbar.copyHistory")} onClick={() => onCommand({ type: "copy-history" })}>
+            <Copy aria-hidden className="icon-button__icon" />
+          </IconButton>
+          <IconButton label={t("chat.toolbar.clearHistory")} onClick={() => onCommand({ type: "clear-history" })}>
+            <Trash2 aria-hidden className="icon-button__icon" />
+          </IconButton>
+          {hideCloseButton ? null : (
+            <IconButton label={closeLabel} onClick={onCloseSurface}>
+              <X aria-hidden className="icon-button__icon" />
+            </IconButton>
+          )}
           <ToolbarButton
             className="floating-toolbar__skip"
             icon={<SkipForward aria-hidden className="button__icon" />}
@@ -721,23 +909,68 @@ function FloatingToolbar({
             {t("chat.toolbar.skipSpeech")}
           </ToolbarButton>
         </div>
-        <label className="floating-toolbar__voice">
-          <span className="visually-hidden">{t("template.field.voiceLanguage")}</span>
-          <Languages aria-hidden className="floating-toolbar__voice-icon" />
-          <Select
-            aria-label={t("template.field.voiceLanguage")}
-            className="floating-toolbar__voice-select"
-            onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
-            value={voiceLanguage}
-          >
-            {chatVoiceLanguages.map((option) => (
-              <option key={option.value} value={option.value}>
-                {t(option.labelKey)}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <PluginSlot slot="chat-toolbar" />
+        <div
+          aria-hidden={!configOpen}
+          className="floating-toolbar__config-panel"
+          hidden={!configOpen}
+          id="chat-stage-toolbar-config"
+        >
+          <label className="floating-toolbar__config-row floating-toolbar__voice">
+            <span className="floating-toolbar__config-label">
+              <Languages aria-hidden className="floating-toolbar__voice-icon" />
+              {t("template.field.voiceLanguage")}
+            </span>
+            <Select
+              aria-label={t("template.field.voiceLanguage")}
+              className="floating-toolbar__voice-select"
+              onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
+              value={voiceLanguage}
+            >
+              {chatVoiceLanguages.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="floating-toolbar__config-row floating-toolbar__range-row">
+            <span className="floating-toolbar__config-label">{t("chat.config.textSpeed")}</span>
+            <span className="floating-toolbar__range-control">
+              <input
+                aria-label={t("chat.config.textSpeed")}
+                className="floating-toolbar__range"
+                max={runtimeTextSpeedMax}
+                min={runtimeTextSpeedMin}
+                onChange={handleTextSpeedChange}
+                step={1}
+                type="range"
+                value={textSpeed}
+              />
+              <span className="floating-toolbar__range-value">
+                {t("chat.config.textSpeedValue", { value: textSpeed })}
+              </span>
+            </span>
+          </label>
+          <label className="floating-toolbar__config-row floating-toolbar__range-row">
+            <span className="floating-toolbar__config-label">{t("chat.config.dialogOpacity")}</span>
+            <span className="floating-toolbar__range-control">
+              <input
+                aria-label={t("chat.config.dialogOpacity")}
+                className="floating-toolbar__range"
+                max={runtimeDialogOpacityMax}
+                min={runtimeDialogOpacityMin}
+                onChange={handleDialogOpacityChange}
+                step={runtimeDialogOpacityStep}
+                type="range"
+                value={dialogOpacity}
+              />
+              <span className="floating-toolbar__range-value">
+                {t("chat.config.dialogOpacityValue", { value: dialogOpacityPercent })}
+              </span>
+            </span>
+          </label>
+          <PluginSlot slot="chat-toolbar" />
+        </div>
       </div>
     </div>
   );
@@ -909,15 +1142,27 @@ export function ChatStagePage() {
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
+  const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
+  const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [visibleDialogCharacters, setVisibleDialogCharacters] = useState(0);
   const { showToast } = useToast();
   const { t } = useI18n();
   const theme = useOptionalChatTheme();
   const themeStyle = theme?.style ?? {};
+  const stageStyle = useMemo(
+    () =>
+      ({
+        ...themeStyle,
+        "--chat-dialog-runtime-opacity": String(runtimeConfig.dialogOpacity),
+      }) as CSSProperties,
+    [runtimeConfig.dialogOpacity, themeStyle],
+  );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
   const transparentBackground = !viewModel.backgroundPath;
+  const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen = historyDialogOpen || confirmClearHistory || confirmRevertUserIndex != null;
   const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
   const eventSeqRef = useRef(0);
@@ -935,7 +1180,7 @@ export function ChatStagePage() {
       }),
     [viewModel.dialogCharacterName, viewModel.dialogHtml, viewModel.dialogText],
   );
-  const typewriterCps = theme?.resolved?.typewriter.cps ?? DEFAULT_TYPEWRITER_CPS;
+  const typewriterCps = runtimeConfig.typewriterCps ?? theme?.resolved?.typewriter.cps ?? DEFAULT_TYPEWRITER_CPS;
   const displayedDialog = useMemo(
     () => renderDialogTypewriterFrame(dialogSource, visibleDialogCharacters),
     [dialogSource, visibleDialogCharacters],
@@ -1042,8 +1287,25 @@ export function ChatStagePage() {
   useEffect(() => {
     if (!viewModel.layers.toolbar) {
       setToolbarOpen(false);
+      setToolbarConfigOpen(false);
     }
   }, [viewModel.layers.toolbar]);
+
+  useEffect(() => {
+    if (!toolbarOpen) {
+      setToolbarConfigOpen(false);
+    }
+  }, [toolbarOpen]);
+
+  useEffect(() => {
+    if (!viewModel.tokenUsageText) {
+      setTokenUsageOpen(false);
+    }
+  }, [viewModel.tokenUsageText]);
+
+  useEffect(() => {
+    writeChatStageRuntimeConfig(runtimeConfig);
+  }, [runtimeConfig]);
 
   useEffect(() => {
     let mounted = true;
@@ -1151,6 +1413,14 @@ export function ChatStagePage() {
     sendCommand({ payload: text, type: "send-message" });
   };
 
+  const updateRuntimeTextSpeed = (typewriterCps: number) => {
+    setRuntimeConfig((current) => ({ ...current, typewriterCps }));
+  };
+
+  const updateRuntimeDialogOpacity = (dialogOpacity: number) => {
+    setRuntimeConfig((current) => ({ ...current, dialogOpacity }));
+  };
+
   const advanceDialog = () => {
     if (typingDialog) {
       setVisibleDialogCharacters(dialogSource.totalCharacters);
@@ -1220,11 +1490,12 @@ export function ChatStagePage() {
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}
         data-click-through={clickThroughEnabled ? "true" : "false"}
+        data-token-visible={tokenUsageVisible ? "true" : "false"}
         onFocusCapture={handleStageFocus}
         onPointerDownCapture={handleStagePointerDown}
         onPointerLeave={handleStagePointerLeave}
         onPointerMoveCapture={handleStagePointerMove}
-        style={themeStyle}
+        style={stageStyle}
       >
         <StandaloneDesktopWindowControls hidden={!standaloneDesktopWindow} />
         <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow} />
@@ -1235,6 +1506,7 @@ export function ChatStagePage() {
         />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer hidden={!viewModel.layers.sprites} sprites={viewModel.sprites} />
+        <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
         <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />
         <DialogLayer
@@ -1255,14 +1527,23 @@ export function ChatStagePage() {
         <FloatingToolbar
           asrPaused={viewModel.status === "paused"}
           closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
+          configOpen={toolbarConfigOpen}
+          dialogOpacity={runtimeConfig.dialogOpacity}
           hidden={!viewModel.layers.toolbar}
           hideCloseButton={standaloneDesktopWindow}
           open={toolbarOpen}
           onCloseSurface={closeSurface}
           onCommand={sendCommand}
+          onConfigOpenChange={setToolbarConfigOpen}
+          onDialogOpacityChange={updateRuntimeDialogOpacity}
           onOpenChange={setToolbarOpen}
           onOpenHistory={openHistoryDialog}
+          onTextSpeedChange={updateRuntimeTextSpeed}
+          onTokenUsageOpenChange={setTokenUsageOpen}
           status={viewModel.statusText}
+          textSpeed={typewriterCps}
+          tokenUsageAvailable={Boolean(viewModel.tokenUsageText)}
+          tokenUsageOpen={tokenUsageOpen}
           transportMode={viewModel.transportMode}
           transportState={viewModel.transportState}
           voiceLanguage={viewModel.voiceLanguage || "ja"}

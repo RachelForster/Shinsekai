@@ -112,6 +112,7 @@ describe("ChatStagePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
     mocks.closeChat.mockResolvedValue(snapshot());
     chatWindowMocks.closeChatSurface.mockResolvedValue(undefined);
     desktopApiMocks.closeDesktopWindow.mockResolvedValue(undefined);
@@ -266,6 +267,8 @@ describe("ChatStagePage", () => {
 
     expect(await screen.findByText("Snapshot")).toBeInTheDocument();
     await openToolbarMenu();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
 
     fireEvent.click(await screen.findByRole("combobox"));
     fireEvent.click(screen.getByRole("option", { name: "English" }));
@@ -276,6 +279,73 @@ describe("ChatStagePage", () => {
         type: "change-voice-language",
       }),
     );
+  });
+
+  it("toggles token usage into the top overlay", async () => {
+    renderPage();
+
+    await screen.findByText("Ready");
+    expect(screen.queryByText("idle / 2")).not.toBeInTheDocument();
+
+    await openToolbarMenu();
+    fireEvent.click(screen.getByRole("button", { name: "Token usage" }));
+
+    const tokenLayer = document.querySelector(".token-usage-layer") as HTMLElement;
+    expect(tokenLayer).not.toBeNull();
+    expect(tokenLayer).toHaveTextContent("TOKENS");
+    expect(tokenLayer).toHaveTextContent("idle / 2");
+    expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Token usage" }));
+    expect(document.querySelector(".token-usage-layer")).toBeNull();
+    expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "false");
+  });
+
+  it("applies runtime text speed and dialog opacity from chat config", async () => {
+    renderPage();
+
+    await openToolbarMenu();
+    fireEvent.click(await screen.findByRole("button", { name: "Chat config" }));
+
+    expect(screen.queryByRole("button", { name: "Manage themes" })).not.toBeInTheDocument();
+
+    const textSpeed = screen.getByRole("slider", { name: "Text speed" });
+    fireEvent.change(textSpeed, { target: { value: "96" } });
+    expect(await screen.findByText("96 chars/s")).toBeInTheDocument();
+
+    const dialogOpacity = screen.getByRole("slider", { name: "Dialog opacity" });
+    fireEvent.change(dialogOpacity, { target: { value: "0.55" } });
+    expect(await screen.findByText("55%")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        (document.querySelector(".chat-stage") as HTMLElement).style.getPropertyValue("--chat-dialog-runtime-opacity"),
+      ).toBe("0.55");
+    });
+    expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
+      dialogOpacity: 0.55,
+      typewriterCps: 96,
+    });
+  });
+
+  it("loads persisted runtime config before opening chat config", async () => {
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({ dialogOpacity: 0.65, typewriterCps: 42 }),
+    );
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    expect((document.querySelector(".chat-stage") as HTMLElement).style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe(
+      "0.65",
+    );
+
+    await openToolbarMenu();
+    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
+
+    expect(screen.getByRole("slider", { name: "Text speed" })).toHaveValue("42");
+    expect(screen.getByRole("slider", { name: "Dialog opacity" })).toHaveValue("0.65");
   });
 
   it("loads runtime history into the dialog and sends revert-history after confirmation", async () => {
