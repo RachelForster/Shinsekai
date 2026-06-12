@@ -8,6 +8,7 @@ export const llmProviderOptions = [
   { label: "Claude", value: "Claude" },
   { label: "豆包", value: "豆包" },
   { label: "通义千问", value: "通义千问" },
+  { label: "Ollama", value: "Ollama" },
 ] as const;
 
 export const llmDefaultBaseUrls: Record<string, string> = {
@@ -17,6 +18,7 @@ export const llmDefaultBaseUrls: Record<string, string> = {
   Gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
   豆包: "https://ark.cn-beijing.volces.com/api/v3",
   通义千问: "https://dashscope.aliyuncs.com/api/v1",
+  Ollama: "http://127.0.0.1:11434/v1",
 };
 
 export function compactTargetRatioMax(draft: Pick<ApiConfig, "compact_threshold">) {

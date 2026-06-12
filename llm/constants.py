@@ -6,6 +6,7 @@ LLM_BASE_URLS = {
     "Claude": "https://api.anthropic.com/v1",
     "豆包": "https://ark.cn-beijing.volces.com/api/v3",
     "通义千问": "https://dashscope.aliyuncs.com/api/v1",
+    "Ollama": "http://127.0.0.1:11434/v1"
 }
 
 # Add a dictionary to map LLM providers to their available models
@@ -16,4 +17,5 @@ LLM_MODELS = {
     "Claude": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
     "豆包": ["doubao-seed-1.6", "doubao-seed-1.6-flash", "doubao-seed-1.6-thinking"],
     "通义千问": ["qwen-max", "qwen-plus"],
+    "Ollama": []
 }
