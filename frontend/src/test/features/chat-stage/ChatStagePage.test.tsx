@@ -295,12 +295,19 @@ describe("ChatStagePage", () => {
     expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "false");
   });
 
-  it("renders core chat actions inside the dialog controls", async () => {
+  it("renders core chat actions above the dialog and supports locking the tray", async () => {
     renderPage();
 
     await screen.findByText("Ready");
     const dialog = document.querySelector(".dialog-layer") as HTMLElement;
-    const actionBar = within(dialog).getByRole("toolbar", { name: "Chat stage actions" });
+    expect(within(dialog).queryByRole("toolbar", { name: "Chat stage actions" })).not.toBeInTheDocument();
+
+    const actionTray = document.querySelector(".dialog-stage-controls") as HTMLElement;
+    expect(actionTray).not.toBeNull();
+    expect(actionTray).toHaveAttribute("data-locked", "false");
+    const actionBar = within(actionTray).getByRole("toolbar", { name: "Chat stage actions" });
+    const lockButton = within(actionBar).getByRole("button", { name: "Lock chat actions" });
+    expect(lockButton).toHaveTextContent("LOCK");
     expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("LOG");
     expect(within(actionBar).getByRole("button", { name: "Skip" })).toHaveTextContent("SKIP");
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
@@ -308,6 +315,10 @@ describe("ChatStagePage", () => {
     expect(within(actionBar).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
     expect(within(actionBar).getByRole("button", { name: "Chat config" })).toHaveTextContent("CONFIG");
     expect(within(dialog).queryByRole("slider")).not.toBeInTheDocument();
+
+    fireEvent.click(lockButton);
+    expect(actionTray).toHaveAttribute("data-locked", "true");
+    expect(within(actionBar).getByRole("button", { name: "Unlock chat actions" })).toHaveTextContent("UNLOCK");
 
     const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
     expect(within(topTools).getByRole("button", { name: "Token usage" })).toBeInTheDocument();

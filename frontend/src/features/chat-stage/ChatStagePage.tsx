@@ -7,12 +7,11 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type FocusEvent,
   type ChangeEvent,
+  type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
   type SyntheticEvent,
 } from "react";
 import {
@@ -21,6 +20,7 @@ import {
   GripHorizontal,
   History,
   Languages,
+  Lock,
   Maximize2,
   Mic,
   MicOff,
@@ -30,6 +30,7 @@ import {
   SlidersHorizontal,
   SkipForward,
   Trash2,
+  Unlock,
   X,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -425,7 +426,6 @@ function SpriteLayer({
 function DialogLayer({
   canAdvance,
   characterName,
-  controls,
   hidden,
   html,
   onAdvance,
@@ -435,7 +435,6 @@ function DialogLayer({
 }: {
   canAdvance: boolean;
   characterName?: string;
-  controls?: ReactNode;
   hidden: boolean;
   html?: string;
   onAdvance?: () => void;
@@ -464,7 +463,6 @@ function DialogLayer({
         </div>
       )}
       <PluginSlot slot="chat-output" />
-      {controls ? <div className="dialog-layer__controls">{controls}</div> : null}
     </section>
   );
 }
@@ -884,18 +882,24 @@ function DialogStageControls({
   closeLabel,
   configOpen,
   hideCloseButton,
+  hidden,
+  locked,
   onCloseSurface,
   onCommand,
   onConfigOpenChange,
+  onLockedChange,
   onOpenHistory,
 }: {
   asrPaused: boolean;
   closeLabel: string;
   configOpen: boolean;
+  hidden: boolean;
   hideCloseButton: boolean;
+  locked: boolean;
   onCloseSurface: () => void;
   onCommand: (command: ChatCommand) => void;
   onConfigOpenChange: (open: boolean) => void;
+  onLockedChange: (locked: boolean) => void;
   onOpenHistory: () => void;
 }) {
   const { t } = useI18n();
@@ -906,96 +910,119 @@ function DialogStageControls({
     event.stopPropagation();
   };
 
+  if (hidden) {
+    return null;
+  }
+
+  const lockLabel = locked ? t("chat.toolbar.unlockActions") : t("chat.toolbar.lockActions");
+  const lockText = locked ? t("chat.actionBar.unlock") : t("chat.actionBar.lock");
+
   return (
     <div
       className="dialog-stage-controls"
       data-chat-stage-hitbox="true"
+      data-locked={locked ? "true" : "false"}
       onClick={stopDialogActionPropagation}
       onPointerDown={stopDialogPointerPropagation}
     >
-      <div aria-label={t("chat.actionBar.title")} className="dialog-stage-controls__rail" role="toolbar">
-        <ToolbarButton
-          aria-label={t("chat.toolbar.openHistory")}
-          className="dialog-stage-controls__button"
-          icon={<History aria-hidden className="button__icon" />}
-          onClick={onOpenHistory}
-          tooltip={t("chat.toolbar.openHistory")}
-        >
-          {t("chat.actionBar.history")}
-        </ToolbarButton>
-        <ToolbarButton
-          aria-label={t("chat.toolbar.skipSpeech")}
-          className="dialog-stage-controls__button"
-          icon={<SkipForward aria-hidden className="button__icon" />}
-          onClick={() => onCommand({ type: "skip-speech" })}
-          tooltip={t("chat.toolbar.skipSpeech")}
-        >
-          {t("chat.actionBar.skip")}
-        </ToolbarButton>
-        <ToolbarButton
-          aria-label={t("chat.toolbar.reroll")}
-          className="dialog-stage-controls__button"
-          icon={<RotateCcw aria-hidden className="button__icon" />}
-          onClick={() => onCommand({ type: "reroll" })}
-          tooltip={t("chat.toolbar.reroll")}
-        >
-          {t("chat.actionBar.reroll")}
-        </ToolbarButton>
-        <ToolbarButton
-          aria-label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
-          className="dialog-stage-controls__button"
-          data-active={asrPaused ? "true" : "false"}
-          icon={
-            asrPaused ? <Mic aria-hidden className="button__icon" /> : <MicOff aria-hidden className="button__icon" />
-          }
-          onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
-          tooltip={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
-        >
-          {t(asrPaused ? "chat.actionBar.resumeAsr" : "chat.actionBar.pauseAsr")}
-        </ToolbarButton>
-        <ToolbarButton
-          aria-label={t("chat.toolbar.copyHistory")}
-          className="dialog-stage-controls__button"
-          icon={<Copy aria-hidden className="button__icon" />}
-          onClick={() => onCommand({ type: "copy-history" })}
-          tooltip={t("chat.toolbar.copyHistory")}
-        >
-          {t("chat.actionBar.copy")}
-        </ToolbarButton>
-        <ToolbarButton
-          aria-label={t("chat.toolbar.clearHistory")}
-          className="dialog-stage-controls__button dialog-stage-controls__button--danger"
-          icon={<Trash2 aria-hidden className="button__icon" />}
-          onClick={() => onCommand({ type: "clear-history" })}
-          tooltip={t("chat.toolbar.clearHistory")}
-        >
-          {t("chat.actionBar.clear")}
-        </ToolbarButton>
-        <ToolbarButton
-          aria-controls="chat-stage-dialog-config"
-          aria-expanded={configOpen}
-          aria-label={t("chat.toolbar.config")}
-          aria-pressed={configOpen}
-          className="dialog-stage-controls__button"
-          data-active={configOpen ? "true" : "false"}
-          icon={<SlidersHorizontal aria-hidden className="button__icon" />}
-          onClick={() => onConfigOpenChange(!configOpen)}
-          tooltip={t("chat.toolbar.config")}
-        >
-          {t("chat.actionBar.config")}
-        </ToolbarButton>
-        {hideCloseButton ? null : (
+      <div className="dialog-stage-controls__surface">
+        <div aria-label={t("chat.actionBar.title")} className="dialog-stage-controls__rail" role="toolbar">
           <ToolbarButton
-            aria-label={closeLabel}
-            className="dialog-stage-controls__button"
-            icon={<X aria-hidden className="button__icon" />}
-            onClick={onCloseSurface}
-            tooltip={closeLabel}
+            aria-label={lockLabel}
+            aria-pressed={locked}
+            className="dialog-stage-controls__button dialog-stage-controls__button--lock"
+            data-active={locked ? "true" : "false"}
+            icon={
+              locked ? <Lock aria-hidden className="button__icon" /> : <Unlock aria-hidden className="button__icon" />
+            }
+            onClick={() => onLockedChange(!locked)}
+            tooltip={lockLabel}
           >
-            {t("chat.actionBar.close")}
+            {lockText}
           </ToolbarButton>
-        )}
-        <PluginSlot slot="chat-dialog-actions" />
+          <ToolbarButton
+            aria-label={t("chat.toolbar.openHistory")}
+            className="dialog-stage-controls__button"
+            icon={<History aria-hidden className="button__icon" />}
+            onClick={onOpenHistory}
+            tooltip={t("chat.toolbar.openHistory")}
+          >
+            {t("chat.actionBar.history")}
+          </ToolbarButton>
+          <ToolbarButton
+            aria-label={t("chat.toolbar.skipSpeech")}
+            className="dialog-stage-controls__button"
+            icon={<SkipForward aria-hidden className="button__icon" />}
+            onClick={() => onCommand({ type: "skip-speech" })}
+            tooltip={t("chat.toolbar.skipSpeech")}
+          >
+            {t("chat.actionBar.skip")}
+          </ToolbarButton>
+          <ToolbarButton
+            aria-label={t("chat.toolbar.reroll")}
+            className="dialog-stage-controls__button"
+            icon={<RotateCcw aria-hidden className="button__icon" />}
+            onClick={() => onCommand({ type: "reroll" })}
+            tooltip={t("chat.toolbar.reroll")}
+          >
+            {t("chat.actionBar.reroll")}
+          </ToolbarButton>
+          <ToolbarButton
+            aria-label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+            className="dialog-stage-controls__button"
+            data-active={asrPaused ? "true" : "false"}
+            icon={
+              asrPaused ? <Mic aria-hidden className="button__icon" /> : <MicOff aria-hidden className="button__icon" />
+            }
+            onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
+            tooltip={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+          >
+            {t(asrPaused ? "chat.actionBar.resumeAsr" : "chat.actionBar.pauseAsr")}
+          </ToolbarButton>
+          <ToolbarButton
+            aria-label={t("chat.toolbar.copyHistory")}
+            className="dialog-stage-controls__button"
+            icon={<Copy aria-hidden className="button__icon" />}
+            onClick={() => onCommand({ type: "copy-history" })}
+            tooltip={t("chat.toolbar.copyHistory")}
+          >
+            {t("chat.actionBar.copy")}
+          </ToolbarButton>
+          <ToolbarButton
+            aria-label={t("chat.toolbar.clearHistory")}
+            className="dialog-stage-controls__button dialog-stage-controls__button--danger"
+            icon={<Trash2 aria-hidden className="button__icon" />}
+            onClick={() => onCommand({ type: "clear-history" })}
+            tooltip={t("chat.toolbar.clearHistory")}
+          >
+            {t("chat.actionBar.clear")}
+          </ToolbarButton>
+          <ToolbarButton
+            aria-controls="chat-stage-dialog-config"
+            aria-expanded={configOpen}
+            aria-label={t("chat.toolbar.config")}
+            aria-pressed={configOpen}
+            className="dialog-stage-controls__button"
+            data-active={configOpen ? "true" : "false"}
+            icon={<SlidersHorizontal aria-hidden className="button__icon" />}
+            onClick={() => onConfigOpenChange(!configOpen)}
+            tooltip={t("chat.toolbar.config")}
+          >
+            {t("chat.actionBar.config")}
+          </ToolbarButton>
+          {hideCloseButton ? null : (
+            <ToolbarButton
+              aria-label={closeLabel}
+              className="dialog-stage-controls__button"
+              icon={<X aria-hidden className="button__icon" />}
+              onClick={onCloseSurface}
+              tooltip={closeLabel}
+            >
+              {t("chat.actionBar.close")}
+            </ToolbarButton>
+          )}
+          <PluginSlot slot="chat-dialog-actions" />
+        </div>
       </div>
     </div>
   );
@@ -1105,6 +1132,7 @@ function ChatConfigDialog({
         aria-labelledby={titleId}
         aria-modal="true"
         className="chat-config-dialog"
+        id="chat-stage-dialog-config"
         onKeyDown={handleKeyDown}
         role="dialog"
       >
@@ -1472,6 +1500,7 @@ export function ChatStagePage() {
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
@@ -1883,28 +1912,35 @@ export function ChatStagePage() {
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
         <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />
-        <DialogLayer
-          canAdvance={viewModel.layers.dialog && !typingDialog && dialogSource.totalCharacters > 0}
-          characterName={viewModel.dialogCharacterName}
-          controls={
-            <DialogStageControls
-              asrPaused={viewModel.status === "paused"}
-              closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
-              configOpen={toolbarConfigOpen}
-              hideCloseButton={standaloneDesktopWindow}
-              onCloseSurface={closeSurface}
-              onCommand={sendCommand}
-              onConfigOpenChange={setToolbarConfigOpen}
-              onOpenHistory={openHistoryDialog}
-            />
-          }
+        <div
+          aria-hidden={!viewModel.layers.dialog}
+          className={layerClassName("dialog-stack", !viewModel.layers.dialog)}
           hidden={!viewModel.layers.dialog}
-          html={displayedDialog.html}
-          onAdvance={advanceDialog}
-          onSkip={typingDialog ? advanceDialog : undefined}
-          text={typingDialog ? displayedDialog.text : viewModel.dialogText}
-          typing={typingDialog}
-        />
+        >
+          <DialogStageControls
+            asrPaused={viewModel.status === "paused"}
+            closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
+            configOpen={toolbarConfigOpen}
+            hidden={!viewModel.layers.dialog}
+            hideCloseButton={standaloneDesktopWindow}
+            locked={dialogControlsLocked}
+            onCloseSurface={closeSurface}
+            onCommand={sendCommand}
+            onConfigOpenChange={setToolbarConfigOpen}
+            onLockedChange={setDialogControlsLocked}
+            onOpenHistory={openHistoryDialog}
+          />
+          <DialogLayer
+            canAdvance={viewModel.layers.dialog && !typingDialog && dialogSource.totalCharacters > 0}
+            characterName={viewModel.dialogCharacterName}
+            hidden={!viewModel.layers.dialog}
+            html={displayedDialog.html}
+            onAdvance={advanceDialog}
+            onSkip={typingDialog ? advanceDialog : undefined}
+            text={typingDialog ? displayedDialog.text : viewModel.dialogText}
+            typing={typingDialog}
+          />
+        </div>
         <OptionsLayer
           hidden={!viewModel.layers.options}
           onSelect={(option) => sendCommand({ payload: option, type: "submit-option" })}
