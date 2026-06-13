@@ -1,7 +1,8 @@
 """Unit tests for UI output message handlers — can_handle routing logic."""
 
+from types import SimpleNamespace
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from sdk.messages import TTSOutputMessage
 from core.handlers.ui_message_handler import (
@@ -150,6 +151,54 @@ class TestCharacterDialogUiHandler:
         h = CharacterDialogUiHandler()
         assert h.can_handle(_tts_out("Alice", is_system=True)) is False
         assert h.can_handle(_tts_out("NARR", is_system=True)) is False
+
+    def test_emits_tts_play_when_audio_starts(self, tmp_path):
+        audio_path = tmp_path / "alice.wav"
+        audio_path.write_bytes(b"wav")
+
+        ui = MagicMock()
+        playback = SimpleNamespace(
+            task_done_requested=SimpleNamespace(
+                is_set=lambda: False,
+                wait=lambda timeout=None: False,
+            ),
+            dialog_channel=MagicMock(),
+            current_audio_path=None,
+        )
+        playback.dialog_channel.get_busy.side_effect = [True, False]
+        runtime = SimpleNamespace(ui_update_manager=ui, ui_playback=playback)
+        sound = MagicMock()
+
+        class _Character:
+            color = "#abcdef"
+            speech_volume = 0.8
+
+        handler = CharacterDialogUiHandler()
+        out = TTSOutputMessage(
+            audio_path=audio_path.as_posix(),
+            name="Alice",
+            text="Hello",
+            asset_id="1",
+            is_system_message=False,
+            is_final_segment=True,
+        )
+
+        with patch("core.handlers.ui_message_handler.get_app_runtime", return_value=runtime), patch(
+            "core.handlers.ui_message_handler.get_character_by_name", return_value=_Character()
+        ), patch("core.handlers.ui_message_handler.time.sleep", return_value=None), patch(
+            "core.handlers.ui_message_handler.pygame.mixer.Sound", return_value=sound
+        ), patch("core.handlers.ui_message_handler.get_asr_log", return_value=MagicMock()), patch(
+            "sdk.logging.timing.tracker.stop_cross", return_value=None
+        ):
+            handler.handle(out)
+
+        ui.hide_busy_bar.assert_called_once_with()
+        ui.post_tts_play.assert_called_once_with("Alice", audio_path.as_posix())
+        ui.post_pause_asr.assert_called_once_with()
+        ui.post_llm_reply_finished.assert_called_once_with()
+        playback.dialog_channel.play.assert_called_once_with(sound)
+        sound.set_volume.assert_called_once_with(0.8)
+        assert playback.current_audio_path is None
 
 
 class TestHandlerChainAssembly:

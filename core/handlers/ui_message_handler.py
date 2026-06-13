@@ -226,6 +226,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 tts_sound.set_volume(vol)
                 dc.play(tts_sound)
                 audio_played = True
+                ui.post_tts_play(character_name, audio_path)
                 get_asr_log().info(
                     "CharacterDialogUiHandler: TTS playing → post_pause_asr (character=%s)",
                     character_name,

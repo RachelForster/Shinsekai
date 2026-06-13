@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
 import {
   isTauriDesktop,
   isDesktopBridgeRestarting,
@@ -13,8 +14,10 @@ import type {
   AppUpdateResult,
   ChatCommand,
   ChatCommandResult,
+  ChatHistoryEntry,
   ChatLaunchPayload,
   ChatSnapshot,
+  ChatUpstreamCommand,
   BatchToolResult,
   Background,
   BackgroundTranslateResult,
@@ -44,6 +47,7 @@ import type {
   PluginUninstallResult,
   PluginUIDetail,
   RuntimeDependencyInstallResult,
+  ChatStageEvent,
   ShinsekaiPlatform,
   SpriteGenerationResult,
   SpritePromptResult,
@@ -76,14 +80,17 @@ async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit)
 async function fetchWithStartupRetry(url: string, init: RequestInit): Promise<Response> {
   const method = (init.method ?? "GET").toUpperCase();
   const retryable = method === "GET" || method === "HEAD";
-  const attempts = retryable ? 15 : 1;
+  const maxRetryAttempts = retryable ? 15 : 1;
   let lastError: unknown;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  let attempt = 0;
+  let waitedForBridgeRestart = false;
+  for (;;) {
     try {
       return await fetch(url, init);
     } catch (error) {
       lastError = error;
-      if (isDesktopBridgeRestarting() && isTransientBridgeError(error)) {
+      if (isDesktopBridgeRestarting() && isTransientBridgeError(error) && !waitedForBridgeRestart) {
+        waitedForBridgeRestart = true;
         logBridgeRestartRetry(method, url, error);
         await waitForDesktopBridgeRestart();
         continue;
@@ -98,6 +105,10 @@ async function fetchWithStartupRetry(url: string, init: RequestInit): Promise<Re
         }
         throw error;
       }
+      if (attempt + 1 >= maxRetryAttempts) {
+        break;
+      }
+      attempt += 1;
       await delay(200 + attempt * 150);
     }
   }
@@ -218,6 +229,26 @@ function sanitizeRestartLogUrl(url: string) {
   }
 }
 
+function buildChatViewerWebSocketUrl(wsUrl: string, sessionId: string) {
+  const url = new URL(wsUrl);
+  url.searchParams.set("sessionId", sessionId);
+  url.searchParams.set("role", "viewer");
+  return url.toString();
+}
+
+function isRealtimeChatCommand(command: ChatCommand): command is ChatUpstreamCommand {
+  return command.type !== "copy-history" && command.type !== "open-history";
+}
+
+function makeChatCommandId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const CHAT_WEBSOCKET_HANDSHAKE_TIMEOUT_MS = 1500;
+
 function isTaskRunning(task: TaskSnapshot) {
   return task.status === "queued" || task.status === "running";
 }
@@ -328,9 +359,17 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         }),
     },
     chat: {
+      close: () =>
+        requestJson<ChatSnapshot>(apiBase, "/api/chat/close", {
+          body: JSON.stringify({}),
+          keepalive: true,
+          method: "POST",
+        }),
       command: async (command: ChatCommand) => {
+        const payload =
+          isRealtimeChatCommand(command) && !command.cmdId ? { ...command, cmdId: makeChatCommandId() } : command;
         const result = await requestJson<ChatCommandResult>(apiBase, "/api/chat/command", {
-          body: JSON.stringify(command),
+          body: JSON.stringify(payload),
           method: "POST",
         });
         if (result.clipboardText != null) {
@@ -341,6 +380,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         }
         return result;
       },
+      getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
       getSnapshot: () => requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot"),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
       launch: (payload: ChatLaunchPayload) =>
@@ -374,6 +414,201 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         return () => {
           stopped = true;
           window.clearTimeout(timeoutId);
+        };
+      },
+      listThemes: () => requestJson<ChatThemeSummary[]>(apiBase, "/api/chat/themes"),
+      getThemeManifest: (id) => requestJson<ChatThemeManifest>(apiBase, `/api/chat/themes/${encodePath(id)}`),
+      getActiveThemeId: async () => {
+        const result = await requestJson<{ id: string }>(apiBase, "/api/chat/themes/active");
+        return result.id ?? "";
+      },
+      setActiveThemeId: async (id) => {
+        await requestJson(apiBase, "/api/chat/themes/active", {
+          body: JSON.stringify({ id }),
+          method: "POST",
+        });
+      },
+      uploadTheme: (file) => uploadFiles<ChatThemeSummary>(apiBase, "/api/chat/themes/upload", [file]),
+      deleteTheme: async (id) => {
+        await requestJson(apiBase, `/api/chat/themes/${encodePath(id)}`, { method: "DELETE" });
+      },
+      subscribeEvents(listener) {
+        let stopped = false;
+        let timeoutId = 0;
+        let connectTimeoutId = 0;
+        let seq = 0;
+        let socket: WebSocket | null = null;
+        let lastEventSeq = 0;
+
+        const emitSnapshot = (snapshot: ChatSnapshot) => {
+          const snapshotSeq =
+            typeof snapshot.eventSeq === "number" && Number.isFinite(snapshot.eventSeq) ? snapshot.eventSeq : 0;
+          const event: ChatStageEvent = {
+            seq: Math.max(seq, lastEventSeq, snapshotSeq),
+            snapshot,
+            ts: Date.now(),
+            type: "snapshot",
+            v: 1,
+          };
+          lastEventSeq = Math.max(lastEventSeq, snapshotSeq);
+          seq = Math.max(seq, event.seq);
+          listener(event);
+        };
+
+        const emitTransportState = (
+          state: "connected" | "connecting" | "polling" | "reconnecting",
+          transport: "snapshot" | "websocket",
+        ) => {
+          const nextSeq = Math.max(seq, lastEventSeq);
+          seq = Math.max(seq, nextSeq);
+          listener({
+            seq: nextSeq,
+            state,
+            transport,
+            ts: Date.now(),
+            type: "transport.state",
+            v: 1,
+          });
+        };
+
+        const closeSocket = () => {
+          window.clearTimeout(connectTimeoutId);
+          connectTimeoutId = 0;
+          if (!socket) {
+            return;
+          }
+          socket.onclose = null;
+          socket.onerror = null;
+          socket.onmessage = null;
+          try {
+            socket.close();
+          } catch {
+            // ignore
+          }
+          socket = null;
+        };
+
+        const connectWebSocket = (snapshot: ChatSnapshot) => {
+          const WebSocketCtor = globalThis.WebSocket;
+          if (!snapshot.wsUrl || !snapshot.sessionId || typeof WebSocketCtor === "undefined") {
+            emitTransportState("polling", "snapshot");
+            return false;
+          }
+          closeSocket();
+          let websocketConnected = false;
+          const ws = new WebSocketCtor(buildChatViewerWebSocketUrl(snapshot.wsUrl, snapshot.sessionId));
+          socket = ws;
+          connectTimeoutId = window.setTimeout(() => {
+            if (stopped || socket !== ws || websocketConnected) {
+              return;
+            }
+            closeSocket();
+            emitTransportState("polling", "snapshot");
+            timeoutId = window.setTimeout(poll, 0);
+          }, CHAT_WEBSOCKET_HANDSHAKE_TIMEOUT_MS);
+          ws.onopen = () => {
+            if (websocketConnected) {
+              return;
+            }
+            websocketConnected = true;
+            window.clearTimeout(connectTimeoutId);
+            connectTimeoutId = 0;
+            emitTransportState("connected", "websocket");
+          };
+          ws.onmessage = (message) => {
+            try {
+              if (!websocketConnected) {
+                websocketConnected = true;
+                window.clearTimeout(connectTimeoutId);
+                connectTimeoutId = 0;
+                emitTransportState("connected", "websocket");
+              }
+              const parsed = JSON.parse(String(message.data ?? ""));
+              if (!parsed || typeof parsed !== "object" || typeof parsed.type !== "string") {
+                return;
+              }
+              if (typeof parsed.seq === "number") {
+                if (lastEventSeq > 0 && parsed.seq > lastEventSeq + 1) {
+                  void requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot")
+                    .then((nextSnapshot) => {
+                      if (!stopped) {
+                        emitSnapshot(nextSnapshot);
+                      }
+                    })
+                    .catch(() => {
+                      // ignore gap recovery failure; normal reconnect path will retry
+                    });
+                }
+                lastEventSeq = Math.max(lastEventSeq, parsed.seq);
+              }
+              listener(parsed as ChatStageEvent);
+            } catch {
+              // ignore malformed websocket payloads
+            }
+          };
+          ws.onerror = () => {
+            try {
+              ws.close();
+            } catch {
+              // ignore
+            }
+          };
+          ws.onclose = () => {
+            if (socket === ws) {
+              socket = null;
+            }
+            websocketConnected = false;
+            window.clearTimeout(connectTimeoutId);
+            connectTimeoutId = 0;
+            if (!stopped) {
+              emitTransportState("reconnecting", "websocket");
+              timeoutId = window.setTimeout(connectFromSnapshot, 800);
+            }
+          };
+          return true;
+        };
+
+        const poll = async () => {
+          try {
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot");
+            if (!stopped) {
+              emitSnapshot(snapshot);
+              if (connectWebSocket(snapshot)) {
+                return;
+              }
+            }
+          } finally {
+            if (!stopped && socket == null) {
+              emitTransportState("polling", "snapshot");
+              timeoutId = window.setTimeout(poll, 1400);
+            }
+          }
+        };
+
+        const connectFromSnapshot = async () => {
+          try {
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot");
+            if (stopped) {
+              return;
+            }
+            emitSnapshot(snapshot);
+            if (!connectWebSocket(snapshot)) {
+              timeoutId = window.setTimeout(poll, 1400);
+            }
+          } catch {
+            if (!stopped) {
+              emitTransportState("polling", "snapshot");
+              timeoutId = window.setTimeout(poll, 1400);
+            }
+          }
+        };
+
+        void connectFromSnapshot();
+        return () => {
+          stopped = true;
+          window.clearTimeout(timeoutId);
+          window.clearTimeout(connectTimeoutId);
+          closeSocket();
         };
       },
     },

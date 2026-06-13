@@ -50,4 +50,26 @@ describe("plugin slot registry", () => {
     expect(screen.queryByText("Toolbar")).not.toBeInTheDocument();
     expect(screen.getByText("Demo Output").parentElement).toHaveAttribute("data-plugin-slot", "chat-output");
   });
+
+  it("accepts dialog action contributions as a dedicated chat UI slot", () => {
+    render(
+      <PluginSlot
+        contributions={[
+          {
+            ...validContribution,
+            id: "demo.dialog-actions",
+            render: () => <button type="button">Custom Dialog Action</button>,
+            slot: "chat-dialog-actions",
+            title: "Dialog Action",
+          },
+        ]}
+        slot="chat-dialog-actions"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Custom Dialog Action" }).parentElement).toHaveAttribute(
+      "data-plugin-slot",
+      "chat-dialog-actions",
+    );
+  });
 });

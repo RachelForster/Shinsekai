@@ -36,6 +36,15 @@ const MAX_VISIBLE_LINES = 3000;
 const DETAIL_FIELD_LIMIT = 36;
 const RESERVED_DETAIL_FIELDS = new Set(["event", "level", "line", "logger", "message", "timestamp"]);
 
+type ParsedTextLogLine = {
+  detailPairs: Array<[string, string]>;
+  event: string;
+  level: string;
+  logger: string;
+  message: string;
+  timestamp: string;
+};
+
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) {
     return "0 B";
@@ -106,6 +115,85 @@ function entryDetailPairs(entry: LogStructuredEntry | undefined) {
     .filter(([, value]) => value.trim());
 }
 
+function cleanLogDetailValue(value: string) {
+  return value.replace(/^["']|["']$/g, "").replace(/[,:;]+$/g, "");
+}
+
+function extractKeyValuePairs(text: string) {
+  const pairs: Array<[string, string]> = [];
+  const seen = new Set<string>();
+  const pattern = /([A-Za-z_][\w.-]*)=("[^"]*"|'[^']*'|[^\s\]]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    const key = match[1];
+    const value = cleanLogDetailValue(match[2] ?? "");
+    if (!key || !value || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    pairs.push([key, value]);
+    if (pairs.length >= DETAIL_FIELD_LIMIT) {
+      break;
+    }
+  }
+  return pairs;
+}
+
+function stripKeyValueNoise(text: string) {
+  return text
+    .replace(/\[[^\]]*[A-Za-z_][\w.-]*=(?:"[^"]*"|'[^']*'|[^\s\]]+)[^\]]*\]\s*:?\s*/g, "")
+    .replace(/\b[A-Za-z_][\w.-]*=(?:"[^"]*"|'[^']*'|[^\s\]]+)/g, "")
+    .replace(/^\s*[:：-]\s*/, "")
+    .trim();
+}
+
+function parseRestartDebugLine(text: string): ParsedTextLogLine | undefined {
+  if (!text.startsWith("[restart-debug]")) {
+    return undefined;
+  }
+  const detailPairs = extractKeyValuePairs(text);
+  const detail = Object.fromEntries(detailPairs);
+  return {
+    detailPairs,
+    event: "restart-debug",
+    level: "debug",
+    logger: detail.component || "restart",
+    message: stripKeyValueNoise(text.replace(/^\[restart-debug\]\s*/, "")) || text,
+    timestamp: detail.ts || "",
+  };
+}
+
+function parseTextLogLine(text: string): ParsedTextLogLine | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const restart = parseRestartDebugLine(trimmed);
+  if (restart) {
+    return restart;
+  }
+  const match = trimmed.match(
+    /^(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,6})?)\s+\[([A-Za-z]+)\]\s+([A-Za-z0-9_.:-]+)(?:\s+([\s\S]*))?$/,
+  );
+  if (!match) {
+    return undefined;
+  }
+  const [, timestamp = "", level = "", logger = "", rest = ""] = match;
+  const firstTokenMatch = rest.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
+  const firstToken = firstTokenMatch?.[1] ?? "";
+  const firstTokenLooksLikeEvent = /^[A-Za-z_][\w.-]*$/.test(firstToken) && /[.:]/.test(firstToken);
+  const event = firstTokenLooksLikeEvent ? firstToken : "";
+  const messageSource = firstTokenLooksLikeEvent ? (firstTokenMatch?.[2] ?? "") : rest;
+  return {
+    detailPairs: extractKeyValuePairs(rest),
+    event,
+    level,
+    logger,
+    message: stripKeyValueNoise(messageSource) || messageSource.trim() || trimmed,
+    timestamp,
+  };
+}
+
 function normalizeLevel(value: unknown, fallbackText = ""): LogLevel {
   const raw = String(value || "").toLowerCase();
   if (raw.includes("error") || raw.includes("critical") || /\b(exception|failed|traceback)\b/i.test(fallbackText)) {
@@ -146,20 +234,21 @@ function buildLines(snapshot?: LogSnapshot): LogLine[] {
   return (snapshot?.content ?? "").split(/\r?\n/).map((text, index) => {
     const number = index + 1;
     const entry = entryByLine.get(number) ?? parseJsonLine(text);
-    const message = entryMessage(entry, text);
+    const parsedText = entry ? undefined : parseTextLogLine(text);
+    const message = entry ? entryMessage(entry, text) : parsedText?.message || text;
     return {
-      detailPairs: entryDetailPairs(entry),
+      detailPairs: entry ? entryDetailPairs(entry) : (parsedText?.detailPairs ?? []),
       entry,
-      event: entryString(entry, "event"),
-      level: normalizeLevel(entry?.level, text),
-      logger: entryString(entry, "logger"),
+      event: entryString(entry, "event") || parsedText?.event || "",
+      level: normalizeLevel(entry?.level ?? parsedText?.level, text),
+      logger: entryString(entry, "logger") || parsedText?.logger || "",
       message,
       number,
       pluginId: entryString(entry, "plugin_id"),
       rawText: text,
       taskId: entryString(entry, "task_id"),
       text: message,
-      timestamp: entryString(entry, "timestamp"),
+      timestamp: entryString(entry, "timestamp") || parsedText?.timestamp || "",
     };
   });
 }
@@ -401,11 +490,13 @@ export function LogsPage() {
 
   return (
     <div className="page logs-page">
-      <header className="page__header">
-        <div>
-          <h1 className="page__title">运行日志</h1>
+      <header className="logs-header">
+        <div className="logs-header__copy">
+          <p className="logs-header__eyebrow">SYSTEM LOG</p>
+          <h1 className="logs-header__title">运行日志</h1>
+          <p className="logs-header__description">查看运行日志，按结构化字段筛选，并导出诊断包。</p>
         </div>
-        <div className="page__actions">
+        <div className="logs-header__actions">
           <Button icon={<Upload aria-hidden className="button__icon" />} onClick={() => inputRef.current?.click()}>
             导入
           </Button>
@@ -441,7 +532,7 @@ export function LogsPage() {
         </div>
       </header>
 
-      <section className="logs-toolbar section" aria-label="日志搜索">
+      <section className="logs-toolbar" aria-label="日志搜索">
         <div className="logs-toolbar__search">
           <Search aria-hidden className="logs-toolbar__icon" />
           <TextInput
@@ -494,7 +585,7 @@ export function LogsPage() {
       </section>
 
       <div className="logs-layout">
-        <aside className="logs-sidebar section">
+        <aside className="logs-sidebar">
           <div className="logs-source">
             <FileText aria-hidden className="logs-source__icon" />
             <div className="logs-source__text">
@@ -529,7 +620,7 @@ export function LogsPage() {
           {currentLog?.truncated ? <p className="logs-truncated">当前仅显示日志尾部内容。</p> : null}
 
           <div className="logs-file-list">
-            <h2 className="section__title">最近日志</h2>
+            <h2 className="logs-section-title">最近日志</h2>
             {filesQuery.isError ? <p className="logs-truncated">日志列表读取失败。</p> : null}
             {(filesQuery.data?.files ?? []).map((file) => (
               <button
@@ -549,7 +640,7 @@ export function LogsPage() {
           </div>
         </aside>
 
-        <section className="logs-viewer section" aria-label="日志内容">
+        <section className="logs-viewer" aria-label="日志内容">
           {logsQuery.isLoading && !currentLog ? <EmptyState title="正在读取日志" /> : null}
           {logsQuery.isError && !currentLog ? (
             <QueryErrorState

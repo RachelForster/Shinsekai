@@ -250,6 +250,38 @@ class TestToolExecutorExecute:
         assert "error" in parsed
         assert "unexpected failure" in parsed["error"] or "failed" in parsed["error"]
 
+    def test_error_result_sets_configured_group_cooldown(self):
+        tm = _reset_tm()
+
+        def capture() -> dict:
+            return {"error": "screen capture failed"}
+
+        tm.register_function(capture, name="vision_capture", group="vision")
+        executor = ToolExecutor(tm, error_cooldown_map={"vision": 60.0})
+
+        result = executor.execute("vision_capture", "{}")
+        parsed = json.loads(result)
+
+        assert parsed["error"] == "screen capture failed"
+        assert executor.is_in_cooldown("vision")
+        assert executor.cooldown_message_for_tool("vision_capture") is not None
+
+    def test_error_probe_during_cooldown_keeps_group_in_cooldown(self):
+        tm = _reset_tm()
+
+        def capture() -> dict:
+            return {"error": "still broken"}
+
+        tm.register_function(capture, name="vision_capture_probe", group="vision")
+        executor = ToolExecutor(tm, error_cooldown_map={"vision": 60.0})
+        executor._cooldowns["vision"] = time.time() + 60.0
+
+        result = executor.execute("vision_capture_probe", "{}")
+        parsed = json.loads(result)
+
+        assert parsed["error"] == "still broken"
+        assert executor.is_in_cooldown("vision")
+
     def test_unknown_tool_returns_error(self):
         tm = _reset_tm()
         executor = ToolExecutor(tm)

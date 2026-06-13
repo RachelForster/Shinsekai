@@ -137,8 +137,14 @@ class LLMWorker(QThreadDagNode):
                 tracker.start_cross("e2e")
                 self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
 
-                formatted_user_message = f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'><b style='color:white;'>你</b>: {message.text}</p>"
-                self.ui_update_manager.chat_history.append(formatted_user_message)
+                if hasattr(self.ui_update_manager, "record_user_message"):
+                    self.ui_update_manager.record_user_message(message.text)
+                else:
+                    formatted_user_message = (
+                        "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+                        f"<b style='color:white;'>你</b>: {message.text}</p>"
+                    )
+                    self.ui_update_manager.chat_history.append(formatted_user_message)
 
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
@@ -309,6 +315,7 @@ class UIWorker(QThreadDagNode):
         self._app_inited = False
         self.audio_path_queue = input_queue
         self.task_done_requested = threading.Event()
+        self._dialog_active = False
         self.current_audio_path = None
         self.DIALOG_CHANNEL_ID = 7
         self.ui_out_dispatcher = default_ui_output_handler_chain()
@@ -346,12 +353,22 @@ class UIWorker(QThreadDagNode):
             self.dialog_channel = None
 
     def skip_speech(self):
-        if self.audio_path_queue.empty():
+        runtime = get_app_runtime()
+        playback = runtime.ui_playback
+        current_audio_path = self.current_audio_path or getattr(playback, "current_audio_path", None)
+        dialog_channel_busy = bool(self.dialog_channel and self.dialog_channel.get_busy())
+        active_dialog = self._dialog_active and not self.task_done_requested.is_set()
+        audio_active = dialog_channel_busy or bool(current_audio_path)
+        if not audio_active and not active_dialog:
             return
-        if self.dialog_channel and self.dialog_channel.get_busy():
+        if dialog_channel_busy:
             self.dialog_channel.stop()
-        self.current_audio_path = None
-        get_app_runtime().ui_playback.current_audio_path = None
+        if audio_active:
+            self.current_audio_path = None
+            playback.current_audio_path = None
+            ui_updates = getattr(self, "ui_update_manager", None) or runtime.ui_update_manager
+            if hasattr(ui_updates, "post_tts_skip"):
+                ui_updates.post_tts_skip()
         self.task_done_requested.set()
 
     def run(self):
@@ -365,6 +382,7 @@ class UIWorker(QThreadDagNode):
                 got_item = True
                 if output_data is None:
                     break
+                self._dialog_active = True
                 self.ui_out_dispatcher.dispatch(output_data)
             except Exception as e:
                 logger.exception("UI worker task failed", extra={"event": "ui.worker.failed"})
@@ -377,6 +395,7 @@ class UIWorker(QThreadDagNode):
                     wait = max(len(_text) / 10, 0.3) if _text else 0.3
                     self.task_done_requested.wait(timeout=wait)
             finally:
+                self._dialog_active = False
                 if got_item:
                     self.audio_path_queue.task_done()
 

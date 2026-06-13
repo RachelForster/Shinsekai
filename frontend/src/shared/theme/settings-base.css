@@ -1,6 +1,8 @@
 /* ── Shared settings page layout (used by all feature pages under features/) ── */
 
 .page {
+  --page-header-safe-gap: var(--space-3);
+
   display: flex;
   width: min(100%, var(--settings-content-max-width));
   min-width: 0;
@@ -8,6 +10,7 @@
   flex-direction: column;
   gap: var(--space-5);
   margin: 0 auto;
+  scroll-padding-top: calc(64px + var(--page-header-safe-gap));
 }
 
 .page__header {
@@ -41,6 +44,10 @@
 
 .page__header > div:first-child {
   min-width: 0;
+}
+
+.page__header + * {
+  margin-top: var(--page-header-safe-gap);
 }
 
 .page__title {
@@ -77,6 +84,10 @@
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
     gap: var(--space-2);
+  }
+
+  .page__header + * {
+    margin-top: var(--space-2);
   }
 
   .page__actions {
@@ -389,6 +400,11 @@ details > .field-row + .field-row {
 .field-row__control {
   display: block;
   min-width: 0;
+}
+
+.field-row__control > .switch:first-child {
+  min-height: 34px;
+  align-items: center;
 }
 
 .field-row__help {

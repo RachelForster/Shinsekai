@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
-import { Navigate, Route, Routes, HashRouter } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "../shell/AppShell";
 
@@ -72,26 +72,29 @@ function lazyRouteElement(children: ReactNode) {
   return <LazyRoute>{children}</LazyRoute>;
 }
 
+function chatStageRouteElement() {
+  return lazyRouteElement(<ChatStagePage />);
+}
+
 export function AppRoutes() {
   return (
-    <HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-      <Routes>
-        <Route element={<AppShell />} path="/settings">
-          <Route element={<Navigate replace to="/settings/api" />} index />
-          <Route element={lazyRouteElement(<ApiSettingsPage />)} path="api" />
-          <Route element={lazyRouteElement(<CharacterEditorPage />)} path="characters" />
-          <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
-          <Route element={lazyRouteElement(<TemplateEditorPage />)} path="templates" />
-          <Route element={lazyRouteElement(<PluginManagerPage />)} path="plugins" />
-          <Route element={lazyRouteElement(<LogsPage />)} path="logs" />
-          <Route element={lazyRouteElement(<ToolsPage />)} path="tools" />
-          <Route element={lazyRouteElement(<MusicCoverPage />)} path="music-cover" />
-          <Route element={lazyRouteElement(<ChatLauncherPage />)} path="launch" />
-          <Route element={lazyRouteElement(<SystemSettingsPage />)} path="system" />
-        </Route>
-        <Route element={lazyRouteElement(<ChatStagePage />)} path="/chat" />
-        <Route element={<Navigate replace to="/settings/api" />} path="*" />
-      </Routes>
-    </HashRouter>
+    <Routes>
+      <Route element={<AppShell />} path="/settings">
+        <Route element={<Navigate replace to="/settings/api" />} index />
+        <Route element={lazyRouteElement(<ApiSettingsPage />)} path="api" />
+        <Route element={lazyRouteElement(<CharacterEditorPage />)} path="characters" />
+        <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
+        <Route element={lazyRouteElement(<TemplateEditorPage />)} path="templates" />
+        <Route element={lazyRouteElement(<PluginManagerPage />)} path="plugins" />
+        <Route element={lazyRouteElement(<LogsPage />)} path="logs" />
+        <Route element={lazyRouteElement(<ToolsPage />)} path="tools" />
+        <Route element={lazyRouteElement(<MusicCoverPage />)} path="music-cover" />
+        <Route element={lazyRouteElement(<ChatLauncherPage />)} path="launch" />
+        <Route element={lazyRouteElement(<SystemSettingsPage />)} path="system" />
+      </Route>
+      <Route element={chatStageRouteElement()} path="/chat" />
+      <Route element={chatStageRouteElement()} path="/chat-stage" />
+      <Route element={<Navigate replace to="/settings/api" />} path="*" />
+    </Routes>
   );
 }

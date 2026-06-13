@@ -1,5 +1,6 @@
 import { Maximize2, Minus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
@@ -287,8 +288,14 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
 
 export function DesktopChrome({ children }: { children: ReactNode }) {
   const desktop = useMemo(() => isTauriDesktop(), []);
+  const location = useLocation();
+  const standaloneChatRoute = location.pathname === "/chat" || location.pathname === "/chat-stage";
 
   if (!desktop) {
+    return <>{children}</>;
+  }
+
+  if (standaloneChatRoute) {
     return <>{children}</>;
   }
 
