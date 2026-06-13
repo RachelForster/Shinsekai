@@ -131,3 +131,9 @@ Independent of the plugin system: you can wire external capabilities through YAM
 | Repository | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
 
 Issues and PRs are welcome. If you redistribute character or voice assets, follow each author’s license.
+
+---
+
+## License Notice
+
+Shinsekai is source-available, not open source. You may inspect the source code, build it locally for personal use, and maintain public forks for discussion and contribution. Redistribution, release builds, installer packages, app store distribution, and commercial use are not permitted without written permission. See [LICENSE](../LICENSE).
