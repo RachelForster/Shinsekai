@@ -62,10 +62,10 @@ describe("app shell chrome", () => {
     expect(screen.getByText("工作区")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub 仓库/i })).toBeInTheDocument();
     expect(await screen.findByText("12 stars")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "API 设定" })).toHaveAttribute("href", "/settings/api");
-    expect(screen.getByRole("link", { name: "插件" })).toHaveAttribute("href", "/settings/plugins");
+    expect(screen.getByRole("link", { name: "AI 服务" })).toHaveAttribute("href", "/settings/api");
+    expect(screen.getByRole("link", { name: "插件管理" })).toHaveAttribute("href", "/settings/plugins");
 
-    const tools = screen.getByRole("button", { name: "小工具" });
+    const tools = screen.getByRole("button", { name: "实用工具" });
     expect(tools).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(tools);
     expect(onToolsToggle).toHaveBeenCalledTimes(1);
@@ -75,7 +75,7 @@ describe("app shell chrome", () => {
     renderWithI18n(<TopBar />);
 
     expect(screen.getByText("新世界程序")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "系统" })).toHaveAttribute("href", "/settings/system");
+    expect(screen.getByRole("link", { name: "程序设置" })).toHaveAttribute("href", "/settings/system");
   });
 
   it("shows app version and prioritizes saving status over syncing status", () => {

@@ -521,7 +521,6 @@ export function BackgroundManagerPage() {
       <header className="page__header background-page__header">
         <div className="background-page__heading">
           <h1 className="page__title">{t("background.title")}</h1>
-          <p className="page__description">{t("background.description")}</p>
         </div>
         <div className="page__actions background-page__primary-actions">
           <div className="background-page__resource-actions">

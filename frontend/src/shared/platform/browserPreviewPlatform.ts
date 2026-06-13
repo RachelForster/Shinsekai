@@ -839,11 +839,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           taskId,
           {
             kind: "music-cover",
-            message: "正在执行翻唱流水线。",
+            message: "正在生成翻唱音频。",
             phase: "run",
             progress: 0.45,
             status: "running",
-            title: "音乐翻唱流水线",
+            title: "音乐翻唱",
           },
           options,
         );
@@ -862,12 +862,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           taskId,
           {
             kind: "music-cover",
-            message: "翻唱流水线预览完成。",
+            message: "翻唱音频预览完成。",
             phase: "completed",
             progress: 1,
             result,
             status: "succeeded",
-            title: "音乐翻唱流水线",
+            title: "音乐翻唱",
           },
           options,
         );

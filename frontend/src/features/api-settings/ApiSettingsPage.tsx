@@ -570,7 +570,6 @@ export function ApiSettingsPage() {
       <header className="page__header api-page__header">
         <div>
           <h1 className="page__title">{t("api.title")}</h1>
-          <p className="page__description">{t("api.description")}</p>
         </div>
         <div className="page__actions">
           <AsyncButton

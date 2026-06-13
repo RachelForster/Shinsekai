@@ -33,7 +33,7 @@ describe("ToolsPage", () => {
   it("renders the page title", async () => {
     mockListCharacters.mockResolvedValue([]);
     renderPage();
-    expect(await screen.findByText("小工具")).toBeInTheDocument();
+    expect(await screen.findByText("实用工具")).toBeInTheDocument();
   });
 
   it("renders the sprite tools section", async () => {

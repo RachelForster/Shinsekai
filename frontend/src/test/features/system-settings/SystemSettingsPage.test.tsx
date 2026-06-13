@@ -116,7 +116,7 @@ describe("SystemSettingsPage", () => {
   it("renders the page title", async () => {
     mockGetAppConfig.mockResolvedValue(mockSystemConfig());
     renderPage();
-    expect(await screen.findByText("系统")).toBeInTheDocument();
+    expect(await screen.findByText("程序设置")).toBeInTheDocument();
     expect(screen.queryByText("桌面运行环境")).not.toBeInTheDocument();
   });
 

@@ -153,10 +153,7 @@ export function MusicCoverPage() {
     <div className="page music-cover-page">
       <header className="page__header">
         <div>
-          <h1 className="page__title">音乐翻唱流水线</h1>
-          <p className="page__description">
-            下载 → 歌词/字幕 → UVR 分离 → RVC 翻唱 → 合成。修改路径后请先保存配置，再执行流水线。
-          </p>
+          <h1 className="page__title">音乐翻唱</h1>
         </div>
       </header>
 

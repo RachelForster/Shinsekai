@@ -403,8 +403,7 @@ export function LogsPage() {
     <div className="page logs-page">
       <header className="page__header">
         <div>
-          <h1 className="page__title">日志</h1>
-          <p className="page__description">查看运行日志，按结构化字段筛选，并导出诊断包。</p>
+          <h1 className="page__title">运行日志</h1>
         </div>
         <div className="page__actions">
           <Button icon={<Upload aria-hidden className="button__icon" />} onClick={() => inputRef.current?.click()}>
