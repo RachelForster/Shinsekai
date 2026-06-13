@@ -42,15 +42,22 @@ from .characters import (
     _delete_all_character_sprites,
     _delete_character_memory,
     _delete_character_sprite,
+    _delete_scenario_voice,
     _delete_sprite_voice,
     _generate_character_setting,
     _list_character_memories,
+    _list_character_scenarios,
     _save_character,
     _save_character_emotion_tags,
+    _save_character_scenarios,
+    _save_scenario_voice_text,
+    _save_scenario_voice_type,
+    _translate_scenario_names,
     _save_sprite_scale,
     _save_sprite_voice_text,
     _translate_character_fields,
     _upload_character_sprites,
+    _upload_scenario_voice,
     _upload_sprite_voice,
 )
 from .config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
@@ -495,6 +502,20 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_save_sprite_voice_text(self.state, body))
             elif method == "POST" and path == "/api/characters/sprite-voice/delete":
                 self._send_json(_delete_sprite_voice(self.state, body))
+            elif method == "POST" and path == "/api/characters/scenarios/list":
+                self._send_json(_list_character_scenarios(self.state, body))
+            elif method == "POST" and path == "/api/characters/scenarios/save":
+                self._send_json(_save_character_scenarios(self.state, body))
+            elif method == "POST" and path == "/api/characters/scenarios/voice-upload":
+                self._send_json(_upload_scenario_voice(self.state, body))
+            elif method == "POST" and path == "/api/characters/scenarios/voice-delete":
+                self._send_json(_delete_scenario_voice(self.state, body))
+            elif method == "POST" and path == "/api/characters/scenarios/voice-text":
+                self._send_json(_save_scenario_voice_text(self.state, body))
+            elif method == "POST" and path == "/api/characters/scenarios/voice-type":
+                self._send_json(_save_scenario_voice_type(self.state, body))
+            elif method == "POST" and path == "/api/characters/scenarios/translate-names":
+                self._send_json(_translate_scenario_names(self.state, body))
             elif method == "DELETE" and path.startswith("/api/characters/"):
                 name = unquote(path.rsplit("/", 1)[-1])
                 message, names = self.state.character_manager.delete_character(name)

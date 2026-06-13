@@ -20,6 +20,7 @@ export function createCharacter(): Character {
     character_setting: "",
     color: DEFAULT_CHARACTER_COLOR,
     emotion_tags: "",
+    scenarios: [],
     name: "",
     pronunciation_map: {},
     speech_speed: 1,

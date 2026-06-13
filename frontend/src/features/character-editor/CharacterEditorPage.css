@@ -247,3 +247,120 @@
     position: static;
   }
 }
+
+/* ── Voice trigger tags ── */
+
+.scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.scenario-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  position: relative;
+}
+
+.scenario-card__actions {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-2);
+}
+
+.scenario-card__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.scenario-card__index {
+  font-size: var(--font-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  min-width: 40px;
+}
+
+.scenario-card__name {
+  width: 110px;
+  flex: 0 0 auto;
+}
+
+.scenario-card__filename {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenario-card__player {
+  flex: 0 0 auto;
+}
+
+.scenario-card__voice-text {
+  width: 390px;
+  flex: 0 0 auto;
+}
+
+.scenario-card__voice-type {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-1);
+}
+
+.scenario-card__hint {
+  font-size: var(--font-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.scenario-card__filename {
+  font-size: var(--font-sm);
+  color: var(--color-text-muted);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenario-card__upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-sm);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.scenario-card__upload-btn:hover {
+  background: var(--color-surface-raised);
+}
+
+.scenario-card__file-input {
+  display: none;
+}
+
+.scenario-card__hint-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.hint-icon {
+  color: var(--color-text-muted);
+  cursor: help;
+  flex: 0 0 auto;
+}
+
+.radio-group__input {
+  accent-color: var(--color-accent-primary);
+}

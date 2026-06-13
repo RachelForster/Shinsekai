@@ -39,18 +39,28 @@ class Sprite(BaseModel):
     voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
 
+
+class CharacterScenario(BaseModel):
+    """角色的单个情景（情绪或动作），由 AI 自主识别"""
+    name: str = Field(..., description="情景名称（英文，如 happy / kiss / angry）")
+    voice_path: Optional[str] = Field(None, description="语音文件路径（可选）")
+    voice_type: Optional[str] = Field(None, description="语音类型: preset 或 reference")
+    voice_text: Optional[str] = Field(None, description="语音对应文本内容")
+
+
 class Character(BaseModel):
     """单个角色配置的实体模型"""
     # 角色基本信息
     name: str = Field(..., description="角色名称")
     color: str = Field(..., description="角色对话框或名字的颜色")
     sprite_prefix: str = Field(..., description="立绘文件名的通用前缀")
-    
+
     # 列表中可能包含 Sprite 模型，也可能只是原始字典
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="角色的立绘和对应语音的列表")
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
+    scenarios: List[CharacterScenario] = Field(default_factory=list, description="情景配置列表（由 AI 自主识别情绪或动作）")
 
     # gpt-sovits 相关的配置
     gpt_model_path: Optional[str] = Field('', description="角色 GPT 模型的路径 (可选)")

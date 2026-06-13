@@ -23,12 +23,32 @@ from core.messaging.dialog_tokens import (
 from sdk.messages import LLMDialogMessage, TTSOutputMessage
 from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
 from i18n import tr as tr_i18n
+import re
 
 _config = ConfigManager()
 
 
 def get_character_by_name(name: str):
     return _config.get_character_by_name(name)
+
+
+def _match_voice_tag(speech: str, scenarios: list):
+    """检测台词中的 [tagname] 标签，匹配角色情景配置。
+    返回匹配到的 scenario dict，未匹配返回 None。
+    同时返回去除标签后的纯净台词。
+    """
+    if not speech or not scenarios:
+        return None, speech
+    tags = re.findall(r'\[(\w+)\]', speech)
+    if not tags:
+        return None, speech
+    for tag in tags:
+        for s in scenarios:
+            s_name = s.name if hasattr(s, 'name') else s.get('name', '')
+            if s_name.lower() == tag.lower():
+                clean = re.sub(r'\s*\[\w+\]\s*', '', speech).strip()
+                return s, clean
+    return None, speech
 
 
 def _post_tts_busy(text: str) -> None:
@@ -139,6 +159,31 @@ class DefaultCharacterTtsHandler(MessageHandler):
             text_processor = None
             speech_text = rt.text_processor.remove_parentheses(translate)
             speech_text = rt.text_processor.replace_names(speech_text)
+
+        # 语音触发标签：[tagname] 匹配角色情景，触发对应语音
+        _scenarios = getattr(character_config, 'scenarios', None) or []
+        _matched, _clean_speech = _match_voice_tag(speech_text, _scenarios)
+        if _matched:
+            _m_vt = _matched.voice_type if hasattr(_matched, 'voice_type') else _matched.get('voice_type')
+            _m_vp = _matched.voice_path if hasattr(_matched, 'voice_path') else _matched.get('voice_path')
+            _m_vtext = _matched.voice_text if hasattr(_matched, 'voice_text') else _matched.get('voice_text')
+            if _m_vt == "preset" and _m_vp:
+                audio_path = Path(_m_vp).resolve().as_posix()
+                _hide_tts_busy()
+                tts_emit_to_ui_queue(
+                    name_s, _m_vtext or _clean_speech, str(asset_id), audio_path,
+                    is_system_message=False, effect=msg.effect,
+                )
+                return
+            elif _m_vt == "reference" and _m_vp:
+                # 标签触发参考音色：用标签配置作为 TTS 参考
+                speech_text = _clean_speech
+                _tag_ref_audio = _m_vp
+                _tag_prompt = _m_vtext or ""
+            else:
+                _tag_ref_audio = None
+                _tag_prompt = None
+
         audio_path = ""
         if rt.tts_manager:
             _post_tts_busy(tr_i18n("desktop.tts_busy_synthesizing", name=name_s))
@@ -166,6 +211,11 @@ class DefaultCharacterTtsHandler(MessageHandler):
                         prompt_text = sprite_data.get("voice_text")
                 except Exception:
                     print("没有立绘")
+                # 语音触发标签匹配到 reference 时，用标签配置覆盖参考音频
+                if _tag_ref_audio:
+                    ref_audio_path = Path(_tag_ref_audio).resolve().as_posix()
+                if _tag_prompt:
+                    prompt_text = _tag_prompt
                 if text_processor:
                     speech_text = text_processor.remove_parentheses(speech_text)
 

@@ -6,6 +6,13 @@ export interface Sprite {
   voice_text?: string;
 }
 
+export interface CharacterScenario {
+  name: string;
+  voice_path?: string;
+  voice_type?: "preset" | "reference" | null;
+  voice_text?: string;
+}
+
 export interface Character {
   name: string;
   color: string;
@@ -14,6 +21,7 @@ export interface Character {
   character_setting: string;
   sprite_scale: number;
   emotion_tags: string;
+  scenarios?: CharacterScenario[];
   gpt_model_path?: string;
   sovits_model_path?: string;
   refer_audio_path?: string;
@@ -818,6 +826,18 @@ export interface ShinsekaiPlatform {
       voicePath: string;
       voiceText: string;
     }) => Promise<Character>;
+    saveScenarios: (name: string, scenarios: CharacterScenario[]) => Promise<Character>;
+    uploadScenarioVoice: (input: {
+      name: string;
+      scenarioIndex: number;
+      voicePath: string;
+      voiceText: string;
+      voiceType: string;
+    }) => Promise<Character>;
+    deleteScenarioVoice: (name: string, scenarioIndex: number) => Promise<Character>;
+    saveScenarioVoiceText: (input: { name: string; scenarioIndex: number; voiceText: string }) => Promise<Character>;
+    translateScenarioNames: (name: string, names: string[]) => Promise<{ translated: Record<string, string> }>;
+      saveScenarioVoiceType: (input: { name: string; scenarioIndex: number; voiceType: string }) => Promise<Character>;
   };
   config: {
     cancelTtsBundleDownload: (taskId: string) => Promise<TaskSnapshot<TtsBundleDownloadResult>>;

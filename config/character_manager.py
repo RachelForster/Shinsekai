@@ -646,6 +646,119 @@ class CharacterManager:
         return f"找不到角色: {name}"
 
 
+    # ---------- 情景模块 ----------
+
+
+    def get_character_scenarios(self, character_name: str) -> List[dict]:
+        """获取角色的情景配置列表"""
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return []
+        if hasattr(character, 'model_dump'):
+            return character.model_dump().get('scenarios', [])
+        return getattr(character, 'scenarios', []) or []
+
+
+    def save_character_scenarios(self, character_name: str, scenarios: List[dict]) -> str:
+        """保存角色的完整情景配置（替换模式）"""
+        if not character_name:
+            return "请先选择角色！"
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}"
+        from config.schema import CharacterScenario
+        validated = [CharacterScenario.model_validate(s) for s in scenarios]
+        character.scenarios = validated
+        self._config_manager.save_characters_config()
+        return "情景配置已保存"
+
+
+    def upload_scenario_voice(
+        self, character_name: str, scenario_index: int,
+        voice_file: str, voice_text: str, voice_type: str = "",
+    ) -> Tuple[str, Optional[str]]:
+        """为指定情景上传语音文件"""
+        if not character_name:
+            return "请先选择角色！", None
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}", None
+        if not character.scenarios or scenario_index < 0 or scenario_index >= len(character.scenarios):
+            return "情景不存在！", None
+        scenario = character.scenarios[scenario_index]
+        if not voice_file:
+            return "请选择语音文件！", None
+
+        voice_dir = os.path.join(VOICE_DIR, character.sprite_prefix)
+        Path(voice_dir).mkdir(parents=True, exist_ok=True)
+        file_ext = Path(voice_file).suffix
+        voice_filename = f"scenario_{scenario_index:02d}{file_ext}"
+        voice_path = os.path.join(voice_dir, voice_filename)
+        shutil.copyfile(voice_file, voice_path)
+
+        scenario.voice_path = voice_path
+        scenario.voice_text = voice_text
+        if voice_type:
+            scenario.voice_type = voice_type
+
+        self._config_manager.save_characters_config()
+        return f"语音已上传到情景 {scenario_index+1}", voice_path
+
+
+    def delete_scenario_voice(
+        self, character_name: str, scenario_index: int,
+    ) -> str:
+        """删除指定情景的语音文件和引用"""
+        if not character_name:
+            return "请先选择角色！"
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}"
+        if not character.scenarios or scenario_index < 0 or scenario_index >= len(character.scenarios):
+            return "情景不存在！"
+        scenario = character.scenarios[scenario_index]
+        if scenario.voice_path:
+            try:
+                os.remove(scenario.voice_path)
+            except OSError:
+                pass
+        scenario.voice_path = None
+        scenario.voice_text = None
+        scenario.voice_type = None
+        self._config_manager.save_characters_config()
+        return "语音已删除"
+
+
+    def save_scenario_voice_text(
+        self, character_name: str, scenario_index: int, voice_text: str,
+    ) -> str:
+        """单独保存情景的语音文本"""
+        if not character_name:
+            return "请先选择角色！"
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}"
+        scenario = character.scenarios[scenario_index]
+        scenario.voice_text = voice_text
+        self._config_manager.save_characters_config()
+        return "语音文本已保存"
+
+
+    def save_scenario_voice_type(
+        self, character_name: str, scenario_index: int, voice_type: str,
+    ) -> str:
+        """单独保存情景的语音类型（preset/reference）"""
+        if not character_name:
+            return "请先选择角色！"
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}"
+        scenario = character.scenarios[scenario_index]
+        scenario.voice_type = voice_type if voice_type else None
+        self._config_manager.save_characters_config()
+        return "语音类型已保存"
+
+
     def load_characters_from_file(self) -> Tuple[str, List[List[str]]]:
         """
         重新加载人物设定文件。

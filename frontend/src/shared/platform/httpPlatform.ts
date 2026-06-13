@@ -469,6 +469,32 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           body: JSON.stringify(input),
           method: "POST",
         }),
+      saveScenarios: (name, scenarios) =>
+        requestJson<Character>(apiBase, "/api/characters/scenarios/save", {
+          body: JSON.stringify({ name, scenarios }),
+          method: "POST",
+        }),
+      uploadScenarioVoice: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/scenarios/voice-upload", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      deleteScenarioVoice: (name, scenarioIndex) =>
+        requestJson<Character>(apiBase, "/api/characters/scenarios/voice-delete", {
+          body: JSON.stringify({ name, scenarioIndex }),
+          method: "POST",
+        }),
+      saveScenarioVoiceText: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/scenarios/voice-text", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      translateScenarioNames: (name, names) => requestJson(apiBase, "/api/characters/scenarios/translate-names", { body: JSON.stringify({ name, names }), method: "POST" }),
+      saveScenarioVoiceType: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/scenarios/voice-type", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
     },
     config: {
       cancelTtsBundleDownload: (taskId) =>

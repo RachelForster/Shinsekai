@@ -1,7 +1,7 @@
 import yaml
 
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None):
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, scenarios=None):
         # 角色基本信息
         self.name = name
         self.color = color
@@ -10,6 +10,7 @@ class CharacterConfig:
         self.character_setting = character_setting
         self.sprite_scale = sprite_scale
         self.emotion_tags = emotion_tags
+        self.scenarios = scenarios or []
         self.speech_speed = speech_speed
         self.speech_volume = speech_volume
         self.pronunciation_map = pronunciation_map or {}
@@ -65,6 +66,7 @@ class CharacterConfig:
                 speech_speed=char_data.get("speech_speed", 1.0),
                 speech_volume=char_data.get("speech_volume", 1.0),
                 pronunciation_map=char_data.get("pronunciation_map", None),
+                scenarios=char_data.get("scenarios", []),
             )
         return character
     

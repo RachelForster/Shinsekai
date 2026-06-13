@@ -266,6 +266,12 @@ describe("entity repositories", () => {
         saveSpriteVoiceText: vi.fn().mockResolvedValue(character),
         translateFields: vi.fn().mockResolvedValue({ characterSetting: "kind", emotionTags: "happy", name: "Nanami" }),
         uploadSpriteVoice: vi.fn().mockResolvedValue(character),
+        saveScenarios: vi.fn().mockResolvedValue(character),
+        uploadScenarioVoice: vi.fn().mockResolvedValue(character),
+        deleteScenarioVoice: vi.fn().mockResolvedValue(character),
+        saveScenarioVoiceText: vi.fn().mockResolvedValue(character),
+        translateScenarioNames: vi.fn().mockResolvedValue({ translated: {} }),
+        saveScenarioVoiceType: vi.fn().mockResolvedValue(character),
         uploadSprites: vi.fn().mockResolvedValue(character),
       },
     };

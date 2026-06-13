@@ -692,6 +692,47 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         };
         return delay(character);
       },
+      async saveScenarios(name, scenarios) {
+        const character = config.characters.find((item) => item.name === name);
+        if (!character) throw new Error("找不到角色。");
+        character.scenarios = scenarios;
+        return delay(character);
+      },
+      async uploadScenarioVoice(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character) throw new Error("找不到角色。");
+        if (!character.scenarios) character.scenarios = [];
+        if (!character.scenarios[input.scenarioIndex]) throw new Error("情景不存在。");
+        character.scenarios[input.scenarioIndex] = {
+          ...character.scenarios[input.scenarioIndex],
+          voice_path: input.voicePath,
+          voice_text: input.voiceText,
+          voice_type: input.voiceType as "preset" | "reference",
+        };
+        return delay(character);
+      },
+      async deleteScenarioVoice(name, scenarioIndex) {
+        const character = config.characters.find((item) => item.name === name);
+        if (!character || !character.scenarios?.[scenarioIndex]) throw new Error("找不到。");
+        const s = character.scenarios[scenarioIndex];
+        s.voice_path = undefined;
+        s.voice_text = undefined;
+        s.voice_type = undefined;
+        return delay(character);
+      },
+      async saveScenarioVoiceText(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character || !character.scenarios?.[input.scenarioIndex]) throw new Error("找不到。");
+        character.scenarios[input.scenarioIndex].voice_text = input.voiceText;
+        return delay(character);
+      },
+      async translateScenarioNames(_name, _names) { return { translated: {} }; },
+      async saveScenarioVoiceType(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character || !character.scenarios?.[input.scenarioIndex]) throw new Error("找不到。");
+        character.scenarios[input.scenarioIndex].voice_type = input.voiceType as "preset" | "reference";
+        return delay(character);
+      },
     },
     config: {
       async cancelTtsBundleDownload(taskId) {

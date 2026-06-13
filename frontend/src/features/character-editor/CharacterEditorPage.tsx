@@ -8,6 +8,7 @@ import {
   deleteAllCharacterSprites,
   deleteCharacterMemory,
   deleteCharacterSprite,
+  deleteScenarioVoice,
   deleteSpriteVoice,
   exportCharacter,
   generateCharacterSetting,
@@ -17,19 +18,25 @@ import {
   rememberCharacterMemory,
   saveCharacter,
   saveCharacterEmotionTags,
+  saveCharacterScenarios,
+  saveScenarioVoiceText,
+  saveScenarioVoiceType,
   saveSpriteScale,
   saveSpriteVoiceText,
   translateCharacterFields,
   uploadCharacterSprites,
+  uploadScenarioVoice,
   uploadSpriteVoice,
 } from "../../entities/character/repository";
-import type { Character, Sprite } from "../../entities/config/types";
+import type { Character, CharacterScenario, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
+import { getPlatform } from "../../shared/platform/platform";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
+import { CharacterScenarioSection } from "./CharacterScenarioSection";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
@@ -338,6 +345,94 @@ export function CharacterEditorPage() {
       showToast({ kind: "success", title: t("character.sprite.deleteVoice") });
     },
   });
+
+  // ---------- 情景模块 ----------
+
+  const [scenarioPendingVoicePath, setScenarioPendingVoicePath] = useState("");
+
+  const scenarioSaveMutation = useMutation({
+    mutationFn: (scenarios: CharacterScenario[]) => saveCharacterScenarios(currentCharacterName, scenarios),
+    onError(error) {
+      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: t("character.voiceTag.saveAll") });
+    },
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, scenarios: character.scenarios }));
+      showToast({ kind: "success", title: t("character.voiceTag.saveAll") });
+    },
+  });
+
+  const scenarioVoiceUploadMutation = useMutation({
+    mutationFn: (input: { scenarioIndex: number; voicePath: string; voiceText: string; voiceType: string }) =>
+      uploadScenarioVoice({ name: currentCharacterName, ...input }),
+    onError(error) {
+      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: t("character.voiceTag.uploadVoice") });
+    },
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, scenarios: character.scenarios }));
+      showToast({ kind: "success", title: t("character.voiceTag.uploadVoice") });
+    },
+  });
+
+  const scenarioVoiceDeleteMutation = useMutation({
+    mutationFn: ({ scenarioIndex }: { scenarioIndex: number }) =>
+      deleteScenarioVoice(currentCharacterName, scenarioIndex),
+    onError(error) {
+      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: t("character.voiceTag.deleteVoice") });
+    },
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, scenarios: character.scenarios }));
+      showToast({ kind: "success", title: t("character.voiceTag.deleteVoice") });
+    },
+  });
+
+  const scenarioVoiceTextMutation = useMutation({
+    mutationFn: (input: { scenarioIndex: number; voiceText: string }) =>
+      saveScenarioVoiceText({ name: currentCharacterName, ...input }),
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, scenarios: character.scenarios }));
+    },
+  });
+
+  const scenarioVoiceTypeMutation = useMutation({
+    mutationFn: (input: { scenarioIndex: number; voiceType: string }) =>
+      saveScenarioVoiceType({ name: currentCharacterName, ...input }),
+    onSuccess(character) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, scenarios: character.scenarios }));
+    },
+  });
+
+  const scenarioTranslateMutation = useMutation({
+    mutationFn: async () => {
+      const names = (draft.scenarios ?? []).map((s) => s.name);
+      const result = await getPlatform().characters.translateScenarioNames(currentCharacterName, names);
+      const translated = result.translated ?? {};
+      const updated = (draft.scenarios ?? []).map((s, i) => {
+        const t = translated[String(i)];
+        return t ? { ...s, name: t } : s;
+      });
+      if (Object.keys(translated).length > 0) {
+        await saveCharacterScenarios(currentCharacterName, updated);
+      }
+      return updated;
+    },
+    onError(error) {
+      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: t("character.voiceTag.aiTranslate") });
+    },
+    onSuccess(updated) {
+      if (updated) {
+        queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+        setDraft((current) => ({ ...current, scenarios: updated }));
+      }
+      showToast({ kind: "success", title: t("character.voiceTag.aiTranslate") });
+    },
+  });
+
+  // ---------- 原有 ----------
 
   const spriteUploadMutation = useMutation({
     mutationFn: async ({
@@ -822,6 +917,49 @@ export function CharacterEditorPage() {
     }
   };
 
+  // ---------- 情绪模块 handlers ----------
+
+  const scenarioHandlers = {
+    addScenario() {
+      const scenarios = [...(draft.scenarios ?? []), { name: "", voice_type: "preset" as const }];
+      setDraft((current) => ({ ...current, scenarios }));
+    },
+    deleteScenario(si: number) {
+      const scenarios = (draft.scenarios ?? []).filter((_, i) => i !== si);
+      setDraft((current) => ({ ...current, scenarios }));
+    },
+    updateScenarioName(si: number, name: string) {
+      const scenarios = (draft.scenarios ?? []).map((s, i) => (i === si ? { ...s, name } : s));
+      setDraft((current) => ({ ...current, scenarios }));
+    },
+    updateScenarioVoiceText(si: number, voiceText: string) {
+      const scenarios = (draft.scenarios ?? []).map((s, i) => (i === si ? { ...s, voice_text: voiceText } : s));
+      setDraft((current) => ({ ...current, scenarios }));
+    },
+    updateScenarioVoiceType(si: number, voiceType: string) {
+      scenarioVoiceTypeMutation.mutate({ scenarioIndex: si, voiceType });
+    },
+    uploadScenarioVoice(si: number, filePath: string) {
+      if (!filePath) return;
+      const s = draft.scenarios?.[si];
+      scenarioVoiceUploadMutation.mutate({
+        scenarioIndex: si,
+        voicePath: filePath,
+        voiceText: s?.voice_text ?? "",
+        voiceType: s?.voice_type ?? "preset",
+      });
+    },
+    saveVoiceText(si: number, voiceText: string) {
+      scenarioVoiceTextMutation.mutate({ scenarioIndex: si, voiceText });
+    },
+    deleteScenarioVoice(si: number) {
+      scenarioVoiceDeleteMutation.mutate({ scenarioIndex: si });
+    },
+    saveAllScenarios() {
+      scenarioSaveMutation.mutate(draft.scenarios ?? []);
+    },
+  };
+
   return (
     <div className="page character-page">
       <CharacterPageHeader
@@ -899,6 +1037,22 @@ export function CharacterEditorPage() {
           spriteUploadPending={spriteUploadMutation.isPending}
           voiceDeletePending={voiceDeleteMutation.isPending}
           voiceUploadPending={voiceUploadMutation.isPending}
+        />
+
+        <CharacterScenarioSection
+          draft={draft}
+          scenarioSavePending={scenarioSaveMutation.isPending}
+          scenarioVoiceUploadPending={scenarioVoiceUploadMutation.isPending}
+          translatePending={scenarioTranslateMutation.isPending}
+          onAddScenario={scenarioHandlers.addScenario}
+          onAiTranslate={() => scenarioTranslateMutation.mutate()}
+          onDeleteScenario={scenarioHandlers.deleteScenario}
+          onSaveAllScenarios={scenarioHandlers.saveAllScenarios}
+          onSaveVoiceText={scenarioHandlers.saveVoiceText}
+          onScenarioNameChange={scenarioHandlers.updateScenarioName}
+          onScenarioVoiceTextChange={scenarioHandlers.updateScenarioVoiceText}
+          onScenarioVoiceTypeChange={scenarioHandlers.updateScenarioVoiceType}
+          onUploadScenarioVoice={scenarioHandlers.uploadScenarioVoice}
         />
 
         <CharacterMemorySection

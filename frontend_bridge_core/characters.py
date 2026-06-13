@@ -270,3 +270,130 @@ def _delete_sprite_voice(state: BridgeState, payload: dict[str, Any]) -> dict[st
     if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
         raise RuntimeError(message)
     return _character_json_after_reload(state, name)
+
+
+# ---------- 情景模块 ----------
+
+
+def _validate_reference_audio(voice_path: str) -> None:
+    """参考音频校验：仅限 WAV 格式，时长 3-10 秒"""
+    from sdk.ui.validators import audio_duration_between
+
+    ext = Path(voice_path).suffix.lower()
+    if ext != ".wav":
+        raise ValueError("参考语音仅支持 WAV 格式")
+    ok, err = audio_duration_between(voice_path, 3.0, 10.0, "参考语音")
+    if not ok:
+        raise ValueError(err)
+
+
+def _list_character_scenarios(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenarios = state.character_manager.get_character_scenarios(name)
+    return {"scenarios": scenarios, "name": name}
+
+
+def _save_character_scenarios(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenarios = payload.get("scenarios") or []
+    message = state.character_manager.save_character_scenarios(name, scenarios)
+    if message.startswith("找不到") or message.startswith("请先"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _upload_scenario_voice(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenario_index = int(payload.get("scenarioIndex") or 0)
+    voice_path = str(payload.get("voicePath") or "").strip()
+    voice_text = str(payload.get("voiceText") or "").strip()
+    voice_type = str(payload.get("voiceType") or "").strip().lower()
+    if not voice_path:
+        raise ValueError("voice path is required")
+    if voice_type == "reference":
+        _validate_reference_audio(voice_path)
+    elif voice_type != "preset" and voice_text.strip():
+        _validate_sprite_voice_duration(voice_path, voice_text)
+    message, _path = state.character_manager.upload_scenario_voice(
+        name, scenario_index, voice_path, voice_text, voice_type,
+    )
+    if message.startswith("找不到") or message.startswith("情景不存在") or message.startswith("请先") or message.startswith("请选择"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _delete_scenario_voice(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenario_index = int(payload.get("scenarioIndex") or 0)
+    message = state.character_manager.delete_scenario_voice(name, scenario_index)
+    if message.startswith("找不到") or message.startswith("情景不存在"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _save_scenario_voice_text(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenario_index = int(payload.get("scenarioIndex") or 0)
+    voice_text = str(payload.get("voiceText") or "").strip()
+    message = state.character_manager.save_scenario_voice_text(name, scenario_index, voice_text)
+    if message.startswith("找不到"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _save_scenario_voice_type(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenario_index = int(payload.get("scenarioIndex") or 0)
+    voice_type = str(payload.get("voiceType") or "").strip().lower()
+    if not voice_type:
+        raise ValueError("voice type is required")
+    message = state.character_manager.save_scenario_voice_type(name, scenario_index, voice_type)
+    if message.startswith("找不到"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _translate_scenario_names(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    """AI translate scenario tag names to English."""
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ValueError("name is required")
+    character = state.character_manager._config_manager.get_character_by_name(name)
+    if not character:
+        raise KeyError(f"character not found: {name}")
+    scenarios = getattr(character, "scenarios", []) or []
+    if not scenarios:
+        return {"translated": {}}
+    import re
+    needs = []
+    for i, s in enumerate(scenarios):
+        sname = s.name if hasattr(s, "name") else s.get("name", "")
+        if sname and not re.match(r"^[a-zA-Z0-9_]+$", sname):
+            needs.append((i, sname))
+    if not needs:
+        return {"translated": {}}
+    joined = "\n".join([f"{idx+1}. {n}" for idx, n in needs])
+    prompt = "Translate these labels to English (one word each, lowercase). Return ONLY a JSON object with key 'translations' as array of strings.\n\n" + joined
+    try:
+        cm = state.character_manager._config_manager
+        llm_provider, llm_model, llm_base_url, api_key = cm.get_llm_api_config()
+        if not llm_provider or not api_key or not llm_model:
+            return {"translated": {}, "error": "LLM not configured"}
+        from llm.llm_manager import LLMAdapterFactory
+        kwargs = cm.merged_llm_factory_kwargs(
+            llm_provider,
+            {"llm_provider": llm_provider, "api_key": api_key, "base_url": llm_base_url, "model": llm_model},
+        )
+        adapter = LLMAdapterFactory.create_adapter(**kwargs)
+        raw = adapter.chat([{"role": "user", "content": prompt}], max_tokens=100)
+        text = raw.choices[0].message.content if hasattr(raw, "choices") else str(raw)
+        import json as j
+        data = j.loads(text)
+        trans = data.get("translations", [])
+    except Exception:
+        trans = []
+    result = {}
+    for idx, (orig_i, _) in enumerate(needs):
+        if idx < len(trans) and trans[idx]:
+            result[str(orig_i)] = trans[idx].strip().lower()
+    return {"translated": result}
