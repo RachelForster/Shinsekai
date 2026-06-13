@@ -13,6 +13,7 @@ Thanks for your interest in contributing. We're happy you're here.
 - Link each PR to an existing issue in the description.
 - Place new scripts alongside the module they support, rather than in top-level directories like `scripts/` or `assets/`. This keeps the repo organized for everyone.
 - Follow the existing code style. Include relevant unit tests, and run `pytest` before pushing.
+- Keep optional plugin business tests with the plugin package or plugin repository. The main repository should only test shared SDK/host behavior, using committed fixtures instead of importing ignored local plugins from `plugins/`.
 - If you add a new dependency, briefly explain why it's needed in the issue.
 
 ## After merging
