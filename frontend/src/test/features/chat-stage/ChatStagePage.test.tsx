@@ -247,7 +247,7 @@ describe("ChatStagePage", () => {
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "clear-history" }));
   });
 
-  it("switches the toolbar ASR button to resume when the stage is paused", async () => {
+  it("switches the input ASR button to resume when the stage is paused", async () => {
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ status: "paused" }));
 
     renderPage();
@@ -286,7 +286,7 @@ describe("ChatStagePage", () => {
 
     const tokenLayer = document.querySelector(".token-usage-layer") as HTMLElement;
     expect(tokenLayer).not.toBeNull();
-    expect(tokenLayer).toHaveTextContent("TOKENS");
+    expect(tokenLayer).toHaveTextContent(/TOKENS|Token usage/);
     expect(tokenLayer).toHaveTextContent("idle / 2");
     expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "true");
 

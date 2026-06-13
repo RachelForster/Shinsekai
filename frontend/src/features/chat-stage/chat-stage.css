@@ -12,7 +12,9 @@
   --stage-safe-x: clamp(14px, 3vw, 36px);
   --stage-safe-top: clamp(12px, 2.2vw, 24px);
   --stage-safe-bottom: max(12px, env(safe-area-inset-bottom));
-  --stage-input-height: 78px;
+  --stage-input-height: 88px;
+  --stage-token-layer-top: calc(var(--stage-safe-top) + 48px);
+  --stage-token-offset-top: calc(var(--stage-safe-top) + 168px);
   --stage-control-stack-height: calc(var(--stage-safe-bottom) + var(--stage-input-height));
   --stage-line: rgba(255, 255, 255, 0.18);
   --stage-line-strong: rgba(255, 255, 255, 0.3);
@@ -373,7 +375,7 @@ body[data-chat-stage-transparent="true"] #root {
 }
 
 .input-layer__input {
-  min-height: 58px;
+  min-height: 68px;
   max-height: 124px;
   resize: none;
   border-color: transparent;
@@ -415,9 +417,19 @@ body[data-chat-stage-transparent="true"] #root {
     linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.08)), var(--chat-send-background);
 }
 
-.input-layer__mic {
+.input-layer__voice-stack {
+  display: grid;
+  width: 42px;
+  min-height: 68px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  align-self: stretch;
+  gap: 6px;
+}
+
+.input-layer__voice-button {
   width: 42px;
   height: auto;
+  min-height: 0;
   align-self: stretch;
   border-color: rgba(255, 255, 255, 0.14);
   border-radius: 6px;
@@ -425,13 +437,14 @@ body[data-chat-stage-transparent="true"] #root {
   background: var(--chat-input-field-background);
 }
 
-.input-layer__mic:hover:not(:disabled) {
+.input-layer__voice-button:hover:not(:disabled) {
   border-color: var(--stage-line-strong);
   background: rgba(255, 255, 255, 0.13);
 }
 
 .input-layer__mic--active,
-.input-layer[data-listening="true"] .input-layer__mic {
+.input-layer[data-listening="true"] .input-layer__mic,
+.input-layer .input-layer__voice-button.input-layer__asr-toggle--paused {
   border-color: var(--chat-send-border-color, var(--stage-accent));
   color: var(--chat-send-color, #061016);
   background: var(--chat-send-background);
@@ -983,19 +996,21 @@ body[data-chat-stage-transparent="true"] #root {
 
 .chat-stage[data-token-visible="true"] .chat-stage__busy,
 .chat-stage[data-token-visible="true"] .chat-stage__notification {
-  top: calc(var(--stage-safe-top) + 72px);
+  top: var(--stage-token-offset-top);
 }
 
 .token-usage-layer {
   position: absolute;
-  top: var(--stage-safe-top);
-  left: 50%;
+  top: var(--stage-token-layer-top);
+  right: var(--stage-safe-x);
   z-index: 10;
   display: flex;
-  width: min(640px, calc(100vw - 32px));
-  max-width: calc(100vw - 32px);
+  width: min(560px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: min(28vh, 116px);
   align-items: flex-start;
   gap: 10px;
+  overflow-y: auto;
   padding: 8px 10px;
   border: 1px solid var(--chat-toolbar-border-color, var(--stage-line));
   border-radius: 8px;
@@ -1005,7 +1020,6 @@ body[data-chat-stage-transparent="true"] #root {
   box-shadow:
     0 16px 42px var(--stage-shadow),
     var(--chat-toolbar-box-shadow, none);
-  transform: translateX(-50%);
   backdrop-filter: blur(16px) saturate(1.08);
 }
 
@@ -1052,14 +1066,13 @@ body[data-chat-stage-transparent="true"] #root {
 
 @media (max-width: 1180px) {
   .chat-stage__busy,
-  .chat-stage__notification,
-  .token-usage-layer {
+  .chat-stage__notification {
     top: calc(var(--stage-safe-top) + 46px);
   }
 
   .chat-stage[data-token-visible="true"] .chat-stage__busy,
   .chat-stage[data-token-visible="true"] .chat-stage__notification {
-    top: calc(var(--stage-safe-top) + 104px);
+    top: var(--stage-token-offset-top);
   }
 }
 
@@ -1342,18 +1355,19 @@ body[data-chat-stage-transparent="true"] #root {
     width: calc(100vw - 24px);
     min-height: var(--stage-input-height);
     grid-template-columns: minmax(0, 1fr) 42px 48px;
-    grid-template-rows: minmax(64px, 1fr) 42px;
+    grid-template-rows: minmax(76px, 1fr);
   }
 
   .input-layer__input {
-    grid-column: 1 / -1;
-    min-height: 64px;
+    grid-column: 1;
+    min-height: 76px;
   }
 
-  .input-layer__mic {
+  .input-layer__voice-stack {
     grid-column: 2;
     width: 42px;
     min-width: 42px;
+    min-height: 76px;
   }
 
   .input-layer .button--primary {
@@ -1402,12 +1416,14 @@ body[data-chat-stage-transparent="true"] #root {
 
   .chat-stage[data-token-visible="true"] .chat-stage__busy,
   .chat-stage[data-token-visible="true"] .chat-stage__notification {
-    top: 116px;
+    top: 180px;
   }
 
   .token-usage-layer {
-    top: 58px;
+    top: 66px;
+    right: 12px;
     width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
   }
 
   .chat-history-dialog {

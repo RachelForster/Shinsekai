@@ -42,6 +42,7 @@ import {
   sendChatCommand,
   subscribeChatEvents,
 } from "../../entities/chat/repository";
+import { fileUrl } from "../../entities/files/repository";
 import {
   closeDesktopWindow,
   getDesktopWindowCursorPosition,
@@ -350,6 +351,16 @@ function hideBrokenStageAsset(event: SyntheticEvent<HTMLImageElement>) {
   event.currentTarget.dataset.loadState = "error";
 }
 
+function stageAssetUrl(path?: string) {
+  if (!path) {
+    return "";
+  }
+  if (/^(?:[a-z][a-z\d+.-]*:|\/assets\/)/i.test(path)) {
+    return path;
+  }
+  return fileUrl(path);
+}
+
 function transportStatusText(t: (key: MessageKey) => string, state: ChatTransportState, mode: ChatTransportMode) {
   if (state === "connected") {
     return mode === "websocket" ? t("chat.transport.connected") : t("chat.transport.snapshot");
@@ -364,6 +375,7 @@ function transportStatusText(t: (key: MessageKey) => string, state: ChatTranspor
 }
 
 function BackgroundLayer({ hidden, path, transparent }: { hidden: boolean; path?: string; transparent: boolean }) {
+  const src = stageAssetUrl(path);
   return (
     <div
       aria-hidden={hidden}
@@ -372,15 +384,16 @@ function BackgroundLayer({ hidden, path, transparent }: { hidden: boolean; path?
       hidden={hidden}
     >
       {transparent ? null : <div aria-hidden className="chat-stage__fallback" />}
-      {path ? <img alt="" onError={hideBrokenStageAsset} src={path} /> : null}
+      {src ? <img alt="" onError={hideBrokenStageAsset} src={src} /> : null}
     </div>
   );
 }
 
 function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
+  const src = stageAssetUrl(path);
   return (
     <div aria-hidden={hidden} className={layerClassName("chat-stage__cg", hidden)} hidden={hidden}>
-      {path ? <img alt="" onError={hideBrokenStageAsset} src={path} /> : null}
+      {src ? <img alt="" onError={hideBrokenStageAsset} src={src} /> : null}
     </div>
   );
 }
@@ -416,7 +429,12 @@ function SpriteLayer({
             } as CSSProperties
           }
         >
-          <img alt={sprite.label} className="sprite-layer__image" onError={hideBrokenStageAsset} src={sprite.path} />
+          <img
+            alt={sprite.label}
+            className="sprite-layer__image"
+            onError={hideBrokenStageAsset}
+            src={stageAssetUrl(sprite.path)}
+          />
         </figure>
       ))}
     </div>
@@ -889,6 +907,7 @@ function DialogStageControls({
   onConfigOpenChange,
   onLockedChange,
   onOpenHistory,
+  showAsrControl,
 }: {
   asrPaused: boolean;
   closeLabel: string;
@@ -901,6 +920,7 @@ function DialogStageControls({
   onConfigOpenChange: (open: boolean) => void;
   onLockedChange: (locked: boolean) => void;
   onOpenHistory: () => void;
+  showAsrControl: boolean;
 }) {
   const { t } = useI18n();
   const stopDialogActionPropagation = (event: MouseEvent<HTMLDivElement>) => {
@@ -967,18 +987,24 @@ function DialogStageControls({
           >
             {t("chat.actionBar.reroll")}
           </ToolbarButton>
-          <ToolbarButton
-            aria-label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
-            className="dialog-stage-controls__button"
-            data-active={asrPaused ? "true" : "false"}
-            icon={
-              asrPaused ? <Mic aria-hidden className="button__icon" /> : <MicOff aria-hidden className="button__icon" />
-            }
-            onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
-            tooltip={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
-          >
-            {t(asrPaused ? "chat.actionBar.resumeAsr" : "chat.actionBar.pauseAsr")}
-          </ToolbarButton>
+          {showAsrControl ? (
+            <ToolbarButton
+              aria-label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+              className="dialog-stage-controls__button"
+              data-active={asrPaused ? "true" : "false"}
+              icon={
+                asrPaused ? (
+                  <Mic aria-hidden className="button__icon" />
+                ) : (
+                  <MicOff aria-hidden className="button__icon" />
+                )
+              }
+              onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
+              tooltip={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+            >
+              {t(asrPaused ? "chat.actionBar.resumeAsr" : "chat.actionBar.pauseAsr")}
+            </ToolbarButton>
+          ) : null}
           <ToolbarButton
             aria-label={t("chat.toolbar.copyHistory")}
             className="dialog-stage-controls__button"
@@ -1335,15 +1361,19 @@ function ChatConfigDialog({
 }
 
 function InputLayer({
+  asrPaused,
   disabled,
   hidden,
   onChange,
+  onCommand,
   onSubmit,
   value,
 }: {
+  asrPaused: boolean;
   disabled: boolean;
   hidden: boolean;
   onChange: (value: string) => void;
+  onCommand: (command: ChatCommand) => void;
   onSubmit: () => void;
   value: string;
 }) {
@@ -1462,24 +1492,46 @@ function InputLayer({
         placeholder={t("chat.input.placeholder")}
         value={value}
       />
-      <IconButton
-        className={["input-layer__mic", listening ? "input-layer__mic--active" : ""].filter(Boolean).join(" ")}
-        disabled={disabled && !listening}
-        label={listening ? t("chat.input.micStop") : t("chat.input.micStart")}
-        onClick={() => {
-          if (listening) {
-            stopListening();
-          } else {
-            startListening();
-          }
-        }}
-      >
-        {listening ? (
-          <MicOff aria-hidden className="icon-button__icon" />
-        ) : (
-          <Mic aria-hidden className="icon-button__icon" />
-        )}
-      </IconButton>
+      <div className="input-layer__voice-stack" role="group">
+        <IconButton
+          className={["input-layer__voice-button", "input-layer__mic", listening ? "input-layer__mic--active" : ""]
+            .filter(Boolean)
+            .join(" ")}
+          disabled={disabled && !listening}
+          label={listening ? t("chat.input.micStop") : t("chat.input.micStart")}
+          onClick={() => {
+            if (listening) {
+              stopListening();
+            } else {
+              startListening();
+            }
+          }}
+        >
+          {listening ? (
+            <MicOff aria-hidden className="icon-button__icon" />
+          ) : (
+            <Mic aria-hidden className="icon-button__icon" />
+          )}
+        </IconButton>
+        <IconButton
+          aria-pressed={asrPaused}
+          className={[
+            "input-layer__voice-button",
+            "input-layer__asr-toggle",
+            asrPaused ? "input-layer__asr-toggle--paused" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+          onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
+        >
+          {asrPaused ? (
+            <Mic aria-hidden className="icon-button__icon" />
+          ) : (
+            <MicOff aria-hidden className="icon-button__icon" />
+          )}
+        </IconButton>
+      </div>
       <Button
         disabled={!value.trim() || disabled}
         icon={<Send aria-hidden className="button__icon" />}
@@ -1929,6 +1981,7 @@ export function ChatStagePage() {
             onConfigOpenChange={setToolbarConfigOpen}
             onLockedChange={setDialogControlsLocked}
             onOpenHistory={openHistoryDialog}
+            showAsrControl={!viewModel.layers.input && viewModel.status === "paused"}
           />
           <DialogLayer
             canAdvance={viewModel.layers.dialog && !typingDialog && dialogSource.totalCharacters > 0}
@@ -1947,9 +2000,11 @@ export function ChatStagePage() {
           options={viewModel.options}
         />
         <InputLayer
+          asrPaused={viewModel.status === "paused"}
           disabled={viewModel.inputDisabled}
           hidden={!viewModel.layers.input}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
+          onCommand={sendCommand}
           onSubmit={submit}
           value={viewModel.inputDraft}
         />

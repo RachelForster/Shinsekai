@@ -104,6 +104,41 @@ describe("ChatStagePage http platform integration", () => {
     delete window.__SHINSEKAI_RESTARTING__;
   });
 
+  it("resolves local stage media paths through platform file URLs", async () => {
+    const mediaSnapshot = snapshot({
+      backgroundPath: "data/backgrounds/school.png",
+      sprites: [{ id: "mio", label: "Mio", path: "data/characters/mio.png" }],
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/chat/snapshot")) {
+        return mockJsonResponse(mediaSnapshot);
+      }
+      if (url.endsWith("/api/chat/history")) {
+        return mockJsonResponse([]);
+      }
+      if (url.endsWith("/api/chat/close")) {
+        return mockJsonResponse(mediaSnapshot);
+      }
+      throw new Error(`Unexpected fetch in ChatStagePage media test: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    platformMocks.getPlatform.mockReturnValue(createHttpPlatform("http://127.0.0.1:8787"));
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    expect(document.querySelector(".chat-stage__background img")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:8787/api/media?path=data%2Fbackgrounds%2Fschool.png",
+    );
+    expect(document.querySelector(".sprite-layer__image")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:8787/api/media?path=data%2Fcharacters%2Fmio.png",
+    );
+  });
+
   it("reopens the input layer through repository and httpPlatform when a command clears closed-session markers", async () => {
     const closedSnapshot = snapshot({
       notificationText: "聊天会话已结束。",
