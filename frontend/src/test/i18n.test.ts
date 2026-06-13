@@ -4,7 +4,7 @@ import { translateMessage } from "../shared/i18n";
 
 describe("translateMessage", () => {
   it("returns localized messages for supported languages", () => {
-    expect(translateMessage("zh_CN", "nav.plugins")).toBe("插件");
+    expect(translateMessage("zh_CN", "nav.plugins")).toBe("插件管理");
     expect(translateMessage("en", "nav.plugins")).toBe("Plugins");
     expect(translateMessage("ja", "nav.plugins")).toBe("プラグイン");
   });
@@ -15,9 +15,15 @@ describe("translateMessage", () => {
   });
 
   it("covers schema settings page copy", () => {
-    expect(translateMessage("zh_CN", "api.title")).toBe("API 配置");
+    expect(translateMessage("zh_CN", "api.title")).toBe("AI 服务设置");
     expect(translateMessage("en", "system.toast.saved")).toBe("System settings saved");
     expect(translateMessage("ja", "form.jsonInvalid")).toContain("JSON");
+  });
+
+  it("covers T2I setup copy without falling back to raw keys", () => {
+    expect(translateMessage("en", "api.t2i.title")).toBe("Image generation (T2I)");
+    expect(translateMessage("en", "api.t2i.modeSkip")).toBe("Skip setup");
+    expect(translateMessage("en", "api.t2i.workflowPick")).toBe("Choose workflow JSON");
   });
 
   it("covers background manager copy", () => {

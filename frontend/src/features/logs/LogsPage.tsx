@@ -489,11 +489,11 @@ export function LogsPage() {
   };
 
   return (
-    <div className="logs-page" style={theme?.style}>
+    <div className="page logs-page" style={theme?.style}>
       <header className="logs-header">
         <div className="logs-header__copy">
           <p className="logs-header__eyebrow">SYSTEM LOG</p>
-          <h1 className="logs-header__title">日志</h1>
+          <h1 className="logs-header__title">运行日志</h1>
           <p className="logs-header__description">查看运行日志，按结构化字段筛选，并导出诊断包。</p>
         </div>
         <div className="logs-header__actions">

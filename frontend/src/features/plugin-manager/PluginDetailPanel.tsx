@@ -232,10 +232,6 @@ export function PluginDetailPanel({ detailPlugin, onBack }: PluginDetailPanelPro
             {t("plugin.detail.back")}
           </Button>
           <h1 className="page__title">{t("plugin.detail.title", { title: detailPluginRow.title })}</h1>
-          <p className="page__description">
-            {t("plugin.version")}: {detailPluginRow.version || "-"}
-            {detailPluginRow.author ? ` · ${t("plugin.author")}: ${detailPluginRow.author}` : ""}
-          </p>
         </div>
         <span className="plugin-card__status" data-enabled={detailPluginRow.enabled && loaded} data-loaded={loaded}>
           {statusLabel}

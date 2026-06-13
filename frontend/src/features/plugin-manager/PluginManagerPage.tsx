@@ -441,7 +441,6 @@ export function PluginManagerPage() {
       <header className="page__header">
         <div>
           <h1 className="page__title">{t("nav.plugins")}</h1>
-          <p className="page__description">{t("plugin.description")}</p>
           {pluginReloadPending ? (
             <span className="inline-status plugin-reload-status">{t("plugin.appRestart.pending")}</span>
           ) : null}

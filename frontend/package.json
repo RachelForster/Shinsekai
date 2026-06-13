@@ -2,6 +2,7 @@
   "name": "shinsekai-frontend",
   "private": true,
   "version": "2.0.2",
+  "license": "SEE LICENSE IN ../LICENSE",
   "type": "module",
   "scripts": {
     "dev": "vite",

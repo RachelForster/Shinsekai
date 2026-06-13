@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BottomBar } from "../app/shell/BottomBar";
 import { SidebarNav } from "../app/shell/SidebarNav";
@@ -38,17 +38,34 @@ describe("app shell chrome", () => {
     queryMocks.useAppUpdateInfo.mockReturnValue({ data: { version: "0.1.0" } });
     queryMocks.useIsFetching.mockReturnValue(0);
     queryMocks.useIsMutating.mockReturnValue(0);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: () => Promise.resolve({ stargazers_count: 12 }),
+        ok: true,
+      }),
+    );
   });
 
-  it("renders localized primary navigation and toggles the tools button", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders localized primary navigation and toggles the tools button", async () => {
     const onToolsToggle = vi.fn();
     renderWithI18n(<SidebarNav onToolsToggle={onToolsToggle} toolsOpen={false} />, ["/settings/plugins"]);
 
     expect(screen.getByRole("navigation", { name: "设置中心导航" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "API 设定" })).toHaveAttribute("href", "/settings/api");
-    expect(screen.getByRole("link", { name: "插件" })).toHaveAttribute("href", "/settings/plugins");
+    expect(screen.getByText("基础设置")).toBeInTheDocument();
+    expect(screen.getByText("扩展")).toBeInTheDocument();
+    expect(screen.getByText("维护诊断")).toBeInTheDocument();
+    expect(screen.getByText("工作区")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /GitHub 仓库/i })).toBeInTheDocument();
+    expect(await screen.findByText("12 stars")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "AI 服务" })).toHaveAttribute("href", "/settings/api");
+    expect(screen.getByRole("link", { name: "插件管理" })).toHaveAttribute("href", "/settings/plugins");
 
-    const tools = screen.getByRole("button", { name: "小工具" });
+    const tools = screen.getByRole("button", { name: "实用工具" });
     expect(tools).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(tools);
     expect(onToolsToggle).toHaveBeenCalledTimes(1);
@@ -58,7 +75,7 @@ describe("app shell chrome", () => {
     renderWithI18n(<TopBar />);
 
     expect(screen.getByText("新世界程序")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "系统" })).toHaveAttribute("href", "/settings/system");
+    expect(screen.getByRole("link", { name: "程序设置" })).toHaveAttribute("href", "/settings/system");
   });
 
   it("shows app version and prioritizes saving status over syncing status", () => {

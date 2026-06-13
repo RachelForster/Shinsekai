@@ -1,487 +1,1116 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Shinsekai — AI Desktop Roleplay Assistant</title>
-<style>
-  :root {
-    --sakura: #ffb7c5;
-    --pink: #f0a0c0;
-    --pink-deep: #d4788e;
-    --text: #4a2a38;
-    --muted: #9a6a7c;
-    --card-bg: rgba(255, 255, 255, 0.7);
-    --card-border: rgba(212, 120, 142, 0.2);
-  }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shinsekai — AI Desktop Roleplay Assistant</title>
+    <style>
+      :root {
+        --sakura: #ffb7c5;
+        --pink: #f0a0c0;
+        --pink-deep: #d4788e;
+        --text: #4a2a38;
+        --muted: #9a6a7c;
+        --card-bg: rgba(255, 255, 255, 0.7);
+        --card-border: rgba(212, 120, 142, 0.2);
+      }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
-    background: linear-gradient(170deg, #fff0f5 0%, #ffe4ec 28%, #ffd6e4 52%, #ffe8f0 76%, #fff0f5 100%);
-    color: var(--text);
-    line-height: 1.7;
-    min-height: 100vh;
-  }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC",
+          sans-serif;
+        background: linear-gradient(
+          170deg,
+          #fff0f5 0%,
+          #ffe4ec 28%,
+          #ffd6e4 52%,
+          #ffe8f0 76%,
+          #fff0f5 100%
+        );
+        color: var(--text);
+        line-height: 1.7;
+        min-height: 100vh;
+      }
 
-  body::before {
-    content: '';
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    pointer-events: none; z-index: 0;
-    background:
-      radial-gradient(circle at 10% 15%, rgba(255, 183, 197, 0.45) 0%, transparent 50%),
-      radial-gradient(circle at 90% 55%, rgba(240, 160, 192, 0.4) 0%, transparent 55%),
-      radial-gradient(circle at 50% 82%, rgba(255, 200, 215, 0.35) 0%, transparent 45%),
-      radial-gradient(circle at 72% 8%, rgba(255, 183, 197, 0.4) 0%, transparent 40%);
-  }
+      body::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+        z-index: 0;
+        background:
+          radial-gradient(
+            circle at 10% 15%,
+            rgba(255, 183, 197, 0.45) 0%,
+            transparent 50%
+          ),
+          radial-gradient(
+            circle at 90% 55%,
+            rgba(240, 160, 192, 0.4) 0%,
+            transparent 55%
+          ),
+          radial-gradient(
+            circle at 50% 82%,
+            rgba(255, 200, 215, 0.35) 0%,
+            transparent 45%
+          ),
+          radial-gradient(
+            circle at 72% 8%,
+            rgba(255, 183, 197, 0.4) 0%,
+            transparent 40%
+          );
+      }
 
-  .container { max-width: 800px; margin: 0 auto; padding: 40px 24px; position: relative; z-index: 1; }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 40px 24px;
+        position: relative;
+        z-index: 1;
+      }
 
-  header { text-align: center; padding: 60px 0 48px; position: relative; }
-  header::after {
-    content: '🌸'; position: absolute; bottom: 0; left: 50%;
-    transform: translateX(-50%); font-size: 1.5em;
-  }
-  header h1 {
-    font-size: 2.6em; letter-spacing: 4px; margin-bottom: 14px;
-    background: linear-gradient(135deg, #e8789a 0%, #d4788e 50%, #c0607a 100%);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-weight: 800;
-  }
-  header p { color: var(--muted); font-size: 1.1em; max-width: 560px; margin: 0 auto; line-height: 1.8; }
+      header {
+        text-align: center;
+        padding: 60px 0 48px;
+        position: relative;
+      }
+      header::after {
+        content: "🌸";
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 1.5em;
+      }
+      header h1 {
+        font-size: 2.6em;
+        letter-spacing: 4px;
+        margin-bottom: 14px;
+        background: linear-gradient(
+          135deg,
+          #e8789a 0%,
+          #d4788e 50%,
+          #c0607a 100%
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 800;
+      }
+      header p {
+        color: var(--muted);
+        font-size: 1.1em;
+        max-width: 560px;
+        margin: 0 auto;
+        line-height: 1.8;
+      }
 
-  .lang-switch { display: flex; gap: 4px; justify-content: flex-end; margin-bottom: 12px; }
-  .lang-switch button {
-    background: none; border: 1px solid var(--card-border);
-    padding: 4px 12px; border-radius: 12px; cursor: pointer;
-    color: var(--muted); font-size: 0.85em; transition: all 0.2s;
-  }
-  .lang-switch button.active { background: var(--pink); color: #fff; border-color: var(--pink); }
+      .lang-switch {
+        display: flex;
+        gap: 4px;
+        justify-content: flex-end;
+        margin-bottom: 12px;
+      }
+      .lang-switch button {
+        background: none;
+        border: 1px solid var(--card-border);
+        padding: 4px 12px;
+        border-radius: 12px;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 0.85em;
+        transition: all 0.2s;
+      }
+      .lang-switch button.active {
+        background: var(--pink);
+        color: #fff;
+        border-color: var(--pink);
+      }
 
-  .download-card {
-    background: var(--card-bg); border: 1px solid var(--card-border);
-    border-radius: 16px; padding: 32px 36px; text-align: center; margin-bottom: 40px;
-    backdrop-filter: blur(12px); position: relative; overflow: hidden;
-  }
-  .download-card::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-    background: linear-gradient(90deg, transparent, var(--sakura), var(--pink-deep), var(--sakura), transparent);
-  }
-  .download-card .version { color: var(--muted); font-size: 0.95em; margin-bottom: 10px; }
-  .download-card .btn {
-    display: inline-block; background: linear-gradient(135deg, var(--pink-deep), var(--pink));
-    color: #fff; padding: 14px 40px; border-radius: 24px; text-decoration: none;
-    font-size: 1.05em; font-weight: 600; margin: 8px 6px;
-    transition: transform 0.2s, box-shadow 0.2s;
-    box-shadow: 0 4px 20px rgba(212, 120, 142, 0.3);
-  }
-  .download-card .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(212, 120, 142, 0.45); }
-  .download-card .btn-alt {
-    background: #fff; border: 2px solid var(--pink); color: var(--pink-deep); box-shadow: none;
-  }
-  .download-card .btn-alt:hover { background: #fff0f5; box-shadow: 0 0 20px rgba(212, 120, 142, 0.2); }
-  .download-card .platform-downloads { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-  .download-card .platform-downloads .btn { min-width: 176px; }
-  .download-card .download-note { margin-top: 12px; color: var(--muted); font-size: 0.9em; }
-  .download-card .assets { margin-top: 22px; text-align: left; display: inline-block; }
-  .download-card .assets a { color: var(--pink-deep); text-decoration: none; display: block; padding: 4px 0; font-size: 0.9em; }
-  .download-card .assets a:hover { text-decoration: underline; }
+      .download-card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 32px 36px;
+        text-align: center;
+        margin-bottom: 40px;
+        backdrop-filter: blur(12px);
+        position: relative;
+        overflow: hidden;
+      }
+      .external-links {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin: -18px auto 28px;
+      }
+      .repo-spotlight {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid rgba(212, 120, 142, 0.32);
+        border-radius: 16px;
+        padding: 16px 20px;
+        min-height: 86px;
+        color: var(--text);
+        text-decoration: none;
+        box-shadow: 0 10px 30px rgba(212, 120, 142, 0.16);
+        backdrop-filter: blur(14px);
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s,
+          border-color 0.2s;
+      }
+      .repo-spotlight:hover {
+        transform: translateY(-2px);
+        border-color: var(--pink);
+        box-shadow: 0 14px 36px rgba(212, 120, 142, 0.24);
+      }
+      .repo-spotlight__main {
+        display: grid;
+        min-width: 0;
+        gap: 2px;
+        text-align: left;
+      }
+      .repo-spotlight__identity {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 12px;
+      }
+      .repo-spotlight__icon {
+        width: 30px;
+        height: 30px;
+        flex: 0 0 auto;
+        color: var(--pink-deep);
+      }
+      .repo-spotlight__eyebrow {
+        color: var(--pink-deep);
+        font-size: 0.82em;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .repo-spotlight__repo {
+        overflow: hidden;
+        color: var(--text);
+        font-size: 1.1em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .repo-spotlight__stars {
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid rgba(212, 120, 142, 0.28);
+        border-radius: 999px;
+        padding: 7px 12px;
+        color: var(--pink-deep);
+        background: #fff;
+        font-size: 0.95em;
+        font-weight: 700;
+      }
+      .repo-spotlight__arrow {
+        display: inline-flex;
+        width: 34px;
+        height: 34px;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(212, 120, 142, 0.28);
+        border-radius: 999px;
+        color: var(--pink-deep);
+        background: #fff;
+      }
+      .repo-spotlight__arrow svg {
+        width: 17px;
+        height: 17px;
+      }
+      .repo-spotlight__star-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        fill: currentColor;
+      }
+      .download-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          var(--sakura),
+          var(--pink-deep),
+          var(--sakura),
+          transparent
+        );
+      }
+      .download-card .version {
+        color: var(--muted);
+        font-size: 0.95em;
+        margin-bottom: 10px;
+      }
+      .download-card .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        background: linear-gradient(135deg, var(--pink-deep), var(--pink));
+        color: #fff;
+        padding: 14px 40px;
+        border-radius: 24px;
+        text-decoration: none;
+        font-size: 1.05em;
+        font-weight: 600;
+        margin: 8px 6px;
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
+        box-shadow: 0 4px 20px rgba(212, 120, 142, 0.3);
+      }
+      .download-card .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 28px rgba(212, 120, 142, 0.45);
+      }
+      .download-card .btn-alt {
+        background: #fff;
+        border: 2px solid var(--pink);
+        color: var(--pink-deep);
+        box-shadow: none;
+      }
+      .download-card .btn-alt:hover {
+        background: #fff0f5;
+        box-shadow: 0 0 20px rgba(212, 120, 142, 0.2);
+      }
+      .download-card .platform-downloads {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+      }
+      .download-card .platform-downloads .btn {
+        min-width: 176px;
+      }
+      .download-card .button-icon {
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+      }
+      .download-card .download-note {
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 0.9em;
+      }
+      .download-card .release-more {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 16px;
+        border: 1px solid rgba(212, 120, 142, 0.28);
+        border-radius: 999px;
+        padding: 8px 16px;
+        color: var(--pink-deep);
+        background: rgba(255, 255, 255, 0.68);
+        text-decoration: none;
+        font-size: 0.9em;
+        font-weight: 700;
+      }
+      .download-card .release-more:hover {
+        border-color: var(--pink);
+        background: #fff;
+      }
 
-  section {
-    margin-bottom: 40px; background: var(--card-bg); border: 1px solid var(--card-border);
-    border-radius: 14px; padding: 28px 32px; backdrop-filter: blur(8px);
-  }
-  section h2 {
-    font-size: 1.3em; margin-bottom: 18px; padding-bottom: 10px;
-    border-bottom: 2px solid var(--pink); display: inline-block; color: var(--pink-deep);
-  }
-  section ol, section ul { padding-left: 24px; color: var(--muted); }
-  section li { margin-bottom: 10px; }
-  section li strong { color: var(--text); }
-  section a { color: var(--pink-deep); text-decoration: none; }
-  section a:hover { text-decoration: underline; }
-  section code {
-    background: rgba(240, 160, 192, 0.15); padding: 2px 8px;
-    border-radius: 4px; font-size: 0.92em; color: var(--pink-deep);
-  }
-  pre {
-    background: rgba(240, 160, 192, 0.1); border: 1px solid var(--card-border);
-    padding: 16px 20px; border-radius: 10px; overflow-x: auto; font-size: 0.9em; margin: 12px 0;
-  }
-  pre code { background: none; padding: 0; color: var(--text); }
+      section {
+        margin-bottom: 40px;
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 14px;
+        padding: 28px 32px;
+        backdrop-filter: blur(8px);
+      }
+      section h2 {
+        font-size: 1.3em;
+        margin-bottom: 18px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid var(--pink);
+        display: inline-block;
+        color: var(--pink-deep);
+      }
+      section ol,
+      section ul {
+        padding-left: 24px;
+        color: var(--muted);
+      }
+      section li {
+        margin-bottom: 10px;
+      }
+      section li strong {
+        color: var(--text);
+      }
+      section a {
+        color: var(--pink-deep);
+        text-decoration: none;
+      }
+      section a:hover {
+        text-decoration: underline;
+      }
+      section code {
+        background: rgba(240, 160, 192, 0.15);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.92em;
+        color: var(--pink-deep);
+      }
+      pre {
+        background: rgba(240, 160, 192, 0.1);
+        border: 1px solid var(--card-border);
+        padding: 16px 20px;
+        border-radius: 10px;
+        overflow-x: auto;
+        font-size: 0.9em;
+        margin: 12px 0;
+      }
+      pre code {
+        background: none;
+        padding: 0;
+        color: var(--text);
+      }
 
-  footer {
-    text-align: center; color: var(--muted); font-size: 0.85em;
-    margin-top: 60px; padding: 28px 0; border-top: 1px solid rgba(212, 120, 142, 0.15);
-  }
-  footer a { color: var(--pink-deep); text-decoration: none; }
+      footer {
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.85em;
+        margin-top: 60px;
+        padding: 28px 0;
+        border-top: 1px solid rgba(212, 120, 142, 0.15);
+      }
+      footer a {
+        color: var(--pink-deep);
+        text-decoration: none;
+      }
 
-  #loading { color: var(--muted); font-size: 0.95em; }
-  #error { color: var(--pink-deep); display: none; }
+      #loading {
+        color: var(--muted);
+        font-size: 0.95em;
+      }
+      #error {
+        color: var(--pink-deep);
+        display: none;
+      }
 
-  .resource-banner {
-    text-align: center; margin-bottom: 24px;
-  }
-  .resource-banner a {
-    display: inline-block; background: var(--card-bg); border: 1px solid var(--card-border);
-    border-radius: 12px; padding: 12px 28px; color: var(--pink-deep);
-    text-decoration: none; font-weight: 600; backdrop-filter: blur(8px);
-  }
-</style>
-</head>
-<body>
-<div class="container">
-  <div class="lang-switch">
-    <button id="lang-zh" onclick="setLang('zh')">中</button>
-    <button id="lang-en" onclick="setLang('en')">EN</button>
-  </div>
-
-  <header>
-    <h1>新世界 Shinsekai</h1>
-    <p><span data-i18n="subtitle_line1">用大语言模型驱动角色对白，立绘与情绪联动</span><br><span data-i18n="subtitle_line2">可接入语音合成、语音识别与视觉工具扩展</span></p>
-  </header>
-
-  <div class="download-card">
-    <div id="loading">🌸 <span data-i18n="loading_release">正在获取最新版本…</span></div>
-    <div id="error" style="display:none"><span data-i18n="error_release">无法获取版本信息，请前往</span> <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--pink-deep)">Releases</a> <span data-i18n="error_release_manual">手动下载。</span></div>
-    <div id="release-info" style="display:none">
-      <div class="version" id="version-text"></div>
-      <div class="platform-downloads">
-        <a id="dl-windows" class="btn" href="#" data-i18n="dl_windows">下载 Windows 版</a>
-        <a id="dl-macos" class="btn btn-alt" href="#" data-i18n="dl_macos">下载 macOS 版</a>
-        <a id="dl-linux" class="btn btn-alt" href="#" data-i18n="dl_linux">下载 Linux 版</a>
+      @media (max-width: 560px) {
+        .external-links {
+          grid-template-columns: 1fr;
+          margin-top: -8px;
+        }
+        .repo-spotlight {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .repo-spotlight__stars {
+          width: 100%;
+          justify-content: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="lang-switch">
+        <button id="lang-zh" onclick="setLang('zh')">中</button>
+        <button id="lang-en" onclick="setLang('en')">EN</button>
       </div>
-      <p class="download-note" data-i18n="download_note">按你的系统选择发行包；若按钮未匹配到文件，会跳转到 Releases 页面。</p>
-      <div class="assets" id="assets-list"></div>
-      <p style="margin-top:14px;color:var(--muted);font-size:0.85em">
-        <span data-i18n="or_browse">或浏览</span> <a href="https://github.com/RachelForster/Shinsekai/releases" style="color:var(--pink-deep)" data-i18n="all_versions">全部版本</a>
-      </p>
-    </div>
-  </div>
 
-  <div class="resource-banner">
-    <a href="https://shinsekai.end0rph1n.icu/" data-i18n="community_resources">📦 浏览社区角色包 & 背景包资源</a>
-  </div>
-
-  <section>
-    <h2 data-i18n="quick_start_title">快速开始</h2>
-    <ol>
-      <li><strong data-i18n="qs_step1">下载对应系统版本</strong><span data-i18n="qs_step1_pick">（上方 Release 按钮或镜像任选）</span>：
-        <p style="margin:10px 0">
-          <a href="https://pan.baidu.com/s/1tYbMkv5Ehe7plnCfUgMe8w?pwd=qozo" style="display:inline-block;background:var(--pink);color:#fff;padding:8px 20px;border-radius:20px;text-decoration:none;margin:4px 6px" data-i18n="baidu_pan">百度网盘</a>
-          <a href="https://pan.quark.cn/s/e89a6222fbf7?pwd=cAuy" style="display:inline-block;background:var(--pink);color:#fff;padding:8px 20px;border-radius:20px;text-decoration:none;margin:4px 6px" data-i18n="quark_pan">夸克网盘</a>
-          <a href="https://drive.google.com/file/d/1ilPvQr9eQ0g5Scd4VQ08wGDHvs20Yjwt/view" style="display:inline-block;background:var(--pink);color:#fff;padding:8px 20px;border-radius:20px;text-decoration:none;margin:4px 6px" data-i18n="google_drive">Google Drive</a>
+      <header>
+        <h1>新世界 Shinsekai</h1>
+        <p>
+          <span data-i18n="subtitle_line1"
+            >用大语言模型驱动角色对白，立绘与情绪联动</span
+          ><br /><span data-i18n="subtitle_line2"
+            >可接入语音合成、语音识别与视觉工具扩展</span
+          >
         </p>
-      </li>
-      <li data-i18n_html="qs_step2">打开下载的安装包或可执行程序：Windows 运行 <code>Shinsekai.exe</code> / <code>.msi</code>，macOS 打开 <code>.dmg</code>，Linux 运行 <code>.AppImage</code> 或安装 <code>.deb</code></li>
-      <li data-i18n_html="qs_step3">启动 <strong>Shinsekai</strong> 后，在 <strong>API 设定</strong> 填写 LLM 供应商、模型 ID、API Key 与 Base URL，保存</li>
-      <li data-i18n_html="qs_step4">如果需要角色说话，在 <strong>API 设定</strong> 的 <strong>TTS 整合包</strong> 下载语音引擎（Genie TTS / GPT-SoVITS）</li>
-      <li data-i18n_html="qs_step5">在 <strong>角色管理</strong> 导入角色包（更多见 <a href="https://shinsekai.end0rph1n.icu/">社区资源</a>），打开 <strong>聊天模板</strong> 生成模板并 <strong>启动聊天</strong></li>
-    </ol>
-    <p style="margin-top:12px;color:var(--muted);font-size:0.9em" data-i18n_html="qs_update">
-      🔄 更新软件：设置页面 → <strong>插件</strong> → <strong>发现插件</strong> → <strong>更新软件</strong>，即可升级到最新版
-    </p>
-    <p style="margin-top:6px;color:var(--muted);font-size:0.9em">
-      📖 <span data-i18n="qs_guide_prefix">详细图文教程：</span><a href="https://www.yuque.com/xiaoyang-id9po/mr7rgk/xiqacv39l027w9o0" data-i18n="qs_guide_link">新世界程序使用指南（语雀）</a>
-    </p>
-  </section>
+      </header>
 
-  <section>
-    <h2 data-i18n="dev_title">开发者安装（源码）</h2>
-    <ol>
-      <li data-i18n_html="dev_step1"><strong>下载</strong> GitHub 源码包（<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>）并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code></li>
-      <li><strong data-i18n="dev_step2_title">创建项目标准环境</strong><span data-i18n="dev_step2_desc">（推荐使用 environment.yml）</span>：
-        <pre><code>conda env create -f environment.yml
+      <div class="external-links">
+        <a
+          class="repo-spotlight"
+          href="https://github.com/RachelForster/Shinsekai"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span class="repo-spotlight__identity">
+            <svg
+              class="repo-spotlight__icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                fill="currentColor"
+                d="M12 .5A11.5 11.5 0 0 0 8.36 22.9c.58.1.79-.25.79-.56v-2.02c-3.22.7-3.9-1.38-3.9-1.38-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.57-.29-5.28-1.28-5.28-5.72 0-1.26.45-2.3 1.19-3.1-.12-.3-.52-1.48.11-3.07 0 0 .98-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.64 1.59.24 2.77.12 3.06.74.82 1.18 1.85 1.18 3.11 0 4.45-2.71 5.42-5.3 5.7.42.37.79 1.09.79 2.2v3.26c0 .31.2.67.8.56A11.5 11.5 0 0 0 12 .5Z"
+              />
+            </svg>
+            <span class="repo-spotlight__main">
+              <span class="repo-spotlight__eyebrow" data-i18n="repo_eyebrow"
+                >GitHub 开源仓库</span
+              >
+              <strong class="repo-spotlight__repo"
+                >RachelForster/Shinsekai</strong
+              >
+            </span>
+          </span>
+          <span class="repo-spotlight__stars">
+            <svg
+              class="repo-spotlight__star-icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                d="m12 2.25 3.05 6.18 6.82 1-4.94 4.8 1.17 6.8L12 17.82l-6.1 3.2 1.17-6.79-4.94-4.8 6.82-1L12 2.25Z"
+              />
+            </svg>
+            <span id="repo-stars" data-i18n="repo_stars_loading"
+              >Stars ...</span
+            >
+          </span>
+        </a>
+        <a
+          class="repo-spotlight"
+          href="https://shinsekai.end0rph1n.icu/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span class="repo-spotlight__identity">
+            <svg
+              class="repo-spotlight__icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                fill="currentColor"
+                d="M4.75 4.5h5.7c.59 0 1.14.24 1.54.64l.01.01.01-.01c.4-.4.95-.64 1.54-.64h5.7c.69 0 1.25.56 1.25 1.25v12.5c0 .69-.56 1.25-1.25 1.25h-5.7c-.33 0-.64.13-.88.37l-.67.67-.67-.67a1.24 1.24 0 0 0-.88-.37h-5.7c-.69 0-1.25-.56-1.25-1.25V5.75c0-.69.56-1.25 1.25-1.25Zm6.5 2.02a1.25 1.25 0 0 0-.8-.27H5.5v11.5h4.95c.28 0 .55.04.8.12V6.52Zm1.5 11.35c.25-.08.52-.12.8-.12h4.95V6.25h-4.95c-.29 0-.57.1-.8.27v11.35Z"
+              />
+            </svg>
+            <span class="repo-spotlight__main">
+              <span
+                class="repo-spotlight__eyebrow"
+                data-i18n="resources_eyebrow"
+                >社区资源</span
+              >
+              <strong
+                class="repo-spotlight__repo"
+                data-i18n="community_resources"
+                >浏览社区角色包 & 背景包资源</strong
+              >
+            </span>
+          </span>
+          <span class="repo-spotlight__arrow">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M14 4h6v6h-2V7.41l-8.3 8.3-1.4-1.42 8.29-8.29H14V4ZM5 6h6v2H7v9h9v-4h2v6H5V6Z"
+              />
+            </svg>
+          </span>
+        </a>
+      </div>
+
+      <div class="download-card">
+        <div id="loading">
+          🌸 <span data-i18n="loading_release">正在获取最新版本…</span>
+        </div>
+        <div id="error" style="display: none">
+          <span data-i18n="error_release">无法获取版本信息，请前往</span>
+          <a
+            href="https://github.com/RachelForster/Shinsekai/releases"
+            style="color: var(--pink-deep)"
+            >Releases</a
+          >
+          <span data-i18n="error_release_manual">手动下载。</span>
+        </div>
+        <div id="release-info" style="display: none">
+          <div class="version" id="version-text"></div>
+          <div class="platform-downloads">
+            <a id="dl-windows" class="btn" href="#">
+              <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M3 4.6 10.6 3.5v7.2H3V4.6Zm8.6-1.25L21 2v8.7h-9.4V3.35ZM3 11.7h7.6v7.25L3 17.85V11.7Zm8.6 0H21V22l-9.4-1.35V11.7Z"
+                />
+              </svg>
+              <span data-i18n="dl_windows">下载 Windows 版</span>
+            </a>
+            <a id="dl-macos" class="btn btn-alt" href="#">
+              <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M16.55 12.18c-.02-2 1.62-2.96 1.7-3.01-.94-1.37-2.39-1.56-2.9-1.58-1.23-.13-2.4.72-3.02.72-.63 0-1.6-.7-2.63-.68-1.35.02-2.6.79-3.3 2-1.4 2.43-.36 6.03 1.02 8 .67.96 1.47 2.05 2.52 2.01 1-.04 1.39-.65 2.61-.65 1.22 0 1.57.65 2.64.63 1.1-.02 1.79-.98 2.46-1.95.77-1.12 1.08-2.2 1.1-2.26-.03-.01-2.17-.83-2.2-3.23ZM14.55 6.3c.56-.68.94-1.62.83-2.56-.8.03-1.78.54-2.36 1.21-.52.6-.98 1.56-.86 2.48.9.07 1.82-.46 2.39-1.13Z"
+                />
+              </svg>
+              <span data-i18n="dl_macos">下载 macOS 版</span>
+            </a>
+            <a id="dl-linux" class="btn btn-alt" href="#">
+              <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M5 4.75A2.75 2.75 0 0 1 7.75 2h8.5A2.75 2.75 0 0 1 19 4.75v14.5A2.75 2.75 0 0 1 16.25 22h-8.5A2.75 2.75 0 0 1 5 19.25V4.75Zm2.75-.75a.75.75 0 0 0-.75.75v14.5c0 .41.34.75.75.75h8.5c.41 0 .75-.34.75-.75V4.75a.75.75 0 0 0-.75-.75h-8.5Zm1.1 4.1 1.4-1.4 3.54 3.55-3.54 3.54-1.4-1.4 2.13-2.14L8.85 8.1ZM13 14h3v2h-3v-2Z"
+                />
+              </svg>
+              <span data-i18n="dl_linux">下载 Linux 版</span>
+            </a>
+          </div>
+          <p class="download-note" data-i18n="download_note">
+            按你的系统选择发行包；若按钮未匹配到文件，会跳转到 Releases 页面。
+          </p>
+          <a
+            class="release-more"
+            href="https://github.com/RachelForster/Shinsekai/releases"
+          >
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M14 4h6v6h-2V7.41l-8.3 8.3-1.4-1.42 8.29-8.29H14V4ZM5 6h6v2H7v9h9v-4h2v6H5V6Z"
+              />
+            </svg>
+            <span data-i18n="all_versions">查看更多 Release 版本</span>
+          </a>
+        </div>
+      </div>
+
+      <section>
+        <h2 data-i18n="quick_start_title">快速开始</h2>
+        <ol>
+          <li>
+            <strong data-i18n="qs_step1">下载对应系统版本</strong
+            ><span data-i18n="qs_step1_pick"
+              >（上方 Release 按钮或镜像任选）</span
+            >：
+            <p style="margin: 10px 0">
+              <a
+                href="https://pan.baidu.com/s/1tYbMkv5Ehe7plnCfUgMe8w?pwd=qozo"
+                style="
+                  display: inline-block;
+                  background: var(--pink);
+                  color: #fff;
+                  padding: 8px 20px;
+                  border-radius: 20px;
+                  text-decoration: none;
+                  margin: 4px 6px;
+                "
+                data-i18n="baidu_pan"
+                >百度网盘</a
+              >
+              <a
+                href="https://pan.quark.cn/s/e89a6222fbf7?pwd=cAuy"
+                style="
+                  display: inline-block;
+                  background: var(--pink);
+                  color: #fff;
+                  padding: 8px 20px;
+                  border-radius: 20px;
+                  text-decoration: none;
+                  margin: 4px 6px;
+                "
+                data-i18n="quark_pan"
+                >夸克网盘</a
+              >
+              <a
+                href="https://drive.google.com/file/d/1ilPvQr9eQ0g5Scd4VQ08wGDHvs20Yjwt/view"
+                style="
+                  display: inline-block;
+                  background: var(--pink);
+                  color: #fff;
+                  padding: 8px 20px;
+                  border-radius: 20px;
+                  text-decoration: none;
+                  margin: 4px 6px;
+                "
+                data-i18n="google_drive"
+                >Google Drive</a
+              >
+            </p>
+          </li>
+          <li data-i18n_html="qs_step2">
+            打开下载的安装包或可执行程序：Windows 运行
+            <code>Shinsekai.exe</code> / <code>.msi</code>，macOS 打开
+            <code>.dmg</code>，Linux 运行 <code>.AppImage</code> 或安装
+            <code>.deb</code>
+          </li>
+          <li data-i18n_html="qs_step3">
+            启动 <strong>Shinsekai</strong> 后，在
+            <strong>API 设定</strong> 填写 LLM 供应商、模型 ID、API Key 与 Base
+            URL，保存
+          </li>
+          <li data-i18n_html="qs_step4">
+            如果需要角色说话，在 <strong>API 设定</strong> 的
+            <strong>TTS 整合包</strong> 下载语音引擎（Genie TTS / GPT-SoVITS）
+          </li>
+          <li data-i18n_html="qs_step5">
+            在 <strong>角色管理</strong> 导入角色包（更多见
+            <a href="https://shinsekai.end0rph1n.icu/">社区资源</a>），打开
+            <strong>聊天模板</strong> 生成模板并 <strong>启动聊天</strong>
+          </li>
+        </ol>
+        <p
+          style="margin-top: 12px; color: var(--muted); font-size: 0.9em"
+          data-i18n_html="qs_update"
+        >
+          🔄 更新软件：设置页面 → <strong>插件</strong> →
+          <strong>发现插件</strong> →
+          <strong>更新软件</strong>，即可升级到最新版
+        </p>
+        <p style="margin-top: 6px; color: var(--muted); font-size: 0.9em">
+          📖 <span data-i18n="qs_guide_prefix">详细图文教程：</span
+          ><a
+            href="https://www.yuque.com/xiaoyang-id9po/mr7rgk/xiqacv39l027w9o0"
+            data-i18n="qs_guide_link"
+            >新世界程序使用指南（语雀）</a
+          >
+        </p>
+      </section>
+
+      <section>
+        <h2 data-i18n="dev_title">开发者安装（源码）</h2>
+        <ol>
+          <li data-i18n_html="dev_step1">
+            <strong>下载</strong> GitHub 源码包（<a
+              href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip"
+              >zip</a
+            >
+            /
+            <a
+              href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz"
+              >tar.gz</a
+            >）并解压，或
+            <code>git clone https://github.com/RachelForster/Shinsekai</code>
+          </li>
+          <li>
+            <strong data-i18n="dev_step2_title">创建项目标准环境</strong
+            ><span data-i18n="dev_step2_desc">（推荐使用 environment.yml）</span
+            >：
+            <pre><code>conda env create -f environment.yml
 conda activate shinsekai</code></pre>
-      </li>
-      <li><strong data-i18n="dev_step3">构建 React 前端</strong>：
-        <pre><code>cd frontend
+          </li>
+          <li>
+            <strong data-i18n="dev_step3">构建 React 前端</strong>：
+            <pre><code>cd frontend
 pnpm install
 pnpm build
 cd ..</code></pre>
-      </li>
-      <li data-i18n_html="dev_step4">优先运行 <code>python webui_react.py</code> 或平台对应的 <code>start-react.*</code>；旧 PySide 设置页仅作为兼容入口保留：<code>python webui_qt.py</code></li>
-      <li data-i18n_html="dev_step5">React 设置中心用于管理 API、角色、背景、聊天模板、小工具、插件和 MCP</li>
-      <li data-i18n_html="dev_step6">完成配置后按上面的「第一次对话」流程启动聊天</li>
-    </ol>
-  </section>
+          </li>
+          <li data-i18n_html="dev_step4">
+            优先运行 <code>python webui_react.py</code> 或平台对应的
+            <code>start-react.*</code>；旧 PySide
+            设置页仅作为兼容入口保留：<code>python webui_qt.py</code>
+          </li>
+          <li data-i18n_html="dev_step5">
+            React 设置中心用于管理 API、角色、背景、聊天模板、小工具、插件和 MCP
+          </li>
+          <li data-i18n_html="dev_step6">
+            完成配置后按上面的「第一次对话」流程启动聊天
+          </li>
+        </ol>
+      </section>
 
-  <section>
-    <h2 data-i18n="features_title">核心能力</h2>
-    <ul data-i18n_list="features">
-      <li>多 LLM 支持 — DeepSeek / OpenAI / Claude / Gemini 等</li>
-      <li>TTS 语音合成 — GPT-SoVITS / Genie TTS</li>
-      <li>ASR 语音识别 — Vosk / Faster Whisper / RealtimeSTT</li>
-      <li>文生图 — ComfyUI / Stable Diffusion</li>
-      <li>插件系统 — 扩展适配器、工具、UI 组件</li>
-      <li>MCP 协议 — 接入外部工具与检索服务</li>
-      <li>立绘情绪联动 · 聊天历史回溯 · BGM / CG 播放</li>
-    </ul>
-  </section>
+      <section>
+        <h2 data-i18n="features_title">核心能力</h2>
+        <ul data-i18n_list="features">
+          <li>多 LLM 支持 — DeepSeek / OpenAI / Claude / Gemini 等</li>
+          <li>TTS 语音合成 — GPT-SoVITS / Genie TTS</li>
+          <li>ASR 语音识别 — Vosk / Faster Whisper / RealtimeSTT</li>
+          <li>文生图 — ComfyUI / Stable Diffusion</li>
+          <li>插件系统 — 扩展适配器、工具、UI 组件</li>
+          <li>MCP 协议 — 接入外部工具与检索服务</li>
+          <li>立绘情绪联动 · 聊天历史回溯 · BGM / CG 播放</li>
+        </ul>
+      </section>
 
-  <section>
-    <h2 data-i18n="docs_title">文档</h2>
-    <ul data-i18n_list="docs">
-      <li><a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">图形界面使用指南</a></li>
-      <li><a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">插件开发者指南</a></li>
-      <li><a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a></li>
-      <li><a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">插件索引仓库</a></li>
-    </ul>
-  </section>
+      <section>
+        <h2 data-i18n="docs_title">文档</h2>
+        <ul data-i18n_list="docs">
+          <li>
+            <a
+              href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md"
+              >图形界面使用指南</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md"
+              >插件开发者指南</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md"
+              >English README</a
+            >
+          </li>
+          <li>
+            <a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry"
+              >插件索引仓库</a
+            >
+          </li>
+        </ul>
+      </section>
 
-  <footer>
-    <p>&copy; 2026 不二咲爱笑 &nbsp;·&nbsp; <a href="https://github.com/RachelForster/Shinsekai">GitHub</a> &nbsp;·&nbsp; MIT License</p>
-  </footer>
-</div>
+      <footer>
+        <p>
+          &copy; 2026 不二咲爱笑 &nbsp;·&nbsp;
+          <a href="https://github.com/RachelForster/Shinsekai">GitHub</a>
+          &nbsp;·&nbsp; Source-available EULA
+        </p>
+      </footer>
+    </div>
 
-<script>
-// ── i18n ─────────────────────────────────────────────────────────────────────
-var L = {
-  zh: {
-    subtitle_line1: '用大语言模型驱动角色对白，立绘与情绪联动',
-    subtitle_line2: '可接入语音合成、语音识别与视觉工具扩展',
-    loading_release: '正在获取最新版本…',
-    error_release: '无法获取版本信息，请前往',
-    error_release_manual: '手动下载。',
-    dl_windows: '下载 Windows 版',
-    dl_macos: '下载 macOS 版',
-    dl_linux: '下载 Linux 版',
-    download_note: '按你的系统选择发行包；若按钮未匹配到文件，会跳转到 Releases 页面。',
-    or_browse: '或浏览',
-    all_versions: '全部版本',
-    fallback_version: '🌸 最新发行版',
-    extra_files: '其他发行文件：',
-    community_resources: '📦 浏览社区角色包 & 背景包资源',
-    quick_start_title: '快速开始',
-    qs_step1: '下载对应系统版本',
-    qs_step1_pick: '（上方 Release 按钮或镜像任选）',
-    qs_step2: '打开下载的安装包或可执行程序：Windows 运行 <code>Shinsekai.exe</code> / <code>.msi</code>，macOS 打开 <code>.dmg</code>，Linux 运行 <code>.AppImage</code> 或安装 <code>.deb</code>',
-    qs_step3: '启动 <strong>Shinsekai</strong> 后，在 <strong>API 设定</strong> 填写 LLM 供应商、模型 ID、API Key 与 Base URL，保存',
-    qs_step4: '如果需要角色说话，在 <strong>API 设定</strong> 的 <strong>TTS 整合包</strong> 下载语音引擎（Genie TTS / GPT-SoVITS）',
-    qs_step5: '在 <strong>角色管理</strong> 导入角色包（更多见 <a href="https://shinsekai.end0rph1n.icu/">社区资源</a>），打开 <strong>聊天模板</strong> 生成模板并 <strong>启动聊天</strong>',
-    qs_update: '🔄 更新软件：设置页面 → <strong>插件</strong> → <strong>发现插件</strong> → <strong>更新软件</strong>，即可升级到最新版',
-    qs_guide_prefix: '详细图文教程：',
-    qs_guide_link: '新世界程序使用指南（语雀）',
-    dev_title: '开发者安装（源码）',
-    dev_step1: '<strong>下载</strong> GitHub 源码包（<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>）并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code>',
-    dev_step2_title: '创建项目标准环境',
-    dev_step2_desc: '（推荐使用 environment.yml）',
-    dev_step3: '构建 React 前端',
-    dev_step4: '优先运行 <code>python webui_react.py</code> 或平台对应的 <code>start-react.*</code>；旧 PySide 设置页仅作为兼容入口保留：<code>python webui_qt.py</code>',
-    dev_step5: 'React 设置中心用于管理 API、角色、背景、聊天模板、小工具、插件和 MCP',
-    dev_step6: '完成配置后按上面的「第一次对话」流程启动聊天',
-    features_title: '核心能力',
-    features: [
-      '多 LLM 支持 — DeepSeek / OpenAI / Claude / Gemini 等',
-      'TTS 语音合成 — GPT-SoVITS / Genie TTS',
-      'ASR 语音识别 — Vosk / Faster Whisper / RealtimeSTT',
-      '文生图 — ComfyUI / Stable Diffusion',
-      '插件系统 — 扩展适配器、工具、UI 组件',
-      'MCP 协议 — 接入外部工具与检索服务',
-      '立绘情绪联动 · 聊天历史回溯 · BGM / CG 播放'
-    ],
-    docs_title: '文档',
-    docs: [
-      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">图形界面使用指南</a>',
-      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">插件开发者指南</a>',
-      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a>',
-      '<a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">插件索引仓库</a>'
-    ],
-    baidu_pan: '百度网盘',
-    quark_pan: '夸克网盘',
-    google_drive: 'Google Drive'
-  },
-  en: {
-    subtitle_line1: 'LLM-powered character dialogue with live2d-style sprite & emotion联动',
-    subtitle_line2: 'TTS · ASR · T2I · plugins — all configurable locally',
-    loading_release: 'Fetching latest release…',
-    error_release: 'Unable to fetch release info. Please visit',
-    error_release_manual: 'to download manually.',
-    dl_windows: 'Download for Windows',
-    dl_macos: 'Download for macOS',
-    dl_linux: 'Download for Linux',
-    download_note: 'Choose the release package for your system. If a file is not matched, the button opens Releases.',
-    or_browse: 'or browse',
-    all_versions: 'all releases',
-    fallback_version: '🌸 Latest Release',
-    extra_files: 'Other release files:',
-    community_resources: '📦 Browse Community Character & Background Packs',
-    quick_start_title: 'Quick Start',
-    qs_step1: 'Download the build for your system',
-    qs_step1_pick: '(use the Release buttons above or a mirror)',
-    qs_step2: 'Open the downloaded installer or executable: run <code>Shinsekai.exe</code> / <code>.msi</code> on Windows, open the <code>.dmg</code> on macOS, or run the <code>.AppImage</code> / install the <code>.deb</code> on Linux',
-    qs_step3: 'Launch <strong>Shinsekai</strong>, then fill in your LLM provider, model ID, API key, and Base URL in <strong>API Settings</strong>',
-    qs_step4: 'If you want spoken dialogue, download a voice engine (Genie TTS / GPT-SoVITS) from <strong>TTS integrated package</strong> in <strong>API Settings</strong>',
-    qs_step5: 'Import a character pack in <strong>Character Manager</strong> (more at <a href="https://shinsekai.end0rph1n.icu/">Community Resources</a>), generate a template in <strong>Chat Templates</strong>, then <strong>Launch Chat</strong>',
-    qs_update: '🔄 To update: Settings → <strong>Plugins</strong> → <strong>Discover</strong> → <strong>Update Software</strong>',
-    qs_guide_prefix: 'Detailed guide: ',
-    qs_guide_link: 'Shinsekai User Guide (Yuque)',
-    dev_title: 'Developer Setup (Source)',
-    dev_step1: '<strong>Download</strong> the GitHub source package (<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>), or <code>git clone https://github.com/RachelForster/Shinsekai</code>',
-    dev_step2_title: 'Create the project environment',
-    dev_step2_desc: ' (environment.yml recommended)',
-    dev_step3: 'Build the React frontend',
-    dev_step4: 'Prefer <code>python webui_react.py</code> or the platform-specific <code>start-react.*</code>; the old PySide settings page remains as a compatibility entry: <code>python webui_qt.py</code>',
-    dev_step5: 'The React Settings Center manages API, characters, backgrounds, chat templates, tools, plugins, and MCP',
-    dev_step6: 'After configuration, follow the first-conversation flow above to launch chat',
-    features_title: 'Features',
-    features: [
-      'Multi-LLM — DeepSeek / OpenAI / Claude / Gemini & more',
-      'TTS — GPT-SoVITS / Genie TTS',
-      'ASR — Vosk / Faster Whisper / RealtimeSTT',
-      'T2I — ComfyUI / Stable Diffusion',
-      'Plugin system — extend adapters, tools & UI',
-      'MCP protocol — connect external tools & services',
-      'Sprite emotion sync · Chat history · BGM / CG playback'
-    ],
-    docs_title: 'Docs',
-    docs: [
-      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">GUI User Guide (Chinese)</a>',
-      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">Plugin Developer Guide</a>',
-      '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a>',
-      '<a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">Plugin Registry</a>'
-    ],
-    baidu_pan: 'Baidu Pan',
-    quark_pan: 'Quark Pan',
-    google_drive: 'Google Drive'
-  }
-};
+    <script>
+      // ── i18n ─────────────────────────────────────────────────────────────────────
+      var L = {
+        zh: {
+          subtitle_line1: "用大语言模型驱动角色对白，立绘与情绪联动",
+          subtitle_line2: "可接入语音合成、语音识别与视觉工具扩展",
+          loading_release: "正在获取最新版本…",
+          repo_eyebrow: "GitHub 开源仓库",
+          repo_stars: "{count} stars",
+          repo_stars_loading: "Stars ...",
+          resources_eyebrow: "社区资源",
+          error_release: "无法获取版本信息，请前往",
+          error_release_manual: "手动下载。",
+          dl_windows: "下载 Windows 版",
+          dl_macos: "下载 macOS 版",
+          dl_linux: "下载 Linux 版",
+          download_note:
+            "按你的系统选择发行包；若按钮未匹配到文件，会跳转到 Releases 页面。",
+          or_browse: "或浏览",
+          all_versions: "查看更多 Release 版本",
+          fallback_version: "🌸 最新发行版",
+          extra_files: "其他发行文件：",
+          community_resources: "浏览社区角色包 & 背景包资源",
+          quick_start_title: "快速开始",
+          qs_step1: "下载对应系统版本",
+          qs_step1_pick: "（上方 Release 按钮或镜像任选）",
+          qs_step2:
+            "打开下载的安装包或可执行程序：Windows 运行 <code>Shinsekai.exe</code> / <code>.msi</code>，macOS 打开 <code>.dmg</code>，Linux 运行 <code>.AppImage</code> 或安装 <code>.deb</code>",
+          qs_step3:
+            "启动 <strong>Shinsekai</strong> 后，在 <strong>API 设定</strong> 填写 LLM 供应商、模型 ID、API Key 与 Base URL，保存",
+          qs_step4:
+            "如果需要角色说话，在 <strong>API 设定</strong> 的 <strong>TTS 整合包</strong> 下载语音引擎（Genie TTS / GPT-SoVITS）",
+          qs_step5:
+            '在 <strong>角色管理</strong> 导入角色包（更多见 <a href="https://shinsekai.end0rph1n.icu/">社区资源</a>），打开 <strong>聊天模板</strong> 生成模板并 <strong>启动聊天</strong>',
+          qs_update:
+            "🔄 更新软件：设置页面 → <strong>插件</strong> → <strong>发现插件</strong> → <strong>更新软件</strong>，即可升级到最新版",
+          qs_guide_prefix: "详细图文教程：",
+          qs_guide_link: "新世界程序使用指南（语雀）",
+          dev_title: "开发者安装（源码）",
+          dev_step1:
+            '<strong>下载</strong> GitHub 源码包（<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>）并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code>',
+          dev_step2_title: "创建项目标准环境",
+          dev_step2_desc: "（推荐使用 environment.yml）",
+          dev_step3: "构建 React 前端",
+          dev_step4:
+            "优先运行 <code>python webui_react.py</code> 或平台对应的 <code>start-react.*</code>；旧 PySide 设置页仅作为兼容入口保留：<code>python webui_qt.py</code>",
+          dev_step5:
+            "React 设置中心用于管理 API、角色、背景、聊天模板、小工具、插件和 MCP",
+          dev_step6: "完成配置后按上面的「第一次对话」流程启动聊天",
+          features_title: "核心能力",
+          features: [
+            "多 LLM 支持 — DeepSeek / OpenAI / Claude / Gemini 等",
+            "TTS 语音合成 — GPT-SoVITS / Genie TTS",
+            "ASR 语音识别 — Vosk / Faster Whisper / RealtimeSTT",
+            "文生图 — ComfyUI / Stable Diffusion",
+            "插件系统 — 扩展适配器、工具、UI 组件",
+            "MCP 协议 — 接入外部工具与检索服务",
+            "立绘情绪联动 · 聊天历史回溯 · BGM / CG 播放",
+          ],
+          docs_title: "文档",
+          docs: [
+            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">图形界面使用指南</a>',
+            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">插件开发者指南</a>',
+            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a>',
+            '<a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">插件索引仓库</a>',
+          ],
+          baidu_pan: "百度网盘",
+          quark_pan: "夸克网盘",
+          google_drive: "Google Drive",
+        },
+        en: {
+          subtitle_line1:
+            "LLM-powered character dialogue with live2d-style sprite & emotion联动",
+          subtitle_line2:
+            "TTS · ASR · T2I · plugins — all configurable locally",
+          loading_release: "Fetching latest release…",
+          repo_eyebrow: "GitHub repository",
+          repo_stars: "{count} stars",
+          repo_stars_loading: "Stars ...",
+          resources_eyebrow: "Community resources",
+          error_release: "Unable to fetch release info. Please visit",
+          error_release_manual: "to download manually.",
+          dl_windows: "Download for Windows",
+          dl_macos: "Download for macOS",
+          dl_linux: "Download for Linux",
+          download_note:
+            "Choose the release package for your system. If a file is not matched, the button opens Releases.",
+          all_versions: "View more release versions",
+          fallback_version: "🌸 Latest Release",
+          community_resources: "Browse Community Character & Background Packs",
+          quick_start_title: "Quick Start",
+          qs_step1: "Download the build for your system",
+          qs_step1_pick: "(use the Release buttons above or a mirror)",
+          qs_step2:
+            "Open the downloaded installer or executable: run <code>Shinsekai.exe</code> / <code>.msi</code> on Windows, open the <code>.dmg</code> on macOS, or run the <code>.AppImage</code> / install the <code>.deb</code> on Linux",
+          qs_step3:
+            "Launch <strong>Shinsekai</strong>, then fill in your LLM provider, model ID, API key, and Base URL in <strong>API Settings</strong>",
+          qs_step4:
+            "If you want spoken dialogue, download a voice engine (Genie TTS / GPT-SoVITS) from <strong>TTS integrated package</strong> in <strong>API Settings</strong>",
+          qs_step5:
+            'Import a character pack in <strong>Character Manager</strong> (more at <a href="https://shinsekai.end0rph1n.icu/">Community Resources</a>), generate a template in <strong>Chat Templates</strong>, then <strong>Launch Chat</strong>',
+          qs_update:
+            "🔄 To update: Settings → <strong>Plugins</strong> → <strong>Discover</strong> → <strong>Update Software</strong>",
+          qs_guide_prefix: "Detailed guide: ",
+          qs_guide_link: "Shinsekai User Guide (Yuque)",
+          dev_title: "Developer Setup (Source)",
+          dev_step1:
+            '<strong>Download</strong> the GitHub source package (<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>), or <code>git clone https://github.com/RachelForster/Shinsekai</code>',
+          dev_step2_title: "Create the project environment",
+          dev_step2_desc: " (environment.yml recommended)",
+          dev_step3: "Build the React frontend",
+          dev_step4:
+            "Prefer <code>python webui_react.py</code> or the platform-specific <code>start-react.*</code>; the old PySide settings page remains as a compatibility entry: <code>python webui_qt.py</code>",
+          dev_step5:
+            "The React Settings Center manages API, characters, backgrounds, chat templates, tools, plugins, and MCP",
+          dev_step6:
+            "After configuration, follow the first-conversation flow above to launch chat",
+          features_title: "Features",
+          features: [
+            "Multi-LLM — DeepSeek / OpenAI / Claude / Gemini & more",
+            "TTS — GPT-SoVITS / Genie TTS",
+            "ASR — Vosk / Faster Whisper / RealtimeSTT",
+            "T2I — ComfyUI / Stable Diffusion",
+            "Plugin system — extend adapters, tools & UI",
+            "MCP protocol — connect external tools & services",
+            "Sprite emotion sync · Chat history · BGM / CG playback",
+          ],
+          docs_title: "Docs",
+          docs: [
+            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">GUI User Guide (Chinese)</a>',
+            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">Plugin Developer Guide</a>',
+            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a>',
+            '<a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">Plugin Registry</a>',
+          ],
+          baidu_pan: "Baidu Pan",
+          quark_pan: "Quark Pan",
+          google_drive: "Google Drive",
+        },
+      };
 
-var lang = 'zh';
+      var lang = "zh";
+      var repoStars = null;
 
-function t(key, vars) {
-  var s = (L[lang] && L[lang][key] != null) ? L[lang][key] : (L.en[key] || key);
-  if (vars) {
-    Object.keys(vars).forEach(function (k) { s = s.replace('{' + k + '}', vars[k]); });
-  }
-  return s;
-}
-
-function setLang(l) {
-  lang = l;
-  localStorage.setItem('shinsekai-lang', l);
-  document.getElementById('lang-zh').className = l === 'zh' ? 'active' : '';
-  document.getElementById('lang-en').className = l === 'en' ? 'active' : '';
-  document.documentElement.lang = l === 'en' ? 'en' : 'zh-CN';
-  applyI18n();
-}
-
-function applyI18n() {
-  document.querySelectorAll('[data-i18n]').forEach(function (el) {
-    el.textContent = t(el.getAttribute('data-i18n'));
-  });
-  document.querySelectorAll('[data-i18n_html]').forEach(function (el) {
-    el.innerHTML = t(el.getAttribute('data-i18n_html'));
-  });
-  document.querySelectorAll('[data-i18n_list]').forEach(function (el) {
-    var items = t(el.getAttribute('data-i18n_list'));
-    if (Array.isArray(items)) {
-      el.innerHTML = items.map(function (item) { return '<li>' + item + '</li>'; }).join('');
-    }
-  });
-}
-
-var saved = localStorage.getItem('shinsekai-lang');
-if (!saved) { saved = navigator.language.startsWith('zh') ? 'zh' : 'en'; }
-setLang(saved);
-
-// ── Release fetching ─────────────────────────────────────────────────────────
-var RELEASES_URL = 'https://github.com/RachelForster/Shinsekai/releases';
-var PLATFORM_MATCHERS = {
-  windows: [
-    ['x64', '.msi'], ['amd64', '.msi'], ['x86_64', '.msi'],
-    ['windows', '.msi'], ['win', '.msi'],
-    ['x64', 'setup', '.exe'], ['amd64', 'setup', '.exe'],
-    ['setup', '.exe'], ['.msi'], ['.exe']
-  ],
-  macos: [
-    ['aarch64', '.dmg'], ['arm64', '.dmg'],
-    ['x64', '.dmg'], ['amd64', '.dmg'], ['x86_64', '.dmg'],
-    ['macos', '.dmg'], ['darwin', '.dmg'], ['.dmg'], ['.app.tar.gz']
-  ],
-  linux: [
-    ['x64', '.appimage'], ['amd64', '.appimage'], ['x86_64', '.appimage'],
-    ['linux', '.appimage'],
-    ['x64', '.deb'], ['amd64', '.deb'], ['x86_64', '.deb'],
-    ['linux', '.deb'], ['.appimage'], ['.deb'], ['.rpm']
-  ]
-};
-
-function findPlatformAsset(assets, platform) {
-  var matchers = PLATFORM_MATCHERS[platform] || [];
-  for (var i = 0; i < matchers.length; i += 1) {
-    var terms = matchers[i];
-    for (var j = 0; j < assets.length; j += 1) {
-      var name = String(assets[j].name || '').toLowerCase();
-      if (terms.every(function (term) { return name.indexOf(term) !== -1; })) {
-        return assets[j];
+      function t(key, vars) {
+        var s =
+          L[lang] && L[lang][key] != null ? L[lang][key] : L.en[key] || key;
+        if (vars) {
+          Object.keys(vars).forEach(function (k) {
+            s = s.replace("{" + k + "}", vars[k]);
+          });
+        }
+        return s;
       }
-    }
-  }
-  return null;
-}
 
-function setPlatformDownload(platform, asset, selectedUrls) {
-  var link = document.getElementById('dl-' + platform);
-  if (!link) return;
-  if (asset && asset.browser_download_url) {
-    link.href = asset.browser_download_url;
-    link.title = asset.name;
-    selectedUrls[asset.browser_download_url] = true;
-  } else {
-    link.href = RELEASES_URL;
-    link.title = t('all_versions');
-  }
-}
+      function formatStarCount(count) {
+        return new Intl.NumberFormat(lang === "zh" ? "zh-CN" : "en-US", {
+          compactDisplay: "short",
+          maximumFractionDigits: count >= 1000 ? 1 : 0,
+          notation: "compact",
+        }).format(count);
+      }
 
-function renderAssetList(assets, selectedUrls) {
-  var list = document.getElementById('assets-list');
-  var extras = assets.filter(function (asset) {
-    return !selectedUrls[asset.browser_download_url];
-  });
-  list.innerHTML = '';
-  if (extras.length > 0) {
-    list.innerHTML = '<p style="margin-top:6px;color:var(--muted)">' + t('extra_files') + '</p>';
-    extras.forEach(function (a) {
-      var size = a.size ? ' (' + (a.size / 1024 / 1024).toFixed(1) + ' MB)' : '';
-      list.innerHTML +=
-        '<a href="' + a.browser_download_url + '">' + a.name + '</a>' +
-        '<span style="color:var(--muted);font-size:0.8em">' + size + '</span>';
-    });
-  }
-}
+      function renderRepoStars() {
+        var el = document.getElementById("repo-stars");
+        if (!el) return;
+        el.textContent =
+          repoStars == null
+            ? t("repo_stars_loading")
+            : t("repo_stars", { count: formatStarCount(repoStars) });
+      }
 
-function bindPlatformDownloads(assets) {
-  var selectedUrls = {};
-  ['windows', 'macos', 'linux'].forEach(function (platform) {
-    setPlatformDownload(platform, findPlatformAsset(assets, platform), selectedUrls);
-  });
-  renderAssetList(assets, selectedUrls);
-}
+      function setLang(l) {
+        lang = l;
+        localStorage.setItem("shinsekai-lang", l);
+        document.getElementById("lang-zh").className =
+          l === "zh" ? "active" : "";
+        document.getElementById("lang-en").className =
+          l === "en" ? "active" : "";
+        document.documentElement.lang = l === "en" ? "en" : "zh-CN";
+        applyI18n();
+      }
 
-(async function () {
-  var loading = document.getElementById('loading');
-  var info = document.getElementById('release-info');
+      function applyI18n() {
+        document.querySelectorAll("[data-i18n]").forEach(function (el) {
+          el.textContent = t(el.getAttribute("data-i18n"));
+        });
+        document.querySelectorAll("[data-i18n_html]").forEach(function (el) {
+          el.innerHTML = t(el.getAttribute("data-i18n_html"));
+        });
+        document.querySelectorAll("[data-i18n_list]").forEach(function (el) {
+          var items = t(el.getAttribute("data-i18n_list"));
+          if (Array.isArray(items)) {
+            el.innerHTML = items
+              .map(function (item) {
+                return "<li>" + item + "</li>";
+              })
+              .join("");
+          }
+        });
+        renderRepoStars();
+      }
 
-  try {
-    var resp = await fetch('https://api.github.com/repos/RachelForster/Shinsekai/releases/latest');
-    if (!resp.ok) throw new Error('no release');
-    var release = await resp.json();
+      var saved = localStorage.getItem("shinsekai-lang");
+      if (!saved) {
+        saved = navigator.language.startsWith("zh") ? "zh" : "en";
+      }
+      setLang(saved);
 
-    document.getElementById('version-text').textContent =
-      '🌸 ' + release.tag_name + ' · ' + new Date(release.published_at).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US');
+      // ── Release fetching ─────────────────────────────────────────────────────────
+      var GITHUB_REPO_API_URL =
+        "https://api.github.com/repos/RachelForster/Shinsekai";
+      var RELEASES_URL = "https://github.com/RachelForster/Shinsekai/releases";
+      var PLATFORM_MATCHERS = {
+        windows: [
+          ["x64", ".msi"],
+          ["amd64", ".msi"],
+          ["x86_64", ".msi"],
+          ["windows", ".msi"],
+          ["win", ".msi"],
+          ["x64", "setup", ".exe"],
+          ["amd64", "setup", ".exe"],
+          ["setup", ".exe"],
+          [".msi"],
+          [".exe"],
+        ],
+        macos: [
+          ["aarch64", ".dmg"],
+          ["arm64", ".dmg"],
+          ["x64", ".dmg"],
+          ["amd64", ".dmg"],
+          ["x86_64", ".dmg"],
+          ["macos", ".dmg"],
+          ["darwin", ".dmg"],
+          [".dmg"],
+          [".app.tar.gz"],
+        ],
+        linux: [
+          ["x64", ".appimage"],
+          ["amd64", ".appimage"],
+          ["x86_64", ".appimage"],
+          ["linux", ".appimage"],
+          ["x64", ".deb"],
+          ["amd64", ".deb"],
+          ["x86_64", ".deb"],
+          ["linux", ".deb"],
+          [".appimage"],
+          [".deb"],
+          [".rpm"],
+        ],
+      };
 
-    bindPlatformDownloads(release.assets || []);
+      function findPlatformAsset(assets, platform) {
+        var matchers = PLATFORM_MATCHERS[platform] || [];
+        for (var i = 0; i < matchers.length; i += 1) {
+          var terms = matchers[i];
+          for (var j = 0; j < assets.length; j += 1) {
+            var name = String(assets[j].name || "").toLowerCase();
+            if (
+              terms.every(function (term) {
+                return name.indexOf(term) !== -1;
+              })
+            ) {
+              return assets[j];
+            }
+          }
+        }
+        return null;
+      }
 
-    loading.style.display = 'none';
-    info.style.display = 'block';
-  } catch (e) {
-    document.getElementById('version-text').textContent = t('fallback_version');
-    bindPlatformDownloads([]);
-    loading.style.display = 'none';
-    info.style.display = 'block';
-  }
-})();
-</script>
-</body>
+      function setPlatformDownload(platform, asset) {
+        var link = document.getElementById("dl-" + platform);
+        if (!link) return;
+        if (asset && asset.browser_download_url) {
+          link.href = asset.browser_download_url;
+          link.title = asset.name;
+        } else {
+          link.href = RELEASES_URL;
+          link.title = t("all_versions");
+        }
+      }
+
+      function bindPlatformDownloads(assets) {
+        ["windows", "macos", "linux"].forEach(function (platform) {
+          setPlatformDownload(platform, findPlatformAsset(assets, platform));
+        });
+      }
+
+      (async function () {
+        try {
+          var resp = await fetch(GITHUB_REPO_API_URL);
+          if (!resp.ok) throw new Error("no repo");
+          var repo = await resp.json();
+          if (typeof repo.stargazers_count === "number") {
+            repoStars = repo.stargazers_count;
+          }
+        } catch (e) {
+          repoStars = null;
+        }
+        renderRepoStars();
+      })();
+
+      (async function () {
+        var loading = document.getElementById("loading");
+        var info = document.getElementById("release-info");
+
+        try {
+          var resp = await fetch(
+            "https://api.github.com/repos/RachelForster/Shinsekai/releases/latest",
+          );
+          if (!resp.ok) throw new Error("no release");
+          var release = await resp.json();
+
+          document.getElementById("version-text").textContent =
+            "🌸 " +
+            release.tag_name +
+            " · " +
+            new Date(release.published_at).toLocaleDateString(
+              lang === "zh" ? "zh-CN" : "en-US",
+            );
+
+          bindPlatformDownloads(release.assets || []);
+
+          loading.style.display = "none";
+          info.style.display = "block";
+        } catch (e) {
+          document.getElementById("version-text").textContent =
+            t("fallback_version");
+          bindPlatformDownloads([]);
+          loading.style.display = "none";
+          info.style.display = "block";
+        }
+      })();
+    </script>
+  </body>
 </html>

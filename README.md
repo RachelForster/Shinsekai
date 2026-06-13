@@ -199,3 +199,9 @@ pnpm tauri build
 | 本仓库 | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
 
 欢迎 Issue / PR；若二次分发角色与语音资源，请遵守对应作者许可。
+
+---
+
+## 许可说明
+
+新世界是源码可见项目，不是开源项目。你可以查看源码、本地构建自用，也可以公开 fork 用于讨论和贡献；未经书面许可，禁止再分发、发布 Release、发布安装包、上架应用商店或商业使用。详见 [LICENSE](LICENSE)。

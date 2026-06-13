@@ -195,7 +195,6 @@ export function ToolsPanelContent({ embedded = false }: { embedded?: boolean }) 
         <header className="page__header">
           <div>
             <h1 className="page__title">{t("nav.tools")}</h1>
-            <p className="page__description">{t("tools.description")}</p>
           </div>
         </header>
       ) : null}

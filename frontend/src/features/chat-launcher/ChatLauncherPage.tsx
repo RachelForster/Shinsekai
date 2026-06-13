@@ -223,7 +223,6 @@ export function ChatLauncherPage() {
       <header className="page__header">
         <div>
           <h1 className="page__title">{t("launch.title")}</h1>
-          <p className="page__description">{t("launch.description")}</p>
         </div>
         <div className="page__actions">
           <AsyncButton

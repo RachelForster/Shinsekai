@@ -99,7 +99,6 @@ export function SystemSettingsPage() {
       <header className="page__header">
         <div>
           <h1 className="page__title">{t("system.title")}</h1>
-          <p className="page__description">{t("system.description")}</p>
         </div>
         <div className="page__actions">
           <AsyncButton

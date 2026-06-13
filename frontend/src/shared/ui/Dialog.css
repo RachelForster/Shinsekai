@@ -36,6 +36,7 @@
   margin: 0;
   color: var(--color-accent-primary);
   font-size: 16px;
+  font-weight: 700;
 }
 
 .dialog__header-actions {

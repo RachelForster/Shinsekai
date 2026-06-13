@@ -43,7 +43,6 @@ export function CharacterPageHeader({
     <header className="page__header character-page__header">
       <div className="character-page__heading">
         <h1 className="page__title">{t("character.title")}</h1>
-        <p className="page__description">{t("character.description")}</p>
       </div>
       <div className="page__actions character-page__toolbar" aria-label={t("character.title")}>
         <div className="character-page__toolbar-group character-page__toolbar-group--links">
