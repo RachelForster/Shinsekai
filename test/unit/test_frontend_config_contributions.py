@@ -1,12 +1,34 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from sdk.manager import PluginManager
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry
 from sdk.types import ChatUIContribution, FrontendConfigAction, FrontendConfigContribution, FrontendPageContribution
+
+
+def test_plugin_host_context_exposes_huggingface_cache_dir(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "hf-cache"
+    cm = SimpleNamespace(
+        config=SimpleNamespace(
+            api_config=SimpleNamespace(llm_provider="Deepseek", tts_provider="gpt-sovits"),
+            system_config=SimpleNamespace(
+                base_font_size_px=56,
+                huggingface_cache_dir=str(cache_dir),
+                live_room_id="",
+                theme_color="#d4788e",
+                ui_language="zh_CN",
+                voice_language="ja",
+            ),
+        )
+    )
+
+    host = PluginHostContext.from_config_manager(cm)
+
+    assert host.huggingface_cache_dir == cache_dir.resolve(strict=False)
 
 
 def test_frontend_config_contribution_gets_plugin_context() -> None:

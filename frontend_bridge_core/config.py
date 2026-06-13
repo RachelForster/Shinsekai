@@ -141,6 +141,14 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     payload = _jsonify(state.config_manager.config)
     if not isinstance(payload, dict):
         return {}
+    try:
+        from config.mirror_env import config_with_resolved_mirrors
+
+        payload["system_config"] = _jsonify(
+            config_with_resolved_mirrors(state.config_manager.config.system_config)
+        )
+    except Exception:
+        pass
     api_config = payload.get("api_config")
     if isinstance(api_config, dict):
         provider = str(api_config.get("llm_provider") or "Deepseek").strip() or "Deepseek"

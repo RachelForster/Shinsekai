@@ -57,6 +57,12 @@ function mockSystemConfig() {
       font_pixel_size: 0,
       height: 0,
       live_room_id: "",
+      mirror_auto_detect_china: true,
+      mirror_region: "auto",
+      huggingface_mirror_url: "",
+      huggingface_cache_dir: "./data/cache/huggingface",
+      github_mirror_url: "",
+      pypi_mirror_url: "",
       settings_window_height: 0,
       settings_window_width: 0,
       splash_duration: 75,
@@ -117,6 +123,7 @@ describe("SystemSettingsPage", () => {
     mockGetAppConfig.mockResolvedValue(mockSystemConfig());
     renderPage();
     expect(await screen.findByText("程序设置")).toBeInTheDocument();
+    expect(screen.getByText("镜像源")).toBeInTheDocument();
     expect(screen.queryByText("桌面运行环境")).not.toBeInTheDocument();
   });
 

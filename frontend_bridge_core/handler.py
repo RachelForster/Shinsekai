@@ -401,8 +401,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_save_api_config(self.state, body))
             elif method in {"POST", "PUT"} and path == "/api/config/system":
                 from config.schema import SystemConfig
+                from config.mirror_env import config_with_resolved_mirrors
 
-                config = SystemConfig.model_validate(body)
+                config = config_with_resolved_mirrors(SystemConfig.model_validate(body))
                 self.state.config_manager.config.system_config = config
                 self.state.config_manager.save_system_config()
                 try:
