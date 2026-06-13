@@ -259,15 +259,7 @@ export function CharacterEditorPage() {
   });
 
   const voiceUploadMutation = useMutation({
-    mutationFn: ({
-      index,
-      voicePath,
-      voiceText,
-    }: {
-      index: number;
-      voicePath: string;
-      voiceText: string;
-    }) =>
+    mutationFn: ({ index, voicePath, voiceText }: { index: number; voicePath: string; voiceText: string }) =>
       uploadSpriteVoice({
         name: currentCharacterName,
         spriteIndex: index,
