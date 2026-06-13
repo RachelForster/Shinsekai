@@ -1,21 +1,138 @@
-MIT License
+SHINSEKAI SOURCE-AVAILABLE END-USER LICENSE AGREEMENT
 
-Copyright (c) 2026 Chihiro
+Version 1.0, effective 2026-06-13
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+IMPORTANT: PLEASE READ THIS LICENSE CAREFULLY BEFORE INSTALLING, COPYING,
+BUILDING, MODIFYING, OR USING SHINSEKAI.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This End-User License Agreement ("Agreement") is a legal agreement between you
+(an individual or legal entity) and the Shinsekai copyright holders
+("Licensor") for the Shinsekai software project, including source code,
+compiled binaries, scripts, documentation, media distributed with the project,
+and related materials (collectively, the "Software").
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+By installing, copying, building, modifying, or using the Software, you agree to
+be bound by this Agreement. If you do not agree to this Agreement, do not
+install, copy, build, modify, or use the Software.
+
+The Software is licensed, not sold. All rights not expressly granted in this
+Agreement are reserved by Licensor.
+
+1. GRANT OF LICENSE
+
+Subject to your compliance with this Agreement, Licensor grants you a limited,
+non-exclusive, non-transferable, revocable license to:
+
+(a) download and inspect the source code of the Software;
+
+(b) compile and run the Software for your own personal, internal, or evaluation
+purposes;
+
+(c) modify the source code for your own personal or internal use; and
+
+(d) create and maintain a public source-code fork of the official Shinsekai
+repository on a source-code collaboration platform, solely for review,
+experimentation, issue discussion, or contribution back to the official
+Shinsekai project, provided that the fork clearly preserves this Agreement and
+all copyright, license, and attribution notices; and
+
+(e) submit proposed changes, patches, bug reports, or pull requests to the
+official Shinsekai project.
+
+2. RESTRICTIONS
+
+You may not, without prior written permission from Licensor:
+
+(a) distribute, publish, sublicense, sell, rent, lease, lend, host, or otherwise
+make available copies of the Software, modified versions of the Software, or
+compiled binaries of the Software to any third party, except for the narrow
+public source-code fork permission granted in Section 1(d);
+
+(b) use the Software, modified versions of the Software, or compiled binaries of
+the Software as part of a commercial product, paid service, marketplace listing,
+app store listing, game store listing, subscription service, or other
+commercial offering;
+
+(c) publish release builds, installers, archives, packages, container images,
+portable builds, app bundles, executable binaries, or other redistributable
+copies of the Software or modified versions of the Software;
+
+(d) create or maintain a public mirror, clone, archive, re-upload, or separate
+repository that presents the Software or a modified version of the Software as
+an independent project, replacement project, unofficial release channel, or
+redistribution source;
+
+(e) remove, alter, or obscure copyright notices, license notices, attribution
+notices, trademarks, logos, or other proprietary notices in the Software;
+
+(f) use the names "Shinsekai", "RachelForster/Shinsekai", project logos,
+icons, artwork, website assets, store assets, or other Shinsekai branding in a
+way that suggests endorsement, affiliation, or official status without prior
+written permission from Licensor;
+
+(g) use the Software to create or distribute a product that is confusingly
+similar to Shinsekai or that represents itself as an official Shinsekai release;
+or
+
+(h) circumvent license checks, update signing, platform integration, access
+controls, or other technical measures included in official Shinsekai releases.
+
+3. CONTRIBUTIONS
+
+By submitting a contribution to the official Shinsekai project, you represent
+that you have the right to submit it and you grant Licensor a perpetual,
+worldwide, non-exclusive, royalty-free, transferable, sublicensable license to
+use, reproduce, modify, prepare derivative works of, publicly display,
+publicly perform, distribute, and otherwise exploit that contribution as part
+of Shinsekai and related products or services.
+
+4. THIRD-PARTY COMPONENTS
+
+The Software may include third-party components, dependencies, templates,
+assets, or tools that are licensed under separate terms. Those separate terms
+continue to apply to the relevant third-party materials. This Agreement does
+not replace, modify, or remove any third-party license notices.
+
+5. CONTENT AND USER DATA
+
+This Agreement does not grant you rights to third-party character packs, voice
+models, images, audio, prompts, datasets, plugins, or other content that may be
+used with the Software. You are responsible for ensuring that your use of any
+such content complies with applicable laws and the relevant content licenses.
+
+6. TERMINATION
+
+This Agreement terminates automatically if you violate its terms. Upon
+termination, you must stop using the Software and destroy all copies of the
+Software in your possession or control, except where retention is required by
+law.
+
+7. DISCLAIMER OF WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT,
+ACCURACY, SECURITY, OR RELIABILITY.
+
+8. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR AND SHINSEKAI
+CONTRIBUTORS WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL,
+CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR LOSS OF PROFITS, DATA,
+GOODWILL, OR BUSINESS INTERRUPTION, ARISING OUT OF OR RELATING TO THE SOFTWARE
+OR THIS AGREEMENT, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+9. RESERVED RIGHTS AND COMMERCIAL LICENSING
+
+Commercial redistribution, marketplace distribution, app store distribution,
+game store distribution, managed hosting, sublicensing, and any use outside the
+rights expressly granted in Section 1 require a separate written license from
+Licensor.
+
+10. GOVERNING TERMS
+
+If any provision of this Agreement is found unenforceable, the remaining
+provisions will remain in effect. This Agreement is the complete agreement
+between you and Licensor regarding the Software and supersedes any prior
+understanding about the Software, except for separate written agreements signed
+by Licensor.
