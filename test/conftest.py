@@ -12,6 +12,9 @@ from __future__ import annotations
 # contain mixed-encoding bytes and fail during cleanup.
 # ---------------------------------------------------------------------------
 import sys
+import os
+import tempfile
+from pathlib import Path
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -19,15 +22,28 @@ try:
 except Exception:
     pass  # Python < 3.7 or non-reconfigurable streams (e.g. IDLE)
 
-from pathlib import Path
+# Make project root importable (tests run from repo root)
+_THIS_FILE = Path(__file__).resolve()
+_PROJECT_ROOT = _THIS_FILE.parent.parent
+
+
+def _configure_test_temp_dir() -> None:
+    temp_root = _PROJECT_ROOT / ".tmp_pytest_runtime"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    temp_path = str(temp_root)
+    os.environ.setdefault("TMPDIR", temp_path)
+    os.environ.setdefault("TEMP", temp_path)
+    os.environ.setdefault("TMP", temp_path)
+    tempfile.tempdir = temp_path
+
+
+_configure_test_temp_dir()
+
 from queue import Queue
 from unittest.mock import MagicMock
 
 import pytest
 
-# Make project root importable (tests run from repo root)
-_THIS_FILE = Path(__file__).resolve()
-_PROJECT_ROOT = _THIS_FILE.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 

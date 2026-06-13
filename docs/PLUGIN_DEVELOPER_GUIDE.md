@@ -869,6 +869,51 @@ python -m sdk.cli registry-snippet --name "my_plugin_name" --author "You" \
 
 ---
 
+## Testing plugins
+
+Keep plugin-specific tests with the plugin, not in the host repository's
+top-level `test/` tree. The Shinsekai CI only checks code that is tracked by
+the main repository; optional or locally installed packages under `plugins/`
+may be absent on GitHub Actions, so tests such as
+`test/unit/test_<plugin_name>.py` must not import `plugins.<plugin_name>`.
+
+Use this split:
+
+- **Plugin business logic:** test it in the plugin's own repository, or in the
+  plugin package beside the code, for example `plugins/my_plugin/tests/`.
+- **Host/plugin contract:** test it in this repository with fake plugins or
+  fixtures under `test/fixtures/`, not with a real optional plugin package.
+- **SDK behavior:** test shared helpers in the main repository when the code
+  lives in `sdk/`, `core/plugins/`, or another tracked host module.
+
+A plugin test suite can depend on the host SDK by installing or checking out
+Shinsekai in CI, then running the plugin's own tests:
+
+```bash
+python -m pip install -e /path/to/Shinsekai
+python -m pytest
+```
+
+For a plugin repository, a typical layout is:
+
+```text
+my_plugin/
+  pyproject.toml
+  my_plugin/
+    __init__.py
+    plugin.py
+    normalizer.py
+  tests/
+    test_normalizer.py
+    test_plugin_registration.py
+```
+
+If you need to verify host discovery or registration behavior in Shinsekai's
+main CI, create a tiny fake plugin fixture that is committed with the tests.
+Do not rely on a downloaded, ignored, or user-local plugin directory.
+
+---
+
 ## Part 3 — Wrap-up
 
 ### Before you ship
