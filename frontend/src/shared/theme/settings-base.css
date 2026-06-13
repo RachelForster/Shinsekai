@@ -1,7 +1,8 @@
 /* ── Shared settings page layout (used by all feature pages under features/) ── */
 
 .page {
-  --page-header-safe-gap: var(--space-3);
+  --page-header-fade-size: 18px;
+  --page-header-safe-gap: calc(var(--space-3) + var(--page-header-fade-size));
 
   display: flex;
   width: min(100%, var(--settings-content-max-width));
@@ -30,11 +31,11 @@
 .page__header::before {
   position: absolute;
   z-index: -1;
-  inset: calc(-1 * var(--settings-page-gutter)) 0 -18px;
+  inset: calc(-1 * var(--settings-page-gutter)) 0 calc(-1 * var(--page-header-fade-size));
   background: linear-gradient(
     180deg,
     var(--color-bg-app) 0,
-    color-mix(in oklch, var(--color-bg-app) 96%, transparent) calc(100% - 18px),
+    color-mix(in oklch, var(--color-bg-app) 96%, transparent) calc(100% - var(--page-header-fade-size)),
     transparent 100%
   );
   backdrop-filter: blur(14px);

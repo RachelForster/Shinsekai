@@ -315,6 +315,10 @@
   display: none;
 }
 
+.logs-header + * {
+  margin-top: calc(var(--logs-page-gutter) + var(--logs-space-2));
+}
+
 .logs-section-title {
   margin: 0;
   color: var(--logs-gal-accent);
