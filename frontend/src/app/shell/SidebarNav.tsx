@@ -21,12 +21,20 @@ import { useAppUpdateInfo } from "./useAppUpdateInfo";
 const GITHUB_REPO_URL = "https://github.com/RachelForster/Shinsekai";
 const GITHUB_REPO_API_URL = "https://api.github.com/repos/RachelForster/Shinsekai";
 
-const links = [
+const settingsLinks = [
   { icon: Settings, labelKey: "nav.api", to: "/settings/api" },
   { icon: Gamepad2, labelKey: "nav.character", to: "/settings/characters" },
   { icon: FileImage, labelKey: "nav.background", to: "/settings/backgrounds" },
   { icon: LayoutTemplate, labelKey: "nav.template", to: "/settings/templates" },
-  { icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" },
+] satisfies Array<{ icon: typeof Settings; labelKey: MessageKey; to: string }>;
+
+const extensionLinks = [{ icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" }] satisfies Array<{
+  icon: typeof Settings;
+  labelKey: MessageKey;
+  to: string;
+}>;
+
+const maintenanceLinks = [
   { icon: ScrollText, labelKey: "nav.logs", to: "/settings/logs" },
   { icon: SlidersHorizontal, labelKey: "nav.system", to: "/settings/system" },
 ] satisfies Array<{ icon: typeof Settings; labelKey: MessageKey; to: string }>;
@@ -112,7 +120,28 @@ export function SidebarNav({ onToolsToggle, toolsOpen }: SidebarNavProps) {
         </span>
       </button>
       <nav aria-label={t("nav.settingsCenter")} className="sidebar__nav">
-        {links.map((link) => {
+        <div className="sidebar__section-label">{t("nav.groupSettings")}</div>
+        {settingsLinks.map((link) => {
+          const Icon = link.icon;
+          return (
+            <NavLink className="sidebar__link" key={link.to} title={t(link.labelKey)} to={link.to}>
+              <Icon aria-hidden className="sidebar__icon" />
+              <span className="sidebar__link-label">{t(link.labelKey)}</span>
+            </NavLink>
+          );
+        })}
+        <div className="sidebar__section-label">{t("nav.groupExtensions")}</div>
+        {extensionLinks.map((link) => {
+          const Icon = link.icon;
+          return (
+            <NavLink className="sidebar__link" key={link.to} title={t(link.labelKey)} to={link.to}>
+              <Icon aria-hidden className="sidebar__icon" />
+              <span className="sidebar__link-label">{t(link.labelKey)}</span>
+            </NavLink>
+          );
+        })}
+        <div className="sidebar__section-label">{t("nav.groupMaintenance")}</div>
+        {maintenanceLinks.map((link) => {
           const Icon = link.icon;
           return (
             <NavLink className="sidebar__link" key={link.to} title={t(link.labelKey)} to={link.to}>
@@ -124,6 +153,7 @@ export function SidebarNav({ onToolsToggle, toolsOpen }: SidebarNavProps) {
       </nav>
       <div className="sidebar__spacer" />
       <nav aria-label={t("nav.secondary")} className="sidebar__nav sidebar__nav--secondary">
+        <div className="sidebar__section-label">{t("nav.groupWorkspace")}</div>
         <button
           aria-pressed={toolsOpen}
           className="sidebar__link sidebar__link--button"
