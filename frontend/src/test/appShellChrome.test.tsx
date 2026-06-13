@@ -56,9 +56,9 @@ describe("app shell chrome", () => {
     renderWithI18n(<SidebarNav onToolsToggle={onToolsToggle} toolsOpen={false} />, ["/settings/plugins"]);
 
     expect(screen.getByRole("navigation", { name: "设置中心导航" })).toBeInTheDocument();
-    expect(screen.getByText("基础设定")).toBeInTheDocument();
+    expect(screen.getByText("基础设置")).toBeInTheDocument();
     expect(screen.getByText("扩展")).toBeInTheDocument();
-    expect(screen.getByText("维护")).toBeInTheDocument();
+    expect(screen.getByText("维护诊断")).toBeInTheDocument();
     expect(screen.getByText("工作区")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub 仓库/i })).toBeInTheDocument();
     expect(await screen.findByText("12 stars")).toBeInTheDocument();

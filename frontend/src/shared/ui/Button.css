@@ -3,11 +3,11 @@
   display: inline-flex;
   max-width: 100%;
   min-width: 0;
-  min-height: 32px;
+  min-height: 36px;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: 5px 13px;
+  padding: 7px 14px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   color: var(--color-text-primary);
@@ -19,16 +19,19 @@
     background 120ms ease,
     border-color 120ms ease,
     color 120ms ease,
+    transform 120ms ease,
     opacity 120ms ease;
 }
 
 .button:hover:not(:disabled) {
   border-color: var(--color-border-hover);
   background: var(--color-btn-surface-hover);
+  transform: translateY(-1px);
 }
 
 .button:active:not(:disabled) {
   background: var(--color-control-active);
+  transform: translateY(0);
 }
 
 .button:disabled {
@@ -69,8 +72,8 @@
 }
 
 .button__icon {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
 }
 

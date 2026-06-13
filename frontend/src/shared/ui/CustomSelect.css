@@ -8,14 +8,14 @@
 .custom-select__button {
   display: flex;
   width: 100%;
-  min-height: 32px;
+  min-height: 36px;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 5px 10px;
+  padding: 7px 11px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--color-text-primary);
   background: var(--color-bg-input);
   cursor: pointer;
@@ -104,9 +104,9 @@
 .editable-combo__menu {
   max-height: 260px;
   overflow: auto;
-  padding: 3px;
+  padding: 5px;
   border: 1px solid var(--color-border-hover);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-panel);
   background: var(--color-bg-sidebar);
   box-shadow: 0 14px 32px var(--color-shadow);
   scrollbar-gutter: stable;
@@ -117,7 +117,7 @@
   display: block;
   width: 100%;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 8px 9px;
   border: 0;
   border-radius: var(--radius-control);
   color: var(--color-text-primary);
