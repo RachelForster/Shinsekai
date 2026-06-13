@@ -481,7 +481,7 @@ class CharacterManager:
             return f"标注出错了：{e}"
 
 
-    def upload_voice(self, character_name: str, sprite_index: int, voice_file: str, voice_text: str) -> Tuple[str, Optional[str]]:
+    def upload_voice(self, character_name: str, sprite_index: int, voice_file: str, voice_text: str, voice_type: str = "") -> Tuple[str, Optional[str]]:
         """
         为指定立绘上传语音文件。
         
@@ -516,9 +516,13 @@ class CharacterManager:
         if isinstance(sprite_data, Sprite):
             sprite_data.voice_path = voice_path
             sprite_data.voice_text = voice_text
+            if voice_type:
+                sprite_data.voice_type = voice_type
         else:
             character.sprites[sprite_index]["voice_path"] = voice_path
             character.sprites[sprite_index]["voice_text"] = voice_text
+            if voice_type:
+                character.sprites[sprite_index]["voice_type"] = voice_type
             
         self._config_manager.save_characters_config()
         
@@ -569,6 +573,25 @@ class CharacterManager:
 
         self._config_manager.save_characters_config()
         return "语音文字已保存"
+
+    def save_sprite_voice_type(self, character_name: str, sprite_index: int, voice_type: str) -> str:
+        """单独保存立绘的语音类型（preset/reference），不需要重新上传音频。"""
+        if not character_name:
+            return "请先选择角色！"
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}"
+        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
+            return "立绘不存在！"
+
+        sprite_data = character.sprites[sprite_index]
+        if isinstance(sprite_data, Sprite):
+            sprite_data.voice_type = voice_type if voice_type else None
+        else:
+            sprite_data["voice_type"] = voice_type if voice_type else None
+
+        self._config_manager.save_characters_config()
+        return "语音类型已保存"
 
     def delete_sprite_voice(self, character_name: str, sprite_index: int) -> str:
         """删除指定立绘的语音文件和引用。"""

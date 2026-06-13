@@ -19,6 +19,7 @@ import {
   saveCharacterEmotionTags,
   saveSpriteScale,
   saveSpriteVoiceText,
+  saveSpriteVoiceType,
   translateCharacterFields,
   uploadCharacterSprites,
   uploadSpriteVoice,
@@ -85,8 +86,10 @@ export function CharacterEditorPage() {
     [data, isCreating, selectedName],
   );
 
+  const prevSelectedNameRef = useRef<string>("");
   useEffect(() => {
-    if (selected) {
+    if (selected && selected.name !== prevSelectedNameRef.current) {
+      prevSelectedNameRef.current = selected.name;
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
       setPronunciationText(pronunciationMapToText(selected.pronunciation_map));
@@ -94,6 +97,9 @@ export function CharacterEditorPage() {
       setPendingVoicePaths({});
       setSelectedSpriteIndex(0);
       setNameError("");
+    } else if (selected) {
+      // same character, just sync draft silently (e.g. after invalidateQueries)
+      setDraft(structuredClone(selected));
     }
   }, [selected]);
 
@@ -259,6 +265,7 @@ export function CharacterEditorPage() {
         spriteIndex: index,
         voicePath,
         voiceText,
+        voiceType: draft.sprites[index]?.voice_type,
       }),
     onError(error) {
       showToast({
@@ -269,7 +276,10 @@ export function CharacterEditorPage() {
     },
     onSuccess(character, variables) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       setPendingVoicePaths((current) => {
         const next = { ...current };
         delete next[variables.index];
@@ -307,6 +317,18 @@ export function CharacterEditorPage() {
     },
   });
 
+  const voiceTypeMutation = useMutation({
+    mutationFn: ({ index, voiceType: vt }: { index: number; voiceType: string }) =>
+      saveSpriteVoiceType(currentCharacterName, index, vt),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+        title: t("character.sprite.voiceType"),
+      });
+    },
+  });
+
   const voiceDeleteMutation = useMutation({
     mutationFn: ({ index, name }: { index: number; name: string }) => deleteSpriteVoice(name, index),
     onError(error) {
@@ -318,7 +340,10 @@ export function CharacterEditorPage() {
     },
     onSuccess(character, variables) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       setPendingVoicePaths((current) => {
         const next = { ...current };
         delete next[variables.index];
@@ -345,7 +370,11 @@ export function CharacterEditorPage() {
     },
     onSuccess(character) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        emotion_tags: character.emotion_tags,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       setPendingSpritePaths([]);
       showToast({ kind: "success", title: t("character.sprite.uploadImages") });
     },
@@ -378,7 +407,11 @@ export function CharacterEditorPage() {
     },
     onSuccess(character) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        emotion_tags: character.emotion_tags,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       showToast({ kind: "success", title: t("common.remove") });
     },
   });
@@ -394,7 +427,11 @@ export function CharacterEditorPage() {
     },
     onSuccess(character) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        emotion_tags: character.emotion_tags,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       showToast({ kind: "success", title: t("character.sprite.clear") });
     },
   });
@@ -429,6 +466,10 @@ export function CharacterEditorPage() {
       return { ...current, sprites };
     });
   };
+
+  /** Merge server sprites while preserving local per-sprite voice_type. */
+  const mergeSprites = (serverSprites: Sprite[], current: Character) =>
+    serverSprites.map((s, i) => ({ ...s, voice_type: current.sprites[i]?.voice_type }));
 
   const updateSpriteTag = (index: number, value: string) => {
     setDraft((current) => {
@@ -710,6 +751,13 @@ export function CharacterEditorPage() {
     }
   };
 
+  const handleSpriteVoiceTypeChange = (value: "preset" | "reference") => {
+    updateSprite(selectedSpriteIndex, { voice_type: value });
+    if (isSavedCharacter) {
+      voiceTypeMutation.mutate({ index: selectedSpriteIndex, voiceType: value });
+    }
+  };
+
   const uploadSelectedSpriteVoice = () => {
     const voicePath = pendingVoicePaths[selectedSpriteIndex]?.trim() ?? "";
     if (!isSavedCharacter) {
@@ -833,6 +881,7 @@ export function CharacterEditorPage() {
           onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
           onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
           onSpriteVoiceUpload={uploadSelectedSpriteVoice}
+          onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
           pendingSpritePaths={pendingSpritePaths}
           pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
           selectedSprite={selectedSprite}

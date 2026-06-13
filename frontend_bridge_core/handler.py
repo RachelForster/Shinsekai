@@ -49,6 +49,7 @@ from .characters import (
     _save_character_emotion_tags,
     _save_sprite_scale,
     _save_sprite_voice_text,
+    _save_sprite_voice_type,
     _translate_character_fields,
     _upload_character_sprites,
     _upload_sprite_voice,
@@ -491,6 +492,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_save_sprite_scale(self.state, body))
             elif method == "POST" and path == "/api/characters/sprite-voice/text":
                 self._send_json(_save_sprite_voice_text(self.state, body))
+            elif method == "POST" and path == "/api/characters/sprite-voice/voice-type":
+                self._send_json(_save_sprite_voice_type(self.state, body))
             elif method == "POST" and path == "/api/characters/sprite-voice/delete":
                 self._send_json(_delete_sprite_voice(self.state, body))
             elif method == "DELETE" and path.startswith("/api/characters/"):
