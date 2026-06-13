@@ -6,12 +6,7 @@ import type { SchemaErrorMap } from "../../entities/config/schema";
 import { useI18n } from "../../shared/i18n";
 import { Button, FilePicker, Select, TextInput } from "../../shared/ui";
 import { AdapterExtraForm } from "./AdapterExtraForm";
-import {
-  applyT2iSetupMode,
-  hasAdapterSchema,
-  inferT2iSetupMode,
-  type T2iSetupMode,
-} from "./apiSettingsUtils";
+import { applyT2iSetupMode, hasAdapterSchema, inferT2iSetupMode, type T2iSetupMode } from "./apiSettingsUtils";
 
 interface T2iSetupSectionProps {
   disabled: boolean;
