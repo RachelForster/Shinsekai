@@ -664,7 +664,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (!character || !character.sprites[spriteIndex]) {
           throw new Error("立绘不存在。");
         }
-        character.sprites[spriteIndex] = { ...character.sprites[spriteIndex], voice_type: voiceType as "preset" | "reference" | undefined };
+        character.sprites[spriteIndex] = {
+          ...character.sprites[spriteIndex],
+          voice_type: voiceType as "preset" | "reference" | undefined,
+        };
         return delay(character);
       },
       async translateFields(input) {

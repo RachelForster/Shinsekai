@@ -235,9 +235,7 @@ export function CharacterSpritesSection({
                     </label>
                   </div>
                   {voiceType === "reference" ? (
-                    <p className="field-row__hint field-row__hint--voice-ref">
-                      {t("character.sprite.voiceRefHint")}
-                    </p>
+                    <p className="field-row__hint field-row__hint--voice-ref">{t("character.sprite.voiceRefHint")}</p>
                   ) : null}
                 </span>
               </div>
@@ -246,9 +244,7 @@ export function CharacterSpritesSection({
                 <span className="field-row__control">
                   <FilePicker
                     acceptedExtensions={
-                      voiceType === "reference"
-                        ? [".wav"]
-                        : [".flac", ".m4a", ".mp3", ".ogg", ".wav"]
+                      voiceType === "reference" ? [".wav"] : [".flac", ".m4a", ".mp3", ".ogg", ".wav"]
                     }
                     onPathChange={onPendingVoicePathChange}
                     pickLabel={t("common.chooseFile")}

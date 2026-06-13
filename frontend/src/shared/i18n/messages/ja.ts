@@ -303,7 +303,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "character.sprite.voiceType": "音声タイプ",
   "character.sprite.voiceTypePreset": "プリセット音声",
   "character.sprite.voiceTypeReference": "参照音声（検証が必要）",
-  "character.sprite.voiceRefHint": "参照音声はTTS音声クローンに使用されます。3〜10秒のWAVファイルをアップロードしてください。",
+  "character.sprite.voiceRefHint":
+    "参照音声はTTS音声クローンに使用されます。3〜10秒のWAVファイルをアップロードしてください。",
   "character.title": "キャラクター",
   "character.toast.deleted": "キャラクターを削除しました",
   "character.toast.exportComplete": "書き出し完了",
