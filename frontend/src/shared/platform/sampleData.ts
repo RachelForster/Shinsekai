@@ -369,7 +369,11 @@ export const sampleChatThemeManifests: Record<string, ChatThemeManifest> = {
         },
         number: { borderColor: "rgba(255,255,255,0.1)", color: "rgba(226,220,255,0.5)" },
         detail: { background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)", color: "#e9e4ff" },
-        badge: { background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)", color: "rgba(239,235,255,0.72)" },
+        badge: {
+          background: "rgba(255,255,255,0.05)",
+          borderColor: "rgba(255,255,255,0.12)",
+          color: "rgba(239,235,255,0.72)",
+        },
         event: { background: "rgba(100,74,227,0.16)", borderColor: "rgba(156,140,255,0.4)", color: "#cfc7ff" },
         fileItem: {
           background: "rgba(255,255,255,0.03)",
@@ -383,7 +387,11 @@ export const sampleChatThemeManifests: Record<string, ChatThemeManifest> = {
           warn: { background: "rgba(237,168,64,0.13)", borderColor: "rgba(237,168,64,0.48)", color: "#f2c779" },
           info: { background: "rgba(64,196,141,0.12)", borderColor: "rgba(64,196,141,0.4)", color: "#8de0b9" },
           debug: { background: "rgba(91,173,255,0.1)", borderColor: "rgba(91,173,255,0.34)", color: "#9bcbff" },
-          default: { background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)", color: "rgba(239,235,255,0.72)" },
+          default: {
+            background: "rgba(255,255,255,0.05)",
+            borderColor: "rgba(255,255,255,0.12)",
+            color: "rgba(239,235,255,0.72)",
+          },
         },
       },
       typewriter: { cps: 40 },
@@ -456,7 +464,11 @@ export const sampleChatThemeManifests: Record<string, ChatThemeManifest> = {
         },
         number: { borderColor: "rgba(66,50,92,0.1)", color: "rgba(42,39,48,0.48)" },
         detail: { background: "rgba(246,241,255,0.9)", borderColor: "rgba(66,50,92,0.12)", color: "#302a3a" },
-        badge: { background: "rgba(246,241,255,0.78)", borderColor: "rgba(66,50,92,0.12)", color: "rgba(42,39,48,0.66)" },
+        badge: {
+          background: "rgba(246,241,255,0.78)",
+          borderColor: "rgba(66,50,92,0.12)",
+          color: "rgba(42,39,48,0.66)",
+        },
         event: { background: "rgba(199,125,255,0.14)", borderColor: "rgba(157,78,221,0.28)", color: "#7930b2" },
         fileItem: {
           background: "rgba(255,255,255,0.58)",
@@ -470,7 +482,11 @@ export const sampleChatThemeManifests: Record<string, ChatThemeManifest> = {
           warn: { background: "rgba(188,118,28,0.12)", borderColor: "rgba(188,118,28,0.34)", color: "#985f16" },
           info: { background: "rgba(38,141,101,0.1)", borderColor: "rgba(38,141,101,0.28)", color: "#217a58" },
           debug: { background: "rgba(47,116,190,0.1)", borderColor: "rgba(47,116,190,0.26)", color: "#2f6eae" },
-          default: { background: "rgba(246,241,255,0.78)", borderColor: "rgba(66,50,92,0.12)", color: "rgba(42,39,48,0.66)" },
+          default: {
+            background: "rgba(246,241,255,0.78)",
+            borderColor: "rgba(66,50,92,0.12)",
+            color: "rgba(42,39,48,0.66)",
+          },
         },
       },
       typewriter: { cps: 36 },

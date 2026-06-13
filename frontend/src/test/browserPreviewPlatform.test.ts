@@ -124,7 +124,9 @@ describe("browser preview platform chat themes", () => {
     expect(
       seenSnapshots.some(
         (snapshot) =>
-          snapshot.status === "idle" && snapshot.sessionClosedReason === "聊天会话已结束。" && snapshot.notificationText === "聊天会话已结束。",
+          snapshot.status === "idle" &&
+          snapshot.sessionClosedReason === "聊天会话已结束。" &&
+          snapshot.notificationText === "聊天会话已结束。",
       ),
     ).toBe(true);
     expect(

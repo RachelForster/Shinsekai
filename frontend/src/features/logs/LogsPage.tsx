@@ -173,7 +173,9 @@ function parseTextLogLine(text: string): ParsedTextLogLine | undefined {
   if (restart) {
     return restart;
   }
-  const match = trimmed.match(/^(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,6})?)\s+\[([A-Za-z]+)\]\s+([A-Za-z0-9_.:-]+)(?:\s+([\s\S]*))?$/);
+  const match = trimmed.match(
+    /^(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,6})?)\s+\[([A-Za-z]+)\]\s+([A-Za-z0-9_.:-]+)(?:\s+([\s\S]*))?$/,
+  );
   if (!match) {
     return undefined;
   }
@@ -182,7 +184,7 @@ function parseTextLogLine(text: string): ParsedTextLogLine | undefined {
   const firstToken = firstTokenMatch?.[1] ?? "";
   const firstTokenLooksLikeEvent = /^[A-Za-z_][\w.-]*$/.test(firstToken) && /[.:]/.test(firstToken);
   const event = firstTokenLooksLikeEvent ? firstToken : "";
-  const messageSource = firstTokenLooksLikeEvent ? firstTokenMatch?.[2] ?? "" : rest;
+  const messageSource = firstTokenLooksLikeEvent ? (firstTokenMatch?.[2] ?? "") : rest;
   return {
     detailPairs: extractKeyValuePairs(rest),
     event,
@@ -236,7 +238,7 @@ function buildLines(snapshot?: LogSnapshot): LogLine[] {
     const parsedText = entry ? undefined : parseTextLogLine(text);
     const message = entry ? entryMessage(entry, text) : parsedText?.message || text;
     return {
-      detailPairs: entry ? entryDetailPairs(entry) : parsedText?.detailPairs ?? [],
+      detailPairs: entry ? entryDetailPairs(entry) : (parsedText?.detailPairs ?? []),
       entry,
       event: entryString(entry, "event") || parsedText?.event || "",
       level: normalizeLevel(entry?.level ?? parsedText?.level, text),

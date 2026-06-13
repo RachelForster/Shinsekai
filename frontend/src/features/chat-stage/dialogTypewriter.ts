@@ -147,9 +147,7 @@ export function buildDialogTypewriterSource(input: {
   html?: string;
   text?: string;
 }): DialogTypewriterSource {
-  const normalizedHtml = input.html?.trim()
-    ? stripLeadingSpeakerHtml(input.html, input.characterName)
-    : undefined;
+  const normalizedHtml = input.html?.trim() ? stripLeadingSpeakerHtml(input.html, input.characterName) : undefined;
   const normalizedText = stripLeadingSpeakerText(input.text ?? "", input.characterName);
   if (normalizedHtml) {
     return {

@@ -42,9 +42,13 @@ test("chat stage light-paper theme visual regression", async ({ page }) => {
   const lightPaperCard = themeDialog.locator(".chat-theme-picker__card").filter({ hasText: "浅色纸张" });
   await lightPaperCard.getByRole("button", { name: "应用" }).click();
 
-  await expect.poll(async () => {
-    return page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--chat-theme-color").trim());
-  }).toBe("#c77dff");
+  await expect
+    .poll(async () => {
+      return page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--chat-theme-color").trim(),
+      );
+    })
+    .toBe("#c77dff");
 
   await themeDialog.getByRole("button", { name: "关闭" }).click();
   await expect(themeDialog).toBeHidden();

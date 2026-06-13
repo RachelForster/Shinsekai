@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildDialogTypewriterSource,
-  renderDialogTypewriterFrame,
-} from "../features/chat-stage/dialogTypewriter";
+import { buildDialogTypewriterSource, renderDialogTypewriterFrame } from "../features/chat-stage/dialogTypewriter";
 
 describe("dialog typewriter helpers", () => {
   it("strips the duplicated speaker prefix from html and text sources", () => {

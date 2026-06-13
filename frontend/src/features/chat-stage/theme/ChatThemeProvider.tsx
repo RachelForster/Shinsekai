@@ -19,10 +19,7 @@ import {
 import { getPlatform } from "../../../shared/platform/platform";
 import { parseChatChromeTheme } from "../../../shared/theme/chatChromeTheme";
 import type { ChatThemePayload } from "../../../shared/theme/chatChromeTheme";
-import {
-  DEFAULT_TYPEWRITER_CPS,
-  resolveChatTheme,
-} from "../../../shared/theme/chatTheme";
+import { DEFAULT_TYPEWRITER_CPS, resolveChatTheme } from "../../../shared/theme/chatTheme";
 import type {
   ChatStageStyle,
   ChatThemeManifest,
@@ -118,16 +115,17 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
         const [persistedId, legacyPayload] = await Promise.all([
           getActiveChatThemeId().catch(() => ""),
           getChatTheme().catch(() => null),
-          refresh().then(() => undefined, () => undefined),
+          refresh().then(
+            () => undefined,
+            () => undefined,
+          ),
         ]);
         if (!mounted) {
           return;
         }
         const themeId = persistedId || DEFAULT_CHAT_THEME_ID;
         const nextManifest = await getChatThemeManifest(themeId).catch(() =>
-          themeId === DEFAULT_CHAT_THEME_ID
-            ? null
-            : getChatThemeManifest(DEFAULT_CHAT_THEME_ID).catch(() => null),
+          themeId === DEFAULT_CHAT_THEME_ID ? null : getChatThemeManifest(DEFAULT_CHAT_THEME_ID).catch(() => null),
         );
         if (!mounted) {
           return;

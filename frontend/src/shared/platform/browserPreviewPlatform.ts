@@ -375,7 +375,8 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     pendingChatTimeouts.add(timeoutId);
   };
 
-  const resolvePreviewManifest = (id: string) => previewThemeManifests.get(id) ?? previewThemeManifests.get("classic-dark");
+  const resolvePreviewManifest = (id: string) =>
+    previewThemeManifests.get(id) ?? previewThemeManifests.get("classic-dark");
 
   const listPreviewThemes = (): ChatThemeSummary[] =>
     Array.from(previewThemeManifests.values()).map((manifest) => ({
@@ -544,11 +545,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           const payload = String(command.payload ?? "").trim();
           const userDisplayName = chat.userDisplayName?.trim() || "你";
           const nextUserIndex =
-            Math.max(
-              -1,
-              ...cloneHistoryEntries(chat.historyEntries)
-                .map((entry) => entry.revertUserIndex ?? -1),
-            ) + 1;
+            Math.max(-1, ...cloneHistoryEntries(chat.historyEntries).map((entry) => entry.revertUserIndex ?? -1)) + 1;
           chat = {
             ...chat,
             characterName: userDisplayName,
@@ -624,7 +621,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           emitChat();
         }
         if (command.type === "change-voice-language") {
-          const voiceLanguage = String(command.payload ?? "").trim().toLowerCase() || "ja";
+          const voiceLanguage =
+            String(command.payload ?? "")
+              .trim()
+              .toLowerCase() || "ja";
           config.system_config.voice_language = voiceLanguage;
           chat = { ...chat, numericInfo: "idle", status: "idle", voiceLanguage };
           emitChat();
@@ -695,7 +695,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       getHistory: () => delay(cloneHistoryEntries(chat.historyEntries)),
       getSnapshot: () => delay(chat),
-      getTheme: () => delay(previewThemePayloadFromManifest(resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests["classic-dark"])),
+      getTheme: () =>
+        delay(
+          previewThemePayloadFromManifest(
+            resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests["classic-dark"],
+          ),
+        ),
       async launch(payload) {
         const character = config.characters.find((item) => payload.characters.includes(item.name));
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
@@ -755,7 +760,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         activeThemeId = id;
       },
       async uploadTheme(file) {
-        const id = file.name.replace(/\.zip$/i, "").trim().replace(/[^\w-]+/g, "-") || "uploaded-theme";
+        const id =
+          file.name
+            .replace(/\.zip$/i, "")
+            .trim()
+            .replace(/[^\w-]+/g, "-") || "uploaded-theme";
         const base = resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests["classic-dark"];
         const manifest: ChatThemeManifest = {
           ...clone(base),

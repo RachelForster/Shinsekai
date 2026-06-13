@@ -253,9 +253,13 @@ test("chat stage browser preview supports state-driven interaction flow", async 
   await expect(themeDialog).toBeVisible();
   const lightPaperCard = themeDialog.locator(".chat-theme-picker__card").filter({ hasText: "浅色纸张" });
   await lightPaperCard.getByRole("button", { name: "应用" }).click();
-  await expect.poll(async () => {
-    return page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--chat-theme-color").trim());
-  }).toBe("#c77dff");
+  await expect
+    .poll(async () => {
+      return page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--chat-theme-color").trim(),
+      );
+    })
+    .toBe("#c77dff");
   await themeDialog.locator(".dialog__header").getByRole("button", { name: "关闭" }).click();
   await expect(themeDialog).toBeHidden();
 
@@ -442,7 +446,9 @@ test.describe.serial("live React functionality smoke", () => {
       system_config: { chat_ui_runtime_mode?: string };
     }>(request, "get", "/api/config");
     test.skip(
-      String(config.system_config.chat_ui_runtime_mode ?? "").trim().toLowerCase() !== "react",
+      String(config.system_config.chat_ui_runtime_mode ?? "")
+        .trim()
+        .toLowerCase() !== "react",
       "Live bridge config is not in react mode.",
     );
 
@@ -486,7 +492,9 @@ test.describe.serial("live React functionality smoke", () => {
       system_config: { chat_ui_runtime_mode?: string };
     }>(request, "get", "/api/config");
     test.skip(
-      String(config.system_config.chat_ui_runtime_mode ?? "").trim().toLowerCase() !== "react",
+      String(config.system_config.chat_ui_runtime_mode ?? "")
+        .trim()
+        .toLowerCase() !== "react",
       "Live bridge config is not in react mode.",
     );
 
@@ -535,7 +543,9 @@ test.describe.serial("live React functionality smoke", () => {
       system_config: { chat_ui_runtime_mode?: string };
     }>(request, "get", "/api/config");
     test.skip(
-      String(config.system_config.chat_ui_runtime_mode ?? "").trim().toLowerCase() !== "react",
+      String(config.system_config.chat_ui_runtime_mode ?? "")
+        .trim()
+        .toLowerCase() !== "react",
       "Live bridge config is not in react mode.",
     );
 
@@ -547,10 +557,12 @@ test.describe.serial("live React functionality smoke", () => {
     try {
       await page.goto("/#/chat");
 
-      await expect.poll(async () => {
-        const value = (await page.locator(".floating-toolbar__transport").textContent())?.trim() ?? "";
-        return value === "实时连接" || value === "轮询回退" ? value : "";
-      }).not.toBe("");
+      await expect
+        .poll(async () => {
+          const value = (await page.locator(".floating-toolbar__transport").textContent())?.trim() ?? "";
+          return value === "实时连接" || value === "轮询回退" ? value : "";
+        })
+        .not.toBe("");
       await expect(page.locator(".input-layer")).toBeVisible();
       await expect(page.locator(".options-layer")).toHaveCount(0);
       await expect(page.locator(".dialog-layer")).toContainText("欢迎来到新世界程序");
@@ -594,19 +606,23 @@ test.describe.serial("live React functionality smoke", () => {
       await voiceLanguageSelect.click();
       await page.getByRole("option", { name: "English" }).click();
       await expect(voiceLanguageSelect).toContainText("English");
-      await expect.poll(async () => {
-        const snapshot = await requestJson<{ voiceLanguage?: string }>(request, "get", "/api/chat/snapshot");
-        return snapshot.voiceLanguage;
-      }).toBe("en");
+      await expect
+        .poll(async () => {
+          const snapshot = await requestJson<{ voiceLanguage?: string }>(request, "get", "/api/chat/snapshot");
+          return snapshot.voiceLanguage;
+        })
+        .toBe("en");
 
       await page.getByRole("button", { name: "清空历史" }).click();
       const clearDialog = page.getByRole("dialog", { name: "清空历史" });
       await expect(clearDialog).toBeVisible();
       await clearDialog.getByRole("button", { name: "清空" }).click();
-      await expect.poll(async () => {
-        const history = await requestJson<Array<{ text: string }>>(request, "get", "/api/chat/history");
-        return history.length;
-      }).toBe(0);
+      await expect
+        .poll(async () => {
+          const history = await requestJson<Array<{ text: string }>>(request, "get", "/api/chat/history");
+          return history.length;
+        })
+        .toBe(0);
 
       await page.getByRole("button", { name: "打开历史" }).click();
       const clearedHistoryDialog = page.getByRole("dialog", { name: "对话历史记录" });
@@ -632,7 +648,9 @@ test.describe.serial("live React functionality smoke", () => {
       system_config: { chat_ui_runtime_mode?: string };
     }>(request, "get", "/api/config");
     test.skip(
-      String(config.system_config.chat_ui_runtime_mode ?? "").trim().toLowerCase() !== "react",
+      String(config.system_config.chat_ui_runtime_mode ?? "")
+        .trim()
+        .toLowerCase() !== "react",
       "Live bridge config is not in react mode.",
     );
 
@@ -702,7 +720,9 @@ test.describe.serial("live React functionality smoke", () => {
       system_config: { chat_ui_runtime_mode?: string };
     }>(request, "get", "/api/config");
     test.skip(
-      String(config.system_config.chat_ui_runtime_mode ?? "").trim().toLowerCase() !== "react",
+      String(config.system_config.chat_ui_runtime_mode ?? "")
+        .trim()
+        .toLowerCase() !== "react",
       "Live bridge config is not in react mode.",
     );
 

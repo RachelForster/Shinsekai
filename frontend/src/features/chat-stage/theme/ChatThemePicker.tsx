@@ -56,7 +56,9 @@ function ThemeCard({
       <div className="chat-theme-picker__actions">
         <Button
           disabled={busy || active}
-          icon={active ? <Check aria-hidden className="button__icon" /> : <Palette aria-hidden className="button__icon" />}
+          icon={
+            active ? <Check aria-hidden className="button__icon" /> : <Palette aria-hidden className="button__icon" />
+          }
           onClick={() => onSwitch(theme)}
           variant={active ? "ghost" : "primary"}
         >

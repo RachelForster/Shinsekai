@@ -284,10 +284,7 @@ function resolveThemeAssetUrl(rel: unknown, assetUrl: (rel: string) => string) {
  * @param manifest 主题清单
  * @param assetUrl 把主题目录内相对路径解析为可访问 URL 的函数（如 rel => `${apiBase}/api/media?path=...`）
  */
-export function resolveChatTheme(
-  manifest: ChatThemeManifest,
-  assetUrl: (rel: string) => string,
-): ResolvedChatTheme {
+export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: string) => string): ResolvedChatTheme {
   const tokens = manifest.tokens ?? {};
   const style: ChatStageStyle = {};
 

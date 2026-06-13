@@ -417,8 +417,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         };
       },
       listThemes: () => requestJson<ChatThemeSummary[]>(apiBase, "/api/chat/themes"),
-      getThemeManifest: (id) =>
-        requestJson<ChatThemeManifest>(apiBase, `/api/chat/themes/${encodePath(id)}`),
+      getThemeManifest: (id) => requestJson<ChatThemeManifest>(apiBase, `/api/chat/themes/${encodePath(id)}`),
       getActiveThemeId: async () => {
         const result = await requestJson<{ id: string }>(apiBase, "/api/chat/themes/active");
         return result.id ?? "";
