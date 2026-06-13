@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BottomBar } from "../app/shell/BottomBar";
 import { SidebarNav } from "../app/shell/SidebarNav";
@@ -38,13 +38,26 @@ describe("app shell chrome", () => {
     queryMocks.useAppUpdateInfo.mockReturnValue({ data: { version: "0.1.0" } });
     queryMocks.useIsFetching.mockReturnValue(0);
     queryMocks.useIsMutating.mockReturnValue(0);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: () => Promise.resolve({ stargazers_count: 12 }),
+        ok: true,
+      }),
+    );
   });
 
-  it("renders localized primary navigation and toggles the tools button", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders localized primary navigation and toggles the tools button", async () => {
     const onToolsToggle = vi.fn();
     renderWithI18n(<SidebarNav onToolsToggle={onToolsToggle} toolsOpen={false} />, ["/settings/plugins"]);
 
     expect(screen.getByRole("navigation", { name: "设置中心导航" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /GitHub 仓库/i })).toBeInTheDocument();
+    expect(await screen.findByText("12 stars")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "API 设定" })).toHaveAttribute("href", "/settings/api");
     expect(screen.getByRole("link", { name: "插件" })).toHaveAttribute("href", "/settings/plugins");
 

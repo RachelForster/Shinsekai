@@ -69,6 +69,71 @@
   line-height: 1.2;
 }
 
+.sidebar__github {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 10px 2px;
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-control);
+  padding: 10px 11px;
+  color: var(--color-text-primary);
+  background: var(--color-accent-bg);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.sidebar__github:hover {
+  border-color: var(--color-accent-primary);
+  background: var(--color-accent-bg-hover);
+  transform: translateY(-1px);
+}
+
+.sidebar__github-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--color-accent-primary);
+}
+
+.sidebar__github-body {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sidebar__github-label {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__github-stars {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.sidebar__github-star-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  color: var(--color-accent-primary);
+}
+
 .sidebar__nav {
   display: grid;
   align-content: start;
@@ -331,8 +396,15 @@
   }
 
   .sidebar__brand-text,
+  .sidebar__github-body,
   .sidebar__link-label {
     display: none;
+  }
+
+  .sidebar__github {
+    justify-content: center;
+    margin-inline: 8px;
+    padding: 9px 0;
   }
 
   .sidebar__nav {

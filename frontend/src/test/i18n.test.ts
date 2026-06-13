@@ -20,6 +20,12 @@ describe("translateMessage", () => {
     expect(translateMessage("ja", "form.jsonInvalid")).toContain("JSON");
   });
 
+  it("covers T2I setup copy without falling back to raw keys", () => {
+    expect(translateMessage("en", "api.t2i.title")).toBe("Image generation (T2I)");
+    expect(translateMessage("en", "api.t2i.modeSkip")).toBe("Skip setup");
+    expect(translateMessage("en", "api.t2i.workflowPick")).toBe("Choose workflow JSON");
+  });
+
   it("covers background manager copy", () => {
     expect(translateMessage("zh_CN", "background.toast.importComplete", { count: 2 })).toBe("导入 2 个背景组");
     expect(translateMessage("en", "background.resource.imageCount", { count: 1 })).toBe("1 images");
