@@ -659,6 +659,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         character.sprites[spriteIndex] = { ...character.sprites[spriteIndex], voice_text: voiceText };
         return delay(character);
       },
+      async saveSpriteVoiceType(name, spriteIndex, voiceType) {
+        const character = config.characters.find((item) => item.name === name);
+        if (!character || !character.sprites[spriteIndex]) {
+          throw new Error("立绘不存在。");
+        }
+        character.sprites[spriteIndex] = { ...character.sprites[spriteIndex], voice_type: voiceType as "preset" | "reference" | undefined };
+        return delay(character);
+      },
       async translateFields(input) {
         return delay({
           characterSetting: input.characterSetting,
