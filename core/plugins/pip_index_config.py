@@ -18,7 +18,6 @@ _PIP_ENV_OVERRIDES = ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_NO_INDEX", "P
 _DEFAULT_OFFICIAL_INDEXES = ["https://pypi.org/simple/"]
 _DEFAULT_CHINA_INDEXES = [
     "https://pypi.tuna.tsinghua.edu.cn/simple/",
-    "https://mirrors.aliyun.com/pypi/simple/",
     "https://mirrors.ustc.edu.cn/pypi/simple/",
     "https://mirrors.hit.edu.cn/pypi/web/simple/",
 ]
@@ -96,6 +95,14 @@ def pip_index_urls(source_root: Path | None = None) -> list[str]:
     source = os.environ.get("SHINSEKAI_RUNTIME_SOURCE", "").strip().lower()
     if source == "official":
         return official
+    if source in {"china", "cn", "mainland", "mainland_china"}:
+        return _ordered_urls(china, official)
+
+    mirror_region = os.environ.get("SHINSEKAI_MIRROR_REGION", "").strip().lower()
+    if mirror_region in {"global", "intl", "international", "overseas", "us"}:
+        return official
+    if mirror_region in {"china", "cn", "mainland", "mainland_china"}:
+        return _ordered_urls(china, official)
     return _ordered_urls(china, official)
 
 

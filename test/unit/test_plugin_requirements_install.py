@@ -137,6 +137,7 @@ def test_install_plugin_requirements_uses_manifest_china_index_by_default(
     monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URLS", raising=False)
     monkeypatch.delenv("SHINSEKAI_PIP_INSTALL_ARGS", raising=False)
     monkeypatch.delenv("SHINSEKAI_RUNTIME_SOURCE", raising=False)
+    monkeypatch.delenv("SHINSEKAI_MIRROR_REGION", raising=False)
 
     result = installer.install_plugin_requirements_txt(plugin_root)
 
@@ -144,8 +145,35 @@ def test_install_plugin_requirements_uses_manifest_china_index_by_default(
     cmd = calls[0]["cmd"]
     assert "--index-url" in cmd
     assert cmd[cmd.index("--index-url") + 1] == "https://pypi.tuna.tsinghua.edu.cn/simple/"
-    assert "https://mirrors.aliyun.com/pypi/simple/" in cmd
+    assert "https://mirrors.aliyun.com/pypi/simple/" not in cmd
+    assert "https://mirrors.ustc.edu.cn/pypi/simple/" in cmd
     assert "https://pypi.org/simple/" in cmd
+
+
+def test_install_plugin_requirements_uses_official_index_for_global_mirror_region(
+    monkeypatch,
+    tmp_path,
+):
+    installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
+    _write_requirements(plugin_root, "missing-package>=2\n")
+    calls = _capture_pip_invocation(monkeypatch, installer)
+    monkeypatch.delenv("PIP_INDEX_URL", raising=False)
+    monkeypatch.delenv("PIP_EXTRA_INDEX_URL", raising=False)
+    monkeypatch.delenv("PIP_NO_INDEX", raising=False)
+    monkeypatch.delenv("PIP_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URL", raising=False)
+    monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URLS", raising=False)
+    monkeypatch.delenv("SHINSEKAI_PIP_INSTALL_ARGS", raising=False)
+    monkeypatch.delenv("SHINSEKAI_RUNTIME_SOURCE", raising=False)
+    monkeypatch.setenv("SHINSEKAI_MIRROR_REGION", "global")
+
+    result = installer.install_plugin_requirements_txt(plugin_root)
+
+    assert result == ("pip_ok", "")
+    cmd = calls[0]["cmd"]
+    assert "--index-url" in cmd
+    assert cmd[cmd.index("--index-url") + 1] == "https://pypi.org/simple/"
+    assert "https://pypi.tuna.tsinghua.edu.cn/simple/" not in cmd
 
 
 def test_install_plugin_requirements_does_not_add_env_index_when_requirements_has_index(

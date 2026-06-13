@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import locale
 import logging
 import os
@@ -26,8 +27,13 @@ REGION_GLOBAL = "global"
 
 _NETWORK_REGION_OVERRIDE_ENV = "SHINSEKAI_NETWORK_REGION"
 _SKIP_PROBE_ENV = "SHINSEKAI_SKIP_NETWORK_REGION_PROBE"
+_IP_REGION_URLS_ENV = "SHINSEKAI_IP_REGION_URLS"
 _DETECT_CACHE_TTL_SEC = 600.0
 _DETECT_CACHE: tuple[float, bool] | None = None
+_DEFAULT_IP_REGION_URLS = (
+    "https://ipapi.co/country/",
+    "https://api.country.is/",
+)
 
 _MANAGED_ENV_NAMES = (
     "HF_ENDPOINT",
@@ -41,6 +47,7 @@ _MANAGED_ENV_NAMES = (
     "GITHUB_MIRROR_URL",
     "SHINSEKAI_GITHUB_MIRROR_URL",
     "SHINSEKAI_PIP_INDEX_URL",
+    "SHINSEKAI_MIRROR_REGION",
 )
 _ORIGINAL_ENV = {name: os.environ.get(name) for name in _MANAGED_ENV_NAMES}
 
@@ -83,25 +90,41 @@ def detect_china_network(*, timeout_sec: float = 1.2) -> bool:
         )
         return _DETECT_CACHE[1]
 
-    local_hint = _has_china_local_hint()
-    if local_hint:
-        _DETECT_CACHE = (now, True)
+    skip_network_probe = bool(os.environ.get(_SKIP_PROBE_ENV))
+    ip_hint = None if skip_network_probe else _detect_china_by_ip(timeout_sec=timeout_sec)
+    if ip_hint is not None:
+        _DETECT_CACHE = (now, ip_hint)
         logger.info(
-            "Mirror region detected from local environment hints",
-            extra={"event": "mirror.region.detected", "source": "local_hint", "region": REGION_CHINA},
+            "Mirror region detected from public IP geolocation",
+            extra={
+                "event": "mirror.region.detected",
+                "source": "ip_geo",
+                "region": REGION_CHINA if ip_hint else REGION_GLOBAL,
+            },
         )
-        return True
+        return ip_hint
 
-    network_hint = None if os.environ.get(_SKIP_PROBE_ENV) else _probe_china_network(timeout_sec=timeout_sec)
-    result = local_hint if network_hint is None else network_hint
+    network_hint = None if skip_network_probe else _probe_china_network(timeout_sec=timeout_sec)
+    if network_hint is not None:
+        _DETECT_CACHE = (now, network_hint)
+        logger.info(
+            "Mirror region detected from network probe",
+            extra={
+                "event": "mirror.region.detected",
+                "source": "network_probe",
+                "region": REGION_CHINA if network_hint else REGION_GLOBAL,
+            },
+        )
+        return network_hint
+
+    result = _has_china_local_hint()
     _DETECT_CACHE = (now, result)
     logger.info(
-        "Mirror region detected from network probe",
+        "Mirror region detected from local environment fallback",
         extra={
             "event": "mirror.region.detected",
-            "source": "network_probe" if network_hint is not None else "fallback",
+            "source": "local_hint" if result else "fallback",
             "region": REGION_CHINA if result else REGION_GLOBAL,
-            "network_hint": network_hint,
         },
     )
     return result
@@ -136,10 +159,6 @@ def config_with_resolved_mirrors(config: Any) -> Any:
     values = resolved_mirror_values(config)
     updates = {
         "mirror_region": values.region,
-        "huggingface_mirror_url": values.huggingface,
-        "huggingface_cache_dir": values.huggingface_cache_dir,
-        "github_mirror_url": values.github,
-        "pypi_mirror_url": values.pypi,
     }
     copier = getattr(config, "model_copy", None)
     if callable(copier):
@@ -147,6 +166,23 @@ def config_with_resolved_mirrors(config: Any) -> Any:
     for key, value in updates.items():
         setattr(config, key, value)
     return config
+
+
+def system_config_payload_with_resolved_mirrors(config: Any) -> dict[str, Any]:
+    dumper = getattr(config, "model_dump", None)
+    if callable(dumper):
+        payload = dumper(mode="json")
+    elif isinstance(config, dict):
+        payload = dict(config)
+    else:
+        payload = dict(getattr(config, "__dict__", {}))
+    values = resolved_mirror_values(config)
+    payload.update(
+        {
+            "mirror_region": values.region,
+        }
+    )
+    return payload
 
 
 def apply_mirror_environment(config: Any) -> MirrorValues:
@@ -166,6 +202,7 @@ def apply_mirror_environment(config: Any) -> MirrorValues:
     _set_or_restore_env("GITHUB_MIRROR_URL", values.github)
     _set_or_restore_env("SHINSEKAI_GITHUB_MIRROR_URL", values.github)
     _set_or_restore_env("SHINSEKAI_PIP_INDEX_URL", values.pypi)
+    _set_or_restore_env("SHINSEKAI_MIRROR_REGION", values.region)
     logger.info(
         "Mirror environment applied",
         extra={
@@ -234,6 +271,55 @@ def _probe_china_network(*, timeout_sec: float) -> bool | None:
         return True
     if google_ok is True and baidu_ok is False:
         return False
+    return None
+
+
+def _detect_china_by_ip(*, timeout_sec: float) -> bool | None:
+    for url in _ip_region_urls():
+        country = _fetch_ip_country(url, timeout_sec=timeout_sec)
+        if country:
+            return country == "CN"
+    return None
+
+
+def _ip_region_urls() -> tuple[str, ...]:
+    raw = os.environ.get(_IP_REGION_URLS_ENV, "")
+    urls = tuple(part.strip() for part in raw.replace("\n", ",").split(",") if part.strip())
+    return urls or _DEFAULT_IP_REGION_URLS
+
+
+def _fetch_ip_country(url: str, *, timeout_sec: float) -> str | None:
+    req = urllib.request.Request(url, headers={"User-Agent": "Shinsekai/1.0 mirror-detect"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            body = resp.read(4096).decode("utf-8", errors="replace").strip()
+    except (OSError, urllib.error.URLError, UnicodeDecodeError):
+        return None
+
+    if not body:
+        return None
+    if body.startswith("{"):
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(data, dict):
+            for key in ("country", "country_code", "countryCode"):
+                value = data.get(key)
+                country = _normalize_country_code(value)
+                if country:
+                    return country
+        return None
+    first = body.splitlines()[0].strip().strip('"')
+    return _normalize_country_code(first)
+
+
+def _normalize_country_code(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    country = value.strip().upper()
+    if len(country) == 2 and country.isalpha():
+        return country
     return None
 
 

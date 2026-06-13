@@ -173,7 +173,7 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
         type: "checkbox",
       },
       {
-        description: "由后端检测得到，保存时会更新为 china 或 global。",
+        description: "由后端检测得到，仅用于展示，不会作为手动配置保存。",
         disabledWhen: () => true,
         label: "检测区域",
         name: "mirror_region",

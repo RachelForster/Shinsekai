@@ -142,11 +142,9 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     try:
-        from config.mirror_env import config_with_resolved_mirrors
+        from config.mirror_env import system_config_payload_with_resolved_mirrors
 
-        payload["system_config"] = _jsonify(
-            config_with_resolved_mirrors(state.config_manager.config.system_config)
-        )
+        payload["system_config"] = system_config_payload_with_resolved_mirrors(state.config_manager.config.system_config)
     except Exception:
         pass
     api_config = payload.get("api_config")
