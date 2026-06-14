@@ -72,6 +72,13 @@ def wire_chat_ui_bridge(
         if emit_user_text is None:
             ctx.set_notification_hint(_tr("main.notify_chat"))
             return
+
+        # --- Interrupt active generation / playback ---
+        from core.runtime.app_runtime import is_anything_running, request_interrupt
+        if is_anything_running():
+            request_interrupt()
+            ctx.set_notification_hint("已打断，正在处理新消息…")
+
         emit_user_text(message)
         ctx.set_notification_hint(_tr("main.notify_submitted"))
 
@@ -121,6 +128,15 @@ def wire_chat_ui_bridge(
         )
     if ui_worker is not None and hasattr(ui_worker, "skip_speech"):
         ctx.on_skip_speech_signal(lambda: ui_worker.skip_speech())
+
+    # Ctrl+Enter → flush accumulated batch immediately
+    from core.plugins.plugin_host import get_active_batcher
+    _batcher = get_active_batcher()
+    if _batcher is not None:
+        def _on_flush_batch() -> None:
+            _batcher.flush()
+        ctx.on_flush_batch(_on_flush_batch)
+
     ctx.on_copy_chat_history_to_clipboard(copy_chat_history_to_clipboard)
     ctx.on_revert_chat_history(
         lambda index: revert_chat_history(

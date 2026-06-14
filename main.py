@@ -48,6 +48,7 @@ from t2i.t2i_manager import T2IAdapterFactory, T2IManager
 import pygame
 from opencc import OpenCC
 from queue import Queue
+from core.runtime.queue_utils import ClearableQueue
 
 from core.sprite.chat_history import (
     chat_history,
@@ -253,7 +254,7 @@ def main():
 
     workflow = build_runtime_workflow(
         workflow_path=args.workflow or headless_workflow,
-        queue_factory=Queue,
+        queue_factory=ClearableQueue,
     )
     chat_handles = get_chat_workflow_handles(workflow)
     user_input_queue = chat_handles.input_queue
@@ -331,6 +332,7 @@ def main():
             audio_path_queue=audio_path_queue,
             text_processor=text_processor,
             opencc=cc,
+            ui_worker=_um,
         )
     )
 

@@ -1,0 +1,42 @@
+gpt_sovits_api_path: F:/Alter Ego/GPT-SoVITS-v2pro-20250604-nvidia50/GPT-SoVITS-v2pro-20250604-nvidia50
+gpt_sovits_url: http://127.0.0.1:9880
+tts_provider: gpt-sovits
+tts_speed: 1.0
+tts_split_enabled: false
+tts_max_sentence_length: 15
+t2i_provider: comfyui
+t2i_work_path: ''
+t2i_api_url: http://127.0.0.1:8188
+t2i_default_workflow_path: ''
+t2i_prompt_node_id: '6'
+t2i_output_node_id: '9'
+llm_api_key:
+  Deepseek: sk-3393ff0dab1d403bb67e5d02dc6c761b
+llm_base_url: https://api.deepseek.com/v1
+llm_model:
+  Deepseek: deepseek-v4-flash
+llm_provider: Deepseek
+is_streaming: true
+interrupt_enabled: true
+is_batch_input_enabled: true
+batch_input_timeout: 3.0
+batch_input_separator: "\n"
+temperature: 0.7
+repetition_penalty: 1.0
+presence_penalty: 0.0
+frequency_penalty: 0.0
+max_context_tokens: 128000
+compact_threshold: 0.4
+compact_target_ratio: 0.3
+history_recent_messages: 20
+max_tool_result_chars: 6000
+max_active_tool_groups: 3
+hugging_face_access_token: ''
+llm_extra_configs:
+  Deepseek:
+    thinking_enabled: false
+tts_extra_configs: {}
+asr_extra_configs:
+  vosk:
+    model_path: ./assets/system/models/vosk-model-small-cn-0.22
+t2i_extra_configs: {}
