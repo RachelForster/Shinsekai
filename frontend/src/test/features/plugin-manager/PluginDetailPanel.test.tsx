@@ -231,8 +231,7 @@ describe("PluginDetailPanel", () => {
     window.history.pushState({}, "", "/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A57891");
     const frontendPage: PluginUIPage = {
       description: "Browser page",
-      frontendUrl:
-        "/api/plugins/demo%2Fplugin/frontend/browser%20page/?pluginId=demo%2Fplugin&pageId=browser%20page",
+      frontendUrl: "/api/plugins/demo%2Fplugin/frontend/browser%20page/?pluginId=demo%2Fplugin&pageId=browser%20page",
       id: "browser page",
       kind: "settings",
       order: 0,
