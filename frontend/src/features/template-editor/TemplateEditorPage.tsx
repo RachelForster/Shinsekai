@@ -688,6 +688,8 @@ export function TemplateEditorPage() {
             </div>
           </div>
 
+          <p className="template-options-panel__hint">{t("template.optionHelp")}</p>
+
           <div className="template-option-list">
             {templateOptions.map((option) => (
               <label className="template-toggle-row" key={option.key}>

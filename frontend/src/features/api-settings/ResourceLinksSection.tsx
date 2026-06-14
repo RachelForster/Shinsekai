@@ -5,11 +5,15 @@ import { useI18n } from "../../shared/i18n";
 import { Button } from "../../shared/ui";
 import { resourceLinks } from "./apiSettingsUtils";
 
-export function ResourceLinksSection() {
+interface ResourceLinksSectionProps {
+  id?: string;
+}
+
+export function ResourceLinksSection({ id }: ResourceLinksSectionProps) {
   const { t } = useI18n();
 
   return (
-    <details className="section schema-section resource-links">
+    <details className="section schema-section resource-links page-section-anchor" id={id}>
       <summary className="schema-section__summary">{t("api.links.title")}</summary>
       <div className="resource-links__grid">
         {resourceLinks.map(([labelKey, url]) => (

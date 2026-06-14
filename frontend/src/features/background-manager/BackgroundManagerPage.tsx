@@ -29,6 +29,7 @@ import {
   Button,
   EmptyState,
   PathPickerDialog,
+  PageSectionNav,
   QueryErrorState,
   Select,
   TextInput,
@@ -557,6 +558,11 @@ export function BackgroundManagerPage() {
     [draft.bg_tags, draft.sprites.length],
   );
   const selectedBgmIndexSet = useMemo(() => new Set(selectedBgmIndexes), [selectedBgmIndexes]);
+  const backgroundSectionNavItems = [
+    { id: "background-info", label: t("background.section.info") },
+    { id: "background-images", label: t("background.section.images") },
+    { id: "background-bgm", label: t("background.section.bgm") },
+  ];
 
   return (
     <div className="page background-page">
@@ -649,6 +655,7 @@ export function BackgroundManagerPage() {
             {t("common.save")}
           </AsyncButton>
         </div>
+        <PageSectionNav ariaLabel={t("background.title")} items={backgroundSectionNavItems} />
         <PathPickerDialog
           acceptedExtensions={[".bg"]}
           multiple
@@ -679,7 +686,7 @@ export function BackgroundManagerPage() {
 
       <section className="settings-grid background-page__content">
         {/* Info section */}
-        <section className="section">
+        <section className="section page-section-anchor" id="background-info">
           <div className="section__header">
             <h2 className="section__title">{t("background.section.info")}</h2>
             <div className="page__actions">
@@ -748,6 +755,7 @@ export function BackgroundManagerPage() {
         <BackgroundSpriteGallery
           currentBackgroundName={currentBackgroundName}
           deletePending={imageDeleteMutation.isPending}
+          id="background-images"
           imageRowTags={imageRowTags}
           onClearImages={() => {
             if (!currentBackgroundName || !draft.sprites.length) {
@@ -785,6 +793,7 @@ export function BackgroundManagerPage() {
           bgmRowTags={bgmRowTags}
           currentBackgroundName={currentBackgroundName}
           deletePending={bgmDeleteMutation.isPending}
+          id="background-bgm"
           onBatchDelete={() => {
             const validIndexes = selectedBgmIndexes.filter((i) => i >= 0 && i < draft.bgm_list.length);
             if (!validIndexes.length) {

@@ -260,6 +260,7 @@ interface BackgroundMusicSectionProps {
   bgmRowTags: string[];
   currentBackgroundName: string;
   deletePending: boolean;
+  id?: string;
   onBatchDelete: () => void;
   onClearAll: () => void;
   onDelete: (index: number) => void;
@@ -282,6 +283,7 @@ export function BackgroundMusicSection({
   bgmRowTags,
   currentBackgroundName,
   deletePending,
+  id,
   onBatchDelete,
   onClearAll,
   onDelete,
@@ -304,7 +306,7 @@ export function BackgroundMusicSection({
   const canClearBgm = Boolean(currentBackgroundName && bgmList.length);
 
   return (
-    <section className="section background-music-section">
+    <section className="section background-music-section page-section-anchor" id={id}>
       <div className="section__header">
         <h2 className="section__title">{t("background.section.bgm")}</h2>
         <div className="page__actions">

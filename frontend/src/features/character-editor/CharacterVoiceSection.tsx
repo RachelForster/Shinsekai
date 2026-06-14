@@ -5,14 +5,15 @@ import type { CharacterFieldChange } from "./characterEditorUtils";
 
 interface CharacterVoiceSectionProps {
   draft: Character;
+  id?: string;
   onChange: CharacterFieldChange;
 }
 
-export function CharacterVoiceSection({ draft, onChange }: CharacterVoiceSectionProps) {
+export function CharacterVoiceSection({ draft, id, onChange }: CharacterVoiceSectionProps) {
   const { t } = useI18n();
 
   return (
-    <section className="section">
+    <section className="section page-section-anchor" id={id}>
       <div className="section__header">
         <h2 className="section__title">{t("character.section.voice")}</h2>
       </div>

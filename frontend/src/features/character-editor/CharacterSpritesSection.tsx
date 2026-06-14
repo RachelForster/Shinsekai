@@ -26,6 +26,7 @@ import {
 interface CharacterSpritesSectionProps {
   draft: Character;
   emotionTagsPending: boolean;
+  id?: string;
   onClearSprites: () => void;
   onOpenBulkTags: () => void;
   onPendingSpritePathsChange: (paths: string[]) => void;
@@ -58,6 +59,7 @@ interface CharacterSpritesSectionProps {
 export function CharacterSpritesSection({
   draft,
   emotionTagsPending,
+  id,
   onClearSprites,
   onOpenBulkTags,
   onPendingSpritePathsChange,
@@ -89,7 +91,7 @@ export function CharacterSpritesSection({
   const { t } = useI18n();
 
   return (
-    <section className="section">
+    <section className="section page-section-anchor" id={id}>
       <div className="section__header">
         <h2 className="section__title">{t("character.section.sprites")}</h2>
         <div className="page__actions">

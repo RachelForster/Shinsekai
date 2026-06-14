@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { Download, ExternalLink, Plus, Save, Upload } from "lucide-react";
 
 import type { Character } from "../../entities/config/types";
@@ -19,6 +20,7 @@ interface CharacterPageHeaderProps {
   onSave: () => void;
   onSelectCharacter: (name: string) => void;
   savePending: boolean;
+  sectionNav?: ReactNode;
   selectedName: string;
 }
 
@@ -34,6 +36,7 @@ export function CharacterPageHeader({
   onSave,
   onSelectCharacter,
   savePending,
+  sectionNav,
   selectedName,
 }: CharacterPageHeaderProps) {
   const { t } = useI18n();
@@ -104,6 +107,7 @@ export function CharacterPageHeader({
           </AsyncButton>
         </div>
       </div>
+      {sectionNav}
       <PathPickerDialog
         acceptedExtensions={[".char", ".cha"]}
         multiple

@@ -14,6 +14,7 @@ interface T2iSetupSectionProps {
   errors: SchemaErrorMap<ApiConfig>;
   extraSchema: Record<string, AdapterExtraFieldSchema>;
   extraValues: Record<string, unknown>;
+  id?: string;
   onAdapterExtraChange: (key: string, value: unknown) => void;
   onChange: (draft: ApiConfig) => void;
   providerOptions: Array<{ label: string; value: string }>;
@@ -35,6 +36,7 @@ export function T2iSetupSection({
   errors,
   extraSchema,
   extraValues,
+  id,
   onAdapterExtraChange,
   onChange,
   providerOptions,
@@ -63,7 +65,7 @@ export function T2iSetupSection({
   ];
 
   return (
-    <section className="section t2i-setup">
+    <section className="section t2i-setup page-section-anchor" id={id}>
       <div className="section__header">
         <div>
           <h2 className="section__title">{t("api.t2i.title")}</h2>

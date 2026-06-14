@@ -9,24 +9,33 @@ import {
   ScrollText,
   Settings,
   SlidersHorizontal,
+  Sparkles,
   Star,
   Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { openExternal } from "../../entities/files/repository";
-import type { MessageKey } from "../../shared/i18n";
+import type { FrontendLanguage, MessageKey } from "../../shared/i18n";
 import { useI18n } from "../../shared/i18n";
 import { useAppUpdateInfo } from "./useAppUpdateInfo";
 
 const GITHUB_REPO_URL = "https://github.com/RachelForster/Shinsekai";
 const GITHUB_REPO_API_URL = "https://api.github.com/repos/RachelForster/Shinsekai";
 
+type SidebarLink = {
+  icon: typeof Settings;
+  label?: Record<FrontendLanguage, string>;
+  labelKey?: MessageKey;
+  to: string;
+};
+
 const settingsLinks = [
+  { icon: Sparkles, label: { en: "Guide", ja: "ガイド", zh_CN: "新手引导" }, to: "/settings/onboarding" },
   { icon: Settings, labelKey: "nav.api", to: "/settings/api" },
   { icon: Gamepad2, labelKey: "nav.character", to: "/settings/characters" },
   { icon: FileImage, labelKey: "nav.background", to: "/settings/backgrounds" },
   { icon: LayoutTemplate, labelKey: "nav.template", to: "/settings/templates" },
-] satisfies Array<{ icon: typeof Settings; labelKey: MessageKey; to: string }>;
+] satisfies SidebarLink[];
 
 const extensionLinks = [{ icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" }] satisfies Array<{
   icon: typeof Settings;
@@ -37,7 +46,7 @@ const extensionLinks = [{ icon: Plug, labelKey: "nav.plugins", to: "/settings/pl
 const maintenanceLinks = [
   { icon: ScrollText, labelKey: "nav.logs", to: "/settings/logs" },
   { icon: SlidersHorizontal, labelKey: "nav.system", to: "/settings/system" },
-] satisfies Array<{ icon: typeof Settings; labelKey: MessageKey; to: string }>;
+] satisfies SidebarLink[];
 
 type SidebarNavProps = {
   toolsOpen: boolean;
@@ -84,8 +93,15 @@ function useGitHubStars() {
   return stars;
 }
 
+function sidebarLinkLabel(link: SidebarLink, language: FrontendLanguage, t: (key: MessageKey) => string) {
+  if (link.labelKey) {
+    return t(link.labelKey);
+  }
+  return link.label?.[language] ?? link.label?.en ?? "";
+}
+
 export function SidebarNav({ onToolsToggle, toolsOpen }: SidebarNavProps) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const versionQuery = useAppUpdateInfo();
   const rawVersion = versionQuery.data?.version?.trim() ?? "";
   const version = rawVersion ? (rawVersion.toLowerCase().startsWith("v") ? rawVersion : `v${rawVersion}`) : "";
@@ -123,30 +139,33 @@ export function SidebarNav({ onToolsToggle, toolsOpen }: SidebarNavProps) {
         <div className="sidebar__section-label">{t("nav.groupSettings")}</div>
         {settingsLinks.map((link) => {
           const Icon = link.icon;
+          const label = sidebarLinkLabel(link, language, t);
           return (
-            <NavLink className="sidebar__link" key={link.to} title={t(link.labelKey)} to={link.to}>
+            <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
               <Icon aria-hidden className="sidebar__icon" />
-              <span className="sidebar__link-label">{t(link.labelKey)}</span>
+              <span className="sidebar__link-label">{label}</span>
             </NavLink>
           );
         })}
         <div className="sidebar__section-label">{t("nav.groupExtensions")}</div>
         {extensionLinks.map((link) => {
           const Icon = link.icon;
+          const label = sidebarLinkLabel(link, language, t);
           return (
-            <NavLink className="sidebar__link" key={link.to} title={t(link.labelKey)} to={link.to}>
+            <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
               <Icon aria-hidden className="sidebar__icon" />
-              <span className="sidebar__link-label">{t(link.labelKey)}</span>
+              <span className="sidebar__link-label">{label}</span>
             </NavLink>
           );
         })}
         <div className="sidebar__section-label">{t("nav.groupMaintenance")}</div>
         {maintenanceLinks.map((link) => {
           const Icon = link.icon;
+          const label = sidebarLinkLabel(link, language, t);
           return (
-            <NavLink className="sidebar__link" key={link.to} title={t(link.labelKey)} to={link.to}>
+            <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
               <Icon aria-hidden className="sidebar__icon" />
-              <span className="sidebar__link-label">{t(link.labelKey)}</span>
+              <span className="sidebar__link-label">{label}</span>
             </NavLink>
           );
         })}
