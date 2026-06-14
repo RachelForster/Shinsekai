@@ -26,6 +26,20 @@ The launcher runs `webui_react.py`, starts the Python bridge, serves
 is missing or older than the source tree, it runs `pnpm build` automatically as
 long as `frontend/node_modules` is already installed.
 
+## Sync App Version
+
+Edit the repository root `VERSION` file first, then run:
+
+```bash
+cd frontend
+pnpm sync:version
+```
+
+The script syncs the app version into `package.json`, Tauri `Cargo.toml`, the
+`shinsekai-desktop` entry in `Cargo.lock`, `runtime_manifest.json`, and the
+generated `src-tauri/resources/VERSION` file when it exists. Avoid global
+search-and-replace so dependency versions are not changed accidentally.
+
 ## Required Checks
 
 Run these before submitting React frontend changes:
