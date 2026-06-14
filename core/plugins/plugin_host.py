@@ -45,6 +45,12 @@ logger = logging.getLogger(__name__)
 
 _MANIFEST = Path("data/config/plugins.yaml")
 _loaded: bool = False
+_active_batcher: object | None = None
+
+
+def get_active_batcher() -> object | None:
+    """Return the currently active :class:`InputBatcher`, or ``None``."""
+    return _active_batcher
 _plugin_manager: PluginManager | None = None
 _plugin_tts_handlers: List["MessageHandler"] = []
 _plugin_ui_handlers: List["UIOutputMessageHandler"] = []
@@ -181,9 +187,57 @@ def wire_user_input_plugins(user_input_queue: Queue) -> Callable[[str], None]:
     :meth:`sdk.plugin.PluginBase.initialize`.
 
     The returned callable runs processors then enqueues :class:`~core.messaging.message.UserInputMessage`.
+    If batch input is enabled in config, messages are accumulated and flushed after
+    a configurable idle timeout.
     """
     mgr = _plugin_manager
     processors: list[Callable[[str], str | None]] = []
+
+    # --- Optional batch input ---
+    global _active_batcher
+    batcher: object | None = None
+    _active_batcher = None
+    try:
+        from core.runtime.app_runtime import try_get_app_runtime
+        rt = try_get_app_runtime()
+        if rt is not None:
+            cfg = rt.config.config.api_config
+            if getattr(cfg, "is_batch_input_enabled", False):
+                from core.runtime.input_batcher import InputBatcher
+
+                def _record_batch_to_history(messages: List[str]) -> None:
+                    """Record all buffered messages as one combined block."""
+                    _rt = try_get_app_runtime()
+                    if _rt is None or not messages:
+                        return
+                    if len(messages) == 1:
+                        body = messages[0]
+                    else:
+                        body = "<br>&nbsp;&nbsp;&nbsp;&nbsp;".join(messages)
+                    formatted = (
+                        f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+                        f"<b style='color:white;'>你</b>: {body}</p>"
+                    )
+                    _rt.ui_update_manager.chat_history.append(formatted)
+
+                def _tick_indicator(text: str) -> None:
+                    _rt = try_get_app_runtime()
+                    if _rt is not None and _rt.ui_update_manager is not None:
+                        if text:
+                            _rt.ui_update_manager.post_busy_bar(text, 1.2)
+                        else:
+                            _rt.ui_update_manager.hide_busy_bar()
+
+                batcher = InputBatcher(
+                    sink=lambda msg: user_input_queue.put(msg),
+                    idle_seconds=getattr(cfg, "batch_input_timeout", 3.0),
+                    separator=getattr(cfg, "batch_input_separator", "\n"),
+                    history_callback=_record_batch_to_history,
+                    tick_callback=_tick_indicator,
+                )
+                _active_batcher = batcher
+    except Exception:
+        logger.exception("Failed to initialize InputBatcher")
 
     def emit_user_text(text: str) -> None:
         t = text
@@ -196,7 +250,11 @@ def wire_user_input_plugins(user_input_queue: Queue) -> Callable[[str], None]:
             if out is None:
                 return
             t = out
-        user_input_queue.put(UserInputMessage(text=t))
+
+        if batcher is not None:
+            batcher.submit(t)
+        else:
+            user_input_queue.put(UserInputMessage(text=t))
 
     if mgr is not None:
         try:

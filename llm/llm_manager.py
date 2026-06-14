@@ -284,9 +284,23 @@ class LLMManager:
             "estimated_total_tokens": 0,
         }
         self._chat_depth = 0
-        
+        self._cancel_requested = False
+
         # 设置日志
         self.logger = logger
+
+    def cancel_current_chat(self) -> None:
+        """Request cancellation of the current :meth:`chat` call.
+
+        Sets the internal flag so stream loops exit early, and calls the
+        adapter's ``cancel()`` to close the underlying HTTP connection.
+        """
+        self._cancel_requested = True
+        if self.llm_adapter is not None:
+            try:
+                self.llm_adapter.cancel()
+            except Exception:
+                pass
 
     def _confirm_risky_tool(self, tool_name: str, risk: str, args_str: str) -> bool:
         """Request user confirmation for a risky tool. Returns True if confirmed."""
@@ -532,6 +546,7 @@ class LLMManager:
         翻译、设定生成等非聊天调用请传 ``include_local_time=False``。
         """
         self._chat_depth += 1
+        self._cancel_requested = False
         # 清理孤立的 tool_calls（必须在加 user 消息之前，否则占位 tool 回执会插在 user 后面）
         self._strip_orphaned_tool_calls()
 
@@ -581,37 +596,50 @@ class LLMManager:
         collected_content = ""
         collected_reasoning = ""
 
-        if isinstance(self.llm_adapter, ClaudeAdapter):
-            with response_stream as stream:
-                for event in stream:
-                    if event.type == "content_block_delta" and event.delta.type == "text_delta":
-                        yield event.delta.text
-                        collected_content += event.delta.text
-                    elif event.type == "content_block_start" and event.content_block.type == "tool_use":
+        try:
+            if isinstance(self.llm_adapter, ClaudeAdapter):
+                with response_stream as stream:
+                    for event in stream:
+                        if self._cancel_requested:
+                            break
+                        if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                            yield event.delta.text
+                            collected_content += event.delta.text
+                        elif event.type == "content_block_start" and event.content_block.type == "tool_use":
+                            has_tool_use = True
+                            full_tool_calls[event.index] = {"id": event.content_block.id, "name": event.content_block.name, "input": ""}
+                        elif event.type == "record_delta" and event.delta.type == "input_json_delta":
+                            full_tool_calls[event.index]["input"] += event.delta.partial_json
+            else:
+                for chunk in response_stream:
+                    if self._cancel_requested:
+                        break
+                    if not chunk or not chunk.choices: continue
+                    delta = chunk.choices[0].delta
+                    if hasattr(delta, 'tool_calls') and delta.tool_calls:
                         has_tool_use = True
-                        full_tool_calls[event.index] = {"id": event.content_block.id, "name": event.content_block.name, "input": ""}
-                    elif event.type == "record_delta" and event.delta.type == "input_json_delta":
-                        full_tool_calls[event.index]["input"] += event.delta.partial_json
-        else:
-            for chunk in response_stream:
-                if not chunk or not chunk.choices: continue
-                delta = chunk.choices[0].delta
-                if hasattr(delta, 'tool_calls') and delta.tool_calls:
-                    has_tool_use = True
-                    for tc in delta.tool_calls:
-                        if tc.index not in full_tool_calls:
-                            full_tool_calls[tc.index] = tc
-                        elif tc.function and tc.function.arguments:
-                            if full_tool_calls[tc.index].function.arguments is None:
-                                full_tool_calls[tc.index].arguments = ""
-                            full_tool_calls[tc.index].function.arguments += tc.function.arguments
-                r_part = getattr(delta, "reasoning_content", None)
-                if r_part:
-                    collected_reasoning += r_part
-                    yield {STREAM_REASONING_DELTA_KEY: r_part}
-                if hasattr(delta, 'content') and delta.content:
-                    yield delta.content
-                    collected_content += delta.content
+                        for tc in delta.tool_calls:
+                            if tc.index not in full_tool_calls:
+                                full_tool_calls[tc.index] = tc
+                            elif tc.function and tc.function.arguments:
+                                if full_tool_calls[tc.index].function.arguments is None:
+                                    full_tool_calls[tc.index].arguments = ""
+                                full_tool_calls[tc.index].function.arguments += tc.function.arguments
+                    r_part = getattr(delta, "reasoning_content", None)
+                    if r_part:
+                        collected_reasoning += r_part
+                        yield {STREAM_REASONING_DELTA_KEY: r_part}
+                    if hasattr(delta, 'content') and delta.content:
+                        yield delta.content
+                        collected_content += delta.content
+        except Exception:
+            # Stream aborted (expected on cancel) — re-raise if not our own cancel
+            if self._cancel_requested:
+                return
+            raise
+
+        if self._cancel_requested:
+            return
 
         if has_tool_use:
             formatted_calls = []
@@ -661,6 +689,8 @@ class LLMManager:
                     result = json.dumps({"error": str(e)})
                 self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
 
+            if self._cancel_requested:
+                return
             yield from self._chat_with_tools_stream(**kwargs)
         else:
             self._persist_plain_assistant_turn(collected_content, collected_reasoning)
@@ -675,6 +705,9 @@ class LLMManager:
             tools=tools_defs if tools_defs else None, **merged_kwargs
         )
         if not response: return ""
+
+        if self._cancel_requested:
+            return ""
 
         content = ""
         tool_calls = []
@@ -738,6 +771,8 @@ class LLMManager:
                     result = json.dumps({"error": str(e)})
                 self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
 
+            if self._cancel_requested:
+                return ""
             return self._chat_with_tools_sync(**kwargs)
         else:
             self._persist_plain_assistant_turn(content, reasoning)

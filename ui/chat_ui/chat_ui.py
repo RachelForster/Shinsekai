@@ -81,10 +81,12 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     # 聊天输入框 QTextEdit：获得 / 失去焦点（见 eventFilter）
     user_input_started = Signal()
     user_input_ended = Signal()
+    flush_batch = Signal()  # Ctrl+Enter — commit accumulated batch immediately
 
     def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False, background_mode = False, max_sprite_slots=3):
         """初始化窗口"""
         super().__init__()
+        self._ime_composing = False
         self.CONFIG_FILE = './data/config/system_config.yaml'
         if background_mode:
             self.HORIZONTAL_MARGIN_PERCENT = 0.2
@@ -588,6 +590,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             styles.text_edit_input(self.btn_font_size, chrome_extra=ch0.input_bar_extra)
         )
         self.input_box.installEventFilter(self)
+        self.input_box.textChanged.connect(self._notify_batcher_input_state)
         # self.input_box.returnPressed.connect(self.sendMessage)
         
         # 发送按钮（圆角由 QPainter 绘制）
@@ -1114,6 +1117,78 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         else:
              self.sprite_panel.switch_sprite(character_name, image, scale_rate)
 
+    def _notify_batcher_input_state(self) -> None:
+        """Tell the batcher whether the user is currently typing."""
+        text = self.input_box.toPlainText().strip() if hasattr(self, "input_box") else ""
+        self._update_batcher_for_text(text)
+
+    def _update_batcher_for_text(self, text: str) -> None:
+        try:
+            from core.plugins.plugin_host import get_active_batcher
+            b = get_active_batcher()
+            if b is None:
+                return
+            if text:
+                self._ime_composing = False
+                self._stop_batch_timer()
+                indicator = b.on_user_typing()
+                if indicator:
+                    from core.runtime.app_runtime import try_get_app_runtime
+                    rt = try_get_app_runtime()
+                    if rt and rt.ui_update_manager:
+                        rt.ui_update_manager.post_busy_bar(indicator, 0.0)
+            elif self._ime_composing:
+                # IME composing with no committed text yet — treat as typing
+                self._stop_batch_timer()
+            else:
+                b.schedule_flush()
+                self._start_batch_timer()
+        except Exception:
+            pass
+
+    def _update_batcher_for_typing(self) -> None:
+        """Called when IME preedit starts — show typing indicator."""
+        self._ime_composing = True
+        self._stop_batch_timer()
+        try:
+            from core.runtime.app_runtime import try_get_app_runtime
+            rt = try_get_app_runtime()
+            if rt and rt.ui_update_manager:
+                rt.ui_update_manager.post_busy_bar("[正在输入…]", 0.0)
+        except Exception:
+            pass
+
+    def _start_batch_timer(self) -> None:
+        from PySide6.QtCore import QTimer
+        if not hasattr(self, "_batch_timer"):
+            self._batch_timer = QTimer(self)
+            self._batch_timer.timeout.connect(self._on_batch_tick)
+        if not self._batch_timer.isActive():
+            self._batch_timer.start(1000)
+
+    def _stop_batch_timer(self) -> None:
+        if hasattr(self, "_batch_timer") and self._batch_timer is not None:
+            self._batch_timer.stop()
+
+    def _on_batch_tick(self) -> None:
+        try:
+            from core.plugins.plugin_host import get_active_batcher
+            from core.runtime.app_runtime import try_get_app_runtime
+            b = get_active_batcher()
+            if b is None:
+                self._stop_batch_timer()
+                return
+            should_flush = b.on_countdown_tick()
+            if should_flush:
+                self._stop_batch_timer()
+                b.flush()
+                # Hide busy bar after flush
+                rt = try_get_app_runtime()
+                if rt and rt.ui_update_manager:
+                    rt.ui_update_manager.hide_busy_bar()
+        except Exception:
+            self._stop_batch_timer()
+
     def sendMessage(self):
         """发送消息函数"""
         message = self.input_box.toPlainText().strip()
@@ -1122,7 +1197,6 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             if hasattr(self, "_reroll_btn") and self._reroll_btn is not None:
                 self._reroll_btn.hide()
             print(f"UI发送消息: {message}")
-            self.input_box.clear()
             self.setDisplayWords(f"<b>你</b>：{message}")
             self.input_box.setPlaceholderText(tr("desktop.sending"))
             self.mic_button.asr_pause_requested.emit()
@@ -1133,7 +1207,10 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 self.chat_worker.response_received.connect(self.handleResponse)
                 self.chat_worker.start()
 
-            self.message_submitted.emit(message)  # 发出消息提交信号
+            # emit BEFORE clear() so the batcher receives the message
+            # before textChanged triggers schedule_flush
+            self.message_submitted.emit(message)
+            self.input_box.clear()
 
     def _on_reroll(self):
         msg = getattr(self, "_last_user_message", "")
@@ -1545,12 +1622,21 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 self.user_input_started.emit()
             elif et_in == QEvent.Type.FocusOut:
                 self.user_input_ended.emit()
+            elif et_in == QEvent.Type.InputMethod:
+                # IME preedit (pinyin etc.) — user is actively composing
+                self._ime_composing = True
+                self._update_batcher_for_typing()
             elif et_in == QEvent.Type.KeyPress:
                 if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                    # 同样判断是否带有修饰键
-                    if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-                        self.send_btn.click()  # 你的发送函数
-                        return True  # 表示事件已处理，不再向下传递（即不换行）
+                    if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                        # Ctrl+Enter: flush accumulated batch, then send
+                        self.flush_batch.emit()
+                        self.send_btn.click()
+                        return True
+                    else:
+                        # Enter without Ctrl: send normally (accumulate in batch mode)
+                        self.send_btn.click()
+                        return True
         if isinstance(event, QMouseEvent):
             met = event.type()
             if met == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
