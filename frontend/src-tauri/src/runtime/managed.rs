@@ -1,4 +1,5 @@
 use std::{
+    env,
     error::Error,
     fs::{self, OpenOptions},
     io::{BufRead, BufReader, Read, Write},
@@ -16,6 +17,7 @@ use super::{manifest::RuntimeRequirements, python_env};
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
+const TORCH_PROJECT_NAMES: &[&str] = &["torch", "torchvision", "torchaudio"];
 
 fn configure_pip_install_command(
     command: &mut Command,
@@ -75,6 +77,72 @@ where
     F: FnMut(&str),
 {
     ensure_python_pip_available(python)?;
+    let requirements_text = fs::read_to_string(requirements_path).map_err(|error| {
+        format!(
+            "read runtime requirements file {} failed: {error}",
+            requirements_path.display()
+        )
+    })?;
+    let requirement_lines = requirements_text
+        .lines()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let (torch_lines, other_lines) = partition_torch_requirement_lines(&requirement_lines);
+    let split_torch = !torch_lines.is_empty() && !cfg!(target_os = "macos");
+
+    if split_torch {
+        let (torch_index, reason) = pytorch_wheel_index_url_for_this_machine(pip_index_urls);
+        on_log_line(&format!(
+            "Installing PyTorch packages first from {torch_index} ({reason})"
+        ));
+        let torch_requirements =
+            write_temp_requirements(requirements_path, "shinsekai-torch", &torch_lines)?;
+        let other_requirements =
+            write_temp_requirements(requirements_path, "shinsekai-runtime", &other_lines)?;
+        let result = (|| {
+            let mut install_torch = pip_install_command(python, &torch_requirements, None);
+            install_torch
+                .arg("--index-url")
+                .arg(&torch_index)
+                .arg("--extra-index-url")
+                .arg("https://pypi.org/simple");
+            run_command_with_live_log(
+                &mut install_torch,
+                "install Shinsekai PyTorch runtime dependencies",
+                &mut on_log_line,
+            )?;
+            if !has_non_comment_requirement(&other_lines) {
+                return Ok(());
+            }
+            install_runtime_requirements_file_with_indexes(
+                python,
+                &other_requirements,
+                pip_index_urls,
+                &mut on_log_line,
+            )
+        })();
+        let _ = fs::remove_file(torch_requirements);
+        let _ = fs::remove_file(other_requirements);
+        return result;
+    }
+
+    install_runtime_requirements_file_with_indexes(
+        python,
+        requirements_path,
+        pip_index_urls,
+        &mut on_log_line,
+    )
+}
+
+fn install_runtime_requirements_file_with_indexes<F>(
+    python: &Path,
+    requirements_path: &Path,
+    pip_index_urls: &[String],
+    mut on_log_line: F,
+) -> RuntimeResult<()>
+where
+    F: FnMut(&str),
+{
     let mut errors = Vec::new();
 
     if pip_index_urls.is_empty() {
@@ -103,6 +171,157 @@ where
         errors.join("; ")
     )
     .into())
+}
+
+fn write_temp_requirements(
+    requirements_path: &Path,
+    prefix: &str,
+    lines: &[String],
+) -> RuntimeResult<PathBuf> {
+    let parent = requirements_path.parent().unwrap_or_else(|| Path::new("."));
+    let filename = format!(
+        "{}-{}-{}.txt",
+        prefix,
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let path = parent.join(filename);
+    fs::write(&path, lines.join("\n"))?;
+    Ok(path)
+}
+
+fn has_non_comment_requirement(lines: &[String]) -> bool {
+    lines.iter().any(|line| {
+        let trimmed = line.split('#').next().unwrap_or("").trim();
+        !trimmed.is_empty() && !trimmed.starts_with('#')
+    })
+}
+
+fn partition_torch_requirement_lines(lines: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut torch_lines = Vec::new();
+    let mut other_lines = Vec::new();
+    for line in lines {
+        let project_name = requirement_line_project_name(line);
+        if project_name
+            .as_deref()
+            .is_some_and(|name| TORCH_PROJECT_NAMES.contains(&name))
+        {
+            torch_lines.push(line.trim_end_matches(['\r', '\n']).to_string());
+        } else {
+            other_lines.push(line.trim_end_matches(['\r', '\n']).to_string());
+        }
+    }
+    (torch_lines, other_lines)
+}
+
+fn requirement_line_project_name(line: &str) -> Option<String> {
+    let mut segment = line.split('#').next()?.trim();
+    if segment.is_empty() {
+        return None;
+    }
+    let lower = segment.to_ascii_lowercase();
+    if lower.starts_with("--") || lower.starts_with("-r ") || lower.starts_with("-c ") {
+        return None;
+    }
+    if lower.starts_with("-e ") {
+        segment = segment.get(3..)?.trim();
+    }
+    let first = segment.split_whitespace().next().unwrap_or(segment);
+    if first.contains("://") || first.starts_with("git+") {
+        return None;
+    }
+    let name = first
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+        .collect::<String>();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_ascii_lowercase().replace('_', "-"))
+    }
+}
+
+fn pytorch_wheel_index_url_for_this_machine(pip_index_urls: &[String]) -> (String, String) {
+    pytorch_wheel_index_url_for_cuda_version(
+        nvidia_smi_cuda_driver_version(),
+        pytorch_wheel_base_url(pip_index_urls),
+    )
+}
+
+fn pytorch_wheel_base_url(pip_index_urls: &[String]) -> String {
+    if let Ok(value) = env::var("SHINSEKAI_PYTORCH_WHEEL_BASE") {
+        let trimmed = value.trim().trim_end_matches('/');
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if pip_indexes_prefer_china(pip_index_urls) {
+        "https://mirror.sjtu.edu.cn/pytorch-wheels".to_string()
+    } else {
+        "https://download.pytorch.org/whl".to_string()
+    }
+}
+
+fn pip_indexes_prefer_china(pip_index_urls: &[String]) -> bool {
+    let Some(primary) = pip_index_urls.first() else {
+        return false;
+    };
+    let primary = primary.to_ascii_lowercase();
+    [
+        "pypi.tuna.tsinghua.edu.cn",
+        "mirrors.ustc.edu.cn",
+        "mirrors.hit.edu.cn",
+        "mirrors.aliyun.com",
+        "mirror.sjtu.edu.cn",
+    ]
+    .iter()
+    .any(|domain| primary.contains(domain))
+}
+
+fn pytorch_wheel_index_url_for_cuda_version(
+    version: Option<(u32, u32)>,
+    base_url: String,
+) -> (String, String) {
+    let Some((major, minor)) = version else {
+        return (
+            format!("{base_url}/cpu"),
+            "no_usable_nvidia_smi_cpu".to_string(),
+        );
+    };
+    let tag = if (major, minor) >= (12, 4) {
+        "cu124"
+    } else if major >= 12 {
+        "cu121"
+    } else {
+        "cu118"
+    };
+    (
+        format!("{base_url}/{tag}"),
+        format!("nvidia_driver_cuda_{major}.{minor}_{tag}"),
+    )
+}
+
+fn nvidia_smi_cuda_driver_version() -> Option<(u32, u32)> {
+    let output = Command::new("nvidia-smi").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_nvidia_smi_cuda_version(&stdout)
+}
+
+fn parse_nvidia_smi_cuda_version(output: &str) -> Option<(u32, u32)> {
+    let (_, tail) = output.split_once("CUDA Version:")?;
+    let version_text = tail
+        .trim_start()
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit() || *ch == '.')
+        .collect::<String>();
+    let (major, minor) = version_text.split_once('.')?;
+    Some((major.parse().ok()?, minor.parse().ok()?))
 }
 
 fn pip_install_command(
@@ -144,24 +363,19 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         Some("Installing Shinsekai runtime dependencies"),
         None,
     );
-    install_runtime_requirements(
-        python,
-        &requirements_path,
-        pip_index_urls,
-        |line| {
-            emit_runtime_progress(
-                app,
-                "installingDeps",
-                Some(candidate_id.to_string()),
-                Some("local".to_string()),
-                None,
-                None,
-                None,
-                Some("Installing Shinsekai runtime dependencies"),
-                Some(line),
-            );
-        },
-    )?;
+    install_runtime_requirements(python, &requirements_path, pip_index_urls, |line| {
+        emit_runtime_progress(
+            app,
+            "installingDeps",
+            Some(candidate_id.to_string()),
+            Some("local".to_string()),
+            None,
+            None,
+            None,
+            Some("Installing Shinsekai runtime dependencies"),
+            Some(line),
+        );
+    })?;
 
     emit_runtime_progress(
         app,
@@ -271,10 +485,18 @@ where
     let mut readers = Vec::new();
 
     if let Some(stdout) = stdout {
-        readers.push(spawn_output_reader(OutputStream::Stdout, stdout, tx.clone()));
+        readers.push(spawn_output_reader(
+            OutputStream::Stdout,
+            stdout,
+            tx.clone(),
+        ));
     }
     if let Some(stderr) = stderr {
-        readers.push(spawn_output_reader(OutputStream::Stderr, stderr, tx.clone()));
+        readers.push(spawn_output_reader(
+            OutputStream::Stderr,
+            stderr,
+            tx.clone(),
+        ));
     }
     drop(tx);
 
@@ -288,7 +510,12 @@ where
         &mut on_log_line,
     )?;
     for entry in rx {
-        push_output_line(entry, &mut stdout_lines, &mut stderr_lines, &mut on_log_line);
+        push_output_line(
+            entry,
+            &mut stdout_lines,
+            &mut stderr_lines,
+            &mut on_log_line,
+        );
     }
     for reader in readers {
         let _ = reader.join();
