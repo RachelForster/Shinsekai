@@ -1041,8 +1041,11 @@ export function CharacterEditorPage() {
 
         <CharacterScenarioSection
           draft={draft}
+          hasUnsavedChanges={
+            isSavedCharacter && JSON.stringify(draft.scenarios) !== JSON.stringify(selected?.scenarios)
+          }
+          isSavedCharacter={isSavedCharacter}
           scenarioSavePending={scenarioSaveMutation.isPending}
-          scenarioVoiceUploadPending={scenarioVoiceUploadMutation.isPending}
           translatePending={scenarioTranslateMutation.isPending}
           onAddScenario={scenarioHandlers.addScenario}
           onAiTranslate={() => scenarioTranslateMutation.mutate()}

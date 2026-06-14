@@ -1,14 +1,16 @@
+import { useState } from "react";
 import { HelpCircle, Languages, Plus, Save, Trash2 } from "lucide-react";
 
 import type { Character, CharacterScenario } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, AudioPlayer, Button, EmptyState, FilePicker, TextInput } from "../../shared/ui";
+import { AlertDialog, AsyncButton, AudioPlayer, Button, EmptyState, FilePicker, TextInput } from "../../shared/ui";
 
 export interface CharacterScenarioSectionProps {
   draft: Character;
+  hasUnsavedChanges: boolean;
+  isSavedCharacter: boolean;
   scenarioSavePending: boolean;
-  scenarioVoiceUploadPending: boolean;
   translatePending: boolean;
   onAddScenario: () => void;
   onAiTranslate: () => void;
@@ -31,8 +33,9 @@ function Hint({ text }: { text: string }) {
 
 export function CharacterScenarioSection({
   draft,
+  hasUnsavedChanges,
+  isSavedCharacter,
   scenarioSavePending,
-  scenarioVoiceUploadPending,
   translatePending,
   onAddScenario,
   onAiTranslate,
@@ -46,6 +49,7 @@ export function CharacterScenarioSection({
 }: CharacterScenarioSectionProps) {
   const { t } = useI18n();
   const scenarios: CharacterScenario[] = draft.scenarios ?? [];
+  const [pendingDeleteIndex, setPendingDeleteIndex] = useState<number | null>(null);
 
   return (
     <section className="section">
@@ -53,6 +57,7 @@ export function CharacterScenarioSection({
         <h2 className="section__title">{t("character.section.voiceTags")}</h2>
         <div className="page__actions">
           <AsyncButton
+            disabled={hasUnsavedChanges || !isSavedCharacter}
             icon={<Languages aria-hidden className="button__icon" />}
             loading={translatePending}
             onClick={onAiTranslate}
@@ -67,9 +72,10 @@ export function CharacterScenarioSection({
             icon={<Save aria-hidden className="button__icon" />}
             loading={scenarioSavePending}
             onClick={onSaveAllScenarios}
-            variant="ghost"
+            variant={hasUnsavedChanges ? "primary" : "ghost"}
           >
             {t("character.voiceTag.saveAll")}
+            {hasUnsavedChanges && <span className="save-dot" />}
           </AsyncButton>
         </div>
       </div>
@@ -110,11 +116,12 @@ export function CharacterScenarioSection({
                       {voicePath.split("/").pop()?.split("\\").pop()}
                     </span>
                     <AudioPlayer
-                    className="scenario-card__player"
-                    label={voicePath.split("/").pop()?.split("\\").pop() ?? "Audio"}
-                    preload="metadata"
-                    src={fileUrl(voicePath)}
-                  />
+                      className="scenario-card__player"
+                      label={voicePath.split("/").pop()?.split("\\").pop() ?? "Audio"}
+                      preload="metadata"
+                      key={voicePath}
+                      src={fileUrl(voicePath)}
+                    />
                   </>
                 ) : null}
                 <div className="scenario-card__voice-type">
@@ -151,7 +158,7 @@ export function CharacterScenarioSection({
                 <div className="scenario-card__actions">
                   <Button
                     icon={<Trash2 aria-hidden className="button__icon" />}
-                    onClick={() => onDeleteScenario(si)}
+                    onClick={() => setPendingDeleteIndex(si)}
                     variant="ghost"
                   />
                 </div>
@@ -160,6 +167,19 @@ export function CharacterScenarioSection({
           );
         })}
       </div>
+
+      {pendingDeleteIndex !== null && (
+        <AlertDialog
+          body={t("character.voiceTag.deleteConfirmBody", { index: pendingDeleteIndex + 1 })}
+          onCancel={() => setPendingDeleteIndex(null)}
+          onConfirm={() => {
+            onDeleteScenario(pendingDeleteIndex);
+            setPendingDeleteIndex(null);
+          }}
+          open
+          title={t("character.voiceTag.deleteConfirmTitle")}
+        />
+      )}
     </section>
   );
 }

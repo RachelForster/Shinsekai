@@ -173,7 +173,8 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         ui.hide_busy_bar()
         ch = _play()
         character_name = out.name
-        speech = out.text or ""
+        import re
+        speech = re.sub(r'\s*\[\w+\]\s*', '', out.text or "").strip()
         sprite_id = out.asset_id
         audio_path = out.audio_path
         if audio_path:

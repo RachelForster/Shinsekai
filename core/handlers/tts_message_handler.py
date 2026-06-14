@@ -32,6 +32,22 @@ def get_character_by_name(name: str):
     return _config.get_character_by_name(name)
 
 
+def _read_scenarios_from_yaml(name_s: str) -> list:
+    """直接从 YAML 读取角色的 scenarios，避免跨进程缓存。"""
+    try:
+        _chars_path = Path("data/config/characters.yaml")
+        if not _chars_path.is_file():
+            return []
+        with open(_chars_path, "r", encoding="utf-8") as _fh:
+            _data = yaml.safe_load(_fh) or []
+        for _c in _data:
+            if _c.get("name") == name_s:
+                return _c.get("scenarios") or []
+    except Exception:
+        pass
+    return []
+
+
 def _match_voice_tag(speech: str, scenarios: list):
     """检测台词中的 [tagname] 标签，匹配角色情景配置。
     返回匹配到的 scenario dict，未匹配返回 None。
@@ -161,13 +177,19 @@ class DefaultCharacterTtsHandler(MessageHandler):
             speech_text = rt.text_processor.replace_names(speech_text)
 
         # 语音触发标签：[tagname] 匹配角色情景，触发对应语音
-        _scenarios = getattr(character_config, 'scenarios', None) or []
+        # 直接从 YAML 读取，避免跨进程缓存导致拿到旧数据
+        _tag_ref_audio = None
+        _tag_prompt = None
+        _scenarios = _read_scenarios_from_yaml(name_s)
         _matched, _clean_speech = _match_voice_tag(speech_text, _scenarios)
         if _matched:
+            _m_name = _matched.name if hasattr(_matched, 'name') else _matched.get('name', '?')
             _m_vt = _matched.voice_type if hasattr(_matched, 'voice_type') else _matched.get('voice_type')
             _m_vp = _matched.voice_path if hasattr(_matched, 'voice_path') else _matched.get('voice_path')
             _m_vtext = _matched.voice_text if hasattr(_matched, 'voice_text') else _matched.get('voice_text')
+            print(f"[VoiceTag] 匹配标签 [{_m_name}] type={_m_vt} vp={_m_vp}")
             if _m_vt == "preset" and _m_vp:
+                print(f"[VoiceTag] 预设语音：跳过 TTS，直接播放 {_m_vp}")
                 audio_path = Path(_m_vp).resolve().as_posix()
                 _hide_tts_busy()
                 tts_emit_to_ui_queue(
@@ -176,13 +198,13 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 )
                 return
             elif _m_vt == "reference" and _m_vp:
-                # 标签触发参考音色：用标签配置作为 TTS 参考
+                print(f"[VoiceTag] 参考语音：用 {_m_vp} 作为 TTS 参考音色")
                 speech_text = _clean_speech
                 _tag_ref_audio = _m_vp
                 _tag_prompt = _m_vtext or ""
-            else:
-                _tag_ref_audio = None
-                _tag_prompt = None
+
+        # 剥离语音标签 [xxx]，不显示在台词中
+        speech_text = re.sub(r'\s*\[\w+\]\s*', '', speech_text).strip()
 
         audio_path = ""
         if rt.tts_manager:

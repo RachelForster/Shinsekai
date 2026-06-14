@@ -791,4 +791,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "character.voiceTag.voiceHint": "参照音声は WAV のみ、3〜10秒",
   "character.voiceTag.index": "タグ {index}",
   "character.voiceTag.saveBeforeTranslate": "AI翻訳を使用する前にタグを保存してください",
+  "character.voiceTag.deleteConfirmTitle": "削除確認",
+  "character.voiceTag.deleteConfirmBody": "タグ {index} を削除しますか？この操作は元に戻せません。",
+  "character.voiceTag.uploading": "アップロード中...",
+
 };

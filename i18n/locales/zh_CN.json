@@ -693,6 +693,9 @@
     "tools_item": "- **{name}**：{description}",
     "tools_param_summary": "（参数：{summary}；带 * 者为必填）",
     "closing": "\n请开始对话, 开始时介绍下用户所处的情境和背景, {extra} 以及在做什么事情: \n",
-    "closing_extra_bgm": "设置初始的场景和bgm, "
+    "closing_extra_bgm": "设置初始的场景和bgm, ",
+    "voice_tags_header": "\n语音触发标签：\n",
+    "voice_tags_for": "{name} 可用标签：{tags}\n",
+    "r_voice_tag": "语音标签：在 speech 台词中，根据当前情绪或语气自动插入对应的语音标签，格式为 [标签名]。例如 [laugh]你好啊 或 好难过[cry]。请合理使用，不要每句都加。"
   }
 }

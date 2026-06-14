@@ -793,4 +793,8 @@ export const enMessages: Record<MessageKey, string> = {
   "character.voiceTag.voiceHint": "Reference audio: WAV only, 3-10 seconds",
   "character.voiceTag.index": "Tag {index}",
   "character.voiceTag.saveBeforeTranslate": "Please save tags before using AI translate",
+  "character.voiceTag.deleteConfirmTitle": "Confirm delete",
+  "character.voiceTag.deleteConfirmBody": "Delete tag {index}? This cannot be undone.",
+  "character.voiceTag.uploading": "Uploading...",
+
 };

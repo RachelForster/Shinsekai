@@ -364,3 +364,18 @@
 .radio-group__input {
   accent-color: var(--color-accent-primary);
 }
+
+.save-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent-primary);
+  margin-left: 4px;
+}
+
+.scenario-card__uploading {
+  font-size: var(--font-sm);
+  color: var(--color-text-muted);
+  padding: 4px 8px;
+}

@@ -359,6 +359,23 @@ class TemplateGenerator:
             template += _T("sprites_count", name=char_name, n=len(char_detail.sprites))
             template += f"{char_detail.emotion_tags}\n\n"
 
+        # 语音触发标签
+        voice_tags = []
+        for char_name in selected_characters:
+            char_detail = config_manager.get_character_by_name(char_name)
+            scenarios = getattr(char_detail, 'scenarios', []) or []
+            names = []
+            for s in scenarios:
+                sn = s.name if hasattr(s, 'name') else s.get('name', '')
+                if sn:
+                    names.append(sn)
+            if names:
+                voice_tags.append((char_name, names))
+        if voice_tags:
+            template += _T("voice_tags_header")
+            for char_name, names in voice_tags:
+                template += _T("voice_tags_for", name=char_name, tags=", ".join(names))
+
         template += _T("profile_header")
         for char_name in selected_characters:
             char_detail = config_manager.get_character_by_name(char_name)
@@ -422,6 +439,7 @@ class TemplateGenerator:
                 20,
             ),
             RequirementSpec("r_sprite", _T("r_sprite"), 30),
+            RequirementSpec("r_voice_tag", _T("r_voice_tag"), 31),
             RequirementSpec(
                 "r_non_sprite",
                 _T(

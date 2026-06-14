@@ -696,6 +696,9 @@
     "tools_item": "- **{name}**: {description}",
     "tools_param_summary": " (parameters: {summary}; * = required)",
     "closing": "\nBegin the scene: describe the situation and what the user is doing; {extra}then continue:\n",
-    "closing_extra_bgm": "set initial scene and BGM, "
+    "closing_extra_bgm": "set initial scene and BGM, ",
+    "voice_tags_header": "\nVoice trigger tags:\n",
+    "voice_tags_for": "{name} tags: {tags}\n",
+    "r_voice_tag": "Voice tags: Automatically insert matching voice tags in speech based on emotion/tone, format [tagname]. e.g. [laugh]Hello or so sad[cry]. Use sparingly, not every line."
   }
 }

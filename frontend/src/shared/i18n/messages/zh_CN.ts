@@ -779,4 +779,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "character.voiceTag.voiceHint": "参考语音仅支持 WAV 格式，时长 3-10 秒",
   "character.voiceTag.index": "标签 {index}",
   "character.voiceTag.saveBeforeTranslate": "请保存标签后再使用 AI 翻译功能",
+  "character.voiceTag.deleteConfirmTitle": "确认删除",
+  "character.voiceTag.deleteConfirmBody": "确定要删除标签 {index} 吗？此操作不可撤销。",
+  "character.voiceTag.uploading": "上传中...",
+
 };

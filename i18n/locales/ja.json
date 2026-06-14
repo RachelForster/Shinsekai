@@ -693,6 +693,9 @@
     "tools_item": "- **{name}**：{description}",
     "tools_param_summary": "（引数：{summary}；* は必須）",
     "closing": "\n会話を開始。状況とユーザーの行動を説明し{extra}続けてください：\n",
-    "closing_extra_bgm": "初期のシーンと BGM を設定し、"
+    "closing_extra_bgm": "初期のシーンと BGM を設定し、",
+    "voice_tags_header": "\n音声トリガータグ：\n",
+    "voice_tags_for": "{name} のタグ：{tags}\n",
+    "r_voice_tag": "音声タグ：セリフの中で、感情やトーンに合わせて [タグ名] の形式で音声タグを挿入してください。例：[laugh]こんにちは または 悲しい[cry]。適度に使用し、毎回入れないでください。"
   }
 }
