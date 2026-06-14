@@ -792,5 +792,5 @@ export const enMessages: Record<MessageKey, string> = {
   "character.voiceTag.voiceText": "Voice text",
   "character.voiceTag.voiceHint": "Reference audio: WAV only, 3-10 seconds",
   "character.voiceTag.index": "Tag {index}",
-
+  "character.voiceTag.saveBeforeTranslate": "Please save tags before using AI translate",
 };

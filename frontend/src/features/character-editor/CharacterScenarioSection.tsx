@@ -76,7 +76,7 @@ export function CharacterScenarioSection({
 
       <p className="section__description">{t("character.voiceTag.description")}</p>
       <p className="section__description">
-        {t("character.voiceTag.voiceTypePreset")}：{t("character.voiceTag.voiceTypePresetHint")} &middot; {t("character.voiceTag.voiceTypeReference")}：{t("character.voiceTag.voiceTypeReferenceHint")}
+        {t("character.voiceTag.voiceTypePreset")}：{t("character.voiceTag.voiceTypePresetHint")} &middot; {t("character.voiceTag.voiceTypeReference")}：{t("character.voiceTag.voiceTypeReferenceHint")} &middot; {t("character.voiceTag.saveBeforeTranslate")}
       </p>
 
       {scenarios.length === 0 && <EmptyState title={t("character.voiceTag.empty")} />}
@@ -105,32 +105,18 @@ export function CharacterScenarioSection({
                   />
                 </span>
                 {voicePath ? (
-                  <AudioPlayer
+                  <>
+                    <span className="scenario-card__filename">
+                      {voicePath.split("/").pop()?.split("\\").pop()}
+                    </span>
+                    <AudioPlayer
                     className="scenario-card__player"
                     label={voicePath.split("/").pop()?.split("\\").pop() ?? "Audio"}
                     preload="metadata"
                     src={fileUrl(voicePath)}
                   />
+                  </>
                 ) : null}
-                <TextInput
-                  className="scenario-card__voice-text"
-                  onChange={(event) => onScenarioVoiceTextChange(si, event.target.value)}
-                  placeholder={t("character.voiceTag.voiceText")}
-                  value={scenario.voice_text ?? ""}
-                />
-                <Button
-                  icon={<Save aria-hidden className="button__icon" />}
-                  onClick={() => onSaveVoiceText(si, scenario.voice_text ?? "")}
-                  variant="ghost"
-                />
-                <div className="scenario-card__actions">
-                  <Button
-                    icon={<Trash2 aria-hidden className="button__icon" />}
-                    onClick={() => onDeleteScenario(si)}
-                    variant="ghost"
-                  />
-                </div>
-
                 <div className="scenario-card__voice-type">
                   <label className="radio-group__item">
                     <input
@@ -155,6 +141,19 @@ export function CharacterScenarioSection({
                   {voiceType === "reference" && (
                     <span className="scenario-card__hint">{t("character.voiceTag.voiceHint")}</span>
                   )}
+                </div>
+                <TextInput
+                  className="scenario-card__voice-text"
+                  onChange={(event) => onScenarioVoiceTextChange(si, event.target.value)}
+                  placeholder={t("character.voiceTag.voiceText")}
+                  value={scenario.voice_text ?? ""}
+                />
+                <div className="scenario-card__actions">
+                  <Button
+                    icon={<Trash2 aria-hidden className="button__icon" />}
+                    onClick={() => onDeleteScenario(si)}
+                    variant="ghost"
+                  />
                 </div>
               </div>
             </div>

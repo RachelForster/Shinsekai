@@ -778,5 +778,5 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "character.voiceTag.voiceText": "语音文本",
   "character.voiceTag.voiceHint": "参考语音仅支持 WAV 格式，时长 3-10 秒",
   "character.voiceTag.index": "标签 {index}",
-
+  "character.voiceTag.saveBeforeTranslate": "请保存标签后再使用 AI 翻译功能",
 };
