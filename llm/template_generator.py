@@ -176,20 +176,6 @@ def _apply_requirement_patch(
     return requirement
 
 
-def _render_field_notes(fields: dict[str, _FieldSpec]) -> str:
-    if not fields:
-        return ""
-    lines = ["\nOutput field contract:\n"]
-    for field in fields.values():
-        required = "required" if field.required else "optional"
-        aliases = ""
-        if field.aliases:
-            aliases = f" Aliases: {', '.join(field.aliases)}."
-        lines.append(
-            f"- {field.key} ({field.type}, {required}): {field.description}{aliases}\n"
-        )
-    return "".join(lines)
-
 
 def _target_voice_key(code: str | None) -> str:
     """将 api.yaml 中的 voice_language 归一成 template_gen.voice_target_* 文案键。"""
@@ -351,7 +337,6 @@ class TemplateGenerator:
         if use_llm_translation:
             template += trans_line
         template += _T("json_foot")
-        template += _render_field_notes(fields)
 
         template += _T("sprites_header")
         for char_name in selected_characters:
