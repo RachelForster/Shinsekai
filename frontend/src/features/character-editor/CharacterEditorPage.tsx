@@ -80,18 +80,15 @@ export function CharacterEditorPage() {
     colorInputRef.current?.click();
   }, []);
 
-  const selected = useMemo(
-    () => {
-      if (isCreating) {
-        return undefined;
-      }
-      if (selectedName) {
-        return data.find((character) => character.name === selectedName);
-      }
-      return data[0];
-    },
-    [data, isCreating, selectedName],
-  );
+  const selected = useMemo(() => {
+    if (isCreating) {
+      return undefined;
+    }
+    if (selectedName) {
+      return data.find((character) => character.name === selectedName);
+    }
+    return data[0];
+  }, [data, isCreating, selectedName]);
 
   useEffect(() => {
     if (selected) {

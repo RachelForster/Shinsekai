@@ -516,7 +516,11 @@ export function BackgroundManagerPage() {
       return null;
     }
     return {
-      background: { ...nextDraft, name: nextDraft.name.trim(), sprite_prefix: nextDraft.sprite_prefix.trim() || "temp" },
+      background: {
+        ...nextDraft,
+        name: nextDraft.name.trim(),
+        sprite_prefix: nextDraft.sprite_prefix.trim() || "temp",
+      },
       originalName: isSavedBackground ? selectedName : undefined,
     };
   };

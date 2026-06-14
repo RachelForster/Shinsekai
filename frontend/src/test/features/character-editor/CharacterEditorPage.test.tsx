@@ -16,7 +16,12 @@ vi.mock("../../../shared/ui", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../shared/ui")>();
   return {
     ...actual,
-    FilePicker: ({ onPathChange, onPathsChange, pickLabel, value }: {
+    FilePicker: ({
+      onPathChange,
+      onPathsChange,
+      pickLabel,
+      value,
+    }: {
       onPathChange?: (path: string) => void;
       onPathsChange?: (paths: string[]) => void;
       pickLabel?: string;
@@ -56,8 +61,7 @@ vi.mock("../../../entities/character/repository", () => ({
   listCharacters: () => mockListCharacters(),
   rememberCharacterMemory: vi.fn(),
   saveCharacter: (character: Character, originalName?: string) => mockSaveCharacter(character, originalName),
-  saveCharacterEmotionTags: (name: string, emotionTags: string) =>
-    mockSaveCharacterEmotionTags(name, emotionTags),
+  saveCharacterEmotionTags: (name: string, emotionTags: string) => mockSaveCharacterEmotionTags(name, emotionTags),
   saveSpriteScale: vi.fn(),
   saveSpriteVoiceText: vi.fn(),
   translateCharacterFields: vi.fn(),
