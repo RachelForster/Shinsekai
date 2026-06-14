@@ -9,6 +9,7 @@ interface CharacterMemorySectionProps {
   data?: CharacterMemoryList;
   deletePending: boolean;
   error: unknown;
+  id?: string;
   isError: boolean;
   isFetching: boolean;
   isFetched: boolean;
@@ -26,6 +27,7 @@ export function CharacterMemorySection({
   data,
   deletePending,
   error,
+  id,
   isError,
   isFetched,
   isFetching,
@@ -40,7 +42,7 @@ export function CharacterMemorySection({
   const { t } = useI18n();
 
   return (
-    <section className="section">
+    <section className="section page-section-anchor" id={id}>
       <div className="section__header">
         <h2 className="section__title">{t("character.memory.section")}</h2>
         <div className="page__actions">

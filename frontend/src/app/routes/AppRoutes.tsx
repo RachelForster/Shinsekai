@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Navigate, Route, Routes, HashRouter } from "react-router-dom";
 
 import { AppShell } from "../shell/AppShell";
+import { getInitialSettingsPath } from "../../features/onboarding/onboardingState";
 
 const ApiSettingsPage = lazy(() =>
   import("../../features/api-settings/ApiSettingsPage").then(({ ApiSettingsPage }) => ({
@@ -39,6 +40,11 @@ const MusicCoverPage = lazy(() =>
     default: MusicCoverPage,
   })),
 );
+const OnboardingPage = lazy(() =>
+  import("../../features/onboarding/OnboardingPage").then(({ OnboardingPage }) => ({
+    default: OnboardingPage,
+  })),
+);
 const PluginManagerPage = lazy(() =>
   import("../../features/plugin-manager/PluginManagerPage").then(({ PluginManagerPage }) => ({
     default: PluginManagerPage,
@@ -72,12 +78,17 @@ function lazyRouteElement(children: ReactNode) {
   return <LazyRoute>{children}</LazyRoute>;
 }
 
+function InitialSettingsRedirect() {
+  return <Navigate replace to={getInitialSettingsPath()} />;
+}
+
 export function AppRoutes() {
   return (
     <HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <Routes>
         <Route element={<AppShell />} path="/settings">
-          <Route element={<Navigate replace to="/settings/api" />} index />
+          <Route element={<InitialSettingsRedirect />} index />
+          <Route element={lazyRouteElement(<OnboardingPage />)} path="onboarding" />
           <Route element={lazyRouteElement(<ApiSettingsPage />)} path="api" />
           <Route element={lazyRouteElement(<CharacterEditorPage />)} path="characters" />
           <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
@@ -90,7 +101,7 @@ export function AppRoutes() {
           <Route element={lazyRouteElement(<SystemSettingsPage />)} path="system" />
         </Route>
         <Route element={lazyRouteElement(<ChatStagePage />)} path="/chat" />
-        <Route element={<Navigate replace to="/settings/api" />} path="*" />
+        <Route element={<InitialSettingsRedirect />} path="*" />
       </Routes>
     </HashRouter>
   );

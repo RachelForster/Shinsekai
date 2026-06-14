@@ -16,6 +16,7 @@ interface LlmConnectionSectionProps {
   connectionTestPending: boolean;
   connectionOk: boolean;
   fetchModelsPending: boolean;
+  id?: string;
   llmExtraSchema: Record<string, AdapterExtraFieldSchema>;
   llmProviderSelectOptions: Array<{ label: string; value: string }>;
   modelCandidateListId: string;
@@ -38,6 +39,7 @@ export function LlmConnectionSection({
   connectionTestPending,
   connectionOk,
   fetchModelsPending,
+  id,
   llmExtraSchema,
   llmProviderSelectOptions,
   modelCandidateListId,
@@ -53,7 +55,7 @@ export function LlmConnectionSection({
   const { t } = useI18n();
 
   return (
-    <section className="section">
+    <section className="section page-section-anchor" id={id}>
       <div className="section__header api-page__llm-header">
         <h2 className="section__title">{t("api.llm.connectionTitle")}</h2>
         <AsyncButton

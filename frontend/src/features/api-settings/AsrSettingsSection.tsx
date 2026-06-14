@@ -22,6 +22,7 @@ interface AsrSettingsSectionProps {
   customWhisperModel: boolean;
   disabled: boolean;
   draft: ApiConfig;
+  id?: string;
   onAsrExtraChange: (provider: string, key: string, value: unknown) => void;
   onSystemPatch: (patch: Partial<SystemConfig>) => void;
   showWhisperFields: boolean;
@@ -39,6 +40,7 @@ export function AsrSettingsSection({
   customWhisperModel,
   disabled,
   draft,
+  id,
   onAsrExtraChange,
   onSystemPatch,
   showWhisperFields,
@@ -49,7 +51,7 @@ export function AsrSettingsSection({
   const { t } = useI18n();
 
   return (
-    <details className="section schema-section">
+    <details className="section schema-section page-section-anchor" id={id}>
       <summary className="schema-section__summary">{t("system.asr.title")}</summary>
       <p className="section__description">{t("system.asr.hint")}</p>
       {activeAsrProvider === "vosk" ? (

@@ -28,7 +28,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import { AlertDialog, useToast } from "../../shared/ui";
+import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
@@ -561,6 +561,13 @@ export function CharacterEditorPage() {
       })),
     [draft.sprites, spriteTags, t],
   );
+  const characterSectionNavItems = [
+    { id: "character-basic", label: t("character.section.basic") },
+    { id: "character-personality", label: t("character.section.personality") },
+    { id: "character-voice", label: t("character.section.voice") },
+    { id: "character-sprites", label: t("character.section.sprites") },
+    { id: "character-memory", label: t("character.memory.section") },
+  ];
 
   const confirmPendingResourceDelete = () => {
     if (!pendingResourceDelete) {
@@ -829,6 +836,7 @@ export function CharacterEditorPage() {
         onSave={saveDraft}
         onSelectCharacter={selectExistingCharacter}
         savePending={saveMutation.isPending}
+        sectionNav={<PageSectionNav ariaLabel={t("character.title")} items={characterSectionNavItems} />}
         selectedName={selectedName}
       />
 
@@ -837,6 +845,7 @@ export function CharacterEditorPage() {
           <CharacterBasicSection
             colorPickerValue={colorPickerValue}
             draft={draft}
+            id="character-basic"
             nameError={nameError}
             onChange={update}
             onColorInputRef={setColorInputElement}
@@ -849,6 +858,7 @@ export function CharacterEditorPage() {
           <CharacterPersonalitySection
             aiPending={aiSettingMutation.isPending}
             draft={draft}
+            id="character-personality"
             onAiWrite={generateSetting}
             onChange={update}
             onTranslate={translateDraft}
@@ -856,11 +866,12 @@ export function CharacterEditorPage() {
           />
         </div>
 
-        <CharacterVoiceSection draft={draft} onChange={update} />
+        <CharacterVoiceSection draft={draft} id="character-voice" onChange={update} />
 
         <CharacterSpritesSection
           draft={draft}
           emotionTagsPending={emotionTagsMutation.isPending}
+          id="character-sprites"
           onClearSprites={requestClearSprites}
           onOpenBulkTags={openBulkSpriteTagsDialog}
           onPendingSpritePathsChange={setPendingSpritePaths}
@@ -895,6 +906,7 @@ export function CharacterEditorPage() {
           data={memoryQuery.data}
           deletePending={memoryDeleteMutation.isPending}
           error={memoryQuery.error}
+          id="character-memory"
           isError={memoryQuery.isError}
           isFetched={memoryQuery.isFetched}
           isFetching={memoryQuery.isFetching}

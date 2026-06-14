@@ -25,7 +25,16 @@ import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
 import { resumeLastChat } from "../../entities/chat/repository";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
-import { AsyncButton, Button, Dialog, EmptyState, QueryErrorState, SchemaDrivenForm, useToast } from "../../shared/ui";
+import {
+  AsyncButton,
+  Button,
+  Dialog,
+  EmptyState,
+  PageSectionNav,
+  QueryErrorState,
+  SchemaDrivenForm,
+  useToast,
+} from "../../shared/ui";
 import { AdapterExtraSection } from "./AdapterExtraSection";
 import { ApiLanguageSection } from "./ApiLanguageSection";
 import { AsrSettingsSection } from "./AsrSettingsSection";
@@ -513,6 +522,14 @@ export function ApiSettingsPage() {
   const llmExtraSchema = adapterSchema(adapterCatalog?.llm, draft.llm_provider);
   const ttsExtraSchema = adapterSchema(adapterCatalog?.tts, draft.tts_provider);
   const t2iExtraSchema = adapterSchema(adapterCatalog?.t2i, draft.t2i_provider);
+  const apiSectionNavItems = [
+    { id: "api-language", label: t("api.language.title") },
+    { id: "api-llm", label: t("api.llm.connectionTitle") },
+    { id: "api-tts", label: t("api.tts.bundleTitle") },
+    { id: "api-t2i", label: t("api.t2i.title") },
+    { id: "api-asr", label: t("system.asr.title") },
+    { id: "api-links", label: t("api.links.title") },
+  ];
 
   const handleSave = () => {
     const nextErrors = validatePayloadFromSchema(apiSchema, draft);
@@ -589,9 +606,11 @@ export function ApiSettingsPage() {
             {t("api.resume.btn")}
           </AsyncButton>
         </div>
+        <PageSectionNav ariaLabel={t("api.title")} items={apiSectionNavItems} />
       </header>
       <ApiLanguageSection
         disabled={languageMutation.isPending}
+        id="api-language"
         onChange={handleLanguageChange}
         systemDraft={systemDraft}
       />
@@ -604,6 +623,7 @@ export function ApiSettingsPage() {
         connectionOk={llmConnectionOk}
         connectionTestPending={llmConnectionTestMutation.isPending}
         fetchModelsPending={modelFetchMutation.isPending}
+        id="api-llm"
         llmExtraSchema={llmExtraSchema}
         llmProviderSelectOptions={llmProviderSelectOptions}
         modelCandidateListId={modelCandidateListId}
@@ -630,6 +650,7 @@ export function ApiSettingsPage() {
         dialogOpen={ttsBundleDialogOpen}
         downloadPending={ttsBundleMutation.isPending}
         error={ttsBundleError}
+        id="api-tts"
         kind={ttsBundleKind}
         onCancelDownload={() => ttsBundleCancelMutation.mutate()}
         onCloseDialog={() => setTtsBundleDialogOpen(false)}
@@ -658,6 +679,7 @@ export function ApiSettingsPage() {
         errors={errors}
         extraSchema={t2iExtraSchema}
         extraValues={draft.t2i_extra_configs?.[draft.t2i_provider] ?? {}}
+        id="api-t2i"
         onAdapterExtraChange={(key, value) => updateAdapterExtra("t2i_extra_configs", draft.t2i_provider, key, value)}
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
         providerOptions={t2iProviderOptions}
@@ -671,6 +693,7 @@ export function ApiSettingsPage() {
         customWhisperModel={customWhisperModel}
         disabled={saveMutation.isPending}
         draft={draft}
+        id="api-asr"
         onAsrExtraChange={updateAsrExtra}
         onSystemPatch={updateSystemDraft}
         showWhisperFields={showWhisperFields}
@@ -696,7 +719,7 @@ export function ApiSettingsPage() {
           values={draft!.t2i_extra_configs?.[draft!.t2i_provider] ?? {}}
         />
       ) : null} */}
-      <ResourceLinksSection />
+      <ResourceLinksSection id="api-links" />
       <Dialog
         closeLabel={t("common.close")}
         footer={

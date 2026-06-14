@@ -17,11 +17,12 @@ function applyColorScheme(scheme: "light" | "dark") {
 
 interface ApiLanguageSectionProps {
   disabled: boolean;
+  id?: string;
   onChange: (language: UiLanguage) => void;
   systemDraft: SystemConfig;
 }
 
-export function ApiLanguageSection({ disabled, onChange, systemDraft }: ApiLanguageSectionProps) {
+export function ApiLanguageSection({ disabled, id, onChange, systemDraft }: ApiLanguageSectionProps) {
   const { t } = useI18n();
   const [darkMode, setDarkMode] = useState(() => readColorScheme() === "dark");
 
@@ -35,7 +36,7 @@ export function ApiLanguageSection({ disabled, onChange, systemDraft }: ApiLangu
     { label: t("api.language.ja"), value: "ja" },
   ];
   return (
-    <details className="section schema-section" open>
+    <details className="section schema-section page-section-anchor" id={id} open>
       <summary className="schema-section__summary">{t("api.language.title")}</summary>
       <div className="form-grid form-grid--two">
         <label className="field-row">
