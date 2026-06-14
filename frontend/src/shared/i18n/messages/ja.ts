@@ -945,7 +945,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "effect.asset.uploadRow": "アップロード",
   "effect.delete.confirmBody": "エフェクトスキーム「{name}」を削除しますか？",
   "effect.delete.confirmTitle": "エフェクトスキームを削除",
-  "effect.description": "BGMと並行して再生される独立した効果音（雨音、風音など）を管理します。シナリオのキーワードで自動再生されます。",
+  "effect.description":
+    "BGMと並行して再生される独立した効果音（雨音、風音など）を管理します。シナリオのキーワードで自動再生されます。",
   "effect.emptyBody": "「新規」をクリックして最初のエフェクトスキームを作成してください。",
   "effect.emptyTitle": "エフェクトスキームがありません",
   "effect.error.deleteFallback": "削除に失敗しました。",

@@ -437,8 +437,16 @@
   }
 }
 
-.template-effect-section { margin-top: var(--spacing-sm); }
-.template-effect-section__label { display: block; font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); color: var(--color-text-secondary); margin-bottom: var(--spacing-xs); }
+.template-effect-section {
+  margin-top: var(--spacing-sm);
+}
+.template-effect-section__label {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
 .template-effect-hint {
   margin-top: var(--spacing-sm);
   padding: var(--spacing-sm);

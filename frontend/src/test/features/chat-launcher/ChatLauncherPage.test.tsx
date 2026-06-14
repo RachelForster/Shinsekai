@@ -247,7 +247,7 @@ describe("ChatLauncherPage", () => {
     expect(mocks.saveTemplateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         background: "school",
-      effectNames: [],
+        effectNames: [],
         historyPath: "D:/history/session.json",
         initSpritePath: "D:/sprites/init.png",
         roomId: "room-7",

@@ -15,6 +15,17 @@ def _effect_dir(name: str) -> Path:
     return Path(EFFECT_UPLOAD_DIR) / name
 
 
+def _copy_effect_dir(src: Path, dst: Path) -> None:
+    """Copy an effect's managed audio directory from src to dst."""
+    if not src.is_dir():
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+    for item in src.iterdir():
+        dest = dst / item.name
+        if item.is_file():
+            shutil.copy2(item, dest)
+
+
 def _effect_by_name(state: BridgeState, name: str) -> Any:
     effect = state.config_manager.get_effect_by_name(name)
     if effect is None:
@@ -44,7 +55,18 @@ def _save_effect(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
         original = state.config_manager.get_effect_by_name(original_name)
         if original is None:
             raise KeyError(f"effect not found: {original_name}")
+        # Remove the original effect from the list
         effect_list[:] = [e for e in effect_list if e.name.lower() != original_name.lower()]
+        # If renaming to a name that already exists, auto-suffix
+        existing_names = {e.name.lower() for e in effect_list}
+        base_name = name
+        counter = 1
+        while name.lower() in existing_names:
+            name = f"{base_name}_{counter}"
+            counter += 1
+        if name != base_name:
+            body["name"] = name
+            print(f"[Effect] 重命名冲突，自动更名为: {name}")
         # Rename directory if it exists, and update paths
         old_dir = _effect_dir(original_name)
         new_dir = _effect_dir(name)
@@ -58,7 +80,13 @@ def _save_effect(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
                     p.replace(old_prefix, new_prefix) if isinstance(p, str) and p.startswith(old_prefix) else p
                     for p in body["audio_list"]
                 ]
-            old_dir.rename(new_dir)
+            try:
+                old_dir.rename(new_dir)
+            except OSError:
+                # If rename fails (e.g. target already exists), copy instead
+                if old_dir.is_dir():
+                    _copy_effect_dir(old_dir, new_dir)
+                    shutil.rmtree(old_dir, ignore_errors=True)
         updated = EffectModel.model_validate(body)
         effect_list.append(updated)
         state.config_manager.save_effect_config()
@@ -158,13 +186,18 @@ def _delete_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[st
         except OSError:
             pass  # File may already be gone
 
-    # Rebuild tags
+    # Rebuild tags — preserve all lines to keep 1:1 audio-to-tag mapping
     old_tags = str(effect.audio_tags or "")
-    tag_lines = [line for line in old_tags.splitlines() if line.strip()]
+    # Use splitlines() without filtering to maintain index alignment with audio_list
+    tag_lines = old_tags.splitlines()
+    # Drop trailing empty strings from splitlines (they don't correspond to any audio index)
+    while tag_lines and not tag_lines[-1].strip():
+        tag_lines.pop()
     if index < len(tag_lines):
         tag_lines.pop(index)
+    # Rebuild with fresh numbering, preserving existing tag content after the colon
     new_tags = "".join(
-        f"特效 {i + 1}：{line.split('：', 1)[-1] if '：' in line else line}\n"
+        f"特效 {i + 1}：{line.split('：', 1)[-1].strip() if '：' in line else line.strip()}\n"
         for i, line in enumerate(tag_lines)
     )
 
@@ -195,6 +228,78 @@ def _delete_all_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dic
 def _save_effect_audio_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name") or "").strip()
     effect = _effect_by_name(state, name)
-    effect.audio_tags = str(payload.get("audioTags") or "")
+    new_tags = str(payload.get("audioTags") or "")
+    effect.audio_tags = new_tags
+    # 检查每个音频是否都有对应提示词
+    tag_lines = new_tags.splitlines()
+    audio_count = len(effect.audio_list or [])
+    missing = []
+    for i in range(audio_count):
+        line = tag_lines[i] if i < len(tag_lines) else ""
+        # 提取冒号后的内容作为提示词
+        if "：" in line:
+            keyword = line.split("：", 1)[-1].strip()
+        elif ":" in line:
+            keyword = line.split(":", 1)[-1].strip()
+        else:
+            keyword = line.strip()
+        if not keyword:
+            missing.append(str(i + 1))
+    if missing:
+        print(f"[Effect] 警告：特效方案 '{name}' 的第 {', '.join(missing)} 个音频未输入提示词，将无法通过关键词触发。")
     state.config_manager.save_effect_config()
     return _effect_json_after_reload(state, name)
+
+
+def _build_effect_usage_guide(state: BridgeState, effect_names: list[str]) -> str:
+    """Generate a usage guide for selected effects to inject into the system prompt.
+
+    Tells the LLM:
+    - Which effects are available and their keywords
+    - How to use loop:/stop:/before:/after: prefixes
+    """
+    if not effect_names:
+        return ""
+
+    lines: list[str] = []
+    lines.append("[特效音效系统]")
+    lines.append("你可以在 JSON 输出的 effect 字段中使用以下特效，格式示例：")
+    lines.append('  {"effect": "关键词"}            → 对话前播放一次')
+    lines.append('  {"effect": "loop:关键词"}       → 开始循环播放（雨声、风声等持续性音效）')
+    lines.append('  {"effect": "stop:关键词"}       → 停止该关键词的循环播放')
+    lines.append('  {"effect": "before:关键词"}     → 对话前播放一次（同无前缀）')
+    lines.append('  {"effect": "after:关键词"}      → 对话后播放一次')
+    lines.append("")
+
+    for ef_name in effect_names:
+        ef = state.config_manager.get_effect_by_name(ef_name)
+        if ef is None:
+            continue
+        tags = (ef.audio_tags or "").splitlines()
+        audio_list = ef.audio_list or []
+        all_kw: list[str] = []
+        for i, tag_line in enumerate(tags):
+            tag_line = tag_line.strip()
+            if not tag_line:
+                continue
+            if "：" in tag_line:
+                keyword = tag_line.split("：", 1)[-1].strip()
+            elif ":" in tag_line:
+                keyword = tag_line.split(":", 1)[-1].strip()
+            else:
+                keyword = tag_line
+            if keyword and i < len(audio_list) and audio_list[i]:
+                # 拆分逗号分隔的多关键词
+                for kw in keyword.split(","):
+                    kw = kw.strip()
+                    if kw:
+                        all_kw.append(kw)
+
+        if all_kw:
+            lines.append(f"「{ef_name}」可触发：{', '.join(all_kw)}")
+        else:
+            lines.append(f"「{ef_name}」已加载但未配置触发词")
+
+    lines.append("")
+    lines.append("注意：仅在适当时机使用特效，过度使用会破坏沉浸感。effect 字段为可选，无需求时省略。")
+    return "\n".join(lines)

@@ -189,8 +189,7 @@ export function EffectManagerPage() {
   });
 
   const audioUploadMutation = useMutation({
-    mutationFn: (paths: string[]) =>
-      uploadEffectAudio({ audioTags: draft.audio_tags, name: currentEffectName, paths }),
+    mutationFn: (paths: string[]) => uploadEffectAudio({ audioTags: draft.audio_tags, name: currentEffectName, paths }),
     onError(error) {
       showToast({
         kind: "error",
@@ -317,22 +316,25 @@ export function EffectManagerPage() {
 
   const pendingDeleteCopy = pendingDelete ? effectDeleteDialogCopy(pendingDelete, t) : null;
 
-  const saveDraft = useCallback((forceNew = false) => {
-    const trimmed = draft.name.trim();
-    if (!trimmed) {
-      setNameError(t("effect.validation.nameRequired"));
-      showToast({
-        kind: "error",
-        message: t("common.fixInvalidFields"),
-        title: t("common.validationFailed"),
+  const saveDraft = useCallback(
+    (forceNew = false) => {
+      const trimmed = draft.name.trim();
+      if (!trimmed) {
+        setNameError(t("effect.validation.nameRequired"));
+        showToast({
+          kind: "error",
+          message: t("common.fixInvalidFields"),
+          title: t("common.validationFailed"),
+        });
+        return;
+      }
+      saveMutation.mutate({
+        effect: { ...draft, name: trimmed },
+        originalName: forceNew || isCreating ? undefined : selectedName,
       });
-      return;
-    }
-    saveMutation.mutate({
-      effect: { ...draft, name: trimmed },
-      originalName: forceNew || isCreating ? undefined : selectedName,
-    });
-  }, [draft, isCreating, selectedName, saveMutation, showToast, t]);
+    },
+    [draft, isCreating, selectedName, saveMutation, showToast, t],
+  );
 
   /* 上传音频：如果方案尚未保存，先自动保存再打开文件选择器 */
   const handleUploadAudio = useCallback(() => {
@@ -441,10 +443,7 @@ export function EffectManagerPage() {
               {t("common.export")}
             </AsyncButton>
           </div>
-          <Button
-            icon={<Plus aria-hidden className="button__icon" />}
-            onClick={() => saveDraft(true)}
-          >
+          <Button icon={<Plus aria-hidden className="button__icon" />} onClick={() => saveDraft(true)}>
             {t("common.new")}
           </Button>
           <AsyncButton
@@ -510,7 +509,11 @@ export function EffectManagerPage() {
                 <div className="input-group effect-color-control">
                   <TextInput onChange={(event) => update("color", event.target.value)} value={draft.color} />
                   <span aria-hidden className="swatch" style={{ background: colorPickerValue }} />
-                  <Button icon={<Palette aria-hidden className="button__icon" />} onClick={openColorPicker} variant="ghost">
+                  <Button
+                    icon={<Palette aria-hidden className="button__icon" />}
+                    onClick={openColorPicker}
+                    variant="ghost"
+                  >
                     {t("effect.action.pickColor")}
                   </Button>
                   <input
@@ -639,11 +642,7 @@ export function EffectManagerPage() {
                         />
                       </span>
                       <span className="effect-audio-list__preview">
-                        <AudioPlayer
-                          compact
-                          label={`${t("effect.asset.preview")} ${filename}`}
-                          src={fileSrc}
-                        />
+                        <AudioPlayer compact label={`${t("effect.asset.preview")} ${filename}`} src={fileSrc} />
                       </span>
                     </div>
                   );

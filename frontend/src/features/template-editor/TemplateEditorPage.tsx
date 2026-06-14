@@ -137,7 +137,7 @@ export function TemplateEditorPage() {
     lines.push("- loop:关键词 → 开始循环播放（用于持续性音效如雨声、风声）");
     lines.push("- stop:关键词 → 停止循环播放");
     lines.push("- 关键词 → 默认对话前播放一次");
-    lines.push("循环示例：开始时 {\"effect\": \"loop:雨声\"}，结束时 {\"effect\": \"stop:雨声\"}");
+    lines.push('循环示例：开始时 {"effect": "loop:雨声"}，结束时 {"effect": "stop:雨声"}');
     return lines.join("\n");
   }, [effects, selectedEffectNames, selectedEffects]);
 

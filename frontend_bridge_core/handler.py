@@ -30,6 +30,7 @@ from .backgrounds import (
     _upload_background_images,
 )
 from .effects import (
+    _build_effect_usage_guide,
     _delete_all_effect_audio,
     _delete_effect,
     _delete_effect_audio,
@@ -1010,6 +1011,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             effect_names_str = ",".join(str(n) for n in effect_names_list)
         else:
             effect_names_str = ""
+        # 将选中特效方案的关键词和用法注入系统模板
+        effect_guide = _build_effect_usage_guide(self.state, effect_names_list if isinstance(effect_names_list, list) else [])
+        if effect_guide:
+            system_template = system_template.rstrip() + "\n\n" + effect_guide
         message = _launch_chat(
             self.state,
             effect_names=effect_names_str,

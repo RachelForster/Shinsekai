@@ -946,7 +946,8 @@ export const enMessages: Record<MessageKey, string> = {
   "effect.asset.uploadRow": "Upload",
   "effect.delete.confirmBody": 'Delete effect scheme "{name}"?',
   "effect.delete.confirmTitle": "Delete effect scheme",
-  "effect.description": "Manage independent sound effects (rain, wind, etc.) that play alongside background music, triggered by story cues or prompt keywords.",
+  "effect.description":
+    "Manage independent sound effects (rain, wind, etc.) that play alongside background music, triggered by story cues or prompt keywords.",
   "effect.emptyBody": 'Click "New" to create the first effect scheme.',
   "effect.emptyTitle": "No effect schemes",
   "effect.error.deleteFallback": "Failed to delete.",

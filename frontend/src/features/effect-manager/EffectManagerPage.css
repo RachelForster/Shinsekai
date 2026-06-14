@@ -139,7 +139,20 @@
   max-width: 240px;
 }
 
-.effect-color-control { gap: 2px; }
-.effect-color-control .input { min-width: 88px; }
-.effect-color-control .button { flex: 0 0 auto; padding: 0 4px; }
-.effect-color-control .swatch { width: 16px; height: 16px; border-radius: 2px; border: 1px solid var(--color-border); flex-shrink: 0; }
+.effect-color-control {
+  gap: 2px;
+}
+.effect-color-control .input {
+  min-width: 88px;
+}
+.effect-color-control .button {
+  flex: 0 0 auto;
+  padding: 0 4px;
+}
+.effect-color-control .swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
