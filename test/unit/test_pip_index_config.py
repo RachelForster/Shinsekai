@@ -44,6 +44,7 @@ def _clear_index_env(monkeypatch):
         "SHINSEKAI_PIP_INDEX_URL",
         "SHINSEKAI_PIP_INDEX_URLS",
         "SHINSEKAI_RUNTIME_SOURCE",
+        "SHINSEKAI_MIRROR_REGION",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -61,6 +62,24 @@ def test_pip_index_urls_respects_user_pip_env_overrides(monkeypatch, env_name):
 
 def test_pip_index_urls_prefers_china_mirrors_by_default(monkeypatch):
     _clear_index_env(monkeypatch)
+
+    urls = pip_index_config.pip_index_urls()
+
+    assert urls[0] == "https://pypi.tuna.tsinghua.edu.cn/simple/"
+    assert "https://pypi.org/simple/" in urls
+
+
+def test_pip_index_urls_uses_official_index_for_global_mirror_region(monkeypatch):
+    _clear_index_env(monkeypatch)
+    monkeypatch.setenv("SHINSEKAI_MIRROR_REGION", "global")
+
+    assert pip_index_config.pip_index_urls() == ["https://pypi.org/simple/"]
+
+
+def test_pip_index_urls_runtime_source_overrides_mirror_region(monkeypatch):
+    _clear_index_env(monkeypatch)
+    monkeypatch.setenv("SHINSEKAI_MIRROR_REGION", "global")
+    monkeypatch.setenv("SHINSEKAI_RUNTIME_SOURCE", "china")
 
     urls = pip_index_config.pip_index_urls()
 

@@ -32,6 +32,10 @@ configure_logging("chat", project_root=os.environ.get("EASYAI_PROJECT_ROOT") or 
 logger = get_logger(__name__)
 install_main_exception_hook(app_name="Shinsekai Chat", logger=logger)
 
+from config.mirror_env import apply_mirror_environment_from_system_config
+
+apply_mirror_environment_from_system_config()
+
 import llm.tools.character_tools
 import llm.tools.memory_tools
 import llm.tools.tool_search

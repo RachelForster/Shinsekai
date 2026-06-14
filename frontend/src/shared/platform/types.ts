@@ -84,6 +84,12 @@ export interface SystemConfig {
   live_room_id: string;
   chat_window_geometry_b64: string;
   chat_ui_theme_path: string;
+  mirror_auto_detect_china: boolean;
+  mirror_region: string;
+  huggingface_mirror_url: string;
+  huggingface_cache_dir: string;
+  github_mirror_url: string;
+  pypi_mirror_url: string;
   music_cover_work_dir: string;
   music_cover_yt_dlp_exe: string;
   music_cover_ffmpeg_exe: string;

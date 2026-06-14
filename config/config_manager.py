@@ -11,6 +11,7 @@ from config.schema import (
     clamp_compact_target_ratio,
 )
 from llm.constants import LLM_BASE_URLS
+from config.mirror_env import apply_mirror_environment
 import traceback
 
 
@@ -125,6 +126,7 @@ class ConfigManager:
                 characters=character_list,
                 background_list=background
             )
+            apply_mirror_environment(system_config)
             print("配置加载成功！")
         except ValidationError as e:
             self._config = None
@@ -165,6 +167,7 @@ class ConfigManager:
             self._SYSTEM_CONFIG_PATH, 
             self.config.system_config.model_dump(by_alias=True)
         )
+        apply_mirror_environment(self.config.system_config)
         print("system_config.yaml 保存完成。")
 
     def set_ui_language(self, code: str) -> None:

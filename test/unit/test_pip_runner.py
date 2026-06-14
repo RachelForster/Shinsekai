@@ -18,6 +18,7 @@ def _clear_index_env(monkeypatch):
         "SHINSEKAI_PIP_INDEX_URLS",
         "SHINSEKAI_PIP_INSTALL_ARGS",
         "SHINSEKAI_RUNTIME_SOURCE",
+        "SHINSEKAI_MIRROR_REGION",
     ):
         monkeypatch.delenv(name, raising=False)
 

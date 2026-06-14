@@ -17,11 +17,19 @@ fn pip_index_urls_honor_explicit_source_preference() {
     };
 
     assert_eq!(
-        pip_index_urls_for_source_values(&manifest, Some("official"), false, None, None, None),
+        pip_index_urls_for_source_values(
+            &manifest,
+            Some("official"),
+            false,
+            None,
+            None,
+            None,
+            None
+        ),
         vec!["https://official.example/simple/".to_string()]
     );
     assert_eq!(
-        pip_index_urls_for_source_values(&manifest, Some("china"), false, None, None, None),
+        pip_index_urls_for_source_values(&manifest, Some("china"), false, None, None, None, None),
         vec![
             "https://china.example/simple/".to_string(),
             "https://china-backup.example/simple/".to_string(),
@@ -41,7 +49,7 @@ fn pip_index_urls_respect_user_pip_configuration() {
     };
 
     assert_eq!(
-        pip_index_urls_for_source_values(&manifest, Some("china"), true, None, None, None),
+        pip_index_urls_for_source_values(&manifest, Some("china"), true, None, None, None, None),
         Vec::<String>::new()
     );
 }
@@ -65,11 +73,84 @@ fn pip_index_urls_allow_shinsekai_override() {
             Some(" https://mirror.example/simple/ "),
             Some("https://mirror-b.example/simple/, https://mirror.example/simple/"),
             None,
+            None,
         ),
         vec![
             "https://mirror.example/simple/".to_string(),
             "https://mirror-b.example/simple/".to_string(),
         ]
+    );
+}
+
+#[test]
+fn pip_index_urls_follow_python_mirror_region() {
+    let manifest = RuntimeManifest {
+        version: "2.0.1".to_string(),
+        schema: Some(2),
+        required_modules: Vec::new(),
+        profiles: HashMap::new(),
+        probes: ProbeConfig::default(),
+        pip_indexes: PipIndexConfig {
+            official: Some("https://official.example/simple/".to_string()),
+            official_urls: Vec::new(),
+            china: Some("https://china.example/simple/".to_string()),
+            china_urls: vec!["https://china-backup.example/simple/".to_string()],
+        },
+    };
+
+    assert_eq!(
+        pip_index_urls_for_source_values(&manifest, None, false, None, None, None, Some("global")),
+        vec!["https://official.example/simple/".to_string()]
+    );
+    assert_eq!(
+        pip_index_urls_for_source_values(&manifest, None, false, None, None, None, Some("china")),
+        vec![
+            "https://china.example/simple/".to_string(),
+            "https://china-backup.example/simple/".to_string(),
+            "https://official.example/simple/".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn pip_index_urls_runtime_source_overrides_python_mirror_region() {
+    let manifest = RuntimeManifest {
+        version: "2.0.1".to_string(),
+        schema: Some(2),
+        required_modules: Vec::new(),
+        profiles: HashMap::new(),
+        probes: ProbeConfig::default(),
+        pip_indexes: PipIndexConfig {
+            official: Some("https://official.example/simple/".to_string()),
+            official_urls: Vec::new(),
+            china: Some("https://china.example/simple/".to_string()),
+            china_urls: Vec::new(),
+        },
+    };
+
+    assert_eq!(
+        pip_index_urls_for_source_values(
+            &manifest,
+            None,
+            false,
+            None,
+            None,
+            Some("china"),
+            Some("global")
+        ),
+        vec!["https://china.example/simple/".to_string()]
+    );
+    assert_eq!(
+        pip_index_urls_for_source_values(
+            &manifest,
+            None,
+            false,
+            None,
+            None,
+            Some("official"),
+            Some("china")
+        ),
+        vec!["https://official.example/simple/".to_string()]
     );
 }
 
