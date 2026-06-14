@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, FileImage, Gamepad2, Plug, Settings } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { useI18n } from "../../shared/i18n";
 import { GuidedFlow } from "../../shared/ui";
-import { onboardingCopy } from "./onboardingCopy";
+import { onboardingCopy, type OnboardingStepId } from "./onboardingCopy";
 import { ApiSetupPanel } from "./steps/ApiSetupPanel";
 import { BackgroundSetupPanel } from "./steps/BackgroundSetupPanel";
 import { CharacterSetupPanel } from "./steps/CharacterSetupPanel";
@@ -16,11 +16,28 @@ function format(template: string, values: Record<string, number | string>) {
   return template.replace(/\{(\w+)\}/g, (match, key) => String(values[key] ?? match));
 }
 
+function isOnboardingStepId(value: unknown): value is OnboardingStepId {
+  return (
+    value === "api" || value === "plugins" || value === "characters" || value === "backgrounds" || value === "complete"
+  );
+}
+
 export function OnboardingPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const { language } = useI18n();
   const copy = onboardingCopy[language] ?? onboardingCopy.zh_CN;
+  const requestedStep = isOnboardingStepId((location.state as { activeStep?: unknown } | null)?.activeStep)
+    ? (location.state as { activeStep: OnboardingStepId }).activeStep
+    : undefined;
+  const [activeStep, setActiveStep] = useState<OnboardingStepId>(requestedStep ?? "api");
   const stepLabel = (current: number, total: number) => format(copy.stepLabel, { current, total });
+
+  useEffect(() => {
+    if (requestedStep) {
+      setActiveStep(requestedStep);
+    }
+  }, [requestedStep]);
 
   const steps = useMemo(
     () => [
@@ -72,9 +89,15 @@ export function OnboardingPage() {
 
   return (
     <GuidedFlow
+      activeId={activeStep}
       backLabel={copy.actions.previous}
       finishLabel={copy.finishLabel}
       nextLabel={copy.actions.next}
+      onActiveChange={(id) => {
+        if (isOnboardingStepId(id)) {
+          setActiveStep(id);
+        }
+      }}
       onFinish={() => navigate("/settings/templates")}
       optionalLabel={copy.optionalLabel}
       requiredLabel={copy.requiredLabel}

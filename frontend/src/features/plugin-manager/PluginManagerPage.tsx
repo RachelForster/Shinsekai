@@ -59,6 +59,34 @@ import "./PluginManagerPage.css";
 
 const INSTALLED_PLUGIN_PAGE_SIZE = 8;
 
+interface PluginRouteReturnTo {
+  hash?: string;
+  pathname: string;
+  search?: string;
+  state?: unknown;
+}
+
+interface PluginRouteState {
+  pluginId?: unknown;
+  returnTo?: unknown;
+}
+
+function parsePluginRouteReturnTo(value: unknown): PluginRouteReturnTo | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Partial<PluginRouteReturnTo>;
+  if (typeof candidate.pathname !== "string" || !candidate.pathname.startsWith("/settings")) {
+    return null;
+  }
+  return {
+    hash: typeof candidate.hash === "string" ? candidate.hash : "",
+    pathname: candidate.pathname,
+    search: typeof candidate.search === "string" ? candidate.search : "",
+    state: candidate.state,
+  };
+}
+
 function normalizePluginKey(value: string | null | undefined) {
   return (value ?? "")
     .trim()
@@ -250,6 +278,7 @@ export function PluginManagerPage() {
   const [pendingCatalogInstall, setPendingCatalogInstall] = useState<PluginCatalogItem | null>(null);
   const [pendingUninstall, setPendingUninstall] = useState<PluginManifest | null>(null);
   const [detailPlugin, setDetailPlugin] = useState<PluginManifest | null>(null);
+  const [detailReturnTo, setDetailReturnTo] = useState<PluginRouteReturnTo | null>(null);
   const [pluginReloadPending, setPluginReloadPending] = useState(false);
   const [publisherOpen, setPublisherOpen] = useState(false);
   const [appUpdateTask, setAppUpdateTask] = useState<TaskSnapshot<AppUpdateResult> | null>(null);
@@ -273,7 +302,7 @@ export function PluginManagerPage() {
   });
 
   useEffect(() => {
-    const state = location.state as { pluginId?: unknown } | null;
+    const state = location.state as PluginRouteState | null;
     const pluginId = typeof state?.pluginId === "string" ? state.pluginId : "";
     if (!pluginId || !data.length || detailPlugin?.id === pluginId) {
       return;
@@ -283,6 +312,7 @@ export function PluginManagerPage() {
       return;
     }
     setDetailPlugin(plugin);
+    setDetailReturnTo(parsePluginRouteReturnTo(state?.returnTo));
     navigate(location.pathname, { replace: true, state: null });
   }, [data, detailPlugin?.id, location.pathname, location.state, navigate]);
 
@@ -447,8 +477,19 @@ export function PluginManagerPage() {
     }
   };
 
+  const handleDetailBack = () => {
+    if (detailReturnTo) {
+      const { state, ...to } = detailReturnTo;
+      setDetailPlugin(null);
+      setDetailReturnTo(null);
+      navigate(to, { state });
+      return;
+    }
+    setDetailPlugin(null);
+  };
+
   if (detailPlugin) {
-    return <PluginDetailPanel detailPlugin={detailPlugin} onBack={() => setDetailPlugin(null)} />;
+    return <PluginDetailPanel detailPlugin={detailPlugin} onBack={handleDetailBack} />;
   }
 
   return (
@@ -678,7 +719,10 @@ export function PluginManagerPage() {
                         <Button
                           disabled={pluginBusy || !loaded}
                           icon={<Settings aria-hidden className="button__icon" />}
-                          onClick={() => setDetailPlugin(plugin)}
+                          onClick={() => {
+                            setDetailReturnTo(null);
+                            setDetailPlugin(plugin);
+                          }}
                           tooltip={t("plugin.action.viewConfig")}
                           variant="ghost"
                         >

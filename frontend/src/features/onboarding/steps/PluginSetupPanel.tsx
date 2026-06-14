@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, DownloadCloud, Eye, Globe2, Mic2, Settings } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { installMissingRuntimeDependency } from "../../../entities/chat/repository";
 import {
@@ -110,7 +110,7 @@ function selectedCountLabel(template: string, count: number) {
 }
 
 function pluginHasConfig(plugin: PluginManifest | null | undefined) {
-  return Boolean(plugin && (plugin.settingsPages.length || plugin.toolsTabs.length));
+  return Boolean(plugin && ((plugin.settingsPages ?? []).length || (plugin.toolsTabs ?? []).length));
 }
 
 function findReloadedPlugin(plugin: PluginManifest, plugins: PluginManifest[]) {
@@ -121,8 +121,50 @@ function findReloadedPlugin(plugin: PluginManifest, plugins: PluginManifest[]) {
   );
 }
 
+function pluginManifestText(plugin: PluginManifest) {
+  return normalizeSearchText(
+    [
+      plugin.id,
+      plugin.title,
+      plugin.description,
+      plugin.entry,
+      plugin.directory,
+      plugin.install?.entry,
+      plugin.install?.repo,
+      plugin.install?.sourceLabel,
+      ...(plugin.settingsPages ?? []),
+      ...(plugin.toolsTabs ?? []),
+      ...(plugin.slots ?? []),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
+
+function installedPluginMatchScore(plugin: PluginManifest, preset: PluginPreset) {
+  const text = pluginManifestText(plugin);
+  if (preset.excludedKeywords?.some((keyword) => text.includes(normalizeSearchText(keyword)))) {
+    return 0;
+  }
+  return preset.keywords.reduce((score, keyword) => {
+    return text.includes(normalizeSearchText(keyword)) ? score + 1 : score;
+  }, 0);
+}
+
+function findInstalledPresetPlugin(plugins: PluginManifest[], preset: PluginPreset) {
+  let best: { plugin: PluginManifest; score: number } | null = null;
+  for (const plugin of plugins) {
+    const score = installedPluginMatchScore(plugin, preset);
+    if (score > 0 && (!best || score > best.score)) {
+      best = { plugin, score };
+    }
+  }
+  return best?.plugin;
+}
+
 export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [selectedIds, setSelectedIds] = useState<PluginPresetId[]>(["visual", "browser", "voice"]);
@@ -135,6 +177,11 @@ export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
     queryFn: listPluginCatalog,
     queryKey: pluginCatalogQueryKey,
     staleTime: 300_000,
+  });
+  const pluginsQuery = useQuery({
+    queryFn: listPlugins,
+    queryKey: pluginsQueryKey,
+    staleTime: 30_000,
   });
 
   const presets = useMemo<PluginPreset[]>(
@@ -260,8 +307,12 @@ export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
             const plugin = findPluginMatch(catalog, preset);
             const selected = selectedIds.includes(preset.id);
             const Icon = preset.id === "visual" ? Eye : preset.id === "browser" ? Globe2 : Mic2;
-            const installedPlugin = installedPlugins[preset.id];
+            const installedPlugin =
+              installedPlugins[preset.id] ?? findInstalledPresetPlugin(pluginsQuery.data ?? [], preset);
             const hasConfig = pluginHasConfig(installedPlugin);
+            const canConfigure = Boolean(
+              installedPlugin && hasConfig && (reloadStatus === "done" || installedPlugin.loaded !== false),
+            );
             const status = installedPlugin
               ? hasConfig
                 ? copy.plugins.configReady
@@ -296,11 +347,23 @@ export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
                     <small>{preset.guide}</small>
                   </span>
                 </button>
-                {installedPlugin && hasConfig && reloadStatus === "done" ? (
+                {installedPlugin && canConfigure ? (
                   <Button
                     className="onboarding-plugin-choice__configure"
                     icon={<Settings aria-hidden size={15} />}
-                    onClick={() => navigate("/settings/plugins", { state: { pluginId: installedPlugin.id } })}
+                    onClick={() =>
+                      navigate("/settings/plugins", {
+                        state: {
+                          pluginId: installedPlugin.id,
+                          returnTo: {
+                            hash: location.hash,
+                            pathname: location.pathname,
+                            search: location.search,
+                            state: { activeStep: "plugins" },
+                          },
+                        },
+                      })
+                    }
                     variant="ghost"
                   >
                     {copy.plugins.configure}

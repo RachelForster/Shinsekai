@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PluginManagerPage } from "../../../features/plugin-manager/PluginManagerPage";
@@ -132,7 +132,20 @@ const detailPage: PluginUIPage = {
   values: { status: "ready" },
 };
 
-function renderPage(initialEntries: Parameters<typeof MemoryRouter>[0]["initialEntries"] = ["/settings/plugins"]) {
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output aria-label="location">
+      {location.pathname}
+      {JSON.stringify(location.state)}
+    </output>
+  );
+}
+
+function renderPage(
+  initialEntries: Parameters<typeof MemoryRouter>[0]["initialEntries"] = ["/settings/plugins"],
+  includeLocationProbe = false,
+) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -146,6 +159,7 @@ function renderPage(initialEntries: Parameters<typeof MemoryRouter>[0]["initialE
             initialEntries={initialEntries}
           >
             <PluginManagerPage />
+            {includeLocationProbe ? <LocationProbe /> : null}
           </MemoryRouter>
         </I18nProvider>
       </ToastProvider>
@@ -219,6 +233,27 @@ describe("PluginManagerPage", () => {
     expect(await screen.findByText("Dynamic detail description")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Dynamic Group" })).toBeInTheDocument();
     expect(mockGetPluginUiDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns plugin configuration to the route it came from", async () => {
+    renderPage(
+      [
+        {
+          pathname: "/settings/plugins",
+          state: {
+            pluginId: "configurable",
+            returnTo: { pathname: "/settings/onboarding", state: { activeStep: "plugins" } },
+          },
+        },
+      ],
+      true,
+    );
+
+    expect(await screen.findByText("Dynamic detail description")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to plugins" }));
+
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/settings/onboarding"));
+    expect(screen.getByLabelText("location")).toHaveTextContent('"activeStep":"plugins"');
   });
 
   it("opens the local plugin publisher dialog from the page actions", async () => {
