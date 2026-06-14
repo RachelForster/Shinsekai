@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
 
@@ -15,7 +15,7 @@ import {
   templatesQueryKey,
   type TemplateSummary,
 } from "../../entities/template/repository";
-import { DEFAULT_CHARACTER_COLOR, TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
+import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type { ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
 import {
@@ -32,51 +32,20 @@ import {
   TextInput,
   useToast,
 } from "../../shared/ui";
+import {
+  buildChatLaunchPayload,
+  buildTemplateGenerateInput,
+  buildTemplateLaunchSession,
+  buildTemplateSummary,
+  composeTemplateContent,
+  createTemplateDraft,
+  getCharacterChipStyle,
+  normalizeTemplateSummary,
+  templateVoiceLanguages,
+} from "./templateFlow";
 import "./TemplateEditorPage.css";
 
-const voiceLanguages = [
-  { labelKey: "system.asr.langJa", value: "ja" },
-  { labelKey: "system.asr.langEn", value: "en" },
-  { labelKey: "system.asr.langZh", value: "zh" },
-  { labelKey: "system.asr.langYue", value: "yue" },
-] as const;
-
-type CharacterChipStyle = CSSProperties & {
-  "--template-character-color"?: string;
-};
-
-function getCharacterChipStyle(color: string): CharacterChipStyle {
-  return {
-    "--template-character-color": color.trim() || DEFAULT_CHARACTER_COLOR,
-  };
-}
-
-function composeContent(scenario: unknown, system: unknown) {
-  return [String(scenario ?? "").trim(), String(system ?? "").trim()].filter(Boolean).join("\n\n");
-}
-
-function createTemplate(name: string): TemplateSummary {
-  return {
-    content: "",
-    id: "",
-    name,
-    path: "",
-    scenario: "",
-    system: "",
-    updatedAt: "",
-  };
-}
-
-function normalizeTemplate(template: TemplateSummary): TemplateSummary {
-  const scenario = template.scenario ?? (template.system ? "" : (template.content ?? ""));
-  const system = template.system ?? (template.scenario ? (template.content ?? "") : "");
-  return {
-    ...template,
-    content: composeContent(scenario, system),
-    scenario,
-    system,
-  };
-}
+const voiceLanguages = templateVoiceLanguages;
 
 export function TemplateEditorPage() {
   const queryClient = useQueryClient();
@@ -101,7 +70,7 @@ export function TemplateEditorPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [sessionDraftActive, setSessionDraftActive] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
-  const [draft, setDraft] = useState<TemplateSummary>(() => createTemplate(t("template.defaultName")));
+  const [draft, setDraft] = useState<TemplateSummary>(() => createTemplateDraft(t("template.defaultName")));
   const [nameError, setNameError] = useState("");
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [selectedBackground, setSelectedBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
@@ -140,7 +109,7 @@ export function TemplateEditorPage() {
   useEffect(() => {
     if (selected && !sessionDraftActive) {
       setSelectedId(selected.id);
-      setDraft(normalizeTemplate(structuredClone(selected)));
+      setDraft(normalizeTemplateSummary(structuredClone(selected)));
       setNameError("");
     }
   }, [selected, sessionDraftActive]);
@@ -175,8 +144,8 @@ export function TemplateEditorPage() {
     const matchingTemplate = templates.find((template) => template.id === launchSession.templateFileDropdown);
     setSelectedId(matchingTemplate?.id ?? "");
     setDraft(
-      normalizeTemplate({
-        content: composeContent(launchSession.scenario, launchSession.system),
+      normalizeTemplateSummary({
+        content: composeTemplateContent(launchSession.scenario, launchSession.system),
         id: matchingTemplate?.id ?? "",
         name: launchSession.filenameStub || matchingTemplate?.name || t("template.defaultName"),
         path: matchingTemplate?.path ?? "",
@@ -215,7 +184,7 @@ export function TemplateEditorPage() {
       const next = { ...current, ...patch };
       const scenario = String(next.scenario ?? "");
       const system = String(next.system ?? "");
-      return { ...next, content: composeContent(scenario, system) };
+      return { ...next, content: composeTemplateContent(scenario, system) };
     });
   };
 
@@ -228,31 +197,7 @@ export function TemplateEditorPage() {
     return true;
   };
 
-  const buildTemplate = () => {
-    const name = draft.name.trim();
-    const scenario = String(draft.scenario ?? "");
-    const system = String(draft.system ?? "");
-    return {
-      ...draft,
-      content: composeContent(scenario, system),
-      name,
-      scenario,
-      system,
-    };
-  };
-
-  const buildLaunchSession = (): TemplateLaunchSession => ({
-    background: selectedBackground,
-    filenameStub: draft.name.trim(),
-    historyPath: historyPath.trim(),
-    initSpritePath: initSpritePath.trim(),
-    maxDialogItems,
-    maxSpeechChars,
-    roomId: roomId.trim(),
-    scenario: String(draft.scenario ?? ""),
-    selectedCharacters,
-    system: String(draft.system ?? ""),
-    templateFileDropdown: selectedId,
+  const templateOptionsState = {
     useCg,
     useChoice,
     useCot,
@@ -260,8 +205,15 @@ export function TemplateEditorPage() {
     useNarration,
     useStat,
     useTranslation,
+  };
+  const runtimeOptionsState = {
+    historyPath,
+    initSpritePath,
+    maxDialogItems,
+    maxSpeechChars,
+    roomId,
     voiceLanguage,
-  });
+  };
 
   const handleRuntimeDependencyError = async (snapshot: ChatSnapshot) => {
     const dependencyError = snapshot.runtimeDependencyError;
@@ -300,7 +252,7 @@ export function TemplateEditorPage() {
       if (!validateName()) {
         throw new Error(t("template.validation.nameRequired"));
       }
-      return saveTemplate(buildTemplate());
+      return saveTemplate(buildTemplateSummary(draft));
     },
     onError(error) {
       showToast({
@@ -311,7 +263,7 @@ export function TemplateEditorPage() {
     },
     onSuccess(template) {
       queryClient.invalidateQueries({ queryKey: templatesQueryKey });
-      const normalized = normalizeTemplate(template);
+      const normalized = normalizeTemplateSummary(template);
       setIsCreating(false);
       setSessionDraftActive(false);
       setDraft(normalized);
@@ -339,22 +291,15 @@ export function TemplateEditorPage() {
 
   const generateMutation = useMutation({
     mutationFn: async (_options?: { silent?: boolean }) => {
-      return generateTemplate({
-        backgroundName: selectedBackground,
-        characters: selectedCharacters,
-        maxDialogItems,
-        maxSpeechChars,
-        name: draft.name.trim(),
-        scenario: String(draft.scenario ?? ""),
-        useCg,
-        useChoice,
-        useCot,
-        useEffect: useEffectPrompt,
-        useNarration,
-        useStat,
-        useTranslation,
-        voiceLanguage,
-      });
+      return generateTemplate(
+        buildTemplateGenerateInput({
+          backgroundName: selectedBackground,
+          draft,
+          options: templateOptionsState,
+          runtime: runtimeOptionsState,
+          selectedCharacters,
+        }),
+      );
     },
     onError(error, options) {
       if (options?.silent) {
@@ -367,7 +312,7 @@ export function TemplateEditorPage() {
       });
     },
     onSuccess(template, options) {
-      const normalized = normalizeTemplate(template);
+      const normalized = normalizeTemplateSummary(template);
       setIsCreating(true);
       setSessionDraftActive(true);
       setDraft(normalized);
@@ -412,23 +357,27 @@ export function TemplateEditorPage() {
 
   const launchMutation = useMutation({
     mutationFn: async ({ resetHistory }: { resetHistory: boolean }) => {
-      const template = buildTemplate();
-      const session = buildLaunchSession();
+      const template = buildTemplateSummary(draft);
+      const session: TemplateLaunchSession = buildTemplateLaunchSession({
+        backgroundName: selectedBackground,
+        draft,
+        options: templateOptionsState,
+        runtime: runtimeOptionsState,
+        selectedCharacters,
+        selectedTemplateId: selectedId,
+      });
       await saveTemplateSession(session);
       queryClient.setQueryData([...templatesQueryKey, "session"], session);
-      const snapshot = await launchChat({
-        backgroundName: selectedBackground,
-        characters: selectedCharacters,
-        historyPath: historyPath.trim(),
-        initSpritePath: initSpritePath.trim(),
-        roomId: roomId.trim(),
-        resetHistory,
-        scenario: String(template.scenario ?? ""),
-        system: String(template.system ?? ""),
-        templateName: template.name,
-        templateId: template.id,
-        useCg,
-      });
+      const snapshot = await launchChat(
+        buildChatLaunchPayload({
+          backgroundName: selectedBackground,
+          resetHistory,
+          runtime: runtimeOptionsState,
+          selectedCharacters,
+          template,
+          useCg,
+        }),
+      );
       return { snapshot, template };
     },
     onError(error) {
@@ -439,7 +388,7 @@ export function TemplateEditorPage() {
       });
     },
     onSuccess({ snapshot, template }) {
-      const normalized = normalizeTemplate(template);
+      const normalized = normalizeTemplateSummary(template);
       setSessionDraftActive(true);
       setDraft(normalized);
       if (snapshot.runtimeDependencyError) {

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { FileImage, Gamepad2, MessageCircle, Plug, Settings } from "lucide-react";
+import { CheckCircle2, FileImage, Gamepad2, Plug, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useI18n } from "../../shared/i18n";
@@ -8,7 +8,7 @@ import { onboardingCopy } from "./onboardingCopy";
 import { ApiSetupPanel } from "./steps/ApiSetupPanel";
 import { BackgroundSetupPanel } from "./steps/BackgroundSetupPanel";
 import { CharacterSetupPanel } from "./steps/CharacterSetupPanel";
-import { ChatSetupPanel } from "./steps/ChatSetupPanel";
+import { CompletionSetupPanel } from "./steps/CompletionSetupPanel";
 import { PluginSetupPanel } from "./steps/PluginSetupPanel";
 import "./OnboardingPage.css";
 
@@ -60,11 +60,11 @@ export function OnboardingPage() {
       },
       {
         accent: "accent" as const,
-        content: <ChatSetupPanel copy={copy} />,
-        description: copy.chat.description,
-        icon: <MessageCircle aria-hidden size={18} />,
-        id: "chat",
-        title: copy.chat.title,
+        content: <CompletionSetupPanel copy={copy} />,
+        description: copy.complete.description,
+        icon: <CheckCircle2 aria-hidden size={18} />,
+        id: "complete",
+        title: copy.complete.title,
       },
     ],
     [copy],
@@ -75,7 +75,7 @@ export function OnboardingPage() {
       backLabel={copy.actions.previous}
       finishLabel={copy.finishLabel}
       nextLabel={copy.actions.next}
-      onFinish={() => navigate("/settings/launch")}
+      onFinish={() => navigate("/settings/templates")}
       optionalLabel={copy.optionalLabel}
       requiredLabel={copy.requiredLabel}
       stepLabel={stepLabel}

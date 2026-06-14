@@ -247,6 +247,85 @@
   cursor: pointer;
 }
 
+.onboarding-complete-banner {
+  position: relative;
+  display: grid;
+  min-height: 360px;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 420px);
+  align-items: center;
+  gap: var(--space-5);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-accent-border) 72%, var(--color-border));
+  border-radius: 8px;
+  padding: clamp(20px, 4vw, 34px);
+  background:
+    radial-gradient(circle at 82% 20%, color-mix(in srgb, #fbb6d1 36%, transparent) 0 22%, transparent 45%),
+    radial-gradient(circle at 12% 88%, color-mix(in srgb, #a8d8ff 24%, transparent) 0 18%, transparent 40%),
+    linear-gradient(135deg, color-mix(in srgb, #ffd8e7 58%, var(--color-surface)) 0%, transparent 58%),
+    linear-gradient(180deg, var(--color-bg-input) 0%, color-mix(in srgb, #fff4f8 42%, var(--color-bg-input)) 100%);
+  box-shadow: 0 16px 42px color-mix(in srgb, #e95f96 13%, transparent);
+}
+
+.onboarding-complete-banner::before {
+  position: absolute;
+  inset: 14px;
+  border: 1px solid color-mix(in srgb, #f48daf 24%, transparent);
+  border-radius: 6px;
+  content: "";
+  pointer-events: none;
+}
+
+.onboarding-complete-banner__content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  max-width: 560px;
+  gap: var(--space-3);
+}
+
+.onboarding-complete-banner__eyebrow {
+  width: fit-content;
+  border: 1px solid color-mix(in srgb, #ec6f9c 42%, var(--color-accent-border));
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: color-mix(in srgb, #d7477e 82%, var(--color-accent-primary));
+  background: color-mix(in srgb, #ffd5e4 70%, var(--color-bg-input));
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.1;
+}
+
+.onboarding-complete-banner__content h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: clamp(24px, 4vw, 40px);
+  font-weight: 820;
+  line-height: 1.08;
+}
+
+.onboarding-complete-banner__content p {
+  margin: 0;
+  max-width: 48ch;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.onboarding-complete-banner__mascot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  place-items: center;
+}
+
+.onboarding-complete-banner__mascot img {
+  width: min(100%, 390px);
+  max-height: 340px;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 28px color-mix(in srgb, #dd5d8b 20%, transparent));
+}
+
 .onboarding-resource-transparent {
   display: grid;
 }
@@ -508,6 +587,21 @@
   .onboarding-plugin-card,
   .onboarding-plugin-choice-grid {
     grid-template-columns: 1fr;
+  }
+
+  .onboarding-complete-banner {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .onboarding-complete-banner__mascot img {
+    width: min(100%, 280px);
+    max-height: 320px;
+  }
+
+  .onboarding-complete-banner__content,
+  .onboarding-complete-banner__eyebrow {
+    justify-self: center;
   }
 
   .onboarding-resource-step {
