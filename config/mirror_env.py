@@ -155,19 +155,6 @@ def resolved_mirror_values(config: Any) -> MirrorValues:
     )
 
 
-def config_with_resolved_mirrors(config: Any) -> Any:
-    values = resolved_mirror_values(config)
-    updates = {
-        "mirror_region": values.region,
-    }
-    copier = getattr(config, "model_copy", None)
-    if callable(copier):
-        return copier(update=updates)
-    for key, value in updates.items():
-        setattr(config, key, value)
-    return config
-
-
 def system_config_payload_with_resolved_mirrors(config: Any) -> dict[str, Any]:
     dumper = getattr(config, "model_dump", None)
     if callable(dumper):
