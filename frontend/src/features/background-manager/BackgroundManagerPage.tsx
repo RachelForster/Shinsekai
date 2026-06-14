@@ -72,11 +72,19 @@ export function BackgroundManagerPage() {
   });
   const [nameError, setNameError] = useState("");
 
-  const selected = useMemo(
-    () => (isCreating ? undefined : (data.find((bg) => bg.name === selectedName) ?? data[0])),
-    [data, isCreating, selectedName],
-  );
+  const selected = useMemo(() => {
+    if (isCreating) {
+      return undefined;
+    }
+    if (selectedName) {
+      return data.find((bg) => bg.name === selectedName);
+    }
+    return data[0];
+  }, [data, isCreating, selectedName]);
   const currentBackgroundName = isCreating ? "" : selectedName;
+  const isSavedBackground = Boolean(
+    currentBackgroundName && data.some((background) => background.name === currentBackgroundName),
+  );
 
   useEffect(() => {
     if (selected) {
@@ -102,10 +110,17 @@ export function BackgroundManagerPage() {
         title: t("common.saveFailed"),
       });
     },
-    onSuccess(background) {
-      queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
+    onSuccess(background, variables) {
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) => {
+        const targetNames = new Set([variables.originalName, background.name].filter(Boolean));
+        const next = current.filter((item) => !targetNames.has(item.name));
+        return [...next, background];
+      });
       setIsCreating(false);
       setSelectedName(background.name);
+      setDraft(structuredClone(background));
+      setSelectedBgmIndexes([]);
+      setSelectedImageIndex(0);
       showToast({ kind: "success", title: t("background.toast.saved") });
     },
   });
@@ -214,7 +229,7 @@ export function BackgroundManagerPage() {
   });
 
   const imageTagsSaveMutation = useMutation({
-    mutationFn: () => saveBackgroundImageTags({ bgTags: draft.bg_tags, name: currentBackgroundName }),
+    mutationFn: (bgTags: string) => saveBackgroundImageTags({ bgTags, name: currentBackgroundName }),
     onError(error) {
       showToast({
         kind: "error",
@@ -247,7 +262,7 @@ export function BackgroundManagerPage() {
   });
 
   const bgmTagsSaveMutation = useMutation({
-    mutationFn: () => saveBackgroundBgmTags({ bgmTags: draft.bgm_tags, name: currentBackgroundName }),
+    mutationFn: (bgmTags: string) => saveBackgroundBgmTags({ bgmTags, name: currentBackgroundName }),
     onError(error) {
       showToast({
         kind: "error",
@@ -383,8 +398,15 @@ export function BackgroundManagerPage() {
   };
 
   const confirmBulkImageTags = () => {
-    update("bg_tags", bulkImageTagsDraft);
+    const nextTags = bulkImageTagsDraft;
+    update("bg_tags", nextTags);
     setBulkImageTagsOpen(false);
+    if (nextTags.trim() && !saveMutation.isPending) {
+      const input = buildBackgroundSaveInput({ bg_tags: nextTags });
+      if (input) {
+        saveMutation.mutate(input);
+      }
+    }
   };
 
   const openBulkBgmTagsDialog = () => {
@@ -393,8 +415,15 @@ export function BackgroundManagerPage() {
   };
 
   const confirmBulkBgmTags = () => {
-    update("bgm_tags", bulkBgmTagsDraft);
+    const nextTags = bulkBgmTagsDraft;
+    update("bgm_tags", nextTags);
     setBulkBgmTagsOpen(false);
+    if (nextTags.trim() && !saveMutation.isPending) {
+      const input = buildBackgroundSaveInput({ bgm_tags: nextTags });
+      if (input) {
+        saveMutation.mutate(input);
+      }
+    }
   };
 
   const toggleBgmSelection = useCallback((index: number, checked: boolean) => {
@@ -475,20 +504,29 @@ export function BackgroundManagerPage() {
 
   const pendingDeleteCopy = pendingDelete ? backgroundDeleteDialogCopy(pendingDelete, t) : null;
 
-  const saveDraft = () => {
-    if (!draft.name.trim()) {
+  const buildBackgroundSaveInput = (overrides: Partial<Background> = {}) => {
+    const nextDraft = { ...draft, ...overrides };
+    if (!nextDraft.name.trim()) {
       setNameError(t("background.validation.nameRequired"));
       showToast({
         kind: "error",
         message: t("common.fixInvalidFields"),
         title: t("common.validationFailed"),
       });
+      return null;
+    }
+    return {
+      background: { ...nextDraft, name: nextDraft.name.trim(), sprite_prefix: nextDraft.sprite_prefix.trim() || "temp" },
+      originalName: isSavedBackground ? selectedName : undefined,
+    };
+  };
+
+  const saveDraft = () => {
+    const input = buildBackgroundSaveInput();
+    if (!input) {
       return;
     }
-    saveMutation.mutate({
-      background: { ...draft, name: draft.name.trim(), sprite_prefix: draft.sprite_prefix.trim() || "temp" },
-      originalName: isCreating ? undefined : selectedName,
-    });
+    saveMutation.mutate(input);
   };
 
   const bgmRowTags = useMemo(
@@ -725,7 +763,7 @@ export function BackgroundManagerPage() {
               });
               return;
             }
-            imageTagsSaveMutation.mutate();
+            imageTagsSaveMutation.mutate(draft.bg_tags);
           }}
           onSelectImage={setSelectedImageIndex}
           onUpdateImageTag={updateImageRowTag}

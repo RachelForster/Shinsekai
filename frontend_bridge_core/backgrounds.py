@@ -13,7 +13,13 @@ def _save_background(state: BridgeState, payload: dict[str, Any]) -> dict[str, A
     name = str(body.get("name") or "").strip()
     prefix = str(body.get("sprite_prefix") or "temp").strip() or "temp"
     original_name = str(payload.get("originalName") or "").strip()
-    message, _names = state.background_manager.add_background(name, prefix, edit_as_name=original_name or None)
+    message, _names = state.background_manager.add_background(
+        name,
+        prefix,
+        edit_as_name=original_name or None,
+        bg_tags=str(body.get("bg_tags") or ""),
+        bgm_tags=str(body.get("bgm_tags") or ""),
+    )
     if message.startswith("名称") or "重复" in message or message.startswith("找不到"):
         raise RuntimeError(message)
     state.config_manager.reload()

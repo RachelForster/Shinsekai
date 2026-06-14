@@ -166,7 +166,8 @@ class CharacterManager:
                      speech_speed: float = 1.0,
                      speech_volume: float = 1.0,
                      pronunciation_map: dict = None,
-                     edit_as_name: Optional[str] = None) -> Tuple[str, List[str]]:
+                     edit_as_name: Optional[str] = None,
+                     emotion_tags: Optional[str] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
 
@@ -221,6 +222,8 @@ class CharacterManager:
                 target.speech_volume = speech_volume
                 if pronunciation_map is not None:
                     target.pronunciation_map = pronunciation_map
+                if emotion_tags is not None:
+                    target.emotion_tags = emotion_tags
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
 
@@ -239,7 +242,7 @@ class CharacterManager:
                 prompt_lang=prompt_lang,
                 sprites=[],
                 sprite_scale=1.0,
-                emotion_tags="",
+                emotion_tags=emotion_tags or "",
                 character_setting=character_setting,
                 speech_speed=speech_speed,
                 speech_volume=speech_volume,
@@ -263,6 +266,8 @@ class CharacterManager:
             existing_character.speech_volume = speech_volume
             if pronunciation_map is not None:
                 existing_character.pronunciation_map = pronunciation_map
+            if emotion_tags is not None:
+                existing_character.emotion_tags = emotion_tags
 
             self._save_characters_config()
             return "人物已更新！", [c.name for c in characters]
