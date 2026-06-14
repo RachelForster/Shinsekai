@@ -450,7 +450,9 @@ fn verify_python_imports(python: &Path, modules: &[String]) -> RuntimeResult<()>
 }
 
 fn run_command(command: &mut Command, label: &str) -> RuntimeResult<()> {
-    let output = command.output()?;
+    let output = command
+        .output()
+        .map_err(|error| format!("{label} failed to start: {error}"))?;
     if output.status.success() {
         return Ok(());
     }
