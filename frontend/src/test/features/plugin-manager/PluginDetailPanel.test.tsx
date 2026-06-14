@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PluginDetailPanel } from "../../../features/plugin-manager/PluginDetailPanel";
+import { PluginDetailPanel, resolvePluginFrontendFrameSrc } from "../../../features/plugin-manager/PluginDetailPanel";
 import type {
   PluginConfigSaveResult,
   PluginManifest,
@@ -141,6 +141,7 @@ function renderPanel() {
 describe("PluginDetailPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.pushState({}, "", "/");
     mockGetPluginUiDetail.mockResolvedValue({ pages: [configPage], plugin });
     mockSavePluginUiConfig.mockImplementation(async (_id, _pageId, values) => ({
       message: "Saved fallback",
@@ -223,6 +224,40 @@ describe("PluginDetailPanel", () => {
       "settings",
       "reload",
       expect.objectContaining({ enabled: true }),
+    );
+  });
+
+  it("rewrites plugin frontend iframe API URLs through the desktop bridge", async () => {
+    window.history.pushState({}, "", "/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A57891");
+    const frontendPage: PluginUIPage = {
+      description: "Browser page",
+      frontendUrl:
+        "/api/plugins/demo%2Fplugin/frontend/browser%20page/?pluginId=demo%2Fplugin&pageId=browser%20page",
+      id: "browser page",
+      kind: "settings",
+      order: 0,
+      pluginId: "demo/plugin",
+      pluginVersion: "1.0.0",
+      title: "Browser Page",
+    };
+    mockGetPluginUiDetail.mockResolvedValue({ pages: [frontendPage], plugin });
+
+    renderPanel();
+
+    const iframe = (await screen.findByTitle("Browser Page")) as HTMLIFrameElement;
+    const frameUrl = new URL(iframe.getAttribute("src") ?? "");
+    expect(frameUrl.origin).toBe("http://127.0.0.1:57891");
+    expect(frameUrl.pathname).toBe("/api/plugins/demo%2Fplugin/frontend/browser%20page/");
+    expect(frameUrl.searchParams.get("pluginId")).toBe("demo/plugin");
+    expect(frameUrl.searchParams.get("pageId")).toBe("browser page");
+  });
+
+  it("leaves plugin frontend iframe URLs unchanged without a bridge", () => {
+    expect(resolvePluginFrontendFrameSrc("/api/plugins/demo/frontend/settings/")).toBe(
+      "/api/plugins/demo/frontend/settings/",
+    );
+    expect(resolvePluginFrontendFrameSrc("https://plugins.example.test/settings/")).toBe(
+      "https://plugins.example.test/settings/",
     );
   });
 });

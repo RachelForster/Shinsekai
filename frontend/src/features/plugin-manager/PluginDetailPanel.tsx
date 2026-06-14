@@ -159,18 +159,34 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
 
 function PluginPagePanel({ lookupId, page }: { lookupId: string; page: PluginUIPage }) {
   if (page.frontendUrl) {
+    const frontendFrameSrc = resolvePluginFrontendFrameSrc(page.frontendUrl);
     return (
       <section className="section plugin-frontend-frame-section">
         <iframe
           className="plugin-frontend-frame"
           sandbox="allow-forms allow-same-origin allow-scripts"
-          src={page.frontendUrl}
+          src={frontendFrameSrc}
           title={page.title}
         />
       </section>
     );
   }
   return <PluginConfigPanel key={pluginConfigPageStateKey(page)} lookupId={lookupId} page={page} />;
+}
+
+export function resolvePluginFrontendFrameSrc(frontendUrl: string) {
+  if (!frontendUrl.startsWith("/api/") || typeof window === "undefined") {
+    return frontendUrl;
+  }
+  const bridgeBase = new URLSearchParams(window.location.search).get("shinsekai_bridge")?.trim();
+  if (!bridgeBase) {
+    return frontendUrl;
+  }
+  try {
+    return new URL(frontendUrl, bridgeBase).toString();
+  } catch {
+    return frontendUrl;
+  }
 }
 
 function pluginConfigPageStateKey(page: PluginUIPage) {
