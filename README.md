@@ -209,6 +209,10 @@ pnpm sync:version
 | 插件开发者指南 | [docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md) |
 | 本仓库 | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
 
+## 社区
+
+开发者 QQ 群：928985460
+
 欢迎 Issue / PR；若二次分发角色与语音资源，请遵守对应作者许可。
 
 ---
