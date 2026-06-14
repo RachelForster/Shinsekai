@@ -86,13 +86,20 @@ export type OnboardingCopy = {
     browserBody: string;
     browserGuide: string;
     browserTitle: string;
+    configReady: string;
+    configure: string;
     dependencyStep: string;
     description: string;
     empty: string;
+    installDone: string;
+    installPending: string;
     installSelected: string;
+    installedNoConfig: string;
     loading: string;
     marketplaceHint: string;
     noMatch: string;
+    reloadFailed: string;
+    reloadPending: string;
     selectedCount: string;
     title: string;
     visualBody: string;
@@ -201,13 +208,20 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       browserGuide:
         "After installation, open plugin settings and turn off headless mode when you want to see browser actions.",
       browserTitle: "Browser plugin",
+      configReady: "Installed and reloaded. Configuration is ready.",
+      configure: "Configure",
       dependencyStep: "Install AI dependencies first, then download plugins.",
       description: "Install common extensions directly from the guide.",
       empty: "No plugin packages are available right now.",
+      installDone: "Dependencies and selected plugins are installed. Plugins were reloaded and are ready to configure.",
+      installPending: "Installing dependencies first, then downloading and installing the selected plugins.",
       installSelected: "One-click download",
+      installedNoConfig: "Installed and reloaded. No separate plugin settings are needed.",
       loading: "Loading plugin catalog",
       marketplaceHint: "Find more plugins in Plugins > Discover.",
       noMatch: "No matching market plugin was found yet.",
+      reloadFailed: "Dependencies and plugins were installed, but plugin reload failed",
+      reloadPending: "Download finished. Reloading plugins so the new settings pages become available...",
       selectedCount: "{count} selected",
       title: "Common plugins",
       visualBody: "Gives the assistant visual understanding for screen and image workflows.",
@@ -313,13 +327,21 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       browserBody: "チャット中に Web ページを閲覧・操作できるようにします。",
       browserGuide: "インストール後、動作を見たい場合はプラグイン設定で headless をオフにしてください。",
       browserTitle: "ブラウザプラグイン",
+      configReady: "インストールと再読み込みが完了しました。設定できます。",
+      configure: "設定へ",
       dependencyStep: "先に AI 依存関係を入れてから、プラグインをダウンロードします。",
       description: "よく使う拡張をガイドから直接インストールします。",
       empty: "現在利用できるプラグインがありません。",
+      installDone: "依存関係と選択したプラグインのインストールが完了しました。プラグインも再読み込み済みです。",
+      installPending: "先に依存関係をインストールし、その後プラグイン本体をダウンロードしてインストールします。",
       installSelected: "一括ダウンロード",
+      installedNoConfig: "インストールと再読み込みが完了しました。追加設定は不要です。",
       loading: "プラグイン一覧を読み込み中",
       marketplaceHint: "その他のプラグインは「プラグイン」>「発見」にあります。",
       noMatch: "対応するマーケットプラグインがまだ見つかりません。",
+      reloadFailed: "依存関係とプラグインはインストールされましたが、プラグイン再読み込みに失敗しました",
+      reloadPending:
+        "ダウンロードが完了しました。新しい設定ページを有効にするため、プラグインを再読み込みしています...",
       selectedCount: "{count} 件選択中",
       title: "よく使うプラグイン",
       visualBody: "画面や画像を理解するための視覚拡張です。",
@@ -421,13 +443,20 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       browserBody: "让工具在聊天中浏览和操作网页。",
       browserGuide: "安装后进入插件设置，想看到浏览器操作时请取消勾选无头模式。",
       browserTitle: "浏览器插件",
+      configReady: "已安装并重载，可以去配置。",
+      configure: "去配置",
       dependencyStep: "会先安装 AI 相关依赖，再下载并安装插件。",
       description: "直接在引导页安装常见扩展。",
       empty: "暂时没有可用插件包。",
+      installDone: "依赖和已选择的插件本体都已安装完成，插件服务也已重载，现在可以进入配置。",
+      installPending: "正在先安装依赖，然后下载并安装已选择的插件本体。",
       installSelected: "一键下载",
+      installedNoConfig: "已安装并重载，此插件无需单独配置。",
       loading: "正在读取插件市场",
       marketplaceHint: "更多插件可以在「插件」>「发现」里查看。",
       noMatch: "暂时没有在插件市场匹配到对应插件。",
+      reloadFailed: "依赖和插件本体已安装，但插件服务重载失败",
+      reloadPending: "下载已完成，正在重载插件服务，让新的设置页生效...",
       selectedCount: "已选择 {count} 项",
       title: "常见插件",
       visualBody: "让助手具备屏幕和图片理解能力。",

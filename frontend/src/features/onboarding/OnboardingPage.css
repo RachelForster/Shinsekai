@@ -444,17 +444,14 @@
 .onboarding-plugin-choice {
   display: grid;
   min-width: 0;
-  grid-template-columns: 38px minmax(0, 1fr);
-  align-items: start;
-  gap: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  padding: 14px;
   color: var(--color-text-primary);
   background: var(--color-bg-input);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .onboarding-plugin-choice:hover {
@@ -465,6 +462,35 @@
 .onboarding-plugin-choice[data-selected="true"] {
   border-color: var(--color-accent-border-strong);
   background: var(--color-accent-bg-hover);
+}
+
+.onboarding-plugin-choice[data-installed="true"] {
+  border-color: color-mix(in oklch, var(--color-accent-primary) 48%, var(--color-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--color-accent-primary) 11%, var(--color-bg-input)),
+    var(--color-bg-input)
+  );
+  box-shadow: 0 10px 24px color-mix(in oklch, var(--color-accent-primary) 10%, transparent);
+}
+
+.onboarding-plugin-choice__select {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+  border: 0;
+  padding: 14px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.onboarding-plugin-choice__select:disabled {
+  cursor: progress;
 }
 
 .onboarding-plugin-choice__mark {
@@ -481,6 +507,12 @@
 .onboarding-plugin-choice[data-selected="true"] .onboarding-plugin-choice__mark {
   border-color: var(--color-success-border);
   color: var(--color-success);
+}
+
+.onboarding-plugin-choice[data-installed="true"] .onboarding-plugin-choice__mark {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent-primary);
+  background: color-mix(in oklch, var(--color-accent-primary) 11%, var(--color-bg-input));
 }
 
 .onboarding-plugin-choice__body {
@@ -513,6 +545,14 @@
   font-size: 12px;
 }
 
+.onboarding-plugin-choice__configure.button {
+  justify-self: start;
+  margin: 0 14px 14px 64px;
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .onboarding-plugin-install-bar {
   display: flex;
   min-width: 0;
@@ -528,6 +568,28 @@
 .onboarding-plugin-install-bar span {
   color: var(--color-text-muted);
   font-size: 13px;
+}
+
+.onboarding-plugin-install-status {
+  border: 1px solid var(--color-info-border);
+  border-radius: var(--radius-control);
+  padding: 11px 13px;
+  color: var(--color-info);
+  background: color-mix(in oklch, var(--color-info) 8%, var(--color-bg-input));
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.onboarding-plugin-install-status[data-state="done"] {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent-primary);
+  background: color-mix(in oklch, var(--color-accent-primary) 9%, var(--color-bg-input));
+}
+
+.onboarding-plugin-install-status[data-state="failed"] {
+  border-color: var(--color-danger-border);
+  color: var(--color-danger);
+  background: color-mix(in oklch, var(--color-danger) 8%, var(--color-bg-input));
 }
 
 .onboarding-plugin-card {
@@ -624,9 +686,14 @@
   .onboarding-panel-layout__actions .button,
   .onboarding-panel-inline-actions .button,
   .onboarding-plugin-card .button,
+  .onboarding-plugin-choice__configure.button,
   .onboarding-plugin-install-bar .button {
     flex: 1 1 auto;
     width: 100%;
+  }
+
+  .onboarding-plugin-choice__configure.button {
+    margin: 0 14px 14px;
   }
 
   .onboarding-plugin-install-bar {
