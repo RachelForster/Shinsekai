@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Send } from "lucide-react";
+import { Ear, EarOff, Mic, MicOff, Send } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatCommand } from "../../../shared/platform/types";
@@ -177,9 +177,9 @@ export function InputLayer({
           onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
         >
           {asrPaused ? (
-            <Mic aria-hidden className="icon-button__icon" />
+            <Ear aria-hidden className="icon-button__icon" />
           ) : (
-            <MicOff aria-hidden className="icon-button__icon" />
+            <EarOff aria-hidden className="icon-button__icon" />
           )}
         </IconButton>
       </div>

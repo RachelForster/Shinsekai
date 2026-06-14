@@ -56,6 +56,8 @@ import {
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 
+const AUTO_ADVANCE_DELAY_MS = 1600;
+
 export function ChatStagePage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -83,6 +85,7 @@ export function ChatStagePage() {
   const eventSeqRef = useRef(0);
   eventSeqRef.current = state.eventSeq;
   const pendingAnimatedDialogKeyRef = useRef<string | null>(null);
+  const advanceDialogRef = useRef<() => void>(() => {});
   const clickThroughIgnoredRef = useRef(false);
   const clickThroughGuardIntervalRef = useRef<number | null>(null);
   const clickThroughGuardPollingRef = useRef(false);
@@ -264,6 +267,50 @@ export function ChatStagePage() {
     return () => window.clearTimeout(timeoutId);
   }, [dialogSource.totalCharacters, typewriterCps, visibleDialogCharacters]);
 
+  // AUTO mode: once a line finishes typing, wait then advance — pauses at choices / while generating.
+  useEffect(() => {
+    if (!runtimeConfig.auto || typingDialog) {
+      return;
+    }
+    if (!viewModel.layers.dialog || viewModel.layers.options || !dialogSource.totalCharacters) {
+      return;
+    }
+    if (viewModel.status === "generating" || viewModel.status === "streaming") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => advanceDialogRef.current(), AUTO_ADVANCE_DELAY_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    dialogSource.cacheKey,
+    dialogSource.totalCharacters,
+    runtimeConfig.auto,
+    typingDialog,
+    viewModel.layers.dialog,
+    viewModel.layers.options,
+    viewModel.status,
+  ]);
+
+  // Keyboard: Space/Enter advances (or skips typing), A toggles AUTO — ignored while typing in a field.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      if (modalOpen) {
+        return;
+      }
+      if (event.key === " " || event.key === "Enter") {
+        event.preventDefault();
+        advanceDialogRef.current();
+      } else if (event.key === "a" || event.key === "A") {
+        setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalOpen]);
+
   const refreshHistory = async () => {
     setHistoryLoading(true);
     try {
@@ -365,6 +412,7 @@ export function ChatStagePage() {
     }
     void sendCommand({ type: "dialog-advance" });
   };
+  advanceDialogRef.current = advanceDialog;
 
   const openHistoryDialog = () => {
     setHistoryDialogOpen(true);
@@ -451,6 +499,7 @@ export function ChatStagePage() {
         <SpriteLayer
           hidden={!viewModel.layers.sprites}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
+          speaker={viewModel.dialogCharacterName}
           sprites={viewModel.sprites}
         />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
@@ -461,20 +510,6 @@ export function ChatStagePage() {
           className={layerClassName("dialog-stack", !viewModel.layers.dialog)}
           hidden={!viewModel.layers.dialog}
         >
-          <DialogStageControls
-            asrPaused={viewModel.status === "paused"}
-            closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
-            configOpen={toolbarConfigOpen}
-            hidden={!viewModel.layers.dialog}
-            hideCloseButton={standaloneDesktopWindow}
-            locked={dialogControlsLocked}
-            onCloseSurface={closeSurface}
-            onCommand={sendCommand}
-            onConfigOpenChange={setToolbarConfigOpen}
-            onLockedChange={setDialogControlsLocked}
-            onOpenHistory={openHistoryDialog}
-            showAsrControl={!viewModel.layers.input && viewModel.status === "paused"}
-          />
           <DialogLayer
             canAdvance={viewModel.layers.dialog && !typingDialog && dialogSource.totalCharacters > 0}
             characterName={viewModel.dialogCharacterName}
@@ -483,6 +518,24 @@ export function ChatStagePage() {
             onAdvance={advanceDialog}
             onSkip={typingDialog ? advanceDialog : undefined}
             text={typingDialog ? displayedDialog.text : viewModel.dialogText}
+            toolbar={
+              <DialogStageControls
+                asrPaused={viewModel.status === "paused"}
+                auto={runtimeConfig.auto}
+                closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
+                configOpen={toolbarConfigOpen}
+                hidden={!viewModel.layers.dialog}
+                hideCloseButton={standaloneDesktopWindow}
+                locked={dialogControlsLocked}
+                onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
+                onCloseSurface={closeSurface}
+                onCommand={sendCommand}
+                onConfigOpenChange={setToolbarConfigOpen}
+                onLockedChange={setDialogControlsLocked}
+                onOpenHistory={openHistoryDialog}
+                showAsrControl={!viewModel.layers.input && viewModel.status === "paused"}
+              />
+            }
             typing={typingDialog}
           />
         </div>

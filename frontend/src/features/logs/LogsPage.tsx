@@ -622,21 +622,23 @@ export function LogsPage() {
           <div className="logs-file-list">
             <h2 className="logs-section-title">最近日志</h2>
             {filesQuery.isError ? <p className="logs-truncated">日志列表读取失败。</p> : null}
-            {(filesQuery.data?.files ?? []).map((file) => (
-              <button
-                className="logs-file-list__item"
-                data-active={activePath ? file.path === activePath : file.path === logsQuery.data?.path}
-                disabled={readMutation.isPending}
-                key={file.path}
-                onClick={() => readMutation.mutate(file.path)}
-                type="button"
-              >
-                <span>{fileLabel(file)}</span>
-                <small>
-                  {formatBytes(file.size)} · {formatTimestamp(file.modifiedAt)}
-                </small>
-              </button>
-            ))}
+            <div className="logs-file-list__items">
+              {(filesQuery.data?.files ?? []).map((file) => (
+                <button
+                  className="logs-file-list__item"
+                  data-active={activePath ? file.path === activePath : file.path === logsQuery.data?.path}
+                  disabled={readMutation.isPending}
+                  key={file.path}
+                  onClick={() => readMutation.mutate(file.path)}
+                  type="button"
+                >
+                  <span>{fileLabel(file)}</span>
+                  <small>
+                    {formatBytes(file.size)} · {formatTimestamp(file.modifiedAt)}
+                  </small>
+                </button>
+              ))}
+            </div>
           </div>
         </aside>
 

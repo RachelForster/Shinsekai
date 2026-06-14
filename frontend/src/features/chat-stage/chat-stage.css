@@ -11,8 +11,8 @@
   background:
     linear-gradient(
       180deg,
-      color-mix(in oklch, var(--stage-accent) 6%, rgba(13, 10, 14, 0.16)),
-      color-mix(in oklch, var(--stage-accent) 16%, rgba(13, 10, 14, 0.68))
+      color-mix(in oklch, var(--stage-accent) 4%, rgba(14, 11, 9, 0.16)),
+      color-mix(in oklch, var(--stage-accent) 10%, rgba(14, 11, 9, 0.68))
     ),
     var(--stage-base);
   --stage-safe-x: clamp(14px, 3vw, 36px);
@@ -24,21 +24,22 @@
   --stage-control-stack-height: calc(var(--stage-safe-bottom) + var(--stage-input-height));
   /* Accent-tinted warm dark, harmonized with the main app's --theme-accent seed. */
   --stage-accent: var(--chat-theme-color, var(--color-accent-primary, #d4788e));
-  --stage-base: color-mix(in oklch, var(--stage-accent) 12%, #0d0a0c);
-  --stage-line: color-mix(in oklch, var(--stage-accent) 24%, rgba(255, 255, 255, 0.14));
-  --stage-line-strong: color-mix(in oklch, var(--stage-accent) 34%, rgba(255, 255, 255, 0.26));
-  --stage-glass: color-mix(in oklch, var(--stage-accent) 12%, rgba(18, 13, 19, 0.72));
-  --stage-glass-strong: color-mix(in oklch, var(--stage-accent) 12%, rgba(16, 11, 17, 0.86));
-  --stage-glass-soft: color-mix(in oklch, var(--stage-accent) 16%, rgba(255, 255, 255, 0.06));
+  --stage-base: color-mix(in oklch, var(--stage-accent) 6%, #14100e);
+  --stage-line: color-mix(in oklch, var(--stage-accent) 14%, rgba(255, 255, 255, 0.14));
+  --stage-line-strong: color-mix(in oklch, var(--stage-accent) 24%, rgba(255, 255, 255, 0.26));
+  --stage-glass: color-mix(in oklch, var(--stage-accent) 6%, rgba(20, 17, 14, 0.72));
+  --stage-glass-strong: color-mix(in oklch, var(--stage-accent) 6%, rgba(16, 13, 11, 0.86));
+  --stage-glass-soft: color-mix(in oklch, var(--stage-accent) 10%, rgba(255, 255, 255, 0.06));
   --stage-muted: color-mix(in oklch, var(--chat-stage-color, #f6eef0) 62%, transparent);
   --stage-shadow: rgba(0, 0, 0, 0.26);
   --stage-shadow-heavy: rgba(0, 0, 0, 0.4);
   --stage-success: var(--color-success, #62d68e);
-  --chat-dialog-background: color-mix(in oklch, var(--stage-accent) 10%, rgba(18, 13, 20, 0.86));
+  --chat-dialog-background: color-mix(in oklch, var(--stage-accent) 6%, rgba(22, 18, 15, 0.86));
   --chat-dialog-background-image: none;
-  --chat-dialog-border-color: color-mix(in oklch, var(--stage-accent) 30%, rgba(255, 255, 255, 0.14));
-  --chat-dialog-border-radius: 6px;
-  --chat-dialog-box-shadow: 0 14px 40px var(--stage-shadow-heavy), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --chat-dialog-border-color: color-mix(in oklch, var(--stage-accent) 22%, rgba(255, 255, 255, 0.14));
+  --chat-dialog-border-radius: 10px;
+  --chat-dialog-box-shadow:
+    0 18px 48px -12px rgba(0, 0, 0, 0.6), 0 4px 14px -6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --chat-dialog-color: #f7f1f0;
   --chat-dialog-offset-y: 0px;
   --chat-dialog-padding: 20px 24px;
@@ -50,27 +51,37 @@
   --chat-sprite-runtime-offset-y: 0px;
   --chat-ui-runtime-width: 1120px;
   --chat-ui-window-scale: 1;
-  --chat-name-background: color-mix(in oklch, var(--stage-accent) 32%, rgba(20, 14, 22, 0.95));
+  --chat-name-background: color-mix(in oklch, var(--stage-accent) 28%, rgba(26, 21, 17, 0.95));
   --chat-name-background-image: none;
-  --chat-name-border-color: color-mix(in oklch, var(--stage-accent) 42%, rgba(255, 255, 255, 0.2));
-  --chat-name-border-radius: 6px;
+  --chat-name-border-color: color-mix(in oklch, var(--stage-accent) 38%, rgba(255, 255, 255, 0.2));
+  --chat-name-border-radius: 8px;
   --chat-name-box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
   --chat-name-color: #fff6f4;
-  --chat-input-background: color-mix(in oklch, var(--stage-accent) 10%, rgba(16, 11, 17, 0.82));
-  --chat-input-border-color: color-mix(in oklch, var(--stage-accent) 26%, rgba(255, 255, 255, 0.14));
+  --chat-input-background: color-mix(in oklch, var(--stage-accent) 6%, rgba(18, 15, 12, 0.82));
+  --chat-input-border-color: color-mix(in oklch, var(--stage-accent) 18%, rgba(255, 255, 255, 0.14));
   --chat-input-color: #f7f1f0;
-  --chat-input-field-background: color-mix(in oklch, var(--stage-accent) 8%, rgba(255, 255, 255, 0.06));
-  --chat-option-background: color-mix(in oklch, var(--stage-accent) 12%, rgba(16, 11, 17, 0.82));
-  --chat-option-border-color: color-mix(in oklch, var(--stage-accent) 24%, rgba(255, 255, 255, 0.14));
+  --chat-input-field-background: color-mix(in oklch, var(--stage-accent) 5%, rgba(255, 255, 255, 0.06));
+  --chat-option-background: color-mix(in oklch, var(--stage-accent) 8%, rgba(18, 15, 12, 0.82));
+  --chat-option-border-color: color-mix(in oklch, var(--stage-accent) 16%, rgba(255, 255, 255, 0.14));
   --chat-option-color: #f7f1f0;
-  --chat-option-hover-background: color-mix(in oklch, var(--stage-accent) 24%, rgba(255, 255, 255, 0.1));
+  --chat-option-hover-background: color-mix(in oklch, var(--stage-accent) 20%, rgba(255, 255, 255, 0.1));
   --chat-options-gap: 8px;
   --chat-send-background: var(--stage-accent);
-  --chat-toolbar-background: color-mix(in oklch, var(--stage-accent) 12%, rgba(16, 11, 17, 0.78));
-  --chat-toolbar-border-color: color-mix(in oklch, var(--stage-accent) 24%, rgba(255, 255, 255, 0.14));
+  --chat-toolbar-background: color-mix(in oklch, var(--stage-accent) 8%, rgba(18, 15, 12, 0.78));
+  --chat-toolbar-border-color: color-mix(in oklch, var(--stage-accent) 16%, rgba(255, 255, 255, 0.14));
   --chat-toolbar-color: #f7f1f0;
-  --chat-dialog-actions-background: color-mix(in oklch, var(--stage-accent) 10%, rgba(16, 11, 17, 0.66));
-  --chat-dialog-actions-border-color: color-mix(in oklch, var(--stage-accent) 20%, rgba(255, 255, 255, 0.1));
+  --chat-dialog-actions-background: var(--chat-toolbar-background);
+  --chat-dialog-actions-border-color: var(--chat-toolbar-border-color);
+  /* Themeable top-light gloss shared by neutral panels. Set to `none` for a flat/matte theme. */
+  --chat-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+  /* ADV frame-skin slots (border-image); default `none` = drawn border. Theme-overridable. */
+  --chat-dialog-frame: none;
+  --chat-name-frame: none;
+  --chat-ctc-color: var(--stage-accent);
+  /* Elegant CJK stack for the stage only (themes still override via inline --font-chat). */
+  --font-chat:
+    "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui,
+    sans-serif;
 }
 
 html[data-chat-stage-transparent="true"],
@@ -101,15 +112,17 @@ body[data-chat-stage-transparent="true"] #root {
 .chat-stage::before {
   background: linear-gradient(
     to top,
-    color-mix(in oklch, var(--stage-accent) 10%, rgba(6, 4, 8, 0.64)) 0%,
-    color-mix(in oklch, var(--stage-accent) 8%, rgba(6, 4, 8, 0.34)) 22%,
+    color-mix(in oklch, var(--stage-accent) 6%, rgba(8, 6, 4, 0.64)) 0%,
+    color-mix(in oklch, var(--stage-accent) 5%, rgba(8, 6, 4, 0.34)) 22%,
     transparent 54%
   );
 }
 
 /* Subtle top fade — keeps the status / window tools legible without muddying the art. */
 .chat-stage::after {
-  background: linear-gradient(180deg, rgba(6, 4, 8, 0.36), transparent 15%);
+  background:
+    radial-gradient(125% 105% at 50% 48%, transparent 58%, rgba(0, 0, 0, 0.24) 100%),
+    linear-gradient(180deg, rgba(8, 6, 4, 0.36), transparent 15%);
 }
 
 .chat-stage__layer--hidden {
@@ -129,8 +142,8 @@ body[data-chat-stage-transparent="true"] #root {
   background:
     linear-gradient(
       180deg,
-      color-mix(in oklch, var(--stage-accent) 8%, rgba(14, 10, 15, 0.1)),
-      color-mix(in oklch, var(--stage-accent) 14%, rgba(14, 10, 15, 0.5))
+      color-mix(in oklch, var(--stage-accent) 5%, rgba(15, 12, 9, 0.1)),
+      color-mix(in oklch, var(--stage-accent) 10%, rgba(15, 12, 9, 0.5))
     ),
     var(--stage-base);
 }
@@ -167,8 +180,8 @@ body[data-chat-stage-transparent="true"] #root {
   inset: 0;
   overflow: hidden;
   background:
-    linear-gradient(180deg, color-mix(in oklch, var(--stage-accent) 14%, rgba(22, 16, 24, 0.82)), rgba(8, 6, 10, 0.96)),
-    radial-gradient(130% 90% at 50% 0%, color-mix(in oklch, var(--stage-accent) 18%, transparent), transparent 62%);
+    linear-gradient(180deg, color-mix(in oklch, var(--stage-accent) 10%, rgba(24, 19, 15, 0.82)), rgba(8, 6, 4, 0.96)),
+    radial-gradient(130% 90% at 50% 0%, color-mix(in oklch, var(--stage-accent) 14%, transparent), transparent 62%);
 }
 
 .chat-stage__fallback::before {
@@ -208,7 +221,19 @@ body[data-chat-stage-transparent="true"] #root {
     )
     scale(var(--sprite-scale));
   transform-origin: bottom center;
-  transition: transform 160ms ease;
+  transition:
+    transform 160ms ease,
+    filter 280ms ease,
+    opacity 280ms ease;
+  animation: chat-stage-sprite-in 340ms ease-out;
+}
+
+.sprite-layer__figure[data-dim="true"] {
+  filter: brightness(0.6) saturate(0.82);
+}
+
+.sprite-layer__figure[data-speaking="true"] {
+  filter: brightness(1.06) saturate(1.04);
 }
 
 .sprite-layer[data-count="1"] .sprite-layer__figure {
@@ -218,6 +243,7 @@ body[data-chat-stage-transparent="true"] #root {
 .sprite-layer__image {
   object-fit: contain;
   object-position: bottom center;
+  animation: chat-stage-sprite-slide 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .dialog-stack {
@@ -225,10 +251,9 @@ body[data-chat-stage-transparent="true"] #root {
   left: 50%;
   bottom: max(16px, calc(var(--stage-control-stack-height) + 16px - var(--chat-dialog-offset-y)));
   z-index: 5;
-  display: grid;
+  display: block;
   width: min(var(--chat-dialog-width), var(--chat-dialog-runtime-width));
   max-width: calc(100vw - 40px);
-  gap: 8px;
   transform: translateX(-50%) scale(var(--chat-dialog-runtime-scale));
   transform-origin: bottom center;
 }
@@ -236,19 +261,19 @@ body[data-chat-stage-transparent="true"] #root {
 .dialog-layer {
   position: relative;
   z-index: 1;
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
   min-width: 0;
   min-height: 112px;
-  grid-template-rows: minmax(64px, auto);
   padding: var(--chat-dialog-padding);
   border: var(--chat-dialog-border, 1px solid var(--chat-dialog-border-color));
   border-color: var(--chat-dialog-border-color);
   border-radius: var(--chat-dialog-border-radius);
+  border-image: var(--chat-dialog-frame);
   color: var(--chat-dialog-color);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)),
-    var(--chat-dialog-background-image, none), var(--chat-dialog-background);
+  background: var(--chat-sheen), var(--chat-dialog-background-image, none), var(--chat-dialog-background);
   background-position: center;
   background-repeat: no-repeat;
   background-size: auto, cover, auto;
@@ -256,28 +281,43 @@ body[data-chat-stage-transparent="true"] #root {
   opacity: var(--chat-dialog-runtime-opacity);
   pointer-events: auto;
   backdrop-filter: blur(14px) saturate(1.05);
+  animation: chat-stage-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .dialog-layer[data-typing="true"] {
   cursor: pointer;
 }
 
+.dialog-layer__toolbar {
+  position: absolute;
+  right: clamp(10px, 2vw, 16px);
+  bottom: clamp(8px, 1.5vw, 12px);
+  z-index: 3;
+  display: flex;
+  max-width: calc(100% - 24px);
+  min-width: 0;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
 .dialog-layer__name {
   position: absolute;
-  top: -19px;
-  left: clamp(14px, 3vw, 28px);
+  bottom: calc(100% - 1px);
+  left: clamp(16px, 3vw, 26px);
   display: inline-flex;
   width: fit-content;
-  min-width: 96px;
+  min-width: 88px;
   max-width: min(52vw, 360px);
-  min-height: 34px;
+  min-height: 30px;
   align-items: center;
   justify-content: flex-start;
   margin: 0;
-  padding: 6px 18px 6px 20px;
+  padding: var(--chat-name-padding, 5px 18px 6px 18px);
   overflow: hidden;
   border: 1px solid var(--chat-name-border-color);
-  border-radius: var(--chat-name-border-radius);
+  border-bottom: none;
+  border-radius: var(--chat-name-border-radius) var(--chat-name-border-radius) 0 0;
+  border-image: var(--chat-name-frame);
   color: var(--chat-name-color);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02)), var(--chat-name-background-image),
@@ -289,7 +329,7 @@ body[data-chat-stage-transparent="true"] #root {
   font-size: 15px;
   font-weight: 700;
   line-height: 1.3;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -298,10 +338,11 @@ body[data-chat-stage-transparent="true"] #root {
 /* Thin accent edge — crisp, Yuzusoft-style name tab (replaces the old skewed bar). */
 .dialog-layer__name::before {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
+  top: 6px;
+  bottom: 6px;
+  left: 7px;
   width: 3px;
+  border-radius: 999px;
   background: var(--stage-accent);
   content: "";
 }
@@ -314,13 +355,21 @@ body[data-chat-stage-transparent="true"] #root {
   scrollbar-gutter: stable;
 }
 
+.dialog-layer[data-has-toolbar="true"] .dialog-layer__body {
+  padding-bottom: clamp(48px, 7vw, 64px);
+  scroll-padding-bottom: clamp(48px, 7vw, 64px);
+}
+
 .dialog-layer__text {
   margin: 0;
   color: var(--chat-dialog-color);
   font-size: 17px;
-  line-height: 1.85;
+  line-height: 1.9;
+  letter-spacing: 0.01em;
   white-space: pre-wrap;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 0 2px rgba(0, 0, 0, 0.3);
 }
 
 .dialog-layer__name + .dialog-layer__body {
@@ -332,37 +381,90 @@ body[data-chat-stage-transparent="true"] #root {
   color: var(--chat-name-color, var(--stage-accent));
 }
 
+/* Click-to-continue ▼ marker — bobs at the box's bottom-right when advanceable. */
+.dialog-layer__ctc {
+  position: absolute;
+  right: 16px;
+  bottom: 11px;
+  width: 0;
+  height: 0;
+  border-right: 6px solid transparent;
+  border-left: 6px solid transparent;
+  border-top: 8px solid var(--chat-ctc-color, var(--stage-accent));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+  animation: chat-stage-ctc 1.15s ease-in-out infinite;
+}
+
 .options-layer {
   position: absolute;
-  right: clamp(16px, 4vw, 48px);
-  bottom: calc(var(--stage-control-stack-height) + 178px);
+  left: 50%;
+  top: 40%;
   z-index: 6;
   display: grid;
-  width: min(360px, calc(100vw - 32px));
+  width: min(460px, calc(100vw - 48px));
   gap: var(--chat-options-gap);
+  transform: translate(-50%, -50%);
   color: var(--chat-options-color, var(--chat-option-color));
+  animation: chat-stage-fade 240ms ease-out;
 }
 
 .options-layer__button {
-  justify-content: flex-start;
-  min-height: 42px;
-  padding: 8px 14px;
+  justify-content: center;
+  min-height: 46px;
+  padding: 11px 18px;
   border-color: var(--chat-option-border-color);
   border-radius: var(--chat-option-border-radius, 6px);
   color: var(--chat-option-color);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)), var(--chat-option-background);
+  background: var(--chat-sheen), var(--chat-option-background);
   box-shadow:
     0 10px 28px var(--stage-shadow),
     var(--chat-option-box-shadow, none);
   backdrop-filter: blur(14px);
+  text-align: center;
   white-space: normal;
+}
+
+.options-layer__button::before {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  width: 0;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--stage-accent);
+  content: "";
+  opacity: 0;
+  transform: translateY(-50%);
+  transition:
+    width 150ms ease,
+    opacity 150ms ease;
 }
 
 .options-layer__button:hover:not(:disabled) {
   border-color: var(--chat-option-hover-border-color, var(--stage-line-strong));
   color: var(--chat-option-hover-color, var(--chat-option-color));
   background: var(--chat-option-hover-background);
+  box-shadow:
+    0 12px 30px var(--stage-shadow),
+    0 0 0 1px color-mix(in oklch, var(--stage-accent) 30%, transparent),
+    0 0 18px -4px color-mix(in oklch, var(--stage-accent) 45%, transparent);
+  transform: translateY(-1px);
+}
+
+.options-layer__button:hover:not(:disabled)::before,
+.options-layer__button:focus-visible::before {
+  width: 3px;
+  opacity: 1;
+}
+
+.options-layer__button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--stage-accent) 55%, transparent);
+}
+
+.options-layer__button:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .input-layer {
@@ -381,8 +483,7 @@ body[data-chat-stage-transparent="true"] #root {
   border-color: var(--chat-input-border-color);
   border-radius: var(--chat-input-border-radius, 6px);
   color: var(--chat-input-color, #f7f1f0);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)), var(--chat-input-background);
+  background: var(--chat-sheen), var(--chat-input-background);
   box-shadow:
     0 12px 38px var(--stage-shadow-heavy),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
@@ -488,8 +589,7 @@ body[data-chat-stage-transparent="true"] #root {
   border: var(--chat-toolbar-border, 1px solid var(--chat-toolbar-border-color));
   border-color: var(--chat-toolbar-border-color);
   border-radius: 6px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)), var(--chat-toolbar-background);
+  background: var(--chat-sheen), var(--chat-toolbar-background);
   box-shadow:
     0 10px 30px var(--stage-shadow),
     var(--chat-toolbar-box-shadow, none);
@@ -707,8 +807,8 @@ body[data-chat-stage-transparent="true"] #root {
   position: relative;
   z-index: 2;
   display: flex;
+  width: 100%;
   min-width: 0;
-  min-height: 38px;
   justify-content: flex-end;
   color: var(--chat-toolbar-color, #fffaf0);
   pointer-events: auto;
@@ -721,9 +821,7 @@ body[data-chat-stage-transparent="true"] #root {
   padding: 5px;
   border: 1px solid var(--chat-dialog-actions-border-color);
   border-radius: 6px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)),
-    var(--chat-dialog-actions-background);
+  background: var(--chat-sheen), var(--chat-dialog-actions-background);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
   transform: translateY(0);
   transform-origin: bottom right;
@@ -815,9 +913,7 @@ body[data-chat-stage-transparent="true"] #root {
   border: var(--chat-dialog-border, 1px solid var(--chat-dialog-border-color));
   border-radius: var(--chat-dialog-border-radius);
   color: var(--chat-dialog-color);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.025)),
-    var(--chat-dialog-background-image, none), var(--chat-dialog-background);
+  background: var(--chat-sheen), var(--chat-dialog-background-image, none), var(--chat-dialog-background);
   background-position: center;
   background-repeat: no-repeat;
   background-size: auto, cover, auto;
@@ -1028,8 +1124,7 @@ body[data-chat-stage-transparent="true"] #root {
   border: 1px solid var(--chat-toolbar-border-color, var(--stage-line));
   border-radius: 6px;
   color: var(--chat-toolbar-color, #f7f1f0);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)), var(--chat-toolbar-background);
+  background: var(--chat-sheen), var(--chat-toolbar-background);
   box-shadow:
     0 10px 30px var(--stage-shadow),
     var(--chat-toolbar-box-shadow, none);
@@ -1319,10 +1414,16 @@ body[data-chat-stage-transparent="true"] #root {
   }
 
   .options-layer {
+    top: auto;
     right: 12px;
-    bottom: calc(var(--stage-control-stack-height) + 104px);
+    bottom: calc(var(--stage-control-stack-height) + 196px);
     left: 12px;
     width: auto;
+    transform: none;
+  }
+
+  .dialog-stage-controls {
+    max-width: 100%;
   }
 
   .dialog-stage-controls__rail {
@@ -1459,10 +1560,67 @@ body[data-chat-stage-transparent="true"] #root {
   }
 }
 
+@keyframes chat-stage-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes chat-stage-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes chat-stage-ctc {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(3px);
+  }
+}
+
+@keyframes chat-stage-sprite-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes chat-stage-sprite-slide {
+  from {
+    transform: translateY(16px);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-stage *,
   .chat-stage *::before,
   .chat-stage *::after {
     transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }

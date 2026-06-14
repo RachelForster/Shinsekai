@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -42,12 +42,17 @@ export function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
 export function SpriteLayer({
   hidden,
   runtimeScaleForSprite,
+  speaker,
   sprites,
 }: {
   hidden: boolean;
   runtimeScaleForSprite: (sprite: ChatStageSprite, index: number) => number;
+  speaker?: string;
   sprites: ChatStageSprite[];
 }) {
+  const activeSpeaker = speaker?.trim() ?? "";
+  const spriteName = (sprite: ChatStageSprite) => (sprite.characterName ?? sprite.label ?? "").trim();
+  const hasSpeakingSprite = activeSpeaker.length > 0 && sprites.some((sprite) => spriteName(sprite) === activeSpeaker);
   return (
     <div
       aria-hidden={hidden}
@@ -55,29 +60,34 @@ export function SpriteLayer({
       data-count={sprites.length}
       hidden={hidden}
     >
-      {sprites.map((sprite, index) => (
-        <figure
-          className="sprite-layer__figure"
-          data-slot={sprite.slot ?? index}
-          key={sprite.id}
-          style={
-            {
-              "--sprite-count": sprites.length,
-              "--sprite-index": index,
-              "--sprite-offset-x": `${sprite.x ?? 0}px`,
-              "--sprite-offset-y": `${sprite.y ?? 0}px`,
-              "--sprite-scale": (sprite.scale ?? 1) * runtimeScaleForSprite(sprite, index),
-            } as CSSProperties
-          }
-        >
-          <img
-            alt={sprite.label}
-            className="sprite-layer__image"
-            onError={hideBrokenStageAsset}
-            src={stageAssetUrl(sprite.path)}
-          />
-        </figure>
-      ))}
+      {sprites.map((sprite, index) => {
+        const speaking = hasSpeakingSprite && spriteName(sprite) === activeSpeaker;
+        return (
+          <figure
+            className="sprite-layer__figure"
+            data-dim={hasSpeakingSprite && !speaking ? "true" : "false"}
+            data-slot={sprite.slot ?? index}
+            data-speaking={speaking ? "true" : "false"}
+            key={sprite.id}
+            style={
+              {
+                "--sprite-count": sprites.length,
+                "--sprite-index": index,
+                "--sprite-offset-x": `${sprite.x ?? 0}px`,
+                "--sprite-offset-y": `${sprite.y ?? 0}px`,
+                "--sprite-scale": (sprite.scale ?? 1) * runtimeScaleForSprite(sprite, index),
+              } as CSSProperties
+            }
+          >
+            <img
+              alt={sprite.label}
+              className="sprite-layer__image"
+              onError={hideBrokenStageAsset}
+              src={stageAssetUrl(sprite.path)}
+            />
+          </figure>
+        );
+      })}
     </div>
   );
 }
@@ -90,6 +100,7 @@ export function DialogLayer({
   onAdvance,
   onSkip,
   text,
+  toolbar,
   typing,
 }: {
   canAdvance: boolean;
@@ -99,6 +110,7 @@ export function DialogLayer({
   onAdvance?: () => void;
   onSkip?: () => void;
   text: string;
+  toolbar?: ReactNode;
   typing: boolean;
 }) {
   return (
@@ -107,6 +119,7 @@ export function DialogLayer({
       aria-live="polite"
       className={layerClassName("dialog-layer", hidden)}
       data-chat-stage-hitbox="true"
+      data-has-toolbar={toolbar ? "true" : "false"}
       data-typing={typing ? "true" : "false"}
       hidden={hidden}
       onClick={typing ? onSkip : canAdvance ? onAdvance : undefined}
@@ -121,7 +134,9 @@ export function DialogLayer({
           <p className="dialog-layer__text">{text}</p>
         </div>
       )}
+      {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
       <PluginSlot slot="chat-output" />
+      {toolbar ? <div className="dialog-layer__toolbar">{toolbar}</div> : null}
     </section>
   );
 }

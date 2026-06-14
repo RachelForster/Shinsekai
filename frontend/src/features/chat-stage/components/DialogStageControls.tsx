@@ -5,6 +5,7 @@ import {
   Lock,
   Mic,
   MicOff,
+  Play,
   RotateCcw,
   SkipForward,
   SlidersHorizontal,
@@ -20,11 +21,13 @@ import { ToolbarButton } from "../../../shared/ui";
 
 export function DialogStageControls({
   asrPaused,
+  auto,
   closeLabel,
   configOpen,
   hideCloseButton,
   hidden,
   locked,
+  onAutoChange,
   onCloseSurface,
   onCommand,
   onConfigOpenChange,
@@ -33,11 +36,13 @@ export function DialogStageControls({
   showAsrControl,
 }: {
   asrPaused: boolean;
+  auto: boolean;
   closeLabel: string;
   configOpen: boolean;
   hidden: boolean;
   hideCloseButton: boolean;
   locked: boolean;
+  onAutoChange: (auto: boolean) => void;
   onCloseSurface: () => void;
   onCommand: (command: ChatCommand) => void;
   onConfigOpenChange: (open: boolean) => void;
@@ -100,6 +105,17 @@ export function DialogStageControls({
             tooltip={t("chat.toolbar.skipSpeech")}
           >
             {t("chat.actionBar.skip")}
+          </ToolbarButton>
+          <ToolbarButton
+            aria-label={t("chat.toolbar.autoPlay")}
+            aria-pressed={auto}
+            className="dialog-stage-controls__button"
+            data-active={auto ? "true" : "false"}
+            icon={<Play aria-hidden className="button__icon" />}
+            onClick={() => onAutoChange(!auto)}
+            tooltip={t("chat.toolbar.autoPlay")}
+          >
+            {t("chat.actionBar.auto")}
           </ToolbarButton>
           <ToolbarButton
             aria-label={t("chat.toolbar.reroll")}

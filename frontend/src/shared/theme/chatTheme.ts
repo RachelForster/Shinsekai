@@ -24,6 +24,10 @@ export interface VisualBlock {
   /** 像素值；解析时 clamp。 */
   padding?: number;
   boxShadow?: string;
+  /** ADV 边框贴图（9-slice），主题目录内相对路径（沙箱）。仅 dialog / name 块消费。 */
+  frameImage?: string;
+  /** 边框切片像素（border-image slice/width），clamp 1–200，默认 32。 */
+  frameSlice?: number;
 }
 
 /** 自定义字体声明，运行时注入为 @font-face。src 为主题目录内相对路径。 */
@@ -181,6 +185,13 @@ function applyVisualBlock(
     const backgroundImage = resolveThemeAssetUrl(block.backgroundImage, assetUrl);
     if (backgroundImage) {
       style[`--chat-${prefix}-background-image`] = `url("${backgroundImage}")`;
+    }
+  }
+  if (assetUrl && block.frameImage) {
+    const frameImage = resolveThemeAssetUrl(block.frameImage, assetUrl);
+    if (frameImage) {
+      const slice = clampNumber(block.frameSlice, 32, 1, 200);
+      style[`--chat-${prefix}-frame`] = `url("${frameImage}") ${slice} fill / ${slice}px round`;
     }
   }
   setStyleVar(style, `--chat-${prefix}-border-color`, block.borderColor);

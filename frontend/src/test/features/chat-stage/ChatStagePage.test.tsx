@@ -295,12 +295,14 @@ describe("ChatStagePage", () => {
     expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "false");
   });
 
-  it("renders core chat actions above the dialog and supports locking the tray", async () => {
+  it("renders core chat actions at the dialog bottom and supports locking the tray", async () => {
     renderPage();
 
     await screen.findByText("Ready");
     const dialog = document.querySelector(".dialog-layer") as HTMLElement;
-    expect(within(dialog).queryByRole("toolbar", { name: "Chat stage actions" })).not.toBeInTheDocument();
+    const dialogBody = dialog.querySelector(".dialog-layer__body") as HTMLElement;
+    const dialogToolbar = within(dialog).getByRole("toolbar", { name: "Chat stage actions" });
+    expect(dialogBody.compareDocumentPosition(dialogToolbar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const actionTray = document.querySelector(".dialog-stage-controls") as HTMLElement;
     expect(actionTray).not.toBeNull();
@@ -388,6 +390,7 @@ describe("ChatStagePage", () => {
       expect(sprites[1]?.style.getPropertyValue("--sprite-scale")).toBe("0.8");
     });
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
+      auto: false,
       dialogOpacity: 0.55,
       dialogScale: 1.05,
       spriteScales: {

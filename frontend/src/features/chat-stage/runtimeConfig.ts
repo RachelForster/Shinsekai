@@ -25,6 +25,7 @@ export const runtimeWindowScaleMax = 1.2;
 export const runtimeWindowScaleStep = 0.05;
 
 export interface ChatStageRuntimeConfig {
+  auto: boolean;
   dialogOpacity: number;
   dialogScale: number;
   spriteScales: Record<string, number>;
@@ -35,6 +36,7 @@ export interface ChatStageRuntimeConfig {
 }
 
 export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
+  auto: false,
   dialogOpacity: 1,
   dialogScale: 1,
   spriteScales: {},
@@ -86,6 +88,7 @@ export function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
     }
     const parsed = JSON.parse(raw) as Partial<ChatStageRuntimeConfig>;
     return {
+      auto: typeof parsed.auto === "boolean" ? parsed.auto : defaultChatStageRuntimeConfig.auto,
       dialogOpacity: clampRuntimeNumber(
         parsed.dialogOpacity,
         defaultChatStageRuntimeConfig.dialogOpacity,
