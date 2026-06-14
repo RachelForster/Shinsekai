@@ -48,6 +48,14 @@ export function composeTemplateContent(scenario: unknown, system: unknown) {
   return [String(scenario ?? "").trim(), String(system ?? "").trim()].filter(Boolean).join("\n\n");
 }
 
+export function buildDefaultTemplateScenario(selectedCharacters: string[]) {
+  const names = selectedCharacters.map((name) => name.trim()).filter(Boolean);
+  if (!names.length) {
+    return "";
+  }
+  return `你需要模拟一个RPG剧情对话系统，出场人物有：${names.join("、")} 以及其他相关人物，请根据剧情调度人物。`;
+}
+
 export function createTemplateDraft(name: string): TemplateSummary {
   return {
     content: "",

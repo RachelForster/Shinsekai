@@ -1205,13 +1205,16 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (input.voiceLanguage) {
           config.system_config.voice_language = input.voiceLanguage;
         }
-        const system = `角色：${input.characters.join("、")}\n背景：${input.backgroundName}\n请按剧情向 RPG 风格推进对白。`;
+        const scenario =
+          input.scenario ||
+          `你需要模拟一个RPG剧情对话系统，出场人物有：${input.characters.join("、")} 以及其他相关人物，请根据剧情调度人物。`;
+        const system = "";
         const template: TemplateSummary = {
-          content: [input.scenario, system].filter(Boolean).join("\n\n"),
+          content: [scenario, system].filter(Boolean).join("\n\n"),
           id: "",
           name: input.name || "新模板",
           path: "",
-          scenario: input.scenario || "",
+          scenario,
           system,
           updatedAt: "",
         };

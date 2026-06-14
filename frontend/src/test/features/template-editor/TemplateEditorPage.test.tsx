@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
+import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import type { TemplateLaunchSession } from "../../../shared/platform/types";
@@ -132,6 +133,39 @@ describe("TemplateEditorPage", () => {
       ),
     );
     expect(await screen.findByDisplayValue("Generated scenario")).toBeInTheDocument();
+  });
+
+  it("auto-generates only when character selection changes and puts the default RPG brief in scenario", async () => {
+    mockGenerateTemplate.mockImplementationOnce(async (input) => ({
+      ...template,
+      generationMessage: "generated",
+      name: "Generated",
+      scenario: (input as { scenario?: string }).scenario ?? "",
+      system: "Generated system",
+    }));
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("Morning scene"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Nanami" }));
+    const defaultScenario = buildDefaultTemplateScenario(["Nanami"]);
+
+    await waitFor(() =>
+      expect(mockGenerateTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          characters: ["Nanami"],
+          scenario: defaultScenario,
+        }),
+      ),
+    );
+    expect(screen.getByDisplayValue(defaultScenario)).toBeInTheDocument();
+    const callsAfterCharacterChange = mockGenerateTemplate.mock.calls.length;
+
+    fireEvent.change(screen.getByLabelText("Background"), { target: { value: "默认房间" } });
+    fireEvent.click(screen.getByLabelText("LLM translation"));
+    await new Promise((resolve) => window.setTimeout(resolve, 260));
+
+    expect(mockGenerateTemplate).toHaveBeenCalledTimes(callsAfterCharacterChange);
   });
 
   it("launches restored sessions only after quick restart confirmation", async () => {
