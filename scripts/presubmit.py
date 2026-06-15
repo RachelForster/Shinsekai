@@ -9,6 +9,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -71,7 +72,22 @@ def pre_push(remote_name: str, remote_url: str, hook_input: str) -> int:
         print("presubmit: no branch commits to validate")
 
     checks = [
-        ("Python tests", python_test_command() + ["-m", "pytest", "-v", "--tb=short", "--strict-markers", "-p", "no:warnings"], ROOT),
+        (
+            "Python tests",
+            python_test_command()
+            + [
+                "-m",
+                "pytest",
+                "-v",
+                "--tb=short",
+                "--strict-markers",
+                "-p",
+                "no:warnings",
+                "-o",
+                f"cache_dir={pytest_cache_dir()}",
+            ],
+            ROOT,
+        ),
     ]
 
     if (FRONTEND / "package.json").exists():
@@ -214,6 +230,10 @@ def python_test_command() -> list[str]:
     if override:
         return shlex.split(override, posix=os.name != "nt")
     return [sys.executable]
+
+
+def pytest_cache_dir() -> str:
+    return str(Path(tempfile.gettempdir()) / "shinsekai-pytest-cache")
 
 
 def run_git_lfs_pre_push(remote_name: str, remote_url: str, hook_input: str) -> int:
