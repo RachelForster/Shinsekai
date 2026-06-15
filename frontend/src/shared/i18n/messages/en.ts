@@ -53,14 +53,14 @@ export const enMessages: Record<MessageKey, string> = {
   "aiSprites.addToCharacter": "Add to character",
   "aiSprites.candidatePlaceholder": "Generated image will appear here",
   "aiSprites.configureT2i": "Configure image generation",
-  "aiSprites.description": "Turn character settings into editable sprite prompts, then prepare candidates for generation.",
+  "aiSprites.description":
+    "Turn character settings into editable sprite prompts, then prepare candidates for generation.",
   "aiSprites.generatePrompts": "Generate prompts",
   "aiSprites.generateSelected": "Generate selected",
   "aiSprites.llm": "Prompt model",
   "aiSprites.loading": "Loading sprite workshop",
   "aiSprites.negativePrompt": "Negative prompt",
-  "aiSprites.notReadyBody":
-    "Set up image generation first. Until then this workflow stays out of the way.",
+  "aiSprites.notReadyBody": "Set up image generation first. Until then this workflow stays out of the way.",
   "aiSprites.notReadyTitle": "Image generation is not configured",
   "aiSprites.promptDrafts": "Prompt candidates",
   "aiSprites.promptDraftsHint":

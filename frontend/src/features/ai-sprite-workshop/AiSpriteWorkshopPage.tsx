@@ -89,11 +89,7 @@ function sdPromptSeed(character: Character, index: number) {
     .join(", ");
 }
 
-function buildPromptDraft(
-  character: Character,
-  index: number,
-  language: FrontendLanguage,
-): SpritePromptDraft {
+function buildPromptDraft(character: Character, index: number, language: FrontendLanguage): SpritePromptDraft {
   return {
     id: `sprite-${index + 1}`,
     index,
@@ -327,7 +323,11 @@ export function AiSpriteWorkshopPage() {
       </section>
 
       <section className="section ai-sprite-page__actions">
-        <AsyncButton disabled={!hasReadyDraft} icon={<Sparkles aria-hidden className="button__icon" />} variant="primary">
+        <AsyncButton
+          disabled={!hasReadyDraft}
+          icon={<Sparkles aria-hidden className="button__icon" />}
+          variant="primary"
+        >
           {t("aiSprites.generateSelected")}
         </AsyncButton>
         <Button disabled={!hasReadyDraft}>{t("aiSprites.addToCharacter")}</Button>
