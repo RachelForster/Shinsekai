@@ -6,6 +6,7 @@ import { Button, IconButton } from "../../../shared/ui";
 import { useI18n } from "../../../shared/i18n";
 
 const defaultUserDisplayName = "你";
+const hiddenSystemHistorySpeakers = new Set(["scene", "场景", "bgm"]);
 
 function normalizeUserDisplayName(value?: string) {
   return value?.trim() || defaultUserDisplayName;
@@ -68,6 +69,33 @@ function splitHistoryEntryText(
   };
 }
 
+function historyEntryTone(role: ChatHistoryEntry["role"]) {
+  if (role === "user") {
+    return "user";
+  }
+  if (role === "options") {
+    return "options";
+  }
+  if (role === "system") {
+    return "system";
+  }
+  return "assistant";
+}
+
+function normalizeHistorySpeaker(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+function isHiddenSystemHistoryEntry(entry: ChatHistoryEntry, dialog: { speaker: string }) {
+  if (entry.role !== "system") {
+    return false;
+  }
+  if (hiddenSystemHistorySpeakers.has(normalizeHistorySpeaker(dialog.speaker))) {
+    return true;
+  }
+  return /^\s*(?:scene|场景|bgm)\s*[：:]/i.test(entry.text);
+}
+
 export function HistoryDialog({
   entries,
   loading,
@@ -122,6 +150,16 @@ export function HistoryDialog({
     system: t("chat.history.role.system"),
     user: t("chat.history.role.user"),
   };
+  const visibleEntries = entries
+    .map((entry) => {
+      const dialog = splitHistoryEntryText(entry, userDisplayName, roleLabels);
+      return {
+        dialog,
+        entry,
+        localTime: dialog.localTime || historyEntryLocalTime(entry),
+      };
+    })
+    .filter(({ dialog, entry }) => !isHiddenSystemHistoryEntry(entry, dialog));
 
   return (
     <div className="chat-history-backdrop" onMouseDown={onBackdropMouseDown} role="presentation">
@@ -138,7 +176,7 @@ export function HistoryDialog({
             <h2 className="chat-history-dialog__title" id={titleId}>
               {t("chat.history.title")}
             </h2>
-            <p className="chat-history-dialog__summary">{t("chat.history.count", { count: entries.length })}</p>
+            <p className="chat-history-dialog__summary">{t("chat.history.count", { count: visibleEntries.length })}</p>
           </div>
           <IconButton
             className="chat-history-dialog__close"
@@ -151,27 +189,35 @@ export function HistoryDialog({
         </header>
         <div className="chat-history-dialog__body">
           {loading ? <p className="chat-history__empty">{t("chat.history.loading")}</p> : null}
-          {!loading && entries.length === 0 ? <p className="chat-history__empty">{t("chat.history.empty")}</p> : null}
-          {!loading && entries.length > 0 ? (
+          {!loading && visibleEntries.length === 0 ? (
+            <p className="chat-history__empty">{t("chat.history.empty")}</p>
+          ) : null}
+          {!loading && visibleEntries.length > 0 ? (
             <div className="chat-history__list">
-              {entries.map((entry, index) => {
-                const dialog = splitHistoryEntryText(entry, userDisplayName, roleLabels);
-                const localTime = dialog.localTime || historyEntryLocalTime(entry);
+              {visibleEntries.map(({ dialog, entry, localTime }, index) => {
                 return (
-                  <section className="chat-history__entry" data-role={entry.role} key={entry.id}>
+                  <section
+                    className="chat-history__entry"
+                    data-role={entry.role}
+                    data-tone={historyEntryTone(entry.role)}
+                    key={entry.id}
+                  >
                     <header className="chat-history__entry-header">
-                      <div className="chat-history__identity">
+                      <div className="chat-history__nameplate">
+                        <span aria-hidden className="chat-history__nameplate-accent" />
+                        <span className="chat-history__speaker">{dialog.speaker}</span>
+                        <span className="chat-history__role">{roleLabels[entry.role]}</span>
+                      </div>
+                      <div className="chat-history__meta">
                         <span className="chat-history__index">
                           {t("chat.history.entryIndex", { index: index + 1 })}
                         </span>
-                        <span className="chat-history__role">{roleLabels[entry.role]}</span>
-                        <span className="chat-history__speaker">{dialog.speaker}</span>
+                        {localTime ? (
+                          <time className="chat-history__time" dateTime={new Date(entry.createdAt ?? 0).toISOString()}>
+                            {localTime}
+                          </time>
+                        ) : null}
                       </div>
-                      {localTime ? (
-                        <time className="chat-history__time" dateTime={new Date(entry.createdAt ?? 0).toISOString()}>
-                          {localTime}
-                        </time>
-                      ) : null}
                     </header>
                     <p className="chat-history__text">{dialog.body}</p>
                     {entry.role === "user" && entry.revertUserIndex != null ? (

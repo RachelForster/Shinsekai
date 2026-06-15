@@ -837,21 +837,47 @@ describe("ChatStagePage", () => {
   });
 
   it("loads runtime history into the dialog and sends revert-history after confirmation", async () => {
+    mocks.getChatHistory.mockResolvedValueOnce([
+      { id: "history-0", role: "assistant", text: "Mio: Ready" },
+      { id: "history-scene", role: "system", text: "SCENE: Hotel lobby" },
+      { id: "history-bgm", role: "system", text: "bgm: calm.ogg" },
+      { id: "history-scene-cn", role: "system", text: "场景：夜晚" },
+      {
+        createdAt: userHistoryCreatedAt,
+        id: "history-1",
+        revertUserIndex: 0,
+        role: "user",
+        text: "你: hello",
+      },
+    ] satisfies ChatHistoryEntry[]);
     renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
 
     await waitFor(() => expect(mocks.getChatHistory).toHaveBeenCalledTimes(1));
     const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    expect(within(dialog).getByText("2 entries")).toBeInTheDocument();
+    const nameplates = dialog.querySelectorAll(".chat-history__nameplate");
+    expect(nameplates).toHaveLength(2);
+    expect(nameplates[0]).toHaveTextContent("Mio");
+    expect(nameplates[0]).toHaveTextContent("Assistant");
+    expect(nameplates[1]).toHaveTextContent("Aoi");
+    expect(nameplates[1]).toHaveTextContent("User");
     expect(within(dialog).getByText("Mio")).toBeInTheDocument();
     expect(within(dialog).getByText("Ready")).toBeInTheDocument();
     expect(within(dialog).getByText("Aoi")).toBeInTheDocument();
+    expect(within(dialog).getByText("#1")).toBeInTheDocument();
+    expect(within(dialog).getByText("#2")).toBeInTheDocument();
+    expect(within(dialog).queryByText("#3")).not.toBeInTheDocument();
     expect(
       within(dialog).getByText(
         new Date(userHistoryCreatedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
       ),
     ).toBeInTheDocument();
     expect(within(dialog).getByText("hello")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Hotel lobby")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("calm.ogg")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("夜晚")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("Mio: Ready")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("你: hello")).not.toBeInTheDocument();
 

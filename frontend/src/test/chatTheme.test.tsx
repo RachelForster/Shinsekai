@@ -485,7 +485,7 @@ describe("chat theme runtime", () => {
     expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-cps", "48");
     expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-gap", "22px");
     expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-logs-code", "rgba(10,19,25,0.88)");
-    expect(document.documentElement.style.getPropertyValue("--chat-theme-color")).toBe("#f3cf57");
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue("--chat-theme-color")).toBe("#f3cf57"));
     expect(document.documentElement.style.getPropertyValue("--logs-code-background")).toBe("rgba(10,19,25,0.88)");
     expect(document.documentElement.style.getPropertyValue("--chat-options-gap")).toBe("22px");
     expect(document.getElementById("shinsekai-chat-theme-fonts")?.textContent).toContain(
