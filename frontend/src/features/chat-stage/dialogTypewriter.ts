@@ -403,7 +403,7 @@ export function renderDialogTypewriterFrame(
 ) {
   const normalizedDirection = normalizeTypewriterDirection(direction);
   if (source.fullHtml) {
-    const html = normalizedDirection === "rtl" ? source.fullRtlHtml ?? source.fullHtml : source.fullHtml;
+    const html = normalizedDirection === "rtl" ? (source.fullRtlHtml ?? source.fullHtml) : source.fullHtml;
     return {
       html: renderDialogHtmlFrame(html, visibleCharacters, normalizedDirection),
       text:

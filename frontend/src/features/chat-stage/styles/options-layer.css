@@ -105,4 +105,3 @@
   background: var(--chat-option-active-background, var(--chat-option-hover-background));
   transform: translateY(0);
 }
-

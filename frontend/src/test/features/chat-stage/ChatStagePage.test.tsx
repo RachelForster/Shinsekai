@@ -428,7 +428,9 @@ describe("ChatStagePage", () => {
     const refreshedBranch2Node = within(dialog).getByText("Branch 2").closest("article") as HTMLElement;
     fireEvent.click(within(refreshedBranch2Node).getByRole("button", { name: "Switch" }));
 
-    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "branch-2", type: "switch-branch" }));
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "branch-2", type: "switch-branch" }),
+    );
   });
 
   it("uses opt-in theme placement for the detached dialog toolbar and hides the nameplate on start options", async () => {
@@ -540,7 +542,9 @@ describe("ChatStagePage", () => {
     const longPress = within(config).getByLabelText("Long press to talk");
     fireEvent.click(longPress);
 
-    await screen.findByText("Download and configure a Vosk speech model before enabling this. Go to System settings to download it. Current path: D:/models/vosk");
+    await screen.findByText(
+      "Download and configure a Vosk speech model before enabling this. Go to System settings to download it. Current path: D:/models/vosk",
+    );
     expect(longPress).not.toBeChecked();
     expect(screen.queryByRole("button", { name: "Hold to talk" })).not.toBeInTheDocument();
   });

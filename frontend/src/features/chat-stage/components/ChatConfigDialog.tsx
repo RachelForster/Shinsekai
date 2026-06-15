@@ -414,9 +414,7 @@ export function ChatConfigDialog({
                 aria-label={t("chat.config.nameBold")}
                 checked={nameBoldChecked}
                 className="chat-config-dialog__checkbox"
-                onChange={(event) =>
-                  onTextStyleChange("nameText", { bold: event.target.checked, boldOverride: true })
-                }
+                onChange={(event) => onTextStyleChange("nameText", { bold: event.target.checked, boldOverride: true })}
                 type="checkbox"
               />
             </label>

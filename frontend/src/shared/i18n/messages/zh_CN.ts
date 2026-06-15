@@ -350,7 +350,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.fontFamilyPlaceholder": "留空使用主题字体",
   "chat.config.fontSizeValue": "{value}px",
   "chat.config.longPressTalk": "长按键说话",
-  "chat.config.longPressTalkVoskMissing": "需要先下载并配置 Vosk 语音模型后才能开启。请前往系统设置下载模型，当前路径：{path}",
+  "chat.config.longPressTalkVoskMissing":
+    "需要先下载并配置 Vosk 语音模型后才能开启。请前往系统设置下载模型，当前路径：{path}",
   "chat.config.menuThemeColor": "配置菜单颜色",
   "chat.config.nameBold": "名牌文字加粗",
   "chat.config.nameColor": "名牌文字颜色",

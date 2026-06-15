@@ -68,7 +68,9 @@
   --chat-dialog-toolbar-padding-bottom: 0px;
   --chat-dialog-toolbar-gap: 6px;
   --chat-dialog-toolbar-input-clearance: var(--chat-dialog-toolbar-gap);
-  --chat-dialog-toolbar-layer-bottom: calc(var(--stage-control-stack-height) + var(--chat-dialog-toolbar-input-clearance));
+  --chat-dialog-toolbar-layer-bottom: calc(
+    var(--stage-control-stack-height) + var(--chat-dialog-toolbar-input-clearance)
+  );
   --chat-dialog-toolbar-layer-max-width: calc(100vw - 40px);
   --chat-dialog-toolbar-layer-padding: 0;
   --chat-dialog-toolbar-layer-width: min(var(--chat-dialog-width), var(--chat-dialog-runtime-width));
@@ -76,8 +78,7 @@
   --chat-dialog-toolbar-reserved-height: clamp(54px, 6.4svh, 68px);
   --chat-dialog-name-input-gap: 22svh;
   --chat-dialog-stack-bottom: calc(
-    var(--stage-control-stack-height) + var(--chat-dialog-toolbar-reserved-height) + 16px -
-      var(--chat-dialog-offset-y)
+    var(--stage-control-stack-height) + var(--chat-dialog-toolbar-reserved-height) + 16px - var(--chat-dialog-offset-y)
   );
   --chat-name-runtime-color: var(--chat-name-color);
   --chat-name-runtime-font-family: var(--font-chat);
@@ -265,4 +266,3 @@ body[data-chat-stage-transparent="true"] #root {
     radial-gradient(125% 105% at 50% 48%, transparent 58%, rgba(0, 0, 0, 0.24) 100%),
     linear-gradient(180deg, rgba(8, 6, 4, 0.36), transparent 15%);
 }
-

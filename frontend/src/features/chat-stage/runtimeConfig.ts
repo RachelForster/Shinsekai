@@ -265,9 +265,7 @@ export function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
         runtimeDialogScaleMax,
       ),
       longPressTalk:
-        typeof parsed.longPressTalk === "boolean"
-          ? parsed.longPressTalk
-          : defaultChatStageRuntimeConfig.longPressTalk,
+        typeof parsed.longPressTalk === "boolean" ? parsed.longPressTalk : defaultChatStageRuntimeConfig.longPressTalk,
       typewriterCps:
         parsed.typewriterCps == null
           ? null

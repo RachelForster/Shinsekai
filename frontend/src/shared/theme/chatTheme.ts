@@ -230,13 +230,7 @@ function setPxVar(
   style[name] = `${clampNumber(value, fallback, min, max)}px`;
 }
 
-function setVhVar(
-  style: ChatStageStyle,
-  name: `--${string}`,
-  value: unknown,
-  min: number,
-  max: number,
-) {
+function setVhVar(style: ChatStageStyle, name: `--${string}`, value: unknown, min: number, max: number) {
   if (typeof value !== "number") {
     return;
   }

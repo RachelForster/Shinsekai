@@ -139,7 +139,9 @@ export function ChatStagePage() {
     toolbarConfigOpen || branchDialogOpen || historyDialogOpen || confirmClearHistory || confirmRevertUserIndex != null;
   const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
   const dialogToolbarPlacement =
-    typeof themeStyle["--chat-dialog-toolbar-placement"] === "string" ? themeStyle["--chat-dialog-toolbar-placement"] : "";
+    typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
+      ? themeStyle["--chat-dialog-toolbar-placement"]
+      : "";
   const dialogToolbarDetached = dialogToolbarPlacement === "input" || dialogToolbarPlacement === "dialog-top";
   const dialogToolbarReveal = themeStyle["--chat-dialog-toolbar-reveal"] === "hover" ? "hover" : "always";
   const inputLayout = themeStyle["--chat-input-layout"] === "pill" ? "pill" : "default";

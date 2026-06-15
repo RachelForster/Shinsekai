@@ -215,7 +215,9 @@ export function InputLayer({
           className="input-layer__press"
           data-active={holdTalkActive || listening ? "true" : "false"}
           disabled={pressToTalk ? disabled : disabled && !listening}
-          label={pressToTalk ? t("chat.input.holdToTalk") : listening ? t("chat.input.micStop") : t("chat.input.micStart")}
+          label={
+            pressToTalk ? t("chat.input.holdToTalk") : listening ? t("chat.input.micStop") : t("chat.input.micStart")
+          }
           onBlur={() => stopHoldTalk()}
           onClick={(event) => {
             if (pressToTalk) {

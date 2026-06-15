@@ -712,7 +712,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           clearScheduledChatUpdates();
           savePreviewActiveBranch();
           const payload = command.payload;
-          const userIndex = Number(typeof payload === "object" && payload ? (payload as { userIndex?: unknown }).userIndex : payload);
+          const userIndex = Number(
+            typeof payload === "object" && payload ? (payload as { userIndex?: unknown }).userIndex : payload,
+          );
           const entries = cloneHistoryEntries(chat.historyEntries);
           const userEntryPosition = entries.findIndex(
             (entry) => entry.role === "user" && entry.revertUserIndex === userIndex,
@@ -733,8 +735,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
               parentId: chat.conversationTree?.activeBranchId || "main",
               updatedAt: Date.now(),
             });
-            const nextUserIndex =
-              Math.max(-1, ...prefixEntries.map((entry) => entry.revertUserIndex ?? -1)) + 1;
+            const nextUserIndex = Math.max(-1, ...prefixEntries.map((entry) => entry.revertUserIndex ?? -1)) + 1;
             chat = {
               ...chat,
               characterName: chat.userDisplayName?.trim() || "你",
@@ -791,7 +792,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (command.type === "rename-branch") {
           const payload = command.payload;
           const branchId =
-            typeof payload === "object" && payload ? String((payload as { branchId?: unknown }).branchId ?? "").trim() : "";
+            typeof payload === "object" && payload
+              ? String((payload as { branchId?: unknown }).branchId ?? "").trim()
+              : "";
           const label =
             typeof payload === "object" && payload ? String((payload as { label?: unknown }).label ?? "").trim() : "";
           const branch = previewBranches.get(branchId);

@@ -332,8 +332,7 @@ export const sampleChatThemeManifests: Record<string, ChatThemeManifest> = {
         offsetY: 0,
         padding: 8,
         textAlign: "center",
-        textShadow:
-          "0 2px 0 #26313a, 0 -1px 0 #26313a, 1px 0 0 #26313a, -1px 0 0 #26313a, 0 4px 8px rgba(0,0,0,0.72)",
+        textShadow: "0 2px 0 #26313a, 0 -1px 0 #26313a, 1px 0 0 #26313a, -1px 0 0 #26313a, 0 4px 8px rgba(0,0,0,0.72)",
         textSizePx: 34,
         textWeight: 800,
         widthPct: 72,
@@ -431,7 +430,11 @@ export const sampleChatThemeManifests: Record<string, ChatThemeManifest> = {
         },
         number: { borderColor: "rgba(244,250,255,0.1)", color: "rgba(244,248,255,0.5)" },
         detail: { background: "rgba(255,255,255,0.07)", borderColor: "rgba(244,250,255,0.14)", color: "#f4f8ff" },
-        badge: { background: "rgba(255,255,255,0.08)", borderColor: "rgba(244,250,255,0.14)", color: "rgba(244,248,255,0.72)" },
+        badge: {
+          background: "rgba(255,255,255,0.08)",
+          borderColor: "rgba(244,250,255,0.14)",
+          color: "rgba(244,248,255,0.72)",
+        },
         event: { background: "rgba(217,174,60,0.16)", borderColor: "rgba(217,174,60,0.42)", color: "#ffe08a" },
         fileItem: {
           background: "rgba(255,255,255,0.04)",
@@ -442,7 +445,11 @@ export const sampleChatThemeManifests: Record<string, ChatThemeManifest> = {
         },
         levels: {
           debug: { background: "rgba(83,172,222,0.12)", borderColor: "rgba(83,172,222,0.34)", color: "#9edbff" },
-          default: { background: "rgba(255,255,255,0.07)", borderColor: "rgba(244,250,255,0.14)", color: "rgba(244,248,255,0.72)" },
+          default: {
+            background: "rgba(255,255,255,0.07)",
+            borderColor: "rgba(244,250,255,0.14)",
+            color: "rgba(244,248,255,0.72)",
+          },
           error: { background: "rgba(240,86,86,0.13)", borderColor: "rgba(240,86,86,0.46)", color: "#ff9ca0" },
           info: { background: "rgba(66,190,133,0.12)", borderColor: "rgba(66,190,133,0.38)", color: "#9be6bf" },
           warn: { background: "rgba(217,174,60,0.14)", borderColor: "rgba(217,174,60,0.48)", color: "#ffe08a" },

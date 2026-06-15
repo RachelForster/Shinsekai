@@ -35,7 +35,11 @@
   padding: 13px 14px;
   border-bottom: 1px solid var(--chat-toolbar-border-color);
   background:
-    linear-gradient(180deg, color-mix(in oklch, var(--chat-config-accent-local) 12%, rgba(255, 255, 255, 0.06)), transparent),
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--chat-config-accent-local) 12%, rgba(255, 255, 255, 0.06)),
+      transparent
+    ),
     var(--chat-toolbar-background);
 }
 
@@ -243,4 +247,3 @@
   font-size: 12px;
   line-height: 1.45;
 }
-
