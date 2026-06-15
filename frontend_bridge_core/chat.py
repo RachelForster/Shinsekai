@@ -27,6 +27,13 @@ from core.messaging.dialog_tokens import (
 from core.paths import app_root as runtime_app_root
 from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
+from core.sprite.chat_branch_storage import (
+    ACTIVE_HISTORY_FILENAME,
+    BRANCH_TREE_FILENAME,
+    chat_history_active_path,
+    chat_history_download_path,
+    chat_history_session_dir,
+)
 from llm.history_manager import parse_assistant_dialog_content
 from llm.tools.chat_ui_tools import sanitize_user_display_name
 
@@ -45,12 +52,15 @@ _RUNTIME_CHAT_COMMANDS = {
     "change-voice-language",
     "clear-history",
     "dialog-advance",
+    "fork-history",
     "pause-asr",
+    "rename-branch",
     "resume-asr",
     "reroll",
     "revert-history",
     "send-message",
     "skip-speech",
+    "switch-branch",
     "submit-option",
 }
 _main_chat_process: subprocess.Popen[bytes] | None = None
@@ -298,8 +308,11 @@ def _launch_chat(
         state.config_manager.save_system_config()
 
         template_hash = _history_id_from_scenario(user_scenario, system_template)
-        history_path = Path(history_file) if history_file else Path(state.history_dir) / f"{template_hash}.json"
-        history_path.parent.mkdir(parents=True, exist_ok=True)
+        history_path = Path(history_file) if history_file else Path(state.history_dir) / template_hash
+        if history_path.suffix.lower() == ".json" and history_path.exists() and history_path.is_file():
+            history_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            chat_history_session_dir(history_path).mkdir(parents=True, exist_ok=True)
         project_root = _project_root()
         app_root = _app_root(state)
         tts_slug = str(state.config_manager.config.api_config.tts_provider or "gpt-sovits").strip() or "gpt-sovits"
@@ -394,12 +407,17 @@ def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: di
     raw = str(payload.get("historyPath") or "").strip()
     if raw:
         path = Path(raw).expanduser()
-        return path if path.is_absolute() else Path.cwd() / path
+        path = path if path.is_absolute() else Path.cwd() / path
+        if path.name in {ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME}:
+            return path.parent
+        if path.suffix.lower() == ".json" and not path.is_file():
+            return path.with_suffix("")
+        return path
     template_hash = _history_id_from_scenario(
         str(template.get("scenario") or template.get("content") or ""),
         str(template.get("system") or ""),
     )
-    return _resolve_project_file(Path(state.history_dir) / f"{template_hash}.json")
+    return _resolve_project_file(Path(state.history_dir) / template_hash)
 
 
 def _sprite_path(sprite: Any) -> str:
@@ -566,9 +584,10 @@ def _chat_history_entries(state: BridgeState) -> list[dict[str, Any]]:
             return entries
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
     history_path = _resolve_project_file(history_raw) if history_raw else None
-    if history_path is None or not history_path.is_file():
+    history_file = chat_history_active_path(history_path) if history_path is not None else None
+    if history_file is None or not history_file.is_file():
         return []
-    return _serialize_history_entries_from_messages(_read_history_file(history_path), _chat_user_display_name(state))
+    return _serialize_history_entries_from_messages(_read_history_file(history_file), _chat_user_display_name(state))
 
 
 def _chat_history(state: BridgeState) -> list[dict[str, Any]]:
@@ -711,10 +730,11 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         if not text:
             if history_path is None:
                 raise FileNotFoundError("没有已关联的聊天历史文件。")
-            if not history_path.exists():
-                raise FileNotFoundError(history_path.as_posix())
-            text = _plain_history_text(_read_history_file(history_path))
-            opened_path = history_path.as_posix()
+            history_file = chat_history_active_path(history_path)
+            if not history_file.exists():
+                raise FileNotFoundError(history_file.as_posix())
+            text = _plain_history_text(_read_history_file(history_file))
+            opened_path = history_file.as_posix()
         return _chat_snapshot(
             state,
             "idle",
@@ -725,14 +745,15 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
     if command == "open-history":
         if history_path is None:
             raise FileNotFoundError("没有已关联的聊天历史文件。")
-        if not history_path.exists():
-            raise FileNotFoundError(history_path.as_posix())
-        rel = history_path.relative_to(Path.cwd().resolve()).as_posix()
+        history_file = chat_history_download_path(history_path)
+        if not history_file.exists():
+            raise FileNotFoundError(history_file.as_posix())
+        rel = history_file.relative_to(Path.cwd().resolve()).as_posix()
         return _chat_snapshot(
             state,
             "idle",
             "历史文件已打开。",
-            extra={"downloadUrl": f"/api/download?path={quote(rel)}", "openedPath": rel},
+            extra={"downloadUrl": f"/api/download?path={quote(rel)}", "openedPath": history_path.as_posix()},
         )
 
     if command == "clear-history":
@@ -793,6 +814,30 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         except (TypeError, ValueError) as exc:
             raise ValueError("回溯索引无效。") from exc
         return _forward_runtime_command("idle")
+    if command == "fork-history":
+        payload = body.get("payload")
+        raw_index = payload.get("userIndex") if isinstance(payload, dict) else payload
+        try:
+            int(raw_index)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("分支索引无效。") from exc
+        return _forward_runtime_command("generating", "正在创建对话分支。")
+    if command == "switch-branch":
+        branch_id = str(body.get("payload") or "").strip()
+        if not branch_id:
+            raise ValueError("分支 id 不能为空。")
+        return _forward_runtime_command("idle", "已切换对话分支。")
+    if command == "rename-branch":
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("分支重命名参数无效。")
+        branch_id = str(payload.get("branchId") or "").strip()
+        label = str(payload.get("label") or "").strip()
+        if not branch_id:
+            raise ValueError("分支 id 不能为空。")
+        if not label:
+            raise ValueError("分支名称不能为空。")
+        return _forward_runtime_command("idle", "已重命名对话分支。")
 
     raise ValueError(f"未知聊天命令：{command}")
 

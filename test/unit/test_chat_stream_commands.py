@@ -243,6 +243,57 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertIsInstance(command["cmdId"], str)
         self.assertTrue(command["cmdId"])
 
+    def test_handle_chat_command_wraps_fork_history_with_cmd_id(self):
+        chat_stream = _StubChatStream()
+        state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+
+        snapshot = _handle_chat_command(state, {"payload": {"userIndex": 2}, "type": "fork-history"})
+
+        self.assertEqual(snapshot["status"], "generating")
+        self.assertEqual(snapshot["dialogText"], "正在创建对话分支。")
+        self.assertIsNotNone(chat_stream.command)
+        session_id, command = chat_stream.command
+        self.assertEqual(session_id, "session-1")
+        self.assertEqual(command["type"], "fork-history")
+        self.assertEqual(command["payload"], {"userIndex": 2})
+        self.assertIsInstance(command["cmdId"], str)
+        self.assertTrue(command["cmdId"])
+
+    def test_handle_chat_command_wraps_switch_branch_with_cmd_id(self):
+        chat_stream = _StubChatStream()
+        state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+
+        snapshot = _handle_chat_command(state, {"payload": "branch-2", "type": "switch-branch"})
+
+        self.assertEqual(snapshot["status"], "idle")
+        self.assertEqual(snapshot["dialogText"], "已切换对话分支。")
+        self.assertIsNotNone(chat_stream.command)
+        session_id, command = chat_stream.command
+        self.assertEqual(session_id, "session-1")
+        self.assertEqual(command["type"], "switch-branch")
+        self.assertEqual(command["payload"], "branch-2")
+        self.assertIsInstance(command["cmdId"], str)
+        self.assertTrue(command["cmdId"])
+
+    def test_handle_chat_command_wraps_rename_branch_with_cmd_id(self):
+        chat_stream = _StubChatStream()
+        state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+
+        snapshot = _handle_chat_command(
+            state,
+            {"payload": {"branchId": "branch-2", "label": "Side route"}, "type": "rename-branch"},
+        )
+
+        self.assertEqual(snapshot["status"], "idle")
+        self.assertEqual(snapshot["dialogText"], "已重命名对话分支。")
+        self.assertIsNotNone(chat_stream.command)
+        session_id, command = chat_stream.command
+        self.assertEqual(session_id, "session-1")
+        self.assertEqual(command["type"], "rename-branch")
+        self.assertEqual(command["payload"], {"branchId": "branch-2", "label": "Side route"})
+        self.assertIsInstance(command["cmdId"], str)
+        self.assertTrue(command["cmdId"])
+
     def test_chat_stream_sends_commands_and_broadcasts_ack_events(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
         session = service.create_session()

@@ -178,6 +178,12 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         ]
         return next_snapshot
 
+    if event_type == "conversation.tree":
+        tree = event.get("tree")
+        if isinstance(tree, dict):
+            next_snapshot["conversationTree"] = dict(tree)
+        return next_snapshot
+
     if event_type == "numeric.update":
         next_snapshot["numericInfo"] = _plain_text(str(event.get("html") or ""))
         return next_snapshot

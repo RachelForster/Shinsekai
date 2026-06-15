@@ -14,6 +14,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlparse
 
 from sdk.logging import get_logger, log_context, new_log_id
+from core.sprite.chat_branch_storage import remove_chat_history_storage
 
 from .backgrounds import (
     _delete_all_background_bgm,
@@ -846,11 +847,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         reset_history = bool(body.get("resetHistory"))
         if reset_history:
             for item in {history_path, default_history_path}:
-                try:
-                    if item.exists():
-                        item.unlink()
-                except OSError:
-                    pass
+                remove_chat_history_storage(item)
         user_scenario = str(row.get("scenario") or row.get("content") or "")
         system_template = str(row.get("system") or "")
         user_scenario, system_template = _repair_template_parts_from_session_if_needed(
@@ -882,7 +879,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         )
         message = _launch_chat(
             self.state,
-            history_file="" if reset_history else history_path.as_posix(),
+            history_file=(default_history_path if reset_history else history_path).as_posix(),
             init_sprite_path=init_sprite_path,
             room_id=room_id,
             selected_bg=str(body.get("backgroundName") or ""),
