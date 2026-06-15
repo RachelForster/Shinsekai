@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from config.mirror_env import mirror_github_url
 
 logger = logging.getLogger(__name__)
 _PLUGINS_DIR = Path("plugins")
@@ -258,7 +259,7 @@ def unmark_repo_for_manifest_entry(entry: str) -> bool:
 
 def _github_archive_zip_url(repo_slug: str, branch: str) -> str:
     base = "/".join(p.strip() for p in repo_slug.strip().strip("/").split("/") if p.strip())
-    return f"https://github.com/{base}/archive/refs/heads/{branch}.zip"
+    return mirror_github_url(f"https://github.com/{base}/archive/refs/heads/{branch}.zip")
 
 
 def _archive_top_prefix(zip_path: Path) -> str:

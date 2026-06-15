@@ -8,6 +8,7 @@ import type { CharacterFieldChange } from "./characterEditorUtils";
 interface CharacterBasicSectionProps {
   colorPickerValue: string;
   draft: Character;
+  id?: string;
   nameError: string;
   onChange: CharacterFieldChange;
   onColorInputRef: (element: HTMLInputElement | null) => void;
@@ -20,6 +21,7 @@ interface CharacterBasicSectionProps {
 export function CharacterBasicSection({
   colorPickerValue,
   draft,
+  id,
   nameError,
   onChange,
   onColorInputRef,
@@ -31,7 +33,7 @@ export function CharacterBasicSection({
   const { t } = useI18n();
 
   return (
-    <section className="section">
+    <section className="section page-section-anchor" id={id}>
       <div className="section__header">
         <h2 className="section__title">{t("character.section.basic")}</h2>
         <Button icon={<Trash2 aria-hidden className="button__icon" />} onClick={onDelete} variant="danger">

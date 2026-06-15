@@ -35,6 +35,7 @@ class PluginHostContext:
     tts_provider: str
     live_room_id: str
     project_data_dir: Path
+    huggingface_cache_dir: Path
 
     @classmethod
     def from_config_manager(cls, cm: ConfigManager | None) -> PluginHostContext:
@@ -48,10 +49,15 @@ class PluginHostContext:
                 tts_provider="",
                 live_room_id="",
                 project_data_dir=Path("data"),
+                huggingface_cache_dir=(Path.cwd() / "data/cache/huggingface").resolve(strict=False),
             )
         cfg = cm.config
         sys = cfg.system_config
         api = cfg.api_config
+        raw_hf_cache = str(getattr(sys, "huggingface_cache_dir", "") or "./data/cache/huggingface")
+        hf_cache = Path(raw_hf_cache).expanduser()
+        if not hf_cache.is_absolute():
+            hf_cache = Path.cwd() / hf_cache
         return cls(
             ui_language=str(sys.ui_language),
             voice_language=str(sys.voice_language),
@@ -61,6 +67,7 @@ class PluginHostContext:
             tts_provider=str(api.tts_provider),
             live_room_id=str(sys.live_room_id),
             project_data_dir=Path("data"),
+            huggingface_cache_dir=hf_cache.resolve(strict=False),
         )
 
 

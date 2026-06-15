@@ -57,7 +57,12 @@ class BackgroundManager:
         self._config_manager.save_background_config()
 
     def add_background(
-        self, name: str, sprite_prefix: str, edit_as_name: Optional[str] = None
+        self,
+        name: str,
+        sprite_prefix: str,
+        edit_as_name: Optional[str] = None,
+        bg_tags: Optional[str] = None,
+        bgm_tags: Optional[str] = None,
     ) -> Tuple[str, List[str]]:
         """
         添加或更新背景配置。
@@ -81,6 +86,10 @@ class BackgroundManager:
                     return f"名称「{name}」已与其他背景组重复！", [b.name for b in background_list]
                 target.name = name
                 target.sprite_prefix = sprite_prefix
+                if bg_tags is not None:
+                    target.bg_tags = bg_tags
+                if bgm_tags is not None:
+                    target.bgm_tags = bgm_tags
                 self._save_background_config()
                 return "背景组已更新！", [b.name for b in background_list]
 
@@ -92,9 +101,9 @@ class BackgroundManager:
                 name=name,
                 sprite_prefix=sprite_prefix,
                 sprites=[],
-                bg_tags="",
+                bg_tags=bg_tags or "",
                 bgm_list=[],
-                bgm_tags="",
+                bgm_tags=bgm_tags or "",
             )    
             background_list.append(new_background)
             self._save_background_config()
@@ -103,6 +112,10 @@ class BackgroundManager:
             # 更新现有 Background 实例的属性
             existing_background.name = name
             existing_background.sprite_prefix = sprite_prefix
+            if bg_tags is not None:
+                existing_background.bg_tags = bg_tags
+            if bgm_tags is not None:
+                existing_background.bgm_tags = bgm_tags
 
             self._save_background_config()
             return "背景组已更新！", [b.name for b in background_list] # 修正返回消息

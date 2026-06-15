@@ -249,6 +249,7 @@ pub fn pip_index_urls_for_source(manifest: &RuntimeManifest, source: Option<&str
     let custom_index = env::var("SHINSEKAI_PIP_INDEX_URL").ok();
     let custom_indexes = env::var("SHINSEKAI_PIP_INDEX_URLS").ok();
     let runtime_source = env::var("SHINSEKAI_RUNTIME_SOURCE").ok();
+    let mirror_region = env::var("SHINSEKAI_MIRROR_REGION").ok();
     pip_index_urls_for_source_values(
         manifest,
         source,
@@ -256,6 +257,7 @@ pub fn pip_index_urls_for_source(manifest: &RuntimeManifest, source: Option<&str
         custom_index.as_deref(),
         custom_indexes.as_deref(),
         runtime_source.as_deref(),
+        mirror_region.as_deref(),
     )
 }
 
@@ -266,6 +268,7 @@ fn pip_index_urls_for_source_values(
     custom_index: Option<&str>,
     custom_indexes: Option<&str>,
     runtime_source: Option<&str>,
+    mirror_region: Option<&str>,
 ) -> Vec<String> {
     if pip_configured {
         return Vec::new();
@@ -289,6 +292,16 @@ fn pip_index_urls_for_source_values(
             _ => {}
         }
     }
+    match normalized_mirror_region(mirror_region).as_deref() {
+        Some("china") => {
+            return ordered_pip_indexes(
+                &china_pip_indexes(manifest),
+                &official_pip_indexes(manifest),
+            )
+        }
+        Some("global") => return official_pip_indexes(manifest),
+        _ => {}
+    }
 
     let official = official_pip_indexes(manifest);
     let china = china_pip_indexes(manifest);
@@ -305,6 +318,18 @@ fn pip_index_urls_for_source_values(
 
 fn normalized_source(source: Option<&str>) -> Option<String> {
     source.map(|value| value.trim().to_ascii_lowercase())
+}
+
+fn normalized_mirror_region(region: Option<&str>) -> Option<&'static str> {
+    match region
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("china" | "cn" | "mainland" | "mainland_china") => Some("china"),
+        Some("global" | "intl" | "international" | "overseas" | "us") => Some("global"),
+        _ => None,
+    }
 }
 
 fn official_pip_indexes(manifest: &RuntimeManifest) -> Vec<String> {

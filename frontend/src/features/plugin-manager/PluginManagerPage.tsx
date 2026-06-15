@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, BookOpen, Power, RotateCcw, Send, Settings, Trash2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { openExternal } from "../../entities/files/repository";
 import {
@@ -23,7 +24,6 @@ import type {
 import {
   desktopRestartErrorMessage,
   isTauriDesktop,
-  restartDesktopBridge,
   writeDesktopRestartDebugLog,
 } from "../../shared/desktop/desktopApi";
 import { useI18n } from "../../shared/i18n";
@@ -54,9 +54,38 @@ import {
   pluginToolsTabs,
   type PluginView,
 } from "./pluginUtils";
+import { reloadPluginService } from "./pluginReload";
 import "./PluginManagerPage.css";
 
 const INSTALLED_PLUGIN_PAGE_SIZE = 8;
+
+interface PluginRouteReturnTo {
+  hash?: string;
+  pathname: string;
+  search?: string;
+  state?: unknown;
+}
+
+interface PluginRouteState {
+  pluginId?: unknown;
+  returnTo?: unknown;
+}
+
+function parsePluginRouteReturnTo(value: unknown): PluginRouteReturnTo | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Partial<PluginRouteReturnTo>;
+  if (typeof candidate.pathname !== "string" || !candidate.pathname.startsWith("/settings")) {
+    return null;
+  }
+  return {
+    hash: typeof candidate.hash === "string" ? candidate.hash : "",
+    pathname: candidate.pathname,
+    search: typeof candidate.search === "string" ? candidate.search : "",
+    state: candidate.state,
+  };
+}
 
 function normalizePluginKey(value: string | null | undefined) {
   return (value ?? "")
@@ -236,6 +265,8 @@ function hasCatalogUpdate(catalog: PluginCatalogItem | null | undefined, plugin:
 
 export function PluginManagerPage() {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const { t } = useI18n();
   const pluginsQuery = useQuery({ queryFn: listPlugins, queryKey: pluginsQueryKey });
@@ -247,6 +278,7 @@ export function PluginManagerPage() {
   const [pendingCatalogInstall, setPendingCatalogInstall] = useState<PluginCatalogItem | null>(null);
   const [pendingUninstall, setPendingUninstall] = useState<PluginManifest | null>(null);
   const [detailPlugin, setDetailPlugin] = useState<PluginManifest | null>(null);
+  const [detailReturnTo, setDetailReturnTo] = useState<PluginRouteReturnTo | null>(null);
   const [pluginReloadPending, setPluginReloadPending] = useState(false);
   const [publisherOpen, setPublisherOpen] = useState(false);
   const [appUpdateTask, setAppUpdateTask] = useState<TaskSnapshot<AppUpdateResult> | null>(null);
@@ -268,6 +300,21 @@ export function PluginManagerPage() {
     matcher: installedPluginMatches,
     pageSize: INSTALLED_PLUGIN_PAGE_SIZE,
   });
+
+  useEffect(() => {
+    const state = location.state as PluginRouteState | null;
+    const pluginId = typeof state?.pluginId === "string" ? state.pluginId : "";
+    if (!pluginId || !data.length || detailPlugin?.id === pluginId) {
+      return;
+    }
+    const plugin = data.find((item) => item.id === pluginId || pluginActionId(item) === pluginId);
+    if (!plugin) {
+      return;
+    }
+    setDetailPlugin(plugin);
+    setDetailReturnTo(parsePluginRouteReturnTo(state?.returnTo));
+    navigate(location.pathname, { replace: true, state: null });
+  }, [data, detailPlugin?.id, location.pathname, location.state, navigate]);
 
   const catalogQuery = useQuery({
     enabled: view !== "mcp",
@@ -408,9 +455,7 @@ export function PluginManagerPage() {
   const handleReloadPlugins = async () => {
     setPluginReloadPending(true);
     try {
-      await waitForReloadAnimationFrame();
-      const runtime = await restartDesktopBridge();
-      await waitForPluginBridgeReady(runtime.bridgeUrl);
+      await reloadPluginService();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: pluginsQueryKey }),
         queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey }),
@@ -432,8 +477,19 @@ export function PluginManagerPage() {
     }
   };
 
+  const handleDetailBack = () => {
+    if (detailReturnTo) {
+      const { state, ...to } = detailReturnTo;
+      setDetailPlugin(null);
+      setDetailReturnTo(null);
+      navigate(to, { state });
+      return;
+    }
+    setDetailPlugin(null);
+  };
+
   if (detailPlugin) {
-    return <PluginDetailPanel detailPlugin={detailPlugin} onBack={() => setDetailPlugin(null)} />;
+    return <PluginDetailPanel detailPlugin={detailPlugin} onBack={handleDetailBack} />;
   }
 
   return (
@@ -663,7 +719,10 @@ export function PluginManagerPage() {
                         <Button
                           disabled={pluginBusy || !loaded}
                           icon={<Settings aria-hidden className="button__icon" />}
-                          onClick={() => setDetailPlugin(plugin)}
+                          onClick={() => {
+                            setDetailReturnTo(null);
+                            setDetailPlugin(plugin);
+                          }}
                           tooltip={t("plugin.action.viewConfig")}
                           variant="ghost"
                         >
@@ -704,94 +763,4 @@ export function PluginManagerPage() {
       <PluginPublisherDialog onClose={() => setPublisherOpen(false)} open={publisherOpen} />
     </div>
   );
-}
-
-function waitForReloadAnimationFrame() {
-  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
-    return Promise.resolve();
-  }
-  return new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => resolve());
-    });
-  });
-}
-
-async function waitForPluginBridgeReady(bridgeUrl: string, timeoutMs = 15000) {
-  if (!bridgeUrl) {
-    return;
-  }
-  const baseUrl = bridgeUrl.replace(/\/$/, "");
-  const url = `${baseUrl}/api/health`;
-  const started = Date.now();
-  let lastError: unknown;
-
-  while (Date.now() - started < timeoutMs) {
-    try {
-      const response = await fetch(url, { cache: "no-store" });
-      const payload = await response.json().catch(() => null);
-      if (response.ok && payload?.ok === true) {
-        const status = normalizePluginLoadStatus(payload?.plugins) ?? (await fetchPluginLoadStatus(baseUrl));
-        if (!status || status.status === "ready") {
-          return;
-        }
-        if (status.status === "error") {
-          throw new PluginLoadTerminalError(status.error || "Plugin service reload failed.");
-        }
-        lastError = new Error(`Plugin service is still ${status.status}.`);
-      } else {
-        lastError = new Error(`Plugin service health check failed: ${response.status}`);
-      }
-    } catch (error) {
-      if (error instanceof PluginLoadTerminalError) {
-        throw error;
-      }
-      lastError = error;
-    }
-    await delayPluginReload(160);
-  }
-
-  throw new Error(lastError instanceof Error ? lastError.message : `Timed out waiting for plugin service at ${url}`);
-}
-
-class PluginLoadTerminalError extends Error {}
-
-type PluginLoadStatus = {
-  error?: string;
-  status?: string;
-};
-
-async function fetchPluginLoadStatus(baseUrl: string): Promise<PluginLoadStatus | null> {
-  try {
-    const response = await fetch(`${baseUrl}/api/plugins/status`, { cache: "no-store" });
-    if (response.status === 404) {
-      return null;
-    }
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      return null;
-    }
-    return normalizePluginLoadStatus(payload);
-  } catch {
-    return null;
-  }
-}
-
-function normalizePluginLoadStatus(value: unknown): PluginLoadStatus | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const status = typeof record.status === "string" ? record.status : "";
-  if (!status) {
-    return null;
-  }
-  return {
-    error: typeof record.error === "string" ? record.error : "",
-    status,
-  };
-}
-
-function delayPluginReload(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

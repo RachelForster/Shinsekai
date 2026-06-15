@@ -20,8 +20,8 @@ export function AppRuntimeProviders({ children }: { children: ReactNode }) {
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
 
   useEffect(() => {
-    applyThemeColor(configQuery.data?.system_config.theme_color);
-  }, [configQuery.data?.system_config.theme_color]);
+    applyThemeColor(configQuery.data?.system_config?.theme_color);
+  }, [configQuery.data?.system_config?.theme_color]);
 
   return (
     <FileBrowserProvider browse={browseFiles}>

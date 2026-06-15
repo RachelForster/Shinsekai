@@ -28,7 +28,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import { AlertDialog, useToast } from "../../shared/ui";
+import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
@@ -80,10 +80,15 @@ export function CharacterEditorPage() {
     colorInputRef.current?.click();
   }, []);
 
-  const selected = useMemo(
-    () => (isCreating ? undefined : (data.find((character) => character.name === selectedName) ?? data[0])),
-    [data, isCreating, selectedName],
-  );
+  const selected = useMemo(() => {
+    if (isCreating) {
+      return undefined;
+    }
+    if (selectedName) {
+      return data.find((character) => character.name === selectedName);
+    }
+    return data[0];
+  }, [data, isCreating, selectedName]);
 
   useEffect(() => {
     if (selected) {
@@ -117,10 +122,16 @@ export function CharacterEditorPage() {
         title: t("common.saveFailed"),
       });
     },
-    onSuccess(character) {
-      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+    onSuccess(character, variables) {
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) => {
+        const targetNames = new Set([variables.originalName, character.name].filter(Boolean));
+        const next = current.filter((item) => !targetNames.has(item.name));
+        return [...next, character];
+      });
       setIsCreating(false);
       setSelectedName(character.name);
+      setDraft(structuredClone(character));
+      setPronunciationText(pronunciationMapToText(character.pronunciation_map));
       showToast({ kind: "success", title: t("character.toast.saved") });
     },
   });
@@ -329,11 +340,24 @@ export function CharacterEditorPage() {
   });
 
   const spriteUploadMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async ({
+      character,
+      emotionTags,
+      originalName,
+      paths,
+      saveFirst,
+    }: {
+      character: Character;
+      emotionTags: string;
+      originalName?: string;
+      paths: string[];
+      saveFirst: boolean;
+    }) => {
+      const saved = saveFirst ? await saveCharacter(character, originalName) : character;
       return uploadCharacterSprites({
-        emotionTags: draft.emotion_tags,
-        name: currentCharacterName,
-        paths: pendingSpritePaths,
+        emotionTags,
+        name: saved.name,
+        paths,
       });
     },
     onError(error) {
@@ -343,16 +367,23 @@ export function CharacterEditorPage() {
         title: t("character.sprite.uploadImages"),
       });
     },
-    onSuccess(character) {
-      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+    onSuccess(character, variables) {
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) => {
+        const targetNames = new Set([variables.originalName, character.name].filter(Boolean));
+        const next = current.filter((item) => !targetNames.has(item.name));
+        return [...next, character];
+      });
+      setIsCreating(false);
+      setSelectedName(character.name);
+      setDraft(structuredClone(character));
+      setPronunciationText(pronunciationMapToText(character.pronunciation_map));
       setPendingSpritePaths([]);
       showToast({ kind: "success", title: t("character.sprite.uploadImages") });
     },
   });
 
   const emotionTagsMutation = useMutation({
-    mutationFn: () => saveCharacterEmotionTags(currentCharacterName, draft.emotion_tags),
+    mutationFn: (emotionTags: string) => saveCharacterEmotionTags(currentCharacterName, emotionTags),
     onError(error) {
       showToast({
         kind: "error",
@@ -451,7 +482,7 @@ export function CharacterEditorPage() {
     update("sprite_scale", clampSpriteScale(current + direction * SPRITE_SCALE_STEP));
   };
 
-  const saveDraft = () => {
+  const buildCharacterSaveInput = () => {
     if (!draft.name.trim()) {
       setNameError(t("character.validation.nameRequired"));
       showToast({
@@ -459,7 +490,7 @@ export function CharacterEditorPage() {
         message: t("common.fixInvalidFields"),
         title: t("common.validationFailed"),
       });
-      return;
+      return null;
     }
     const spritePrefix = draft.sprite_prefix.trim();
     const pathFields = [draft.gpt_model_path, draft.sovits_model_path, draft.refer_audio_path]
@@ -484,9 +515,9 @@ export function CharacterEditorPage() {
         message: validationMessages.join("\n"),
         title: t("common.validationFailed"),
       });
-      return;
+      return null;
     }
-    saveMutation.mutate({
+    return {
       character: {
         ...draft,
         character_setting: draft.character_setting.trim(),
@@ -500,8 +531,16 @@ export function CharacterEditorPage() {
         sovits_model_path: draft.sovits_model_path?.trim() || "",
         sprite_prefix: spritePrefix,
       },
-      originalName: isCreating ? undefined : selectedName,
-    });
+      originalName: isSavedCharacter ? selectedName : undefined,
+    };
+  };
+
+  const saveDraft = () => {
+    const input = buildCharacterSaveInput();
+    if (!input) {
+      return;
+    }
+    saveMutation.mutate(input);
   };
 
   const spriteTags = useMemo(
@@ -522,6 +561,13 @@ export function CharacterEditorPage() {
       })),
     [draft.sprites, spriteTags, t],
   );
+  const characterSectionNavItems = [
+    { id: "character-basic", label: t("character.section.basic") },
+    { id: "character-personality", label: t("character.section.personality") },
+    { id: "character-voice", label: t("character.section.voice") },
+    { id: "character-sprites", label: t("character.section.sprites") },
+    { id: "character-memory", label: t("character.memory.section") },
+  ];
 
   const confirmPendingResourceDelete = () => {
     if (!pendingResourceDelete) {
@@ -648,19 +694,20 @@ export function CharacterEditorPage() {
   };
 
   const uploadSprites = () => {
-    if (!isSavedCharacter) {
-      showToast({
-        kind: "error",
-        message: t("character.validation.nameRequired"),
-        title: t("character.sprite.uploadImages"),
-      });
-      return;
-    }
     if (!pendingSpritePaths.length) {
       showToast({ kind: "error", title: t("character.sprite.selectImages") });
       return;
     }
-    spriteUploadMutation.mutate();
+    const input = buildCharacterSaveInput();
+    if (!input) {
+      return;
+    }
+    spriteUploadMutation.mutate({
+      ...input,
+      emotionTags: input.character.emotion_tags,
+      paths: pendingSpritePaths,
+      saveFirst: !isSavedCharacter || input.character.name !== currentCharacterName,
+    });
   };
 
   const requestClearSprites = () => {
@@ -696,7 +743,7 @@ export function CharacterEditorPage() {
       });
       return;
     }
-    emotionTagsMutation.mutate();
+    emotionTagsMutation.mutate(draft.emotion_tags);
   };
 
   const updatePendingVoicePath = (path: string) => {
@@ -767,8 +814,12 @@ export function CharacterEditorPage() {
   };
 
   const confirmBulkSpriteTags = () => {
-    update("emotion_tags", bulkSpriteTagsDraft);
+    const nextTags = bulkSpriteTagsDraft;
+    update("emotion_tags", nextTags);
     setBulkSpriteTagsOpen(false);
+    if (isSavedCharacter && nextTags.trim() && !emotionTagsMutation.isPending) {
+      emotionTagsMutation.mutate(nextTags);
+    }
   };
 
   return (
@@ -785,6 +836,7 @@ export function CharacterEditorPage() {
         onSave={saveDraft}
         onSelectCharacter={selectExistingCharacter}
         savePending={saveMutation.isPending}
+        sectionNav={<PageSectionNav ariaLabel={t("character.title")} items={characterSectionNavItems} />}
         selectedName={selectedName}
       />
 
@@ -793,6 +845,7 @@ export function CharacterEditorPage() {
           <CharacterBasicSection
             colorPickerValue={colorPickerValue}
             draft={draft}
+            id="character-basic"
             nameError={nameError}
             onChange={update}
             onColorInputRef={setColorInputElement}
@@ -805,6 +858,7 @@ export function CharacterEditorPage() {
           <CharacterPersonalitySection
             aiPending={aiSettingMutation.isPending}
             draft={draft}
+            id="character-personality"
             onAiWrite={generateSetting}
             onChange={update}
             onTranslate={translateDraft}
@@ -812,11 +866,12 @@ export function CharacterEditorPage() {
           />
         </div>
 
-        <CharacterVoiceSection draft={draft} onChange={update} />
+        <CharacterVoiceSection draft={draft} id="character-voice" onChange={update} />
 
         <CharacterSpritesSection
           draft={draft}
           emotionTagsPending={emotionTagsMutation.isPending}
+          id="character-sprites"
           onClearSprites={requestClearSprites}
           onOpenBulkTags={openBulkSpriteTagsDialog}
           onPendingSpritePathsChange={setPendingSpritePaths}
@@ -851,6 +906,7 @@ export function CharacterEditorPage() {
           data={memoryQuery.data}
           deletePending={memoryDeleteMutation.isPending}
           error={memoryQuery.error}
+          id="character-memory"
           isError={memoryQuery.isError}
           isFetched={memoryQuery.isFetched}
           isFetching={memoryQuery.isFetching}

@@ -28,7 +28,12 @@ _PROJECT_ROOT = _THIS_FILE.parent.parent
 
 
 def _configure_test_temp_dir() -> None:
-    temp_root = _PROJECT_ROOT / ".tmp_pytest_runtime"
+    temp_root_override = os.environ.get("SHINSEKAI_PYTEST_TEMP_ROOT")
+    temp_root = (
+        Path(temp_root_override)
+        if temp_root_override
+        else Path(tempfile.gettempdir()) / "shinsekai-pytest-runtime"
+    )
     temp_root.mkdir(parents=True, exist_ok=True)
     temp_path = str(temp_root)
     os.environ.setdefault("TMPDIR", temp_path)

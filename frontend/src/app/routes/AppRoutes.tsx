@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "../shell/AppShell";
+import { getInitialSettingsPath } from "../../features/onboarding/onboardingState";
 
 const ApiSettingsPage = lazy(() =>
   import("../../features/api-settings/ApiSettingsPage").then(({ ApiSettingsPage }) => ({
@@ -37,6 +38,11 @@ const LogsPage = lazy(() =>
 const MusicCoverPage = lazy(() =>
   import("../../features/music-cover/MusicCoverPage").then(({ MusicCoverPage }) => ({
     default: MusicCoverPage,
+  })),
+);
+const OnboardingPage = lazy(() =>
+  import("../../features/onboarding/OnboardingPage").then(({ OnboardingPage }) => ({
+    default: OnboardingPage,
   })),
 );
 const PluginManagerPage = lazy(() =>
@@ -76,11 +82,16 @@ function chatStageRouteElement() {
   return lazyRouteElement(<ChatStagePage />);
 }
 
+function InitialSettingsRedirect() {
+  return <Navigate replace to={getInitialSettingsPath()} />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
       <Route element={<AppShell />} path="/settings">
-        <Route element={<Navigate replace to="/settings/api" />} index />
+        <Route element={<InitialSettingsRedirect />} index />
+        <Route element={lazyRouteElement(<OnboardingPage />)} path="onboarding" />
         <Route element={lazyRouteElement(<ApiSettingsPage />)} path="api" />
         <Route element={lazyRouteElement(<CharacterEditorPage />)} path="characters" />
         <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
@@ -94,7 +105,7 @@ export function AppRoutes() {
       </Route>
       <Route element={chatStageRouteElement()} path="/chat" />
       <Route element={chatStageRouteElement()} path="/chat-stage" />
-      <Route element={<Navigate replace to="/settings/api" />} path="*" />
+      <Route element={<InitialSettingsRedirect />} path="*" />
     </Routes>
   );
 }

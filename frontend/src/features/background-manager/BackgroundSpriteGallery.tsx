@@ -18,6 +18,7 @@ import {
 interface BackgroundSpriteGalleryProps {
   currentBackgroundName: string;
   deletePending: boolean;
+  id?: string;
   imageRowTags: string[];
   onClearImages: () => void;
   onDeleteImage: (index: number) => void;
@@ -46,6 +47,7 @@ function visibleImageCountForSelection(total: number, selectedIndex: number) {
 export function BackgroundSpriteGallery({
   currentBackgroundName,
   deletePending,
+  id,
   imageRowTags,
   onClearImages,
   onDeleteImage,
@@ -152,7 +154,7 @@ export function BackgroundSpriteGallery({
   }));
 
   return (
-    <section className="section background-images-section">
+    <section className="section background-images-section page-section-anchor" id={id}>
       <div className="section__header">
         <h2 className="section__title">{t("background.section.images")}</h2>
         <div className="page__actions">

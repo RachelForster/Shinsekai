@@ -8,6 +8,7 @@ import type { CharacterFieldChange } from "./characterEditorUtils";
 interface CharacterPersonalitySectionProps {
   aiPending: boolean;
   draft: Character;
+  id?: string;
   onAiWrite: () => void;
   onChange: CharacterFieldChange;
   onTranslate: () => void;
@@ -17,6 +18,7 @@ interface CharacterPersonalitySectionProps {
 export function CharacterPersonalitySection({
   aiPending,
   draft,
+  id,
   onAiWrite,
   onChange,
   onTranslate,
@@ -25,7 +27,7 @@ export function CharacterPersonalitySection({
   const { t } = useI18n();
 
   return (
-    <section className="section character-personality-section">
+    <section className="section character-personality-section page-section-anchor" id={id}>
       <div className="section__header">
         <h2 className="section__title">{t("character.section.personality")}</h2>
         <div className="page__actions">

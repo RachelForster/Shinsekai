@@ -24,7 +24,7 @@
   min-height: 52px;
   align-items: center;
   gap: var(--space-4);
-  margin: calc(-1 * var(--settings-page-gutter)) calc(-1 * var(--settings-page-gutter)) 0;
+  margin: calc(-1 * var(--settings-page-gutter)) calc(-1 * var(--settings-page-gutter)) 16px;
   padding: 12px var(--settings-page-gutter);
 }
 

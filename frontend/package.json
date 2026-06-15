@@ -1,7 +1,7 @@
 {
   "name": "shinsekai-frontend",
   "private": true,
-  "version": "2.0.2",
+  "version": "2.1.0",
   "license": "SEE LICENSE IN ../LICENSE",
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "serve:bundle": "python ../webui_react.py",
     "serve:bundle:conda": "conda run -n shinsekai python ../webui_react.py",
     "build": "tsc -b && vite build",
+    "sync:version": "node scripts/sync-version.mjs",
     "prepare:runtime": "node scripts/prepare-runtime.mjs",
     "prepare:tauri-resources": "node scripts/prepare-tauri-resources.mjs",
     "verify:packaged-runtime": "node scripts/verify-packaged-runtime.mjs",

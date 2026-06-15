@@ -280,14 +280,39 @@ def test_install_runtime_dependency_uses_manifest_china_index_by_default(monkeyp
     monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URLS", raising=False)
     monkeypatch.delenv("SHINSEKAI_PIP_INSTALL_ARGS", raising=False)
     monkeypatch.delenv("SHINSEKAI_RUNTIME_SOURCE", raising=False)
+    monkeypatch.delenv("SHINSEKAI_MIRROR_REGION", raising=False)
     monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
 
     runtime_dependencies.install_runtime_dependency("openai")
 
     assert "-i" in calls[0]
     assert calls[0][calls[0].index("-i") + 1] == "https://pypi.tuna.tsinghua.edu.cn/simple/"
-    assert "https://mirrors.aliyun.com/pypi/simple/" in calls[0]
+    assert "https://mirrors.aliyun.com/pypi/simple/" not in calls[0]
+    assert "https://mirrors.ustc.edu.cn/pypi/simple/" in calls[0]
     assert "https://pypi.org/simple/" in calls[0]
+
+
+def test_install_runtime_dependency_uses_official_index_for_global_mirror_region(monkeypatch):
+    from frontend_bridge_core import runtime_dependencies
+
+    calls = []
+
+    monkeypatch.delenv("PIP_INDEX_URL", raising=False)
+    monkeypatch.delenv("PIP_EXTRA_INDEX_URL", raising=False)
+    monkeypatch.delenv("PIP_NO_INDEX", raising=False)
+    monkeypatch.delenv("PIP_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URL", raising=False)
+    monkeypatch.delenv("SHINSEKAI_PIP_INDEX_URLS", raising=False)
+    monkeypatch.delenv("SHINSEKAI_PIP_INSTALL_ARGS", raising=False)
+    monkeypatch.delenv("SHINSEKAI_RUNTIME_SOURCE", raising=False)
+    monkeypatch.setenv("SHINSEKAI_MIRROR_REGION", "global")
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
+
+    runtime_dependencies.install_runtime_dependency("openai")
+
+    assert "-i" in calls[0]
+    assert calls[0][calls[0].index("-i") + 1] == "https://pypi.org/simple/"
+    assert "https://pypi.tuna.tsinghua.edu.cn/simple/" not in calls[0]
 
 
 def test_install_runtime_dependency_does_not_add_index_when_pip_args_pick_one(monkeypatch):

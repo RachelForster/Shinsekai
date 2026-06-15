@@ -43,6 +43,7 @@ interface TtsBundleSectionProps {
   dialogOpen: boolean;
   downloadPending: boolean;
   error: string | null;
+  id?: string;
   kind: TtsBundleKind;
   onCancelDownload: () => void;
   onCloseDialog: () => void;
@@ -62,6 +63,7 @@ export function TtsBundleSection({
   dialogOpen,
   downloadPending,
   error,
+  id,
   kind,
   onCancelDownload,
   onCloseDialog,
@@ -85,7 +87,7 @@ export function TtsBundleSection({
 
   return (
     <>
-      <section className="section">
+      <section className="section page-section-anchor" id={id}>
         <div className="section__header">
           <div>
             <h2 className="section__title">{t("api.tts.bundleTitle")}</h2>

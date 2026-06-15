@@ -191,6 +191,31 @@ class SystemConfig(BaseModel):
     )
 
     # 音乐翻唱流水线（YouTube/B站下载 → UVR 分离 → RVC 转换 → pydub 合成）
+    mirror_auto_detect_china: DefaultIfNone[bool] = Field(
+        default=True,
+        description="Auto-detect China network and fill mirror sources.",
+    )
+    mirror_region: DefaultIfNone[str] = Field(
+        default="auto",
+        description="Detected mirror region: auto / china / global.",
+    )
+    huggingface_mirror_url: DefaultIfNone[str] = Field(
+        default="",
+        description="Hugging Face mirror URL, exported as HF_ENDPOINT.",
+    )
+    huggingface_cache_dir: DefaultIfNone[str] = Field(
+        default="",
+        description="Hugging Face cache directory, exported as HF_HOME.",
+    )
+    github_mirror_url: DefaultIfNone[str] = Field(
+        default="",
+        description="GitHub mirror URL or proxy prefix.",
+    )
+    pypi_mirror_url: DefaultIfNone[str] = Field(
+        default="",
+        description="PyPI mirror URL for Shinsekai-managed pip installs.",
+    )
+
     music_cover_work_dir: DefaultIfNone[str] = Field(
         default="./data/music_cover",
         description="翻唱流水线工作目录（下载、分离、中间文件与成品）",

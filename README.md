@@ -142,6 +142,17 @@ pnpm tauri build
 
 正式 release 构建需要设置 updater 签名私钥环境变量 `TAURI_SIGNING_PRIVATE_KEY`；如果私钥设置了密码，还需要 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。本地只想验证打包流程且不生成 updater artifacts 时，可使用 Tauri CLI 的 `--config` 覆盖关闭 `bundle.createUpdaterArtifacts`。
 
+### 版本号同步
+
+发布前只需要修改根目录 `VERSION`，然后运行版本同步脚本：
+
+```bash
+cd frontend
+pnpm sync:version
+```
+
+脚本会把 `VERSION` 同步到 `frontend/package.json`、`frontend/src-tauri/Cargo.toml`、`frontend/src-tauri/Cargo.lock` 中的 `shinsekai-desktop` 条目、`frontend/src-tauri/runtime_manifest.json`，以及已生成的 `frontend/src-tauri/resources/VERSION`。不要手动全局替换版本号，避免误改依赖版本。
+
 ### 4. 第一次对话
 
 1. 在 **API 设定** 中填写 LLM（例如 DeepSeek / OpenAI 兼容端点），保存。  
@@ -197,6 +208,10 @@ pnpm tauri build
 | 英文说明 | [docs/README_EN.md](docs/README_EN.md) |
 | 插件开发者指南 | [docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md) |
 | 本仓库 | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
+
+## 社区
+
+开发者 QQ 群：928985460
 
 欢迎 Issue / PR；若二次分发角色与语音资源，请遵守对应作者许可。
 

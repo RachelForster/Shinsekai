@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+if command -v python >/dev/null 2>&1; then
+  PYTHON_BIN=python
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN=python3
+elif command -v py >/dev/null 2>&1; then
+  PYTHON_BIN=py
+else
+  echo "presubmit: Python is required to run the commit-msg hook." >&2
+  exit 1
+fi
+
+exec "$PYTHON_BIN" scripts/presubmit.py commit-msg "$1"

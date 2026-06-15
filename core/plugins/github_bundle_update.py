@@ -17,6 +17,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from core.plugins.registry_download import sanitize_plugins_directory_name
+from config.mirror_env import mirror_github_url
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,7 @@ def github_archive_zip_url(slug: str, *, ref_heads_or_tags: str, ref_name: str) 
     from urllib.parse import quote
 
     q = quote(name, safe="")
-    return f"https://github.com/{base}/archive/refs/{rot}/{q}.zip"
+    return mirror_github_url(f"https://github.com/{base}/archive/refs/{rot}/{q}.zip")
 
 
 def stream_download_zip(url: str, *, timeout_sec: float = 300.0, progress: Callable[[int, int | None], None] | None = None) -> bytes:

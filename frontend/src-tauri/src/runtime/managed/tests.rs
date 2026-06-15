@@ -175,6 +175,114 @@ exit 11
 }
 
 #[test]
+fn partition_torch_requirement_lines_splits_pytorch_packages() {
+    let lines = vec![
+        "-r requirements-runtime-core.txt".to_string(),
+        "torch==2.4.1".to_string(),
+        "torchvision>=0.19".to_string(),
+        "torchaudio".to_string(),
+        "sentence-transformers".to_string(),
+        "git+https://example.invalid/package.git".to_string(),
+    ];
+
+    let (torch_lines, other_lines) = partition_torch_requirement_lines(&lines);
+
+    assert_eq!(
+        torch_lines,
+        vec![
+            "torch==2.4.1".to_string(),
+            "torchvision>=0.19".to_string(),
+            "torchaudio".to_string()
+        ]
+    );
+    assert_eq!(
+        other_lines,
+        vec![
+            "-r requirements-runtime-core.txt".to_string(),
+            "sentence-transformers".to_string(),
+            "git+https://example.invalid/package.git".to_string()
+        ]
+    );
+}
+
+#[test]
+fn pytorch_wheel_index_url_matches_cuda_driver_version() {
+    assert_eq!(
+        pytorch_wheel_index_url_for_cuda_version(
+            None,
+            "https://download.pytorch.org/whl".to_string()
+        )
+        .0,
+        "https://download.pytorch.org/whl/cpu"
+    );
+    assert_eq!(
+        pytorch_wheel_index_url_for_cuda_version(
+            Some((12, 4)),
+            "https://download.pytorch.org/whl".to_string()
+        )
+        .0,
+        "https://download.pytorch.org/whl/cu124"
+    );
+    assert_eq!(
+        pytorch_wheel_index_url_for_cuda_version(
+            Some((12, 1)),
+            "https://download.pytorch.org/whl".to_string()
+        )
+        .0,
+        "https://download.pytorch.org/whl/cu121"
+    );
+    assert_eq!(
+        pytorch_wheel_index_url_for_cuda_version(
+            Some((11, 8)),
+            "https://download.pytorch.org/whl".to_string()
+        )
+        .0,
+        "https://download.pytorch.org/whl/cu118"
+    );
+}
+
+#[test]
+fn pytorch_wheel_base_url_follows_runtime_pip_region() {
+    env::remove_var("SHINSEKAI_PYTORCH_WHEEL_BASE");
+
+    assert_eq!(
+        pytorch_wheel_base_url(&["https://pypi.tuna.tsinghua.edu.cn/simple/".to_string()]),
+        "https://mirror.sjtu.edu.cn/pytorch-wheels"
+    );
+    assert_eq!(
+        pytorch_wheel_base_url(&["https://pypi.org/simple/".to_string()]),
+        "https://download.pytorch.org/whl"
+    );
+}
+
+#[test]
+fn pytorch_wheel_base_url_can_be_overridden() {
+    env::set_var(
+        "SHINSEKAI_PYTORCH_WHEEL_BASE",
+        "https://example.invalid/pytorch-wheels/",
+    );
+
+    assert_eq!(
+        pytorch_wheel_base_url(&["https://pypi.org/simple/".to_string()]),
+        "https://example.invalid/pytorch-wheels"
+    );
+
+    env::remove_var("SHINSEKAI_PYTORCH_WHEEL_BASE");
+}
+
+#[test]
+fn parse_nvidia_smi_cuda_version_reads_driver_report() {
+    let output = r#"
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 551.86       Driver Version: 551.86       CUDA Version: 12.4     |
++-----------------------------------------------------------------------------+
+"#;
+
+    assert_eq!(parse_nvidia_smi_cuda_version(output), Some((12, 4)));
+    assert_eq!(parse_nvidia_smi_cuda_version("no cuda here"), None);
+}
+
+#[test]
 fn lock_pid_parser_reads_install_lock_pid() {
     assert_eq!(
         lock_pid_from_text("pid=12345\ncreated_at_ms=10\n"),

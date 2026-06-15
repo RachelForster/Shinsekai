@@ -823,6 +823,7 @@ export type MessageKey =
   | "template.loading"
   | "template.mode.edit"
   | "template.mode.generate"
+  | "template.optionHelp"
   | "template.quickRestart.body"
   | "template.quickRestart.title"
   | "template.section.content"
