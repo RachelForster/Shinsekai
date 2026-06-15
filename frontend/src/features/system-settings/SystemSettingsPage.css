@@ -8,6 +8,23 @@
   grid-template-columns: repeat(2, minmax(220px, 1fr));
 }
 
+.system-chat-theme {
+  gap: var(--space-3);
+}
+
+.system-chat-theme .field-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.42fr) minmax(220px, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.system-chat-theme__icon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-accent-primary);
+}
+
 .desktop-runtime-settings {
   gap: var(--space-3);
 }
@@ -95,6 +112,10 @@
 
 @media (max-width: 860px) {
   .system-page .schema-section .form-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .system-chat-theme .field-row {
     grid-template-columns: minmax(0, 1fr);
   }
 

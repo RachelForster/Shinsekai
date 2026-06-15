@@ -81,8 +81,8 @@ describe("chat theme runtime", () => {
     const resolved = resolveChatTheme(
       {
         schema: 1,
-        id: "classic-dark",
-        name: { en: "Classic Dark" },
+        id: "token-rich-theme",
+        name: { en: "Token Rich Theme" },
         tokens: {
           global: { fontFamily: "Mio Sans", themeColor: "#644ae3" },
           fonts: [{ family: "Mio Sans", src: "assets/fonts/mio.woff2", style: "normal", weight: "400" }],
@@ -92,9 +92,18 @@ describe("chat theme runtime", () => {
             borderColor: "rgba(255,255,255,0.32)",
             borderRadius: "8px",
             boxShadow: "0 16px 44px rgba(0,0,0,0.5)",
+            chrome: "none",
             color: "#ffffff",
+            frameImage: "assets/dialog-border.svg",
+            frameSlice: 28,
+            heightPx: 166,
+            nameInputGapVh: 20,
             offsetY: -8,
             padding: 40,
+            textAlign: "center",
+            textShadow: "0 2px 4px rgba(0,0,0,0.7)",
+            textSizePx: 34,
+            textWeight: 800,
             widthPct: 86,
           },
           input: {
@@ -102,6 +111,9 @@ describe("chat theme runtime", () => {
             borderColor: "rgba(255,255,255,0.22)",
             color: "#ffffff",
             fieldBackground: "rgba(50,50,50,0.78)",
+            fieldBorderRadius: "12px",
+            maxWidthPx: 720,
+            sendPlacement: "inside",
           },
           name: {
             background: "rgba(28,22,48,0.92)",
@@ -110,15 +122,43 @@ describe("chat theme runtime", () => {
             borderRadius: "6px",
             boxShadow: "0 12px 28px rgba(0,0,0,0.36)",
             color: "#9c8cff",
+            frameImage: "assets/name-border.svg",
+            frameSlice: 16,
+            align: "center",
+            decoration: "line-dots",
+            fontFamily: "Trebuchet MS, Georgia, serif",
+            textShadow: "0 2px 4px rgba(0,0,0,0.7)",
+            hideWhenStartOption: true,
+            textSizePx: 30,
+            textWeight: 800,
           },
           options: {
             background: "rgba(50,50,50,0.68)",
             color: "#ffffff",
             gap: 10,
+            active: { background: "#f3cf57", color: "#1d2630" },
+            icon: "chat",
+            maxWidthVw: 40,
+            minHeightPx: 68,
+            minHeightVh: 5.2,
+            minWidthVw: 26,
+            nameClearanceVh: 5.6,
+            placement: "right",
+            textShadow: "0 2px 4px rgba(0,0,0,0.7)",
+            textSizeVh: 1.6,
+            textSizePx: 30,
+            textWeight: 800,
+            widthPx: 620,
+            widthMode: "content",
             hover: { background: "rgba(70,70,70,0.74)" },
           },
           send: { background: "#644ae3", color: "#ffffff" },
-          toolbar: { background: "rgba(34,34,40,0.9)", color: "#ffffff" },
+          toolbar: {
+            background: "rgba(34,34,40,0.9)",
+            color: "#ffffff",
+            placement: "dialog-top",
+            reveal: "hover",
+          },
           logs: {
             badge: { background: "rgba(255,255,255,0.06)", color: "#c8c2df" },
             code: {
@@ -154,22 +194,90 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--font-chat"]).toBe('"Mio Sans"');
     expect(resolved.style["--chat-dialog-background"]).toBe("rgba(20,20,28,0.86)");
     expect(resolved.style["--chat-dialog-background-image"]).toBe('url("asset://assets/dialog-frame.png")');
+    expect(resolved.style["--chat-dialog-backdrop-filter"]).toBe("none");
+    expect(resolved.style["--chat-dialog-actions-border"]).toBe("0 solid transparent");
+    expect(resolved.style["--chat-dialog-border"]).toBe("0 solid transparent");
+    expect(resolved.style["--chat-dialog-body-height"]).toBe("100%");
+    expect(resolved.style["--chat-dialog-body-min-height"]).toBe("0px");
+    expect(resolved.style["--chat-dialog-frame"]).toBe('url("asset://assets/dialog-border.svg") 28 fill / 28px round');
+    expect(resolved.style["--chat-dialog-height"]).toBe("166px");
     expect(resolved.style["--chat-dialog-padding"]).toBe("40px");
+    expect(resolved.style["--chat-dialog-toolbar-gap"]).toBe("10px");
+    expect(resolved.style["--chat-dialog-toolbar-reserved-height"]).toBeUndefined();
+    expect(resolved.style["--chat-dialog-name-input-gap"]).toBe("20svh");
+    expect(resolved.style["--chat-dialog-stack-bottom"]).toContain("--chat-dialog-name-input-gap");
+    expect(resolved.style["--chat-dialog-toolbar-placement"]).toBe("dialog-top");
+    expect(resolved.style["--chat-dialog-toolbar-reveal"]).toBe("hover");
+    expect(resolved.style["--chat-dialog-toolbar-layer-bottom"]).toContain("--chat-dialog-height");
+    expect(resolved.style["--chat-dialog-toolbar-layer-width"]).toContain("--chat-ui-runtime-width");
+    expect(resolved.style["--chat-options-name-clearance"]).toBe("5.6svh");
     expect(resolved.style["--chat-dialog-width"]).toBe("min(86vw, 980px)");
     expect(resolved.style["--chat-dialog-offset-y"]).toBe("-8px");
+    expect(resolved.style["--chat-dialog-text-align"]).toBe("center");
+    expect(resolved.style["--chat-dialog-text-shadow"]).toBe("0 2px 4px rgba(0,0,0,0.7)");
+    expect(resolved.style["--chat-dialog-text-theme-font-size"]).toBe("34px");
+    expect(resolved.style["--chat-dialog-text-theme-font-weight"]).toBe("800");
     expect(resolved.style["--chat-option-color"]).toBe("#ffffff");
+    expect(resolved.style["--chat-option-active-background"]).toBe("#f3cf57");
+    expect(resolved.style["--chat-option-active-color"]).toBe("#1d2630");
     expect(resolved.style["--chat-option-hover-background"]).toBe("rgba(70,70,70,0.74)");
+    expect(resolved.style["--chat-option-font-size"]).toBe("clamp(18px, 1.6svh, 32px)");
+    expect(resolved.style["--chat-option-font-weight"]).toBe("800");
+    expect(resolved.style["--chat-option-icon-opacity"]).toBe("1");
+    expect(resolved.style["--chat-option-icon-size"]).toBe("clamp(28px, 3.78svh, 38px)");
+    expect(resolved.style["--chat-option-justify-content"]).toBe("flex-start");
+    expect(resolved.style["--chat-option-padding"]).toBe("8px 18px 8px 60px");
+    expect(resolved.style["--chat-option-min-height"]).toBe("clamp(36px, 5.2svh, 96px)");
+    expect(resolved.style["--chat-option-text-shadow"]).toBe("0 2px 4px rgba(0,0,0,0.7)");
+    expect(resolved.style["--chat-options-left"]).toBe("calc(100% - var(--stage-safe-x))");
+    expect(resolved.style["--chat-options-bottom"]).toBe(
+      "calc(var(--stage-control-stack-height) + var(--chat-dialog-name-input-gap) + var(--chat-options-name-clearance))",
+    );
+    expect(resolved.style["--chat-options-top"]).toBe("auto");
+    expect(resolved.style["--chat-options-transform"]).toBe("translateX(-100%)");
+    expect(resolved.style["--chat-options-max-width"]).toBe("min(40vw, 760px, calc(100vw - 32px))");
+    expect(resolved.style["--chat-options-min-width"]).toBe("clamp(320px, 26vw, 720px)");
+    expect(resolved.style["--chat-options-mobile-left"]).toBe("var(--chat-options-left)");
+    expect(resolved.style["--chat-options-mobile-width"]).toBe("var(--chat-options-width)");
+    expect(resolved.style["--chat-options-width"]).toBe("max-content");
     expect(resolved.style["--chat-input-background"]).toBe("rgba(34,34,40,0.9)");
     expect(resolved.style["--chat-input-field-background"]).toBe("rgba(50,50,50,0.78)");
+    expect(resolved.style["--chat-input-field-border-radius"]).toBe("12px");
+    expect(resolved.style["--chat-input-grid-template-columns"]).toBe("minmax(0, 1fr) 38px");
+    expect(resolved.style["--chat-input-max-width"]).toBe("720px");
+    expect(resolved.style["--chat-send-label-display"]).toBe("none");
+    expect(resolved.style["--chat-send-position"]).toBe("absolute");
     expect(resolved.style["--chat-toolbar-color"]).toBe("#ffffff");
     expect(resolved.style["--chat-send-background"]).toBe("#644ae3");
     expect(resolved.style["--chat-send-color"]).toBe("#ffffff");
     expect(resolved.style["--chat-name-background"]).toBe("rgba(28,22,48,0.92)");
     expect(resolved.style["--chat-name-background-image"]).toBe('url("asset://assets/name-plate.png")');
+    expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name-border.svg") 16 fill / 16px round');
     expect(resolved.style["--chat-name-border-color"]).toBe("rgba(156,140,255,0.6)");
     expect(resolved.style["--chat-name-border-radius"]).toBe("6px");
     expect(resolved.style["--chat-name-box-shadow"]).toBe("0 12px 28px rgba(0,0,0,0.36)");
     expect(resolved.style["--chat-name-color"]).toBe("#9c8cff");
+    expect(resolved.style["--chat-name-theme-font-family"]).toBe("Trebuchet MS, Georgia, serif");
+    expect(resolved.style["--chat-name-after-background"]).toContain("radial-gradient");
+    expect(resolved.style["--chat-name-after-content"]).toBe('""');
+    expect(resolved.style["--chat-name-after-display"]).toBe("block");
+    expect(resolved.style["--chat-name-after-height"]).toBe("0.72em");
+    expect(resolved.style["--chat-name-after-width"]).toBe("3.2em");
+    expect(resolved.style["--chat-name-before-background"]).toContain("linear-gradient");
+    expect(resolved.style["--chat-name-before-content"]).toBe('""');
+    expect(resolved.style["--chat-name-before-display"]).toBe("block");
+    expect(resolved.style["--chat-name-before-height"]).toBe("0.72em");
+    expect(resolved.style["--chat-name-before-position"]).toBe("static");
+    expect(resolved.style["--chat-name-before-width"]).toBe("3.2em");
+    expect(resolved.style["--chat-name-border"]).toBe("0 solid transparent");
+    expect(resolved.style["--chat-name-border-bottom"]).toBe("0 solid transparent");
+    expect(resolved.style["--chat-name-hide-when-start-option"]).toBe("true");
+    expect(resolved.style["--chat-name-sheen"]).toBe("none");
+    expect(resolved.style["--chat-name-text-shadow"]).toBe("0 2px 4px rgba(0,0,0,0.7)");
+    expect(resolved.style["--chat-name-theme-font-size"]).toBe("30px");
+    expect(resolved.style["--chat-name-theme-font-weight"]).toBe("800");
+    expect(resolved.style["--chat-name-left"]).toBe("50%");
+    expect(resolved.style["--chat-name-transform"]).toBe("translateX(-50%)");
     expect(resolved.style["--logs-panel-background"]).toBe("rgba(20,20,28,0.78)");
     expect(resolved.style["--logs-panel-background-image"]).toBe('url("asset://assets/log-panel.png")');
     expect(resolved.style["--logs-panel-border-radius"]).toBe("8px");
@@ -186,6 +294,81 @@ describe("chat theme runtime", () => {
     expect(resolved.fontFaces).toContain("@font-face");
     expect(resolved.fontFaces).toContain('font-family: "Mio Sans";');
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/mio.woff2")');
+  });
+
+  it("does not apply optional theme layout fields when a theme omits them", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "plain-subtitle",
+        name: { en: "Plain Subtitle" },
+        tokens: {
+          dialog: { chrome: "none", heightPx: 156 },
+          input: { fieldBackground: "rgba(50,50,50,0.78)" },
+          options: { minHeightPx: 52, placement: "right" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-dialog-stack-bottom"]).toBeUndefined();
+    expect(resolved.style["--chat-dialog-name-input-gap"]).toBeUndefined();
+    expect(resolved.style["--chat-dialog-toolbar-placement"]).toBeUndefined();
+    expect(resolved.style["--chat-dialog-toolbar-input-clearance"]).toBeUndefined();
+    expect(resolved.style["--chat-input-grid-template-columns"]).toBeUndefined();
+    expect(resolved.style["--chat-input-layout"]).toBeUndefined();
+    expect(resolved.style["--chat-input-max-width"]).toBeUndefined();
+    expect(resolved.style["--chat-option-min-height"]).toBe("52px");
+    expect(resolved.style["--chat-options-bottom"]).toContain("--chat-dialog-toolbar-reserved-height");
+  });
+
+  it("maps opt-in input-top toolbar placement without affecting omitted themes", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "input-toolbar",
+        name: { en: "Input Toolbar" },
+        tokens: {
+          dialog: { chrome: "none", heightPx: 166, nameInputGapVh: 20 },
+          toolbar: { placement: "input-top", reveal: "hover" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-dialog-toolbar-placement"]).toBe("input");
+    expect(resolved.style["--chat-dialog-toolbar-input-clearance"]).toBe("12px");
+    expect(resolved.style["--chat-dialog-toolbar-layer-width"]).toContain("--chat-ui-runtime-width");
+    expect(resolved.style["--chat-dialog-stack-bottom"]).toContain("clamp(34px, 4.2svh, 46px)");
+  });
+
+  it("maps opt-in pill input layout and aligns input-top toolbar to the pill width", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "pill-input",
+        name: { en: "Pill Input" },
+        tokens: {
+          input: { layout: "pill", maxWidthPx: 640, sendPlacement: "inside" },
+          toolbar: { placement: "input-top", reveal: "hover" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-input-layout"]).toBe("pill");
+    expect(resolved.style["--chat-input-max-width"]).toBe("640px");
+    expect(resolved.style["--stage-input-height"]).toBe(
+      "calc(var(--chat-input-button-size) + clamp(10px, 1.44svh, 14px))",
+    );
+    expect(resolved.style["--chat-input-grid-template-columns"]).toBe(
+      "var(--chat-input-button-size) minmax(0, 1fr) auto",
+    );
+    expect(resolved.style["--chat-input-panel-display"]).toBe("grid");
+    expect(resolved.style["--chat-input-send-display"]).toBe("none");
+    expect(resolved.style["--chat-input-voice-stack-display"]).toBe("none");
+    expect(resolved.style["--chat-dialog-toolbar-input-clearance"]).toBe("4px");
+    expect(resolved.style["--chat-dialog-toolbar-layer-width"]).toContain("--chat-input-max-width");
   });
 
   it("filters unsafe theme values while keeping safe tokens and numeric clamps", () => {
@@ -207,12 +390,14 @@ describe("chat theme runtime", () => {
             background: "rgba(12,12,18,0.9)",
             backgroundImage: "https://example.com/dialog.png",
             boxShadow: "0 0 12px rgba(0,0,0,0.4)",
+            heightPx: 999,
             padding: 200,
             widthPct: 10,
           },
           input: {
             background: "rgba(30,30,34,0.9)",
             fieldBackground: "url(javascript:alert(1))",
+            fieldBorderRadius: "12px; position:absolute",
           },
           options: {
             color: "#ffffff",
@@ -250,6 +435,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--font-chat"]).toBeUndefined();
     expect(resolved.style["--chat-dialog-background"]).toBe("rgba(12,12,18,0.9)");
     expect(resolved.style["--chat-dialog-background-image"]).toBeUndefined();
+    expect(resolved.style["--chat-dialog-height"]).toBe("260px");
     expect(resolved.style["--chat-dialog-padding"]).toBe("72px");
     expect(resolved.style["--chat-dialog-width"]).toBe("min(30vw, 980px)");
     expect(resolved.style["--chat-input-background"]).toBe("rgba(30,30,34,0.9)");
@@ -272,19 +458,19 @@ describe("chat theme runtime", () => {
   it("applies resolved theme variables and font faces at runtime", async () => {
     const manifest: ChatThemeManifest = {
       schema: 1,
-      id: "classic-dark",
-      name: { en: "Classic Dark" },
+      id: "windborne-adventure",
+      name: { en: "Windborne Adventure" },
       tokens: {
-        global: { themeColor: "#644ae3" },
+        global: { themeColor: "#f3cf57" },
         fonts: [{ family: "Theme Font", src: "assets/fonts/theme.woff2" }],
-        logs: { code: { background: "rgba(8,9,14,0.9)" } },
+        logs: { code: { background: "rgba(10,19,25,0.88)" } },
         typewriter: { cps: 48 },
       },
     };
     repoMocks.listChatThemes.mockResolvedValue([
-      { id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" },
+      { id: "windborne-adventure", name: { en: "Windborne Adventure" }, source: "builtin" },
     ]);
-    repoMocks.getActiveChatThemeId.mockResolvedValue("classic-dark");
+    repoMocks.getActiveChatThemeId.mockResolvedValue("windborne-adventure");
     repoMocks.getChatThemeManifest.mockResolvedValue(manifest);
     repoMocks.getChatTheme.mockResolvedValue({
       raw: { options_gap: 22 },
@@ -293,24 +479,26 @@ describe("chat theme runtime", () => {
 
     renderThemeTree(<Probe />);
 
-    await waitFor(() => expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-active", "classic-dark"));
+    await waitFor(() =>
+      expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-active", "windborne-adventure"),
+    );
     expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-cps", "48");
     expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-gap", "22px");
-    expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-logs-code", "rgba(8,9,14,0.9)");
-    expect(document.documentElement.style.getPropertyValue("--chat-theme-color")).toBe("#644ae3");
-    expect(document.documentElement.style.getPropertyValue("--logs-code-background")).toBe("rgba(8,9,14,0.9)");
+    expect(screen.getByTestId("theme-probe")).toHaveAttribute("data-logs-code", "rgba(10,19,25,0.88)");
+    expect(document.documentElement.style.getPropertyValue("--chat-theme-color")).toBe("#f3cf57");
+    expect(document.documentElement.style.getPropertyValue("--logs-code-background")).toBe("rgba(10,19,25,0.88)");
     expect(document.documentElement.style.getPropertyValue("--chat-options-gap")).toBe("22px");
     expect(document.getElementById("shinsekai-chat-theme-fonts")?.textContent).toContain(
-      'url("asset://data/chat_ui_themes/classic-dark/assets/fonts/theme.woff2")',
+      'url("asset://data/chat_ui_themes/windborne-adventure/assets/fonts/theme.woff2")',
     );
   });
 
   it("supports upload, switch, and delete flows through the theme picker", async () => {
-    const classicManifest: ChatThemeManifest = {
+    const windborneManifest: ChatThemeManifest = {
       schema: 1,
-      id: "classic-dark",
-      name: { en: "Classic Dark" },
-      tokens: { global: { themeColor: "#644ae3" } },
+      id: "windborne-adventure",
+      name: { en: "Windborne Adventure" },
+      tokens: { global: { themeColor: "#f3cf57" } },
     };
     const uploadedManifest: ChatThemeManifest = {
       schema: 1,
@@ -323,16 +511,16 @@ describe("chat theme runtime", () => {
     };
 
     repoMocks.listChatThemes
-      .mockResolvedValueOnce([{ id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" }])
+      .mockResolvedValueOnce([{ id: "windborne-adventure", name: { en: "Windborne Adventure" }, source: "builtin" }])
       .mockResolvedValueOnce([
-        { id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" },
+        { id: "windborne-adventure", name: { en: "Windborne Adventure" }, source: "builtin" },
         { id: "my-theme", name: { en: "My Theme" }, source: "user" },
       ])
-      .mockResolvedValueOnce([{ id: "classic-dark", name: { en: "Classic Dark" }, source: "builtin" }]);
-    repoMocks.getActiveChatThemeId.mockResolvedValue("classic-dark");
+      .mockResolvedValueOnce([{ id: "windborne-adventure", name: { en: "Windborne Adventure" }, source: "builtin" }]);
+    repoMocks.getActiveChatThemeId.mockResolvedValue("windborne-adventure");
     repoMocks.getChatTheme.mockResolvedValue({});
     repoMocks.getChatThemeManifest.mockImplementation(async (id: string) =>
-      id === "my-theme" ? uploadedManifest : classicManifest,
+      id === "my-theme" ? uploadedManifest : windborneManifest,
     );
     repoMocks.uploadChatTheme.mockResolvedValue({
       id: "my-theme",

@@ -1,6 +1,7 @@
 import type { MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
   Copy,
+  GitBranch,
   History,
   Lock,
   Mic,
@@ -32,6 +33,7 @@ export function DialogStageControls({
   onCommand,
   onConfigOpenChange,
   onLockedChange,
+  onOpenBranches,
   onOpenHistory,
   showAsrControl,
 }: {
@@ -47,6 +49,7 @@ export function DialogStageControls({
   onCommand: (command: ChatCommand) => void;
   onConfigOpenChange: (open: boolean) => void;
   onLockedChange: (locked: boolean) => void;
+  onOpenBranches: () => void;
   onOpenHistory: () => void;
   showAsrControl: boolean;
 }) {
@@ -96,6 +99,15 @@ export function DialogStageControls({
             tooltip={t("chat.toolbar.openHistory")}
           >
             {t("chat.actionBar.history")}
+          </ToolbarButton>
+          <ToolbarButton
+            aria-label={t("chat.toolbar.openBranches")}
+            className="dialog-stage-controls__button"
+            icon={<GitBranch aria-hidden className="button__icon" />}
+            onClick={onOpenBranches}
+            tooltip={t("chat.toolbar.openBranches")}
+          >
+            {t("chat.actionBar.branches")}
           </ToolbarButton>
           <ToolbarButton
             aria-label={t("chat.toolbar.skipSpeech")}

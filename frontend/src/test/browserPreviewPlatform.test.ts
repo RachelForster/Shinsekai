@@ -10,28 +10,19 @@ describe("browser preview platform chat themes", () => {
   it("switches active theme and serves matching manifests and legacy payloads", async () => {
     const platform = createBrowserPreviewPlatform();
 
-    await expect(platform.chat.getActiveThemeId()).resolves.toBe("classic-dark");
+    await expect(platform.chat.getActiveThemeId()).resolves.toBe("windborne-adventure");
 
     const themes = await platform.chat.listThemes();
-    expect(themes.map((theme) => theme.id)).toEqual(["classic-dark", "light-paper"]);
+    expect(themes.map((theme) => theme.id)).toEqual(["windborne-adventure"]);
 
-    const classicManifest = await platform.chat.getThemeManifest("classic-dark");
-    expect(classicManifest.tokens.global?.themeColor).toBe("#644ae3");
-    expect(classicManifest.tokens.logs?.code?.background).toBe("rgba(8,9,14,0.9)");
+    const windborneManifest = await platform.chat.getThemeManifest("windborne-adventure");
+    expect(windborneManifest.tokens.global?.themeColor).toBe("#f3cf57");
+    expect(windborneManifest.tokens.dialog?.chrome).toBe("none");
+    expect(windborneManifest.tokens.logs?.code?.background).toBe("rgba(10,19,25,0.88)");
 
-    const classicTheme = await platform.chat.getTheme();
-    expect(classicTheme.themeColor).toBe("#644ae3");
-
-    await platform.chat.setActiveThemeId("light-paper");
-
-    await expect(platform.chat.getActiveThemeId()).resolves.toBe("light-paper");
-    const lightManifest = await platform.chat.getThemeManifest("light-paper");
-    expect(lightManifest.tokens.dialog?.background).toBe("rgba(250,248,244,0.92)");
-    expect(lightManifest.tokens.logs?.code?.background).toBe("rgba(253,251,255,0.95)");
-
-    const lightTheme = await platform.chat.getTheme();
-    expect(lightTheme.themeColor).toBe("#c77dff");
-    expect(JSON.stringify(lightTheme.raw)).toContain("rgba(250,248,244,0.92)");
+    const windborneTheme = await platform.chat.getTheme();
+    expect(windborneTheme.themeColor).toBe("#f3cf57");
+    expect(JSON.stringify(windborneTheme.raw)).toContain("rgba(0,0,0,0)");
   });
 
   it("adds uploaded preview themes as user themes and protects builtins from deletion", async () => {
@@ -46,7 +37,7 @@ describe("browser preview platform chat themes", () => {
     const themes = await platform.chat.listThemes();
     expect(themes.find((theme) => theme.id === "mint-breeze")?.source).toBe("user");
 
-    await expect(platform.chat.deleteTheme("classic-dark")).rejects.toThrow("内置主题不能删除。");
+    await expect(platform.chat.deleteTheme("windborne-adventure")).rejects.toThrow("内置主题不能删除。");
 
     await platform.chat.deleteTheme("mint-breeze");
     const nextThemes = await platform.chat.listThemes();

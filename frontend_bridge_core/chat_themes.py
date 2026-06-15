@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .builtin_chat_themes import BUILTIN_THEME_MANIFESTS
+from .builtin_chat_themes import BUILTIN_THEME_MANIFESTS, DEFAULT_BUILTIN_CHAT_THEME_ID
 from sdk.chat_ui_theme import (
     MANIFEST_NAME,
     locate_manifest_root,
@@ -32,8 +32,9 @@ from .state import BridgeState
 
 #: 用户可写主题目录（相对项目根 / cwd）。
 USER_THEMES_DIR = Path("data") / "chat_ui_themes"
-BUILTIN_THEMES_DIR = Path("data") / "chat_ui_themes"
-BUILTIN_THEME_IDS = {"classic-dark", "light-paper"}
+BUILTIN_THEMES_DIR = Path("assets") / "chat_ui_themes"
+BUILTIN_THEME_IDS = {DEFAULT_BUILTIN_CHAT_THEME_ID}
+RETIRED_BUILTIN_THEME_IDS = {"classic-dark", "light-paper"}
 
 #: manifest schema 版本，与前端 CHAT_THEME_SCHEMA 一致。
 CHAT_THEME_SCHEMA = 1
@@ -52,6 +53,10 @@ def _builtin_themes_root() -> Path:
 
 def _is_builtin_theme_id(theme_id: str) -> bool:
     return theme_id in BUILTIN_THEME_IDS
+
+
+def _is_retired_builtin_theme_id(theme_id: str) -> bool:
+    return theme_id in RETIRED_BUILTIN_THEME_IDS
 
 
 def _seed_builtin_themes() -> None:
@@ -126,6 +131,8 @@ def list_chat_themes(state: BridgeState) -> List[Dict[str, Any]]:
     for child in sorted(root.iterdir()):
         if not child.is_dir():
             continue
+        if _is_retired_builtin_theme_id(child.name):
+            continue
         manifest = _read_manifest(child)
         if manifest is None:
             continue
@@ -137,6 +144,8 @@ def get_chat_theme_manifest(state: BridgeState, theme_id: str) -> Dict[str, Any]
     """读取并返回单个主题的完整 manifest。"""
     _seed_builtin_themes()
     safe_id = Path(theme_id).name  # 防目录穿越
+    if _is_retired_builtin_theme_id(safe_id):
+        raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
     theme_dir = _themes_root() / safe_id
     manifest = _read_manifest(theme_dir)
     if manifest is None:
@@ -148,6 +157,8 @@ def get_active_chat_theme_id(state: BridgeState) -> Dict[str, str]:
     """返回当前激活主题 id（存于 system_config.chat_ui_theme_id）。"""
     system_config = state.config_manager.config.system_config
     theme_id = str(getattr(system_config, "chat_ui_theme_id", "") or "")
+    if not theme_id or _is_retired_builtin_theme_id(Path(theme_id).name):
+        theme_id = DEFAULT_BUILTIN_CHAT_THEME_ID
     return {"id": theme_id}
 
 
@@ -158,6 +169,8 @@ def set_active_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str,
         raise ValueError("缺少主题 id")
     _seed_builtin_themes()
     safe_id = Path(theme_id).name
+    if _is_retired_builtin_theme_id(safe_id):
+        raise FileNotFoundError(f"主题不存在：{theme_id}")
     if _read_manifest(_themes_root() / safe_id) is None:
         raise FileNotFoundError(f"主题不存在：{theme_id}")
     system_config = state.config_manager.config.system_config

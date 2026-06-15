@@ -182,7 +182,7 @@ class SystemConfig(BaseModel):
         description="聊天主窗外观补丁 JSON 路径，留空则使用 data/chat_ui_theme.json（若存在）",
     )
     chat_ui_theme_id: DefaultIfNone[str] = Field(
-        default="",
+        default="windborne-adventure",
         description="React chat stage 当前激活的主题 mod id（对应 data/chat_ui_themes/<id>/），留空则用默认主题",
     )
     chat_ui_runtime_mode: DefaultIfNone[str] = Field(

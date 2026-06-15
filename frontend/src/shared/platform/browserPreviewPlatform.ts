@@ -12,12 +12,13 @@ import {
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
-import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
+import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../theme/chatTheme";
 import type {
   BatchToolResult,
   Background,
   Character,
   CharacterMemoryList,
+  ChatConversationBranch,
   ChatHistoryEntry,
   ChatSnapshot,
   ChatStageEvent,
@@ -342,7 +343,15 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   let pluginCatalog = clone(samplePluginCatalog);
   let mcpConfig = clone(sampleMcpConfig);
   let chat = clone(sampleChatSnapshot);
-  let activeThemeId = "classic-dark";
+  let previewBranchCounter = 1;
+  const previewBranches = new Map<string, ChatConversationBranch & { historyEntries: ChatHistoryEntry[] }>();
+  previewBranches.set("main", {
+    id: "main",
+    label: "Main",
+    parentId: null,
+    historyEntries: cloneHistoryEntries(chat.historyEntries),
+  });
+  let activeThemeId = DEFAULT_CHAT_THEME_ID;
   let templateSession: TemplateLaunchSession | null = null;
   const characterMemories = new Map<string, CharacterMemoryList>();
   const chatListeners = new Set<(snapshot: ChatSnapshot) => void>();
@@ -357,6 +366,25 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   const emitChat = () => {
     const snapshot = clone(chat);
     chatListeners.forEach((listener) => listener(snapshot));
+  };
+
+  const previewBranchTree = () => ({
+    activeBranchId: chat.conversationTree?.activeBranchId || "main",
+    branches: [...previewBranches.values()].map(({ historyEntries: _historyEntries, ...branch }) => ({ ...branch })),
+  });
+
+  const savePreviewActiveBranch = () => {
+    const activeBranchId = chat.conversationTree?.activeBranchId || "main";
+    const branch = previewBranches.get(activeBranchId);
+    if (branch) {
+      branch.historyEntries = cloneHistoryEntries(chat.historyEntries);
+      branch.updatedAt = Date.now();
+    }
+  };
+
+  const stripPreviewUserPrefix = (value: string) => {
+    const parts = value.split(/：|:/);
+    return parts.length > 1 ? parts.slice(1).join("：").trim() : value.trim();
   };
 
   const clearScheduledChatUpdates = () => {
@@ -376,7 +404,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   };
 
   const resolvePreviewManifest = (id: string) =>
-    previewThemeManifests.get(id) ?? previewThemeManifests.get("classic-dark");
+    previewThemeManifests.get(id) ?? previewThemeManifests.get(DEFAULT_CHAT_THEME_ID);
 
   const listPreviewThemes = (): ChatThemeSummary[] =>
     Array.from(previewThemeManifests.values()).map((manifest) => ({
@@ -680,6 +708,100 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             }
           }
         }
+        if (command.type === "fork-history") {
+          clearScheduledChatUpdates();
+          savePreviewActiveBranch();
+          const payload = command.payload;
+          const userIndex = Number(typeof payload === "object" && payload ? (payload as { userIndex?: unknown }).userIndex : payload);
+          const entries = cloneHistoryEntries(chat.historyEntries);
+          const userEntryPosition = entries.findIndex(
+            (entry) => entry.role === "user" && entry.revertUserIndex === userIndex,
+          );
+          if (userEntryPosition >= 0) {
+            const userEntry = entries[userEntryPosition];
+            const userText = stripPreviewUserPrefix(userEntry?.text ?? "");
+            const prefixEntries = entries.slice(0, userEntryPosition);
+            previewBranchCounter += 1;
+            const branchId = `branch-${previewBranchCounter}`;
+            previewBranches.set(branchId, {
+              createdAt: Date.now(),
+              forkedFromEntryId: userEntry?.id,
+              forkedFromText: userText,
+              historyEntries: cloneHistoryEntries(prefixEntries),
+              id: branchId,
+              label: `Branch ${previewBranchCounter}`,
+              parentId: chat.conversationTree?.activeBranchId || "main",
+              updatedAt: Date.now(),
+            });
+            const nextUserIndex =
+              Math.max(-1, ...prefixEntries.map((entry) => entry.revertUserIndex ?? -1)) + 1;
+            chat = {
+              ...chat,
+              characterName: chat.userDisplayName?.trim() || "你",
+              conversationTree: { activeBranchId: branchId, branches: previewBranchTree().branches },
+              dialogText: userText,
+              historyEntries: [
+                ...cloneHistoryEntries(prefixEntries),
+                {
+                  createdAt: Date.now(),
+                  id: `history-${Date.now()}-user`,
+                  revertUserIndex: nextUserIndex,
+                  role: "user",
+                  text: `${chat.userDisplayName?.trim() || "你"}: ${userText}`,
+                },
+              ],
+              options: [],
+              numericInfo: "streaming",
+              status: "streaming",
+            };
+            chat.conversationTree = previewBranchTree();
+            emitChat();
+            scheduleChatUpdate(700, (current) => ({
+              ...current,
+              characterName: "Nanami",
+              dialogText: `分支回复：${userText}`,
+              historyEntries: [
+                ...cloneHistoryEntries(current.historyEntries),
+                { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 分支回复：${userText}` },
+              ],
+              numericInfo: "idle",
+              status: "idle",
+            }));
+          }
+        }
+        if (command.type === "switch-branch") {
+          clearScheduledChatUpdates();
+          savePreviewActiveBranch();
+          const branchId = String(command.payload ?? "").trim();
+          const branch = previewBranches.get(branchId);
+          if (branch) {
+            chat = {
+              ...chat,
+              conversationTree: { activeBranchId: branchId, branches: previewBranchTree().branches },
+              dialogText: branch.historyEntries.at(-1)?.text ?? "",
+              historyEntries: cloneHistoryEntries(branch.historyEntries),
+              numericInfo: "idle",
+              options: [],
+              status: "idle",
+            };
+            chat.conversationTree = previewBranchTree();
+            emitChat();
+          }
+        }
+        if (command.type === "rename-branch") {
+          const payload = command.payload;
+          const branchId =
+            typeof payload === "object" && payload ? String((payload as { branchId?: unknown }).branchId ?? "").trim() : "";
+          const label =
+            typeof payload === "object" && payload ? String((payload as { label?: unknown }).label ?? "").trim() : "";
+          const branch = previewBranches.get(branchId);
+          if (branch && label) {
+            branch.label = label.slice(0, 64);
+            branch.updatedAt = Date.now();
+            chat.conversationTree = previewBranchTree();
+            emitChat();
+          }
+        }
         if (command.type === "copy-history") {
           return {
             ...clone(chat),
@@ -689,7 +811,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           };
         }
         if (command.type === "open-history") {
-          return { ...clone(chat), openedPath: chat.historyPath ?? "./data/chat_history/preview.json" };
+          return { ...clone(chat), openedPath: chat.historyPath ?? "./data/chat_history/preview" };
         }
         return clone(chat);
       },
@@ -698,13 +820,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       getTheme: () =>
         delay(
           previewThemePayloadFromManifest(
-            resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests["classic-dark"],
+            resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests[DEFAULT_CHAT_THEME_ID],
           ),
         ),
       async launch(payload) {
         const character = config.characters.find((item) => payload.characters.includes(item.name));
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
-        const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview.json";
+        const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
@@ -723,7 +845,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async resumeLast() {
         const character = config.characters.find((item) => templateSession?.selectedCharacters?.includes(item.name));
         const background = config.background_list.find((item) => item.name === templateSession?.background);
-        const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview.json";
+        const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
@@ -765,7 +887,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             .replace(/\.zip$/i, "")
             .trim()
             .replace(/[^\w-]+/g, "-") || "uploaded-theme";
-        const base = resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests["classic-dark"];
+        const base = resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests[DEFAULT_CHAT_THEME_ID];
         const manifest: ChatThemeManifest = {
           ...clone(base),
           id,
@@ -799,7 +921,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         previewThemeManifests.delete(id);
         previewThemeSources.delete(id);
         if (activeThemeId === id) {
-          activeThemeId = "classic-dark";
+          activeThemeId = DEFAULT_CHAT_THEME_ID;
         }
       },
       subscribeEvents(listener) {

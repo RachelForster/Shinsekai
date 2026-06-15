@@ -35,11 +35,11 @@ class ChatThemeBridgeTests(unittest.TestCase):
             try:
                 themes = list_chat_themes(state)
                 theme_index = {item["id"]: item for item in themes}
-                self.assertIn("classic-dark", theme_index)
-                self.assertIn("light-paper", theme_index)
-                self.assertEqual(theme_index["classic-dark"]["source"], "builtin")
-                self.assertEqual(theme_index["light-paper"]["source"], "builtin")
-                self.assertTrue((Path(tempdir) / "data" / "chat_ui_themes" / "classic-dark" / "theme.json").is_file())
+                self.assertEqual(list(theme_index), ["windborne-adventure"])
+                self.assertEqual(theme_index["windborne-adventure"]["source"], "builtin")
+                self.assertTrue(
+                    (Path(tempdir) / "data" / "chat_ui_themes" / "windborne-adventure" / "theme.json").is_file()
+                )
             finally:
                 os.chdir(previous_cwd)
 
@@ -52,9 +52,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=Path(tempdir) / "missing"):
                     themes = list_chat_themes(state)
                 theme_index = {item["id"]: item for item in themes}
-                self.assertIn("classic-dark", theme_index)
-                manifest = get_chat_theme_manifest(state, "classic-dark")
-                self.assertEqual(manifest["tokens"]["logs"]["code"]["background"], "rgba(8,9,14,0.9)")
+                self.assertIn("windborne-adventure", theme_index)
+                manifest = get_chat_theme_manifest(state, "windborne-adventure")
+                self.assertEqual(manifest["tokens"]["global"]["themeColor"], "#f3cf57")
             finally:
                 os.chdir(previous_cwd)
 
@@ -64,9 +64,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
             try:
-                result = set_active_chat_theme(state, {"id": "classic-dark"})
-                self.assertEqual(result, {"id": "classic-dark"})
-                self.assertEqual(state.config_manager.config.system_config.chat_ui_theme_id, "classic-dark")
+                result = set_active_chat_theme(state, {"id": "windborne-adventure"})
+                self.assertEqual(result, {"id": "windborne-adventure"})
+                self.assertEqual(state.config_manager.config.system_config.chat_ui_theme_id, "windborne-adventure")
                 self.assertEqual(self.saved, 1)
             finally:
                 os.chdir(previous_cwd)
@@ -79,7 +79,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
             try:
                 list_chat_themes(state)
                 with self.assertRaises(PermissionError):
-                    delete_chat_theme(state, "classic-dark")
+                    delete_chat_theme(state, "windborne-adventure")
             finally:
                 os.chdir(previous_cwd)
 
@@ -118,8 +118,45 @@ class ChatThemeBridgeTests(unittest.TestCase):
                       "tokens": {
                         "dialog": {
                           "background": "rgba(10,10,10,0.9)",
+                          "chrome": "none",
+                          "frameImage": "assets/dialog-frame.svg",
+                          "frameSlice": 500,
+                          "heightPx": 999,
                           "padding": 100,
+                          "textAlign": "center",
+                          "textShadow": "0 2px 4px rgba(0,0,0,0.7)",
+                          "textSizePx": 80,
+                          "textWeight": 950,
                           "widthPct": 120
+                        },
+                        "name": {
+                          "align": "center",
+                          "decoration": "line-dots",
+                          "fontFamily": "Trebuchet MS, Georgia, serif",
+                          "hideWhenStartOption": true,
+                          "textSizePx": 4,
+                          "textWeight": 100
+                        },
+                        "options": {
+                          "icon": "chat",
+                          "maxWidthVw": 90,
+                          "minHeightPx": 200,
+                          "minWidthVw": 4,
+                          "placement": "right",
+                          "textSizeVh": 12,
+                          "textSizePx": 80,
+                          "textWeight": 950,
+                          "widthPx": 900,
+                          "widthMode": "content"
+                        },
+                        "input": {
+                          "layout": "pill",
+                          "maxWidthPx": 999,
+                          "sendPlacement": "inside"
+                        },
+                        "toolbar": {
+                          "placement": "dialog-top",
+                          "reveal": "hover"
                         },
                         "logs": {
                           "code": {
@@ -142,8 +179,37 @@ class ChatThemeBridgeTests(unittest.TestCase):
 
                 manifest = get_chat_theme_manifest(state, "custom-theme")
                 self.assertEqual(manifest["id"], "custom-theme")
+                self.assertEqual(manifest["tokens"]["dialog"]["frameImage"], "assets/dialog-frame.svg")
+                self.assertEqual(manifest["tokens"]["dialog"]["chrome"], "none")
+                self.assertEqual(manifest["tokens"]["dialog"]["frameSlice"], 200)
+                self.assertEqual(manifest["tokens"]["dialog"]["heightPx"], 260)
                 self.assertEqual(manifest["tokens"]["dialog"]["padding"], 72)
+                self.assertEqual(manifest["tokens"]["dialog"]["textAlign"], "center")
+                self.assertEqual(manifest["tokens"]["dialog"]["textShadow"], "0 2px 4px rgba(0,0,0,0.7)")
+                self.assertEqual(manifest["tokens"]["dialog"]["textSizePx"], 64)
+                self.assertEqual(manifest["tokens"]["dialog"]["textWeight"], 900)
                 self.assertEqual(manifest["tokens"]["dialog"]["widthPct"], 100)
+                self.assertEqual(manifest["tokens"]["name"]["align"], "center")
+                self.assertEqual(manifest["tokens"]["name"]["decoration"], "line-dots")
+                self.assertEqual(manifest["tokens"]["name"]["fontFamily"], "Trebuchet MS, Georgia, serif")
+                self.assertEqual(manifest["tokens"]["name"]["hideWhenStartOption"], True)
+                self.assertEqual(manifest["tokens"]["name"]["textSizePx"], 12)
+                self.assertEqual(manifest["tokens"]["name"]["textWeight"], 300)
+                self.assertEqual(manifest["tokens"]["options"]["icon"], "chat")
+                self.assertEqual(manifest["tokens"]["options"]["maxWidthVw"], 60)
+                self.assertEqual(manifest["tokens"]["options"]["minHeightPx"], 96)
+                self.assertEqual(manifest["tokens"]["options"]["minWidthVw"], 12)
+                self.assertEqual(manifest["tokens"]["options"]["placement"], "right")
+                self.assertEqual(manifest["tokens"]["options"]["textSizeVh"], 4)
+                self.assertEqual(manifest["tokens"]["options"]["textSizePx"], 64)
+                self.assertEqual(manifest["tokens"]["options"]["textWeight"], 900)
+                self.assertEqual(manifest["tokens"]["options"]["widthPx"], 720)
+                self.assertEqual(manifest["tokens"]["options"]["widthMode"], "content")
+                self.assertEqual(manifest["tokens"]["input"]["layout"], "pill")
+                self.assertEqual(manifest["tokens"]["input"]["maxWidthPx"], 900)
+                self.assertEqual(manifest["tokens"]["input"]["sendPlacement"], "inside")
+                self.assertEqual(manifest["tokens"]["toolbar"]["placement"], "dialog-top")
+                self.assertEqual(manifest["tokens"]["toolbar"]["reveal"], "hover")
                 self.assertEqual(manifest["tokens"]["logs"]["code"]["background"], "rgba(8,9,14,0.9)")
                 self.assertEqual(manifest["tokens"]["logs"]["code"]["fontFamily"], "JetBrains Mono, monospace")
                 self.assertEqual(

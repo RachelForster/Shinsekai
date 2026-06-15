@@ -7,6 +7,7 @@ import {
   type ReactElement,
   type ReactNode,
   type SelectHTMLAttributes,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -94,6 +95,28 @@ function nextEnabledIndex(options: ParsedSelectOption[], start: number, directio
   return -1;
 }
 
+function clamp(value: number, min: number, max: number) {
+  if (max < min) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function requestMenuFrame(callback: FrameRequestCallback) {
+  if (typeof window.requestAnimationFrame === "function") {
+    return window.requestAnimationFrame(callback);
+  }
+  return window.setTimeout(() => callback(performance.now()), 0);
+}
+
+function cancelMenuFrame(frameId: number) {
+  if (typeof window.cancelAnimationFrame === "function") {
+    window.cancelAnimationFrame(frameId);
+    return;
+  }
+  window.clearTimeout(frameId);
+}
+
 export function CustomSelect({
   children,
   className = "",
@@ -119,6 +142,7 @@ export function CustomSelect({
   const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuPositionFrameRef = useRef<number | null>(null);
   const listboxId = id ? `${id}-listbox` : undefined;
 
   useEffect(() => {
@@ -188,47 +212,98 @@ export function CustomSelect({
     setOpen(true);
   };
 
-  const updateMenuPosition = () => {
+  const updateMenuPosition = useCallback(() => {
     const root = rootRef.current;
     if (!root) {
       return;
     }
     const rect = root.getBoundingClientRect();
+    const visualViewport = window.visualViewport;
+    const viewportLeft = visualViewport?.offsetLeft ?? 0;
+    const viewportTop = visualViewport?.offsetTop ?? 0;
+    const viewportWidth = visualViewport?.width ?? window.innerWidth;
+    const viewportHeight = visualViewport?.height ?? window.innerHeight;
     const viewportPadding = 12;
     const gap = 3;
     const preferredMaxHeight = 260;
-    const availableBelow = window.innerHeight - rect.bottom - viewportPadding - gap;
-    const availableAbove = rect.top - viewportPadding - gap;
+    const minLeft = viewportLeft + viewportPadding;
+    const minTop = viewportTop + viewportPadding;
+    const maxRight = viewportLeft + viewportWidth - viewportPadding;
+    const maxBottom = viewportTop + viewportHeight - viewportPadding;
+    const availableBelow = maxBottom - rect.bottom - gap;
+    const availableAbove = rect.top - minTop - gap;
     const openAbove = availableBelow < 160 && availableAbove > availableBelow;
-    const availableHeight = Math.max(96, openAbove ? availableAbove : availableBelow);
+    const availableHeight = Math.max(72, openAbove ? availableAbove : availableBelow);
     const maxHeight = Math.min(preferredMaxHeight, availableHeight);
-    const left = Math.min(Math.max(rect.left, viewportPadding), window.innerWidth - rect.width - viewportPadding);
+    const menuWidth = Math.min(Math.max(rect.width, 120), Math.max(120, viewportWidth - viewportPadding * 2));
+    const measuredMenuHeight = menuRef.current?.getBoundingClientRect().height;
+    const menuHeight = Math.min(
+      maxHeight,
+      measuredMenuHeight && Number.isFinite(measuredMenuHeight) ? measuredMenuHeight : maxHeight,
+    );
+    const left = clamp(rect.left, minLeft, maxRight - menuWidth);
+    const preferredTop = openAbove ? rect.top - menuHeight - gap : rect.bottom + gap;
+    const top = clamp(preferredTop, minTop, maxBottom - menuHeight);
     setMenuStyle({
       left,
       maxHeight,
-      top: openAbove ? rect.top - maxHeight - gap : rect.bottom + gap,
-      width: rect.width,
+      minWidth: rect.width,
+      top,
+      width: menuWidth,
     });
-  };
+  }, []);
+
+  const scheduleMenuPositionUpdate = useCallback(() => {
+    if (menuPositionFrameRef.current != null) {
+      cancelMenuFrame(menuPositionFrameRef.current);
+    }
+    menuPositionFrameRef.current = requestMenuFrame(() => {
+      menuPositionFrameRef.current = null;
+      updateMenuPosition();
+    });
+  }, [updateMenuPosition]);
 
   useLayoutEffect(() => {
     if (!open) {
       return;
     }
     updateMenuPosition();
-  }, [open, options.length, selectedValue]);
+    scheduleMenuPositionUpdate();
+  }, [open, options.length, scheduleMenuPositionUpdate, selectedValue, updateMenuPosition]);
 
   useEffect(() => {
     if (!open) {
       return;
     }
-    window.addEventListener("resize", updateMenuPosition);
-    window.addEventListener("scroll", updateMenuPosition, true);
+    const visualViewport = window.visualViewport;
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            scheduleMenuPositionUpdate();
+          });
+    if (rootRef.current) {
+      resizeObserver?.observe(rootRef.current);
+    }
+    if (menuRef.current) {
+      resizeObserver?.observe(menuRef.current);
+    }
+    window.addEventListener("resize", scheduleMenuPositionUpdate);
+    window.addEventListener("scroll", scheduleMenuPositionUpdate, true);
+    visualViewport?.addEventListener("resize", scheduleMenuPositionUpdate);
+    visualViewport?.addEventListener("scroll", scheduleMenuPositionUpdate);
     return () => {
-      window.removeEventListener("resize", updateMenuPosition);
-      window.removeEventListener("scroll", updateMenuPosition, true);
+      if (menuPositionFrameRef.current != null) {
+        cancelMenuFrame(menuPositionFrameRef.current);
+        menuPositionFrameRef.current = null;
+      }
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleMenuPositionUpdate);
+      window.removeEventListener("scroll", scheduleMenuPositionUpdate, true);
+      visualViewport?.removeEventListener("resize", scheduleMenuPositionUpdate);
+      visualViewport?.removeEventListener("scroll", scheduleMenuPositionUpdate);
     };
-  }, [open]);
+  }, [open, scheduleMenuPositionUpdate]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {

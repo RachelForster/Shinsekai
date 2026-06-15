@@ -21,7 +21,7 @@ import re
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 #: manifest schema 版本，与前端 ``CHAT_THEME_SCHEMA`` 一致。
 CHAT_THEME_SCHEMA = 1
@@ -34,17 +34,61 @@ ASSETS_DIR = "assets"
 
 #: 每个可视化块允许的属性。
 ALLOWED_VISUAL_PROPS = frozenset(
-    {"background", "backgroundImage", "borderColor", "borderRadius", "color", "padding", "boxShadow"}
+    {
+        "background",
+        "backgroundImage",
+        "borderColor",
+        "borderRadius",
+        "boxShadow",
+        "color",
+        "frameImage",
+        "frameSlice",
+        "padding",
+    }
 )
 
 #: 每个可写 token 块允许的额外字段（在可视化属性之外）。
 EXTRA_BLOCK_PROPS = {
-    "dialog": frozenset({"widthPct", "offsetY"}),
+    "dialog": frozenset(
+        {
+            "chrome",
+            "heightPx",
+            "nameInputGapVh",
+            "widthPct",
+            "offsetY",
+            "textAlign",
+            "textShadow",
+            "textSizePx",
+            "textWeight",
+        }
+    ),
     "fileItem": frozenset({"active", "hover"}),
-    "options": frozenset({"gap", "hover"}),
-    "input": frozenset({"fieldBackground"}),
+    "options": frozenset(
+        {
+            "active",
+            "gap",
+            "hover",
+            "icon",
+            "maxWidthVw",
+            "minHeightPx",
+            "minHeightVh",
+            "minWidthVw",
+            "nameClearanceVh",
+            "placement",
+            "textShadow",
+            "textSizeVh",
+            "textSizePx",
+            "textWeight",
+            "widthPx",
+            "widthMode",
+        }
+    ),
+    "input": frozenset({"fieldBackground", "fieldBorderRadius", "layout", "maxWidthPx", "sendPlacement"}),
     "line": frozenset({"expanded", "hover"}),
-    "name": frozenset(),
+    "name": frozenset(
+        {"align", "decoration", "fontFamily", "hideWhenStartOption", "textShadow", "textSizePx", "textWeight"}
+    ),
+    "toolbar": frozenset({"placement", "reveal"}),
 }
 
 #: tokens 顶层允许的块名（= 统一设计规范的全集）。
@@ -69,7 +113,7 @@ LOG_VISUAL_BLOCKS = frozenset(
 LOG_LEVEL_BLOCKS = frozenset({"debug", "default", "error", "info", "warn"})
 
 #: 引用资源的字段（值必须是沙箱内相对路径）。
-ASSET_REF_FIELDS = ("backgroundImage", "sound", "src", "preview")
+ASSET_REF_FIELDS = ("backgroundImage", "frameImage", "sound", "src", "preview")
 
 #: 禁止出现在任何字符串值里的破坏布局/注入声明（与 theme_chrome._FORBIDDEN_DECL 同源）。
 _FORBIDDEN_VALUE = re.compile(
@@ -81,9 +125,22 @@ _FORBIDDEN_VALUE = re.compile(
 NUMERIC_BOUNDS = {
     "padding": (8, 72),
     "widthPct": (30, 100),
+    "heightPx": (96, 260),
+    "nameInputGapVh": (12, 32),
     "offsetY": (-240, 240),
     "gap": (0, 36),
     "cps": (1, 200),
+    "frameSlice": (1, 200),
+    "minHeightPx": (36, 96),
+    "minHeightVh": (3, 8),
+    "minWidthVw": (12, 42),
+    "maxWidthVw": (20, 60),
+    "maxWidthPx": (320, 900),
+    "nameClearanceVh": (2, 12),
+    "textSizeVh": (1, 4),
+    "textSizePx": (12, 64),
+    "textWeight": (300, 900),
+    "widthPx": (260, 720),
 }
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -143,19 +200,21 @@ def _validate_visual_block(
         return out
     for key, value in block.items():
         if key in ALLOWED_VISUAL_PROPS:
-            if key == "backgroundImage":
+            if key in {"backgroundImage", "frameImage"}:
                 if isinstance(value, str) and _is_safe_asset_ref(value):
                     out[key] = value
                 else:
-                    errors.append(f"tokens.{name}.backgroundImage 必须是主题目录内相对路径")
+                    errors.append(f"tokens.{name}.{key} 必须是主题目录内相对路径")
             elif key == "padding":
                 out[key] = _clamp_numeric("padding", value, errors, f"tokens.{name}.padding")
+            elif key == "frameSlice":
+                out[key] = _clamp_numeric("frameSlice", value, errors, f"tokens.{name}.frameSlice")
             elif isinstance(value, str) and _is_safe_css_value(value):
                 out[key] = value
             else:
                 errors.append(f"tokens.{name}.{key} 值非法或包含禁用声明: {value!r}")
         elif key in allowed_extra:
-            out[key] = value  # 额外字段在下方按语义单独校验
+            pass  # 额外字段在下方按语义单独校验
         else:
             errors.append(f"tokens.{name}.{key} 不是规范允许的字段")
     return out
@@ -236,6 +295,57 @@ def _clamp_numeric(field_name: str, value: Any, errors: List[str], path: str) ->
     return num
 
 
+def _clamp_number(field_name: str, value: Any, errors: List[str], path: str) -> Optional[float]:
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        errors.append(f"{path} 必须是数字")
+        return None
+    lo, hi = NUMERIC_BOUNDS.get(field_name, (None, None))
+    if lo is not None:
+        num = max(lo, min(hi, num))
+    return round(num, 2)
+
+
+def _validate_enum(value: Any, allowed: frozenset, errors: List[str], path: str) -> Optional[str]:
+    if isinstance(value, str) and value in allowed:
+        return value
+    errors.append(f"{path} 必须是 {sorted(allowed)} 之一")
+    return None
+
+
+def _copy_numeric_fields(
+    out: Dict[str, Any], block: Dict[str, Any], fields: Iterable[str], errors: List[str], path_prefix: str
+) -> None:
+    for field in fields:
+        if field not in block:
+            continue
+        val = _clamp_numeric(field, block[field], errors, f"{path_prefix}.{field}")
+        if val is not None:
+            out[field] = val
+
+
+def _copy_number_fields(
+    out: Dict[str, Any], block: Dict[str, Any], fields: Iterable[str], errors: List[str], path_prefix: str
+) -> None:
+    for field in fields:
+        if field not in block:
+            continue
+        val = _clamp_number(field, block[field], errors, f"{path_prefix}.{field}")
+        if val is not None:
+            out[field] = val
+
+
+def _copy_safe_css_field(out: Dict[str, Any], block: Dict[str, Any], field: str, errors: List[str], path: str) -> None:
+    if field not in block:
+        return
+    value = block[field]
+    if isinstance(value, str) and _is_safe_css_value(value):
+        out[field] = value
+    else:
+        errors.append(f"{path} 非法")
+
+
 def validate_manifest(data: Any) -> ThemeValidationResult:
     """校验一个 manifest dict，返回结果与规整后的 manifest。"""
     errors: List[str] = []
@@ -305,26 +415,114 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
         block = tokens[block_name] if isinstance(tokens[block_name], dict) else {}
         # 额外字段语义校验
         if block_name == "dialog":
-            for nf in ("widthPct", "offsetY"):
-                if nf in block:
-                    val = _clamp_numeric(nf, block[nf], errors, f"tokens.dialog.{nf}")
-                    if val is not None:
-                        out[nf] = val
-        if block_name == "options":
-            if "gap" in block:
-                val = _clamp_numeric("gap", block["gap"], errors, "tokens.options.gap")
+            _copy_numeric_fields(out, block, ("heightPx", "widthPct", "offsetY"), errors, "tokens.dialog")
+            _copy_number_fields(out, block, ("nameInputGapVh",), errors, "tokens.dialog")
+            if "chrome" in block:
+                val = _validate_enum(block["chrome"], frozenset({"panel", "none"}), errors, "tokens.dialog.chrome")
                 if val is not None:
-                    out["gap"] = val
+                    out["chrome"] = val
+            if "textAlign" in block:
+                val = _validate_enum(block["textAlign"], frozenset({"left", "center"}), errors, "tokens.dialog.textAlign")
+                if val is not None:
+                    out["textAlign"] = val
+            _copy_numeric_fields(out, block, ("textSizePx", "textWeight"), errors, "tokens.dialog")
+            _copy_safe_css_field(out, block, "textShadow", errors, "tokens.dialog.textShadow")
+        if block_name == "options":
+            _copy_numeric_fields(
+                out,
+                block,
+                ("gap", "minHeightPx", "textSizePx", "textWeight", "widthPx"),
+                errors,
+                "tokens.options",
+            )
+            _copy_number_fields(
+                out,
+                block,
+                ("minHeightVh", "minWidthVw", "maxWidthVw", "nameClearanceVh", "textSizeVh"),
+                errors,
+                "tokens.options",
+            )
+            if "active" in block:
+                out["active"] = _validate_visual_block(
+                    "options.active", block["active"], errors, frozenset()
+                )
             if "hover" in block:
                 out["hover"] = _validate_visual_block(
                     "options.hover", block["hover"], errors, frozenset()
                 )
-        if block_name == "input" and "fieldBackground" in block:
-            fb = block["fieldBackground"]
-            if isinstance(fb, str) and _is_safe_css_value(fb):
-                out["fieldBackground"] = fb
-            else:
-                errors.append("tokens.input.fieldBackground 非法")
+            if "icon" in block:
+                val = _validate_enum(block["icon"], frozenset({"none", "chat"}), errors, "tokens.options.icon")
+                if val is not None:
+                    out["icon"] = val
+            if "placement" in block:
+                val = _validate_enum(
+                    block["placement"], frozenset({"center", "right"}), errors, "tokens.options.placement"
+                )
+                if val is not None:
+                    out["placement"] = val
+            if "widthMode" in block:
+                val = _validate_enum(
+                    block["widthMode"], frozenset({"fixed", "content"}), errors, "tokens.options.widthMode"
+                )
+                if val is not None:
+                    out["widthMode"] = val
+            _copy_safe_css_field(out, block, "textShadow", errors, "tokens.options.textShadow")
+        if block_name == "input":
+            if "fieldBackground" in block:
+                fb = block["fieldBackground"]
+                if isinstance(fb, str) and _is_safe_css_value(fb):
+                    out["fieldBackground"] = fb
+                else:
+                    errors.append("tokens.input.fieldBackground 非法")
+            if "fieldBorderRadius" in block:
+                fbr = block["fieldBorderRadius"]
+                if isinstance(fbr, str) and _is_safe_css_value(fbr):
+                    out["fieldBorderRadius"] = fbr
+                else:
+                    errors.append("tokens.input.fieldBorderRadius 非法")
+            if "sendPlacement" in block:
+                val = _validate_enum(
+                    block["sendPlacement"], frozenset({"outside", "inside"}), errors, "tokens.input.sendPlacement"
+                )
+                if val is not None:
+                    out["sendPlacement"] = val
+            if "layout" in block:
+                val = _validate_enum(block["layout"], frozenset({"default", "pill"}), errors, "tokens.input.layout")
+                if val is not None:
+                    out["layout"] = val
+            _copy_numeric_fields(out, block, ("maxWidthPx",), errors, "tokens.input")
+        if block_name == "toolbar":
+            if "placement" in block:
+                val = _validate_enum(
+                    block["placement"], frozenset({"dialog-top", "input", "input-top"}), errors, "tokens.toolbar.placement"
+                )
+                if val is not None:
+                    out["placement"] = val
+            if "reveal" in block:
+                val = _validate_enum(
+                    block["reveal"], frozenset({"always", "hover"}), errors, "tokens.toolbar.reveal"
+                )
+                if val is not None:
+                    out["reveal"] = val
+        if block_name == "name" and "align" in block:
+            val = _validate_enum(block["align"], frozenset({"left", "center"}), errors, "tokens.name.align")
+            if val is not None:
+                out["align"] = val
+        if block_name == "name" and "decoration" in block:
+            val = _validate_enum(
+                block["decoration"], frozenset({"accent", "line-dots"}), errors, "tokens.name.decoration"
+            )
+            if val is not None:
+                out["decoration"] = val
+        if block_name == "name":
+            if "hideWhenStartOption" in block:
+                if isinstance(block["hideWhenStartOption"], bool):
+                    out["hideWhenStartOption"] = block["hideWhenStartOption"]
+                else:
+                    errors.append("tokens.name.hideWhenStartOption 必须是布尔值")
+            _copy_safe_css_field(out, block, "fontFamily", errors, "tokens.name.fontFamily")
+            _copy_numeric_fields(out, block, ("textSizePx", "textWeight"), errors, "tokens.name")
+            _copy_safe_css_field(out, block, "textShadow", errors, "tokens.name.textShadow")
         normalized_tokens[block_name] = out
 
     if "logs" in tokens:
@@ -397,9 +595,10 @@ def _iter_asset_refs(manifest: Dict[str, Any]):
 
 def _iter_background_image_refs(value: Any):
     if isinstance(value, dict):
-        ref = value.get("backgroundImage")
-        if isinstance(ref, str) and ref:
-            yield ref
+        for key in ("backgroundImage", "frameImage"):
+            ref = value.get(key)
+            if isinstance(ref, str) and ref:
+                yield ref
         for child in value.values():
             yield from _iter_background_image_refs(child)
     elif isinstance(value, list):

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { Ear, EarOff, Mic, MicOff, Send } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { Ear, EarOff, Mic, MicOff, Plus, Send } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatCommand } from "../../../shared/platform/types";
-import { Button, IconButton, TextArea, useToast } from "../../../shared/ui";
+import { Button, IconButton, TextArea, TextInput, useToast } from "../../../shared/ui";
 import {
   appendTranscript,
   getSpeechRecognitionConstructor,
@@ -15,6 +15,8 @@ export function InputLayer({
   asrPaused,
   disabled,
   hidden,
+  inputLayout = "default",
+  longPressTalkEnabled = false,
   onChange,
   onCommand,
   onSubmit,
@@ -23,6 +25,8 @@ export function InputLayer({
   asrPaused: boolean;
   disabled: boolean;
   hidden: boolean;
+  inputLayout?: "default" | "pill";
+  longPressTalkEnabled?: boolean;
   onChange: (value: string) => void;
   onCommand: (command: ChatCommand) => void;
   onSubmit: () => void;
@@ -31,9 +35,16 @@ export function InputLayer({
   const { language, t } = useI18n();
   const { showToast } = useToast();
   const [listening, setListening] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [holdTalkActive, setHoldTalkActive] = useState(false);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const holdTalkActiveRef = useRef(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const transcriptBaseRef = useRef("");
   const valueRef = useRef(value);
+  const pillLayout = inputLayout === "pill";
+  const pressToTalk = pillLayout && longPressTalkEnabled;
+  const canSubmit = Boolean(value.trim()) && !disabled;
 
   useEffect(() => {
     valueRef.current = value;
@@ -48,11 +59,73 @@ export function InputLayer({
     setListening(false);
   };
 
+  const toggleListening = () => {
+    if (listening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
+  const stopHoldTalk = (event?: KeyboardEvent<HTMLButtonElement> | PointerEvent<HTMLButtonElement>) => {
+    if (!holdTalkActiveRef.current) {
+      return;
+    }
+    event?.preventDefault();
+    holdTalkActiveRef.current = false;
+    setHoldTalkActive(false);
+    onCommand({ type: "pause-asr" });
+  };
+
+  const startHoldTalk = (event: KeyboardEvent<HTMLButtonElement> | PointerEvent<HTMLButtonElement>) => {
+    if (!pressToTalk || disabled || holdTalkActiveRef.current) {
+      return;
+    }
+    event.preventDefault();
+    holdTalkActiveRef.current = true;
+    setHoldTalkActive(true);
+    onCommand({ type: "resume-asr" });
+  };
+
   useEffect(() => {
     if (disabled && listening) {
       stopListening();
     }
   }, [disabled, listening]);
+
+  useEffect(() => {
+    if (!pressToTalk || disabled) {
+      stopHoldTalk();
+    }
+  }, [disabled, pressToTalk]);
+
+  useEffect(() => {
+    if (!panelOpen) {
+      return;
+    }
+    const handlePointerDown = (event: globalThis.PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setPanelOpen(false);
+      }
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPanelOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [panelOpen]);
+
+  useEffect(() => {
+    if (hidden || !pillLayout) {
+      setPanelOpen(false);
+    }
+  }, [hidden, pillLayout]);
 
   useEffect(
     () => () => {
@@ -129,68 +202,182 @@ export function InputLayer({
   }
 
   return (
-    <div className="input-layer" data-chat-stage-hitbox="true" data-listening={listening ? "true" : "false"}>
-      <TextArea
-        className="input-layer__input"
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-            event.preventDefault();
-            onSubmit();
-          }
-        }}
-        placeholder={t("chat.input.placeholder")}
-        value={value}
-      />
-      <div className="input-layer__voice-stack" role="group">
+    <div
+      ref={rootRef}
+      className="input-layer"
+      data-chat-stage-hitbox="true"
+      data-layout={inputLayout}
+      data-listening={listening ? "true" : "false"}
+      data-panel-open={panelOpen ? "true" : "false"}
+    >
+      {pillLayout ? (
         <IconButton
-          className={["input-layer__voice-button", "input-layer__mic", listening ? "input-layer__mic--active" : ""]
-            .filter(Boolean)
-            .join(" ")}
-          disabled={disabled && !listening}
-          label={listening ? t("chat.input.micStop") : t("chat.input.micStart")}
-          onClick={() => {
-            if (listening) {
-              stopListening();
-            } else {
-              startListening();
+          className="input-layer__press"
+          data-active={holdTalkActive || listening ? "true" : "false"}
+          disabled={pressToTalk ? disabled : disabled && !listening}
+          label={pressToTalk ? t("chat.input.holdToTalk") : listening ? t("chat.input.micStop") : t("chat.input.micStart")}
+          onBlur={() => stopHoldTalk()}
+          onClick={(event) => {
+            if (pressToTalk) {
+              event.preventDefault();
+              return;
+            }
+            toggleListening();
+          }}
+          onKeyDown={(event) => {
+            if ((event.key === " " || event.key === "Enter") && !event.repeat) {
+              startHoldTalk(event);
             }
           }}
+          onKeyUp={(event) => {
+            if (event.key === " " || event.key === "Enter") {
+              stopHoldTalk(event);
+            }
+          }}
+          onLostPointerCapture={(event) => stopHoldTalk(event)}
+          onPointerCancel={(event) => stopHoldTalk(event)}
+          onPointerDown={(event) => {
+            if (pressToTalk) {
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              startHoldTalk(event);
+            }
+          }}
+          onPointerLeave={(event) => stopHoldTalk(event)}
+          onPointerUp={(event) => stopHoldTalk(event)}
         >
-          {listening ? (
-            <MicOff aria-hidden className="icon-button__icon" />
-          ) : (
+          {pressToTalk || !listening ? (
             <Mic aria-hidden className="icon-button__icon" />
-          )}
-        </IconButton>
-        <IconButton
-          aria-pressed={asrPaused}
-          className={[
-            "input-layer__voice-button",
-            "input-layer__asr-toggle",
-            asrPaused ? "input-layer__asr-toggle--paused" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
-          onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
-        >
-          {asrPaused ? (
-            <Ear aria-hidden className="icon-button__icon" />
           ) : (
-            <EarOff aria-hidden className="icon-button__icon" />
+            <MicOff aria-hidden className="icon-button__icon" />
           )}
         </IconButton>
+      ) : null}
+      <div className="input-layer__field">
+        {pillLayout ? (
+          <TextInput
+            autoComplete="off"
+            className="input-layer__input input-layer__input--single"
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                onSubmit();
+              }
+            }}
+            placeholder={t("chat.input.placeholder")}
+            value={value}
+          />
+        ) : (
+          <TextArea
+            className="input-layer__input"
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                onSubmit();
+              }
+            }}
+            placeholder={t("chat.input.placeholder")}
+            value={value}
+          />
+        )}
+        {!pillLayout ? (
+          <Button
+            aria-label={t("chat.input.send")}
+            className="input-layer__send"
+            disabled={!canSubmit}
+            icon={<Send aria-hidden className="button__icon" />}
+            onClick={onSubmit}
+            variant="primary"
+          >
+            {t("chat.input.send")}
+          </Button>
+        ) : null}
       </div>
-      <Button
-        disabled={!value.trim() || disabled}
-        icon={<Send aria-hidden className="button__icon" />}
-        onClick={onSubmit}
-        variant="primary"
-      >
-        {t("chat.input.send")}
-      </Button>
+      {pillLayout ? (
+        <>
+          <div className="input-layer__pill-actions" role="group">
+            <IconButton
+              className="input-layer__quick-submit"
+              disabled={!canSubmit}
+              label={t("chat.input.send")}
+              onClick={onSubmit}
+            >
+              <Send aria-hidden className="icon-button__icon" />
+            </IconButton>
+            <IconButton
+              aria-expanded={panelOpen}
+              className="input-layer__extra-toggle"
+              label={t("chat.input.moreActions")}
+              onClick={() => setPanelOpen((current) => !current)}
+            >
+              <Plus aria-hidden className="icon-button__icon" />
+            </IconButton>
+          </div>
+          <div
+            aria-hidden={!panelOpen}
+            className="input-layer__panel"
+            data-open={panelOpen ? "true" : "false"}
+            role="group"
+          >
+            <button
+              aria-pressed={asrPaused}
+              className="input-layer__panel-button"
+              onClick={() => {
+                onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" });
+                setPanelOpen(false);
+              }}
+              tabIndex={panelOpen ? undefined : -1}
+              type="button"
+            >
+              {asrPaused ? (
+                <Ear aria-hidden className="input-layer__panel-icon" />
+              ) : (
+                <EarOff aria-hidden className="input-layer__panel-icon" />
+              )}
+              <span>{asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}</span>
+            </button>
+          </div>
+        </>
+      ) : null}
+      {!pillLayout ? (
+        <div className="input-layer__voice-stack" role="group">
+          <IconButton
+            className={["input-layer__voice-button", "input-layer__mic", listening ? "input-layer__mic--active" : ""]
+              .filter(Boolean)
+              .join(" ")}
+            disabled={disabled && !listening}
+            label={listening ? t("chat.input.micStop") : t("chat.input.micStart")}
+            onClick={toggleListening}
+          >
+            {listening ? (
+              <MicOff aria-hidden className="icon-button__icon" />
+            ) : (
+              <Mic aria-hidden className="icon-button__icon" />
+            )}
+          </IconButton>
+          <IconButton
+            aria-pressed={asrPaused}
+            className={[
+              "input-layer__voice-button",
+              "input-layer__asr-toggle",
+              asrPaused ? "input-layer__asr-toggle--paused" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+            onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
+          >
+            {asrPaused ? (
+              <Ear aria-hidden className="icon-button__icon" />
+            ) : (
+              <EarOff aria-hidden className="icon-button__icon" />
+            )}
+          </IconButton>
+        </div>
+      ) : null}
     </div>
   );
 }

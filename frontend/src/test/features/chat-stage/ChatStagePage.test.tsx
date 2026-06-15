@@ -1,20 +1,31 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { CSSProperties } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChatStagePage } from "../../../features/chat-stage/ChatStagePage";
+import { defaultChatStageRuntimeConfig, effectiveChatStageTextStyle } from "../../../features/chat-stage/runtimeConfig";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import type { ChatCommand, ChatHistoryEntry, ChatSnapshot, ChatStageEvent } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
 const mocks = {
+  browseFiles: vi.fn(),
   closeChat: vi.fn(),
+  getAppConfig: vi.fn(),
   getChatHistory: vi.fn(),
   getChatSnapshot: vi.fn(),
   getChatTheme: vi.fn(),
   sendChatCommand: vi.fn(),
   subscribeChatEvents: vi.fn(),
 };
+
+const themeContextMocks = vi.hoisted(() => ({
+  optional: null as null | {
+    resolved?: { typewriter: { cps: number } };
+    style: CSSProperties;
+  },
+}));
 
 vi.mock("../../../entities/chat/repository", () => ({
   closeChat: () => mocks.closeChat(),
@@ -23,6 +34,18 @@ vi.mock("../../../entities/chat/repository", () => ({
   getChatTheme: () => mocks.getChatTheme(),
   sendChatCommand: (command: ChatCommand) => mocks.sendChatCommand(command),
   subscribeChatEvents: (listener: (event: ChatStageEvent) => void) => mocks.subscribeChatEvents(listener),
+}));
+
+vi.mock("../../../entities/config/repository", () => ({
+  getAppConfig: () => mocks.getAppConfig(),
+}));
+
+vi.mock("../../../entities/files/repository", () => ({
+  browseFiles: (options?: { path?: string; showHidden?: boolean }) => mocks.browseFiles(options),
+}));
+
+vi.mock("../../../features/chat-stage/theme/ChatThemeProvider", () => ({
+  useOptionalChatTheme: () => themeContextMocks.optional,
 }));
 
 vi.mock("../../../shared/plugin/PluginSlot", () => ({
@@ -109,7 +132,24 @@ describe("ChatStagePage", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
+    themeContextMocks.optional = null;
     mocks.closeChat.mockResolvedValue(snapshot());
+    mocks.getAppConfig.mockResolvedValue({
+      api_config: {
+        asr_extra_configs: {
+          vosk: { model_path: "D:/models/vosk" },
+        },
+      },
+    });
+    mocks.browseFiles.mockResolvedValue({
+      cwd: "D:/models/vosk",
+      entries: [
+        { kind: "directory", name: "am", path: "D:/models/vosk/am" },
+        { kind: "directory", name: "conf", path: "D:/models/vosk/conf" },
+        { kind: "directory", name: "graph", path: "D:/models/vosk/graph" },
+      ],
+      roots: [],
+    });
     chatWindowMocks.closeChatSurface.mockResolvedValue(undefined);
     desktopApiMocks.closeDesktopWindow.mockResolvedValue(undefined);
     mocks.getChatTheme.mockResolvedValue({});
@@ -156,6 +196,15 @@ describe("ChatStagePage", () => {
         type: "send-message",
       }),
     );
+  });
+
+  it("suppresses context menus inside the chat stage", async () => {
+    renderPage();
+
+    await screen.findByText("Ready");
+    const stage = document.querySelector(".chat-stage") as HTMLElement;
+    expect(fireEvent.contextMenu(stage)).toBe(false);
+    expect(fireEvent.contextMenu(screen.getByRole("button", { name: "Take the shortcut" }))).toBe(false);
   });
 
   it("submits typed dialogue with Enter while preserving Shift+Enter for line breaks", async () => {
@@ -265,7 +314,7 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
 
     const config = await screen.findByRole("dialog", { name: "Chat config" });
-    fireEvent.click(within(config).getByRole("combobox"));
+    fireEvent.click(within(config).getAllByRole("combobox")[0]);
     fireEvent.click(screen.getByRole("option", { name: "English" }));
 
     await waitFor(() =>
@@ -303,6 +352,7 @@ describe("ChatStagePage", () => {
     const dialogBody = dialog.querySelector(".dialog-layer__body") as HTMLElement;
     const dialogToolbar = within(dialog).getByRole("toolbar", { name: "Chat stage actions" });
     expect(dialogBody.compareDocumentPosition(dialogToolbar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector(".dialog-toolbar-layer")).toBeNull();
 
     const actionTray = document.querySelector(".dialog-stage-controls") as HTMLElement;
     expect(actionTray).not.toBeNull();
@@ -311,6 +361,7 @@ describe("ChatStagePage", () => {
     const lockButton = within(actionBar).getByRole("button", { name: "Lock chat actions" });
     expect(lockButton).toHaveTextContent("LOCK");
     expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("LOG");
+    expect(within(actionBar).getByRole("button", { name: "Open conversation tree" })).toHaveTextContent("TREE");
     expect(within(actionBar).getByRole("button", { name: "Skip" })).toHaveTextContent("SKIP");
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
     expect(within(actionBar).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
@@ -325,6 +376,191 @@ describe("ChatStagePage", () => {
     const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
     expect(within(topTools).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
     expect(within(topTools).queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
+  });
+
+  it("opens the conversation tree from the toolbar and switches branches", async () => {
+    const conversationTree = {
+      activeBranchId: "main",
+      branches: [
+        { id: "main", label: "Main", parentId: null },
+        { forkedFromText: "hello", id: "branch-2", label: "Branch 2", parentId: "main" },
+        { forkedFromText: "branch path", id: "branch-3", label: "Branch 3", parentId: "branch-2" },
+      ],
+    };
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        conversationTree,
+      }),
+    );
+    mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
+      snapshot({ conversationTree, dialogText: command.type, inputDraft: "", options: [] }),
+    );
+
+    renderPage();
+    await screen.findByText("Ready");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open conversation tree" }));
+    const dialog = await screen.findByRole("dialog", { name: "Conversation branches" });
+    expect(within(dialog).getByText("Branch 2")).toBeInTheDocument();
+    expect(within(dialog).getByText("Forked from: hello")).toBeInTheDocument();
+    expect(within(dialog).getByText("Branch 3")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Collapse Branch 2" }));
+    await waitFor(() => expect(within(dialog).queryByText("Branch 3")).not.toBeInTheDocument());
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Expand Branch 2" }));
+    await waitFor(() => expect(within(dialog).getByText("Branch 3")).toBeInTheDocument());
+
+    const branch2Node = within(dialog).getByText("Branch 2").closest("article") as HTMLElement;
+    fireEvent.click(within(branch2Node).getByRole("button", { name: "Rename Branch 2" }));
+    fireEvent.change(within(branch2Node).getByRole("textbox", { name: "Branch name" }), {
+      target: { value: "Side route" },
+    });
+    fireEvent.click(within(branch2Node).getByRole("button", { name: "Save branch name" }));
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: { branchId: "branch-2", label: "Side route" },
+        type: "rename-branch",
+      }),
+    );
+
+    const refreshedBranch2Node = within(dialog).getByText("Branch 2").closest("article") as HTMLElement;
+    fireEvent.click(within(refreshedBranch2Node).getByRole("button", { name: "Switch" }));
+
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "branch-2", type: "switch-branch" }));
+  });
+
+  it("uses opt-in theme placement for the detached dialog toolbar and hides the nameplate on start options", async () => {
+    themeContextMocks.optional = {
+      resolved: { typewriter: { cps: 40 } },
+      style: {
+        "--chat-dialog-toolbar-placement": "dialog-top",
+        "--chat-dialog-toolbar-reveal": "hover",
+        "--chat-name-hide-when-start-option": "true",
+      } as CSSProperties,
+    };
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        characterName: "七海千秋",
+        options: ["开始"],
+      }),
+    );
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    const dialog = document.querySelector(".dialog-layer") as HTMLElement;
+    expect(dialog.querySelector(".dialog-layer__name")).toBeNull();
+    expect(within(dialog).queryByRole("toolbar", { name: "Chat stage actions" })).not.toBeInTheDocument();
+
+    const toolbarLayer = document.querySelector(".dialog-toolbar-layer") as HTMLElement;
+    expect(toolbarLayer).not.toBeNull();
+    expect(toolbarLayer).toHaveAttribute("data-placement", "dialog-top");
+    expect(toolbarLayer).toHaveAttribute("data-reveal", "hover");
+    expect(within(toolbarLayer).getByRole("toolbar", { name: "Chat stage actions" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开始" })).toBeInTheDocument();
+  });
+
+  it("enables hold-to-talk only for the pill input theme when a Vosk model is available", async () => {
+    themeContextMocks.optional = {
+      resolved: { typewriter: { cps: 40 } },
+      style: { "--chat-input-layout": "pill" } as CSSProperties,
+    };
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
+    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    const longPress = within(config).getByLabelText("Long press to talk");
+    fireEvent.click(longPress);
+    await waitFor(() => expect(longPress).toBeChecked());
+    fireEvent.click(within(config).getByRole("button", { name: "Close" }));
+
+    const holdButton = await screen.findByRole("button", { name: "Hold to talk" });
+    fireEvent.pointerDown(holdButton);
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
+    fireEvent.pointerUp(holdButton);
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "pause-asr" }));
+  });
+
+  it("uses a single-line pill input and keeps the plus panel scoped to ASR actions", async () => {
+    themeContextMocks.optional = {
+      resolved: { typewriter: { cps: 40 } },
+      style: { "--chat-input-layout": "pill" } as CSSProperties,
+    };
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    const input = screen.getByRole("textbox");
+    expect(input.tagName).toBe("INPUT");
+
+    fireEvent.change(input, { target: { value: "  pill submit  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: "pill submit",
+        type: "send-message",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
+    const panel = document.querySelector(".input-layer__panel") as HTMLElement;
+    expect(panel).toHaveAttribute("data-open", "true");
+    expect(within(panel).queryByRole("button", { name: "Start microphone" })).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Pause ASR" }));
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "pause-asr" }));
+    await waitFor(() => expect(panel).toHaveAttribute("data-open", "false"));
+
+    fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
+    await waitFor(() => expect(panel).toHaveAttribute("data-open", "true"));
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(panel).toHaveAttribute("data-open", "false"));
+  });
+
+  it("keeps hold-to-talk disabled and prompts when the Vosk model is missing", async () => {
+    mocks.browseFiles.mockResolvedValueOnce({
+      cwd: "D:/models/vosk",
+      entries: [],
+      roots: [],
+    });
+    themeContextMocks.optional = {
+      resolved: { typewriter: { cps: 40 } },
+      style: { "--chat-input-layout": "pill" } as CSSProperties,
+    };
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    await waitFor(() => expect(mocks.browseFiles).toHaveBeenCalledWith({ path: "D:/models/vosk", showHidden: false }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
+    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    const longPress = within(config).getByLabelText("Long press to talk");
+    fireEvent.click(longPress);
+
+    await screen.findByText("Download and configure a Vosk speech model before enabling this. Go to System settings to download it. Current path: D:/models/vosk");
+    expect(longPress).not.toBeChecked();
+    expect(screen.queryByRole("button", { name: "Hold to talk" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the current dialog visible after copying history", async () => {
+    mocks.sendChatCommand.mockResolvedValue(
+      snapshot({
+        dialogText: "",
+        inputDraft: "",
+        options: [],
+      }),
+    );
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Copy history" }));
+
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "copy-history" }));
+    expect(screen.getByText("Ready")).toBeInTheDocument();
   });
 
   it("applies runtime text speed and dialog opacity from chat config", async () => {
@@ -352,6 +588,17 @@ describe("ChatStagePage", () => {
     fireEvent.change(dialogOpacity, { target: { value: "0.55" } });
     expect(await within(config).findByText("55%")).toBeInTheDocument();
 
+    fireEvent.change(within(config).getByLabelText("Dialog fill color"), { target: { value: "#223344" } });
+    fireEvent.change(within(config).getByRole("slider", { name: "Fill opacity" }), { target: { value: "0.7" } });
+    fireEvent.click(within(config).getByLabelText("Gradient fill"));
+    fireEvent.change(within(config).getByLabelText("Gradient type"), { target: { value: "dual" } });
+    fireEvent.change(within(config).getByLabelText("Second fill color"), { target: { value: "#556677" } });
+
+    const useMainColor = within(config).getByLabelText("Use main app color");
+    expect(useMainColor).toBeChecked();
+    fireEvent.click(useMainColor);
+    fireEvent.change(within(config).getByLabelText("Config menu color"), { target: { value: "#88cc44" } });
+
     const dialogScale = within(config).getByRole("slider", { name: "Dialog size" });
     fireEvent.change(dialogScale, { target: { value: "1.05" } });
     expect(await within(config).findByText("105%")).toBeInTheDocument();
@@ -372,18 +619,53 @@ describe("ChatStagePage", () => {
     fireEvent.change(spriteY, { target: { value: "-48" } });
     expect(await within(config).findByText("-48px")).toBeInTheDocument();
 
-    const windowScale = within(config).getByRole("slider", { name: "Chat UI window size" });
+    const windowScale = within(config).getByRole("slider", { name: "Chat UI window scale" });
     fireEvent.change(windowScale, { target: { value: "1.1" } });
     expect(await within(config).findByText("110%")).toBeInTheDocument();
 
+    fireEvent.change(within(config).getByLabelText("Nameplate font"), { target: { value: "Georgia" } });
+    fireEvent.change(within(config).getByRole("slider", { name: "Nameplate font size" }), {
+      target: { value: "19" },
+    });
+    fireEvent.change(within(config).getByLabelText("Nameplate text color"), { target: { value: "#ffeeaa" } });
+    const nameBold = within(config).getByLabelText("Bold nameplate text");
+    expect(nameBold).toBeChecked();
+    fireEvent.click(nameBold);
+    expect(nameBold).not.toBeChecked();
+    fireEvent.change(within(config).getByLabelText("Dialog font"), { target: { value: "Verdana" } });
+    fireEvent.change(within(config).getByRole("slider", { name: "Dialog font size" }), { target: { value: "21" } });
+    fireEvent.change(within(config).getByLabelText("Dialog text direction"), { target: { value: "rtl" } });
+    fireEvent.change(within(config).getByLabelText("Dialog text alignment"), { target: { value: "right" } });
+    fireEvent.change(within(config).getByLabelText("Dialog text color"), { target: { value: "#ddeeff" } });
+    const dialogBold = within(config).getByLabelText("Bold dialog text");
+    expect(dialogBold).not.toBeChecked();
+    fireEvent.click(dialogBold);
+    expect(dialogBold).toBeChecked();
+
     await waitFor(() => {
       const stage = document.querySelector(".chat-stage") as HTMLElement;
+      expect(stage.style.getPropertyValue("--chat-config-accent")).toBe("#88cc44");
       expect(stage.style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe("0.55");
       expect(stage.style.getPropertyValue("--chat-dialog-runtime-scale")).toBe("1.05");
-      expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1144px");
+      expect(stage.style.getPropertyValue("--chat-dialog-composed-scale")).toBe("1.155");
+      expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+      expect(stage.style.getPropertyValue("--chat-dialog-runtime-background")).toBe(
+        "linear-gradient(180deg, rgba(34, 51, 68, 0.7), rgba(85, 102, 119, 0.7))",
+      );
+      expect(stage.style.getPropertyValue("--chat-dialog-text-runtime-color")).toBe("#ddeeff");
+      expect(stage.style.getPropertyValue("--chat-dialog-text-runtime-font-family")).toBe("Verdana");
+      expect(stage.style.getPropertyValue("--chat-dialog-text-runtime-font-size")).toBe("21px");
+      expect(stage.style.getPropertyValue("--chat-dialog-text-runtime-font-weight")).toBe("700");
+      expect(stage.style.getPropertyValue("--chat-dialog-text-align")).toBe("right");
+      expect(stage.style.getPropertyValue("--chat-dialog-text-direction")).toBe("rtl");
+      expect(stage.style.getPropertyValue("--chat-name-runtime-color")).toBe("#ffeeaa");
+      expect(stage.style.getPropertyValue("--chat-name-runtime-font-family")).toBe("Georgia");
+      expect(stage.style.getPropertyValue("--chat-name-runtime-font-size")).toBe("19px");
+      expect(stage.style.getPropertyValue("--chat-name-runtime-font-weight")).toBe("600");
       expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-x")).toBe("72px");
       expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-y")).toBe("-48px");
-      expect(stage.style.getPropertyValue("--chat-ui-runtime-width")).toBe("1232px");
+      expect(stage.style.getPropertyValue("--chat-toolbar-runtime-scale")).toBe("1.1");
+      expect(stage.style.getPropertyValue("--chat-ui-runtime-width")).toBe("1120px");
       expect(stage.style.getPropertyValue("--chat-ui-window-scale")).toBe("1.1");
       const sprites = document.querySelectorAll<HTMLElement>(".sprite-layer__figure");
       expect(sprites[0]?.style.getPropertyValue("--sprite-scale")).toBe("1.35");
@@ -391,8 +673,35 @@ describe("ChatStagePage", () => {
     });
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
       auto: false,
+      configThemeColor: "#88cc44",
+      configUseMainThemeColor: false,
+      dialogText: {
+        align: "right",
+        bold: true,
+        boldOverride: true,
+        color: "#ddeeff",
+        direction: "rtl",
+        fontFamily: "Verdana",
+        fontSize: 21,
+      },
+      dialogFill: {
+        color: "#223344",
+        color2: "#556677",
+        gradient: true,
+        gradientDirection: "to-bottom",
+        gradientMode: "dual",
+        opacity: 0.7,
+      },
       dialogOpacity: 0.55,
       dialogScale: 1.05,
+      longPressTalk: false,
+      nameText: {
+        bold: false,
+        boldOverride: true,
+        color: "#ffeeaa",
+        fontFamily: "Georgia",
+        fontSize: 19,
+      },
       spriteScales: {
         mio: 1.35,
         ren: 0.8,
@@ -402,6 +711,70 @@ describe("ChatStagePage", () => {
       typewriterCps: 96,
       windowScale: 1.1,
     });
+  });
+
+  it("resolves theme text defaults for config controls", () => {
+    const dialogText = effectiveChatStageTextStyle(
+      defaultChatStageRuntimeConfig.dialogText,
+      defaultChatStageRuntimeConfig.dialogText,
+      {
+        "--chat-dialog-text-theme-color": "#ffffff",
+        "--chat-dialog-text-theme-font-family": "Georgia, serif",
+        "--chat-dialog-text-theme-font-size": "34px",
+        "--chat-dialog-text-theme-font-weight": "800",
+      } as CSSProperties,
+      "dialogText",
+    );
+    const nameText = effectiveChatStageTextStyle(
+      defaultChatStageRuntimeConfig.nameText,
+      defaultChatStageRuntimeConfig.nameText,
+      {
+        "--chat-name-theme-color": "#f0b72b",
+        "--chat-name-theme-font-family": "Trebuchet MS, Georgia, serif",
+        "--chat-name-theme-font-size": "30px",
+        "--chat-name-theme-font-weight": "800",
+      } as CSSProperties,
+      "nameText",
+    );
+
+    expect(dialogText).toMatchObject({
+      align: "center",
+      bold: true,
+      color: "#ffffff",
+      direction: "ltr",
+      fontFamily: "Georgia, serif",
+      fontSize: 34,
+    });
+    expect(nameText).toMatchObject({
+      bold: true,
+      color: "#f0b72b",
+      fontFamily: "Trebuchet MS, Georgia, serif",
+      fontSize: 30,
+    });
+  });
+
+  it("renders markdown dialog text and places the completion marker after the text", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        dialogText: "Ready **bold** `code` [link](https://example.com)",
+      }),
+    );
+
+    renderPage();
+    await screen.findByText("Ready");
+
+    const dialogText = document.querySelector(".dialog-layer__text") as HTMLElement;
+    expect(dialogText.querySelector("strong")).toHaveTextContent("bold");
+    expect(dialogText.querySelector("code")).toHaveTextContent("code");
+    const link = dialogText.querySelector("a") as HTMLAnchorElement;
+    expect(link).toHaveAttribute("href", "https://example.com");
+    const marker = dialogText.querySelector(".dialog-layer__ctc") as HTMLElement;
+    expect(marker).not.toBeNull();
+    expect(marker.parentElement).toBe(dialogText);
+    expect(getComputedStyle(marker).position).not.toBe("absolute");
+
+    fireEvent.click(link);
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "dialog-advance" });
   });
 
   it("loads persisted runtime config before opening chat config", async () => {
@@ -437,8 +810,11 @@ describe("ChatStagePage", () => {
     expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-x")).toBe("36px");
     expect(stage.style.getPropertyValue("--chat-sprite-runtime-offset-y")).toBe("-24px");
     expect(stage.style.getPropertyValue("--chat-dialog-runtime-scale")).toBe("1.1");
-    expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1196px");
-    expect(stage.style.getPropertyValue("--chat-ui-runtime-width")).toBe("1288px");
+    expect(stage.style.getPropertyValue("--chat-dialog-composed-scale")).toBe("1.265");
+    expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+    expect(stage.style.getPropertyValue("--chat-toolbar-runtime-scale")).toBe("1.15");
+    expect(stage.style.getPropertyValue("--chat-ui-runtime-width")).toBe("1120px");
+    expect(stage.style.getPropertyValue("--chat-ui-window-scale")).toBe("1.15");
     const sprites = document.querySelectorAll<HTMLElement>(".sprite-layer__figure");
     expect(sprites[0]?.style.getPropertyValue("--sprite-scale")).toBe("1.4");
     expect(sprites[1]?.style.getPropertyValue("--sprite-scale")).toBe("0.75");
@@ -453,7 +829,7 @@ describe("ChatStagePage", () => {
     expect(within(config).getByRole("slider", { name: "Sprite scale: Ren" })).toHaveValue("0.75");
     expect(within(config).getByRole("slider", { name: "Sprite X" })).toHaveValue("36");
     expect(within(config).getByRole("slider", { name: "Sprite Y" })).toHaveValue("-24");
-    expect(within(config).getByRole("slider", { name: "Chat UI window size" })).toHaveValue("1.15");
+    expect(within(config).getByRole("slider", { name: "Chat UI window scale" })).toHaveValue("1.15");
   });
 
   it("loads runtime history into the dialog and sends revert-history after confirmation", async () => {
@@ -475,7 +851,14 @@ describe("ChatStagePage", () => {
     expect(within(dialog).queryByText("Mio: Ready")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("你: hello")).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Revert to previous turn" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fork" }));
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: { userIndex: 0 }, type: "fork-history" }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
+    const reopenedDialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    fireEvent.click(within(reopenedDialog).getByRole("button", { name: "Revert to previous turn" }));
 
     const confirm = await screen.findByRole("dialog", { name: "Revert history" });
     fireEvent.click(within(confirm).getByRole("button", { name: "Revert" }));

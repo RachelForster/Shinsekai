@@ -8,6 +8,8 @@ import { AppStateProvider } from "../../../shared/app-state/AppState";
 import { FileBrowserProvider, ToastProvider } from "../../../shared/ui";
 
 const mockGetAppConfig = vi.fn();
+const mockListChatThemes = vi.fn();
+const mockSetActiveChatTheme = vi.fn();
 const browseFiles = vi.fn();
 const desktopApi = vi.hoisted(() => ({
   browseDesktopFiles: vi.fn(),
@@ -23,6 +25,12 @@ vi.mock("../../../entities/config/repository", () => ({
   configQueryKey: ["config"],
   getAppConfig: () => mockGetAppConfig(),
   saveSystemConfig: vi.fn(),
+}));
+
+vi.mock("../../../entities/chat/repository", () => ({
+  chatThemeQueryKey: ["chat", "themes"],
+  listChatThemes: () => mockListChatThemes(),
+  setActiveChatTheme: (id: string) => mockSetActiveChatTheme(id),
 }));
 
 vi.mock("../../../shared/desktop/desktopApi", () => desktopApi);
@@ -54,6 +62,9 @@ function mockSystemConfig() {
       asr_whisper_compute_type: "",
       asr_whisper_device: "auto",
       asr_whisper_model_size: "base",
+      chat_ui_runtime_mode: "react",
+      chat_ui_theme_id: "windborne-adventure",
+      chat_ui_theme_path: "",
       font_pixel_size: 0,
       height: 0,
       live_room_id: "",
@@ -105,6 +116,14 @@ describe("SystemSettingsPage", () => {
       parent: "/",
       roots: [{ label: "Temp", path: "/tmp" }],
     });
+    mockListChatThemes.mockResolvedValue([
+      {
+        id: "windborne-adventure",
+        name: { en: "Windborne Adventure", zh_CN: "风旅冒险" },
+        source: "builtin",
+      },
+    ]);
+    mockSetActiveChatTheme.mockResolvedValue(undefined);
   });
 
   it("shows error state", async () => {
@@ -117,6 +136,10 @@ describe("SystemSettingsPage", () => {
     mockGetAppConfig.mockResolvedValue(mockSystemConfig());
     renderPage();
     expect(await screen.findByText("程序设置")).toBeInTheDocument();
+    const themeSelect = await screen.findByRole("combobox", { name: "聊天主题" });
+    await waitFor(() => expect(themeSelect).toHaveTextContent("风旅冒险 · 内置"));
+    fireEvent.click(themeSelect);
+    expect(await screen.findByRole("option", { name: "风旅冒险 · 内置" })).toBeInTheDocument();
     expect(screen.queryByText("桌面运行环境")).not.toBeInTheDocument();
   });
 

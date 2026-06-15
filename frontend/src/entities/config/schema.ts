@@ -169,7 +169,13 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
         required: true,
         type: "select",
       },
-      { label: "聊天主题 JSON", name: "chat_ui_theme_path", type: "file" },
+      {
+        label: "原生聊天主题 JSON",
+        name: "chat_ui_theme_path",
+        type: "file",
+        visibleWhen: (value) => value.chat_ui_runtime_mode === "native",
+      },
+      { label: "聊天主题", name: "chat_ui_theme_id", type: "text" },
     ],
   },
   {

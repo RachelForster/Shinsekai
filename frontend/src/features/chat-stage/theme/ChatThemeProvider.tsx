@@ -19,7 +19,7 @@ import {
 import { getPlatform } from "../../../shared/platform/platform";
 import { parseChatChromeTheme } from "../../../shared/theme/chatChromeTheme";
 import type { ChatThemePayload } from "../../../shared/theme/chatChromeTheme";
-import { DEFAULT_TYPEWRITER_CPS, resolveChatTheme } from "../../../shared/theme/chatTheme";
+import { DEFAULT_CHAT_THEME_ID, DEFAULT_TYPEWRITER_CPS, resolveChatTheme } from "../../../shared/theme/chatTheme";
 import type {
   ChatStageStyle,
   ChatThemeManifest,
@@ -46,8 +46,6 @@ export interface ChatThemeContextValue {
   /** 删除一个用户主题，删除后刷新列表。 */
   removeTheme: (id: string) => Promise<void>;
 }
-
-const DEFAULT_CHAT_THEME_ID = "classic-dark";
 
 const ChatThemeContext = createContext<ChatThemeContextValue | null>(null);
 

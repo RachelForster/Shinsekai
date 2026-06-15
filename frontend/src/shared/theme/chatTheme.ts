@@ -13,6 +13,9 @@ export type { ChatStageStyle } from "./chatChromeTheme";
 /** 当前 manifest schema 版本。后端校验与前端解析都以此为准。 */
 export const CHAT_THEME_SCHEMA = 1 as const;
 
+/** 默认内置 chat_ui 主题。 */
+export const DEFAULT_CHAT_THEME_ID = "windborne-adventure";
+
 /** 一组可视化声明（颜色 / 背景图 / 边框 / 圆角 / 阴影 / 内边距），对应一块 UI 的 --chat-<block>-* 变量。 */
 export interface VisualBlock {
   background?: string;
@@ -43,16 +46,58 @@ export interface ChatThemeTokens {
   global?: { themeColor?: string; fontFamily?: string };
   fonts?: ChatThemeFontFace[];
   dialog?: VisualBlock & {
+    /** 对话区 chrome；none = 字幕模式，无背景框、无边框、无滚动限制。 */
+    chrome?: "panel" | "none";
     /** 对话框宽度占比（vw），clamp 30–100。 */
     widthPct?: number;
+    /** 固定对话区高度（px），clamp 96–260。 */
+    heightPx?: number;
+    /** 名牌装饰中心线到输入框顶部的目标距离（svh）；不填写则使用基础布局。 */
+    nameInputGapVh?: number;
     /** 垂直偏移（px），clamp -240–240。 */
     offsetY?: number;
+    /** 正文对齐方式。 */
+    textAlign?: "left" | "center";
+    textShadow?: string;
+    textSizePx?: number;
+    textWeight?: number;
   };
-  options?: VisualBlock & { gap?: number; hover?: VisualBlock };
-  input?: VisualBlock & { fieldBackground?: string };
-  toolbar?: VisualBlock;
+  options?: VisualBlock & {
+    active?: VisualBlock;
+    gap?: number;
+    hover?: VisualBlock;
+    icon?: "none" | "chat";
+    maxWidthVw?: number;
+    minHeightVh?: number;
+    minWidthVw?: number;
+    placement?: "center" | "right";
+    minHeightPx?: number;
+    nameClearanceVh?: number;
+    textShadow?: string;
+    textSizeVh?: number;
+    textSizePx?: number;
+    textWeight?: number;
+    widthPx?: number;
+    widthMode?: "fixed" | "content";
+  };
+  input?: VisualBlock & {
+    fieldBackground?: string;
+    fieldBorderRadius?: string;
+    layout?: "default" | "pill";
+    maxWidthPx?: number;
+    sendPlacement?: "outside" | "inside";
+  };
+  toolbar?: VisualBlock & { placement?: "dialog-top" | "input" | "input-top"; reveal?: "always" | "hover" };
   send?: VisualBlock;
-  name?: VisualBlock;
+  name?: VisualBlock & {
+    align?: "left" | "center";
+    decoration?: "accent" | "line-dots";
+    fontFamily?: string;
+    hideWhenStartOption?: boolean;
+    textShadow?: string;
+    textSizePx?: number;
+    textWeight?: number;
+  };
   logs?: LogsThemeTokens;
   /** 打字机：每秒字数 + 可选打字音效（主题目录内相对路径）。 */
   typewriter?: { cps?: number; sound?: string };
@@ -169,6 +214,79 @@ function setStyleVar(style: ChatStageStyle, name: `--${string}`, value: unknown)
     return;
   }
   style[name] = value.trim();
+}
+
+function setPxVar(
+  style: ChatStageStyle,
+  name: `--${string}`,
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  if (typeof value !== "number") {
+    return;
+  }
+  style[name] = `${clampNumber(value, fallback, min, max)}px`;
+}
+
+function setVhVar(
+  style: ChatStageStyle,
+  name: `--${string}`,
+  value: unknown,
+  min: number,
+  max: number,
+) {
+  if (typeof value !== "number") {
+    return;
+  }
+  style[name] = `${Number(clampNumber(value, min, min, max).toFixed(2))}svh`;
+}
+
+function setVhClampVar(
+  style: ChatStageStyle,
+  name: `--${string}`,
+  value: unknown,
+  min: number,
+  max: number,
+  minPx: number,
+  maxPx: number,
+) {
+  if (typeof value !== "number") {
+    return;
+  }
+  const vh = Number(clampNumber(value, min, min, max).toFixed(2));
+  style[name] = `clamp(${minPx}px, ${vh}svh, ${maxPx}px)`;
+}
+
+function setVwClampVar(
+  style: ChatStageStyle,
+  name: `--${string}`,
+  value: unknown,
+  min: number,
+  max: number,
+  minPx: number,
+  maxPx: number,
+) {
+  if (typeof value !== "number") {
+    return;
+  }
+  const vw = Number(clampNumber(value, min, min, max).toFixed(2));
+  style[name] = `clamp(${minPx}px, ${vw}vw, ${maxPx}px)`;
+}
+
+function setIntegerVar(
+  style: ChatStageStyle,
+  name: `--${string}`,
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  if (typeof value !== "number") {
+    return;
+  }
+  style[name] = String(Math.round(clampNumber(value, fallback, min, max)));
 }
 
 function applyVisualBlock(
@@ -311,15 +429,54 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
 
   const dialog = tokens.dialog;
   applyVisualBlock(style, "dialog", dialog, assetUrl);
+  if (typeof dialog?.heightPx === "number" || dialog?.chrome === "none") {
+    style["--chat-dialog-height"] = `${clampNumber(dialog?.heightPx, 156, 96, 260)}px`;
+    style["--chat-dialog-body-height"] = "100%";
+    style["--chat-dialog-body-min-height"] = "0px";
+  }
+  if (dialog?.chrome === "none") {
+    style["--chat-dialog-backdrop-filter"] = "none";
+    style["--chat-dialog-actions-border"] = "0 solid transparent";
+    style["--chat-dialog-body-max-height"] = "none";
+    style["--chat-dialog-body-overflow"] = "visible";
+    style["--chat-dialog-body-scrollbar-gutter"] = "auto";
+    style["--chat-dialog-border"] = "0 solid transparent";
+    style["--chat-dialog-min-height"] = "0px";
+    style["--chat-dialog-toolbar-gap"] = "10px";
+    style["--chat-dialog-toolbar-padding-bottom"] = "0px";
+    style["--chat-sheen"] = "none";
+  }
+  if (typeof dialog?.nameInputGapVh === "number") {
+    setVhVar(style, "--chat-dialog-name-input-gap", dialog.nameInputGapVh, 12, 32);
+    style["--chat-dialog-stack-bottom"] =
+      "calc(var(--stage-control-stack-height) + var(--chat-dialog-name-input-gap) - var(--chat-dialog-height) - var(--chat-name-line-offset) - var(--chat-dialog-offset-y))";
+  }
   if (typeof dialog?.widthPct === "number") {
     style["--chat-dialog-width"] = `min(${clampNumber(dialog.widthPct, 86, 30, 100)}vw, 980px)`;
   }
   if (typeof dialog?.offsetY === "number") {
     style["--chat-dialog-offset-y"] = `${clampNumber(dialog.offsetY, 0, -240, 240)}px`;
   }
+  if (dialog?.textAlign === "center") {
+    style["--chat-dialog-text-align"] = "center";
+  }
+  if (isSafeCssValue(dialog?.color)) {
+    style["--chat-dialog-text-theme-color"] = dialog.color.trim();
+  }
+  if (typeof tokens.global?.fontFamily === "string") {
+    const fontFamily = quotedFontFamily(tokens.global.fontFamily);
+    if (fontFamily) {
+      style["--chat-dialog-text-theme-font-family"] = fontFamily;
+      style["--chat-name-theme-font-family"] = fontFamily;
+    }
+  }
+  setPxVar(style, "--chat-dialog-text-theme-font-size", dialog?.textSizePx, 17, 12, 64);
+  setIntegerVar(style, "--chat-dialog-text-theme-font-weight", dialog?.textWeight, 400, 300, 900);
+  setStyleVar(style, "--chat-dialog-text-shadow", dialog?.textShadow);
 
   const options = tokens.options;
   applyVisualBlock(style, "option", options, assetUrl);
+  applyVisualBlock(style, "option-active", options?.active, assetUrl);
   applyVisualBlock(style, "option-hover", options?.hover, assetUrl);
   if (isSafeCssValue(options?.color)) {
     style["--chat-options-color"] = options.color;
@@ -327,16 +484,177 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   if (typeof options?.gap === "number") {
     style["--chat-options-gap"] = `${clampNumber(options.gap, 10, 0, 36)}px`;
   }
+  if (options?.placement === "right") {
+    style["--chat-options-left"] = "calc(100% - var(--stage-safe-x))";
+    style["--chat-options-bottom"] =
+      typeof dialog?.nameInputGapVh === "number"
+        ? "calc(var(--stage-control-stack-height) + var(--chat-dialog-name-input-gap) + var(--chat-options-name-clearance))"
+        : "calc(var(--stage-control-stack-height) + var(--chat-dialog-toolbar-reserved-height) + var(--chat-dialog-height) + var(--chat-options-name-clearance) - var(--chat-dialog-offset-y))";
+    style["--chat-options-top"] = "auto";
+    style["--chat-options-transform"] = "translateX(-100%)";
+  }
+  setPxVar(style, "--chat-options-width", options?.widthPx, 460, 260, 720);
+  if (options?.widthMode === "content") {
+    style["--chat-options-width"] = "max-content";
+    setVwClampVar(style, "--chat-options-min-width", options.minWidthVw, 12, 42, 320, 720);
+    if (typeof options.maxWidthVw === "number") {
+      const vw = Number(clampNumber(options.maxWidthVw, 42, 20, 60).toFixed(2));
+      style["--chat-options-max-width"] = `min(${vw}vw, 760px, calc(100vw - 32px))`;
+    }
+    style["--chat-options-mobile-left"] = "var(--chat-options-left)";
+    style["--chat-options-mobile-max-width"] = "calc(100vw - 24px)";
+    style["--chat-options-mobile-min-width"] = "min(var(--chat-options-min-width), calc(100vw - 24px))";
+    style["--chat-options-mobile-right"] = "auto";
+    style["--chat-options-mobile-transform"] = "var(--chat-options-transform)";
+    style["--chat-options-mobile-width"] = "var(--chat-options-width)";
+  }
+  setPxVar(style, "--chat-option-min-height", options?.minHeightPx, 46, 36, 96);
+  setVhClampVar(style, "--chat-option-min-height", options?.minHeightVh, 3, 8, 36, 96);
+  setVhVar(style, "--chat-options-name-clearance", options?.nameClearanceVh, 2, 12);
+  setPxVar(style, "--chat-option-font-size", options?.textSizePx, 16, 12, 64);
+  setVhClampVar(style, "--chat-option-font-size", options?.textSizeVh, 1, 4, 18, 32);
+  setIntegerVar(style, "--chat-option-font-weight", options?.textWeight, 600, 300, 900);
+  setStyleVar(style, "--chat-option-text-shadow", options?.textShadow);
+  if (options?.icon === "chat") {
+    style["--chat-option-icon-opacity"] = "1";
+    style["--chat-option-icon-size"] = "clamp(28px, 3.78svh, 38px)";
+    style["--chat-option-justify-content"] = "flex-start";
+    style["--chat-option-padding"] = "8px 18px 8px 60px";
+    style["--chat-option-text-align"] = "left";
+  }
 
   const input = tokens.input;
   applyVisualBlock(style, "input", input, assetUrl);
   if (isSafeCssValue(input?.fieldBackground)) {
     style["--chat-input-field-background"] = input.fieldBackground;
   }
+  if (isSafeCssValue(input?.fieldBorderRadius)) {
+    style["--chat-input-field-border-radius"] = input.fieldBorderRadius;
+  }
+  if (typeof input?.maxWidthPx === "number") {
+    style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
+  }
+  if (input?.layout === "pill") {
+    style["--chat-input-layout"] = "pill";
+    style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
+    style["--stage-input-height"] = "calc(var(--chat-input-button-size) + clamp(10px, 1.44svh, 14px))";
+    style["--chat-input-border"] = "0 solid transparent";
+    style["--chat-input-border-radius"] = "999px";
+    style["--chat-input-field-background"] = "transparent";
+    style["--chat-input-field-border-radius"] = "0px";
+    style["--chat-input-field-display"] = "contents";
+    style["--chat-input-field-position"] = "static";
+    style["--chat-input-gap"] = "clamp(8px, 1.2vw, 14px)";
+    style["--chat-input-grid-template-columns"] = "var(--chat-input-button-size) minmax(0, 1fr) auto";
+    style["--chat-input-padding"] = "clamp(5px, 0.72svh, 7px) clamp(7px, 0.9svh, 10px)";
+    style["--chat-input-panel-display"] = "grid";
+    style["--chat-input-pill-control-display"] = "inline-flex";
+    style["--chat-input-send-display"] = "none";
+    style["--chat-input-textarea-font-size"] = "clamp(17px, 2svh, 22px)";
+    style["--chat-input-textarea-max-height"] = "48px";
+    style["--chat-input-textarea-min-height"] = "42px";
+    style["--chat-input-textarea-padding-right"] = "0px";
+    style["--chat-input-voice-stack-display"] = "none";
+  }
+  if (input?.sendPlacement === "inside" && input?.layout !== "pill") {
+    style["--chat-input-grid-template-columns"] = "minmax(0, 1fr) 38px";
+    style["--chat-input-field-display"] = "block";
+    style["--chat-input-field-position"] = "relative";
+    style["--chat-input-textarea-padding-right"] = "56px";
+    style["--chat-send-active-transform"] = "translateY(-50%)";
+    style["--chat-send-border"] = "0 solid transparent";
+    style["--chat-send-box-shadow"] = "none";
+    style["--chat-send-height"] = "36px";
+    style["--chat-send-hover-sheen"] = "none";
+    style["--chat-send-hover-transform"] = "translateY(-50%)";
+    style["--chat-send-icon-size"] = "18px";
+    style["--chat-send-label-display"] = "none";
+    style["--chat-send-min-height"] = "36px";
+    style["--chat-send-min-width"] = "36px";
+    style["--chat-send-padding"] = "0";
+    style["--chat-send-position"] = "absolute";
+    style["--chat-send-right"] = "11px";
+    style["--chat-send-sheen"] = "none";
+    style["--chat-send-top"] = "50%";
+    style["--chat-send-transform"] = "translateY(-50%)";
+    style["--chat-send-width"] = "36px";
+  }
 
-  applyVisualBlock(style, "toolbar", tokens.toolbar, assetUrl);
+  const toolbar = tokens.toolbar;
+  applyVisualBlock(style, "toolbar", toolbar, assetUrl);
+  if (toolbar?.placement === "dialog-top") {
+    style["--chat-dialog-toolbar-placement"] = "dialog-top";
+    style["--chat-dialog-toolbar-layer-bottom"] =
+      "calc(var(--chat-dialog-stack-bottom) + var(--chat-dialog-height) + 4px)";
+    style["--chat-dialog-toolbar-layer-max-width"] = "calc(100vw - 32px)";
+    style["--chat-dialog-toolbar-layer-padding"] = "26px 0 0";
+    style["--chat-dialog-toolbar-layer-width"] = "min(var(--chat-ui-runtime-width), calc(100vw - 32px))";
+    style["--chat-dialog-toolbar-reveal"] = toolbar.reveal === "hover" ? "hover" : "always";
+    style["--chat-dialog-toolbar-hidden-y"] = "16px";
+  } else if (toolbar?.placement === "input" || toolbar?.placement === "input-top") {
+    style["--chat-dialog-toolbar-input-clearance"] = "36px";
+    style["--chat-dialog-toolbar-placement"] = "input";
+    style["--chat-dialog-toolbar-reveal"] = toolbar.reveal === "hover" ? "hover" : "always";
+    if (toolbar.placement === "input-top") {
+      style["--chat-dialog-toolbar-input-clearance"] = "12px";
+      style["--chat-dialog-toolbar-layer-padding"] = "20px 0 0";
+      style["--chat-dialog-toolbar-layer-width"] = "min(var(--chat-ui-runtime-width), calc(100vw - 32px))";
+      style["--chat-dialog-toolbar-layer-max-width"] = "calc(100vw - 32px)";
+      style["--chat-dialog-toolbar-hidden-y"] = "16px";
+      if (input?.layout === "pill") {
+        style["--chat-dialog-toolbar-input-clearance"] = "4px";
+        style["--chat-dialog-toolbar-layer-width"] = "min(var(--chat-input-max-width), calc(100vw - 32px))";
+      }
+      if (typeof dialog?.nameInputGapVh === "number") {
+        style["--chat-dialog-stack-bottom"] =
+          "calc(var(--stage-control-stack-height) + var(--chat-dialog-name-input-gap) + clamp(34px, 4.2svh, 46px) - var(--chat-dialog-height) - var(--chat-name-line-offset) - var(--chat-dialog-offset-y))";
+      }
+    }
+  }
   applyVisualBlock(style, "send", tokens.send, assetUrl);
   applyVisualBlock(style, "name", tokens.name, assetUrl);
+  if (isSafeCssValue(tokens.name?.color)) {
+    style["--chat-name-theme-color"] = tokens.name.color.trim();
+  }
+  if (typeof tokens.name?.fontFamily === "string") {
+    const fontFamily = quotedFontFamily(tokens.name.fontFamily);
+    if (fontFamily) {
+      style["--chat-name-theme-font-family"] = fontFamily;
+    }
+  }
+  setPxVar(style, "--chat-name-theme-font-size", tokens.name?.textSizePx, 15, 12, 56);
+  setIntegerVar(style, "--chat-name-theme-font-weight", tokens.name?.textWeight, 800, 300, 900);
+  setStyleVar(style, "--chat-name-text-shadow", tokens.name?.textShadow);
+  if (tokens.name?.align === "center") {
+    style["--chat-name-justify-content"] = "center";
+    style["--chat-name-left"] = "50%";
+    style["--chat-name-text-align"] = "center";
+    style["--chat-name-transform"] = "translateX(-50%)";
+  }
+  if (tokens.name?.decoration === "line-dots") {
+    style["--chat-name-after-background"] =
+      "radial-gradient(circle, currentColor 0 42%, transparent 45%) left 50% / 0.5em 0.5em no-repeat, linear-gradient(currentColor 0 0) right 50% / calc(100% - 0.66em) 2px no-repeat";
+    style["--chat-name-after-content"] = '""';
+    style["--chat-name-after-display"] = "block";
+    style["--chat-name-after-height"] = "0.72em";
+    style["--chat-name-after-margin"] = "0 0 0 0.46em";
+    style["--chat-name-after-width"] = "3.2em";
+    style["--chat-name-before-background"] =
+      "linear-gradient(currentColor 0 0) left 50% / calc(100% - 0.66em) 2px no-repeat, radial-gradient(circle, currentColor 0 42%, transparent 45%) right 50% / 0.5em 0.5em no-repeat";
+    style["--chat-name-before-content"] = '""';
+    style["--chat-name-before-display"] = "block";
+    style["--chat-name-before-height"] = "0.72em";
+    style["--chat-name-before-margin"] = "0 0.46em 0 0";
+    style["--chat-name-before-position"] = "static";
+    style["--chat-name-before-width"] = "3.2em";
+    style["--chat-name-border"] = "0 solid transparent";
+    style["--chat-name-border-bottom"] = "0 solid transparent";
+    style["--chat-name-decoration-color"] = "var(--chat-name-runtime-color, var(--chat-name-color))";
+    style["--chat-name-sheen"] = "none";
+  }
+  if (tokens.name?.hideWhenStartOption === true) {
+    style["--chat-name-hide-when-start-option"] = "true";
+  }
 
   const logs = resolveLogsThemeTokens(tokens);
   applyLogsVisualBlock(style, "page", logs?.page, assetUrl);

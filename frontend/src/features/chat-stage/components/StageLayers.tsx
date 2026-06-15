@@ -7,6 +7,13 @@ import { Button } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 
+function closestDialogInteractiveElement(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+  return target.closest("a, button, input, textarea, select, summary, [role='button'], [role='link']");
+}
+
 export function BackgroundLayer({
   hidden,
   path,
@@ -100,6 +107,7 @@ export function DialogLayer({
   onAdvance,
   onSkip,
   text,
+  textDirection = "ltr",
   toolbar,
   typing,
 }: {
@@ -110,9 +118,24 @@ export function DialogLayer({
   onAdvance?: () => void;
   onSkip?: () => void;
   text: string;
+  textDirection?: "ltr" | "rtl";
   toolbar?: ReactNode;
   typing: boolean;
 }) {
+  const handleDialogClick = (event: MouseEvent<HTMLElement>) => {
+    if (closestDialogInteractiveElement(event.target)) {
+      return;
+    }
+    if (typing) {
+      onSkip?.();
+      return;
+    }
+    if (canAdvance) {
+      onAdvance?.();
+    }
+  };
+  const renderedDirection = textDirection === "rtl" ? "ltr" : textDirection;
+
   return (
     <section
       aria-hidden={hidden}
@@ -122,19 +145,24 @@ export function DialogLayer({
       data-has-toolbar={toolbar ? "true" : "false"}
       data-typing={typing ? "true" : "false"}
       hidden={hidden}
-      onClick={typing ? onSkip : canAdvance ? onAdvance : undefined}
+      onClick={handleDialogClick}
     >
       {characterName ? <p className="dialog-layer__name">{characterName}</p> : null}
       {html !== undefined ? (
         <div className="dialog-layer__body">
-          <p className="dialog-layer__text" dangerouslySetInnerHTML={{ __html: html }} />
+          <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
+            <div className="dialog-layer__html" dangerouslySetInnerHTML={{ __html: html }} />
+            {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
+          </div>
         </div>
       ) : (
         <div className="dialog-layer__body">
-          <p className="dialog-layer__text">{text}</p>
+          <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
+            {text}
+            {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
+          </div>
         </div>
       )}
-      {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
       <PluginSlot slot="chat-output" />
       {toolbar ? <div className="dialog-layer__toolbar">{toolbar}</div> : null}
     </section>

@@ -85,6 +85,7 @@ export interface SystemConfig {
   live_room_id: string;
   chat_window_geometry_b64: string;
   chat_ui_theme_path: string;
+  chat_ui_theme_id: string;
   chat_ui_runtime_mode: string;
   music_cover_work_dir: string;
   music_cover_yt_dlp_exe: string;
@@ -688,11 +689,27 @@ export interface ChatHistoryEntry {
   text: string;
 }
 
+export interface ChatConversationBranch {
+  createdAt?: number;
+  forkedFromEntryId?: string;
+  forkedFromText?: string;
+  id: string;
+  label: string;
+  parentId?: string | null;
+  updatedAt?: number;
+}
+
+export interface ChatConversationTree {
+  activeBranchId: string;
+  branches: ChatConversationBranch[];
+}
+
 export interface ChatSnapshot {
   backgroundPath?: string;
   busyDurationSeconds?: number;
   busyText?: string;
   characterName?: string;
+  conversationTree?: ChatConversationTree;
   cgPath?: string;
   dialogHtml?: string;
   dialogText: string;
@@ -733,13 +750,16 @@ export interface ChatCommand {
     | "clear-history"
     | "copy-history"
     | "dialog-advance"
+    | "fork-history"
     | "open-history"
     | "pause-asr"
+    | "rename-branch"
     | "revert-history"
     | "resume-asr"
     | "reroll"
     | "send-message"
     | "skip-speech"
+    | "switch-branch"
     | "submit-option";
 }
 
@@ -776,6 +796,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "dialog.end"; speaker: string; color: string; isSystem: boolean; fullHtml: string })
   | (ChatEventBase & { type: "user.display_name.change"; name: string })
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })
+  | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
   | (ChatEventBase & {
       type: "sprite.show";
       characterName: string;

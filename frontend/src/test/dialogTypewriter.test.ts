@@ -30,4 +30,34 @@ describe("dialog typewriter helpers", () => {
       text: "Hello\nworld",
     });
   });
+
+  it("does not render leading markdown line breaks before visible text starts", () => {
+    const source = buildDialogTypewriterSource({
+      text: "\nHello",
+    });
+
+    expect(source.fullHtml).toBe("<br>Hello");
+    expect(source.totalCharacters).toBe(5);
+    expect(renderDialogTypewriterFrame(source, 0)).toEqual({ html: "", text: "" });
+    expect(renderDialogTypewriterFrame(source, 1)).toEqual({ html: "<br>H", text: "H" });
+  });
+
+  it("reveals right-to-left frames by Chinese characters and English words", () => {
+    const source = buildDialogTypewriterSource({
+      characterName: "Mio",
+      html: "<p>你好 traveler world</p>",
+      text: "Mio：你好 traveler world",
+    });
+
+    expect(source.totalRtlCharacters).toBe(4);
+    expect(renderDialogTypewriterFrame(source, 1, "rtl")).toEqual({ html: "<p>world</p>", text: "world" });
+    expect(renderDialogTypewriterFrame(source, 2, "rtl")).toEqual({
+      html: "<p>world traveler</p>",
+      text: "world traveler",
+    });
+    expect(renderDialogTypewriterFrame(source, 4, "rtl")).toEqual({
+      html: "<p>world traveler 好你</p>",
+      text: "world traveler 好你",
+    });
+  });
 });
