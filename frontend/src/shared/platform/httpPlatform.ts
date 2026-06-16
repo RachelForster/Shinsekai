@@ -856,7 +856,10 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
                   return [item.path, item.dataUrl] as const;
                 }
                 if (item.cachePath) {
-                  return [item.path, bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(item.cachePath)}`)] as const;
+                  return [
+                    item.path,
+                    bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(item.cachePath)}`),
+                  ] as const;
                 }
                 if (item.dataUrl) {
                   return [item.path, item.dataUrl] as const;
