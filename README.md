@@ -1,5 +1,7 @@
 [中文版](README.md) | [English Version](https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md)
 
+![Shinsekai banner](assets/branding/shinsekai-banner.svg)
+
 # 新世界（Shinsekai）
 
 面向 **Galgame / 乙女 / 剧情向 RPG** 的桌面助手：用大语言模型驱动角色对白，**立绘与情绪联动**，并可接入 **语音合成**、**语音识别** 与 **视觉、工具** 等扩展——一切在本地 Settings 里配置，聊天窗口专注演出。

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520" role="img" aria-labelledby="title desc">
+  <title id="title">Shinsekai banner</title>
+  <desc id="desc">A pink gradient Shinsekai project banner with a soft cat-eared heroine silhouette.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff0f8"/>
+      <stop offset="0.35" stop-color="#ffd3ea"/>
+      <stop offset="0.72" stop-color="#ff82c3"/>
+      <stop offset="1" stop-color="#8f5bff"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.73" cy="0.45" r="0.55">
+      <stop offset="0" stop-color="#fff7cf" stop-opacity="0.9"/>
+      <stop offset="0.38" stop-color="#ff8fcf" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#6f42ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="titleFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.55" stop-color="#ffe9f6"/>
+      <stop offset="1" stop-color="#ffd0eb"/>
+    </linearGradient>
+    <linearGradient id="silhouette" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6f1f86"/>
+      <stop offset="0.55" stop-color="#cc3b91"/>
+      <stop offset="1" stop-color="#ff9bd4"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 1  0 1 0 0 0.28  0 0 1 0 0.7  0 0 0 0.42 0" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="titleShadow" x="-10%" y="-20%" width="120%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="0" flood-color="#5d1680" flood-opacity="0.55"/>
+      <feDropShadow dx="0" dy="20" stdDeviation="18" flood-color="#7b28a8" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="520" rx="44" fill="url(#bg)"/>
+  <rect width="1600" height="520" rx="44" fill="url(#halo)"/>
+  <path d="M0 394 C192 332 298 454 486 392 C683 327 788 233 992 279 C1173 319 1273 411 1600 330 L1600 520 L0 520 Z" fill="#ffffff" opacity="0.2"/>
+  <path d="M0 70 C194 143 333 24 518 78 C738 142 823 175 1032 113 C1218 58 1374 38 1600 112 L1600 0 L0 0 Z" fill="#ffffff" opacity="0.28"/>
+
+  <g opacity="0.95">
+    <path d="M84 86 h72 v18 h-54 v24 h46 v18 h-46 v44 h-18 Z" fill="#fff7fb" opacity="0.45"/>
+    <path d="M122 246 h46 v14 h-46 Z M145 230 h14 v46 h-14 Z" fill="#fff7cf" opacity="0.75"/>
+    <path d="M1400 88 h46 v14 h-46 Z M1416 72 h14 v46 h-14 Z" fill="#fff7cf" opacity="0.75"/>
+    <path d="M1326 408 h38 v12 h-38 Z M1339 395 h12 v38 h-12 Z" fill="#fff7fb" opacity="0.72"/>
+    <circle cx="152" cy="398" r="8" fill="#b9f7ff" opacity="0.9"/>
+    <circle cx="1280" cy="150" r="7" fill="#b9f7ff" opacity="0.9"/>
+    <circle cx="1182" cy="428" r="5" fill="#fff7cf" opacity="0.85"/>
+  </g>
+
+  <g transform="translate(1020 42)" filter="url(#softGlow)" opacity="0.86">
+    <path d="M174 77 L237 0 L254 118 Z" fill="url(#silhouette)"/>
+    <path d="M368 105 L471 34 L407 169 Z" fill="url(#silhouette)"/>
+    <path d="M163 106 C250 42 375 54 439 142 C498 222 475 366 371 425 C268 484 146 441 101 339 C61 249 88 157 163 106 Z" fill="url(#silhouette)"/>
+    <path d="M92 215 C23 226 -26 287 15 345 C56 403 145 382 184 322 C202 294 193 253 164 237 C143 225 121 220 92 215 Z" fill="#5d176f" opacity="0.62"/>
+    <path d="M392 186 C469 213 556 288 520 381 C490 458 393 478 337 426 C439 428 471 361 437 308 C413 270 377 248 392 186 Z" fill="#ff8fcf" opacity="0.55"/>
+    <path d="M357 422 C489 438 573 394 592 312 C603 262 578 222 532 210 C596 211 648 258 647 324 C646 434 525 507 355 471 Z" fill="#5d176f" opacity="0.46"/>
+    <path d="M248 153 C250 188 275 203 312 202 C350 201 376 181 379 143 C404 182 384 243 316 251 C239 260 205 199 248 153 Z" fill="#ffe0f2" opacity="0.17"/>
+    <path d="M111 348 C132 441 201 500 305 500 C389 500 453 456 481 394 C438 435 378 455 309 455 C225 455 162 416 111 348 Z" fill="#5d176f" opacity="0.72"/>
+    <circle cx="303" cy="260" r="124" fill="#32103e" opacity="0.2"/>
+  </g>
+
+  <g transform="translate(104 118)" filter="url(#titleShadow)">
+    <text x="0" y="58" fill="#732084" opacity="0.82" font-family="'Segoe UI', Arial, sans-serif" font-size="34" font-weight="800" letter-spacing="7">WELCOME TO</text>
+    <text x="0" y="196" fill="url(#titleFill)" stroke="#7d238e" stroke-width="5" paint-order="stroke fill" font-family="'Segoe UI Black', 'Arial Black', 'Segoe UI', sans-serif" font-size="118" font-weight="900" letter-spacing="3">SHINSEKAI</text>
+    <text x="6" y="260" fill="#fff8fc" font-family="'Segoe UI', Arial, sans-serif" font-size="30" font-weight="700">Galgame style desktop assistant for character dialogue, voice, tools, and local creation.</text>
+  </g>
+
+  <g transform="translate(108 402)">
+    <rect x="0" y="0" width="196" height="44" rx="22" fill="#ffffff" opacity="0.22"/>
+    <text x="28" y="30" fill="#ffffff" font-family="'Segoe UI', Arial, sans-serif" font-size="19" font-weight="800">Pink Gradient</text>
+    <rect x="220" y="0" width="220" height="44" rx="22" fill="#ffffff" opacity="0.18"/>
+    <text x="248" y="30" fill="#ffffff" font-family="'Segoe UI', Arial, sans-serif" font-size="19" font-weight="800">Catgirl Silhouette</text>
+    <rect x="466" y="0" width="154" height="44" rx="22" fill="#ffffff" opacity="0.16"/>
+    <text x="494" y="30" fill="#ffffff" font-family="'Segoe UI', Arial, sans-serif" font-size="19" font-weight="800">Local First</text>
+  </g>
+</svg>

@@ -1,5 +1,7 @@
 [中文版](https://github.com/RachelForster/Shinsekai/blob/main/README.md) | [English](https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md)
 
+![Shinsekai banner](../assets/branding/shinsekai-banner.svg)
+
 # Shinsekai
 
 A desktop assistant for **visual-novel / otome / story-driven RPG** play: let a large language model drive character dialogue, **keep sprites in sync with emotion**, and plug in **speech synthesis**, **speech recognition**, and extensions like **vision and tools**—configure everything in the local Settings app while the chat window stays focused on the scene.
