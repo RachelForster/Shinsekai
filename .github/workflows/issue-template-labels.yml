@@ -1,0 +1,290 @@
+name: Apply issue template labels
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print actions without changing labels"
+        required: false
+        default: "false"
+        type: boolean
+      create_missing_known_labels:
+        description: "Create missing labels that are listed in the built-in label style map"
+        required: false
+        default: "true"
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  apply-labels:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Apply labels declared in issue template bodies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          CREATE_MISSING_KNOWN_LABELS: ${{ inputs.create_missing_known_labels || 'true' }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          from typing import Any
+
+          repo = os.environ["REPO"]
+          event_name = os.environ["EVENT_NAME"]
+          dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
+          create_missing_known_labels = (
+              os.environ.get("CREATE_MISSING_KNOWN_LABELS", "true").lower() == "true"
+          )
+
+          # Only labels in this map may be created automatically from issue text.
+          # Other extracted labels are applied only when they already exist.
+          LABEL_STYLES = {
+              "bug": ("d73a4a", "Something is not working"),
+              "documentation": ("0075ca", "Documentation improvements"),
+              "duplicate": ("cfd3d7", "This issue or pull request already exists"),
+              "enhancement": ("a2eeef", "New feature or request"),
+              "feature request": ("a2eeef", "New feature or request"),
+              "good first issue": ("7057ff", "Good for newcomers"),
+              "help wanted": ("008672", "Extra attention is needed"),
+              "invalid": ("e4e669", "This does not seem right"),
+              "maintenance": ("5319e7", "Project maintenance work"),
+              "question": ("d876e3", "Further information is requested"),
+              "wontfix": ("ffffff", "This will not be worked on"),
+              "p0": ("b60205", "Priority 0"),
+              "p1": ("d93f0b", "Priority 1"),
+              "p2": ("fbca04", "Priority 2"),
+              "p3": ("0e8a16", "Priority 3"),
+          }
+
+
+          def gh_api(*args: str, input_json: Any | None = None, check: bool = True) -> str:
+              command = ["gh", "api", *args]
+              payload = None if input_json is None else json.dumps(input_json)
+              result = subprocess.run(
+                  command,
+                  input=payload,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+              if check and result.returncode != 0:
+                  print(result.stderr, file=sys.stderr)
+                  raise SystemExit(result.returncode)
+              if result.returncode != 0:
+                  raise RuntimeError(result.stderr.strip())
+              return result.stdout
+
+
+          def clean_label(value: str) -> str | None:
+              label = value.strip()
+              label = label.strip("\"'`")
+              if not label:
+                  return None
+              if any(ord(char) < 32 for char in label):
+                  return None
+              if len(label) > 50:
+                  return None
+              return re.sub(r"\s+", " ", label)
+
+
+          def collect_inline_labels(value: str) -> list[str]:
+              value = value.strip()
+              if not value or value in {"|", ">"}:
+                  return []
+              if value.startswith("[") and value.endswith("]"):
+                  value = value[1:-1]
+              return [
+                  label
+                  for item in value.split(",")
+                  if (label := clean_label(item))
+              ]
+
+
+          def parse_labels(body: str | None) -> list[str]:
+              if not body:
+                  return []
+
+              lines = body.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+              start = None
+              for index, line in enumerate(lines):
+                  if re.match(r"^\s*#{1,6}\s+labels\s*$", line, flags=re.IGNORECASE):
+                      start = index + 1
+                      break
+              if start is None:
+                  return []
+
+              block: list[str] = []
+              for line in lines[start:]:
+                  if re.match(r"^\s*#{1,6}\s+\S", line):
+                      break
+                  block.append(line)
+
+              labels: list[str] = []
+              seen: set[str] = set()
+              in_labels_list = False
+              for raw_line in block:
+                  stripped = raw_line.strip()
+                  if not stripped:
+                      continue
+
+                  key_match = re.match(r"^labels\s*:\s*(.*)$", stripped, flags=re.IGNORECASE)
+                  if key_match:
+                      in_labels_list = True
+                      for label in collect_inline_labels(key_match.group(1)):
+                          lowered = label.lower()
+                          if lowered not in seen:
+                              labels.append(label)
+                              seen.add(lowered)
+                      continue
+
+                  if not in_labels_list:
+                      continue
+
+                  item_match = re.match(r"^(?:[-*]|\d+\.)\s+(.+)$", stripped)
+                  if item_match:
+                      label = clean_label(item_match.group(1))
+                      if label and label.lower() not in seen:
+                          labels.append(label)
+                          seen.add(label.lower())
+                      continue
+
+                  # Stop when the labels list is followed by unrelated prose.
+                  break
+
+              return labels
+
+
+          def fetch_repo_labels() -> dict[str, str]:
+              labels: dict[str, str] = {}
+              page = 1
+              while True:
+                  page_labels = json.loads(
+                      gh_api(f"repos/{repo}/labels?per_page=100&page={page}")
+                  )
+                  if not page_labels:
+                      return labels
+                  for label in page_labels:
+                      labels[label["name"].lower()] = label["name"]
+                  page += 1
+
+
+          def fetch_issue(issue_number: int) -> dict[str, Any]:
+              return json.loads(gh_api(f"repos/{repo}/issues/{issue_number}"))
+
+
+          def fetch_open_issues() -> list[dict[str, Any]]:
+              issues: list[dict[str, Any]] = []
+              page = 1
+              while True:
+                  page_items = json.loads(
+                      gh_api(f"repos/{repo}/issues?state=open&per_page=100&page={page}")
+                  )
+                  if not page_items:
+                      return issues
+                  issues.extend(issue for issue in page_items if "pull_request" not in issue)
+                  page += 1
+
+
+          def ensure_label(label: str, repo_labels: dict[str, str]) -> str | None:
+              lowered = label.lower()
+              if lowered in repo_labels:
+                  return repo_labels[lowered]
+
+              style = LABEL_STYLES.get(lowered)
+              if not style:
+                  print(f"Skipping unknown label that does not exist yet: {label!r}")
+                  return None
+
+              if dry_run or not create_missing_known_labels:
+                  action = "Would create" if dry_run else "Missing known"
+                  print(f"{action} label: {label!r}")
+                  return label if dry_run else None
+
+              color, description = style
+              print(f"Creating missing known label: {label!r}")
+              try:
+                  gh_api(
+                      f"repos/{repo}/labels",
+                      "--method",
+                      "POST",
+                      "--input",
+                      "-",
+                      input_json={
+                          "name": label,
+                          "color": color,
+                          "description": description,
+                      },
+                  )
+              except RuntimeError as exc:
+                  print(f"Could not create label {label!r}: {exc}", file=sys.stderr)
+                  return None
+
+              repo_labels[lowered] = label
+              return label
+
+
+          def apply_issue_labels(issue: dict[str, Any], repo_labels: dict[str, str]) -> None:
+              issue_number = issue["number"]
+              requested_labels = parse_labels(issue.get("body"))
+              if not requested_labels:
+                  print(f"#{issue_number}: no template labels found")
+                  return
+
+              existing_issue_labels = {
+                  label["name"].lower()
+                  for label in issue.get("labels", [])
+              }
+
+              labels_to_add: list[str] = []
+              for requested_label in requested_labels:
+                  label = ensure_label(requested_label, repo_labels)
+                  if label and label.lower() not in existing_issue_labels:
+                      labels_to_add.append(label)
+                      existing_issue_labels.add(label.lower())
+
+              if not labels_to_add:
+                  print(f"#{issue_number}: labels already up to date")
+                  return
+
+              print(f"#{issue_number}: adding labels {labels_to_add}")
+              if dry_run:
+                  return
+
+              gh_api(
+                  f"repos/{repo}/issues/{issue_number}/labels",
+                  "--method",
+                  "POST",
+                  "--input",
+                  "-",
+                  input_json={"labels": labels_to_add},
+              )
+
+
+          if event_name == "workflow_dispatch":
+              target_issues = fetch_open_issues()
+          else:
+              issue_number = os.environ.get("ISSUE_NUMBER")
+              if not issue_number:
+                  raise SystemExit("ISSUE_NUMBER is required for issue events")
+              target_issues = [fetch_issue(int(issue_number))]
+
+          repo_labels = fetch_repo_labels()
+          print(f"Processing {len(target_issues)} open issue(s)")
+          for issue in target_issues:
+              apply_issue_labels(issue, repo_labels)
+          PY
