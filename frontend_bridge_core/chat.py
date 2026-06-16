@@ -232,6 +232,34 @@ def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float)
             return
 
 
+def shutdown_active_chat_process(*, wait_timeout: float = 1.2) -> None:
+    """Stop the active chat child without needing bridge request state.
+
+    The bridge may be asked to exit from watchdog/signal paths where there is no
+    HTTP request object available. Keep this process cleanup independent from
+    stream/session bookkeeping so the TTS/audio child cannot outlive the bridge.
+    """
+
+    global _main_chat_process
+
+    process: subprocess.Popen[bytes] | None = None
+    with _main_chat_process_lock:
+        if _main_chat_process is not None and _main_chat_process.poll() is not None:
+            _close_chat_log_if_needed()
+            _main_chat_process = None
+            return
+        process = _main_chat_process
+
+    if process is not None and process.poll() is None:
+        try:
+            _stop_chat_process(process, wait_timeout=wait_timeout)
+        finally:
+            with _main_chat_process_lock:
+                if _main_chat_process is process:
+                    _main_chat_process = None
+                _close_chat_log_if_needed()
+
+
 def _release_root() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent.parent
@@ -383,21 +411,7 @@ def _close_chat(
         if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
             chat_stream.close_session(session_id, reason=reason)
 
-    process: subprocess.Popen[bytes] | None = None
-    with _main_chat_process_lock:
-        if _main_chat_process is not None and _main_chat_process.poll() is not None:
-            _close_chat_log_if_needed()
-            _main_chat_process = None
-        process = _main_chat_process
-
-    if process is not None and process.poll() is None:
-        try:
-            _stop_chat_process(process, wait_timeout=wait_timeout)
-        finally:
-            with _main_chat_process_lock:
-                if _main_chat_process is process:
-                    _main_chat_process = None
-                _close_chat_log_if_needed()
+    shutdown_active_chat_process(wait_timeout=wait_timeout)
 
     return _chat_snapshot(state, "idle", "")
 
