@@ -31,6 +31,32 @@ describe("dialog typewriter helpers", () => {
     });
   });
 
+  it("sanitizes unsafe html before typewriter rendering", () => {
+    const source = buildDialogTypewriterSource({
+      html: [
+        `<p onclick="steal()">`,
+        `<b style="color:#fff;background-image:url(javascript:steal())">Mio</b>: Hello`,
+        `<img src=x onerror="steal()">`,
+        `<script>steal()</script>`,
+        `<a href="javascript:steal()">link</a>`,
+        `<iframe src="https://example.test"></iframe>`,
+        `</p>`,
+      ].join(""),
+      text: "Mio: Hello link",
+    });
+
+    expect(source.fullHtml).toContain("Mio");
+    expect(source.fullHtml).toContain("Hello");
+    expect(source.fullHtml).toContain("link");
+    expect(source.fullHtml).not.toContain("onclick");
+    expect(source.fullHtml).not.toContain("onerror");
+    expect(source.fullHtml).not.toContain("<img");
+    expect(source.fullHtml).not.toContain("<script");
+    expect(source.fullHtml).not.toContain("<iframe");
+    expect(source.fullHtml).not.toContain("javascript:");
+    expect(source.fullHtml).not.toContain("background-image");
+  });
+
   it("does not render leading markdown line breaks before visible text starts", () => {
     const source = buildDialogTypewriterSource({
       text: "\nHello",

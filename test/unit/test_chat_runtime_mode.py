@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from frontend_bridge_core.chat import _chat_runtime_mode, _chat_snapshot
-from frontend_bridge_core.handler import CHAT_RUNTIME_READY_TIMEOUT_SECONDS, FrontendBridgeHandler
+from frontend_bridge_core.handler import BRIDGE_AUTH_HEADER, CHAT_RUNTIME_READY_TIMEOUT_SECONDS, FrontendBridgeHandler
 
 
 class _SystemConfig:
@@ -138,6 +138,22 @@ class ChatRuntimeModeTests(unittest.TestCase):
         snapshot = _chat_snapshot(state, "idle", "")
 
         self.assertEqual(snapshot["backgroundPath"], "asset://default-bg.png")
+
+    def test_write_requests_require_local_origin_and_bridge_auth_token(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        handler.path = "/api/chat/command"
+        handler.server = SimpleNamespace(state=SimpleNamespace(auth_token="secret"))
+        handler.headers = {"Origin": "http://localhost:5173", BRIDGE_AUTH_HEADER: "secret"}
+
+        handler._require_authorized_write("/api/chat/command")
+
+        handler.headers = {"Origin": "http://localhost:5173", BRIDGE_AUTH_HEADER: "wrong"}
+        with self.assertRaisesRegex(PermissionError, "invalid bridge auth token"):
+            handler._require_authorized_write("/api/chat/command")
+
+        handler.headers = {"Origin": "https://evil.example", BRIDGE_AUTH_HEADER: "secret"}
+        with self.assertRaisesRegex(PermissionError, "request origin is not allowed"):
+            handler._require_authorized_write("/api/chat/command")
 
     def test_launch_chat_skips_stream_session_in_native_mode(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)

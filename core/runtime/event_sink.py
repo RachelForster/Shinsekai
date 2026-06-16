@@ -23,7 +23,7 @@ import socket
 import threading
 import time
 from collections.abc import Callable
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from typing import Any, Dict, List, Protocol, runtime_checkable
 
 #: 事件协议版本，与前端 ``ChatStageEvent`` 的 ``v`` 字段一致。
@@ -41,6 +41,18 @@ def _strip_html(value: str) -> str:
 
 def _plain_text(value: str) -> str:
     return re.sub(r"<[^>]+>", "", _strip_html(value or "")).strip()
+
+
+def _append_query(url: str, params: dict[str, str]) -> str:
+    pairs = [
+        f"{quote(str(key), safe='')}={quote(str(value), safe='')}"
+        for key, value in params.items()
+        if str(value)
+    ]
+    if not pairs:
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{'&'.join(pairs)}"
 
 
 def make_empty_chat_snapshot() -> Dict[str, Any]:
@@ -346,7 +358,12 @@ class WSClientSink(_BaseEventSink):
         host = parsed.hostname or "127.0.0.1"
         port = parsed.port or 0
         http_port = port - 1 if port > 0 else port
-        return f"http://{host}:{http_port}/api/media?path={quote(path)}"
+        query = parse_qs(parsed.query)
+        auth_token = str((query.get("shinsekai_bridge_token") or query.get("token") or [""])[0]).strip()
+        return _append_query(
+            f"http://{host}:{http_port}/api/media?path={quote(path)}",
+            {"shinsekai_bridge_token": auth_token},
+        )
 
     def close(self) -> None:
         deadline = time.time() + 1.5

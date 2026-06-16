@@ -33,6 +33,7 @@ from core.sprite.chat_branch_storage import (
     chat_history_active_path,
     chat_history_download_path,
     chat_history_session_dir,
+    remove_chat_history_storage,
 )
 from llm.history_manager import parse_assistant_dialog_content
 from llm.tools.chat_ui_tools import sanitize_user_display_name
@@ -765,7 +766,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
                 "历史记录已经清空。",
                 snapshot_patch={"historyEntries": [], "options": []},
             )
-        history_path.unlink(missing_ok=True)
+        remove_chat_history_storage(history_path)
         return _chat_snapshot(state, "idle", "历史记录已经清空。", extra={"historyEntries": [], "options": []})
 
     if command == "send-message":

@@ -20,6 +20,7 @@ tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
 flate2 = "1.1.9"
+getrandom = "0.3.4"
 libc = "0.2.178"
 reqwest = { version = "0.12.24", default-features = false, features = ["blocking", "rustls-tls"] }
 serde = { version = "1.0.228", features = ["derive"] }

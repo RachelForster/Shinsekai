@@ -161,6 +161,7 @@ struct DesktopState {
     app_root: PathBuf,
     frontend_dist: PathBuf,
     bridge_port: u16,
+    bridge_auth_token: String,
     bridge: Mutex<Option<BridgeProcess>>,
     runtime: Mutex<DesktopRuntimePhase>,
 }
@@ -186,6 +187,7 @@ impl DesktopState {
         app_root: PathBuf,
         frontend_dist: PathBuf,
         bridge_port: u16,
+        bridge_auth_token: String,
     ) -> Self {
         Self {
             source_root,
@@ -193,6 +195,7 @@ impl DesktopState {
             app_root,
             frontend_dist,
             bridge_port,
+            bridge_auth_token,
             bridge: Mutex::new(None),
             runtime: Mutex::new(DesktopRuntimePhase::Checking { view: None }),
         }
@@ -381,7 +384,8 @@ pub fn run() {
             let project_root = resolve_project_root(app, &app_root)?;
             let frontend_dist = resolve_frontend_dist(&source_root)?;
             let bridge_port = choose_bridge_port()?;
-            let url = app_window_url(bridge_port);
+            let bridge_auth_token = generate_bridge_auth_token()?;
+            let url = app_window_url(bridge_port, &bridge_auth_token);
             restart_debug_log(format!(
                 "setup resolved source_root={} project_root={} app_root={} frontend_dist={} bridge_port={} url={}",
                 source_root.display(),
@@ -400,6 +404,7 @@ pub fn run() {
                 app_root,
                 frontend_dist,
                 bridge_port,
+                bridge_auth_token,
             ));
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App(url.into()))
@@ -445,6 +450,23 @@ fn restart_debug_log(message: impl AsRef<str>) {
     {
         let _ = file.write_all(line.as_bytes());
     }
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut result = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        result.push(HEX[(byte >> 4) as usize] as char);
+        result.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    result
+}
+
+fn generate_bridge_auth_token() -> DesktopResult<String> {
+    let mut bytes = [0_u8; 32];
+    getrandom::fill(&mut bytes)
+        .map_err(|error| format!("failed to generate bridge auth token: {error}"))?;
+    Ok(bytes_to_hex(&bytes))
 }
 
 #[tauri::command]
@@ -775,7 +797,7 @@ async fn desktop_bridge_restart(app: AppHandle) -> Result<DesktopRuntimeView, St
 #[tauri::command]
 fn desktop_frontend_reload(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
     restart_debug_log("desktop_frontend_reload command received");
-    reload_live_frontend_windows(&app, state.bridge_port)
+    reload_live_frontend_windows(&app, state.bridge_port, &state.bridge_auth_token)
 }
 
 fn restart_bridge_for_state(
@@ -944,7 +966,7 @@ fn request_bridge_chat_close(state: &DesktopState, reason: &str) {
         ));
         return;
     }
-    match send_bridge_chat_close(state.bridge_port) {
+    match send_bridge_chat_close(state.bridge_port, &state.bridge_auth_token) {
         Ok(()) => restart_debug_log(format!(
             "request_bridge_chat_close dispatched reason={reason} port={}",
             state.bridge_port
@@ -956,7 +978,7 @@ fn request_bridge_chat_close(state: &DesktopState, reason: &str) {
     }
 }
 
-fn send_bridge_chat_close(port: u16) -> Result<(), String> {
+fn send_bridge_chat_close(port: u16, auth_token: &str) -> Result<(), String> {
     let addr: SocketAddr = format!("{BRIDGE_HOST}:{port}")
         .parse::<SocketAddr>()
         .map_err(|error| error.to_string())?;
@@ -965,7 +987,7 @@ fn send_bridge_chat_close(port: u16) -> Result<(), String> {
     let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
     let _ = stream.set_read_timeout(Some(BRIDGE_CHAT_CLOSE_TIMEOUT));
     let request = format!(
-        "POST /api/chat/close HTTP/1.1\r\nHost: {BRIDGE_HOST}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+        "POST /api/chat/close HTTP/1.1\r\nHost: {BRIDGE_HOST}\r\nContent-Type: application/json\r\nX-Shinsekai-Bridge-Token: {auth_token}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
     );
     stream
         .write_all(request.as_bytes())
@@ -1196,7 +1218,7 @@ fn desktop_open_chat_window(app: AppHandle, state: State<'_, DesktopState>) -> R
         restart_debug_log("desktop_open_chat_window reuse existing window");
         window
     } else {
-        let url = chat_window_url(state.bridge_port);
+        let url = chat_window_url(state.bridge_port, &state.bridge_auth_token);
         restart_debug_log(format!("desktop_open_chat_window create url={url}"));
         WebviewWindowBuilder::new(&app, "chat", WebviewUrl::App(url.into()))
             .title("Shinsekai Chat")
@@ -1213,7 +1235,7 @@ fn desktop_open_chat_window(app: AppHandle, state: State<'_, DesktopState>) -> R
             .map_err(|error| error.to_string())?
     };
 
-    navigate_chat_window_to_live_frontend(&app, state.bridge_port)?;
+    navigate_chat_window_to_live_frontend(&app, state.bridge_port, &state.bridge_auth_token)?;
     let _ = chat_window.show();
     let _ = chat_window.unminimize();
     let _ = chat_window.set_focus();
@@ -1265,7 +1287,9 @@ fn bootstrap_runtime(app: AppHandle) {
     match start_runtime_candidate_for_state(&app, &state, None) {
         Ok(_) => {
             restart_debug_log("bootstrap_runtime ready");
-            if let Err(error) = navigate_main_window_to_live_frontend(&app, state.bridge_port) {
+            if let Err(error) =
+                navigate_main_window_to_live_frontend(&app, state.bridge_port, &state.bridge_auth_token)
+            {
                 restart_debug_log(format!(
                     "bootstrap_runtime frontend navigate failed error={error}"
                 ));
@@ -1277,42 +1301,52 @@ fn bootstrap_runtime(app: AppHandle) {
     }
 }
 
-fn encode_bridge_url(port: u16) -> String {
-    format!("http://{BRIDGE_HOST}:{port}")
+fn encode_query_value(value: &str) -> String {
+    value
         .replace(':', "%3A")
         .replace('/', "%2F")
+        .replace(' ', "%20")
+        .replace('&', "%26")
+        .replace('=', "%3D")
+        .replace('#', "%23")
 }
 
-fn app_window_url_for_route(port: u16, route: &str) -> String {
+fn encode_bridge_url(port: u16) -> String {
+    encode_query_value(&format!("http://{BRIDGE_HOST}:{port}"))
+}
+
+fn app_window_url_for_route(port: u16, auth_token: &str, route: &str) -> String {
     let encoded = encode_bridge_url(port);
-    format!("index.html?shinsekai_bridge={encoded}#{route}")
+    let encoded_token = encode_query_value(auth_token);
+    format!("index.html?shinsekai_bridge={encoded}&shinsekai_bridge_token={encoded_token}#{route}")
 }
 
-fn app_window_url(port: u16) -> String {
-    app_window_url_for_route(port, "/settings/api")
+fn app_window_url(port: u16, auth_token: &str) -> String {
+    app_window_url_for_route(port, auth_token, "/settings/api")
 }
 
-fn chat_window_url(port: u16) -> String {
-    app_window_url_for_route(port, "/chat-stage")
+fn chat_window_url(port: u16, auth_token: &str) -> String {
+    app_window_url_for_route(port, auth_token, "/chat-stage")
 }
 
-fn live_frontend_url_for_route(port: u16, route: &str) -> String {
+fn live_frontend_url_for_route(port: u16, auth_token: &str, route: &str) -> String {
     let encoded = encode_bridge_url(port);
+    let encoded_token = encode_query_value(auth_token);
     let reload_token = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().to_string())
         .unwrap_or_else(|_| "0".to_string());
     format!(
-        "{LIVE_FRONTEND_SCHEME}://localhost/?shinsekai_bridge={encoded}&shinsekai_reload={reload_token}#{route}"
+        "{LIVE_FRONTEND_SCHEME}://localhost/?shinsekai_bridge={encoded}&shinsekai_bridge_token={encoded_token}&shinsekai_reload={reload_token}#{route}"
     )
 }
 
-fn live_frontend_url(port: u16) -> String {
-    live_frontend_url_for_route(port, "/settings/api")
+fn live_frontend_url(port: u16, auth_token: &str) -> String {
+    live_frontend_url_for_route(port, auth_token, "/settings/api")
 }
 
-fn live_chat_frontend_url(port: u16) -> String {
-    live_frontend_url_for_route(port, "/chat-stage")
+fn live_chat_frontend_url(port: u16, auth_token: &str) -> String {
+    live_frontend_url_for_route(port, auth_token, "/chat-stage")
 }
 
 fn navigate_window_to_live_frontend(
@@ -1328,23 +1362,35 @@ fn navigate_window_to_live_frontend(
     Ok(())
 }
 
-fn navigate_main_window_to_live_frontend(app: &AppHandle, bridge_port: u16) -> Result<(), String> {
-    navigate_window_to_live_frontend(app, "main", &live_frontend_url(bridge_port))
+fn navigate_main_window_to_live_frontend(
+    app: &AppHandle,
+    bridge_port: u16,
+    auth_token: &str,
+) -> Result<(), String> {
+    navigate_window_to_live_frontend(app, "main", &live_frontend_url(bridge_port, auth_token))
 }
 
-fn navigate_chat_window_to_live_frontend(app: &AppHandle, bridge_port: u16) -> Result<(), String> {
-    navigate_window_to_live_frontend(app, "chat", &live_chat_frontend_url(bridge_port))
+fn navigate_chat_window_to_live_frontend(
+    app: &AppHandle,
+    bridge_port: u16,
+    auth_token: &str,
+) -> Result<(), String> {
+    navigate_window_to_live_frontend(app, "chat", &live_chat_frontend_url(bridge_port, auth_token))
 }
 
-fn live_frontend_reload_targets(bridge_port: u16) -> [(&'static str, String); 2] {
+fn live_frontend_reload_targets(bridge_port: u16, auth_token: &str) -> [(&'static str, String); 2] {
     [
-        ("main", live_frontend_url(bridge_port)),
-        ("chat", live_chat_frontend_url(bridge_port)),
+        ("main", live_frontend_url(bridge_port, auth_token)),
+        ("chat", live_chat_frontend_url(bridge_port, auth_token)),
     ]
 }
 
-fn reload_live_frontend_windows(app: &AppHandle, bridge_port: u16) -> Result<(), String> {
-    for (label, target_url) in live_frontend_reload_targets(bridge_port) {
+fn reload_live_frontend_windows(
+    app: &AppHandle,
+    bridge_port: u16,
+    auth_token: &str,
+) -> Result<(), String> {
+    for (label, target_url) in live_frontend_reload_targets(bridge_port, auth_token) {
         navigate_window_to_live_frontend(app, label, &target_url)?;
     }
     Ok(())
@@ -1699,31 +1745,33 @@ mod tests {
     #[test]
     fn window_urls_encode_bridge_and_route() {
         assert_eq!(
-            app_window_url(8787),
-            "index.html?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787#/settings/api"
+            app_window_url(8787, "token-1"),
+            "index.html?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787&shinsekai_bridge_token=token-1#/settings/api"
         );
         assert_eq!(
-            chat_window_url(8787),
-            "index.html?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787#/chat-stage"
+            chat_window_url(8787, "token-1"),
+            "index.html?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787&shinsekai_bridge_token=token-1#/chat-stage"
         );
     }
 
     #[test]
     fn live_frontend_urls_target_expected_routes() {
-        let main = live_frontend_url(8787);
-        let chat = live_chat_frontend_url(8787);
+        let main = live_frontend_url(8787, "token-1");
+        let chat = live_chat_frontend_url(8787, "token-1");
 
         assert!(main
             .starts_with("shinsekai://localhost/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"));
+        assert!(main.contains("shinsekai_bridge_token=token-1"));
         assert!(main.contains("#/settings/api"));
         assert!(chat
             .starts_with("shinsekai://localhost/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"));
+        assert!(chat.contains("shinsekai_bridge_token=token-1"));
         assert!(chat.contains("#/chat-stage"));
     }
 
     #[test]
     fn live_frontend_reload_targets_cover_main_and_chat_windows() {
-        let targets = live_frontend_reload_targets(8787);
+        let targets = live_frontend_reload_targets(8787, "token-1");
 
         assert_eq!(targets[0].0, "main");
         assert!(targets[0].1.contains("#/settings/api"));
@@ -1746,12 +1794,13 @@ mod tests {
             request
         });
 
-        send_bridge_chat_close(port).unwrap();
+        send_bridge_chat_close(port, "token-1").unwrap();
 
         let request = handle.join().unwrap();
         assert!(request.starts_with("POST /api/chat/close HTTP/1.1\r\n"));
         assert!(request.contains("Host: 127.0.0.1\r\n"));
         assert!(request.contains("Content-Type: application/json\r\n"));
+        assert!(request.contains("X-Shinsekai-Bridge-Token: token-1\r\n"));
         assert!(request.ends_with("\r\n\r\n{}"));
     }
 
@@ -1797,6 +1846,7 @@ fn start_bridge_for_state(
         &state.app_root,
         &state.frontend_dist,
         state.bridge_port,
+        &state.bridge_auth_token,
         runtime,
     )?;
     let mut child = Some(BridgeProcess::new(bridge.child, candidate_id.clone()));
@@ -1818,6 +1868,7 @@ fn spawn_bridge(
     app_root: &Path,
     frontend_dist: &Path,
     port: u16,
+    auth_token: &str,
     runtime: runtime::PythonRuntime,
 ) -> DesktopResult<BridgeLaunch> {
     println!("Using Shinsekai Python runtime: {}", runtime.description);
@@ -1844,6 +1895,8 @@ fn spawn_bridge(
         .arg(port.to_string())
         .arg("--parent-pid")
         .arg(std::process::id().to_string())
+        .arg("--auth-token")
+        .arg(auth_token)
         .arg("--project-root")
         .arg(&project_root)
         .arg("--app-root")

@@ -127,6 +127,27 @@ class UIUpdateManagerTests(unittest.TestCase):
 
         self.assertEqual(text, "tokens sys 1.2k | hist 34.6k | tools 890 | total 36.7k")
 
+    def test_dialog_html_escapes_content_and_rejects_unsafe_color(self):
+        formatted = _format_dialog_html(
+            "<img src=x onerror=alert(1)>",
+            "Hello<script>alert(1)</script>\nnext",
+            "red;background:url(javascript:alert(1))",
+            False,
+        )
+
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;", formatted)
+        self.assertIn("Hello&lt;script&gt;alert(1)&lt;/script&gt;<br>next", formatted)
+        self.assertIn("color:#FFFFFF", formatted)
+        self.assertNotIn("<img", formatted)
+        self.assertNotIn("<script", formatted)
+        self.assertNotIn("javascript:", formatted)
+
+    def test_user_html_escapes_content(self):
+        formatted = _format_user_html("<script>alert(1)</script>\nnext")
+
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;<br>next", formatted)
+        self.assertNotIn("<script", formatted)
+
     @unittest.skipUnless(_HAS_NUMPY, "numpy not installed")
     def test_load_image_rgba_array_supports_unicode_paths(self):
         from PySide6.QtGui import QColor, QImage

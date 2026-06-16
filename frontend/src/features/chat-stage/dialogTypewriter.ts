@@ -157,6 +157,151 @@ function createTemplate(html: string) {
   return template;
 }
 
+const allowedDialogTags = new Set(["a", "b", "br", "code", "em", "i", "p", "s", "span", "strong"]);
+const removedDialogTags = new Set(["embed", "iframe", "link", "meta", "object", "script", "style"]);
+const allowedDialogClasses = new Set(["dialog-layer__md-bullet", "dialog-layer__md-quote"]);
+const allowedDialogStyleProperties = new Set([
+  "color",
+  "font-style",
+  "font-weight",
+  "letter-spacing",
+  "line-height",
+  "text-decoration",
+]);
+
+function isSafeCssValue(property: string, value: string) {
+  const next = value.trim();
+  if (!next || /(?:expression|javascript:|url\s*\(|@import|[<>])/i.test(next)) {
+    return false;
+  }
+  if (property === "color") {
+    return (
+      /^#[\da-f]{3,8}$/i.test(next) ||
+      /^[a-z][a-z0-9_-]{0,31}$/i.test(next) ||
+      /^rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(next)
+    );
+  }
+  if (property === "font-weight") {
+    return /^(?:normal|bold|[1-9]00)$/i.test(next);
+  }
+  if (property === "font-style") {
+    return /^(?:normal|italic|oblique)$/i.test(next);
+  }
+  if (property === "line-height") {
+    return /^(?:normal|[\d.]+(?:px|em|rem|%)?)$/i.test(next);
+  }
+  if (property === "letter-spacing") {
+    return /^(?:normal|-?[\d.]+(?:px|em|rem))$/i.test(next);
+  }
+  if (property === "text-decoration") {
+    return /^(?:none|underline|line-through|overline)$/i.test(next);
+  }
+  return false;
+}
+
+function sanitizeDialogStyle(value: string) {
+  return value
+    .split(";")
+    .map((declaration) => {
+      const [rawProperty, ...rawValueParts] = declaration.split(":");
+      const property = rawProperty?.trim().toLowerCase() ?? "";
+      const nextValue = rawValueParts.join(":").trim();
+      if (!allowedDialogStyleProperties.has(property) || !isSafeCssValue(property, nextValue)) {
+        return "";
+      }
+      return `${property}: ${nextValue}`;
+    })
+    .filter(Boolean)
+    .join("; ");
+}
+
+function sanitizeDialogLink(value: string) {
+  const trimmed = value.trim();
+  if (/^(?:https?:|mailto:)/i.test(trimmed)) {
+    return trimmed;
+  }
+  return "";
+}
+
+function sanitizeDialogElement(element: Element) {
+  const tag = element.tagName.toLowerCase();
+  if (removedDialogTags.has(tag)) {
+    element.remove();
+    return;
+  }
+  if (!allowedDialogTags.has(tag)) {
+    element.replaceWith(document.createTextNode(element.textContent ?? ""));
+    return;
+  }
+
+  for (const attribute of Array.from(element.attributes)) {
+    const name = attribute.name.toLowerCase();
+    const value = attribute.value;
+    if (name === "style") {
+      const style = sanitizeDialogStyle(value);
+      if (style) {
+        element.setAttribute("style", style);
+      } else {
+        element.removeAttribute(attribute.name);
+      }
+      continue;
+    }
+    if (name === "class") {
+      const classes = value
+        .split(/\s+/)
+        .map((item) => item.trim())
+        .filter((item) => allowedDialogClasses.has(item));
+      if (classes.length) {
+        element.setAttribute("class", classes.join(" "));
+      } else {
+        element.removeAttribute(attribute.name);
+      }
+      continue;
+    }
+    if (tag === "a" && name === "href") {
+      const href = sanitizeDialogLink(value);
+      if (href) {
+        element.setAttribute("href", href);
+        element.setAttribute("rel", "noreferrer");
+        element.setAttribute("target", "_blank");
+      } else {
+        element.removeAttribute(attribute.name);
+      }
+      continue;
+    }
+    if (name === "data-created-at" && /^\d{10,}$/.test(value.trim())) {
+      continue;
+    }
+    element.removeAttribute(attribute.name);
+  }
+}
+
+function sanitizeDialogNode(node: Node) {
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as Element;
+    sanitizeDialogElement(element);
+    if (!element.isConnected && element.parentNode == null) {
+      return;
+    }
+    Array.from(element.childNodes).forEach(sanitizeDialogNode);
+    return;
+  }
+  if (node.nodeType !== Node.TEXT_NODE) {
+    node.parentNode?.removeChild(node);
+  }
+}
+
+export function sanitizeDialogHtml(html: string) {
+  const template = createTemplate(html);
+  if (!template) {
+    return html.replace(/<[^>]+>/g, "");
+  }
+  Array.from(template.content.childNodes).forEach(sanitizeDialogNode);
+  const wrapper = document.createElement("div");
+  wrapper.append(template.content.cloneNode(true));
+  return wrapper.innerHTML;
+}
+
 function countNodeText(node: Node): number {
   if (node.nodeType === Node.TEXT_NODE) {
     return codepoints(node.textContent ?? "").length;
@@ -371,7 +516,9 @@ export function buildDialogTypewriterSource(input: {
   html?: string;
   text?: string;
 }): DialogTypewriterSource {
-  const normalizedHtml = input.html?.trim() ? stripLeadingSpeakerHtml(input.html, input.characterName) : undefined;
+  const normalizedHtml = input.html?.trim()
+    ? sanitizeDialogHtml(stripLeadingSpeakerHtml(input.html, input.characterName))
+    : undefined;
   const normalizedText = stripLeadingSpeakerText(input.text ?? "", input.characterName);
   const normalizedMarkdownHtml = normalizedText.trim() ? markdownToDialogHtml(normalizedText) : undefined;
   const buildSource = (cacheKey: string, fullText: string, fullHtml?: string): DialogTypewriterSource => {

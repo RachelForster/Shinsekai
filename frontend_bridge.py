@@ -14,6 +14,7 @@ import json
 import os
 import platform
 import re
+import secrets
 import sys
 import tempfile
 import threading
@@ -119,6 +120,7 @@ def run(
     open_browser: bool = False,
     parent_pid: int | None = None,
     app_root: str | None = None,
+    auth_token: str | None = None,
 ) -> None:
     _restart_debug_log(
         f"run start host={host} port={port} project_root={project_root or ''} app_root={app_root or ''} frontend_dist={frontend_dist or ''} parent_pid={parent_pid or 0}"
@@ -150,6 +152,11 @@ def run(
 
     config_manager = ConfigManager()
     init_i18n(config_manager.config.system_config.ui_language)
+    bridge_auth_token = (
+        str(auth_token or "").strip()
+        or os.environ.get("SHINSEKAI_BRIDGE_AUTH_TOKEN", "").strip()
+        or secrets.token_urlsafe(32)
+    )
 
     state = BridgeState(
         config_manager=config_manager,
@@ -158,8 +165,9 @@ def run(
         template_generator=TemplateGenerator(),
         frontend_dist_dir=resolved_frontend_dist,
         app_root_dir=resolved_app_root,
+        auth_token=bridge_auth_token,
     )
-    state.chat_stream = ChatStreamService(host=host, bridge_port=port)
+    state.chat_stream = ChatStreamService(host=host, bridge_port=port, auth_token=bridge_auth_token)
     state.chat_stream.start()
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
     server.state = state  # type: ignore[attr-defined]
@@ -183,7 +191,9 @@ def run(
             },
         )
         if open_browser:
-            _schedule_browser_open(f"http://{host}:{port}/#/settings/api")
+            _schedule_browser_open(
+                f"http://{host}:{port}/?shinsekai_bridge_token={bridge_auth_token}#/settings/api"
+            )
     elif resolved_frontend_dist:
         logger.warning(
             "Built frontend not found; API bridge only",
@@ -459,6 +469,11 @@ def main() -> None:
         help="Desktop shell process PID. The bridge exits automatically when this parent exits.",
     )
     parser.add_argument(
+        "--auth-token",
+        default="",
+        help="Shared token required by frontend HTTP write requests and chat WebSocket connections.",
+    )
+    parser.add_argument(
         "--check-runtime",
         action="store_true",
         help="Validate the Python runtime and exit without starting the HTTP bridge.",
@@ -511,6 +526,7 @@ def main() -> None:
         open_browser=args.open_browser,
         parent_pid=args.parent_pid or None,
         app_root=args.app_root or None,
+        auth_token=args.auth_token or None,
     )
 
 

@@ -4,7 +4,9 @@ import json
 import socket
 import threading
 import time
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -294,6 +296,36 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertIsInstance(command["cmdId"], str)
         self.assertTrue(command["cmdId"])
 
+    def test_handle_chat_command_clear_history_removes_directory_storage_without_runtime_stream(self):
+        class _Config:
+            characters = []
+            background_list = []
+            system_config = SimpleNamespace(chat_ui_runtime_mode="react", voice_language="ja")
+
+        config_manager = SimpleNamespace(
+            config=_Config(),
+            get_background_by_name=lambda _name: None,
+            get_character_by_name=lambda _name: None,
+        )
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
+            history_path = Path(tmp_dir) / "session-history"
+            history_path.mkdir()
+            (history_path / "active.json").write_text("[]", encoding="utf-8")
+            (history_path / "branches.json").write_text("{}", encoding="utf-8")
+            state = SimpleNamespace(
+                chat_session={"historyPath": history_path.as_posix()},
+                chat_stream=None,
+                config_manager=config_manager,
+            )
+
+            snapshot = _handle_chat_command(state, {"type": "clear-history"})
+
+            self.assertFalse(history_path.exists())
+            self.assertEqual(snapshot["historyEntries"], [])
+            self.assertEqual(snapshot["options"], [])
+            self.assertEqual(snapshot["dialogText"], "历史记录已经清空。")
+
     def test_chat_stream_sends_commands_and_broadcasts_ack_events(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
         session = service.create_session()
@@ -358,6 +390,28 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertIsNotNone(snapshot)
         self.assertEqual(snapshot["sessionClosedReason"], "closing for test")
         self.assertEqual(snapshot["status"], "idle")
+
+    def test_chat_stream_requires_auth_token_for_websocket_clients(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=_free_bridge_port(), auth_token="bridge-secret")
+        service.start()
+        producer = None
+        try:
+            session = service.create_session()
+
+            self.assertIn("shinsekai_bridge_token=bridge-secret", session["producerEndpoint"])
+            self.assertIn(
+                "shinsekai_bridge_token=bridge-secret",
+                service.media_url("data/speech/nanami/hello.wav"),
+            )
+            with self.assertRaises(ConnectionError):
+                _open_ws(session["wsUrl"], session_id=session["sessionId"], role="viewer")
+
+            producer = _open_ws(session["producerEndpoint"], session_id=session["sessionId"], role="producer")
+            self.assertIsNotNone(producer)
+        finally:
+            if producer is not None:
+                _close_ws(producer)
+            service.stop()
 
     def test_ws_client_sink_transports_events_over_real_socket(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=_free_bridge_port())

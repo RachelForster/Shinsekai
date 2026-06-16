@@ -37,6 +37,30 @@ describe("http platform", () => {
     );
   });
 
+  it("sends bridge auth token on requests and generated media URLs", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(sampleConfig));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "bridge-secret");
+    await platform.config.get();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/config",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-Shinsekai-Bridge-Token": "bridge-secret",
+        }),
+      }),
+    );
+    expect(platform.files.fileUrl("data/speech/nanami/hello.wav")).toBe(
+      "http://127.0.0.1:8787/api/media?path=data%2Fspeech%2Fnanami%2Fhello.wav&shinsekai_bridge_token=bridge-secret",
+    );
+    expect(platform.files.thumbnailUrl("data/speech/nanami/hello.wav", { size: 160 })).toBe(
+      "http://127.0.0.1:8787/api/media/thumbnail?path=data%2Fspeech%2Fnanami%2Fhello.wav&size=160&shinsekai_bridge_token=bridge-secret",
+    );
+  });
+
   it("sends original names when saving renamed entities", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       mockJsonResponse(sampleConfig.characters[0]),
@@ -750,7 +774,7 @@ describe("http platform", () => {
 
     vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
 
-    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "bridge-secret");
     const listener = vi.fn();
     const unsubscribe = platform.chat.subscribeEvents(listener);
 
@@ -759,10 +783,15 @@ describe("http platform", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8787/api/chat/snapshot",
       expect.objectContaining({
-        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-Shinsekai-Bridge-Token": "bridge-secret",
+        }),
       }),
     );
-    expect(FakeWebSocket.instances[0]?.url).toBe("ws://127.0.0.1:8788/ws?sessionId=session-1&role=viewer");
+    expect(FakeWebSocket.instances[0]?.url).toBe(
+      "ws://127.0.0.1:8788/ws?sessionId=session-1&role=viewer&shinsekai_bridge_token=bridge-secret",
+    );
     expect(listener).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

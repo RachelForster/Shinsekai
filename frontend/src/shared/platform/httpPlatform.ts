@@ -60,13 +60,70 @@ import type {
   TtsBundleRecommendation,
 } from "./types";
 
+const bridgeAuthTokens = new Map<string, string>();
+
+function normalizedBaseUrl(baseUrl: string) {
+  return baseUrl.replace(/\/$/, "");
+}
+
+function rememberBridgeAuthToken(baseUrl: string, authToken?: string) {
+  const token = authToken?.trim() ?? "";
+  const key = normalizedBaseUrl(baseUrl);
+  if (token) {
+    bridgeAuthTokens.set(key, token);
+  } else {
+    bridgeAuthTokens.delete(key);
+  }
+}
+
+function bridgeAuthToken(baseUrl: string) {
+  return bridgeAuthTokens.get(normalizedBaseUrl(baseUrl)) ?? "";
+}
+
+function bridgeAuthHeaders(baseUrl: string): Record<string, string> {
+  const token = bridgeAuthToken(baseUrl);
+  return token ? { "X-Shinsekai-Bridge-Token": token } : {};
+}
+
+function headersRecord(headers?: HeadersInit): Record<string, string> {
+  if (!headers) {
+    return {};
+  }
+  if (typeof Headers !== "undefined" && headers instanceof Headers) {
+    const result: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      result[key] = value;
+    });
+    return result;
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers.map(([key, value]) => [key, value]));
+  }
+  return { ...(headers as Record<string, string>) };
+}
+
+function appendBridgeAuthQuery(baseUrl: string, pathOrUrl: string) {
+  const token = bridgeAuthToken(baseUrl);
+  if (!token) {
+    return pathOrUrl;
+  }
+  const separator = pathOrUrl.includes("?") ? "&" : "?";
+  return `${pathOrUrl}${separator}shinsekai_bridge_token=${encodeURIComponent(token)}`;
+}
+
+function bridgeUrl(baseUrl: string, path: string) {
+  return `${baseUrl}${appendBridgeAuthQuery(baseUrl, path)}`;
+}
+
 async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
-  const requestInit = {
+  const requestHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...bridgeAuthHeaders(baseUrl),
+    ...headersRecord(init?.headers),
+  };
+  const requestInit: RequestInit = {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers: requestHeaders,
   };
   const response = await fetchWithStartupRetry(`${baseUrl}${path}`, requestInit);
   const data = await response.json().catch(() => ({}));
@@ -125,10 +182,14 @@ function isTransientBridgeError(error: unknown) {
 
 async function requestForm<T>(baseUrl: string, path: string, formData: FormData): Promise<T> {
   const url = `${baseUrl}${path}`;
-  const init = {
+  const headers = bridgeAuthHeaders(baseUrl);
+  const init: RequestInit = {
     body: formData,
     method: "POST",
   };
+  if (Object.keys(headers).length) {
+    init.headers = headers;
+  }
   const response = await fetch(url, init).catch(async (error) => {
     if (isDesktopBridgeRestarting() && isTransientBridgeError(error)) {
       logBridgeRestartRetry("POST", url, error);
@@ -166,7 +227,7 @@ function uploadFiles<T>(apiBase: string, path: string, files: File[]): Promise<T
 }
 
 function openDownload(apiBase: string, path: string) {
-  const url = `${apiBase}/api/download?path=${encodeURIComponent(path)}`;
+  const url = bridgeUrl(apiBase, `/api/download?path=${encodeURIComponent(path)}`);
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
@@ -229,10 +290,13 @@ function sanitizeRestartLogUrl(url: string) {
   }
 }
 
-function buildChatViewerWebSocketUrl(wsUrl: string, sessionId: string) {
+function buildChatViewerWebSocketUrl(wsUrl: string, sessionId: string, authToken = "") {
   const url = new URL(wsUrl);
   url.searchParams.set("sessionId", sessionId);
   url.searchParams.set("role", "viewer");
+  if (authToken.trim()) {
+    url.searchParams.set("shinsekai_bridge_token", authToken.trim());
+  }
   return url.toString();
 }
 
@@ -281,8 +345,9 @@ async function waitForTask<TResult>(
   return task.result;
 }
 
-export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
-  const apiBase = baseUrl.replace(/\/$/, "");
+export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPlatform {
+  const apiBase = normalizedBaseUrl(baseUrl);
+  rememberBridgeAuthToken(apiBase, authToken);
 
   return {
     backgrounds: {
@@ -376,7 +441,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           await navigator.clipboard.writeText(result.clipboardText);
         }
         if (result.downloadUrl) {
-          window.open(`${apiBase}${result.downloadUrl}`, "_blank", "noopener,noreferrer");
+          window.open(bridgeUrl(apiBase, result.downloadUrl), "_blank", "noopener,noreferrer");
         }
         return result;
       },
@@ -496,7 +561,9 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           }
           closeSocket();
           let websocketConnected = false;
-          const ws = new WebSocketCtor(buildChatViewerWebSocketUrl(snapshot.wsUrl, snapshot.sessionId));
+          const ws = new WebSocketCtor(
+            buildChatViewerWebSocketUrl(snapshot.wsUrl, snapshot.sessionId, bridgeAuthToken(apiBase)),
+          );
           socket = ws;
           connectTimeoutId = window.setTimeout(() => {
             if (stopped || socket !== ws || websocketConnected) {
@@ -759,7 +826,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         if (/^(?:https?:|blob:|data:|\/assets\/)/.test(path)) {
           return path;
         }
-        return `${apiBase}/api/media?path=${encodeURIComponent(path)}`;
+        return bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(path)}`);
       },
       async thumbnailBatch(paths, options) {
         const localPaths = paths.filter((path) => path && !/^(?:https?:|blob:|data:|\/assets\/)/.test(path));
@@ -789,7 +856,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
                   return [item.path, item.dataUrl] as const;
                 }
                 if (item.cachePath) {
-                  return [item.path, `${apiBase}/api/media?path=${encodeURIComponent(item.cachePath)}`] as const;
+                  return [item.path, bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(item.cachePath)}`)] as const;
                 }
                 if (item.dataUrl) {
                   return [item.path, item.dataUrl] as const;
@@ -811,7 +878,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         if (options?.size) {
           params.set("size", String(options.size));
         }
-        return `${apiBase}/api/media/thumbnail?${params.toString()}`;
+        return bridgeUrl(apiBase, `/api/media/thumbnail?${params.toString()}`);
       },
       async openExternal(url) {
         if (isTauriDesktop()) {

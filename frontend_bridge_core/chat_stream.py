@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextlib
 import hashlib
+import hmac
 import json
 import threading
 import time
@@ -32,6 +33,18 @@ def _ws_base(host: str, port: int) -> str:
 
 def _is_direct_media_path(raw_path: str) -> bool:
     return raw_path.startswith(("http://", "https://", "blob:", "data:", "/assets/"))
+
+
+def _append_query(url: str, params: dict[str, str]) -> str:
+    pairs = [
+        f"{quote(str(key), safe='')}={quote(str(value), safe='')}"
+        for key, value in params.items()
+        if str(value)
+    ]
+    if not pairs:
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{'&'.join(pairs)}"
 
 
 @dataclass(eq=False)
@@ -103,12 +116,13 @@ async def _read_ws_frame(reader: asyncio.StreamReader) -> tuple[int, bytes]:
 
 
 class ChatStreamService:
-    def __init__(self, *, host: str, bridge_port: int) -> None:
+    def __init__(self, *, host: str, bridge_port: int, auth_token: str = "") -> None:
         self.host = host
         self.bridge_port = int(bridge_port)
         self.ws_port = self.bridge_port + 1
         self.http_base = _http_base(host, bridge_port)
         self.ws_base = _ws_base(host, self.ws_port)
+        self.auth_token = str(auth_token or "").strip()
         self._sessions: dict[str, _ChatStreamSession] = {}
         self._lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -158,8 +172,14 @@ class ChatStreamService:
         snapshot["wsUrl"] = self.ws_base
         with self._lock:
             self._sessions[session_id] = _ChatStreamSession(session_id=session_id, snapshot=snapshot)
+        producer_endpoint = f"{self.ws_base}?sessionId={quote(session_id)}&role=producer"
+        if self.auth_token:
+            producer_endpoint = _append_query(
+                producer_endpoint,
+                {"shinsekai_bridge_token": self.auth_token},
+            )
         return {
-            "producerEndpoint": f"{self.ws_base}?sessionId={quote(session_id)}&role=producer",
+            "producerEndpoint": producer_endpoint,
             "sessionId": session_id,
             "wsUrl": self.ws_base,
         }
@@ -256,7 +276,10 @@ class ChatStreamService:
             return ""
         if _is_direct_media_path(path):
             return path
-        return f"{self.http_base}/api/media?path={quote(path)}"
+        return _append_query(
+            f"{self.http_base}/api/media?path={quote(path)}",
+            {"shinsekai_bridge_token": self.auth_token},
+        )
 
     async def _shutdown_async(self) -> None:
         server = self._server
@@ -352,8 +375,11 @@ class ChatStreamService:
         query = parse_qs(parsed.query)
         session_id = str((query.get("sessionId") or [""])[0]).strip()
         role = str((query.get("role") or ["viewer"])[0]).strip() or "viewer"
+        auth_token = str((query.get("shinsekai_bridge_token") or query.get("token") or [""])[0]).strip()
         if not session_id:
             raise ValueError("missing sessionId")
+        if self.auth_token and not hmac.compare_digest(auth_token, self.auth_token):
+            raise ValueError("invalid websocket auth token")
         with self._lock:
             session = self._sessions.get(session_id)
             if session is None:

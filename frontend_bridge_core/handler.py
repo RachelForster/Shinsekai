@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import mimetypes
 import shutil
@@ -122,6 +123,10 @@ from .tools import (
 from .tts import _download_tts_bundle, _tts_bundle_recommendation
 
 logger = get_logger(__name__)
+BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
+BRIDGE_AUTH_QUERY = "shinsekai_bridge_token"
+_ALLOWED_CUSTOM_ORIGIN_SCHEMES = {"shinsekai", "tauri"}
+_ALLOWED_LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "::1", "localhost", "tauri.localhost"}
 
 CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
 
@@ -164,10 +169,48 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         else:
             logger.exception("Frontend bridge request failed", extra=extra)
 
+    def _origin_allowed(self, origin: str) -> bool:
+        value = str(origin or "").strip()
+        if not value:
+            return True
+        parsed = urlparse(value)
+        scheme = parsed.scheme.lower()
+        host = (parsed.hostname or "").lower()
+        if scheme in _ALLOWED_CUSTOM_ORIGIN_SCHEMES and host in _ALLOWED_LOCAL_ORIGIN_HOSTS:
+            return True
+        return scheme in {"http", "https"} and host in _ALLOWED_LOCAL_ORIGIN_HOSTS
+
+    def _request_origin_allowed(self) -> bool:
+        return self._origin_allowed(self.headers.get("Origin", ""))
+
+    def _auth_token_from_request(self) -> str:
+        header_token = str(self.headers.get(BRIDGE_AUTH_HEADER) or "").strip()
+        if header_token:
+            return header_token
+        parsed = urlparse(getattr(self, "path", ""))
+        query = parse_qs(parsed.query)
+        return str((query.get(BRIDGE_AUTH_QUERY) or query.get("token") or [""])[0]).strip()
+
+    def _has_valid_auth_token(self) -> bool:
+        required = str(getattr(self.state, "auth_token", "") or "").strip()
+        if not required:
+            return True
+        supplied = self._auth_token_from_request()
+        return bool(supplied) and hmac.compare_digest(supplied, required)
+
+    def _require_authorized_write(self, path: str) -> None:
+        if not self._request_origin_allowed():
+            raise PermissionError("request origin is not allowed")
+        if path.startswith("/api/") and not self._has_valid_auth_token():
+            raise PermissionError("invalid bridge auth token")
+
     def _send_cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = str(self.headers.get("Origin") or "").strip()
+        if origin and self._origin_allowed(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Range, X-Task-Id")
+        self.send_header("Access-Control-Allow-Headers", f"Content-Type, Range, X-Task-Id, {BRIDGE_AUTH_HEADER}")
         self.send_header("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range")
 
     @staticmethod
@@ -289,6 +332,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         return temp_dir, paths
 
     def do_OPTIONS(self) -> None:  # noqa: N802
+        if not self._request_origin_allowed():
+            self.send_response(HTTPStatus.FORBIDDEN)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         self.send_response(HTTPStatus.NO_CONTENT)
         self._send_cors()
         self.end_headers()
@@ -438,10 +486,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
     def _handle_write(self, method: str) -> None:
         try:
             path = urlparse(self.path).path
+            self._require_authorized_write(path)
             is_upload = method == "POST" and path in {
                 "/api/characters/import-upload",
                 "/api/backgrounds/import-upload",
                 "/api/logs/import-upload",
+                "/api/chat/themes/upload",
             }
             body = {} if method == "DELETE" or is_upload else self._read_json()
             if method in {"POST", "PUT"} and path == "/api/config/api":

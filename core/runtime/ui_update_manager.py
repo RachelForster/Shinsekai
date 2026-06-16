@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import traceback
+import html
+import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
@@ -109,23 +111,38 @@ def _load_image_rgba_array(image_path: str) -> Optional[Any]:
 
 def _format_dialog_html(name: str, speech: str, color: str, is_system: bool) -> str:
     separator = "\uff1a"
+    safe_name = html.escape(str(name or ""), quote=False)
+    safe_speech = html.escape(str(speech or ""), quote=False).replace("\n", "<br>")
+    safe_color = _safe_css_color(color, "#84C2D5" if is_system else "#FFFFFF")
     if is_system:
         return (
-            f"<p style='line-height: 135%; letter-spacing: 2px; color:{color};'>"
-            f"<b>{name}</b>{separator}{speech}</p>"
+            f"<p style='line-height: 135%; letter-spacing: 2px; color:{safe_color};'>"
+            f"<b>{safe_name}</b>{separator}{safe_speech}</p>"
         )
     return (
         f"<p style='line-height: 135%; letter-spacing: 2px;'>"
-        f"<b style='color:{color};'>{name}</b>{separator}{speech}</p>"
+        f"<b style='color:{safe_color};'>{safe_name}</b>{separator}{safe_speech}</p>"
     )
 
 
 def _format_user_html(text: str) -> str:
     created_at = int(time.time() * 1000)
+    safe_text = html.escape(str(text or ""), quote=False).replace("\n", "<br>")
     return (
         f"<p data-created-at='{created_at}' style='line-height: 135%; letter-spacing: 2px; color:white;'>"
-        f"<b style='color:white;'>你</b>: {text}</p>"
+        f"<b style='color:white;'>你</b>: {safe_text}</p>"
     )
+
+
+def _safe_css_color(value: Any, fallback: str) -> str:
+    color = str(value or "").strip()
+    if re.fullmatch(r"#[0-9A-Fa-f]{3,8}", color):
+        return color
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,31}", color):
+        return color
+    if re.fullmatch(r"rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)", color):
+        return color
+    return fallback
 
 
 class HeadlessUIUpdateManager:
@@ -311,16 +328,7 @@ class UIUpdateManager(QObject):
     # --- 高层：业务组装（原 UIWorker 上的逻辑） ---
 
     def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
-        if is_system:
-            formatted = (
-                f"<p style='line-height: 135%; letter-spacing: 2px; color:{color};'>"
-                f"<b>{name}</b>：{speech}</p>"
-            )
-        else:
-            formatted = (
-                f"<p style='line-height: 135%; letter-spacing: 2px;'>"
-                f"<b style='color:{color};'>{name}</b>：{speech}</p>"
-            )
+        formatted = _format_dialog_html(name, speech, color, is_system)
         self.chat_history.append(formatted)
         self.post_dialog(formatted)
 
