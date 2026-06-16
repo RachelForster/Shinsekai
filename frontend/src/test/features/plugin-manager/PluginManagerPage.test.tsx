@@ -256,6 +256,17 @@ describe("PluginManagerPage", () => {
     expect(screen.getByLabelText("location")).toHaveTextContent('"activeStep":"plugins"');
   });
 
+  it("does not reopen consumed route-state configuration after returning to the plugin list", async () => {
+    renderPage([{ pathname: "/settings/plugins", state: { pluginId: "configurable" } }]);
+
+    expect(await screen.findByText("Dynamic detail description")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to plugins" }));
+
+    await waitFor(() => expect(screen.queryByText("Dynamic detail description")).not.toBeInTheDocument());
+    expect(await findPluginCard("Configurable Plugin")).toBeInTheDocument();
+    expect(mockGetPluginUiDetail).toHaveBeenCalledTimes(1);
+  });
+
   it("opens the local plugin publisher dialog from the page actions", async () => {
     renderPage();
 
