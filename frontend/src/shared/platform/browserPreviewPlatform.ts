@@ -1186,6 +1186,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         );
       },
       get: () => delay(config),
+      detectNetworkProxy: () =>
+        delay({
+          http_proxy_url: "",
+          https_proxy_url: "",
+          socks5_proxy_url: "",
+          source: "browser-preview",
+        }),
       getTtsBundleRecommendation: () =>
         delay({
           gpus: [{ device: "NVIDIA GeForce RTX 4070", vendor: "NVIDIA", vram_gb: 12 }],

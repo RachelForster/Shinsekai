@@ -12,6 +12,18 @@
   gap: var(--space-3);
 }
 
+.system-network-proxy .section__header {
+  align-items: flex-start;
+}
+
+.system-network-proxy .section__actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 .system-chat-theme .field-row {
   display: grid;
   grid-template-columns: minmax(180px, 0.42fr) minmax(220px, 1fr);
@@ -134,6 +146,15 @@
     justify-content: flex-start;
     overflow: visible;
     white-space: normal;
+  }
+
+  .system-network-proxy .section__header {
+    flex-direction: column;
+  }
+
+  .system-network-proxy .section__actions,
+  .system-network-proxy .section__actions .button {
+    width: 100%;
   }
 
   .desktop-runtime-settings__primary-actions .button {

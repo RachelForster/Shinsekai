@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Palette, Save } from "lucide-react";
+import { Palette, RefreshCw, Save } from "lucide-react";
 
 import {
   buildPayloadFromSchema,
@@ -10,13 +10,21 @@ import {
   validatePayloadFromSchema,
 } from "../../entities/config/schema";
 import { chatThemeQueryKey, listChatThemes, setActiveChatTheme } from "../../entities/chat/repository";
-import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
+import { configQueryKey, detectNetworkProxy, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_CHAT_THEME_ID, chatThemeDisplayName } from "../../shared/theme/chatTheme";
-import { AsyncButton, EmptyState, QueryErrorState, SchemaDrivenForm, Select, useToast } from "../../shared/ui";
+import {
+  AsyncButton,
+  EmptyState,
+  QueryErrorState,
+  SchemaDrivenForm,
+  SchemaFieldGrid,
+  Select,
+  useToast,
+} from "../../shared/ui";
 import { DesktopRuntimeSection } from "./DesktopRuntimeSection";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css
 import "./SystemSettingsPage.css";
@@ -34,7 +42,29 @@ const systemConfigPageSchema = systemConfigFormSchema
   .filter((group) => group.id !== "voice" && group.id !== "music-cover");
 
 const systemGeneralGroups = systemConfigPageSchema.filter((group) => group.id === "ui");
-const systemRemainingGroups = systemConfigPageSchema.filter((group) => group.id !== "ui");
+const systemNetworkProxyGroup = systemConfigPageSchema.find((group) => group.id === "network-proxy");
+const systemRemainingGroups = systemConfigPageSchema.filter(
+  (group) => group.id !== "ui" && group.id !== "network-proxy",
+);
+
+function networkProxySourceLabel(source: string) {
+  switch (source) {
+    case "environment":
+      return "环境变量";
+    case "process-environment":
+      return "当前进程环境变量";
+    case "windows":
+      return "Windows 系统代理";
+    case "macos":
+      return "macOS 系统代理";
+    case "gnome":
+      return "GNOME 系统代理";
+    case "kde":
+      return "KDE 系统代理";
+    default:
+      return source;
+  }
+}
 
 export function SystemSettingsPage() {
   const queryClient = useQueryClient();
@@ -110,6 +140,41 @@ export function SystemSettingsPage() {
     },
   });
 
+  const detectNetworkProxyMutation = useMutation({
+    mutationFn: detectNetworkProxy,
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "无法读取当前系统代理配置。",
+        title: "检测系统代理失败",
+      });
+    },
+    onSuccess(result) {
+      const hasProxy = Boolean(result.http_proxy_url || result.https_proxy_url || result.socks5_proxy_url);
+      const sourceLabel = networkProxySourceLabel(result.source);
+      setDraft((current) =>
+        current
+          ? {
+              ...current,
+              http_proxy_url: result.http_proxy_url,
+              https_proxy_url: result.https_proxy_url,
+              network_proxy_enabled: hasProxy || current.network_proxy_enabled,
+              socks5_proxy_url: result.socks5_proxy_url,
+            }
+          : current,
+      );
+      showToast({
+        kind: hasProxy ? "success" : "info",
+        message: hasProxy
+          ? sourceLabel
+            ? `来源：${sourceLabel}`
+            : undefined
+          : "没有读取到 HTTP / HTTPS / SOCKS5 代理。",
+        title: hasProxy ? "已填入检测到的代理" : "未检测到系统代理",
+      });
+    },
+  });
+
   if (configQuery.isError) {
     return (
       <QueryErrorState
@@ -166,6 +231,30 @@ export function SystemSettingsPage() {
         onChange={setDraft}
         value={draft}
       />
+      {systemNetworkProxyGroup ? (
+        <section className="section schema-section system-network-proxy">
+          <div className="section__header">
+            <h2 className="section__title">{systemNetworkProxyGroup.title}</h2>
+            <div className="section__actions">
+              <AsyncButton
+                disabled={saveMutation.isPending}
+                icon={<RefreshCw aria-hidden className="button__icon" />}
+                loading={detectNetworkProxyMutation.isPending}
+                onClick={() => detectNetworkProxyMutation.mutate()}
+              >
+                检测当前系统代理
+              </AsyncButton>
+            </div>
+          </div>
+          <SchemaFieldGrid
+            disabled={saveMutation.isPending}
+            errors={errors}
+            group={systemNetworkProxyGroup}
+            onChange={setDraft}
+            value={draft}
+          />
+        </section>
+      ) : null}
       <section className="section system-chat-theme">
         <div className="section__header">
           <h2 className="section__title">{t("chat.theme.title")}</h2>

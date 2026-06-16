@@ -63,7 +63,9 @@ install_main_exception_hook(app_name="Shinsekai Chat", logger=logger)
 
 _STARTUP_IMPORTS_STARTED_AT = time.perf_counter()
 from config.mirror_env import apply_mirror_environment_from_system_config
+from config.network_proxy import apply_network_proxy_environment_from_system_config
 
+apply_network_proxy_environment_from_system_config()
 apply_mirror_environment_from_system_config()
 
 import llm.tools.character_tools

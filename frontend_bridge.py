@@ -181,7 +181,9 @@ def run(
     configure_logging("frontend-bridge", project_root=Path.cwd())
     logger = get_logger(__name__)
     from config.mirror_env import apply_mirror_environment_from_system_config
+    from config.network_proxy import apply_network_proxy_environment_from_system_config
 
+    apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
 
     from config.background_manager import BackgroundManager
@@ -331,7 +333,9 @@ def check_runtime(
 
     configure_logging("frontend-bridge", project_root=Path.cwd())
     from config.mirror_env import apply_mirror_environment_from_system_config
+    from config.network_proxy import apply_network_proxy_environment_from_system_config
 
+    apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
     requirements_file = requirements_file or _default_runtime_requirements_file(repo_root, profile)
     if requirements_file:

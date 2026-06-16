@@ -35,6 +35,7 @@ import type {
   McpToolPreview,
   MusicCoverRunResult,
   MusicCoverSearchResult,
+  NetworkProxyDetectionResult,
   PluginCatalogItem,
   PluginConfigActionResult,
   PluginConfigSaveResult,
@@ -799,6 +800,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           method: "POST",
         }),
       get: () => requestJson<AppConfig>(apiBase, "/api/config"),
+      detectNetworkProxy: () => requestJson<NetworkProxyDetectionResult>(apiBase, "/api/config/network-proxy/detect"),
       getTtsBundleRecommendation: () =>
         requestJson<TtsBundleRecommendation>(apiBase, "/api/config/tts-bundle/recommendation"),
       saveApi: (config: ApiConfig) =>

@@ -40,6 +40,12 @@ describe("entity repositories", () => {
     const platform = {
       config: {
         cancelTtsBundleDownload: vi.fn().mockResolvedValue({ id: "task-1", status: "cancelled" }),
+        detectNetworkProxy: vi.fn().mockResolvedValue({
+          http_proxy_url: "http://127.0.0.1:7890",
+          https_proxy_url: "http://127.0.0.1:7890",
+          socks5_proxy_url: "",
+          source: "environment",
+        }),
         downloadTtsBundle: vi.fn().mockResolvedValue({ path: "/runtime", provider: "genie-tts" }),
         fetchLlmModels: vi.fn().mockResolvedValue([{ id: "deepseek-chat", tags: ["chat"] }]),
         testLlmConnection: vi.fn().mockResolvedValue({ message: "ok" }),
@@ -77,6 +83,7 @@ describe("entity repositories", () => {
     });
     await config.downloadTtsBundle({ kind: "genie" }, taskOptions);
     await config.cancelTtsBundleDownload("task-1");
+    await config.detectNetworkProxy();
     await config.getTtsBundleRecommendation();
     await config.saveApiConfig(apiConfig);
     await config.saveSystemConfig(systemConfig);
@@ -131,6 +138,7 @@ describe("entity repositories", () => {
     });
     expect(platform.config.downloadTtsBundle).toHaveBeenCalledWith({ kind: "genie" }, taskOptions);
     expect(platform.config.cancelTtsBundleDownload).toHaveBeenCalledWith("task-1");
+    expect(platform.config.detectNetworkProxy).toHaveBeenCalledWith();
     expect(platform.files.browse).toHaveBeenCalledWith({ path: "/tmp", showHidden: true });
     expect(platform.files.thumbnailBatch).toHaveBeenCalledWith(["/tmp/a.png"], { delivery: "url", size: 160 });
     expect(platform.files.openExternal).toHaveBeenCalledWith("https://example.test");

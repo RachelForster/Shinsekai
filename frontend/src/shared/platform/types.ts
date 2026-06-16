@@ -95,6 +95,10 @@ export interface SystemConfig {
   huggingface_cache_dir: string;
   github_mirror_url: string;
   pypi_mirror_url: string;
+  network_proxy_enabled: boolean;
+  http_proxy_url: string;
+  https_proxy_url: string;
+  socks5_proxy_url: string;
   music_cover_work_dir: string;
   music_cover_yt_dlp_exe: string;
   music_cover_ffmpeg_exe: string;
@@ -111,6 +115,13 @@ export interface SystemConfig {
   music_cover_rvc_resample_sr: number;
   music_cover_rvc_rms_mix_rate: number;
   music_cover_rvc_protect: number;
+}
+
+export interface NetworkProxyDetectionResult {
+  http_proxy_url: string;
+  https_proxy_url: string;
+  socks5_proxy_url: string;
+  source: string;
 }
 
 export interface AppConfig {
@@ -978,6 +989,7 @@ export interface ShinsekaiPlatform {
       provider: string;
     }) => Promise<LlmConnectionTestResult>;
     get: () => Promise<AppConfig>;
+    detectNetworkProxy: () => Promise<NetworkProxyDetectionResult>;
     getTtsBundleRecommendation: () => Promise<TtsBundleRecommendation>;
     saveApi: (config: ApiConfig) => Promise<ApiConfig>;
     saveSystem: (config: SystemConfig) => Promise<SystemConfig>;
