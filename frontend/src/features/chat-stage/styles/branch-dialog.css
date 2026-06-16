@@ -88,6 +88,14 @@
   white-space: nowrap;
 }
 
+.chat-branch-dialog__summary {
+  margin: 6px 0 0;
+  color: var(--branch-muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .chat-branch-dialog__body {
   min-height: 0;
   padding: 18px;
@@ -95,6 +103,18 @@
   background:
     radial-gradient(circle at 18% 0%, color-mix(in oklch, var(--branch-accent) 10%, transparent), transparent 34%),
     color-mix(in oklch, var(--branch-panel) 58%, transparent);
+}
+
+.chat-branch-dialog__notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--branch-accent) 28%, var(--branch-border));
+  border-radius: 10px;
+  color: var(--branch-muted);
+  background: color-mix(in oklch, var(--branch-accent) 10%, transparent);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .chat-branch-tree {

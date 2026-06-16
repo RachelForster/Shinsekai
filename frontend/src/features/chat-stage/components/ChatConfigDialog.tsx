@@ -1,4 +1,4 @@
-import { useId, type ChangeEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useId, useRef, type ChangeEvent } from "react";
 import { Languages, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
@@ -6,6 +6,7 @@ import { PluginSlot } from "../../../shared/plugin/PluginSlot";
 import type { ChatCommand } from "../../../shared/platform/types";
 import { IconButton, Select } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
+import { ChatStageModal } from "./ChatStageModal";
 import {
   clampRuntimeNumber,
   runtimeDialogOpacityMax,
@@ -166,6 +167,7 @@ export function ChatConfigDialog({
 }) {
   const { t } = useI18n();
   const titleId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const dialogTextView = effectiveDialogText ?? dialogText;
   const nameTextView = effectiveNameText ?? nameText;
   const dialogBoldChecked = dialogText.boldOverride === true ? dialogText.bold : dialogTextView.bold;
@@ -180,17 +182,6 @@ export function ChatConfigDialog({
     return null;
   }
 
-  const handleBackdropMouseDown = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
-  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      onClose();
-    }
-  };
   const handleTextSpeedChange = (event: ChangeEvent<HTMLInputElement>) => {
     onTextSpeedChange(
       Math.round(clampRuntimeNumber(event.target.value, textSpeed, runtimeTextSpeedMin, runtimeTextSpeedMax)),
@@ -262,474 +253,466 @@ export function ChatConfigDialog({
   };
 
   return (
-    <div
-      className="chat-config-backdrop"
-      data-chat-stage-hitbox="true"
-      onMouseDown={handleBackdropMouseDown}
-      role="presentation"
+    <ChatStageModal
+      backdropClassName="chat-config-backdrop"
+      dialogClassName="chat-config-dialog"
+      dialogId="chat-stage-dialog-config"
+      initialFocusRef={closeButtonRef}
+      labelledBy={titleId}
+      onClose={onClose}
+      open={open}
     >
-      <section
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="chat-config-dialog"
-        id="chat-stage-dialog-config"
-        onKeyDown={handleKeyDown}
-        role="dialog"
-      >
-        <header className="chat-config-dialog__header">
-          <div className="chat-config-dialog__heading">
-            <h2 className="chat-config-dialog__title" id={titleId}>
-              {t("chat.toolbar.config")}
-            </h2>
-          </div>
-          <IconButton className="chat-config-dialog__close" label={t("common.close")} onClick={onClose}>
-            <X aria-hidden className="icon-button__icon" />
-          </IconButton>
-        </header>
-        <div className="chat-config-dialog__body">
-          <section className="chat-config-dialog__section">
-            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionMenuAppearance")}</h3>
-            <label className="chat-config-dialog__row">
-              <span className="chat-config-dialog__label">{t("chat.config.menuThemeColor")}</span>
-              <input
-                aria-label={t("chat.config.menuThemeColor")}
-                className="chat-config-dialog__color-input"
-                disabled={configUseMainThemeColor}
-                onChange={(event) => onConfigThemeColorChange(event.target.value)}
-                type="color"
-                value={configThemeColorView}
-              />
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-              <span className="chat-config-dialog__label">{t("chat.config.useMainThemeColor")}</span>
-              <input
-                aria-label={t("chat.config.useMainThemeColor")}
-                checked={configUseMainThemeColor}
-                className="chat-config-dialog__checkbox"
-                onChange={(event) => onConfigUseMainThemeColorChange(event.target.checked)}
-                type="checkbox"
-              />
-            </label>
-          </section>
-          <section className="chat-config-dialog__section">
-            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionConversation")}</h3>
-            <label className="chat-config-dialog__row chat-config-dialog__voice">
-              <span className="chat-config-dialog__label">
-                <Languages aria-hidden className="chat-config-dialog__voice-icon" />
-                {t("template.field.voiceLanguage")}
-              </span>
-              <Select
-                aria-label={t("template.field.voiceLanguage")}
-                className="chat-config-dialog__voice-select"
-                onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
-                value={voiceLanguage}
-              >
-                {chatVoiceLanguages.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.labelKey)}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__range-row">
-              <span className="chat-config-dialog__label">{t("chat.config.textSpeed")}</span>
-              <span className="chat-config-dialog__range-control">
-                <input
-                  aria-label={t("chat.config.textSpeed")}
-                  className="chat-config-dialog__range"
-                  max={runtimeTextSpeedMax}
-                  min={runtimeTextSpeedMin}
-                  onChange={handleTextSpeedChange}
-                  step={1}
-                  type="range"
-                  value={textSpeed}
-                />
-                <span className="chat-config-dialog__range-value">
-                  {t("chat.config.textSpeedValue", { value: textSpeed })}
-                </span>
-              </span>
-            </label>
-            {longPressTalkVisible ? (
-              <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-                <span className="chat-config-dialog__label">{t("chat.config.longPressTalk")}</span>
-                <input
-                  aria-disabled={!longPressTalkAvailable && !longPressTalk}
-                  aria-label={t("chat.config.longPressTalk")}
-                  checked={longPressTalk && longPressTalkAvailable}
-                  className="chat-config-dialog__checkbox"
-                  onChange={(event) => onLongPressTalkChange(event.target.checked)}
-                  type="checkbox"
-                />
-              </label>
-            ) : null}
-          </section>
-
-          <section className="chat-config-dialog__section">
-            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionTypography")}</h3>
-            <label className="chat-config-dialog__row">
-              <span className="chat-config-dialog__label">{t("chat.config.nameFontFamily")}</span>
-              <input
-                className="chat-config-dialog__text-input"
-                onChange={(event) => onTextStyleChange("nameText", { fontFamily: event.target.value })}
-                placeholder={nameTextView.fontFamily || t("chat.config.fontFamilyPlaceholder")}
-                value={nameText.fontFamily}
-              />
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__range-row">
-              <span className="chat-config-dialog__label">{t("chat.config.nameFontSize")}</span>
-              <span className="chat-config-dialog__range-control">
-                <input
-                  aria-label={t("chat.config.nameFontSize")}
-                  className="chat-config-dialog__range"
-                  max={runtimeNameFontSizeMax}
-                  min={runtimeNameFontSizeMin}
-                  onChange={handleTextStyleSizeChange(
-                    "nameText",
-                    nameTextView.fontSize,
-                    runtimeNameFontSizeMin,
-                    runtimeNameFontSizeMax,
-                  )}
-                  step={1}
-                  type="range"
-                  value={nameTextView.fontSize}
-                />
-                <span className="chat-config-dialog__range-value">
-                  {t("chat.config.fontSizeValue", { value: nameTextView.fontSize })}
-                </span>
-              </span>
-            </label>
-            <label className="chat-config-dialog__row">
-              <span className="chat-config-dialog__label">{t("chat.config.nameColor")}</span>
-              <input
-                aria-label={t("chat.config.nameColor")}
-                className="chat-config-dialog__color-input"
-                onChange={(event) => onTextStyleChange("nameText", { color: event.target.value })}
-                type="color"
-                value={nameTextView.color}
-              />
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-              <span className="chat-config-dialog__label">{t("chat.config.nameBold")}</span>
-              <input
-                aria-label={t("chat.config.nameBold")}
-                checked={nameBoldChecked}
-                className="chat-config-dialog__checkbox"
-                onChange={(event) => onTextStyleChange("nameText", { bold: event.target.checked, boldOverride: true })}
-                type="checkbox"
-              />
-            </label>
-            <label className="chat-config-dialog__row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogFontFamily")}</span>
-              <input
-                className="chat-config-dialog__text-input"
-                onChange={(event) => onTextStyleChange("dialogText", { fontFamily: event.target.value })}
-                placeholder={dialogTextView.fontFamily || t("chat.config.fontFamilyPlaceholder")}
-                value={dialogText.fontFamily}
-              />
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__range-row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogFontSize")}</span>
-              <span className="chat-config-dialog__range-control">
-                <input
-                  aria-label={t("chat.config.dialogFontSize")}
-                  className="chat-config-dialog__range"
-                  max={runtimeDialogFontSizeMax}
-                  min={runtimeDialogFontSizeMin}
-                  onChange={handleTextStyleSizeChange(
-                    "dialogText",
-                    dialogTextView.fontSize,
-                    runtimeDialogFontSizeMin,
-                    runtimeDialogFontSizeMax,
-                  )}
-                  step={1}
-                  type="range"
-                  value={dialogTextView.fontSize}
-                />
-                <span className="chat-config-dialog__range-value">
-                  {t("chat.config.fontSizeValue", { value: dialogTextView.fontSize })}
-                </span>
-              </span>
-            </label>
-            <label className="chat-config-dialog__row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogTextDirection")}</span>
-              <Select
-                aria-label={t("chat.config.dialogTextDirection")}
-                className="chat-config-dialog__select"
-                onChange={handleDialogTextDirectionChange}
-                value={dialogTextView.direction ?? "ltr"}
-              >
-                {dialogTextDirectionOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.labelKey)}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="chat-config-dialog__row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogTextAlign")}</span>
-              <Select
-                aria-label={t("chat.config.dialogTextAlign")}
-                className="chat-config-dialog__select"
-                onChange={handleDialogTextAlignChange}
-                value={dialogTextView.align ?? "center"}
-              >
-                {dialogTextAlignOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.labelKey)}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="chat-config-dialog__row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogColor")}</span>
-              <input
-                aria-label={t("chat.config.dialogColor")}
-                className="chat-config-dialog__color-input"
-                onChange={(event) => onTextStyleChange("dialogText", { color: event.target.value })}
-                type="color"
-                value={dialogTextView.color}
-              />
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogBold")}</span>
-              <input
-                aria-label={t("chat.config.dialogBold")}
-                checked={dialogBoldChecked}
-                className="chat-config-dialog__checkbox"
-                onChange={(event) =>
-                  onTextStyleChange("dialogText", { bold: event.target.checked, boldOverride: true })
-                }
-                type="checkbox"
-              />
-            </label>
-          </section>
-
-          <section className="chat-config-dialog__section">
-            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionLayout")}</h3>
-            <label className="chat-config-dialog__row chat-config-dialog__range-row">
-              <span className="chat-config-dialog__label">{t("chat.config.windowScale")}</span>
-              <span className="chat-config-dialog__range-control">
-                <input
-                  aria-label={t("chat.config.windowScale")}
-                  className="chat-config-dialog__range"
-                  max={runtimeWindowScaleMax}
-                  min={runtimeWindowScaleMin}
-                  onChange={handleWindowScaleChange}
-                  step={runtimeWindowScaleStep}
-                  type="range"
-                  value={windowScale}
-                />
-                <span className="chat-config-dialog__range-value">
-                  {t("chat.config.scaleValue", { value: windowScalePercent })}
-                </span>
-              </span>
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__range-row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogScale")}</span>
-              <span className="chat-config-dialog__range-control">
-                <input
-                  aria-label={t("chat.config.dialogScale")}
-                  className="chat-config-dialog__range"
-                  max={runtimeDialogScaleMax}
-                  min={runtimeDialogScaleMin}
-                  onChange={handleDialogScaleChange}
-                  step={runtimeDialogScaleStep}
-                  type="range"
-                  value={dialogScale}
-                />
-                <span className="chat-config-dialog__range-value">
-                  {t("chat.config.scaleValue", { value: dialogScalePercent })}
-                </span>
-              </span>
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__range-row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogOpacity")}</span>
-              <span className="chat-config-dialog__range-control">
-                <input
-                  aria-label={t("chat.config.dialogOpacity")}
-                  className="chat-config-dialog__range"
-                  max={runtimeDialogOpacityMax}
-                  min={runtimeDialogOpacityMin}
-                  onChange={handleDialogOpacityChange}
-                  step={runtimeDialogOpacityStep}
-                  type="range"
-                  value={dialogOpacity}
-                />
-                <span className="chat-config-dialog__range-value">
-                  {t("chat.config.dialogOpacityValue", { value: dialogOpacityPercent })}
-                </span>
-              </span>
-            </label>
-            <label className="chat-config-dialog__row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogFillColor")}</span>
-              <input
-                aria-label={t("chat.config.dialogFillColor")}
-                className="chat-config-dialog__color-input"
-                onChange={(event) => onDialogFillChange({ color: event.target.value })}
-                type="color"
-                value={dialogFill.color}
-              />
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__range-row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogFillOpacity")}</span>
-              <span className="chat-config-dialog__range-control">
-                <input
-                  aria-label={t("chat.config.dialogFillOpacity")}
-                  className="chat-config-dialog__range"
-                  max={runtimeDialogFillOpacityMax}
-                  min={runtimeDialogFillOpacityMin}
-                  onChange={handleDialogFillOpacityChange}
-                  step={runtimeDialogFillOpacityStep}
-                  type="range"
-                  value={dialogFill.opacity}
-                />
-                <span className="chat-config-dialog__range-value">
-                  {t("chat.config.dialogOpacityValue", { value: dialogFillOpacityPercent })}
-                </span>
-              </span>
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-              <span className="chat-config-dialog__label">{t("chat.config.dialogFillGradient")}</span>
-              <input
-                aria-label={t("chat.config.dialogFillGradient")}
-                checked={dialogFill.gradient}
-                className="chat-config-dialog__checkbox"
-                onChange={(event) => onDialogFillChange({ gradient: event.target.checked })}
-                type="checkbox"
-              />
-            </label>
-            {dialogFill.gradient ? (
-              <label className="chat-config-dialog__row">
-                <span className="chat-config-dialog__label">{t("chat.config.dialogFillGradientMode")}</span>
-                <Select
-                  aria-label={t("chat.config.dialogFillGradientMode")}
-                  className="chat-config-dialog__select"
-                  onChange={handleDialogFillGradientModeChange}
-                  value={dialogFill.gradientMode}
-                >
-                  {dialogFillGradientModeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {t(option.labelKey)}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            ) : null}
-            {dialogFill.gradient && dialogFill.gradientMode === "single" ? (
-              <label className="chat-config-dialog__row">
-                <span className="chat-config-dialog__label">{t("chat.config.dialogFillGradientDirection")}</span>
-                <Select
-                  aria-label={t("chat.config.dialogFillGradientDirection")}
-                  className="chat-config-dialog__select"
-                  onChange={handleDialogFillGradientDirectionChange}
-                  value={dialogFill.gradientDirection}
-                >
-                  {dialogFillGradientDirectionOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {t(option.labelKey)}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            ) : null}
-            {dialogFill.gradient && dialogFill.gradientMode === "dual" ? (
-              <label className="chat-config-dialog__row">
-                <span className="chat-config-dialog__label">{t("chat.config.dialogFillColor2")}</span>
-                <input
-                  aria-label={t("chat.config.dialogFillColor2")}
-                  className="chat-config-dialog__color-input"
-                  onChange={(event) => onDialogFillChange({ color2: event.target.value })}
-                  type="color"
-                  value={dialogFill.color2}
-                />
-              </label>
-            ) : null}
-          </section>
-
-          <section className="chat-config-dialog__section">
-            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionSprites")}</h3>
-            {sprites.length ? (
-              <div className="chat-config-dialog__sprite-list">
-                {sprites.map((sprite, index) => {
-                  const spriteKey = runtimeSpriteKey(sprite, index);
-                  const spriteLabel = runtimeSpriteLabel(sprite, index);
-                  const value = spriteScales[spriteKey] ?? spriteScales[runtimeSpriteDefaultScaleKey] ?? 1;
-                  return (
-                    <label className="chat-config-dialog__row chat-config-dialog__range-row" key={spriteKey}>
-                      <span className="chat-config-dialog__label">{spriteLabel}</span>
-                      <span className="chat-config-dialog__range-control">
-                        <input
-                          aria-label={`${t("chat.config.spriteScale")}: ${spriteLabel}`}
-                          className="chat-config-dialog__range"
-                          max={runtimeSpriteScaleMax}
-                          min={runtimeSpriteScaleMin}
-                          onChange={(event) =>
-                            onSpriteScaleChange(
-                              spriteKey,
-                              clampRuntimeNumber(
-                                event.target.value,
-                                value,
-                                runtimeSpriteScaleMin,
-                                runtimeSpriteScaleMax,
-                              ),
-                            )
-                          }
-                          step={runtimeSpriteScaleStep}
-                          type="range"
-                          value={value}
-                        />
-                        <span className="chat-config-dialog__range-value">
-                          {t("chat.config.scaleValue", { value: Math.round(value * 100) })}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="chat-config-dialog__empty">{t("chat.config.spriteEmpty")}</p>
-            )}
-            <label className="chat-config-dialog__row chat-config-dialog__range-row">
-              <span className="chat-config-dialog__label">{t("chat.config.spriteOffsetX")}</span>
-              <span className="chat-config-dialog__range-control">
-                <input
-                  aria-label={t("chat.config.spriteOffsetX")}
-                  className="chat-config-dialog__range"
-                  max={runtimeSpriteOffsetMax}
-                  min={runtimeSpriteOffsetMin}
-                  onChange={handleSpriteOffsetXChange}
-                  step={runtimeSpriteOffsetStep}
-                  type="range"
-                  value={spriteOffsetX}
-                />
-                <span className="chat-config-dialog__range-value">
-                  {t("chat.config.spriteOffsetValue", { value: spriteOffsetX })}
-                </span>
-              </span>
-            </label>
-            <label className="chat-config-dialog__row chat-config-dialog__range-row">
-              <span className="chat-config-dialog__label">{t("chat.config.spriteOffsetY")}</span>
-              <span className="chat-config-dialog__range-control">
-                <input
-                  aria-label={t("chat.config.spriteOffsetY")}
-                  className="chat-config-dialog__range"
-                  max={runtimeSpriteOffsetMax}
-                  min={runtimeSpriteOffsetMin}
-                  onChange={handleSpriteOffsetYChange}
-                  step={runtimeSpriteOffsetStep}
-                  type="range"
-                  value={spriteOffsetY}
-                />
-                <span className="chat-config-dialog__range-value">
-                  {t("chat.config.spriteOffsetValue", { value: spriteOffsetY })}
-                </span>
-              </span>
-            </label>
-          </section>
-
-          <PluginSlot slot="chat-toolbar" />
+      <header className="chat-config-dialog__header">
+        <div className="chat-config-dialog__heading">
+          <h2 className="chat-config-dialog__title" id={titleId}>
+            {t("chat.toolbar.config")}
+          </h2>
         </div>
-      </section>
-    </div>
+        <IconButton
+          className="chat-config-dialog__close"
+          label={t("common.close")}
+          onClick={onClose}
+          ref={closeButtonRef}
+        >
+          <X aria-hidden className="icon-button__icon" />
+        </IconButton>
+      </header>
+      <div className="chat-config-dialog__body">
+        <section className="chat-config-dialog__section">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionMenuAppearance")}</h3>
+          <label className="chat-config-dialog__row">
+            <span className="chat-config-dialog__label">{t("chat.config.menuThemeColor")}</span>
+            <input
+              aria-label={t("chat.config.menuThemeColor")}
+              className="chat-config-dialog__color-input"
+              disabled={configUseMainThemeColor}
+              onChange={(event) => onConfigThemeColorChange(event.target.value)}
+              type="color"
+              value={configThemeColorView}
+            />
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <span className="chat-config-dialog__label">{t("chat.config.useMainThemeColor")}</span>
+            <input
+              aria-label={t("chat.config.useMainThemeColor")}
+              checked={configUseMainThemeColor}
+              className="chat-config-dialog__checkbox"
+              onChange={(event) => onConfigUseMainThemeColorChange(event.target.checked)}
+              type="checkbox"
+            />
+          </label>
+        </section>
+        <section className="chat-config-dialog__section">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionConversation")}</h3>
+          <label className="chat-config-dialog__row chat-config-dialog__voice">
+            <span className="chat-config-dialog__label">
+              <Languages aria-hidden className="chat-config-dialog__voice-icon" />
+              {t("template.field.voiceLanguage")}
+            </span>
+            <Select
+              aria-label={t("template.field.voiceLanguage")}
+              className="chat-config-dialog__voice-select"
+              onChange={(event) => onCommand({ payload: event.target.value, type: "change-voice-language" })}
+              value={voiceLanguage}
+            >
+              {chatVoiceLanguages.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.textSpeed")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.textSpeed")}
+                className="chat-config-dialog__range"
+                max={runtimeTextSpeedMax}
+                min={runtimeTextSpeedMin}
+                onChange={handleTextSpeedChange}
+                step={1}
+                type="range"
+                value={textSpeed}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.textSpeedValue", { value: textSpeed })}
+              </span>
+            </span>
+          </label>
+          {longPressTalkVisible ? (
+            <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+              <span className="chat-config-dialog__label">{t("chat.config.longPressTalk")}</span>
+              <input
+                aria-disabled={!longPressTalkAvailable && !longPressTalk}
+                aria-label={t("chat.config.longPressTalk")}
+                checked={longPressTalk && longPressTalkAvailable}
+                className="chat-config-dialog__checkbox"
+                onChange={(event) => onLongPressTalkChange(event.target.checked)}
+                type="checkbox"
+              />
+            </label>
+          ) : null}
+        </section>
+
+        <section className="chat-config-dialog__section">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionTypography")}</h3>
+          <label className="chat-config-dialog__row">
+            <span className="chat-config-dialog__label">{t("chat.config.nameFontFamily")}</span>
+            <input
+              className="chat-config-dialog__text-input"
+              onChange={(event) => onTextStyleChange("nameText", { fontFamily: event.target.value })}
+              placeholder={nameTextView.fontFamily || t("chat.config.fontFamilyPlaceholder")}
+              value={nameText.fontFamily}
+            />
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.nameFontSize")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.nameFontSize")}
+                className="chat-config-dialog__range"
+                max={runtimeNameFontSizeMax}
+                min={runtimeNameFontSizeMin}
+                onChange={handleTextStyleSizeChange(
+                  "nameText",
+                  nameTextView.fontSize,
+                  runtimeNameFontSizeMin,
+                  runtimeNameFontSizeMax,
+                )}
+                step={1}
+                type="range"
+                value={nameTextView.fontSize}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.fontSizeValue", { value: nameTextView.fontSize })}
+              </span>
+            </span>
+          </label>
+          <label className="chat-config-dialog__row">
+            <span className="chat-config-dialog__label">{t("chat.config.nameColor")}</span>
+            <input
+              aria-label={t("chat.config.nameColor")}
+              className="chat-config-dialog__color-input"
+              onChange={(event) => onTextStyleChange("nameText", { color: event.target.value })}
+              type="color"
+              value={nameTextView.color}
+            />
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <span className="chat-config-dialog__label">{t("chat.config.nameBold")}</span>
+            <input
+              aria-label={t("chat.config.nameBold")}
+              checked={nameBoldChecked}
+              className="chat-config-dialog__checkbox"
+              onChange={(event) => onTextStyleChange("nameText", { bold: event.target.checked, boldOverride: true })}
+              type="checkbox"
+            />
+          </label>
+          <label className="chat-config-dialog__row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogFontFamily")}</span>
+            <input
+              className="chat-config-dialog__text-input"
+              onChange={(event) => onTextStyleChange("dialogText", { fontFamily: event.target.value })}
+              placeholder={dialogTextView.fontFamily || t("chat.config.fontFamilyPlaceholder")}
+              value={dialogText.fontFamily}
+            />
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogFontSize")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.dialogFontSize")}
+                className="chat-config-dialog__range"
+                max={runtimeDialogFontSizeMax}
+                min={runtimeDialogFontSizeMin}
+                onChange={handleTextStyleSizeChange(
+                  "dialogText",
+                  dialogTextView.fontSize,
+                  runtimeDialogFontSizeMin,
+                  runtimeDialogFontSizeMax,
+                )}
+                step={1}
+                type="range"
+                value={dialogTextView.fontSize}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.fontSizeValue", { value: dialogTextView.fontSize })}
+              </span>
+            </span>
+          </label>
+          <label className="chat-config-dialog__row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogTextDirection")}</span>
+            <Select
+              aria-label={t("chat.config.dialogTextDirection")}
+              className="chat-config-dialog__select"
+              onChange={handleDialogTextDirectionChange}
+              value={dialogTextView.direction ?? "ltr"}
+            >
+              {dialogTextDirectionOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="chat-config-dialog__row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogTextAlign")}</span>
+            <Select
+              aria-label={t("chat.config.dialogTextAlign")}
+              className="chat-config-dialog__select"
+              onChange={handleDialogTextAlignChange}
+              value={dialogTextView.align ?? "center"}
+            >
+              {dialogTextAlignOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="chat-config-dialog__row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogColor")}</span>
+            <input
+              aria-label={t("chat.config.dialogColor")}
+              className="chat-config-dialog__color-input"
+              onChange={(event) => onTextStyleChange("dialogText", { color: event.target.value })}
+              type="color"
+              value={dialogTextView.color}
+            />
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogBold")}</span>
+            <input
+              aria-label={t("chat.config.dialogBold")}
+              checked={dialogBoldChecked}
+              className="chat-config-dialog__checkbox"
+              onChange={(event) => onTextStyleChange("dialogText", { bold: event.target.checked, boldOverride: true })}
+              type="checkbox"
+            />
+          </label>
+        </section>
+
+        <section className="chat-config-dialog__section">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionLayout")}</h3>
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.windowScale")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.windowScale")}
+                className="chat-config-dialog__range"
+                max={runtimeWindowScaleMax}
+                min={runtimeWindowScaleMin}
+                onChange={handleWindowScaleChange}
+                step={runtimeWindowScaleStep}
+                type="range"
+                value={windowScale}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.scaleValue", { value: windowScalePercent })}
+              </span>
+            </span>
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogScale")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.dialogScale")}
+                className="chat-config-dialog__range"
+                max={runtimeDialogScaleMax}
+                min={runtimeDialogScaleMin}
+                onChange={handleDialogScaleChange}
+                step={runtimeDialogScaleStep}
+                type="range"
+                value={dialogScale}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.scaleValue", { value: dialogScalePercent })}
+              </span>
+            </span>
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogOpacity")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.dialogOpacity")}
+                className="chat-config-dialog__range"
+                max={runtimeDialogOpacityMax}
+                min={runtimeDialogOpacityMin}
+                onChange={handleDialogOpacityChange}
+                step={runtimeDialogOpacityStep}
+                type="range"
+                value={dialogOpacity}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.dialogOpacityValue", { value: dialogOpacityPercent })}
+              </span>
+            </span>
+          </label>
+          <label className="chat-config-dialog__row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogFillColor")}</span>
+            <input
+              aria-label={t("chat.config.dialogFillColor")}
+              className="chat-config-dialog__color-input"
+              onChange={(event) => onDialogFillChange({ color: event.target.value })}
+              type="color"
+              value={dialogFill.color}
+            />
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogFillOpacity")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.dialogFillOpacity")}
+                className="chat-config-dialog__range"
+                max={runtimeDialogFillOpacityMax}
+                min={runtimeDialogFillOpacityMin}
+                onChange={handleDialogFillOpacityChange}
+                step={runtimeDialogFillOpacityStep}
+                type="range"
+                value={dialogFill.opacity}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.dialogOpacityValue", { value: dialogFillOpacityPercent })}
+              </span>
+            </span>
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <span className="chat-config-dialog__label">{t("chat.config.dialogFillGradient")}</span>
+            <input
+              aria-label={t("chat.config.dialogFillGradient")}
+              checked={dialogFill.gradient}
+              className="chat-config-dialog__checkbox"
+              onChange={(event) => onDialogFillChange({ gradient: event.target.checked })}
+              type="checkbox"
+            />
+          </label>
+          {dialogFill.gradient ? (
+            <label className="chat-config-dialog__row">
+              <span className="chat-config-dialog__label">{t("chat.config.dialogFillGradientMode")}</span>
+              <Select
+                aria-label={t("chat.config.dialogFillGradientMode")}
+                className="chat-config-dialog__select"
+                onChange={handleDialogFillGradientModeChange}
+                value={dialogFill.gradientMode}
+              >
+                {dialogFillGradientModeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.labelKey)}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
+          {dialogFill.gradient && dialogFill.gradientMode === "single" ? (
+            <label className="chat-config-dialog__row">
+              <span className="chat-config-dialog__label">{t("chat.config.dialogFillGradientDirection")}</span>
+              <Select
+                aria-label={t("chat.config.dialogFillGradientDirection")}
+                className="chat-config-dialog__select"
+                onChange={handleDialogFillGradientDirectionChange}
+                value={dialogFill.gradientDirection}
+              >
+                {dialogFillGradientDirectionOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.labelKey)}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
+          {dialogFill.gradient && dialogFill.gradientMode === "dual" ? (
+            <label className="chat-config-dialog__row">
+              <span className="chat-config-dialog__label">{t("chat.config.dialogFillColor2")}</span>
+              <input
+                aria-label={t("chat.config.dialogFillColor2")}
+                className="chat-config-dialog__color-input"
+                onChange={(event) => onDialogFillChange({ color2: event.target.value })}
+                type="color"
+                value={dialogFill.color2}
+              />
+            </label>
+          ) : null}
+        </section>
+
+        <section className="chat-config-dialog__section">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionSprites")}</h3>
+          {sprites.length ? (
+            <div className="chat-config-dialog__sprite-list">
+              {sprites.map((sprite, index) => {
+                const spriteKey = runtimeSpriteKey(sprite, index);
+                const spriteLabel = runtimeSpriteLabel(sprite, index);
+                const value = spriteScales[spriteKey] ?? spriteScales[runtimeSpriteDefaultScaleKey] ?? 1;
+                return (
+                  <label className="chat-config-dialog__row chat-config-dialog__range-row" key={spriteKey}>
+                    <span className="chat-config-dialog__label">{spriteLabel}</span>
+                    <span className="chat-config-dialog__range-control">
+                      <input
+                        aria-label={`${t("chat.config.spriteScale")}: ${spriteLabel}`}
+                        className="chat-config-dialog__range"
+                        max={runtimeSpriteScaleMax}
+                        min={runtimeSpriteScaleMin}
+                        onChange={(event) =>
+                          onSpriteScaleChange(
+                            spriteKey,
+                            clampRuntimeNumber(event.target.value, value, runtimeSpriteScaleMin, runtimeSpriteScaleMax),
+                          )
+                        }
+                        step={runtimeSpriteScaleStep}
+                        type="range"
+                        value={value}
+                      />
+                      <span className="chat-config-dialog__range-value">
+                        {t("chat.config.scaleValue", { value: Math.round(value * 100) })}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="chat-config-dialog__empty">{t("chat.config.spriteEmpty")}</p>
+          )}
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.spriteOffsetX")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.spriteOffsetX")}
+                className="chat-config-dialog__range"
+                max={runtimeSpriteOffsetMax}
+                min={runtimeSpriteOffsetMin}
+                onChange={handleSpriteOffsetXChange}
+                step={runtimeSpriteOffsetStep}
+                type="range"
+                value={spriteOffsetX}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.spriteOffsetValue", { value: spriteOffsetX })}
+              </span>
+            </span>
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.spriteOffsetY")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.spriteOffsetY")}
+                className="chat-config-dialog__range"
+                max={runtimeSpriteOffsetMax}
+                min={runtimeSpriteOffsetMin}
+                onChange={handleSpriteOffsetYChange}
+                step={runtimeSpriteOffsetStep}
+                type="range"
+                value={spriteOffsetY}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.spriteOffsetValue", { value: spriteOffsetY })}
+              </span>
+            </span>
+          </label>
+        </section>
+
+        <PluginSlot slot="chat-toolbar" />
+      </div>
+    </ChatStageModal>
   );
 }

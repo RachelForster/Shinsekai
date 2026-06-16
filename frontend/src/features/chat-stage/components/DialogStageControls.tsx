@@ -69,6 +69,9 @@ export function DialogStageControls({
 
   const lockLabel = locked ? t("chat.toolbar.unlockActions") : t("chat.toolbar.lockActions");
   const lockText = locked ? t("chat.actionBar.unlock") : t("chat.actionBar.lock");
+  const branchTooltip = showBranches
+    ? t("chat.toolbar.openBranches")
+    : t("chat.toolbar.openBranchesExperimentalDisabled");
 
   return (
     <div
@@ -102,17 +105,18 @@ export function DialogStageControls({
           >
             {t("chat.actionBar.history")}
           </ToolbarButton>
-          {showBranches ? (
-            <ToolbarButton
-              aria-label={t("chat.toolbar.openBranches")}
-              className="dialog-stage-controls__button"
-              icon={<GitBranch aria-hidden className="button__icon" />}
-              onClick={onOpenBranches}
-              tooltip={t("chat.toolbar.openBranches")}
-            >
-              {t("chat.actionBar.branches")}
-            </ToolbarButton>
-          ) : null}
+          <ToolbarButton
+            aria-disabled={!showBranches}
+            aria-label={branchTooltip}
+            className="dialog-stage-controls__button"
+            data-experimental="true"
+            disabled={!showBranches}
+            icon={<GitBranch aria-hidden className="button__icon" />}
+            onClick={onOpenBranches}
+            tooltip={branchTooltip}
+          >
+            {t("chat.actionBar.branches")}
+          </ToolbarButton>
           <ToolbarButton
             aria-label={t("chat.toolbar.skipSpeech")}
             className="dialog-stage-controls__button"

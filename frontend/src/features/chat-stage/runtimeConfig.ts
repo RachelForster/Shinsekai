@@ -6,6 +6,7 @@ import { DEFAULT_THEME_COLOR, normalizeThemeColor } from "../../shared/theme/app
 
 export const clickThroughGuardIntervalMs = 32;
 const runtimeConfigStorageKey = "shinsekai-chat-stage-runtime-config";
+export const chatStageRuntimeConfigVersion = 2;
 export const runtimeTextSpeedMin = 1;
 export const runtimeTextSpeedMax = 200;
 export const runtimeDialogOpacityMin = 0.35;
@@ -80,6 +81,11 @@ export interface ChatStageRuntimeConfig {
 export type ChatStageTextStyleTarget = "nameText" | "dialogText";
 export type ChatStageTextStylePatch = Partial<ChatStageTextStyleConfig>;
 export type ChatStageDialogFillPatch = Partial<ChatStageDialogFillConfig>;
+
+interface ChatStageRuntimeConfigStorageEnvelope {
+  config: Partial<ChatStageRuntimeConfig>;
+  version: number;
+}
 
 export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   auto: false,
@@ -234,6 +240,95 @@ function readRuntimeTextStyle(
   return next;
 }
 
+function isRuntimeRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function unwrapRuntimeConfigStoragePayload(value: unknown): Partial<ChatStageRuntimeConfig> {
+  if (!isRuntimeRecord(value)) {
+    return {};
+  }
+  if (typeof value.version === "number" && isRuntimeRecord(value.config)) {
+    return value.config as Partial<ChatStageRuntimeConfig>;
+  }
+  return value as Partial<ChatStageRuntimeConfig>;
+}
+
+export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntimeConfig {
+  const parsed = unwrapRuntimeConfigStoragePayload(value);
+  return {
+    auto: typeof parsed.auto === "boolean" ? parsed.auto : defaultChatStageRuntimeConfig.auto,
+    configThemeColor: sanitizeRuntimeColor(parsed.configThemeColor, defaultChatStageRuntimeConfig.configThemeColor),
+    configUseMainThemeColor:
+      typeof parsed.configUseMainThemeColor === "boolean"
+        ? parsed.configUseMainThemeColor
+        : defaultChatStageRuntimeConfig.configUseMainThemeColor,
+    dialogFill: readRuntimeDialogFill(parsed.dialogFill),
+    dialogOpacity: clampRuntimeNumber(
+      parsed.dialogOpacity,
+      defaultChatStageRuntimeConfig.dialogOpacity,
+      runtimeDialogOpacityMin,
+      runtimeDialogOpacityMax,
+    ),
+    dialogScale: clampRuntimeNumber(
+      parsed.dialogScale,
+      defaultChatStageRuntimeConfig.dialogScale,
+      runtimeDialogScaleMin,
+      runtimeDialogScaleMax,
+    ),
+    longPressTalk:
+      typeof parsed.longPressTalk === "boolean" ? parsed.longPressTalk : defaultChatStageRuntimeConfig.longPressTalk,
+    typewriterCps:
+      parsed.typewriterCps == null
+        ? null
+        : Math.round(
+            clampRuntimeNumber(parsed.typewriterCps, DEFAULT_TYPEWRITER_CPS, runtimeTextSpeedMin, runtimeTextSpeedMax),
+          ),
+    spriteScales: readRuntimeSpriteScales(parsed),
+    spriteOffsetX: Math.round(
+      clampRuntimeNumber(
+        parsed.spriteOffsetX,
+        defaultChatStageRuntimeConfig.spriteOffsetX,
+        runtimeSpriteOffsetMin,
+        runtimeSpriteOffsetMax,
+      ),
+    ),
+    spriteOffsetY: Math.round(
+      clampRuntimeNumber(
+        parsed.spriteOffsetY,
+        defaultChatStageRuntimeConfig.spriteOffsetY,
+        runtimeSpriteOffsetMin,
+        runtimeSpriteOffsetMax,
+      ),
+    ),
+    windowScale: clampRuntimeNumber(
+      parsed.windowScale,
+      defaultChatStageRuntimeConfig.windowScale,
+      runtimeWindowScaleMin,
+      runtimeWindowScaleMax,
+    ),
+    nameText: readRuntimeTextStyle(
+      parsed.nameText,
+      defaultChatStageRuntimeConfig.nameText,
+      runtimeNameFontSizeMin,
+      runtimeNameFontSizeMax,
+    ),
+    dialogText: readRuntimeTextStyle(
+      parsed.dialogText,
+      defaultChatStageRuntimeConfig.dialogText,
+      runtimeDialogFontSizeMin,
+      runtimeDialogFontSizeMax,
+    ),
+  };
+}
+
+function persistedRuntimeConfigEnvelope(config: ChatStageRuntimeConfig): ChatStageRuntimeConfigStorageEnvelope {
+  return {
+    config,
+    version: chatStageRuntimeConfigVersion,
+  };
+}
+
 export function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
   if (typeof window === "undefined") {
     return defaultChatStageRuntimeConfig;
@@ -243,76 +338,7 @@ export function readChatStageRuntimeConfig(): ChatStageRuntimeConfig {
     if (!raw) {
       return defaultChatStageRuntimeConfig;
     }
-    const parsed = JSON.parse(raw) as Partial<ChatStageRuntimeConfig>;
-    return {
-      auto: typeof parsed.auto === "boolean" ? parsed.auto : defaultChatStageRuntimeConfig.auto,
-      configThemeColor: sanitizeRuntimeColor(parsed.configThemeColor, defaultChatStageRuntimeConfig.configThemeColor),
-      configUseMainThemeColor:
-        typeof parsed.configUseMainThemeColor === "boolean"
-          ? parsed.configUseMainThemeColor
-          : defaultChatStageRuntimeConfig.configUseMainThemeColor,
-      dialogFill: readRuntimeDialogFill(parsed.dialogFill),
-      dialogOpacity: clampRuntimeNumber(
-        parsed.dialogOpacity,
-        defaultChatStageRuntimeConfig.dialogOpacity,
-        runtimeDialogOpacityMin,
-        runtimeDialogOpacityMax,
-      ),
-      dialogScale: clampRuntimeNumber(
-        parsed.dialogScale,
-        defaultChatStageRuntimeConfig.dialogScale,
-        runtimeDialogScaleMin,
-        runtimeDialogScaleMax,
-      ),
-      longPressTalk:
-        typeof parsed.longPressTalk === "boolean" ? parsed.longPressTalk : defaultChatStageRuntimeConfig.longPressTalk,
-      typewriterCps:
-        parsed.typewriterCps == null
-          ? null
-          : Math.round(
-              clampRuntimeNumber(
-                parsed.typewriterCps,
-                DEFAULT_TYPEWRITER_CPS,
-                runtimeTextSpeedMin,
-                runtimeTextSpeedMax,
-              ),
-            ),
-      spriteScales: readRuntimeSpriteScales(parsed),
-      spriteOffsetX: Math.round(
-        clampRuntimeNumber(
-          parsed.spriteOffsetX,
-          defaultChatStageRuntimeConfig.spriteOffsetX,
-          runtimeSpriteOffsetMin,
-          runtimeSpriteOffsetMax,
-        ),
-      ),
-      spriteOffsetY: Math.round(
-        clampRuntimeNumber(
-          parsed.spriteOffsetY,
-          defaultChatStageRuntimeConfig.spriteOffsetY,
-          runtimeSpriteOffsetMin,
-          runtimeSpriteOffsetMax,
-        ),
-      ),
-      windowScale: clampRuntimeNumber(
-        parsed.windowScale,
-        defaultChatStageRuntimeConfig.windowScale,
-        runtimeWindowScaleMin,
-        runtimeWindowScaleMax,
-      ),
-      nameText: readRuntimeTextStyle(
-        parsed.nameText,
-        defaultChatStageRuntimeConfig.nameText,
-        runtimeNameFontSizeMin,
-        runtimeNameFontSizeMax,
-      ),
-      dialogText: readRuntimeTextStyle(
-        parsed.dialogText,
-        defaultChatStageRuntimeConfig.dialogText,
-        runtimeDialogFontSizeMin,
-        runtimeDialogFontSizeMax,
-      ),
-    };
+    return normalizeChatStageRuntimeConfig(JSON.parse(raw));
   } catch {
     return defaultChatStageRuntimeConfig;
   }
@@ -323,7 +349,7 @@ export function writeChatStageRuntimeConfig(config: ChatStageRuntimeConfig) {
     return;
   }
   try {
-    window.localStorage.setItem(runtimeConfigStorageKey, JSON.stringify(config));
+    window.localStorage.setItem(runtimeConfigStorageKey, JSON.stringify(persistedRuntimeConfigEnvelope(config)));
   } catch {
     // localStorage may be unavailable in hardened webviews.
   }

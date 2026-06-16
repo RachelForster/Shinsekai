@@ -4,7 +4,11 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChatStagePage } from "../../../features/chat-stage/ChatStagePage";
-import { defaultChatStageRuntimeConfig, effectiveChatStageTextStyle } from "../../../features/chat-stage/runtimeConfig";
+import {
+  chatStageRuntimeConfigVersion,
+  defaultChatStageRuntimeConfig,
+  effectiveChatStageTextStyle,
+} from "../../../features/chat-stage/runtimeConfig";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import type { ChatCommand, ChatHistoryEntry, ChatSnapshot, ChatStageEvent } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
@@ -437,7 +441,7 @@ describe("ChatStagePage", () => {
     );
   });
 
-  it("hides experimental fork and conversation tree controls unless enabled", async () => {
+  it("disables experimental conversation tree and hides fork controls unless enabled", async () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         experimentalFeatures: { conversationTree: false, forkHistory: false },
@@ -456,7 +460,9 @@ describe("ChatStagePage", () => {
     renderPage();
     await screen.findByText("Ready");
 
-    expect(screen.queryByRole("button", { name: "Open conversation tree" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Conversation tree is experimental and disabled in settings" }),
+    ).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Open history" }));
     const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
@@ -707,44 +713,47 @@ describe("ChatStagePage", () => {
       expect(sprites[1]?.style.getPropertyValue("--sprite-scale")).toBe("0.8");
     });
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
-      auto: false,
-      configThemeColor: "#88cc44",
-      configUseMainThemeColor: false,
-      dialogText: {
-        align: "right",
-        bold: true,
-        boldOverride: true,
-        color: "#ddeeff",
-        direction: "rtl",
-        fontFamily: "Verdana",
-        fontSize: 21,
+      config: {
+        auto: false,
+        configThemeColor: "#88cc44",
+        configUseMainThemeColor: false,
+        dialogText: {
+          align: "right",
+          bold: true,
+          boldOverride: true,
+          color: "#ddeeff",
+          direction: "rtl",
+          fontFamily: "Verdana",
+          fontSize: 21,
+        },
+        dialogFill: {
+          color: "#223344",
+          color2: "#556677",
+          gradient: true,
+          gradientDirection: "to-bottom",
+          gradientMode: "dual",
+          opacity: 0.7,
+        },
+        dialogOpacity: 0.55,
+        dialogScale: 1.05,
+        longPressTalk: false,
+        nameText: {
+          bold: false,
+          boldOverride: true,
+          color: "#ffeeaa",
+          fontFamily: "Georgia",
+          fontSize: 19,
+        },
+        spriteScales: {
+          mio: 1.35,
+          ren: 0.8,
+        },
+        spriteOffsetX: 72,
+        spriteOffsetY: -48,
+        typewriterCps: 96,
+        windowScale: 1.1,
       },
-      dialogFill: {
-        color: "#223344",
-        color2: "#556677",
-        gradient: true,
-        gradientDirection: "to-bottom",
-        gradientMode: "dual",
-        opacity: 0.7,
-      },
-      dialogOpacity: 0.55,
-      dialogScale: 1.05,
-      longPressTalk: false,
-      nameText: {
-        bold: false,
-        boldOverride: true,
-        color: "#ffeeaa",
-        fontFamily: "Georgia",
-        fontSize: 19,
-      },
-      spriteScales: {
-        mio: 1.35,
-        ren: 0.8,
-      },
-      spriteOffsetX: 72,
-      spriteOffsetY: -48,
-      typewriterCps: 96,
-      windowScale: 1.1,
+      version: chatStageRuntimeConfigVersion,
     });
   });
 
@@ -930,6 +939,36 @@ describe("ChatStagePage", () => {
         type: "revert-history",
       }),
     );
+  });
+
+  it("filters large history lists and renders them in batches", async () => {
+    const entries = Array.from(
+      { length: 130 },
+      (_, index): ChatHistoryEntry => ({
+        id: `history-${index}`,
+        role: "assistant",
+        text: index === 129 ? "Mio: target ending" : `Mio: filler ${index}`,
+      }),
+    );
+    mocks.getChatHistory.mockResolvedValueOnce(entries);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    await waitFor(() => expect(within(dialog).getByText("120 / 130 shown")).toBeInTheDocument());
+    expect(within(dialog).queryByText("target ending")).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Show 10 more" }));
+    expect(within(dialog).getByText("130 / 130 shown")).toBeInTheDocument();
+    expect(within(dialog).getByText("target ending")).toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByRole("searchbox", { name: "Search history" }), {
+      target: { value: "target" },
+    });
+    expect(within(dialog).getByText("1 / 1 shown")).toBeInTheDocument();
+    expect(within(dialog).getByText("target ending")).toBeInTheDocument();
+    expect(within(dialog).queryByText("filler 1")).not.toBeInTheDocument();
   });
 
   it("toggles layers from incoming stage events", async () => {

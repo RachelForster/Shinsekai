@@ -1,33 +1,10 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-  type FocusEvent,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import {
-  closeChat,
-  getChatHistory,
-  getChatSnapshot,
-  sendChatCommand,
-  subscribeChatEvents,
-} from "../../entities/chat/repository";
-import { getAppConfig } from "../../entities/config/repository";
-import { browseFiles } from "../../entities/files/repository";
-import {
-  getDesktopWindowCursorPosition,
-  isTauriDesktop,
-  setDesktopWindowClickThrough,
-} from "../../shared/desktop/desktopApi";
+import { closeChat } from "../../entities/chat/repository";
+import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import type { ChatCommand, ChatSnapshot, FileBrowserSnapshot } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
@@ -51,11 +28,16 @@ import {
 import { TopStageTools } from "./components/TopStageTools";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
-import { isChatStageHitbox, isPointInsideChatStageHitbox, layerClassName } from "./chatStageUtils";
-import { buildDialogTypewriterSource, renderDialogTypewriterFrame } from "./dialogTypewriter";
+import { layerClassName } from "./chatStageUtils";
+import { useChatStageCommands } from "./hooks/useChatStageCommands";
+import { useChatStageEvents } from "./hooks/useChatStageEvents";
+import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
+import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
+import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
+import { useMainThemeColor } from "./hooks/useMainThemeColor";
+import { useVoskModelAvailability } from "./hooks/useVoskModelAvailability";
 import {
   chatStageRuntimeStyle,
-  clickThroughGuardIntervalMs,
   defaultChatStageRuntimeConfig,
   effectiveChatStageTextStyle,
   readChatStageRuntimeConfig,
@@ -64,23 +46,9 @@ import {
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 
-const AUTO_ADVANCE_DELAY_MS = 1600;
-
-function readMainThemeColor() {
-  if (typeof window === "undefined") {
-    return normalizeThemeColor(undefined);
-  }
-  return normalizeThemeColor(getComputedStyle(document.documentElement).getPropertyValue("--theme-accent"));
-}
-
 function isStartOptionLabel(option: string) {
   const normalized = option.trim().toLocaleLowerCase();
   return normalized === "start" || normalized === "开始" || normalized === "開始" || normalized === "スタート";
-}
-
-function snapshotLooksLikeVoskModel(snapshot: FileBrowserSnapshot) {
-  const names = new Set(snapshot.entries.map((entry) => entry.name.toLocaleLowerCase()));
-  return names.has("am") && names.has("conf") && names.has("graph");
 }
 
 export function ChatStagePage() {
@@ -91,18 +59,12 @@ export function ChatStagePage() {
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
-  const [mainThemeColor, setMainThemeColor] = useState(readMainThemeColor);
+  const mainThemeColor = useMainThemeColor();
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
-  const [visibleDialogCharacters, setVisibleDialogCharacters] = useState(0);
-  const [voskModelState, setVoskModelState] = useState({
-    available: false,
-    loading: true,
-    path: VOSK_MODEL_PATH,
-  });
+  const voskModelState = useVoskModelAvailability();
   const { showToast } = useToast();
   const { t } = useI18n();
   const theme = useOptionalChatTheme();
@@ -152,140 +114,49 @@ export function ChatStagePage() {
   const hideNameWhenStartOption = themeStyle["--chat-name-hide-when-start-option"] === "true";
   const nameHiddenForStartOption =
     hideNameWhenStartOption && viewModel.layers.options && viewModel.options.some(isStartOptionLabel);
-  const eventSeqRef = useRef(0);
-  eventSeqRef.current = state.eventSeq;
-  const pendingAnimatedDialogKeyRef = useRef<string | null>(null);
-  const advanceDialogRef = useRef<() => void>(() => {});
-  const clickThroughIgnoredRef = useRef(false);
-  const clickThroughGuardIntervalRef = useRef<number | null>(null);
-  const clickThroughGuardPollingRef = useRef(false);
-  const dialogSource = useMemo(
-    () =>
-      buildDialogTypewriterSource({
-        characterName: viewModel.dialogCharacterName,
-        html: viewModel.dialogHtml,
-        text: viewModel.dialogText,
-      }),
-    [viewModel.dialogCharacterName, viewModel.dialogHtml, viewModel.dialogText],
-  );
   const dialogTextDirection = effectiveDialogText.direction ?? "ltr";
-  const dialogTotalCharacters =
-    dialogTextDirection === "rtl" ? dialogSource.totalRtlCharacters : dialogSource.totalCharacters;
   const typewriterCps = runtimeConfig.typewriterCps ?? theme?.resolved?.typewriter.cps ?? DEFAULT_TYPEWRITER_CPS;
-  const displayedDialog = useMemo(
-    () => renderDialogTypewriterFrame(dialogSource, visibleDialogCharacters, dialogTextDirection),
-    [dialogSource, dialogTextDirection, visibleDialogCharacters],
-  );
-  const typingDialog = visibleDialogCharacters < dialogTotalCharacters;
-
-  const stopClickThroughGuard = useCallback(() => {
-    if (clickThroughGuardIntervalRef.current == null) {
-      return;
-    }
-    window.clearInterval(clickThroughGuardIntervalRef.current);
-    clickThroughGuardIntervalRef.current = null;
-  }, []);
-
-  const applyClickThroughIgnored = useCallback((ignore: boolean) => {
-    if (clickThroughIgnoredRef.current === ignore) {
-      return;
-    }
-    clickThroughIgnoredRef.current = ignore;
-    void setDesktopWindowClickThrough(ignore).catch((error) => {
-      console.error("Desktop chat window click-through update failed", error);
+  const { historyLoading, refreshHistory, sendCommand } = useChatStageCommands({
+    confirmClearHistory,
+    dispatch,
+    operationFailedTitle: t("common.operationFailed"),
+    setConfirmClearHistory,
+    showToast,
+    t,
+  });
+  const autoAdvanceDialog = useCallback(() => {
+    void sendCommand({ type: "dialog-advance" });
+  }, [sendCommand]);
+  const { dialogTotalCharacters, displayedDialog, queueAnimatedDialog, showFullDialog, typingDialog } =
+    useDialogTypewriter({
+      auto: runtimeConfig.auto,
+      characterName: viewModel.dialogCharacterName,
+      dialogVisible: viewModel.layers.dialog,
+      html: viewModel.dialogHtml,
+      onAutoAdvance: autoAdvanceDialog,
+      optionsVisible: viewModel.layers.options,
+      status: viewModel.status,
+      text: viewModel.dialogText,
+      textDirection: dialogTextDirection,
+      typewriterCps,
     });
-  }, []);
-
-  const disableClickThrough = useCallback(() => {
-    stopClickThroughGuard();
-    applyClickThroughIgnored(false);
-  }, [applyClickThroughIgnored, stopClickThroughGuard]);
-
-  useEffect(() => {
-    const syncMainThemeColor = () => setMainThemeColor(readMainThemeColor());
-    setMainThemeColor(readMainThemeColor());
-    const observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(syncMainThemeColor);
-    observer?.observe(document.documentElement, { attributeFilter: ["class", "style"], attributes: true });
-    window.addEventListener("storage", syncMainThemeColor);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("storage", syncMainThemeColor);
-    };
-  }, []);
-
-  const startClickThroughGuard = useCallback(() => {
-    if (clickThroughGuardIntervalRef.current != null) {
-      return;
-    }
-    const pollCursor = async () => {
-      if (clickThroughGuardPollingRef.current) {
-        return;
-      }
-      clickThroughGuardPollingRef.current = true;
-      try {
-        const cursor = await getDesktopWindowCursorPosition();
-        if (isPointInsideChatStageHitbox(cursor.x, cursor.y)) {
-          disableClickThrough();
-        }
-      } catch (error) {
-        console.error("Desktop chat window cursor guard failed", error);
-        disableClickThrough();
-      } finally {
-        clickThroughGuardPollingRef.current = false;
-      }
-    };
-    clickThroughGuardIntervalRef.current = window.setInterval(pollCursor, clickThroughGuardIntervalMs);
-    void pollCursor();
-  }, [disableClickThrough]);
-
-  const enableClickThrough = useCallback(() => {
-    applyClickThroughIgnored(true);
-    startClickThroughGuard();
-  }, [applyClickThroughIgnored, startClickThroughGuard]);
-
-  const setClickThroughIgnored = useCallback(
-    (ignore: boolean) => {
-      if (ignore) {
-        enableClickThrough();
-      } else {
-        disableClickThrough();
-      }
-    },
-    [disableClickThrough, enableClickThrough],
-  );
-
-  useEffect(() => {
-    if (transparentBackground) {
-      document.documentElement.dataset.chatStageTransparent = "true";
-      document.body.dataset.chatStageTransparent = "true";
-    } else {
-      delete document.documentElement.dataset.chatStageTransparent;
-      delete document.body.dataset.chatStageTransparent;
-    }
-    return () => {
-      delete document.documentElement.dataset.chatStageTransparent;
-      delete document.body.dataset.chatStageTransparent;
-    };
-  }, [transparentBackground]);
-
-  useEffect(() => {
-    if (!standaloneDesktopWindow) {
-      return;
-    }
-    if (!clickThroughEnabled) {
-      setClickThroughIgnored(false);
-    }
-    return () => {
-      setClickThroughIgnored(false);
-    };
-  }, [clickThroughEnabled, setClickThroughIgnored, standaloneDesktopWindow]);
-
-  useEffect(
-    () => () => {
-      stopClickThroughGuard();
-    },
-    [stopClickThroughGuard],
-  );
+  const {
+    handleStageContextMenu,
+    handleStageFocus,
+    handleStagePointerDown,
+    handleStagePointerLeave,
+    handleStagePointerMove,
+  } = useDesktopClickThrough({
+    clickThroughEnabled,
+    standaloneDesktopWindow,
+    transparentBackground,
+  });
+  useChatStageEvents({
+    dispatch,
+    eventSeq: state.eventSeq,
+    loadFallbackMessage: t("chat.error.loadFallback"),
+    queueAnimatedDialog,
+  });
 
   useEffect(() => {
     if (!viewModel.layers.dialog) {
@@ -310,177 +181,10 @@ export function ChatStagePage() {
   }, [runtimeConfig]);
 
   useEffect(() => {
-    let cancelled = false;
-    const probeVoskModel = async () => {
-      let modelPath = VOSK_MODEL_PATH;
-      try {
-        const appConfig = await getAppConfig();
-        const configuredPath = String(appConfig.api_config.asr_extra_configs?.vosk?.model_path ?? "").trim();
-        modelPath = configuredPath || VOSK_MODEL_PATH;
-        const snapshot = await browseFiles({ path: modelPath, showHidden: false });
-        if (!cancelled) {
-          setVoskModelState({ available: snapshotLooksLikeVoskModel(snapshot), loading: false, path: modelPath });
-        }
-      } catch {
-        if (!cancelled) {
-          setVoskModelState({ available: false, loading: false, path: modelPath });
-        }
-      }
-    };
-    void probeVoskModel();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     if (!voskModelState.loading && !voskModelState.available && runtimeConfig.longPressTalk) {
       setRuntimeConfig((current) => (current.longPressTalk ? { ...current, longPressTalk: false } : current));
     }
   }, [runtimeConfig.longPressTalk, voskModelState.available, voskModelState.loading]);
-
-  useEffect(() => {
-    let mounted = true;
-    getChatSnapshot()
-      .then((snapshot: ChatSnapshot) => {
-        if (mounted) {
-          dispatch({ snapshot, type: "hydrate" });
-        }
-      })
-      .catch((error) => {
-        dispatch({ message: error instanceof Error ? error.message : t("chat.error.loadFallback"), type: "error" });
-      });
-    const unsubscribe = subscribeChatEvents((event) => {
-      if (event.type === "dialog.end" && event.seq > eventSeqRef.current) {
-        if (!event.isSystem || event.speaker.trim()) {
-          pendingAnimatedDialogKeyRef.current = buildDialogTypewriterSource({
-            characterName: event.speaker,
-            html: event.fullHtml,
-          }).cacheKey;
-          setVisibleDialogCharacters(0);
-        }
-      }
-      dispatch({ event, type: "event" });
-    });
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, [t]);
-
-  useEffect(() => {
-    const pendingKey = pendingAnimatedDialogKeyRef.current;
-    if (pendingKey === dialogSource.cacheKey) {
-      pendingAnimatedDialogKeyRef.current = null;
-      return;
-    }
-    setVisibleDialogCharacters(dialogTotalCharacters);
-  }, [dialogSource.cacheKey, dialogTotalCharacters]);
-
-  useEffect(() => {
-    if (visibleDialogCharacters >= dialogTotalCharacters) {
-      return;
-    }
-    const delayMs = Math.max(16, Math.round(1000 / Math.max(1, typewriterCps)));
-    const timeoutId = window.setTimeout(() => {
-      setVisibleDialogCharacters((current) => Math.min(dialogTotalCharacters, current + 1));
-    }, delayMs);
-    return () => window.clearTimeout(timeoutId);
-  }, [dialogTotalCharacters, typewriterCps, visibleDialogCharacters]);
-
-  // AUTO mode: once a line finishes typing, wait then advance — pauses at choices / while generating.
-  useEffect(() => {
-    if (!runtimeConfig.auto || typingDialog) {
-      return;
-    }
-    if (!viewModel.layers.dialog || viewModel.layers.options || !dialogTotalCharacters) {
-      return;
-    }
-    if (viewModel.status === "generating" || viewModel.status === "streaming") {
-      return;
-    }
-    const timeoutId = window.setTimeout(() => advanceDialogRef.current(), AUTO_ADVANCE_DELAY_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [
-    dialogSource.cacheKey,
-    dialogTotalCharacters,
-    runtimeConfig.auto,
-    typingDialog,
-    viewModel.layers.dialog,
-    viewModel.layers.options,
-    viewModel.status,
-  ]);
-
-  // Keyboard: Space/Enter advances (or skips typing), A toggles AUTO — ignored while typing in a field.
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
-        return;
-      }
-      if (modalOpen) {
-        return;
-      }
-      if (event.key === " " || event.key === "Enter") {
-        event.preventDefault();
-        advanceDialogRef.current();
-      } else if (event.key === "a" || event.key === "A") {
-        setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [modalOpen]);
-
-  const refreshHistory = async () => {
-    setHistoryLoading(true);
-    try {
-      const historyEntries = await getChatHistory();
-      dispatch({ historyEntries, type: "setHistoryEntries" });
-    } catch (error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("chat.error.commandFallback"),
-        title: t("common.operationFailed"),
-      });
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
-  const sendCommand = async (command: ChatCommand) => {
-    if (command.type === "clear-history" && !confirmClearHistory) {
-      setConfirmClearHistory(true);
-      return;
-    }
-    try {
-      const snapshot = await sendChatCommand(command);
-      if (command.type !== "copy-history") {
-        dispatch({ snapshot, type: "hydrate" });
-      }
-      if (command.type === "copy-history") {
-        showToast({ kind: "success", title: t("chat.toast.historyCopied") });
-      }
-      if (command.type === "open-history") {
-        showToast({
-          kind: "success",
-          message: snapshot.openedPath || snapshot.historyPath,
-          title: t("chat.toast.historyOpened"),
-        });
-      }
-      if (command.type === "clear-history") {
-        setConfirmClearHistory(false);
-        showToast({ kind: "success", title: t("chat.toast.historyCleared") });
-      }
-    } catch (error) {
-      dispatch({ status: "idle", type: "setStatus" });
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("chat.error.commandFallback"),
-        title: t("common.operationFailed"),
-      });
-    }
-  };
 
   const submit = () => {
     const text = viewModel.inputDraft.trim();
@@ -559,17 +263,26 @@ export function ChatStagePage() {
     }));
   };
 
-  const advanceDialog = () => {
+  const advanceDialog = useCallback(() => {
     if (typingDialog) {
-      setVisibleDialogCharacters(dialogTotalCharacters);
+      showFullDialog();
       return;
     }
     if (!viewModel.layers.dialog || !dialogTotalCharacters) {
       return;
     }
     void sendCommand({ type: "dialog-advance" });
-  };
-  advanceDialogRef.current = advanceDialog;
+  }, [dialogTotalCharacters, sendCommand, showFullDialog, typingDialog, viewModel.layers.dialog]);
+
+  const toggleAuto = useCallback(() => {
+    setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
+  }, []);
+
+  useChatStageKeyboardShortcuts({
+    disabled: modalOpen,
+    onAdvance: advanceDialog,
+    onToggleAuto: toggleAuto,
+  });
 
   const openHistoryDialog = () => {
     setHistoryDialogOpen(true);
@@ -583,50 +296,6 @@ export function ChatStagePage() {
       snapshot: state,
     });
   };
-
-  const handleStagePointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (!clickThroughEnabled) {
-        return;
-      }
-      if (isChatStageHitbox(event.target)) {
-        setClickThroughIgnored(false);
-        return;
-      }
-      setClickThroughIgnored(true);
-    },
-    [clickThroughEnabled, setClickThroughIgnored],
-  );
-
-  const handleStagePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (!clickThroughEnabled || isChatStageHitbox(event.target)) {
-        return;
-      }
-      setClickThroughIgnored(true);
-    },
-    [clickThroughEnabled, setClickThroughIgnored],
-  );
-
-  const handleStagePointerLeave = useCallback(() => {
-    if (standaloneDesktopWindow) {
-      setClickThroughIgnored(false);
-    }
-  }, [setClickThroughIgnored, standaloneDesktopWindow]);
-
-  const handleStageFocus = useCallback(
-    (event: FocusEvent<HTMLElement>) => {
-      if (clickThroughEnabled && isChatStageHitbox(event.target)) {
-        setClickThroughIgnored(false);
-      }
-    },
-    [clickThroughEnabled, setClickThroughIgnored],
-  );
-
-  const handleStageContextMenu = useCallback((event: ReactMouseEvent<HTMLElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-  }, []);
 
   const dialogToolbar = (
     <DialogStageControls

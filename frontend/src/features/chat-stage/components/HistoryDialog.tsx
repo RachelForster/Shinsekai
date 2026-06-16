@@ -1,12 +1,14 @@
-import { useEffect, useId, useRef, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { GitFork, RotateCcw, X } from "lucide-react";
 
 import type { ChatHistoryEntry } from "../../../shared/platform/types";
 import { Button, IconButton } from "../../../shared/ui";
 import { useI18n } from "../../../shared/i18n";
+import { ChatStageModal } from "./ChatStageModal";
 
 const defaultUserDisplayName = "你";
 const hiddenSystemHistorySpeakers = new Set(["scene", "场景", "bgm"]);
+const historyRenderBatchSize = 120;
 
 function normalizeUserDisplayName(value?: string) {
   return value?.trim() || defaultUserDisplayName;
@@ -96,6 +98,10 @@ function isHiddenSystemHistoryEntry(entry: ChatHistoryEntry, dialog: { speaker: 
   return /^\s*(?:scene|场景|bgm)\s*[：:]/i.test(entry.text);
 }
 
+function normalizeHistorySearch(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
 export function HistoryDialog({
   entries,
   forkEnabled,
@@ -120,139 +126,162 @@ export function HistoryDialog({
   const { t } = useI18n();
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [query, setQuery] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(historyRenderBatchSize);
 
   useEffect(() => {
-    if (!open) {
-      return;
+    if (open) {
+      setVisibleLimit(historyRenderBatchSize);
     }
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    window.setTimeout(() => closeButtonRef.current?.focus(), 0);
-    return () => previous?.focus();
-  }, [open]);
+  }, [open, query]);
 
-  if (!open) {
-    return null;
-  }
-
-  const onBackdropMouseDown = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
-
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      onClose();
-    }
-  };
-  const roleLabels: Record<ChatHistoryEntry["role"], string> = {
-    assistant: t("chat.history.role.assistant"),
-    options: t("chat.history.role.options"),
-    system: t("chat.history.role.system"),
-    user: t("chat.history.role.user"),
-  };
-  const visibleEntries = entries
-    .map((entry) => {
+  const roleLabels = useMemo<Record<ChatHistoryEntry["role"], string>>(
+    () => ({
+      assistant: t("chat.history.role.assistant"),
+      options: t("chat.history.role.options"),
+      system: t("chat.history.role.system"),
+      user: t("chat.history.role.user"),
+    }),
+    [t],
+  );
+  const normalizedQuery = normalizeHistorySearch(query);
+  const visibleEntries = useMemo(() => {
+    const mapped = entries.map((entry) => {
       const dialog = splitHistoryEntryText(entry, userDisplayName, roleLabels);
       return {
         dialog,
         entry,
         localTime: dialog.localTime || historyEntryLocalTime(entry),
       };
-    })
-    .filter(({ dialog, entry }) => !isHiddenSystemHistoryEntry(entry, dialog));
+    });
+    return mapped
+      .filter(({ dialog, entry }) => !isHiddenSystemHistoryEntry(entry, dialog))
+      .filter(({ dialog, entry }) => {
+        if (!normalizedQuery) {
+          return true;
+        }
+        const haystack = `${dialog.speaker} ${dialog.body} ${roleLabels[entry.role]}`.toLocaleLowerCase();
+        return haystack.includes(normalizedQuery);
+      });
+  }, [entries, normalizedQuery, roleLabels, userDisplayName]);
+  const renderedEntries = visibleEntries.slice(0, visibleLimit);
+  const moreEntriesAvailable = renderedEntries.length < visibleEntries.length;
+
+  if (!open) {
+    return null;
+  }
 
   return (
-    <div className="chat-history-backdrop" onMouseDown={onBackdropMouseDown} role="presentation">
-      <section
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="chat-history-dialog"
-        onKeyDown={onKeyDown}
-        role="dialog"
-      >
-        <header className="chat-history-dialog__header">
-          <div className="chat-history-dialog__heading">
-            <span className="chat-history-dialog__eyebrow">LOG</span>
-            <h2 className="chat-history-dialog__title" id={titleId}>
-              {t("chat.history.title")}
-            </h2>
-            <p className="chat-history-dialog__summary">{t("chat.history.count", { count: visibleEntries.length })}</p>
-          </div>
-          <IconButton
-            className="chat-history-dialog__close"
-            label={t("common.close")}
-            onClick={onClose}
-            ref={closeButtonRef}
-          >
-            <X aria-hidden className="icon-button__icon" />
-          </IconButton>
-        </header>
-        <div className="chat-history-dialog__body">
-          {loading ? <p className="chat-history__empty">{t("chat.history.loading")}</p> : null}
-          {!loading && visibleEntries.length === 0 ? (
-            <p className="chat-history__empty">{t("chat.history.empty")}</p>
-          ) : null}
-          {!loading && visibleEntries.length > 0 ? (
-            <div className="chat-history__list">
-              {visibleEntries.map(({ dialog, entry, localTime }, index) => {
-                return (
-                  <section
-                    className="chat-history__entry"
-                    data-role={entry.role}
-                    data-tone={historyEntryTone(entry.role)}
-                    key={entry.id}
-                  >
-                    <header className="chat-history__entry-header">
-                      <div className="chat-history__nameplate">
-                        <span aria-hidden className="chat-history__nameplate-accent" />
-                        <span className="chat-history__speaker">{dialog.speaker}</span>
-                        <span className="chat-history__role">{roleLabels[entry.role]}</span>
-                      </div>
-                      <div className="chat-history__meta">
-                        <span className="chat-history__index">
-                          {t("chat.history.entryIndex", { index: index + 1 })}
-                        </span>
-                        {localTime ? (
-                          <time className="chat-history__time" dateTime={new Date(entry.createdAt ?? 0).toISOString()}>
-                            {localTime}
-                          </time>
-                        ) : null}
-                      </div>
-                    </header>
-                    <p className="chat-history__text">{dialog.body}</p>
-                    {entry.role === "user" && entry.revertUserIndex != null ? (
-                      <div className="chat-history__actions">
-                        {forkEnabled ? (
-                          <Button
-                            className="chat-history__fork"
-                            icon={<GitFork aria-hidden className="button__icon" />}
-                            onClick={() => onFork(entry.revertUserIndex!)}
-                          >
-                            {t("chat.history.fork")}
-                          </Button>
-                        ) : null}
-                        <Button
-                          className="chat-history__revert"
-                          icon={<RotateCcw aria-hidden className="button__icon" />}
-                          onClick={() => onRevert(entry.revertUserIndex!)}
-                        >
-                          {t("chat.history.revert")}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </section>
-                );
-              })}
-            </div>
-          ) : null}
+    <ChatStageModal
+      backdropClassName="chat-history-backdrop"
+      dialogClassName="chat-history-dialog"
+      initialFocusRef={closeButtonRef}
+      labelledBy={titleId}
+      onClose={onClose}
+      open={open}
+    >
+      <header className="chat-history-dialog__header">
+        <div className="chat-history-dialog__heading">
+          <span className="chat-history-dialog__eyebrow">LOG</span>
+          <h2 className="chat-history-dialog__title" id={titleId}>
+            {t("chat.history.title")}
+          </h2>
+          <p className="chat-history-dialog__summary">{t("chat.history.count", { count: visibleEntries.length })}</p>
         </div>
-        <footer className="chat-history-dialog__footer">
-          <Button onClick={onRefresh}>{t("common.refresh")}</Button>
-          <Button onClick={onClose}>{t("common.close")}</Button>
-        </footer>
-      </section>
-    </div>
+        <IconButton
+          className="chat-history-dialog__close"
+          label={t("common.close")}
+          onClick={onClose}
+          ref={closeButtonRef}
+        >
+          <X aria-hidden className="icon-button__icon" />
+        </IconButton>
+      </header>
+      <div className="chat-history-dialog__body">
+        <div className="chat-history__filters">
+          <input
+            aria-label={t("chat.history.search")}
+            className="chat-history__search"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("chat.history.search")}
+            type="search"
+            value={query}
+          />
+          <span className="chat-history__visible-count">
+            {t("chat.history.visibleCount", {
+              total: visibleEntries.length,
+              visible: Math.min(renderedEntries.length, visibleEntries.length),
+            })}
+          </span>
+        </div>
+        {loading ? <p className="chat-history__empty">{t("chat.history.loading")}</p> : null}
+        {!loading && visibleEntries.length === 0 ? (
+          <p className="chat-history__empty">{t("chat.history.empty")}</p>
+        ) : null}
+        {!loading && visibleEntries.length > 0 ? (
+          <div className="chat-history__list">
+            {renderedEntries.map(({ dialog, entry, localTime }, index) => {
+              return (
+                <section
+                  className="chat-history__entry"
+                  data-role={entry.role}
+                  data-tone={historyEntryTone(entry.role)}
+                  key={entry.id}
+                >
+                  <header className="chat-history__entry-header">
+                    <div className="chat-history__nameplate">
+                      <span aria-hidden className="chat-history__nameplate-accent" />
+                      <span className="chat-history__speaker">{dialog.speaker}</span>
+                      <span className="chat-history__role">{roleLabels[entry.role]}</span>
+                    </div>
+                    <div className="chat-history__meta">
+                      <span className="chat-history__index">{t("chat.history.entryIndex", { index: index + 1 })}</span>
+                      {localTime ? (
+                        <time className="chat-history__time" dateTime={new Date(entry.createdAt ?? 0).toISOString()}>
+                          {localTime}
+                        </time>
+                      ) : null}
+                    </div>
+                  </header>
+                  <p className="chat-history__text">{dialog.body}</p>
+                  {entry.role === "user" && entry.revertUserIndex != null ? (
+                    <div className="chat-history__actions">
+                      {forkEnabled ? (
+                        <Button
+                          className="chat-history__fork"
+                          icon={<GitFork aria-hidden className="button__icon" />}
+                          onClick={() => onFork(entry.revertUserIndex!)}
+                        >
+                          {t("chat.history.fork")}
+                        </Button>
+                      ) : null}
+                      <Button
+                        className="chat-history__revert"
+                        icon={<RotateCcw aria-hidden className="button__icon" />}
+                        onClick={() => onRevert(entry.revertUserIndex!)}
+                      >
+                        {t("chat.history.revert")}
+                      </Button>
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
+            {moreEntriesAvailable ? (
+              <Button
+                className="chat-history__show-more"
+                onClick={() => setVisibleLimit((current) => current + historyRenderBatchSize)}
+              >
+                {t("chat.history.showMore", { count: visibleEntries.length - renderedEntries.length })}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      <footer className="chat-history-dialog__footer">
+        <Button onClick={onRefresh}>{t("common.refresh")}</Button>
+        <Button onClick={onClose}>{t("common.close")}</Button>
+      </footer>
+    </ChatStageModal>
   );
 }

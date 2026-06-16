@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Ear, EarOff, Mic, MicOff, Plus, Send } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
@@ -10,6 +10,7 @@ import {
   speechRecognitionLanguage,
   type BrowserSpeechRecognition,
 } from "../speechRecognition";
+import { useDismissableLayer } from "../hooks/useDismissableLayer";
 
 export function InputLayer({
   asrPaused,
@@ -45,6 +46,7 @@ export function InputLayer({
   const pillLayout = inputLayout === "pill";
   const pressToTalk = pillLayout && longPressTalkEnabled;
   const canSubmit = Boolean(value.trim()) && !disabled;
+  const closePanel = useCallback(() => setPanelOpen(false), []);
 
   useEffect(() => {
     valueRef.current = value;
@@ -99,27 +101,7 @@ export function InputLayer({
     }
   }, [disabled, pressToTalk]);
 
-  useEffect(() => {
-    if (!panelOpen) {
-      return;
-    }
-    const handlePointerDown = (event: globalThis.PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setPanelOpen(false);
-      }
-    };
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPanelOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    document.addEventListener("keydown", handleKeyDown, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-      document.removeEventListener("keydown", handleKeyDown, true);
-    };
-  }, [panelOpen]);
+  useDismissableLayer({ active: panelOpen, onDismiss: closePanel, rootRef });
 
   useEffect(() => {
     if (hidden || !pillLayout) {

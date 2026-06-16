@@ -99,4 +99,28 @@ describe("dialog typewriter helpers", () => {
       text: "beta alpha\ndelta gamma",
     });
   });
+
+  it("keeps mixed inline html on the original line when rendering right-to-left", () => {
+    const source = buildDialogTypewriterSource({
+      html: "<p>你好 <strong>traveler</strong> <em>world</em><br><span>再见 alpha</span></p>",
+      text: "你好 traveler world\n再见 alpha",
+    });
+
+    expect(source.fullRtlHtml).toBe("<p><em>world</em> <strong>traveler</strong> 好你<br><span>alpha 见再</span></p>");
+    expect(source.totalRtlCharacters).toBe(7);
+    expect(renderDialogTypewriterFrame(source, 5, "rtl")).toEqual({
+      html: "<p><em>world</em> <strong>traveler</strong> 好你<br><span>alpha</span></p>",
+      text: "world traveler 好你\nalpha",
+    });
+  });
+
+  it("reuses cached typewriter sources for identical raw input", () => {
+    const input = {
+      characterName: "Mio",
+      html: "<p><b>Mio</b>: Hello <strong>world</strong></p>",
+      text: "Mio: Hello world",
+    };
+
+    expect(buildDialogTypewriterSource(input)).toBe(buildDialogTypewriterSource(input));
+  });
 });

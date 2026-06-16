@@ -1,19 +1,10 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type FormEvent,
-  type KeyboardEvent,
-  type MouseEvent,
-} from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { Check, ChevronDown, ChevronRight, GitBranch, Pencil, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatConversationBranch, ChatConversationTree } from "../../../shared/platform/types";
 import { Button, IconButton } from "../../../shared/ui";
+import { ChatStageModal } from "./ChatStageModal";
 
 function fallbackBranches(tree?: ChatConversationTree): ChatConversationBranch[] {
   if (tree?.branches?.length) {
@@ -80,19 +71,11 @@ export function ConversationTreeDialog({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    window.setTimeout(() => closeButtonRef.current?.focus(), 0);
-    return () => previous?.focus();
-  }, [open]);
-
   const branches = useMemo(() => fallbackBranches(tree), [tree]);
   const branchIds = useMemo(() => new Set(branches.map((branch) => branch.id)), [branches]);
   const visibleBranches = useMemo(() => collectVisibleBranches(branches, collapsedIds), [branches, collapsedIds]);
   const activeBranchId = tree?.activeBranchId || branches[0]?.id || "main";
+  const largeTree = branches.length > 200;
 
   useEffect(() => {
     setCollapsedIds((current) => {
@@ -105,17 +88,6 @@ export function ConversationTreeDialog({
     return null;
   }
 
-  const onBackdropMouseDown = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      onClose();
-    }
-  };
   const toggleCollapsed = (branchId: string) => {
     setCollapsedIds((current) => {
       const next = new Set(current);
@@ -145,131 +117,134 @@ export function ConversationTreeDialog({
   };
 
   return (
-    <div className="chat-branch-backdrop" onMouseDown={onBackdropMouseDown} role="presentation">
-      <section
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="chat-branch-dialog"
-        onKeyDown={onKeyDown}
-        role="dialog"
-      >
-        <header className="chat-branch-dialog__header">
-          <div className="chat-branch-dialog__heading">
-            <span className="chat-branch-dialog__eyebrow">{t("chat.branches.eyebrow")}</span>
-            <h2 className="chat-branch-dialog__title" id={titleId}>
-              {t("chat.branches.title")}
-            </h2>
-          </div>
-          <IconButton
-            className="chat-branch-dialog__close"
-            label={t("common.close")}
-            onClick={onClose}
-            ref={closeButtonRef}
-          >
-            <X aria-hidden className="icon-button__icon" />
-          </IconButton>
-        </header>
-        <div className="chat-branch-dialog__body">
-          <div className="chat-branch-tree" role="list">
-            {visibleBranches.map(({ branch, childCount, collapsed, depth }) => {
-              const active = branch.id === activeBranchId;
-              const label = branch.label || branch.id;
-              const editing = renamingId === branch.id;
-              return (
-                <article
-                  className="chat-branch-tree__node"
-                  data-active={active ? "true" : "false"}
-                  key={branch.id}
-                  role="listitem"
-                  style={{ "--branch-depth": String(depth) } as CSSProperties}
-                >
-                  <div className="chat-branch-tree__rail">
-                    {childCount > 0 ? (
-                      <button
-                        aria-expanded={!collapsed}
-                        aria-label={t(collapsed ? "chat.branches.expand" : "chat.branches.collapse", { name: label })}
-                        className="chat-branch-tree__toggle"
-                        onClick={() => toggleCollapsed(branch.id)}
-                        type="button"
-                      >
-                        {collapsed ? (
-                          <ChevronRight aria-hidden className="chat-branch-tree__toggle-icon" />
-                        ) : (
-                          <ChevronDown aria-hidden className="chat-branch-tree__toggle-icon" />
-                        )}
-                      </button>
-                    ) : (
-                      <span className="chat-branch-tree__leaf" aria-hidden />
-                    )}
-                  </div>
-                  <div className="chat-branch-tree__content">
-                    {editing ? (
-                      <form className="chat-branch-tree__rename" onSubmit={(event) => submitRename(event, branch)}>
-                        <input
-                          aria-label={t("chat.branches.renameInput")}
-                          autoFocus
-                          className="chat-branch-tree__name-input"
-                          onChange={(event) => setRenameValue(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Escape") {
-                              event.stopPropagation();
-                              cancelRename();
-                            }
-                          }}
-                          value={renameValue}
-                        />
-                        <div className="chat-branch-tree__rename-actions">
-                          <button
-                            aria-label={t("chat.branches.saveName")}
-                            className="chat-branch-tree__rename-button"
-                            type="submit"
-                          >
-                            <Check aria-hidden className="chat-branch-tree__rename-icon" />
-                          </button>
-                          <button
-                            aria-label={t("chat.branches.cancelRename")}
-                            className="chat-branch-tree__rename-button"
-                            onClick={cancelRename}
-                            type="button"
-                          >
-                            <X aria-hidden className="chat-branch-tree__rename-icon" />
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      <div className="chat-branch-tree__meta">
-                        <GitBranch aria-hidden className="chat-branch-tree__icon" />
-                        <span className="chat-branch-tree__label">{label}</span>
-                        {active ? <span className="chat-branch-tree__active">{t("chat.branches.active")}</span> : null}
-                      </div>
-                    )}
-                    {branch.forkedFromText ? (
-                      <p className="chat-branch-tree__forked">
-                        {t("chat.branches.forkedFrom", { text: branch.forkedFromText })}
-                      </p>
-                    ) : (
-                      <p className="chat-branch-tree__forked">{t("chat.branches.root")}</p>
-                    )}
-                  </div>
-                  <div className="chat-branch-tree__actions">
+    <ChatStageModal
+      backdropClassName="chat-branch-backdrop"
+      dialogClassName="chat-branch-dialog"
+      initialFocusRef={closeButtonRef}
+      labelledBy={titleId}
+      onClose={onClose}
+      open={open}
+    >
+      <header className="chat-branch-dialog__header">
+        <div className="chat-branch-dialog__heading">
+          <span className="chat-branch-dialog__eyebrow">{t("chat.branches.eyebrow")}</span>
+          <h2 className="chat-branch-dialog__title" id={titleId}>
+            {t("chat.branches.title")}
+          </h2>
+          <p className="chat-branch-dialog__summary">
+            {t("chat.branches.count", { count: branches.length, visible: visibleBranches.length })}
+          </p>
+        </div>
+        <IconButton
+          className="chat-branch-dialog__close"
+          label={t("common.close")}
+          onClick={onClose}
+          ref={closeButtonRef}
+        >
+          <X aria-hidden className="icon-button__icon" />
+        </IconButton>
+      </header>
+      <div className="chat-branch-dialog__body">
+        {largeTree ? <p className="chat-branch-dialog__notice">{t("chat.branches.largeTree")}</p> : null}
+        <div className="chat-branch-tree" role="list">
+          {visibleBranches.map(({ branch, childCount, collapsed, depth }) => {
+            const active = branch.id === activeBranchId;
+            const label = branch.label || branch.id;
+            const editing = renamingId === branch.id;
+            return (
+              <article
+                className="chat-branch-tree__node"
+                data-active={active ? "true" : "false"}
+                key={branch.id}
+                role="listitem"
+                style={{ "--branch-depth": String(depth) } as CSSProperties}
+              >
+                <div className="chat-branch-tree__rail">
+                  {childCount > 0 ? (
                     <button
-                      aria-label={t("chat.branches.rename", { name: label })}
-                      className="chat-branch-tree__edit"
-                      onClick={() => beginRename(branch)}
+                      aria-expanded={!collapsed}
+                      aria-label={t(collapsed ? "chat.branches.expand" : "chat.branches.collapse", { name: label })}
+                      className="chat-branch-tree__toggle"
+                      onClick={() => toggleCollapsed(branch.id)}
                       type="button"
                     >
-                      <Pencil aria-hidden className="chat-branch-tree__edit-icon" />
+                      {collapsed ? (
+                        <ChevronRight aria-hidden className="chat-branch-tree__toggle-icon" />
+                      ) : (
+                        <ChevronDown aria-hidden className="chat-branch-tree__toggle-icon" />
+                      )}
                     </button>
-                    <Button disabled={active} onClick={() => onSwitchBranch(branch.id)}>
-                      {active ? t("chat.branches.current") : t("chat.branches.switch")}
-                    </Button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                  ) : (
+                    <span className="chat-branch-tree__leaf" aria-hidden />
+                  )}
+                </div>
+                <div className="chat-branch-tree__content">
+                  {editing ? (
+                    <form className="chat-branch-tree__rename" onSubmit={(event) => submitRename(event, branch)}>
+                      <input
+                        aria-label={t("chat.branches.renameInput")}
+                        autoFocus
+                        className="chat-branch-tree__name-input"
+                        onChange={(event) => setRenameValue(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.stopPropagation();
+                            cancelRename();
+                          }
+                        }}
+                        value={renameValue}
+                      />
+                      <div className="chat-branch-tree__rename-actions">
+                        <button
+                          aria-label={t("chat.branches.saveName")}
+                          className="chat-branch-tree__rename-button"
+                          type="submit"
+                        >
+                          <Check aria-hidden className="chat-branch-tree__rename-icon" />
+                        </button>
+                        <button
+                          aria-label={t("chat.branches.cancelRename")}
+                          className="chat-branch-tree__rename-button"
+                          onClick={cancelRename}
+                          type="button"
+                        >
+                          <X aria-hidden className="chat-branch-tree__rename-icon" />
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="chat-branch-tree__meta">
+                      <GitBranch aria-hidden className="chat-branch-tree__icon" />
+                      <span className="chat-branch-tree__label">{label}</span>
+                      {active ? <span className="chat-branch-tree__active">{t("chat.branches.active")}</span> : null}
+                    </div>
+                  )}
+                  {branch.forkedFromText ? (
+                    <p className="chat-branch-tree__forked">
+                      {t("chat.branches.forkedFrom", { text: branch.forkedFromText })}
+                    </p>
+                  ) : (
+                    <p className="chat-branch-tree__forked">{t("chat.branches.root")}</p>
+                  )}
+                </div>
+                <div className="chat-branch-tree__actions">
+                  <button
+                    aria-label={t("chat.branches.rename", { name: label })}
+                    className="chat-branch-tree__edit"
+                    onClick={() => beginRename(branch)}
+                    type="button"
+                  >
+                    <Pencil aria-hidden className="chat-branch-tree__edit-icon" />
+                  </button>
+                  <Button disabled={active} onClick={() => onSwitchBranch(branch.id)}>
+                    {active ? t("chat.branches.current") : t("chat.branches.switch")}
+                  </Button>
+                </div>
+              </article>
+            );
+          })}
         </div>
-      </section>
-    </div>
+      </div>
+    </ChatStageModal>
   );
 }

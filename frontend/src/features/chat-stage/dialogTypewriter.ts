@@ -1,5 +1,21 @@
 import { markdownToDialogHtml } from "./markdownRenderer";
 
+const typewriterCacheMaxEntries = 96;
+
+function refreshCacheEntry<Key, Value>(cache: Map<Key, Value>, key: Key, value: Value) {
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+  cache.set(key, value);
+  while (cache.size > typewriterCacheMaxEntries) {
+    const oldest = cache.keys().next();
+    if (oldest.done) {
+      break;
+    }
+    cache.delete(oldest.value);
+  }
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -90,11 +106,15 @@ function visibleDirectionalUnitLength(value: string) {
   return directionalTextTokens(value, false).filter((token) => token.visible).length;
 }
 
-function sliceVisibleDirectionalText(value: string, visibleCharacters: number) {
+function sliceVisibleDirectionalText(
+  value: string,
+  visibleCharacters: number,
+  options: { preserveLeadingWhitespace?: boolean; preserveWhitespaceOnly?: boolean } = {},
+) {
   const tokens = directionalTextTokens(value, false);
   let remaining = Math.max(0, visibleCharacters);
   let output = "";
-  let emittedVisible = false;
+  let emittedVisible = options.preserveLeadingWhitespace === true;
   for (const token of tokens) {
     if (token.visible) {
       if (remaining <= 0) {
@@ -109,11 +129,18 @@ function sliceVisibleDirectionalText(value: string, visibleCharacters: number) {
       output += token.text;
     }
   }
+  if (options.preserveWhitespaceOnly && output.trim() === "") {
+    return output;
+  }
   return output.replace(/[^\S\r\n]+$/u, "");
 }
 
-function reorderRtlPlainText(value: string) {
-  return tokensToText(directionalTextTokens(value, true)).replace(/[^\S\r\n]+$/u, "");
+function reorderRtlPlainText(value: string, options: { preserveWhitespaceOnly?: boolean } = {}) {
+  const reordered = tokensToText(directionalTextTokens(value, true));
+  if (options.preserveWhitespaceOnly && value.trim() === "") {
+    return reordered;
+  }
+  return reordered.replace(/[^\S\r\n]+$/u, "");
 }
 
 function visibleTextLength(value: string) {
@@ -148,12 +175,22 @@ function sliceVisibleText(value: string, visibleCharacters: number, direction: D
     : sliceVisibleTextLtr(value, visibleCharacters);
 }
 
+const parsedTemplateCache = new Map<string, DocumentFragment>();
+
 function createTemplate(html: string) {
   if (typeof document === "undefined") {
     return null;
   }
   const template = document.createElement("template");
+  const cached = parsedTemplateCache.get(html);
+  if (cached) {
+    parsedTemplateCache.delete(html);
+    parsedTemplateCache.set(html, cached);
+    template.content.append(cached.cloneNode(true));
+    return template;
+  }
   template.innerHTML = html;
+  refreshCacheEntry(parsedTemplateCache, html, template.content.cloneNode(true) as DocumentFragment);
   return template;
 }
 
@@ -356,14 +393,21 @@ function cloneNodeUntil(node: Node, remaining: { value: number }): Node | null {
   return clone;
 }
 
-function cloneNodeUntilUnits(node: Node, remaining: { value: number }): Node | null {
+function cloneNodeUntilUnits(node: Node, remaining: { emitted?: boolean; value: number }): Node | null {
   if (node.nodeType === Node.TEXT_NODE) {
     const text = node.textContent ?? "";
     if (!text) {
       return document.createTextNode("");
     }
-    const next = sliceVisibleDirectionalText(text, remaining.value);
-    remaining.value = Math.max(0, remaining.value - visibleDirectionalUnitLength(next));
+    const next = sliceVisibleDirectionalText(text, remaining.value, {
+      preserveLeadingWhitespace: remaining.emitted === true,
+      preserveWhitespaceOnly: remaining.emitted === true,
+    });
+    const visibleUnits = visibleDirectionalUnitLength(next);
+    remaining.value = Math.max(0, remaining.value - visibleUnits);
+    if (visibleUnits > 0) {
+      remaining.emitted = true;
+    }
     return next ? document.createTextNode(next) : null;
   }
 
@@ -376,6 +420,10 @@ function cloneNodeUntilUnits(node: Node, remaining: { value: number }): Node | n
     return null;
   }
   const clone = element.cloneNode(false) as Element;
+  if (element.tagName.toLowerCase() === "br") {
+    remaining.emitted = false;
+    return clone;
+  }
   for (const child of Array.from(element.childNodes)) {
     const nextChild = cloneNodeUntilUnits(child, remaining);
     if (nextChild) {
@@ -435,7 +483,7 @@ export function countVisibleHtmlUnits(html: string) {
 
 function cloneNodeAsRtlVisual(node: Node): Node | null {
   if (node.nodeType === Node.TEXT_NODE) {
-    return document.createTextNode(reorderRtlPlainText(node.textContent ?? ""));
+    return document.createTextNode(reorderRtlPlainText(node.textContent ?? "", { preserveWhitespaceOnly: true }));
   }
   if (node.nodeType !== Node.ELEMENT_NODE) {
     return null;
@@ -527,11 +575,24 @@ export interface DialogTypewriterSource {
   totalCharacters: number;
 }
 
+const dialogTypewriterSourceCache = new Map<string, DialogTypewriterSource>();
+
+function sourceInputCacheKey(input: { characterName?: string; html?: string; text?: string }) {
+  return JSON.stringify([input.characterName ?? "", input.html ?? "", input.text ?? ""]);
+}
+
 export function buildDialogTypewriterSource(input: {
   characterName?: string;
   html?: string;
   text?: string;
 }): DialogTypewriterSource {
+  const inputCacheKey = sourceInputCacheKey(input);
+  const cached = dialogTypewriterSourceCache.get(inputCacheKey);
+  if (cached) {
+    dialogTypewriterSourceCache.delete(inputCacheKey);
+    dialogTypewriterSourceCache.set(inputCacheKey, cached);
+    return cached;
+  }
   const normalizedHtml = input.html?.trim()
     ? sanitizeDialogHtml(stripLeadingSpeakerHtml(input.html, input.characterName))
     : undefined;
@@ -550,13 +611,13 @@ export function buildDialogTypewriterSource(input: {
       totalRtlCharacters: fullRtlHtml ? countVisibleHtmlUnits(fullRtlHtml) : visibleDirectionalUnitLength(fullRtlText),
     };
   };
-  if (normalizedHtml) {
-    return buildSource(`html:${normalizedHtml}`, normalizedText, normalizedHtml);
-  }
-  if (normalizedMarkdownHtml) {
-    return buildSource(`markdown:${normalizedText}`, normalizedText, normalizedMarkdownHtml);
-  }
-  return buildSource(`text:${normalizedText}`, normalizedText);
+  const source = normalizedHtml
+    ? buildSource(`html:${normalizedHtml}`, normalizedText, normalizedHtml)
+    : normalizedMarkdownHtml
+      ? buildSource(`markdown:${normalizedText}`, normalizedText, normalizedMarkdownHtml)
+      : buildSource(`text:${normalizedText}`, normalizedText);
+  refreshCacheEntry(dialogTypewriterSourceCache, inputCacheKey, source);
+  return source;
 }
 
 export function renderDialogTypewriterFrame(
