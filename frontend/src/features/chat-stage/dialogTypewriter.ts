@@ -441,12 +441,28 @@ function cloneNodeAsRtlVisual(node: Node): Node | null {
     return null;
   }
   const clone = node.cloneNode(false) as Element;
-  for (const child of Array.from(node.childNodes).reverse()) {
-    const nextChild = cloneNodeAsRtlVisual(child);
-    if (nextChild) {
-      clone.appendChild(nextChild);
+  let lineNodes: Node[] = [];
+  const appendLine = () => {
+    for (const child of [...lineNodes].reverse()) {
+      const nextChild = cloneNodeAsRtlVisual(child);
+      if (nextChild) {
+        clone.appendChild(nextChild);
+      }
     }
+    lineNodes = [];
+  };
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === Node.ELEMENT_NODE && (child as Element).tagName.toLowerCase() === "br") {
+      appendLine();
+      const nextChild = cloneNodeAsRtlVisual(child);
+      if (nextChild) {
+        clone.appendChild(nextChild);
+      }
+      continue;
+    }
+    lineNodes.push(child);
   }
+  appendLine();
   return clone;
 }
 
@@ -456,7 +472,7 @@ export function reorderHtmlForRtl(html: string) {
     return reorderRtlPlainText(html.replace(/<[^>]+>/g, ""));
   }
   const wrapper = document.createElement("div");
-  for (const node of Array.from(template.content.childNodes).reverse()) {
+  for (const node of Array.from(template.content.childNodes)) {
     const nextNode = cloneNodeAsRtlVisual(node);
     if (nextNode) {
       wrapper.appendChild(nextNode);

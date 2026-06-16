@@ -98,6 +98,7 @@ function isHiddenSystemHistoryEntry(entry: ChatHistoryEntry, dialog: { speaker: 
 
 export function HistoryDialog({
   entries,
+  forkEnabled,
   loading,
   onClose,
   onFork,
@@ -107,6 +108,7 @@ export function HistoryDialog({
   userDisplayName,
 }: {
   entries: ChatHistoryEntry[];
+  forkEnabled: boolean;
   loading: boolean;
   onClose: () => void;
   onFork: (userIndex: number) => void;
@@ -222,13 +224,15 @@ export function HistoryDialog({
                     <p className="chat-history__text">{dialog.body}</p>
                     {entry.role === "user" && entry.revertUserIndex != null ? (
                       <div className="chat-history__actions">
-                        <Button
-                          className="chat-history__fork"
-                          icon={<GitFork aria-hidden className="button__icon" />}
-                          onClick={() => onFork(entry.revertUserIndex!)}
-                        >
-                          {t("chat.history.fork")}
-                        </Button>
+                        {forkEnabled ? (
+                          <Button
+                            className="chat-history__fork"
+                            icon={<GitFork aria-hidden className="button__icon" />}
+                            onClick={() => onFork(entry.revertUserIndex!)}
+                          >
+                            {t("chat.history.fork")}
+                          </Button>
+                        ) : null}
                         <Button
                           className="chat-history__revert"
                           icon={<RotateCcw aria-hidden className="button__icon" />}

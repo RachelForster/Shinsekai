@@ -93,6 +93,10 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     backgroundPath: "asset://school.png",
     characterName: "Mio",
     dialogText: "Ready",
+    experimentalFeatures: {
+      conversationTree: true,
+      forkHistory: true,
+    },
     historyEntries: [
       { id: "history-0", role: "assistant", text: "Mio: Ready" },
       {
@@ -431,6 +435,33 @@ describe("ChatStagePage", () => {
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "branch-2", type: "switch-branch" }),
     );
+  });
+
+  it("hides experimental fork and conversation tree controls unless enabled", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        experimentalFeatures: { conversationTree: false, forkHistory: false },
+      }),
+    );
+    mocks.getChatHistory.mockResolvedValueOnce([
+      {
+        createdAt: userHistoryCreatedAt,
+        id: "history-1",
+        revertUserIndex: 0,
+        role: "user",
+        text: "你: hello",
+      },
+    ] satisfies ChatHistoryEntry[]);
+
+    renderPage();
+    await screen.findByText("Ready");
+
+    expect(screen.queryByRole("button", { name: "Open conversation tree" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open history" }));
+    const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    expect(within(dialog).queryByRole("button", { name: "Fork" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Revert to previous turn" })).toBeInTheDocument();
   });
 
   it("uses opt-in theme placement for the detached dialog toolbar and hides the nameplate on start options", async () => {

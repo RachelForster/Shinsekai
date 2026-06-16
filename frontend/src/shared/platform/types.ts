@@ -87,6 +87,8 @@ export interface SystemConfig {
   chat_ui_theme_path: string;
   chat_ui_theme_id: string;
   chat_ui_runtime_mode: string;
+  react_chat_fork_experimental_enabled: boolean;
+  react_chat_flowchart_experimental_enabled: boolean;
   mirror_auto_detect_china: boolean;
   mirror_region: string;
   huggingface_mirror_url: string;
@@ -710,6 +712,11 @@ export interface ChatConversationTree {
   branches: ChatConversationBranch[];
 }
 
+export interface ChatExperimentalFeatures {
+  conversationTree: boolean;
+  forkHistory: boolean;
+}
+
 export interface ChatSnapshot {
   backgroundPath?: string;
   busyDurationSeconds?: number;
@@ -721,6 +728,7 @@ export interface ChatSnapshot {
   dialogText: string;
   /** 后端已折叠进该 snapshot 的最新事件 seq，用于重连恢复幂等处理。 */
   eventSeq?: number;
+  experimentalFeatures?: ChatExperimentalFeatures;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
   inputDraft: string;

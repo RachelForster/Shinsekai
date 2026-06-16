@@ -86,4 +86,17 @@ describe("dialog typewriter helpers", () => {
       text: "world traveler 好你",
     });
   });
+
+  it("keeps right-to-left reversal inside each original line", () => {
+    const source = buildDialogTypewriterSource({
+      html: "<p>alpha beta<br>gamma delta</p>",
+      text: "alpha beta\ngamma delta",
+    });
+
+    expect(source.fullRtlHtml).toBe("<p>beta alpha<br>delta gamma</p>");
+    expect(renderDialogTypewriterFrame(source, source.totalRtlCharacters, "rtl")).toEqual({
+      html: "<p>beta alpha<br>delta gamma</p>",
+      text: "beta alpha\ndelta gamma",
+    });
+  });
 });

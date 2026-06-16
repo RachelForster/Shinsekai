@@ -51,6 +51,19 @@ class _FakeConnection:
         self.messages.append(dict(payload))
 
 
+def _config_manager_with_chat_experiments(*, fork: bool = False, flowchart: bool = False):
+    return SimpleNamespace(
+        config=SimpleNamespace(
+            system_config=SimpleNamespace(
+                chat_ui_runtime_mode="react",
+                react_chat_flowchart_experimental_enabled=flowchart,
+                react_chat_fork_experimental_enabled=fork,
+                voice_language="ja",
+            )
+        )
+    )
+
+
 def _free_bridge_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -247,7 +260,11 @@ class ChatStreamCommandTests(unittest.TestCase):
 
     def test_handle_chat_command_wraps_fork_history_with_cmd_id(self):
         chat_stream = _StubChatStream()
-        state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+            config_manager=_config_manager_with_chat_experiments(fork=True),
+        )
 
         snapshot = _handle_chat_command(state, {"payload": {"userIndex": 2}, "type": "fork-history"})
 
@@ -263,7 +280,11 @@ class ChatStreamCommandTests(unittest.TestCase):
 
     def test_handle_chat_command_wraps_switch_branch_with_cmd_id(self):
         chat_stream = _StubChatStream()
-        state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+            config_manager=_config_manager_with_chat_experiments(flowchart=True),
+        )
 
         snapshot = _handle_chat_command(state, {"payload": "branch-2", "type": "switch-branch"})
 
@@ -279,7 +300,11 @@ class ChatStreamCommandTests(unittest.TestCase):
 
     def test_handle_chat_command_wraps_rename_branch_with_cmd_id(self):
         chat_stream = _StubChatStream()
-        state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+            config_manager=_config_manager_with_chat_experiments(flowchart=True),
+        )
 
         snapshot = _handle_chat_command(
             state,
@@ -295,6 +320,19 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(command["payload"], {"branchId": "branch-2", "label": "Side route"})
         self.assertIsInstance(command["cmdId"], str)
         self.assertTrue(command["cmdId"])
+
+    def test_handle_chat_command_rejects_disabled_experimental_branch_features(self):
+        chat_stream = _StubChatStream()
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+            config_manager=_config_manager_with_chat_experiments(),
+        )
+
+        with self.assertRaisesRegex(PermissionError, "Fork 实验功能未启用"):
+            _handle_chat_command(state, {"payload": {"userIndex": 2}, "type": "fork-history"})
+        with self.assertRaisesRegex(PermissionError, "分支流程图实验功能未启用"):
+            _handle_chat_command(state, {"payload": "branch-2", "type": "switch-branch"})
 
     def test_handle_chat_command_clear_history_removes_directory_storage_without_runtime_stream(self):
         class _Config:

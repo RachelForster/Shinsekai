@@ -6,10 +6,12 @@ from frontend_bridge_core.runtime_dependencies import runtime_dependency_error_f
 
 
 class _SystemConfig:
+    chat_ui_runtime_mode = "react"
     live_room_id = ""
 
     def model_copy(self, *, deep: bool):
         clone = _SystemConfig()
+        clone.chat_ui_runtime_mode = self.chat_ui_runtime_mode
         clone.live_room_id = self.live_room_id
         return clone
 

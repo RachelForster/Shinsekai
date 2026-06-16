@@ -65,6 +65,8 @@ function mockSystemConfig() {
       chat_ui_runtime_mode: "react",
       chat_ui_theme_id: "windborne-adventure",
       chat_ui_theme_path: "",
+      react_chat_fork_experimental_enabled: false,
+      react_chat_flowchart_experimental_enabled: false,
       font_pixel_size: 0,
       height: 0,
       live_room_id: "",

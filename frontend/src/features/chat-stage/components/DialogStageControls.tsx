@@ -35,6 +35,7 @@ export function DialogStageControls({
   onLockedChange,
   onOpenBranches,
   onOpenHistory,
+  showBranches,
   showAsrControl,
 }: {
   asrPaused: boolean;
@@ -51,6 +52,7 @@ export function DialogStageControls({
   onLockedChange: (locked: boolean) => void;
   onOpenBranches: () => void;
   onOpenHistory: () => void;
+  showBranches: boolean;
   showAsrControl: boolean;
 }) {
   const { t } = useI18n();
@@ -100,15 +102,17 @@ export function DialogStageControls({
           >
             {t("chat.actionBar.history")}
           </ToolbarButton>
-          <ToolbarButton
-            aria-label={t("chat.toolbar.openBranches")}
-            className="dialog-stage-controls__button"
-            icon={<GitBranch aria-hidden className="button__icon" />}
-            onClick={onOpenBranches}
-            tooltip={t("chat.toolbar.openBranches")}
-          >
-            {t("chat.actionBar.branches")}
-          </ToolbarButton>
+          {showBranches ? (
+            <ToolbarButton
+              aria-label={t("chat.toolbar.openBranches")}
+              className="dialog-stage-controls__button"
+              icon={<GitBranch aria-hidden className="button__icon" />}
+              onClick={onOpenBranches}
+              tooltip={t("chat.toolbar.openBranches")}
+            >
+              {t("chat.actionBar.branches")}
+            </ToolbarButton>
+          ) : null}
           <ToolbarButton
             aria-label={t("chat.toolbar.skipSpeech")}
             className="dialog-stage-controls__button"

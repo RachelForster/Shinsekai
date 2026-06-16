@@ -80,7 +80,16 @@ def _chat_runtime_mode(state: BridgeState) -> str:
     config_manager = getattr(state, "config_manager", None)
     system_config = getattr(getattr(config_manager, "config", None), "system_config", None)
     mode = str(getattr(system_config, "chat_ui_runtime_mode", "") or "").strip().lower()
-    return "native" if mode == "native" else "react"
+    return "react" if mode == "react" else "native"
+
+
+def _chat_experimental_features(state: BridgeState) -> dict[str, bool]:
+    config_manager = getattr(state, "config_manager", None)
+    system_config = getattr(getattr(config_manager, "config", None), "system_config", None)
+    return {
+        "conversationTree": bool(getattr(system_config, "react_chat_flowchart_experimental_enabled", False)),
+        "forkHistory": bool(getattr(system_config, "react_chat_fork_experimental_enabled", False)),
+    }
 
 
 def _hidden_subprocess_kwargs() -> dict[str, Any]:
@@ -606,6 +615,7 @@ def _chat_snapshot(
     chat_stream = getattr(state, "chat_stream", None)
     voice_language = _chat_voice_language(state)
     runtime_mode = _chat_runtime_mode(state)
+    experimental_features = _chat_experimental_features(state)
     user_display_name = _chat_user_display_name(state)
     if session_id and chat_stream is not None:
         snapshot = chat_stream.get_snapshot(session_id)
@@ -613,7 +623,10 @@ def _chat_snapshot(
             next_snapshot = dict(snapshot)
             user_display_name = _chat_user_display_name_from_snapshot(state, next_snapshot)
             next_snapshot["runtimeMode"] = runtime_mode
+            next_snapshot["experimentalFeatures"] = experimental_features
             next_snapshot["userDisplayName"] = user_display_name
+            if not experimental_features["conversationTree"]:
+                next_snapshot.pop("conversationTree", None)
             if voice_language and not str(next_snapshot.get("voiceLanguage") or "").strip():
                 next_snapshot["voiceLanguage"] = voice_language
             next_snapshot["historyEntries"] = _chat_history_entries(state)
@@ -640,6 +653,7 @@ def _chat_snapshot(
         "inputDraft": "",
         "numericInfo": status,
         "options": [],
+        "experimentalFeatures": experimental_features,
         "runtimeMode": runtime_mode,
         "sprites": sprites,
         "status": status or "idle",
@@ -816,6 +830,8 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             raise ValueError("回溯索引无效。") from exc
         return _forward_runtime_command("idle")
     if command == "fork-history":
+        if not _chat_experimental_features(state)["forkHistory"]:
+            raise PermissionError("React Chat UI Fork 实验功能未启用。")
         payload = body.get("payload")
         raw_index = payload.get("userIndex") if isinstance(payload, dict) else payload
         try:
@@ -824,11 +840,15 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             raise ValueError("分支索引无效。") from exc
         return _forward_runtime_command("generating", "正在创建对话分支。")
     if command == "switch-branch":
+        if not _chat_experimental_features(state)["conversationTree"]:
+            raise PermissionError("React Chat UI 分支流程图实验功能未启用。")
         branch_id = str(body.get("payload") or "").strip()
         if not branch_id:
             raise ValueError("分支 id 不能为空。")
         return _forward_runtime_command("idle", "已切换对话分支。")
     if command == "rename-branch":
+        if not _chat_experimental_features(state)["conversationTree"]:
+            raise PermissionError("React Chat UI 分支流程图实验功能未启用。")
         payload = body.get("payload")
         if not isinstance(payload, dict):
             raise ValueError("分支重命名参数无效。")

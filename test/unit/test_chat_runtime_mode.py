@@ -11,13 +11,17 @@ from frontend_bridge_core.handler import BRIDGE_AUTH_HEADER, CHAT_RUNTIME_READY_
 class _SystemConfig:
     live_room_id = ""
     voice_language = "ja"
-    chat_ui_runtime_mode = "react"
+    chat_ui_runtime_mode = "native"
+    react_chat_fork_experimental_enabled = False
+    react_chat_flowchart_experimental_enabled = False
 
     def model_copy(self, *, deep: bool):
         clone = _SystemConfig()
         clone.live_room_id = self.live_room_id
         clone.voice_language = self.voice_language
         clone.chat_ui_runtime_mode = self.chat_ui_runtime_mode
+        clone.react_chat_fork_experimental_enabled = self.react_chat_fork_experimental_enabled
+        clone.react_chat_flowchart_experimental_enabled = self.react_chat_flowchart_experimental_enabled
         return clone
 
 
@@ -88,10 +92,10 @@ class _ChatStreamStub:
 
 
 class ChatRuntimeModeTests(unittest.TestCase):
-    def test_chat_runtime_mode_defaults_to_react(self):
+    def test_chat_runtime_mode_defaults_to_native(self):
         state = SimpleNamespace(config_manager=_ConfigManager())
 
-        self.assertEqual(_chat_runtime_mode(state), "react")
+        self.assertEqual(_chat_runtime_mode(state), "native")
 
     def test_chat_snapshot_includes_runtime_mode(self):
         state = SimpleNamespace(
@@ -200,6 +204,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         chat_stream = _ChatStreamStub()
         config_manager = _ConfigManager()
+        config_manager.config.system_config.chat_ui_runtime_mode = "react"
 
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
             root = Path(tmp_dir)
@@ -252,6 +257,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         chat_stream = _ChatStreamStub()
         config_manager = _ConfigManager()
+        config_manager.config.system_config.chat_ui_runtime_mode = "react"
 
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
             root = Path(tmp_dir)
@@ -295,6 +301,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         chat_stream = _ChatStreamStub()
         chat_stream.wait_result = False
         config_manager = _ConfigManager()
+        config_manager.config.system_config.chat_ui_runtime_mode = "react"
 
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
             root = Path(tmp_dir)

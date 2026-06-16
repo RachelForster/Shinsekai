@@ -147,6 +147,8 @@ export function ChatStagePage() {
   const inputLayout = themeStyle["--chat-input-layout"] === "pill" ? "pill" : "default";
   const longPressTalkVisible = inputLayout === "pill";
   const longPressTalkEnabled = longPressTalkVisible && runtimeConfig.longPressTalk && voskModelState.available;
+  const forkHistoryEnabled = state.experimentalFeatures?.forkHistory === true;
+  const conversationTreeEnabled = state.experimentalFeatures?.conversationTree === true;
   const hideNameWhenStartOption = themeStyle["--chat-name-hide-when-start-option"] === "true";
   const nameHiddenForStartOption =
     hideNameWhenStartOption && viewModel.layers.options && viewModel.options.some(isStartOptionLabel);
@@ -296,6 +298,12 @@ export function ChatStagePage() {
       setTokenUsageOpen(false);
     }
   }, [viewModel.tokenUsageText]);
+
+  useEffect(() => {
+    if (!conversationTreeEnabled) {
+      setBranchDialogOpen(false);
+    }
+  }, [conversationTreeEnabled]);
 
   useEffect(() => {
     writeChatStageRuntimeConfig(runtimeConfig);
@@ -636,6 +644,7 @@ export function ChatStagePage() {
       onLockedChange={setDialogControlsLocked}
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
+      showBranches={conversationTreeEnabled}
       showAsrControl={!viewModel.layers.input && viewModel.status === "paused"}
     />
   );
@@ -729,6 +738,7 @@ export function ChatStagePage() {
         />
         <HistoryDialog
           entries={state.historyEntries ?? []}
+          forkEnabled={forkHistoryEnabled}
           loading={historyLoading}
           onClose={() => setHistoryDialogOpen(false)}
           onFork={(userIndex) => {
@@ -742,17 +752,19 @@ export function ChatStagePage() {
           open={historyDialogOpen}
           userDisplayName={viewModel.userDisplayName}
         />
-        <ConversationTreeDialog
-          onClose={() => setBranchDialogOpen(false)}
-          onRenameBranch={(branchId, label) => {
-            void sendCommand({ payload: { branchId, label }, type: "rename-branch" });
-          }}
-          onSwitchBranch={(branchId) => {
-            void sendCommand({ payload: branchId, type: "switch-branch" });
-          }}
-          open={branchDialogOpen}
-          tree={state.conversationTree}
-        />
+        {conversationTreeEnabled ? (
+          <ConversationTreeDialog
+            onClose={() => setBranchDialogOpen(false)}
+            onRenameBranch={(branchId, label) => {
+              void sendCommand({ payload: { branchId, label }, type: "rename-branch" });
+            }}
+            onSwitchBranch={(branchId) => {
+              void sendCommand({ payload: branchId, type: "switch-branch" });
+            }}
+            open={branchDialogOpen}
+            tree={state.conversationTree}
+          />
+        ) : null}
         <ChatConfigDialog
           configThemeColor={runtimeConfig.configThemeColor}
           configUseMainThemeColor={runtimeConfig.configUseMainThemeColor}

@@ -186,8 +186,16 @@ class SystemConfig(BaseModel):
         description="React chat stage 当前激活的主题 mod id（对应 data/chat_ui_themes/<id>/），留空则用默认主题",
     )
     chat_ui_runtime_mode: DefaultIfNone[str] = Field(
-        default="react",
-        description="聊天界面运行模式：react 使用流式 React chat stage；native 回退到原生 Qt 聊天窗口",
+        default="native",
+        description="聊天界面运行模式：native 使用原生 Qt 聊天窗口；react 使用流式 React chat stage",
+    )
+    react_chat_fork_experimental_enabled: DefaultIfNone[bool] = Field(
+        default=False,
+        description="实验性功能：启用 React Chat UI 的历史 Fork 功能",
+    )
+    react_chat_flowchart_experimental_enabled: DefaultIfNone[bool] = Field(
+        default=False,
+        description="实验性功能：启用 React Chat UI 的对话分支流程图/树功能",
     )
 
     # 音乐翻唱流水线（YouTube/B站下载 → UVR 分离 → RVC 转换 → pydub 合成）
