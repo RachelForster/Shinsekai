@@ -56,7 +56,7 @@ function renderPage() {
   );
 }
 
-function mockSystemConfig() {
+function mockSystemConfig(systemOverrides: Record<string, unknown> = {}) {
   return {
     system_config: {
       asr_language: "",
@@ -89,6 +89,7 @@ function mockSystemConfig() {
       ui_language: "zh_CN",
       voice_language: "ja",
       width: 0,
+      ...systemOverrides,
     },
   };
 }
@@ -160,13 +161,33 @@ describe("SystemSettingsPage", () => {
     await waitFor(() => expect(themeSelect).toHaveTextContent("风旅冒险 · 内置"));
     fireEvent.click(themeSelect);
     expect(await screen.findByRole("option", { name: "风旅冒险 · 内置" })).toBeInTheDocument();
+    const uiHeading = screen.getByRole("heading", { name: "界面" });
+    const themeHeading = screen.getByRole("heading", { name: "聊天主题" });
+    const proxyHeading = screen.getByRole("heading", { name: "系统代理" });
     expect(screen.getByText("镜像源")).toBeInTheDocument();
     expect(screen.getByText("系统代理")).toBeInTheDocument();
+    expect(uiHeading.compareDocumentPosition(themeHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(themeHeading.compareDocumentPosition(proxyHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。")).toBeInTheDocument();
     expect(screen.getByLabelText("启用代理配置")).toBeInTheDocument();
     expect(screen.getByLabelText("HTTP 代理")).toBeInTheDocument();
     expect(screen.getByLabelText("HTTPS 代理")).toBeInTheDocument();
     expect(screen.getByLabelText("SOCKS5 代理")).toBeInTheDocument();
     expect(screen.queryByText("桌面运行环境")).not.toBeInTheDocument();
+  });
+
+  it("disables React Stage theme selection for the native chat UI", async () => {
+    mockGetAppConfig.mockResolvedValue(
+      mockSystemConfig({
+        chat_ui_runtime_mode: "native",
+      }),
+    );
+    renderPage();
+
+    const themeSelect = await screen.findByRole("combobox", { name: "聊天主题" });
+
+    expect(themeSelect).toBeDisabled();
+    expect(screen.getByText("这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。")).toBeInTheDocument();
   });
 
   it("detects the current system proxy into the draft", async () => {

@@ -88,6 +88,7 @@ export function SystemSettingsPage() {
   const selectedThemeId =
     (themeOptions.some((theme) => theme.id === draft?.chat_ui_theme_id) ? draft?.chat_ui_theme_id : fallbackThemeId) ??
     "";
+  const reactStageThemeSelectable = draft?.chat_ui_runtime_mode === "react";
 
   useEffect(() => {
     if (data?.system_config) {
@@ -105,7 +106,12 @@ export function SystemSettingsPage() {
   }, [draft?.theme_color]);
 
   useEffect(() => {
-    if (!draft || themeOptions.length === 0 || draft.chat_ui_theme_id === selectedThemeId) {
+    if (
+      !draft ||
+      draft.chat_ui_runtime_mode !== "react" ||
+      themeOptions.length === 0 ||
+      draft.chat_ui_theme_id === selectedThemeId
+    ) {
       return;
     }
     setDraft({
@@ -118,7 +124,7 @@ export function SystemSettingsPage() {
     async mutationFn(payload: SystemConfig) {
       const saved = await saveSystemConfig(payload);
       const themeId = (saved.chat_ui_theme_id || payload.chat_ui_theme_id || "").trim();
-      if (themeId) {
+      if (themeId && (saved.chat_ui_runtime_mode || payload.chat_ui_runtime_mode) === "react") {
         await setActiveChatTheme(themeId);
       }
       return { ...saved, chat_ui_theme_id: themeId };
@@ -231,6 +237,54 @@ export function SystemSettingsPage() {
         onChange={setDraft}
         value={draft}
       />
+      <section className="section system-chat-theme">
+        <div className="section__header">
+          <h2 className="section__title">{t("chat.theme.title")}</h2>
+        </div>
+        <div className="field-row">
+          <span className="field-row__label">
+            <Palette aria-hidden className="system-chat-theme__icon" />
+            <label className="field-row__label-text" htmlFor="chat_ui_theme_id">
+              {t("chat.theme.title")}
+            </label>
+          </span>
+          <span className="field-row__control">
+            <Select
+              aria-describedby="chat_ui_theme_id-help"
+              disabled={
+                !reactStageThemeSelectable ||
+                saveMutation.isPending ||
+                chatThemesQuery.isLoading ||
+                themeOptions.length === 0
+              }
+              id="chat_ui_theme_id"
+              onChange={(event) => setDraft({ ...draft, chat_ui_theme_id: event.target.value })}
+              value={selectedThemeId}
+            >
+              {themeOptions.map((theme) => (
+                <option key={theme.id} value={theme.id}>
+                  {chatThemeDisplayName(theme, language)}
+                  {theme.source === "builtin"
+                    ? ` · ${t("chat.theme.sourceBuiltin")}`
+                    : ` · ${t("chat.theme.sourceUser")}`}
+                </option>
+              ))}
+            </Select>
+            <span className="field-row__help" id="chat_ui_theme_id-help">
+              这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。
+            </span>
+            {chatThemesQuery.isLoading ? <span className="field-row__help">{t("system.loading")}</span> : null}
+            {!chatThemesQuery.isLoading && themeOptions.length === 0 ? (
+              <span className="field-row__help">{t("chat.theme.empty")}</span>
+            ) : null}
+            {chatThemesQuery.isError ? (
+              <span className="field-error">
+                {chatThemesQuery.error instanceof Error ? chatThemesQuery.error.message : t("chat.theme.error.apply")}
+              </span>
+            ) : null}
+          </span>
+        </div>
+      </section>
       {systemNetworkProxyGroup ? (
         <section className="section schema-section system-network-proxy">
           <div className="section__header">
@@ -255,43 +309,6 @@ export function SystemSettingsPage() {
           />
         </section>
       ) : null}
-      <section className="section system-chat-theme">
-        <div className="section__header">
-          <h2 className="section__title">{t("chat.theme.title")}</h2>
-        </div>
-        <label className="field-row" htmlFor="chat_ui_theme_id">
-          <span className="field-row__label">
-            <Palette aria-hidden className="system-chat-theme__icon" />
-            <span className="field-row__label-text">{t("chat.theme.title")}</span>
-          </span>
-          <span className="field-row__control">
-            <Select
-              disabled={saveMutation.isPending || chatThemesQuery.isLoading || themeOptions.length === 0}
-              id="chat_ui_theme_id"
-              onChange={(event) => setDraft({ ...draft, chat_ui_theme_id: event.target.value })}
-              value={selectedThemeId}
-            >
-              {themeOptions.map((theme) => (
-                <option key={theme.id} value={theme.id}>
-                  {chatThemeDisplayName(theme, language)}
-                  {theme.source === "builtin"
-                    ? ` · ${t("chat.theme.sourceBuiltin")}`
-                    : ` · ${t("chat.theme.sourceUser")}`}
-                </option>
-              ))}
-            </Select>
-            {chatThemesQuery.isLoading ? <span className="field-row__help">{t("system.loading")}</span> : null}
-            {!chatThemesQuery.isLoading && themeOptions.length === 0 ? (
-              <span className="field-row__help">{t("chat.theme.empty")}</span>
-            ) : null}
-            {chatThemesQuery.isError ? (
-              <span className="field-error">
-                {chatThemesQuery.error instanceof Error ? chatThemesQuery.error.message : t("chat.theme.error.apply")}
-              </span>
-            ) : null}
-          </span>
-        </label>
-      </section>
       <SchemaDrivenForm
         disabled={saveMutation.isPending}
         errors={errors}

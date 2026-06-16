@@ -144,6 +144,9 @@ export function CustomSelect({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuPositionFrameRef = useRef<number | null>(null);
   const listboxId = id ? `${id}-listbox` : undefined;
+  const ariaDescribedBy = props["aria-describedby"];
+  const ariaLabel = props["aria-label"];
+  const ariaLabelledBy = props["aria-labelledby"];
 
   useEffect(() => {
     if (selectedIndex >= 0) {
@@ -372,6 +375,9 @@ export function CustomSelect({
       </select>
       <button
         aria-activedescendant={activeOptionId}
+        aria-describedby={ariaDescribedBy}
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
         aria-controls={listboxId}
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -381,6 +387,7 @@ export function CustomSelect({
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={handleKeyDown}
         role="combobox"
+        title={props.title}
         type="button"
       >
         <span className={selectedOption ? "custom-select__value" : "custom-select__placeholder"}>
