@@ -135,6 +135,11 @@ function renderPage(initialEntries = ["/"]) {
   );
 }
 
+function chooseCustomSelectOption(root: HTMLElement, name: string, option: string) {
+  fireEvent.click(within(root).getByRole("combobox", { name }));
+  fireEvent.click(screen.getByRole("option", { name: option }));
+}
+
 describe("ChatStagePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -632,7 +637,7 @@ describe("ChatStagePage", () => {
     fireEvent.change(within(config).getByLabelText("Dialog fill color"), { target: { value: "#223344" } });
     fireEvent.change(within(config).getByRole("slider", { name: "Fill opacity" }), { target: { value: "0.7" } });
     fireEvent.click(within(config).getByLabelText("Gradient fill"));
-    fireEvent.change(within(config).getByLabelText("Gradient type"), { target: { value: "dual" } });
+    chooseCustomSelectOption(config, "Gradient type", "Two-color gradient");
     fireEvent.change(within(config).getByLabelText("Second fill color"), { target: { value: "#556677" } });
 
     const useMainColor = within(config).getByLabelText("Use main app color");
@@ -675,8 +680,8 @@ describe("ChatStagePage", () => {
     expect(nameBold).not.toBeChecked();
     fireEvent.change(within(config).getByLabelText("Dialog font"), { target: { value: "Verdana" } });
     fireEvent.change(within(config).getByRole("slider", { name: "Dialog font size" }), { target: { value: "21" } });
-    fireEvent.change(within(config).getByLabelText("Dialog text direction"), { target: { value: "rtl" } });
-    fireEvent.change(within(config).getByLabelText("Dialog text alignment"), { target: { value: "right" } });
+    chooseCustomSelectOption(config, "Dialog text direction", "Right to left");
+    chooseCustomSelectOption(config, "Dialog text alignment", "Right");
     fireEvent.change(within(config).getByLabelText("Dialog text color"), { target: { value: "#ddeeff" } });
     const dialogBold = within(config).getByLabelText("Bold dialog text");
     expect(dialogBold).not.toBeChecked();
