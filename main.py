@@ -208,6 +208,7 @@ def main():
             "frequency_penalty": float(config.config.api_config.frequency_penalty),
             "max_tokens": 4096,
         },
+        history_file=args.history,  # ← 新增，用于增量保存
     )
 
     if messages:
@@ -426,17 +427,26 @@ def main():
     except Exception as e:
         print(tr_i18n("main.print_icon_fail", e=str(e)))
 
+    # ----- 退出流程：独立 try-except 保护保存步骤 -----
+    def _safe_save_chat():
+        try:
+            save_chat_history(args.history, llm_manager.get_messages())
+        except Exception:
+            logger.exception("保存聊天记录失败", extra={"event": "chat.save.failed"})
+
+    def _safe_save_bg():
+        try:
+            save_bg(bg_path=window.current_background_path, bgm_path=ui_updates.current_bgm_path)
+        except Exception:
+            logger.exception("保存背景失败", extra={"event": "bg.save.failed"})
+
     # 关闭顺序：插件 → TTS 服务器 → Worker 线程 → 保存数据
     app.aboutToQuit.connect(workflow.stop)
     app.aboutToQuit.connect(_shutdown_plugins)
     app.aboutToQuit.connect(lambda: tts_manager and tts_manager.shutdown())
-    app.aboutToQuit.connect(lambda: save_chat_history(args.history, llm_manager.get_messages()))
-    app.aboutToQuit.connect(
-        lambda: save_bg(
-            bg_path=window.current_background_path,
-            bgm_path=ui_updates.current_bgm_path,
-        )
-    )
+    app.aboutToQuit.connect(_safe_save_chat)
+    app.aboutToQuit.connect(_safe_save_bg)
+    # -------------------------------------------------
 
     window.show()
 
