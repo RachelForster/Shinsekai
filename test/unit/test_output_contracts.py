@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from core.messaging.dialog_tokens import BGM, SCENE
 from llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, TemplateGenerator
 from sdk.register import PluginCapabilityRegistry
 from sdk.types import (
@@ -153,6 +154,14 @@ def test_template_generator_omits_scene_and_bgm_for_transparent_background(monke
             get_character_by_name=lambda name: character,
         ),
     )
+    monkeypatch.setattr(
+        "llm.template_generator._T",
+        lambda key, **kwargs: (
+            f"template_gen.{key} opt_scene={kwargs.get('opt_scene', '')} opt_bgm={kwargs.get('opt_bgm', '')}"
+            if key == "r_cname"
+            else f"template_gen.{key}"
+        ),
+    )
 
     transparent_template, transparent_warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
         selected_characters=["Alice"],
@@ -177,10 +186,14 @@ def test_template_generator_omits_scene_and_bgm_for_transparent_background(monke
     assert "template_gen.r_bgm" not in transparent_template
     assert "template_gen.scene_block_header" not in transparent_template
     assert "template_gen.bgm_block_header" not in transparent_template
+    assert f", {SCENE}" not in transparent_template
+    assert f", {BGM}" not in transparent_template
     assert "template_gen.r_scene" in real_background_template
     assert "template_gen.r_bgm" in real_background_template
     assert "template_gen.scene_block_header" in real_background_template
     assert "template_gen.bgm_block_header" in real_background_template
+    assert f", {SCENE}" in real_background_template
+    assert f", {BGM}" in real_background_template
 
 
 def test_template_generator_warns_for_unknown_requirement_patch_mode(monkeypatch, caplog) -> None:
