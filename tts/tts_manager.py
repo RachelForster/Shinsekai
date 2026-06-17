@@ -1,4 +1,5 @@
 import requests
+import shutil
 import threading
 import queue
 import subprocess
@@ -67,7 +68,9 @@ class TTSManager:
         """Allows switching the TTS adapter at runtime."""
         self.tts_adapter = adapter
 
-    def generate_tts(self, text, text_processor=None, ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None, speed_factor=None):
+    def generate_tts(self, text, text_processor=None, ref_audio_path=None,
+                     prompt_text=None, prompt_lang=None, character_name=None,
+                     speed_factor=None):
         """Generates TTS audio using the currently set adapter."""
         print("Generating speech")
         
@@ -86,13 +89,19 @@ class TTSManager:
             print("No reference audio provided")
             return ''
 
-        # The adapter handles the specifics of the TTS generation
-        file_path = str(self.audio_cache_dir / f"{self.index % self.cache_num}.wav")
+        # 最终文件路径
+        final_path = str(self.audio_cache_dir / f"{self.index % self.cache_num}.wav")
         self.index += 1
-        
-        return self.tts_adapter.generate_speech(
+        tmp_path = final_path + ".part"
+
+        # 清理上次残留的临时文件
+        if Path(tmp_path).exists():
+            Path(tmp_path).unlink()
+
+        # 引擎写入临时路径
+        result = self.tts_adapter.generate_speech(
             text=text,
-            file_path=file_path,
+            file_path=tmp_path,
             ref_audio_path=ref_audio_path,
             prompt_text=prompt_text,
             prompt_lang=prompt_lang,
@@ -100,6 +109,13 @@ class TTSManager:
             character_name=character_name,
             speed_factor=speed_factor,
         )
+
+        # 成功写入临时文件则原子替换，否则返回空字符串
+        if result and Path(tmp_path).exists():
+            shutil.move(tmp_path, final_path)
+            return final_path
+        else:
+            return ''
 
     def set_language(self, language):
         """Sets the voice language."""

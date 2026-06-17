@@ -235,6 +235,7 @@ class TTSWorker(QThreadDagNode):
         self.tts_queue = input_queue
         self.audio_path_queue = output_queue
         self.tts_message_dispatcher = None
+        self._cancel_event = threading.Event()          # 新增：取消当前合成用
         if input_queue is not None:
             self.bind_input(self.PORT_LLM_OUTPUT, input_queue)
         if output_queue is not None:
@@ -249,7 +250,8 @@ class TTSWorker(QThreadDagNode):
         self.tts_message_dispatcher.init_handlers()
         self._app_inited = True
 
-    def put_data(self, character_name: str, speech: str, sprite: str, audio_path, is_system_message: bool = False, effect: str = ""):
+    def put_data(self, character_name: str, speech: str, sprite: str, audio_path,
+                 is_system_message: bool = False, effect: str = ""):
         """与 handler 中 tts_emit_to_ui_queue 一致，供本 worker 异常路径使用。"""
         tts_emit_to_ui_queue(
             character_name, speech, sprite, audio_path or "",
@@ -262,6 +264,37 @@ class TTSWorker(QThreadDagNode):
     def outputs(self) -> dict[str, Port]:
         return {self.PORT_TTS_OUTPUT: Port(self.PORT_TTS_OUTPUT)}
 
+    # ---------- 新增方法 ----------
+    def _dispatch_with_cancel(self, item):
+        """
+        在 daemon 子线程中执行 dispatcher.dispatch，主线程等待完成或取消。
+        - 取消发生时（_cancel_event 被设置），直接返回，不等待子线程。
+        - 子线程异常会被捕获并在主线程重新抛出，保持原有异常处理路径。
+        """
+        done = threading.Event()
+        error = [None]
+
+        def work():
+            try:
+                self.tts_message_dispatcher.dispatch(item)
+            except Exception as e:
+                error[0] = e
+            finally:
+                done.set()
+
+        t = threading.Thread(target=work, daemon=True)
+        t.start()
+
+        while not done.is_set() and not self._cancel_event.is_set():
+            t.join(timeout=0.1)
+
+        if self._cancel_event.is_set() and not done.is_set():
+            return
+
+        if error[0] is not None:
+            raise error[0]
+
+    # ---------- 修改 run ----------
     def run(self):
         self._init_app()
         while self.running:
@@ -273,7 +306,7 @@ class TTSWorker(QThreadDagNode):
                 if item is None:
                     break
                 with tracker.track("TTS dispatch"):
-                    self.tts_message_dispatcher.dispatch(item)
+                    self._dispatch_with_cancel(item)   # ← 原来是直接 dispatch
             except Exception as e:
                 logger.exception("TTS worker task failed", extra={"event": "tts.worker.failed"})
                 if item is not None:
@@ -289,10 +322,13 @@ class TTSWorker(QThreadDagNode):
                 if got_item:
                     self.tts_queue.task_done()
 
+    # ---------- 修改 stop ----------
     def stop(self):
+        self._cancel_event.set()        # 通知取消当前合成
         self.running = False
-        self.tts_queue.put(None)
+        self.tts_queue.put(None)        # 唤醒 queue.get()
         super().stop()
+
 
 class UIWorker(QThreadDagNode):
     PORT_TTS_OUTPUT = "tts_output"
