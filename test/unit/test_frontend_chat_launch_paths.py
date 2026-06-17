@@ -265,3 +265,13 @@ def test_close_chat_sends_sigint_and_marks_runtime_session_closed(monkeypatch):
     assert chat_stream.closed == [("session-1", "聊天会话已结束。")]
     assert snapshot["sessionClosedReason"] == "聊天会话已结束。"
     assert snapshot["runtimeMode"] == "react"
+
+
+def test_shutdown_active_chat_process_stops_child_without_request_state(monkeypatch):
+    process = _DummyClosableProcess()
+    monkeypatch.setattr(chat, "_main_chat_process", process)
+
+    chat.shutdown_active_chat_process()
+
+    assert process.signals == [signal.SIGINT]
+    assert chat._main_chat_process is None

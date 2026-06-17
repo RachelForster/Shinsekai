@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+
+import config.network_proxy as network_proxy
 from config.config_manager import ConfigManager
 from config.schema import AppConfig, ApiConfig, Background, Character, SystemConfig
 
@@ -120,3 +123,39 @@ def test_save_api_config_new_clamps_compact_target_below_threshold():
     assert manager.config.api_config.compact_threshold == 0.4
     assert manager.config.api_config.compact_target_ratio == 0.35
     assert saved["compact_target_ratio"] == 0.35
+
+
+def test_save_system_config_applies_network_proxy_environment(monkeypatch):
+    for name in (
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+        "SOCKS_PROXY",
+        "socks_proxy",
+    ):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.setitem(network_proxy._ORIGINAL_PROXY_ENV, name, None)
+    monkeypatch.setattr("config.config_manager.apply_mirror_environment", lambda _config: None)
+    manager = _config_manager_with_api()
+    saved = {}
+    manager._save_single_config = lambda _path, data: saved.update(data)
+    manager.config.system_config = SystemConfig(
+        http_proxy_url="http://127.0.0.1:7890",
+        https_proxy_url="http://127.0.0.1:7890",
+        mirror_auto_detect_china=False,
+        network_proxy_enabled=True,
+        socks5_proxy_url="socks5://127.0.0.1:7891",
+    )
+
+    manager.save_system_config()
+
+    assert saved["network_proxy_enabled"] is True
+    assert saved["http_proxy_url"] == "http://127.0.0.1:7890"
+    assert saved["https_proxy_url"] == "http://127.0.0.1:7890"
+    assert saved["socks5_proxy_url"] == "socks5://127.0.0.1:7891"
+    assert os.environ["HTTP_PROXY"] == "http://127.0.0.1:7890"
+    assert os.environ["HTTPS_PROXY"] == "http://127.0.0.1:7890"
+    assert os.environ["ALL_PROXY"] == "socks5://127.0.0.1:7891"

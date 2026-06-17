@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Palette, Save } from "lucide-react";
+import { Palette, RefreshCw, Save } from "lucide-react";
 
 import {
   buildPayloadFromSchema,
@@ -10,13 +10,21 @@ import {
   validatePayloadFromSchema,
 } from "../../entities/config/schema";
 import { chatThemeQueryKey, listChatThemes, setActiveChatTheme } from "../../entities/chat/repository";
-import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
+import { configQueryKey, detectNetworkProxy, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
 import { useI18n } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_CHAT_THEME_ID, chatThemeDisplayName } from "../../shared/theme/chatTheme";
-import { AsyncButton, EmptyState, QueryErrorState, SchemaDrivenForm, Select, useToast } from "../../shared/ui";
+import {
+  AsyncButton,
+  EmptyState,
+  QueryErrorState,
+  SchemaDrivenForm,
+  SchemaFieldGrid,
+  Select,
+  useToast,
+} from "../../shared/ui";
 import { DesktopRuntimeSection } from "./DesktopRuntimeSection";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css
 import "./SystemSettingsPage.css";
@@ -34,7 +42,29 @@ const systemConfigPageSchema = systemConfigFormSchema
   .filter((group) => group.id !== "voice" && group.id !== "music-cover");
 
 const systemGeneralGroups = systemConfigPageSchema.filter((group) => group.id === "ui");
-const systemRemainingGroups = systemConfigPageSchema.filter((group) => group.id !== "ui");
+const systemNetworkProxyGroup = systemConfigPageSchema.find((group) => group.id === "network-proxy");
+const systemRemainingGroups = systemConfigPageSchema.filter(
+  (group) => group.id !== "ui" && group.id !== "network-proxy",
+);
+
+function networkProxySourceLabel(source: string) {
+  switch (source) {
+    case "environment":
+      return "环境变量";
+    case "process-environment":
+      return "当前进程环境变量";
+    case "windows":
+      return "Windows 系统代理";
+    case "macos":
+      return "macOS 系统代理";
+    case "gnome":
+      return "GNOME 系统代理";
+    case "kde":
+      return "KDE 系统代理";
+    default:
+      return source;
+  }
+}
 
 export function SystemSettingsPage() {
   const queryClient = useQueryClient();
@@ -58,6 +88,7 @@ export function SystemSettingsPage() {
   const selectedThemeId =
     (themeOptions.some((theme) => theme.id === draft?.chat_ui_theme_id) ? draft?.chat_ui_theme_id : fallbackThemeId) ??
     "";
+  const reactStageThemeSelectable = draft?.chat_ui_runtime_mode === "react";
 
   useEffect(() => {
     if (data?.system_config) {
@@ -75,7 +106,12 @@ export function SystemSettingsPage() {
   }, [draft?.theme_color]);
 
   useEffect(() => {
-    if (!draft || themeOptions.length === 0 || draft.chat_ui_theme_id === selectedThemeId) {
+    if (
+      !draft ||
+      draft.chat_ui_runtime_mode !== "react" ||
+      themeOptions.length === 0 ||
+      draft.chat_ui_theme_id === selectedThemeId
+    ) {
       return;
     }
     setDraft({
@@ -88,7 +124,7 @@ export function SystemSettingsPage() {
     async mutationFn(payload: SystemConfig) {
       const saved = await saveSystemConfig(payload);
       const themeId = (saved.chat_ui_theme_id || payload.chat_ui_theme_id || "").trim();
-      if (themeId) {
+      if (themeId && (saved.chat_ui_runtime_mode || payload.chat_ui_runtime_mode) === "react") {
         await setActiveChatTheme(themeId);
       }
       return { ...saved, chat_ui_theme_id: themeId };
@@ -107,6 +143,41 @@ export function SystemSettingsPage() {
         dispatch({ language: saved.ui_language as "zh_CN" | "en" | "ja", type: "setLanguage" });
       }
       showToast({ kind: "success", title: t("system.toast.saved") });
+    },
+  });
+
+  const detectNetworkProxyMutation = useMutation({
+    mutationFn: detectNetworkProxy,
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "无法读取当前系统代理配置。",
+        title: "检测系统代理失败",
+      });
+    },
+    onSuccess(result) {
+      const hasProxy = Boolean(result.http_proxy_url || result.https_proxy_url || result.socks5_proxy_url);
+      const sourceLabel = networkProxySourceLabel(result.source);
+      setDraft((current) =>
+        current
+          ? {
+              ...current,
+              http_proxy_url: result.http_proxy_url,
+              https_proxy_url: result.https_proxy_url,
+              network_proxy_enabled: hasProxy || current.network_proxy_enabled,
+              socks5_proxy_url: result.socks5_proxy_url,
+            }
+          : current,
+      );
+      showToast({
+        kind: hasProxy ? "success" : "info",
+        message: hasProxy
+          ? sourceLabel
+            ? `来源：${sourceLabel}`
+            : undefined
+          : "没有读取到 HTTP / HTTPS / SOCKS5 代理。",
+        title: hasProxy ? "已填入检测到的代理" : "未检测到系统代理",
+      });
     },
   });
 
@@ -170,14 +241,22 @@ export function SystemSettingsPage() {
         <div className="section__header">
           <h2 className="section__title">{t("chat.theme.title")}</h2>
         </div>
-        <label className="field-row" htmlFor="chat_ui_theme_id">
+        <div className="field-row">
           <span className="field-row__label">
             <Palette aria-hidden className="system-chat-theme__icon" />
-            <span className="field-row__label-text">{t("chat.theme.title")}</span>
+            <label className="field-row__label-text" htmlFor="chat_ui_theme_id">
+              {t("chat.theme.title")}
+            </label>
           </span>
           <span className="field-row__control">
             <Select
-              disabled={saveMutation.isPending || chatThemesQuery.isLoading || themeOptions.length === 0}
+              aria-describedby="chat_ui_theme_id-help"
+              disabled={
+                !reactStageThemeSelectable ||
+                saveMutation.isPending ||
+                chatThemesQuery.isLoading ||
+                themeOptions.length === 0
+              }
               id="chat_ui_theme_id"
               onChange={(event) => setDraft({ ...draft, chat_ui_theme_id: event.target.value })}
               value={selectedThemeId}
@@ -191,6 +270,9 @@ export function SystemSettingsPage() {
                 </option>
               ))}
             </Select>
+            <span className="field-row__help" id="chat_ui_theme_id-help">
+              这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。
+            </span>
             {chatThemesQuery.isLoading ? <span className="field-row__help">{t("system.loading")}</span> : null}
             {!chatThemesQuery.isLoading && themeOptions.length === 0 ? (
               <span className="field-row__help">{t("chat.theme.empty")}</span>
@@ -201,8 +283,32 @@ export function SystemSettingsPage() {
               </span>
             ) : null}
           </span>
-        </label>
+        </div>
       </section>
+      {systemNetworkProxyGroup ? (
+        <section className="section schema-section system-network-proxy">
+          <div className="section__header">
+            <h2 className="section__title">{systemNetworkProxyGroup.title}</h2>
+            <div className="section__actions">
+              <AsyncButton
+                disabled={saveMutation.isPending}
+                icon={<RefreshCw aria-hidden className="button__icon" />}
+                loading={detectNetworkProxyMutation.isPending}
+                onClick={() => detectNetworkProxyMutation.mutate()}
+              >
+                检测当前系统代理
+              </AsyncButton>
+            </div>
+          </div>
+          <SchemaFieldGrid
+            disabled={saveMutation.isPending}
+            errors={errors}
+            group={systemNetworkProxyGroup}
+            onChange={setDraft}
+            value={draft}
+          />
+        </section>
+      ) : null}
       <SchemaDrivenForm
         disabled={saveMutation.isPending}
         errors={errors}

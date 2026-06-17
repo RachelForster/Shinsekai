@@ -192,6 +192,28 @@ describe("http platform", () => {
     );
   });
 
+  it("detects network proxy settings through the bridge", async () => {
+    const detected = {
+      http_proxy_url: "http://127.0.0.1:7890",
+      https_proxy_url: "http://127.0.0.1:7890",
+      socks5_proxy_url: "socks5://127.0.0.1:7891",
+      source: "environment",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(detected));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const result = await platform.config.detectNetworkProxy();
+
+    expect(result).toEqual(detected);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/config/network-proxy/detect",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
+    );
+  });
+
   it("cancels TTS bundle download tasks through the bridge", async () => {
     const task = {
       createdAt: 1,

@@ -15,6 +15,7 @@ import os
 import platform
 import re
 import secrets
+import signal
 import sys
 import tempfile
 import threading
@@ -47,6 +48,49 @@ def _restart_debug_log(message: str) -> None:
             handle.write(line)
     except OSError:
         pass
+
+
+_bridge_state_lock = threading.Lock()
+_bridge_state = None
+
+
+def _set_bridge_state(state) -> None:
+    global _bridge_state
+    with _bridge_state_lock:
+        _bridge_state = state
+
+
+def _shutdown_bridge_runtime(reason: str) -> None:
+    _restart_debug_log(f"bridge runtime shutdown begin reason={reason}")
+    try:
+        from frontend_bridge_core.chat import shutdown_active_chat_process
+
+        shutdown_active_chat_process(wait_timeout=1.5)
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime chat shutdown failed reason={reason} error={exc}")
+
+    with _bridge_state_lock:
+        state = _bridge_state
+    chat_stream = getattr(state, "chat_stream", None) if state is not None else None
+    if chat_stream is not None:
+        try:
+            chat_stream.stop()
+        except Exception as exc:
+            _restart_debug_log(f"bridge runtime chat stream stop failed reason={reason} error={exc}")
+    _restart_debug_log(f"bridge runtime shutdown completed reason={reason}")
+
+
+def _install_bridge_signal_handlers() -> None:
+    def handle_signal(signum, _frame) -> None:
+        _restart_debug_log(f"bridge signal received signum={signum}")
+        _shutdown_bridge_runtime(f"signal {signum}")
+        os._exit(0)
+
+    for signum in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGINT", None)):
+        if signum is None:
+            continue
+        with contextlib.suppress(ValueError):
+            signal.signal(signum, handle_signal)
 
 
 def _configure_runtime_context(
@@ -125,6 +169,7 @@ def run(
     _restart_debug_log(
         f"run start host={host} port={port} project_root={project_root or ''} app_root={app_root or ''} frontend_dist={frontend_dist or ''} parent_pid={parent_pid or 0}"
     )
+    _install_bridge_signal_handlers()
     _start_parent_watchdog(parent_pid)
     _repo_root_value, resolved_frontend_dist, resolved_app_root = _configure_runtime_context(
         project_root,
@@ -136,7 +181,9 @@ def run(
     configure_logging("frontend-bridge", project_root=Path.cwd())
     logger = get_logger(__name__)
     from config.mirror_env import apply_mirror_environment_from_system_config
+    from config.network_proxy import apply_network_proxy_environment_from_system_config
 
+    apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
 
     from config.background_manager import BackgroundManager
@@ -167,6 +214,7 @@ def run(
         app_root_dir=resolved_app_root,
         auth_token=bridge_auth_token,
     )
+    _set_bridge_state(state)
     state.chat_stream = ChatStreamService(host=host, bridge_port=port, auth_token=bridge_auth_token)
     state.chat_stream.start()
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
@@ -203,7 +251,14 @@ def run(
             },
         )
     _restart_debug_log("serve_forever enter")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        _restart_debug_log("serve_forever exit")
+        with contextlib.suppress(Exception):
+            server.server_close()
+        _shutdown_bridge_runtime("server exit")
+        _set_bridge_state(None)
 
 
 def _start_parent_watchdog(parent_pid: int | None) -> None:
@@ -227,17 +282,21 @@ def _watch_posix_parent(parent_pid: int) -> None:
     while True:
         time.sleep(0.25)
         if os.getppid() != parent_pid:
-            _restart_debug_log(
-                f"parent watchdog exit reason=ppid_changed expected={parent_pid} actual={os.getppid()}"
+            _exit_bridge_after_parent_loss(
+                f"ppid_changed expected={parent_pid} actual={os.getppid()}"
             )
-            os._exit(0)
         try:
             os.kill(parent_pid, 0)
         except ProcessLookupError:
-            _restart_debug_log(f"parent watchdog exit reason=parent_missing parent_pid={parent_pid}")
-            os._exit(0)
+            _exit_bridge_after_parent_loss(f"parent_missing parent_pid={parent_pid}")
         except PermissionError:
             continue
+
+
+def _exit_bridge_after_parent_loss(detail: str) -> None:
+    _restart_debug_log(f"parent watchdog exit reason={detail}")
+    _shutdown_bridge_runtime(f"parent watchdog {detail}")
+    os._exit(0)
 
 
 def _watch_windows_parent(parent_pid: int) -> None:
@@ -248,14 +307,12 @@ def _watch_windows_parent(parent_pid: int) -> None:
     kernel32 = ctypes.windll.kernel32
     handle = kernel32.OpenProcess(synchronize, False, parent_pid)
     if not handle:
-        _restart_debug_log(f"parent watchdog exit reason=open_process_failed parent_pid={parent_pid}")
-        os._exit(0)
+        _exit_bridge_after_parent_loss(f"open_process_failed parent_pid={parent_pid}")
     try:
         while True:
             time.sleep(0.25)
             if kernel32.WaitForSingleObject(handle, 0) != wait_timeout:
-                _restart_debug_log(f"parent watchdog exit reason=parent_signaled parent_pid={parent_pid}")
-                os._exit(0)
+                _exit_bridge_after_parent_loss(f"parent_signaled parent_pid={parent_pid}")
     finally:
         kernel32.CloseHandle(handle)
 
@@ -276,7 +333,9 @@ def check_runtime(
 
     configure_logging("frontend-bridge", project_root=Path.cwd())
     from config.mirror_env import apply_mirror_environment_from_system_config
+    from config.network_proxy import apply_network_proxy_environment_from_system_config
 
+    apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
     requirements_file = requirements_file or _default_runtime_requirements_file(repo_root, profile)
     if requirements_file:

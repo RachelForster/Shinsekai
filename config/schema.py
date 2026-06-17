@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator, model_validator
 from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar
+from config.network_proxy import normalize_proxy_url
 
 # ----------------- 解决 YAML None 问题的工具 -----------------
 def default_if_none(value: Any) -> Any:
@@ -223,6 +224,41 @@ class SystemConfig(BaseModel):
         default="",
         description="PyPI mirror URL for Shinsekai-managed pip installs.",
     )
+    network_proxy_enabled: DefaultIfNone[bool] = Field(
+        default=False,
+        description="Whether Shinsekai should write the configured proxy URLs to process environment variables.",
+    )
+    http_proxy_url: DefaultIfNone[str] = Field(
+        default="",
+        description="HTTP proxy URL, exported as HTTP_PROXY/http_proxy.",
+    )
+    https_proxy_url: DefaultIfNone[str] = Field(
+        default="",
+        description="HTTPS proxy URL, exported as HTTPS_PROXY/https_proxy.",
+    )
+    socks5_proxy_url: DefaultIfNone[str] = Field(
+        default="",
+        description="SOCKS5 proxy URL, exported as ALL_PROXY/all_proxy.",
+    )
+
+    @model_validator(mode="after")
+    def _normalize_proxy_urls(self):
+        self.http_proxy_url = normalize_proxy_url(
+            self.http_proxy_url,
+            allowed_schemes={"http", "https"},
+            field_name="http_proxy_url",
+        )
+        self.https_proxy_url = normalize_proxy_url(
+            self.https_proxy_url,
+            allowed_schemes={"http", "https"},
+            field_name="https_proxy_url",
+        )
+        self.socks5_proxy_url = normalize_proxy_url(
+            self.socks5_proxy_url,
+            allowed_schemes={"socks5", "socks5h"},
+            field_name="socks5_proxy_url",
+        )
+        return self
 
     music_cover_work_dir: DefaultIfNone[str] = Field(
         default="./data/music_cover",

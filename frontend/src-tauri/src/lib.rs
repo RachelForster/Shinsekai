@@ -54,13 +54,22 @@ unsafe extern "C" {
 struct BridgeProcess {
     child: Mutex<Option<Child>>,
     candidate_id: Option<String>,
+    bridge_port: u16,
+    auth_token: String,
 }
 
 impl BridgeProcess {
-    fn new(child: Child, candidate_id: Option<String>) -> Self {
+    fn new(
+        child: Child,
+        candidate_id: Option<String>,
+        bridge_port: u16,
+        auth_token: String,
+    ) -> Self {
         Self {
             child: Mutex::new(Some(child)),
             candidate_id,
+            bridge_port,
+            auth_token,
         }
     }
 
@@ -82,15 +91,36 @@ impl BridgeProcess {
                         ));
                     }
                 }
-                if let Err(error) = child.kill() {
-                    restart_debug_log(format!("bridge stop kill failed error={error}"));
+                match send_bridge_chat_close(self.bridge_port, &self.auth_token) {
+                    Ok(()) => restart_debug_log(format!(
+                        "bridge stop closed active chat port={}",
+                        self.bridge_port
+                    )),
+                    Err(error) => restart_debug_log(format!(
+                        "bridge stop chat close failed port={} error={error}",
+                        self.bridge_port
+                    )),
                 }
+                let mut forced_kill_sent = match request_bridge_child_stop(&mut child) {
+                    Ok(forced) => forced,
+                    Err(error) => {
+                        restart_debug_log(format!("bridge stop terminate failed error={error}"));
+                        false
+                    }
+                };
+                let graceful_deadline = Instant::now() + Duration::from_secs(1);
                 let started = Instant::now();
                 loop {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             restart_debug_log(format!("bridge stop completed status={status}"));
                             break;
+                        }
+                        Ok(None) if !forced_kill_sent && Instant::now() >= graceful_deadline => {
+                            if let Err(error) = child.kill() {
+                                restart_debug_log(format!("bridge stop kill failed error={error}"));
+                            }
+                            forced_kill_sent = true;
                         }
                         Ok(None) if started.elapsed() < BRIDGE_STOP_TIMEOUT => {
                             thread::sleep(Duration::from_millis(50));
@@ -118,6 +148,22 @@ impl Drop for BridgeProcess {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+#[cfg(unix)]
+fn request_bridge_child_stop(child: &mut Child) -> Result<bool, String> {
+    let result = unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) };
+    if result == 0 {
+        Ok(false)
+    } else {
+        Err(std::io::Error::last_os_error().to_string())
+    }
+}
+
+#[cfg(windows)]
+fn request_bridge_child_stop(child: &mut Child) -> Result<bool, String> {
+    child.kill().map_err(|error| error.to_string())?;
+    Ok(true)
 }
 
 struct BridgeLaunch {
@@ -805,7 +851,6 @@ fn restart_bridge_for_state(
     state: &DesktopState,
 ) -> Result<DesktopRuntimeView, String> {
     state.set_runtime(DesktopRuntimePhase::Checking { view: None });
-    request_bridge_chat_close(state, "desktop bridge restart");
     if let Some(bridge) = state.take_bridge() {
         restart_debug_log("desktop_bridge_restart stopping existing bridge");
         bridge.stop();
@@ -848,7 +893,6 @@ fn start_runtime_candidate_for_state(
     state.set_runtime(DesktopRuntimePhase::Checking {
         view: Some(scan.clone()),
     });
-    request_bridge_chat_close(state, "runtime candidate restart");
     if let Some(bridge) = state.take_bridge() {
         restart_debug_log("start_runtime_candidate stopping existing bridge");
         bridge.stop();
@@ -936,7 +980,6 @@ fn restart_desktop_app(app: &AppHandle, state: &DesktopState) -> Result<(), Stri
         let _ = window.hide();
         let _ = window.destroy();
     }
-    request_bridge_chat_close(state, "desktop app restart");
     if let Some(bridge) = state.take_bridge() {
         restart_debug_log("restart stopping bridge before app exit");
         bridge.stop();
@@ -948,7 +991,6 @@ fn restart_desktop_app(app: &AppHandle, state: &DesktopState) -> Result<(), Stri
 
 fn shutdown_desktop_app(app: &AppHandle, state: &DesktopState, reason: &str) {
     restart_debug_log(format!("shutdown requested reason={reason}"));
-    request_bridge_chat_close(state, reason);
     if let Some(bridge) = state.take_bridge() {
         restart_debug_log("shutdown stopping bridge");
         bridge.stop();
@@ -1287,9 +1329,11 @@ fn bootstrap_runtime(app: AppHandle) {
     match start_runtime_candidate_for_state(&app, &state, None) {
         Ok(_) => {
             restart_debug_log("bootstrap_runtime ready");
-            if let Err(error) =
-                navigate_main_window_to_live_frontend(&app, state.bridge_port, &state.bridge_auth_token)
-            {
+            if let Err(error) = navigate_main_window_to_live_frontend(
+                &app,
+                state.bridge_port,
+                &state.bridge_auth_token,
+            ) {
                 restart_debug_log(format!(
                     "bootstrap_runtime frontend navigate failed error={error}"
                 ));
@@ -1375,7 +1419,11 @@ fn navigate_chat_window_to_live_frontend(
     bridge_port: u16,
     auth_token: &str,
 ) -> Result<(), String> {
-    navigate_window_to_live_frontend(app, "chat", &live_chat_frontend_url(bridge_port, auth_token))
+    navigate_window_to_live_frontend(
+        app,
+        "chat",
+        &live_chat_frontend_url(bridge_port, auth_token),
+    )
 }
 
 fn live_frontend_reload_targets(bridge_port: u16, auth_token: &str) -> [(&'static str, String); 2] {
@@ -1849,7 +1897,12 @@ fn start_bridge_for_state(
         &state.bridge_auth_token,
         runtime,
     )?;
-    let mut child = Some(BridgeProcess::new(bridge.child, candidate_id.clone()));
+    let mut child = Some(BridgeProcess::new(
+        bridge.child,
+        candidate_id.clone(),
+        state.bridge_port,
+        state.bridge_auth_token.clone(),
+    ));
     if let Ok(mut bridge_process) = state.bridge.lock() {
         if bridge_process.is_none() {
             *bridge_process = child.take();

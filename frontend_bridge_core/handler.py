@@ -349,6 +349,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": True, "plugins": plugin_load_snapshot(self.state)})
             elif path == "/api/config":
                 self._send_json(_app_config_response(self.state))
+            elif path == "/api/config/network-proxy/detect":
+                from config.network_proxy import detect_network_proxy_configuration
+
+                self._send_json(detect_network_proxy_configuration().as_payload())
             elif path == "/api/config/tts-bundle/recommendation":
                 self._send_json(_tts_bundle_recommendation())
             elif path == "/api/characters":
