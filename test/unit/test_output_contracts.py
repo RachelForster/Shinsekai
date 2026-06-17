@@ -133,6 +133,56 @@ def test_template_generator_renders_added_field_aliases(monkeypatch) -> None:
     assert "camera (string, optional): Camera framing for this line. Aliases: shot, framing." in template
 
 
+def test_template_generator_omits_scene_and_bgm_for_transparent_background(monkeypatch) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+    background = SimpleNamespace(
+        sprites=[{"path": "room.png"}],
+        bg_tags="scene 1: room",
+        bgm_list=["room.mp3"],
+        bgm_tags="music 1: room theme",
+    )
+
+    monkeypatch.setattr(
+        "llm.template_generator.config_manager",
+        SimpleNamespace(
+            get_background_by_name=lambda name: background,
+            get_character_by_name=lambda name: character,
+        ),
+    )
+
+    transparent_template, transparent_warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name="透明场景",
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+    real_background_template, real_background_warning = TemplateGenerator(
+        output_contract_patches=[]
+    ).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name="Room",
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert transparent_warning == ""
+    assert real_background_warning == ""
+    assert "template_gen.r_scene" not in transparent_template
+    assert "template_gen.r_bgm" not in transparent_template
+    assert "template_gen.scene_block_header" not in transparent_template
+    assert "template_gen.bgm_block_header" not in transparent_template
+    assert "template_gen.r_scene" in real_background_template
+    assert "template_gen.r_bgm" in real_background_template
+    assert "template_gen.scene_block_header" in real_background_template
+    assert "template_gen.bgm_block_header" in real_background_template
+
+
 def test_template_generator_warns_for_unknown_requirement_patch_mode(monkeypatch, caplog) -> None:
     character = SimpleNamespace(
         sprites=[object()],
