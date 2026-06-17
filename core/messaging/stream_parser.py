@@ -62,6 +62,11 @@ class LlmResponseStreamParser:
         return self.parse_failures > 0
 
     @property
+    def buffer(self) -> str:
+        """The current unparsed trailing text (may contain an incomplete JSON)."""
+        return self._buffer
+
+    @property
     def unparsed_remainder(self) -> str:
         """流结束后缓冲区里残留的内容（截短便于展示）。"""
         return self._buffer[:200].strip()

@@ -21,6 +21,8 @@ class LLMAdapter(ABC):
 
     def __init__(self, **kwargs) -> None:
         self.user_template = ""
+        self._current_stream: object | None = None
+        self._current_response: object | None = None
 
     @classmethod
     def get_config_schema(cls) -> dict[str, dict]:
@@ -42,3 +44,13 @@ class LLMAdapter(ABC):
 
     def set_user_template(self, template: str) -> None:
         self.user_template = template
+
+    def cancel(self) -> None:
+        """Cancel the currently active request (best-effort).
+
+        Default implementation clears stored stream/response references.
+        Subclasses should override to close the underlying HTTP connection
+        when possible.
+        """
+        self._current_stream = None
+        self._current_response = None

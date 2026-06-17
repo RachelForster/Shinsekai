@@ -160,7 +160,10 @@ def test_tts_worker_exception_path_uses_original_put_data_fallback(
     assert tts_queue.unfinished_tasks == 0
 
 
-def test_ui_worker_skip_speech_is_noop_when_queue_empty() -> None:
+def test_ui_worker_skip_speech_stops_audio_regardless_of_queue() -> None:
+    """skip_speech now always stops the active audio channel, even when the
+    queue is empty — this is required so preset-voice playback can be
+    interrupted alongside synthesised TTS."""
     audio_path_queue = Queue()
     _make_app_runtime(audio_path_queue=audio_path_queue)
     worker = UIWorker(audio_path_queue)
@@ -170,9 +173,12 @@ def test_ui_worker_skip_speech_is_noop_when_queue_empty() -> None:
 
     worker.skip_speech()
 
-    worker.dialog_channel.stop.assert_not_called()
-    assert worker.current_audio_path == "current.wav"
-    assert worker.task_done_requested.set_calls == 0
+    # Audio channel must be stopped (it's busy — mock returns truthy)
+    worker.dialog_channel.stop.assert_called_once()
+    # current_audio_path must be cleared
+    assert worker.current_audio_path is None
+    # task_done_requested must be set so any waiting dispatch aborts
+    assert worker.task_done_requested.set_calls > 0
 
 
 def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(
