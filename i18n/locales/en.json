@@ -292,6 +292,8 @@
       "max_sentence_length": "Max sentence length (chars)",
       "ph_url": "e.g. http://127.0.0.1:9880/",
       "ph_path": "Root folder of your bundle or project",
+      "ph_path_kaggle": "Kaggle mode does not use a local GPT-SoVITS path",
+      "tt_path_kaggle": "Kaggle mode calls the remote Notebook URL and will not start local GPT-SoVITS.",
       "env": {
         "platform": "Platform",
         "gpu": "GPUs (gpu_list)",

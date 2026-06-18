@@ -165,6 +165,7 @@ export function apiSchemaWithAdapterOptions(
     catalogOptions(catalog?.tts, [
       { label: "不使用", value: "none" },
       { label: "Genie TTS", value: "genie-tts" },
+      { label: "Kaggle GPT-SoVITS", value: "kaggle-gpt-sovits" },
       { label: "GPT SoVITS", value: "gpt-sovits" },
       { label: "IndexTTS", value: "index-tts" },
       { label: "CosyVoice", value: "cosyvoice" },
@@ -187,6 +188,13 @@ export function apiSchemaWithAdapterOptions(
         .map((field) => {
           if (field.name === "tts_provider") {
             return { ...field, options: ttsOptions };
+          }
+          if (field.name === "gpt_sovits_api_path") {
+            return {
+              ...field,
+              disabledReason: "Kaggle 模式通过远端 Notebook URL 调用，不使用本地 GPT-SoVITS 路径。",
+              disabledWhen: (value: ApiConfig) => value.tts_provider === "kaggle-gpt-sovits",
+            };
           }
           if (field.name === "t2i_provider") {
             return { ...field, options: t2iOptions };
@@ -218,8 +226,12 @@ export function syncCompactRatioDraft(config: ApiConfig): ApiConfig {
 
 export function normalizeApiConfigForUi(config: ApiConfig): ApiConfig {
   const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
+  const ttsProvider = String(config.tts_provider || "")
+    .trim()
+    .toLowerCase();
   return syncCompactRatioDraft({
     ...config,
+    gpt_sovits_api_path: ttsProvider === "kaggle-gpt-sovits" ? "" : config.gpt_sovits_api_path,
     history_recent_messages: finiteNumber(config.history_recent_messages, 20),
     llm_api_key: config.llm_api_key ?? {},
     llm_base_url: String(config.llm_base_url || "").trim() || llmDefaultBaseUrls[provider] || "",
@@ -345,7 +357,7 @@ export function isTaskCancelledError(error: unknown) {
 }
 
 export function requiresTtsServerConfig(provider: string) {
-  return ["genie-tts", "gpt-sovits"].includes(provider.trim().toLowerCase());
+  return ["genie-tts", "kaggle-gpt-sovits", "gpt-sovits"].includes(provider.trim().toLowerCase());
 }
 
 export function containsPathQuotes(value: string) {

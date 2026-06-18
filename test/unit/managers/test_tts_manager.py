@@ -9,9 +9,26 @@ from tts.tts_manager import TTSManager, TTSAdapterFactory
 from test.mocks import MockTTSAdapter
 
 
+class EmptyThenSuccessTTSAdapter(MockTTSAdapter):
+    def __init__(self):
+        super().__init__()
+        self._calls = 0
+
+    def generate_speech(self, text, file_path=None, **kwargs):
+        self._calls += 1
+        self.call_history.append({"text": text, "file_path": file_path, "kwargs": kwargs})
+        if self._calls == 1:
+            return ""
+        p = Path(file_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"fake audio data")
+        return str(p)
+
+
 class TestTTSAdapterFactoryRegistry:
     def test_all_registered_adapters_present(self):
         assert "gpt-sovits" in TTSAdapterFactory._adapters
+        assert "kaggle-gpt-sovits" in TTSAdapterFactory._adapters
         assert "genie-tts" in TTSAdapterFactory._adapters
         assert "cosyvoice" in TTSAdapterFactory._adapters
 
@@ -63,6 +80,16 @@ class TestTTSManagerWithMock:
         mgr.set_tts_adapter(mock_tts_adapter)
         result = mgr.generate_tts(text="Hello", ref_audio_path=None)
         assert result == ""
+        mgr.shutdown()
+
+    def test_generate_tts_retries_empty_audio_result(self):
+        adapter = EmptyThenSuccessTTSAdapter()
+        mgr = TTSManager()
+        mgr.set_tts_adapter(adapter)
+        result = mgr.generate_tts(text="Hello", ref_audio_path="ref.wav")
+        assert result
+        assert Path(result).is_file()
+        assert len(adapter.call_history) == 2
         mgr.shutdown()
 
     def test_set_language(self, mock_tts_adapter):

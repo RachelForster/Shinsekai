@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from PySide6.QtCore import Qt, QSize, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
@@ -811,19 +812,35 @@ class CharacterSettingsTab(QWidget):
         _gpt = self.gpt_model_path.text().strip()
         _sovits = self.sovits_model_path.text().strip()
         _ref = self.refer_audio_path.text().strip()
-        ok, errors = check_all(
+        _api_config = self._ctx.config_manager.config.api_config
+        _tts_provider = str(getattr(_api_config, "tts_provider", "") or "").strip().lower()
+        _tts_host = (urlparse(str(getattr(_api_config, "gpt_sovits_url", "") or "")).hostname or "").lower()
+        _remote_gpt_sovits = _tts_provider == "kaggle-gpt-sovits" or (
+            _tts_provider == "gpt-sovits" and _tts_host not in {
+                "",
+                "127.0.0.1",
+                "localhost",
+                "0.0.0.0",
+                "::1",
+            }
+        )
+        _checks = [
             not_empty(_spr, tr_i18n("char.sprite_dir")),
             ascii_only(_spr, tr_i18n("char.sprite_dir")),
             no_quotes(_gpt, tr_i18n("char.gpt_path")),
-            file_exists(_gpt, tr_i18n("char.gpt_path")),
             _ends_with(_gpt, ".ckpt", tr_i18n("char.gpt_path")),
             no_quotes(_sovits, tr_i18n("char.sovits_path")),
-            file_exists(_sovits, tr_i18n("char.sovits_path")),
             _ends_with(_sovits, ".pth", tr_i18n("char.sovits_path")),
             no_quotes(_ref, tr_i18n("char.ref_audio")),
-            file_exists(_ref, tr_i18n("char.ref_audio")),
-            audio_duration_between(_ref, 3.0, 10.0, tr_i18n("char.ref_audio")),
-        )
+        ]
+        if not _remote_gpt_sovits:
+            _checks.extend([
+                file_exists(_gpt, tr_i18n("char.gpt_path")),
+                file_exists(_sovits, tr_i18n("char.sovits_path")),
+                file_exists(_ref, tr_i18n("char.ref_audio")),
+                audio_duration_between(_ref, 3.0, 10.0, tr_i18n("char.ref_audio")),
+            ])
+        ok, errors = check_all(*_checks)
         if not ok:
             warn_if_invalid(ok, errors, title=tr_i18n("char.msg_validation_title"), parent=self)
             return
