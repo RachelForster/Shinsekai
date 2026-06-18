@@ -58,10 +58,19 @@ def _latest_history_json(history_dir: str) -> Path | None:
     path = Path(history_dir)
     if not path.is_dir():
         return None
+    # 优先找正式 .json 文件
     files = [item for item in path.glob("*.json") if item.is_file()]
-    if not files:
-        return None
-    return max(files, key=lambda item: item.stat().st_mtime)
+    if files:
+        return max(files, key=lambda item: item.stat().st_mtime)
+    # 没有 .json 时，检查 .json.tmp，返回去掉 .tmp 后缀的 .json 路径
+    tmp_files = [item for item in path.glob("*.json.tmp") if item.is_file()]
+    if tmp_files:
+        latest_tmp = max(tmp_files, key=lambda item: item.stat().st_mtime)
+        # 去掉末尾 .tmp 后缀，返回 .json 路径
+        tmp_name = latest_tmp.name  # 如 "3cb1d79....json.tmp"
+        json_name = tmp_name[:-4]   # 去掉 ".tmp" → "3cb1d79....json"
+        return latest_tmp.parent / json_name
+    return None
 
 
 def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:

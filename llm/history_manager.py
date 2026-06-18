@@ -146,7 +146,8 @@ class HistoryManager:
 
     def load_chat_history(self, file_path):
         """
-        启动时加载：.tmp 存在 → 上次异常退出，恢复；不存在 → 正常加载正式文件。
+        启动时加载：先加载正式 .json，如果有 .tmp 则将其内容追加合并，
+        写回 .json 后删除 .tmp，最后加载合并后的完整文件。
         """
         if not file_path:
             print("没有提供历史文件名，跳过加载。")
@@ -155,44 +156,39 @@ class HistoryManager:
         messages = []
         history_path = Path(file_path)
         tmp = self._tmp_path(file_path)
-        recovered = False
 
+        # 1. 先加载正式 .json（完整历史）
+        if history_path.exists():
+            try:
+                with open(history_path, 'r', encoding='utf-8') as f:
+                    messages = json.load(f)
+                print(f"聊天记录已从 {history_path} 加载。")
+            except Exception as e:
+                print(f"加载正式聊天记录失败: {e}")
+                messages = []
+
+        # 2. 如果有 .tmp，合并其中未保存的消息
         if tmp.exists() and tmp.stat().st_size > 0:
-            print("检测到未保存的临时聊天记录，正在恢复...")
-            source = tmp
-            recovered = True
-        elif history_path.exists():
-            source = history_path
-        else:
-            return messages
-
-        try:
-            with open(source, 'r', encoding='utf-8') as f:
-                raw = f.read().strip()
-            if not raw:
-                return messages
-
-            if recovered:
-                raw = raw.rstrip(",\n\r")
-                messages = json.loads("[" + raw + "]")
-                tmp.unlink(missing_ok=True)
-            else:
-                messages = json.loads(raw)
-
-            print(f"聊天记录已从 {source} 加载。")
-        except Exception as e:
-            print(f"加载聊天记录失败: {e}")
-            if recovered and history_path.exists():
-                try:
-                    with open(history_path, 'r', encoding='utf-8') as f:
-                        messages = json.load(f)
+            print("检测到未保存的临时聊天记录，正在合并...")
+            try:
+                with open(tmp, 'r', encoding='utf-8') as f:
+                    raw = f.read().strip()
+                if raw:
+                    raw = raw.rstrip(",\n\r")
+                    tmp_messages = json.loads("[" + raw + "]")
+                    # 追加到正式记录后面
+                    messages.extend(tmp_messages)
+                    # 写回 .json 完成保存
+                    history_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(history_path, 'w', encoding='utf-8') as f:
+                        json.dump(messages, f, ensure_ascii=False, indent=4)
+                    print(f"临时记录已合并保存到 {history_path}")
+                    # 删除 .tmp
                     tmp.unlink(missing_ok=True)
-                    print("已从正式文件中恢复。")
-                except Exception:
-                    pass
-            return messages
+            except Exception as e:
+                print(f"合并临时聊天记录失败: {e}")
 
-        # 重建 UI 聊天历史
+        # 3. 重建 UI 聊天历史
         self.chat_history.clear()
         try:
             for message in messages:
@@ -216,7 +212,6 @@ class HistoryManager:
                         )
         except Exception as e:
             print("显示聊天历史失败", e)
-            return messages
         return messages
 
     def copy_chat_history_to_clipboard(self):
