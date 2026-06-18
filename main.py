@@ -70,12 +70,10 @@ from core.sprite.sprite_cli import parse_sprite_args
 try:
     from live.danmuku_handler import start_bilibili_service
 except ImportError as e:
-    # 早于 init_i18n，不调用 tr
-    # print("Bilibili import failed:", e)
     pass
 
 voice_lang = "ja"
-cc = OpenCC("t2s")  # 繁体到简体转换器
+cc = OpenCC("t2s")
 
 
 def _shutdown_plugins() -> None:
@@ -130,7 +128,7 @@ def main():
         except Exception:
             logger.exception("T2I initialization failed", extra={"event": "t2i.init.failed"})
 
-    # TTS：仅当 API 中语音引擎不是「不使用」时加载；命令行 --tts 可覆盖引擎名（与 api.yaml 一致）
+    # TTS
     gsv_url, gsv_api_path, config_tts_provider = config.get_gpt_sovits_config()
     adapter_name = (args.tts or "").strip() or config_tts_provider
     tts_manager = None
@@ -166,7 +164,6 @@ def main():
     ) as f:
         user_template = f.read()
 
-    # Init LLMManager before UI, so that handlers can access it via get_app_runtime().llm_manager
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
     logger.info(
         "LLM configuration selected",
@@ -208,13 +205,12 @@ def main():
             "frequency_penalty": float(config.config.api_config.frequency_penalty),
             "max_tokens": 4096,
         },
-        history_file=args.history,  # ← 新增，用于增量保存
+        history_file=args.history,
     )
 
     if messages:
         llm_manager.set_messages(messages)
 
-    # Legacy flow
     image_queue = Queue()
     emotion_queue = Queue()
 
@@ -223,14 +219,12 @@ def main():
 
     text_processor = TextProcessor()
 
-    # 将角色读音映射注入 text_processor.name_map
     for _char in config.config.characters:
         _pm = getattr(_char, "pronunciation_map", None)
         if _pm:
             from llm.text_processor import name_map
             name_map.update(_pm)
 
-    # 获取背景组
     bg_group = None
     try:
         bg_group = (
@@ -302,7 +296,6 @@ def main():
             save_chat_history(args.history, llm_manager.get_messages())
         return
 
-    # Init UI and connect to runtime
     from core.runtime.ui_update_manager import UIUpdateManager, connect_to_desktop_window
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
@@ -352,7 +345,7 @@ def main():
     else:
         _welcome_html = tr_i18n("main.welcome_html")
         _option_start = tr_i18n("main.option_start")
-    # 更新初始立绘（已从文件恢复会话时不要先刷欢迎语，否则会 hide 选项区并与恢复队列竞争）
+
     try:
         if not messages:
             window.setDisplayWords(_welcome_html)
@@ -368,7 +361,6 @@ def main():
     else:
         emit_user_text = None
 
-    # Update system_config with current session's bg/bgm so restore doesn't use stale values
     sc = config.config.system_config.model_copy(deep=True)
     if bg_group:
         sc.bgm_path = bgm_list[0] if bgm_list else ""
@@ -417,36 +409,40 @@ def main():
             try:
                 start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
             except ImportError as e:
-                # print(tr_i18n("main.print_bili_import", e=str(e)))
                 pass
 
-    # 确保在程序退出时停止所有线程
     try:
         appIcon = QIcon(str(resource_path("assets/system/picture/Icon.png")))
         app.setWindowIcon(appIcon)
     except Exception as e:
         print(tr_i18n("main.print_icon_fail", e=str(e)))
 
-    # ----- 退出流程：独立 try-except 保护保存步骤 -----
-    def _safe_save_chat():
-        try:
-            save_chat_history(args.history, llm_manager.get_messages())
-        except Exception:
-            logger.exception("保存聊天记录失败", extra={"event": "chat.save.failed"})
+    # ----- 退出流程 -----
+    from llm.history_manager import HistoryManager
 
-    def _safe_save_bg():
+    def _safe_step(name, fn):
         try:
-            save_bg(bg_path=window.current_background_path, bgm_path=ui_updates.current_bgm_path)
+            fn()
         except Exception:
-            logger.exception("保存背景失败", extra={"event": "bg.save.failed"})
+            logger.exception(f"{name} 失败", extra={"event": f"{name}.failed"})
 
-    # 关闭顺序：插件 → TTS 服务器 → Worker 线程 → 保存数据
-    app.aboutToQuit.connect(workflow.stop)
-    app.aboutToQuit.connect(_shutdown_plugins)
-    app.aboutToQuit.connect(lambda: tts_manager and tts_manager.shutdown())
-    app.aboutToQuit.connect(_safe_save_chat)
-    app.aboutToQuit.connect(_safe_save_bg)
-    # -------------------------------------------------
+    # 前置步骤（异常不影响后续）
+    app.aboutToQuit.connect(lambda: _safe_step("workflow.stop", workflow.stop))
+    app.aboutToQuit.connect(lambda: _safe_step("shutdown_plugins", _shutdown_plugins))
+    app.aboutToQuit.connect(lambda: _safe_step("tts_manager.shutdown", lambda: tts_manager and tts_manager.shutdown()))
+    app.aboutToQuit.connect(lambda: _safe_step("save_bg", lambda: save_bg(bg_path=window.current_background_path, bgm_path=ui_updates.current_bgm_path)))
+
+    # 核心保存步骤：成功则删除 .tmp，失败则跳过删除保护 .tmp
+    def _save_chat_and_guard_tmp():
+        success = save_chat_history(args.history, llm_manager.get_messages())
+        if not success:
+            return
+        try:
+            HistoryManager.delete_tmp(args.history)
+        except Exception:
+            logger.exception("delete_tmp 失败", extra={"event": "delete_tmp.failed"})
+
+    app.aboutToQuit.connect(_save_chat_and_guard_tmp)
 
     window.show()
 

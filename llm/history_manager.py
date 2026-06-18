@@ -128,21 +128,30 @@ class HistoryManager:
 
     def save_chat_history(self, file_path, history):
         """
-        正常关闭：用传入的完整内存数据全量写入正式文件，然后删除临时文件。
+        正常关闭：用传入的完整内存数据全量写入正式文件。
+        返回 True 表示成功，False 表示失败。
         """
         if not file_path:
             print("没有提供历史文件名，跳过保存。")
-            return
+            return True
         history_path = Path(file_path)
-        tmp = self._tmp_path(file_path)
         try:
             history_path.parent.mkdir(parents=True, exist_ok=True)
             with open(history_path, 'w', encoding='utf-8') as f:
                 json.dump(history, f, ensure_ascii=False, indent=4)
             print(f"聊天记录已保存到 {history_path}")
-            tmp.unlink(missing_ok=True)
+            return True
         except Exception as e:
             print(f"保存聊天记录失败: {e}")
+            return False
+
+    @staticmethod
+    def delete_tmp(history_file: str) -> None:
+        """正常关闭成功后删除临时文件。"""
+        if not history_file:
+            return
+        tmp = HistoryManager._tmp_path(history_file)
+        tmp.unlink(missing_ok=True)
 
     def load_chat_history(self, file_path):
         """
@@ -176,13 +185,17 @@ class HistoryManager:
                 if raw:
                     raw = raw.rstrip(",\n\r")
                     tmp_messages = json.loads("[" + raw + "]")
-                    # 追加到正式记录后面
-                    messages.extend(tmp_messages)
-                    # 写回 .json 完成保存
-                    history_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(history_path, 'w', encoding='utf-8') as f:
-                        json.dump(messages, f, ensure_ascii=False, indent=4)
-                    print(f"临时记录已合并保存到 {history_path}")
+                    # 简单去重：如果 messages 最后一条与 tmp_messages 第一条相同，跳过 tmp 的第一条
+                    if messages and tmp_messages:
+                        if messages[-1] == tmp_messages[0]:
+                            tmp_messages = tmp_messages[1:]
+                    if tmp_messages:
+                        messages.extend(tmp_messages)
+                        # 写回 .json 完成保存
+                        history_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(history_path, 'w', encoding='utf-8') as f:
+                            json.dump(messages, f, ensure_ascii=False, indent=4)
+                        print(f"临时记录已合并保存到 {history_path}")
                     # 删除 .tmp
                     tmp.unlink(missing_ok=True)
             except Exception as e:
