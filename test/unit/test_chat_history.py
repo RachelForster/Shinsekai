@@ -1,6 +1,9 @@
 """Unit tests for chat_history — pop_last_assistant_turn (reroll logic) and
 dialog content parsing."""
 
+import json
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock
 import sys
 
@@ -12,6 +15,7 @@ sys.modules.setdefault("PySide6.QtCore", MagicMock())
 from llm.history_manager import (
     _repair_json_string,
     parse_assistant_dialog_content,
+    HistoryManager,
 )
 from core.sprite.chat_history import pop_last_assistant_turn
 
@@ -259,3 +263,181 @@ class TestRepairJsonString:
             '{"speech": "he said \\"hello\\""}'
         )
         assert repaired.count('"') % 2 == 0  # balanced quotes
+
+
+# ====================== 新增：HistoryManager 增量保存与恢复测试 ======================
+
+class TestTmpPath:
+    """_tmp_path 静态方法"""
+
+    def test_appends_tmp_suffix(self):
+        path = HistoryManager._tmp_path("/data/chat/abc.json")
+        assert str(path).endswith(".json.tmp")
+
+    def test_handles_windows_paths(self):
+        path = HistoryManager._tmp_path("D:\\data\\chat\\abc.json")
+        assert str(path).endswith(".json.tmp")
+
+
+class TestAppendMessageToTmp:
+    """append_message_to_tmp 静态方法"""
+
+    def setup_method(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.history_file = str(Path(self.tmp_dir) / "test.json")
+
+    def test_creates_tmp_file_and_writes_line(self):
+        msg = {"role": "user", "content": "hello"}
+        HistoryManager.append_message_to_tmp(self.history_file, msg)
+
+        tmp_path = Path(self.history_file + ".tmp")
+        assert tmp_path.exists()
+        content = tmp_path.read_text(encoding="utf-8")
+        assert '"role"' in content
+        assert '"user"' in content
+        assert content.endswith(",\n")
+
+    def test_appends_multiple_messages(self):
+        HistoryManager.append_message_to_tmp(self.history_file, {"role": "user", "content": "a"})
+        HistoryManager.append_message_to_tmp(self.history_file, {"role": "assistant", "content": "b"})
+
+        tmp_path = Path(self.history_file + ".tmp")
+        lines = tmp_path.read_text(encoding="utf-8").strip().split("\n")
+        assert len(lines) == 2
+
+    def test_creates_parent_dirs(self):
+        deep_file = str(Path(self.tmp_dir) / "sub" / "deep" / "test.json")
+        HistoryManager.append_message_to_tmp(deep_file, {"role": "user", "content": "x"})
+        assert Path(deep_file + ".tmp").exists()
+
+    def test_does_not_raise_on_none_path(self):
+        HistoryManager.append_message_to_tmp(None, {"role": "user", "content": "x"})
+
+    def test_does_not_raise_on_empty_path(self):
+        HistoryManager.append_message_to_tmp("", {"role": "user", "content": "x"})
+
+
+class TestLoadChatHistoryRecovery:
+    """load_chat_history 崩溃恢复逻辑"""
+
+    def setup_method(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.history_file = str(Path(self.tmp_dir) / "test.json")
+
+    def _make_history_manager(self):
+        return HistoryManager([])
+
+    def test_normal_load_without_tmp(self):
+        msgs = [{"role": "user", "content": "hi"}]
+        with open(self.history_file, "w", encoding="utf-8") as f:
+            json.dump(msgs, f)
+
+        hm = self._make_history_manager()
+        result = hm.load_chat_history(self.history_file)
+        assert len(result) == 1
+        assert result[0]["content"] == "hi"
+
+    def test_recovery_from_tmp_only(self):
+        tmp_path = Path(self.history_file + ".tmp")
+        tmp_path.write_text(
+            '{"role": "user", "content": "recovered"},\n',
+            encoding="utf-8"
+        )
+
+        hm = self._make_history_manager()
+        result = hm.load_chat_history(self.history_file)
+        assert len(result) == 1
+        assert result[0]["content"] == "recovered"
+        # 恢复后应该生成正式文件并删除 tmp
+        assert Path(self.history_file).exists()
+        assert not tmp_path.exists()
+
+    def test_merges_tmp_into_existing_json(self):
+        old_msgs = [{"role": "user", "content": "old"}]
+        with open(self.history_file, "w", encoding="utf-8") as f:
+            json.dump(old_msgs, f)
+
+        tmp_path = Path(self.history_file + ".tmp")
+        tmp_path.write_text(
+            '{"role": "assistant", "content": "new"},\n',
+            encoding="utf-8"
+        )
+
+        hm = self._make_history_manager()
+        result = hm.load_chat_history(self.history_file)
+        assert len(result) == 2
+        assert result[0]["content"] == "old"
+        assert result[1]["content"] == "new"
+        assert not tmp_path.exists()
+
+    def test_dedup_when_last_msg_matches_first_tmp_msg(self):
+        old_msgs = [{"role": "user", "content": "dup"}]
+        with open(self.history_file, "w", encoding="utf-8") as f:
+            json.dump(old_msgs, f)
+
+        tmp_path = Path(self.history_file + ".tmp")
+        tmp_path.write_text(
+            '{"role": "user", "content": "dup"},\n'
+            '{"role": "assistant", "content": "new"},\n',
+            encoding="utf-8"
+        )
+
+        hm = self._make_history_manager()
+        result = hm.load_chat_history(self.history_file)
+        assert len(result) == 2
+        assert result[0]["content"] == "dup"
+        assert result[1]["content"] == "new"
+
+    def test_returns_empty_when_both_missing(self):
+        hm = self._make_history_manager()
+        result = hm.load_chat_history(self.history_file)
+        assert result == []
+
+    def test_fallback_to_json_when_tmp_corrupt(self):
+        old_msgs = [{"role": "user", "content": "fallback"}]
+        with open(self.history_file, "w", encoding="utf-8") as f:
+            json.dump(old_msgs, f)
+
+        tmp_path = Path(self.history_file + ".tmp")
+        tmp_path.write_text("not valid json{{{", encoding="utf-8")
+
+        hm = self._make_history_manager()
+        result = hm.load_chat_history(self.history_file)
+        assert len(result) == 1
+        assert result[0]["content"] == "fallback"
+
+
+class TestSaveChatHistory:
+    """save_chat_history 返回 bool，tmp 由 delete_tmp 独立删除"""
+
+    def setup_method(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.history_file = str(Path(self.tmp_dir) / "test.json")
+
+    def _make_history_manager(self):
+        return HistoryManager([])
+
+    def test_returns_true_on_success(self):
+        hm = self._make_history_manager()
+        result = hm.save_chat_history(self.history_file, [{"role": "user", "content": "x"}])
+        assert result is True
+        assert Path(self.history_file).exists()
+
+    def test_returns_true_when_no_file_path(self):
+        hm = self._make_history_manager()
+        result = hm.save_chat_history(None, [{"role": "user", "content": "x"}])
+        assert result is True
+
+    def test_tmp_persists_until_delete_tmp_called(self):
+        """save_chat_history 不删 tmp，需要独立调用 delete_tmp"""
+        tmp_path = Path(self.history_file + ".tmp")
+        tmp_path.write_text("dummy", encoding="utf-8")
+
+        hm = self._make_history_manager()
+        hm.save_chat_history(self.history_file, [{"role": "user", "content": "x"}])
+        # tmp 仍然存在
+        assert tmp_path.exists()
+
+        # 独立调用 delete_tmp 后才删除
+        HistoryManager.delete_tmp(self.history_file)
+        assert not tmp_path.exists()
