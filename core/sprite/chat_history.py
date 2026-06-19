@@ -43,9 +43,9 @@ def getHistory() -> list[Any]:
     return get_history()
 
 
-def save_chat_history(file_path: str, history: Any) -> None:
+def save_chat_history(file_path: str, history: Any) -> bool:
     """根据提供的文件名保存聊天记录到 JSON 文件。"""
-    _get_history_manager().save_chat_history(file_path, history)
+    return _get_history_manager().save_chat_history(file_path, history)
 
 
 def load_chat_history(file_path: str) -> Any:

@@ -126,12 +126,10 @@ logger.info(
 try:
     from live.danmuku_handler import start_bilibili_service
 except ImportError as e:
-    # 早于 init_i18n，不调用 tr
-    # print("Bilibili import failed:", e)
     pass
 
 voice_lang = "ja"
-cc = OpenCC("t2s")  # 繁体到简体转换器
+cc = OpenCC("t2s")
 
 
 def _shutdown_plugins() -> None:
@@ -151,6 +149,22 @@ def _log_shutdown_error(step: str, exc: Exception) -> None:
         extra={"event": "chat.shutdown.failed", "step": step},
         exc_info=(type(exc), exc, exc.__traceback__),
     )
+
+
+def _save_chat_history_and_delete_tmp(history_arg: str, messages: list) -> bool:
+    if not history_arg:
+        return True
+    from llm.history_manager import HistoryManager
+
+    history_file = str(chat_history_active_path(history_arg))
+    success = save_chat_history(history_file, messages)
+    if not success:
+        return False
+    try:
+        HistoryManager.delete_tmp(history_file)
+    except Exception as exc:
+        _log_shutdown_error("delete_tmp", exc)
+    return True
 
 
 @contextmanager
@@ -288,7 +302,7 @@ def main():
         except Exception:
             logger.exception("T2I initialization failed", extra={"event": "t2i.init.failed"})
 
-    # TTS：仅当 API 中语音引擎不是「不使用」时加载；命令行 --tts 可覆盖引擎名（与 api.yaml 一致）
+    # TTS
     gsv_url, gsv_api_path, config_tts_provider = config.get_gpt_sovits_config()
     adapter_name = (args.tts or "").strip() or config_tts_provider
     tts_manager = None
@@ -326,7 +340,6 @@ def main():
         ) as f:
             user_template = f.read()
 
-    # Init LLMManager before UI, so that handlers can access it via get_app_runtime().llm_manager
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
     logger.info(
         "LLM configuration selected",
@@ -369,12 +382,12 @@ def main():
                 "frequency_penalty": float(config.config.api_config.frequency_penalty),
                 "max_tokens": 4096,
             },
+            history_file=str(chat_history_active_path(args.history)) if args.history else "",
         )
 
     if messages:
         llm_manager.set_messages(messages)
 
-    # Legacy flow
     image_queue = Queue()
     emotion_queue = Queue()
 
@@ -384,14 +397,12 @@ def main():
 
     text_processor = TextProcessor()
 
-    # 将角色读音映射注入 text_processor.name_map
     for _char in config.config.characters:
         _pm = getattr(_char, "pronunciation_map", None)
         if _pm:
             from llm.text_processor import name_map
             name_map.update(_pm)
 
-    # 获取背景组
     bg_group = None
     try:
         bg_group = (
@@ -548,7 +559,7 @@ def main():
             if not args.history:
                 return
             _save_active_branch()
-            save_chat_history(str(chat_history_active_path(args.history)), llm_manager.get_messages())
+            _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())
             save_branch_state(args.history, branch_state)
 
         def _reset_branch_state() -> None:
@@ -925,14 +936,12 @@ def main():
                 workflow=workflow,
                 plugin_shutdown=_shutdown_plugins,
                 tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
-                save_history=lambda: save_chat_history(str(chat_history_active_path(args.history)), llm_manager.get_messages())
-                if args.history
-                else None,
+                save_history=lambda: _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())
+                if args.history else None,
                 on_error=_log_shutdown_error,
             )
         return
 
-    # Init UI and connect to runtime
     from core.runtime.ui_update_manager import UIUpdateManager, connect_to_desktop_window
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
@@ -989,7 +998,7 @@ def main():
     else:
         _welcome_html = tr_i18n("main.welcome_html")
         _option_start = tr_i18n("main.option_start")
-    # 更新初始立绘（已从文件恢复会话时不要先刷欢迎语，否则会 hide 选项区并与恢复队列竞争）
+
     try:
         if not messages:
             window.setDisplayWords(_welcome_html)
@@ -1005,7 +1014,6 @@ def main():
     else:
         emit_user_text = None
 
-    # Update system_config with current session's bg/bgm so restore doesn't use stale values
     sc = config.config.system_config.model_copy(deep=True)
     if bg_group:
         sc.bgm_path = bgm_list[0] if bgm_list else ""
@@ -1054,10 +1062,8 @@ def main():
             try:
                 start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
             except ImportError as e:
-                # print(tr_i18n("main.print_bili_import", e=str(e)))
                 pass
 
-    # 确保在程序退出时停止所有线程
     try:
         appIcon = QIcon(str(resource_path("assets/system/picture/Icon.png")))
         app.setWindowIcon(appIcon)
@@ -1070,9 +1076,8 @@ def main():
             workflow=workflow,
             plugin_shutdown=_shutdown_plugins,
             tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
-            save_history=lambda: save_chat_history(str(chat_history_active_path(args.history)), llm_manager.get_messages())
-            if args.history
-            else None,
+            save_history=lambda: _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())
+            if args.history else None,
             save_background=lambda: save_bg(
                 bg_path=window.current_background_path,
                 bgm_path=ui_updates.current_bgm_path,

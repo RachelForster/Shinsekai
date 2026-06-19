@@ -1,4 +1,3 @@
-
 from asyncio import Queue
 from dataclasses import dataclass, field
 import json
@@ -296,7 +295,8 @@ class LLMManager:
         max_tool_result_chars: int = 6000,
         max_active_tool_groups: int = 3,
         first_turn_tool_call_limit: int = FIRST_USER_TURN_TOOL_CALL_LIMIT,
-        generation_config: Optional[Dict[str, Any]] = None
+        generation_config: Optional[Dict[str, Any]] = None,
+        history_file: str = "",
     ):
         self.llm_adapter = adapter
         self.messages = []
@@ -327,6 +327,7 @@ class LLMManager:
         }
         self._chat_depth = 0
         self._turn_state: Optional[_ChatTurnState] = None
+        self._history_file = history_file
         
         # 设置日志
         self.logger = logger
@@ -399,6 +400,11 @@ class LLMManager:
         msg.update(kwargs)
         self.messages.append(msg)
         
+        # --- 增量写入临时文件 ---
+        if self._history_file:
+            from llm.history_manager import HistoryManager
+            HistoryManager.append_message_to_tmp(self._history_file, msg)
+
         # --- Auto-Compact 逻辑 ---
         # 自动调用 compact_manager 检查 token 是否超限并执行压缩
         compacted_messages = self.compact_manager.auto_compact_if_needed(self.messages)

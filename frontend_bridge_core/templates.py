@@ -60,27 +60,37 @@ def _latest_history_json(history_dir: str) -> Path | None:
     path = Path(history_dir)
     if not path.is_dir():
         return None
-    candidates = [item for item in path.glob("*.json") if item.is_file()]
+    candidates: list[tuple[Path, float]] = [
+        (item, item.stat().st_mtime) for item in path.glob("*.json") if item.is_file()
+    ]
     candidates.extend(
-        item
+        (
+            item,
+            max(
+                child.stat().st_mtime
+                for child in (
+                    item / ACTIVE_HISTORY_FILENAME,
+                    item / BRANCH_TREE_FILENAME,
+                    item / f"{ACTIVE_HISTORY_FILENAME}.tmp",
+                )
+                if child.is_file()
+            ),
+        )
         for item in path.iterdir()
-        if item.is_dir() and ((item / ACTIVE_HISTORY_FILENAME).is_file() or (item / BRANCH_TREE_FILENAME).is_file())
+        if item.is_dir()
+        and any(
+            (item / name).is_file()
+            for name in (ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME, f"{ACTIVE_HISTORY_FILENAME}.tmp")
+        )
+    )
+    candidates.extend(
+        (item.parent / item.name[:-4], item.stat().st_mtime)
+        for item in path.glob("*.json.tmp")
+        if item.is_file()
     )
     if not candidates:
         return None
-    return max(
-        candidates,
-        key=lambda item: max(
-            [
-                child.stat().st_mtime
-                for child in (
-                    [item / ACTIVE_HISTORY_FILENAME, item / BRANCH_TREE_FILENAME] if item.is_dir() else [item]
-                )
-                if child.exists()
-            ]
-            or [item.stat().st_mtime],
-        ),
-    )
+    return max(candidates, key=lambda item: item[1])[0]
 
 
 def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:
