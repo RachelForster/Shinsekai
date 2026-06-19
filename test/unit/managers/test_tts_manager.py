@@ -58,6 +58,32 @@ class TestTTSManagerWithMock:
         assert call["kwargs"]["character_name"] == "TestChar"
         mgr.shutdown()
 
+    def test_generate_tts_replaces_existing_cache_file_and_removes_part(self, mock_tts_adapter, tmp_path):
+        mgr = TTSManager()
+        mgr.set_tts_adapter(mock_tts_adapter)
+        mgr.audio_cache_dir = tmp_path
+
+        final_audio = tmp_path / "0.wav"
+        part_audio = tmp_path / "0.wav.part"
+        final_audio.write_bytes(b"old audio")
+        ref_audio = tmp_path / "ref.wav"
+        ref_audio.write_text("fake ref")
+
+        try:
+            result = mgr.generate_tts(
+                text="Hello world",
+                ref_audio_path=str(ref_audio),
+                prompt_text="Hello",
+                prompt_lang="en",
+            )
+
+            assert result == str(final_audio)
+            assert final_audio.read_bytes() == b"fake audio data"
+            assert not part_audio.exists()
+            assert mock_tts_adapter.call_history[-1]["file_path"] == str(part_audio)
+        finally:
+            mgr.shutdown()
+
     def test_generate_tts_no_ref_audio_returns_empty(self, mock_tts_adapter):
         mgr = TTSManager()
         mgr.set_tts_adapter(mock_tts_adapter)
