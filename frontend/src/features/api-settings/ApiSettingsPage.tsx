@@ -96,6 +96,15 @@ function formatTtsBundleFailure(error: unknown, t: Translate) {
   return archive ? `${message}\n${t("api.tts.bundleErrorManual", { path: archive })}` : message;
 }
 
+function isLocalTtsUrl(value: string) {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return ["", "127.0.0.1", "localhost", "0.0.0.0", "::1", "[::1]"].includes(host);
+  } catch {
+    return false;
+  }
+}
+
 export function ApiSettingsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -558,6 +567,14 @@ export function ApiSettingsPage() {
         showToast({
           kind: "error",
           message: "当前 TTS 引擎需要填写 URL。",
+          title: t("common.validationFailed"),
+        });
+        return;
+      }
+      if (!isKaggleTts && isLocalTtsUrl(draft.gpt_sovits_url) && !draft.gpt_sovits_api_path.trim()) {
+        showToast({
+          kind: "error",
+          message: "本地 TTS 引擎需要填写服务启动路径。",
           title: t("common.validationFailed"),
         });
         return;

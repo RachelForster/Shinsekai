@@ -1,6 +1,7 @@
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
+from urllib.parse import urlparse
 from pydantic import ValidationError
 from config.schema import (
     AppConfig,
@@ -16,6 +17,9 @@ from config.network_proxy import apply_network_proxy_environment
 import traceback
 
 
+_LOCAL_TTS_HOSTS = {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
+
+
 def _llm_default_base_url(llm_provider: str) -> str:
     """Return the built-in base URL for a provider, accepting minor case drift."""
     provider = (llm_provider or "").strip()
@@ -26,6 +30,16 @@ def _llm_default_base_url(llm_provider: str) -> str:
         if name.lower() == provider_lower:
             return base_url
     return ""
+
+
+def _is_http_url(value: str) -> bool:
+    parsed = urlparse(str(value or "").strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _is_local_tts_url(value: str) -> bool:
+    host = (urlparse(str(value or "").strip()).hostname or "").lower()
+    return host in _LOCAL_TTS_HOSTS
 
 
 class ConfigManager:
@@ -262,6 +276,21 @@ class ConfigManager:
         current_api_config.gpt_sovits_api_path = (
             "" if current_api_config.tts_provider == "kaggle-gpt-sovits" else gpt_sovits_api_path
         )
+        if current_api_config.tts_provider in {"gpt-sovits", "kaggle-gpt-sovits", "genie-tts"}:
+            tts_url = str(current_api_config.gpt_sovits_url or "").strip()
+            tts_path = str(current_api_config.gpt_sovits_api_path or "").strip()
+            if not tts_url:
+                return "错误：当前 TTS 引擎需要填写 URL。"
+            if not _is_http_url(tts_url):
+                return "错误：TTS URL 必须是有效的 http(s) URL。"
+            if current_api_config.tts_provider != "kaggle-gpt-sovits" and _is_local_tts_url(tts_url) and not tts_path:
+                return "错误：本地 TTS 引擎需要填写服务启动路径。"
+            if (
+                tts_path
+                and current_api_config.tts_provider != "kaggle-gpt-sovits"
+                and not Path(tts_path).expanduser().is_dir()
+            ):
+                return "错误：TTS 服务启动路径必须是已存在的目录。"
         current_api_config.t2i_api_url=t2i_url
         current_api_config.t2i_work_path=t2i_work_path
         current_api_config.t2i_default_workflow_path=t2i_default_workflow_path

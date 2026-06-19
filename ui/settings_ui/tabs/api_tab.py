@@ -83,11 +83,19 @@ _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
     ("cosyvoice", "CosyVoice"),
 )
 _PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion")
+_LOCAL_TTS_HOSTS = {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
 _MODEL_REQUEST_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0 Safari/537.36 Shinsekai/1.0"
 )
+
+
+def _is_local_tts_url(value: str) -> bool:
+    host = (urllib.parse.urlparse(str(value or "").strip()).hostname or "").lower()
+    return host in _LOCAL_TTS_HOSTS
+
+
 _OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 _LLM_CAPABILITY_CACHE_PATH = Path("data/config/llm_model_capabilities.json")
 _LLM_CAPABILITY_CACHE_VERSION = 2
@@ -2837,13 +2845,21 @@ class ApiSettingsTab(QWidget):
         tts_slug = self._current_tts_provider_key() or "gpt-sovits"
 
         if tts_slug in ("gpt-sovits", "kaggle-gpt-sovits", "genie-tts"):
+            tts_url = self.sovits_url.text().strip()
             tts_checks = [
-                not_empty(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
-                no_quotes(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
-                valid_url(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
+                not_empty(tts_url, tr_i18n("api.tts.url")),
+                no_quotes(tts_url, tr_i18n("api.tts.url")),
+                valid_url(tts_url, tr_i18n("api.tts.url")),
             ]
             tts_path = self.gpt_sovits_api_path.text().strip()
-            if tts_path and tts_slug != "kaggle-gpt-sovits":
+            requires_local_tts_path = tts_slug != "kaggle-gpt-sovits" and _is_local_tts_url(tts_url)
+            if requires_local_tts_path:
+                tts_checks.extend([
+                    not_empty(tts_path, tr_i18n("api.tts.path")),
+                    no_quotes(tts_path, tr_i18n("api.tts.path")),
+                    dir_exists(tts_path, tr_i18n("api.tts.path")),
+                ])
+            elif tts_path and tts_slug != "kaggle-gpt-sovits":
                 tts_checks.extend([
                     no_quotes(tts_path, tr_i18n("api.tts.path")),
                     dir_exists(tts_path, tr_i18n("api.tts.path")),

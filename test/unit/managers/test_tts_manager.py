@@ -25,6 +25,15 @@ class EmptyThenSuccessTTSAdapter(MockTTSAdapter):
         return str(p)
 
 
+class InvalidAudioTTSAdapter(MockTTSAdapter):
+    def generate_speech(self, text, file_path=None, **kwargs):
+        self.call_history.append({"text": text, "file_path": file_path, "kwargs": kwargs})
+        p = Path(file_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"")
+        return str(p)
+
+
 class TestTTSAdapterFactoryRegistry:
     def test_all_registered_adapters_present(self):
         assert "gpt-sovits" in TTSAdapterFactory._adapters
@@ -115,6 +124,17 @@ class TestTTSManagerWithMock:
         result = mgr.generate_tts(text="Hello", ref_audio_path="ref.wav")
         assert result
         assert Path(result).is_file()
+        assert len(adapter.call_history) == 2
+        mgr.shutdown()
+
+    def test_generate_tts_returns_empty_when_retries_never_create_audio(self, tmp_path):
+        adapter = InvalidAudioTTSAdapter()
+        mgr = TTSManager()
+        mgr.set_tts_adapter(adapter)
+        mgr.audio_cache_dir = tmp_path
+        result = mgr.generate_tts(text="Hello", ref_audio_path="ref.wav")
+        assert result == ""
+        assert not (tmp_path / "0.wav.part").exists()
         assert len(adapter.call_history) == 2
         mgr.shutdown()
 

@@ -113,10 +113,9 @@ class TTSManager:
         tmp_path = final_path.with_suffix(final_path.suffix + ".part")
 
         attempts = 2
-        last_result = None
         for attempt in range(1, attempts + 1):
             tmp_path.unlink(missing_ok=True)
-            last_result = self.tts_adapter.generate_speech(
+            result = self.tts_adapter.generate_speech(
                 text=text,
                 file_path=str(tmp_path),
                 ref_audio_path=ref_audio_path,
@@ -126,14 +125,14 @@ class TTSManager:
                 character_name=character_name,
                 speed_factor=speed_factor,
             )
-            if last_result and self._is_valid_audio_file(tmp_path):
+            if result and self._is_valid_audio_file(tmp_path):
                 tmp_path.replace(final_path)
                 return str(final_path)
             print(f"TTS generation returned no usable audio (attempt {attempt}/{attempts}).")
             tmp_path.unlink(missing_ok=True)
             if attempt < attempts:
                 time.sleep(0.35 * attempt)
-        return last_result or ''
+        return ''
 
     def set_language(self, language):
         """Sets the voice language."""

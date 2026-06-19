@@ -175,6 +175,11 @@ def _is_http_url(value: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+def _is_local_tts_url(value: str) -> bool:
+    host = (urlparse(str(value or "").strip()).hostname or "").lower()
+    return host in {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
+
+
 def _provider_map_value(mapping: dict[str, str], provider: str) -> str:
     return str((mapping or {}).get(provider, "") or "").strip()
 
@@ -234,6 +239,9 @@ def _validate_api_config_for_save(config: Any) -> None:
         raise ValueError("TTS URL 和服务启动路径不能包含引号。")
     if not _is_http_url(tts_url):
         raise ValueError("TTS URL 必须是有效的 http(s) URL。")
+    requires_local_path = tts_provider != "kaggle-gpt-sovits" and _is_local_tts_url(tts_url)
+    if requires_local_path and not tts_path:
+        raise ValueError("本地 TTS 引擎需要填写服务启动路径。")
     if tts_path and tts_provider != "kaggle-gpt-sovits" and not Path(tts_path).expanduser().is_dir():
         raise ValueError("TTS 服务启动路径必须是已存在的目录。")
 

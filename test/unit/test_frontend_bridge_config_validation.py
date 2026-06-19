@@ -23,6 +23,22 @@ def test_tts_server_path_is_optional_for_remote_gpt_sovits_url():
     _validate_api_config_for_save(_valid_config())
 
 
+def test_local_gpt_sovits_url_requires_server_path():
+    with pytest.raises(ValueError, match="本地 TTS 引擎需要填写服务启动路径"):
+        _validate_api_config_for_save(_valid_config(gpt_sovits_url="http://127.0.0.1:9880", gpt_sovits_api_path=""))
+
+
+def test_local_genie_tts_url_requires_server_path():
+    with pytest.raises(ValueError, match="本地 TTS 引擎需要填写服务启动路径"):
+        _validate_api_config_for_save(
+            _valid_config(
+                tts_provider="genie-tts",
+                gpt_sovits_url="http://localhost:9880",
+                gpt_sovits_api_path="",
+            )
+        )
+
+
 def test_tts_server_path_is_validated_when_provided(tmp_path):
     valid_dir = tmp_path / "gpt-sovits"
     valid_dir.mkdir()
