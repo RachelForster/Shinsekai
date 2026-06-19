@@ -1164,8 +1164,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           options,
         );
         await delay(null, 160);
+        const bundleRoots = {
+          genie: "data/tts_bundles/installed/genie_tts_server/Genie-TTS-Server",
+          gptso: "data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro-20250604",
+          gptso50: "data/tts_bundles/installed/gpt_sovits_nvidia50/GPT-SoVITS-v2pro-20250604-nvidia50",
+        } as const;
         const result = {
-          path: `data/tts_bundles/installed/${input.kind}`,
+          path: bundleRoots[input.kind],
           provider: input.kind === "genie" ? "genie-tts" : "gpt-sovits",
         } as const;
         previewTask(

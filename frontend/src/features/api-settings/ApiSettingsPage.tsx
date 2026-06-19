@@ -46,6 +46,7 @@ import { TtsBundleSection } from "./TtsBundleSection";
 import {
   activeMapValue,
   adapterSchema,
+  applyTtsProviderDefaults,
   apiSchemaWithAdapterOptions,
   asrComputeOptions,
   asrProviderOptions,
@@ -62,8 +63,10 @@ import {
   normalizeApiConfigForUi,
   normalizeAsrProvider,
   normalizeSystemAsrForSave,
+  normalizeTtsProvider,
   normalizeUiLanguage,
   requiresTtsServerConfig,
+  requiresTtsWorkPath,
   resolveAsrWhisperPresetValue,
   syncCompactRatioDraft,
   thinkingUnsupported,
@@ -94,15 +97,6 @@ function formatTtsBundleFailure(error: unknown, t: Translate) {
     message = clean;
   }
   return archive ? `${message}\n${t("api.tts.bundleErrorManual", { path: archive })}` : message;
-}
-
-function isLocalTtsUrl(value: string) {
-  try {
-    const host = new URL(value).hostname.toLowerCase();
-    return ["", "127.0.0.1", "localhost", "0.0.0.0", "::1", "[::1]"].includes(host);
-  } catch {
-    return false;
-  }
 }
 
 export function ApiSettingsPage() {
@@ -136,15 +130,21 @@ export function ApiSettingsPage() {
     () => apiSchemaWithAdapterOptions(adapterCatalog, draft),
     [adapterCatalog, draft?.t2i_provider, draft?.tts_provider],
   );
+  const installedTtsBundlePathForProvider = (provider: string) => {
+    const normalizedProvider = normalizeTtsProvider(provider);
+    return data?.tts_bundle_installed_paths?.[normalizedProvider] ?? "";
+  };
 
   useEffect(() => {
     if (data?.api_config) {
-      setDraft(normalizeApiConfigForUi(data.api_config));
+      setDraft(
+        normalizeApiConfigForUi(data.api_config, installedTtsBundlePathForProvider(data.api_config.tts_provider)),
+      );
       activeModelFetchKey.current = null;
       setModelOptions([]);
       setErrors({});
     }
-  }, [data?.api_config]);
+  }, [data?.api_config, data?.tts_bundle_installed_paths]);
 
   useEffect(() => {
     if (data?.system_config) {
@@ -529,6 +529,15 @@ export function ApiSettingsPage() {
     setDraft(updateAsrExtraConfig(draft, provider, key, value));
   };
 
+  const updateTtsDraftFromSchema = (nextDraft: ApiConfig) => {
+    const syncedDraft = syncCompactRatioDraft(nextDraft);
+    if (normalizeTtsProvider(nextDraft.tts_provider) !== normalizeTtsProvider(draft.tts_provider)) {
+      setDraft(applyTtsProviderDefaults(syncedDraft, installedTtsBundlePathForProvider(nextDraft.tts_provider)));
+      return;
+    }
+    setDraft(syncedDraft);
+  };
+
   const llmProviderSelectOptions = withCurrentOption(
     catalogOptions(adapterCatalog?.llm, llmProviderOptions),
     draft.llm_provider,
@@ -561,7 +570,8 @@ export function ApiSettingsPage() {
       showToast({ kind: "error", message: "LLM API 基础网址不能包含引号。", title: t("common.validationFailed") });
       return;
     }
-    const isKaggleTts = draft.tts_provider === "kaggle-gpt-sovits";
+    const ttsProvider = normalizeTtsProvider(draft.tts_provider);
+    const isKaggleTts = ttsProvider === "kaggle-gpt-sovits";
     if (requiresTtsServerConfig(draft.tts_provider)) {
       if (!draft.gpt_sovits_url.trim()) {
         showToast({
@@ -571,10 +581,12 @@ export function ApiSettingsPage() {
         });
         return;
       }
-      if (!isKaggleTts && isLocalTtsUrl(draft.gpt_sovits_url) && !draft.gpt_sovits_api_path.trim()) {
+      if (requiresTtsWorkPath(ttsProvider) && !draft.gpt_sovits_api_path.trim()) {
+        const message = "本地 TTS 引擎需要填写服务启动路径。";
+        setErrors({ ...nextErrors, gpt_sovits_api_path: message });
         showToast({
           kind: "error",
-          message: "本地 TTS 引擎需要填写服务启动路径。",
+          message,
           title: t("common.validationFailed"),
         });
         return;
@@ -592,7 +604,7 @@ export function ApiSettingsPage() {
       ...draft,
       ...buildPayloadFromSchema(apiSchema, draft),
     };
-    if (nextConfig.tts_provider === "kaggle-gpt-sovits") {
+    if (normalizeTtsProvider(nextConfig.tts_provider) === "kaggle-gpt-sovits") {
       nextConfig = {
         ...nextConfig,
         gpt_sovits_api_path: "",
@@ -700,7 +712,7 @@ export function ApiSettingsPage() {
         disabled={saveMutation.isPending}
         errors={errors}
         groups={apiSchema.filter((g) => g.id === "tts")}
-        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
+        onChange={updateTtsDraftFromSchema}
         value={draft}
       />
       <T2iSetupSection

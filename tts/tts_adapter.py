@@ -26,7 +26,7 @@ class GPTSoVitsAdapter(TTSAdapter):
         self._session = requests.Session()
         self.sovits_model_path = ''
         self.gpt_model_path = ''
-        self.gpt_sovits_work_path = gpt_sovits_work_path
+        self.gpt_sovits_work_path = str(gpt_sovits_work_path or "").strip() or None
         self._server_process = None
 
         # Consider the user's input mistake
@@ -95,13 +95,12 @@ class GPTSoVitsAdapter(TTSAdapter):
             return
 
         if not self.gpt_sovits_work_path:
-            return
+            raise RuntimeError("Local GPT-SoVITS server is not reachable; set the GPT-SoVITS startup path.")
 
         os_path = Path(self.gpt_sovits_work_path)
         api_path = os_path / "api_v2.py"
         if not api_path.is_file():
-            print(f"GPT-SoVITS api_v2.py not found: {api_path}")
-            return
+            raise FileNotFoundError(f"GPT-SoVITS api_v2.py not found: {api_path}")
 
         bundled_python = os_path / "runtime" / ("python.exe" if os.name == "nt" else "python")
         python_path = bundled_python if bundled_python.exists() else Path(sys.executable)
@@ -404,12 +403,18 @@ class IndexTTSAdapter(TTSAdapter):
     Adapter for a hypothetical Index TTS service.
     This demonstrates how a new service can be integrated.
     """
-    def __init__(self, index_server_url="http://localhost:9880/", index_server_work_path = None):
-        self.index_server_url = index_server_url
+    def __init__(
+        self,
+        index_server_url="http://localhost:9880/",
+        index_server_work_path=None,
+        tts_server_url=None,
+        gpt_sovits_work_path=None,
+    ):
+        self.index_server_url = (tts_server_url or index_server_url).rstrip("/") + "/"
         self.current_model = None
         self._server_process = None
 
-        self.gpt_sovits_work_path = index_server_work_path
+        self.gpt_sovits_work_path = str(index_server_work_path or gpt_sovits_work_path or "").strip() or None
 
         # Load the model and start the server process here
         self._start_server_process()
@@ -433,23 +438,25 @@ class IndexTTSAdapter(TTSAdapter):
         """
         try:
             # You might want to add a check here to see if the process is already running
-            response = requests.get(self.index_server_url)
+            response = requests.get(self.index_server_url, timeout=5)
             if response.status_code == 200:
-                print("GPT-SoVITS server is already running.")
+                print("IndexTTS server is already running.")
                 return
-        except requests.exceptions.ConnectionError:
-            print("GPT-SoVITS server not found, attempting to start...")
+        except requests.RequestException:
+            print("IndexTTS server not found, attempting to start...")
 
-        if self.gpt_sovits_work_path is None:
-            return
+        if not self.gpt_sovits_work_path:
+            raise RuntimeError("Local IndexTTS server is not reachable; set the IndexTTS startup path.")
 
         os_path = self.gpt_sovits_work_path
         embeded_python_path = os.path.join(os_path, "runtime", "python.exe")
         api_path = os.path.join(os_path, "api_v2.py")
+        if not os.path.isfile(api_path):
+            raise FileNotFoundError(f"IndexTTS api_v2.py not found: {api_path}")
         
         # Use subprocess.Popen to start the server in the background
         self._server_process = subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
-        print("GPT-SoVITS server starting...")
+        print("IndexTTS server starting...")
     
     def generate_speech(self, text, file_path=None, **kwargs):
         """Generates speech using the Index TTS API."""
@@ -486,10 +493,31 @@ class CosyVoiceAdapter(TTSAdapter):
     """
     Adapter for the CosyVoice (Alibaba Cloud) TTS service.
     """
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.current_model = "cosyvoice-v2"  # Default model
-        self.current_voice = "longxiaochun_v2" # Default voice
+    def __init__(self, api_key: str = "", model: str = "cosyvoice-v2", voice: str = "longxiaochun_v2", **_ignored):
+        self.api_key = str(api_key or "").strip()
+        self.current_model = str(model or "cosyvoice-v2").strip() or "cosyvoice-v2"
+        self.current_voice = str(voice or "longxiaochun_v2").strip() or "longxiaochun_v2"
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, dict]:
+        return {
+            "api_key": {
+                "label": "CosyVoice API Key",
+                "default": "",
+                "secret": True,
+                "type": "str",
+            },
+            "model": {
+                "label": "CosyVoice 模型",
+                "type": "str",
+                "default": "cosyvoice-v2",
+            },
+            "voice": {
+                "label": "CosyVoice 音色",
+                "type": "str",
+                "default": "longxiaochun_v2",
+            },
+        }
 
     def generate_speech(self, text, file_path=None, **kwargs):
         """
@@ -498,6 +526,9 @@ class CosyVoiceAdapter(TTSAdapter):
         """
         # Note: This is a simplified example. In a real-world scenario, you
         # would use the official SDK or follow the API documentation precisely.
+        if not self.api_key:
+            print("CosyVoice API key is empty.")
+            return None
         api_url = "https://dashscope.aliyuncs.com/api/v1/tts/cosyvoice"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -552,7 +583,7 @@ class GenieTTSAdapter(TTSAdapter):
     ):
         self.tts_server_url = tts_server_url.rstrip("/") + "/"
         # Keep compatibility with existing factory argument name.
-        self.tts_work_path = tts_work_path or gpt_sovits_work_path
+        self.tts_work_path = str(tts_work_path or gpt_sovits_work_path or "").strip() or None
         self.character_name = None
         self.onnx_model_dir = None
         self.loaded_character_name = None
@@ -701,8 +732,7 @@ class GenieTTSAdapter(TTSAdapter):
             return
 
         if not self.tts_work_path:
-            print("Genie TTS work path is empty, cannot auto start server.")
-            return
+            raise RuntimeError("Local Genie TTS server is not reachable; set the Genie TTS startup path.")
 
         os_path = self.tts_work_path
         if os_path.endswith(".py"):

@@ -67,7 +67,7 @@ export const sampleConfig: AppConfig = {
   },
   api_config: {
     gpt_sovits_api_path: "",
-    gpt_sovits_url: "http://127.0.0.1:9880",
+    gpt_sovits_url: "https://127.0.0.1:9880",
     tts_provider: "gpt-sovits",
     tts_speed: 1,
     tts_split_enabled: false,

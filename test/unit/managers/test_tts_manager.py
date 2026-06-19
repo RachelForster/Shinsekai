@@ -4,7 +4,9 @@ import time
 from pathlib import Path
 
 import pytest
+import requests
 
+from tts.tts_adapter import GenieTTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from test.mocks import MockTTSAdapter
 
@@ -53,6 +55,28 @@ class TestTTSAdapterFactoryRegistry:
             assert isinstance(adapter, MockTTSAdapter)
         finally:
             del TTSAdapterFactory._adapters["mock-tts"]
+
+    def test_local_gpt_sovits_requires_startup_path_when_server_is_down(self, monkeypatch):
+        monkeypatch.setattr(GPTSoVitsAdapter, "_server_is_reachable", lambda self: False)
+        monkeypatch.setattr(GPTSoVitsAdapter, "_is_local_server_url", lambda self: True)
+
+        with pytest.raises(RuntimeError, match="GPT-SoVITS startup path"):
+            GPTSoVitsAdapter(gpt_sovits_work_path="")
+
+    def test_local_genie_tts_requires_startup_path_when_server_is_down(self, monkeypatch):
+        monkeypatch.setattr(GenieTTSAdapter, "_is_server_alive", lambda self: False)
+
+        with pytest.raises(RuntimeError, match="Genie TTS startup path"):
+            GenieTTSAdapter(gpt_sovits_work_path="")
+
+    def test_local_index_tts_accepts_shared_path_argument_and_rejects_empty_path(self, monkeypatch):
+        def fake_get(*_args, **_kwargs):
+            raise requests.RequestException("server down")
+
+        monkeypatch.setattr("tts.tts_adapter.requests.get", fake_get)
+
+        with pytest.raises(RuntimeError, match="IndexTTS startup path"):
+            IndexTTSAdapter(tts_server_url="http://127.0.0.1:9880", gpt_sovits_work_path="")
 
 
 class TestTTSManagerWithMock:

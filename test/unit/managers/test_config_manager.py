@@ -151,7 +151,8 @@ def test_save_api_config_new_clamps_compact_target_below_threshold():
     assert saved["compact_target_ratio"] == 0.35
 
 
-def test_save_api_config_new_rejects_local_tts_without_server_path():
+def test_save_api_config_new_rejects_local_tts_without_server_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     manager = _config_manager_with_api()
     saved = {}
     manager._save_single_config = lambda _path, data: saved.update(data)
@@ -167,7 +168,8 @@ def test_save_api_config_new_rejects_local_tts_without_server_path():
     assert saved == {}
 
 
-def test_save_api_config_new_allows_remote_tts_without_server_path():
+def test_save_api_config_new_rejects_remote_gpt_sovits_without_server_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     manager = _config_manager_with_api()
     saved = {}
     manager._save_single_config = lambda _path, data: saved.update(data)
@@ -179,9 +181,32 @@ def test_save_api_config_new_allows_remote_tts_without_server_path():
         gpt_sovits_api_path="",
     )
 
+    assert "本地 TTS 引擎需要填写服务启动路径" in result
+    assert saved == {}
+
+
+def test_save_api_config_new_defaults_local_tts_path_to_installed_bundle_root(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    installed_dir = tmp_path / "data" / "tts_bundles" / "installed"
+    bundle_root = installed_dir / "gpt_sovits_v2pro" / "GPT-SoVITS-v2pro-20250604"
+    bundle_root.mkdir(parents=True)
+    (bundle_root / "api_v2.py").write_text("", encoding="utf-8")
+    manager = _config_manager_with_api()
+    saved = {}
+    manager._save_single_config = lambda _path, data: saved.update(data)
+    expected_path = bundle_root.resolve().as_posix()
+
+    result = _save_api_config_for_test(
+        manager,
+        tts_provider="gpt-sovits",
+        sovits_url="",
+        gpt_sovits_api_path="",
+    )
+
     assert result == "API配置已保存！"
-    assert saved["tts_provider"] == "gpt-sovits"
-    assert saved["gpt_sovits_api_path"] == ""
+    assert manager.config.api_config.gpt_sovits_url == "https://127.0.0.1:9880"
+    assert manager.config.api_config.gpt_sovits_api_path == expected_path
+    assert saved["gpt_sovits_api_path"] == expected_path
 
 
 def test_save_system_config_applies_network_proxy_environment(monkeypatch):

@@ -104,8 +104,8 @@ export const apiConfigFormSchema: Array<FormGroupSchema<ApiConfig>> = [
         required: true,
         type: "select",
       },
-      { label: "GPT SoVITS 目录", name: "gpt_sovits_api_path", pathKind: "directory", type: "file" },
-      { label: "GPT SoVITS URL", name: "gpt_sovits_url", type: "url" },
+      { label: "TTS 服务启动路径", name: "gpt_sovits_api_path", pathKind: "directory", type: "file" },
+      { label: "TTS 服务 URL", name: "gpt_sovits_url", type: "url" },
       { label: "启用分句", name: "tts_split_enabled", type: "checkbox" },
       {
         label: "分句最大长度",

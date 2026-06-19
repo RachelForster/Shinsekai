@@ -1,7 +1,6 @@
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
-from urllib.parse import urlparse
 from pydantic import ValidationError
 from config.schema import (
     AppConfig,
@@ -11,13 +10,18 @@ from config.schema import (
     Background,
     clamp_compact_target_ratio,
 )
+from config.tts_provider_config import (
+    default_tts_work_path,
+    is_http_url,
+    normalize_tts_provider,
+    requires_tts_work_path,
+    tts_server_url_or_default,
+    uses_shared_tts_server_config,
+)
 from llm.constants import LLM_BASE_URLS
 from config.mirror_env import apply_mirror_environment
 from config.network_proxy import apply_network_proxy_environment
 import traceback
-
-
-_LOCAL_TTS_HOSTS = {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
 
 
 def _llm_default_base_url(llm_provider: str) -> str:
@@ -30,16 +34,6 @@ def _llm_default_base_url(llm_provider: str) -> str:
         if name.lower() == provider_lower:
             return base_url
     return ""
-
-
-def _is_http_url(value: str) -> bool:
-    parsed = urlparse(str(value or "").strip())
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-
-def _is_local_tts_url(value: str) -> bool:
-    host = (urlparse(str(value or "").strip()).hostname or "").lower()
-    return host in _LOCAL_TTS_HOSTS
 
 
 class ConfigManager:
@@ -241,20 +235,7 @@ class ConfigManager:
         current_api_config.llm_provider = llm_provider
         current_api_config.llm_base_url = base_url
         current_api_config.is_streaming = (is_streaming == "是")
-        def _norm_tts(v: str) -> str:
-            s = (v or "").strip().lower()
-            if s in ("none", "off", "disable", "disabled", "不使用"):
-                return "none"
-            legacy = {
-                "gpt sovits": "gpt-sovits",
-                "kaggle": "kaggle-gpt-sovits",
-                "kaggle gpt sovits": "kaggle-gpt-sovits",
-                "kaggle gpt-sovits": "kaggle-gpt-sovits",
-                "genie tts": "genie-tts",
-            }
-            return legacy.get(s, (v or "").strip().lower())
-
-        current_api_config.tts_provider = _norm_tts(tts_provider)
+        current_api_config.tts_provider = normalize_tts_provider(tts_provider)
 
         def _norm_t2i_provider(v: str) -> str:
             s = (v or "").strip()
@@ -272,18 +253,22 @@ class ConfigManager:
             return s
 
         current_api_config.t2i_provider = _norm_t2i_provider(t2i_provider)
-        current_api_config.gpt_sovits_url = sovits_url
-        current_api_config.gpt_sovits_api_path = (
-            "" if current_api_config.tts_provider == "kaggle-gpt-sovits" else gpt_sovits_api_path
+        current_api_config.gpt_sovits_url = tts_server_url_or_default(
+            current_api_config.tts_provider,
+            sovits_url,
         )
-        if current_api_config.tts_provider in {"gpt-sovits", "kaggle-gpt-sovits", "genie-tts"}:
+        current_api_config.gpt_sovits_api_path = default_tts_work_path(
+            current_api_config.tts_provider,
+            gpt_sovits_api_path,
+        )
+        if uses_shared_tts_server_config(current_api_config.tts_provider):
             tts_url = str(current_api_config.gpt_sovits_url or "").strip()
             tts_path = str(current_api_config.gpt_sovits_api_path or "").strip()
             if not tts_url:
                 return "错误：当前 TTS 引擎需要填写 URL。"
-            if not _is_http_url(tts_url):
+            if not is_http_url(tts_url):
                 return "错误：TTS URL 必须是有效的 http(s) URL。"
-            if current_api_config.tts_provider != "kaggle-gpt-sovits" and _is_local_tts_url(tts_url) and not tts_path:
+            if requires_tts_work_path(current_api_config.tts_provider) and not tts_path:
                 return "错误：本地 TTS 引擎需要填写服务启动路径。"
             if (
                 tts_path
@@ -397,10 +382,11 @@ class ConfigManager:
         return llm_provider, model, base_url, api_key
 
     def get_gpt_sovits_config(self):
+        provider = normalize_tts_provider(self.config.api_config.tts_provider)
         return (
-            self.config.api_config.gpt_sovits_url,
-            self.config.api_config.gpt_sovits_api_path,
-            self.config.api_config.tts_provider
+            tts_server_url_or_default(provider, self.config.api_config.gpt_sovits_url),
+            default_tts_work_path(provider, self.config.api_config.gpt_sovits_api_path),
+            provider,
         )
 
     def get_adapter_extra_config(self, kind: str, provider_key: str) -> Dict[str, Any]:

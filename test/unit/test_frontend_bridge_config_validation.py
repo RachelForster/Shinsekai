@@ -19,8 +19,9 @@ def _valid_config(**overrides):
     return SimpleNamespace(**data)
 
 
-def test_tts_server_path_is_optional_for_remote_gpt_sovits_url():
-    _validate_api_config_for_save(_valid_config())
+def test_gpt_sovits_requires_server_path_even_for_remote_url():
+    with pytest.raises(ValueError, match="本地 TTS 引擎需要填写服务启动路径"):
+        _validate_api_config_for_save(_valid_config())
 
 
 def test_local_gpt_sovits_url_requires_server_path():
@@ -37,6 +38,27 @@ def test_local_genie_tts_url_requires_server_path():
                 gpt_sovits_api_path="",
             )
         )
+
+
+def test_local_index_tts_url_requires_server_path():
+    with pytest.raises(ValueError, match="本地 TTS 引擎需要填写服务启动路径"):
+        _validate_api_config_for_save(
+            _valid_config(
+                tts_provider="index-tts",
+                gpt_sovits_url="http://localhost:9880",
+                gpt_sovits_api_path="",
+            )
+        )
+
+
+def test_cosyvoice_does_not_use_shared_server_path():
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="cosyvoice",
+            gpt_sovits_url="",
+            gpt_sovits_api_path="",
+        )
+    )
 
 
 def test_tts_server_path_is_validated_when_provided(tmp_path):
