@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pytest
 import requests
 
 from tts.tts_adapter import GPTSoVitsAdapter, KaggleGPTSoVitsAdapter
@@ -22,7 +23,7 @@ def test_remote_gpt_sovits_url_does_not_auto_start_local_process(monkeypatch):
     assert popen_calls == []
 
 
-def test_local_unreachable_gpt_sovits_without_work_path_does_not_auto_start(monkeypatch):
+def test_local_unreachable_gpt_sovits_without_work_path_requires_startup_path(monkeypatch):
     popen_calls = []
 
     def raise_connection_error(*args, **kwargs):
@@ -31,7 +32,8 @@ def test_local_unreachable_gpt_sovits_without_work_path_does_not_auto_start(monk
     monkeypatch.setattr("tts.tts_adapter.requests.Session.get", raise_connection_error)
     monkeypatch.setattr("tts.tts_adapter.subprocess.Popen", lambda *args, **kwargs: popen_calls.append((args, kwargs)))
 
-    GPTSoVitsAdapter(tts_server_url="http://127.0.0.1:9880/", gpt_sovits_work_path="")
+    with pytest.raises(RuntimeError, match="GPT-SoVITS startup path"):
+        GPTSoVitsAdapter(tts_server_url="http://127.0.0.1:9880/", gpt_sovits_work_path="")
 
     assert popen_calls == []
 
