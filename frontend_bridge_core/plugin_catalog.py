@@ -161,6 +161,7 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
         if tools_tabs:
             slots.add("settings-tools")
         if chat_by_plugin.get(plugin_id):
+            slots.add("chat-dialog-actions")
             slots.add("chat-output")
         if not slots:
             slots.add("settings-extension")

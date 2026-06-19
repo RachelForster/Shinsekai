@@ -8,6 +8,7 @@
     "beforeBuildCommand": "pnpm prepare:runtime --verify --skip-wheels && pnpm build && pnpm prepare:tauri-resources && pnpm verify:tauri-resources"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [],
     "security": {
       "csp": null

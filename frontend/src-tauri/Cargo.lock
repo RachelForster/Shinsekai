@@ -3296,6 +3296,7 @@ name = "shinsekai-desktop"
 version = "2.1.0"
 dependencies = [
  "flate2",
+ "getrandom 0.3.4",
  "libc",
  "reqwest 0.12.28",
  "serde",
@@ -3305,6 +3306,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-updater",
+ "tauri-runtime",
  "zip 5.1.1",
 ]
 

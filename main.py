@@ -1,6 +1,12 @@
 import os
+import copy
+from contextlib import contextmanager
 from pathlib import Path
+import signal
 import sys
+import time
+
+_PROCESS_STARTED_AT = time.perf_counter()
 
 # Frozen standalone keeps the old release-root data behavior. Desktop bridge
 # launches can provide EASYAI_PROJECT_ROOT to keep chat data under app data.
@@ -20,6 +26,29 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
+
+def _early_cli_option(name: str) -> str:
+    args = sys.argv[1:]
+    for index, arg in enumerate(args):
+        if arg == name and index + 1 < len(args):
+            return args[index + 1]
+        prefix = f"{name}="
+        if arg.startswith(prefix):
+            return arg[len(prefix):]
+    return ""
+
+
+_EARLY_STREAM_ENDPOINT = _early_cli_option("--stream-endpoint")
+_EARLY_STREAM_SINK = None
+if _EARLY_STREAM_ENDPOINT:
+    try:
+        from core.runtime.event_sink import WSClientSink
+
+        _EARLY_STREAM_SINK = WSClientSink(_EARLY_STREAM_ENDPOINT)
+        _EARLY_STREAM_SINK.emit({"type": "status.change", "status": "idle"})
+    except Exception:
+        _EARLY_STREAM_SINK = None
+
 if getattr(sys, "frozen", False):
     from core.bootstrap.frozen_log import init_frozen_stdio
 
@@ -32,20 +61,32 @@ configure_logging("chat", project_root=os.environ.get("EASYAI_PROJECT_ROOT") or 
 logger = get_logger(__name__)
 install_main_exception_hook(app_name="Shinsekai Chat", logger=logger)
 
+_STARTUP_IMPORTS_STARTED_AT = time.perf_counter()
 from config.mirror_env import apply_mirror_environment_from_system_config
+from config.network_proxy import apply_network_proxy_environment_from_system_config
 
+apply_network_proxy_environment_from_system_config()
 apply_mirror_environment_from_system_config()
 
 import llm.tools.character_tools
 import llm.tools.memory_tools
 import llm.tools.tool_search
 import llm.tools.file_tools
+import llm.tools.chat_ui_tools
 from llm.template_generator import is_transparent_background
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
+from core.runtime.launch_mode import should_init_desktop_mixer
+from core.runtime.shutdown import shutdown_chat_runtime
 from core.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
 from core.paths import resource_path
+from core.sprite.chat_branch_storage import (
+    chat_history_active_path,
+    load_branch_state,
+    remove_chat_history_storage,
+    save_branch_state,
+)
 from tts.tts_manager import TTSManager, TTSAdapterFactory
 from config.config_manager import ConfigManager
 from t2i.t2i_manager import T2IAdapterFactory, T2IManager
@@ -55,8 +96,15 @@ from queue import Queue
 
 from core.sprite.chat_history import (
     chat_history,
+    clear_chat_history,
     get_history,
+    history_entry_stage_payload,
+    history_entry_plain_text,
     load_chat_history,
+    is_user_history_entry,
+    pop_last_assistant_turn,
+    replay_history_entry,
+    revert_chat_history,
     save_bg,
     save_chat_history,
 )
@@ -67,6 +115,14 @@ from core.sprite.chat_ui_service import (
 )
 from core.sprite.initial_sprite import display_initial_sprite
 from core.sprite.sprite_cli import parse_sprite_args
+logger.info(
+    "Chat startup imports completed",
+    extra={
+        "event": "chat.startup.imports.completed",
+        "duration_ms": round((time.perf_counter() - _STARTUP_IMPORTS_STARTED_AT) * 1000, 2),
+        "process_elapsed_ms": round((time.perf_counter() - _PROCESS_STARTED_AT) * 1000, 2),
+    },
+)
 try:
     from live.danmuku_handler import start_bilibili_service
 except ImportError as e:
@@ -87,19 +143,137 @@ def _shutdown_plugins() -> None:
         pass
 
 
+def _log_shutdown_error(step: str, exc: Exception) -> None:
+    logger.error(
+        "chat runtime shutdown step failed",
+        extra={"event": "chat.shutdown.failed", "step": step},
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+
+
+def _save_chat_history_and_delete_tmp(history_arg: str, messages: list) -> bool:
+    if not history_arg:
+        return True
+    from llm.history_manager import HistoryManager
+
+    history_file = str(chat_history_active_path(history_arg))
+    success = save_chat_history(history_file, messages)
+    if not success:
+        return False
+    try:
+        HistoryManager.delete_tmp(history_file)
+    except Exception as exc:
+        _log_shutdown_error("delete_tmp", exc)
+    return True
+
+
+@contextmanager
+def _startup_phase(step: str):
+    started = time.perf_counter()
+    logger.info(
+        "Chat startup step started",
+        extra={"event": "chat.startup.step.started", "step": step},
+    )
+    try:
+        yield
+    except Exception as exc:
+        logger.exception(
+            "Chat startup step failed",
+            extra={
+                "event": "chat.startup.step.failed",
+                "step": step,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise
+    else:
+        logger.info(
+            "Chat startup step completed",
+            extra={
+                "event": "chat.startup.step.completed",
+                "step": step,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            },
+        )
+
+
+def _install_interrupt_handlers():
+    registered = []
+
+    def _raise_interrupt(_signum, _frame):
+        raise KeyboardInterrupt()
+
+    for name in ("SIGINT", "SIGTERM"):
+        sig = getattr(signal, name, None)
+        if sig is None:
+            continue
+        try:
+            previous = signal.getsignal(sig)
+            signal.signal(sig, _raise_interrupt)
+        except (OSError, RuntimeError, ValueError):
+            continue
+        registered.append((sig, previous))
+
+    def _restore():
+        for sig, previous in registered:
+            try:
+                signal.signal(sig, previous)
+            except (OSError, RuntimeError, ValueError):
+                continue
+
+    return _restore
+
+
+class _StreamWindowProxy:
+    def __init__(self, ui_updates):
+        self._ui_updates = ui_updates
+
+    def setBackgroundImage(self, path: str) -> None:
+        self._ui_updates.post_background(path)
+
+    def setDisplayWords(self, text: str) -> None:
+        if hasattr(self._ui_updates, "post_dialog_html"):
+            payload = history_entry_stage_payload(text)
+            self._ui_updates.post_dialog_html(
+                payload.get("fullHtml", text),
+                append_history=False,
+                speaker=str(payload.get("speaker") or ""),
+                color=str(payload.get("color") or "#84C2D5"),
+                is_system=bool(payload.get("isSystem")),
+            )
+
+    def setOptions(self, options) -> None:
+        self._ui_updates.post_options(list(options or []))
+
+
 def main():
+    main_started = time.perf_counter()
     logger.info("Chat application starting", extra={"event": "app.started"})
-    config = ConfigManager()
-    from i18n import init_i18n, tr as tr_i18n, tr_in_bundle
-    from asr.asr_adapter import system_config_to_asr_lang
+    with _startup_phase("config.load"):
+        config = ConfigManager()
+    with _startup_phase("i18n.import"):
+        from i18n import init_i18n, tr as tr_i18n, tr_in_bundle
+        from asr.asr_adapter import system_config_to_asr_lang
 
-    init_i18n(config.config.system_config.ui_language)
+    with _startup_phase("i18n.init"):
+        init_i18n(config.config.system_config.ui_language)
 
-    from core.plugins.plugin_host import ensure_plugins_loaded, wire_user_input_plugins
+    with _startup_phase("plugins.import"):
+        from core.plugins.plugin_host import ensure_plugins_loaded, wire_user_input_plugins
 
-    ensure_plugins_loaded(config)
+    with _startup_phase("plugins.load"):
+        ensure_plugins_loaded(config)
 
-    args = parse_sprite_args(tr_i18n)
+    with _startup_phase("args.parse"):
+        args = parse_sprite_args(tr_i18n)
+    stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None
+    if args.stream_endpoint and stream_sink is None:
+        with _startup_phase("stream.sink.init"):
+            from core.runtime.event_sink import WSClientSink
+
+            stream_sink = WSClientSink(args.stream_endpoint)
+            stream_sink.emit({"type": "status.change", "status": "idle"})
 
     # T2I manager
     t2i_manager = None
@@ -133,36 +307,38 @@ def main():
     adapter_name = (args.tts or "").strip() or config_tts_provider
     tts_manager = None
     if adapter_name and str(adapter_name).strip().lower() not in ("none",):
-        try:
-            adapter = TTSAdapterFactory.create_adapter(
-                adapter_name=adapter_name,
-                **config.merged_tts_factory_kwargs(
-                    adapter_name,
-                    {
-                        "gpt_sovits_work_path": gsv_api_path,
-                        "tts_server_url": gsv_url,
-                    },
-                ),
-            )
-            tts_manager = TTSManager(tts_server_url=gsv_url)
-            tts_manager.set_tts_adapter(adapter=adapter)
-            _voice_lang = str(config.config.system_config.voice_language or "ja").strip() or "ja"
-            tts_manager.set_language(_voice_lang)
-        except Exception:
-            logger.exception("TTS initialization failed", extra={"event": "tts.init.failed"})
+        with _startup_phase("tts.init"):
+            try:
+                adapter = TTSAdapterFactory.create_adapter(
+                    adapter_name=adapter_name,
+                    **config.merged_tts_factory_kwargs(
+                        adapter_name,
+                        {
+                            "gpt_sovits_work_path": gsv_api_path,
+                            "tts_server_url": gsv_url,
+                        },
+                    ),
+                )
+                tts_manager = TTSManager(tts_server_url=gsv_url)
+                tts_manager.set_tts_adapter(adapter=adapter)
+                _voice_lang = str(config.config.system_config.voice_language or "ja").strip() or "ja"
+                tts_manager.set_language(_voice_lang)
+            except Exception:
+                logger.exception("TTS initialization failed", extra={"event": "tts.init.failed"})
 
     print(tr_i18n("main.print_load_template", a=args))
 
-    messages = []
-    if args.history:
-        print(tr_i18n("main.print_load_history", path=args.history))
-        messages = load_chat_history(args.history)
+    with _startup_phase("template.load"):
+        messages = []
+        if args.history:
+            print(tr_i18n("main.print_load_history", path=args.history))
+            messages = load_chat_history(str(chat_history_active_path(args.history)))
 
-    user_template = ""
-    with open(
-        f"./data/character_templates/{args.template}.txt", "r", encoding="utf-8"
-    ) as f:
-        user_template = f.read()
+        user_template = ""
+        with open(
+            f"./data/character_templates/{args.template}.txt", "r", encoding="utf-8"
+        ) as f:
+            user_template = f.read()
 
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
     logger.info(
@@ -178,35 +354,36 @@ def main():
     if not llm_provider:
         print(tr_i18n("main.err_select_llm"))
         return
-    llm_adapter = LLMAdapterFactory.create_adapter(
-        **config.merged_llm_factory_kwargs(
-            llm_provider,
-            {
-                "llm_provider": llm_provider,
-                "api_key": api_key,
-                "base_url": base_url,
-                "model": llm_model,
-            },
+    with _startup_phase("llm.init"):
+        llm_adapter = LLMAdapterFactory.create_adapter(
+            **config.merged_llm_factory_kwargs(
+                llm_provider,
+                {
+                    "llm_provider": llm_provider,
+                    "api_key": api_key,
+                    "base_url": base_url,
+                    "model": llm_model,
+                },
+            )
         )
-    )
-    llm_manager = LLMManager(
-        adapter=llm_adapter,
-        user_template=user_template,
-        max_tokens=int(config.config.api_config.max_context_tokens),
-        compact_threshold=float(config.config.api_config.compact_threshold),
-        compact_target_ratio=float(config.config.api_config.compact_target_ratio),
-        history_recent_messages=int(config.config.api_config.history_recent_messages),
-        max_tool_result_chars=int(config.config.api_config.max_tool_result_chars),
-        max_active_tool_groups=int(config.config.api_config.max_active_tool_groups),
-        generation_config={
-            "temperature": float(config.config.api_config.temperature),
-            "repetition_penalty": float(config.config.api_config.repetition_penalty),
-            "presence_penalty": float(config.config.api_config.presence_penalty),
-            "frequency_penalty": float(config.config.api_config.frequency_penalty),
-            "max_tokens": 4096,
-        },
-        history_file=args.history,
-    )
+        llm_manager = LLMManager(
+            adapter=llm_adapter,
+            user_template=user_template,
+            max_tokens=int(config.config.api_config.max_context_tokens),
+            compact_threshold=float(config.config.api_config.compact_threshold),
+            compact_target_ratio=float(config.config.api_config.compact_target_ratio),
+            history_recent_messages=int(config.config.api_config.history_recent_messages),
+            max_tool_result_chars=int(config.config.api_config.max_tool_result_chars),
+            max_active_tool_groups=int(config.config.api_config.max_active_tool_groups),
+            generation_config={
+                "temperature": float(config.config.api_config.temperature),
+                "repetition_penalty": float(config.config.api_config.repetition_penalty),
+                "presence_penalty": float(config.config.api_config.presence_penalty),
+                "frequency_penalty": float(config.config.api_config.frequency_penalty),
+                "max_tokens": 4096,
+            },
+            history_file=str(chat_history_active_path(args.history)) if args.history else "",
+        )
 
     if messages:
         llm_manager.set_messages(messages)
@@ -214,8 +391,9 @@ def main():
     image_queue = Queue()
     emotion_queue = Queue()
 
-    if not args.headless:
-        pygame.mixer.init()
+    if should_init_desktop_mixer(headless=bool(args.headless), stream_endpoint=str(args.stream_endpoint or "")):
+        with _startup_phase("pygame.mixer.init"):
+            pygame.mixer.init()
 
     text_processor = TextProcessor()
 
@@ -245,20 +423,485 @@ def main():
     except Exception:
         pass
 
-    if args.headless and not (args.workflow or "").strip():
+    if args.headless and not args.stream_endpoint and not (args.workflow or "").strip():
         headless_workflow = str(resource_path("assets/system/workflow/headless.yaml"))
     else:
         headless_workflow = None
 
-    workflow = build_runtime_workflow(
-        workflow_path=args.workflow or headless_workflow,
-        queue_factory=Queue,
-    )
-    chat_handles = get_chat_workflow_handles(workflow)
+    with _startup_phase("workflow.build"):
+        workflow = build_runtime_workflow(
+            workflow_path=args.workflow or headless_workflow,
+            queue_factory=Queue,
+        )
+        chat_handles = get_chat_workflow_handles(workflow)
     user_input_queue = chat_handles.input_queue
     audio_path_queue = chat_handles.audio_queue
     tts_queue = chat_handles.tts_queue
     _um = chat_handles.ui_worker
+
+    if args.stream_endpoint:
+        with _startup_phase("stream.runtime.setup"):
+            from core.runtime.ui_update_manager import StreamingUIUpdateManager
+
+            if stream_sink is None:
+                from core.runtime.event_sink import WSClientSink
+
+                stream_sink = WSClientSink(args.stream_endpoint)
+            ui_updates = StreamingUIUpdateManager(stream_sink, chat_history=chat_history)
+            set_app_runtime(
+                AppRuntime(
+                    config=config,
+                    ui_update_manager=ui_updates,
+                    llm_manager=llm_manager,
+                    tts_manager=tts_manager,
+                    t2i_manager=t2i_manager,
+                    bgm_list=bgm_list,
+                    user_input_queue=user_input_queue,
+                    tts_queue=tts_queue,
+                    audio_path_queue=audio_path_queue,
+                    text_processor=text_processor,
+                    opencc=cc,
+                )
+            )
+            if hasattr(ui_updates, "sync_history_entries"):
+                ui_updates.sync_history_entries()
+
+            emit_user_text = wire_user_input_plugins(user_input_queue) if user_input_queue is not None else None
+        last_user_message = {"text": ""}
+        def _default_branch_state() -> dict[str, object]:
+            now = int(time.time() * 1000)
+            return {
+                "active": "main",
+                "counter": 1,
+                "branches": {
+                    "main": {
+                        "createdAt": now,
+                        "forkedFromEntryId": "",
+                        "forkedFromText": "",
+                        "history": list(chat_history),
+                        "id": "main",
+                        "label": "Main",
+                        "messages": copy.deepcopy(llm_manager.get_messages()),
+                        "parentId": None,
+                        "updatedAt": now,
+                    }
+                },
+            }
+
+        def _load_initial_branch_state() -> dict[str, object]:
+            restored = load_branch_state(args.history) if args.history else None
+            if restored is None:
+                return _default_branch_state()
+            active_branch = restored.get("branches", {}).get(restored.get("active"))  # type: ignore[union-attr]
+            if isinstance(active_branch, dict):
+                if isinstance(active_branch.get("history"), list):
+                    chat_history[:] = list(active_branch.get("history") or [])
+                if isinstance(active_branch.get("messages"), list):
+                    restored_messages = copy.deepcopy(active_branch.get("messages") or [])
+                    messages[:] = restored_messages
+                    llm_manager.set_messages(restored_messages)
+            return restored
+
+        branch_state: dict[str, object] = _load_initial_branch_state()
+
+        def submit_runtime_text(text: str, *, notify_key: str | None = "main.notify_submitted") -> None:
+            value = str(text or "").strip()
+            if not value:
+                return
+            last_user_message["text"] = value
+            if emit_user_text is None:
+                if notify_key:
+                    ui_updates.post_notification(tr_i18n("main.notify_chat"))
+                return
+            emit_user_text(value)
+            if notify_key:
+                ui_updates.post_notification(tr_i18n(notify_key))
+
+        def _branch_messages() -> list:
+            return copy.deepcopy(llm_manager.get_messages())
+
+        def _branches() -> dict[str, dict[str, object]]:
+            return branch_state["branches"]  # type: ignore[return-value]
+
+        def _active_branch_id() -> str:
+            return str(branch_state.get("active") or "main")
+
+        def _branch_tree_payload() -> dict[str, object]:
+            public_branches = []
+            for branch in _branches().values():
+                public_branches.append(
+                    {
+                        "createdAt": branch.get("createdAt"),
+                        "forkedFromEntryId": branch.get("forkedFromEntryId") or "",
+                        "forkedFromText": branch.get("forkedFromText") or "",
+                        "id": str(branch.get("id") or ""),
+                        "label": str(branch.get("label") or ""),
+                        "parentId": branch.get("parentId"),
+                        "updatedAt": branch.get("updatedAt"),
+                    }
+                )
+            return {"activeBranchId": _active_branch_id(), "branches": public_branches}
+
+        def _emit_branch_tree() -> None:
+            stream_sink.emit({"type": "conversation.tree", "tree": _branch_tree_payload()})
+
+        def _save_active_branch() -> None:
+            branches = _branches()
+            active = _active_branch_id()
+            branch = branches.get(active)
+            if branch is None:
+                return
+            branch["history"] = list(chat_history)
+            branch["messages"] = _branch_messages()
+            branch["updatedAt"] = int(time.time() * 1000)
+
+        def _persist_branch_state() -> None:
+            if not args.history:
+                return
+            _save_active_branch()
+            _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())
+            save_branch_state(args.history, branch_state)
+
+        def _reset_branch_state() -> None:
+            branch_state.clear()
+            branch_state.update(_default_branch_state())
+
+        def _user_history_position(user_index: int) -> int:
+            current_user_idx = -1
+            for idx, entry in enumerate(chat_history):
+                if is_user_history_entry(str(entry)):
+                    current_user_idx += 1
+                    if current_user_idx == user_index:
+                        return idx
+            return -1
+
+        def _messages_before_user(user_index: int) -> list:
+            new_messages = []
+            current_user_idx = -1
+            for message in llm_manager.get_messages():
+                role = message.get("role")
+                if role == "user":
+                    current_user_idx += 1
+                    if current_user_idx >= user_index:
+                        break
+                new_messages.append(copy.deepcopy(message))
+            return new_messages
+
+        def _plain_user_text(history_entry: object) -> str:
+            text = history_entry_plain_text(history_entry)
+            for separator in ("：", ":"):
+                if separator in text:
+                    speaker, body = text.split(separator, 1)
+                    if speaker.strip() in {"你", "User", "user"}:
+                        return body.strip()
+            return text.strip()
+
+        def _fork_history_branch(user_index: int) -> None:
+            if user_index < 0:
+                raise ValueError("分支索引无效。")
+            _save_active_branch()
+            user_pos = _user_history_position(user_index)
+            if user_pos < 0:
+                raise ValueError("找不到可分叉的历史记录。")
+            source_entry = chat_history[user_pos]
+            user_text = _plain_user_text(source_entry)
+            if not user_text:
+                raise ValueError("分支输入内容为空。")
+            prefix_history = list(chat_history[:user_pos])
+            prefix_messages = _messages_before_user(user_index)
+            branch_state["counter"] = int(branch_state.get("counter") or 1) + 1
+            branch_id = f"branch-{branch_state['counter']}"
+            now = int(time.time() * 1000)
+            _branches()[branch_id] = {
+                "createdAt": now,
+                "forkedFromEntryId": f"history-{user_pos}",
+                "forkedFromText": user_text,
+                "history": list(prefix_history),
+                "id": branch_id,
+                "label": f"Branch {branch_state['counter']}",
+                "messages": copy.deepcopy(prefix_messages),
+                "parentId": _active_branch_id(),
+                "updatedAt": now,
+            }
+            branch_state["active"] = branch_id
+            chat_history[:] = prefix_history
+            llm_manager.set_messages(copy.deepcopy(prefix_messages))
+            stream_sink.emit({"type": "options.clear"})
+            if hasattr(ui_updates, "sync_history_entries"):
+                ui_updates.sync_history_entries()
+            _emit_branch_tree()
+            _persist_branch_state()
+            submit_runtime_text(user_text, notify_key=None)
+
+        def _switch_history_branch(branch_id: str) -> None:
+            target_id = str(branch_id or "").strip()
+            branches = _branches()
+            if not target_id or target_id not in branches:
+                raise ValueError("对话分支不存在。")
+            _save_active_branch()
+            branch = branches[target_id]
+            branch_state["active"] = target_id
+            chat_history[:] = list(branch.get("history") or [])
+            llm_manager.set_messages(copy.deepcopy(branch.get("messages") or []))
+            stream_sink.emit({"type": "options.clear"})
+            if hasattr(ui_updates, "sync_history_entries"):
+                ui_updates.sync_history_entries()
+            if chat_history:
+                replay_history_entry(_StreamWindowProxy(ui_updates), str(chat_history[-1]))
+            _emit_branch_tree()
+            _persist_branch_state()
+            ui_updates.post_notification("已切换对话分支。")
+
+        def _rename_history_branch(branch_id: str, label: str) -> None:
+            target_id = str(branch_id or "").strip()
+            next_label = str(label or "").strip()
+            if not target_id or target_id not in _branches():
+                raise ValueError("对话分支不存在。")
+            if not next_label:
+                raise ValueError("分支名称不能为空。")
+            _branches()[target_id]["label"] = next_label[:64]
+            _branches()[target_id]["updatedAt"] = int(time.time() * 1000)
+            _emit_branch_tree()
+            _persist_branch_state()
+            ui_updates.post_notification("已重命名对话分支。")
+
+        def handle_stream_command(command: dict[str, object]) -> None:
+            command_type = str(command.get("type") or "").strip()
+            cmd_id = str(command.get("cmdId") or "").strip()
+            payload = command.get("payload")
+            ack_sent = False
+
+            def emit_ack(*, ok: bool, error: str = "") -> None:
+                nonlocal ack_sent
+                if ack_sent or not cmd_id:
+                    return
+                stream_sink.emit(
+                    {
+                        "type": "cmd.ack",
+                        "cmdId": cmd_id,
+                        "commandType": command_type,
+                        "ok": bool(ok),
+                        **({"error": error} if error else {}),
+                    }
+                )
+                ack_sent = True
+
+            try:
+                if command_type == "send-message":
+                    submit_runtime_text(str(payload or ""), notify_key=None)
+                    emit_ack(ok=True)
+                    return
+                if command_type == "submit-option":
+                    submit_runtime_text(str(payload or ""))
+                    emit_ack(ok=True)
+                    return
+                if command_type in {"skip-speech", "dialog-advance"}:
+                    if _um is not None and hasattr(_um, "skip_speech"):
+                        _um.skip_speech()
+                    emit_ack(ok=True)
+                    return
+                if command_type == "pause-asr":
+                    ui_updates.post_pause_asr()
+                    emit_ack(ok=True)
+                    return
+                if command_type == "resume-asr":
+                    stream_sink.emit({"type": "asr.state", "running": True})
+                    emit_ack(ok=True)
+                    return
+                if command_type == "reroll":
+                    messages_ref = llm_manager.get_messages()
+                    if hasattr(llm_manager, "_strip_orphaned_tool_calls"):
+                        llm_manager._strip_orphaned_tool_calls()
+                    reroll_text = pop_last_assistant_turn(chat_history, messages_ref)
+                    if not reroll_text:
+                        reroll_text = last_user_message["text"]
+                    else:
+                        plain_text = history_entry_plain_text(reroll_text)
+                        if plain_text.startswith("你："):
+                            reroll_text = plain_text[2:].strip()
+                        elif plain_text.startswith("你:"):
+                            reroll_text = plain_text[2:].strip()
+                        else:
+                            reroll_text = plain_text
+                    stream_sink.emit({"type": "options.clear"})
+                    if hasattr(ui_updates, "sync_history_entries"):
+                        ui_updates.sync_history_entries()
+                    if reroll_text and emit_user_text is not None:
+                        last_user_message["text"] = reroll_text
+                        emit_user_text(reroll_text)
+                        ui_updates.post_notification(tr_i18n("main.notify_reroll"))
+                    emit_ack(ok=True)
+                    return
+                if command_type == "clear-history":
+                    if audio_path_queue is None:
+                        raise RuntimeError("聊天历史清理队列未就绪。")
+                    history_target = str(chat_history_active_path(args.history)) if args.history else str(
+                        Path("data/chat_history") / "_temp.json"
+                    )
+                    clear_chat_history(history_target, audio_path_queue, llm_manager)
+                    if args.history:
+                        remove_chat_history_storage(args.history)
+                    _reset_branch_state()
+                    _persist_branch_state()
+                    stream_sink.emit({"type": "options.clear"})
+                    if hasattr(ui_updates, "sync_history_entries"):
+                        ui_updates.sync_history_entries()
+                    _emit_branch_tree()
+                    emit_ack(ok=True)
+                    return
+                if command_type == "change-voice-language":
+                    voice_language = str(payload or "").strip().lower()
+                    if not voice_language:
+                        raise ValueError("语音语言不能为空。")
+                    if tts_manager is not None:
+                        tts_manager.set_language(voice_language)
+                    voice_labels = {
+                        "en": "template.voice_lang_en",
+                        "zh": "template.voice_lang_zh",
+                        "ja": "template.voice_lang_ja",
+                        "yue": "template.voice_lang_yue",
+                    }
+                    sc = config.config.system_config.model_copy(deep=True)
+                    sc.voice_language = voice_language
+                    config.config.system_config = sc
+                    config.save_system_config()
+                    ui_updates.post_notification(
+                        tr_i18n(
+                            "desktop.menu.notify_voice_language",
+                            lang=tr_i18n(voice_labels.get(voice_language, "template.voice_lang_en")),
+                        )
+                    )
+                    emit_ack(ok=True)
+                    return
+                if command_type == "revert-history":
+                    index = int(payload)
+                    revert_chat_history(
+                        index,
+                        llm_manager=llm_manager,
+                        hist=chat_history,
+                        window=_StreamWindowProxy(ui_updates),
+                    )
+                    stream_sink.emit({"type": "options.clear"})
+                    if hasattr(ui_updates, "sync_history_entries"):
+                        ui_updates.sync_history_entries()
+                    emit_ack(ok=True)
+                    return
+                if command_type == "fork-history":
+                    raw_index = payload.get("userIndex") if isinstance(payload, dict) else payload
+                    _fork_history_branch(int(raw_index))
+                    emit_ack(ok=True)
+                    return
+                if command_type == "switch-branch":
+                    _switch_history_branch(str(payload or ""))
+                    emit_ack(ok=True)
+                    return
+                if command_type == "rename-branch":
+                    raw_payload = payload if isinstance(payload, dict) else {}
+                    _rename_history_branch(str(raw_payload.get("branchId") or ""), str(raw_payload.get("label") or ""))
+                    emit_ack(ok=True)
+                    return
+                raise ValueError(f"未知实时聊天命令：{command_type}")
+            except Exception as exc:
+                ui_updates.post_notification(str(exc))
+                emit_ack(ok=False, error=str(exc))
+
+        stream_sink.set_command_handler(handle_stream_command)
+
+        with _startup_phase("workflow.start"):
+            workflow.start()
+
+        with _startup_phase("stream.initial_ui"):
+            init_sprite_path = args.init_sprite_path
+            if not init_sprite_path and not is_transparent_background(args.bg):
+                init_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
+
+            if system_config_to_asr_lang(config.config.system_config) == "zh":
+                _welcome_html = tr_in_bundle("main.welcome_html", "zh_CN")
+                _option_start = tr_in_bundle("main.option_start", "zh_CN")
+            else:
+                _welcome_html = tr_i18n("main.welcome_html")
+                _option_start = tr_i18n("main.option_start")
+
+            sc = config.config.system_config.model_copy(deep=True)
+            if bg_group:
+                sc.bgm_path = bgm_list[0] if bgm_list else ""
+                sc.background_path = bg_group[0].get("path", "") if bg_group else ""
+            else:
+                sc.bgm_path = ""
+                sc.background_path = ""
+            config.config.system_config = sc
+            config.save_system_config()
+
+            if bg_group:
+                try:
+                    ui_updates.post_background(bg_group[0].get("path", ""))
+                except Exception:
+                    pass
+
+            restored_sprite = False
+            if audio_path_queue is not None:
+                restored_sprite = restore_session_ui(
+                    messages,
+                    audio_path_queue=audio_path_queue,
+                    window=_StreamWindowProxy(ui_updates),
+                    config=config,
+                    tr_i18n=tr_i18n,
+                )
+
+            if not messages:
+                ui_updates.post_dialog_html(_welcome_html, is_system=True, color="#84C2D5")
+                if len(get_history()) <= 1:
+                    ui_updates.post_options([_option_start])
+            _emit_branch_tree()
+            ui_updates.post_notification(tr_i18n("main.notify_chat"))
+
+            if not restored_sprite:
+                display_initial_sprite(
+                    init_sprite_path,
+                    config=config,
+                    ui_updates=ui_updates,
+                )
+
+        if args.room_id:
+            print(tr_i18n("main.print_bili_start", id=args.room_id))
+            if user_input_queue is not None:
+                try:
+                    start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
+                except ImportError:
+                    pass
+
+        logger.info(
+            "Chat application ready",
+            extra={
+                "event": "chat.startup.ready",
+                "mode": "stream",
+                "duration_ms": round((time.perf_counter() - main_started) * 1000, 2),
+            },
+        )
+        try:
+            restore_interrupt_handlers = _install_interrupt_handlers()
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            restore_interrupt_handlers()
+            shutdown_chat_runtime(
+                workflow=workflow,
+                plugin_shutdown=_shutdown_plugins,
+                tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
+                save_history=_persist_branch_state,
+                save_background=lambda: save_bg(
+                    bg_path=ui_updates.current_background_path,
+                    bgm_path=ui_updates.current_bgm_path,
+                ),
+                emit_session_closed=lambda: stream_sink.emit(
+                    {"type": "session.closed", "reason": "聊天会话已结束。"}
+                ),
+                close_stream_sink=stream_sink.close,
+                on_error=_log_shutdown_error,
+            )
+        return
 
     if args.headless:
         from core.runtime.ui_update_manager import HeadlessUIUpdateManager
@@ -282,18 +925,21 @@ def main():
         workflow.start()
         print(f"Workflow started: {args.workflow or 'default'}")
         try:
-            import time
-
+            restore_interrupt_handlers = _install_interrupt_handlers()
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             pass
         finally:
-            workflow.stop()
-            _shutdown_plugins()
-            if tts_manager:
-                tts_manager.shutdown()
-            save_chat_history(args.history, llm_manager.get_messages())
+            restore_interrupt_handlers()
+            shutdown_chat_runtime(
+                workflow=workflow,
+                plugin_shutdown=_shutdown_plugins,
+                tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
+                save_history=lambda: _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())
+                if args.history else None,
+                on_error=_log_shutdown_error,
+            )
         return
 
     from core.runtime.ui_update_manager import UIUpdateManager, connect_to_desktop_window
@@ -315,6 +961,13 @@ def main():
         background_mode=(bg_group is not None),
     )
     connect_to_desktop_window(ui_updates, window)
+    mirror_stream_sink = None
+    if args.mirror_stream_endpoint:
+        from core.runtime.event_sink import WSClientSink
+        from core.runtime.ui_update_manager import connect_to_stream_sink
+
+        mirror_stream_sink = WSClientSink(args.mirror_stream_endpoint)
+        connect_to_stream_sink(ui_updates, mirror_stream_sink)
 
     set_app_runtime(
         AppRuntime(
@@ -336,7 +989,7 @@ def main():
 
     init_sprite_path = args.init_sprite_path
     print(init_sprite_path)
-    if not init_sprite_path:
+    if not init_sprite_path and not is_transparent_background(args.bg):
         init_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
 
     if system_config_to_asr_lang(config.config.system_config) == "zh":
@@ -417,32 +1070,27 @@ def main():
     except Exception as e:
         print(tr_i18n("main.print_icon_fail", e=str(e)))
 
-    # ----- 退出流程 -----
-    from llm.history_manager import HistoryManager
-
-    def _safe_step(name, fn):
-        try:
-            fn()
-        except Exception:
-            logger.exception(f"{name} 失败", extra={"event": f"{name}.failed"})
-
-    # 前置步骤（异常不影响后续）
-    app.aboutToQuit.connect(lambda: _safe_step("workflow.stop", workflow.stop))
-    app.aboutToQuit.connect(lambda: _safe_step("shutdown_plugins", _shutdown_plugins))
-    app.aboutToQuit.connect(lambda: _safe_step("tts_manager.shutdown", lambda: tts_manager and tts_manager.shutdown()))
-    app.aboutToQuit.connect(lambda: _safe_step("save_bg", lambda: save_bg(bg_path=window.current_background_path, bgm_path=ui_updates.current_bgm_path)))
-
-    # 核心保存步骤：成功则删除 .tmp，失败则跳过删除保护 .tmp
-    def _save_chat_and_guard_tmp():
-        success = save_chat_history(args.history, llm_manager.get_messages())
-        if not success:
-            return
-        try:
-            HistoryManager.delete_tmp(args.history)
-        except Exception:
-            logger.exception("delete_tmp 失败", extra={"event": "delete_tmp.failed"})
-
-    app.aboutToQuit.connect(_save_chat_and_guard_tmp)
+    # 关闭顺序：会话关闭事件（如有）→ Worker 线程 → 插件/TTS → 保存数据
+    app.aboutToQuit.connect(
+        lambda: shutdown_chat_runtime(
+            workflow=workflow,
+            plugin_shutdown=_shutdown_plugins,
+            tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
+            save_history=lambda: _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())
+            if args.history else None,
+            save_background=lambda: save_bg(
+                bg_path=window.current_background_path,
+                bgm_path=ui_updates.current_bgm_path,
+            ),
+            emit_session_closed=(
+                lambda: mirror_stream_sink.emit({"type": "session.closed", "reason": "聊天会话已结束。"})
+            )
+            if mirror_stream_sink is not None
+            else None,
+            close_stream_sink=mirror_stream_sink.close if mirror_stream_sink is not None else None,
+            on_error=_log_shutdown_error,
+        )
+    )
 
     window.show()
 

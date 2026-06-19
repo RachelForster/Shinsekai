@@ -1,6 +1,8 @@
 """Unit tests for LLMManager — message management, compact, tool calling."""
 
 import json
+from types import SimpleNamespace
+
 import pytest
 
 from llm.llm_manager import LLMManager, LLMAdapterFactory
@@ -466,6 +468,212 @@ class TestLLMManagerToolCalling:
         list(mgr.chat("Hello", stream=True, include_local_time=False))
 
         assert mgr._active_tool_groups == ["default"]
+
+    def test_first_user_turn_limits_tool_calls_and_disables_next_round_tools(self):
+        tm = ToolManager()
+        calls = {"a": 0, "b": 0}
+
+        def first_tool() -> dict:
+            calls["a"] += 1
+            return {"ok": "a"}
+
+        def second_tool() -> dict:
+            calls["b"] += 1
+            return {"ok": "b"}
+
+        tm.register_function(first_tool, name="unit_first_turn_tool_a", group="default")
+        tm.register_function(second_tool, name="unit_first_turn_tool_b", group="default")
+
+        class TwoToolThenFinalAdapter(MockLLMAdapter):
+            def chat(self, messages, stream=False, **kwargs):
+                self.call_history.append({"messages": messages, "stream": stream, "kwargs": kwargs})
+                if len(self.call_history) == 1:
+                    return SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    content="",
+                                    reasoning_content=None,
+                                    tool_calls=[
+                                        SimpleNamespace(
+                                            id="call_a",
+                                            function=SimpleNamespace(
+                                                name="unit_first_turn_tool_a",
+                                                arguments="{}",
+                                            ),
+                                        ),
+                                        SimpleNamespace(
+                                            id="call_b",
+                                            function=SimpleNamespace(
+                                                name="unit_first_turn_tool_b",
+                                                arguments="{}",
+                                            ),
+                                        ),
+                                    ],
+                                )
+                            )
+                        ]
+                    )
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="final",
+                                reasoning_content=None,
+                                tool_calls=[],
+                            )
+                        )
+                    ]
+                )
+
+        adapter = TwoToolThenFinalAdapter()
+        mgr = LLMManager(adapter=adapter, user_template="S")
+
+        result = mgr.chat("Hello", stream=False, include_local_time=False)
+
+        assert result == "final"
+        assert calls == {"a": 1, "b": 0}
+        assert len(adapter.call_history) == 2
+        assert adapter.call_history[0]["kwargs"]["tools"]
+        assert adapter.call_history[1]["kwargs"]["tools"] is None
+        skipped = [
+            json.loads(m["content"])
+            for m in mgr.messages
+            if m.get("role") == "tool" and m.get("name") == "unit_first_turn_tool_b"
+        ]
+        assert skipped
+        assert skipped[0]["reason"] == "first_turn_tool_budget_exhausted"
+
+    def test_repeated_failed_tool_call_is_skipped_within_same_turn(self):
+        tm = ToolManager()
+        calls = {"fail": 0}
+
+        def failing_tool() -> dict:
+            calls["fail"] += 1
+            return {"error": "boom"}
+
+        tm.register_function(failing_tool, name="unit_repeat_fail_tool", group="default")
+
+        class RepeatFailedToolAdapter(MockLLMAdapter):
+            def chat(self, messages, stream=False, **kwargs):
+                self.call_history.append({"messages": messages, "stream": stream, "kwargs": kwargs})
+                if len(self.call_history) == 1:
+                    return SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    content="",
+                                    reasoning_content=None,
+                                    tool_calls=[
+                                        SimpleNamespace(
+                                            id="call_1",
+                                            function=SimpleNamespace(
+                                                name="unit_repeat_fail_tool",
+                                                arguments="{}",
+                                            ),
+                                        ),
+                                        SimpleNamespace(
+                                            id="call_2",
+                                            function=SimpleNamespace(
+                                                name="unit_repeat_fail_tool",
+                                                arguments="{}",
+                                            ),
+                                        ),
+                                    ],
+                                )
+                            )
+                        ]
+                    )
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="done",
+                                reasoning_content=None,
+                                tool_calls=[],
+                            )
+                        )
+                    ]
+                )
+
+        adapter = RepeatFailedToolAdapter()
+        mgr = LLMManager(adapter=adapter, user_template="S", first_turn_tool_call_limit=10)
+
+        result = mgr.chat("Hello", stream=False, include_local_time=False)
+
+        assert result == "done"
+        assert calls["fail"] == 1
+        tool_results = [
+            json.loads(m["content"])
+            for m in mgr.messages
+            if m.get("role") == "tool" and m.get("name") == "unit_repeat_fail_tool"
+        ]
+        assert tool_results[0]["error"] == "boom"
+        assert tool_results[1]["reason"] == "tool_failed_earlier_in_turn"
+
+    def test_tool_cooldown_filters_next_round_tool_definitions(self):
+        tm = ToolManager()
+
+        def failing_vision_tool() -> dict:
+            return {"error": "screen capture failed"}
+
+        def default_probe() -> dict:
+            return {"ok": True}
+
+        tm.register_function(failing_vision_tool, name="unit_vision_fail_tool", group="vision")
+        tm.register_function(default_probe, name="unit_default_probe_tool", group="default")
+
+        class VisionFailThenFinalAdapter(MockLLMAdapter):
+            def chat(self, messages, stream=False, **kwargs):
+                self.call_history.append({"messages": messages, "stream": stream, "kwargs": kwargs})
+                if len(self.call_history) == 1:
+                    return SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    content="",
+                                    reasoning_content=None,
+                                    tool_calls=[
+                                        SimpleNamespace(
+                                            id="call_vision",
+                                            function=SimpleNamespace(
+                                                name="unit_vision_fail_tool",
+                                                arguments="{}",
+                                            ),
+                                        )
+                                    ],
+                                )
+                            )
+                        ]
+                    )
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="done",
+                                reasoning_content=None,
+                                tool_calls=[],
+                            )
+                        )
+                    ]
+                )
+
+        adapter = VisionFailThenFinalAdapter()
+        mgr = LLMManager(adapter=adapter, user_template="S", first_turn_tool_call_limit=10)
+        mgr.tool_executor.clear_cooldown("vision")
+        mgr._active_tool_groups = ["vision", "default"]
+
+        try:
+            result = mgr.chat("Hello", stream=False, include_local_time=False)
+
+            assert result == "done"
+            assert mgr.tool_executor.is_in_cooldown("vision")
+            second_tools = adapter.call_history[1]["kwargs"]["tools"] or []
+            second_tool_names = {tool["function"]["name"] for tool in second_tools}
+            assert "unit_vision_fail_tool" not in second_tool_names
+            assert "unit_default_probe_tool" in second_tool_names
+        finally:
+            mgr.tool_executor.clear_cooldown("vision")
 
     def test_register_mcp_tools(self):
         tm = ToolManager()

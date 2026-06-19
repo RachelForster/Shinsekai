@@ -12,6 +12,7 @@ from config.schema import (
 )
 from llm.constants import LLM_BASE_URLS
 from config.mirror_env import apply_mirror_environment
+from config.network_proxy import apply_network_proxy_environment
 import traceback
 
 
@@ -126,6 +127,7 @@ class ConfigManager:
                 characters=character_list,
                 background_list=background
             )
+            apply_network_proxy_environment(system_config)
             apply_mirror_environment(system_config)
             print("配置加载成功！")
         except ValidationError as e:
@@ -167,6 +169,7 @@ class ConfigManager:
             self._SYSTEM_CONFIG_PATH, 
             self.config.system_config.model_dump(by_alias=True)
         )
+        apply_network_proxy_environment(self.config.system_config)
         apply_mirror_environment(self.config.system_config)
         print("system_config.yaml 保存完成。")
 

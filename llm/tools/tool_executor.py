@@ -22,6 +22,10 @@ GROUP_COOLDOWN_SECONDS: dict[str, float] = {
     "vision": 600.0,   # Moondream 模型下载 / 加载，首次 2-10 分钟
 }
 
+GROUP_ERROR_COOLDOWN_SECONDS: dict[str, float] = {
+    "vision": 120.0,   # 截屏 / 本地视觉链路失败后，避免同轮反复重试
+}
+
 
 class ToolExecutor:
     """在 ToolManager 之上管理超时、冷却与风险确认。
@@ -42,10 +46,12 @@ class ToolExecutor:
         *,
         default_timeout: float = 120.0,
         cooldown_map: dict[str, float] | None = None,
+        error_cooldown_map: dict[str, float] | None = None,
     ) -> None:
         self._tm = tool_manager
         self._default_timeout = default_timeout
         self._cooldown_map: dict[str, float] = dict(cooldown_map or GROUP_COOLDOWN_SECONDS)
+        self._error_cooldown_map: dict[str, float] = dict(error_cooldown_map or GROUP_ERROR_COOLDOWN_SECONDS)
         self._cooldowns: dict[str, float] = {}  # group_name → cooldown_until timestamp
         self._pool = ThreadPoolExecutor(
             max_workers=4, thread_name_prefix="tool-exec"
@@ -70,15 +76,28 @@ class ToolExecutor:
         # 1. 冷却期：仍做探活执行（模型可能已加载完），但缩短超时
         in_cooldown = self._is_in_cooldown(group)
         timeout = 5.0 if in_cooldown else self._default_timeout
+        started = time.perf_counter()
+        logger.info(
+            "Tool execution started",
+            extra={
+                "event": "tool.execution.started",
+                "tool_name": name,
+                "tool_group": group,
+                "in_cooldown": in_cooldown,
+                "timeout_sec": timeout,
+            },
+        )
 
         # 2. 风险确认
         risk = self._tm.get_tool_risk(name)
         if risk != "low" and risk_confirm is not None:
             if not risk_confirm(name, risk, arguments_json):
-                return json.dumps(
+                result = json.dumps(
                     {"cancelled": True, "reason": f"User denied {name}"},
                     ensure_ascii=False,
                 )
+                self._log_finished(name, group, started, result, "cancelled", in_cooldown)
+                return result
 
         # 3. 带超时执行
         try:
@@ -91,14 +110,18 @@ class ToolExecutor:
                 "Tool '%s' (group=%s) not ready, cooldown %.0fs: %s",
                 name, group, secs, e.message,
             )
-            return json.dumps(
+            result = json.dumps(
                 {"status": "loading", "message": e.message},
                 ensure_ascii=False,
             )
+            self._log_finished(name, group, started, result, "loading", in_cooldown)
+            return result
         except FutTimeoutError:
             if in_cooldown:
                 # 冷却期探活超时 → 返回冷却消息
-                return self._cooldown_message(group)
+                result = self._cooldown_message(group)
+                self._log_finished(name, group, started, result, "cooldown", in_cooldown)
+                return result
             logger.warning("Tool '%s' timed out after %.0fs", name, timeout)
             result = json.dumps(
                 {"error": f"Tool '{name}' timed out after {timeout:.0f}s"},
@@ -111,13 +134,17 @@ class ToolExecutor:
                 ensure_ascii=False,
             )
 
+        status = _result_status(result)
+
         # 4. 工具执行成功 → 清除该组冷却（若存在）
-        if in_cooldown:
+        if in_cooldown and status not in {"error", "loading", "cancelled"}:
             self._cooldowns.pop(group, None)
             logger.info("Tool '%s' succeeded, cleared cooldown for group '%s'", name, group)
 
         # 5. 若返回 loading → 设置冷却（兼容未迁移到 ToolNotReady 的旧工具）
         self._maybe_set_cooldown(group, result)
+        self._maybe_set_error_cooldown(group, result)
+        self._log_finished(name, group, started, result, status, in_cooldown)
 
         return result
 
@@ -134,6 +161,10 @@ class ToolExecutor:
 
     def is_in_cooldown(self, group: str) -> bool:
         return self._check_cooldown(group) is not None
+
+    def cooldown_message_for_tool(self, name: str) -> str | None:
+        group = self._tm.get_tool_group(name)
+        return self._check_cooldown(group)
 
     def shutdown(self) -> None:
         self._pool.shutdown(wait=False)
@@ -174,13 +205,62 @@ class ToolExecutor:
                 "Tool group '%s' entered cooldown for %.0fs", group, secs
             )
 
+    def _maybe_set_error_cooldown(self, group: str, result: str) -> None:
+        if not _result_is_error(result):
+            return
+        secs = self._error_cooldown_map.get(group)
+        if secs is None or secs <= 0:
+            return
+        self._cooldowns[group] = time.time() + float(secs)
+        logger.info(
+            "Tool group '%s' entered error cooldown for %.0fs", group, secs
+        )
+
+    def _log_finished(
+        self,
+        name: str,
+        group: str,
+        started: float,
+        result: str,
+        status: str,
+        in_cooldown: bool,
+    ) -> None:
+        logger.info(
+            "Tool execution completed",
+            extra={
+                "event": "tool.execution.completed",
+                "tool_name": name,
+                "tool_group": group,
+                "status": status,
+                "in_cooldown": in_cooldown,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "result_chars": len(result or ""),
+            },
+        )
+
 
 def _result_is_loading(result: str) -> bool:
     """检测工具结果是否为 loading 状态。"""
+    return _result_status(result) == "loading"
+
+
+def _result_is_error(result: str) -> bool:
+    return _result_status(result) == "error"
+
+
+def _result_status(result: str) -> str:
     if not result:
-        return False
+        return "empty"
     try:
         parsed = json.loads(result)
     except (json.JSONDecodeError, TypeError):
-        return False
-    return isinstance(parsed, dict) and parsed.get("status") == "loading"
+        return "raw"
+    if not isinstance(parsed, dict):
+        return "success"
+    if parsed.get("status") == "loading":
+        return "loading"
+    if parsed.get("cancelled") is True:
+        return "cancelled"
+    if "error" in parsed:
+        return "error"
+    return str(parsed.get("status") or "success")

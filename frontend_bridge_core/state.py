@@ -18,7 +18,9 @@ class BridgeState:
     history_dir: str = "./data/chat_history"
     frontend_dist_dir: str = ""
     app_root_dir: str = ""
+    auth_token: str = ""
     chat_session: dict[str, Any] = field(default_factory=dict)
+    chat_stream: Any = None
     plugin_load_lock: threading.Lock = field(default_factory=threading.Lock)
     plugin_load_status: str = "idle"
     plugin_load_error: str = ""

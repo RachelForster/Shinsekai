@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
+
 from .state import BridgeState
 
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
@@ -58,19 +60,37 @@ def _latest_history_json(history_dir: str) -> Path | None:
     path = Path(history_dir)
     if not path.is_dir():
         return None
-    # 优先找正式 .json 文件
-    files = [item for item in path.glob("*.json") if item.is_file()]
-    if files:
-        return max(files, key=lambda item: item.stat().st_mtime)
-    # 没有 .json 时，检查 .json.tmp，返回去掉 .tmp 后缀的 .json 路径
-    tmp_files = [item for item in path.glob("*.json.tmp") if item.is_file()]
-    if tmp_files:
-        latest_tmp = max(tmp_files, key=lambda item: item.stat().st_mtime)
-        # 去掉末尾 .tmp 后缀，返回 .json 路径
-        tmp_name = latest_tmp.name  # 如 "3cb1d79....json.tmp"
-        json_name = tmp_name[:-4]   # 去掉 ".tmp" → "3cb1d79....json"
-        return latest_tmp.parent / json_name
-    return None
+    candidates: list[tuple[Path, float]] = [
+        (item, item.stat().st_mtime) for item in path.glob("*.json") if item.is_file()
+    ]
+    candidates.extend(
+        (
+            item,
+            max(
+                child.stat().st_mtime
+                for child in (
+                    item / ACTIVE_HISTORY_FILENAME,
+                    item / BRANCH_TREE_FILENAME,
+                    item / f"{ACTIVE_HISTORY_FILENAME}.tmp",
+                )
+                if child.is_file()
+            ),
+        )
+        for item in path.iterdir()
+        if item.is_dir()
+        and any(
+            (item / name).is_file()
+            for name in (ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME, f"{ACTIVE_HISTORY_FILENAME}.tmp")
+        )
+    )
+    candidates.extend(
+        (item.parent / item.name[:-4], item.stat().st_mtime)
+        for item in path.glob("*.json.tmp")
+        if item.is_file()
+    )
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[1])[0]
 
 
 def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:
@@ -241,6 +261,7 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         "selectedCharacters": [str(item) for item in (raw.get("selected_characters") or []) if str(item)],
         "system": str(raw.get("system_template_text") or ""),
         "templateFileDropdown": str(raw.get("template_file_dropdown") or ""),
+        "workflowPath": str(raw.get("workflow_path") or ""),
         "useCg": bool(raw.get("use_cg_yes", False)),
         "useChoice": bool(raw.get("use_choice_yes", True)),
         "useCot": bool(raw.get("use_cot_yes", False)),
@@ -283,6 +304,7 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         "init_sprite_path": str(payload.get("initSpritePath") or ""),
         "history_file": str(payload.get("historyPath") or ""),
         "room_id": str(payload.get("roomId") or ""),
+        "workflow_path": str(payload.get("workflowPath") or ""),
     }
     save_template_session(state.template_dir_path, data)
     loaded = _load_template_session_payload(state)

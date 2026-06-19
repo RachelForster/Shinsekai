@@ -5,6 +5,7 @@
   gap: var(--space-2);
   color: var(--color-text-primary);
   cursor: pointer;
+  line-height: 1.35;
   user-select: none;
 }
 
@@ -87,6 +88,9 @@
 }
 
 .switch__label {
+  display: inline-flex;
   min-width: 0;
+  min-height: 24px;
+  align-items: center;
   opacity: 0.52;
 }

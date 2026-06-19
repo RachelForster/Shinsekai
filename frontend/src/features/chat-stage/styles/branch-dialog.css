@@ -1,0 +1,322 @@
+.chat-branch-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 82;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--stage-safe-top) var(--stage-safe-x);
+  background:
+    var(--logs-page-background-image, none),
+    radial-gradient(circle at 74% 22%, color-mix(in oklch, var(--stage-accent) 18%, transparent), transparent 34%),
+    linear-gradient(180deg, rgba(7, 10, 14, 0.68), rgba(7, 10, 14, 0.84)),
+    var(--logs-page-background, rgba(8, 12, 18, 0.72));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, cover, cover, cover;
+}
+
+.chat-branch-dialog {
+  --branch-accent: var(--logs-event-color, var(--chat-name-runtime-color, var(--stage-accent, #cfc7ff)));
+  --branch-border: var(--logs-panel-border-color, rgba(255, 255, 255, 0.18));
+  --branch-chrome: var(--logs-toolbar-background, rgba(18, 24, 31, 0.88));
+  --branch-muted: color-mix(in oklch, var(--branch-text) 62%, transparent);
+  --branch-panel: var(--logs-panel-background, rgba(13, 18, 25, 0.9));
+  --branch-radius: var(--logs-panel-border-radius, 18px);
+  --branch-text: var(--logs-panel-color, var(--logs-page-color, var(--chat-dialog-color, #fffaf0)));
+  display: grid;
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(76vh, 720px);
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--branch-border);
+  border-radius: var(--branch-radius);
+  color: var(--branch-text);
+  background:
+    var(--logs-panel-background-image, none),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.035)),
+    color-mix(in oklch, var(--branch-panel) 78%, transparent);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, cover, cover;
+  box-shadow: var(--logs-panel-box-shadow, 0 28px 86px rgba(0, 0, 0, 0.56));
+  backdrop-filter: blur(18px) saturate(1.24);
+  font-family: var(--font-chat);
+}
+
+.chat-branch-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 18px 22px 16px;
+  border-bottom: 1px solid var(--logs-toolbar-border-color, var(--branch-border));
+  background:
+    var(--logs-toolbar-background-image, none),
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--branch-chrome) 80%, white 12%),
+      color-mix(in oklch, var(--branch-chrome) 82%, transparent)
+    );
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover, cover;
+}
+
+.chat-branch-dialog__heading {
+  min-width: 0;
+}
+
+.chat-branch-dialog__eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--branch-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.chat-branch-dialog__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--branch-accent);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-branch-dialog__summary {
+  margin: 6px 0 0;
+  color: var(--branch-muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.chat-branch-dialog__body {
+  min-height: 0;
+  padding: 18px;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in oklch, var(--branch-accent) 10%, transparent), transparent 34%),
+    color-mix(in oklch, var(--branch-panel) 58%, transparent);
+}
+
+.chat-branch-dialog__notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--branch-accent) 28%, var(--branch-border));
+  border-radius: 10px;
+  color: var(--branch-muted);
+  background: color-mix(in oklch, var(--branch-accent) 10%, transparent);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.chat-branch-tree {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-branch-tree__node {
+  --branch-depth: 0;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 14px 14px calc(14px + var(--branch-depth) * 22px);
+  border: 1px solid var(--logs-line-border-color, var(--branch-border));
+  border-radius: 14px;
+  background: var(--logs-detail-background, rgba(255, 255, 255, 0.07));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.chat-branch-tree__node[data-active="true"] {
+  border-color: color-mix(in oklch, var(--branch-accent) 58%, transparent);
+  background: var(--logs-event-background, rgba(255, 255, 255, 0.1));
+}
+
+.chat-branch-tree__rail {
+  display: grid;
+  width: 22px;
+  height: 100%;
+  min-height: 42px;
+  place-items: center;
+  border-left: 2px solid color-mix(in oklch, var(--branch-accent) 48%, transparent);
+  border-bottom: 2px solid color-mix(in oklch, var(--branch-accent) 48%, transparent);
+  border-bottom-left-radius: 12px;
+}
+
+.chat-branch-tree__toggle,
+.chat-branch-tree__edit,
+.chat-branch-tree__rename-button {
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--branch-accent) 30%, transparent);
+  color: var(--branch-text);
+  background: color-mix(in oklch, var(--branch-panel) 64%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.chat-branch-tree__toggle {
+  width: 26px;
+  height: 26px;
+  margin-left: -2px;
+  border-radius: 9px;
+}
+
+.chat-branch-tree__toggle:hover,
+.chat-branch-tree__edit:hover,
+.chat-branch-tree__rename-button:hover {
+  border-color: var(--branch-accent);
+  color: var(--branch-accent);
+  background: color-mix(in oklch, var(--branch-accent) 14%, transparent);
+}
+
+.chat-branch-tree__toggle-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.25;
+}
+
+.chat-branch-tree__leaf {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--branch-accent) 76%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--branch-accent) 13%, transparent);
+}
+
+.chat-branch-tree__content {
+  min-width: 0;
+}
+
+.chat-branch-tree__meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-branch-tree__icon {
+  width: 18px;
+  height: 18px;
+  color: var(--branch-accent);
+}
+
+.chat-branch-tree__label {
+  max-width: min(100%, 320px);
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-branch-tree__active {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in oklch, var(--branch-accent) 58%, transparent);
+  border-radius: 999px;
+  color: var(--branch-accent);
+  background: color-mix(in oklch, var(--branch-accent) 12%, transparent);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.chat-branch-tree__forked {
+  margin: 7px 0 0;
+  overflow: hidden;
+  color: var(--branch-muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-branch-tree__rename {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.chat-branch-tree__name-input {
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in oklch, var(--branch-accent) 45%, transparent);
+  border-radius: 10px;
+  outline: none;
+  color: var(--branch-text);
+  background: color-mix(in oklch, var(--branch-panel) 76%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 760;
+}
+
+.chat-branch-tree__name-input:focus {
+  border-color: var(--branch-accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 3px color-mix(in oklch, var(--branch-accent) 18%, transparent);
+}
+
+.chat-branch-tree__rename-actions,
+.chat-branch-tree__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-branch-tree__rename-button,
+.chat-branch-tree__edit {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.chat-branch-tree__rename-icon,
+.chat-branch-tree__edit-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.1;
+}
+
+.chat-branch-tree__actions {
+  justify-content: flex-end;
+}
+
+.chat-branch-dialog .button,
+.chat-branch-dialog .icon-button {
+  border-color: var(--logs-badge-border-color, var(--branch-border));
+  color: var(--logs-badge-color, var(--branch-text));
+  background: var(--logs-badge-background, rgba(255, 255, 255, 0.08));
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.chat-branch-dialog .button:hover:not(:disabled),
+.chat-branch-dialog .icon-button:hover {
+  border-color: var(--branch-accent);
+  color: var(--branch-accent);
+  background: var(--logs-event-background, rgba(255, 255, 255, 0.12));
+}

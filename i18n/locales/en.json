@@ -670,6 +670,7 @@
     "bgm_block_header": "BGM:\n",
     "bgm_count": "There are {n} BGM tracks: \n",
     "r_format": "Format: Output must be valid JSON only, with no extra commentary, explanation, or greetings outside the JSON object.",
+    "r_user_display_name_tool": "User nameplate: if the user scenario or system rules explicitly state the user's name, call-sign, or preferred form of address, call set_user_display_name(name=...) before the first visible dialog line. Do not infer a name.",
     "r_cname": "character_name: Must be one of: {names} or other in-story names, or the fixed tokens: {cot_part}{fixed_roles}{opt_scene}{opt_bgm}{opt_cg} (legacy CJK names for the same roles are also accepted at runtime).",
     "r_sprite": "Sprites: The sprite field must be a two-digit id (e.g. 01, 02) chosen to match tone and emotion of the line.",
     "r_non_sprite": "When character_name is one of {fixed_roles_non_sprite}, set sprite to -1.",

@@ -40,6 +40,12 @@ describe("entity repositories", () => {
     const platform = {
       config: {
         cancelTtsBundleDownload: vi.fn().mockResolvedValue({ id: "task-1", status: "cancelled" }),
+        detectNetworkProxy: vi.fn().mockResolvedValue({
+          http_proxy_url: "http://127.0.0.1:7890",
+          https_proxy_url: "http://127.0.0.1:7890",
+          socks5_proxy_url: "",
+          source: "environment",
+        }),
         downloadTtsBundle: vi.fn().mockResolvedValue({ path: "/runtime", provider: "genie-tts" }),
         fetchLlmModels: vi.fn().mockResolvedValue([{ id: "deepseek-chat", tags: ["chat"] }]),
         testLlmConnection: vi.fn().mockResolvedValue({ message: "ok" }),
@@ -77,6 +83,7 @@ describe("entity repositories", () => {
     });
     await config.downloadTtsBundle({ kind: "genie" }, taskOptions);
     await config.cancelTtsBundleDownload("task-1");
+    await config.detectNetworkProxy();
     await config.getTtsBundleRecommendation();
     await config.saveApiConfig(apiConfig);
     await config.saveSystemConfig(systemConfig);
@@ -131,6 +138,7 @@ describe("entity repositories", () => {
     });
     expect(platform.config.downloadTtsBundle).toHaveBeenCalledWith({ kind: "genie" }, taskOptions);
     expect(platform.config.cancelTtsBundleDownload).toHaveBeenCalledWith("task-1");
+    expect(platform.config.detectNetworkProxy).toHaveBeenCalledWith();
     expect(platform.files.browse).toHaveBeenCalledWith({ path: "/tmp", showHidden: true });
     expect(platform.files.thumbnailBatch).toHaveBeenCalledWith(["/tmp/a.png"], { delivery: "url", size: 160 });
     expect(platform.files.openExternal).toHaveBeenCalledWith("https://example.test");
@@ -320,12 +328,21 @@ describe("entity repositories", () => {
     const unsubscribe = vi.fn();
     const platform = {
       chat: {
+        close: vi.fn().mockResolvedValue(sampleChatSnapshot),
         command: vi.fn().mockResolvedValue(sampleChatSnapshot),
+        getHistory: vi.fn().mockResolvedValue(sampleChatSnapshot.historyEntries ?? []),
         getSnapshot: vi.fn().mockResolvedValue(sampleChatSnapshot),
         getTheme: vi.fn().mockResolvedValue(sampleChatTheme),
         launch: vi.fn().mockResolvedValue(sampleChatSnapshot),
         resumeLast: vi.fn().mockResolvedValue(sampleChatSnapshot),
         subscribe: vi.fn().mockReturnValue(unsubscribe),
+        listThemes: vi.fn().mockResolvedValue([]),
+        getThemeManifest: vi.fn().mockResolvedValue({ schema: 1, id: "windborne-adventure", name: {}, tokens: {} }),
+        getActiveThemeId: vi.fn().mockResolvedValue("windborne-adventure"),
+        setActiveThemeId: vi.fn().mockResolvedValue(undefined),
+        uploadTheme: vi.fn().mockResolvedValue({ id: "uploaded", name: {}, source: "user" }),
+        deleteTheme: vi.fn().mockResolvedValue(undefined),
+        subscribeEvents: vi.fn().mockReturnValue(unsubscribe),
       },
       mcp: {
         getConfig: vi.fn().mockResolvedValue(sampleMcpConfig),
@@ -416,6 +433,7 @@ describe("entity repositories", () => {
     const listener = vi.fn();
 
     await chat.getChatSnapshot();
+    await chat.closeChat();
     await chat.getChatTheme();
     await chat.launchChat(sampleLastLaunch);
     await chat.resumeLastChat();
@@ -475,6 +493,7 @@ describe("entity repositories", () => {
     await musicCover.searchMusicCover({ query: "song", source: "youtube" });
     await musicCover.runMusicCover({ pickIndex: 0, query: "song", skipRvc: false, source: "youtube" }, taskOptions);
 
+    expect(platform.chat.close).toHaveBeenCalledTimes(1);
     expect(platform.chat.launch).toHaveBeenCalledWith(sampleLastLaunch);
     expect(platform.plugins.appUpdateRun).toHaveBeenCalledWith({ refKind: "tag", tagName: "v0.1.0" }, taskOptions);
     expect(platform.plugins.install).toHaveBeenCalledWith({ source: "repo", tagName: "v0.1.0" }, taskOptions);

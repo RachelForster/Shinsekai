@@ -19,6 +19,7 @@ Quick reference
 - :mod:`sdk.tool_registry` — LLM 工具注册 (@tool 装饰器)
 - :mod:`sdk.register` — 能力注册表 (PluginCapabilityRegistry)
 - :mod:`sdk.manager` — 插件管理器 (PluginManager)
+- :mod:`sdk.chat_ui_theme` — chat_ui 主题 mod 校验/打包 (validate_manifest, pack_theme; CLI: ``python -m sdk.chat_ui_theme``)
 """
 
 from __future__ import annotations

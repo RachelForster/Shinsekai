@@ -7,6 +7,12 @@ from sdk.logging import get_logger
 from sdk.tool_registry import ToolNotReady
 
 
+DEFAULT_TOOL_GROUP_OVERRIDES: dict[str, str] = {
+    "moondream_query_screen": "vision",
+    "moondream_ocr_screen": "vision",
+}
+
+
 class ToolManager:
     _instance = None
 
@@ -118,7 +124,7 @@ class ToolManager:
         self._drop_tool(tool_name)
         self._tools_definitions.append(definition)
         self._functions[tool_name] = func
-        self._tool_groups[tool_name] = group or "default"
+        self._tool_groups[tool_name] = group or DEFAULT_TOOL_GROUP_OVERRIDES.get(tool_name, "default")
         self._tool_risks[tool_name] = risk or "low"
 
     def register_mcp_tools(

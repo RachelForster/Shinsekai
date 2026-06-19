@@ -68,10 +68,11 @@ export function SchemaFieldGrid<T extends object>({
     onChange({ ...value, [name]: next });
   };
 
-  const renderField = (field: FormFieldSchema<T>) => {
+  const renderField = (field: FormFieldSchema<T>, describedBy?: string) => {
     const rawValue = value[field.name] ?? field.defaultValue;
     const fieldDisabled = disabled || Boolean(field.disabledWhen?.(value));
     const common = {
+      "aria-describedby": describedBy,
       disabled: fieldDisabled,
       id: String(field.name),
     };
@@ -195,11 +196,20 @@ export function SchemaFieldGrid<T extends object>({
           const disabledReason = field.disabledWhen?.(value) ? resolveDisabledReason(field, value) : undefined;
           const fullWidth = field.span === "full" || field.type === "json" || field.type === "textarea";
           const rowClassName = ["field-row", fullWidth ? "field-row--full" : ""].filter(Boolean).join(" ");
+          const fieldId = String(field.name);
           const descriptionId = `${String(field.name)}-description`;
+          const errorId = `${String(field.name)}-error`;
+          const helpId = `${String(field.name)}-help`;
+          const describedBy =
+            [field.description ? descriptionId : "", errors[field.name] ? errorId : "", disabledReason ? helpId : ""]
+              .filter(Boolean)
+              .join(" ") || undefined;
           return (
-            <label className={rowClassName} htmlFor={String(field.name)} key={String(field.name)}>
+            <div className={rowClassName} key={fieldId}>
               <span className="field-row__label">
-                <span className="field-row__label-text">{field.label}</span>
+                <label className="field-row__label-text" htmlFor={fieldId}>
+                  {field.label}
+                </label>
                 {field.description ? (
                   <span className="field-row__tooltip">
                     <span aria-describedby={descriptionId} className="field-row__tooltip-trigger" tabIndex={0}>
@@ -212,11 +222,19 @@ export function SchemaFieldGrid<T extends object>({
                 ) : null}
               </span>
               <span className="field-row__control">
-                {renderField(field)}
-                {errors[field.name] ? <span className="field-error">{errors[field.name]}</span> : null}
-                {disabledReason ? <span className="field-row__help">{disabledReason}</span> : null}
+                {renderField(field, describedBy)}
+                {errors[field.name] ? (
+                  <span className="field-error" id={errorId}>
+                    {errors[field.name]}
+                  </span>
+                ) : null}
+                {disabledReason ? (
+                  <span className="field-row__help" id={helpId}>
+                    {disabledReason}
+                  </span>
+                ) : null}
               </span>
-            </label>
+            </div>
           );
         })}
       </div>
