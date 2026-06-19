@@ -246,6 +246,8 @@ class HistoryManager:
 
     def clear_chat_history(self, history_file):
         self.chat_history.clear()
+        if not history_file:
+            return
         history_file_path = Path(history_file)
-        if history_file_path.exists():
-            history_file_path.unlink()
+        history_file_path.unlink(missing_ok=True)
+        self.delete_tmp(history_file)

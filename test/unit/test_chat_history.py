@@ -4,6 +4,7 @@ dialog content parsing."""
 import json
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 import sys
 
@@ -428,6 +429,18 @@ class TestSaveChatHistory:
         result = hm.save_chat_history(None, [{"role": "user", "content": "x"}])
         assert result is True
 
+    def test_sprite_wrapper_returns_manager_result(self, monkeypatch):
+        from core.sprite import chat_history as chat_history_mod
+
+        monkeypatch.setattr(
+            chat_history_mod,
+            "_get_history_manager",
+            lambda: SimpleNamespace(save_chat_history=lambda file_path, history: True),
+        )
+
+        result = chat_history_mod.save_chat_history(self.history_file, [])
+        assert result is True
+
     def test_tmp_persists_until_delete_tmp_called(self):
         """save_chat_history 不删 tmp，需要独立调用 delete_tmp"""
         tmp_path = Path(self.history_file + ".tmp")
@@ -440,4 +453,25 @@ class TestSaveChatHistory:
 
         # 独立调用 delete_tmp 后才删除
         HistoryManager.delete_tmp(self.history_file)
+        assert not tmp_path.exists()
+
+
+class TestClearChatHistory:
+    """clear_chat_history 清理正式历史和增量 tmp。"""
+
+    def setup_method(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.history_file = str(Path(self.tmp_dir) / "test.json")
+
+    def test_removes_json_and_tmp(self):
+        history_path = Path(self.history_file)
+        tmp_path = Path(self.history_file + ".tmp")
+        history_path.write_text("[]", encoding="utf-8")
+        tmp_path.write_text('{"role": "user", "content": "secret"},\n', encoding="utf-8")
+
+        hm = HistoryManager(["visible"])
+        hm.clear_chat_history(self.history_file)
+
+        assert hm.get_history() == []
+        assert not history_path.exists()
         assert not tmp_path.exists()
