@@ -97,9 +97,12 @@ export function CharacterVoiceSection({
           <span className="field-row__label">{t("character.field.speechSpeed")}</span>
           <span className="field-row__control">
             <NumberInput
+              disabled={voiceReferenceReadOnly}
               max={5}
               min={0.1}
-              onChange={(event) => onChange("speech_speed", Number(event.target.value))}
+              onChange={
+                voiceReferenceReadOnly ? undefined : (event) => onChange("speech_speed", Number(event.target.value))
+              }
               step={0.05}
               value={draft.speech_speed}
             />

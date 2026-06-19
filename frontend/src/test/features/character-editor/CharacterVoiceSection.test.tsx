@@ -49,10 +49,10 @@ describe("CharacterVoiceSection", () => {
     fireEvent.change(screen.getByDisplayValue("hello"), { target: { value: "updated line" } });
     expect(props.onChange).toHaveBeenCalledWith("prompt_text", "updated line");
 
-    fireEvent.change(screen.getAllByDisplayValue("1")[0], { target: { value: "1.25" } });
+    fireEvent.change(screen.getByLabelText("TTS Speed"), { target: { value: "1.25" } });
     expect(props.onChange).toHaveBeenCalledWith("speech_speed", 1.25);
 
-    fireEvent.change(screen.getAllByDisplayValue("1")[1], { target: { value: "0.8" } });
+    fireEvent.change(screen.getByLabelText("TTS Volume"), { target: { value: "0.8" } });
     expect(props.onChange).toHaveBeenCalledWith("speech_volume", 0.8);
   });
 
@@ -64,6 +64,8 @@ describe("CharacterVoiceSection", () => {
     expect(screen.queryByDisplayValue("D:/audio/ref.wav")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("ja")).toHaveAttribute("readonly");
     expect(screen.getByDisplayValue("hello")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("TTS Speed")).toBeDisabled();
+    expect(screen.getByLabelText("TTS Volume")).not.toBeDisabled();
     expect(screen.getAllByRole("button", { name: "Choose file" })).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ disabled: true }),
@@ -74,10 +76,12 @@ describe("CharacterVoiceSection", () => {
 
     fireEvent.change(screen.getByDisplayValue("ja"), { target: { value: "en" } });
     fireEvent.change(screen.getByDisplayValue("hello"), { target: { value: "updated line" } });
-    fireEvent.change(screen.getAllByDisplayValue("1")[0], { target: { value: "1.25" } });
+    fireEvent.change(screen.getByLabelText("TTS Speed"), { target: { value: "1.25" } });
+    fireEvent.change(screen.getByLabelText("TTS Volume"), { target: { value: "0.8" } });
 
     expect(props.onChange).not.toHaveBeenCalledWith("prompt_lang", expect.any(String));
     expect(props.onChange).not.toHaveBeenCalledWith("prompt_text", expect.any(String));
-    expect(props.onChange).toHaveBeenCalledWith("speech_speed", 1.25);
+    expect(props.onChange).not.toHaveBeenCalledWith("speech_speed", expect.any(Number));
+    expect(props.onChange).toHaveBeenCalledWith("speech_volume", 0.8);
   });
 });

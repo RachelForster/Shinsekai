@@ -193,7 +193,7 @@ describe("CharacterEditorPage", () => {
     await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Sora"));
   });
 
-  it("locks voice reference file pickers when Kaggle GPT-SoVITS is selected", async () => {
+  it("locks cloud voice reference controls when Kaggle GPT-SoVITS is selected", async () => {
     mockGetAppConfig.mockResolvedValue({
       ...structuredClone(sampleConfig),
       api_config: {
@@ -214,5 +214,7 @@ describe("CharacterEditorPage", () => {
     for (const picker of voiceReferencePickers) {
       expect(picker).toBeDisabled();
     }
+    expect(screen.getByRole("spinbutton", { name: "TTS Speed" })).toBeDisabled();
+    expect(screen.getByRole("spinbutton", { name: "TTS Volume" })).not.toBeDisabled();
   });
 });
