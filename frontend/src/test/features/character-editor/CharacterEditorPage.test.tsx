@@ -205,6 +205,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     await screen.findByDisplayValue("Mika");
+    expect(screen.getByText(/Upload the \.char package in the Kaggle Notebook/)).toBeInTheDocument();
     const voiceReferencePickers = [
       screen.getByRole("button", { name: "GPT model path" }),
       screen.getByRole("button", { name: "SoVITS model" }),

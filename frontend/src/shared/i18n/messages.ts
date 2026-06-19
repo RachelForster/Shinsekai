@@ -261,6 +261,7 @@ export type MessageKey =
   | "character.section.personality"
   | "character.section.sprites"
   | "character.section.voice"
+  | "character.voice.kaggleLockedHint"
   | "character.sprite.add"
   | "character.sprite.batchTags"
   | "character.sprite.batchTagsHelp"

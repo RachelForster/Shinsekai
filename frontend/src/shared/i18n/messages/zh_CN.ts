@@ -269,6 +269,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "character.section.personality": "角色设定",
   "character.section.sprites": "立绘管理",
   "character.section.voice": "语音模型参考（SoVITS 等，可选）",
+  "character.voice.kaggleLockedHint":
+    "当前已选择 Kaggle GPT-SoVITS。语音参考模型需要在 Kaggle Notebook 中上传 .char 包加载，本地导入不会更新云端模型，因此这些参考字段已标记为不可修改。",
   "character.sprite.add": "添加立绘行",
   "character.sprite.batchTags": "批量立绘标注",
   "character.sprite.batchTagsHelp": "每行填写一个带编号的标注。确定后先应用到当前角色，再点击上传立绘标注保存。",

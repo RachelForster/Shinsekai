@@ -408,6 +408,7 @@
     "msg_translate_fail": "翻译失败：{detail}",
     "toast_translate_ok": "已译成当前界面语言。保存人物档案以写入配置。",
     "voice_box": "语音模型参考（SoVITS 等，可选）",
+    "kaggle_voice_locked_hint": "当前已选择 Kaggle GPT-SoVITS。语音参考模型需要在 Kaggle Notebook 中上传 .char 包加载，本地导入不会更新云端模型，因此这些参考字段已标记为不可修改。",
     "gpt_path": "GPT 模型路径",
     "sovits_path": "SoVITS 模型路径",
     "ref_audio": "参考音频路径",

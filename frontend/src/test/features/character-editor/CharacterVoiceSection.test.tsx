@@ -34,6 +34,8 @@ describe("CharacterVoiceSection", () => {
   it("routes voice reference paths and numeric settings through public callbacks", () => {
     const { props } = renderSection();
 
+    expect(screen.queryByText(/Upload the \.char package in the Kaggle Notebook/)).not.toBeInTheDocument();
+
     fireEvent.change(screen.getByDisplayValue("D:/models/gpt.ckpt"), { target: { value: "D:/models/new.ckpt" } });
     expect(props.onChange).toHaveBeenCalledWith("gpt_model_path", "D:/models/new.ckpt");
 
@@ -59,6 +61,7 @@ describe("CharacterVoiceSection", () => {
   it("keeps voice reference fields read-only when requested", () => {
     const { props } = renderSection(true);
 
+    expect(screen.getByText(/Upload the \.char package in the Kaggle Notebook/)).toBeInTheDocument();
     expect(screen.queryByDisplayValue("D:/models/gpt.ckpt")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("D:/models/sovits.pth")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("D:/audio/ref.wav")).not.toBeInTheDocument();

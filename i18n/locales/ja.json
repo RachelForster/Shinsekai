@@ -408,6 +408,7 @@
     "msg_translate_fail": "翻訳に失敗しました: {detail}",
     "toast_translate_ok": "現在の表示言語に訳しました。「追加/保存」で設定に書き込みます。",
     "voice_box": "声の参照（SoVITS 等・任意）",
+    "kaggle_voice_locked_hint": "Kaggle GPT-SoVITS が選択されています。声の参照モデルは Kaggle Notebook 側で .char パッケージをアップロードして読み込みます。ローカル取り込みではクラウド側のモデルは更新されないため、これらの参照項目は変更できません。",
     "gpt_path": "GPT モデルパス",
     "sovits_path": "SoVITS モデルパス",
     "ref_audio": "参照音声",

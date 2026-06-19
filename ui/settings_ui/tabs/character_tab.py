@@ -273,6 +273,8 @@ class CharacterSettingsTab(QWidget):
         # --- 3. 语音参考路径（TTS 侧）---
         self._voice_box = QGroupBox(tr_i18n("char.voice_box"))
         vf = QFormLayout(self._voice_box)
+        self._voice_kaggle_note = QLabel(tr_i18n("char.kaggle_voice_locked_hint"))
+        self._voice_kaggle_note.setWordWrap(True)
         self.gpt_model_path = QLineEdit()
         self.sovits_model_path = QLineEdit()
         self.refer_audio_path = QLineEdit()
@@ -293,6 +295,7 @@ class CharacterSettingsTab(QWidget):
         self._v_pl = QLabel(tr_i18n("char.prompt_lang"))
         self._v_sp = QLabel(tr_i18n("char.speech_speed_lbl"))
         self._v_vol = QLabel(tr_i18n("char.speech_volume_lbl"))
+        vf.addRow(self._voice_kaggle_note)
         vf.addRow(self._v_gpt, self.gpt_model_path)
         vf.addRow(self._v_sov, self.sovits_model_path)
         vf.addRow(self._v_ref, self.refer_audio_path)
@@ -498,6 +501,7 @@ class CharacterSettingsTab(QWidget):
         self._ai_translate_btn.setText(tr_i18n("char.ai_translate"))
         self._ai_translate_btn.setToolTip(tr_i18n("char.tt_ai_translate"))
         self._voice_box.setTitle(tr_i18n("char.voice_box"))
+        self._voice_kaggle_note.setText(tr_i18n("char.kaggle_voice_locked_hint"))
         self._v_gpt.setText(tr_i18n("char.gpt_path"))
         self._v_sov.setText(tr_i18n("char.sovits_path"))
         self._v_ref.setText(tr_i18n("char.ref_audio"))
@@ -551,6 +555,7 @@ class CharacterSettingsTab(QWidget):
         self.prompt_text.setEnabled(not read_only)
         self.prompt_lang.setEnabled(not read_only)
         self.speech_speed.setEnabled(not read_only)
+        self._voice_kaggle_note.setVisible(read_only)
 
     def _refresh_character_combo(self, select: str | None = None) -> None:
         self.selected_character.blockSignals(True)

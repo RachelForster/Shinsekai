@@ -411,6 +411,7 @@
     "msg_translate_fail": "Translation failed: {detail}",
     "toast_translate_ok": "Translated to the current UI language. Use Add or save to write to the profile.",
     "voice_box": "Voice reference (SoVITS, optional)",
+    "kaggle_voice_locked_hint": "Kaggle GPT-SoVITS is selected. Upload the .char package in the Kaggle Notebook to load the voice reference model; local imports do not update the cloud model, so these reference fields are locked.",
     "gpt_path": "GPT model path",
     "sovits_path": "SoVITS model path",
     "ref_audio": "Reference audio",

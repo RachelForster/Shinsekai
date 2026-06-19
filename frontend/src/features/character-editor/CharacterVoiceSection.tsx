@@ -23,6 +23,9 @@ export function CharacterVoiceSection({
       <div className="section__header">
         <h2 className="section__title">{t("character.section.voice")}</h2>
       </div>
+      {voiceReferenceReadOnly ? (
+        <p className="character-voice-section__locked-note">{t("character.voice.kaggleLockedHint")}</p>
+      ) : null}
       <div className="form-grid form-grid--two">
         <label className="field-row">
           <span className="field-row__label">{t("character.field.gptModel")}</span>
