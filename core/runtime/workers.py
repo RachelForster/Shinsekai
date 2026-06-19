@@ -36,6 +36,25 @@ logger = get_logger(__name__)
 
 # --- QThread + DagNode 基类 ---
 
+class _CancelAwareQueue:
+    """Delegate queue operations, but drop new outputs after cancellation."""
+
+    def __init__(self, queue, cancel_event: threading.Event) -> None:
+        self._queue = queue
+        self._cancel_event = cancel_event
+
+    def put(self, *args, **kwargs):
+        if self._cancel_event.is_set():
+            return None
+        return self._queue.put(*args, **kwargs)
+
+    def put_nowait(self, item):
+        return self.put(item, block=False)
+
+    def __getattr__(self, name: str):
+        return getattr(self._queue, name)
+
+
 class QThreadDagNode(DagNode, QThread):
     """每个 DagNode 自带一个 QThread 运行循环。"""
 
@@ -264,7 +283,12 @@ class TTSWorker(QThreadDagNode):
     def outputs(self) -> dict[str, Port]:
         return {self.PORT_TTS_OUTPUT: Port(self.PORT_TTS_OUTPUT)}
 
-    # ---------- 新增方法 ----------
+    def start(self) -> None:
+        if self.isRunning():
+            return
+        self._cancel_event.clear()
+        super().start()
+
     def _dispatch_with_cancel(self, item):
         """
         在 daemon 子线程中执行 dispatcher.dispatch，主线程等待完成或取消。
@@ -275,11 +299,27 @@ class TTSWorker(QThreadDagNode):
         error = [None]
 
         def work():
+            rt = try_get_app_runtime()
+            original_audio_queue = None
+            guarded_audio_queue = None
             try:
+                if rt is not None:
+                    original_audio_queue = rt.audio_path_queue
+                    guarded_audio_queue = _CancelAwareQueue(original_audio_queue, self._cancel_event)
+                    rt.audio_path_queue = guarded_audio_queue
+                if self._cancel_event.is_set():
+                    return
                 self.tts_message_dispatcher.dispatch(item)
             except Exception as e:
-                error[0] = e
+                if not self._cancel_event.is_set():
+                    error[0] = e
             finally:
+                if (
+                    rt is not None
+                    and guarded_audio_queue is not None
+                    and rt.audio_path_queue is guarded_audio_queue
+                ):
+                    rt.audio_path_queue = original_audio_queue
                 done.set()
 
         t = threading.Thread(target=work, daemon=True)
@@ -294,7 +334,6 @@ class TTSWorker(QThreadDagNode):
         if error[0] is not None:
             raise error[0]
 
-    # ---------- 修改 run ----------
     def run(self):
         self._init_app()
         while self.running:
@@ -322,7 +361,6 @@ class TTSWorker(QThreadDagNode):
                 if got_item:
                     self.tts_queue.task_done()
 
-    # ---------- 修改 stop ----------
     def stop(self):
         self._cancel_event.set()        # 通知取消当前合成
         self.running = False

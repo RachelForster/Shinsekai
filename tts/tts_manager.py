@@ -1,5 +1,4 @@
 import requests
-import shutil
 import threading
 import queue
 import subprocess
@@ -90,32 +89,36 @@ class TTSManager:
             return ''
 
         # 最终文件路径
-        final_path = str(self.audio_cache_dir / f"{self.index % self.cache_num}.wav")
+        final_path = self.audio_cache_dir / f"{self.index % self.cache_num}.wav"
         self.index += 1
-        tmp_path = final_path + ".part"
+        tmp_path = final_path.with_suffix(final_path.suffix + ".part")
 
         # 清理上次残留的临时文件
-        if Path(tmp_path).exists():
-            Path(tmp_path).unlink()
+        tmp_path.unlink(missing_ok=True)
 
         # 引擎写入临时路径
-        result = self.tts_adapter.generate_speech(
-            text=text,
-            file_path=tmp_path,
-            ref_audio_path=ref_audio_path,
-            prompt_text=prompt_text,
-            prompt_lang=prompt_lang,
-            text_lang=self.voice_language,
-            character_name=character_name,
-            speed_factor=speed_factor,
-        )
+        moved = False
+        try:
+            result = self.tts_adapter.generate_speech(
+                text=text,
+                file_path=str(tmp_path),
+                ref_audio_path=ref_audio_path,
+                prompt_text=prompt_text,
+                prompt_lang=prompt_lang,
+                text_lang=self.voice_language,
+                character_name=character_name,
+                speed_factor=speed_factor,
+            )
 
-        # 成功写入临时文件则原子替换，否则返回空字符串
-        if result and Path(tmp_path).exists():
-            shutil.move(tmp_path, final_path)
-            return final_path
-        else:
+            # 成功写入临时文件则原子替换，否则返回空字符串
+            if result and tmp_path.exists():
+                tmp_path.replace(final_path)
+                moved = True
+                return str(final_path)
             return ''
+        finally:
+            if not moved:
+                tmp_path.unlink(missing_ok=True)
 
     def set_language(self, language):
         """Sets the voice language."""
