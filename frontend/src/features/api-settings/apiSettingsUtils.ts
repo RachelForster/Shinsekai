@@ -226,7 +226,9 @@ export function syncCompactRatioDraft(config: ApiConfig): ApiConfig {
 
 export function normalizeApiConfigForUi(config: ApiConfig): ApiConfig {
   const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
-  const ttsProvider = String(config.tts_provider || "").trim().toLowerCase();
+  const ttsProvider = String(config.tts_provider || "")
+    .trim()
+    .toLowerCase();
   return syncCompactRatioDraft({
     ...config,
     gpt_sovits_api_path: ttsProvider === "kaggle-gpt-sovits" ? "" : config.gpt_sovits_api_path,
