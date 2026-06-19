@@ -289,6 +289,8 @@
       "max_sentence_length": "最大分句长度（字符数）",
       "ph_url": "如 http://127.0.0.1:9880/ ",
       "ph_path": "整合包或工程根目录，按你的部署填写",
+      "ph_path_kaggle": "Kaggle 模式不使用本地 GPT-SoVITS 路径",
+      "tt_path_kaggle": "Kaggle 模式通过远端 Notebook URL 调用，不会启动本机 GPT-SoVITS。",
       "env": {
         "platform": "运行平台",
         "gpu": "GPU 列表（gpu_list）",

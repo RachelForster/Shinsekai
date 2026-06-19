@@ -77,6 +77,7 @@ _ASR_WHISPER_MODEL_PRESETS: tuple[str, ...] = (
 )
 _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
     ("genie-tts", "Genie TTS"),
+    ("kaggle-gpt-sovits", "Kaggle GPT-SoVITS"),
     ("gpt-sovits", "GPT SoVITS"),
     ("index-tts", "IndexTTS"),
     ("cosyvoice", "CosyVoice"),
@@ -2226,6 +2227,7 @@ class ApiSettingsTab(QWidget):
         self.tts_provider.currentIndexChanged.connect(self._on_tts_provider_changed)
         self.t2i_engine.currentIndexChanged.connect(self._on_t2i_engine_changed)
         self._asr_provider.currentIndexChanged.connect(self._on_asr_provider_changed)
+        self._update_tts_path_edit_state()
         self._rebuild_llm_extra_panel()
         self._rebuild_tts_extra_panel()
         self._rebuild_asr_extra_panel()
@@ -2334,6 +2336,7 @@ class ApiSettingsTab(QWidget):
         _ti = self.tts_provider.findData(_cur_tts)
         if _ti >= 0:
             self.tts_provider.setCurrentIndex(_ti)
+        self._update_tts_path_edit_state(clear_kaggle_path=False)
         self._c_hint.setText(tr_i18n("api.comfy.hint"))
         self._f_t2i_engine.setText(tr_i18n("api.comfy.engine"))
         self.t2i_url.setPlaceholderText(tr_i18n("api.comfy.ph_t2i"))
@@ -2771,7 +2774,32 @@ class ApiSettingsTab(QWidget):
         self._rebuild_t2i_extra_panel()
 
     def _on_tts_provider_changed(self, _index: int = 0) -> None:
+        self._update_tts_path_edit_state()
         self._rebuild_tts_extra_panel()
+
+    def _current_tts_provider_key(self) -> str:
+        value = self.tts_provider.currentData()
+        if value is None:
+            value = self.tts_provider.currentText()
+        key = str(value or "").strip().lower()
+        return {
+            "kaggle": "kaggle-gpt-sovits",
+            "kaggle gpt sovits": "kaggle-gpt-sovits",
+            "kaggle gpt-sovits": "kaggle-gpt-sovits",
+        }.get(key, key)
+
+    def _update_tts_path_edit_state(self, *, clear_kaggle_path: bool = True) -> None:
+        is_kaggle = self._current_tts_provider_key() == "kaggle-gpt-sovits"
+        self.gpt_sovits_api_path.setEnabled(not is_kaggle)
+        self._tts_path.setEnabled(not is_kaggle)
+        if is_kaggle:
+            if clear_kaggle_path:
+                self.gpt_sovits_api_path.clear()
+            self.gpt_sovits_api_path.setPlaceholderText(tr_i18n("api.tts.ph_path_kaggle"))
+            self.gpt_sovits_api_path.setToolTip(tr_i18n("api.tts.tt_path_kaggle"))
+        else:
+            self.gpt_sovits_api_path.setPlaceholderText(tr_i18n("api.tts.ph_path"))
+            self.gpt_sovits_api_path.setToolTip("")
 
     def _on_asr_provider_changed(self, _index: int = 0) -> None:
         self._update_asr_whisper_specific_visibility()
@@ -2806,19 +2834,22 @@ class ApiSettingsTab(QWidget):
         ):
             return
 
-        tts_slug = self.tts_provider.currentData()
-        if tts_slug is None:
-            tts_slug = "gpt-sovits"
-        tts_slug = str(tts_slug).strip().lower()
+        tts_slug = self._current_tts_provider_key() or "gpt-sovits"
 
-        if tts_slug in ("gpt-sovits", "genie-tts"):
-            if not validate_or_block(
+        if tts_slug in ("gpt-sovits", "kaggle-gpt-sovits", "genie-tts"):
+            tts_checks = [
                 not_empty(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
                 no_quotes(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
                 valid_url(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
-                not_empty(self.gpt_sovits_api_path.text().strip(), tr_i18n("api.tts.path")),
-                no_quotes(self.gpt_sovits_api_path.text().strip(), tr_i18n("api.tts.path")),
-                dir_exists(self.gpt_sovits_api_path.text().strip(), tr_i18n("api.tts.path")),
+            ]
+            tts_path = self.gpt_sovits_api_path.text().strip()
+            if tts_path and tts_slug != "kaggle-gpt-sovits":
+                tts_checks.extend([
+                    no_quotes(tts_path, tr_i18n("api.tts.path")),
+                    dir_exists(tts_path, tr_i18n("api.tts.path")),
+                ])
+            if not validate_or_block(
+                *tts_checks,
                 title=tr_i18n("api.msg.validation_title"),
                 parent=self,
             ):
@@ -2866,7 +2897,7 @@ class ApiSettingsTab(QWidget):
             is_streaming,
             tts_slug,
             self.sovits_url.text().strip(),
-            self.gpt_sovits_api_path.text().strip(),
+            "" if tts_slug == "kaggle-gpt-sovits" else self.gpt_sovits_api_path.text().strip(),
             self._current_t2i_engine_key(),
             self.t2i_url.text().strip(),
             self.t2i_work_path.text().strip(),

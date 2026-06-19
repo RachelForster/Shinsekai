@@ -10,6 +10,7 @@ import re
 import traceback
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
 from config.config_manager import ConfigManager
 from sdk.handlers import MessageHandler
@@ -47,6 +48,22 @@ def _hide_tts_busy() -> None:
 
 def _cc():
     return get_app_runtime().opencc
+
+
+def _is_remote_gpt_sovits() -> bool:
+    try:
+        api_config = _config.config.api_config
+        provider = str(getattr(api_config, "tts_provider", "") or "").strip().lower()
+        host = (urlparse(str(getattr(api_config, "gpt_sovits_url", "") or "")).hostname or "").lower()
+        return provider == "kaggle-gpt-sovits" or (
+            provider == "gpt-sovits" and host not in {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
+        )
+    except Exception:
+        return False
+
+
+def _is_remote_reference_path(path: str) -> bool:
+    return str(path or "").strip().startswith("/kaggle/")
 
 
 class ChainOfThoughtTtsHandler(MessageHandler):
@@ -161,8 +178,11 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 prompt_text = character_config.prompt_text
                 try:
                     sprite_data = character_config.sprites[sprite_id]
-                    if sprite_data.get("voice_text", None):
-                        ref_audio_path = Path(sprite_data.get("voice_path")).resolve().as_posix()
+                    sprite_voice_path = str(sprite_data.get("voice_path") or "").strip()
+                    if sprite_id >= 0 and sprite_data.get("voice_text", None) and (
+                        not _is_remote_gpt_sovits() or _is_remote_reference_path(sprite_voice_path)
+                    ):
+                        ref_audio_path = Path(sprite_voice_path).resolve().as_posix()
                         prompt_text = sprite_data.get("voice_text")
                 except Exception:
                     print("没有立绘")
@@ -213,6 +233,20 @@ class DefaultCharacterTtsHandler(MessageHandler):
                             character_name=name_s,
                             speed_factor=_speed,
                         )
+                        if not _path or not Path(_path).is_file() or Path(_path).stat().st_size <= 0:
+                            print(
+                                "TTSWorker: 分句语音生成失败，停止后续分句播放，"
+                                f"segment={_i + 1}/{len(_sentences)}, text={_sent!r}"
+                            )
+                            tts_emit_to_ui_queue(
+                                name_s,
+                                speech,
+                                _asset_str,
+                                "",
+                                is_system_message=False,
+                                effect=msg.effect,
+                            )
+                            return
                         _is_first = _i == 0
                         _is_last = _i == len(_sentences) - 1
                         rt.audio_path_queue.put(TTSOutputMessage(

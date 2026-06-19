@@ -552,16 +552,17 @@ export function ApiSettingsPage() {
       showToast({ kind: "error", message: "LLM API 基础网址不能包含引号。", title: t("common.validationFailed") });
       return;
     }
+    const isKaggleTts = draft.tts_provider === "kaggle-gpt-sovits";
     if (requiresTtsServerConfig(draft.tts_provider)) {
-      if (!draft.gpt_sovits_url.trim() || !draft.gpt_sovits_api_path.trim()) {
+      if (!draft.gpt_sovits_url.trim()) {
         showToast({
           kind: "error",
-          message: "当前 TTS 引擎需要填写 URL 和服务启动路径。",
+          message: "当前 TTS 引擎需要填写 URL。",
           title: t("common.validationFailed"),
         });
         return;
       }
-      if (containsPathQuotes(draft.gpt_sovits_url) || containsPathQuotes(draft.gpt_sovits_api_path)) {
+      if (containsPathQuotes(draft.gpt_sovits_url) || (!isKaggleTts && containsPathQuotes(draft.gpt_sovits_api_path))) {
         showToast({
           kind: "error",
           message: "TTS URL 和服务启动路径不能包含引号。",
@@ -574,6 +575,12 @@ export function ApiSettingsPage() {
       ...draft,
       ...buildPayloadFromSchema(apiSchema, draft),
     };
+    if (nextConfig.tts_provider === "kaggle-gpt-sovits") {
+      nextConfig = {
+        ...nextConfig,
+        gpt_sovits_api_path: "",
+      };
+    }
     const nextSystem = normalizeSystemAsrForSave(systemDraft);
     nextConfig = normalizeApiAsrForSave(nextConfig, nextSystem);
     if (thinkingUnsupported(activeModel)) {

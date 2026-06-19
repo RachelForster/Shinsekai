@@ -233,6 +233,9 @@ class ConfigManager:
                 return "none"
             legacy = {
                 "gpt sovits": "gpt-sovits",
+                "kaggle": "kaggle-gpt-sovits",
+                "kaggle gpt sovits": "kaggle-gpt-sovits",
+                "kaggle gpt-sovits": "kaggle-gpt-sovits",
                 "genie tts": "genie-tts",
             }
             return legacy.get(s, (v or "").strip().lower())
@@ -256,7 +259,9 @@ class ConfigManager:
 
         current_api_config.t2i_provider = _norm_t2i_provider(t2i_provider)
         current_api_config.gpt_sovits_url = sovits_url
-        current_api_config.gpt_sovits_api_path = gpt_sovits_api_path
+        current_api_config.gpt_sovits_api_path = (
+            "" if current_api_config.tts_provider == "kaggle-gpt-sovits" else gpt_sovits_api_path
+        )
         current_api_config.t2i_api_url=t2i_url
         current_api_config.t2i_work_path=t2i_work_path
         current_api_config.t2i_default_workflow_path=t2i_default_workflow_path

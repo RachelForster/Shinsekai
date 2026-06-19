@@ -27,6 +27,7 @@ _IMAGE_ONLY_MODEL_MARKERS = (
 )
 _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
     ("genie-tts", "Genie TTS"),
+    ("kaggle-gpt-sovits", "Kaggle GPT-SoVITS"),
     ("gpt-sovits", "GPT SoVITS"),
     ("index-tts", "IndexTTS"),
     ("cosyvoice", "CosyVoice"),
@@ -185,6 +186,10 @@ def _normalize_tts_provider(value: str) -> str:
         return "none"
     legacy = {
         "genie tts": "genie-tts",
+        "kaggle": "kaggle-gpt-sovits",
+        "kaggle gpt sovits": "kaggle-gpt-sovits",
+        "kaggle gpt-sovits": "kaggle-gpt-sovits",
+        "kaggle-gpt-sovits": "kaggle-gpt-sovits",
         "gpt sovits": "gpt-sovits",
         "gpt-sovits": "gpt-sovits",
     }
@@ -218,18 +223,18 @@ def _validate_api_config_for_save(config: Any) -> None:
         raise ValueError("LLM API 基础网址不能包含引号。")
 
     tts_provider = _normalize_tts_provider(config.tts_provider)
-    if tts_provider not in {"gpt-sovits", "genie-tts"}:
+    if tts_provider not in {"gpt-sovits", "kaggle-gpt-sovits", "genie-tts"}:
         return
 
     tts_url = str(config.gpt_sovits_url or "").strip()
     tts_path = str(config.gpt_sovits_api_path or "").strip()
-    if not tts_url or not tts_path:
-        raise ValueError("当前 TTS 引擎需要填写 URL 和服务启动路径。")
+    if not tts_url:
+        raise ValueError("当前 TTS 引擎需要填写 URL。")
     if _contains_quotes(tts_url) or _contains_quotes(tts_path):
         raise ValueError("TTS URL 和服务启动路径不能包含引号。")
     if not _is_http_url(tts_url):
         raise ValueError("TTS URL 必须是有效的 http(s) URL。")
-    if not Path(tts_path).expanduser().is_dir():
+    if tts_path and tts_provider != "kaggle-gpt-sovits" and not Path(tts_path).expanduser().is_dir():
         raise ValueError("TTS 服务启动路径必须是已存在的目录。")
 
 
@@ -239,6 +244,8 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
     config.tts_provider = _normalize_tts_provider(config.tts_provider)
     config.t2i_provider = _normalize_t2i_provider(config.t2i_provider)
+    if config.tts_provider == "kaggle-gpt-sovits":
+        config.gpt_sovits_api_path = ""
     _validate_api_config_for_save(config)
     state.config_manager.config.api_config = config
     state.config_manager.save_api_config()

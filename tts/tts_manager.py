@@ -2,7 +2,15 @@ import requests
 import threading
 import queue
 import subprocess
-from tts.tts_adapter import TTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter, CosyVoiceAdapter, GenieTTSAdapter
+import time
+from tts.tts_adapter import (
+    TTSAdapter,
+    GPTSoVitsAdapter,
+    KaggleGPTSoVitsAdapter,
+    IndexTTSAdapter,
+    CosyVoiceAdapter,
+    GenieTTSAdapter,
+)
 from pathlib import Path
 
 class TTSAdapterFactory:
@@ -11,6 +19,7 @@ class TTSAdapterFactory:
     """
     _adapters = {
         'gpt-sovits': GPTSoVitsAdapter,
+        'kaggle-gpt-sovits': KaggleGPTSoVitsAdapter,
         'genie-tts': GenieTTSAdapter,
         'index-tts': IndexTTSAdapter,
         'cosyvoice': CosyVoiceAdapter,
@@ -67,6 +76,16 @@ class TTSManager:
         """Allows switching the TTS adapter at runtime."""
         self.tts_adapter = adapter
 
+    @staticmethod
+    def _is_valid_audio_file(path: str | Path | None) -> bool:
+        if not path:
+            return False
+        try:
+            p = Path(path)
+            return p.is_file() and p.stat().st_size > 0
+        except OSError:
+            return False
+
     def generate_tts(self, text, text_processor=None, ref_audio_path=None,
                      prompt_text=None, prompt_lang=None, character_name=None,
                      speed_factor=None):
@@ -93,13 +112,11 @@ class TTSManager:
         self.index += 1
         tmp_path = final_path.with_suffix(final_path.suffix + ".part")
 
-        # 清理上次残留的临时文件
-        tmp_path.unlink(missing_ok=True)
-
-        # 引擎写入临时路径
-        moved = False
-        try:
-            result = self.tts_adapter.generate_speech(
+        attempts = 2
+        last_result = None
+        for attempt in range(1, attempts + 1):
+            tmp_path.unlink(missing_ok=True)
+            last_result = self.tts_adapter.generate_speech(
                 text=text,
                 file_path=str(tmp_path),
                 ref_audio_path=ref_audio_path,
@@ -109,16 +126,14 @@ class TTSManager:
                 character_name=character_name,
                 speed_factor=speed_factor,
             )
-
-            # 成功写入临时文件则原子替换，否则返回空字符串
-            if result and tmp_path.exists():
+            if last_result and self._is_valid_audio_file(tmp_path):
                 tmp_path.replace(final_path)
-                moved = True
                 return str(final_path)
-            return ''
-        finally:
-            if not moved:
-                tmp_path.unlink(missing_ok=True)
+            print(f"TTS generation returned no usable audio (attempt {attempt}/{attempts}).")
+            tmp_path.unlink(missing_ok=True)
+            if attempt < attempts:
+                time.sleep(0.35 * attempt)
+        return last_result or ''
 
     def set_language(self, language):
         """Sets the voice language."""

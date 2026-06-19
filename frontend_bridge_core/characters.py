@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .media_utils import _optional_suffix_check, _path_namespace_list
 from .state import BridgeState, _jsonify
@@ -14,7 +15,20 @@ def _as_character_config(character: Any) -> Any:
     return CharacterConfig.parse_dic(data)
 
 
-def _validate_character_payload(body: dict[str, Any]) -> None:
+def _is_remote_url(url: str) -> bool:
+    host = (urlparse(str(url or "")).hostname or "").lower()
+    return bool(host and host not in {"127.0.0.1", "localhost", "0.0.0.0", "::1"})
+
+
+def _uses_remote_gpt_sovits(state: BridgeState) -> bool:
+    api_config = state.config_manager.config.api_config
+    provider = str(getattr(api_config, "tts_provider", "") or "").strip().lower()
+    return provider == "kaggle-gpt-sovits" or (
+        provider == "gpt-sovits" and _is_remote_url(str(getattr(api_config, "gpt_sovits_url", "") or ""))
+    )
+
+
+def _validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths: bool = False) -> None:
     from sdk.ui.validators import (
         ascii_only,
         audio_duration_between,
@@ -28,19 +42,23 @@ def _validate_character_payload(body: dict[str, Any]) -> None:
     gpt_model_path = str(body.get("gpt_model_path") or "").strip()
     sovits_model_path = str(body.get("sovits_model_path") or "").strip()
     refer_audio_path = str(body.get("refer_audio_path") or "").strip()
-    ok, errors = check_all(
+    checks = [
         not_empty(sprite_prefix, "立绘目录"),
         ascii_only(sprite_prefix, "立绘目录"),
         no_quotes(gpt_model_path, "GPT 模型路径"),
-        file_exists(gpt_model_path, "GPT 模型路径"),
         _optional_suffix_check(gpt_model_path, ".ckpt", "GPT 模型路径"),
         no_quotes(sovits_model_path, "SoVITS 模型路径"),
-        file_exists(sovits_model_path, "SoVITS 模型路径"),
         _optional_suffix_check(sovits_model_path, ".pth", "SoVITS 模型路径"),
         no_quotes(refer_audio_path, "参考音频"),
-        file_exists(refer_audio_path, "参考音频"),
-        audio_duration_between(refer_audio_path, 3.0, 10.0, "参考音频"),
-    )
+    ]
+    if not allow_remote_voice_paths:
+        checks.extend([
+            file_exists(gpt_model_path, "GPT 模型路径"),
+            file_exists(sovits_model_path, "SoVITS 模型路径"),
+            file_exists(refer_audio_path, "参考音频"),
+            audio_duration_between(refer_audio_path, 3.0, 10.0, "参考音频"),
+        ])
+    ok, errors = check_all(*checks)
     if not ok:
         raise ValueError("\n".join(errors))
 
@@ -70,7 +88,7 @@ def _save_character(state: BridgeState, payload: dict[str, Any]) -> dict[str, An
     if not isinstance(body, dict):
         raise ValueError("character payload must be an object")
     original_name = str(payload.get("originalName") or body.get("name") or "").strip()
-    _validate_character_payload(body)
+    _validate_character_payload(body, allow_remote_voice_paths=_uses_remote_gpt_sovits(state))
     character = Character.model_validate(body)
     saved_name = character.name.strip()
     message, _names = state.character_manager.add_character(

@@ -289,6 +289,8 @@
       "max_sentence_length": "最大分句長（文字数）",
       "ph_url": "例 http://127.0.0.1:9880/",
       "ph_path": "展開先やプロジェクトのルート",
+      "ph_path_kaggle": "Kaggle モードではローカルの GPT-SoVITS パスを使用しません",
+      "tt_path_kaggle": "Kaggle モードはリモート Notebook URL を呼び出し、ローカル GPT-SoVITS は起動しません。",
       "env": {
         "platform": "動作環境",
         "gpu": "GPU 一覧（gpu_list）",
