@@ -367,7 +367,9 @@ class TemplateGenerator:
                 character_setting = char_detail.character_setting
                 template += f"{character_setting}\n\n"
 
-        if bg_name and not is_transparent_background(bg_name):
+        has_real_background = bool(bg_name) and not is_transparent_background(bg_name)
+
+        if has_real_background:
             bg = config_manager.get_background_by_name(bg_name)
             if bg and bg.sprites:
                 template += _T("scene_block_header")
@@ -380,12 +382,12 @@ class TemplateGenerator:
                 template += f"{bg.bgm_tags}\n\n"
 
         # 保留字新代号（与 core.messaging.dialog_tokens 及 handlers 一致；旧版中文仍兼容）
-        opt_scene = (f", {SCENE}" if bg_name else "")
-        opt_bgm = (f", {BGM}" if bg_name else "")
+        opt_scene = (f", {SCENE}" if has_real_background else "")
+        opt_bgm = (f", {BGM}" if has_real_background else "")
         opt_cg = (f", {CG}" if use_cg else "")
         cot_part = (f"{COT}," if use_cot else "")
 
-        need_real = bool(bg_name) and not is_transparent_background(bg_name)
+        need_real = has_real_background
 
         _toks = {
             "narr": _narr_label(),
