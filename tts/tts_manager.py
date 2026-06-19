@@ -67,7 +67,9 @@ class TTSManager:
         """Allows switching the TTS adapter at runtime."""
         self.tts_adapter = adapter
 
-    def generate_tts(self, text, text_processor=None, ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None, speed_factor=None):
+    def generate_tts(self, text, text_processor=None, ref_audio_path=None,
+                     prompt_text=None, prompt_lang=None, character_name=None,
+                     speed_factor=None):
         """Generates TTS audio using the currently set adapter."""
         print("Generating speech")
         
@@ -86,20 +88,37 @@ class TTSManager:
             print("No reference audio provided")
             return ''
 
-        # The adapter handles the specifics of the TTS generation
-        file_path = str(self.audio_cache_dir / f"{self.index % self.cache_num}.wav")
+        # 最终文件路径
+        final_path = self.audio_cache_dir / f"{self.index % self.cache_num}.wav"
         self.index += 1
-        
-        return self.tts_adapter.generate_speech(
-            text=text,
-            file_path=file_path,
-            ref_audio_path=ref_audio_path,
-            prompt_text=prompt_text,
-            prompt_lang=prompt_lang,
-            text_lang=self.voice_language,
-            character_name=character_name,
-            speed_factor=speed_factor,
-        )
+        tmp_path = final_path.with_suffix(final_path.suffix + ".part")
+
+        # 清理上次残留的临时文件
+        tmp_path.unlink(missing_ok=True)
+
+        # 引擎写入临时路径
+        moved = False
+        try:
+            result = self.tts_adapter.generate_speech(
+                text=text,
+                file_path=str(tmp_path),
+                ref_audio_path=ref_audio_path,
+                prompt_text=prompt_text,
+                prompt_lang=prompt_lang,
+                text_lang=self.voice_language,
+                character_name=character_name,
+                speed_factor=speed_factor,
+            )
+
+            # 成功写入临时文件则原子替换，否则返回空字符串
+            if result and tmp_path.exists():
+                tmp_path.replace(final_path)
+                moved = True
+                return str(final_path)
+            return ''
+        finally:
+            if not moved:
+                tmp_path.unlink(missing_ok=True)
 
     def set_language(self, language):
         """Sets the voice language."""
