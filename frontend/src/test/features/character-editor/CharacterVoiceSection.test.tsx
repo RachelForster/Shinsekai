@@ -5,7 +5,7 @@ import { CharacterVoiceSection } from "../../../features/character-editor/Charac
 import { createCharacter } from "../../../features/character-editor/characterEditorUtils";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
-function renderSection() {
+function renderSection(voiceReferenceReadOnly = false) {
   const props: Parameters<typeof CharacterVoiceSection>[0] = {
     draft: {
       ...createCharacter(),
@@ -18,6 +18,7 @@ function renderSection() {
       speech_volume: 1,
     },
     onChange: vi.fn(),
+    voiceReferenceReadOnly,
   };
 
   const result = render(
@@ -53,5 +54,30 @@ describe("CharacterVoiceSection", () => {
 
     fireEvent.change(screen.getAllByDisplayValue("1")[1], { target: { value: "0.8" } });
     expect(props.onChange).toHaveBeenCalledWith("speech_volume", 0.8);
+  });
+
+  it("keeps voice reference fields read-only when requested", () => {
+    const { props } = renderSection(true);
+
+    expect(screen.queryByDisplayValue("D:/models/gpt.ckpt")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("D:/models/sovits.pth")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("D:/audio/ref.wav")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("ja")).toHaveAttribute("readonly");
+    expect(screen.getByDisplayValue("hello")).toHaveAttribute("readonly");
+    expect(screen.getAllByRole("button", { name: "Choose file" })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ disabled: true }),
+        expect.objectContaining({ disabled: true }),
+        expect.objectContaining({ disabled: true }),
+      ]),
+    );
+
+    fireEvent.change(screen.getByDisplayValue("ja"), { target: { value: "en" } });
+    fireEvent.change(screen.getByDisplayValue("hello"), { target: { value: "updated line" } });
+    fireEvent.change(screen.getAllByDisplayValue("1")[0], { target: { value: "1.25" } });
+
+    expect(props.onChange).not.toHaveBeenCalledWith("prompt_lang", expect.any(String));
+    expect(props.onChange).not.toHaveBeenCalledWith("prompt_text", expect.any(String));
+    expect(props.onChange).toHaveBeenCalledWith("speech_speed", 1.25);
   });
 });

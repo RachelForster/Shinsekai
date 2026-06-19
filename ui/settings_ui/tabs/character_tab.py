@@ -301,6 +301,7 @@ class CharacterSettingsTab(QWidget):
         vf.addRow(self._v_sp, self.speech_speed)
         vf.addRow(self._v_vol, self.speech_volume)
         lay.addWidget(self._voice_box)
+        self._update_voice_reference_edit_state()
 
         # --- 4. 立绘：先上传与缩放，再「画廊+情绪」并列，最下为当前立绘语音 ---（可滚动；保存见底部栏）
         self._h2s = QLabel(tr_i18n("char.h2_sprites"))
@@ -528,6 +529,26 @@ class CharacterSettingsTab(QWidget):
     def _current_char(self) -> str:
         return self.selected_character.currentText().strip()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._update_voice_reference_edit_state()
+
+    def _is_kaggle_tts_provider(self) -> bool:
+        api_config = self._ctx.config_manager.config.api_config
+        provider = str(getattr(api_config, "tts_provider", "") or "").strip().lower()
+        return provider == "kaggle-gpt-sovits"
+
+    def _update_voice_reference_edit_state(self) -> None:
+        read_only = self._is_kaggle_tts_provider()
+        for widget in (
+            self.gpt_model_path,
+            self.sovits_model_path,
+            self.refer_audio_path,
+            self.prompt_text,
+            self.prompt_lang,
+        ):
+            widget.setReadOnly(read_only)
+
     def _refresh_character_combo(self, select: str | None = None) -> None:
         self.selected_character.blockSignals(True)
         self.selected_character.clear()
@@ -554,10 +575,17 @@ class CharacterSettingsTab(QWidget):
             self.char_color.setText(_DEFAULT_NAME_COLOR)
             self._update_color_swatch()
             self.sprite_prefix.setText("temp")
-            for w in (self.gpt_model_path, self.sovits_model_path, self.refer_audio_path, self.prompt_text, self.prompt_lang):
+            for w in (
+                self.gpt_model_path,
+                self.sovits_model_path,
+                self.refer_audio_path,
+                self.prompt_text,
+                self.prompt_lang,
+            ):
                 w.clear()
             self.character_setting.clear()
             self.pronunciation_map_edit.clear()
+            self._update_voice_reference_edit_state()
             return
         self.char_name.setText(c.name)
         self.char_color.setText(c.color or _DEFAULT_NAME_COLOR)
@@ -573,6 +601,7 @@ class CharacterSettingsTab(QWidget):
         self.character_setting.setPlainText(c.character_setting or "")
         _pm = getattr(c, "pronunciation_map", None) or {}
         self.pronunciation_map_edit.setPlainText("\n".join(f"{k}={v}" for k, v in _pm.items()))
+        self._update_voice_reference_edit_state()
 
     def _on_character_change(self, name: str) -> None:
         if self._is_new_char(name):

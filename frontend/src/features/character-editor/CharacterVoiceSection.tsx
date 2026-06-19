@@ -7,9 +7,15 @@ interface CharacterVoiceSectionProps {
   draft: Character;
   id?: string;
   onChange: CharacterFieldChange;
+  voiceReferenceReadOnly?: boolean;
 }
 
-export function CharacterVoiceSection({ draft, id, onChange }: CharacterVoiceSectionProps) {
+export function CharacterVoiceSection({
+  draft,
+  id,
+  onChange,
+  voiceReferenceReadOnly = false,
+}: CharacterVoiceSectionProps) {
   const { t } = useI18n();
 
   return (
@@ -23,11 +29,12 @@ export function CharacterVoiceSection({ draft, id, onChange }: CharacterVoiceSec
           <span className="field-row__control">
             <FilePicker
               acceptedExtensions={[".ckpt"]}
-              onChange={(event) => onChange("gpt_model_path", event.target.value)}
-              onPathChange={(path) => onChange("gpt_model_path", path)}
+              disabled={voiceReferenceReadOnly}
+              onChange={voiceReferenceReadOnly ? undefined : (event) => onChange("gpt_model_path", event.target.value)}
+              onPathChange={voiceReferenceReadOnly ? undefined : (path) => onChange("gpt_model_path", path)}
               pickLabel={t("common.chooseFile")}
               pickerTitle={t("character.field.gptModel")}
-              readOnly={false}
+              readOnly={voiceReferenceReadOnly}
               value={draft.gpt_model_path ?? ""}
             />
           </span>
@@ -37,11 +44,14 @@ export function CharacterVoiceSection({ draft, id, onChange }: CharacterVoiceSec
           <span className="field-row__control">
             <FilePicker
               acceptedExtensions={[".pth"]}
-              onChange={(event) => onChange("sovits_model_path", event.target.value)}
-              onPathChange={(path) => onChange("sovits_model_path", path)}
+              disabled={voiceReferenceReadOnly}
+              onChange={
+                voiceReferenceReadOnly ? undefined : (event) => onChange("sovits_model_path", event.target.value)
+              }
+              onPathChange={voiceReferenceReadOnly ? undefined : (path) => onChange("sovits_model_path", path)}
               pickLabel={t("common.chooseFile")}
               pickerTitle={t("character.field.sovitsModel")}
-              readOnly={false}
+              readOnly={voiceReferenceReadOnly}
               value={draft.sovits_model_path ?? ""}
             />
           </span>
@@ -51,11 +61,14 @@ export function CharacterVoiceSection({ draft, id, onChange }: CharacterVoiceSec
           <span className="field-row__control">
             <FilePicker
               acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
-              onChange={(event) => onChange("refer_audio_path", event.target.value)}
-              onPathChange={(path) => onChange("refer_audio_path", path)}
+              disabled={voiceReferenceReadOnly}
+              onChange={
+                voiceReferenceReadOnly ? undefined : (event) => onChange("refer_audio_path", event.target.value)
+              }
+              onPathChange={voiceReferenceReadOnly ? undefined : (path) => onChange("refer_audio_path", path)}
               pickLabel={t("common.chooseFile")}
               pickerTitle={t("character.field.referAudio")}
-              readOnly={false}
+              readOnly={voiceReferenceReadOnly}
               value={draft.refer_audio_path ?? ""}
             />
           </span>
@@ -64,7 +77,8 @@ export function CharacterVoiceSection({ draft, id, onChange }: CharacterVoiceSec
           <span className="field-row__label">{t("character.field.promptLang")}</span>
           <span className="field-row__control">
             <TextInput
-              onChange={(event) => onChange("prompt_lang", event.target.value)}
+              onChange={voiceReferenceReadOnly ? undefined : (event) => onChange("prompt_lang", event.target.value)}
+              readOnly={voiceReferenceReadOnly}
               value={draft.prompt_lang ?? ""}
             />
           </span>
@@ -73,7 +87,8 @@ export function CharacterVoiceSection({ draft, id, onChange }: CharacterVoiceSec
           <span className="field-row__label">{t("character.field.promptText")}</span>
           <span className="field-row__control">
             <TextInput
-              onChange={(event) => onChange("prompt_text", event.target.value)}
+              onChange={voiceReferenceReadOnly ? undefined : (event) => onChange("prompt_text", event.target.value)}
+              readOnly={voiceReferenceReadOnly}
               value={draft.prompt_text ?? ""}
             />
           </span>
