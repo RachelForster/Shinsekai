@@ -60,6 +60,7 @@ export function ChatLauncherPage() {
   const [sessionRestored, setSessionRestored] = useState(false);
 
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? templates[0];
+  const activeTemplateId = selectedTemplate?.id ?? "";
   const backgroundOptions = useMemo(() => {
     const names = backgrounds.map((background) => background.name);
     return names.includes(TRANSPARENT_BACKGROUND_NAME) ? names : [...names, TRANSPARENT_BACKGROUND_NAME];
@@ -126,7 +127,7 @@ export function ChatLauncherPage() {
     scenario: selectedTemplate?.scenario ?? "",
     selectedCharacters,
     system: selectedTemplate?.system ?? "",
-    templateFileDropdown: selectedTemplate?.id ?? templateId,
+    templateFileDropdown: activeTemplateId,
     useCg,
     useChoice: launchSession?.useChoice ?? true,
     useCot: launchSession?.useCot ?? false,
@@ -197,7 +198,7 @@ export function ChatLauncherPage() {
     },
   });
 
-  const ready = Boolean(templateId && backgroundName);
+  const ready = Boolean(activeTemplateId && backgroundName);
   const submitLaunch = (resetHistory: boolean) => {
     if (!ready || !selectedTemplate) {
       showToast({ kind: "error", message: t("launch.emptyBody"), title: t("launch.toast.failed") });
@@ -212,7 +213,7 @@ export function ChatLauncherPage() {
       roomId: launchSession?.roomId ?? "",
       scenario: selectedTemplate.scenario ?? "",
       system: selectedTemplate.system ?? "",
-      templateId,
+      templateId: activeTemplateId,
       templateName: selectedTemplate.name,
       useCg,
     });
@@ -269,7 +270,11 @@ export function ChatLauncherPage() {
             <label className="field-row">
               <span className="field-row__label">{t("launch.template")}</span>
               <span className="field-row__control">
-                <Select onChange={(event) => setTemplateId(event.target.value)} value={templateId}>
+                <Select
+                  aria-label={t("launch.template")}
+                  onChange={(event) => setTemplateId(event.target.value)}
+                  value={activeTemplateId}
+                >
                   {templates.map((template) => (
                     <option key={template.id} value={template.id}>
                       {template.name}
@@ -281,7 +286,11 @@ export function ChatLauncherPage() {
             <label className="field-row">
               <span className="field-row__label">{t("launch.background")}</span>
               <span className="field-row__control">
-                <Select onChange={(event) => setBackgroundName(event.target.value)} value={backgroundName}>
+                <Select
+                  aria-label={t("launch.background")}
+                  onChange={(event) => setBackgroundName(event.target.value)}
+                  value={backgroundName}
+                >
                   {backgroundOptions.map((name) => (
                     <option key={name} value={name}>
                       {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}

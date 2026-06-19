@@ -130,6 +130,7 @@ export interface AppConfig {
   background_list: Background[];
   characters: Character[];
   system_config: SystemConfig;
+  tts_bundle_installed_paths?: Record<string, string>;
 }
 
 export interface AdapterExtraFieldSchema {

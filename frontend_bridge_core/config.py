@@ -6,8 +6,16 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
+from config.tts_provider_config import (
+    default_tts_work_path,
+    installed_tts_bundle_paths,
+    is_http_url,
+    normalize_tts_provider,
+    requires_tts_work_path,
+    tts_server_url_or_default,
+    uses_shared_tts_server_config,
+)
 from .state import BridgeState, _jsonify
 
 _MODEL_REQUEST_USER_AGENT = (
@@ -27,6 +35,7 @@ _IMAGE_ONLY_MODEL_MARKERS = (
 )
 _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
     ("genie-tts", "Genie TTS"),
+    ("kaggle-gpt-sovits", "Kaggle GPT-SoVITS"),
     ("gpt-sovits", "GPT SoVITS"),
     ("index-tts", "IndexTTS"),
     ("cosyvoice", "CosyVoice"),
@@ -141,6 +150,7 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     payload = _jsonify(state.config_manager.config)
     if not isinstance(payload, dict):
         return {}
+    project_root = state.app_root_dir or None
     try:
         from config.mirror_env import system_config_payload_with_resolved_mirrors
 
@@ -148,6 +158,7 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     except Exception:
         pass
     api_config = payload.get("api_config")
+    tts_bundle_paths = installed_tts_bundle_paths(project_root)
     if isinstance(api_config, dict):
         provider = str(api_config.get("llm_provider") or "Deepseek").strip() or "Deepseek"
         if not str(api_config.get("llm_base_url") or "").strip():
@@ -161,6 +172,19 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
         if not isinstance(llm_model, dict):
             llm_model = {}
             api_config["llm_model"] = llm_model
+        tts_provider = normalize_tts_provider(str(api_config.get("tts_provider") or ""))
+        api_config["tts_provider"] = tts_provider
+        api_config["gpt_sovits_url"] = tts_server_url_or_default(
+            tts_provider,
+            str(api_config.get("gpt_sovits_url") or ""),
+        )
+        api_config["gpt_sovits_api_path"] = default_tts_work_path(
+            tts_provider,
+            str(api_config.get("gpt_sovits_api_path") or ""),
+            project_root,
+        )
+    if tts_bundle_paths:
+        payload["tts_bundle_installed_paths"] = tts_bundle_paths
     payload["adapter_catalog"] = _adapter_catalog()
     return payload
 
@@ -169,26 +193,8 @@ def _contains_quotes(value: str) -> bool:
     return '"' in value or "'" in value
 
 
-def _is_http_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-
 def _provider_map_value(mapping: dict[str, str], provider: str) -> str:
     return str((mapping or {}).get(provider, "") or "").strip()
-
-
-def _normalize_tts_provider(value: str) -> str:
-    raw = str(value or "").strip()
-    low = raw.lower()
-    if low in {"none", "off", "disable", "disabled", "不使用"}:
-        return "none"
-    legacy = {
-        "genie tts": "genie-tts",
-        "gpt sovits": "gpt-sovits",
-        "gpt-sovits": "gpt-sovits",
-    }
-    return legacy.get(low, low or "gpt-sovits")
 
 
 def _normalize_t2i_provider(value: str) -> str:
@@ -217,19 +223,21 @@ def _validate_api_config_for_save(config: Any) -> None:
     if _contains_quotes(base_url):
         raise ValueError("LLM API 基础网址不能包含引号。")
 
-    tts_provider = _normalize_tts_provider(config.tts_provider)
-    if tts_provider not in {"gpt-sovits", "genie-tts"}:
+    tts_provider = normalize_tts_provider(config.tts_provider)
+    if not uses_shared_tts_server_config(tts_provider):
         return
 
     tts_url = str(config.gpt_sovits_url or "").strip()
     tts_path = str(config.gpt_sovits_api_path or "").strip()
-    if not tts_url or not tts_path:
-        raise ValueError("当前 TTS 引擎需要填写 URL 和服务启动路径。")
+    if not tts_url:
+        raise ValueError("当前 TTS 引擎需要填写 URL。")
     if _contains_quotes(tts_url) or _contains_quotes(tts_path):
         raise ValueError("TTS URL 和服务启动路径不能包含引号。")
-    if not _is_http_url(tts_url):
+    if not is_http_url(tts_url):
         raise ValueError("TTS URL 必须是有效的 http(s) URL。")
-    if not Path(tts_path).expanduser().is_dir():
+    if requires_tts_work_path(tts_provider) and not tts_path:
+        raise ValueError("本地 TTS 引擎需要填写服务启动路径。")
+    if tts_path and tts_provider != "kaggle-gpt-sovits" and not Path(tts_path).expanduser().is_dir():
         raise ValueError("TTS 服务启动路径必须是已存在的目录。")
 
 
@@ -237,8 +245,17 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
     from config.schema import ApiConfig
 
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
-    config.tts_provider = _normalize_tts_provider(config.tts_provider)
+    config.tts_provider = normalize_tts_provider(config.tts_provider)
     config.t2i_provider = _normalize_t2i_provider(config.t2i_provider)
+    config.gpt_sovits_url = tts_server_url_or_default(config.tts_provider, config.gpt_sovits_url)
+    if config.tts_provider == "kaggle-gpt-sovits":
+        config.gpt_sovits_api_path = ""
+    else:
+        config.gpt_sovits_api_path = default_tts_work_path(
+            config.tts_provider,
+            config.gpt_sovits_api_path,
+            state.app_root_dir or None,
+        )
     _validate_api_config_for_save(config)
     state.config_manager.config.api_config = config
     state.config_manager.save_api_config()

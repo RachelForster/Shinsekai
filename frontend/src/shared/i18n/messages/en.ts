@@ -269,6 +269,8 @@ export const enMessages: Record<MessageKey, string> = {
   "character.section.personality": "Character setting",
   "character.section.sprites": "Sprites",
   "character.section.voice": "Voice reference (SoVITS, optional)",
+  "character.voice.kaggleLockedHint":
+    "Kaggle GPT-SoVITS is selected. Upload the .char package in the Kaggle Notebook to load the voice reference model; local imports do not update the cloud model, so these reference fields are locked.",
   "character.sprite.add": "Add sprite row",
   "character.sprite.batchTags": "Batch tags",
   "character.sprite.batchTagsHelp":

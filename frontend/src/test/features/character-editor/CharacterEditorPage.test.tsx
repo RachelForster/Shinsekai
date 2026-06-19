@@ -5,8 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CharacterEditorPage } from "../../../features/character-editor/CharacterEditorPage";
 import type { Character } from "../../../entities/config/types";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
+import { sampleConfig } from "../../../shared/platform/sampleData";
 import { ToastProvider } from "../../../shared/ui";
 
+const mockGetAppConfig = vi.fn();
 const mockListCharacters = vi.fn();
 const mockSaveCharacter = vi.fn();
 const mockSaveCharacterEmotionTags = vi.fn();
@@ -17,11 +19,13 @@ vi.mock("../../../shared/ui", async (importOriginal) => {
   return {
     ...actual,
     FilePicker: ({
+      disabled,
       onPathChange,
       onPathsChange,
       pickLabel,
       value,
     }: {
+      disabled?: boolean;
       onPathChange?: (path: string) => void;
       onPathsChange?: (paths: string[]) => void;
       pickLabel?: string;
@@ -35,6 +39,7 @@ vi.mock("../../../shared/ui", async (importOriginal) => {
           }
           onPathChange?.("D:/new/sora.wav");
         }}
+        disabled={disabled}
         type="button"
       >
         {value || pickLabel || "Choose file"}
@@ -42,6 +47,11 @@ vi.mock("../../../shared/ui", async (importOriginal) => {
     ),
   };
 });
+
+vi.mock("../../../entities/config/repository", () => ({
+  configQueryKey: ["config"],
+  getAppConfig: () => mockGetAppConfig(),
+}));
 
 vi.mock("../../../entities/files/repository", () => ({
   fileUrl: (path: string) => `asset://${path}`,
@@ -106,6 +116,7 @@ function renderPage() {
 describe("CharacterEditorPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetAppConfig.mockResolvedValue(structuredClone(sampleConfig));
     mockListCharacters.mockResolvedValue([structuredClone(character)]);
     mockSaveCharacter.mockImplementation(async (input: Character) => input);
     mockSaveCharacterEmotionTags.mockImplementation(async (_name: string, emotionTags: string) => ({
@@ -180,5 +191,33 @@ describe("CharacterEditorPage", () => {
       }),
     );
     await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Sora"));
+  });
+
+  it("locks cloud voice reference controls when Kaggle GPT-SoVITS is selected", async () => {
+    mockGetAppConfig.mockResolvedValue({
+      ...structuredClone(sampleConfig),
+      api_config: {
+        ...sampleConfig.api_config,
+        tts_provider: "kaggle-gpt-sovits",
+      },
+    });
+
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    expect(screen.getByText(/Upload the \.char package in the Kaggle Notebook/)).toBeInTheDocument();
+    const voiceReferencePickers = [
+      screen.getByRole("button", { name: "GPT model path" }),
+      screen.getByRole("button", { name: "SoVITS model" }),
+      screen.getByRole("button", { name: "Reference audio" }),
+    ];
+
+    for (const picker of voiceReferencePickers) {
+      expect(picker).toBeDisabled();
+    }
+    expect(screen.getByRole("textbox", { name: "Language (en/ja/zh)" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Reference line text" })).toBeDisabled();
+    expect(screen.getByRole("spinbutton", { name: "TTS Speed" })).toBeDisabled();
+    expect(screen.getByRole("spinbutton", { name: "TTS Volume" })).not.toBeDisabled();
   });
 });

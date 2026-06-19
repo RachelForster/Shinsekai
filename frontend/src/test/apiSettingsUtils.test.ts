@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   activeMapValue,
+  applyTtsProviderDefaults,
   apiSchemaWithAdapterOptions,
   catalogOptions,
   containsPathQuotes,
+  DEFAULT_TTS_SERVER_URL,
   isTaskCancelledError,
   isTaskRunning,
   llmModelFetchKey,
@@ -13,8 +15,10 @@ import {
   normalizeApiConfigForUi,
   normalizeAsrProvider,
   normalizeSystemAsrForSave,
+  normalizeTtsProvider,
   normalizeUiLanguage,
   requiresTtsServerConfig,
+  requiresTtsWorkPath,
   resolveAsrWhisperPresetValue,
   syncCompactRatioDraft,
   thinkingUnsupported,
@@ -70,6 +74,32 @@ describe("API settings utilities", () => {
     expect(catalogOptions(undefined, [{ label: "Fallback", value: "fallback" }])).toEqual([
       { label: "Fallback", value: "fallback" },
     ]);
+  });
+
+  it("uses provider-specific TTS server field copy", () => {
+    const genieFields = apiSchemaWithAdapterOptions(undefined, {
+      ...sampleConfig.api_config,
+      tts_provider: "genie-tts",
+    }).flatMap((group) => group.fields);
+    expect(genieFields.find((field) => field.name === "gpt_sovits_api_path")?.label).toBe("Genie TTS 服务启动路径");
+    expect(genieFields.find((field) => field.name === "gpt_sovits_url")?.label).toBe("Genie TTS 服务 URL");
+
+    const indexFields = apiSchemaWithAdapterOptions(undefined, {
+      ...sampleConfig.api_config,
+      tts_provider: "index-tts",
+    }).flatMap((group) => group.fields);
+    expect(indexFields.find((field) => field.name === "gpt_sovits_api_path")?.label).toBe("IndexTTS 服务启动路径");
+
+    const kagglePathField = apiSchemaWithAdapterOptions(undefined, {
+      ...sampleConfig.api_config,
+      tts_provider: "kaggle-gpt-sovits",
+    })
+      .flatMap((group) => group.fields)
+      .find((field) => field.name === "gpt_sovits_api_path");
+    expect(kagglePathField?.label).toBe("Kaggle GPT-SoVITS 本地路径");
+    expect(kagglePathField?.disabledWhen?.({ ...sampleConfig.api_config, tts_provider: "kaggle-gpt-sovits" })).toBe(
+      true,
+    );
   });
 
   it("normalizes ASR config for saving", () => {
@@ -136,6 +166,43 @@ describe("API settings utilities", () => {
     );
   });
 
+  it("applies TTS provider defaults for URL, local bundle path, and Kaggle path locking", () => {
+    expect(
+      normalizeApiConfigForUi(
+        {
+          ...sampleConfig.api_config,
+          gpt_sovits_api_path: "",
+          gpt_sovits_url: "",
+          tts_provider: "genie-tts",
+        },
+        "/project/data/tts_bundles/installed/genie_tts_server/Genie-TTS-Server",
+      ),
+    ).toMatchObject({
+      gpt_sovits_api_path: "/project/data/tts_bundles/installed/genie_tts_server/Genie-TTS-Server",
+      gpt_sovits_url: DEFAULT_TTS_SERVER_URL,
+      tts_provider: "genie-tts",
+    });
+
+    expect(
+      applyTtsProviderDefaults(
+        {
+          ...sampleConfig.api_config,
+          gpt_sovits_api_path: "/project/data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro-20250604",
+          tts_provider: "kaggle-gpt-sovits",
+        },
+        "/project/data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro-20250604",
+      ).gpt_sovits_api_path,
+    ).toBe("");
+
+    expect(
+      applyTtsProviderDefaults({
+        ...sampleConfig.api_config,
+        gpt_sovits_url: "http://127.0.0.1:9880",
+        tts_provider: "gpt-sovits",
+      }).gpt_sovits_url,
+    ).toBe(DEFAULT_TTS_SERVER_URL);
+  });
+
   it("deduplicates model options and derives request keys", () => {
     expect(
       mergeModelOptions(
@@ -179,8 +246,15 @@ describe("API settings utilities", () => {
     expect(isTaskRunning(null)).toBe(false);
     expect(isTaskCancelledError(cancelled)).toBe(true);
     expect(isTaskCancelledError(new Error("other"))).toBe(false);
+    expect(normalizeTtsProvider("Kaggle GPT SoVITS")).toBe("kaggle-gpt-sovits");
     expect(requiresTtsServerConfig("GPT-SoVITS")).toBe(true);
+    expect(requiresTtsServerConfig("index-tts")).toBe(true);
+    expect(requiresTtsServerConfig("cosyvoice")).toBe(false);
     expect(requiresTtsServerConfig("none")).toBe(false);
+    expect(requiresTtsWorkPath("genie-tts")).toBe(true);
+    expect(requiresTtsWorkPath("gpt-sovits")).toBe(true);
+    expect(requiresTtsWorkPath("index-tts")).toBe(true);
+    expect(requiresTtsWorkPath("kaggle-gpt-sovits")).toBe(false);
     expect(containsPathQuotes("C:\\Program Files\\App")).toBe(false);
     expect(containsPathQuotes('"C:\\Program Files\\App"')).toBe(true);
   });

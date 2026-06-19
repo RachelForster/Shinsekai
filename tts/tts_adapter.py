@@ -10,8 +10,10 @@ import wave
 import array
 from pathlib import Path
 import subprocess
+import sys
 import time
 from typing import Optional, Callable
+from urllib.parse import urlparse
 
 
 class GPTSoVitsAdapter(TTSAdapter):
@@ -21,13 +23,14 @@ class GPTSoVitsAdapter(TTSAdapter):
     """
     def __init__(self, tts_server_url="http://127.0.0.1:9880/", gpt_sovits_work_path = None):
         self.tts_server_url = tts_server_url.rstrip("/") + "/"
+        self._session = requests.Session()
         self.sovits_model_path = ''
         self.gpt_model_path = ''
-        self.gpt_sovits_work_path = gpt_sovits_work_path
+        self.gpt_sovits_work_path = str(gpt_sovits_work_path or "").strip() or None
         self._server_process = None
 
         # Consider the user's input mistake
-        if self.gpt_sovits_work_path.endswith(".py"):
+        if self.gpt_sovits_work_path and self.gpt_sovits_work_path.endswith(".py"):
             self.gpt_sovits_work_path = Path(self.gpt_sovits_work_path).parent.as_posix()
 
 
@@ -35,6 +38,10 @@ class GPTSoVitsAdapter(TTSAdapter):
         self._start_server_process()
 
     def stop_server(self) -> None:
+        try:
+            self._session.close()
+        except Exception:
+            pass
         if self._server_process is not None:
             try:
                 self._server_process.terminate()
@@ -46,29 +53,60 @@ class GPTSoVitsAdapter(TTSAdapter):
                     pass
             self._server_process = None
 
+    def _server_is_reachable(self) -> bool:
+        try:
+            response = self._session.get(self.tts_server_url, timeout=5)
+            if response.status_code < 500:
+                return True
+        except requests.RequestException:
+            pass
+
+        try:
+            response = self._session.get(self.tts_server_url + "docs", timeout=5)
+            return response.status_code < 500
+        except requests.RequestException:
+            return False
+
+    def _is_local_server_url(self) -> bool:
+        host = (urlparse(self.tts_server_url).hostname or "").lower()
+        return host in {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
+
+    @staticmethod
+    def _response_error_text(response, action: str) -> str:
+        try:
+            payload = response.json()
+            detail = payload.get("Exception") or payload.get("message") or str(payload)
+        except ValueError:
+            detail = response.text.strip()
+        detail = detail.replace("\n", " ").strip()
+        return f"{action} failed with HTTP {response.status_code}: {detail[:1000]}"
+
     def _start_server_process(self):
         """
         Starts the GPT-SoVITS server process if it's not running.
         This is now the adapter's responsibility.
         """
-        try:
-            # You might want to add a check here to see if the process is already running
-            response = requests.get(self.tts_server_url)
-            if response.status_code == 200:
-                print("GPT-SoVITS server is already running.")
-                return
-        except requests.exceptions.ConnectionError:
-            print("GPT-SoVITS server not found, attempting to start...")
-
-        if self.gpt_sovits_work_path is None:
+        if self._server_is_reachable():
+            print("GPT-SoVITS server is already reachable.")
             return
 
-        os_path = self.gpt_sovits_work_path
-        embeded_python_path = os.path.join(os_path, "runtime", "python.exe")
-        api_path = os.path.join(os_path, "api_v2.py")
+        if not self._is_local_server_url():
+            print("Remote GPT-SoVITS server is not reachable; skip local auto-start.")
+            return
+
+        if not self.gpt_sovits_work_path:
+            raise RuntimeError("Local GPT-SoVITS server is not reachable; set the GPT-SoVITS startup path.")
+
+        os_path = Path(self.gpt_sovits_work_path)
+        api_path = os_path / "api_v2.py"
+        if not api_path.is_file():
+            raise FileNotFoundError(f"GPT-SoVITS api_v2.py not found: {api_path}")
+
+        bundled_python = os_path / "runtime" / ("python.exe" if os.name == "nt" else "python")
+        python_path = bundled_python if bundled_python.exists() else Path(sys.executable)
         
         # Use subprocess.Popen to start the server in the background
-        self._server_process = subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
+        self._server_process = subprocess.Popen([str(python_path), str(api_path)], cwd=str(os_path))
         print("GPT-SoVITS server starting...")
 
     def generate_speech(self, text, file_path=None, **kwargs):
@@ -78,20 +116,40 @@ class GPTSoVitsAdapter(TTSAdapter):
         """
 
         # Parameters for the GPT-SoVITS API call
+        speed_factor = kwargs.get("speed_factor")
+        if speed_factor is None:
+            speed_factor = 1.0
+        try:
+            batch_size = max(1, int(kwargs.get("batch_size", 1)))
+        except (TypeError, ValueError):
+            batch_size = 1
+
         params = {
             "ref_audio_path": kwargs.get("ref_audio_path", ""),
             "prompt_text": kwargs.get("prompt_text", ""),
             "prompt_lang": kwargs.get("prompt_lang", ""),
             "text": text,
             "text_lang": kwargs.get("text_lang", "ja"),
-            "text_split_method": "cut5",
-            "batch_size": 1,
-            "speed_factor": kwargs.get("speed_factor", 1.4),
+            "text_split_method": kwargs.get("text_split_method", "cut5"),
+            "batch_size": batch_size,
+            "speed_factor": speed_factor,
         }
+        for key in (
+            "batch_threshold",
+            "split_bucket",
+            "parallel_infer",
+            "super_sampling",
+            "sample_steps",
+            "streaming_mode",
+            "media_type",
+        ):
+            if key in kwargs and kwargs[key] is not None:
+                params[key] = kwargs[key]
 
         try:
-            response = requests.post(self.tts_server_url + "tts", json=params)
-            response.raise_for_status() # Raise an exception for bad status codes
+            response = self._session.post(self.tts_server_url + "tts", json=params, timeout=300)
+            if not response.ok:
+                raise RuntimeError(self._response_error_text(response, "TTS request"))
 
             if not file_path:
                 # Logic to create a temporary file path
@@ -121,21 +179,223 @@ class GPTSoVitsAdapter(TTSAdapter):
         
         try:
             if gpt_model_path and gpt_model_path.endswith(".ckpt"):
-                response = requests.get(self.tts_server_url + "set_gpt_weights", params={"weights_path": gpt_model_path})
-                response.raise_for_status()
+                response = self._session.get(
+                    self.tts_server_url + "set_gpt_weights",
+                    params={"weights_path": gpt_model_path},
+                    timeout=180,
+                )
+                if not response.ok:
+                    raise RuntimeError(self._response_error_text(response, "GPT weight switch"))
                 self.gpt_model_path = gpt_model_path
                 print(f"gpt model switched successfully: {gpt_model_path}")
         except Exception as e:
             print(f"Failed to switch gpt model: {e}")
+            raise
 
         try:
             if sovits_model_path and sovits_model_path.endswith(".pth"):
-                response = requests.get(self.tts_server_url + "set_sovits_weights", params={"weights_path": sovits_model_path})
-                response.raise_for_status()
+                response = self._session.get(
+                    self.tts_server_url + "set_sovits_weights",
+                    params={"weights_path": sovits_model_path},
+                    timeout=180,
+                )
+                if not response.ok:
+                    raise RuntimeError(self._response_error_text(response, "SoVITS weight switch"))
                 self.sovits_model_path = sovits_model_path
                 print(f"sovits model switched successfully: {sovits_model_path}")
         except Exception as e:
             print(f"Failed to switch sovits model: {e}")
+            raise
+
+
+def _is_kaggle_path(path: str) -> bool:
+    return str(path or "").strip().startswith("/kaggle/")
+
+
+class KaggleGPTSoVitsAdapter(GPTSoVitsAdapter):
+    """GPT-SoVITS adapter for a Kaggle-hosted API.
+
+    Kaggle cannot read local Shinsekai paths like ``data/models/...``. By
+    default this adapter assumes the notebook has already loaded the selected
+    character model and only sends synthesis requests. Optional ``/kaggle/...``
+    paths can be configured when explicit weight switching is needed.
+    """
+
+    def __init__(
+        self,
+        tts_server_url="http://127.0.0.1:9880/",
+        gpt_sovits_work_path=None,
+        remote_gpt_model_path: str = "",
+        remote_sovits_model_path: str = "",
+        remote_ref_audio_path: str = "/kaggle/working/shinsekai_ref_clean.wav",
+        switch_weights: bool = False,
+        text_split_method: str = "cut5",
+        batch_size: int = 4,
+        speed_factor: float = 1.0,
+        use_character_speed: bool = False,
+        parallel_infer: bool = True,
+        split_bucket: bool = True,
+        batch_threshold: float = 0.75,
+        super_sampling: bool = False,
+    ):
+        self.remote_gpt_model_path = str(remote_gpt_model_path or "").strip()
+        self.remote_sovits_model_path = str(remote_sovits_model_path or "").strip()
+        self.remote_ref_audio_path = str(remote_ref_audio_path or "").strip()
+        self.switch_weights = bool(switch_weights)
+        self.text_split_method = str(text_split_method or "cut5").strip() or "cut5"
+        try:
+            self.batch_size = max(1, int(batch_size))
+        except (TypeError, ValueError):
+            self.batch_size = 4
+        try:
+            self.speed_factor = float(speed_factor)
+        except (TypeError, ValueError):
+            self.speed_factor = 1.0
+        self.use_character_speed = bool(use_character_speed)
+        self.parallel_infer = bool(parallel_infer)
+        self.split_bucket = bool(split_bucket)
+        try:
+            self.batch_threshold = float(batch_threshold)
+        except (TypeError, ValueError):
+            self.batch_threshold = 0.75
+        self.super_sampling = bool(super_sampling)
+        super().__init__(tts_server_url=tts_server_url, gpt_sovits_work_path=None)
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, dict]:
+        return {
+            "remote_ref_audio_path": {
+                "label": "Kaggle 参考音频路径",
+                "type": "str",
+                "default": "/kaggle/working/shinsekai_ref_clean.wav",
+            },
+            "switch_weights": {
+                "label": "每次角色切换时请求 Kaggle 切权重",
+                "type": "bool",
+                "default": False,
+            },
+            "remote_gpt_model_path": {
+                "label": "Kaggle GPT 模型路径",
+                "type": "str",
+                "default": "",
+            },
+            "remote_sovits_model_path": {
+                "label": "Kaggle SoVITS 模型路径",
+                "type": "str",
+                "default": "",
+            },
+            "text_split_method": {
+                "label": "GPT-SoVITS 分句方式",
+                "type": "str",
+                "default": "cut5",
+            },
+            "batch_size": {
+                "label": "推理 batch_size（长文本可提速，OOM 降到 1）",
+                "type": "int",
+                "default": 4,
+                "min": 1,
+                "max": 16,
+            },
+            "speed_factor": {
+                "label": "固定语速倍率（1.0 最快且最稳）",
+                "type": "float",
+                "default": 1.0,
+                "min": 0.5,
+                "max": 2.0,
+                "step": 0.05,
+            },
+            "use_character_speed": {
+                "label": "使用角色 speech_speed（可能降低推理速度）",
+                "type": "bool",
+                "default": False,
+            },
+            "parallel_infer": {
+                "label": "开启 parallel_infer",
+                "type": "bool",
+                "default": True,
+            },
+            "split_bucket": {
+                "label": "开启 split_bucket",
+                "type": "bool",
+                "default": True,
+            },
+            "batch_threshold": {
+                "label": "batch_threshold",
+                "type": "float",
+                "default": 0.75,
+                "min": 0.1,
+                "max": 1.0,
+                "step": 0.05,
+            },
+            "super_sampling": {
+                "label": "开启 super_sampling（更慢）",
+                "type": "bool",
+                "default": False,
+            },
+        }
+
+    def _start_server_process(self):
+        if self._server_is_reachable():
+            print("Kaggle GPT-SoVITS server is reachable.")
+        else:
+            print("Kaggle GPT-SoVITS server is not reachable; start the Kaggle notebook and tunnel first.")
+
+    def _configured_or_kaggle_path(self, configured: str, fallback: str) -> str:
+        configured = str(configured or "").strip()
+        fallback = str(fallback or "").strip()
+        if configured:
+            return configured
+        if _is_kaggle_path(fallback):
+            return fallback
+        return ""
+
+    def switch_model(self, model_info):
+        if not self.switch_weights:
+            print("Kaggle GPT-SoVITS: skip weight switch; using the model currently loaded in Kaggle.")
+            return
+
+        model_info = model_info or {}
+        gpt_model_path = self._configured_or_kaggle_path(
+            self.remote_gpt_model_path,
+            model_info.get("gpt_model_path", ""),
+        )
+        sovits_model_path = self._configured_or_kaggle_path(
+            self.remote_sovits_model_path,
+            model_info.get("sovits_model_path", ""),
+        )
+        if not gpt_model_path or not sovits_model_path:
+            raise RuntimeError(
+                "Kaggle GPT-SoVITS weight switch requires /kaggle/... model paths. "
+                "Fill the Kaggle GPT/SoVITS paths in adapter extras, or disable switch_weights."
+            )
+        super().switch_model({
+            "gpt_model_path": gpt_model_path,
+            "sovits_model_path": sovits_model_path,
+        })
+
+    def generate_speech(self, text, file_path=None, **kwargs):
+        kwargs = dict(kwargs)
+        ref_audio_path = self._configured_or_kaggle_path(
+            self.remote_ref_audio_path,
+            kwargs.get("ref_audio_path", ""),
+        )
+        if not ref_audio_path:
+            print(
+                "Kaggle GPT-SoVITS requires a /kaggle/... reference audio path. "
+                "Fill remote_ref_audio_path in the TTS extra settings."
+            )
+            return None
+        kwargs["ref_audio_path"] = ref_audio_path
+        kwargs["text_split_method"] = self.text_split_method
+        kwargs["batch_size"] = self.batch_size
+        kwargs["speed_factor"] = kwargs.get("speed_factor") if self.use_character_speed else self.speed_factor
+        if kwargs["speed_factor"] is None:
+            kwargs["speed_factor"] = self.speed_factor
+        kwargs["parallel_infer"] = self.parallel_infer
+        kwargs["split_bucket"] = self.split_bucket
+        kwargs["batch_threshold"] = self.batch_threshold
+        kwargs["super_sampling"] = self.super_sampling
+        return super().generate_speech(text, file_path=file_path, **kwargs)
 
 
 class IndexTTSAdapter(TTSAdapter):
@@ -143,12 +403,18 @@ class IndexTTSAdapter(TTSAdapter):
     Adapter for a hypothetical Index TTS service.
     This demonstrates how a new service can be integrated.
     """
-    def __init__(self, index_server_url="http://localhost:9880/", index_server_work_path = None):
-        self.index_server_url = index_server_url
+    def __init__(
+        self,
+        index_server_url="http://localhost:9880/",
+        index_server_work_path=None,
+        tts_server_url=None,
+        gpt_sovits_work_path=None,
+    ):
+        self.index_server_url = (tts_server_url or index_server_url).rstrip("/") + "/"
         self.current_model = None
         self._server_process = None
 
-        self.gpt_sovits_work_path = index_server_work_path
+        self.gpt_sovits_work_path = str(index_server_work_path or gpt_sovits_work_path or "").strip() or None
 
         # Load the model and start the server process here
         self._start_server_process()
@@ -172,23 +438,25 @@ class IndexTTSAdapter(TTSAdapter):
         """
         try:
             # You might want to add a check here to see if the process is already running
-            response = requests.get(self.index_server_url)
+            response = requests.get(self.index_server_url, timeout=5)
             if response.status_code == 200:
-                print("GPT-SoVITS server is already running.")
+                print("IndexTTS server is already running.")
                 return
-        except requests.exceptions.ConnectionError:
-            print("GPT-SoVITS server not found, attempting to start...")
+        except requests.RequestException:
+            print("IndexTTS server not found, attempting to start...")
 
-        if self.gpt_sovits_work_path is None:
-            return
+        if not self.gpt_sovits_work_path:
+            raise RuntimeError("Local IndexTTS server is not reachable; set the IndexTTS startup path.")
 
         os_path = self.gpt_sovits_work_path
         embeded_python_path = os.path.join(os_path, "runtime", "python.exe")
         api_path = os.path.join(os_path, "api_v2.py")
+        if not os.path.isfile(api_path):
+            raise FileNotFoundError(f"IndexTTS api_v2.py not found: {api_path}")
         
         # Use subprocess.Popen to start the server in the background
         self._server_process = subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
-        print("GPT-SoVITS server starting...")
+        print("IndexTTS server starting...")
     
     def generate_speech(self, text, file_path=None, **kwargs):
         """Generates speech using the Index TTS API."""
@@ -225,10 +493,31 @@ class CosyVoiceAdapter(TTSAdapter):
     """
     Adapter for the CosyVoice (Alibaba Cloud) TTS service.
     """
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.current_model = "cosyvoice-v2"  # Default model
-        self.current_voice = "longxiaochun_v2" # Default voice
+    def __init__(self, api_key: str = "", model: str = "cosyvoice-v2", voice: str = "longxiaochun_v2", **_ignored):
+        self.api_key = str(api_key or "").strip()
+        self.current_model = str(model or "cosyvoice-v2").strip() or "cosyvoice-v2"
+        self.current_voice = str(voice or "longxiaochun_v2").strip() or "longxiaochun_v2"
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, dict]:
+        return {
+            "api_key": {
+                "label": "CosyVoice API Key",
+                "default": "",
+                "secret": True,
+                "type": "str",
+            },
+            "model": {
+                "label": "CosyVoice 模型",
+                "type": "str",
+                "default": "cosyvoice-v2",
+            },
+            "voice": {
+                "label": "CosyVoice 音色",
+                "type": "str",
+                "default": "longxiaochun_v2",
+            },
+        }
 
     def generate_speech(self, text, file_path=None, **kwargs):
         """
@@ -237,6 +526,9 @@ class CosyVoiceAdapter(TTSAdapter):
         """
         # Note: This is a simplified example. In a real-world scenario, you
         # would use the official SDK or follow the API documentation precisely.
+        if not self.api_key:
+            print("CosyVoice API key is empty.")
+            return None
         api_url = "https://dashscope.aliyuncs.com/api/v1/tts/cosyvoice"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -291,7 +583,7 @@ class GenieTTSAdapter(TTSAdapter):
     ):
         self.tts_server_url = tts_server_url.rstrip("/") + "/"
         # Keep compatibility with existing factory argument name.
-        self.tts_work_path = tts_work_path or gpt_sovits_work_path
+        self.tts_work_path = str(tts_work_path or gpt_sovits_work_path or "").strip() or None
         self.character_name = None
         self.onnx_model_dir = None
         self.loaded_character_name = None
@@ -440,8 +732,7 @@ class GenieTTSAdapter(TTSAdapter):
             return
 
         if not self.tts_work_path:
-            print("Genie TTS work path is empty, cannot auto start server.")
-            return
+            raise RuntimeError("Local Genie TTS server is not reachable; set the Genie TTS startup path.")
 
         os_path = self.tts_work_path
         if os_path.endswith(".py"):

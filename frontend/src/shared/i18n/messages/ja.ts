@@ -273,6 +273,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "character.section.personality": "キャラ設定",
   "character.section.sprites": "立ち絵",
   "character.section.voice": "声の参照（SoVITS 等・任意）",
+  "character.voice.kaggleLockedHint":
+    "Kaggle GPT-SoVITS が選択されています。声の参照モデルは Kaggle Notebook 側で .char パッケージをアップロードして読み込みます。ローカル取り込みではクラウド側のモデルは更新されないため、これらの参照項目は変更できません。",
   "character.sprite.add": "立ち絵行を追加",
   "character.sprite.batchTags": "タグを一括編集",
   "character.sprite.batchTagsHelp":

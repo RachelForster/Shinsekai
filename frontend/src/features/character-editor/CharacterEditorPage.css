@@ -99,6 +99,13 @@
   min-height: 160px;
 }
 
+.character-voice-section__locked-note {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* Character color control */
 .character-color-control .input {
   min-width: 96px;
