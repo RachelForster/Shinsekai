@@ -548,6 +548,8 @@ class CharacterSettingsTab(QWidget):
             self.prompt_lang,
         ):
             widget.setReadOnly(read_only)
+        self.prompt_text.setEnabled(not read_only)
+        self.prompt_lang.setEnabled(not read_only)
         self.speech_speed.setEnabled(not read_only)
 
     def _refresh_character_combo(self, select: str | None = None) -> None:

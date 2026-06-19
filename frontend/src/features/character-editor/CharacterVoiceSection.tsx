@@ -77,6 +77,7 @@ export function CharacterVoiceSection({
           <span className="field-row__label">{t("character.field.promptLang")}</span>
           <span className="field-row__control">
             <TextInput
+              disabled={voiceReferenceReadOnly}
               onChange={voiceReferenceReadOnly ? undefined : (event) => onChange("prompt_lang", event.target.value)}
               readOnly={voiceReferenceReadOnly}
               value={draft.prompt_lang ?? ""}
@@ -87,6 +88,7 @@ export function CharacterVoiceSection({
           <span className="field-row__label">{t("character.field.promptText")}</span>
           <span className="field-row__control">
             <TextInput
+              disabled={voiceReferenceReadOnly}
               onChange={voiceReferenceReadOnly ? undefined : (event) => onChange("prompt_text", event.target.value)}
               readOnly={voiceReferenceReadOnly}
               value={draft.prompt_text ?? ""}

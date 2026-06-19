@@ -214,6 +214,8 @@ describe("CharacterEditorPage", () => {
     for (const picker of voiceReferencePickers) {
       expect(picker).toBeDisabled();
     }
+    expect(screen.getByRole("textbox", { name: "Language (en/ja/zh)" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Reference line text" })).toBeDisabled();
     expect(screen.getByRole("spinbutton", { name: "TTS Speed" })).toBeDisabled();
     expect(screen.getByRole("spinbutton", { name: "TTS Volume" })).not.toBeDisabled();
   });

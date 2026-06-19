@@ -63,7 +63,9 @@ describe("CharacterVoiceSection", () => {
     expect(screen.queryByDisplayValue("D:/models/sovits.pth")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("D:/audio/ref.wav")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("ja")).toHaveAttribute("readonly");
+    expect(screen.getByDisplayValue("ja")).toBeDisabled();
     expect(screen.getByDisplayValue("hello")).toHaveAttribute("readonly");
+    expect(screen.getByDisplayValue("hello")).toBeDisabled();
     expect(screen.getByLabelText("TTS Speed")).toBeDisabled();
     expect(screen.getByLabelText("TTS Volume")).not.toBeDisabled();
     expect(screen.getAllByRole("button", { name: "Choose file" })).toEqual(
