@@ -31,6 +31,8 @@ export function OnboardingPage() {
     ? (location.state as { activeStep: OnboardingStepId }).activeStep
     : undefined;
   const [activeStep, setActiveStep] = useState<OnboardingStepId>(requestedStep ?? "api");
+  const [apiSaved, setApiSaved] = useState(false);
+  const [pluginsInstalled, setPluginsInstalled] = useState(false);
   const stepLabel = (current: number, total: number) => format(copy.stepLabel, { current, total });
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export function OnboardingPage() {
     () => [
       {
         accent: "accent" as const,
-        content: <ApiSetupPanel copy={copy} />,
+        content: <ApiSetupPanel copy={copy} onSaved={() => setApiSaved(true)} />,
         description: copy.api.description,
         icon: <Settings aria-hidden size={18} />,
         id: "api",
@@ -51,7 +53,7 @@ export function OnboardingPage() {
       },
       {
         accent: "info" as const,
-        content: <PluginSetupPanel copy={copy} />,
+        content: <PluginSetupPanel copy={copy} onInstalled={() => setPluginsInstalled(true)} />,
         description: copy.plugins.description,
         icon: <Plug aria-hidden size={18} />,
         id: "plugins",
@@ -91,6 +93,15 @@ export function OnboardingPage() {
     <GuidedFlow
       activeId={activeStep}
       backLabel={copy.actions.previous}
+      beforeNext={(stepId) => {
+        if (stepId === "api" && !apiSaved) {
+          return window.confirm(copy.api.unsavedWarning);
+        }
+        if (stepId === "plugins" && !pluginsInstalled) {
+          return window.confirm(copy.plugins.uninstalledWarning);
+        }
+        return true;
+      }}
       finishLabel={copy.finishLabel}
       nextLabel={copy.actions.next}
       onActiveChange={(id) => {

@@ -29,6 +29,7 @@ import type { OnboardingCopy } from "../onboardingCopy";
 
 interface ApiSetupPanelProps {
   copy: OnboardingCopy;
+  onSaved?: () => void;
 }
 
 function activeProviderValue(record: Record<string, string> | undefined, provider: string) {
@@ -43,7 +44,7 @@ function withApiDraftValue<K extends keyof ApiConfig>(draft: ApiConfig | null, k
   return draft ? { ...draft, [key]: value } : draft;
 }
 
-export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
+export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
@@ -84,6 +85,7 @@ export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
       queryClient.setQueryData(configQueryKey, (current: typeof configQuery.data) =>
         current ? { ...current, api_config: saved } : current,
       );
+      onSaved?.();
       showToast({ kind: "success", title: copy.actions.saved });
     },
   });
