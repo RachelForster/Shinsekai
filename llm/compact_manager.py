@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 import logging
 
 from config.schema import clamp_compact_target_ratio
-from sdk.hooks import BeforeCompactContext, PluginHookDispatcher
+from sdk.hooks import BeforeCompactContext, PluginHookDispatcher, PluginHookEvent
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +240,10 @@ class CompactManager:
         if not older_messages:
             return messages
 
-        if self.hook_dispatcher is not None:
+        if (
+            self.hook_dispatcher is not None
+            and self.hook_dispatcher.has_hooks(PluginHookEvent.BEFORE_COMPACT)
+        ):
             self.hook_dispatcher.dispatch_before_compact(
                 BeforeCompactContext(
                     messages=copy.deepcopy(messages),

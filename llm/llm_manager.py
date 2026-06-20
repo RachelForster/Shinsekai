@@ -16,7 +16,7 @@ from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAd
 from llm.compact_manager import CompactManager
 from llm.tools.tool_manager import ToolManager
 from llm.tools.tool_executor import ToolExecutor
-from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
+from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher, PluginHookEvent
 from sdk.logging import get_logger
 
 tool_manager = ToolManager()
@@ -410,7 +410,10 @@ class LLMManager:
             from llm.history_manager import HistoryManager
             HistoryManager.append_message_to_tmp(self._history_file, msg)
 
-        if self.hook_dispatcher is not None:
+        if (
+            self.hook_dispatcher is not None
+            and self.hook_dispatcher.has_hooks(PluginHookEvent.MESSAGE_ADDED)
+        ):
             self.hook_dispatcher.dispatch_message_added(
                 MessageAddedContext(
                     role=role,
@@ -490,14 +493,24 @@ class LLMManager:
         tools_defs: list[dict] | None,
         generation_kwargs: dict[str, Any],
     ) -> BeforeChatContext:
+        if (
+            self.hook_dispatcher is None
+            or not self.hook_dispatcher.has_hooks(PluginHookEvent.BEFORE_CHAT)
+        ):
+            return BeforeChatContext(
+                messages=self.get_messages(),
+                tools=tools_defs,
+                generation_kwargs=generation_kwargs,
+                stream=stream,
+            )
+
         context = BeforeChatContext(
             messages=copy.deepcopy(self.get_messages()),
             tools=copy.deepcopy(tools_defs) if tools_defs else None,
             generation_kwargs=copy.deepcopy(generation_kwargs),
             stream=stream,
         )
-        if self.hook_dispatcher is not None:
-            self.hook_dispatcher.dispatch_before_chat(context)
+        self.hook_dispatcher.dispatch_before_chat(context)
         return context
 
     def _estimate_context_tokens(

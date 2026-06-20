@@ -85,6 +85,27 @@ class TestLLMManagerMessageManagement:
             {"role": "user", "content": "Hello"},
         ]
 
+    def test_add_message_skips_snapshot_copy_without_message_added_hooks(
+        self,
+        mock_llm_adapter,
+        monkeypatch,
+    ):
+        dispatcher = PluginHookDispatcher()
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+
+        def fail_deepcopy(_value):
+            raise AssertionError("deepcopy should not run without message_added hooks")
+
+        monkeypatch.setattr("llm.llm_manager.copy.deepcopy", fail_deepcopy)
+
+        mgr.add_message("user", "Hello")
+
+        assert mgr.messages[-1] == {"role": "user", "content": "Hello"}
+
     def test_clear_messages_keeps_system(self, mock_llm_adapter):
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="Keep me")
         mgr.add_message("user", "Hello")
@@ -352,6 +373,37 @@ class TestLLMManagerCompact:
         ]
         assert "A summary written after plugin hook." in result[1]["content"]
 
+    def test_compact_messages_skips_snapshot_copy_without_before_compact_hooks(
+        self,
+        mock_llm_adapter,
+        monkeypatch,
+    ):
+        dispatcher = PluginHookDispatcher()
+
+        def fail_deepcopy(_value):
+            raise AssertionError("deepcopy should not run without before_compact hooks")
+
+        monkeypatch.setattr("llm.compact_manager.copy.deepcopy", fail_deepcopy)
+        mock_llm_adapter.responses = ["A summary written without plugin hooks."]
+        cm = CompactManager(
+            mock_llm_adapter,
+            max_tokens=10000,
+            compact_threshold=0.5,
+            recent_message_limit=1,
+            hook_dispatcher=dispatcher,
+        )
+        messages = [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "old question"},
+            {"role": "assistant", "content": "old answer"},
+            {"role": "user", "content": "latest"},
+        ]
+
+        result = cm.compact_messages(messages)
+
+        assert result[0]["role"] == "system"
+        assert "A summary written without plugin hooks." in result[1]["content"]
+
     def test_add_message_persists_same_length_compaction(self, mock_llm_adapter):
         mock_llm_adapter.responses = ["Condensed old turn."]
         mgr = LLMManager(
@@ -538,6 +590,36 @@ class TestLLMManagerCompact:
         request = mock_llm_adapter.call_history[0]
         assert request["messages"][-1] == {"role": "system", "content": "temporary stream context"}
         assert all(msg.get("content") != "temporary stream context" for msg in mgr.messages)
+
+    def test_before_chat_context_skips_copy_without_before_chat_hooks(
+        self,
+        mock_llm_adapter,
+        monkeypatch,
+    ):
+        dispatcher = PluginHookDispatcher()
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+        tools_defs = [{"type": "function", "function": {"name": "probe"}}]
+        generation_kwargs = {"metadata": {"source": "unit"}}
+
+        def fail_deepcopy(_value):
+            raise AssertionError("deepcopy should not run without before_chat hooks")
+
+        monkeypatch.setattr("llm.llm_manager.copy.deepcopy", fail_deepcopy)
+
+        context = mgr._before_chat_context(
+            stream=False,
+            tools_defs=tools_defs,
+            generation_kwargs=generation_kwargs,
+        )
+
+        assert context.messages is mgr.messages
+        assert context.tools is tools_defs
+        assert context.generation_kwargs is generation_kwargs
+        assert context.stream is False
 
 
 class TestLLMManagerToolCalling:
