@@ -57,6 +57,14 @@ def get_plugin_manager() -> PluginManager | None:
     return _plugin_manager
 
 
+def get_plugin_registry():
+    """返回加载插件时使用的真实 PluginCapabilityRegistry 实例。"""
+    mgr = _plugin_manager
+    if mgr is None:
+        return None
+    return mgr.capabilities
+
+
 def get_plugin_tts_handlers() -> List["MessageHandler"]:
     return list(_plugin_tts_handlers)
 
