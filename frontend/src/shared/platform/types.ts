@@ -623,6 +623,7 @@ export interface CharacterMemoryList {
 export interface Mem0Status {
   status: "ready" | "loading" | "not_started" | "error" | "missing_dependency";
   message?: string;
+  modelCached?: boolean;
   moduleName?: string;
   packageName?: string;
 }

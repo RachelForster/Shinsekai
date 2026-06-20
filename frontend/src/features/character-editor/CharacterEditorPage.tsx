@@ -162,17 +162,42 @@ export function CharacterEditorPage() {
     }
   };
 
-  // 确保 mem0 就绪：缺依赖→弹安装窗 / 加载中→弹等待窗 / 出错→toast。
+  // 确保 mem0 就绪：缺依赖→弹安装窗 / 首次下载模型→弹等待窗 / 模型已缓存→静默加载。
   // 返回 true 表示可以继续操作，false 表示需要等待或已处理。
   const ensureMem0Ready = async (): Promise<boolean> => {
     try {
       const status = await getMem0Status();
       if (status.status === "missing_dependency") {
-        // 触发依赖检测 → CharacterMemorySection 会展示安装 UI
         void memoryQuery.refetch();
         return false;
       }
       if (status.status === "loading" || status.status === "not_started") {
+        // 模型已缓存（后续启动）：跳过弹窗，静默加载 10-30s
+        if (status.modelCached) {
+          let pollStatus = status;
+          while (pollStatus.status === "loading" || pollStatus.status === "not_started") {
+            await new Promise((r) => setTimeout(r, 2000));
+            try {
+              pollStatus = await getMem0Status();
+            } catch {
+              break;
+            }
+          }
+          if (pollStatus.status === "missing_dependency") {
+            void memoryQuery.refetch();
+            return false;
+          }
+          if (pollStatus.status === "error") {
+            showToast({
+              kind: "error",
+              message: pollStatus.message || t("character.memory.error"),
+              title: t("common.operationFailed"),
+            });
+            return false;
+          }
+          return true;
+        }
+        // 模型未缓存（首次下载 2-5min）：弹窗等待
         setMem0LoadingMessage(t("character.memory.loading"));
         setMem0LoadingOpen(true);
         let pollStatus = status;
@@ -200,7 +225,6 @@ export function CharacterEditorPage() {
       }
       return true;
     } catch {
-      // 状态检查失败，直接尝试操作
       return true;
     }
   };

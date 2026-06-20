@@ -215,12 +215,32 @@ def _get_mem0() -> Any:
     return _mem0
 
 
+def _is_embedding_model_cached() -> bool:
+    """Check whether the HuggingFace sentence-transformers model is already cached.
+
+    When cached, loading takes ~10-30s instead of 2-5 min (first download).
+    """
+    try:
+        _cache_home = os.environ.get(
+            "HF_HOME",
+            os.path.join(str(Path.home()), ".cache", "huggingface", "hub"),
+        )
+        _model_dir = os.path.join(
+            _cache_home,
+            "models--sentence-transformers--all-MiniLM-L6-v2",
+        )
+        return os.path.isdir(_model_dir)
+    except Exception:
+        return False
+
+
 def check_mem0_status() -> dict[str, Any]:
     """检查 mem0 是否可用，不阻塞。
 
     返回状态字典：
     - ``{"status": "ready"}`` — 已就绪
     - ``{"status": "loading"}`` — 正在后台加载
+    - ``{"status": "not_started", "modelCached": true/false}`` — 尚未启动加载
     - ``{"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}`` — 未安装
     - ``{"status": "error", "message": "..."}`` — 加载失败（非缺少依赖）
     """
@@ -228,7 +248,7 @@ def check_mem0_status() -> dict[str, Any]:
     if _mem0 is not None:
         return {"status": "ready"}
     if _mem0_loading:
-        return {"status": "loading"}
+        return {"status": "loading", "modelCached": _is_embedding_model_cached()}
     if isinstance(_mem0_load_error, ModuleNotFoundError):
         return {"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}
     if _mem0_load_error is not None:
@@ -236,7 +256,7 @@ def check_mem0_status() -> dict[str, Any]:
     # 尚未尝试加载，检查 mem0 是否可导入
     try:
         import mem0  # noqa: F401
-        return {"status": "not_started"}
+        return {"status": "not_started", "modelCached": _is_embedding_model_cached()}
     except ImportError:
         return {"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}
 
