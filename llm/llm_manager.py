@@ -1,4 +1,5 @@
 from asyncio import Queue
+import copy
 from dataclasses import dataclass, field
 import json
 import threading
@@ -15,6 +16,7 @@ from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAd
 from llm.compact_manager import CompactManager
 from llm.tools.tool_manager import ToolManager
 from llm.tools.tool_executor import ToolExecutor
+from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher, PluginHookEvent
 from sdk.logging import get_logger
 
 tool_manager = ToolManager()
@@ -297,10 +299,12 @@ class LLMManager:
         first_turn_tool_call_limit: int = FIRST_USER_TURN_TOOL_CALL_LIMIT,
         generation_config: Optional[Dict[str, Any]] = None,
         history_file: str = "",
+        hook_dispatcher: PluginHookDispatcher | None = None,
     ):
         self.llm_adapter = adapter
         self.messages = []
         self.user_template = user_template
+        self.hook_dispatcher = hook_dispatcher
         self.max_context_tokens = int(max_tokens)
         self.history_recent_messages = max(1, int(history_recent_messages))
         self.max_tool_result_chars = max(1, int(max_tool_result_chars))
@@ -311,6 +315,7 @@ class LLMManager:
             compact_threshold,
             compact_target_ratio=compact_target_ratio,
             recent_message_limit=self.history_recent_messages,
+            hook_dispatcher=self.hook_dispatcher,
         )
         self.generation_config = generation_config or {}
         self.set_user_template(user_template)
@@ -405,6 +410,18 @@ class LLMManager:
             from llm.history_manager import HistoryManager
             HistoryManager.append_message_to_tmp(self._history_file, msg)
 
+        if (
+            self.hook_dispatcher is not None
+            and self.hook_dispatcher.has_hooks(PluginHookEvent.MESSAGE_ADDED)
+        ):
+            self.hook_dispatcher.dispatch_message_added(
+                MessageAddedContext(
+                    role=role,
+                    message=copy.deepcopy(msg),
+                    messages=copy.deepcopy(self.messages),
+                )
+            )
+
         # --- Auto-Compact 逻辑 ---
         # 自动调用 compact_manager 检查 token 是否超限并执行压缩
         compacted_messages = self.compact_manager.auto_compact_if_needed(self.messages)
@@ -469,8 +486,39 @@ class LLMManager:
             recent_message_limit=self.history_recent_messages,
         )
 
-    def _estimate_context_tokens(self, tools_defs: list[dict] | None) -> dict[str, int]:
-        messages = self.get_messages()
+    def _before_chat_context(
+        self,
+        *,
+        stream: bool,
+        tools_defs: list[dict] | None,
+        generation_kwargs: dict[str, Any],
+    ) -> BeforeChatContext:
+        if (
+            self.hook_dispatcher is None
+            or not self.hook_dispatcher.has_hooks(PluginHookEvent.BEFORE_CHAT)
+        ):
+            return BeforeChatContext(
+                messages=self.get_messages(),
+                tools=tools_defs,
+                generation_kwargs=generation_kwargs,
+                stream=stream,
+            )
+
+        context = BeforeChatContext(
+            messages=copy.deepcopy(self.get_messages()),
+            tools=copy.deepcopy(tools_defs) if tools_defs else None,
+            generation_kwargs=copy.deepcopy(generation_kwargs),
+            stream=stream,
+        )
+        self.hook_dispatcher.dispatch_before_chat(context)
+        return context
+
+    def _estimate_context_tokens(
+        self,
+        tools_defs: list[dict] | None,
+        messages: list[dict] | None = None,
+    ) -> dict[str, int]:
+        messages = self.get_messages() if messages is None else messages
         system_messages = [m for m in messages if m.get("role") == "system"]
         history_messages = [m for m in messages if m.get("role") != "system"]
         tool_definition_tokens = 0
@@ -584,6 +632,7 @@ class LLMManager:
         stream: bool,
         tools_defs: list[dict],
         estimate: dict[str, int],
+        message_count: int | None = None,
     ) -> None:
         self.logger.info(
             "LLM request started",
@@ -591,7 +640,7 @@ class LLMManager:
                 "event": "llm.request.started",
                 "llm_round": round_index,
                 "stream": stream,
-                "message_count": len(self.get_messages()),
+                "message_count": len(self.get_messages()) if message_count is None else message_count,
                 "active_tool_groups": list(self._active_tool_groups),
                 "tool_count": len(tools_defs or []),
                 "tool_names": [
@@ -906,7 +955,14 @@ class LLMManager:
 
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
-        estimate = self._estimate_context_tokens(tools_defs)
+        chat_context = self._before_chat_context(
+            stream=True,
+            tools_defs=tools_defs,
+            generation_kwargs=merged_kwargs,
+        )
+        tools_defs = chat_context.tools or []
+        merged_kwargs = chat_context.generation_kwargs
+        estimate = self._estimate_context_tokens(tools_defs, chat_context.messages)
         round_index = self._next_llm_round()
         request_started = time.perf_counter()
         self._log_llm_request_started(
@@ -914,10 +970,11 @@ class LLMManager:
             stream=True,
             tools_defs=tools_defs,
             estimate=estimate,
+            message_count=len(chat_context.messages),
         )
         try:
             response_stream = self.llm_adapter.chat(
-                messages=self.get_messages(), stream=True,
+                messages=chat_context.messages, stream=True,
                 tools=tools_defs if tools_defs else None, **merged_kwargs
             )
         except Exception as exc:
@@ -1034,7 +1091,14 @@ class LLMManager:
         tools_defs = self._current_tool_definitions()
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
-        estimate = self._estimate_context_tokens(tools_defs)
+        chat_context = self._before_chat_context(
+            stream=False,
+            tools_defs=tools_defs,
+            generation_kwargs=merged_kwargs,
+        )
+        tools_defs = chat_context.tools or []
+        merged_kwargs = chat_context.generation_kwargs
+        estimate = self._estimate_context_tokens(tools_defs, chat_context.messages)
         round_index = self._next_llm_round()
         request_started = time.perf_counter()
         self._log_llm_request_started(
@@ -1042,10 +1106,11 @@ class LLMManager:
             stream=False,
             tools_defs=tools_defs,
             estimate=estimate,
+            message_count=len(chat_context.messages),
         )
         try:
             response = self.llm_adapter.chat(
-                messages=self.get_messages(), stream=False,
+                messages=chat_context.messages, stream=False,
                 tools=tools_defs if tools_defs else None, **merged_kwargs
             )
         except Exception as exc:
