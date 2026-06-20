@@ -238,12 +238,15 @@ class CompactManager:
 
         # [MemorySystem] 触发所有已注册的精简前钩子（插件可在此阶段执行归档写入等操作）
         try:
-            from sdk.register import PluginCapabilityRegistry
-            for hook in PluginCapabilityRegistry().compact_hooks:
-                try:
-                    hook(messages)
-                except Exception as e:
-                    logger.warning(f"精简前钩子执行失败（已跳过，不影响精简流程）: {e}")
+            from core.plugins.plugin_host import get_plugin_registry
+
+            registry = get_plugin_registry()
+            if registry is not None:
+                for hook in registry.compact_hooks:
+                    try:
+                        hook(messages)
+                    except Exception as e:
+                        logger.warning(f"精简前钩子执行失败（已跳过，不影响精简流程）: {e}")
         except Exception:
             pass
         
