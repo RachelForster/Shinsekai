@@ -209,7 +209,11 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             )
 
         _tmo = out.timeout
-        min_stop_time = _tmo if (_tmo is not None and _tmo > 0) else len(speech) // 8
+        min_stop_time = (
+            _tmo
+            if (_tmo is not None and _tmo > 0)
+            else (max(len(speech) / 8, 0.5) if speech else 0.3)
+        )
         start_time = time.perf_counter()
         audio_played = False
         ch.current_audio_path = audio_path
@@ -226,6 +230,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 tts_sound.set_volume(vol)
                 dc.play(tts_sound)
                 audio_played = True
+                ui.post_tts_play(character_name, audio_path)
                 get_asr_log().info(
                     "CharacterDialogUiHandler: TTS playing → post_pause_asr (character=%s)",
                     character_name,

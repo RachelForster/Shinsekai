@@ -1,6 +1,8 @@
 import {
   sampleChatSnapshot,
   sampleConfig,
+  sampleChatThemeManifests,
+  sampleChatThemeSummaries,
   sampleMcpConfig,
   sampleMcpTools,
   samplePluginCatalog,
@@ -9,12 +11,17 @@ import {
   sampleTemplates,
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
+import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../theme/chatTheme";
 import type {
   BatchToolResult,
   Background,
   Character,
   CharacterMemoryList,
+  ChatConversationBranch,
+  ChatHistoryEntry,
   ChatSnapshot,
+  ChatStageEvent,
   LogSnapshot,
   MusicCoverRunResult,
   PluginCatalogItem,
@@ -272,6 +279,63 @@ function previewLogSnapshot(): LogSnapshot {
   };
 }
 
+function cloneHistoryEntries(entries: ChatHistoryEntry[] | undefined): ChatHistoryEntry[] {
+  return (entries ?? []).map((entry) => ({ ...entry }));
+}
+
+function isPreviewRealtimeCommand(command: { type: string }) {
+  return command.type !== "copy-history" && command.type !== "open-history";
+}
+
+function themeBlockQss(block?: {
+  background?: string;
+  borderColor?: string;
+  borderRadius?: string;
+  boxShadow?: string;
+  color?: string;
+}) {
+  if (!block) {
+    return "";
+  }
+  return [
+    block.background ? `background-color: ${block.background}` : "",
+    block.borderColor ? `border-color: ${block.borderColor}` : "",
+    block.borderRadius ? `border-radius: ${block.borderRadius}` : "",
+    block.boxShadow ? `box-shadow: ${block.boxShadow}` : "",
+    block.color ? `color: ${block.color}` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function previewThemePayloadFromManifest(manifest: ChatThemeManifest): ChatThemePayload {
+  return {
+    raw: {
+      busy_bar_label: {
+        extra_qss: themeBlockQss(manifest.tokens.toolbar),
+      },
+      dialog_label: {
+        extra_qss: themeBlockQss(manifest.tokens.dialog),
+      },
+      dialog_offset_y: manifest.tokens.dialog?.offsetY ?? 0,
+      dialog_padding: manifest.tokens.dialog?.padding ?? 40,
+      dialog_width_pct: manifest.tokens.dialog?.widthPct ?? 86,
+      input_bar: {
+        extra_qss: themeBlockQss(manifest.tokens.input),
+      },
+      option_row: {
+        extra_qss: themeBlockQss(manifest.tokens.options),
+        hover_extra_qss: themeBlockQss(manifest.tokens.options?.hover),
+      },
+      options_gap: manifest.tokens.options?.gap ?? 10,
+      send_button: {
+        extra_qss: themeBlockQss(manifest.tokens.send),
+      },
+    },
+    themeColor: manifest.tokens.global?.themeColor ?? sampleChatTheme.themeColor,
+  };
+}
+
 export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   const config = clone(sampleConfig);
   let templates = clone(sampleTemplates);
@@ -279,14 +343,77 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   let pluginCatalog = clone(samplePluginCatalog);
   let mcpConfig = clone(sampleMcpConfig);
   let chat = clone(sampleChatSnapshot);
+  let previewBranchCounter = 1;
+  const previewBranches = new Map<string, ChatConversationBranch & { historyEntries: ChatHistoryEntry[] }>();
+  previewBranches.set("main", {
+    id: "main",
+    label: "Main",
+    parentId: null,
+    historyEntries: cloneHistoryEntries(chat.historyEntries),
+  });
+  let activeThemeId = DEFAULT_CHAT_THEME_ID;
   let templateSession: TemplateLaunchSession | null = null;
   const characterMemories = new Map<string, CharacterMemoryList>();
   const chatListeners = new Set<(snapshot: ChatSnapshot) => void>();
+  const pendingChatTimeouts = new Set<number>();
+  const previewThemeManifests = new Map<string, ChatThemeManifest>(
+    Object.entries(sampleChatThemeManifests).map(([id, manifest]) => [id, clone(manifest)]),
+  );
+  const previewThemeSources = new Map<string, ChatThemeSummary["source"]>(
+    sampleChatThemeSummaries.map((theme) => [theme.id, theme.source]),
+  );
 
   const emitChat = () => {
     const snapshot = clone(chat);
     chatListeners.forEach((listener) => listener(snapshot));
   };
+
+  const previewBranchTree = () => ({
+    activeBranchId: chat.conversationTree?.activeBranchId || "main",
+    branches: [...previewBranches.values()].map(({ historyEntries: _historyEntries, ...branch }) => ({ ...branch })),
+  });
+
+  const savePreviewActiveBranch = () => {
+    const activeBranchId = chat.conversationTree?.activeBranchId || "main";
+    const branch = previewBranches.get(activeBranchId);
+    if (branch) {
+      branch.historyEntries = cloneHistoryEntries(chat.historyEntries);
+      branch.updatedAt = Date.now();
+    }
+  };
+
+  const stripPreviewUserPrefix = (value: string) => {
+    const parts = value.split(/：|:/);
+    return parts.length > 1 ? parts.slice(1).join("：").trim() : value.trim();
+  };
+
+  const clearScheduledChatUpdates = () => {
+    for (const timeoutId of pendingChatTimeouts) {
+      window.clearTimeout(timeoutId);
+    }
+    pendingChatTimeouts.clear();
+  };
+
+  const scheduleChatUpdate = (delayMs: number, patch: (current: ChatSnapshot) => ChatSnapshot) => {
+    const timeoutId = window.setTimeout(() => {
+      pendingChatTimeouts.delete(timeoutId);
+      chat = patch(chat);
+      emitChat();
+    }, delayMs);
+    pendingChatTimeouts.add(timeoutId);
+  };
+
+  const resolvePreviewManifest = (id: string) =>
+    previewThemeManifests.get(id) ?? previewThemeManifests.get(DEFAULT_CHAT_THEME_ID);
+
+  const listPreviewThemes = (): ChatThemeSummary[] =>
+    Array.from(previewThemeManifests.values()).map((manifest) => ({
+      id: manifest.id,
+      name: clone(manifest.name),
+      author: manifest.author,
+      version: manifest.version,
+      source: previewThemeSources.get(manifest.id) ?? "user",
+    }));
 
   return {
     backgrounds: {
@@ -421,62 +548,299 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     chat: {
+      async close() {
+        clearScheduledChatUpdates();
+        chat = {
+          ...chat,
+          notificationText: "聊天会话已结束。",
+          options: [],
+          sessionClosedReason: "聊天会话已结束。",
+          status: "idle",
+        };
+        emitChat();
+        return delay(chat);
+      },
       async command(command) {
-        if (command.type === "send-message") {
+        if (isPreviewRealtimeCommand(command) && String(chat.sessionClosedReason ?? "").trim()) {
           chat = {
             ...chat,
-            dialogText: String(command.payload ?? ""),
+            notificationText: "",
+            sessionClosedReason: "",
+          };
+        }
+        if (command.type === "send-message") {
+          clearScheduledChatUpdates();
+          const payload = String(command.payload ?? "").trim();
+          const userDisplayName = chat.userDisplayName?.trim() || "你";
+          const nextUserIndex =
+            Math.max(-1, ...cloneHistoryEntries(chat.historyEntries).map((entry) => entry.revertUserIndex ?? -1)) + 1;
+          chat = {
+            ...chat,
+            characterName: userDisplayName,
+            dialogText: payload,
+            historyEntries: [
+              ...cloneHistoryEntries(chat.historyEntries),
+              {
+                createdAt: Date.now(),
+                id: `history-${Date.now()}-user`,
+                revertUserIndex: nextUserIndex,
+                role: "user",
+                text: `${userDisplayName}: ${payload}`,
+              },
+            ],
             inputDraft: "",
+            options: [],
             numericInfo: "streaming",
             status: "streaming",
           };
           emitChat();
-          window.setTimeout(() => {
-            chat = { ...chat, numericInfo: "speaking", status: "speaking" };
-            emitChat();
-          }, 700);
+          scheduleChatUpdate(700, (current) => ({
+            ...current,
+            characterName: "Nanami",
+            dialogText: `收到：${payload}`,
+            historyEntries: [
+              ...cloneHistoryEntries(current.historyEntries),
+              { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 收到：${payload}` },
+            ],
+            numericInfo: "speaking",
+            status: "speaking",
+          }));
+          scheduleChatUpdate(1400, (current) => ({ ...current, numericInfo: "idle", status: "idle" }));
         }
         if (command.type === "submit-option") {
+          clearScheduledChatUpdates();
+          const option = String(command.payload ?? "").trim();
           chat = {
             ...chat,
-            dialogText: `选择：${String(command.payload ?? "")}`,
+            dialogText: `选择：${option}`,
+            historyEntries: [
+              ...cloneHistoryEntries(chat.historyEntries),
+              { id: `history-${Date.now()}-option`, role: "options", text: `选项: ${option}` },
+            ],
+            options: [],
             status: "generating",
             numericInfo: "generating",
           };
           emitChat();
+          scheduleChatUpdate(650, (current) => ({
+            ...current,
+            dialogText: `Nanami: 已选择「${option}」`,
+            historyEntries: [
+              ...cloneHistoryEntries(current.historyEntries),
+              { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 已选择「${option}」` },
+            ],
+            numericInfo: "idle",
+            status: "idle",
+          }));
         }
-        if (command.type === "skip-speech") {
+        if (command.type === "skip-speech" || command.type === "dialog-advance") {
+          clearScheduledChatUpdates();
           chat = { ...chat, status: "idle", numericInfo: "idle" };
           emitChat();
         }
-        if (command.type === "clear-history") {
-          chat = { ...chat, dialogText: "浏览器预览历史已清空。", status: "idle", numericInfo: "idle" };
+        if (command.type === "pause-asr") {
+          clearScheduledChatUpdates();
+          chat = { ...chat, status: "paused", numericInfo: "paused" };
           emitChat();
         }
+        if (command.type === "resume-asr") {
+          clearScheduledChatUpdates();
+          chat = { ...chat, status: "listening", numericInfo: "listening" };
+          emitChat();
+        }
+        if (command.type === "change-voice-language") {
+          const voiceLanguage =
+            String(command.payload ?? "")
+              .trim()
+              .toLowerCase() || "ja";
+          config.system_config.voice_language = voiceLanguage;
+          chat = { ...chat, numericInfo: "idle", status: "idle", voiceLanguage };
+          emitChat();
+        }
+        if (command.type === "clear-history") {
+          clearScheduledChatUpdates();
+          chat = {
+            ...chat,
+            dialogText: "浏览器预览历史已清空。",
+            historyEntries: [],
+            options: [],
+            status: "idle",
+            numericInfo: "idle",
+          };
+          emitChat();
+        }
+        if (command.type === "revert-history") {
+          clearScheduledChatUpdates();
+          const revertUserIndex = Number(command.payload);
+          const entries = cloneHistoryEntries(chat.historyEntries);
+          const userEntryPosition = entries.findIndex(
+            (entry) => entry.role === "user" && entry.revertUserIndex === revertUserIndex,
+          );
+          if (userEntryPosition >= 0) {
+            let targetIndex = -1;
+            for (let index = userEntryPosition - 1; index >= 0; index -= 1) {
+              if (entries[index]?.role !== "user") {
+                targetIndex = index;
+                break;
+              }
+            }
+            if (targetIndex >= 0) {
+              const nextEntries = entries.slice(0, targetIndex + 1);
+              const lastEntry = nextEntries[nextEntries.length - 1];
+              chat = {
+                ...chat,
+                dialogText: lastEntry?.text ?? "",
+                historyEntries: nextEntries,
+                options:
+                  lastEntry?.role === "options"
+                    ? lastEntry.text
+                        .split(/：|:/)
+                        .slice(1)
+                        .join("：")
+                        .split("/")
+                        .map((item) => item.trim())
+                        .filter(Boolean)
+                    : [],
+                status: "idle",
+                numericInfo: "idle",
+              };
+              emitChat();
+            }
+          }
+        }
+        if (command.type === "fork-history") {
+          clearScheduledChatUpdates();
+          savePreviewActiveBranch();
+          const payload = command.payload;
+          const userIndex = Number(
+            typeof payload === "object" && payload ? (payload as { userIndex?: unknown }).userIndex : payload,
+          );
+          const entries = cloneHistoryEntries(chat.historyEntries);
+          const userEntryPosition = entries.findIndex(
+            (entry) => entry.role === "user" && entry.revertUserIndex === userIndex,
+          );
+          if (userEntryPosition >= 0) {
+            const userEntry = entries[userEntryPosition];
+            const userText = stripPreviewUserPrefix(userEntry?.text ?? "");
+            const prefixEntries = entries.slice(0, userEntryPosition);
+            previewBranchCounter += 1;
+            const branchId = `branch-${previewBranchCounter}`;
+            previewBranches.set(branchId, {
+              createdAt: Date.now(),
+              forkedFromEntryId: userEntry?.id,
+              forkedFromText: userText,
+              historyEntries: cloneHistoryEntries(prefixEntries),
+              id: branchId,
+              label: `Branch ${previewBranchCounter}`,
+              parentId: chat.conversationTree?.activeBranchId || "main",
+              updatedAt: Date.now(),
+            });
+            const nextUserIndex = Math.max(-1, ...prefixEntries.map((entry) => entry.revertUserIndex ?? -1)) + 1;
+            chat = {
+              ...chat,
+              characterName: chat.userDisplayName?.trim() || "你",
+              conversationTree: { activeBranchId: branchId, branches: previewBranchTree().branches },
+              dialogText: userText,
+              historyEntries: [
+                ...cloneHistoryEntries(prefixEntries),
+                {
+                  createdAt: Date.now(),
+                  id: `history-${Date.now()}-user`,
+                  revertUserIndex: nextUserIndex,
+                  role: "user",
+                  text: `${chat.userDisplayName?.trim() || "你"}: ${userText}`,
+                },
+              ],
+              options: [],
+              numericInfo: "streaming",
+              status: "streaming",
+            };
+            chat.conversationTree = previewBranchTree();
+            emitChat();
+            scheduleChatUpdate(700, (current) => ({
+              ...current,
+              characterName: "Nanami",
+              dialogText: `分支回复：${userText}`,
+              historyEntries: [
+                ...cloneHistoryEntries(current.historyEntries),
+                { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 分支回复：${userText}` },
+              ],
+              numericInfo: "idle",
+              status: "idle",
+            }));
+          }
+        }
+        if (command.type === "switch-branch") {
+          clearScheduledChatUpdates();
+          savePreviewActiveBranch();
+          const branchId = String(command.payload ?? "").trim();
+          const branch = previewBranches.get(branchId);
+          if (branch) {
+            chat = {
+              ...chat,
+              conversationTree: { activeBranchId: branchId, branches: previewBranchTree().branches },
+              dialogText: branch.historyEntries.at(-1)?.text ?? "",
+              historyEntries: cloneHistoryEntries(branch.historyEntries),
+              numericInfo: "idle",
+              options: [],
+              status: "idle",
+            };
+            chat.conversationTree = previewBranchTree();
+            emitChat();
+          }
+        }
+        if (command.type === "rename-branch") {
+          const payload = command.payload;
+          const branchId =
+            typeof payload === "object" && payload
+              ? String((payload as { branchId?: unknown }).branchId ?? "").trim()
+              : "";
+          const label =
+            typeof payload === "object" && payload ? String((payload as { label?: unknown }).label ?? "").trim() : "";
+          const branch = previewBranches.get(branchId);
+          if (branch && label) {
+            branch.label = label.slice(0, 64);
+            branch.updatedAt = Date.now();
+            chat.conversationTree = previewBranchTree();
+            emitChat();
+          }
+        }
         if (command.type === "copy-history") {
-          return { ...clone(chat), clipboardText: chat.dialogText };
+          return {
+            ...clone(chat),
+            clipboardText: cloneHistoryEntries(chat.historyEntries)
+              .map((entry) => entry.text)
+              .join("\n"),
+          };
         }
         if (command.type === "open-history") {
-          return { ...clone(chat), openedPath: chat.historyPath ?? "./data/chat_history/preview.json" };
+          return { ...clone(chat), openedPath: chat.historyPath ?? "./data/chat_history/preview" };
         }
         return clone(chat);
       },
+      getHistory: () => delay(cloneHistoryEntries(chat.historyEntries)),
       getSnapshot: () => delay(chat),
-      getTheme: () => delay(sampleChatTheme),
+      getTheme: () =>
+        delay(
+          previewThemePayloadFromManifest(
+            resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests[DEFAULT_CHAT_THEME_ID],
+          ),
+        ),
       async launch(payload) {
         const character = config.characters.find((item) => payload.characters.includes(item.name));
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
-        const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview.json";
+        const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
           characterName: character?.name,
-          dialogText: `${payload.templateId} 已启动：${historyPath}`,
+          dialogText: "",
           historyPath,
           sprites: character?.sprites[0]
             ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
             : [],
           status: "idle",
+          statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
         };
         emitChat();
         return delay(chat);
@@ -484,17 +848,18 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async resumeLast() {
         const character = config.characters.find((item) => templateSession?.selectedCharacters?.includes(item.name));
         const background = config.background_list.find((item) => item.name === templateSession?.background);
-        const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview.json";
+        const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
           characterName: character?.name ?? chat.characterName,
-          dialogText: `已恢复上次启动：${historyPath}`,
+          dialogText: "",
           historyPath,
           sprites: character?.sprites[0]
             ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
             : chat.sprites,
           status: "idle",
+          statusMessage: `已恢复上次启动：${historyPath}`,
         };
         emitChat();
         return delay(chat);
@@ -503,6 +868,80 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         chatListeners.add(listener);
         listener(clone(chat));
         return () => chatListeners.delete(listener);
+      },
+      listThemes: () => delay<ChatThemeSummary[]>(listPreviewThemes()),
+      async getThemeManifest(id) {
+        const manifest = resolvePreviewManifest(id);
+        if (!manifest) {
+          throw new Error(`主题不存在：${id}`);
+        }
+        return delay<ChatThemeManifest>(manifest);
+      },
+      getActiveThemeId: () => delay(activeThemeId),
+      async setActiveThemeId(id) {
+        if (!previewThemeManifests.has(id)) {
+          throw new Error(`主题不存在：${id}`);
+        }
+        activeThemeId = id;
+      },
+      async uploadTheme(file) {
+        const id =
+          file.name
+            .replace(/\.zip$/i, "")
+            .trim()
+            .replace(/[^\w-]+/g, "-") || "uploaded-theme";
+        const base = resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests[DEFAULT_CHAT_THEME_ID];
+        const manifest: ChatThemeManifest = {
+          ...clone(base),
+          id,
+          name: { zh_CN: file.name, en: file.name, ja: file.name },
+          tokens: {
+            ...clone(base.tokens),
+            global: {
+              ...clone(base.tokens.global ?? {}),
+              themeColor: "#2fbf9f",
+            },
+            send: {
+              ...clone(base.tokens.send ?? {}),
+              background: "#2fbf9f",
+            },
+          },
+        };
+        previewThemeManifests.set(id, manifest);
+        previewThemeSources.set(id, "user");
+        return delay<ChatThemeSummary>({
+          id,
+          name: clone(manifest.name),
+          author: manifest.author,
+          version: manifest.version,
+          source: "user",
+        });
+      },
+      async deleteTheme(id) {
+        if ((previewThemeSources.get(id) ?? "user") !== "user") {
+          throw new Error("内置主题不能删除。");
+        }
+        previewThemeManifests.delete(id);
+        previewThemeSources.delete(id);
+        if (activeThemeId === id) {
+          activeThemeId = DEFAULT_CHAT_THEME_ID;
+        }
+      },
+      subscribeEvents(listener) {
+        let seq = 0;
+        const emitEvent = (snapshot: ChatSnapshot) => {
+          const event: ChatStageEvent = {
+            seq: (seq += 1),
+            snapshot,
+            ts: Date.now(),
+            type: "snapshot",
+            v: 1,
+          };
+          listener(event);
+        };
+        chatListeners.add(emitEvent);
+        emitEvent(clone(chat));
+        return () => chatListeners.delete(emitEvent);
       },
     },
     characters: {
@@ -736,8 +1175,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           options,
         );
         await delay(null, 160);
+        const bundleRoots = {
+          genie: "data/tts_bundles/installed/genie_tts_server/Genie-TTS-Server",
+          gptso: "data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro-20250604",
+          gptso50: "data/tts_bundles/installed/gpt_sovits_nvidia50/GPT-SoVITS-v2pro-20250604-nvidia50",
+        } as const;
         const result = {
-          path: `data/tts_bundles/installed/${input.kind}`,
+          path: bundleRoots[input.kind],
           provider: input.kind === "genie" ? "genie-tts" : "gpt-sovits",
         } as const;
         previewTask(
@@ -758,6 +1202,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         );
       },
       get: () => delay(config),
+      detectNetworkProxy: () =>
+        delay({
+          http_proxy_url: "",
+          https_proxy_url: "",
+          socks5_proxy_url: "",
+          source: "browser-preview",
+        }),
       getTtsBundleRecommendation: () =>
         delay({
           gpus: [{ device: "NVIDIA GeForce RTX 4070", vendor: "NVIDIA", vram_gb: 12 }],

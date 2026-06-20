@@ -39,6 +39,26 @@ export const DEFAULT_T2I_PROVIDER = "comfyui";
 export const DEFAULT_T2I_API_URL = "http://127.0.0.1:8188";
 export const DEFAULT_T2I_PROMPT_NODE_ID = "6";
 export const DEFAULT_T2I_OUTPUT_NODE_ID = "9";
+export const LEGACY_DEFAULT_TTS_SERVER_URL = "http://127.0.0.1:9880";
+export const DEFAULT_TTS_SERVER_URL = "https://127.0.0.1:9880";
+const LOCAL_SERVER_TTS_PROVIDERS = new Set(["gpt-sovits", "genie-tts", "index-tts"]);
+const REMOTE_SERVER_TTS_PROVIDERS = new Set(["kaggle-gpt-sovits"]);
+const SERVER_CONFIG_TTS_PROVIDERS = new Set([...LOCAL_SERVER_TTS_PROVIDERS, ...REMOTE_SERVER_TTS_PROVIDERS]);
+const TTS_PROVIDER_DEFAULT_URLS: Record<string, string> = {
+  "genie-tts": DEFAULT_TTS_SERVER_URL,
+  "gpt-sovits": DEFAULT_TTS_SERVER_URL,
+  "index-tts": LEGACY_DEFAULT_TTS_SERVER_URL,
+};
+const BUILTIN_TTS_SERVER_URLS = new Set([LEGACY_DEFAULT_TTS_SERVER_URL, DEFAULT_TTS_SERVER_URL]);
+const TTS_PROVIDER_ALIASES: Record<string, string> = {
+  "genie tts": "genie-tts",
+  "gpt sovits": "gpt-sovits",
+  "gpt-sovits": "gpt-sovits",
+  kaggle: "kaggle-gpt-sovits",
+  "kaggle gpt sovits": "kaggle-gpt-sovits",
+  "kaggle gpt-sovits": "kaggle-gpt-sovits",
+  "kaggle-gpt-sovits": "kaggle-gpt-sovits",
+};
 
 export type T2iSetupMode = "custom" | "local" | "skip";
 
@@ -90,6 +110,19 @@ export function normalizeAsrProvider(provider: string) {
     return "realtime_stt";
   }
   return normalized || "vosk";
+}
+
+export function normalizeTtsProvider(provider: string) {
+  const normalized = String(provider || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) {
+    return "gpt-sovits";
+  }
+  if (["none", "off", "disable", "disabled", "不使用"].includes(normalized)) {
+    return "none";
+  }
+  return TTS_PROVIDER_ALIASES[normalized] ?? normalized;
 }
 
 export function resolveAsrWhisperPresetValue(model: string) {
@@ -157,14 +190,71 @@ export function adapterSchema(options: AdapterOption[] | undefined, value: strin
   return options?.find((option) => option.value === value)?.schema ?? {};
 }
 
+function ttsSharedServerFieldCopy(provider: string) {
+  switch (normalizeTtsProvider(provider)) {
+    case "genie-tts":
+      return {
+        pathDescription: "当 Genie TTS 服务 URL 指向本机时必填，用于自动启动本地 Genie TTS Server。",
+        pathDisabledReason: undefined,
+        pathLabel: "Genie TTS 服务启动路径",
+        pathPlaceholder: "选择 Genie TTS Server 整合包根目录",
+        urlDescription: "Genie TTS Server 的 HTTP 地址。",
+        urlLabel: "Genie TTS 服务 URL",
+        urlPlaceholder: "如 https://127.0.0.1:9880/",
+      };
+    case "index-tts":
+      return {
+        pathDescription: "当 IndexTTS 服务 URL 指向本机时必填，用于自动启动本地 IndexTTS 服务。",
+        pathDisabledReason: undefined,
+        pathLabel: "IndexTTS 服务启动路径",
+        pathPlaceholder: "选择 IndexTTS 服务工程根目录",
+        urlDescription: "IndexTTS 服务的 HTTP 地址。",
+        urlLabel: "IndexTTS 服务 URL",
+        urlPlaceholder: "如 http://127.0.0.1:9880/",
+      };
+    case "kaggle-gpt-sovits":
+      return {
+        pathDescription: "Kaggle GPT-SoVITS 通过远端 Notebook URL 调用，本地整合包目录不会参与启动。",
+        pathDisabledReason: "Kaggle 模式通过远端 Notebook URL 调用，不使用本地 GPT-SoVITS 路径。",
+        pathLabel: "Kaggle GPT-SoVITS 本地路径",
+        pathPlaceholder: "Kaggle 模式不使用本地服务启动路径",
+        urlDescription: "Kaggle Notebook 暴露出来的 GPT-SoVITS HTTP 地址。",
+        urlLabel: "Kaggle Notebook 服务 URL",
+        urlPlaceholder: "填写 Kaggle Notebook 暴露的 http(s) URL",
+      };
+    case "gpt-sovits":
+      return {
+        pathDescription: "当 GPT-SoVITS 服务 URL 指向本机时必填，用于自动启动本地 GPT-SoVITS 服务。",
+        pathDisabledReason: undefined,
+        pathLabel: "GPT-SoVITS 服务启动路径",
+        pathPlaceholder: "选择 GPT-SoVITS 整合包或工程根目录",
+        urlDescription: "GPT-SoVITS API 服务的 HTTP 地址。",
+        urlLabel: "GPT-SoVITS 服务 URL",
+        urlPlaceholder: "如 https://127.0.0.1:9880/",
+      };
+    default:
+      return {
+        pathDescription: "当 TTS 服务 URL 指向本机时必填，用于自动启动本地 TTS 服务。",
+        pathDisabledReason: undefined,
+        pathLabel: "TTS 服务启动路径",
+        pathPlaceholder: "选择 TTS 服务工程或整合包根目录",
+        urlDescription: "TTS 服务的 HTTP 地址。",
+        urlLabel: "TTS 服务 URL",
+        urlPlaceholder: "如 http://127.0.0.1:9880/",
+      };
+  }
+}
+
 export function apiSchemaWithAdapterOptions(
   catalog: AdapterCatalog | undefined,
   draft: ApiConfig | null,
 ): Array<FormGroupSchema<ApiConfig>> {
+  const ttsFieldCopy = ttsSharedServerFieldCopy(draft?.tts_provider ?? "");
   const ttsOptions = withCurrentOption(
     catalogOptions(catalog?.tts, [
       { label: "不使用", value: "none" },
       { label: "Genie TTS", value: "genie-tts" },
+      { label: "Kaggle GPT-SoVITS", value: "kaggle-gpt-sovits" },
       { label: "GPT SoVITS", value: "gpt-sovits" },
       { label: "IndexTTS", value: "index-tts" },
       { label: "CosyVoice", value: "cosyvoice" },
@@ -187,6 +277,24 @@ export function apiSchemaWithAdapterOptions(
         .map((field) => {
           if (field.name === "tts_provider") {
             return { ...field, options: ttsOptions };
+          }
+          if (field.name === "gpt_sovits_api_path") {
+            return {
+              ...field,
+              description: ttsFieldCopy.pathDescription,
+              disabledReason: ttsFieldCopy.pathDisabledReason,
+              disabledWhen: (value: ApiConfig) => normalizeTtsProvider(value.tts_provider) === "kaggle-gpt-sovits",
+              label: ttsFieldCopy.pathLabel,
+              placeholder: ttsFieldCopy.pathPlaceholder,
+            };
+          }
+          if (field.name === "gpt_sovits_url") {
+            return {
+              ...field,
+              description: ttsFieldCopy.urlDescription,
+              label: ttsFieldCopy.urlLabel,
+              placeholder: ttsFieldCopy.urlPlaceholder,
+            };
           }
           if (field.name === "t2i_provider") {
             return { ...field, options: t2iOptions };
@@ -216,22 +324,55 @@ export function syncCompactRatioDraft(config: ApiConfig): ApiConfig {
   };
 }
 
-export function normalizeApiConfigForUi(config: ApiConfig): ApiConfig {
-  const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
-  return syncCompactRatioDraft({
+export function defaultTtsServerUrl(provider: string) {
+  return TTS_PROVIDER_DEFAULT_URLS[normalizeTtsProvider(provider)] ?? "";
+}
+
+export function ttsServerUrlOrDefault(provider: string, currentUrl: string) {
+  const cleanUrl = String(currentUrl || "").trim();
+  const defaultUrl = defaultTtsServerUrl(provider);
+  if (defaultUrl && (!cleanUrl || BUILTIN_TTS_SERVER_URLS.has(cleanUrl))) {
+    return defaultUrl;
+  }
+  return cleanUrl;
+}
+
+export function applyTtsProviderDefaults(config: ApiConfig, installedTtsBundlePath = ""): ApiConfig {
+  const ttsProvider = normalizeTtsProvider(config.tts_provider);
+  const cleanPath = String(config.gpt_sovits_api_path || "").trim();
+  const defaultPath = String(installedTtsBundlePath || "").trim();
+  return {
     ...config,
-    history_recent_messages: finiteNumber(config.history_recent_messages, 20),
-    llm_api_key: config.llm_api_key ?? {},
-    llm_base_url: String(config.llm_base_url || "").trim() || llmDefaultBaseUrls[provider] || "",
-    llm_model: config.llm_model ?? {},
-    llm_provider: provider,
-    max_active_tool_groups: finiteNumber(config.max_active_tool_groups, 3),
-    max_tool_result_chars: finiteNumber(config.max_tool_result_chars, 6000),
-    t2i_api_url: String(config.t2i_api_url || "").trim() || DEFAULT_T2I_API_URL,
-    t2i_output_node_id: String(config.t2i_output_node_id || "").trim() || DEFAULT_T2I_OUTPUT_NODE_ID,
-    t2i_prompt_node_id: String(config.t2i_prompt_node_id || "").trim() || DEFAULT_T2I_PROMPT_NODE_ID,
-    t2i_provider: String(config.t2i_provider || "").trim() || DEFAULT_T2I_PROVIDER,
-  });
+    gpt_sovits_api_path:
+      ttsProvider === "kaggle-gpt-sovits"
+        ? ""
+        : requiresTtsWorkPath(ttsProvider) && !cleanPath && defaultPath
+          ? defaultPath
+          : cleanPath,
+    gpt_sovits_url: ttsServerUrlOrDefault(ttsProvider, config.gpt_sovits_url),
+    tts_provider: ttsProvider,
+  };
+}
+
+export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePath = ""): ApiConfig {
+  const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
+  return applyTtsProviderDefaults(
+    syncCompactRatioDraft({
+      ...config,
+      history_recent_messages: finiteNumber(config.history_recent_messages, 20),
+      llm_api_key: config.llm_api_key ?? {},
+      llm_base_url: String(config.llm_base_url || "").trim() || llmDefaultBaseUrls[provider] || "",
+      llm_model: config.llm_model ?? {},
+      llm_provider: provider,
+      max_active_tool_groups: finiteNumber(config.max_active_tool_groups, 3),
+      max_tool_result_chars: finiteNumber(config.max_tool_result_chars, 6000),
+      t2i_api_url: String(config.t2i_api_url || "").trim() || DEFAULT_T2I_API_URL,
+      t2i_output_node_id: String(config.t2i_output_node_id || "").trim() || DEFAULT_T2I_OUTPUT_NODE_ID,
+      t2i_prompt_node_id: String(config.t2i_prompt_node_id || "").trim() || DEFAULT_T2I_PROMPT_NODE_ID,
+      t2i_provider: String(config.t2i_provider || "").trim() || DEFAULT_T2I_PROVIDER,
+    }),
+    installedTtsBundlePath,
+  );
 }
 
 export function inferT2iSetupMode(
@@ -345,7 +486,11 @@ export function isTaskCancelledError(error: unknown) {
 }
 
 export function requiresTtsServerConfig(provider: string) {
-  return ["genie-tts", "gpt-sovits"].includes(provider.trim().toLowerCase());
+  return SERVER_CONFIG_TTS_PROVIDERS.has(normalizeTtsProvider(provider));
+}
+
+export function requiresTtsWorkPath(provider: string) {
+  return LOCAL_SERVER_TTS_PROVIDERS.has(normalizeTtsProvider(provider));
 }
 
 export function containsPathQuotes(value: string) {

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const desktopApi = vi.hoisted(() => ({
@@ -19,11 +20,13 @@ vi.mock("../shared/desktop/desktopApi", () => desktopApi);
 import { DesktopChrome } from "../shared/desktop/DesktopChrome";
 import { I18nProvider } from "../shared/i18n/I18nProvider";
 
-function renderChrome(children: ReactNode) {
+function renderChrome(children: ReactNode, initialEntries = ["/settings/api"]) {
   return render(
-    <I18nProvider language="en">
-      <DesktopChrome>{children}</DesktopChrome>
-    </I18nProvider>,
+    <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }} initialEntries={initialEntries}>
+      <I18nProvider language="en">
+        <DesktopChrome>{children}</DesktopChrome>
+      </I18nProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -98,6 +101,26 @@ describe("DesktopChrome", () => {
     expect(await screen.findByText("Shinsekai")).toBeInTheDocument();
     expect(screen.getByText("App content")).toBeInTheDocument();
     expect(desktopApi.getDesktopRuntimeState).toHaveBeenCalledTimes(1);
+  });
+
+  it("bypasses desktop chrome for standalone chat routes", () => {
+    desktopApi.isTauriDesktop.mockReturnValue(true);
+
+    renderChrome(<main>Chat stage</main>, ["/chat-stage"]);
+
+    expect(screen.getByText("Chat stage")).toBeInTheDocument();
+    expect(screen.queryByText("Shinsekai")).not.toBeInTheDocument();
+    expect(desktopApi.getDesktopRuntimeState).not.toHaveBeenCalled();
+  });
+
+  it("bypasses desktop chrome for the /chat route as well", () => {
+    desktopApi.isTauriDesktop.mockReturnValue(true);
+
+    renderChrome(<main>Live chat</main>, ["/chat"]);
+
+    expect(screen.getByText("Live chat")).toBeInTheDocument();
+    expect(screen.queryByText("Shinsekai")).not.toBeInTheDocument();
+    expect(desktopApi.getDesktopRuntimeState).not.toHaveBeenCalled();
   });
 
   it("keeps the runtime gate open when the bundled runtime is unavailable", async () => {

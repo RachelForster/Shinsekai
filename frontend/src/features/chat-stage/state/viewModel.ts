@@ -1,0 +1,44 @@
+import {
+  normalizeDialogView,
+  normalizedUserDisplayName,
+  normalizeTokenUsageText,
+  systemPromptTextFromState,
+} from "./text";
+import type { ChatStageState, ChatStageViewModel } from "./types";
+
+export function buildChatStageViewModel(state: ChatStageState): ChatStageViewModel {
+  const dialog = normalizeDialogView(
+    state.error ? undefined : state.characterName,
+    state.error ?? state.dialogText,
+    state.error ? undefined : state.dialogHtml,
+    state.userDisplayName,
+  );
+  const tokenUsageText = normalizeTokenUsageText(state.numericInfo, state.status);
+  const systemPromptText = systemPromptTextFromState(state, dialog.dialogText);
+  const layers = {
+    ...state.layers,
+    dialog: state.layers.dialog && !systemPromptText && Boolean(dialog.dialogHtml || dialog.dialogText),
+    notification: Boolean(state.notificationText || systemPromptText),
+  };
+  return {
+    backgroundPath: state.backgroundPath,
+    busyText: state.busyText,
+    cgPath: state.cgPath,
+    dialogCharacterName: systemPromptText ? undefined : dialog.characterName,
+    dialogHtml: systemPromptText ? undefined : dialog.dialogHtml,
+    dialogText: systemPromptText ? "" : dialog.dialogText,
+    inputDisabled: !state.layers.input || state.status === "generating" || state.status === "streaming",
+    inputDraft: state.inputDraft,
+    layers,
+    notificationText: state.notificationText || systemPromptText,
+    options: state.options,
+    sprites: state.sprites,
+    status: state.status,
+    statusText: state.status,
+    tokenUsageText,
+    transportMode: state.transportMode,
+    transportState: state.transportState,
+    userDisplayName: normalizedUserDisplayName(state.userDisplayName),
+    voiceLanguage: state.voiceLanguage,
+  };
+}

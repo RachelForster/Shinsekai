@@ -1,0 +1,451 @@
+name: Analyze issue log attachment
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  analyze-log-zip:
+    if: ${{ !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Analyze uploaded diagnostic zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import hashlib
+          import io
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          import textwrap
+          import urllib.parse
+          import urllib.request
+          import zipfile
+          from collections import defaultdict
+          from datetime import datetime, timezone
+          from typing import Any
+
+          repo = os.environ["REPO"]
+          issue_number = os.environ["ISSUE_NUMBER"]
+          token = os.environ["GH_TOKEN"]
+          event_name = os.environ["EVENT_NAME"]
+          source_body = (
+              os.environ.get("COMMENT_BODY") or ""
+              if event_name == "issue_comment"
+              else os.environ.get("ISSUE_BODY") or ""
+          )
+
+          MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
+          MAX_TOTAL_ZIP_BYTES = 120 * 1024 * 1024
+          MAX_TEXT_BYTES_PER_FILE = 4 * 1024 * 1024
+          MAX_FILES = 80
+          MAX_FILES_IN_COMMENT = 8
+          MAX_ERROR_SNIPPETS_PER_FILE = 4
+          MAX_RECENT_LINES_PER_FILE = 18
+          MAX_COMMENT_CHARS = 60000
+          MARKER_PREFIX = "<!-- shinsekai-log-diagnostics:"
+
+          ERROR_RE = re.compile(
+              r"(\bERROR\b|\bCRITICAL\b|Traceback|Exception|Error:|failed|failure|Bad Request|"
+              r"HTTP/\d(?:\.\d)?\" 4\d\d|HTTP/\d(?:\.\d)?\" 5\d\d)",
+              re.IGNORECASE,
+          )
+          TEXT_SUFFIXES = {
+              ".json",
+              ".jsonl",
+              ".log",
+              ".txt",
+              ".out",
+              ".err",
+              ".md",
+          }
+
+
+          def gh_api(*args: str, input_json: Any | None = None) -> str:
+              payload = None if input_json is None else json.dumps(input_json)
+              result = subprocess.run(
+                  ["gh", "api", *args],
+                  input=payload,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+              if result.returncode != 0:
+                  print(result.stderr, file=sys.stderr)
+                  raise SystemExit(result.returncode)
+              return result.stdout
+
+
+          def extract_zip_urls(text: str) -> list[str]:
+              if not text:
+                  return []
+              candidates = re.findall(r"https://[^\s<>'\"]+", text)
+              urls: list[str] = []
+              seen: set[str] = set()
+              for raw in candidates:
+                  url = raw.rstrip(").,;]")
+                  parsed = urllib.parse.urlparse(url)
+                  decoded_path = urllib.parse.unquote(parsed.path).lower()
+                  if not decoded_path.endswith(".zip"):
+                      continue
+                  if parsed.scheme != "https":
+                      continue
+                  host = parsed.netloc.lower()
+                  if not (
+                      host == "github.com"
+                      or host.endswith(".github.com")
+                      or host.endswith("githubusercontent.com")
+                  ):
+                      print(f"Skipping non-GitHub zip URL: {url}")
+                      continue
+                  if url not in seen:
+                      seen.add(url)
+                      urls.append(url)
+              return urls
+
+
+          def marker_for_url(url: str) -> str:
+              digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+              return f"{MARKER_PREFIX}{digest} -->"
+
+
+          def issue_comments_contain(marker: str) -> bool:
+              page = 1
+              while True:
+                  comments = json.loads(
+                      gh_api(
+                          f"repos/{repo}/issues/{issue_number}/comments"
+                          f"?per_page=100&page={page}"
+                      )
+                  )
+                  if not comments:
+                      return False
+                  for comment in comments:
+                      if marker in str(comment.get("body") or ""):
+                          return True
+                  page += 1
+
+
+          def download(url: str) -> bytes:
+              headers = {
+                  "Accept": "application/octet-stream",
+                  "Authorization": f"Bearer {token}",
+                  "User-Agent": "shinsekai-log-diagnostics",
+              }
+              request = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  chunks: list[bytes] = []
+                  total = 0
+                  while True:
+                      chunk = response.read(1024 * 1024)
+                      if not chunk:
+                          break
+                      total += len(chunk)
+                      if total > MAX_DOWNLOAD_BYTES:
+                          raise ValueError("attachment is larger than the 50 MiB limit")
+                      chunks.append(chunk)
+              return b"".join(chunks)
+
+
+          def safe_member(name: str) -> bool:
+              normalized = name.replace("\\", "/")
+              if normalized.startswith("/") or normalized.startswith("../") or "/../" in normalized:
+                  return False
+              return bool(normalized.strip())
+
+
+          def is_text_member(name: str) -> bool:
+              lowered = name.lower()
+              return any(lowered.endswith(suffix) for suffix in TEXT_SUFFIXES)
+
+
+          def read_text_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> str:
+              with archive.open(info) as file:
+                  raw = file.read(min(info.file_size, MAX_TEXT_BYTES_PER_FILE))
+              text = raw.decode("utf-8", errors="replace")
+              if info.file_size > MAX_TEXT_BYTES_PER_FILE:
+                  text = "[File truncated: showing the first 4 MiB]\n" + text
+              return text
+
+
+          def parse_json_lines(text: str) -> list[dict[str, Any]]:
+              records: list[dict[str, Any]] = []
+              for index, line in enumerate(text.splitlines(), start=1):
+                  stripped = line.strip()
+                  if not stripped.startswith("{"):
+                      continue
+                  try:
+                      payload = json.loads(stripped)
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(payload, dict):
+                      payload["_line"] = index
+                      records.append(payload)
+              return records
+
+
+          def summarize_environment(manifest: dict[str, Any], runtime_records: list[dict[str, Any]]) -> dict[str, Any]:
+              runtime = manifest.get("runtime") if isinstance(manifest.get("runtime"), dict) else {}
+              for record in reversed(runtime_records):
+                  runtime = {**record, **runtime}
+                  break
+
+              version = manifest.get("version") or runtime.get("version") or "unknown"
+              platform = (
+                  manifest.get("platform")
+                  or runtime.get("os")
+                  or runtime.get("platform")
+                  or "unknown"
+              )
+              python = manifest.get("python") or runtime.get("python_version") or "unknown"
+              machine = runtime.get("machine") or "unknown"
+              gpus = runtime.get("gpus")
+              if not isinstance(gpus, list):
+                  gpus = []
+              gpu_lines = []
+              for gpu in gpus:
+                  if not isinstance(gpu, dict):
+                      continue
+                  vendor = str(gpu.get("vendor") or "").strip()
+                  device = str(gpu.get("device") or "").strip()
+                  vram = str(gpu.get("vram_gb") or "").strip()
+                  label = " ".join(part for part in [vendor, device] if part) or "Unknown GPU"
+                  if vram:
+                      label = f"{label} ({vram} GB VRAM)"
+                  gpu_lines.append(label)
+              return {
+                  "version": str(version),
+                  "platform": str(platform),
+                  "python": str(python),
+                  "machine": str(machine),
+                  "gpus": gpu_lines,
+              }
+
+
+          def record_summary(record: dict[str, Any]) -> str:
+              parts = []
+              for key in ("timestamp", "level", "logger", "event", "message", "error_type"):
+                  value = record.get(key)
+                  if value not in (None, ""):
+                      parts.append(f"{key}={value}")
+              exception = record.get("exception")
+              if exception:
+                  text = str(exception).strip().splitlines()
+                  if text:
+                      parts.append(f"exception={text[-1][:240]}")
+              return " | ".join(parts) or json.dumps(record, ensure_ascii=False)[:500]
+
+
+          def record_looks_actionable(record: dict[str, Any], summary: str) -> bool:
+              level = str(record.get("level") or "").upper()
+              if level in {"ERROR", "CRITICAL"}:
+                  return True
+              if record.get("exception") or record.get("error_type"):
+                  return True
+              return bool(ERROR_RE.search(summary))
+
+
+          def error_snippets(path: str, text: str, records: list[dict[str, Any]]) -> list[str]:
+              snippets: list[str] = []
+              for record in records:
+                  summary = record_summary(record)
+                  if record_looks_actionable(record, summary):
+                      line = record.get("_line")
+                      prefix = f"line {line}: " if line else ""
+                      snippets.append(prefix + summary[:900])
+
+              if len(snippets) < MAX_ERROR_SNIPPETS_PER_FILE:
+                  lines = text.splitlines()
+                  for index, line in enumerate(lines, start=1):
+                      if not ERROR_RE.search(line):
+                          continue
+                      start = max(0, index - 2)
+                      end = min(len(lines), index + 3)
+                      block = "\n".join(lines[start:end]).strip()
+                      snippets.append(f"around line {index}:\n{block[:1200]}")
+                      if len(snippets) >= MAX_ERROR_SNIPPETS_PER_FILE:
+                          break
+
+              deduped: list[str] = []
+              seen: set[str] = set()
+              for snippet in snippets:
+                  key = re.sub(r"\s+", " ", snippet).strip()
+                  if key and key not in seen:
+                      seen.add(key)
+                      deduped.append(snippet)
+                  if len(deduped) >= MAX_ERROR_SNIPPETS_PER_FILE:
+                      break
+              return deduped
+
+
+          def recent_lines(text: str) -> list[str]:
+              lines = [line for line in text.splitlines() if line.strip()]
+              return lines[-MAX_RECENT_LINES_PER_FILE:]
+
+
+          def analyze_zip(name: str, data: bytes) -> dict[str, Any]:
+              with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                  infos = [info for info in archive.infolist() if not info.is_dir()]
+                  total_size = sum(info.file_size for info in infos)
+                  if total_size > MAX_TOTAL_ZIP_BYTES:
+                      raise ValueError("expanded zip contents exceed the 120 MiB limit")
+
+                  manifest: dict[str, Any] = {}
+                  text_files: list[tuple[str, str, list[dict[str, Any]]]] = []
+                  runtime_records: list[dict[str, Any]] = []
+                  scanned = 0
+
+                  for info in infos:
+                      if scanned >= MAX_FILES:
+                          break
+                      if not safe_member(info.filename) or not is_text_member(info.filename):
+                          continue
+                      scanned += 1
+                      text = read_text_member(archive, info)
+                      records = parse_json_lines(text)
+                      if info.filename.replace("\\", "/").lower().endswith("manifest.json"):
+                          try:
+                              parsed = json.loads(text)
+                          except json.JSONDecodeError:
+                              parsed = {}
+                          if isinstance(parsed, dict):
+                              manifest = parsed
+                      for record in records:
+                          if record.get("event") == "runtime.environment":
+                              runtime_records.append(record)
+                      text_files.append((info.filename.replace("\\", "/"), text, records))
+
+              env = summarize_environment(manifest, runtime_records)
+              file_summaries = []
+              for path, text, records in sorted(text_files, key=lambda item: item[0])[:MAX_FILES_IN_COMMENT]:
+                  file_summaries.append(
+                      {
+                          "path": path,
+                          "errors": error_snippets(path, text, records),
+                          "recent": recent_lines(text),
+                      }
+                  )
+              return {
+                  "name": name,
+                  "environment": env,
+                  "files": file_summaries,
+                  "manifest": manifest,
+                  "scanned_files": len(text_files),
+              }
+
+
+          def code_block(text: str, *, limit: int = 3500) -> str:
+              cleaned = text.strip()
+              if len(cleaned) > limit:
+                  cleaned = cleaned[-limit:]
+                  cleaned = "[truncated]\n" + cleaned
+              return "```text\n" + cleaned.replace("```", "`\u200b``") + "\n```"
+
+
+          def render_report(url: str, analysis: dict[str, Any], marker: str) -> str:
+              env = analysis["environment"]
+              lines = [
+                  marker,
+                  "## Diagnostic log attachment summary",
+                  "",
+                  f"Analyzed attachment: {url}",
+                  "",
+                  "### Runtime environment",
+                  "",
+                  f"- Platform: `{env['platform']}`",
+                  f"- Machine: `{env['machine']}`",
+                  f"- Shinsekai version: `{env['version']}`",
+                  f"- Python: `{env['python']}`",
+              ]
+              if env["gpus"]:
+                  lines.append(f"- GPU / VRAM: `{'; '.join(env['gpus'])}`")
+              else:
+                  lines.append("- GPU / VRAM: `not reported`")
+
+              lines.extend(
+                  [
+                      "",
+                      "### Recent errors by file",
+                      "",
+                  ]
+              )
+
+              files = analysis["files"]
+              if not files:
+                  lines.append("No readable log files were found in the zip attachment.")
+              for file_summary in files:
+                  lines.append(f"#### `{file_summary['path']}`")
+                  errors = file_summary["errors"]
+                  if errors:
+                      for snippet in errors:
+                          lines.append(code_block(snippet, limit=1800))
+                  else:
+                      lines.append("No obvious error lines were detected in this file.")
+                  recent = file_summary["recent"]
+                  if recent:
+                      lines.append("<details><summary>Recent log tail</summary>")
+                      lines.append("")
+                      lines.append(code_block("\n".join(recent), limit=2200))
+                      lines.append("</details>")
+                  lines.append("")
+
+              lines.extend(
+                  [
+                      "_This is an automated English summary generated from the uploaded diagnostic zip. "
+                      "It filters for ERROR/CRITICAL/Traceback/Exception-like lines and includes a short recent tail per file._",
+                  ]
+              )
+              body = "\n".join(lines).strip()
+              if len(body) > MAX_COMMENT_CHARS:
+                  body = body[: MAX_COMMENT_CHARS - 200] + "\n\n[Comment truncated because the diagnostic summary was too large.]"
+              return body
+
+
+          urls = extract_zip_urls(source_body)
+          if not urls:
+              print("No zip attachment URLs found in the triggering issue text.")
+              raise SystemExit(0)
+
+          for url in urls:
+              marker = marker_for_url(url)
+              if issue_comments_contain(marker):
+                  print(f"Already analyzed {url}")
+                  continue
+              try:
+                  data = download(url)
+                  analysis = analyze_zip(url.rsplit("/", 1)[-1], data)
+                  body = render_report(url, analysis, marker)
+              except Exception as exc:
+                  body = (
+                      f"{marker}\n"
+                      "## Diagnostic log attachment summary\n\n"
+                      f"Analyzed attachment: {url}\n\n"
+                      f"Could not analyze this zip attachment: `{type(exc).__name__}: {exc}`"
+                  )
+              gh_api(
+                  f"repos/{repo}/issues/{issue_number}/comments",
+                  "--method",
+                  "POST",
+                  "--input",
+                  "-",
+                  input_json={"body": body},
+              )
+          PY

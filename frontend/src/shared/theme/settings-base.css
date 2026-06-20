@@ -1,6 +1,9 @@
 /* ── Shared settings page layout (used by all feature pages under features/) ── */
 
 .page {
+  --page-header-fade-size: 18px;
+  --page-header-safe-gap: calc(var(--space-3) + var(--page-header-fade-size));
+
   display: flex;
   width: min(100%, var(--settings-content-max-width));
   min-width: 0;
@@ -8,6 +11,7 @@
   flex-direction: column;
   gap: var(--space-5);
   margin: 0 auto;
+  scroll-padding-top: calc(64px + var(--page-header-safe-gap));
 }
 
 .page__header {
@@ -27,11 +31,11 @@
 .page__header::before {
   position: absolute;
   z-index: -1;
-  inset: calc(-1 * var(--settings-page-gutter)) 0 -18px;
+  inset: calc(-1 * var(--settings-page-gutter)) 0 calc(-1 * var(--page-header-fade-size));
   background: linear-gradient(
     180deg,
     var(--color-bg-app) 0,
-    color-mix(in oklch, var(--color-bg-app) 96%, transparent) calc(100% - 18px),
+    color-mix(in oklch, var(--color-bg-app) 96%, transparent) calc(100% - var(--page-header-fade-size)),
     transparent 100%
   );
   backdrop-filter: blur(14px);
@@ -41,6 +45,10 @@
 
 .page__header > div:first-child {
   min-width: 0;
+}
+
+.page__header + * {
+  margin-top: var(--page-header-safe-gap);
 }
 
 .page__title {
@@ -77,6 +85,10 @@
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
     gap: var(--space-2);
+  }
+
+  .page__header + * {
+    margin-top: var(--space-2);
   }
 
   .page__actions {
@@ -389,6 +401,11 @@ details > .field-row + .field-row {
 .field-row__control {
   display: block;
   min-width: 0;
+}
+
+.field-row__control > .switch:first-child {
+  min-height: 34px;
+  align-items: center;
 }
 
 .field-row__help {

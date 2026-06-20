@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import html
 import re
 from typing import Any
 
-from core.messaging.dialog_tokens import is_option_history_name, is_option_history_plain
-from sdk.messages import TTSOutputMessage
+from core.messaging.dialog_tokens import (
+    BGM_ALIASES,
+    CG_ALIASES,
+    COT_ALIASES,
+    NARR_ALIASES,
+    SCENE_ALIASES,
+    STAT_ALIASES,
+    is_option_history_name,
+    is_option_history_plain,
+    normalize_character_name,
+)
 
 CHAT_HISTORY_PATH = "./data/chat_history"
+_SYSTEM_HISTORY_NAMES = COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
 
 chat_history: list[Any] = []
 _history_manager = None
@@ -32,9 +43,9 @@ def getHistory() -> list[Any]:
     return get_history()
 
 
-def save_chat_history(file_path: str, history: Any) -> None:
+def save_chat_history(file_path: str, history: Any) -> bool:
     """根据提供的文件名保存聊天记录到 JSON 文件。"""
-    _get_history_manager().save_chat_history(file_path, history)
+    return _get_history_manager().save_chat_history(file_path, history)
 
 
 def load_chat_history(file_path: str) -> Any:
@@ -43,6 +54,7 @@ def load_chat_history(file_path: str) -> Any:
 
 def clear_chat_history(history_file: str, ui_queue: Any, llm_manager: Any) -> None:
     from i18n import tr
+    from sdk.messages import TTSOutputMessage
 
     _get_history_manager().clear_chat_history(history_file)
     llm_manager.clear_messages()
@@ -62,12 +74,101 @@ def copy_chat_history_to_clipboard() -> None:
     _get_history_manager().copy_chat_history_to_clipboard()
 
 
+def history_entry_plain_text(history_entry: Any) -> str:
+    text = str(history_entry or "")
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = text.replace("</p>", "\n").replace("</div>", "\n").replace("</li>", "\n")
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _history_entry_speaker(history_entry: Any) -> str:
+    match = re.search(r"<b[^>]*>(.*?)</b>", str(history_entry or ""), flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    return history_entry_plain_text(match.group(1))
+
+
+def _history_entry_role(history_entry: Any) -> str:
+    raw = str(history_entry or "")
+    if is_user_history_entry(raw):
+        return "user"
+    if is_option_history_entry(raw):
+        return "options"
+    speaker = normalize_character_name(_history_entry_speaker(raw))
+    if speaker in _SYSTEM_HISTORY_NAMES:
+        return "system"
+    if re.search(r"<b[^>]*style=['\"][^'\"]*color\s*:", raw, flags=re.IGNORECASE):
+        return "assistant"
+    return "system"
+
+
+def _history_entry_color(history_entry: Any, role: str) -> str:
+    raw = str(history_entry or "")
+    if role == "assistant":
+        match = re.search(r"<b[^>]*style=['\"][^'\"]*color\s*:\s*([^;'\"]+)", raw, flags=re.IGNORECASE)
+        if match:
+            return str(match.group(1)).strip()
+        return "#FFFFFF"
+    match = re.search(r"<p[^>]*style=['\"][^'\"]*color\s*:\s*([^;'\"]+)", raw, flags=re.IGNORECASE)
+    if match:
+        return str(match.group(1)).strip()
+    return "#84C2D5"
+
+
+def _history_entry_created_at(history_entry: Any) -> int | None:
+    raw = str(history_entry or "")
+    match = re.search(r"\bdata-created-at=['\"](\d{10,})['\"]", raw, flags=re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def serialize_chat_history_entries(history: list[Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    user_index = 0
+    for idx, history_entry in enumerate(history or []):
+        text = history_entry_plain_text(history_entry)
+        if not text:
+            continue
+        role = _history_entry_role(history_entry)
+        item: dict[str, Any] = {
+            "id": f"history-{idx}",
+            "role": role,
+            "text": text,
+        }
+        created_at = _history_entry_created_at(history_entry)
+        if created_at is not None:
+            item["createdAt"] = created_at
+        if role == "user":
+            item["revertUserIndex"] = user_index
+            user_index += 1
+        result.append(item)
+    return result
+
+
+def history_entry_stage_payload(history_entry: Any) -> dict[str, Any]:
+    raw = str(history_entry or "")
+    role = _history_entry_role(raw)
+    return {
+        "color": _history_entry_color(raw, role),
+        "fullHtml": raw,
+        "isSystem": role != "assistant",
+        "speaker": _history_entry_speaker(raw),
+    }
+
+
 def replay_history_entry(window: Any, history_entry: str) -> None:
     """回放一条历史记录。若为选项则重新显示选项。"""
     if not history_entry:
         return
 
-    plain_text = re.sub(r"<[^>]+>", "", history_entry).strip()
+    plain_text = history_entry_plain_text(history_entry)
     name = ""
     content = plain_text
     if "：" in plain_text:

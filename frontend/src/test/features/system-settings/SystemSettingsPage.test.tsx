@@ -8,6 +8,9 @@ import { AppStateProvider } from "../../../shared/app-state/AppState";
 import { FileBrowserProvider, ToastProvider } from "../../../shared/ui";
 
 const mockGetAppConfig = vi.fn();
+const mockDetectNetworkProxy = vi.fn();
+const mockListChatThemes = vi.fn();
+const mockSetActiveChatTheme = vi.fn();
 const browseFiles = vi.fn();
 const desktopApi = vi.hoisted(() => ({
   browseDesktopFiles: vi.fn(),
@@ -21,8 +24,15 @@ const desktopApi = vi.hoisted(() => ({
 
 vi.mock("../../../entities/config/repository", () => ({
   configQueryKey: ["config"],
+  detectNetworkProxy: () => mockDetectNetworkProxy(),
   getAppConfig: () => mockGetAppConfig(),
   saveSystemConfig: vi.fn(),
+}));
+
+vi.mock("../../../entities/chat/repository", () => ({
+  chatThemeQueryKey: ["chat", "themes"],
+  listChatThemes: () => mockListChatThemes(),
+  setActiveChatTheme: (id: string) => mockSetActiveChatTheme(id),
 }));
 
 vi.mock("../../../shared/desktop/desktopApi", () => desktopApi);
@@ -46,7 +56,7 @@ function renderPage() {
   );
 }
 
-function mockSystemConfig() {
+function mockSystemConfig(systemOverrides: Record<string, unknown> = {}) {
   return {
     system_config: {
       asr_language: "",
@@ -54,6 +64,11 @@ function mockSystemConfig() {
       asr_whisper_compute_type: "",
       asr_whisper_device: "auto",
       asr_whisper_model_size: "base",
+      chat_ui_runtime_mode: "react",
+      chat_ui_theme_id: "windborne-adventure",
+      chat_ui_theme_path: "",
+      react_chat_fork_experimental_enabled: false,
+      react_chat_flowchart_experimental_enabled: false,
       font_pixel_size: 0,
       height: 0,
       live_room_id: "",
@@ -63,6 +78,10 @@ function mockSystemConfig() {
       huggingface_cache_dir: "./data/cache/huggingface",
       github_mirror_url: "",
       pypi_mirror_url: "",
+      network_proxy_enabled: false,
+      http_proxy_url: "",
+      https_proxy_url: "",
+      socks5_proxy_url: "",
       settings_window_height: 0,
       settings_window_width: 0,
       splash_duration: 75,
@@ -70,6 +89,7 @@ function mockSystemConfig() {
       ui_language: "zh_CN",
       voice_language: "ja",
       width: 0,
+      ...systemOverrides,
     },
   };
 }
@@ -111,6 +131,20 @@ describe("SystemSettingsPage", () => {
       parent: "/",
       roots: [{ label: "Temp", path: "/tmp" }],
     });
+    mockListChatThemes.mockResolvedValue([
+      {
+        id: "windborne-adventure",
+        name: { en: "Windborne Adventure", zh_CN: "风旅冒险" },
+        source: "builtin",
+      },
+    ]);
+    mockSetActiveChatTheme.mockResolvedValue(undefined);
+    mockDetectNetworkProxy.mockResolvedValue({
+      http_proxy_url: "",
+      https_proxy_url: "",
+      socks5_proxy_url: "",
+      source: "",
+    });
   });
 
   it("shows error state", async () => {
@@ -123,8 +157,59 @@ describe("SystemSettingsPage", () => {
     mockGetAppConfig.mockResolvedValue(mockSystemConfig());
     renderPage();
     expect(await screen.findByText("程序设置")).toBeInTheDocument();
+    const themeSelect = await screen.findByRole("combobox", { name: "聊天主题" });
+    await waitFor(() => expect(themeSelect).toHaveTextContent("风旅冒险 · 内置"));
+    fireEvent.click(themeSelect);
+    expect(await screen.findByRole("option", { name: "风旅冒险 · 内置" })).toBeInTheDocument();
+    const uiHeading = screen.getByRole("heading", { name: "界面" });
+    const themeHeading = screen.getByRole("heading", { name: "聊天主题" });
+    const proxyHeading = screen.getByRole("heading", { name: "系统代理" });
     expect(screen.getByText("镜像源")).toBeInTheDocument();
+    expect(screen.getByText("系统代理")).toBeInTheDocument();
+    expect(uiHeading.compareDocumentPosition(themeHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(themeHeading.compareDocumentPosition(proxyHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。")).toBeInTheDocument();
+    expect(screen.getByLabelText("启用代理配置")).toBeInTheDocument();
+    expect(screen.getByLabelText("HTTP 代理")).toBeInTheDocument();
+    expect(screen.getByLabelText("HTTPS 代理")).toBeInTheDocument();
+    expect(screen.getByLabelText("SOCKS5 代理")).toBeInTheDocument();
     expect(screen.queryByText("桌面运行环境")).not.toBeInTheDocument();
+  });
+
+  it("disables React Stage theme selection for the native chat UI", async () => {
+    mockGetAppConfig.mockResolvedValue(
+      mockSystemConfig({
+        chat_ui_runtime_mode: "native",
+      }),
+    );
+    renderPage();
+
+    const themeSelect = await screen.findByRole("combobox", { name: "聊天主题" });
+
+    expect(themeSelect).toBeDisabled();
+    expect(screen.getByText("这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。")).toBeInTheDocument();
+  });
+
+  it("detects the current system proxy into the draft", async () => {
+    mockGetAppConfig.mockResolvedValue(mockSystemConfig());
+    mockDetectNetworkProxy.mockResolvedValue({
+      http_proxy_url: "http://127.0.0.1:7890",
+      https_proxy_url: "http://127.0.0.1:7890",
+      socks5_proxy_url: "socks5://127.0.0.1:7891",
+      source: "environment",
+    });
+    renderPage();
+
+    await screen.findByText("程序设置");
+    expect(screen.getByLabelText("HTTP 代理")).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "检测当前系统代理" }));
+
+    await waitFor(() => expect(mockDetectNetworkProxy).toHaveBeenCalled());
+    expect(screen.getByLabelText("启用代理配置")).toBeChecked();
+    expect(screen.getByLabelText("HTTP 代理")).toHaveValue("http://127.0.0.1:7890");
+    expect(screen.getByLabelText("HTTPS 代理")).toHaveValue("http://127.0.0.1:7890");
+    expect(screen.getByLabelText("SOCKS5 代理")).toHaveValue("socks5://127.0.0.1:7891");
   });
 
   it("shows only the active desktop runtime and installs optional runtime profiles", async () => {

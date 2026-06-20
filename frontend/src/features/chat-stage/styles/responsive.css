@@ -1,0 +1,204 @@
+@media (max-width: 860px) {
+  .chat-stage {
+    min-height: 560px;
+    --stage-input-height: 112px;
+    --stage-safe-x: 12px;
+    --stage-safe-top: 12px;
+    --chat-input-grid-template-columns: minmax(0, 1fr) 38px 46px;
+    --chat-send-label-display: none;
+    --chat-send-min-width: 46px;
+    --chat-send-padding: 0;
+  }
+
+  .sprite-layer {
+    bottom: calc(var(--stage-control-stack-height) + 64px);
+    gap: 8px;
+  }
+
+  .sprite-layer__figure {
+    height: min(62vh, 620px);
+    max-width: 66vw;
+  }
+
+  .sprite-layer[data-count="1"] .sprite-layer__figure {
+    max-width: 78vw;
+  }
+
+  .dialog-stack {
+    bottom: max(12px, var(--chat-dialog-stack-bottom));
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+  }
+
+  .dialog-toolbar-layer {
+    width: var(--chat-dialog-toolbar-layer-width);
+    max-width: min(var(--chat-dialog-toolbar-layer-max-width), calc(100vw - 24px));
+  }
+
+  .dialog-layer {
+    min-height: 104px;
+    padding: 15px 16px;
+  }
+
+  .dialog-layer__text {
+    max-height: 24vh;
+    font-size: 15px;
+    line-height: 1.68;
+  }
+
+  .options-layer {
+    top: auto;
+    right: var(--chat-options-mobile-right);
+    bottom: calc(var(--stage-control-stack-height) + 196px);
+    left: var(--chat-options-mobile-left);
+    width: var(--chat-options-mobile-width);
+    min-width: var(--chat-options-mobile-min-width);
+    max-width: var(--chat-options-mobile-max-width);
+    transform: var(--chat-options-mobile-transform);
+  }
+
+  .dialog-stage-controls {
+    max-width: 100%;
+  }
+
+  .dialog-stage-controls__rail {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dialog-stage-controls__surface {
+    max-width: 100%;
+  }
+
+  .dialog-stage-controls__rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dialog-stage-controls__button.button {
+    padding: 0 9px;
+  }
+
+  .dialog-stage-controls__button .button__label {
+    max-width: 58px;
+  }
+
+  .input-layer {
+    width: min(var(--chat-input-max-width), calc(100vw - 24px));
+    min-height: var(--stage-input-height);
+    grid-template-columns: var(--chat-input-grid-template-columns);
+    grid-template-rows: minmax(var(--chat-input-textarea-min-height), 1fr);
+  }
+
+  .input-layer__input {
+    grid-column: 1;
+    min-height: var(--chat-input-textarea-min-height);
+  }
+
+  .input-layer[data-layout="pill"] .input-layer__input {
+    grid-column: 2;
+  }
+
+  .input-layer__voice-stack {
+    grid-column: 2;
+    width: 38px;
+    min-width: 38px;
+    min-height: var(--chat-input-textarea-min-height);
+  }
+
+  .input-layer .input-layer__send.button--primary {
+    grid-column: 3;
+    min-width: var(--chat-send-min-width);
+    padding: var(--chat-send-padding);
+  }
+
+  .top-stage-tools {
+    top: 12px;
+    right: 12px;
+    max-width: calc(100vw - 24px);
+  }
+
+  .top-stage-tools__status {
+    max-width: 170px;
+  }
+
+  .chat-config-dialog {
+    width: calc(100vw - 24px);
+    max-height: min(82vh, 760px);
+  }
+
+  .chat-config-dialog__voice-select {
+    width: 100%;
+  }
+
+  .chat-stage__busy {
+    top: 58px;
+  }
+
+  .chat-stage__notification {
+    top: 58px;
+    bottom: auto;
+    border-radius: 8px;
+  }
+
+  .chat-stage[data-token-visible="true"] .chat-stage__busy,
+  .chat-stage[data-token-visible="true"] .chat-stage__notification {
+    top: 180px;
+  }
+
+  .token-usage-layer {
+    top: 66px;
+    right: 12px;
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+  }
+
+  .chat-history-dialog {
+    width: calc(100vw - 24px);
+  }
+
+  .chat-branch-dialog {
+    width: calc(100vw - 24px);
+  }
+
+  .chat-branch-tree__node {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .chat-branch-tree__actions {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 520px) {
+  .chat-stage {
+    min-height: 560px;
+  }
+
+  .top-stage-tools {
+    max-width: calc(100vw - 24px);
+  }
+
+  .top-stage-tools__status {
+    min-width: 0;
+    max-width: 132px;
+  }
+
+  .dialog-stage-controls .button__label {
+    max-width: 64px;
+  }
+
+  .chat-config-dialog__row {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-config-dialog__range-value {
+    text-align: left;
+  }
+
+  .token-usage-layer {
+    display: grid;
+  }
+}

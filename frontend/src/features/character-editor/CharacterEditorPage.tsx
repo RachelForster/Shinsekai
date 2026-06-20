@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WheelEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
   charactersQueryKey,
   deleteCharacter,
@@ -52,8 +53,10 @@ export function CharacterEditorPage() {
   const { showToast } = useToast();
   const { t } = useI18n();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const data = charactersQuery.data ?? [];
   const isLoading = charactersQuery.isLoading;
+  const voiceReferenceReadOnly = configQuery.data?.api_config?.tts_provider === "kaggle-gpt-sovits";
   const [selectedName, setSelectedName] = useState("");
   const [draft, setDraft] = useState<Character>(createCharacter());
   const [isCreating, setIsCreating] = useState(false);
@@ -913,7 +916,12 @@ export function CharacterEditorPage() {
           />
         </div>
 
-        <CharacterVoiceSection draft={draft} id="character-voice" onChange={update} />
+        <CharacterVoiceSection
+          draft={draft}
+          id="character-voice"
+          onChange={update}
+          voiceReferenceReadOnly={voiceReferenceReadOnly}
+        />
 
         <CharacterSpritesSection
           draft={draft}

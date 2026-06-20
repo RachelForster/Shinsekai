@@ -1,11 +1,15 @@
 """Unit tests for LLMManager — message management, compact, tool calling."""
 
 import json
+from types import SimpleNamespace
+
 import pytest
 
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.compact_manager import CompactManager
+from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
 from llm.tools.tool_manager import ToolManager
+from sdk.register import PluginCapabilityRegistry
 from test.mocks import MockLLMAdapter
 
 
@@ -40,6 +44,67 @@ class TestLLMManagerMessageManagement:
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
         mgr.add_message("assistant", "content", tool_calls=[{"id": "1", "type": "function", "function": {"name": "test", "arguments": "{}"}}])
         assert "tool_calls" in mgr.messages[-1]
+
+    def test_add_message_dispatches_message_added_after_history_append(self, mock_llm_adapter):
+        dispatcher = PluginHookDispatcher()
+        calls: list[MessageAddedContext] = []
+        dispatcher.register_message_added(lambda context: calls.append(context))
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+
+        mgr.add_message("user", "Hello")
+
+        assert len(calls) == 1
+        assert calls[0].role == "user"
+        assert calls[0].message == {"role": "user", "content": "Hello"}
+        assert calls[0].message is not mgr.messages[-1]
+        assert calls[0].messages == mgr.messages
+        assert calls[0].messages is not mgr.messages
+
+    def test_message_added_hook_receives_snapshot_not_live_history(self, mock_llm_adapter):
+        dispatcher = PluginHookDispatcher()
+
+        def mutate_snapshot(context: MessageAddedContext) -> None:
+            context.message["content"] = "changed by hook"
+            context.messages.clear()
+
+        dispatcher.register_message_added(mutate_snapshot)
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+
+        mgr.add_message("user", "Hello")
+
+        assert mgr.messages == [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "Hello"},
+        ]
+
+    def test_add_message_skips_snapshot_copy_without_message_added_hooks(
+        self,
+        mock_llm_adapter,
+        monkeypatch,
+    ):
+        dispatcher = PluginHookDispatcher()
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+
+        def fail_deepcopy(_value):
+            raise AssertionError("deepcopy should not run without message_added hooks")
+
+        monkeypatch.setattr("llm.llm_manager.copy.deepcopy", fail_deepcopy)
+
+        mgr.add_message("user", "Hello")
+
+        assert mgr.messages[-1] == {"role": "user", "content": "Hello"}
 
     def test_clear_messages_keeps_system(self, mock_llm_adapter):
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="Keep me")
@@ -264,6 +329,81 @@ class TestLLMManagerCompact:
         assert result[0]["role"] == "system"
         assert len(result) < len(messages)
 
+    def test_compact_messages_calls_registered_compact_hooks_with_snapshot(self, mock_llm_adapter):
+        registry = PluginCapabilityRegistry()
+        hook_calls = []
+        hook_objects = []
+
+        def before_compact(messages):
+            hook_calls.append([dict(message) for message in messages])
+            hook_objects.append(messages)
+            messages[0]["content"] = "changed by legacy hook"
+            messages.clear()
+
+        registry.register_compact_hook(before_compact)
+        mock_llm_adapter.responses = ["A summary written after plugin hook."]
+        cm = CompactManager(
+            mock_llm_adapter,
+            max_tokens=10000,
+            compact_threshold=0.5,
+            recent_message_limit=1,
+            hook_dispatcher=registry.hook_dispatcher,
+        )
+        messages = [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "old question"},
+            {"role": "assistant", "content": "old answer"},
+            {"role": "user", "content": "latest"},
+        ]
+
+        result = cm.compact_messages(messages)
+
+        assert hook_calls == [[
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "old question"},
+            {"role": "assistant", "content": "old answer"},
+            {"role": "user", "content": "latest"},
+        ]]
+        assert hook_objects[0] is not messages
+        assert messages == [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "old question"},
+            {"role": "assistant", "content": "old answer"},
+            {"role": "user", "content": "latest"},
+        ]
+        assert "A summary written after plugin hook." in result[1]["content"]
+
+    def test_compact_messages_skips_snapshot_copy_without_before_compact_hooks(
+        self,
+        mock_llm_adapter,
+        monkeypatch,
+    ):
+        dispatcher = PluginHookDispatcher()
+
+        def fail_deepcopy(_value):
+            raise AssertionError("deepcopy should not run without before_compact hooks")
+
+        monkeypatch.setattr("llm.compact_manager.copy.deepcopy", fail_deepcopy)
+        mock_llm_adapter.responses = ["A summary written without plugin hooks."]
+        cm = CompactManager(
+            mock_llm_adapter,
+            max_tokens=10000,
+            compact_threshold=0.5,
+            recent_message_limit=1,
+            hook_dispatcher=dispatcher,
+        )
+        messages = [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "old question"},
+            {"role": "assistant", "content": "old answer"},
+            {"role": "user", "content": "latest"},
+        ]
+
+        result = cm.compact_messages(messages)
+
+        assert result[0]["role"] == "system"
+        assert "A summary written without plugin hooks." in result[1]["content"]
+
     def test_add_message_persists_same_length_compaction(self, mock_llm_adapter):
         mock_llm_adapter.responses = ["Condensed old turn."]
         mgr = LLMManager(
@@ -334,6 +474,152 @@ class TestLLMManagerCompact:
         mgr.chat("Hello", stream=False, include_local_time=False)
         user_msg = mgr.messages[-2]["content"]
         assert user_msg == "Hello"
+
+    def test_before_chat_hook_can_inject_sync_request_without_persisting(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Response."]
+        dispatcher = PluginHookDispatcher()
+
+        def inject_context(context: BeforeChatContext) -> None:
+            context.messages.append({"role": "system", "content": "temporary plugin context"})
+            context.generation_kwargs["temperature"] = 0.25
+
+        dispatcher.register_before_chat(inject_context)
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+
+        mgr.chat("Hello", stream=False, include_local_time=False)
+
+        request = mock_llm_adapter.call_history[0]
+        assert request["messages"][-1] == {"role": "system", "content": "temporary plugin context"}
+        assert request["kwargs"]["temperature"] == 0.25
+        assert mgr.messages[-1]["role"] == "assistant"
+        assert all(msg.get("content") != "temporary plugin context" for msg in mgr.messages)
+
+    def test_before_chat_hook_mutates_request_copy_without_persisting(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Response."]
+        dispatcher = PluginHookDispatcher()
+
+        def mutate_context(context: BeforeChatContext) -> None:
+            context.messages[0]["content"] = "temporary mutated system"
+
+        dispatcher.register_before_chat(mutate_context)
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+
+        mgr.chat("Hello", stream=False, include_local_time=False)
+
+        request = mock_llm_adapter.call_history[0]
+        assert request["messages"][0]["content"] == "temporary mutated system"
+        assert mgr.messages[0]["content"] == "S"
+
+    def test_before_chat_hook_mutates_tool_and_kwargs_copy_without_persisting(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Response."]
+        tm = ToolManager()
+        tool_name = "unit_hook_snapshot_tool"
+
+        def probe_tool(value: str) -> str:
+            return value
+
+        tm.register_function(probe_tool, name=tool_name, group="default")
+        dispatcher = PluginHookDispatcher()
+
+        def mutate_context(context: BeforeChatContext) -> None:
+            assert context.tools is not None
+            target = next(
+                tool
+                for tool in context.tools
+                if tool.get("function", {}).get("name") == tool_name
+            )
+            target["function"]["parameters"]["properties"]["value"]["description"] = (
+                "changed by hook"
+            )
+            context.generation_kwargs["metadata"]["source"] = "changed by hook"
+            context.generation_kwargs["extra_body"]["trace"]["id"] = "changed by hook"
+
+        dispatcher.register_before_chat(mutate_context)
+        call_kwargs = {"extra_body": {"trace": {"id": "original call"}}}
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            generation_config={"metadata": {"source": "original config"}},
+            hook_dispatcher=dispatcher,
+        )
+
+        try:
+            mgr.chat("Hello", stream=False, include_local_time=False, **call_kwargs)
+        finally:
+            tm._drop_tool(tool_name)
+
+        request = mock_llm_adapter.call_history[0]
+        request_tool = next(
+            tool
+            for tool in request["kwargs"]["tools"]
+            if tool.get("function", {}).get("name") == tool_name
+        )
+        assert (
+            request_tool["function"]["parameters"]["properties"]["value"]["description"]
+            == "changed by hook"
+        )
+        assert request["kwargs"]["metadata"]["source"] == "changed by hook"
+        assert request["kwargs"]["extra_body"]["trace"]["id"] == "changed by hook"
+        assert mgr.generation_config == {"metadata": {"source": "original config"}}
+        assert call_kwargs == {"extra_body": {"trace": {"id": "original call"}}}
+
+    def test_before_chat_hook_can_inject_stream_request_without_persisting(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["OK"]
+        dispatcher = PluginHookDispatcher()
+        dispatcher.register_before_chat(
+            lambda context: context.messages.append(
+                {"role": "system", "content": "temporary stream context"}
+            )
+        )
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+
+        assert "".join(mgr.chat("Hello", stream=True, include_local_time=False)) == "OK"
+
+        request = mock_llm_adapter.call_history[0]
+        assert request["messages"][-1] == {"role": "system", "content": "temporary stream context"}
+        assert all(msg.get("content") != "temporary stream context" for msg in mgr.messages)
+
+    def test_before_chat_context_skips_copy_without_before_chat_hooks(
+        self,
+        mock_llm_adapter,
+        monkeypatch,
+    ):
+        dispatcher = PluginHookDispatcher()
+        mgr = LLMManager(
+            adapter=mock_llm_adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+        tools_defs = [{"type": "function", "function": {"name": "probe"}}]
+        generation_kwargs = {"metadata": {"source": "unit"}}
+
+        def fail_deepcopy(_value):
+            raise AssertionError("deepcopy should not run without before_chat hooks")
+
+        monkeypatch.setattr("llm.llm_manager.copy.deepcopy", fail_deepcopy)
+
+        context = mgr._before_chat_context(
+            stream=False,
+            tools_defs=tools_defs,
+            generation_kwargs=generation_kwargs,
+        )
+
+        assert context.messages is mgr.messages
+        assert context.tools is tools_defs
+        assert context.generation_kwargs is generation_kwargs
+        assert context.stream is False
 
 
 class TestLLMManagerToolCalling:
@@ -466,6 +752,212 @@ class TestLLMManagerToolCalling:
         list(mgr.chat("Hello", stream=True, include_local_time=False))
 
         assert mgr._active_tool_groups == ["default"]
+
+    def test_first_user_turn_limits_tool_calls_and_disables_next_round_tools(self):
+        tm = ToolManager()
+        calls = {"a": 0, "b": 0}
+
+        def first_tool() -> dict:
+            calls["a"] += 1
+            return {"ok": "a"}
+
+        def second_tool() -> dict:
+            calls["b"] += 1
+            return {"ok": "b"}
+
+        tm.register_function(first_tool, name="unit_first_turn_tool_a", group="default")
+        tm.register_function(second_tool, name="unit_first_turn_tool_b", group="default")
+
+        class TwoToolThenFinalAdapter(MockLLMAdapter):
+            def chat(self, messages, stream=False, **kwargs):
+                self.call_history.append({"messages": messages, "stream": stream, "kwargs": kwargs})
+                if len(self.call_history) == 1:
+                    return SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    content="",
+                                    reasoning_content=None,
+                                    tool_calls=[
+                                        SimpleNamespace(
+                                            id="call_a",
+                                            function=SimpleNamespace(
+                                                name="unit_first_turn_tool_a",
+                                                arguments="{}",
+                                            ),
+                                        ),
+                                        SimpleNamespace(
+                                            id="call_b",
+                                            function=SimpleNamespace(
+                                                name="unit_first_turn_tool_b",
+                                                arguments="{}",
+                                            ),
+                                        ),
+                                    ],
+                                )
+                            )
+                        ]
+                    )
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="final",
+                                reasoning_content=None,
+                                tool_calls=[],
+                            )
+                        )
+                    ]
+                )
+
+        adapter = TwoToolThenFinalAdapter()
+        mgr = LLMManager(adapter=adapter, user_template="S")
+
+        result = mgr.chat("Hello", stream=False, include_local_time=False)
+
+        assert result == "final"
+        assert calls == {"a": 1, "b": 0}
+        assert len(adapter.call_history) == 2
+        assert adapter.call_history[0]["kwargs"]["tools"]
+        assert adapter.call_history[1]["kwargs"]["tools"] is None
+        skipped = [
+            json.loads(m["content"])
+            for m in mgr.messages
+            if m.get("role") == "tool" and m.get("name") == "unit_first_turn_tool_b"
+        ]
+        assert skipped
+        assert skipped[0]["reason"] == "first_turn_tool_budget_exhausted"
+
+    def test_repeated_failed_tool_call_is_skipped_within_same_turn(self):
+        tm = ToolManager()
+        calls = {"fail": 0}
+
+        def failing_tool() -> dict:
+            calls["fail"] += 1
+            return {"error": "boom"}
+
+        tm.register_function(failing_tool, name="unit_repeat_fail_tool", group="default")
+
+        class RepeatFailedToolAdapter(MockLLMAdapter):
+            def chat(self, messages, stream=False, **kwargs):
+                self.call_history.append({"messages": messages, "stream": stream, "kwargs": kwargs})
+                if len(self.call_history) == 1:
+                    return SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    content="",
+                                    reasoning_content=None,
+                                    tool_calls=[
+                                        SimpleNamespace(
+                                            id="call_1",
+                                            function=SimpleNamespace(
+                                                name="unit_repeat_fail_tool",
+                                                arguments="{}",
+                                            ),
+                                        ),
+                                        SimpleNamespace(
+                                            id="call_2",
+                                            function=SimpleNamespace(
+                                                name="unit_repeat_fail_tool",
+                                                arguments="{}",
+                                            ),
+                                        ),
+                                    ],
+                                )
+                            )
+                        ]
+                    )
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="done",
+                                reasoning_content=None,
+                                tool_calls=[],
+                            )
+                        )
+                    ]
+                )
+
+        adapter = RepeatFailedToolAdapter()
+        mgr = LLMManager(adapter=adapter, user_template="S", first_turn_tool_call_limit=10)
+
+        result = mgr.chat("Hello", stream=False, include_local_time=False)
+
+        assert result == "done"
+        assert calls["fail"] == 1
+        tool_results = [
+            json.loads(m["content"])
+            for m in mgr.messages
+            if m.get("role") == "tool" and m.get("name") == "unit_repeat_fail_tool"
+        ]
+        assert tool_results[0]["error"] == "boom"
+        assert tool_results[1]["reason"] == "tool_failed_earlier_in_turn"
+
+    def test_tool_cooldown_filters_next_round_tool_definitions(self):
+        tm = ToolManager()
+
+        def failing_vision_tool() -> dict:
+            return {"error": "screen capture failed"}
+
+        def default_probe() -> dict:
+            return {"ok": True}
+
+        tm.register_function(failing_vision_tool, name="unit_vision_fail_tool", group="vision")
+        tm.register_function(default_probe, name="unit_default_probe_tool", group="default")
+
+        class VisionFailThenFinalAdapter(MockLLMAdapter):
+            def chat(self, messages, stream=False, **kwargs):
+                self.call_history.append({"messages": messages, "stream": stream, "kwargs": kwargs})
+                if len(self.call_history) == 1:
+                    return SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    content="",
+                                    reasoning_content=None,
+                                    tool_calls=[
+                                        SimpleNamespace(
+                                            id="call_vision",
+                                            function=SimpleNamespace(
+                                                name="unit_vision_fail_tool",
+                                                arguments="{}",
+                                            ),
+                                        )
+                                    ],
+                                )
+                            )
+                        ]
+                    )
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="done",
+                                reasoning_content=None,
+                                tool_calls=[],
+                            )
+                        )
+                    ]
+                )
+
+        adapter = VisionFailThenFinalAdapter()
+        mgr = LLMManager(adapter=adapter, user_template="S", first_turn_tool_call_limit=10)
+        mgr.tool_executor.clear_cooldown("vision")
+        mgr._active_tool_groups = ["vision", "default"]
+
+        try:
+            result = mgr.chat("Hello", stream=False, include_local_time=False)
+
+            assert result == "done"
+            assert mgr.tool_executor.is_in_cooldown("vision")
+            second_tools = adapter.call_history[1]["kwargs"]["tools"] or []
+            second_tool_names = {tool["function"]["name"] for tool in second_tools}
+            assert "unit_vision_fail_tool" not in second_tool_names
+            assert "unit_default_probe_tool" in second_tool_names
+        finally:
+            mgr.tool_executor.clear_cooldown("vision")
 
     def test_register_mcp_tools(self):
         tm = ToolManager()

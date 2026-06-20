@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from queue import Queue
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -160,19 +162,118 @@ def test_tts_worker_exception_path_uses_original_put_data_fallback(
     assert tts_queue.unfinished_tasks == 0
 
 
-def test_ui_worker_skip_speech_is_noop_when_queue_empty() -> None:
-    audio_path_queue = Queue()
+def test_tts_worker_start_clears_previous_cancel_state(monkeypatch) -> None:
+    worker = TTSWorker(Queue(), Queue())
+    worker._cancel_event.set()
+    starts = []
+
+    monkeypatch.setattr(
+        "core.runtime.workers.QThreadDagNode.start",
+        lambda self: starts.append(self),
+    )
+
+    worker.start()
+
+    assert not worker._cancel_event.is_set()
+    assert starts == [worker]
+
+
+def test_tts_worker_drops_dispatch_output_after_cancel() -> None:
+    audio_path_queue = CountingQueue()
     _make_app_runtime(audio_path_queue=audio_path_queue)
+    worker = TTSWorker(CountingQueue(), audio_path_queue)
+    started = threading.Event()
+    release = threading.Event()
+    attempted_emit = threading.Event()
+
+    def dispatch(_item):
+        started.set()
+        assert release.wait(timeout=1)
+        get_app_runtime().audio_path_queue.put(
+            TTSOutputMessage(
+                audio_path="late.wav",
+                name="Alice",
+                text="late",
+                asset_id="-1",
+            )
+        )
+        attempted_emit.set()
+
+    worker.tts_message_dispatcher = SimpleNamespace(dispatch=dispatch)
+    runner = threading.Thread(
+        target=worker._dispatch_with_cancel,
+        args=(LLMDialogMessage(name="Alice", text="hello", asset_id="-1"),),
+    )
+
+    runner.start()
+    assert started.wait(timeout=1)
+    worker._cancel_event.set()
+    release.set()
+    assert attempted_emit.wait(timeout=1)
+    runner.join(timeout=1)
+
+    assert not runner.is_alive()
+    assert audio_path_queue.empty()
+    for _ in range(20):
+        if get_app_runtime().audio_path_queue is audio_path_queue:
+            break
+        time.sleep(0.01)
+    assert get_app_runtime().audio_path_queue is audio_path_queue
+
+
+def test_ui_worker_skip_speech_is_noop_when_no_dialog_or_audio_is_active() -> None:
+    audio_path_queue = Queue()
+    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
     worker = UIWorker(audio_path_queue)
     worker.task_done_requested = FakeEvent()
-    worker.current_audio_path = "current.wav"
+    worker.current_audio_path = None
+    runtime.ui_playback.current_audio_path = None
     worker.dialog_channel = MagicMock()
+    worker.dialog_channel.get_busy.return_value = False
+    worker._dialog_active = False
 
     worker.skip_speech()
 
     worker.dialog_channel.stop.assert_not_called()
-    assert worker.current_audio_path == "current.wav"
+    runtime.ui_update_manager.post_tts_skip.assert_not_called()
     assert worker.task_done_requested.set_calls == 0
+
+
+def test_ui_worker_skip_speech_stops_active_audio_and_emits_tts_skip() -> None:
+    audio_path_queue = Queue()
+    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
+    worker = UIWorker(audio_path_queue)
+    worker.task_done_requested = FakeEvent()
+    worker.current_audio_path = "current.wav"
+    runtime.ui_playback.current_audio_path = "current.wav"
+    worker.dialog_channel = MagicMock()
+    worker.dialog_channel.get_busy.return_value = True
+
+    worker.skip_speech()
+
+    worker.dialog_channel.stop.assert_called_once_with()
+    assert worker.current_audio_path is None
+    assert runtime.ui_playback.current_audio_path is None
+    runtime.ui_update_manager.post_tts_skip.assert_called_once_with()
+    assert worker.task_done_requested.set_calls == 1
+
+
+def test_ui_worker_skip_speech_advances_waiting_dialog_without_emitting_tts_skip() -> None:
+    audio_path_queue = Queue()
+    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
+    worker = UIWorker(audio_path_queue)
+    worker.task_done_requested = FakeEvent()
+    worker.current_audio_path = None
+    runtime.ui_playback.current_audio_path = None
+    worker.dialog_channel = MagicMock()
+    worker.dialog_channel.get_busy.return_value = False
+    worker._dialog_active = True
+
+    worker.skip_speech()
+
+    worker.dialog_channel.stop.assert_not_called()
+    runtime.ui_update_manager.post_tts_skip.assert_not_called()
+    assert worker.task_done_requested.set_calls == 1
 
 
 def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(

@@ -2,7 +2,15 @@ import requests
 import threading
 import queue
 import subprocess
-from tts.tts_adapter import TTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter, CosyVoiceAdapter, GenieTTSAdapter
+import time
+from tts.tts_adapter import (
+    TTSAdapter,
+    GPTSoVitsAdapter,
+    KaggleGPTSoVitsAdapter,
+    IndexTTSAdapter,
+    CosyVoiceAdapter,
+    GenieTTSAdapter,
+)
 from pathlib import Path
 
 class TTSAdapterFactory:
@@ -11,6 +19,7 @@ class TTSAdapterFactory:
     """
     _adapters = {
         'gpt-sovits': GPTSoVitsAdapter,
+        'kaggle-gpt-sovits': KaggleGPTSoVitsAdapter,
         'genie-tts': GenieTTSAdapter,
         'index-tts': IndexTTSAdapter,
         'cosyvoice': CosyVoiceAdapter,
@@ -67,7 +76,19 @@ class TTSManager:
         """Allows switching the TTS adapter at runtime."""
         self.tts_adapter = adapter
 
-    def generate_tts(self, text, text_processor=None, ref_audio_path=None, prompt_text=None, prompt_lang=None, character_name=None, speed_factor=None):
+    @staticmethod
+    def _is_valid_audio_file(path: str | Path | None) -> bool:
+        if not path:
+            return False
+        try:
+            p = Path(path)
+            return p.is_file() and p.stat().st_size > 0
+        except OSError:
+            return False
+
+    def generate_tts(self, text, text_processor=None, ref_audio_path=None,
+                     prompt_text=None, prompt_lang=None, character_name=None,
+                     speed_factor=None):
         """Generates TTS audio using the currently set adapter."""
         print("Generating speech")
         
@@ -86,20 +107,32 @@ class TTSManager:
             print("No reference audio provided")
             return ''
 
-        # The adapter handles the specifics of the TTS generation
-        file_path = str(self.audio_cache_dir / f"{self.index % self.cache_num}.wav")
+        # 最终文件路径
+        final_path = self.audio_cache_dir / f"{self.index % self.cache_num}.wav"
         self.index += 1
-        
-        return self.tts_adapter.generate_speech(
-            text=text,
-            file_path=file_path,
-            ref_audio_path=ref_audio_path,
-            prompt_text=prompt_text,
-            prompt_lang=prompt_lang,
-            text_lang=self.voice_language,
-            character_name=character_name,
-            speed_factor=speed_factor,
-        )
+        tmp_path = final_path.with_suffix(final_path.suffix + ".part")
+
+        attempts = 2
+        for attempt in range(1, attempts + 1):
+            tmp_path.unlink(missing_ok=True)
+            result = self.tts_adapter.generate_speech(
+                text=text,
+                file_path=str(tmp_path),
+                ref_audio_path=ref_audio_path,
+                prompt_text=prompt_text,
+                prompt_lang=prompt_lang,
+                text_lang=self.voice_language,
+                character_name=character_name,
+                speed_factor=speed_factor,
+            )
+            if result and self._is_valid_audio_file(tmp_path):
+                tmp_path.replace(final_path)
+                return str(final_path)
+            print(f"TTS generation returned no usable audio (attempt {attempt}/{attempts}).")
+            tmp_path.unlink(missing_ok=True)
+            if attempt < attempts:
+                time.sleep(0.35 * attempt)
+        return ''
 
     def set_language(self, language):
         """Sets the voice language."""

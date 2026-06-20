@@ -36,9 +36,40 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
 | `register_workflow`             | Workflow with optional output contract/schema              |
 | `register_output_contract_patch` | Patch an LLM output contract (fields, requirements, …)     |
+| `register_before_compact_hook`  | Lifecycle hook before LLM history compaction summary       |
+| `register_message_added_hook`   | Lifecycle hook after a message is appended to history      |
+| `register_before_chat_hook`     | Lifecycle hook before an adapter chat request is sent      |
 
 
 **Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` / `FrontendPageContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
+
+---
+
+### Lifecycle hooks
+
+Lifecycle hooks are registered through `PluginCapabilityRegistry` during `initialize`.
+
+```python
+from sdk.hooks import BeforeChatContext, BeforeCompactContext, MessageAddedContext
+from sdk.register import PluginCapabilityRegistry
+
+
+def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> None:
+    def before_compact(context: BeforeCompactContext) -> None:
+        print(len(context.older_messages))
+
+    def message_added(context: MessageAddedContext) -> None:
+        print(context.role, context.message)
+
+    def before_chat(context: BeforeChatContext) -> None:
+        context.messages.append({"role": "system", "content": "Temporary plugin context."})
+
+    register.register_before_compact_hook(before_compact)
+    register.register_message_added_hook(message_added)
+    register.register_before_chat_hook(before_chat)
+```
+
+`before_compact` and `message_added` are observation hooks. They receive snapshots of the host state; mutating the context does not modify the live conversation history. `before_chat` may modify the request-local `messages`, `tools`, and `generation_kwargs`; those changes are sent to the adapter but are not written back to `LLMManager.messages`.
 
 ---
 

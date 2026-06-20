@@ -64,6 +64,34 @@ def test_scan_local_plugin_infers_metadata_and_sanitizes_hyphenated_entry():
     assert result["tags"] == []
 
 
+def test_scan_local_plugin_tolerates_duplicate_git_config_options():
+    with TemporaryDirectory(prefix="plugin-publisher-", dir=Path.cwd()) as temp_dir:
+        plugin_root = Path(temp_dir) / "demo-plugin"
+        plugin_root.mkdir()
+        (plugin_root / "plugin.py").write_text(
+            "class DemoPublisherPlugin(PluginBase):\n    pass\n",
+            encoding="utf-8",
+        )
+        git_dir = plugin_root / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text(
+            "\n".join(
+                [
+                    '[remote "origin"]',
+                    "    url = git@github.com:sample-owner/demo-plugin.git",
+                    '[branch "feat/refactor-chat-ui"]',
+                    "    vscode-merge-base = upstream/main",
+                    "    vscode-merge-base = upstream/main",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        result = scan_local_plugin(plugin_root)
+
+    assert result["repo"] == "https://github.com/sample-owner/demo-plugin"
+
+
 def test_scan_local_plugin_normalizes_root_directory_name_to_lowercase_entry():
     with TemporaryDirectory(prefix="plugin-publisher-", dir=Path.cwd()) as temp_dir:
         plugin_root = Path(temp_dir) / "Shinsekai-Plugin-Market"

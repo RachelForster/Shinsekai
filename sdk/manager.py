@@ -15,6 +15,7 @@ import yaml
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
 
+from sdk.hooks import PluginHookDispatcher
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry, PluginDiscoveryRegistry
@@ -67,6 +68,7 @@ class PluginManager:
             Path(plugin_data_root) if plugin_data_root is not None else Path("data/plugins")
         )
         self._discovery = discovery if discovery is not None else PluginDiscoveryRegistry()
+        self._hook_dispatcher = PluginHookDispatcher()
         self._capabilities: PluginCapabilityRegistry | None = None
         self._instances: list[PluginBase] = []
         self._instantiated = False
@@ -81,6 +83,10 @@ class PluginManager:
     def capabilities(self) -> PluginCapabilityRegistry | None:
         """Last capability registry filled by :meth:`load_own_config_all`; ``None`` until then."""
         return self._capabilities
+
+    @property
+    def hook_dispatcher(self) -> PluginHookDispatcher:
+        return self._hook_dispatcher
 
     @property
     def plugins(self) -> Sequence[PluginBase]:
@@ -152,7 +158,10 @@ class PluginManager:
         if self._initialized and app_config is None:
             return
         self._plugin_data_root.mkdir(parents=True, exist_ok=True)
-        self._capabilities = PluginCapabilityRegistry()
+        self._hook_dispatcher.clear()
+        self._capabilities = PluginCapabilityRegistry(
+            hook_dispatcher=self._hook_dispatcher,
+        )
         host = PluginHostContext.from_config_manager(app_config)
 
         for plugin in self._instances:

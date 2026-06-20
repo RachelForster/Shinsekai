@@ -48,6 +48,21 @@ class TestToolManagerGroups:
         tm.register_function(my_func, name="default_tool")
         assert tm.get_tool_group("default_tool") == "default"
 
+    def test_moondream_tool_names_default_to_vision_group(self):
+        tm = _reset_tm()
+
+        def query():
+            return {"ok": True}
+
+        def ocr():
+            return {"ok": True}
+
+        tm.register_function(query, name="moondream_query_screen")
+        tm.register_function(ocr, name="moondream_ocr_screen")
+
+        assert tm.get_tool_group("moondream_query_screen") == "vision"
+        assert tm.get_tool_group("moondream_ocr_screen") == "vision"
+
     def test_get_definitions_all(self):
         tm = _reset_tm()
 

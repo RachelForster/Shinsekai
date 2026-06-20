@@ -19,6 +19,7 @@ Quick reference
 - :mod:`sdk.tool_registry` — LLM 工具注册 (@tool 装饰器)
 - :mod:`sdk.register` — 能力注册表 (PluginCapabilityRegistry)
 - :mod:`sdk.manager` — 插件管理器 (PluginManager)
+- :mod:`sdk.chat_ui_theme` — chat_ui 主题 mod 校验/打包 (validate_manifest, pack_theme; CLI: ``python -m sdk.chat_ui_theme``)
 """
 
 from __future__ import annotations
@@ -29,6 +30,8 @@ from typing import Any
 __all__ = [
     "apply_registered_tools",
     "ASRAdapter",
+    "BeforeChatContext",
+    "BeforeCompactContext",
     "ChatUIContribution",
     "ChatUIContext",
     "ChatOutputContract",
@@ -40,6 +43,7 @@ __all__ = [
     "format_llm_exception_message",
     "get_chat_ui_context",
     "HttpClientError",
+    "HookRegistration",
     "iter_registered_tools",
     "LLMAdapter",
     "LLMDialogMessage",
@@ -50,6 +54,8 @@ __all__ = [
     "PluginCapabilityRegistry",
     "PluginDescriptor",
     "PluginDiscoveryRegistry",
+    "PluginHookDispatcher",
+    "PluginHookEvent",
     "PluginHostContext",
     "PluginManager",
     "PluginRegister",
@@ -79,6 +85,7 @@ __all__ = [
     "T2IAdapter",
     "TTSAdapter",
     "TTSOutputMessage",
+    "MessageAddedContext",
     "tool",
     "ToolsTabContribution",
     "TranscriptionCallback",
@@ -113,6 +120,12 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "PluginCapabilityRegistry": ("sdk.register", "PluginCapabilityRegistry"),
     "PluginDiscoveryRegistry": ("sdk.register", "PluginDiscoveryRegistry"),
     "PluginRegister": ("sdk.register", "PluginRegister"),
+    "BeforeChatContext": ("sdk.hooks", "BeforeChatContext"),
+    "BeforeCompactContext": ("sdk.hooks", "BeforeCompactContext"),
+    "HookRegistration": ("sdk.hooks", "HookRegistration"),
+    "MessageAddedContext": ("sdk.hooks", "MessageAddedContext"),
+    "PluginHookDispatcher": ("sdk.hooks", "PluginHookDispatcher"),
+    "PluginHookEvent": ("sdk.hooks", "PluginHookEvent"),
     # ── types ──
     "ChatUIContribution": ("sdk.types", "ChatUIContribution"),
     "ChatUIContext": ("sdk.chat_ui_context", "ChatUIContext"),

@@ -30,6 +30,8 @@ await assertExists(path.join(resourcesDir, "assets", "system", "picture", "shins
 await assertExists(path.join(resourcesDir, "assets", "system", "picture", "Icon.png"));
 await assertExists(path.join(resourcesDir, "assets", "system", "picture", "dialog_frame.png"));
 await assertExists(path.join(resourcesDir, "assets", "system", "sound", "switch.ogg"));
+await assertExists(path.join(resourcesDir, "assets", "chat_ui_themes", "windborne-adventure", "theme.json"));
+await assertExists(path.join(resourcesDir, "assets", "chat_ui_themes", "windborne-adventure", "preview.png"));
 
 console.log(`Verified Tauri resources for ${runtimeMarker.target} ${runtimeMarker.triple}`);
 
