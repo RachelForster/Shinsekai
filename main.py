@@ -263,7 +263,7 @@ def main():
         from core.plugins.plugin_host import ensure_plugins_loaded, wire_user_input_plugins
 
     with _startup_phase("plugins.load"):
-        ensure_plugins_loaded(config)
+        plugin_manager = ensure_plugins_loaded(config)
 
     with _startup_phase("args.parse"):
         args = parse_sprite_args(tr_i18n)
@@ -383,6 +383,9 @@ def main():
                 "max_tokens": 4096,
             },
             history_file=str(chat_history_active_path(args.history)) if args.history else "",
+            hook_dispatcher=(
+                plugin_manager.hook_dispatcher if plugin_manager is not None else None
+            ),
         )
 
     if messages:

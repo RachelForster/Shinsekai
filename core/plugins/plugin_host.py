@@ -29,6 +29,7 @@ from t2i.t2i_manager import T2IAdapterFactory
 from tts.tts_manager import TTSAdapterFactory
 
 if TYPE_CHECKING:
+    from sdk.hooks import PluginHookDispatcher
     from sdk.handlers import MessageHandler, UIOutputMessageHandler
     from sdk.types import (
         ChatUIContribution,
@@ -63,6 +64,13 @@ def get_plugin_registry():
     if mgr is None:
         return None
     return mgr.capabilities
+
+
+def get_plugin_hook_dispatcher() -> "PluginHookDispatcher | None":
+    mgr = _plugin_manager
+    if mgr is None:
+        return None
+    return mgr.hook_dispatcher
 
 
 def get_plugin_tts_handlers() -> List["MessageHandler"]:
