@@ -35,7 +35,11 @@ def normalize_tts_provider(value: str | None) -> str:
         "kaggle gpt-sovits": "kaggle-gpt-sovits",
         "kaggle-gpt-sovits": "kaggle-gpt-sovits",
     }
-    return legacy.get(low, low or "gpt-sovits")
+    if low in legacy:
+        return legacy[low]
+    if not low:
+        return "none"
+    return low
 
 
 def is_http_url(value: str) -> bool:

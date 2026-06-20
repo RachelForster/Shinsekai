@@ -13,7 +13,7 @@ import {
   ttsBundleRecommendationQueryKey,
 } from "../../../entities/config/repository";
 import type { ApiConfig } from "../../../entities/config/types";
-import type { TaskSnapshot, TtsBundleDownloadResult } from "../../../shared/platform/types";
+import type { TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../../shared/platform/types";
 import {
   AsyncButton,
   Button,
@@ -89,7 +89,7 @@ export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
   });
 
   const ttsBundleMutation = useMutation({
-    mutationFn: () => downloadTtsBundle({ kind: ttsBundleKind }, { onTaskUpdate: setTtsBundleTask }),
+    mutationFn: (kind: TtsBundleKind) => downloadTtsBundle({ kind }, { onTaskUpdate: setTtsBundleTask }),
     onError(error) {
       showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: copy.toastFailed });
     },
@@ -279,9 +279,10 @@ export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
             <span>{copy.api.bundleHint}</span>
           </div>
           <AsyncButton
+            disabled={!ttsBundleRecommendationQuery.isSuccess}
             icon={<DownloadCloud aria-hidden size={16} />}
-            loading={ttsBundleMutation.isPending || saveMutation.isPending}
-            onClick={() => ttsBundleMutation.mutate()}
+            loading={ttsBundleMutation.isPending || saveMutation.isPending || ttsBundleRecommendationQuery.isLoading}
+            onClick={() => ttsBundleMutation.mutate(ttsBundleKind)}
             variant="primary"
           >
             {copy.api.bundleButton}
