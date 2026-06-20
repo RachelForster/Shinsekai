@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import json
 import threading
 import time
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from threading import Thread
 from typing import Any, Dict, Generator, List, Optional, Union
@@ -297,6 +298,7 @@ class LLMManager:
         first_turn_tool_call_limit: int = FIRST_USER_TURN_TOOL_CALL_LIMIT,
         generation_config: Optional[Dict[str, Any]] = None,
         history_file: str = "",
+        compact_hooks: Optional[Iterable[Callable[[List[Dict[str, Any]]], None]]] = None,
     ):
         self.llm_adapter = adapter
         self.messages = []
@@ -311,6 +313,7 @@ class LLMManager:
             compact_threshold,
             compact_target_ratio=compact_target_ratio,
             recent_message_limit=self.history_recent_messages,
+            compact_hooks=compact_hooks,
         )
         self.generation_config = generation_config or {}
         self.set_user_template(user_template)

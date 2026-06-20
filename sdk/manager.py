@@ -284,6 +284,12 @@ class PluginManager:
             return []
         return self._capabilities.output_contract_patches
 
+    def collect_compact_hooks(self) -> list[Callable[[list], None]]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.compact_hooks
+
     def iter_plugin_ids(self) -> Iterator[str]:
         self._ensure_plugins_instantiated()
         return (p.plugin_id for p in self._instances)

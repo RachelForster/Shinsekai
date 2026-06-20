@@ -260,7 +260,11 @@ def main():
         init_i18n(config.config.system_config.ui_language)
 
     with _startup_phase("plugins.import"):
-        from core.plugins.plugin_host import ensure_plugins_loaded, wire_user_input_plugins
+        from core.plugins.plugin_host import (
+            ensure_plugins_loaded,
+            get_plugin_compact_hooks,
+            wire_user_input_plugins,
+        )
 
     with _startup_phase("plugins.load"):
         ensure_plugins_loaded(config)
@@ -375,6 +379,7 @@ def main():
             history_recent_messages=int(config.config.api_config.history_recent_messages),
             max_tool_result_chars=int(config.config.api_config.max_tool_result_chars),
             max_active_tool_groups=int(config.config.api_config.max_active_tool_groups),
+            compact_hooks=get_plugin_compact_hooks(),
             generation_config={
                 "temperature": float(config.config.api_config.temperature),
                 "repetition_penalty": float(config.config.api_config.repetition_penalty),

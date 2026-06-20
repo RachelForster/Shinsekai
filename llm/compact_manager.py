@@ -2,6 +2,7 @@
 import json
 import math
 import tiktoken
+from collections.abc import Callable, Iterable
 from typing import List, Dict, Any
 import logging
 
@@ -22,6 +23,7 @@ class CompactManager:
         compact_target_ratio: float = 0.3,
         recent_message_limit: int = 20,
         compact_summary_max_tokens: int = 2048,
+        compact_hooks: Iterable[Callable[[List[Dict[str, Any]]], None]] | None = None,
     ):
         """
         初始化CompactManager
@@ -33,6 +35,7 @@ class CompactManager:
             compact_target_ratio: 压缩后目标上下文占比
             recent_message_limit: 压缩/截断时保留的最近消息数量
             compact_summary_max_tokens: 历史总结自身的最大 token 预算
+            compact_hooks: 精简前执行的插件钩子
         """
         self.llm_adapter = llm_adapter
         self.max_tokens = max_tokens
@@ -43,6 +46,7 @@ class CompactManager:
         )
         self.recent_message_limit = max(1, int(recent_message_limit))
         self.compact_summary_max_tokens = max(128, int(compact_summary_max_tokens))
+        self._compact_hooks = list(compact_hooks or [])
         self.num_tokens = 0
         
         # 尝试使用tiktoken进行token计数
@@ -236,16 +240,12 @@ class CompactManager:
         if not older_messages:
             return messages
 
-        # [MemorySystem] 触发所有已注册的精简前钩子（插件可在此阶段执行归档写入等操作）
-        try:
-            from sdk.register import PluginCapabilityRegistry
-            for hook in PluginCapabilityRegistry().compact_hooks:
-                try:
-                    hook(messages)
-                except Exception as e:
-                    logger.warning(f"精简前钩子执行失败（已跳过，不影响精简流程）: {e}")
-        except Exception:
-            pass
+        # [MemorySystem] 触发宿主传入的精简前钩子（插件可在此阶段执行归档写入等操作）
+        for hook in self._compact_hooks:
+            try:
+                hook(messages)
+            except Exception as e:
+                logger.warning(f"精简前钩子执行失败（已跳过，不影响精简流程）: {e}")
         
         # 准备压缩提示
         compact_prompt = self._create_compact_prompt(older_messages)

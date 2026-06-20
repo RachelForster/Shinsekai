@@ -8,6 +8,7 @@ import pytest
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.compact_manager import CompactManager
 from llm.tools.tool_manager import ToolManager
+from sdk.register import PluginCapabilityRegistry
 from test.mocks import MockLLMAdapter
 
 
@@ -265,6 +266,34 @@ class TestLLMManagerCompact:
         result = cm.compact_messages(messages)
         assert result[0]["role"] == "system"
         assert len(result) < len(messages)
+
+    def test_compact_messages_calls_registered_compact_hooks(self, mock_llm_adapter):
+        registry = PluginCapabilityRegistry()
+        hook_calls = []
+
+        def before_compact(messages):
+            hook_calls.append(list(messages))
+
+        registry.register_compact_hook(before_compact)
+        mock_llm_adapter.responses = ["A summary written after plugin hook."]
+        cm = CompactManager(
+            mock_llm_adapter,
+            max_tokens=10000,
+            compact_threshold=0.5,
+            recent_message_limit=1,
+            compact_hooks=registry.compact_hooks,
+        )
+        messages = [
+            {"role": "system", "content": "S"},
+            {"role": "user", "content": "old question"},
+            {"role": "assistant", "content": "old answer"},
+            {"role": "user", "content": "latest"},
+        ]
+
+        result = cm.compact_messages(messages)
+
+        assert hook_calls == [messages]
+        assert "历史对话总结" in result[1]["content"]
 
     def test_add_message_persists_same_length_compaction(self, mock_llm_adapter):
         mock_llm_adapter.responses = ["Condensed old turn."]

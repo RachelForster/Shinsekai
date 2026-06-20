@@ -51,6 +51,7 @@ _plugin_ui_handlers: List["UIOutputMessageHandler"] = []
 _plugin_dag_yaml_paths: list[str] = []
 _plugin_workflow_contributions: list["WorkflowContribution"] = []
 _plugin_output_contract_patches: list["OutputContractPatch"] = []
+_plugin_compact_hooks: list[Callable[[list], None]] = []
 
 
 def get_plugin_manager() -> PluginManager | None:
@@ -85,6 +86,11 @@ def get_plugin_output_contract_patches(
     return patches
 
 
+def get_plugin_compact_hooks() -> list[Callable[[list], None]]:
+    """Return plugin-registered hooks that should run before conversation compaction."""
+    return list(_plugin_compact_hooks)
+
+
 def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager | None:
     """
     Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge LLM/TTS/ASR/T2I
@@ -94,6 +100,7 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
     global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
     global _plugin_dag_yaml_paths
     global _plugin_workflow_contributions, _plugin_output_contract_patches
+    global _plugin_compact_hooks
     if _loaded:
         return _plugin_manager
 
@@ -167,6 +174,11 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
     except Exception:
         logger.exception("collect_output_contract_patches failed")
         _plugin_output_contract_patches = []
+    try:
+        _plugin_compact_hooks = mgr.collect_compact_hooks()
+    except Exception:
+        logger.exception("collect_compact_hooks failed")
+        _plugin_compact_hooks = []
 
     _plugin_manager = mgr
     _loaded = True
