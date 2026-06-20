@@ -24,6 +24,7 @@ import type {
   Character,
   CharacterMemoryList,
   CharacterSettingResult,
+  Mem0Status,
   CharacterTranslateResult,
   DiagnosticBundleResult,
   FileBrowserSnapshot,
@@ -726,6 +727,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           method: "POST",
         });
       },
+      getMem0Status: () =>
+        requestJson<Mem0Status>(apiBase, "/api/characters/memories/status", {
+          body: "{}",
+          method: "POST",
+        }),
       list: () => requestJson<Character[]>(apiBase, "/api/characters"),
       listMemories: (name) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/list", {

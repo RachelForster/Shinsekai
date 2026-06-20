@@ -31,6 +31,10 @@ export function translateCharacterFields(input: { characterSetting: string; emot
   return getPlatform().characters.translateFields(input);
 }
 
+export function getMem0Status() {
+  return getPlatform().characters.getMem0Status();
+}
+
 export function listCharacterMemories(name: string) {
   return getPlatform().characters.listMemories(name);
 }

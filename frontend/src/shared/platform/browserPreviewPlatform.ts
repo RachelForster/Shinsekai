@@ -1018,6 +1018,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         config.characters.push(...imported);
         return delay(imported);
       },
+      getMem0Status: () => delay({ status: "ready" as const }),
       list: () => delay(config.characters),
       async listMemories(name) {
         const agentId = name || "user";

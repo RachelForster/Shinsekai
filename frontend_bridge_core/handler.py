@@ -59,6 +59,7 @@ from .characters import (
     _delete_character_sprite,
     _delete_sprite_voice,
     _generate_character_setting,
+    _get_mem0_status,
     _list_character_memories,
     _save_character,
     _save_character_emotion_tags,
@@ -572,6 +573,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_generate_character_setting(self.state, body))
             elif method == "POST" and path == "/api/characters/translate":
                 self._send_json(_translate_character_fields(self.state, body))
+            elif method == "POST" and path == "/api/characters/memories/status":
+                self._send_json(_get_mem0_status())
             elif method == "POST" and path == "/api/characters/memories/list":
                 self._send_json(_list_character_memories(str(body.get("name") or "")))
             elif method == "POST" and path == "/api/characters/memories/add":
