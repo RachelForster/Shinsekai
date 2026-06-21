@@ -24,8 +24,8 @@ except ImportError:  # pragma: no cover
     _gpu_get_info = None  # type: ignore[misc, assignment]
 
 
-# 8GB 及以上、N 卡 且非 50 系，使用通用 v2pro；50 系用 nvidia50 专用包
-MIN_VRAM_GB_GPT = 8.0
+# 6GB 及以上、N 卡 且非 50 系，使用通用 v2pro；50 系用 nvidia50 专用包
+MIN_VRAM_GB_GPT = 6.0
 
 
 @dataclass(frozen=True)
