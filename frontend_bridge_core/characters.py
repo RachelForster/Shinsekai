@@ -147,6 +147,9 @@ def _get_mem0_status() -> dict[str, Any]:
 
     Never blocks — returns the current state immediately so the frontend
     can show an appropriate loading dialog.
+
+    Always returns a dict with a ``status`` key matching
+    :class:`Mem0Status` on the frontend.
     """
     import importlib.util as _importlib_util
 
@@ -154,7 +157,9 @@ def _get_mem0_status() -> dict[str, Any]:
     if _spec is None:
         from sdk.exception.types import runtime_dependency_error_from_module
 
-        return runtime_dependency_error_from_module("mem0")
+        _dep = runtime_dependency_error_from_module("mem0")
+        _dep["status"] = "missing_dependency"
+        return _dep
 
     from llm.tools.memory_tools import check_mem0_status
 

@@ -57,7 +57,7 @@ def test_check_mem0_before_call_returns_dep_error_when_missing(monkeypatch):
     assert isinstance(result, dict), f"expected dict, got {type(result)}"
     assert result.get("kind") == "missing_dependency"
     assert result.get("moduleName") == "mem0"
-    assert result.get("packageName") == "mem0ai"
+    assert result.get("packageName") == "mem0ai[extras]"
 
 
 def test_get_mem0_status_returns_valid_status():
@@ -85,4 +85,4 @@ def test_get_mem0_status_missing_dependency_when_not_importable(monkeypatch):
     result = _get_mem0_status()
     assert result["status"] == "missing_dependency"
     assert result["moduleName"] == "mem0"
-    assert result["packageName"] == "mem0ai"
+    assert result["packageName"] == "mem0ai[extras]"

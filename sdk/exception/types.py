@@ -42,7 +42,7 @@ MODULE_PACKAGE_MAP = {
     "fastembed": "fastembed",
     "google": "google-genai",
     "google.genai": "google-genai",
-    "mem0": "mem0ai",
+    "mem0": "mem0ai[extras]",
     "numpy": "numpy",
     "openai": "openai",
     "opencc": "opencc-python-reimplemented",
