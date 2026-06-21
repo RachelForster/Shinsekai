@@ -77,6 +77,7 @@ export function CharacterEditorPage() {
   const [memoryDepTask, setMemoryDepTask] = useState<TaskSnapshot | null>(null);
   const [mem0LoadingOpen, setMem0LoadingOpen] = useState(false);
   const [mem0LoadingMessage, setMem0LoadingMessage] = useState("");
+  const [mem0Checking, setMem0Checking] = useState(false);
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const memoryName = draft.name.trim();
   const currentCharacterName = isCreating ? "" : selectedName;
@@ -165,6 +166,7 @@ export function CharacterEditorPage() {
   // 确保 mem0 就绪：缺依赖→弹安装窗 / 首次下载模型→弹等待窗 / 模型已缓存→静默加载。
   // 返回 true 表示可以继续操作，false 表示需要等待或已处理。
   const ensureMem0Ready = async (): Promise<boolean> => {
+    setMem0Checking(true);
     try {
       const status = await getMem0Status();
       if (status.status === "missing_dependency") {
@@ -172,37 +174,15 @@ export function CharacterEditorPage() {
         return false;
       }
       if (status.status === "loading" || status.status === "not_started") {
-        // 模型已缓存（后续启动）：跳过弹窗，静默加载 10-30s
-        if (status.modelCached) {
-          let pollStatus = status;
-          while (pollStatus.status === "loading" || pollStatus.status === "not_started") {
-            await new Promise((r) => setTimeout(r, 2000));
-            try {
-              pollStatus = await getMem0Status();
-            } catch {
-              break;
-            }
-          }
-          if (pollStatus.status === "missing_dependency") {
-            void memoryQuery.refetch();
-            return false;
-          }
-          if (pollStatus.status === "error") {
-            showToast({
-              kind: "error",
-              message: pollStatus.message || t("character.memory.error"),
-              title: t("common.operationFailed"),
-            });
-            return false;
-          }
-          return true;
-        }
-        // 模型未缓存（首次下载 2-5min）：弹窗等待
-        setMem0LoadingMessage(t("character.memory.loading"));
+        // 模型已缓存 → 弹窗 "加载"；未缓存 → 弹窗 "下载"
+        setMem0LoadingMessage(
+          status.modelCached ? t("character.memory.loadingModel") : t("character.memory.downloadingModel"),
+        );
         setMem0LoadingOpen(true);
+        const pollMs = status.modelCached ? 2000 : 3000;
         let pollStatus = status;
         while (pollStatus.status === "loading" || pollStatus.status === "not_started") {
-          await new Promise((r) => setTimeout(r, 3000));
+          await new Promise((r) => setTimeout(r, pollMs));
           try {
             pollStatus = await getMem0Status();
           } catch {
@@ -226,6 +206,8 @@ export function CharacterEditorPage() {
       return true;
     } catch {
       return true;
+    } finally {
+      setMem0Checking(false);
     }
   };
 
@@ -1043,6 +1025,7 @@ export function CharacterEditorPage() {
           depInstalling={memoryDepInstalling}
           error={memoryQuery.error}
           id="character-memory"
+          isChecking={mem0Checking}
           isError={memoryQuery.isError || !!memoryDepError}
           isFetched={memoryQuery.isFetched}
           isFetching={memoryQuery.isFetching}
@@ -1092,12 +1075,22 @@ export function CharacterEditorPage() {
           memoryDepInstalling ? (
             <Button disabled>{t("character.memory.depInstalling")}</Button>
           ) : (
-            <Button onClick={() => { setMemoryDepOpen(false); setMemoryDepTask(null); }}>
+            <Button
+              onClick={() => {
+                setMemoryDepOpen(false);
+                setMemoryDepTask(null);
+              }}
+            >
               {t("common.close")}
             </Button>
           )
         }
-        onClose={() => { if (!memoryDepInstalling) { setMemoryDepOpen(false); setMemoryDepTask(null); } }}
+        onClose={() => {
+          if (!memoryDepInstalling) {
+            setMemoryDepOpen(false);
+            setMemoryDepTask(null);
+          }
+        }}
         open={memoryDepOpen}
         title={t("character.memory.depMissingTitle")}
       >
@@ -1113,18 +1106,14 @@ export function CharacterEditorPage() {
 
       <Dialog
         closeLabel={t("common.close")}
-        footer={
-          <Button onClick={() => setMem0LoadingOpen(false)}>
-            {t("common.cancel")}
-          </Button>
-        }
+        footer={<Button onClick={() => setMem0LoadingOpen(false)}>{t("common.cancel")}</Button>}
         onClose={() => setMem0LoadingOpen(false)}
         open={mem0LoadingOpen}
         title={t("character.memory.section")}
       >
         <div className="memory-dep-dialog">
           <p>{mem0LoadingMessage}</p>
-          <p className="inline-status">{t("character.memory.depInstalling")}</p>
+          <span className="memory-dep-progress" role="progressbar" />
         </div>
       </Dialog>
     </div>

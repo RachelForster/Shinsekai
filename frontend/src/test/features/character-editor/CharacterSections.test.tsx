@@ -205,6 +205,7 @@ describe("Character editor sections", () => {
         depError={null}
         depInstalling={false}
         error={null}
+        isChecking={false}
         isError={false}
         isFetched
         isFetching={false}

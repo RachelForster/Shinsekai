@@ -829,8 +829,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     kind="runtime-dependency-install",
                     message=f"Installing dependency for {module_name}",
                     title=f"Install {module_name}",
-                    task_updates={"source": module_name},
-                    worker=lambda task_id: install_runtime_dependency(module_name),
+                    task_updates={"source": module_name, "phase": "pip", "progress": 0},
+                    worker=lambda task_id: install_runtime_dependency(
+                        module_name,
+                        _task_id=task_id,
+                        _state=self.state,
+                    ),
                 )
             elif method == "POST" and path == "/api/chat/launch":
                 self._send_json(self._launch_chat(body))

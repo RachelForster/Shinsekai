@@ -12,6 +12,7 @@ interface CharacterMemorySectionProps {
   depInstalling: boolean;
   error: unknown;
   id?: string;
+  isChecking: boolean;
   isError: boolean;
   isFetching: boolean;
   isFetched: boolean;
@@ -33,6 +34,7 @@ export function CharacterMemorySection({
   depInstalling,
   error,
   id,
+  isChecking,
   isError,
   isFetched,
   isFetching,
@@ -54,16 +56,17 @@ export function CharacterMemorySection({
         <div className="page__actions">
           <span className="entity-list__meta">{data ? t("character.memory.count", { count: data.count }) : ""}</span>
           <Button
-            disabled={!memoryName || isFetching || depInstalling}
+            disabled={!memoryName || isFetching || depInstalling || isChecking}
             icon={<RefreshCw aria-hidden className="button__icon" />}
             onClick={onRefresh}
             variant="ghost"
           >
-            {t("character.memory.refresh")}
+            {isChecking ? t("character.memory.initializing") : t("character.memory.refresh")}
           </Button>
         </div>
       </div>
       {!memoryName ? <EmptyState title={t("character.memory.nameRequired")} /> : null}
+      {memoryName && isChecking ? <EmptyState title={t("character.memory.initializing")} /> : null}
       {memoryName && depError ? (
         <div className="empty-state" role="status">
           <div className="empty-state__icon">
@@ -72,11 +75,7 @@ export function CharacterMemorySection({
           <p className="empty-state__title">{t("character.memory.depMissingTitle")}</p>
           <p className="empty-state__body">{t("character.memory.depMissingBody")}</p>
           <div className="empty-state__actions">
-            <AsyncButton
-              loading={depInstalling}
-              onClick={onInstallDep}
-              variant="primary"
-            >
+            <AsyncButton loading={depInstalling} onClick={onInstallDep} variant="primary">
               {depInstalling ? t("character.memory.depInstalling") : t("character.memory.depMissingInstall")}
             </AsyncButton>
           </div>

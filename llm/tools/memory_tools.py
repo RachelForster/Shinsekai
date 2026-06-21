@@ -256,7 +256,12 @@ def check_mem0_status() -> dict[str, Any]:
     # 尚未尝试加载，检查 mem0 是否可导入
     try:
         import mem0  # noqa: F401
-        return {"status": "not_started", "modelCached": _is_embedding_model_cached()}
+        # 触发后台加载（非阻塞），这样后续轮询可以看到 loading → ready 的过渡
+        _start_mem0_loading()
+        return {
+            "status": "loading",
+            "modelCached": _is_embedding_model_cached(),
+        }
     except ImportError:
         return {"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}
 

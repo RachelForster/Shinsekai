@@ -12,6 +12,7 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterMemorySecti
     depError: null,
     depInstalling: false,
     error: null,
+    isChecking: false,
     isError: false,
     isFetched: false,
     isFetching: false,
@@ -72,5 +73,46 @@ describe("CharacterMemorySection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add memory" }));
     expect(props.onAddMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows dependency install UI when depError is set", () => {
+    const onInstall = vi.fn();
+
+    renderSection({
+      depError: { kind: "missing_dependency", moduleName: "mem0", packageName: "mem0ai" },
+      memoryName: "Mio",
+      onInstallDep: onInstall,
+    });
+
+    // Install button is present (not "Add memory" which should be hidden)
+    expect(screen.getByRole("button", { name: "Install" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add memory" })).not.toBeInTheDocument();
+    expect(screen.getByText("Missing Python dependency")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
+    expect(onInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows installing state and disables refresh when depInstalling is true", () => {
+    renderSection({
+      depError: { kind: "missing_dependency", moduleName: "mem0", packageName: "mem0ai" },
+      depInstalling: true,
+      memoryName: "Mio",
+    });
+
+    expect(screen.getByRole("button", { name: "Installing mem0ai…" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Installing mem0ai…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+  });
+
+  it("shows checking state with initializing text when isChecking is true", () => {
+    renderSection({
+      isChecking: true,
+      memoryName: "Mio",
+    });
+
+    expect(screen.getByRole("button", { name: "Initializing memory system…" })).toBeDisabled();
+    // Button label + EmptyState title both show the text
+    expect(screen.getAllByText("Initializing memory system…")).toHaveLength(2);
   });
 });
