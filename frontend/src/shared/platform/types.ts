@@ -5,6 +5,7 @@ export interface Sprite {
   path: string;
   voice_path?: string;
   voice_text?: string;
+  voice_type?: "preset" | "reference";
 }
 
 export interface Character {
@@ -993,6 +994,7 @@ export interface ShinsekaiPlatform {
     saveEmotionTags: (name: string, emotionTags: string) => Promise<Character>;
     saveSpriteScale: (name: string, scale: number) => Promise<Character>;
     saveSpriteVoiceText: (name: string, spriteIndex: number, voiceText: string) => Promise<Character>;
+    saveSpriteVoiceType: (name: string, spriteIndex: number, voiceType: string) => Promise<Character>;
     deleteAllSprites: (name: string) => Promise<Character>;
     deleteSprite: (name: string, spriteIndex: number) => Promise<Character>;
     translateFields: (input: {
@@ -1006,6 +1008,7 @@ export interface ShinsekaiPlatform {
       spriteIndex: number;
       voicePath: string;
       voiceText: string;
+      voiceType?: "preset" | "reference";
     }) => Promise<Character>;
   };
   config: {

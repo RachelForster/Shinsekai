@@ -67,12 +67,22 @@ export function saveSpriteScale(name: string, scale: number) {
   return getPlatform().characters.saveSpriteScale(name, scale);
 }
 
-export function uploadSpriteVoice(input: { name: string; spriteIndex: number; voicePath: string; voiceText: string }) {
+export function uploadSpriteVoice(input: {
+  name: string;
+  spriteIndex: number;
+  voicePath: string;
+  voiceText: string;
+  voiceType?: "preset" | "reference";
+}) {
   return getPlatform().characters.uploadSpriteVoice(input);
 }
 
 export function saveSpriteVoiceText(name: string, spriteIndex: number, voiceText: string) {
   return getPlatform().characters.saveSpriteVoiceText(name, spriteIndex, voiceText);
+}
+
+export function saveSpriteVoiceType(name: string, spriteIndex: number, voiceType: string) {
+  return getPlatform().characters.saveSpriteVoiceType(name, spriteIndex, voiceType);
 }
 
 export function deleteSpriteVoice(name: string, spriteIndex: number) {

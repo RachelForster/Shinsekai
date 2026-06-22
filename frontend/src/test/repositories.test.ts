@@ -274,6 +274,7 @@ describe("entity repositories", () => {
         saveEmotionTags: vi.fn().mockResolvedValue(character),
         saveSpriteScale: vi.fn().mockResolvedValue(character),
         saveSpriteVoiceText: vi.fn().mockResolvedValue(character),
+        saveSpriteVoiceType: vi.fn().mockResolvedValue(character),
         translateFields: vi.fn().mockResolvedValue({ characterSetting: "kind", emotionTags: "happy", name: "Nanami" }),
         uploadSpriteVoice: vi.fn().mockResolvedValue(character),
         uploadSprites: vi.fn().mockResolvedValue(character),

@@ -309,6 +309,11 @@ export const enMessages: Record<MessageKey, string> = {
   "character.sprite.voicePath": "Voice path",
   "character.sprite.voiceText": "Voice text",
   "character.sprite.voiceUploadPath": "Voice upload file",
+  "character.sprite.voiceType": "Voice type",
+  "character.sprite.voiceTypePreset": "Preset voice",
+  "character.sprite.voiceTypeReference": "Reference voice (requires validation)",
+  "character.sprite.voiceRefHint":
+    "Reference audio will be used for TTS voice cloning. Please upload a WAV file within 3–10 s.",
   "character.title": "Characters",
   "character.toast.deleted": "Character deleted",
   "character.toast.exportComplete": "Export complete",

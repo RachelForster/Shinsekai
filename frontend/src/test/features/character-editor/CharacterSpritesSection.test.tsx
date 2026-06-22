@@ -62,6 +62,7 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterSpritesSect
     onSpriteVoiceTextBlur: vi.fn(),
     onSpriteVoiceTextChange: vi.fn(),
     onSpriteVoiceUpload: vi.fn(),
+    onSpriteVoiceTypeChange: vi.fn(),
     pendingSpritePaths: ["D:/new/sprite-c.png"],
     pendingVoicePath: "D:/new/voice.wav",
     selectedSprite: draft.sprites[1],

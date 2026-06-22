@@ -812,6 +812,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ name, spriteIndex, voiceText }),
           method: "POST",
         }),
+      saveSpriteVoiceType: (name, spriteIndex, voiceType) =>
+        requestJson<Character>(apiBase, "/api/characters/sprite-voice/voice-type", {
+          body: JSON.stringify({ name, spriteIndex, voiceType }),
+          method: "POST",
+        }),
       translateFields: (input) =>
         requestJson<CharacterTranslateResult>(apiBase, "/api/characters/translate", {
           body: JSON.stringify(input),
