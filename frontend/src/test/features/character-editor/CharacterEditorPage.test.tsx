@@ -225,6 +225,33 @@ describe("CharacterEditorPage", () => {
     );
   });
 
+  it("defaults sprite voice uploads to reference when the character has GPT-SoVITS models", async () => {
+    mockListCharacters.mockResolvedValue([
+      {
+        ...structuredClone(character),
+        gpt_model_path: "D:/models/mika.ckpt",
+        sovits_model_path: "D:/models/mika.pth",
+      },
+    ]);
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    expect(screen.getByRole("radio", { name: "Reference voice (requires validation)" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
+
+    await waitFor(() =>
+      expect(mockUploadSpriteVoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Mika",
+          spriteIndex: 0,
+          voicePath: "D:/new/sora.wav",
+          voiceType: "reference",
+        }),
+      ),
+    );
+  });
+
   it("locks cloud voice reference controls when Kaggle GPT-SoVITS is selected", async () => {
     mockGetAppConfig.mockResolvedValue({
       ...structuredClone(sampleConfig),

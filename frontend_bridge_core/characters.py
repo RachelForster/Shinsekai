@@ -28,6 +28,17 @@ def _normalize_sprite_voice_type(value: Any, *, allow_empty: bool = False) -> st
     return voice_type
 
 
+def _has_gpt_sovits_model(character: Any) -> bool:
+    return bool(
+        str(getattr(character, "gpt_model_path", "") or "").strip()
+        and str(getattr(character, "sovits_model_path", "") or "").strip()
+    )
+
+
+def _default_sprite_voice_type(character: Any) -> str:
+    return "reference" if _has_gpt_sovits_model(character) else "preset"
+
+
 def _as_character_config(character: Any) -> Any:
     from config.character_config import CharacterConfig
 
@@ -271,7 +282,10 @@ def _upload_sprite_voice(state: BridgeState, payload: dict[str, Any]) -> dict[st
     sprite_index = int(payload.get("spriteIndex") or 0)
     voice_path = str(payload.get("voicePath") or "").strip()
     voice_text = str(payload.get("voiceText") or "").strip()
+    character = _character_by_name(state, name)
     voice_type = _normalize_sprite_voice_type(payload.get("voiceType"), allow_empty=True)
+    if not voice_type:
+        voice_type = _default_sprite_voice_type(character)
     if not voice_path:
         raise ValueError("voice path is required")
     if voice_type == "reference":

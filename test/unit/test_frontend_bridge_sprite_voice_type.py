@@ -56,6 +56,8 @@ def make_character(**sprite_fields):
         name="Mika",
         color="#66ccff",
         sprite_prefix="mika",
+        gpt_model_path=sprite_fields.pop("gpt_model_path", ""),
+        sovits_model_path=sprite_fields.pop("sovits_model_path", ""),
         sprites=[{"path": "data/sprite/mika/0.png", **sprite_fields}],
     )
 
@@ -76,6 +78,47 @@ def test_upload_sprite_voice_rejects_invalid_voice_type(tmp_path):
                 "voiceType": "bad",
             },
         )
+
+
+def test_upload_sprite_voice_defaults_to_preset_without_gpt_sovits_model(tmp_path):
+    voice = tmp_path / "voice.mp3"
+    voice.write_bytes(b"not really audio")
+    character = make_character()
+    state = make_state(character)
+
+    _upload_sprite_voice(
+        state,
+        {
+            "name": "Mika",
+            "spriteIndex": 0,
+            "voicePath": str(voice),
+            "voiceText": "",
+        },
+    )
+
+    assert character.sprites[0]["voice_type"] == "preset"
+
+
+def test_upload_sprite_voice_defaults_to_reference_with_gpt_sovits_model(tmp_path, monkeypatch):
+    from frontend_bridge_core import characters
+
+    voice = tmp_path / "voice.wav"
+    voice.write_bytes(b"not really audio")
+    character = make_character(gpt_model_path="model.ckpt", sovits_model_path="model.pth")
+    state = make_state(character)
+    monkeypatch.setattr(characters, "_validate_reference_audio", lambda _path: None)
+
+    _upload_sprite_voice(
+        state,
+        {
+            "name": "Mika",
+            "spriteIndex": 0,
+            "voicePath": str(voice),
+            "voiceText": "",
+        },
+    )
+
+    assert character.sprites[0]["voice_type"] == "reference"
 
 
 def test_save_sprite_voice_type_rejects_invalid_voice_type():

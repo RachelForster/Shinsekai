@@ -386,7 +386,7 @@ export function CharacterEditorPage() {
         spriteIndex: index,
         voicePath,
         voiceText,
-        voiceType: draft.sprites[index]?.voice_type ?? "preset",
+        voiceType: spriteVoiceType(draft.sprites[index], draft),
       }),
     onError(error) {
       showToast({
@@ -610,6 +610,15 @@ export function CharacterEditorPage() {
   /** Merge server sprites while preserving local per-sprite voice_type. */
   const mergeSprites = (serverSprites: Sprite[], current: Character) =>
     serverSprites.map((s, i) => ({ ...s, voice_type: current.sprites[i]?.voice_type ?? s.voice_type }));
+
+  const characterHasGptSovitsModel = (character: Character) =>
+    Boolean(character.gpt_model_path?.trim() && character.sovits_model_path?.trim());
+
+  const defaultSpriteVoiceType = (character: Character): "preset" | "reference" =>
+    characterHasGptSovitsModel(character) ? "reference" : "preset";
+
+  const spriteVoiceType = (sprite: Sprite | undefined, character: Character): "preset" | "reference" =>
+    sprite?.voice_type ?? defaultSpriteVoiceType(character);
 
   const updateSpriteTag = (index: number, value: string) => {
     setDraft((current) => {
@@ -1054,7 +1063,9 @@ export function CharacterEditorPage() {
           onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
           pendingSpritePaths={pendingSpritePaths}
           pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
-          selectedSprite={selectedSprite}
+          selectedSprite={
+            selectedSprite ? { ...selectedSprite, voice_type: spriteVoiceType(selectedSprite, draft) } : undefined
+          }
           selectedSpriteIndex={selectedSpriteIndex}
           selectedSpriteTag={selectedSpriteTag}
           spriteDeletePending={spriteDeleteMutation.isPending}
