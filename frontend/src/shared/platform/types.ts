@@ -620,6 +620,14 @@ export interface CharacterMemoryList {
   memories: CharacterMemory[];
 }
 
+export interface Mem0Status {
+  status: "ready" | "loading" | "not_started" | "error" | "missing_dependency";
+  message?: string;
+  modelCached?: boolean;
+  moduleName?: string;
+  packageName?: string;
+}
+
 export interface BackgroundTranslateResult {
   bgTags: string;
   bgmRowTags?: string[];
@@ -955,6 +963,7 @@ export interface ShinsekaiPlatform {
     generateSetting: (input: { name: string; setting: string }) => Promise<CharacterSettingResult>;
     import: (items: File[] | string[]) => Promise<Character[]>;
     list: () => Promise<Character[]>;
+    getMem0Status: () => Promise<Mem0Status>;
     listMemories: (name: string) => Promise<CharacterMemoryList>;
     remember: (name: string, content: string) => Promise<CharacterMemoryList>;
     save: (character: Character, originalName?: string) => Promise<Character>;

@@ -59,6 +59,7 @@ from .characters import (
     _delete_character_sprite,
     _delete_sprite_voice,
     _generate_character_setting,
+    _get_mem0_status,
     _list_character_memories,
     _save_character,
     _save_character_emotion_tags,
@@ -572,6 +573,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_generate_character_setting(self.state, body))
             elif method == "POST" and path == "/api/characters/translate":
                 self._send_json(_translate_character_fields(self.state, body))
+            elif method == "POST" and path == "/api/characters/memories/status":
+                self._send_json(_get_mem0_status())
             elif method == "POST" and path == "/api/characters/memories/list":
                 self._send_json(_list_character_memories(str(body.get("name") or "")))
             elif method == "POST" and path == "/api/characters/memories/add":
@@ -826,8 +829,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     kind="runtime-dependency-install",
                     message=f"Installing dependency for {module_name}",
                     title=f"Install {module_name}",
-                    task_updates={"source": module_name},
-                    worker=lambda task_id: install_runtime_dependency(module_name),
+                    task_updates={"source": module_name, "phase": "pip", "progress": 0},
+                    worker=lambda task_id: install_runtime_dependency(
+                        module_name,
+                        _task_id=task_id,
+                        _state=self.state,
+                    ),
                 )
             elif method == "POST" and path == "/api/chat/launch":
                 self._send_json(self._launch_chat(body))

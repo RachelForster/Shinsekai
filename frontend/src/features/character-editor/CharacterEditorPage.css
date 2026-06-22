@@ -197,6 +197,42 @@
   background: var(--color-surface-raised);
 }
 
+/* ── Memory dep dialog ── */
+
+.memory-dep-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.memory-dep-progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.memory-dep-progress::after {
+  content: "";
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  animation: memory-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes memory-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
 .memory-row__content {
   min-width: 0;
 }
