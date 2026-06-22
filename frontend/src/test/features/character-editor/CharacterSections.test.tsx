@@ -203,7 +203,10 @@ describe("Character editor sections", () => {
           ],
         }}
         deletePending={false}
+        depError={null}
+        depInstalling={false}
         error={null}
+        isChecking={false}
         isError={false}
         isFetched
         isFetching={false}
@@ -212,6 +215,7 @@ describe("Character editor sections", () => {
         memoryName="Mika"
         onAddMemory={onAddMemory}
         onDeleteMemory={onDeleteMemory}
+        onInstallDep={vi.fn()}
         onMemoryInputChange={onMemoryInputChange}
         onRefresh={onRefresh}
       />,

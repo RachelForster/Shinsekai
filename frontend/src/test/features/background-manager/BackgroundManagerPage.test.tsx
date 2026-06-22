@@ -93,7 +93,7 @@ describe("BackgroundManagerPage", () => {
   it("saves background info when batch image tags are confirmed", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("School");
+    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("School"));
     fireEvent.click(screen.getByRole("button", { name: "Batch image tags" }));
 
     const dialog = screen.getByRole("dialog", { name: "Batch image tags" });
@@ -124,7 +124,7 @@ describe("BackgroundManagerPage", () => {
     ]);
     renderPage();
 
-    await screen.findByDisplayValue("School");
+    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("School"));
     fireEvent.click(screen.getByRole("button", { name: "Batch BGM tags" }));
 
     const dialog = screen.getByRole("dialog", { name: "Batch BGM tags" });

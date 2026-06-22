@@ -1018,7 +1018,9 @@ class TestLLMManagerToolCalling:
 
 
 class TestLLMAdapterFactory:
-    def test_create_known_adapter(self):
+    def test_create_known_adapter(self, monkeypatch):
+        for name in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "SOCKS_PROXY", "socks_proxy"):
+            monkeypatch.delenv(name, raising=False)
         adapter = LLMAdapterFactory.create_adapter("Deepseek", api_key="sk-test", base_url="https://api.deepseek.com", model="deepseek-chat")
         assert adapter is not None
         assert adapter.model == "deepseek-chat"

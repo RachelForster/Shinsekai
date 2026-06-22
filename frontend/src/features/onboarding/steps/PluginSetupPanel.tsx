@@ -38,6 +38,7 @@ interface PluginPreset {
 
 interface PluginSetupPanelProps {
   copy: OnboardingCopy;
+  onInstalled?: () => void;
 }
 
 type PluginReloadStatus = "idle" | "reloading" | "done" | "failed";
@@ -162,7 +163,7 @@ function findInstalledPresetPlugin(plugins: PluginManifest[], preset: PluginPres
   return best?.plugin;
 }
 
-export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
+export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
@@ -274,6 +275,7 @@ export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
     },
     onSuccess() {
       showToast({ kind: "success", title: copy.plugins.installDone });
+      onInstalled?.();
       void queryClient.invalidateQueries({ queryKey: pluginsQueryKey });
       void queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey });
     },

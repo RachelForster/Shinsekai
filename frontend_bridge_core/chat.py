@@ -42,7 +42,6 @@ from .state import BridgeState
 from .runtime_dependencies import runtime_dependency_error_from_text
 from .templates import (
     TEMP_SPLIT_META,
-    _compose_for_llm,
     _history_id_from_scenario,
     _template_dir,
 )
@@ -220,7 +219,7 @@ def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float)
                 except OSError:
                     pass
         else:
-            if os.name == "nt" and action == signal.SIGINT:
+            if os.name == "nt" and action == signal.SIGTERM:
                 try:
                     process.terminate()
                 except OSError:
@@ -314,6 +313,7 @@ def _main_py_path() -> Path:
 def _launch_chat(
     state: BridgeState,
     *,
+    effect_names: str = "",
     history_file: str,
     init_sprite_path: str,
     room_id: str,
@@ -332,7 +332,10 @@ def _launch_chat(
         if _main_chat_process is not None and _main_chat_process.poll() is None:
             return f"进程已经在运行中！PID: {_main_chat_process.pid}"
 
-        template = _compose_for_llm(user_scenario, system_template)
+        # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
+        template = system_template.rstrip()
+        if user_scenario.strip():
+            template = template + "\n" + user_scenario.strip() + "\n"
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
         (template_dir / TEMP_SPLIT_META).write_text(
@@ -359,6 +362,7 @@ def _launch_chat(
             f"--init_sprite_path={init_sprite_path or ''}",
             f"--history={history_path.resolve()}",
             f"--bg={selected_bg}",
+            f"--effect_names={effect_names}",
             f"--t2i={'ComfyUI' if use_cg else ''}",
             f"--room_id={room_id}",
             f"--tts={tts_slug}",

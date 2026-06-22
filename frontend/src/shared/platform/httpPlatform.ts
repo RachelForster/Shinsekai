@@ -24,8 +24,10 @@ import type {
   Character,
   CharacterMemoryList,
   CharacterSettingResult,
+  Mem0Status,
   CharacterTranslateResult,
   DiagnosticBundleResult,
+  Effect,
   FileBrowserSnapshot,
   LogFileList,
   LogSnapshot,
@@ -424,6 +426,54 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           method: "POST",
         }),
     },
+    effects: {
+      delete: async (name) => {
+        await requestJson(apiBase, `/api/effects/${encodePath(name)}`, { method: "DELETE" });
+      },
+      deleteAllAudio: (name) =>
+        requestJson<Effect>(apiBase, "/api/effects/audio/delete-all", {
+          body: JSON.stringify({ name }),
+          method: "POST",
+        }),
+      deleteAudio: (name, index) =>
+        requestJson<Effect>(apiBase, "/api/effects/audio/delete", {
+          body: JSON.stringify({ index, name }),
+          method: "POST",
+        }),
+      export: async (name) => {
+        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/effects/export", {
+          body: JSON.stringify({ name }),
+          method: "POST",
+        });
+        openDownload(apiBase, result.path);
+        return result.path;
+      },
+      import: (items) => {
+        if (isFileList(items)) {
+          return uploadFiles<Effect[]>(apiBase, "/api/effects/import-upload", items);
+        }
+        return requestJson<Effect[]>(apiBase, "/api/effects/import", {
+          body: JSON.stringify({ paths: items }),
+          method: "POST",
+        });
+      },
+      list: () => requestJson<Effect[]>(apiBase, "/api/effects"),
+      save: (effect, originalName) =>
+        requestJson<Effect>(apiBase, "/api/effects", {
+          body: JSON.stringify({ effect, originalName }),
+          method: "POST",
+        }),
+      saveAudioTags: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/audio-tags", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      uploadAudio: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/audio/upload", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+    },
     chat: {
       close: () =>
         requestJson<ChatSnapshot>(apiBase, "/api/chat/close", {
@@ -726,6 +776,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           method: "POST",
         });
       },
+      getMem0Status: () =>
+        requestJson<Mem0Status>(apiBase, "/api/characters/memories/status", {
+          body: "{}",
+          method: "POST",
+        }),
       list: () => requestJson<Character[]>(apiBase, "/api/characters"),
       listMemories: (name) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/list", {

@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
+import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
@@ -39,6 +40,7 @@ export function ChatLauncherPage() {
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
+  const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
   const sessionQuery = useQuery({
     queryFn: getTemplateSession,
     queryKey: [...templatesQueryKey, "session"],
@@ -46,12 +48,14 @@ export function ChatLauncherPage() {
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const characters = charactersQuery.data ?? [];
   const backgrounds = backgroundsQuery.data ?? [];
+  const effects = Array.isArray(effectsQuery.data) ? effectsQuery.data : [];
   const templates = templatesQuery.data ?? [];
   const launchSession = sessionQuery.data;
   const sessionFetched = sessionQuery.isFetched;
   const appConfig = configQuery.data;
   const [templateId, setTemplateId] = useState("");
   const [backgroundName, setBackgroundName] = useState(TRANSPARENT_BACKGROUND_NAME);
+  const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [historyPath, setHistoryPath] = useState("");
   const [initSpritePath, setInitSpritePath] = useState("");
@@ -110,6 +114,7 @@ export function ChatLauncherPage() {
       setTemplateId(restoredTemplate.id);
     }
     setBackgroundName(launchSession.background || TRANSPARENT_BACKGROUND_NAME);
+    setSelectedEffects(Array.isArray(launchSession.effectNames) ? launchSession.effectNames : []);
     setSelectedCharacters(Array.isArray(launchSession.selectedCharacters) ? launchSession.selectedCharacters : []);
     setHistoryPath(launchSession.historyPath || "");
     setInitSpritePath(launchSession.initSpritePath || "");
@@ -118,6 +123,7 @@ export function ChatLauncherPage() {
 
   const buildSession = (): TemplateLaunchSession => ({
     background: backgroundName,
+    effectNames: selectedEffects,
     filenameStub: selectedTemplate?.name ?? "",
     historyPath: historyPath.trim(),
     initSpritePath: initSpritePath.trim(),
@@ -207,6 +213,7 @@ export function ChatLauncherPage() {
     launchMutation.mutate({
       backgroundName,
       characters: selectedCharacters,
+      effectNames: selectedEffects.length ? selectedEffects : undefined,
       historyPath: historyPath.trim(),
       initSpritePath: initSpritePath.trim(),
       resetHistory,
@@ -318,6 +325,26 @@ export function ChatLauncherPage() {
                 <span className="field-row__help">{t("launch.historyHelp")}</span>
               </span>
             </label>
+            {effects.length > 0 ? (
+              <label className="field-row">
+                <span className="field-row__label">{t("template.field.effectName")}</span>
+                <span className="field-row__control">
+                  <Select
+                    multiple
+                    onChange={(event) =>
+                      setSelectedEffects(Array.from(event.currentTarget.selectedOptions).map((item) => item.value))
+                    }
+                    value={selectedEffects}
+                  >
+                    {effects.map((effect) => (
+                      <option key={effect.name} value={effect.name}>
+                        {effect.name}
+                      </option>
+                    ))}
+                  </Select>
+                </span>
+              </label>
+            ) : null}
             <label className="field-row">
               <span className="field-row__label">{t("template.field.initSprite")}</span>
               <span className="field-row__control">

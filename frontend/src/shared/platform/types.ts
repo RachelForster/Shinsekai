@@ -35,6 +35,14 @@ export interface Background {
   bgm_tags: string;
 }
 
+export interface Effect {
+  name: string;
+  color: string;
+  prompt_text: string;
+  audio_list: string[];
+  audio_tags: string;
+}
+
 export interface ApiConfig {
   gpt_sovits_api_path: string;
   gpt_sovits_url: string;
@@ -130,6 +138,7 @@ export interface AppConfig {
   api_config: ApiConfig;
   background_list: Background[];
   characters: Character[];
+  effect_list: Effect[];
   system_config: SystemConfig;
   tts_bundle_installed_paths?: Record<string, string>;
 }
@@ -449,6 +458,7 @@ export interface TemplateSummary {
 export interface ChatLaunchPayload {
   backgroundName: string;
   characters: string[];
+  effectNames?: string[];
   historyPath: string;
   initSpritePath?: string;
   resetHistory?: boolean;
@@ -463,6 +473,7 @@ export interface ChatLaunchPayload {
 export interface TemplateGenerateInput {
   backgroundName: string;
   characters: string[];
+  effectNames?: string[];
   maxDialogItems?: number;
   maxSpeechChars?: number;
   name: string;
@@ -479,6 +490,7 @@ export interface TemplateGenerateInput {
 
 export interface TemplateLaunchSession {
   background: string;
+  effectNames: string[];
   filenameStub: string;
   historyPath: string;
   initSpritePath: string;
@@ -619,6 +631,14 @@ export interface CharacterMemoryList {
   agentId: string;
   count: number;
   memories: CharacterMemory[];
+}
+
+export interface Mem0Status {
+  status: "ready" | "loading" | "not_started" | "error" | "missing_dependency";
+  message?: string;
+  modelCached?: boolean;
+  moduleName?: string;
+  packageName?: string;
 }
 
 export interface BackgroundTranslateResult {
@@ -927,6 +947,17 @@ export interface ShinsekaiPlatform {
     uploadBgm: (input: { bgmTags: string; name: string; paths: string[] }) => Promise<Background>;
     uploadImages: (input: { bgTags: string; name: string; paths: string[] }) => Promise<Background>;
   };
+  effects: {
+    delete: (name: string) => Promise<void>;
+    deleteAllAudio: (name: string) => Promise<Effect>;
+    deleteAudio: (name: string, index: number) => Promise<Effect>;
+    export: (name: string) => Promise<string>;
+    import: (items: File[] | string[]) => Promise<Effect[]>;
+    list: () => Promise<Effect[]>;
+    save: (effect: Effect, originalName?: string) => Promise<Effect>;
+    saveAudioTags: (input: { audioTags: string; name: string }) => Promise<Effect>;
+    uploadAudio: (input: { audioTags: string; name: string; paths: string[] }) => Promise<Effect>;
+  };
   chat: {
     close: () => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
@@ -956,6 +987,7 @@ export interface ShinsekaiPlatform {
     generateSetting: (input: { name: string; setting: string }) => Promise<CharacterSettingResult>;
     import: (items: File[] | string[]) => Promise<Character[]>;
     list: () => Promise<Character[]>;
+    getMem0Status: () => Promise<Mem0Status>;
     listMemories: (name: string) => Promise<CharacterMemoryList>;
     remember: (name: string, content: string) => Promise<CharacterMemoryList>;
     save: (character: Character, originalName?: string) => Promise<Character>;

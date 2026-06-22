@@ -188,10 +188,9 @@ def _render_field_notes(fields: dict[str, _FieldSpec]) -> str:
         aliases = ""
         if field.aliases:
             aliases = f" Aliases: {', '.join(field.aliases)}."
-        lines.append(
-            f"- {field.key} ({field.type}, {required}): {field.description}{aliases}\n"
-        )
+        lines.append(f"- {field.key} ({field.type}, {required}): {field.description}{aliases}\n")
     return "".join(lines)
+
 
 
 def _target_voice_key(code: str | None) -> str:

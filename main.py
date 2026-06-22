@@ -426,6 +426,43 @@ def main():
     except Exception:
         pass
 
+    # 加载特效方案，构建关键词→音频路径映射
+    effect_keyword_map: dict[str, str] = {}
+    effect_names_str = (args.effect_names or "").strip()
+    if effect_names_str:
+        effect_names = [n.strip() for n in effect_names_str.split(",") if n.strip()]
+        print(f"[Effect] 加载特效方案: {effect_names}")
+        try:
+            all_effect_names = [ef.name for ef in config.config.effect_list]
+            print(f"[Effect] 可用特效方案: {all_effect_names}")
+            for ef in config.config.effect_list:
+                if ef.name in effect_names:
+                    tags = (ef.audio_tags or "").splitlines()
+                    audio_list = ef.audio_list or []
+                    print(f"[Effect] 解析 {ef.name}: tags={len(tags)}行, audio={len(audio_list)}个")
+                    for i, tag_line in enumerate(tags):
+                        tag_line = tag_line.strip()
+                        if not tag_line:
+                            continue
+                        if "：" in tag_line:
+                            keyword = tag_line.split("：", 1)[-1].strip()
+                        elif ":" in tag_line:
+                            keyword = tag_line.split(":", 1)[-1].strip()
+                        else:
+                            keyword = tag_line
+                        if keyword and i < len(audio_list) and audio_list[i]:
+                            # 支持逗号分隔多关键词
+                            for kw in keyword.split(","):
+                                kw = kw.strip()
+                                if kw:
+                                    effect_keyword_map[kw] = audio_list[i]
+                                    print(f"[Effect]   {kw!r} → {audio_list[i]}")
+            print(f"[Effect] 关键词映射: {effect_keyword_map}")
+        except Exception as e:
+            import traceback
+            print(f"[Effect] 加载失败: {e}")
+            traceback.print_exc()
+
     if args.headless and not args.stream_endpoint and not (args.workflow or "").strip():
         headless_workflow = str(resource_path("assets/system/workflow/headless.yaml"))
     else:
@@ -918,6 +955,7 @@ def main():
                 tts_manager=tts_manager,
                 t2i_manager=t2i_manager,
                 bgm_list=bgm_list,
+                effect_keyword_map=effect_keyword_map,
                 user_input_queue=user_input_queue,
                 tts_queue=tts_queue,
                 audio_path_queue=audio_path_queue,
@@ -980,6 +1018,7 @@ def main():
             tts_manager=tts_manager,
             t2i_manager=t2i_manager,
             bgm_list=bgm_list,
+            effect_keyword_map=effect_keyword_map,
             user_input_queue=user_input_queue,
             tts_queue=tts_queue,
             audio_path_queue=audio_path_queue,

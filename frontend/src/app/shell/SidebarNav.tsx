@@ -34,6 +34,7 @@ const settingsLinks = [
   { icon: Settings, labelKey: "nav.api", to: "/settings/api" },
   { icon: Gamepad2, labelKey: "nav.character", to: "/settings/characters" },
   { icon: FileImage, labelKey: "nav.background", to: "/settings/backgrounds" },
+  { icon: Sparkles, labelKey: "nav.effects", to: "/settings/effects" },
   { icon: LayoutTemplate, labelKey: "nav.template", to: "/settings/templates" },
 ] satisfies SidebarLink[];
 
