@@ -10,9 +10,12 @@ Tests all bugs that were fixed:
 import os
 import shutil
 import tempfile
+import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import yaml
 from config.schema import Effect
 
 
@@ -25,6 +28,25 @@ def make_effect(name, audio_list=None, audio_tags="", **kwargs):
         "audio_tags": audio_tags,
         **kwargs,
     })
+
+
+class FakeEffectConfigManager:
+    def __init__(self, effects):
+        self.config = SimpleNamespace(effect_list=effects)
+        self.saved = False
+
+    def get_effect_by_name(self, name):
+        return next((e for e in self.config.effect_list if e.name.lower() == name.lower()), None)
+
+    def save_effect_config(self):
+        self.saved = True
+
+    def reload(self):
+        pass
+
+
+def make_state(effects):
+    return SimpleNamespace(config_manager=FakeEffectConfigManager(effects))
 
 
 # ── Bug 1: Name collision on rename → auto-suffix ─────────────
@@ -389,6 +411,21 @@ def test_save_effect_overwrite_existing():
     assert effect_list[0].color == "#00ff00"
 
 
+def test_save_effect_rejects_path_traversal_name(tmp_path, monkeypatch):
+    """Effect names must not create directories outside data/effects."""
+    from frontend_bridge_core.effects import _save_effect
+
+    monkeypatch.chdir(tmp_path)
+    state = make_state([])
+
+    with pytest.raises(ValueError):
+        _save_effect(state, {"name": "../outside"})
+
+    assert state.config_manager.config.effect_list == []
+    assert not state.config_manager.saved
+    assert not (tmp_path / "outside").exists()
+
+
 def test_delete_effect_removes_from_list():
     """Delete removes the correct effect."""
     effect_list = [make_effect("A"), make_effect("B"), make_effect("C")]
@@ -399,6 +436,23 @@ def test_delete_effect_removes_from_list():
     effect_list.remove(match)
     assert len(effect_list) == 2
     assert {e.name for e in effect_list} == {"A", "C"}
+
+
+def test_delete_effect_rejects_path_traversal_name(tmp_path, monkeypatch):
+    """Deleting an effect must not remove a directory outside managed storage."""
+    from frontend_bridge_core.effects import _delete_effect
+
+    monkeypatch.chdir(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    state = make_state([make_effect("../outside")])
+
+    with pytest.raises(ValueError):
+        _delete_effect(state, "../outside")
+
+    assert outside.is_dir()
+    assert len(state.config_manager.config.effect_list) == 1
+    assert not state.config_manager.saved
 
 
 def test_delete_effect_case_insensitive():
@@ -439,6 +493,38 @@ def test_audio_delete_index_boundary():
         if index < 0 or index >= len(audio_list):
             raise IndexError(f"audio index out of range: {index}")
         audio_list.pop(index)
+
+
+def test_delete_effect_audio_does_not_unlink_external_file(tmp_path, monkeypatch):
+    """Config paths outside the managed effect directory are removed from config only."""
+    from frontend_bridge_core.effects import _delete_effect_audio
+
+    monkeypatch.chdir(tmp_path)
+    external = tmp_path / "external.wav"
+    external.write_bytes(b"keep me")
+    effect = make_effect("safe", audio_list=[str(external)], audio_tags="Effect 1: external\n")
+    state = make_state([effect])
+
+    _delete_effect_audio(state, {"name": "safe", "index": 0})
+
+    assert external.exists()
+    assert effect.audio_list == []
+    assert state.config_manager.saved
+
+
+def test_import_effect_rejects_path_traversal_name(tmp_path, monkeypatch):
+    """Effect packages must not create managed directories outside data/effects."""
+    from tools.file_util import import_effect
+
+    monkeypatch.chdir(tmp_path)
+    package = tmp_path / "bad.ef"
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("effect.yaml", yaml.safe_dump([{"name": "../outside", "audio_list": []}]))
+
+    with pytest.raises(ValueError):
+        import_effect(str(package), [])
+
+    assert not (tmp_path / "outside").exists()
 
 
 # ── Keyword parsing from main.py ───────────────────────────────

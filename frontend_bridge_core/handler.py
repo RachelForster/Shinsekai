@@ -34,9 +34,11 @@ from .effects import (
     _delete_all_effect_audio,
     _delete_effect,
     _delete_effect_audio,
+    _effect_dir,
     _save_effect,
     _save_effect_audio_tags,
     _upload_effect_audio,
+    _validate_effect_storage_name,
 )
 from .chat import (
     _chat_history,
@@ -724,7 +726,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/effects/export":
-                name = str(body.get("name") or "")
+                name = _validate_effect_storage_name(str(body.get("name") or ""))
                 effect = self.state.config_manager.get_effect_by_name(name)
                 if effect is None:
                     raise KeyError(f"effect not found: {name}")
@@ -926,7 +928,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
 
     def _import_effect_paths(self, paths: list[str]) -> list[dict[str, Any]]:
         import tools.file_util as file_util
-        from pathlib import Path
 
         existing = self.state.config_manager.config.effect_list
         imported = []
@@ -937,7 +938,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 if effect not in existing:
                     existing.append(effect)
                 # Ensure managed directory exists for each imported effect
-                ef_dir = Path("data/effects") / effect.name
+                ef_dir = _effect_dir(effect.name)
                 ef_dir.mkdir(parents=True, exist_ok=True)
         self.state.config_manager.save_effect_config()
         self.state.config_manager.reload()

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import os
 import shutil
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from .state import BridgeState, _jsonify
@@ -10,9 +9,55 @@ from .state import BridgeState, _jsonify
 EFFECT_UPLOAD_DIR = "data/effects"
 
 
+def _validate_effect_storage_name(name: str) -> str:
+    """Validate that an effect name can only address one managed directory."""
+    value = str(name or "").strip()
+    if not value:
+        raise ValueError("effect name is required")
+    if "\x00" in value:
+        raise ValueError("effect name contains an invalid character")
+    if "/" in value or "\\" in value:
+        raise ValueError("effect name must not contain path separators")
+
+    path = Path(value)
+    win_path = PureWindowsPath(value)
+    if path.is_absolute() or win_path.is_absolute() or win_path.drive:
+        raise ValueError("effect name must not be an absolute path")
+    if value in {".", ".."} or any(part in {".", ".."} for part in path.parts):
+        raise ValueError("effect name must not contain relative path segments")
+    return value
+
+
+def _effect_root() -> Path:
+    return Path(EFFECT_UPLOAD_DIR).resolve()
+
+
 def _effect_dir(name: str) -> Path:
     """Get the managed directory for an effect's audio files."""
-    return Path(EFFECT_UPLOAD_DIR) / name
+    safe_name = _validate_effect_storage_name(name)
+    root = _effect_root()
+    candidate = (root / safe_name).resolve()
+    if candidate == root or root not in candidate.parents:
+        raise ValueError("effect directory escapes managed storage")
+    return candidate
+
+
+def _unlink_managed_effect_file(effect_name: str, raw_path: str) -> None:
+    """Remove an audio file only when it is inside the effect's managed dir."""
+    if not raw_path:
+        return
+    try:
+        root = _effect_dir(effect_name).resolve()
+        target = Path(str(raw_path)).resolve()
+    except (OSError, ValueError):
+        return
+    if root not in target.parents:
+        return
+    try:
+        if target.is_file():
+            target.unlink()
+    except OSError:
+        pass
 
 
 def _copy_effect_dir(src: Path, dst: Path) -> None:
@@ -44,6 +89,9 @@ def _save_effect(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("effect payload must be an object")
     name = str(body.get("name") or "").strip()
     original_name = str(payload.get("originalName") or "").strip()
+    _validate_effect_storage_name(name)
+    if original_name:
+        _validate_effect_storage_name(original_name)
 
     if not name:
         raise ValueError("特效方案名称不能为空。")
@@ -114,6 +162,7 @@ def _save_effect(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _delete_effect(state: BridgeState, name: str) -> dict[str, Any]:
+    _validate_effect_storage_name(name)
     effect_list = state.config_manager.config.effect_list
     match = None
     for e in effect_list:
@@ -134,6 +183,7 @@ def _delete_effect(state: BridgeState, name: str) -> dict[str, Any]:
 def _upload_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name") or "").strip()
     paths = list(payload.get("paths") or [])
+    _validate_effect_storage_name(name)
     if not name:
         raise ValueError("特效方案名称不能为空。")
     effect = _effect_by_name(state, name)
@@ -147,7 +197,7 @@ def _upload_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[st
 
     for file_path in paths:
         src = Path(str(file_path))
-        if not src.exists():
+        if not src.is_file():
             continue
         # Copy to managed directory
         dest = ef_dir / src.name
@@ -171,6 +221,7 @@ def _upload_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[st
 
 def _delete_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name") or "").strip()
+    _validate_effect_storage_name(name)
     index = int(payload.get("index") or 0)
     effect = _effect_by_name(state, name)
 
@@ -179,12 +230,7 @@ def _delete_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[st
         raise IndexError(f"audio index out of range: {index}")
 
     removed_path = audio_list.pop(index)
-    # Delete the file from managed directory
-    if removed_path:
-        try:
-            os.remove(removed_path)
-        except OSError:
-            pass  # File may already be gone
+    _unlink_managed_effect_file(name, removed_path)
 
     # Rebuild tags — preserve all lines to keep 1:1 audio-to-tag mapping
     old_tags = str(effect.audio_tags or "")
@@ -209,15 +255,12 @@ def _delete_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[st
 
 def _delete_all_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name") or "").strip()
+    _validate_effect_storage_name(name)
     effect = _effect_by_name(state, name)
 
     # Delete all managed audio files
     for path in (effect.audio_list or []):
-        if path:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+        _unlink_managed_effect_file(name, path)
 
     effect.audio_list = []
     effect.audio_tags = ""
@@ -227,6 +270,7 @@ def _delete_all_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dic
 
 def _save_effect_audio_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name") or "").strip()
+    _validate_effect_storage_name(name)
     effect = _effect_by_name(state, name)
     new_tags = str(payload.get("audioTags") or "")
     effect.audio_tags = new_tags

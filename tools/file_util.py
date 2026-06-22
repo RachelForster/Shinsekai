@@ -22,6 +22,7 @@ CHARACTERS_CONFIG_PATH = CONFIG_DIR / 'characters.yaml'
 BACKGROUND_CONFIG_PATH = CONFIG_DIR / 'background.yaml'
 BACKGROUND_UPLOAD_DIR = BASE_DATA_PATH / 'backgrounds'
 BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
+EFFECT_UPLOAD_DIR = BASE_DATA_PATH / 'effects'
 
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
@@ -689,7 +690,9 @@ def import_effect(input_path: str, existing_configs: list) -> list:
         for item in yaml_data:
             if not isinstance(item, dict):
                 continue
-            original_name = str(item.get('name', '')).strip()
+            original_name = _safe_package_name(item.get('name', ''), "effect name")
+            if not original_name:
+                raise ValueError("effect name must not be empty")
             name = original_name
             counter = 1
             while name.lower() in existing_names:
@@ -699,7 +702,7 @@ def import_effect(input_path: str, existing_configs: list) -> list:
             existing_names.add(name.lower())
 
             # Create managed directory and copy audio files
-            ef_dir = Path('data/effects') / name
+            ef_dir = EFFECT_UPLOAD_DIR / name
             ef_dir.mkdir(parents=True, exist_ok=True)
 
             new_audio_list = []
