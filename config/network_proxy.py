@@ -142,6 +142,18 @@ def detect_network_proxy_configuration() -> NetworkProxyDetection:
 
 
 def _set_proxy_env(names: tuple[str, ...], value: str) -> None:
+    if os.name == "nt" and value:
+        os.environ[names[0]] = value
+        return
+
+    if os.name == "nt" and not value:
+        restore = next(((name, _ORIGINAL_PROXY_ENV.get(name)) for name in names if _ORIGINAL_PROXY_ENV.get(name)), None)
+        for name in names:
+            os.environ.pop(name, None)
+        if restore is not None:
+            os.environ[restore[0]] = restore[1] or ""
+        return
+
     for name in names:
         if value:
             os.environ[name] = value

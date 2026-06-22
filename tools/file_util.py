@@ -22,6 +22,7 @@ CHARACTERS_CONFIG_PATH = CONFIG_DIR / 'characters.yaml'
 BACKGROUND_CONFIG_PATH = CONFIG_DIR / 'background.yaml'
 BACKGROUND_UPLOAD_DIR = BASE_DATA_PATH / 'backgrounds'
 BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
+EFFECT_UPLOAD_DIR = BASE_DATA_PATH / 'effects'
 
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
@@ -617,3 +618,119 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
     finally:
         # 清理临时目录
         shutil.rmtree(temp_dir)
+
+
+def export_effect(
+    effect_configs: list,
+    output_path: str = './output/effect.ef',
+    open_folder: bool = True,
+):
+    """Export effects as a .ef package file."""
+    Path('./output').mkdir(exist_ok=True)
+    temp_dir = Path(f'./temp_export_ef_{os.getpid()}')
+    temp_dir.mkdir(exist_ok=True)
+
+    try:
+        effect_data_list = []
+        for config in effect_configs:
+            ef_data = config.model_dump(exclude_none=True, mode='json')
+            effect_data_list.append(ef_data)
+
+        yaml_path = temp_dir / 'effect.yaml'
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(effect_data_list, f, allow_unicode=True, default_flow_style=False)
+
+        output = Path(output_path)
+        with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.write(yaml_path, 'effect.yaml')
+            for config in effect_configs:
+                for audio_path in (config.audio_list or []):
+                    audio_file = Path(audio_path)
+                    if audio_file.exists():
+                        arcname = f"audio/{audio_file.name}"
+                        zf.write(audio_file, arcname)
+
+        if open_folder:
+            os.startfile(output.parent)
+
+        print(f"特效导出完成：{output}")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def import_effect(input_path: str, existing_configs: list) -> list:
+    """Import effects from a .ef package file."""
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"文件未找到: {input_path}")
+
+    temp_dir = Path(f'./temp_import_ef_{os.getpid()}')
+    temp_dir.mkdir(exist_ok=True)
+
+    imported_configs = []
+
+    try:
+        with zipfile.ZipFile(input_path, 'r') as zf:
+            _safe_extract_zip(zf, temp_dir)
+
+        yaml_path = temp_dir / 'effect.yaml'
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            yaml_data = yaml.safe_load(f)
+
+        if not yaml_data:
+            raise ValueError("特效配置 YAML 文件为空或格式错误。")
+        if not isinstance(yaml_data, list):
+            yaml_data = [yaml_data]
+
+        from config.schema import Effect as EffectModel
+
+        existing_names = {e.name.lower() for e in existing_configs}
+
+        audio_source_dir = temp_dir / 'audio'
+
+        for item in yaml_data:
+            if not isinstance(item, dict):
+                continue
+            original_name = _safe_package_name(item.get('name', ''), "effect name")
+            if not original_name:
+                raise ValueError("effect name must not be empty")
+            name = original_name
+            counter = 1
+            while name.lower() in existing_names:
+                name = f"{original_name}_{counter}"
+                counter += 1
+            item['name'] = name
+            existing_names.add(name.lower())
+
+            # Create managed directory and copy audio files
+            ef_dir = EFFECT_UPLOAD_DIR / name
+            ef_dir.mkdir(parents=True, exist_ok=True)
+
+            new_audio_list = []
+            old_audio_list = item.get('audio_list') or []
+            for audio_path in old_audio_list:
+                audio_filename = Path(str(audio_path)).name
+                src = audio_source_dir / audio_filename
+                if src.exists():
+                    dest = ef_dir / audio_filename
+                    counter2 = 1
+                    while dest.exists():
+                        stem = Path(audio_filename).stem
+                        suffix = Path(audio_filename).suffix
+                        dest = ef_dir / f"{stem}_{counter2}{suffix}"
+                        counter2 += 1
+                    shutil.copy2(src, dest)
+                    new_audio_list.append(dest.as_posix())
+                else:
+                    # File not in archive, keep original path
+                    new_audio_list.append(str(audio_path))
+
+            item['audio_list'] = new_audio_list
+
+            effect = EffectModel.model_validate(item)
+            imported_configs.append(effect)
+
+        print(f"特效包成功从 {input_path} 导入。")
+        return imported_configs
+
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)

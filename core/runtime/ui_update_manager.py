@@ -258,6 +258,7 @@ class UIUpdateManager(QObject):
         self.current_bgm_path: Optional[str] = None
         self.current_background_path: Optional[str] = None
         self.user_display_name: str = "你"
+        self._looping_effects: dict[str, Any] = {}  # keyword → Sound对象
 
     # --- 低层：仅发信号 ---
 
@@ -400,6 +401,8 @@ class UIUpdateManager(QObject):
             print("切换bgm时发生错误")
             traceback.print_exc()
 
+    LOOP_EFFECT_CHANNEL_ID = 5
+
     def play_sound_effect(self, sound_effect_path: str) -> None:
         try:
             import pygame
@@ -415,19 +418,129 @@ class UIUpdateManager(QObject):
         except Exception as e:
             print(f"播放音效失败: {e}")
 
+    def start_loop_effect(self, keyword: str, audio_path: str) -> None:
+        """循环播放特效音（用于持续性环境音效如雨声、风声）"""
+        if not Path(audio_path).exists():
+            print(f"[Effect] 循环音效文件不存在: {audio_path}")
+            return
+        # 如果已在循环同一音效则跳过
+        if keyword in self._looping_effects:
+            return
+        try:
+            effect_sound = pygame.mixer.Sound(audio_path)
+            loop_channel = pygame.mixer.Channel(self.LOOP_EFFECT_CHANNEL_ID)
+            loop_channel.play(effect_sound, loops=-1)
+            self._looping_effects[keyword] = effect_sound
+            print(f"[Effect] 开始循环: {keyword!r} → {audio_path}")
+        except Exception as e:
+            print(f"[Effect] 循环播放失败: {e}")
+
+    def stop_loop_effect(self, keyword: str) -> None:
+        """停止指定关键词的循环特效"""
+        if keyword not in self._looping_effects:
+            return
+        try:
+            loop_channel = pygame.mixer.Channel(self.LOOP_EFFECT_CHANNEL_ID)
+            loop_channel.stop()
+            del self._looping_effects[keyword]
+            print(f"[Effect] 停止循环: {keyword!r}")
+        except Exception as e:
+            print(f"[Effect] 停止循环失败: {e}")
+
+    def stop_all_loop_effects(self) -> None:
+        """停止所有循环特效"""
+        try:
+            loop_channel = pygame.mixer.Channel(self.LOOP_EFFECT_CHANNEL_ID)
+            loop_channel.stop()
+            self._looping_effects.clear()
+        except Exception:
+            pass
+
+    def check_and_play_keyword_effects(self, dialog_text: str) -> None:
+        """检测对话文本中的关键词，播放匹配的特效音频。"""
+        if not dialog_text:
+            return
+        try:
+            from core.runtime.app_runtime import get_app_runtime
+            rt = get_app_runtime()
+            keyword_map = getattr(rt, "effect_keyword_map", {}) or {}
+            if not keyword_map:
+                return
+            for keyword, audio_path in keyword_map.items():
+                if keyword and keyword in dialog_text:
+                    print(f"[Effect] 关键词匹配: {keyword!r} 在对话中 → 播放 {audio_path}")
+                    self.play_sound_effect(audio_path)
+        except Exception as e:
+            import traceback
+            print(f"[Effect] 关键词特效检测失败: {e}")
+            traceback.print_exc()
+
     def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> None:
+        if not effect:
+            return
         try:
             match effect:
                 case "LEAVE":
                     if after_dialog:
                         self.remove_character_sprite(args.get("character_name"))
                 case _:
-                    if not after_dialog:
-                        path = SOUND_EFFECTS_PATH.get(effect.upper(), None)
-                        if path:
-                            self.play_sound_effect(path)
+                    # 解析前缀：loop: / stop: / before: / after: / 无前缀
+                    timing = "before"
+                    raw = effect
+
+                    # loop/stop 不受 timing 限制
+                    if raw.startswith("loop:"):
+                        self._play_by_keyword(raw[5:], mode="loop")
+                        return
+                    if raw.startswith("stop:"):
+                        self._play_by_keyword(raw[5:], mode="stop")
+                        return
+
+                    if raw.startswith("before:"):
+                        timing = "before"
+                        raw = raw[7:]
+                    elif raw.startswith("after:"):
+                        timing = "after"
+                        raw = raw[6:]
+
+                    # 时机不匹配则跳过
+                    if (timing == "before" and after_dialog) or (timing == "after" and not after_dialog):
+                        return
+                    self._play_by_keyword(raw, mode="once")
         except Exception as e:
             print("播放特效失败", e)
+
+    def _play_by_keyword(self, keyword: str, mode: str) -> None:
+        """按关键词查找音频并播放。mode: once / loop / stop"""
+        # 1) 旧硬编码系统特效
+        path = SOUND_EFFECTS_PATH.get(keyword.upper(), None)
+        if path:
+            if mode == "loop":
+                self.start_loop_effect(keyword, path)
+            elif mode == "stop":
+                self.stop_loop_effect(keyword)
+            else:
+                self.play_sound_effect(path)
+            return
+        # 2) 加载的特效方案关键词映射
+        try:
+            from core.runtime.app_runtime import get_app_runtime
+            rt = get_app_runtime()
+            keyword_map = getattr(rt, "effect_keyword_map", {}) or {}
+            for kw, audio_path in keyword_map.items():
+                if kw and kw.lower() == keyword.lower():
+                    if mode == "loop":
+                        print(f"[Effect] LLM触发: loop:{keyword!r} → {audio_path}")
+                        self.start_loop_effect(keyword, audio_path)
+                    elif mode == "stop":
+                        print(f"[Effect] LLM触发: stop:{keyword!r}")
+                        self.stop_loop_effect(keyword)
+                    else:
+                        print(f"[Effect] LLM触发: {keyword!r} → {audio_path}")
+                        self.play_sound_effect(audio_path)
+                    return
+        except Exception:
+            pass
 
 
 def connect_to_desktop_window(ui: UIUpdateManager, window: Any) -> None:
