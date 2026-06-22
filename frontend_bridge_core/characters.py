@@ -19,6 +19,15 @@ def _validate_reference_audio(voice_path: str) -> None:
         raise ValueError(err)
 
 
+def _normalize_sprite_voice_type(value: Any, *, allow_empty: bool = False) -> str:
+    voice_type = str(value or "").strip().lower()
+    if not voice_type and allow_empty:
+        return ""
+    if voice_type not in {"preset", "reference"}:
+        raise ValueError("voice type must be preset or reference")
+    return voice_type
+
+
 def _as_character_config(character: Any) -> Any:
     from config.character_config import CharacterConfig
 
@@ -262,7 +271,7 @@ def _upload_sprite_voice(state: BridgeState, payload: dict[str, Any]) -> dict[st
     sprite_index = int(payload.get("spriteIndex") or 0)
     voice_path = str(payload.get("voicePath") or "").strip()
     voice_text = str(payload.get("voiceText") or "").strip()
-    voice_type = str(payload.get("voiceType") or "").strip().lower()
+    voice_type = _normalize_sprite_voice_type(payload.get("voiceType"), allow_empty=True)
     if not voice_path:
         raise ValueError("voice path is required")
     if voice_type == "reference":
@@ -357,9 +366,15 @@ def _save_sprite_voice_text(state: BridgeState, payload: dict[str, Any]) -> dict
 def _save_sprite_voice_type(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name") or "").strip()
     sprite_index = int(payload.get("spriteIndex") or 0)
-    voice_type = str(payload.get("voiceType") or "").strip().lower()
-    if not voice_type:
-        raise ValueError("voice type is required")
+    voice_type = _normalize_sprite_voice_type(payload.get("voiceType"))
+    character = _character_by_name(state, name)
+    sprites = getattr(character, "sprites", []) or []
+    if voice_type == "reference" and 0 <= sprite_index < len(sprites):
+        voice_path = _sprite_voice_path(sprites[sprite_index])
+        if voice_path:
+            if not Path(voice_path).is_file():
+                raise ValueError("reference audio file does not exist")
+            _validate_reference_audio(voice_path)
     message = state.character_manager.save_sprite_voice_type(name, sprite_index, voice_type)
     if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
         raise RuntimeError(message)

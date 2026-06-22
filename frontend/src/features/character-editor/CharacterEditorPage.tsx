@@ -386,7 +386,7 @@ export function CharacterEditorPage() {
         spriteIndex: index,
         voicePath,
         voiceText,
-        voiceType: draft.sprites[index]?.voice_type,
+        voiceType: draft.sprites[index]?.voice_type ?? "preset",
       }),
     onError(error) {
       showToast({
@@ -609,7 +609,7 @@ export function CharacterEditorPage() {
 
   /** Merge server sprites while preserving local per-sprite voice_type. */
   const mergeSprites = (serverSprites: Sprite[], current: Character) =>
-    serverSprites.map((s, i) => ({ ...s, voice_type: current.sprites[i]?.voice_type }));
+    serverSprites.map((s, i) => ({ ...s, voice_type: current.sprites[i]?.voice_type ?? s.voice_type }));
 
   const updateSpriteTag = (index: number, value: string) => {
     setDraft((current) => {

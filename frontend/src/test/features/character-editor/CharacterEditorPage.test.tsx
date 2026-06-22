@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CharacterEditorPage } from "../../../features/character-editor/CharacterEditorPage";
 import type { Character } from "../../../entities/config/types";
@@ -13,6 +13,7 @@ const mockListCharacters = vi.fn();
 const mockSaveCharacter = vi.fn();
 const mockSaveCharacterEmotionTags = vi.fn();
 const mockUploadCharacterSprites = vi.fn();
+const mockUploadSpriteVoice = vi.fn();
 
 vi.mock("../../../shared/ui", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../shared/ui")>();
@@ -74,9 +75,10 @@ vi.mock("../../../entities/character/repository", () => ({
   saveCharacterEmotionTags: (name: string, emotionTags: string) => mockSaveCharacterEmotionTags(name, emotionTags),
   saveSpriteScale: vi.fn(),
   saveSpriteVoiceText: vi.fn(),
+  saveSpriteVoiceType: vi.fn(),
   translateCharacterFields: vi.fn(),
   uploadCharacterSprites: (input: unknown) => mockUploadCharacterSprites(input),
-  uploadSpriteVoice: vi.fn(),
+  uploadSpriteVoice: (input: unknown) => mockUploadSpriteVoice(input),
 }));
 
 const character: Character = {
@@ -116,6 +118,9 @@ function renderPage() {
 describe("CharacterEditorPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
     mockGetAppConfig.mockResolvedValue(structuredClone(sampleConfig));
     mockListCharacters.mockResolvedValue([structuredClone(character)]);
     mockSaveCharacter.mockImplementation(async (input: Character) => input);
@@ -128,6 +133,14 @@ describe("CharacterEditorPage", () => {
       name: input.name,
       sprites: input.paths.map((path) => ({ path })),
     }));
+    mockUploadSpriteVoice.mockImplementation(async (input: { voiceType?: "preset" | "reference" }) => ({
+      ...character,
+      sprites: [{ ...character.sprites[0], voice_path: "D:/new/sora.wav", voice_type: input.voiceType }],
+    }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("saves batch sprite tags when the dialog is confirmed", async () => {
@@ -191,6 +204,25 @@ describe("CharacterEditorPage", () => {
       }),
     );
     await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Sora"));
+  });
+
+  it("uploads sprite voice with the displayed default preset type", async () => {
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
+
+    await waitFor(() =>
+      expect(mockUploadSpriteVoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Mika",
+          spriteIndex: 0,
+          voicePath: "D:/new/sora.wav",
+          voiceType: "preset",
+        }),
+      ),
+    );
   });
 
   it("locks cloud voice reference controls when Kaggle GPT-SoVITS is selected", async () => {
