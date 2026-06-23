@@ -46,6 +46,24 @@ def test_llm_models_endpoint_url_uses_dashscope_deployment_models_api():
     )
 
 
+def test_llm_models_endpoint_url_uses_anthropic_models_path_once():
+    assert _llm_models_endpoint_url(
+        "https://api.anthropic.com",
+        "Claude",
+        "sk-test",
+    ) == "https://api.anthropic.com/v1/models"
+    assert _llm_models_endpoint_url(
+        "https://api.anthropic.com/v1",
+        "Claude",
+        "sk-test",
+    ) == "https://api.anthropic.com/v1/models"
+    assert _llm_models_endpoint_url(
+        "https://proxy.example.com/anthropic/v1/messages",
+        "Claude",
+        "sk-test",
+    ) == "https://proxy.example.com/anthropic/v1/models"
+
+
 def test_extract_llm_model_ids_accepts_openai_style_payload():
     assert _extract_llm_model_ids(
         {"data": [{"id": "model-a"}, {"id": "model-b"}, {"id": "model-a"}]}
