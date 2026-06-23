@@ -60,5 +60,13 @@ export default defineConfig({
     globals: true,
     include: ["src/test/**/*.{test,spec}.{ts,tsx}"],
     setupFiles: "./src/test/setup.ts",
+    coverage: {
+      provider: "v8",
+      all: true,
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/test/**", "src/**/*.d.ts", "src/vite-env.d.ts", "src/main.tsx"],
+      reporter: ["text", "html", "lcov", "json-summary"],
+      reportsDirectory: "./coverage",
+    },
   },
 });

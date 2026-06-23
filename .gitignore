@@ -86,6 +86,9 @@ node_modules/
 # 测试缓存 / Test cache
 /.pytest_cache
 /.tmp_pytest_*
+/.coverage
+/coverage
+/coverage.xml
 # 虚拟环境 & 依赖缓存 / Env & package cache
 /*.egg-info
 /.venv

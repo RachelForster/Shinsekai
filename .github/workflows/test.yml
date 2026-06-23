@@ -37,12 +37,52 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip -q
-          pip install -r requirements.txt -q
-          pip install pytest pytest-qt pytest-mock pytest-env -q
+          pip install -r requirements-dev.txt -q
 
-      - name: Run tests
+      - name: Run tests with coverage
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONIOENCODING: utf-8
         run: |
-          python -m pytest -v --tb=short --strict-markers -p no:warnings
+          python -m pytest -v --tb=short --strict-markers -p no:warnings \
+            --cov \
+            --cov-config=.coveragerc \
+            --cov-report=term-missing:skip-covered \
+            --cov-report=html:coverage/python/html \
+            --cov-report=xml:coverage/python/coverage.xml \
+            --cov-report=json:coverage/python/coverage.json
+
+      - name: Summarize Python coverage
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary_path = Path("coverage/python/coverage.json")
+          if not summary_path.exists():
+              raise SystemExit(0)
+
+          totals = json.loads(summary_path.read_text(encoding="utf-8"))["totals"]
+          lines = totals["percent_covered_display"]
+          statements = totals["percent_statements_covered_display"]
+          branches = totals["percent_branches_covered_display"]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## Python coverage\n\n")
+              summary.write(f"- Lines: {lines}%\n")
+              summary.write(f"- Statements: {statements}%\n")
+              summary.write(f"- Branches: {branches}%\n")
+              summary.write(f"- HTML artifact: `python-coverage-${{ matrix.python-version }}`\n")
+          PY
+
+      - name: Upload Python coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage-${{ matrix.python-version }}
+          if-no-files-found: warn
+          path: |
+            coverage/python/html
+            coverage/python/coverage.xml
+            coverage/python/coverage.json

@@ -60,8 +60,41 @@ jobs:
       - name: Type check
         run: pnpm lint:types
 
-      - name: Unit tests
-        run: pnpm test
+      - name: Unit tests with coverage
+        run: pnpm test:coverage
+
+      - name: Summarize frontend coverage
+        if: always()
+        run: |
+          node - <<'JS'
+          const fs = require("fs");
+          const path = "coverage/coverage-summary.json";
+          if (!fs.existsSync(path)) {
+            process.exit(0);
+          }
+
+          const total = JSON.parse(fs.readFileSync(path, "utf8")).total;
+          const summary = [
+            "## Frontend coverage",
+            "",
+            `- Lines: ${total.lines.pct}%`,
+            `- Statements: ${total.statements.pct}%`,
+            `- Branches: ${total.branches.pct}%`,
+            `- Functions: ${total.functions.pct}%`,
+            "- HTML artifact: `frontend-coverage`",
+            "",
+          ].join("\n");
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+          JS
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          if-no-files-found: warn
+          path: |
+            frontend/coverage
 
       - name: Build
         run: pnpm build
