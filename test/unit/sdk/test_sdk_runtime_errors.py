@@ -1,4 +1,7 @@
 import logging
+import sys
+import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -229,7 +232,11 @@ def test_handle_main_exception_exits_after_reporting(capsys):
 def test_report_main_exception_can_suppress_dialog_from_bridge(monkeypatch):
     calls = []
     monkeypatch.setenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", "1")
-    monkeypatch.setattr(handler, "show_error_dialog", lambda *args, **kwargs: calls.append(args) or True)
+    monkeypatch.setattr(
+        handler,
+        "show_error_dialog",
+        lambda *args, **kwargs: calls.append(args) or True,
+    )
 
     try:
         raise RuntimeError("boom")
@@ -244,3 +251,219 @@ def test_report_main_exception_can_suppress_dialog_from_bridge(monkeypatch):
         )
 
     assert calls == []
+
+
+def test_dialog_message_formats_dependency_http_and_generic_errors():
+    dependency = types.runtime_dependency_error_from_module("opencc")
+    assert "缺少 Python 模块：opencc" in handler._format_dialog_message(
+        "App", ModuleNotFoundError("No module named 'opencc'"), dependency
+    )
+
+    timeout = _FakeHttpxTimeout("timed out")
+    timeout.request = _FakeRequest()
+    assert "网络请求超时" in handler._format_dialog_message(
+        "App", timeout, types.http_client_error_from_exception(timeout)
+    )
+
+    status = _http_status_error("bad gateway", 502)
+    assert "HTTP 502" in handler._format_dialog_message(
+        "App", status, types.http_client_error_from_exception(status)
+    )
+
+    connection = _FakeHttpxStatusError("connection reset")
+    assert "网络请求失败" in handler._format_dialog_message(
+        "App", connection, types.http_client_error_from_exception(connection)
+    )
+
+    assert handler._format_dialog_message("App", RuntimeError("boom"), None) == (
+        "App 启动失败：RuntimeError: boom"
+    )
+
+
+def test_dialog_helpers_handle_import_failure_and_single_display(monkeypatch):
+    real_import = __import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "PySide6.QtWidgets":
+            raise ImportError("qt missing")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    assert handler._show_qt_dialog("Title", "Message", "detail") is False
+    assert handler._show_windows_dialog("Title", "Message") is False
+
+    calls = []
+    monkeypatch.setattr(handler, "_dialog_shown", False)
+    monkeypatch.setattr(
+        handler,
+        "_show_qt_dialog",
+        lambda title, message, detail: calls.append(("qt", detail)) or False,
+    )
+    monkeypatch.setattr(
+        handler,
+        "_show_windows_dialog",
+        lambda title, message: calls.append(("win", message)) or True,
+    )
+
+    assert handler.show_error_dialog("Title", "Message", "detail") is True
+    assert handler.show_error_dialog("Other", "Again", "ignored") is False
+    assert calls == [("qt", "detail"), ("win", "Message")]
+
+
+def test_qt_dialog_uses_owned_app_and_truncates_detail(monkeypatch):
+    calls = []
+
+    class FakeApp:
+        @staticmethod
+        def instance():
+            return None
+
+        def __init__(self, args):
+            calls.append(("app", args))
+
+        def quit(self):
+            calls.append(("quit", None))
+
+    class FakeBox:
+        class Icon:
+            Critical = "critical"
+
+        def setIcon(self, icon):
+            calls.append(("icon", icon))
+
+        def setWindowTitle(self, title):
+            calls.append(("title", title))
+
+        def setText(self, text):
+            calls.append(("text", text))
+
+        def setDetailedText(self, detail):
+            calls.append(("detail_len", len(detail)))
+
+        def exec(self):
+            calls.append(("exec", None))
+
+    real_import = __import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "PySide6.QtWidgets":
+            return SimpleNamespace(QApplication=FakeApp, QMessageBox=FakeBox)
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+
+    assert handler._show_qt_dialog("Title", "Message", "x" * 25000) is True
+    assert ("app", []) in calls
+    assert ("detail_len", 20000) in calls
+    assert ("quit", None) in calls
+
+
+def test_report_main_exception_still_reports_when_logger_or_stderr_fail(monkeypatch, capsys):
+    class FailingLogger:
+        def critical(self, *args, **kwargs):
+            raise RuntimeError("logger failed")
+
+    dialog_calls = []
+    monkeypatch.delenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.delenv("SHINSEKAI_DISABLE_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.setattr(
+        handler,
+        "show_error_dialog",
+        lambda *args: dialog_calls.append(args) or True,
+    )
+
+    exc = RuntimeError("boom")
+    handler.report_main_exception(
+        type(exc),
+        exc,
+        exc.__traceback__,
+        app_name="App",
+        logger=FailingLogger(),
+        show_dialog=True,
+    )
+
+    assert "App startup failed: RuntimeError: boom" in capsys.readouterr().err
+    assert dialog_calls and dialog_calls[0][0] == "App 启动失败"
+
+    class BrokenStderr:
+        def write(self, text):
+            raise OSError("closed")
+
+        def flush(self):
+            raise OSError("closed")
+
+    monkeypatch.setattr(handler.sys, "stderr", BrokenStderr())
+    handler._write_stderr("App", RuntimeError, RuntimeError("boom"), "detail", None)
+
+
+def test_main_exception_hooks_report_sys_and_thread_exceptions(monkeypatch):
+    original_sys_hook = sys.excepthook
+    original_thread_hook = getattr(threading, "excepthook", None)
+    calls = []
+    monkeypatch.setattr(handler, "_hook_installed", False)
+    monkeypatch.setattr(
+        handler,
+        "report_main_exception",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    try:
+        handler.install_main_exception_hook(app_name="HookApp", show_dialog=False)
+        sys.excepthook(RuntimeError, RuntimeError("sys"), None)
+        threading.excepthook(
+            SimpleNamespace(
+                exc_type=ValueError,
+                exc_value=ValueError("thread"),
+                exc_traceback=None,
+            )
+        )
+        handler.install_main_exception_hook(app_name="Ignored")
+    finally:
+        sys.excepthook = original_sys_hook
+        if original_thread_hook is not None:
+            threading.excepthook = original_thread_hook
+        handler._hook_installed = False
+
+    assert [call[0][0] for call in calls] == [RuntimeError, ValueError]
+    assert all(call[1]["app_name"] == "HookApp" for call in calls)
+
+
+def test_handle_main_exception_reraises_exit_exceptions():
+    with pytest.raises(KeyboardInterrupt):
+        handler.handle_main_exception(KeyboardInterrupt())
+
+    sentinel = SystemExit(3)
+    with pytest.raises(SystemExit) as raised:
+        handler.handle_main_exception(sentinel)
+    assert raised.value is sentinel
+
+
+@pytest.mark.parametrize(
+    ("status_code", "message", "timeout", "expected"),
+    [
+        (403, "permission denied", False, "权限不足"),
+        (None, "plain timeout", True, "请求超时"),
+        (503, "service unavailable", False, "服务商暂时异常"),
+        (400, "bad request", False, "请求参数有误"),
+        (418, "teapot", False, "HTTP 418"),
+        (None, "connection reset", False, "网络请求失败"),
+        (None, "quota exceeded", False, "额度或余额不足"),
+    ],
+)
+def test_llm_http_action_message_covers_status_families(status_code, message, timeout, expected):
+    assert expected in presenter.llm_http_action_message(status_code, message, timeout=timeout)
+
+
+def test_llm_presenter_formats_fallback_and_missing_dependency():
+    assert presenter.format_llm_exception_message(
+        RuntimeError("plain failure"),
+        fallback_message="fallback",
+    ) == "fallback\nplain failure"
+
+    text = presenter.format_llm_exception_message(
+        ModuleNotFoundError("No module named 'opencc'", name="opencc"),
+        fallback_message="fallback",
+    )
+
+    assert "缺少 Python 模块：opencc" in text
+    assert "opencc-python-reimplemented" in text

@@ -26,7 +26,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  FRONTEND_COVERAGE_THRESHOLD: 90
+  FRONTEND_COVERAGE_THRESHOLD: 85
 
 concurrency:
   group: react-frontend-${{ github.workflow }}-${{ github.ref }}

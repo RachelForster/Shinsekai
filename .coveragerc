@@ -11,7 +11,7 @@ omit =
     **/*.pyc
 
 [report]
-fail_under = 80
+fail_under = 85
 precision = 2
 show_missing = True
 skip_empty = True

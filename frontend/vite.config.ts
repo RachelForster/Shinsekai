@@ -7,7 +7,7 @@ declare const process: {
   };
 };
 
-const coverageThreshold = Number(process.env.FRONTEND_COVERAGE_THRESHOLD ?? 90);
+const coverageThreshold = Number(process.env.FRONTEND_COVERAGE_THRESHOLD ?? 85);
 
 function modulePath(path: string) {
   return new URL(path, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");

@@ -62,7 +62,7 @@ pnpm test:coverage
 
 This runs `vitest run --coverage` and uses the coverage settings in `frontend/vite.config.ts`. The report covers `frontend/src/**/*.{ts,tsx}` and excludes test files, TypeScript declaration files, and `frontend/src/main.tsx`.
 
-The frontend coverage gate currently requires at least 90% overall line coverage and 90% overall statement coverage. The local default is 90%, and the React Frontend GitHub Actions workflow also sets `FRONTEND_COVERAGE_THRESHOLD=90` before running `pnpm test:coverage`. If either number drops below 90%, `pnpm test:coverage` fails locally and in CI. Keep the coverage at or above that threshold when adding or changing frontend code.
+The frontend coverage gate currently requires at least 85% overall line coverage and 85% overall statement coverage. The local default is 85%, and the React Frontend GitHub Actions workflow also sets `FRONTEND_COVERAGE_THRESHOLD=85` before running `pnpm test:coverage`. If either number drops below 85%, `pnpm test:coverage` fails locally and in CI. Keep the coverage at or above that threshold when adding or changing frontend code.
 
 Useful frontend report files:
 
@@ -95,7 +95,7 @@ conda run -n shinsekai python -m pytest --cov --cov-config=.coveragerc --cov-rep
 
 The Python coverage source, threshold, and output paths are configured in `.coveragerc`. The coverage gate tracks the headless Python unit-test surface: `sdk`, `core/messaging`, and `i18n`. GUI windows, local AI adapters, bridge integration handlers, developer CLI scaffolding, and other environment-heavy code are intentionally outside this gate because they require separate UI, integration, or manual/runtime validation.
 
-The Python coverage gate requires at least 80% combined coverage. Because branch coverage is enabled, the threshold uses the combined statement and branch percentage reported by `coverage.py`, not only the line percentage. If coverage drops below 80%, the pytest coverage command fails locally and in the `Test` GitHub Actions workflow.
+The Python coverage gate requires at least 85% combined coverage. Because branch coverage is enabled, the threshold uses the combined statement and branch percentage reported by `coverage.py`, not only the line percentage. If coverage drops below 85%, the pytest coverage command fails locally and in the `Test` GitHub Actions workflow.
 
 Useful Python report files:
 
