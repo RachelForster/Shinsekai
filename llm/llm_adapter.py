@@ -1,6 +1,7 @@
 # llm_adapter.py
 from sdk.adapters import LLMAdapter
 from sdk.exception.types import http_client_error_from_exception
+from llm.claude_url import normalize_claude_base_url_for_sdk
 from openai import OpenAI
 import time
 import json
@@ -202,7 +203,10 @@ class ClaudeAdapter(LLMAdapter):
     def __init__(self, api_key=None, base_url=None, model="claude-3-5-sonnet-20240620", **kwargs):
         super().__init__(**kwargs)
         import anthropic
-        self.client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
+        self.client = anthropic.Anthropic(
+            api_key=api_key,
+            base_url=normalize_claude_base_url_for_sdk(base_url),
+        )
         self.model = model
         self.system_prompt = ''
 

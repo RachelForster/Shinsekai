@@ -53,6 +53,7 @@ from config.tts_provider_config import (
 from i18n import init_i18n, tr as tr_i18n
 from sdk.lang import normalize_lang
 from llm.constants import LLM_BASE_URLS
+from llm.claude_url import claude_models_endpoint_url
 from llm.llm_manager import LLMAdapterFactory
 from t2i.t2i_manager import T2IAdapterFactory
 from tts.tts_manager import TTSAdapterFactory
@@ -575,6 +576,8 @@ def _llm_models_endpoint_url(
     base_url: str, provider: str = "", api_key: str = ""
 ) -> str:
     kind = _llm_model_provider_kind(provider, base_url)
+    if kind == "anthropic":
+        return claude_models_endpoint_url(base_url)
     if kind == "gemini":
         return _gemini_models_endpoint_url(base_url, api_key)
     if kind == "deepseek":
