@@ -2,7 +2,7 @@
 name: RC Bug
 about: 用于记录 release candidate 测试中发现的缺陷，并自动挂到 release tracking issue 下。
 title: "[RC vX.Y.Z-rc.N] "
-labels: "bug,release-blocker,needs-cherrypick"
+labels: "bug,release-blocker,needs-fix"
 assignees: ""
 ---
 
@@ -48,4 +48,4 @@ assignees: ""
 labels:
   - bug
   - release-blocker
-  - needs-cherrypick
+  - needs-fix

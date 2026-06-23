@@ -168,6 +168,45 @@ jobs:
                       return item
               return None
 
+          def ensure_milestone(milestone_title: str) -> int:
+              page = 1
+              while True:
+                  output = gh_api(
+                      f"repos/{repo}/milestones?state=all&per_page=100&page={page}"
+                  )
+                  milestones = json.loads(output)
+                  if not milestones:
+                      break
+                  for milestone in milestones:
+                      if milestone.get("title") == milestone_title:
+                          number = int(milestone["number"])
+                          if milestone.get("state") == "closed":
+                              gh_api(
+                                  f"repos/{repo}/milestones/{number}",
+                                  "--method",
+                                  "PATCH",
+                                  "--input",
+                                  "-",
+                                  input_json={"state": "open"},
+                              )
+                          return number
+                  page += 1
+
+              created = json.loads(
+                  gh_api(
+                      f"repos/{repo}/milestones",
+                      "--method",
+                      "POST",
+                      "--input",
+                      "-",
+                      input_json={
+                          "title": milestone_title,
+                          "description": f"Release milestone for {milestone_title}",
+                      },
+                  )
+              )
+              return int(created["number"])
+
           body = textwrap.dedent(f"""\
           ## Release
 
@@ -227,6 +266,7 @@ jobs:
 
           ensure_label("maintenance", "5319e7", "Project maintenance work")
           ensure_label("p1", "d93f0b", "Priority 1")
+          milestone_number = ensure_milestone(base_tag)
 
           issue = search_issue()
           if issue is None:
@@ -241,12 +281,21 @@ jobs:
                           "title": title,
                           "body": body,
                           "labels": ["maintenance", "p1"],
+                          "milestone": milestone_number,
                       },
                   )
               )
               print(f"Created release tracking issue: {created['html_url']}")
           else:
               number = issue["number"]
+              gh_api(
+                  f"repos/{repo}/issues/{number}",
+                  "--method",
+                  "PATCH",
+                  "--input",
+                  "-",
+                  input_json={"milestone": milestone_number},
+              )
               gh_api(
                   f"repos/{repo}/issues/{number}/comments",
                   "--method",

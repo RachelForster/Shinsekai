@@ -96,6 +96,21 @@ jobs:
                   input_json={"body": body},
               )
 
+          def set_issue_milestone(issue: dict, milestone_number: int) -> None:
+              issue_number = int(issue["number"])
+              current = issue.get("milestone") or {}
+              if current.get("number") == milestone_number:
+                  return
+              gh_api(
+                  f"repos/{repo}/issues/{issue_number}",
+                  "--method",
+                  "PATCH",
+                  "--input",
+                  "-",
+                  input_json={"milestone": milestone_number},
+              )
+              print(f"Set milestone #{milestone_number} on issue #{issue_number}")
+
           def issue_ref(number: int) -> str:
               return f"#{number}"
 
@@ -120,10 +135,14 @@ jobs:
               if issue.get("state") == "closed":
                   return "closed"
               labels = {label["name"].lower() for label in issue.get("labels", [])}
-              if "needs-cherrypick" in labels:
-                  return "needs cherrypick"
               if "cherry-picked" in labels:
                   return "cherry-picked"
+              if "needs-cherrypick" in labels:
+                  return "needs cherrypick"
+              if "fixed-on-main" in labels:
+                  return "fixed on main"
+              if "needs-fix" in labels:
+                  return "needs fix"
               return "open"
 
           def parse_fix_field(issue: dict, label: str) -> str:
@@ -270,6 +289,7 @@ jobs:
           def link_child(parent: dict, child: dict) -> bool:
               parent_number = int(parent["number"])
               child_number = int(child["number"])
+              parent_milestone = parent.get("milestone")
 
               if "pull_request" in child:
                   print(f"#{child_number}: skipping pull request")
@@ -304,11 +324,15 @@ jobs:
 
               if result.returncode == 0:
                   print(f"Linked #{child_number} under release tracking issue #{parent_number}")
+                  if parent_milestone:
+                      set_issue_milestone(child, int(parent_milestone["number"]))
                   return True
 
               stderr = result.stderr.lower()
               if "already" in stderr or "validation failed" in stderr:
                   print(f"#{child_number}: may already be linked to #{parent_number}: {result.stderr.strip()}")
+                  if parent_milestone:
+                      set_issue_milestone(child, int(parent_milestone["number"]))
                   return True
 
               print(result.stderr, file=sys.stderr)

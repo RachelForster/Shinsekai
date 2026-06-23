@@ -64,6 +64,8 @@ jobs:
               "invalid": ("e4e669", "This does not seem right"),
               "maintenance": ("5319e7", "Project maintenance work"),
               "release-blocker": ("b60205", "Blocks the current release"),
+              "needs-fix": ("b60205", "Needs a fix on main before it can be cherry-picked"),
+              "fixed-on-main": ("fbca04", "Fix has landed on main and needs release branch handling"),
               "needs-cherrypick": ("d93f0b", "Needs cherry-pick to the release branch"),
               "cherry-picked": ("0e8a16", "Cherry-picked to the release branch"),
               "question": ("d876e3", "Further information is requested"),
