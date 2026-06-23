@@ -16,6 +16,10 @@ Thanks for your interest in contributing. We're happy you're here.
 - Keep optional plugin business tests with the plugin package or plugin repository. The main repository should only test shared SDK/host behavior, using committed fixtures instead of importing ignored local plugins from `plugins/`.
 - If you add a new dependency, briefly explain why it's needed in the issue.
 
+## Release process
+
+Shinsekai keeps `main` open for development during releases. Maintainers cut a `release/x.y` branch, test release candidates there, and cherry-pick approved fixes from `main` into the release branch. See [docs/RELEASE_PROCESS_zh-CN.md](docs/RELEASE_PROCESS_zh-CN.md) for the full process.
+
 ## Local presubmit hooks
 
 Install the repository hooks once per clone:

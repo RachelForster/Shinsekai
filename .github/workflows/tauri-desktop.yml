@@ -3,7 +3,7 @@ name: Tauri Desktop
 on:
   workflow_dispatch:
   push:
-    branches: [main, feat/react-frontend-refactor]
+    branches: [main, "release/**", feat/react-frontend-refactor]
     paths:
       - ".github/workflows/tauri-desktop.yml"
       - "frontend/**"

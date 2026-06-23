@@ -26,6 +26,7 @@ from llm.llm_adapter import (
     OpenAIAdapter,
     filter_supported_chat_params,
 )
+from llm.claude_url import normalize_claude_base_url_for_sdk
 
 
 class TestFilterSupportedChatParams:
@@ -98,6 +99,41 @@ class TestOpenAIAdapter:
         adapter = OpenAIAdapter(api_key="sk-xxx", base_url="https://api.openai.com", model="gpt-4")
         adapter.set_user_template("You are helpful.")
         assert adapter.user_template == "You are helpful."
+
+
+class TestClaudeAdapter:
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("https://api.anthropic.com", "https://api.anthropic.com"),
+            ("https://api.anthropic.com/v1", "https://api.anthropic.com"),
+            ("https://api.anthropic.com/v1/", "https://api.anthropic.com"),
+            ("https://proxy.example.com/anthropic/v1", "https://proxy.example.com/anthropic"),
+            ("https://proxy.example.com/anthropic/v1/messages", "https://proxy.example.com/anthropic"),
+        ],
+    )
+    def test_normalize_claude_base_url_for_sdk(self, raw, expected):
+        assert normalize_claude_base_url_for_sdk(raw) == expected
+
+    def test_init_strips_version_suffix_before_constructing_anthropic_client(self, monkeypatch):
+        fake_anthropic = ModuleType("anthropic")
+
+        class _Anthropic:
+            def __init__(self, api_key=None, base_url=None):
+                self.api_key = api_key
+                self.base_url = base_url
+
+        fake_anthropic.Anthropic = _Anthropic
+        monkeypatch.setitem(sys.modules, "anthropic", fake_anthropic)
+
+        adapter = ClaudeAdapter(
+            api_key="sk-ant",
+            base_url="https://api.anthropic.com/v1",
+            model="claude-3-5-sonnet-20240620",
+        )
+
+        assert adapter.client.api_key == "sk-ant"
+        assert adapter.client.base_url == "https://api.anthropic.com"
 
 
 class TestMockLLMAdapter:
