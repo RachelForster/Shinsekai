@@ -16,6 +16,7 @@ from config.tts_provider_config import (
     tts_server_url_or_default,
     uses_shared_tts_server_config,
 )
+from llm.claude_url import claude_messages_endpoint_url, claude_models_endpoint_url
 from .state import BridgeState, _jsonify
 
 _MODEL_REQUEST_USER_AGENT = (
@@ -293,6 +294,8 @@ def _openai_models_endpoint(base_url: str) -> str:
 def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
     kind = _llm_model_provider_kind(provider, base_url)
     base = base_url.strip().rstrip("/")
+    if kind == "anthropic":
+        return claude_models_endpoint_url(base)
     if kind == "gemini" and "generativelanguage.googleapis.com" in base.lower():
         marker_ix = base.lower().rfind("/openai")
         if marker_ix >= 0:
@@ -324,12 +327,7 @@ def _openai_chat_endpoint(base_url: str) -> str:
 
 
 def _anthropic_messages_endpoint(base_url: str) -> str:
-    base = base_url.strip().rstrip("/")
-    if not base:
-        raise ValueError("请先填写 LLM 基础地址和 API Key。")
-    if base.lower().endswith("/messages"):
-        return base
-    return f"{base}/messages"
+    return claude_messages_endpoint_url(base_url)
 
 
 def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> dict[str, str]:
