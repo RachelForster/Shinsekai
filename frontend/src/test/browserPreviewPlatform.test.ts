@@ -369,26 +369,36 @@ describe("browser preview platform chat themes", () => {
     expect(runResult.audioPath).toContain("final_mix.wav");
 
     expect(
-      (await resolvePreview(
-        platform.tools.cropSprites({ inputDir: "/tmp/sprites", outputDir: "", ratio: 0.55 }, options),
-        1_000,
-      )).outputDir,
+      (
+        await resolvePreview(
+          platform.tools.cropSprites({ inputDir: "/tmp/sprites", outputDir: "", ratio: 0.55 }, options),
+          1_000,
+        )
+      ).outputDir,
     ).toContain("cropped_upper_0.55");
     expect(
-      (await resolvePreview(
-        platform.tools.generateSpritePrompts({ characterName: "Mika", count: 2, scenario: "scene" }, options),
-        1_000,
-      )).prompts,
+      (
+        await resolvePreview(
+          platform.tools.generateSpritePrompts({ characterName: "Mika", count: 2, scenario: "scene" }, options),
+          1_000,
+        )
+      ).prompts,
     ).toHaveLength(2);
     expect(
-      (await resolvePreview(
-        platform.tools.generateSprites({ characterName: "Mika", outputDir: "", prompts: ["a", "b"] }, options),
-        1_000,
-      )).files,
+      (
+        await resolvePreview(
+          platform.tools.generateSprites({ characterName: "Mika", outputDir: "", prompts: ["a", "b"] }, options),
+          1_000,
+        )
+      ).files,
     ).toHaveLength(2);
     expect(
-      (await resolvePreview(platform.tools.removeSpriteBackground({ inputDir: "/tmp/sprites", outputDir: "" }, options), 1_000))
-        .outputDir,
+      (
+        await resolvePreview(
+          platform.tools.removeSpriteBackground({ inputDir: "/tmp/sprites", outputDir: "" }, options),
+          1_000,
+        )
+      ).outputDir,
     ).toContain("removed_backgrounds");
   });
 
@@ -414,7 +424,8 @@ describe("browser preview platform chat themes", () => {
     expect((await resolvePreview(platform.plugins.getUi("vision-demo"))).pages[0].title).toBe("预览设置");
     expect((await resolvePreview(platform.plugins.setEnabled("vision-demo", false))).enabled).toBe(false);
     expect(
-      (await resolvePreview(platform.plugins.runUiAction("vision-demo", "settings-0", "save", { enabled: true }))).message,
+      (await resolvePreview(platform.plugins.runUiAction("vision-demo", "settings-0", "save", { enabled: true })))
+        .message,
     ).toContain("save");
     expect(
       (await resolvePreview(platform.plugins.saveUiConfig("vision-demo", "settings-0", { enabled: true }))).page.values,
@@ -497,9 +508,9 @@ describe("browser preview platform chat themes", () => {
     expect((await resolvePreview(platform.chat.getHistory())).some((entry) => entry.role === "user")).toBe(true);
     expect((await resolvePreview(platform.chat.command({ type: "pause-asr" }))).status).toBe("paused");
     expect((await resolvePreview(platform.chat.command({ type: "resume-asr" }))).status).toBe("listening");
-    expect((await resolvePreview(platform.chat.command({ payload: "en", type: "change-voice-language" }))).voiceLanguage).toBe(
-      "en",
-    );
+    expect(
+      (await resolvePreview(platform.chat.command({ payload: "en", type: "change-voice-language" }))).voiceLanguage,
+    ).toBe("en");
     expect((await resolvePreview(platform.chat.command({ type: "dialog-advance" }))).status).toBe("idle");
     expect((await resolvePreview(platform.chat.command({ type: "skip-speech" }))).status).toBe("idle");
     expect((await resolvePreview(platform.chat.command({ type: "open-history" }))).openedPath).toContain("preview");

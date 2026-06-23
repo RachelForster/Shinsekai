@@ -250,7 +250,7 @@ describe("ApiSettingsPage", () => {
     expect(mocks.saveApiConfig).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText("LLM API Key"), { target: { value: "sk-test" } });
-    fireEvent.change(screen.getByLabelText("LLM API 基础网址"), { target: { value: "\"https://api.example.test\"" } });
+    fireEvent.change(screen.getByLabelText("LLM API 基础网址"), { target: { value: '"https://api.example.test"' } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     expect(await screen.findByText("LLM API 基础网址不能包含引号。")).toBeInTheDocument();
     expect(mocks.saveApiConfig).not.toHaveBeenCalled();

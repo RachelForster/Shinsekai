@@ -547,15 +547,17 @@ describe("CharacterEditorPage", () => {
       moduleName: "mem0",
       packageName: "mem0ai",
     });
-    mockInstallMissingRuntimeDependency.mockImplementation(async (_input, options?: { onTaskUpdate?: (task: unknown) => void }) => {
-      options?.onTaskUpdate?.({
-        done: false,
-        id: "task-1",
-        logs: ["Installing mem0ai"],
-        status: "running",
-      });
-      return { message: "installed" };
-    });
+    mockInstallMissingRuntimeDependency.mockImplementation(
+      async (_input, options?: { onTaskUpdate?: (task: unknown) => void }) => {
+        options?.onTaskUpdate?.({
+          done: false,
+          id: "task-1",
+          logs: ["Installing mem0ai"],
+          status: "running",
+        });
+        return { message: "installed" };
+      },
+    );
 
     renderPage();
 

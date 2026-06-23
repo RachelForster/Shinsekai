@@ -85,8 +85,7 @@ vi.mock("../../../entities/background/repository", () => ({
   saveBackgroundBgmTags: vi.fn(),
   saveBackgroundImageTags: (input: { bgTags: string; name: string }) => mockSaveBackgroundImageTags(input),
   translateBackgroundFields: (input: unknown) => mockTranslateBackgroundFields(input),
-  uploadBackgroundBgm: (input: { bgmTags: string; name: string; paths: string[] }) =>
-    mockUploadBackgroundBgm(input),
+  uploadBackgroundBgm: (input: { bgmTags: string; name: string; paths: string[] }) => mockUploadBackgroundBgm(input),
   uploadBackgroundImages: (input: { bgTags: string; name: string; paths: string[] }) =>
     mockUploadBackgroundImages(input),
 }));
@@ -215,7 +214,9 @@ describe("BackgroundManagerPage", () => {
     expect(screen.getByText("No BGM entries")).toBeInTheDocument();
 
     emptyRender.unmount();
-    mockListBackgrounds.mockRejectedValueOnce(new Error("load failed")).mockResolvedValueOnce([structuredClone(background)]);
+    mockListBackgrounds
+      .mockRejectedValueOnce(new Error("load failed"))
+      .mockResolvedValueOnce([structuredClone(background)]);
     renderPage();
 
     expect(await screen.findByText("Operation failed")).toBeInTheDocument();
@@ -334,9 +335,7 @@ describe("BackgroundManagerPage", () => {
 
     pickerState.paths = ["D:/backgrounds/school/theme.mp3"];
     fireEvent.click(screen.getByRole("button", { name: "Upload BGM" }));
-    fireEvent.click(
-      within(screen.getByRole("dialog", { name: "Select BGM files" })).getByText("Choose mocked paths"),
-    );
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Select BGM files" })).getByText("Choose mocked paths"));
     await waitFor(() =>
       expect(mockUploadBackgroundBgm).toHaveBeenCalledWith({
         bgmTags: "",

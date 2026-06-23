@@ -235,7 +235,9 @@ describe("EffectManagerPage", () => {
         undefined,
       ),
     );
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "Upload Audio" })).getByText("Choose mocked paths"));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "Upload Audio" })).getByText("Choose mocked paths"),
+    );
 
     await waitFor(() =>
       expect(mockUploadEffectAudio).toHaveBeenCalledWith({
@@ -332,11 +334,15 @@ describe("EffectManagerPage", () => {
     expect(await screen.findByText("tags boom")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Clear all audio" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Clear all audio" })).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Clear all audio" })).getByRole("button", { name: "Delete" }),
+    );
     expect(await screen.findByText("clear boom")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Delete effect scheme" })).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Delete effect scheme" })).getByRole("button", { name: "Delete" }),
+    );
     expect(await screen.findByText("delete boom")).toBeInTheDocument();
   });
 });

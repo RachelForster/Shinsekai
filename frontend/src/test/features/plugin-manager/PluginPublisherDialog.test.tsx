@@ -41,13 +41,7 @@ vi.mock("../../../shared/ui", async () => {
       onPathChange?: (path: string) => void;
       pickLabel?: string;
       value?: string;
-    }) => (
-      <input
-        aria-label={pickLabel}
-        onChange={(event) => onPathChange?.(event.target.value)}
-        value={value ?? ""}
-      />
-    ),
+    }) => <input aria-label={pickLabel} onChange={(event) => onPathChange?.(event.target.value)} value={value ?? ""} />,
   };
 });
 
@@ -75,9 +69,12 @@ function fillValidForm() {
   fireEvent.change(screen.getByPlaceholderText(">=0.2.0"), {
     target: { value: ">=0.3.0" },
   });
-  fireEvent.change(screen.getByPlaceholderText("Example plugin for Shinsekai, describing core capabilities and use cases."), {
-    target: { value: "Adds a vision helper tool." },
-  });
+  fireEvent.change(
+    screen.getByPlaceholderText("Example plugin for Shinsekai, describing core capabilities and use cases."),
+    {
+      target: { value: "Adds a vision helper tool." },
+    },
+  );
   fireEvent.change(screen.getByPlaceholderText("shinsekai, example"), {
     target: { value: "vision, helper tts" },
   });
@@ -92,11 +89,11 @@ describe("PluginPublisherDialog", () => {
     fileMocks.openExternal.mockResolvedValue(undefined);
     pluginMocks.buildPluginSubmissionIssueUrl.mockResolvedValue({
       issueUrl: "https://github.com/RachelForster/Shinsekai-Plugin-Registry/issues/new?template=PLUGIN_PUBLISH.yml",
-      json: "{\"display_name\":\"Vision Helper\"}",
+      json: '{"display_name":"Vision Helper"}',
     });
     pluginMocks.copyPluginSubmissionJson.mockResolvedValue({
-      clipboardText: "{\"display_name\":\"Vision Helper\"}",
-      json: "{\"display_name\":\"Vision Helper\"}",
+      clipboardText: '{"display_name":"Vision Helper"}',
+      json: '{"display_name":"Vision Helper"}',
     });
     pluginMocks.scanLocalPlugin.mockResolvedValue({
       author: "Scanned Author",
@@ -110,7 +107,7 @@ describe("PluginPublisherDialog", () => {
     });
     pluginMocks.validatePluginSubmission.mockResolvedValue({
       errors: [],
-      json: "{\"ok\":true}",
+      json: '{"ok":true}',
       ok: true,
     });
   });
@@ -121,7 +118,9 @@ describe("PluginPublisherDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Read metadata" }));
     expect(await screen.findByText("Choose a local source path.")).toBeInTheDocument();
 
-    fireEvent.change(screen.getAllByLabelText("Optional: local source path")[0], { target: { value: "/plugins/demo" } });
+    fireEvent.change(screen.getAllByLabelText("Optional: local source path")[0], {
+      target: { value: "/plugins/demo" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Read metadata" }));
 
     await waitFor(() => expect(pluginMocks.scanLocalPlugin).toHaveBeenCalledWith("/plugins/demo"));
@@ -149,7 +148,7 @@ describe("PluginPublisherDialog", () => {
         }),
       ),
     );
-    expect(screen.getByText("{\"ok\":true}")).toBeInTheDocument();
+    expect(screen.getByText('{"ok":true}')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy payload" }));
     await waitFor(() => expect(pluginMocks.copyPluginSubmissionJson).toHaveBeenCalledTimes(1));
@@ -171,13 +170,13 @@ describe("PluginPublisherDialog", () => {
     fillValidForm();
     pluginMocks.validatePluginSubmission.mockResolvedValueOnce({
       errors: ["Repository is not reachable"],
-      json: "{\"ok\":false}",
+      json: '{"ok":false}',
       ok: false,
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Validate" }));
 
     expect(await screen.findByText("Repository is not reachable")).toBeInTheDocument();
-    expect(screen.getByText("{\"ok\":false}")).toBeInTheDocument();
+    expect(screen.getByText('{"ok":false}')).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalledTimes(1);

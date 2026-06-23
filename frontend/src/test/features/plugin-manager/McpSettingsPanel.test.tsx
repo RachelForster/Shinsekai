@@ -124,9 +124,9 @@ describe("McpSettingsPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview tools" }));
     await waitFor(() => expect(mockPreviewMcpTools).toHaveBeenCalledWith(sampleMcpConfig, expect.any(Object)));
     expect(await screen.findByText("demo_search")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Next page" }).some((button) => !button.hasAttribute("disabled"))).toBe(
-      true,
-    );
+    expect(
+      screen.getAllByRole("button", { name: "Next page" }).some((button) => !button.hasAttribute("disabled")),
+    ).toBe(true);
 
     fireEvent.change(screen.getByPlaceholderText("Search MCP tools"), { target: { value: "demo_tool_11" } });
     expect(await screen.findByText("demo_tool_11")).toBeInTheDocument();

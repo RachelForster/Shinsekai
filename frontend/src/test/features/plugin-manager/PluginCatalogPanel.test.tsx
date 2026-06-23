@@ -200,7 +200,9 @@ describe("PluginCatalogPanel", () => {
     expect(fileMocks.openExternal).toHaveBeenCalledWith("https://github.com/owner/official-demo");
 
     fireEvent.click(within(officialCard as HTMLElement).getByRole("button", { name: "Install" }));
-    expect(onOpenCatalogInstall).toHaveBeenCalledWith(expect.objectContaining({ downloaded: false, id: "official-demo" }));
+    expect(onOpenCatalogInstall).toHaveBeenCalledWith(
+      expect.objectContaining({ downloaded: false, id: "official-demo" }),
+    );
 
     fireEvent.change(screen.getByPlaceholderText("Search plugins"), { target: { value: "nothing-here" } });
     expect(await screen.findByText("No matching items")).toBeInTheDocument();
@@ -247,7 +249,9 @@ describe("PluginCatalogPanel", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Install and restart" }));
 
     await waitFor(() => expect(desktopMocks.installDesktopUpdate).toHaveBeenCalledTimes(1));
-    expect(await within(dialog).findByText("The update was installed. Restarting the application...")).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText("The update was installed. Restarting the application..."),
+    ).toBeInTheDocument();
   });
 
   it("installs official packages and repo tags from the install dialog", async () => {

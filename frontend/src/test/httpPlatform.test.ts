@@ -1911,7 +1911,7 @@ describe("http platform", () => {
         return mockJsonResponse({ url: "https://github.com/RachelForster/Shinsekai/issues/new" });
       }
       if (url.endsWith("/copy-json")) {
-        return mockJsonResponse({ clipboardText: "{\"id\":\"core-tools\"}" });
+        return mockJsonResponse({ clipboardText: '{"id":"core-tools"}' });
       }
       return mockJsonResponse({ id: "task-1", result: { ok: true }, status: "succeeded" });
     });
@@ -1936,7 +1936,7 @@ describe("http platform", () => {
       "http://127.0.0.1:8787/api/plugins/publisher/copy-json",
       "http://127.0.0.1:8787/api/tasks/task-1",
     ]);
-    expect(clipboard.writeText).toHaveBeenCalledWith("{\"id\":\"core-tools\"}");
+    expect(clipboard.writeText).toHaveBeenCalledWith('{"id":"core-tools"}');
   });
 
   it("maps runtime, MCP apply, and tool task endpoints", async () => {

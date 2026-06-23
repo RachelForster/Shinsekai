@@ -574,9 +574,7 @@ describe("PluginManagerPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "Choose plugin version" });
     expect(await within(dialog).findByText("Repository: owner/git-plugin")).toBeInTheDocument();
     expect(within(dialog).getByText("Pending review")).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(/current version or commit is still waiting for review/),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/current version or commit is still waiting for review/)).toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByLabelText("Version"), { target: { value: "tag:v1.2.0" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Install" }));
@@ -610,10 +608,7 @@ describe("PluginManagerPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     await waitFor(() =>
-      expect(mockRunAppUpdate).toHaveBeenCalledWith(
-        { refKind: "tag", tagName: "v0.3.1" },
-        expect.any(Object),
-      ),
+      expect(mockRunAppUpdate).toHaveBeenCalledWith({ refKind: "tag", tagName: "v0.3.1" }, expect.any(Object)),
     );
     expect(await screen.findByText("Updated from selected ref")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));

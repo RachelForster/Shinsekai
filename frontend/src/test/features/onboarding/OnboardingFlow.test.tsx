@@ -202,7 +202,9 @@ describe("onboarding flow", () => {
     expect(screen.getByRole("heading", { name: "Common plugins" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Open next step" }));
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "Confirm" })).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "Confirm" })).getByRole("button", { name: "Confirm" }),
+    );
     expect(await screen.findByText("Characters")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^Backgrounds\b/ }));

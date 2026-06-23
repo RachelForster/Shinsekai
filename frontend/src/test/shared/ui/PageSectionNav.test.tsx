@@ -25,9 +25,39 @@ describe("PageSectionNav", () => {
     const target = document.getElementById("api") as HTMLElement;
     Object.defineProperty(container, "scrollTop", { configurable: true, value: 25, writable: true });
     Object.defineProperty(container, "scrollTo", { configurable: true, value: scrollTo });
-    vi.spyOn(container, "getBoundingClientRect").mockReturnValue({ bottom: 400, height: 400, left: 0, right: 300, top: 50, width: 300, x: 0, y: 50, toJSON: () => ({}) });
-    vi.spyOn(header, "getBoundingClientRect").mockReturnValue({ bottom: 110, height: 60, left: 0, right: 300, top: 50, width: 300, x: 0, y: 50, toJSON: () => ({}) });
-    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ bottom: 350, height: 100, left: 0, right: 300, top: 250, width: 300, x: 0, y: 250, toJSON: () => ({}) });
+    vi.spyOn(container, "getBoundingClientRect").mockReturnValue({
+      bottom: 400,
+      height: 400,
+      left: 0,
+      right: 300,
+      top: 50,
+      width: 300,
+      x: 0,
+      y: 50,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(header, "getBoundingClientRect").mockReturnValue({
+      bottom: 110,
+      height: 60,
+      left: 0,
+      right: 300,
+      top: 50,
+      width: 300,
+      x: 0,
+      y: 50,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({
+      bottom: 350,
+      height: 100,
+      left: 0,
+      right: 300,
+      top: 250,
+      width: 300,
+      x: 0,
+      y: 250,
+      toJSON: () => ({}),
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "API" }));
 
@@ -53,7 +83,17 @@ describe("PageSectionNav", () => {
       </>,
     );
     const target = document.getElementById("loose") as HTMLElement;
-    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({ bottom: 300, height: 100, left: 0, right: 300, top: 200, width: 300, x: 0, y: 200, toJSON: () => ({}) });
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 100,
+      left: 0,
+      right: 300,
+      top: 200,
+      width: 300,
+      x: 0,
+      y: 200,
+      toJSON: () => ({}),
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Loose" }));
     fireEvent.click(screen.getByRole("button", { name: "Missing" }));
