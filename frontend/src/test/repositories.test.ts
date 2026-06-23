@@ -18,7 +18,9 @@ async function loadRepositories(platform: Partial<ShinsekaiPlatform>) {
     character: await import("../entities/character/repository"),
     chat: await import("../entities/chat/repository"),
     config: await import("../entities/config/repository"),
+    effect: await import("../entities/effect/repository"),
     files: await import("../entities/files/repository"),
+    logs: await import("../entities/logs/repository"),
     musicCover: await import("../entities/music-cover/repository"),
     plugin: await import("../entities/plugin/repository"),
     template: await import("../entities/template/repository"),
@@ -327,6 +329,7 @@ describe("entity repositories", () => {
   });
 
   it("delegates plugin, MCP, tool, music cover, and chat operations", async () => {
+    const effect = sampleConfig.effect_list[0];
     const taskOptions = { onTaskUpdate: vi.fn() };
     const unsubscribe = vi.fn();
     const platform = {
@@ -346,6 +349,23 @@ describe("entity repositories", () => {
         uploadTheme: vi.fn().mockResolvedValue({ id: "uploaded", name: {}, source: "user" }),
         deleteTheme: vi.fn().mockResolvedValue(undefined),
         subscribeEvents: vi.fn().mockReturnValue(unsubscribe),
+      },
+      effects: {
+        delete: vi.fn().mockResolvedValue(undefined),
+        deleteAllAudio: vi.fn().mockResolvedValue(effect),
+        deleteAudio: vi.fn().mockResolvedValue(effect),
+        export: vi.fn().mockResolvedValue("/tmp/effect.zip"),
+        import: vi.fn().mockResolvedValue([effect]),
+        list: vi.fn().mockResolvedValue([effect]),
+        save: vi.fn().mockResolvedValue(effect),
+        saveAudioTags: vi.fn().mockResolvedValue(effect),
+        uploadAudio: vi.fn().mockResolvedValue(effect),
+      },
+      logs: {
+        exportDiagnostics: vi.fn().mockResolvedValue("/tmp/diagnostics.zip"),
+        getDefault: vi.fn().mockResolvedValue("default log"),
+        import: vi.fn().mockResolvedValue(["/tmp/imported.log"]),
+        list: vi.fn().mockResolvedValue(["/tmp/shinsekai.log"]),
       },
       mcp: {
         getConfig: vi.fn().mockResolvedValue(sampleMcpConfig),
@@ -425,6 +445,9 @@ describe("entity repositories", () => {
         setEnabled: vi.fn().mockResolvedValue({ id: "core-tools" }),
         uninstall: vi.fn().mockResolvedValue({ message: "ok" }),
       },
+      runtime: {
+        installMissingDependency: vi.fn().mockResolvedValue({ message: "installed" }),
+      },
       tools: {
         cropSprites: vi.fn().mockResolvedValue({ count: 1, message: "ok" }),
         generateSpritePrompts: vi.fn().mockResolvedValue({ prompts: ["smile"] }),
@@ -432,16 +455,40 @@ describe("entity repositories", () => {
         removeSpriteBackground: vi.fn().mockResolvedValue({ count: 1, message: "ok" }),
       },
     };
-    const { chat, musicCover, plugin, tools } = await loadRepositories(platform);
+    const { chat, effect: effects, logs, musicCover, plugin, tools } = await loadRepositories(platform);
     const listener = vi.fn();
+    const themeArchive = new File(["theme"], "theme.zip", { type: "application/zip" });
 
     await chat.getChatSnapshot();
     await chat.closeChat();
     await chat.getChatTheme();
     await chat.launchChat(sampleLastLaunch);
+    await chat.installMissingRuntimeDependency({ moduleName: "mem0" }, taskOptions);
     await chat.resumeLastChat();
     await chat.sendChatCommand({ payload: "hi", type: "send-message" });
+    await chat.getChatHistory();
     expect(chat.subscribeChat(listener)).toBe(unsubscribe);
+    await chat.listChatThemes();
+    await chat.getChatThemeManifest("windborne-adventure");
+    await chat.getActiveChatThemeId();
+    await chat.setActiveChatTheme("uploaded");
+    await chat.uploadChatTheme(themeArchive);
+    await chat.deleteChatTheme("uploaded");
+    expect(chat.subscribeChatEvents(listener)).toBe(unsubscribe);
+    await effects.listEffects();
+    await effects.saveEffect(effect, "Old Effect");
+    await effects.saveEffectAudioTags({ audioTags: "spark", name: "Spark" });
+    await effects.deleteEffect("Spark");
+    await effects.deleteEffectAudio("Spark", 0);
+    await effects.deleteAllEffectAudio("Spark");
+    await effects.importEffects(["/tmp/effect.zip"]);
+    await effects.exportEffect("Spark");
+    await effects.uploadEffectAudio({ audioTags: "spark", name: "Spark", paths: ["/tmp/spark.wav"] });
+    await logs.getDefaultLog();
+    await logs.listLogFiles();
+    await logs.exportDiagnosticBundle();
+    await logs.importLog(["/tmp/shinsekai.log"]);
+    await logs.readLog("/tmp/shinsekai.log");
     await plugin.getPluginUiDetail("core-tools");
     await plugin.savePluginUiConfig("core-tools", "settings", { enabled: true });
     await plugin.runPluginUiAction("core-tools", "settings", "reload", { enabled: true });
@@ -498,6 +545,15 @@ describe("entity repositories", () => {
 
     expect(platform.chat.close).toHaveBeenCalledTimes(1);
     expect(platform.chat.launch).toHaveBeenCalledWith(sampleLastLaunch);
+    expect(platform.runtime.installMissingDependency).toHaveBeenCalledWith({ moduleName: "mem0" }, taskOptions);
+    expect(platform.chat.uploadTheme).toHaveBeenCalledWith(themeArchive);
+    expect(platform.effects.uploadAudio).toHaveBeenCalledWith({
+      audioTags: "spark",
+      name: "Spark",
+      paths: ["/tmp/spark.wav"],
+    });
+    expect(platform.logs.import).toHaveBeenCalledWith(["/tmp/shinsekai.log"]);
+    expect(platform.logs.import).toHaveBeenCalledTimes(2);
     expect(platform.plugins.appUpdateRun).toHaveBeenCalledWith({ refKind: "tag", tagName: "v0.1.0" }, taskOptions);
     expect(platform.plugins.install).toHaveBeenCalledWith({ source: "repo", tagName: "v0.1.0" }, taskOptions);
     expect(platform.mcp.previewTools).toHaveBeenCalledWith(sampleMcpConfig, taskOptions);

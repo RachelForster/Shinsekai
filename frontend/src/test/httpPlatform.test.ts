@@ -2,7 +2,14 @@ import { waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpPlatform } from "../shared/platform/httpPlatform";
-import { sampleConfig, sampleMcpConfig, sampleMcpTools, samplePluginCatalog } from "../shared/platform/sampleData";
+import {
+  sampleConfig,
+  sampleMcpConfig,
+  sampleMcpTools,
+  samplePluginCatalog,
+  samplePlugins,
+  sampleTemplates,
+} from "../shared/platform/sampleData";
 
 function mockJsonResponse(body: unknown, ok = true) {
   return Promise.resolve({
@@ -1702,5 +1709,291 @@ describe("http platform", () => {
       }),
     );
     expect(updates).toHaveBeenCalledTimes(2);
+  });
+
+  it("maps effect CRUD, import, export, and audio endpoints to bridge requests", async () => {
+    const openMock = vi.fn();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/effects") && !init?.method) {
+        return mockJsonResponse(sampleConfig.effect_list);
+      }
+      if (url.endsWith("/api/effects/export")) {
+        return mockJsonResponse({ downloadUrl: "/api/download?path=output/Fx.effect", path: "output/Fx.effect" });
+      }
+      if (url.endsWith("/api/effects/import")) {
+        return mockJsonResponse(sampleConfig.effect_list);
+      }
+      return mockJsonResponse(sampleConfig.effect_list[0]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("open", openMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.effects.list();
+    await platform.effects.save({ ...sampleConfig.effect_list[0], name: "Fx" }, "Old Fx");
+    await platform.effects.saveAudioTags({ audioTags: "Audio 1: pop\n", name: "Fx" });
+    await platform.effects.uploadAudio({ audioTags: "", name: "Fx", paths: ["D:/fx.wav"] });
+    await platform.effects.deleteAudio("Fx", 1);
+    await platform.effects.deleteAllAudio("Fx");
+    await platform.effects.import(["D:/fx.effect"]);
+    await platform.effects.delete("Fx");
+    await expect(platform.effects.export("Fx")).resolves.toBe("output/Fx.effect");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/effects",
+      "http://127.0.0.1:8787/api/effects",
+      "http://127.0.0.1:8787/api/effects/audio-tags",
+      "http://127.0.0.1:8787/api/effects/audio/upload",
+      "http://127.0.0.1:8787/api/effects/audio/delete",
+      "http://127.0.0.1:8787/api/effects/audio/delete-all",
+      "http://127.0.0.1:8787/api/effects/import",
+      "http://127.0.0.1:8787/api/effects/Fx",
+      "http://127.0.0.1:8787/api/effects/export",
+    ]);
+    expect(fetchMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ effect: { ...sampleConfig.effect_list[0], name: "Fx" }, originalName: "Old Fx" }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock.mock.calls[7][1]).toEqual(expect.objectContaining({ method: "DELETE" }));
+    expect(openMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/download?path=output%2FFx.effect",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
+  it("maps background list, save, import, delete, export, and tag endpoints", async () => {
+    const openMock = vi.fn();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/backgrounds") && !init?.method) {
+        return mockJsonResponse(sampleConfig.background_list);
+      }
+      if (url.endsWith("/api/backgrounds/export")) {
+        return mockJsonResponse({ downloadUrl: "/api/download?path=output/Room.bg", path: "output/Room.bg" });
+      }
+      if (url.endsWith("/api/backgrounds/import")) {
+        return mockJsonResponse(sampleConfig.background_list);
+      }
+      return mockJsonResponse(sampleConfig.background_list[0]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("open", openMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.backgrounds.list();
+    await platform.backgrounds.save({ ...sampleConfig.background_list[0], name: "Room" }, "Old Room");
+    await platform.backgrounds.saveImageTags({ bgTags: "day", name: "Room" });
+    await platform.backgrounds.saveBgmTags({ bgmTags: "music", name: "Room" });
+    await platform.backgrounds.import(["D:/room.bg"]);
+    await platform.backgrounds.delete("Room");
+    await expect(platform.backgrounds.export("Room")).resolves.toBe("output/Room.bg");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/backgrounds",
+      "http://127.0.0.1:8787/api/backgrounds",
+      "http://127.0.0.1:8787/api/backgrounds/tags",
+      "http://127.0.0.1:8787/api/backgrounds/bgm-tags",
+      "http://127.0.0.1:8787/api/backgrounds/import",
+      "http://127.0.0.1:8787/api/backgrounds/Room",
+      "http://127.0.0.1:8787/api/backgrounds/export",
+    ]);
+    expect(fetchMock.mock.calls[5][1]).toEqual(expect.objectContaining({ method: "DELETE" }));
+    expect(openMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/download?path=output%2FRoom.bg",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
+  it("maps log endpoints and uploads imported log files with bridge auth headers", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/logs")) {
+        return mockJsonResponse({ files: [{ label: "app.log", path: "/tmp/app.log" }] });
+      }
+      if (url.endsWith("/api/logs/diagnostic-bundle")) {
+        return mockJsonResponse({ path: "output/diagnostics.zip" });
+      }
+      return mockJsonResponse({ content: "line", path: "/tmp/app.log" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "bridge-secret");
+    await platform.logs.list();
+    await platform.logs.getDefault();
+    await platform.logs.import(["/tmp/app.log"]);
+    await platform.logs.exportDiagnostics();
+    await platform.logs.import([new File(["line"], "app.log")]);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/logs",
+      "http://127.0.0.1:8787/api/logs/default",
+      "http://127.0.0.1:8787/api/logs/read",
+      "http://127.0.0.1:8787/api/logs/diagnostic-bundle",
+      "http://127.0.0.1:8787/api/logs/import-upload",
+    ]);
+    expect(fetchMock.mock.calls[4][1]).toEqual(
+      expect.objectContaining({
+        body: expect.any(FormData),
+        headers: { "X-Shinsekai-Bridge-Token": "bridge-secret" },
+        method: "POST",
+      }),
+    );
+  });
+
+  it("returns direct media URLs and opens external browser links outside Tauri", async () => {
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+
+    expect(platform.files.fileUrl("")).toBe("");
+    expect(platform.files.fileUrl("https://example.test/a.png")).toBe("https://example.test/a.png");
+    expect(platform.files.thumbnailUrl("", { size: 160 })).toBe("");
+    expect(platform.files.thumbnailUrl("data:image/png;base64,AAA")).toBe("data:image/png;base64,AAA");
+    await expect(platform.files.thumbnailBatch!(["/assets/system/picture/shinsekai.png"])).resolves.toEqual({
+      "/assets/system/picture/shinsekai.png": "/assets/system/picture/shinsekai.png",
+    });
+    await platform.files.openExternal("https://example.test/community");
+
+    expect(openMock).toHaveBeenCalledWith("https://example.test/community", "_blank", "noopener,noreferrer");
+  });
+
+  it("maps template list, generate, and save endpoints", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/templates") && !init?.method) {
+        return mockJsonResponse(sampleTemplates);
+      }
+      return mockJsonResponse(sampleTemplates[0]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.templates.list();
+    await platform.templates.generate({ background: "Room", characters: ["Nanami"], prompt: "scene" });
+    await platform.templates.save({ ...sampleTemplates[0], name: "Custom" });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/templates",
+      "http://127.0.0.1:8787/api/templates/generate",
+      "http://127.0.0.1:8787/api/templates",
+    ]);
+    expect(fetchMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ background: "Room", characters: ["Nanami"], prompt: "scene" }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("maps plugin listing, enabled state, publisher, clipboard, and task endpoints", async () => {
+    const clipboard = { writeText: vi.fn(() => Promise.resolve()) };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/plugins")) {
+        return mockJsonResponse(samplePlugins);
+      }
+      if (url.endsWith("/enabled")) {
+        return mockJsonResponse({ ...samplePlugins[0], enabled: false });
+      }
+      if (url.endsWith("/scan")) {
+        return mockJsonResponse({ manifest: samplePlugins[0], packagePath: "/tmp/pkg.zip" });
+      }
+      if (url.endsWith("/validate")) {
+        return mockJsonResponse({ errors: [], warnings: [] });
+      }
+      if (url.endsWith("/issue-url")) {
+        return mockJsonResponse({ url: "https://github.com/RachelForster/Shinsekai/issues/new" });
+      }
+      if (url.endsWith("/copy-json")) {
+        return mockJsonResponse({ clipboardText: "{\"id\":\"core-tools\"}" });
+      }
+      return mockJsonResponse({ id: "task-1", result: { ok: true }, status: "succeeded" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("navigator", { clipboard });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.plugins.list();
+    await platform.plugins.setEnabled("core-tools", false);
+    await platform.plugins.scanLocal({ directory: "/tmp/plugin" });
+    await platform.plugins.validateSubmission({ manifest: samplePlugins[0], packagePath: "/tmp/pkg.zip" });
+    await platform.plugins.buildSubmissionIssueUrl({ manifest: samplePlugins[0], packagePath: "/tmp/pkg.zip" });
+    await platform.plugins.copySubmissionJson({ manifest: samplePlugins[0], packagePath: "/tmp/pkg.zip" });
+    await platform.tasks.get("task-1");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/plugins",
+      "http://127.0.0.1:8787/api/plugins/core-tools/enabled",
+      "http://127.0.0.1:8787/api/plugins/publisher/scan",
+      "http://127.0.0.1:8787/api/plugins/publisher/validate",
+      "http://127.0.0.1:8787/api/plugins/publisher/issue-url",
+      "http://127.0.0.1:8787/api/plugins/publisher/copy-json",
+      "http://127.0.0.1:8787/api/tasks/task-1",
+    ]);
+    expect(clipboard.writeText).toHaveBeenCalledWith("{\"id\":\"core-tools\"}");
+  });
+
+  it("maps runtime, MCP apply, and tool task endpoints", async () => {
+    const completedTask = (id: string, result: unknown) => ({
+      createdAt: 1,
+      id,
+      kind: id,
+      logs: [],
+      message: "done",
+      phase: "completed",
+      progress: 1,
+      result,
+      status: "succeeded",
+      title: id,
+      updatedAt: 2,
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/mcp/config/open")) {
+        return mockJsonResponse({ path: "/tmp/mcp.json" });
+      }
+      if (url.endsWith("/api/mcp/config/apply")) {
+        return mockJsonResponse(completedTask("mcp-apply", sampleMcpConfig));
+      }
+      if (url.endsWith("/api/runtime/install-missing-dependency")) {
+        return mockJsonResponse(completedTask("runtime-dep", { installed: true }));
+      }
+      if (url.endsWith("/api/tools/sprites/crop")) {
+        return mockJsonResponse(completedTask("crop", { failed: [], items: [] }));
+      }
+      if (url.endsWith("/api/tools/sprite-prompts")) {
+        return mockJsonResponse(completedTask("prompts", { prompts: ["smile"] }));
+      }
+      if (url.endsWith("/api/tools/sprites/generate")) {
+        return mockJsonResponse(completedTask("generate", { images: ["sprite.png"] }));
+      }
+      return mockJsonResponse(completedTask("remove-bg", { failed: [], items: [] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.mcp.openConfigFile()).resolves.toBe("/tmp/mcp.json");
+    await platform.mcp.saveAndApply(sampleMcpConfig);
+    await platform.runtime.installMissingDependency({ moduleName: "mem0ai" });
+    await platform.tools.cropSprites({ paths: ["sprite.png"] });
+    await platform.tools.generateSpritePrompts({ character: "Nanami", count: 1 });
+    await platform.tools.generateSprites({ prompts: ["smile"] });
+    await platform.tools.removeSpriteBackground({ paths: ["sprite.png"] });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/mcp/config/open",
+      "http://127.0.0.1:8787/api/mcp/config/apply",
+      "http://127.0.0.1:8787/api/runtime/install-missing-dependency",
+      "http://127.0.0.1:8787/api/tools/sprites/crop",
+      "http://127.0.0.1:8787/api/tools/sprite-prompts",
+      "http://127.0.0.1:8787/api/tools/sprites/generate",
+      "http://127.0.0.1:8787/api/tools/sprites/remove-background",
+    ]);
   });
 });
