@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { reloadPluginService } from "../features/plugin-manager/pluginReload";
+import { reloadPluginService } from "../../../features/plugin-manager/pluginReload";
 
 const mocks = vi.hoisted(() => ({
   restartDesktopBridge: vi.fn(),
 }));
 
-vi.mock("../shared/desktop/desktopApi", () => ({
+vi.mock("../../../shared/desktop/desktopApi", () => ({
   restartDesktopBridge: () => mocks.restartDesktopBridge(),
 }));
 

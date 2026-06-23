@@ -1810,7 +1810,7 @@ describe("http platform", () => {
   });
 
   it("maps log endpoints and uploads imported log files with bridge auth headers", async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/logs")) {
         return mockJsonResponse({ files: [{ label: "app.log", path: "/tmp/app.log" }] });
@@ -1875,7 +1875,12 @@ describe("http platform", () => {
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
     await platform.templates.list();
-    await platform.templates.generate({ background: "Room", characters: ["Nanami"], prompt: "scene" });
+    await platform.templates.generate({
+      backgroundName: "Room",
+      characters: ["Nanami"],
+      name: "Custom",
+      scenario: "scene",
+    });
     await platform.templates.save({ ...sampleTemplates[0], name: "Custom" });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
@@ -1885,7 +1890,7 @@ describe("http platform", () => {
     ]);
     expect(fetchMock.mock.calls[1][1]).toEqual(
       expect.objectContaining({
-        body: JSON.stringify({ background: "Room", characters: ["Nanami"], prompt: "scene" }),
+        body: JSON.stringify({ backgroundName: "Room", characters: ["Nanami"], name: "Custom", scenario: "scene" }),
         method: "POST",
       }),
     );
@@ -1919,12 +1924,21 @@ describe("http platform", () => {
     vi.stubGlobal("navigator", { clipboard });
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const submission = {
+      author: "Shinsekai Contributors",
+      desc: "Core tools",
+      display_name: "Core Tools",
+      lowest_shinsekai_version: ">=0.2.0",
+      repo: "https://github.com/example/core-tools",
+      social_link: "",
+      tags: ["tools"],
+    };
     await platform.plugins.list();
     await platform.plugins.setEnabled("core-tools", false);
-    await platform.plugins.scanLocal({ directory: "/tmp/plugin" });
-    await platform.plugins.validateSubmission({ manifest: samplePlugins[0], packagePath: "/tmp/pkg.zip" });
-    await platform.plugins.buildSubmissionIssueUrl({ manifest: samplePlugins[0], packagePath: "/tmp/pkg.zip" });
-    await platform.plugins.copySubmissionJson({ manifest: samplePlugins[0], packagePath: "/tmp/pkg.zip" });
+    await platform.plugins.scanLocal({ path: "/tmp/plugin" });
+    await platform.plugins.validateSubmission(submission);
+    await platform.plugins.buildSubmissionIssueUrl(submission);
+    await platform.plugins.copySubmissionJson(submission);
     await platform.tasks.get("task-1");
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
@@ -1981,10 +1995,14 @@ describe("http platform", () => {
     await expect(platform.mcp.openConfigFile()).resolves.toBe("/tmp/mcp.json");
     await platform.mcp.saveAndApply(sampleMcpConfig);
     await platform.runtime.installMissingDependency({ moduleName: "mem0ai" });
-    await platform.tools.cropSprites({ paths: ["sprite.png"] });
-    await platform.tools.generateSpritePrompts({ character: "Nanami", count: 1 });
-    await platform.tools.generateSprites({ prompts: ["smile"] });
-    await platform.tools.removeSpriteBackground({ paths: ["sprite.png"] });
+    await platform.tools.cropSprites({ inputDir: "/tmp/sprites", ratio: 1 });
+    await platform.tools.generateSpritePrompts({ characterName: "Nanami", count: 1 });
+    await platform.tools.generateSprites({
+      characterName: "Nanami",
+      prompts: ["smile"],
+      referenceImage: "/tmp/ref.png",
+    });
+    await platform.tools.removeSpriteBackground({ inputDir: "/tmp/sprites" });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://127.0.0.1:8787/api/mcp/config/open",

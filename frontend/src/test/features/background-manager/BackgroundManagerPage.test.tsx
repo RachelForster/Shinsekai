@@ -174,7 +174,7 @@ describe("BackgroundManagerPage", () => {
       ...structuredClone(background),
       bg_tags: `${bgTags}Scene 2: uploaded\n`,
       name,
-      sprites: [...background.sprites, ...paths.map((path) => ({ path }))],
+      sprites: [...background.sprites, ...paths.map((path: string) => ({ path }))],
     }));
     mockUploadBackgroundBgm.mockImplementation(async ({ bgmTags, name, paths }) => ({
       ...structuredClone(background),

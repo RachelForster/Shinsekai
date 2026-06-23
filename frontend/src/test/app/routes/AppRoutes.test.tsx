@@ -2,9 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { Outlet, MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AppRoutes } from "../app/routes/AppRoutes";
+import { AppRoutes } from "../../../app/routes/AppRoutes";
 
-vi.mock("../app/shell/AppShell", () => ({
+vi.mock("../../../app/shell/AppShell", () => ({
   AppShell: () => (
     <section aria-label="settings shell">
       <Outlet />
@@ -12,59 +12,59 @@ vi.mock("../app/shell/AppShell", () => ({
   ),
 }));
 
-vi.mock("../features/api-settings/ApiSettingsPage", () => ({
+vi.mock("../../../features/api-settings/ApiSettingsPage", () => ({
   ApiSettingsPage: () => <h1>API settings route</h1>,
 }));
 
-vi.mock("../features/background-manager/BackgroundManagerPage", () => ({
+vi.mock("../../../features/background-manager/BackgroundManagerPage", () => ({
   BackgroundManagerPage: () => <h1>Backgrounds route</h1>,
 }));
 
-vi.mock("../features/effect-manager/EffectManagerPage", () => ({
+vi.mock("../../../features/effect-manager/EffectManagerPage", () => ({
   EffectManagerPage: () => <h1>Effects route</h1>,
 }));
 
-vi.mock("../features/character-editor/CharacterEditorPage", () => ({
+vi.mock("../../../features/character-editor/CharacterEditorPage", () => ({
   CharacterEditorPage: () => <h1>Characters route</h1>,
 }));
 
-vi.mock("../features/chat-launcher/ChatLauncherPage", () => ({
+vi.mock("../../../features/chat-launcher/ChatLauncherPage", () => ({
   ChatLauncherPage: () => <h1>Launch route</h1>,
 }));
 
-vi.mock("../features/chat-stage/ChatStagePage", () => ({
+vi.mock("../../../features/chat-stage/ChatStagePage", () => ({
   ChatStagePage: () => <h1>Chat stage route</h1>,
 }));
 
-vi.mock("../features/logs/LogsPage", () => ({
+vi.mock("../../../features/logs/LogsPage", () => ({
   LogsPage: () => <h1>Logs route</h1>,
 }));
 
-vi.mock("../features/music-cover/MusicCoverPage", () => ({
+vi.mock("../../../features/music-cover/MusicCoverPage", () => ({
   MusicCoverPage: () => <h1>Music cover route</h1>,
 }));
 
-vi.mock("../features/onboarding/OnboardingPage", () => ({
+vi.mock("../../../features/onboarding/OnboardingPage", () => ({
   OnboardingPage: () => <h1>Onboarding route</h1>,
 }));
 
-vi.mock("../features/plugin-manager/PluginManagerPage", () => ({
+vi.mock("../../../features/plugin-manager/PluginManagerPage", () => ({
   PluginManagerPage: () => <h1>Plugins route</h1>,
 }));
 
-vi.mock("../features/system-settings/SystemSettingsPage", () => ({
+vi.mock("../../../features/system-settings/SystemSettingsPage", () => ({
   SystemSettingsPage: () => <h1>System route</h1>,
 }));
 
-vi.mock("../features/template-editor/TemplateEditorPage", () => ({
+vi.mock("../../../features/template-editor/TemplateEditorPage", () => ({
   TemplateEditorPage: () => <h1>Templates route</h1>,
 }));
 
-vi.mock("../features/tools/ToolsPage", () => ({
+vi.mock("../../../features/tools/ToolsPage", () => ({
   ToolsPage: () => <h1>Tools route</h1>,
 }));
 
-vi.mock("../features/onboarding/onboardingState", () => ({
+vi.mock("../../../features/onboarding/onboardingState", () => ({
   getInitialSettingsPath: () => "/settings/api",
 }));
 

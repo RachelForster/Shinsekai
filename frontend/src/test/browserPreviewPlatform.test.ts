@@ -1,10 +1,59 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createBrowserPreviewPlatform } from "../shared/platform/browserPreviewPlatform";
+import { sampleConfig } from "../shared/platform/sampleData";
+import type { TemplateLaunchSession } from "../shared/platform/types";
 
 async function resolvePreview<T>(promise: Promise<T>, ms = 2_000) {
   await vi.advanceTimersByTimeAsync(ms);
   return promise;
+}
+
+function musicCoverConfig(workDir = "/tmp/music") {
+  return {
+    music_cover_ffmpeg_exe: sampleConfig.system_config.music_cover_ffmpeg_exe,
+    music_cover_rvc_cmd_template: sampleConfig.system_config.music_cover_rvc_cmd_template,
+    music_cover_rvc_device: sampleConfig.system_config.music_cover_rvc_device,
+    music_cover_rvc_f0_method: sampleConfig.system_config.music_cover_rvc_f0_method,
+    music_cover_rvc_filter_radius: sampleConfig.system_config.music_cover_rvc_filter_radius,
+    music_cover_rvc_index_path: sampleConfig.system_config.music_cover_rvc_index_path,
+    music_cover_rvc_index_rate: sampleConfig.system_config.music_cover_rvc_index_rate,
+    music_cover_rvc_model_path: sampleConfig.system_config.music_cover_rvc_model_path,
+    music_cover_rvc_model_version: sampleConfig.system_config.music_cover_rvc_model_version,
+    music_cover_rvc_pitch: sampleConfig.system_config.music_cover_rvc_pitch,
+    music_cover_rvc_protect: sampleConfig.system_config.music_cover_rvc_protect,
+    music_cover_rvc_resample_sr: sampleConfig.system_config.music_cover_rvc_resample_sr,
+    music_cover_rvc_rms_mix_rate: sampleConfig.system_config.music_cover_rvc_rms_mix_rate,
+    music_cover_uvr_cmd_template: sampleConfig.system_config.music_cover_uvr_cmd_template,
+    music_cover_work_dir: workDir,
+    music_cover_yt_dlp_exe: sampleConfig.system_config.music_cover_yt_dlp_exe,
+  };
+}
+
+function templateSession(overrides: Partial<TemplateLaunchSession> = {}): TemplateLaunchSession {
+  return {
+    background: "默认房间",
+    effectNames: [],
+    filenameStub: "",
+    historyPath: "",
+    initSpritePath: "",
+    maxDialogItems: 0,
+    maxSpeechChars: 0,
+    roomId: "",
+    scenario: "",
+    selectedCharacters: ["Nanami"],
+    system: "",
+    templateFileDropdown: "default",
+    useCg: false,
+    useChoice: true,
+    useCot: false,
+    useEffect: true,
+    useNarration: true,
+    useStat: true,
+    useTranslation: true,
+    voiceLanguage: "ja",
+    ...overrides,
+  };
 }
 
 describe("browser preview platform chat themes", () => {
@@ -287,7 +336,7 @@ describe("browser preview platform chat themes", () => {
     const afterMemoryDelete = await resolvePreview(platform.characters.deleteMemory("Mika", remembered.memories[0].id));
     expect(afterMemoryDelete.count).toBe(1);
 
-    const generated = await resolvePreview(platform.characters.generateSetting({ name: "Mika" }));
+    const generated = await resolvePreview(platform.characters.generateSetting({ name: "Mika", setting: "" }));
     expect(generated.characterSetting).toContain("Mika");
     const translated = await resolvePreview(
       platform.characters.translateFields({ characterSetting: "setting", emotionTags: "tags", name: "Mika" }),
@@ -328,14 +377,27 @@ describe("browser preview platform chat themes", () => {
     expect(bundle.provider).toBe("genie-tts");
     expect(taskUpdates).toEqual(expect.arrayContaining(["download", "extract", "completed"]));
     expect((await resolvePreview(platform.config.cancelTtsBundleDownload("task-1"))).status).toBe("cancelled");
-    await expect(platform.config.fetchLlmModels()).rejects.toThrow("Python bridge");
-    await expect(platform.config.testLlmConnection({})).rejects.toThrow("LLM 连通检测");
+    await expect(
+      platform.config.fetchLlmModels({
+        apiKey: "sk-test",
+        baseUrl: "https://api.example.test/v1",
+        provider: "Deepseek",
+      }),
+    ).rejects.toThrow("Python bridge");
+    await expect(
+      platform.config.testLlmConnection({
+        apiKey: "sk-test",
+        baseUrl: "https://api.example.test/v1",
+        model: "deepseek-chat",
+        provider: "Deepseek",
+      }),
+    ).rejects.toThrow("LLM 连通检测");
 
     const root = await resolvePreview(platform.files.browse({ path: "/" }));
     expect(root.entries.map((entry) => entry.name)).toContain("home");
     const fallback = await resolvePreview(platform.files.browse({ path: "/does/not/exist" }));
     expect(fallback.cwd).toBe("/home/shinsekai/project");
-    expect(await resolvePreview(platform.files.thumbnailBatch(["/tmp/a.png", ""], {}))).toEqual({
+    expect(await resolvePreview(platform.files.thumbnailBatch!(["/tmp/a.png", ""], {}))).toEqual({
       "/tmp/a.png": "/tmp/a.png",
     });
     expect(platform.files.thumbnailUrl("/tmp/a.png")).toBe("/tmp/a.png");
@@ -357,7 +419,7 @@ describe("browser preview platform chat themes", () => {
       "demo",
     );
 
-    const musicConfig = await resolvePreview(platform.musicCover.saveConfig({ music_cover_work_dir: "/tmp/music" }));
+    const musicConfig = await resolvePreview(platform.musicCover.saveConfig(musicCoverConfig("/tmp/music")));
     expect(musicConfig.systemConfig.music_cover_work_dir).toBe("/tmp/music");
     expect((await resolvePreview(platform.musicCover.search({ query: "song", source: "youtube" }))).log).toContain(
       "song",
@@ -377,17 +439,16 @@ describe("browser preview platform chat themes", () => {
       ).outputDir,
     ).toContain("cropped_upper_0.55");
     expect(
-      (
-        await resolvePreview(
-          platform.tools.generateSpritePrompts({ characterName: "Mika", count: 2, scenario: "scene" }, options),
-          1_000,
-        )
-      ).prompts,
+      (await resolvePreview(platform.tools.generateSpritePrompts({ characterName: "Mika", count: 2 }, options), 1_000))
+        .prompts,
     ).toHaveLength(2);
     expect(
       (
         await resolvePreview(
-          platform.tools.generateSprites({ characterName: "Mika", outputDir: "", prompts: ["a", "b"] }, options),
+          platform.tools.generateSprites(
+            { characterName: "Mika", outputDir: "", prompts: ["a", "b"], referenceImage: "/tmp/ref.png" },
+            options,
+          ),
           1_000,
         )
       ).files,
@@ -475,7 +536,12 @@ describe("browser preview platform chat themes", () => {
     expect(savedMcp.enabled).toBe(false);
 
     const generated = await resolvePreview(
-      platform.templates.generate({ characters: ["Nanami"], name: "Scene", voiceLanguage: "en" }),
+      platform.templates.generate({
+        backgroundName: "默认房间",
+        characters: ["Nanami"],
+        name: "Scene",
+        voiceLanguage: "en",
+      }),
       1_000,
     );
     expect(generated.scenario).toContain("Nanami");
@@ -484,12 +550,12 @@ describe("browser preview platform chat themes", () => {
     expect((await resolvePreview(platform.templates.list())).some((template) => template.name === "Scene")).toBe(true);
     expect(await resolvePreview(platform.templates.getSession())).toBeNull();
     await resolvePreview(
-      platform.templates.saveSession({
-        background: "默认房间",
-        historyPath: "/tmp/history.json",
-        selectedCharacters: ["Nanami"],
-        templateFileDropdown: "Scene",
-      }),
+      platform.templates.saveSession(
+        templateSession({
+          historyPath: "/tmp/history.json",
+          templateFileDropdown: "Scene",
+        }),
+      ),
     );
     expect((await resolvePreview(platform.templates.getSession()))?.historyPath).toBe("/tmp/history.json");
 
@@ -527,7 +593,7 @@ describe("browser preview platform chat themes", () => {
     expect(switchedMain.conversationTree?.activeBranchId).toBe("main");
 
     const reverted = await resolvePreview(platform.chat.command({ payload: 0, type: "revert-history" }));
-    expect(reverted.historyEntries.at(-1)?.role).toBe("system");
+    expect(reverted.historyEntries?.at(-1)?.role).toBe("system");
 
     const cleared = await resolvePreview(platform.chat.command({ type: "clear-history" }));
     expect(cleared.historyEntries).toEqual([]);
@@ -544,12 +610,12 @@ describe("browser preview platform chat themes", () => {
     expect(launched.statusMessage).toContain("/tmp/session.json");
 
     await resolvePreview(
-      platform.templates.saveSession({
-        background: "默认房间",
-        historyPath: "/tmp/resume.json",
-        selectedCharacters: ["Nanami"],
-        templateFileDropdown: "default",
-      }),
+      platform.templates.saveSession(
+        templateSession({
+          historyPath: "/tmp/resume.json",
+          templateFileDropdown: "default",
+        }),
+      ),
     );
     const resumed = await resolvePreview(platform.chat.resumeLast());
     expect(resumed.statusMessage).toContain("/tmp/resume.json");

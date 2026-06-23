@@ -3,14 +3,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AppShell } from "../app/shell/AppShell";
-import { I18nProvider } from "../shared/i18n";
+import { AppShell } from "../../../app/shell/AppShell";
+import { I18nProvider } from "../../../shared/i18n";
 
-vi.mock("../app/shell/StartupUpdatePrompt", () => ({
+vi.mock("../../../app/shell/StartupUpdatePrompt", () => ({
   StartupUpdatePrompt: () => <div data-testid="startup-update-prompt" />,
 }));
 
-vi.mock("../features/tools/ToolsDrawer", () => ({
+vi.mock("../../../features/tools/ToolsDrawer", () => ({
   ToolsDrawer: ({ onClose, open }: { onClose: () => void; open: boolean }) =>
     open ? (
       <aside aria-label="Tools drawer mock" role="dialog">
