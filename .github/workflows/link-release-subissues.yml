@@ -65,6 +65,7 @@ jobs:
                   stderr=subprocess.PIPE,
               )
               if check and result.returncode != 0:
+                  print(f"gh api failed: {' '.join(command[2:])}", file=sys.stderr)
                   print(result.stderr, file=sys.stderr)
                   raise SystemExit(result.returncode)
               return result.stdout
@@ -265,7 +266,7 @@ jobs:
           def search_tracking_issue(release: str) -> dict | None:
               title = f"Release tracking: {release}"
               query = f'repo:{repo} is:issue in:title "{title}"'
-              output = gh_api("search/issues", "-f", f"q={query}", "-f", "per_page=10")
+              output = gh_api(f"search/issues?q={quote(query, safe='')}&per_page=10")
               for item in json.loads(output).get("items", []):
                   if item.get("title") == title:
                       return item
