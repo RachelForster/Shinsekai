@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0",
+  "version": "2.2.0",
   "schema": 2,
   "required_modules": [
     "yaml",
@@ -45,7 +45,10 @@
     }
   },
   "probes": {
-    "official": ["https://www.python.org/", "https://pypi.org/simple/"],
+    "official": [
+      "https://www.python.org/",
+      "https://pypi.org/simple/"
+    ],
     "china": [
       "https://mirrors.tuna.tsinghua.edu.cn/",
       "https://pypi.tuna.tsinghua.edu.cn/simple/",
@@ -55,7 +58,9 @@
   },
   "pip_indexes": {
     "official": "https://pypi.org/simple/",
-    "official_urls": ["https://pypi.org/simple/"],
+    "official_urls": [
+      "https://pypi.org/simple/"
+    ],
     "china": "https://pypi.tuna.tsinghua.edu.cn/simple/",
     "china_urls": [
       "https://pypi.tuna.tsinghua.edu.cn/simple/",
