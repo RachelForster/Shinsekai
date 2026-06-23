@@ -22,7 +22,7 @@ def test_runtime_workflow_resolves_relative_resource_from_source_root(tmp_path, 
         """
 nodes:
   - name: selected
-    type: test.unit.test_runtime_resource_paths._ResourcePathNode
+    type: test.unit.core.test_runtime_resource_paths._ResourcePathNode
 edges: []
 exports:
   selected:

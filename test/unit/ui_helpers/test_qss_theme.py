@@ -26,7 +26,14 @@ from ui.qss import apply_pydracula_dark, load_pydracula_dark
 from ui.settings_ui.feedback import _ThemedMessageDialog
 
 
-_ROOT = Path(__file__).resolve().parents[2]
+def _repo_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "ui/settings_ui/themes/py_dracula_dark.qss").is_file():
+            return parent
+    raise AssertionError("Could not locate repository root")
+
+
+_ROOT = _repo_root()
 
 
 def _luminance(color) -> float:

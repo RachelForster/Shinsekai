@@ -7,8 +7,18 @@ import textwrap
 from pathlib import Path
 
 
+def _repo_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (
+            (parent / "requirements.txt").is_file()
+            and (parent / "frontend/src-tauri/runtime_manifest.json").is_file()
+        ):
+            return parent
+    raise AssertionError("Could not locate repository root")
+
+
 def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = _repo_root()
     optional_packages = (
         "PIL",
         "fastembed",
@@ -104,7 +114,7 @@ def test_runtime_requirements_parser_uses_pygame_ce_on_windows_arm64(tmp_path, m
 def test_full_requirements_use_pygame_ce_on_windows_arm64(monkeypatch):
     import frontend_bridge
 
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = _repo_root()
     monkeypatch.setattr(frontend_bridge.sys, "platform", "win32")
     monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "ARM64")
 
@@ -117,7 +127,7 @@ def test_full_requirements_use_pygame_ce_on_windows_arm64(monkeypatch):
 def test_runtime_core_asr_markers_skip_platforms_without_native_wheels(monkeypatch):
     import frontend_bridge
 
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = _repo_root()
     requirements = repo_root / "requirements-runtime-core.txt"
 
     monkeypatch.setattr(frontend_bridge.sys, "platform", "darwin")
@@ -142,7 +152,7 @@ def test_runtime_core_asr_markers_skip_platforms_without_native_wheels(monkeypat
 def test_runtime_core_does_not_require_opencv_distribution():
     from frontend_bridge import _iter_requirement_names
 
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = _repo_root()
     names = set(_iter_requirement_names(repo_root / "requirements-runtime-core.txt"))
 
     assert "opencv_python" not in names
@@ -150,7 +160,7 @@ def test_runtime_core_does_not_require_opencv_distribution():
 
 
 def test_ui_update_manager_import_does_not_require_cv2():
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = _repo_root()
     script = textwrap.dedent(
         """
         import builtins
@@ -183,7 +193,7 @@ def test_ui_update_manager_import_does_not_require_cv2():
 
 
 def test_runtime_manifest_defines_optional_requirement_profiles():
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = _repo_root()
     manifest = json.loads((repo_root / "frontend/src-tauri/runtime_manifest.json").read_text(encoding="utf-8"))
     profiles = manifest["profiles"]
 
@@ -198,7 +208,7 @@ def test_runtime_manifest_defines_optional_requirement_profiles():
 def test_runtime_core_requirements_include_bridge_startup_sdks():
     from frontend_bridge import _iter_requirement_names
 
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = _repo_root()
     names = set(_iter_requirement_names(repo_root / "requirements-runtime-core.txt"))
 
     assert "openai" in names

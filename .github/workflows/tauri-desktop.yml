@@ -12,7 +12,7 @@ on:
       - "requirements.txt"
       - "requirements-runtime-*.txt"
       - "requirements-dev.txt"
-      - "test/unit/test_frontend_runtime_check.py"
+      - "test/unit/frontend_bridge_core/test_frontend_runtime_check.py"
       - "assets/**"
       - "asr/**"
       - "config/**"
@@ -35,7 +35,7 @@ on:
       - "requirements.txt"
       - "requirements-runtime-*.txt"
       - "requirements-dev.txt"
-      - "test/unit/test_frontend_runtime_check.py"
+      - "test/unit/frontend_bridge_core/test_frontend_runtime_check.py"
       - "assets/**"
       - "asr/**"
       - "config/**"
@@ -109,7 +109,7 @@ jobs:
             --requirements-file requirements-runtime-core.txt
 
       - name: Runtime manifest tests
-        run: python -m pytest test/unit/test_frontend_runtime_check.py
+        run: python -m pytest test/unit/frontend_bridge_core/test_frontend_runtime_check.py
 
       - name: Install frontend dependencies
         working-directory: frontend
