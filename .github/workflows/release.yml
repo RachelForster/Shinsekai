@@ -81,10 +81,10 @@ jobs:
             bundles: deb,appimage
           - platform: windows-x64
             os: windows-latest
-            bundles: msi,nsis
+            bundles: nsis
           - platform: windows-arm64
             os: windows-11-arm
-            bundles: msi,nsis
+            bundles: nsis
           - platform: macos-arm64
             os: macos-14
             bundles: dmg,app
@@ -125,7 +125,7 @@ jobs:
       - name: Install Windows installer dependencies
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install wixtoolset nsis --no-progress -y
+        run: choco install nsis --no-progress -y
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -271,7 +271,6 @@ jobs:
               collect_required "frontend/src-tauri/target/release/bundle/deb/*.deb" "${base}.deb" "deb" false
               ;;
             windows-*)
-              collect_required "frontend/src-tauri/target/release/bundle/msi/*.msi" "${base}.msi" "msi" false
               collect_required "frontend/src-tauri/target/release/bundle/nsis/*.exe" "${base}-setup.exe" "nsis" true
               ;;
             macos-*)
@@ -288,6 +287,21 @@ jobs:
             exit 1
           fi
           ls -lh release-assets
+
+      - name: Delete stale Windows MSI release assets
+        if: startsWith(matrix.platform, 'windows-')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./frontend/package.json').version")"
+          base="Shinsekai-${version}_${{ matrix.platform }}"
+          for asset in "${base}.msi" "${base}.msi.sig"; do
+            existing="$(gh release view "${{ needs.tag.outputs.tag }}" --json assets --jq ".assets[].name | select(. == \"${asset}\")")"
+            if [[ -n "${existing}" ]]; then
+              gh release delete-asset "${{ needs.tag.outputs.tag }}" "${asset}" --yes
+            fi
+          done
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
