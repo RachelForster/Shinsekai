@@ -1,29 +1,17 @@
 [run]
 branch = True
 source =
-    asr
-    config
-    core
-    frontend_bridge_core
+    core/messaging
     i18n
-    live
-    llm
-    scripts
     sdk
-    t2i
-    tools
-    tts
-    ui
 omit =
     test/*
-    asr/asr_test.py
-    live/danmuku_test.py
-    ui/settings_ui/modules/resources_rc.py
-    ui/settings_ui/modules/ui_main.py
+    sdk/cli/*
     **/__pycache__/*
     **/*.pyc
 
 [report]
+fail_under = 80
 precision = 2
 show_missing = True
 skip_empty = True

@@ -93,7 +93,9 @@ If your default Python is not the project environment, run the same command thro
 conda run -n shinsekai python -m pytest --cov --cov-config=.coveragerc --cov-report=term-missing --cov-report=html --cov-report=xml --cov-report=json
 ```
 
-The Python coverage source and output paths are configured in `.coveragerc`. The configured source set includes the main runtime packages such as `core`, `frontend_bridge_core`, `llm`, `sdk`, `tools`, `ui`, and related modules, while excluding tests and generated files.
+The Python coverage source, threshold, and output paths are configured in `.coveragerc`. The coverage gate tracks the headless Python unit-test surface: `sdk`, `core/messaging`, and `i18n`. GUI windows, local AI adapters, bridge integration handlers, developer CLI scaffolding, and other environment-heavy code are intentionally outside this gate because they require separate UI, integration, or manual/runtime validation.
+
+The Python coverage gate requires at least 80% combined coverage. Because branch coverage is enabled, the threshold uses the combined statement and branch percentage reported by `coverage.py`, not only the line percentage. If coverage drops below 80%, the pytest coverage command fails locally and in the `Test` GitHub Actions workflow.
 
 Useful Python report files:
 

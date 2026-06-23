@@ -56,6 +56,7 @@ jobs:
         if: always()
         run: |
           python - <<'PY'
+          import configparser
           import json
           import os
           from pathlib import Path
@@ -64,12 +65,16 @@ jobs:
           if not summary_path.exists():
               raise SystemExit(0)
 
+          config = configparser.ConfigParser()
+          config.read(".coveragerc", encoding="utf-8")
+          threshold = config.get("report", "fail_under", fallback="not configured")
           totals = json.loads(summary_path.read_text(encoding="utf-8"))["totals"]
           lines = totals["percent_covered_display"]
           statements = totals["percent_statements_covered_display"]
           branches = totals["percent_branches_covered_display"]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
               summary.write("## Python coverage\n\n")
+              summary.write(f"- Required combined coverage: {threshold}%\n")
               summary.write(f"- Lines: {lines}%\n")
               summary.write(f"- Statements: {statements}%\n")
               summary.write(f"- Branches: {branches}%\n")
