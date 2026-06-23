@@ -26,6 +26,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FRONTEND_COVERAGE_THRESHOLD: 90
 
 concurrency:
   group: react-frontend-${{ github.workflow }}-${{ github.ref }}
@@ -63,7 +64,7 @@ jobs:
       - name: Unit tests with coverage
         run: pnpm test:coverage
 
-      - name: Summarize frontend coverage
+      - name: Summarize and enforce frontend coverage threshold
         if: always()
         run: |
           node - <<'JS'
@@ -74,9 +75,13 @@ jobs:
           }
 
           const total = JSON.parse(fs.readFileSync(path, "utf8")).total;
+          const threshold = Number(process.env.FRONTEND_COVERAGE_THRESHOLD);
+          const requiredMetrics = ["lines", "statements"];
+          const failures = requiredMetrics.filter((metric) => total[metric].pct < threshold);
           const summary = [
             "## Frontend coverage",
             "",
+            `- Required threshold: ${threshold}% for lines and statements`,
             `- Lines: ${total.lines.pct}%`,
             `- Statements: ${total.statements.pct}%`,
             `- Branches: ${total.branches.pct}%`,
@@ -85,6 +90,13 @@ jobs:
             "",
           ].join("\n");
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+
+          if (failures.length > 0) {
+            for (const metric of failures) {
+              console.error(`Frontend coverage ${metric} is ${total[metric].pct}%, below the ${threshold}% threshold.`);
+            }
+            process.exit(1);
+          }
           JS
 
       - name: Upload frontend coverage report

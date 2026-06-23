@@ -47,6 +47,63 @@ If your shell's default Python is not the project environment, set `SHINSEKAI_PR
 SHINSEKAI_PRESUBMIT_PYTHON="conda run -n shinsekai python" git push
 ```
 
+## Test coverage
+
+Coverage checks are separate from the regular pre-push test run. Use them when a change adds behavior, changes existing behavior, or when you need to understand which files still lack tests.
+
+### Frontend coverage
+
+Run frontend coverage from the `frontend/` directory:
+
+```bash
+cd frontend
+pnpm test:coverage
+```
+
+This runs `vitest run --coverage` and uses the coverage settings in `frontend/vite.config.ts`. The report covers `frontend/src/**/*.{ts,tsx}` and excludes test files, TypeScript declaration files, and `frontend/src/main.tsx`.
+
+The frontend coverage gate currently requires at least 90% overall line coverage and 90% overall statement coverage. The local default is 90%, and the React Frontend GitHub Actions workflow also sets `FRONTEND_COVERAGE_THRESHOLD=90` before running `pnpm test:coverage`. If either number drops below 90%, `pnpm test:coverage` fails locally and in CI. Keep the coverage at or above that threshold when adding or changing frontend code.
+
+Useful frontend report files:
+
+- Text summary: printed in the terminal.
+- HTML report: `frontend/coverage/index.html`.
+- Machine-readable summary: `frontend/coverage/coverage-summary.json`.
+- LCOV report for external tools: `frontend/coverage/lcov.info`.
+
+When coverage fails, open the HTML report first. Files and lines highlighted in red are the missing test areas. Prefer adding focused tests next to the relevant feature, app, entity, shared, or platform test group under `frontend/src/test/`.
+
+### Python coverage
+
+Install the Python development dependencies before running coverage:
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
+Run Python coverage from the repository root:
+
+```bash
+python -m pytest --cov --cov-config=.coveragerc --cov-report=term-missing --cov-report=html --cov-report=xml --cov-report=json
+```
+
+If your default Python is not the project environment, run the same command through the project environment, for example:
+
+```bash
+conda run -n shinsekai python -m pytest --cov --cov-config=.coveragerc --cov-report=term-missing --cov-report=html --cov-report=xml --cov-report=json
+```
+
+The Python coverage source and output paths are configured in `.coveragerc`. The configured source set includes the main runtime packages such as `core`, `frontend_bridge_core`, `llm`, `sdk`, `tools`, `ui`, and related modules, while excluding tests and generated files.
+
+Useful Python report files:
+
+- Text summary with missing lines: printed in the terminal by `term-missing`.
+- HTML report: `coverage/python/html/index.html`.
+- XML report: `coverage/python/coverage.xml`.
+- JSON report: `coverage/python/coverage.json`.
+
+For Python changes, prefer running the smallest relevant pytest target first while developing, then run the full coverage command before opening or updating a PR when the change affects shared behavior.
+
 ## After merging
 
 - Your branch can be deleted (the maintainer will handle this if you don't have permission).

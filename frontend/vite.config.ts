@@ -1,6 +1,14 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+declare const process: {
+  env: {
+    FRONTEND_COVERAGE_THRESHOLD?: string;
+  };
+};
+
+const coverageThreshold = Number(process.env.FRONTEND_COVERAGE_THRESHOLD ?? 90);
+
 function modulePath(path: string) {
   return new URL(path, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 }
@@ -67,6 +75,10 @@ export default defineConfig({
       exclude: ["src/test/**", "src/**/*.d.ts", "src/vite-env.d.ts", "src/main.tsx"],
       reporter: ["text", "html", "lcov", "json-summary"],
       reportsDirectory: "./coverage",
+      thresholds: {
+        lines: coverageThreshold,
+        statements: coverageThreshold,
+      },
     },
   },
 });

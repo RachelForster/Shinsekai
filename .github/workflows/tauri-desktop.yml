@@ -128,7 +128,7 @@ jobs:
 
       - name: Desktop runtime UI contract tests
         working-directory: frontend
-        run: pnpm exec vitest run src/test/desktopApi.test.ts src/test/desktopChrome.test.tsx src/test/features/system-settings/SystemSettingsPage.test.tsx
+        run: pnpm exec vitest run src/test/shared/desktop/desktopApi.test.ts src/test/shared/desktop/desktopChrome.test.tsx src/test/features/system-settings/SystemSettingsPage.test.tsx
 
   build:
     name: Build ${{ matrix.platform }}
