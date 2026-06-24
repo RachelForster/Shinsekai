@@ -17,6 +17,14 @@ from tools import file_util
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _prevent_export_folder_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_open_folder(output_path):
+        pytest.fail(f"test attempted to open export folder for {output_path}")
+
+    monkeypatch.setattr(file_util, "_open_export_folder", fail_open_folder)
+
+
 def _make_export_zip(root: Path, char_data: dict, *,
                      sprites: dict[str, str] | None = None,
                      speeches: dict[str, str] | None = None) -> Path:
@@ -331,7 +339,7 @@ def _run_export(char_data: dict, tmp_path: Path, output: str | None = None) -> s
     from config.character_config import CharacterConfig
     cc = CharacterConfig.parse_dic(char_data=char_data)
     out = output or str(tmp_path / "out.char")
-    file_util.export_character([cc], out)
+    file_util.export_character([cc], out, open_folder=False)
     return out
 
 
@@ -509,7 +517,7 @@ class TestRoundTrip:
 
             cc = CharacterConfig.parse_dic(char_data=BASIC_CHAR)
             out = str(tmp_path / "roundtrip.char")
-            file_util.export_character([cc], out)
+            file_util.export_character([cc], out, open_folder=False)
 
             # Import to same mocked destination
             result = file_util.import_character(out)

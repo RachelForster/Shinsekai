@@ -3,6 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AudioPlayer } from "../../../shared/ui/AudioPlayer";
 
+function setMediaNumber(element: HTMLMediaElement, property: "currentTime" | "duration", value: number) {
+  Object.defineProperty(element, property, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+}
+
 describe("AudioPlayer", () => {
   beforeEach(() => {
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
@@ -57,5 +65,62 @@ describe("AudioPlayer", () => {
     fireEvent.change(volume, { target: { value: "35" } });
     expect(screen.getByRole("button", { name: "Voice mute" })).toBeInTheDocument();
     expect(volume).toHaveValue("35");
+  });
+
+  it("updates progress from native media events and seek changes", async () => {
+    render(<AudioPlayer label="Theme" src="/audio/theme.mp3" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Theme play" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Theme pause" })).toBeInTheDocument());
+
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    setMediaNumber(audio, "duration", 125);
+    setMediaNumber(audio, "currentTime", 35);
+    fireEvent(audio, new Event("loadedmetadata"));
+    fireEvent(audio, new Event("timeupdate"));
+
+    await waitFor(() => expect(screen.getByText("0:35")).toBeInTheDocument());
+    expect(screen.getByText("2:05")).toBeInTheDocument();
+    const progress = screen.getByRole("slider", { name: "Theme progress" });
+    expect(Number(progress.getAttribute("value"))).toBeCloseTo(28);
+
+    fireEvent.change(progress, { target: { value: "50" } });
+    expect(audio.currentTime).toBe(62.5);
+    expect(screen.getByText("1:02")).toBeInTheDocument();
+
+    fireEvent(audio, new Event("ended"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Theme play" })).toBeInTheDocument());
+    expect(screen.getAllByText("2:05")).toHaveLength(2);
+  });
+
+  it("warms up sources on hover and releases them when the source is cleared", () => {
+    const { rerender, unmount } = render(<AudioPlayer label="Preview" preload="none" src="/audio/a.mp3" />);
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    const player = screen.getByRole("button", { name: "Preview play" }).closest(".audio-player") as HTMLElement;
+
+    expect(audio.getAttribute("src")).toBeNull();
+    fireEvent.pointerEnter(player);
+    expect(audio.getAttribute("src")).toBe("/audio/a.mp3");
+
+    rerender(<AudioPlayer label="Preview" preload="metadata" src="/audio/b.mp3" />);
+    expect(audio.getAttribute("src")).toBe("/audio/b.mp3");
+
+    rerender(<AudioPlayer label="Preview" preload="metadata" src="" />);
+    expect(audio.getAttribute("src")).toBeNull();
+
+    unmount();
+    expect(audio.getAttribute("src")).toBeNull();
+  });
+
+  it("disables playback controls when no source is available", () => {
+    render(<AudioPlayer label="Empty" src="" />);
+
+    const playButton = screen.getByRole("button", { name: "Empty play" });
+    expect(playButton).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Empty mute" })).toBeDisabled();
+    expect(screen.getByRole("slider", { name: "Empty progress" })).toBeDisabled();
+
+    fireEvent.click(playButton);
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
   });
 });

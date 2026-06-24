@@ -16,35 +16,47 @@ import type { TaskProgressOptions } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
 const mockGetPluginUiDetail = vi.fn<() => Promise<PluginUIDetail>>();
+const mockGetAppUpdateInfo = vi.fn();
 const mockInstallPlugin =
   vi.fn<
     (input: PluginInstallInput | string, options?: TaskProgressOptions<PluginManifest>) => Promise<PluginManifest>
   >();
+const mockListAppUpdateTags = vi.fn<() => Promise<string[]>>();
 const mockListPluginCatalog = vi.fn<() => Promise<PluginCatalogItem[]>>();
 const mockListPlugins = vi.fn<() => Promise<PluginManifest[]>>();
 const mockListRepoTags = vi.fn<() => Promise<string[]>>();
+const mockOpenExternal = vi.fn();
+const mockRunAppUpdate = vi.fn();
 
 vi.mock("../../../entities/plugin/repository", () => ({
-  getAppUpdateInfo: vi.fn(async () => null),
+  getAppUpdateInfo: () => mockGetAppUpdateInfo(),
   getPluginUiDetail: () => mockGetPluginUiDetail(),
   installPlugin: (input: PluginInstallInput | string, options?: TaskProgressOptions<PluginManifest>) =>
     mockInstallPlugin(input, options),
   buildPluginSubmissionIssueUrl: vi.fn(),
   copyPluginSubmissionJson: vi.fn(),
-  listAppUpdateTags: vi.fn(),
+  listAppUpdateTags: () => mockListAppUpdateTags(),
   listPluginCatalog: () => mockListPluginCatalog(),
   listPlugins: () => mockListPlugins(),
   listRepoTags: () => mockListRepoTags(),
   pluginCatalogQueryKey: ["plugins", "catalog"],
   pluginsQueryKey: ["plugins"],
   pluginUiQueryKey: (id: string) => ["plugins", "ui", id],
-  runAppUpdate: vi.fn(),
+  runAppUpdate: (...args: unknown[]) => mockRunAppUpdate(...args),
   savePluginUiConfig: vi.fn(),
   scanLocalPlugin: vi.fn(),
   setPluginEnabled: vi.fn(),
   uninstallPlugin: vi.fn(),
   validatePluginSubmission: vi.fn(),
 }));
+
+vi.mock("../../../entities/files/repository", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../entities/files/repository")>();
+  return {
+    ...actual,
+    openExternal: (...args: unknown[]) => mockOpenExternal(...args),
+  };
+});
 
 const configurablePlugin: PluginManifest = {
   author: "Tester",
@@ -198,9 +210,27 @@ describe("PluginManagerPage", () => {
       });
       return plainPlugin;
     });
+    mockGetAppUpdateInfo.mockResolvedValue({ repo: "RachelForster/Shinsekai", version: "0.3.0" });
+    mockListAppUpdateTags.mockResolvedValue(["v0.3.1"]);
     mockListPluginCatalog.mockResolvedValue([]);
     mockListPlugins.mockResolvedValue([configurablePlugin, plainPlugin, unloadedPlugin]);
     mockListRepoTags.mockResolvedValue([]);
+    mockOpenExternal.mockResolvedValue(undefined);
+    mockRunAppUpdate.mockImplementation(async (_input, options?: TaskProgressOptions<unknown>) => {
+      options?.onTaskUpdate?.({
+        createdAt: 1,
+        id: "app-update-task",
+        kind: "app-update",
+        logs: ["checked out tag"],
+        message: "Updated from selected ref",
+        phase: "completed",
+        progress: 1,
+        status: "succeeded",
+        title: "App update",
+        updatedAt: 2,
+      });
+      return { message: "Update ready" };
+    });
   });
 
   it("shows configuration actions only for plugins that expose frontend pages", async () => {
@@ -464,5 +494,125 @@ describe("PluginManagerPage", () => {
 
     const card = await findPluginCard("Registry Display");
     expect(await within(card).findByRole("button", { name: /Update to/ })).toBeInTheDocument();
+  });
+
+  it("renders rich discovery metadata, opens links, and installs an official package", async () => {
+    mockListPlugins.mockResolvedValue([]);
+    mockListPluginCatalog.mockResolvedValue([
+      {
+        ...catalogItem,
+        logo: "https://example.invalid/logo.png",
+        packageSha256: "1234567890abcdef",
+        packageSize: 2048,
+        securityScan: { static: { pass: true }, secrets: { pass: false } },
+        socialLink: "https://example.invalid/author",
+        tags: ["browser", "vision", "tools", "agent", "automation"],
+        trustLevel: "verified",
+        verified: true,
+      },
+    ]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+
+    const card = (await screen.findByRole("heading", { name: "Registry Display" })).closest(
+      ".plugin-market-card",
+    ) as HTMLElement;
+    expect(within(card).getByText("Verified")).toBeInTheDocument();
+    expect(within(card).getByText("Scan passed")).toBeInTheDocument();
+    expect(within(card).getByText("Supports >=0.2.0")).toBeInTheDocument();
+    expect(within(card).getByText("+1")).toBeInTheDocument();
+    expect(within(card).getByText("2.0 KB")).toBeInTheDocument();
+
+    fireEvent.click(within(card).getByRole("button", { name: "Registry Author" }));
+    fireEvent.click(within(card).getByRole("button", { name: "GitHub" }));
+    expect(mockOpenExternal).toHaveBeenCalledWith("https://example.invalid/author");
+    expect(mockOpenExternal).toHaveBeenCalledWith("https://github.com/owner/registry-display");
+
+    fireEvent.click(within(card).getByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose plugin version" });
+    expect(within(dialog).getByText("R2")).toBeInTheDocument();
+    expect(within(dialog).getByText("1234567890...")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Install" }));
+    await waitFor(() =>
+      expect(mockInstallPlugin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overwrite: false,
+          refKind: "latest",
+          source: "registry-display",
+        }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("installs a repository catalog plugin from a selected tag", async () => {
+    mockListPlugins.mockResolvedValue([]);
+    mockListRepoTags.mockResolvedValue(["v1.2.0", "v1.1.0"]);
+    mockListPluginCatalog.mockResolvedValue([
+      {
+        ...catalogItem,
+        displayName: "Git Plugin",
+        downloadUrl: undefined,
+        id: "git-plugin",
+        name: "git_plugin",
+        packageUrl: undefined,
+        repo: "owner/git-plugin",
+        trustLevel: "pending_review",
+        verified: false,
+      },
+    ]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+    const card = (await screen.findByRole("heading", { name: "Git Plugin" })).closest(
+      ".plugin-market-card",
+    ) as HTMLElement;
+
+    fireEvent.click(within(card).getByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose plugin version" });
+    expect(await within(dialog).findByText("Repository: owner/git-plugin")).toBeInTheDocument();
+    expect(within(dialog).getByText("Pending review")).toBeInTheDocument();
+    expect(within(dialog).getByText(/current version or commit is still waiting for review/)).toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Version"), { target: { value: "tag:v1.2.0" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Install" }));
+
+    await waitFor(() =>
+      expect(mockInstallPlugin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overwrite: false,
+          refKind: "tag",
+          source: "owner/git-plugin",
+          tagName: "v1.2.0",
+        }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("runs an app update from a selected tag in the discovery panel", async () => {
+    mockListPlugins.mockResolvedValue([]);
+    mockListPluginCatalog.mockResolvedValue([catalogItem]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Update app" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Update application" });
+    expect(within(dialog).getByText("Repository: RachelForster/Shinsekai")).toBeInTheDocument();
+    expect(await within(dialog).findByText("v0.3.1")).toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Version"), { target: { value: "tag:v0.3.1" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+
+    await waitFor(() =>
+      expect(mockRunAppUpdate).toHaveBeenCalledWith({ refKind: "tag", tagName: "v0.3.1" }, expect.any(Object)),
+    );
+    expect(await screen.findByText("Updated from selected ref")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update application" })).not.toBeInTheDocument());
+    expect(screen.getByText("Updated from selected ref")).toBeInTheDocument();
   });
 });

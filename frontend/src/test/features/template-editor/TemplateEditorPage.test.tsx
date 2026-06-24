@@ -12,13 +12,16 @@ import { ToastProvider } from "../../../shared/ui";
 const mockListBackgrounds = vi.fn();
 const mockListCharacters = vi.fn();
 const mockLaunchChat = vi.fn();
+const mockInstallMissingRuntimeDependency = vi.fn();
 const mockGetAppConfig = vi.fn();
 const mockSaveSystemConfig = vi.fn();
 const mockGenerateTemplate = vi.fn();
 const mockGetTemplateSession = vi.fn();
+const mockListEffects = vi.fn();
 const mockListTemplates = vi.fn();
 const mockSaveTemplate = vi.fn();
 const mockSaveTemplateSession = vi.fn();
+const mockShowChatSurface = vi.fn();
 
 vi.mock("../../../entities/background/repository", () => ({
   backgroundsQueryKey: ["backgrounds"],
@@ -31,6 +34,7 @@ vi.mock("../../../entities/character/repository", () => ({
 }));
 
 vi.mock("../../../entities/chat/repository", () => ({
+  installMissingRuntimeDependency: (input: unknown) => mockInstallMissingRuntimeDependency(input),
   launchChat: (input: unknown) => mockLaunchChat(input),
 }));
 
@@ -47,6 +51,15 @@ vi.mock("../../../entities/template/repository", () => ({
   saveTemplate: (input: unknown) => mockSaveTemplate(input),
   saveTemplateSession: (input: unknown) => mockSaveTemplateSession(input),
   templatesQueryKey: ["templates"],
+}));
+
+vi.mock("../../../entities/effect/repository", () => ({
+  effectsQueryKey: ["effects"],
+  listEffects: () => mockListEffects(),
+}));
+
+vi.mock("../../../shared/desktop/chatWindow", () => ({
+  showChatSurface: (...args: unknown[]) => mockShowChatSurface(...args),
 }));
 
 const template = {
@@ -86,6 +99,7 @@ describe("TemplateEditorPage", () => {
       { color: "#ff99aa", name: "Mika" },
     ]);
     mockListBackgrounds.mockResolvedValue([{ name: "默认房间" }]);
+    mockListEffects.mockResolvedValue([]);
     mockSaveTemplate.mockImplementation(async (input) => ({ ...template, ...(input as object), id: "opening" }));
     mockGenerateTemplate.mockResolvedValue({
       ...template,
@@ -95,8 +109,10 @@ describe("TemplateEditorPage", () => {
       system: "Generated system",
     });
     mockLaunchChat.mockResolvedValue({ dialogText: "launched" });
+    mockInstallMissingRuntimeDependency.mockResolvedValue({ message: "installed" });
     mockSaveTemplateSession.mockResolvedValue(undefined);
     mockSaveSystemConfig.mockResolvedValue(sampleConfig.system_config);
+    mockShowChatSurface.mockResolvedValue(undefined);
   });
 
   it("saves edited scenario text and generates with selected characters", async () => {
@@ -227,5 +243,79 @@ describe("TemplateEditorPage", () => {
         useCg: true,
       }),
     );
+  });
+
+  it("renders empty and query error states", async () => {
+    mockListTemplates.mockResolvedValueOnce([]);
+    const { unmount } = renderPage();
+
+    expect(await screen.findByText("No templates")).toBeInTheDocument();
+    expect(screen.getByText("Generate a template first.")).toBeInTheDocument();
+    unmount();
+
+    mockListTemplates.mockRejectedValueOnce(new Error("templates failed"));
+    renderPage();
+
+    expect(await screen.findByText("Operation failed")).toBeInTheDocument();
+    const callsBeforeRetry = mockListTemplates.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(mockListTemplates).toHaveBeenCalledTimes(callsBeforeRetry + 1));
+  });
+
+  it("injects selected effect hints, persists runtime controls, and handles runtime dependency installs", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockListEffects.mockResolvedValue([
+      {
+        audio_tags: "特效 1：雨声\n特效 2: 雷声",
+        color: "#4455aa",
+        name: "Rain",
+      },
+    ]);
+    mockLaunchChat.mockResolvedValueOnce({
+      dialogText: "Missing mem0",
+      runtimeDependencyError: {
+        moduleName: "mem0",
+        packageName: "mem0ai",
+      },
+    });
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Rain" }));
+    fireEvent.click(screen.getByRole("button", { name: "System template" }));
+    await waitFor(() => expect(screen.getByDisplayValue(/可用音效/)).toBeInTheDocument());
+    expect(screen.getByDisplayValue(/Rain有2条特效音频/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "English" }));
+    await waitFor(() =>
+      expect(mockSaveSystemConfig).toHaveBeenCalledWith(expect.objectContaining({ voice_language: "en" })),
+    );
+
+    fireEvent.change(screen.getByLabelText("Max speech chars"), { target: { value: "80" } });
+    fireEvent.change(screen.getByLabelText("Max dialog items"), { target: { value: "6" } });
+    fireEvent.change(screen.getByLabelText("Initial sprite"), { target: { value: "D:/sprites/init.png" } });
+    fireEvent.change(screen.getByLabelText("History file"), { target: { value: "D:/history/log.json" } });
+    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+
+    await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
+    expect(mockSaveTemplateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        effectNames: ["Rain"],
+        historyPath: "D:/history/log.json",
+        initSpritePath: "D:/sprites/init.png",
+        maxDialogItems: 6,
+        maxSpeechChars: 80,
+      }),
+    );
+    expect(mockLaunchChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        effectNames: ["Rain"],
+        historyPath: "D:/history/log.json",
+        initSpritePath: "D:/sprites/init.png",
+      }),
+    );
+    expect(mockInstallMissingRuntimeDependency).toHaveBeenCalledWith({ moduleName: "mem0" });
+    expect(mockShowChatSurface).not.toHaveBeenCalled();
   });
 });
