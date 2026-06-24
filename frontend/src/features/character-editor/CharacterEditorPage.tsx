@@ -157,7 +157,15 @@ export function CharacterEditorPage() {
       showToast({ kind: "success", title: t("character.memory.depInstalled") });
       setMemoryDepOpen(false);
       setMemoryDepTask(null);
-      void memoryQuery.refetch();
+      queryClient.setQueryData(["character-memories", memoryName], {
+        agentId: memoryName || "user",
+        count: 0,
+        memories: [],
+      });
+      setMemoryDepInstalling(false);
+      if (await ensureMem0Ready()) {
+        void memoryQuery.refetch();
+      }
     } catch (error) {
       showToast({
         kind: "error",

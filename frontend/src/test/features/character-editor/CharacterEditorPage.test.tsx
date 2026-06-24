@@ -568,13 +568,17 @@ describe("CharacterEditorPage", () => {
     expect(mockUploadSpriteVoice).not.toHaveBeenCalled();
   });
 
-  it("surfaces missing memory dependencies and installs them with task progress", async () => {
-    mockGetMem0Status.mockResolvedValueOnce({ status: "missing_dependency" });
-    mockListCharacterMemories.mockResolvedValueOnce({
-      kind: "missing_dependency",
-      moduleName: "mem0",
-      packageName: "mem0ai",
-    });
+  it("installs missing memory dependencies and starts memory loading", async () => {
+    mockGetMem0Status
+      .mockResolvedValueOnce({ status: "missing_dependency" })
+      .mockResolvedValueOnce({ status: "ready" });
+    mockListCharacterMemories
+      .mockResolvedValueOnce({
+        kind: "missing_dependency",
+        moduleName: "mem0",
+        packageName: "mem0ai",
+      })
+      .mockResolvedValueOnce({ agentId: "Mika", count: 0, memories: [] });
     mockInstallMissingRuntimeDependency.mockImplementation(
       async (_input, options?: { onTaskUpdate?: (task: unknown) => void }) => {
         options?.onTaskUpdate?.({
@@ -600,6 +604,8 @@ describe("CharacterEditorPage", () => {
         expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
       ),
     );
+    await waitFor(() => expect(screen.queryByText("Missing Python dependency")).not.toBeInTheDocument());
+    await waitFor(() => expect(mockGetMem0Status).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(mockListCharacterMemories).toHaveBeenCalledTimes(2));
   });
 });
