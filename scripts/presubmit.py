@@ -126,10 +126,8 @@ def commits_from_pre_push_input(remote_name: str, hook_input: str) -> list[str]:
 
         if remote_sha == ZERO_SHA:
             rev_args = ["rev-list", local_sha, "--not", "--remotes"]
-            if remote_name and re.fullmatch(r"[A-Za-z0-9._/-]+", remote_name):
-                rev_args[-1] = f"--remotes={remote_name}"
         else:
-            rev_args = ["rev-list", f"{remote_sha}..{local_sha}"]
+            rev_args = ["rev-list", f"{remote_sha}..{local_sha}", "--not", "--remotes"]
 
         result = git(rev_args, capture_output=True)
         if result.returncode != 0:
