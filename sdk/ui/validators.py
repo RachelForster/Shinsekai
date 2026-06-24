@@ -12,6 +12,13 @@ from pathlib import Path
 from typing import Any
 
 
+def _path_from_input(path: str | Path, *, label: str = "") -> Path:
+    text = str(path)
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        raise ValueError(_msg("路径包含非法控制字符", label))
+    return Path(path)
+
+
 # ── 基础校验 ──────────────────────────────────────────────────────────────────
 
 def not_empty(value: Any, label: str = "") -> tuple[bool, str]:
@@ -36,7 +43,10 @@ def file_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     """文件路径必须存在（跳过空值由 not_empty 负责）。"""
     if not path:
         return True, ""
-    p = Path(path)
+    try:
+        p = _path_from_input(path, label=label)
+    except ValueError as exc:
+        return False, str(exc)
     if not p.is_file():
         return False, _msg(f"文件不存在: {p}", label)
     return True, ""
@@ -46,7 +56,10 @@ def dir_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     """目录路径必须存在。"""
     if not path:
         return True, ""
-    p = Path(path)
+    try:
+        p = _path_from_input(path, label=label)
+    except ValueError as exc:
+        return False, str(exc)
     if not p.is_dir():
         return False, _msg(f"目录不存在: {p}", label)
     return True, ""
@@ -56,7 +69,10 @@ def path_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     """路径必须存在（文件或目录均可）。"""
     if not path:
         return True, ""
-    p = Path(path)
+    try:
+        p = _path_from_input(path, label=label)
+    except ValueError as exc:
+        return False, str(exc)
     if not p.exists():
         return False, _msg(f"路径不存在: {p}", label)
     return True, ""
@@ -66,7 +82,11 @@ def path_is_absolute(path: str | Path | None, label: str = "") -> tuple[bool, st
     """路径必须是绝对路径。"""
     if not path:
         return True, ""
-    if not Path(path).is_absolute():
+    try:
+        p = _path_from_input(path, label=label)
+    except ValueError as exc:
+        return False, str(exc)
+    if not p.is_absolute():
         return False, _msg("必须填写绝对路径", label)
     return True, ""
 

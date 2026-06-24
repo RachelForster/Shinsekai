@@ -27,6 +27,14 @@ def test_llm_models_endpoint_url_uses_deepseek_official_models_path():
     ) == "https://api.deepseek.com/models"
 
 
+def test_llm_models_endpoint_url_does_not_trust_lookalike_deepseek_host():
+    assert _llm_models_endpoint_url(
+        "https://api.deepseek.com.evil/v1",
+        "Custom",
+        "sk-test",
+    ) == "https://api.deepseek.com.evil/v1/models"
+
+
 def test_llm_models_endpoint_url_uses_gemini_native_models_api():
     assert _llm_models_endpoint_url(
         "https://generativelanguage.googleapis.com/v1beta/openai",

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +10,32 @@ from pathlib import Path
 from ui.webui.context import WebUIContext
 
 _main_chat_process = None
+
+
+def _reject_control_chars(value: str, field: str) -> str:
+    text = str(value or "").strip()
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        raise ValueError(f"{field} 包含非法控制字符")
+    return text
+
+
+def _safe_template_filename(filename: str) -> str:
+    name = _reject_control_chars(filename, "模板文件名")
+    if not name:
+        raise ValueError("模板文件名不能为空")
+    if not name.endswith(".txt"):
+        name = f"{name}.txt"
+    if Path(name).name != name or name in {".", ".."}:
+        raise ValueError("模板文件名不能包含目录")
+    return name
+
+
+def _template_file(ctx: WebUIContext, filename: str) -> Path:
+    root = Path(ctx.template_dir_path).resolve()
+    path = (root / _safe_template_filename(filename)).resolve()
+    if root not in path.parents and path != root:
+        raise PermissionError("模板路径越界")
+    return path
 
 
 def launch_chat(
@@ -25,12 +50,12 @@ def launch_chat(
     global _main_chat_process
     print("启动聊天，使用模板:")
     try:
-        dest_path = os.path.join(ctx.template_dir_path, "_temp.txt")
-        with open(dest_path, mode="+wt", encoding="utf-8") as file:
+        dest_path = _template_file(ctx, "_temp.txt")
+        with dest_path.open(mode="+wt", encoding="utf-8") as file:
             file.write(template)
 
-        init_path = init_sprite_path[0] if init_sprite_path else ""
-        history_file = history_file if history_file else ""
+        init_path = _reject_control_chars(init_sprite_path[0], "初始立绘路径") if init_sprite_path else ""
+        history_file = _reject_control_chars(history_file, "历史文件路径") if history_file else ""
         ctx.config_manager.config.system_config.live_room_id = room_id
         ctx.config_manager.save_system_config()
 
@@ -70,9 +95,9 @@ def stop_chat() -> str:
 
 def load_template_from_file(ctx: WebUIContext, file_path: str):
     try:
-        file_name = file_path
-        full_path = os.path.join(ctx.template_dir_path, file_path)
-        with open(full_path, "r", encoding="utf-8") as f:
+        file_name = _safe_template_filename(file_path)
+        full_path = _template_file(ctx, file_name)
+        with full_path.open("r", encoding="utf-8") as f:
             template = f.read()
         return template, file_name
     except Exception as e:
@@ -85,11 +110,8 @@ def save_template(ctx: WebUIContext, template: str, filename: str):
     if filename == "":
         return "保存文件名不能为空！", template_files
     try:
-        if filename.endswith(".txt"):
-            dest_path = os.path.join(ctx.template_dir_path, filename)
-        else:
-            dest_path = os.path.join(ctx.template_dir_path, f"{filename}.txt")
-        with open(dest_path, mode="+wt", encoding="utf-8") as file:
+        dest_path = _template_file(ctx, filename)
+        with dest_path.open(mode="+wt", encoding="utf-8") as file:
             file.write(template)
         path_obj = Path(ctx.template_dir_path)
         template_files = [file.name for file in path_obj.iterdir() if file.is_file()]

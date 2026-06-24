@@ -38,9 +38,11 @@ from .characters import (
     _upload_character_sprites,
     _upload_sprite_voice,
 )
+from .security import safe_child_path, safe_existing_file_path
 
 
 def _media_thumbnail(source: Path, *, project_root: Path, size: int = 160) -> Path:
+    source = safe_existing_file_path(source, field="media source")
     if not source.is_file():
         raise FileNotFoundError(source.as_posix())
 
@@ -53,7 +55,7 @@ def _media_thumbnail(source: Path, *, project_root: Path, size: int = 160) -> Pa
         )
     ).hexdigest()
     cache_root = project_root / ".cache" / "frontend-media-thumbnails"
-    cache_path = cache_root / f"{digest}.png"
+    cache_path = safe_child_path(cache_root, f"{digest}.png")
     if cache_path.is_file():
         return cache_path
 

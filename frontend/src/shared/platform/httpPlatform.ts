@@ -115,7 +115,17 @@ function appendBridgeAuthQuery(baseUrl: string, pathOrUrl: string) {
 }
 
 function bridgeUrl(baseUrl: string, path: string) {
-  return `${baseUrl}${appendBridgeAuthQuery(baseUrl, path)}`;
+  const base = new URL(baseUrl);
+  const url = new URL(appendBridgeAuthQuery(baseUrl, path), base);
+  if (url.origin !== base.origin) {
+    throw new Error("Bridge URL must stay on the active bridge origin");
+  }
+  return url.toString();
+}
+
+function openBridgeWindow(apiBase: string, path: string) {
+  const url = bridgeUrl(apiBase, path);
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
@@ -230,8 +240,7 @@ function uploadFiles<T>(apiBase: string, path: string, files: File[]): Promise<T
 }
 
 function openDownload(apiBase: string, path: string) {
-  const url = bridgeUrl(apiBase, `/api/download?path=${encodeURIComponent(path)}`);
-  window.open(url, "_blank", "noopener,noreferrer");
+  openBridgeWindow(apiBase, `/api/download?path=${encodeURIComponent(path)}`);
 }
 
 function delay(ms: number) {
@@ -492,7 +501,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           await navigator.clipboard.writeText(result.clipboardText);
         }
         if (result.downloadUrl) {
-          window.open(bridgeUrl(apiBase, result.downloadUrl), "_blank", "noopener,noreferrer");
+          openBridgeWindow(apiBase, result.downloadUrl);
         }
         return result;
       },

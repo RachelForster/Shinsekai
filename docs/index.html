@@ -961,21 +961,69 @@ cd ..</code></pre>
         applyI18n();
       }
 
+      function isSafeDocsHref(value) {
+        try {
+          var url = new URL(value, window.location.href);
+          return url.protocol === "https:";
+        } catch (_err) {
+          return false;
+        }
+      }
+
+      function appendRichI18n(parent, html) {
+        var allowed = { a: true, code: true, strong: true };
+        var stack = [parent];
+        var pattern = /<\/?(a|code|strong)(?:\s+href="([^"]*)")?\s*>/gi;
+        var index = 0;
+        var match;
+        while ((match = pattern.exec(html)) !== null) {
+          if (match.index > index) {
+            stack[stack.length - 1].appendChild(
+              document.createTextNode(html.slice(index, match.index)),
+            );
+          }
+          var rawTag = match[0];
+          var tagName = String(match[1] || "").toLowerCase();
+          if (rawTag.charAt(1) === "/") {
+            if (stack.length > 1 && stack[stack.length - 1].tagName.toLowerCase() === tagName) {
+              stack.pop();
+            }
+          } else if (allowed[tagName]) {
+            var node = document.createElement(tagName);
+            if (tagName === "a") {
+              var href = String(match[2] || "");
+              if (isSafeDocsHref(href)) {
+                node.setAttribute("href", href);
+                node.setAttribute("rel", "noopener noreferrer");
+              }
+            }
+            stack[stack.length - 1].appendChild(node);
+            stack.push(node);
+          }
+          index = pattern.lastIndex;
+        }
+        if (index < html.length) {
+          stack[stack.length - 1].appendChild(document.createTextNode(html.slice(index)));
+        }
+      }
+
       function applyI18n() {
         document.querySelectorAll("[data-i18n]").forEach(function (el) {
           el.textContent = t(el.getAttribute("data-i18n"));
         });
         document.querySelectorAll("[data-i18n_html]").forEach(function (el) {
-          el.innerHTML = t(el.getAttribute("data-i18n_html"));
+          el.replaceChildren();
+          appendRichI18n(el, t(el.getAttribute("data-i18n_html")));
         });
         document.querySelectorAll("[data-i18n_list]").forEach(function (el) {
           var items = t(el.getAttribute("data-i18n_list"));
           if (Array.isArray(items)) {
-            el.innerHTML = items
-              .map(function (item) {
-                return "<li>" + item + "</li>";
-              })
-              .join("");
+            el.replaceChildren();
+            items.forEach(function (item) {
+              var li = document.createElement("li");
+              appendRichI18n(li, item);
+              el.appendChild(li);
+            });
           }
         });
         renderRepoStars();

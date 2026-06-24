@@ -11,6 +11,7 @@ import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from config.mirror_env import mirror_github_url
 
@@ -64,8 +65,11 @@ def normalize_repo_slug(repo: str) -> str:
     lowered = raw.lower()
     if lowered.startswith("git@github.com:"):
         raw = raw.split(":", 1)[1]
-    elif lowered.startswith("https://github.com/") or lowered.startswith("http://github.com/"):
-        raw = raw.split("github.com/", 1)[1]
+    elif lowered.startswith(("https://", "http://")):
+        parsed = urlsplit(raw)
+        if parsed.hostname != "github.com":
+            return ""
+        raw = parsed.path
     elif lowered.startswith("github.com/"):
         raw = raw.split("/", 1)[1]
     raw = raw.split("#", 1)[0].split("?", 1)[0].strip("/")

@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import re
 from typing import Any
 
 from core.runtime.app_runtime import try_get_app_runtime
@@ -9,10 +7,32 @@ from sdk.tool_registry import tool
 _DEFAULT_USER_DISPLAY_NAME = "你"
 
 
+def _strip_markup(value: str) -> str | None:
+    output = ""
+    in_tag = False
+    for char in value:
+        if char == "<":
+            if in_tag:
+                return None
+            in_tag = True
+            continue
+        if char == ">":
+            if not in_tag:
+                return None
+            in_tag = False
+            continue
+        if not in_tag:
+            output += char
+    return None if in_tag else output
+
+
 def sanitize_user_display_name(value: Any) -> str:
-    name = re.sub(r"<[^>]+>", "", str(value or "")).strip()
+    stripped = _strip_markup(str(value or ""))
+    if stripped is None:
+        return ""
+    name = stripped.strip()
     name = name.strip(" \t\r\n\"'“”‘’「」『』《》[]()（）")
-    name = re.sub(r"\s+", " ", name).strip()
+    name = " ".join(name.split()).strip()
     if not name or name == _DEFAULT_USER_DISPLAY_NAME:
         return ""
     if len(name) > 24 or any(ch in name for ch in "\r\n<>"):

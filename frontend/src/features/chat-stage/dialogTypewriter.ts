@@ -194,6 +194,30 @@ function createTemplate(html: string) {
   return template;
 }
 
+function stripHtmlFallback(html: string) {
+  let output = "";
+  let inTag = false;
+  for (const char of codepoints(html)) {
+    if (char === "<") {
+      inTag = true;
+      continue;
+    }
+    if (char === ">") {
+      inTag = false;
+      continue;
+    }
+    if (!inTag) {
+      output += char;
+    }
+  }
+  return output;
+}
+
+function htmlPlainText(html: string) {
+  const template = createTemplate(html);
+  return template ? (template.content.textContent ?? "") : stripHtmlFallback(html);
+}
+
 const allowedDialogTags = new Set(["a", "b", "br", "code", "em", "i", "p", "s", "span", "strong"]);
 const removedDialogTags = new Set(["embed", "iframe", "link", "meta", "object", "script", "style"]);
 const allowedDialogClasses = new Set(["dialog-layer__md-bullet", "dialog-layer__md-quote"]);
@@ -331,7 +355,7 @@ function sanitizeDialogNode(node: Node) {
 export function sanitizeDialogHtml(html: string) {
   const template = createTemplate(html);
   if (!template) {
-    return html.replace(/<[^>]+>/g, "");
+    return stripHtmlFallback(html);
   }
   Array.from(template.content.childNodes).forEach(sanitizeDialogNode);
   const wrapper = document.createElement("div");
@@ -442,11 +466,75 @@ function normalizeTypewriterDirection(direction?: string): DialogTypewriterDirec
   return direction === "rtl" ? "rtl" : "ltr";
 }
 
+function stripLeadingSpeakerSeparator(text: string) {
+  const chars = codepoints(text);
+  let index = 0;
+  while (index < chars.length && /\s/u.test(chars[index] ?? "")) {
+    index += 1;
+  }
+  if ((chars[index] ?? "") === "：" || (chars[index] ?? "") === ":") {
+    index += 1;
+  }
+  while (index < chars.length && /\s/u.test(chars[index] ?? "")) {
+    index += 1;
+  }
+  return chars.slice(index).join("");
+}
+
+function firstMeaningfulChild(parent: ParentNode) {
+  for (const child of Array.from(parent.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE && !(child.textContent ?? "").trim()) {
+      continue;
+    }
+    return child;
+  }
+  return null;
+}
+
+function stripLeadingSpeakerFromParent(parent: ParentNode, characterName: string) {
+  const first = firstMeaningfulChild(parent);
+  if (!first) {
+    return false;
+  }
+  if (first.nodeType === Node.ELEMENT_NODE && (first as Element).tagName.toLowerCase() !== "b") {
+    return stripLeadingSpeakerFromParent(first as Element, characterName);
+  }
+  if (first.nodeType !== Node.ELEMENT_NODE || (first as Element).tagName.toLowerCase() !== "b") {
+    return false;
+  }
+  const speaker = (first.textContent ?? "").trim();
+  if (speaker !== characterName.trim()) {
+    return false;
+  }
+  const owner = first.parentNode;
+  if (!owner) {
+    return false;
+  }
+  owner.removeChild(first);
+  const next = firstMeaningfulChild(owner);
+  if (next?.nodeType === Node.TEXT_NODE) {
+    next.textContent = stripLeadingSpeakerSeparator(next.textContent ?? "");
+    if (!next.textContent) {
+      next.parentNode?.removeChild(next);
+    }
+  }
+  return true;
+}
+
 export function stripLeadingSpeakerHtml(html: string, characterName?: string) {
   if (!characterName?.trim() || !html.trim()) {
     return html;
   }
-  return html.replace(/<b[^>]*>[^<]+<\/b>[：:]?\s*/, "");
+  const template = createTemplate(html);
+  if (!template) {
+    return html;
+  }
+  if (!stripLeadingSpeakerFromParent(template.content, characterName)) {
+    return html;
+  }
+  const wrapper = document.createElement("div");
+  wrapper.append(template.content.cloneNode(true));
+  return wrapper.innerHTML;
 }
 
 export function stripLeadingSpeakerText(text: string, characterName?: string) {
@@ -460,7 +548,7 @@ export function stripLeadingSpeakerText(text: string, characterName?: string) {
 export function countVisibleHtmlCharacters(html: string) {
   const template = createTemplate(html);
   if (!template) {
-    return codepoints(html.replace(/<[^>]+>/g, "")).length;
+    return codepoints(stripHtmlFallback(html)).length;
   }
   let total = 0;
   template.content.childNodes.forEach((node) => {
@@ -472,7 +560,7 @@ export function countVisibleHtmlCharacters(html: string) {
 export function countVisibleHtmlUnits(html: string) {
   const template = createTemplate(html);
   if (!template) {
-    return visibleDirectionalUnitLength(html.replace(/<[^>]+>/g, ""));
+    return visibleDirectionalUnitLength(stripHtmlFallback(html));
   }
   let total = 0;
   template.content.childNodes.forEach((node) => {
@@ -517,7 +605,7 @@ function cloneNodeAsRtlVisual(node: Node): Node | null {
 export function reorderHtmlForRtl(html: string) {
   const template = createTemplate(html);
   if (!template) {
-    return reorderRtlPlainText(html.replace(/<[^>]+>/g, ""));
+    return reorderRtlPlainText(stripHtmlFallback(html));
   }
   const wrapper = document.createElement("div");
   for (const node of Array.from(template.content.childNodes)) {
@@ -537,7 +625,7 @@ export function renderDialogHtmlFrame(
   const normalizedDirection = normalizeTypewriterDirection(direction);
   const template = createTemplate(html);
   if (!template) {
-    return sliceVisibleText(html.replace(/<[^>]+>/g, ""), visibleCharacters, normalizedDirection);
+    return sliceVisibleText(htmlPlainText(html), visibleCharacters, normalizedDirection);
   }
   const wrapper = document.createElement("div");
   const remaining = { value: Math.max(0, visibleCharacters) };

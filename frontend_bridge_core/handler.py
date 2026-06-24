@@ -12,7 +12,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
 from core.sprite.chat_branch_storage import remove_chat_history_storage
@@ -112,6 +112,14 @@ from .plugin_updates import (
     _run_app_update,
 )
 from .runtime_dependencies import install_runtime_dependency, runtime_dependency_error_from_text
+from .security import (
+    reject_control_chars,
+    safe_child_path,
+    safe_content_disposition,
+    safe_filename,
+    safe_header_value,
+    safe_project_path,
+)
 from .state import BridgeState, _jsonify, plugin_load_snapshot
 from .static import _frontend_dist_root
 from .tasks import _create_task, _get_task, _is_running_task, _request_task_cancel, _run_background_task, _update_task
@@ -183,18 +191,42 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             logger.exception("Frontend bridge request failed", extra=extra)
 
     def _origin_allowed(self, origin: str) -> bool:
+        return self._allowed_origin_header(origin) is not None
+
+    def _allowed_origin_header(self, origin: str) -> str | None:
         value = str(origin or "").strip()
         if not value:
-            return True
+            return ""
+        try:
+            value = reject_control_chars(value, field="origin")
+        except ValueError:
+            return None
         parsed = urlparse(value)
         scheme = parsed.scheme.lower()
         host = (parsed.hostname or "").lower()
-        if scheme in _ALLOWED_CUSTOM_ORIGIN_SCHEMES and host in _ALLOWED_LOCAL_ORIGIN_HOSTS:
-            return True
-        return scheme in {"http", "https"} and host in _ALLOWED_LOCAL_ORIGIN_HOSTS
+        if host not in _ALLOWED_LOCAL_ORIGIN_HOSTS:
+            return None
+        if scheme in _ALLOWED_CUSTOM_ORIGIN_SCHEMES:
+            if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+                return None
+            netloc = host
+            if parsed.port is not None:
+                netloc = f"{host}:{parsed.port}"
+            return safe_header_value(urlunparse((scheme, netloc, "", "", "", "")))
+        if scheme in {"http", "https"}:
+            if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+                return None
+            netloc = host
+            if parsed.port is not None:
+                netloc = f"{host}:{parsed.port}"
+            return safe_header_value(urlunparse((scheme, netloc, "", "", "", "")))
+        return None
 
     def _request_origin_allowed(self) -> bool:
-        return self._origin_allowed(self.headers.get("Origin", ""))
+        origin = self.headers.get("Origin", "")
+        if not str(origin or "").strip():
+            return True
+        return self._allowed_origin_header(origin) is not None
 
     def _auth_token_from_request(self) -> str:
         header_token = str(self.headers.get(BRIDGE_AUTH_HEADER) or "").strip()
@@ -218,8 +250,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             raise PermissionError("invalid bridge auth token")
 
     def _send_cors(self) -> None:
-        origin = str(self.headers.get("Origin") or "").strip()
-        if origin and self._origin_allowed(origin):
+        origin = self._allowed_origin_header(str(self.headers.get("Origin") or ""))
+        if origin:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS")
@@ -333,10 +365,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 continue
             if part.get_param("name", header="content-disposition") != "files":
                 continue
-            filename = Path(str(part.get_filename() or "")).name
-            if not filename:
+            try:
+                filename = safe_filename(str(part.get_filename() or ""))
+            except ValueError:
                 continue
-            dest = temp_dir / filename
+            dest = safe_child_path(temp_dir, filename)
             dest.write_bytes(part.get_payload(decode=True) or b"")
             paths.append(dest)
         if not paths:
@@ -1180,15 +1213,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
 
     def _resolve_project_path(self, raw_path: str) -> Path:
-        root = Path.cwd().resolve()
         raw = str(raw_path or "").strip()
         if not raw:
             raise FileNotFoundError(raw_path)
         if Path(raw).is_absolute():
-            path = Path(raw).resolve()
-            if root not in path.parents and path != root:
-                raise PermissionError("path is outside project root")
-            return path
+            return safe_project_path(raw)
 
         candidates: list[str] = [raw]
         slash_path = raw.replace("\\", "/")
@@ -1209,21 +1238,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if candidate in seen:
                 continue
             seen.add(candidate)
-            path = (root / candidate).resolve()
-            if root not in path.parents and path != root:
-                raise PermissionError("path is outside project root")
+            path = safe_project_path(candidate)
             if first_valid is None:
                 first_valid = path
             if path.is_file():
                 return path
-        return first_valid if first_valid is not None else (root / raw).resolve()
+        return first_valid if first_valid is not None else safe_project_path(raw)
 
     def _resolve_static_path(self, root: Path, request_path: str) -> Path:
-        base = root.resolve()
-        target = (base / request_path.lstrip("/")).resolve()
-        if base not in target.parents and target != base:
-            raise PermissionError("path is outside static root")
-        return target
+        return safe_child_path(root, request_path)
 
     def _media_thumbnail_batch_response(self, body: dict[str, Any]) -> dict[str, Any]:
         raw_paths = body.get("paths") or []
@@ -1274,7 +1297,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except _RangeNotSatisfiable:
             self._send_range_not_satisfiable(file_size)
             return
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        safe_name = safe_header_value(path.name)
+        content_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
         if byte_range is None:
             start = 0
             end = file_size - 1
@@ -1292,7 +1316,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if byte_range is not None:
             self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
         if attachment:
-            self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
+            self.send_header("Content-Disposition", safe_content_disposition(safe_name))
         try:
             self.end_headers()
             if not send_body:

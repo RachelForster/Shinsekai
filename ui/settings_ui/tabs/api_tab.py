@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from pathlib import Path
 import time
@@ -57,6 +58,7 @@ from llm.claude_url import claude_models_endpoint_url
 from llm.llm_manager import LLMAdapterFactory
 from t2i.t2i_manager import T2IAdapterFactory
 from tts.tts_manager import TTSAdapterFactory
+from frontend_bridge_core.security import host_matches
 from ui.settings_ui.widgets.adapter_extra_form import (
     build_schema_widgets,
     read_schema_values,
@@ -497,25 +499,32 @@ class _LLMModelLineEdit(QLineEdit):
 
 def _llm_model_provider_kind(provider: str, base_url: str) -> str:
     low_provider = (provider or "").strip().lower()
-    low_base = (base_url or "").strip().lower()
-    if "gemini" in low_provider or "generativelanguage.googleapis.com" in low_base:
+    if "gemini" in low_provider or _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"}):
         return "gemini"
-    if "deepseek" in low_provider or "api.deepseek.com" in low_base:
+    if "deepseek" in low_provider or _base_url_host_matches(base_url, {"api.deepseek.com"}):
         return "deepseek"
     if (
         low_provider == "claude"
         or "claude" in low_provider
-        or "anthropic.com" in low_base
+        or _base_url_host_matches(base_url, {"anthropic.com"})
     ):
         return "anthropic"
     if (
-        "dashscope.aliyuncs.com" in low_base
+        _base_url_host_matches(base_url, {"dashscope.aliyuncs.com"})
         or "通义" in low_provider
         or "qwen" in low_provider
         or "dashscope" in low_provider
     ):
         return "dashscope"
     return "openai_compatible"
+
+
+def _base_url_host_matches(base_url: str, allowed_hosts: set[str]) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(str(base_url or "").strip())
+    except ValueError:
+        return False
+    return parsed.hostname is not None and host_matches(parsed.hostname, allowed_hosts)
 
 
 def _base_url_required(base_url: str) -> str:
@@ -535,7 +544,7 @@ def _openai_compatible_models_endpoint_url(base_url: str) -> str:
 def _gemini_models_endpoint_url(base_url: str, api_key: str) -> str:
     base = _base_url_required(base_url).rstrip("/")
     low_base = base.lower()
-    if "generativelanguage.googleapis.com" not in low_base:
+    if not _base_url_host_matches(base, {"generativelanguage.googleapis.com"}):
         return _openai_compatible_models_endpoint_url(base)
     marker = "/openai"
     marker_ix = low_base.rfind(marker)
@@ -549,7 +558,7 @@ def _gemini_models_endpoint_url(base_url: str, api_key: str) -> str:
 
 def _deepseek_models_endpoint_url(base_url: str) -> str:
     base = _base_url_required(base_url).rstrip("/")
-    if "api.deepseek.com" in base.lower() and base.lower().endswith("/v1"):
+    if _base_url_host_matches(base, {"api.deepseek.com"}) and base.lower().endswith("/v1"):
         base = base[:-3]
     return _openai_compatible_models_endpoint_url(base)
 
@@ -597,7 +606,7 @@ def _llm_models_request_headers(
     kind = _llm_model_provider_kind(provider, base_url)
     if (
         kind == "gemini"
-        and "generativelanguage.googleapis.com" in (base_url or "").lower()
+        and _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"})
     ):
         return headers
     if kind == "anthropic":
@@ -948,7 +957,11 @@ def _api_key_fingerprint(api_key: str) -> str:
     key = (api_key or "").strip()
     if not key:
         return "no-key"
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+    return hmac.new(
+        b"shinsekai-llm-probe-cache-v1",
+        key.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:16]
 
 
 def _llm_probe_cache_key(
@@ -1216,7 +1229,7 @@ def _chat_completions_probe_url(provider: str, base_url: str) -> str:
         base = base[: -len("/models")]
         low = base.lower()
     kind = _llm_model_provider_kind(provider, base)
-    if kind == "dashscope" and "dashscope.aliyuncs.com" in low:
+    if kind == "dashscope" and _base_url_host_matches(base, {"dashscope.aliyuncs.com"}):
         if low.endswith("/api/v1/deployments"):
             base = base[: -len("/api/v1/deployments")] + "/compatible-mode/v1"
             low = base.lower()
@@ -1226,7 +1239,7 @@ def _chat_completions_probe_url(provider: str, base_url: str) -> str:
         elif low.endswith("/api/v1"):
             base = base[: -len("/api/v1")] + "/compatible-mode/v1"
             low = base.lower()
-    elif kind == "gemini" and "generativelanguage.googleapis.com" in low:
+    elif kind == "gemini" and _base_url_host_matches(base, {"generativelanguage.googleapis.com"}):
         if low.endswith("/v1beta") or low.endswith("/v1"):
             base = f"{base}/openai"
             low = base.lower()

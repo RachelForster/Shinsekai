@@ -3,13 +3,73 @@ import type { ChatStageState } from "./types";
 
 export const defaultUserDialogSpeaker = "你";
 
+const blockTextTags = new Set(["div", "li", "p"]);
+
+function stripHtmlFallback(value: string) {
+  let output = "";
+  let inTag = false;
+  for (const char of Array.from(value ?? "")) {
+    if (char === "<") {
+      inTag = true;
+      continue;
+    }
+    if (char === ">") {
+      inTag = false;
+      continue;
+    }
+    if (!inTag) {
+      output += char;
+    }
+  }
+  return output;
+}
+
+function collapseExcessBlankLines(value: string) {
+  const lines = value.split(/\n/u);
+  const out: string[] = [];
+  let blankCount = 0;
+  for (const line of lines) {
+    if (!line.trim()) {
+      blankCount += 1;
+      if (blankCount <= 2) {
+        out.push("");
+      }
+      continue;
+    }
+    blankCount = 0;
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+function appendNodeText(node: Node, chunks: string[]) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    chunks.push(node.textContent ?? "");
+    return;
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return;
+  }
+  const tagName = (node as Element).tagName.toLowerCase();
+  if (tagName === "br") {
+    chunks.push("\n");
+    return;
+  }
+  node.childNodes.forEach((child) => appendNodeText(child, chunks));
+  if (blockTextTags.has(tagName)) {
+    chunks.push("\n");
+  }
+}
+
 export function htmlToText(value: string) {
-  return value
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(?:div|li|p)>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  if (typeof document === "undefined") {
+    return collapseExcessBlankLines(stripHtmlFallback(value)).trim();
+  }
+  const template = document.createElement("template");
+  template.innerHTML = value;
+  const chunks: string[] = [];
+  template.content.childNodes.forEach((node) => appendNodeText(node, chunks));
+  return collapseExcessBlankLines(chunks.join("")).trim();
 }
 
 function escapeRegExp(value: string) {

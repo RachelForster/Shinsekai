@@ -17,6 +17,7 @@ from config.tts_provider_config import (
     uses_shared_tts_server_config,
 )
 from llm.claude_url import claude_messages_endpoint_url, claude_models_endpoint_url
+from .security import host_matches, validated_http_url
 from .state import BridgeState, _jsonify
 
 _MODEL_REQUEST_USER_AGENT = (
@@ -265,15 +266,14 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
 
 def _llm_model_provider_kind(provider: str, base_url: str) -> str:
     low_provider = provider.strip().lower()
-    low_base = base_url.strip().lower()
-    if "gemini" in low_provider or "generativelanguage.googleapis.com" in low_base:
+    if "gemini" in low_provider or _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"}):
         return "gemini"
-    if "deepseek" in low_provider or "api.deepseek.com" in low_base:
+    if "deepseek" in low_provider or _base_url_host_matches(base_url, {"api.deepseek.com"}):
         return "deepseek"
-    if low_provider == "claude" or "claude" in low_provider or "anthropic.com" in low_base:
+    if low_provider == "claude" or "claude" in low_provider or _base_url_host_matches(base_url, {"anthropic.com"}):
         return "anthropic"
     if (
-        "dashscope.aliyuncs.com" in low_base
+        _base_url_host_matches(base_url, {"dashscope.aliyuncs.com"})
         or "通义" in low_provider
         or "qwen" in low_provider
         or "dashscope" in low_provider
@@ -282,28 +282,45 @@ def _llm_model_provider_kind(provider: str, base_url: str) -> str:
     return "openai_compatible"
 
 
+def _base_url_host_matches(base_url: str, allowed_hosts: set[str]) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(str(base_url or "").strip())
+    except ValueError:
+        return False
+    return parsed.hostname is not None and host_matches(parsed.hostname, allowed_hosts)
+
+
 def _openai_models_endpoint(base_url: str) -> str:
     base = base_url.strip().rstrip("/")
     if not base:
         raise ValueError("请先填写 LLM 基础地址和 API Key。")
     if base.lower().endswith("/models"):
-        return base
-    return f"{base}/models"
+        return _validated_llm_endpoint(base)
+    return _validated_llm_endpoint(f"{base}/models")
+
+
+def _validated_llm_endpoint(endpoint: str) -> str:
+    return validated_http_url(
+        endpoint,
+        allow_localhost=True,
+        allow_private_hosts=True,
+        field="LLM endpoint",
+    )
 
 
 def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
     kind = _llm_model_provider_kind(provider, base_url)
     base = base_url.strip().rstrip("/")
     if kind == "anthropic":
-        return claude_models_endpoint_url(base)
-    if kind == "gemini" and "generativelanguage.googleapis.com" in base.lower():
+        return _validated_llm_endpoint(claude_models_endpoint_url(base))
+    if kind == "gemini" and _base_url_host_matches(base, {"generativelanguage.googleapis.com"}):
         marker_ix = base.lower().rfind("/openai")
         if marker_ix >= 0:
             base = base[:marker_ix]
         if not base.lower().endswith("/v1beta"):
             base = "https://generativelanguage.googleapis.com/v1beta"
-        return f"{base}/models?{urllib.parse.urlencode({'key': api_key.strip()})}"
-    if kind == "deepseek" and "api.deepseek.com" in base.lower() and base.lower().endswith("/v1"):
+        return _validated_llm_endpoint(f"{base}/models?{urllib.parse.urlencode({'key': api_key.strip()})}")
+    if kind == "deepseek" and _base_url_host_matches(base, {"api.deepseek.com"}) and base.lower().endswith("/v1"):
         base = base[:-3]
     if kind == "dashscope":
         low_base = base.lower()
@@ -313,7 +330,7 @@ def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
         if low_base.endswith("/compatible-mode/v1"):
             base = base[: -len("/compatible-mode/v1")] + "/api/v1"
         if base.lower().endswith("/api/v1"):
-            return f"{base}/deployments/models?{query}"
+            return _validated_llm_endpoint(f"{base}/deployments/models?{query}")
     return _openai_models_endpoint(base)
 
 
@@ -322,12 +339,12 @@ def _openai_chat_endpoint(base_url: str) -> str:
     if not base:
         raise ValueError("请先填写 LLM 基础地址和 API Key。")
     if base.lower().endswith("/chat/completions"):
-        return base
-    return f"{base}/chat/completions"
+        return _validated_llm_endpoint(base)
+    return _validated_llm_endpoint(f"{base}/chat/completions")
 
 
 def _anthropic_messages_endpoint(base_url: str) -> str:
-    return claude_messages_endpoint_url(base_url)
+    return _validated_llm_endpoint(claude_messages_endpoint_url(base_url))
 
 
 def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> dict[str, str]:
@@ -342,7 +359,7 @@ def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> di
         "User-Agent": _MODEL_REQUEST_USER_AGENT,
     }
     kind = _llm_model_provider_kind(provider, base_url)
-    if kind == "gemini" and "generativelanguage.googleapis.com" in base_url.lower():
+    if kind == "gemini" and _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"}):
         return headers
     if kind == "anthropic":
         headers["x-api-key"] = key

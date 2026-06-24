@@ -4,6 +4,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from .security import safe_child_path
+
 
 def _resolve_loaded_plugin_for_manifest_entry(entry: str, manager: Any | None) -> Any | None:
     if manager is None:
@@ -372,9 +374,14 @@ def _uninstall_plugin(plugin_id: str) -> dict[str, Any]:
         except OSError as exc:
             folder_note = str(exc)
         else:
-            if target == plugins_root or plugins_root not in target.parents:
+            try:
+                relative_target = target.relative_to(plugins_root)
+                target = safe_child_path(plugins_root, relative_target.as_posix())
+            except ValueError:
                 folder_note = f"跳过删除插件目录：{target.as_posix()}"
-            else:
+            if not folder_note and target == plugins_root:
+                folder_note = f"跳过删除插件目录：{target.as_posix()}"
+            elif not folder_note:
                 try:
                     shutil.rmtree(target)
                 except OSError as exc:
