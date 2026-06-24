@@ -42,7 +42,12 @@ def _read_scenarios_from_yaml(name_s: str) -> list:
             _data = yaml.safe_load(_fh) or []
         for _c in _data:
             if _c.get("name") == name_s:
-                return _c.get("scenarios") or []
+                _scenarios = _c.get("scenarios") or []
+                # 归一化 voice_type 为小写，防御旧数据大小写不一致
+                for _s in _scenarios:
+                    if isinstance(_s, dict) and _s.get("voice_type"):
+                        _s["voice_type"] = str(_s["voice_type"]).strip().lower()
+                return _scenarios
     except Exception:
         pass
     return []
@@ -228,9 +233,16 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 prompt_text = character_config.prompt_text
                 try:
                     sprite_data = character_config.sprites[sprite_id]
-                    if sprite_data.get("voice_text", None):
-                        ref_audio_path = Path(sprite_data.get("voice_path")).resolve().as_posix()
-                        prompt_text = sprite_data.get("voice_text")
+                    if isinstance(sprite_data, dict):
+                        _vt = sprite_data.get("voice_text")
+                    else:
+                        _vt = getattr(sprite_data, "voice_text", None)
+                    if _vt:
+                        if isinstance(sprite_data, dict):
+                            ref_audio_path = Path(sprite_data.get("voice_path") or "").resolve().as_posix()
+                        else:
+                            ref_audio_path = Path(getattr(sprite_data, "voice_path", "") or "").resolve().as_posix()
+                        prompt_text = _vt
                 except Exception:
                     print("没有立绘")
                 # 语音触发标签匹配到 reference 时，用标签配置覆盖参考音频
