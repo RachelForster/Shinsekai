@@ -41,7 +41,10 @@ def _read_sprite_voice_cfg(name_s: str, sprite_id: int):
                 _sprites = _c.get("sprites") or []
                 if 0 <= sprite_id < len(_sprites):
                     _s = _sprites[sprite_id]
-                    return _s.get("voice_type"), _s.get("voice_path"), _s.get("voice_text")
+                    _vt = _s.get("voice_type")
+                    if isinstance(_vt, str):
+                        _vt = _vt.strip().lower()
+                    return _vt, _s.get("voice_path"), _s.get("voice_text")
     except Exception:
         pass
     return None, None, None

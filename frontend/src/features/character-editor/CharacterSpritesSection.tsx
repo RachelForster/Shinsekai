@@ -89,7 +89,7 @@ export function CharacterSpritesSection({
   voiceUploadPending,
 }: CharacterSpritesSectionProps) {
   const { t } = useI18n();
-  const voiceType = selectedSprite?.voice_type ?? "preset";
+  const voiceType = selectedSprite?.voice_type ?? "reference";
 
   return (
     <section className="section">
