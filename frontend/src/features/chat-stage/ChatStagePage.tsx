@@ -367,7 +367,7 @@ export function ChatStagePage() {
             canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
             characterName={nameHiddenForStartOption ? undefined : viewModel.dialogCharacterName}
             hidden={!viewModel.layers.dialog}
-            html={displayedDialog.html}
+            htmlNodes={displayedDialog.nodes}
             onAdvance={advanceDialog}
             onSkip={typingDialog ? advanceDialog : undefined}
             text={typingDialog ? displayedDialog.text : viewModel.dialogText}

@@ -781,6 +781,22 @@ cd ..</code></pre>
 
     <script>
       // ── i18n ─────────────────────────────────────────────────────────────────────
+      function richNode(tag, text, attrs) {
+        return Object.assign({ tag: tag, text: text }, attrs || {});
+      }
+
+      function richLink(href, text) {
+        return richNode("a", text, { href: href });
+      }
+
+      function strongText(text) {
+        return richNode("strong", text);
+      }
+
+      function codeText(text) {
+        return richNode("code", text);
+      }
+
       var L = {
         zh: {
           subtitle_line1: "用大语言模型驱动角色对白，立绘与情绪联动",
@@ -805,26 +821,80 @@ cd ..</code></pre>
           quick_start_title: "快速开始",
           qs_step1: "下载对应系统版本",
           qs_step1_pick: "（上方 Release 按钮或镜像任选）",
-          qs_step2:
-            "打开下载的安装包或可执行程序：Windows 运行 <code>Shinsekai.exe</code> / <code>.msi</code>，macOS 打开 <code>.dmg</code>，Linux 运行 <code>.AppImage</code> 或安装 <code>.deb</code>",
-          qs_step3:
-            "启动 <strong>Shinsekai</strong> 后，在 <strong>API 设定</strong> 填写 LLM 供应商、模型 ID、API Key 与 Base URL，保存",
-          qs_step4:
-            "如果需要角色说话，在 <strong>API 设定</strong> 的 <strong>TTS 整合包</strong> 下载语音引擎（Genie TTS / GPT-SoVITS）",
-          qs_step5:
-            '在 <strong>角色管理</strong> 导入角色包（更多见 <a href="https://shinsekai.end0rph1n.icu/">社区资源</a>），打开 <strong>聊天模板</strong> 生成模板并 <strong>启动聊天</strong>',
-          qs_update:
-            "🔄 更新软件：设置页面 → <strong>插件</strong> → <strong>发现插件</strong> → <strong>更新软件</strong>，即可升级到最新版",
+          qs_step2: [
+            "打开下载的安装包或可执行程序：Windows 运行 ",
+            codeText("Shinsekai.exe"),
+            " / ",
+            codeText(".msi"),
+            "，macOS 打开 ",
+            codeText(".dmg"),
+            "，Linux 运行 ",
+            codeText(".AppImage"),
+            " 或安装 ",
+            codeText(".deb"),
+          ],
+          qs_step3: [
+            "启动 ",
+            strongText("Shinsekai"),
+            " 后，在 ",
+            strongText("API 设定"),
+            " 填写 LLM 供应商、模型 ID、API Key 与 Base URL，保存",
+          ],
+          qs_step4: [
+            "如果需要角色说话，在 ",
+            strongText("API 设定"),
+            " 的 ",
+            strongText("TTS 整合包"),
+            " 下载语音引擎（Genie TTS / GPT-SoVITS）",
+          ],
+          qs_step5: [
+            "在 ",
+            strongText("角色管理"),
+            " 导入角色包（更多见 ",
+            richLink("https://shinsekai.end0rph1n.icu/", "社区资源"),
+            "），打开 ",
+            strongText("聊天模板"),
+            " 生成模板并 ",
+            strongText("启动聊天"),
+          ],
+          qs_update: [
+            "🔄 更新软件：设置页面 → ",
+            strongText("插件"),
+            " → ",
+            strongText("发现插件"),
+            " → ",
+            strongText("更新软件"),
+            "，即可升级到最新版",
+          ],
           qs_guide_prefix: "详细图文教程：",
           qs_guide_link: "新世界程序使用指南（语雀）",
           dev_title: "开发者安装（源码）",
-          dev_step1:
-            '<strong>下载</strong> GitHub 源码包（<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>）并解压，或 <code>git clone https://github.com/RachelForster/Shinsekai</code>',
+          dev_step1: [
+            strongText("下载"),
+            " GitHub 源码包（",
+            richLink(
+              "https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip",
+              "zip",
+            ),
+            " / ",
+            richLink(
+              "https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz",
+              "tar.gz",
+            ),
+            "）并解压，或 ",
+            codeText("git clone https://github.com/RachelForster/Shinsekai"),
+          ],
           dev_step2_title: "创建项目标准环境",
           dev_step2_desc: "（推荐使用 environment.yml）",
           dev_step3: "构建 React 前端",
-          dev_step4:
-            "优先运行 <code>python webui_react.py</code> 或平台对应的 <code>start-react.*</code>；旧 PySide 设置页仅作为兼容入口保留：<code>python webui_qt.py</code>",
+          dev_step4: [
+            "优先运行 ",
+            codeText("python webui_react.py"),
+            " 或平台对应的 ",
+            codeText("start-react.*"),
+            "；旧 PySide 设置页仅作为兼容入口保留：",
+            codeText("python webui_qt.py"),
+          ],
           dev_step5:
             "React 设置中心用于管理 API、角色、背景、聊天模板、小工具、插件和 MCP",
           dev_step6: "完成配置后按上面的「第一次对话」流程启动聊天",
@@ -840,10 +910,30 @@ cd ..</code></pre>
           ],
           docs_title: "文档",
           docs: [
-            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">图形界面使用指南</a>',
-            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">插件开发者指南</a>',
-            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a>',
-            '<a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">插件索引仓库</a>',
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md",
+                "图形界面使用指南",
+              ),
+            ],
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md",
+                "插件开发者指南",
+              ),
+            ],
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md",
+                "English README",
+              ),
+            ],
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai-Plugin-Registry",
+                "插件索引仓库",
+              ),
+            ],
           ],
           baidu_pan: "百度网盘",
           quark_pan: "夸克网盘",
@@ -872,26 +962,78 @@ cd ..</code></pre>
           quick_start_title: "Quick Start",
           qs_step1: "Download the build for your system",
           qs_step1_pick: "(use the Release buttons above or a mirror)",
-          qs_step2:
-            "Open the downloaded installer or executable: run <code>Shinsekai.exe</code> / <code>.msi</code> on Windows, open the <code>.dmg</code> on macOS, or run the <code>.AppImage</code> / install the <code>.deb</code> on Linux",
-          qs_step3:
-            "Launch <strong>Shinsekai</strong>, then fill in your LLM provider, model ID, API key, and Base URL in <strong>API Settings</strong>",
-          qs_step4:
-            "If you want spoken dialogue, download a voice engine (Genie TTS / GPT-SoVITS) from <strong>TTS integrated package</strong> in <strong>API Settings</strong>",
-          qs_step5:
-            'Import a character pack in <strong>Character Manager</strong> (more at <a href="https://shinsekai.end0rph1n.icu/">Community Resources</a>), generate a template in <strong>Chat Templates</strong>, then <strong>Launch Chat</strong>',
-          qs_update:
-            "🔄 To update: Settings → <strong>Plugins</strong> → <strong>Discover</strong> → <strong>Update Software</strong>",
+          qs_step2: [
+            "Open the downloaded installer or executable: run ",
+            codeText("Shinsekai.exe"),
+            " / ",
+            codeText(".msi"),
+            " on Windows, open the ",
+            codeText(".dmg"),
+            " on macOS, or run the ",
+            codeText(".AppImage"),
+            " / install the ",
+            codeText(".deb"),
+            " on Linux",
+          ],
+          qs_step3: [
+            "Launch ",
+            strongText("Shinsekai"),
+            ", then fill in your LLM provider, model ID, API key, and Base URL in ",
+            strongText("API Settings"),
+          ],
+          qs_step4: [
+            "If you want spoken dialogue, download a voice engine (Genie TTS / GPT-SoVITS) from ",
+            strongText("TTS integrated package"),
+            " in ",
+            strongText("API Settings"),
+          ],
+          qs_step5: [
+            "Import a character pack in ",
+            strongText("Character Manager"),
+            " (more at ",
+            richLink("https://shinsekai.end0rph1n.icu/", "Community Resources"),
+            "), generate a template in ",
+            strongText("Chat Templates"),
+            ", then ",
+            strongText("Launch Chat"),
+          ],
+          qs_update: [
+            "🔄 To update: Settings → ",
+            strongText("Plugins"),
+            " → ",
+            strongText("Discover"),
+            " → ",
+            strongText("Update Software"),
+          ],
           qs_guide_prefix: "Detailed guide: ",
           qs_guide_link: "Shinsekai User Guide (Yuque)",
           dev_title: "Developer Setup (Source)",
-          dev_step1:
-            '<strong>Download</strong> the GitHub source package (<a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip">zip</a> / <a href="https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz">tar.gz</a>), or <code>git clone https://github.com/RachelForster/Shinsekai</code>',
+          dev_step1: [
+            strongText("Download"),
+            " the GitHub source package (",
+            richLink(
+              "https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.zip",
+              "zip",
+            ),
+            " / ",
+            richLink(
+              "https://github.com/RachelForster/Shinsekai/archive/refs/heads/main.tar.gz",
+              "tar.gz",
+            ),
+            "), or ",
+            codeText("git clone https://github.com/RachelForster/Shinsekai"),
+          ],
           dev_step2_title: "Create the project environment",
           dev_step2_desc: " (environment.yml recommended)",
           dev_step3: "Build the React frontend",
-          dev_step4:
-            "Prefer <code>python webui_react.py</code> or the platform-specific <code>start-react.*</code>; the old PySide settings page remains as a compatibility entry: <code>python webui_qt.py</code>",
+          dev_step4: [
+            "Prefer ",
+            codeText("python webui_react.py"),
+            " or the platform-specific ",
+            codeText("start-react.*"),
+            "; the old PySide settings page remains as a compatibility entry: ",
+            codeText("python webui_qt.py"),
+          ],
           dev_step5:
             "The React Settings Center manages API, characters, backgrounds, chat templates, tools, plugins, and MCP",
           dev_step6:
@@ -908,10 +1050,30 @@ cd ..</code></pre>
           ],
           docs_title: "Docs",
           docs: [
-            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md">GUI User Guide (Chinese)</a>',
-            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md">Plugin Developer Guide</a>',
-            '<a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md">English README</a>',
-            '<a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry">Plugin Registry</a>',
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md",
+                "GUI User Guide (Chinese)",
+              ),
+            ],
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md",
+                "Plugin Developer Guide",
+              ),
+            ],
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md",
+                "English README",
+              ),
+            ],
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai-Plugin-Registry",
+                "Plugin Registry",
+              ),
+            ],
           ],
           baidu_pan: "Baidu Pan",
           quark_pan: "Quark Pan",
@@ -970,41 +1132,45 @@ cd ..</code></pre>
         }
       }
 
-      function appendRichI18n(parent, html) {
+      function appendRichI18n(parent, parts) {
         var allowed = { a: true, code: true, strong: true };
-        var stack = [parent];
-        var pattern = /<\/?(a|code|strong)(?:\s+href="([^"]*)")?\s*>/gi;
-        var index = 0;
-        var match;
-        while ((match = pattern.exec(html)) !== null) {
-          if (match.index > index) {
-            stack[stack.length - 1].appendChild(
-              document.createTextNode(html.slice(index, match.index)),
+        var entries = Array.isArray(parts) ? parts : [parts];
+        entries.forEach(function (part) {
+          if (part == null) {
+            return;
+          }
+          if (typeof part === "string") {
+            parent.appendChild(document.createTextNode(part));
+            return;
+          }
+          var tagName = String(part.tag || "").toLowerCase();
+          if (!allowed[tagName]) {
+            parent.appendChild(
+              document.createTextNode(String(part.text || "")),
             );
+            return;
           }
-          var rawTag = match[0];
-          var tagName = String(match[1] || "").toLowerCase();
-          if (rawTag.charAt(1) === "/") {
-            if (stack.length > 1 && stack[stack.length - 1].tagName.toLowerCase() === tagName) {
-              stack.pop();
-            }
-          } else if (allowed[tagName]) {
-            var node = document.createElement(tagName);
-            if (tagName === "a") {
-              var href = String(match[2] || "");
-              if (isSafeDocsHref(href)) {
-                node.setAttribute("href", href);
-                node.setAttribute("rel", "noopener noreferrer");
-              }
-            }
-            stack[stack.length - 1].appendChild(node);
-            stack.push(node);
+          if (tagName === "a" && !isSafeDocsHref(part.href || "")) {
+            parent.appendChild(
+              document.createTextNode(String(part.text || "")),
+            );
+            return;
           }
-          index = pattern.lastIndex;
-        }
-        if (index < html.length) {
-          stack[stack.length - 1].appendChild(document.createTextNode(html.slice(index)));
-        }
+          var node = document.createElement(tagName);
+          if (tagName === "a") {
+            node.setAttribute("href", String(part.href));
+            node.setAttribute("rel", "noopener noreferrer");
+          }
+          if (Array.isArray(part.children)) {
+            appendRichI18n(node, part.children);
+          } else {
+            var text = String(part.text || "");
+            if (text) {
+              node.textContent = text;
+            }
+          }
+          parent.appendChild(node);
+        });
       }
 
       function applyI18n() {

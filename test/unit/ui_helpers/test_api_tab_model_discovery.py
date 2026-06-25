@@ -6,9 +6,12 @@ import urllib.error
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from ui.settings_ui.tabs.api_tab import (
+    _LLMModelCapability,
     _extract_llm_model_ids,
     _llm_models_endpoint_url,
     _llm_models_request_headers,
+    _llm_probe_cache_key,
+    _should_cache_probe_capability,
     _summarize_http_error,
 )
 
@@ -33,6 +36,23 @@ def test_llm_models_endpoint_url_does_not_trust_lookalike_deepseek_host():
         "Custom",
         "sk-test",
     ) == "https://api.deepseek.com.evil/v1/models"
+
+
+def test_llm_probe_cache_key_excludes_api_key_material():
+    first = _llm_probe_cache_key("Custom", "https://api.example.com/v1", "model-a")
+    second = _llm_probe_cache_key("Custom", "https://api.example.com/v1", "model-a")
+
+    assert first == second
+    assert "sk-" not in first
+
+
+def test_llm_probe_cache_does_not_persist_key_specific_no_access_results():
+    assert not _should_cache_probe_capability(
+        _LLMModelCapability(("no_access",), source="probe", status="no_access")
+    )
+    assert _should_cache_probe_capability(
+        _LLMModelCapability(("text", "vision"), source="probe", status="ok")
+    )
 
 
 def test_llm_models_endpoint_url_uses_gemini_native_models_api():

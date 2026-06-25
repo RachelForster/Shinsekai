@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDialogTypewriterSource,
   renderDialogTypewriterFrame,
+  renderDialogTypewriterRichFrame,
 } from "../../../features/chat-stage/dialogTypewriter";
 
 describe("dialog typewriter helpers", () => {
@@ -58,6 +59,35 @@ describe("dialog typewriter helpers", () => {
     expect(source.fullHtml).not.toContain("<iframe");
     expect(source.fullHtml).not.toContain("javascript:");
     expect(source.fullHtml).not.toContain("background-image");
+  });
+
+  it("returns structured html nodes for React rendering", () => {
+    const source = buildDialogTypewriterSource({
+      html: `<p>Hello <strong>world</strong><br><a href="https://example.test">docs</a></p>`,
+      text: "Hello world\ndocs",
+    });
+
+    expect(renderDialogTypewriterRichFrame(source, source.totalCharacters)).toMatchObject({
+      html: `<p>Hello <strong>world</strong><br><a href="https://example.test" rel="noreferrer" target="_blank">docs</a></p>`,
+      nodes: [
+        {
+          children: [
+            { kind: "text", text: "Hello " },
+            { children: [{ kind: "text", text: "world" }], kind: "element", tag: "strong" },
+            { children: [], kind: "element", tag: "br" },
+            {
+              attrs: { href: "https://example.test", rel: "noreferrer", target: "_blank" },
+              children: [{ kind: "text", text: "docs" }],
+              kind: "element",
+              tag: "a",
+            },
+          ],
+          kind: "element",
+          tag: "p",
+        },
+      ],
+      text: "Hello world\ndocs",
+    });
   });
 
   it("does not render leading markdown line breaks before visible text starts", () => {

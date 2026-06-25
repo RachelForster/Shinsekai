@@ -218,17 +218,43 @@ function htmlPlainText(html: string) {
   return template ? (template.content.textContent ?? "") : stripHtmlFallback(html);
 }
 
-const allowedDialogTags = new Set(["a", "b", "br", "code", "em", "i", "p", "s", "span", "strong"]);
+const allowedDialogTagNames = ["a", "b", "br", "code", "em", "i", "p", "s", "span", "strong"] as const;
+export type DialogHtmlTag = (typeof allowedDialogTagNames)[number];
+export type DialogHtmlStyleProperty =
+  | "color"
+  | "font-style"
+  | "font-weight"
+  | "letter-spacing"
+  | "line-height"
+  | "text-decoration";
+
+export type DialogHtmlNode =
+  | { kind: "text"; text: string }
+  | {
+      attrs?: {
+        className?: string;
+        href?: string;
+        rel?: string;
+        style?: Partial<Record<DialogHtmlStyleProperty, string>>;
+        target?: string;
+      };
+      children: DialogHtmlNode[];
+      kind: "element";
+      tag: DialogHtmlTag;
+    };
+
+const allowedDialogTags = new Set<string>(allowedDialogTagNames);
 const removedDialogTags = new Set(["embed", "iframe", "link", "meta", "object", "script", "style"]);
 const allowedDialogClasses = new Set(["dialog-layer__md-bullet", "dialog-layer__md-quote"]);
-const allowedDialogStyleProperties = new Set([
+const allowedDialogStylePropertyNames = [
   "color",
   "font-style",
   "font-weight",
   "letter-spacing",
   "line-height",
   "text-decoration",
-]);
+] as const;
+const allowedDialogStyleProperties = new Set<string>(allowedDialogStylePropertyNames);
 
 function isSafeCssValue(property: string, value: string) {
   const next = value.trim();
@@ -274,6 +300,20 @@ function sanitizeDialogStyle(value: string) {
     })
     .filter(Boolean)
     .join("; ");
+}
+
+function dialogStyleRecord(value: string) {
+  const style: Partial<Record<DialogHtmlStyleProperty, string>> = {};
+  value.split(";").forEach((declaration) => {
+    const [rawProperty, ...rawValueParts] = declaration.split(":");
+    const property = rawProperty?.trim().toLowerCase() ?? "";
+    const nextValue = rawValueParts.join(":").trim();
+    if (!allowedDialogStyleProperties.has(property) || !isSafeCssValue(property, nextValue)) {
+      return;
+    }
+    style[property as DialogHtmlStyleProperty] = nextValue;
+  });
+  return style;
 }
 
 function sanitizeDialogLink(value: string) {
@@ -350,6 +390,62 @@ function sanitizeDialogNode(node: Node) {
   if (node.nodeType !== Node.TEXT_NODE) {
     node.parentNode?.removeChild(node);
   }
+}
+
+function dialogElementAttrs(element: Element) {
+  const attrs: Extract<DialogHtmlNode, { kind: "element" }>["attrs"] = {};
+  const className = element.getAttribute("class") ?? "";
+  const classes = className
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => allowedDialogClasses.has(item));
+  if (classes.length) {
+    attrs.className = classes.join(" ");
+  }
+
+  const style = dialogStyleRecord(element.getAttribute("style") ?? "");
+  if (Object.keys(style).length) {
+    attrs.style = style;
+  }
+
+  if (element.tagName.toLowerCase() === "a") {
+    const href = sanitizeDialogLink(element.getAttribute("href") ?? "");
+    if (href) {
+      attrs.href = href;
+      attrs.rel = "noreferrer";
+      attrs.target = "_blank";
+    }
+  }
+
+  return Object.keys(attrs).length ? attrs : undefined;
+}
+
+function dialogNodeFromDom(node: Node): DialogHtmlNode | null {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return { kind: "text", text: node.textContent ?? "" };
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return null;
+  }
+  const element = node as Element;
+  const tag = element.tagName.toLowerCase();
+  if (!allowedDialogTags.has(tag)) {
+    const text = element.textContent ?? "";
+    return text ? { kind: "text", text } : null;
+  }
+  return {
+    attrs: dialogElementAttrs(element),
+    children: dialogNodesFromParent(element),
+    kind: "element",
+    tag: tag as DialogHtmlTag,
+  };
+}
+
+function dialogNodesFromParent(parent: ParentNode): DialogHtmlNode[] {
+  return Array.from(parent.childNodes).flatMap((node) => {
+    const next = dialogNodeFromDom(node);
+    return next ? [next] : [];
+  });
 }
 
 export function sanitizeDialogHtml(html: string) {
@@ -622,10 +718,19 @@ export function renderDialogHtmlFrame(
   visibleCharacters: number,
   direction: DialogTypewriterDirection = "ltr",
 ) {
+  return renderDialogHtmlFrameContent(html, visibleCharacters, direction).html;
+}
+
+function renderDialogHtmlFrameContent(
+  html: string,
+  visibleCharacters: number,
+  direction: DialogTypewriterDirection = "ltr",
+) {
   const normalizedDirection = normalizeTypewriterDirection(direction);
   const template = createTemplate(html);
   if (!template) {
-    return sliceVisibleText(htmlPlainText(html), visibleCharacters, normalizedDirection);
+    const text = sliceVisibleText(htmlPlainText(html), visibleCharacters, normalizedDirection);
+    return { html: text, nodes: text ? [{ kind: "text" as const, text }] : [] };
   }
   const wrapper = document.createElement("div");
   const remaining = { value: Math.max(0, visibleCharacters) };
@@ -639,7 +744,7 @@ export function renderDialogHtmlFrame(
         break;
       }
     }
-    return wrapper.innerHTML;
+    return { html: wrapper.innerHTML, nodes: dialogNodesFromParent(wrapper) };
   }
   for (const node of Array.from(template.content.childNodes)) {
     const nextNode = cloneNodeUntil(node, remaining);
@@ -650,7 +755,7 @@ export function renderDialogHtmlFrame(
       break;
     }
   }
-  return wrapper.innerHTML;
+  return { html: wrapper.innerHTML, nodes: dialogNodesFromParent(wrapper) };
 }
 
 export interface DialogTypewriterSource {
@@ -713,11 +818,25 @@ export function renderDialogTypewriterFrame(
   visibleCharacters: number,
   direction: DialogTypewriterDirection = "ltr",
 ) {
+  const frame = renderDialogTypewriterRichFrame(source, visibleCharacters, direction);
+  return {
+    html: frame.html,
+    text: frame.text,
+  };
+}
+
+export function renderDialogTypewriterRichFrame(
+  source: DialogTypewriterSource,
+  visibleCharacters: number,
+  direction: DialogTypewriterDirection = "ltr",
+) {
   const normalizedDirection = normalizeTypewriterDirection(direction);
   if (source.fullHtml) {
     const html = normalizedDirection === "rtl" ? (source.fullRtlHtml ?? source.fullHtml) : source.fullHtml;
+    const frame = renderDialogHtmlFrameContent(html, visibleCharacters, normalizedDirection);
     return {
-      html: renderDialogHtmlFrame(html, visibleCharacters, normalizedDirection),
+      html: frame.html,
+      nodes: frame.nodes,
       text:
         normalizedDirection === "rtl"
           ? sliceVisibleDirectionalText(source.fullRtlText, visibleCharacters)

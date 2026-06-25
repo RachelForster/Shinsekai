@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatRuntimeStatus } from "../../../shared/platform/types";
 import {
   buildDialogTypewriterSource,
-  renderDialogTypewriterFrame,
+  renderDialogTypewriterRichFrame,
   type DialogTypewriterDirection,
 } from "../dialogTypewriter";
 
@@ -52,7 +52,7 @@ export function useDialogTypewriter({
   const dialogTotalCharacters =
     textDirection === "rtl" ? dialogSource.totalRtlCharacters : dialogSource.totalCharacters;
   const displayedDialog = useMemo(
-    () => renderDialogTypewriterFrame(dialogSource, visibleDialogCharacters, textDirection),
+    () => renderDialogTypewriterRichFrame(dialogSource, visibleDialogCharacters, textDirection),
     [dialogSource, textDirection, visibleDialogCharacters],
   );
   const typingDialog = visibleDialogCharacters < dialogTotalCharacters;

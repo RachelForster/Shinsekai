@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 from pathlib import Path
 import time
@@ -953,27 +951,13 @@ def _match_openrouter_capability(
     return _unique_capability(suffix_matches)
 
 
-def _api_key_fingerprint(api_key: str) -> str:
-    key = (api_key or "").strip()
-    if not key:
-        return "no-key"
-    return hmac.new(
-        b"shinsekai-llm-probe-cache-v1",
-        key.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()[:16]
-
-
-def _llm_probe_cache_key(
-    provider: str, base_url: str, api_key: str, model_id: str
-) -> str:
+def _llm_probe_cache_key(provider: str, base_url: str, model_id: str) -> str:
     probe_url = _chat_completions_probe_url(provider, base_url)
     return "|".join(
         (
             (provider or "").strip().lower(),
             (base_url or "").strip().rstrip("/").lower(),
             probe_url.strip().rstrip("/").lower(),
-            _api_key_fingerprint(api_key),
             (model_id or "").strip().lower(),
         )
     )
@@ -1163,7 +1147,7 @@ def _probe_cache_entry_valid(
 
 
 def _should_cache_probe_capability(cap: _LLMModelCapability) -> bool:
-    return cap.status not in _UNCERTAIN_PROBE_STATUS
+    return cap.status not in _UNCERTAIN_PROBE_STATUS and cap.status != "no_access"
 
 
 def _unknown_llm_model_capability(status: str = "unknown") -> _LLMModelCapability:
@@ -1190,13 +1174,12 @@ def _lookup_probe_cache(
     cache: _LLMCapabilityCache,
     provider: str,
     base_url: str,
-    api_key: str,
     model_id: str,
     *,
     now: float,
 ) -> _LLMModelCapability | None:
     cap = _probe_cache_entry_valid(
-        cache.probe.get(_llm_probe_cache_key(provider, base_url, api_key, model_id)),
+        cache.probe.get(_llm_probe_cache_key(provider, base_url, model_id)),
         now=now,
     )
     if cap is not None:
@@ -1208,7 +1191,6 @@ def _store_probe_cache(
     cache: _LLMCapabilityCache,
     provider: str,
     base_url: str,
-    api_key: str,
     model_id: str,
     cap: _LLMModelCapability,
     *,
@@ -1216,7 +1198,7 @@ def _store_probe_cache(
 ) -> None:
     if not _should_cache_probe_capability(cap):
         return
-    cache.probe[_llm_probe_cache_key(provider, base_url, api_key, model_id)] = (
+    cache.probe[_llm_probe_cache_key(provider, base_url, model_id)] = (
         cap,
         now,
     )
@@ -1401,7 +1383,6 @@ def _fetch_llm_model_options(
                 cache,
                 provider,
                 base_url,
-                api_key,
                 model_id,
                 now=now,
             )
@@ -1423,7 +1404,6 @@ def _fetch_llm_model_options(
                     cache,
                     provider,
                     base_url,
-                    api_key,
                     model_id,
                     cap,
                     now=now,
