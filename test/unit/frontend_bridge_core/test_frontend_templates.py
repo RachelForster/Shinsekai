@@ -22,11 +22,15 @@ def test_parse_stored_template_handles_legacy_single_body_text():
     assert _parse_stored_template("  \n") == ("", "")
 
 
-def test_history_id_prefers_user_scenario_then_system_template():
-    scenario_id = _history_id_from_scenario("scenario", "system")
-    assert scenario_id == _history_id_from_scenario(" scenario ", "ignored")
-    assert scenario_id != _history_id_from_scenario("", "system")
-    assert _history_id_from_scenario("", "system") == _history_id_from_scenario("", " system ")
+def test_history_id_uses_effective_scenario_and_selected_characters():
+    scenario_id = _history_id_from_scenario("scenario", "system", ["Alice", "Bob"])
+    assert scenario_id == _history_id_from_scenario(" scenario ", "ignored", ["Bob", "Alice", "Alice"])
+    assert scenario_id != _history_id_from_scenario("scenario", "system", ["Alice"])
+    assert scenario_id != _history_id_from_scenario("another scenario", "system", ["Alice", "Bob"])
+    assert _history_id_from_scenario("", "system") == _history_id_from_scenario(
+        "你扮演一个RPG系统。",
+        "ignored",
+    )
 
 
 def test_template_session_to_frontend_normalizes_types_and_defaults():

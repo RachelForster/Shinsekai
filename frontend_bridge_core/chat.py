@@ -42,6 +42,7 @@ from .state import BridgeState
 from .runtime_dependencies import runtime_dependency_error_from_text
 from .templates import (
     TEMP_SPLIT_META,
+    _effective_user_scenario,
     _history_id_from_scenario,
     _template_dir,
 )
@@ -313,6 +314,7 @@ def _main_py_path() -> Path:
 def _launch_chat(
     state: BridgeState,
     *,
+    character_names: list[str] | None = None,
     effect_names: str = "",
     history_file: str,
     init_sprite_path: str,
@@ -333,13 +335,14 @@ def _launch_chat(
             return f"进程已经在运行中！PID: {_main_chat_process.pid}"
 
         # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
+        effective_user_scenario = _effective_user_scenario(user_scenario)
         template = system_template.rstrip()
-        if user_scenario.strip():
-            template = template + "\n" + user_scenario.strip() + "\n"
+        if effective_user_scenario:
+            template = template + "\n" + effective_user_scenario + "\n"
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
         (template_dir / TEMP_SPLIT_META).write_text(
-            json.dumps({"scenario": user_scenario, "system": system_template}, ensure_ascii=False, indent=2),
+            json.dumps({"scenario": effective_user_scenario, "system": system_template}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
@@ -348,7 +351,7 @@ def _launch_chat(
         state.config_manager.config.system_config = sc
         state.config_manager.save_system_config()
 
-        template_hash = _history_id_from_scenario(user_scenario, system_template)
+        template_hash = _history_id_from_scenario(user_scenario, system_template, character_names)
         history_path = Path(history_file) if history_file else Path(state.history_dir) / template_hash
         if history_path.suffix.lower() == ".json" and history_path.exists() and history_path.is_file():
             history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -441,10 +444,11 @@ def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: di
         if path.suffix.lower() == ".json" and not path.is_file():
             return path.with_suffix("")
         return path
-    template_hash = _history_id_from_scenario(
-        str(template.get("scenario") or template.get("content") or ""),
-        str(template.get("system") or ""),
-    )
+    characters = payload.get("characters")
+    if not isinstance(characters, list):
+        characters = template.get("selectedCharacters")
+    scenario = str(template.get("scenario") if "scenario" in template else template.get("content") or "")
+    template_hash = _history_id_from_scenario(scenario, str(template.get("system") or ""), characters)
     return _resolve_project_file(Path(state.history_dir) / template_hash)
 
 

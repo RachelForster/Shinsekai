@@ -976,12 +976,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         init_sprite_path = str(body.get("initSpritePath") or init_sprite_path)
         room_id = str(body.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
         history_path = _chat_history_path(self.state, body, row)
-        default_history_path = _chat_history_path(self.state, {"historyPath": ""}, row)
+        default_history_path = _chat_history_path(
+            self.state,
+            {"historyPath": "", "characters": characters if isinstance(characters, list) else []},
+            row,
+        )
         reset_history = bool(body.get("resetHistory"))
         if reset_history:
             for item in {history_path, default_history_path}:
                 remove_chat_history_storage(item)
-        user_scenario = str(row.get("scenario") or row.get("content") or "")
+        user_scenario = str(row.get("scenario") if "scenario" in row else row.get("content") or "")
         system_template = str(row.get("system") or "")
         user_scenario, system_template = _repair_template_parts_from_session_if_needed(
             self.state,
@@ -1021,6 +1025,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             system_template = system_template.rstrip() + "\n\n" + effect_guide
         message = _launch_chat(
             self.state,
+            character_names=characters if isinstance(characters, list) else [],
             effect_names=effect_names_str,
             history_file=(default_history_path if reset_history else history_path).as_posix(),
             init_sprite_path=init_sprite_path,
@@ -1130,6 +1135,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         )
         message = _launch_chat(
             self.state,
+            character_names=selected_characters if isinstance(selected_characters, list) else [],
             history_file=history_path.resolve().as_posix(),
             init_sprite_path=init_sprite_path,
             room_id=room_id,

@@ -813,6 +813,7 @@ export type MessageKey =
   | "template.action.launch"
   | "template.action.quickRestart"
   | "template.defaultName"
+  | "template.defaultScenario"
   | "template.description"
   | "template.emptyBody"
   | "template.emptySelection"
