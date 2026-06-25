@@ -20,6 +20,7 @@ const mocks = {
   getChatHistory: vi.fn(),
   getChatSnapshot: vi.fn(),
   getChatTheme: vi.fn(),
+  installMissingRuntimeDependency: vi.fn(),
   sendChatCommand: vi.fn(),
   subscribeChatEvents: vi.fn(),
 };
@@ -36,6 +37,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   getChatHistory: () => mocks.getChatHistory(),
   getChatSnapshot: () => mocks.getChatSnapshot(),
   getChatTheme: () => mocks.getChatTheme(),
+  installMissingRuntimeDependency: (input: unknown) => mocks.installMissingRuntimeDependency(input),
   sendChatCommand: (command: ChatCommand) => mocks.sendChatCommand(command),
   subscribeChatEvents: (listener: (event: ChatStageEvent) => void) => mocks.subscribeChatEvents(listener),
 }));
@@ -68,6 +70,7 @@ const desktopApiMocks = vi.hoisted(() => ({
   setDesktopWindowClickThrough: vi.fn(),
   startDesktopWindowDrag: vi.fn(),
   startDesktopWindowResize: vi.fn(),
+  supportsTransparentDesktopClickThrough: vi.fn(),
   toggleMaximizeDesktopWindow: vi.fn(),
 }));
 
@@ -88,6 +91,7 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
     setDesktopWindowClickThrough: (ignore: boolean) => desktopApiMocks.setDesktopWindowClickThrough(ignore),
     startDesktopWindowDrag: () => desktopApiMocks.startDesktopWindowDrag(),
     startDesktopWindowResize: (direction: string) => desktopApiMocks.startDesktopWindowResize(direction),
+    supportsTransparentDesktopClickThrough: () => desktopApiMocks.supportsTransparentDesktopClickThrough(),
     toggleMaximizeDesktopWindow: () => desktopApiMocks.toggleMaximizeDesktopWindow(),
   };
 });
@@ -168,10 +172,16 @@ describe("ChatStagePage", () => {
     mocks.getChatTheme.mockResolvedValue({});
     mocks.getChatSnapshot.mockResolvedValue(snapshot());
     mocks.getChatHistory.mockResolvedValue(snapshot().historyEntries as ChatHistoryEntry[]);
+    mocks.installMissingRuntimeDependency.mockResolvedValue({
+      message: "Installed opencc-python-reimplemented. Please launch chat again.",
+      moduleName: "opencc",
+      packageName: "opencc-python-reimplemented",
+    });
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
     desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 0, y: 0 });
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
     desktopApiMocks.setDesktopWindowClickThrough.mockResolvedValue(undefined);
+    desktopApiMocks.supportsTransparentDesktopClickThrough.mockReturnValue(true);
     mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
       snapshot({
         dialogText: command.type,
@@ -282,6 +292,45 @@ describe("ChatStagePage", () => {
 
     fireEvent.mouseDown(document.querySelector(".desktop-resize-handle--se")!, { button: 0 });
     expect(desktopApiMocks.startDesktopWindowResize).toHaveBeenCalledWith("SouthEast");
+  });
+
+  it("does not enable transparent desktop click-through on unsupported platforms", async () => {
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    desktopApiMocks.supportsTransparentDesktopClickThrough.mockReturnValue(false);
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ backgroundPath: "" }));
+
+    renderPage(["/chat-stage"]);
+
+    await screen.findByText("Ready");
+    const stage = document.querySelector(".chat-stage");
+    expect(stage).toHaveAttribute("data-click-through", "false");
+    expect(document.querySelector(".desktop-resize-handles")).not.toBeNull();
+
+    fireEvent.pointerMove(stage!);
+    expect(desktopApiMocks.setDesktopWindowClickThrough).not.toHaveBeenCalledWith(true);
+  });
+
+  it("offers to repair missing Python dependencies surfaced by the chat stage snapshot", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        dialogText: "Missing Python module: opencc",
+        runtimeDependencyError: {
+          kind: "missing_dependency",
+          message: "Missing Python module: opencc",
+          moduleName: "opencc",
+          packageName: "opencc-python-reimplemented",
+        },
+        status: "error",
+      }),
+    );
+
+    renderPage(["/chat-stage"]);
+
+    await waitFor(() =>
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("opencc-python-reimplemented")),
+    );
+    expect(mocks.installMissingRuntimeDependency).toHaveBeenCalledWith({ moduleName: "opencc" });
   });
 
   it("keeps the stage transparent when the snapshot has no background path", async () => {

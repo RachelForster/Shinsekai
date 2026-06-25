@@ -117,6 +117,29 @@ function detectTauriDesktopEnvironment() {
   );
 }
 
+function browserPlatformText() {
+  if (typeof navigator === "undefined") {
+    return "";
+  }
+  const navigatorWithUserAgentData = navigator as Navigator & {
+    userAgentData?: {
+      platform?: string;
+    };
+  };
+  return [navigatorWithUserAgentData.userAgentData?.platform, navigator.platform, navigator.userAgent]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+export function isWindowsDesktopEnvironment() {
+  return /\b(?:windows|win32|win64|wow64)\b/.test(browserPlatformText());
+}
+
+export function supportsTransparentDesktopClickThrough() {
+  return !isWindowsDesktopEnvironment();
+}
+
 async function ensureDesktopBridgeRestartEvents() {
   if (!detectTauriDesktopEnvironment() || typeof window === "undefined") {
     return;
