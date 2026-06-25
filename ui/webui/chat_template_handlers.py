@@ -67,7 +67,8 @@ def _template_file_for_write(ctx: WebUIContext, filename: str) -> tuple[str, Pat
     root = _template_root(ctx)
     root_str = os.path.realpath(str(root))
     path_str = os.path.realpath(os.path.join(root_str, name))
-    if os.path.commonpath([root_str, path_str]) != root_str:
+    root_prefix = root_str + os.sep
+    if path_str != root_str and not path_str.startswith(root_prefix):
         raise PermissionError("模板路径越界")
     return name, Path(path_str)
 
@@ -151,8 +152,13 @@ def save_template(ctx: WebUIContext, template: str, filename: str):
         return "保存文件名不能为空！", template_files
     try:
         _name, dest_path = _template_file_for_write(ctx, filename)
-        # codeql[py/path-injection] _template_file_for_write returns a basename-validated path under ctx.template_dir_path.
-        with dest_path.open(mode="+wt", encoding="utf-8") as file:
+        # Keep this normalized guard next to open; CodeQL models startswith as the safe path check.
+        dest_path_str = os.path.realpath(os.fspath(dest_path))
+        root_str = os.path.realpath(str(_template_root(ctx)))
+        root_prefix = root_str + os.sep
+        if dest_path_str != root_str and not dest_path_str.startswith(root_prefix):
+            raise PermissionError("模板路径越界")
+        with open(dest_path_str, mode="+wt", encoding="utf-8") as file:
             file.write(template)
         return "保存成功", _template_file_names(ctx)
     except Exception as e:
