@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,69 @@ from pathlib import Path
 from ui.webui.context import WebUIContext
 
 _main_chat_process = None
+_TEMPLATE_FILENAME_RE = re.compile(r"^[^<>:\"/\\|?*\x00-\x1f\x7f]+\.txt$")
+
+
+def _reject_control_chars(value: str, field: str) -> str:
+    text = str(value or "").strip()
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        raise ValueError(f"{field} 包含非法控制字符")
+    return text
+
+
+def _clean_template_filename(filename: str) -> str:
+    name = _reject_control_chars(filename, "模板文件名")
+    if not name:
+        raise ValueError("模板文件名不能为空")
+    if not name.endswith(".txt"):
+        name = f"{name}.txt"
+    base_name = os.path.basename(name)
+    if base_name != name or name in {".", ".."}:
+        raise ValueError("模板文件名不能包含目录")
+    name = base_name
+    if not _TEMPLATE_FILENAME_RE.fullmatch(name):
+        raise ValueError("模板文件名包含非法字符")
+    return name
+
+
+def _template_root(ctx: WebUIContext) -> Path:
+    root = Path(ctx.template_dir_path).resolve()
+    if not root.is_dir():
+        raise FileNotFoundError("模板目录不存在")
+    return root
+
+
+def _template_catalog(ctx: WebUIContext) -> dict[str, Path]:
+    root = _template_root(ctx)
+    return {
+        path.name: path.resolve()
+        for path in root.iterdir()
+        if path.is_file() and path.name.endswith(".txt")
+    }
+
+
+def _template_file_for_existing(ctx: WebUIContext, filename: str) -> tuple[str, Path]:
+    name = _clean_template_filename(filename)
+    catalog = _template_catalog(ctx)
+    path = catalog.get(name)
+    if path is None:
+        raise FileNotFoundError(f"模板文件不存在: {name}")
+    return name, path
+
+
+def _template_file_for_write(ctx: WebUIContext, filename: str) -> tuple[str, Path]:
+    name = _clean_template_filename(filename)
+    root = _template_root(ctx)
+    root_str = os.path.realpath(str(root))
+    path_str = os.path.realpath(os.path.join(root_str, name))
+    root_prefix = root_str + os.sep
+    if path_str.startswith(root_prefix):
+        return name, Path(path_str)
+    raise PermissionError("模板路径越界")
+
+
+def _template_file_names(ctx: WebUIContext) -> list[str]:
+    return sorted(_template_catalog(ctx).keys())
 
 
 def launch_chat(
@@ -25,12 +89,12 @@ def launch_chat(
     global _main_chat_process
     print("启动聊天，使用模板:")
     try:
-        dest_path = os.path.join(ctx.template_dir_path, "_temp.txt")
-        with open(dest_path, mode="+wt", encoding="utf-8") as file:
+        _, dest_path = _template_file_for_write(ctx, "_temp.txt")
+        with dest_path.open(mode="+wt", encoding="utf-8") as file:
             file.write(template)
 
-        init_path = init_sprite_path[0] if init_sprite_path else ""
-        history_file = history_file if history_file else ""
+        init_path = _reject_control_chars(init_sprite_path[0], "初始立绘路径") if init_sprite_path else ""
+        history_file = _reject_control_chars(history_file, "历史文件路径") if history_file else ""
         ctx.config_manager.config.system_config.live_room_id = room_id
         ctx.config_manager.save_system_config()
 
@@ -55,6 +119,7 @@ def launch_chat(
         return "进程已经在运行中！PID: " + str(_main_chat_process.pid)
     except Exception as e:
         print("启动模版失败：", e)
+        return f"启动模版失败：{e}"
 
 
 def stop_chat() -> str:
@@ -70,9 +135,8 @@ def stop_chat() -> str:
 
 def load_template_from_file(ctx: WebUIContext, file_path: str):
     try:
-        file_name = file_path
-        full_path = os.path.join(ctx.template_dir_path, file_path)
-        with open(full_path, "r", encoding="utf-8") as f:
+        file_name, full_path = _template_file_for_existing(ctx, file_path)
+        with full_path.open("r", encoding="utf-8") as f:  # lgtm[py/path-injection] template path is catalog-resolved
             template = f.read()
         return template, file_name
     except Exception as e:
@@ -80,20 +144,24 @@ def load_template_from_file(ctx: WebUIContext, file_path: str):
 
 
 def save_template(ctx: WebUIContext, template: str, filename: str):
-    path_obj = Path(ctx.template_dir_path)
-    template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
+    try:
+        template_files = _template_file_names(ctx)
+    except Exception:
+        template_files = []
     if filename == "":
         return "保存文件名不能为空！", template_files
     try:
-        if filename.endswith(".txt"):
-            dest_path = os.path.join(ctx.template_dir_path, filename)
+        _name, dest_path = _template_file_for_write(ctx, filename)
+        # Keep this normalized guard next to open; CodeQL models startswith as the safe path check.
+        dest_path_str = os.path.realpath(os.fspath(dest_path))
+        root_str = os.path.realpath(str(_template_root(ctx)))
+        root_prefix = root_str + os.sep
+        if dest_path_str.startswith(root_prefix):
+            with open(dest_path_str, mode="+wt", encoding="utf-8") as file:
+                file.write(template)
         else:
-            dest_path = os.path.join(ctx.template_dir_path, f"{filename}.txt")
-        with open(dest_path, mode="+wt", encoding="utf-8") as file:
-            file.write(template)
-        path_obj = Path(ctx.template_dir_path)
-        template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
-        return "保存成功", template_files
+            raise PermissionError("模板路径越界")
+        return "保存成功", _template_file_names(ctx)
     except Exception as e:
         return f"保存失败，{e}", template_files
 

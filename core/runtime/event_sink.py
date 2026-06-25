@@ -18,6 +18,7 @@ import itertools
 import json
 import os
 import re
+import select
 import secrets
 import socket
 import threading
@@ -26,8 +27,15 @@ from collections.abc import Callable
 from urllib.parse import parse_qs, quote, urlparse
 from typing import Any, Dict, List, Protocol, runtime_checkable
 
+from core.runtime.restart_debug import write_restart_debug_log
+
 #: 事件协议版本，与前端 ``ChatStageEvent`` 的 ``v`` 字段一致。
 EVENT_PROTOCOL_VERSION = 1
+_WS_READ_TIMEOUT_SECONDS = 5.0
+
+
+def _ws_debug_log(message: str) -> None:
+    write_restart_debug_log("ws_sink", message)
 
 
 def _strip_html(value: str) -> str:
@@ -345,7 +353,9 @@ class WSClientSink(_BaseEventSink):
         self._remember(event)
         with self._buffer_lock:
             self._buffer.append(event)
+            buffer_len = len(self._buffer)
             self._buffer_ready.set()
+        _ws_debug_log(f"emit type={payload.get('type', 'unknown')} seq={event.get('seq', 0)} buffer_len={buffer_len}")
         self._ensure_worker()
 
     def media_url(self, raw_path: str) -> str:
@@ -366,6 +376,7 @@ class WSClientSink(_BaseEventSink):
         )
 
     def close(self) -> None:
+        _ws_debug_log("close requested")
         deadline = time.time() + 1.5
         self._closed = True
         self._buffer_ready.set()
@@ -375,6 +386,7 @@ class WSClientSink(_BaseEventSink):
                     break
             time.sleep(0.05)
         self._disconnect()
+        _ws_debug_log("close completed")
 
     def set_command_handler(self, handler: Callable[[Dict[str, Any]], None] | None) -> None:
         self._command_handler = handler
@@ -386,23 +398,30 @@ class WSClientSink(_BaseEventSink):
             thread = threading.Thread(target=self._run, name="shinsekai-chat-ws-sink", daemon=True)
             thread.start()
             self._worker_started = True
+            _ws_debug_log("worker_started")
 
     def _run(self) -> None:
+        _ws_debug_log("worker_loop enter")
         while True:
             self._buffer_ready.wait(timeout=1.0)
             event = self._peek_event()
             if event is None:
                 self._buffer_ready.clear()
                 if self._closed:
+                    _ws_debug_log("worker_loop exit reason=closed_empty")
                     return
                 continue
             try:
                 self._send_event(event)
                 self._pop_event()
-            except Exception:
+            except Exception as exc:
+                _ws_debug_log(
+                    f"send_failed type={event.get('type', 'unknown')} seq={event.get('seq', 0)} error_type={exc.__class__.__name__} error={exc}"
+                )
                 if self._closed:
                     self._clear_buffer()
                     self._disconnect()
+                    _ws_debug_log("worker_loop exit reason=closed_after_send_failed")
                     return
                 self._disconnect()
                 time.sleep(0.5)
@@ -432,7 +451,9 @@ class WSClientSink(_BaseEventSink):
         path = parsed.path or "/"
         if parsed.query:
             path = f"{path}?{parsed.query}"
+        _ws_debug_log(f"connecting host={host} port={port} path={parsed.path or '/'} has_query={bool(parsed.query)}")
         sock = socket.create_connection((host, port), timeout=5.0)
+        _ws_debug_log("tcp_connected")
         sock.settimeout(5.0)
         key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
         request = (
@@ -449,11 +470,14 @@ class WSClientSink(_BaseEventSink):
         while b"\r\n\r\n" not in response:
             chunk = sock.recv(4096)
             if not chunk:
+                _ws_debug_log("handshake_failed reason=closed")
                 raise ConnectionError("websocket handshake failed")
             response += chunk
         status_line = response.split(b"\r\n", 1)[0].decode("utf-8", errors="replace")
         if "101" not in status_line:
+            _ws_debug_log(f"handshake_failed status_line={status_line}")
             raise ConnectionError(f"unexpected websocket handshake response: {status_line}")
+        _ws_debug_log("handshake_ok")
         return sock
 
     def _send_event(self, event: Dict[str, Any]) -> None:
@@ -462,10 +486,12 @@ class WSClientSink(_BaseEventSink):
             self._ensure_reader(self._socket)
         data = json.dumps(event, ensure_ascii=False).encode("utf-8")
         self._send_frame(self._socket, data)
+        _ws_debug_log(f"sent type={event.get('type', 'unknown')} seq={event.get('seq', 0)} bytes={len(data)}")
 
     def _disconnect(self) -> None:
         if self._socket is None:
             return
+        _ws_debug_log("disconnecting")
         try:
             self._socket.close()
         except OSError:
@@ -473,6 +499,7 @@ class WSClientSink(_BaseEventSink):
         self._socket = None
         with self._reader_lock:
             self._reader_started = False
+        _ws_debug_log("disconnected")
 
     def _ensure_reader(self, sock: socket.socket) -> None:
         with self._reader_lock:
@@ -486,6 +513,7 @@ class WSClientSink(_BaseEventSink):
             )
             thread.start()
             self._reader_started = True
+            _ws_debug_log("read_loop started")
 
     def _read_loop(self, sock: socket.socket) -> None:
         try:
@@ -493,10 +521,13 @@ class WSClientSink(_BaseEventSink):
                 try:
                     opcode, payload = self._read_frame(sock)
                 except socket.timeout:
+                    _ws_debug_log("read_loop heartbeat timeout=no_frame")
                     continue
                 if opcode == 0x8:
+                    _ws_debug_log("read_loop received_close")
                     return
                 if opcode == 0x9:
+                    _ws_debug_log("read_loop received_ping")
                     self._send_control_frame(sock, 0xA, payload)
                     continue
                 if opcode != 0x1:
@@ -508,12 +539,16 @@ class WSClientSink(_BaseEventSink):
                     continue
                 command = message.get("command")
                 if isinstance(command, dict):
+                    _ws_debug_log(
+                        f"command_received type={command.get('type', 'unknown')} cmd_id={command.get('cmdId', '')}"
+                    )
                     self._dispatch_command(command)
-        except Exception:
-            pass
+        except Exception as exc:
+            _ws_debug_log(f"read_loop exception error_type={exc.__class__.__name__} error={exc}")
         finally:
             if self._socket is sock:
                 self._disconnect()
+            _ws_debug_log("read_loop exit")
 
     def _dispatch_command(self, command: Dict[str, Any]) -> None:
         handler = self._command_handler
@@ -528,7 +563,14 @@ class WSClientSink(_BaseEventSink):
     def _read_exact(sock: socket.socket, size: int) -> bytes:
         chunks: list[bytes] = []
         remaining = size
+        deadline = time.monotonic() + _WS_READ_TIMEOUT_SECONDS
         while remaining > 0:
+            timeout = deadline - time.monotonic()
+            if timeout <= 0:
+                raise socket.timeout("websocket read timed out")
+            readable, _, _ = select.select([sock], [], [], min(timeout, 0.25))
+            if not readable:
+                continue
             chunk = sock.recv(remaining)
             if not chunk:
                 raise ConnectionError("websocket connection closed")

@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { closeChat, installMissingRuntimeDependency } from "../../entities/chat/repository";
-import { isTauriDesktop, supportsTransparentDesktopClickThrough } from "../../shared/desktop/desktopApi";
+import {
+  isTauriDesktop,
+  supportsTransparentDesktopClickThrough,
+  writeDesktopRestartDebugLog,
+} from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
@@ -49,6 +53,16 @@ import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 function isStartOptionLabel(option: string) {
   const normalized = option.trim().toLocaleLowerCase();
   return normalized === "start" || normalized === "开始" || normalized === "開始" || normalized === "スタート";
+}
+
+function logChatStage(message: string, data?: Record<string, unknown>) {
+  if (data) {
+    console.log(`[ChatStage] ${message}`, data);
+  } else {
+    console.log(`[ChatStage] ${message}`);
+  }
+  const suffix = data ? ` ${JSON.stringify(data)}` : "";
+  void writeDesktopRestartDebugLog(`ChatStage ${message}${suffix}`);
 }
 
 export function ChatStagePage() {
@@ -159,6 +173,24 @@ export function ChatStagePage() {
     loadFallbackMessage: t("chat.error.loadFallback"),
     queueAnimatedDialog,
   });
+
+  useEffect(() => {
+    logChatStage("mounted", {
+      pathname: location.pathname,
+      standaloneDesktopWindow,
+    });
+    return () => logChatStage("unmounted", { pathname: location.pathname });
+  }, [location.pathname, standaloneDesktopWindow]);
+
+  useEffect(() => {
+    logChatStage("session_state", {
+      hasSessionId: Boolean(state.sessionId),
+      hasWsUrl: Boolean(state.wsUrl),
+      status: state.status,
+      transportMode: state.transportMode ?? "",
+      transportState: state.transportState ?? "",
+    });
+  }, [state.sessionId, state.status, state.transportMode, state.transportState, state.wsUrl]);
 
   useEffect(() => {
     if (!viewModel.layers.dialog) {
@@ -323,23 +355,24 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
   }, []);
 
+  const closeSurface = useCallback(() => {
+    void closeChatSurface({
+      closeRuntime: closeChat,
+      navigate,
+      snapshot: state,
+    });
+  }, [navigate, state]);
+
   useChatStageKeyboardShortcuts({
     disabled: modalOpen,
     onAdvance: advanceDialog,
+    onClose: closeSurface,
     onToggleAuto: toggleAuto,
   });
 
   const openHistoryDialog = () => {
     setHistoryDialogOpen(true);
     void refreshHistory();
-  };
-
-  const closeSurface = () => {
-    void closeChatSurface({
-      closeRuntime: closeChat,
-      navigate,
-      snapshot: state,
-    });
   };
 
   const dialogToolbar = (
@@ -412,7 +445,7 @@ export function ChatStagePage() {
             canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
             characterName={nameHiddenForStartOption ? undefined : viewModel.dialogCharacterName}
             hidden={!viewModel.layers.dialog}
-            html={displayedDialog.html}
+            htmlNodes={displayedDialog.nodes}
             onAdvance={advanceDialog}
             onSkip={typingDialog ? advanceDialog : undefined}
             text={typingDialog ? displayedDialog.text : viewModel.dialogText}

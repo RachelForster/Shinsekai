@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import { createElement, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -6,6 +6,7 @@ import { PluginSlot } from "../../../shared/plugin/PluginSlot";
 import { Button } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
+import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
 
 function closestDialogInteractiveElement(target: EventTarget | null) {
   if (!(target instanceof Element)) {
@@ -103,7 +104,7 @@ export function DialogLayer({
   canAdvance,
   characterName,
   hidden,
-  html,
+  htmlNodes,
   onAdvance,
   onSkip,
   text,
@@ -114,7 +115,7 @@ export function DialogLayer({
   canAdvance: boolean;
   characterName?: string;
   hidden: boolean;
-  html?: string;
+  htmlNodes?: DialogHtmlNode[];
   onAdvance?: () => void;
   onSkip?: () => void;
   text: string;
@@ -148,10 +149,10 @@ export function DialogLayer({
       onClick={handleDialogClick}
     >
       {characterName ? <p className="dialog-layer__name">{characterName}</p> : null}
-      {html !== undefined ? (
+      {htmlNodes !== undefined ? (
         <div className="dialog-layer__body">
           <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
-            <div className="dialog-layer__html" dangerouslySetInnerHTML={{ __html: html }} />
+            <div className="dialog-layer__html">{renderDialogHtmlNodes(htmlNodes)}</div>
             {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
           </div>
         </div>
@@ -167,6 +168,67 @@ export function DialogLayer({
       {toolbar ? <div className="dialog-layer__toolbar">{toolbar}</div> : null}
     </section>
   );
+}
+
+const dialogStylePropMap: Record<DialogHtmlStyleProperty, keyof CSSProperties> = {
+  color: "color",
+  "font-style": "fontStyle",
+  "font-weight": "fontWeight",
+  "letter-spacing": "letterSpacing",
+  "line-height": "lineHeight",
+  "text-decoration": "textDecoration",
+};
+
+function dialogNodeStyle(style?: Partial<Record<DialogHtmlStyleProperty, string>>) {
+  if (!style) {
+    return undefined;
+  }
+  const out: CSSProperties = {};
+  Object.entries(style).forEach(([key, value]) => {
+    const prop = dialogStylePropMap[key as DialogHtmlStyleProperty];
+    if (prop && value) {
+      (out as Record<string, string>)[prop] = value;
+    }
+  });
+  return Object.keys(out).length ? out : undefined;
+}
+
+function renderDialogHtmlNode(node: DialogHtmlNode, key: string): ReactNode {
+  if (node.kind === "text") {
+    return node.text;
+  }
+
+  const props: {
+    className?: string;
+    href?: string;
+    key: string;
+    rel?: string;
+    style?: CSSProperties;
+    target?: string;
+  } = { key };
+  if (node.attrs?.className) {
+    props.className = node.attrs.className;
+  }
+  if (node.attrs?.style) {
+    props.style = dialogNodeStyle(node.attrs.style);
+  }
+  if (node.tag === "a" && node.attrs?.href) {
+    props.href = node.attrs.href;
+    props.rel = node.attrs.rel;
+    props.target = node.attrs.target;
+  }
+  if (node.tag === "br") {
+    return createElement("br", props);
+  }
+  return createElement(
+    node.tag,
+    props,
+    node.children.map((child, index) => renderDialogHtmlNode(child, `${key}-${index}`)),
+  );
+}
+
+function renderDialogHtmlNodes(nodes: DialogHtmlNode[]) {
+  return nodes.map((node, index) => renderDialogHtmlNode(node, `dialog-html-${index}`));
 }
 
 export function OptionsLayer({

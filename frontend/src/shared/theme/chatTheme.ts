@@ -390,7 +390,7 @@ function quotedFontFamily(value: string) {
   if (/["']/.test(trimmed) || /^[a-z0-9_-]+$/i.test(trimmed)) {
     return trimmed;
   }
-  return `"${trimmed.replace(/"/g, '\\"')}"`;
+  return `"${trimmed.split('"').join('\\"')}"`;
 }
 
 function resolveThemeAssetUrl(rel: unknown, assetUrl: (rel: string) => string) {

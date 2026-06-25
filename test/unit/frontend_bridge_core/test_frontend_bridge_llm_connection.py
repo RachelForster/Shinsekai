@@ -10,6 +10,8 @@ import pytest
 from frontend_bridge_core.config import (
     LlmModelDiscoveryHttpError,
     _anthropic_messages_endpoint,
+    _llm_model_provider_kind,
+    _llm_models_endpoint,
     _openai_chat_endpoint,
     _test_llm_connection,
 )
@@ -108,6 +110,13 @@ def test_gemini_connection_test_uses_openai_compatible_chat_api():
     assert request.headers["Authorization"] == "Bearer gemini-key"
     payload = json.loads(request.data.decode("utf-8"))
     assert payload["model"] == "gemini-2.5-flash"
+
+
+def test_llm_provider_host_detection_rejects_lookalike_domains():
+    assert _llm_model_provider_kind("Custom", "https://api.deepseek.com.evil/v1") == "openai_compatible"
+    assert _llm_models_endpoint("Custom", "https://api.deepseek.com.evil/v1", "sk-test") == (
+        "https://api.deepseek.com.evil/v1/models"
+    )
 
 
 def test_llm_connection_error_uses_presenter_balance_message():

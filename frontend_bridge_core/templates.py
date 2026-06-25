@@ -8,6 +8,7 @@ from typing import Any
 from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 
 from .state import BridgeState
+from .security import safe_child_path, safe_filename
 
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
 MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
@@ -188,9 +189,11 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
         raise ValueError("template name is required")
     scenario = str(template.get("scenario") or template.get("content") or "")
     system = str(template.get("system") or "")
-    file_name = name if name.endswith(".txt") else f"{name}.txt"
-    (_template_dir(state) / file_name).write_text(_compose_stored_template(scenario, system), encoding="utf-8")
-    file_name = f"{name}.txt" if not name.endswith(".txt") else name
+    file_name = safe_filename(name, default_suffix=".txt")
+    safe_child_path(_template_dir(state), file_name).write_text(
+        _compose_stored_template(scenario, system),
+        encoding="utf-8",
+    )
     for row in _list_templates(state):
         if row["id"] == file_name:
             return row

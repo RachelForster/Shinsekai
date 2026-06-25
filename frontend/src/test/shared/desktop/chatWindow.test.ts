@@ -4,12 +4,14 @@ const desktopMocks = vi.hoisted(() => ({
   closeDesktopWindow: vi.fn(),
   isTauriDesktop: vi.fn(),
   openDesktopChatWindow: vi.fn(),
+  writeDesktopRestartDebugLog: vi.fn(),
 }));
 
 vi.mock("../../../shared/desktop/desktopApi", () => ({
   closeDesktopWindow: desktopMocks.closeDesktopWindow,
   isTauriDesktop: desktopMocks.isTauriDesktop,
   openDesktopChatWindow: desktopMocks.openDesktopChatWindow,
+  writeDesktopRestartDebugLog: desktopMocks.writeDesktopRestartDebugLog,
 }));
 
 import { closeChatSurface, showChatSurface } from "../../../shared/desktop/chatWindow";

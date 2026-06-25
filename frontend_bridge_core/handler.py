@@ -6,15 +6,17 @@ import mimetypes
 import shutil
 import tempfile
 import threading
+import time
 from email.parser import BytesParser
 from email.policy import default as default_email_policy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
+from core.runtime.restart_debug import write_restart_debug_log
 from core.sprite.chat_branch_storage import remove_chat_history_storage
 
 from .backgrounds import (
@@ -112,6 +114,14 @@ from .plugin_updates import (
     _run_app_update,
 )
 from .runtime_dependencies import install_runtime_dependency, runtime_dependency_error_from_text
+from .security import (
+    reject_control_chars,
+    safe_child_path,
+    safe_content_disposition,
+    safe_filename,
+    safe_header_value,
+    safe_project_path,
+)
 from .state import BridgeState, _jsonify, plugin_load_snapshot
 from .static import _frontend_dist_root
 from .tasks import _create_task, _get_task, _is_running_task, _request_task_cancel, _run_background_task, _update_task
@@ -144,6 +154,10 @@ _ALLOWED_LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "::1", "localhost", "tauri.localhost
 CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
 
 
+def _bridge_debug_log(message: str) -> None:
+    write_restart_debug_log("bridge", message)
+
+
 class _RangeNotSatisfiable(Exception):
     pass
 
@@ -156,8 +170,57 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         return self.server.state  # type: ignore[attr-defined]
 
     def handle_one_request(self) -> None:
-        with log_context(request_id=new_log_id("req_")):
-            super().handle_one_request()
+        request_id = new_log_id("req_")
+        self._request_id = request_id
+        self._request_started_at = None
+        self._response_status = None
+        with log_context(request_id=request_id):
+            try:
+                super().handle_one_request()
+            finally:
+                self._log_request_completed()
+
+    def parse_request(self) -> bool:
+        parsed = super().parse_request()
+        if parsed:
+            self._request_started_at = time.perf_counter()
+            self._log_request_started()
+        return parsed
+
+    def send_response(self, code: int, message: str | None = None) -> None:
+        self._response_status = int(code)
+        super().send_response(code, message)
+
+    def _log_request_started(self) -> None:
+        path = urlparse(getattr(self, "path", "")).path
+        logger.info(
+            "Frontend bridge request started",
+            extra={
+                "event": "http.request.started",
+                "method": getattr(self, "command", ""),
+                "path": path,
+                "request_id": getattr(self, "_request_id", ""),
+                "content_length": self.headers.get("Content-Length", ""),
+            },
+        )
+
+    def _log_request_completed(self) -> None:
+        started_at = getattr(self, "_request_started_at", None)
+        if started_at is None:
+            return
+        path = urlparse(getattr(self, "path", "")).path
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            "Frontend bridge request completed",
+            extra={
+                "event": "http.request.completed",
+                "method": getattr(self, "command", ""),
+                "path": path,
+                "request_id": getattr(self, "_request_id", ""),
+                "status": getattr(self, "_response_status", None),
+                "duration_ms": duration_ms,
+            },
+        )
 
     def log_message(self, fmt: str, *args: Any) -> None:
         logger.info(
@@ -183,18 +246,42 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             logger.exception("Frontend bridge request failed", extra=extra)
 
     def _origin_allowed(self, origin: str) -> bool:
+        return self._allowed_origin_header(origin) is not None
+
+    def _allowed_origin_header(self, origin: str) -> str | None:
         value = str(origin or "").strip()
         if not value:
-            return True
+            return ""
+        try:
+            value = reject_control_chars(value, field="origin")
+        except ValueError:
+            return None
         parsed = urlparse(value)
         scheme = parsed.scheme.lower()
         host = (parsed.hostname or "").lower()
-        if scheme in _ALLOWED_CUSTOM_ORIGIN_SCHEMES and host in _ALLOWED_LOCAL_ORIGIN_HOSTS:
-            return True
-        return scheme in {"http", "https"} and host in _ALLOWED_LOCAL_ORIGIN_HOSTS
+        if host not in _ALLOWED_LOCAL_ORIGIN_HOSTS:
+            return None
+        if scheme in _ALLOWED_CUSTOM_ORIGIN_SCHEMES:
+            if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+                return None
+            netloc = host
+            if parsed.port is not None:
+                netloc = f"{host}:{parsed.port}"
+            return safe_header_value(urlunparse((scheme, netloc, "", "", "", "")))
+        if scheme in {"http", "https"}:
+            if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+                return None
+            netloc = host
+            if parsed.port is not None:
+                netloc = f"{host}:{parsed.port}"
+            return safe_header_value(urlunparse((scheme, netloc, "", "", "", "")))
+        return None
 
     def _request_origin_allowed(self) -> bool:
-        return self._origin_allowed(self.headers.get("Origin", ""))
+        origin = self.headers.get("Origin", "")
+        if not str(origin or "").strip():
+            return True
+        return self._allowed_origin_header(origin) is not None
 
     def _auth_token_from_request(self) -> str:
         header_token = str(self.headers.get(BRIDGE_AUTH_HEADER) or "").strip()
@@ -218,8 +305,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             raise PermissionError("invalid bridge auth token")
 
     def _send_cors(self) -> None:
-        origin = str(self.headers.get("Origin") or "").strip()
-        if origin and self._origin_allowed(origin):
+        origin = self._allowed_origin_header(str(self.headers.get("Origin") or ""))
+        if origin:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS")
@@ -271,12 +358,19 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         session_id = str(stream_info.get("sessionId") or "").strip()
         chat_stream = getattr(self.state, "chat_stream", None)
         if not session_id or chat_stream is None:
+            _bridge_debug_log(
+                f"launch_chat producer_wait skipped session={session_id} reason={'missing_session' if not session_id else 'missing_chat_stream'}"
+            )
             return
         wait_for_producer = getattr(chat_stream, "wait_for_producer", None)
         if wait_for_producer is None:
+            _bridge_debug_log(f"launch_chat producer_wait skipped session={session_id} reason=missing_wait_method")
             return
+        _bridge_debug_log(f"launch_chat waiting_for_producer session={session_id} timeout={timeout}")
         if wait_for_producer(session_id, timeout=timeout):
+            _bridge_debug_log(f"launch_chat producer_ready ok session={session_id}")
             return
+        _bridge_debug_log(f"launch_chat producer_ready timeout session={session_id}")
         try:
             _close_chat(self.state, reason="聊天会话启动超时。")
         finally:
@@ -333,10 +427,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 continue
             if part.get_param("name", header="content-disposition") != "files":
                 continue
-            filename = Path(str(part.get_filename() or "")).name
-            if not filename:
+            try:
+                filename = safe_filename(str(part.get_filename() or ""))
+            except ValueError:
                 continue
-            dest = temp_dir / filename
+            dest = safe_child_path(temp_dir, filename)
             dest.write_bytes(part.get_payload(decode=True) or b"")
             paths.append(dest)
         if not paths:
@@ -949,6 +1044,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
 
     def _launch_chat(self, body: dict[str, Any]) -> dict[str, Any]:
         template_id = str(body.get("templateId") or "")
+        _bridge_debug_log(f"launch_chat request start runtime_mode={_chat_runtime_mode(self.state)} template_id={template_id}")
         rows = _list_templates(self.state)
         row = next((item for item in rows if item["id"] == template_id), None)
         has_inline_template = "scenario" in body or "system" in body
@@ -1010,6 +1106,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if use_react_runtime and self.state.chat_stream is not None
             else {}
         )
+        if stream_info:
+            _bridge_debug_log(
+                f"launch_chat session_created session={stream_info.get('sessionId', '')} has_ws_url={bool(stream_info.get('wsUrl'))}"
+            )
+        else:
+            _bridge_debug_log(f"launch_chat session_skipped runtime_mode={_chat_runtime_mode(self.state)}")
         effect_names_list = body.get("effectNames") or []
         if isinstance(effect_names_list, list):
             effect_names_str = ",".join(str(n) for n in effect_names_list)
@@ -1035,6 +1137,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         dependency_error = runtime_dependency_error_from_text(message)
         if dependency_error:
             session_id = str(stream_info.get("sessionId") or "")
+            _bridge_debug_log(f"launch_chat dependency_error session={session_id} module={dependency_error.get('moduleName', '')}")
             if session_id and self.state.chat_stream is not None:
                 self.state.chat_stream.delete_session(session_id)
             self.state.chat_session = {**self.state.chat_session, **session_base}
@@ -1046,6 +1149,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             )
         if message.startswith("启动失败"):
             session_id = str(stream_info.get("sessionId") or "")
+            _bridge_debug_log(f"launch_chat failed session={session_id} message={message}")
             if session_id and self.state.chat_stream is not None:
                 self.state.chat_stream.delete_session(session_id)
             raise RuntimeError(message)
@@ -1069,6 +1173,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
+        _bridge_debug_log(f"launch_chat request completed session={stream_info.get('sessionId', '')} message={message}")
         return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
 
     def _resume_last_chat(self) -> dict[str, Any]:
@@ -1128,6 +1233,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if use_react_runtime and self.state.chat_stream is not None
             else {}
         )
+        _bridge_debug_log(
+            f"resume_last_chat session={'created' if stream_info else 'skipped'} session_id={stream_info.get('sessionId', '')} runtime_mode={_chat_runtime_mode(self.state)}"
+        )
         message = _launch_chat(
             self.state,
             history_file=history_path.resolve().as_posix(),
@@ -1143,6 +1251,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         dependency_error = runtime_dependency_error_from_text(message)
         if dependency_error:
             session_id = str(stream_info.get("sessionId") or "")
+            _bridge_debug_log(f"resume_last_chat dependency_error session={session_id} module={dependency_error.get('moduleName', '')}")
             if session_id and self.state.chat_stream is not None:
                 self.state.chat_stream.delete_session(session_id)
             self.state.chat_session = {**self.state.chat_session, **session_base}
@@ -1154,6 +1263,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             )
         if message.startswith("启动失败"):
             session_id = str(stream_info.get("sessionId") or "")
+            _bridge_debug_log(f"resume_last_chat failed session={session_id} message={message}")
             if session_id and self.state.chat_stream is not None:
                 self.state.chat_stream.delete_session(session_id)
             raise RuntimeError(message)
@@ -1177,18 +1287,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
+        _bridge_debug_log(f"resume_last_chat completed session={stream_info.get('sessionId', '')} message={message}")
         return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
 
     def _resolve_project_path(self, raw_path: str) -> Path:
-        root = Path.cwd().resolve()
         raw = str(raw_path or "").strip()
         if not raw:
             raise FileNotFoundError(raw_path)
         if Path(raw).is_absolute():
-            path = Path(raw).resolve()
-            if root not in path.parents and path != root:
-                raise PermissionError("path is outside project root")
-            return path
+            return safe_project_path(raw)
 
         candidates: list[str] = [raw]
         slash_path = raw.replace("\\", "/")
@@ -1209,21 +1316,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if candidate in seen:
                 continue
             seen.add(candidate)
-            path = (root / candidate).resolve()
-            if root not in path.parents and path != root:
-                raise PermissionError("path is outside project root")
+            path = safe_project_path(candidate)
             if first_valid is None:
                 first_valid = path
             if path.is_file():
                 return path
-        return first_valid if first_valid is not None else (root / raw).resolve()
+        return first_valid if first_valid is not None else safe_project_path(raw)
 
     def _resolve_static_path(self, root: Path, request_path: str) -> Path:
-        base = root.resolve()
-        target = (base / request_path.lstrip("/")).resolve()
-        if base not in target.parents and target != base:
-            raise PermissionError("path is outside static root")
-        return target
+        return safe_child_path(root, request_path)
 
     def _media_thumbnail_batch_response(self, body: dict[str, Any]) -> dict[str, Any]:
         raw_paths = body.get("paths") or []
@@ -1274,7 +1375,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except _RangeNotSatisfiable:
             self._send_range_not_satisfiable(file_size)
             return
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        safe_name = safe_header_value(path.name)
+        content_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
         if byte_range is None:
             start = 0
             end = file_size - 1
@@ -1292,7 +1394,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if byte_range is not None:
             self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
         if attachment:
-            self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
+            self.send_header("Content-Disposition", safe_content_disposition(safe_name))
         try:
             self.end_headers()
             if not send_body:
