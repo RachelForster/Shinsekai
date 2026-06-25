@@ -73,6 +73,10 @@ function renderPage() {
   );
 }
 
+async function expectTemplateSelectToShow(templateName: string) {
+  await waitFor(() => expect(screen.getByRole("combobox", { name: "Template" })).toHaveTextContent(templateName));
+}
+
 describe("ChatLauncherPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -119,10 +123,11 @@ describe("ChatLauncherPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Browser Template")).toBeInTheDocument();
+    await expectTemplateSelectToShow("Browser Template");
     fireEvent.click(screen.getByRole("button", { name: "Launch" }));
 
     await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    expect(mocks.launchChat).toHaveBeenCalledWith(expect.objectContaining({ templateId: "tpl-browser" }));
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/chat"));
     expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
   });
@@ -144,7 +149,7 @@ describe("ChatLauncherPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Desktop Template")).toBeInTheDocument();
+    await expectTemplateSelectToShow("Desktop Template");
     fireEvent.click(screen.getByRole("button", { name: "Launch" }));
 
     await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
@@ -176,7 +181,7 @@ describe("ChatLauncherPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Native Template")).toBeInTheDocument();
+    await expectTemplateSelectToShow("Native Template");
     fireEvent.click(screen.getByRole("button", { name: "Launch" }));
 
     await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
@@ -209,6 +214,7 @@ describe("ChatLauncherPage", () => {
     mocks.listCharacters.mockResolvedValue([{ name: "Mio" }, { name: "Aki" }]);
     mocks.getTemplateSession.mockResolvedValue({
       background: "school",
+      effectNames: [],
       filenameStub: "Session Template",
       historyPath: " D:/history/session.json ",
       initSpritePath: " D:/sprites/init.png ",
@@ -231,7 +237,7 @@ describe("ChatLauncherPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Session Template")).toBeInTheDocument();
+    await expectTemplateSelectToShow("Session Template");
     await waitFor(() => expect(screen.getAllByDisplayValue(/session\.json/).length).toBeGreaterThan(0));
     expect(screen.getByDisplayValue(/D:\/sprites\/init\.png/)).toBeInTheDocument();
 
@@ -241,6 +247,7 @@ describe("ChatLauncherPage", () => {
     expect(mocks.saveTemplateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         background: "school",
+        effectNames: [],
         historyPath: "D:/history/session.json",
         initSpritePath: "D:/sprites/init.png",
         roomId: "room-7",
@@ -284,7 +291,7 @@ describe("ChatLauncherPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Default Template")).toBeInTheDocument();
+    await expectTemplateSelectToShow("Default Template");
 
     fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
     expect(mocks.launchChat).not.toHaveBeenCalled();

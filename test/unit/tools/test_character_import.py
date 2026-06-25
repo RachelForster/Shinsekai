@@ -132,6 +132,38 @@ class TestImport:
         assert vp
         assert Path(vp).is_file()
 
+    def test_old_voice_with_voice_text_without_voice_type_imports_as_reference(self, tmp_path):
+        """Old character packages used voice_text to mark reference voice semantics."""
+        data = dict(BASIC_CHAR)
+        data["sprites"] = [{"path": "smile.png", "voice_path": "greet.wav", "voice_text": "hello"}]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(
+                Path(td),
+                data,
+                sprites={"smile.png": "png"},
+                speeches={"greet.wav": "wav"},
+            )
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+
+        assert result[0].sprites[0]["voice_type"] == "reference"
+
+    def test_old_voice_without_voice_text_or_voice_type_imports_as_preset(self, tmp_path):
+        """Old character packages without reference text are preset sprite voices."""
+        data = dict(BASIC_CHAR)
+        data["sprites"] = [{"path": "smile.png", "voice_path": "greet.wav"}]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(
+                Path(td),
+                data,
+                sprites={"smile.png": "png"},
+                speeches={"greet.wav": "wav"},
+            )
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+
+        assert result[0].sprites[0]["voice_type"] == "preset"
+
     def test_fields_preserved(self, tmp_path):
         """Name, sprite_scale, emotion_tags, voice_text etc. survive import."""
         with tempfile.TemporaryDirectory() as td:

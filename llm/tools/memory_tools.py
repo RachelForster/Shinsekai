@@ -25,6 +25,7 @@ from sdk.tool_registry import ToolNotReady, tool
 logger = logging.getLogger(__name__)
 
 _mem0: Any = None
+_mem0_load_error: BaseException | None = None
 _mem0_loading = False
 _loading_started_at: float = 0.0
 _lock = threading.Lock()
@@ -150,7 +151,7 @@ def _start_mem0_loading() -> None:
         _loading_started_at = time.time()
 
     def _load() -> None:
-        global _mem0, _mem0_loading
+        global _mem0, _mem0_loading, _mem0_load_error
         try:
             print("[mem0] 后台线程开始加载…")
             from mem0 import Memory
@@ -167,6 +168,11 @@ def _start_mem0_loading() -> None:
                 _mem0 = mem
             print("[mem0] 后台加载完成，记忆系统已就绪")
             logger.info("mem0 后台加载完成")
+        except ModuleNotFoundError:
+            print("[mem0] mem0ai 未安装！")
+            logger.exception("mem0 后台加载失败: mem0ai 未安装")
+            with _lock:
+                _mem0_load_error = ModuleNotFoundError("No module named 'mem0'")
         except Exception:
             print("[mem0] 后台加载失败！详见日志")
             logger.exception("mem0 后台加载失败")
@@ -193,7 +199,7 @@ def _get_mem0() -> Any:
     供 settings UI 等可接受等待的环境使用。
     工具调用请使用 :func:`_ensure_mem0` 以避免阻塞聊天。
     """
-    global _mem0
+    global _mem0, _mem0_load_error
     if _mem0 is not None:
         return _mem0
 
@@ -203,8 +209,61 @@ def _get_mem0() -> Any:
         time.sleep(0.5)
 
     if _mem0 is None:
+        if isinstance(_mem0_load_error, ModuleNotFoundError):
+            raise _mem0_load_error
         raise RuntimeError("mem0 加载失败")
     return _mem0
+
+
+def _is_embedding_model_cached() -> bool:
+    """Check whether the HuggingFace sentence-transformers model is already cached.
+
+    When cached, loading takes ~10-30s instead of 2-5 min (first download).
+    """
+    try:
+        _cache_home = os.environ.get(
+            "HF_HOME",
+            os.path.join(str(Path.home()), ".cache", "huggingface", "hub"),
+        )
+        _model_dir = os.path.join(
+            _cache_home,
+            "models--sentence-transformers--all-MiniLM-L6-v2",
+        )
+        return os.path.isdir(_model_dir)
+    except Exception:
+        return False
+
+
+def check_mem0_status() -> dict[str, Any]:
+    """检查 mem0 是否可用，不阻塞。
+
+    返回状态字典：
+    - ``{"status": "ready"}`` — 已就绪
+    - ``{"status": "loading"}`` — 正在后台加载
+    - ``{"status": "not_started", "modelCached": true/false}`` — 尚未启动加载
+    - ``{"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}`` — 未安装
+    - ``{"status": "error", "message": "..."}`` — 加载失败（非缺少依赖）
+    """
+    global _mem0, _mem0_loading, _mem0_load_error
+    if _mem0 is not None:
+        return {"status": "ready"}
+    if _mem0_loading:
+        return {"status": "loading", "modelCached": _is_embedding_model_cached()}
+    if isinstance(_mem0_load_error, ModuleNotFoundError):
+        return {"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}
+    if _mem0_load_error is not None:
+        return {"status": "error", "message": str(_mem0_load_error)}
+    # 尚未尝试加载，检查 mem0 是否可导入
+    try:
+        import mem0  # noqa: F401
+        # 触发后台加载（非阻塞），这样后续轮询可以看到 loading → ready 的过渡
+        _start_mem0_loading()
+        return {
+            "status": "loading",
+            "modelCached": _is_embedding_model_cached(),
+        }
+    except ImportError:
+        return {"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}
 
 
 def _ensure_mem0() -> Any:

@@ -29,6 +29,17 @@ from .backgrounds import (
     _upload_background_bgm,
     _upload_background_images,
 )
+from .effects import (
+    _build_effect_usage_guide,
+    _delete_all_effect_audio,
+    _delete_effect,
+    _delete_effect_audio,
+    _effect_dir,
+    _save_effect,
+    _save_effect_audio_tags,
+    _upload_effect_audio,
+    _validate_effect_storage_name,
+)
 from .chat import (
     _chat_history,
     _close_chat,
@@ -59,11 +70,13 @@ from .characters import (
     _delete_character_sprite,
     _delete_sprite_voice,
     _generate_character_setting,
+    _get_mem0_status,
     _list_character_memories,
     _save_character,
     _save_character_emotion_tags,
     _save_sprite_scale,
     _save_sprite_voice_text,
+    _save_sprite_voice_type,
     _translate_character_fields,
     _upload_character_sprites,
     _upload_sprite_voice,
@@ -359,6 +372,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(self.state.config_manager.config.characters)
             elif path == "/api/backgrounds":
                 self._send_json(self.state.config_manager.config.background_list)
+            elif path == "/api/effects":
+                self._send_json(self.state.config_manager.config.effect_list)
             elif path == "/api/templates":
                 self._send_json(_list_templates(self.state))
             elif path == "/api/templates/session":
@@ -572,6 +587,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_generate_character_setting(self.state, body))
             elif method == "POST" and path == "/api/characters/translate":
                 self._send_json(_translate_character_fields(self.state, body))
+            elif method == "POST" and path == "/api/characters/memories/status":
+                self._send_json(_get_mem0_status())
             elif method == "POST" and path == "/api/characters/memories/list":
                 self._send_json(_list_character_memories(str(body.get("name") or "")))
             elif method == "POST" and path == "/api/characters/memories/add":
@@ -594,6 +611,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_save_sprite_scale(self.state, body))
             elif method == "POST" and path == "/api/characters/sprite-voice/text":
                 self._send_json(_save_sprite_voice_text(self.state, body))
+            elif method == "POST" and path == "/api/characters/sprite-voice/voice-type":
+                self._send_json(_save_sprite_voice_type(self.state, body))
             elif method == "POST" and path == "/api/characters/sprite-voice/delete":
                 self._send_json(_delete_sprite_voice(self.state, body))
             elif method == "DELETE" and path.startswith("/api/chat/themes/"):
@@ -684,6 +703,42 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
 
                 file_util.export_background([background], output.as_posix(), open_folder=False)
                 self._send_json({"downloadUrl": f"/api/download?path={output.as_posix()}", "path": output.as_posix()})
+            # --- effects ---
+            elif method == "POST" and path == "/api/effects/audio/upload":
+                self._send_json(_upload_effect_audio(self.state, body))
+            elif method == "POST" and path == "/api/effects/audio/delete":
+                self._send_json(_delete_effect_audio(self.state, body))
+            elif method == "POST" and path == "/api/effects/audio/delete-all":
+                self._send_json(_delete_all_effect_audio(self.state, body))
+            elif method == "POST" and path == "/api/effects/audio-tags":
+                self._send_json(_save_effect_audio_tags(self.state, body))
+            elif method in {"POST", "PUT"} and path == "/api/effects":
+                self._send_json(_save_effect(self.state, body))
+            elif method == "DELETE" and path.startswith("/api/effects/"):
+                name = unquote(path.rsplit("/", 1)[-1])
+                self._send_json(_delete_effect(self.state, name))
+            elif method == "POST" and path == "/api/effects/import":
+                paths = body.get("paths") or []
+                if not isinstance(paths, list):
+                    raise ValueError("paths must be a list")
+                self._send_json(self._import_effect_paths([str(item) for item in paths]))
+            elif method == "POST" and path == "/api/effects/import-upload":
+                temp_dir, paths = self._read_upload_files()
+                try:
+                    self._send_json(self._import_effect_paths([str(item) for item in paths]))
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            elif method == "POST" and path == "/api/effects/export":
+                name = _validate_effect_storage_name(str(body.get("name") or ""))
+                effect = self.state.config_manager.get_effect_by_name(name)
+                if effect is None:
+                    raise KeyError(f"effect not found: {name}")
+                output = Path("output") / f"{name}.ef"
+                import tools.file_util as file_util
+
+                file_util.export_effect([effect], output.as_posix(), open_folder=False)
+                self._send_json({"downloadUrl": f"/api/download?path={output.as_posix()}", "path": output.as_posix()})
+            # --- templates ---
             elif method in {"POST", "PUT"} and path == "/api/templates":
                 self._send_json(_save_template_summary(self.state, body))
             elif method == "POST" and path == "/api/templates/session":
@@ -826,8 +881,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     kind="runtime-dependency-install",
                     message=f"Installing dependency for {module_name}",
                     title=f"Install {module_name}",
-                    task_updates={"source": module_name},
-                    worker=lambda task_id: install_runtime_dependency(module_name),
+                    task_updates={"source": module_name, "phase": "pip", "progress": 0},
+                    worker=lambda task_id: install_runtime_dependency(
+                        module_name,
+                        _task_id=task_id,
+                        _state=self.state,
+                    ),
                 )
             elif method == "POST" and path == "/api/chat/launch":
                 self._send_json(self._launch_chat(body))
@@ -867,6 +926,24 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 if background not in existing:
                     existing.append(background)
         self.state.config_manager.save_background_config()
+        self.state.config_manager.reload()
+        return [_jsonify(item) for item in imported]
+
+    def _import_effect_paths(self, paths: list[str]) -> list[dict[str, Any]]:
+        import tools.file_util as file_util
+
+        existing = self.state.config_manager.config.effect_list
+        imported = []
+        for item in paths:
+            batch = file_util.import_effect(str(item), existing)
+            imported.extend(batch)
+            for effect in batch:
+                if effect not in existing:
+                    existing.append(effect)
+                # Ensure managed directory exists for each imported effect
+                ef_dir = _effect_dir(effect.name)
+                ef_dir.mkdir(parents=True, exist_ok=True)
+        self.state.config_manager.save_effect_config()
         self.state.config_manager.reload()
         return [_jsonify(item) for item in imported]
 
@@ -933,8 +1010,18 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if use_react_runtime and self.state.chat_stream is not None
             else {}
         )
+        effect_names_list = body.get("effectNames") or []
+        if isinstance(effect_names_list, list):
+            effect_names_str = ",".join(str(n) for n in effect_names_list)
+        else:
+            effect_names_str = ""
+        # 将选中特效方案的关键词和用法注入系统模板
+        effect_guide = _build_effect_usage_guide(self.state, effect_names_list if isinstance(effect_names_list, list) else [])
+        if effect_guide:
+            system_template = system_template.rstrip() + "\n\n" + effect_guide
         message = _launch_chat(
             self.state,
+            effect_names=effect_names_str,
             history_file=(default_history_path if reset_history else history_path).as_posix(),
             init_sprite_path=init_sprite_path,
             room_id=room_id,

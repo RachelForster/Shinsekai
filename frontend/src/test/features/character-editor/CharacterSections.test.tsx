@@ -134,6 +134,7 @@ describe("Character editor sections", () => {
         onSpriteTagChange={onSpriteTagChange}
         onSpriteVoiceTextBlur={onSpriteVoiceTextBlur}
         onSpriteVoiceTextChange={onSpriteVoiceTextChange}
+        onSpriteVoiceTypeChange={vi.fn()}
         pendingSpritePaths={["/tmp/new.webp"]}
         pendingVoicePath="/tmp/new.wav"
         selectedSprite={characterDraft.sprites[0]}
@@ -202,7 +203,10 @@ describe("Character editor sections", () => {
           ],
         }}
         deletePending={false}
+        depError={null}
+        depInstalling={false}
         error={null}
+        isChecking={false}
         isError={false}
         isFetched
         isFetching={false}
@@ -211,6 +215,7 @@ describe("Character editor sections", () => {
         memoryName="Mika"
         onAddMemory={onAddMemory}
         onDeleteMemory={onDeleteMemory}
+        onInstallDep={vi.fn()}
         onMemoryInputChange={onMemoryInputChange}
         onRefresh={onRefresh}
       />,

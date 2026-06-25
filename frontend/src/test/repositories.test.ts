@@ -105,6 +105,7 @@ describe("entity repositories", () => {
     await templates.getTemplateSession();
     await templates.saveTemplateSession({
       background: "默认房间",
+      effectNames: [],
       filenameStub: "default",
       historyPath: "",
       initSpritePath: "",
@@ -264,6 +265,7 @@ describe("entity repositories", () => {
         deleteSpriteVoice: vi.fn().mockResolvedValue(character),
         export: vi.fn().mockResolvedValue("/tmp/nanami.zip"),
         generateSetting: vi.fn().mockResolvedValue({ characterSetting: "kind", message: "ok" }),
+        getMem0Status: vi.fn().mockResolvedValue({ status: "ready" }),
         import: vi.fn().mockResolvedValue([character]),
         list: vi.fn().mockResolvedValue([character]),
         listMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
@@ -272,6 +274,7 @@ describe("entity repositories", () => {
         saveEmotionTags: vi.fn().mockResolvedValue(character),
         saveSpriteScale: vi.fn().mockResolvedValue(character),
         saveSpriteVoiceText: vi.fn().mockResolvedValue(character),
+        saveSpriteVoiceType: vi.fn().mockResolvedValue(character),
         translateFields: vi.fn().mockResolvedValue({ characterSetting: "kind", emotionTags: "happy", name: "Nanami" }),
         uploadSpriteVoice: vi.fn().mockResolvedValue(character),
         uploadSprites: vi.fn().mockResolvedValue(character),

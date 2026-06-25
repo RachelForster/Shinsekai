@@ -13,6 +13,12 @@ from typing import TYPE_CHECKING, Type
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
+from sdk.hooks import (
+    BeforeChatContext,
+    BeforeCompactContext,
+    MessageAddedContext,
+    PluginHookDispatcher,
+)
 
 if TYPE_CHECKING:
     from llm.tools.tool_manager import ToolManager
@@ -119,7 +125,7 @@ class PluginCapabilityRegistry:
     :meth:`register_llm_tool` callbacks. You may still use :meth:`register_llm_tool` for imperative registration.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, hook_dispatcher: PluginHookDispatcher | None = None) -> None:
         self._llm_adapters: dict[str, Type[LLMAdapter]] = {}
         self._tts_adapters: dict[str, Type[TTSAdapter]] = {}
         self._asr_adapters: dict[str, Type[ASRAdapter]] = {}
@@ -138,7 +144,7 @@ class PluginCapabilityRegistry:
         self._workflow_contributions: list[WorkflowContribution] = []
         self._output_contract_patches: list[OutputContractPatch] = []
         # [MemorySystem] 精简前钩子存储列表
-        self._compact_hooks: list[Callable[[list], None]] = []
+        self._hook_dispatcher = hook_dispatcher or PluginHookDispatcher()
 
     def register_llm_adapter(self, provider: str, adapter_cls: Type[LLMAdapter]) -> None:
         self._llm_adapters[provider] = adapter_cls
@@ -274,9 +280,38 @@ class PluginCapabilityRegistry:
         self._output_contract_patches.append(patch)
 
     # [MemorySystem] 注册精简前回调钩子
+    @property
+    def hook_dispatcher(self) -> PluginHookDispatcher:
+        return self._hook_dispatcher
+
     def register_compact_hook(self, hook: Callable[[list], None]) -> None:
         """注册精简前回调。回调接收即将被精简的完整消息列表，在 compact_messages() 执行前调用。"""
-        self._compact_hooks.append(hook)
+        def _legacy_context_adapter(context: BeforeCompactContext) -> None:
+            hook(context.messages)
+
+        self._hook_dispatcher.register_before_compact(
+            _legacy_context_adapter,
+            label=getattr(hook, "__name__", "") or "legacy_compact_hook",
+            legacy_hook=hook,
+        )
+
+    def register_before_compact_hook(
+        self,
+        hook: Callable[[BeforeCompactContext], None],
+    ) -> None:
+        self._hook_dispatcher.register_before_compact(hook)
+
+    def register_message_added_hook(
+        self,
+        hook: Callable[[MessageAddedContext], None],
+    ) -> None:
+        self._hook_dispatcher.register_message_added(hook)
+
+    def register_before_chat_hook(
+        self,
+        hook: Callable[[BeforeChatContext], None],
+    ) -> None:
+        self._hook_dispatcher.register_before_chat(hook)
 
     @property
     def llm_adapters(self) -> dict[str, Type[LLMAdapter]]:
@@ -339,7 +374,7 @@ class PluginCapabilityRegistry:
     # [MemorySystem] 暴露已注册的精简前钩子列表
     @property
     def compact_hooks(self) -> list[Callable[[list], None]]:
-        return list(self._compact_hooks)
+        return list(self._hook_dispatcher.legacy_compact_hooks)
 
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
         for registrar in self._llm_tool_registrars:

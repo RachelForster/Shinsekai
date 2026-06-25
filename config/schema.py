@@ -39,6 +39,7 @@ class Sprite(BaseModel):
     path: FilePath = Field(..., description="立绘图片的文件路径")
     voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
+    voice_type: Optional[str] = Field(None, description="语音类型: preset 或 reference")
 
 class Character(BaseModel):
     """单个角色配置的实体模型"""
@@ -75,11 +76,11 @@ class Background(BaseModel):
 # API Config Model
 class ApiConfig(BaseModel):
     """API 相关的配置，如 GPT-SoVITS 和 LLM 的设置"""
-    gpt_sovits_api_path: DefaultIfNone[str] = Field(default='', description="GPT-SoVITS API 的工作目录")
-    gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='http://127.0.0.1:9880', description="GPT-SoVITS API 的访问 URL")
+    gpt_sovits_api_path: DefaultIfNone[str] = Field(default='', description="TTS 服务启动目录（历史字段名）")
+    gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='https://127.0.0.1:9880', description="TTS 服务访问 URL")
     tts_provider: DefaultIfNone[str] = Field(
         default="gpt-sovits",
-        description="TTS 提供器: gpt-sovits / genie-tts / none（不使用语音合成）",
+        description="TTS 提供器: gpt-sovits / kaggle-gpt-sovits / genie-tts / index-tts / cosyvoice / none（不使用语音合成）",
     )
     tts_speed: DefaultIfNone[float] = Field(default=1.0, description="TTS 语速 (默认值 1.0)")
 
@@ -332,10 +333,19 @@ class SystemConfig(BaseModel):
         description="清辅音保护 protect",
     )
 
+class Effect(BaseModel):
+    """单个特效方案的实体模型"""
+    name: str = Field(..., description="特效方案名称")
+    color: str = Field(default="#5b8def", description="特效方案标识颜色")
+    prompt_text: DefaultIfNone[str] = Field(default="", description="通用提示词")
+    audio_list: Optional[List[str]] = Field(default_factory=list, description="特效音频列表")
+    audio_tags: DefaultIfNone[str] = Field(default="", description="特效音频信息")
+
 # Main Config Model
 class AppConfig(BaseModel):
     """应用的整体配置模型，包含角色列表、API 配置和系统配置"""
     characters: List[Character] = Field(..., description="角色配置列表")
     background_list: List[Background] = Field(..., description="背景组设置")
+    effect_list: List[Effect] = Field(default_factory=list, description="特效方案列表")
     api_config: ApiConfig = Field(..., description="API 相关配置")
     system_config: SystemConfig = Field(..., description="系统相关配置")

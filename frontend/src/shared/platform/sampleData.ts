@@ -67,7 +67,7 @@ export const sampleConfig: AppConfig = {
   },
   api_config: {
     gpt_sovits_api_path: "",
-    gpt_sovits_url: "http://127.0.0.1:9880",
+    gpt_sovits_url: "https://127.0.0.1:9880",
     tts_provider: "gpt-sovits",
     tts_speed: 1,
     tts_split_enabled: false,
@@ -107,6 +107,15 @@ export const sampleConfig: AppConfig = {
       bg_tags: "室内、默认、夜晚",
       bgm_list: ["data/bgm/room/quiet-night.mp3"],
       bgm_tags: "音乐 1：安静、夜晚\n",
+    },
+  ],
+  effect_list: [
+    {
+      name: "默认特效",
+      color: "#5b8def",
+      prompt_text: "通用场景音效",
+      audio_list: [],
+      audio_tags: "",
     },
   ],
   characters: [

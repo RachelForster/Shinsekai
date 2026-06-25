@@ -32,7 +32,7 @@ def test_runtime_dependency_error_maps_mem0_package():
         "kind": "missing_dependency",
         "message": "Missing Python module: mem0",
         "moduleName": "mem0",
-        "packageName": "mem0ai",
+        "packageName": "mem0ai[extras]",
     }
 
 

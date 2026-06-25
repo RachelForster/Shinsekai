@@ -1,4 +1,4 @@
-import { Brain, RefreshCw } from "lucide-react";
+import { Brain, Download, RefreshCw } from "lucide-react";
 
 import { useI18n } from "../../shared/i18n";
 import type { CharacterMemoryList } from "../../shared/platform/types";
@@ -8,8 +8,11 @@ interface CharacterMemorySectionProps {
   addPending: boolean;
   data?: CharacterMemoryList;
   deletePending: boolean;
+  depError?: { kind: string; moduleName: string; packageName: string } | null;
+  depInstalling: boolean;
   error: unknown;
   id?: string;
+  isChecking: boolean;
   isError: boolean;
   isFetching: boolean;
   isFetched: boolean;
@@ -18,6 +21,7 @@ interface CharacterMemorySectionProps {
   memoryName: string;
   onAddMemory: () => void;
   onDeleteMemory: (memory: { id: string; memory: string }) => void;
+  onInstallDep: () => void;
   onMemoryInputChange: (value: string) => void;
   onRefresh: () => void;
 }
@@ -26,8 +30,11 @@ export function CharacterMemorySection({
   addPending,
   data,
   deletePending,
+  depError,
+  depInstalling,
   error,
   id,
+  isChecking,
   isError,
   isFetched,
   isFetching,
@@ -36,6 +43,7 @@ export function CharacterMemorySection({
   memoryName,
   onAddMemory,
   onDeleteMemory,
+  onInstallDep,
   onMemoryInputChange,
   onRefresh,
 }: CharacterMemorySectionProps) {
@@ -48,18 +56,33 @@ export function CharacterMemorySection({
         <div className="page__actions">
           <span className="entity-list__meta">{data ? t("character.memory.count", { count: data.count }) : ""}</span>
           <Button
-            disabled={!memoryName || isFetching}
+            disabled={!memoryName || isFetching || depInstalling || isChecking}
             icon={<RefreshCw aria-hidden className="button__icon" />}
             onClick={onRefresh}
             variant="ghost"
           >
-            {t("character.memory.refresh")}
+            {isChecking ? t("character.memory.initializing") : t("character.memory.refresh")}
           </Button>
         </div>
       </div>
       {!memoryName ? <EmptyState title={t("character.memory.nameRequired")} /> : null}
+      {memoryName && isChecking ? <EmptyState title={t("character.memory.initializing")} /> : null}
+      {memoryName && depError ? (
+        <div className="empty-state" role="status">
+          <div className="empty-state__icon">
+            <Download aria-hidden size={32} />
+          </div>
+          <p className="empty-state__title">{t("character.memory.depMissingTitle")}</p>
+          <p className="empty-state__body">{t("character.memory.depMissingBody")}</p>
+          <div className="empty-state__actions">
+            <AsyncButton loading={depInstalling} onClick={onInstallDep} variant="primary">
+              {depInstalling ? t("character.memory.depInstalling") : t("character.memory.depMissingInstall")}
+            </AsyncButton>
+          </div>
+        </div>
+      ) : null}
       {memoryName && isLoading ? <EmptyState title={t("character.memory.loading")} /> : null}
-      {memoryName && isError ? (
+      {memoryName && isError && !depError ? (
         <QueryErrorState
           body={t("character.memory.error")}
           error={error}
@@ -68,7 +91,7 @@ export function CharacterMemorySection({
           title={t("common.operationFailed")}
         />
       ) : null}
-      {memoryName && isFetched && !isLoading && !isError && !data?.memories.length ? (
+      {memoryName && isFetched && !isLoading && !isError && !depError && !data?.memories.length ? (
         <EmptyState title={t("character.memory.empty")} />
       ) : null}
       {data?.memories.length ? (
@@ -97,17 +120,19 @@ export function CharacterMemorySection({
           ))}
         </div>
       ) : null}
-      <div className="memory-add-row">
-        <TextInput
-          disabled={!memoryName}
-          onChange={(event) => onMemoryInputChange(event.target.value)}
-          placeholder={t("character.memory.placeholder")}
-          value={memoryInput}
-        />
-        <AsyncButton disabled={!memoryName || !memoryInput.trim()} loading={addPending} onClick={onAddMemory}>
-          {t("character.memory.add")}
-        </AsyncButton>
-      </div>
+      {!depError ? (
+        <div className="memory-add-row">
+          <TextInput
+            disabled={!memoryName}
+            onChange={(event) => onMemoryInputChange(event.target.value)}
+            placeholder={t("character.memory.placeholder")}
+            value={memoryInput}
+          />
+          <AsyncButton disabled={!memoryName || !memoryInput.trim()} loading={addPending} onClick={onAddMemory}>
+            {t("character.memory.add")}
+          </AsyncButton>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -99,12 +99,14 @@ def register_api_tab(ctx: WebUIContext) -> None:
             with gr.Column():
                 _gsv_url, _gpt_sovits_work_path, _tts_provider = ctx.config_manager.get_gpt_sovits_config()
                 gr.Markdown("### TTS API 配置，如果没有可以不填，如果你想让角色读出台词，就需要配置")
-                gr.Markdown("说明：Genie TTS 适用于 CPU；GPT SoVITS 更依赖 GPU 性能。选择「不使用」则不加载语音合成。")
-                _tts_choices = ["不使用", "Genie TTS", "GPT SoVITS"]
+                gr.Markdown("说明：Genie TTS 适用于 CPU；GPT SoVITS 更依赖 GPU 性能；Kaggle GPT-SoVITS 使用远端 Kaggle Notebook API。选择「不使用」则不加载语音合成。")
+                _tts_choices = ["不使用", "Genie TTS", "Kaggle GPT-SoVITS", "GPT SoVITS"]
                 if _tts_provider == "none":
                     _tts_val = "不使用"
                 elif _tts_provider == "genie-tts":
                     _tts_val = "Genie TTS"
+                elif _tts_provider == "kaggle-gpt-sovits":
+                    _tts_val = "Kaggle GPT-SoVITS"
                 else:
                     _tts_val = "GPT SoVITS"
                 tts_provider = gr.Dropdown(
@@ -121,7 +123,12 @@ def register_api_tab(ctx: WebUIContext) -> None:
                 )
 
                 sovits_url = gr.Textbox(label="TTS引擎 API 调用地址", value=_gsv_url)
-                gpt_sovits_api_path = gr.Textbox(label="TTS引擎 服务启动路径", value=_gpt_sovits_work_path)
+                gpt_sovits_api_path = gr.Textbox(
+                    label="TTS引擎 服务启动路径",
+                    value="" if _tts_provider == "kaggle-gpt-sovits" else _gpt_sovits_work_path,
+                    interactive=_tts_provider != "kaggle-gpt-sovits",
+                    placeholder="Kaggle 模式不使用本地 GPT-SoVITS 路径",
+                )
                 t2i_provider = gr.Textbox(
                     label="",
                     value=ctx.config_manager.config.api_config.t2i_provider or "comfyui",
@@ -184,10 +191,27 @@ def register_api_tab(ctx: WebUIContext) -> None:
                     - 如遇下载问题，请检查网络连接或稍后重试
                     """
                     )
+        def _update_tts_path_input(selected_provider: str):
+            if selected_provider == "Kaggle GPT-SoVITS":
+                return gr.update(
+                    value="",
+                    interactive=False,
+                    placeholder="Kaggle 模式不使用本地 GPT-SoVITS 路径",
+                )
+            return gr.update(
+                interactive=True,
+                placeholder="整合包或工程根目录，按你的部署填写",
+            )
+
         llm_provider.change(
             ctx.config_manager.update_llm_info,
             inputs=llm_provider,
             outputs=[base_url, llm_model, api_key],
+        )
+        tts_provider.change(
+            _update_tts_path_input,
+            inputs=tts_provider,
+            outputs=gpt_sovits_api_path,
         )
 
         save_api_btn.click(

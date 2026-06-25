@@ -22,6 +22,7 @@ import type {
   ChatHistoryEntry,
   ChatSnapshot,
   ChatStageEvent,
+  Effect,
   LogSnapshot,
   MusicCoverRunResult,
   PluginCatalogItem,
@@ -547,6 +548,86 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(background);
       },
     },
+    effects: {
+      async delete(name) {
+        config.effect_list = config.effect_list.filter((effect) => effect.name !== name);
+      },
+      async deleteAllAudio(name) {
+        const effect = config.effect_list.find((item) => item.name === name);
+        if (!effect) {
+          throw new Error("特效方案不存在。");
+        }
+        effect.audio_list = [];
+        effect.audio_tags = "";
+        return delay(effect);
+      },
+      async deleteAudio(name, index) {
+        const effect = config.effect_list.find((item) => item.name === name);
+        if (!effect || index < 0 || index >= effect.audio_list.length) {
+          throw new Error("特效音频不存在。");
+        }
+        effect.audio_list = effect.audio_list.filter((_, itemIndex) => itemIndex !== index);
+        effect.audio_tags = effect.audio_tags
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .filter((_, itemIndex) => itemIndex !== index)
+          .map((line, itemIndex) => `特效 ${itemIndex + 1}：${line.split(/\：|:/).slice(1).join("：")}`)
+          .join("\n");
+        if (effect.audio_tags) {
+          effect.audio_tags += "\n";
+        }
+        return delay(effect);
+      },
+      export: (name) => delay(`./data/export/${name}.ef`),
+      import: async (items) => {
+        const imported = items.map<Effect>((item, index) => {
+          const label = item instanceof File ? item.name : item.split("/").pop() || `effect-${index + 1}`;
+          return {
+            name: label.replace(/\.ef$/i, ""),
+            color: "#5b8def",
+            prompt_text: "",
+            audio_list: [],
+            audio_tags: "",
+          };
+        });
+        config.effect_list = [...config.effect_list, ...imported];
+        return delay(imported);
+      },
+      list: () => delay(clone(config.effect_list)),
+      async save(effect, originalName) {
+        if (originalName && originalName !== effect.name) {
+          const existing = config.effect_list.find((item) => item.name === originalName);
+          if (existing) {
+            Object.assign(existing, effect);
+            return delay(clone(existing));
+          }
+        }
+        const existing = config.effect_list.find((item) => item.name === effect.name);
+        if (existing) {
+          Object.assign(existing, effect);
+          return delay(clone(existing));
+        }
+        config.effect_list = [...config.effect_list, clone(effect)];
+        return delay(clone(effect));
+      },
+      async saveAudioTags(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) {
+          throw new Error("特效方案不存在。");
+        }
+        effect.audio_tags = input.audioTags;
+        return delay(effect);
+      },
+      async uploadAudio(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) {
+          throw new Error("特效方案不存在。");
+        }
+        effect.audio_list = [...effect.audio_list, ...input.paths];
+        effect.audio_tags = `${input.audioTags || ""}${input.paths.map((_, index) => `特效 ${effect.audio_list.length - input.paths.length + index + 1}：`).join("\n")}\n`;
+        return delay(effect);
+      },
+    },
     chat: {
       async close() {
         clearScheduledChatUpdates();
@@ -1018,6 +1099,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         config.characters.push(...imported);
         return delay(imported);
       },
+      getMem0Status: () => delay({ status: "ready" as const }),
       list: () => delay(config.characters),
       async listMemories(name) {
         const agentId = name || "user";
@@ -1098,6 +1180,17 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         character.sprites[spriteIndex] = { ...character.sprites[spriteIndex], voice_text: voiceText };
         return delay(character);
       },
+      async saveSpriteVoiceType(name, spriteIndex, voiceType) {
+        const character = config.characters.find((item) => item.name === name);
+        if (!character || !character.sprites[spriteIndex]) {
+          throw new Error("立绘不存在。");
+        }
+        character.sprites[spriteIndex] = {
+          ...character.sprites[spriteIndex],
+          voice_type: voiceType as "preset" | "reference" | undefined,
+        };
+        return delay(character);
+      },
       async translateFields(input) {
         return delay({
           characterSetting: input.characterSetting,
@@ -1164,8 +1257,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           options,
         );
         await delay(null, 160);
+        const bundleRoots = {
+          genie: "data/tts_bundles/installed/genie_tts_server/Genie-TTS-Server",
+          gptso: "data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro-20250604",
+          gptso50: "data/tts_bundles/installed/gpt_sovits_nvidia50/GPT-SoVITS-v2pro-20250604-nvidia50",
+        } as const;
         const result = {
-          path: `data/tts_bundles/installed/${input.kind}`,
+          path: bundleRoots[input.kind],
           provider: input.kind === "genie" ? "genie-tts" : "gpt-sovits",
         } as const;
         previewTask(

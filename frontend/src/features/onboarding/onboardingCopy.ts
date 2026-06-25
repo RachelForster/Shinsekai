@@ -40,6 +40,7 @@ export type OnboardingCopy = {
     ttsPath: string;
     ttsProvider: string;
     ttsSpeed: string;
+    unsavedWarning: string;
     voiceDescription: string;
     voiceTitle: string;
   };
@@ -106,6 +107,7 @@ export type OnboardingCopy = {
     visualGuide: string;
     visualTitle: string;
     voiceBody: string;
+    uninstalledWarning: string;
     voiceGuide: string;
     voiceTitle: string;
   };
@@ -158,6 +160,8 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       ttsPath: "TTS service path / URL",
       ttsProvider: "Voice provider",
       ttsSpeed: "Speech speed",
+      unsavedWarning:
+        "You haven't saved your API configuration yet. Shinsekai can't respond without an LLM provider. Skip anyway?",
       voiceDescription: "Choose a voice provider and keep a practical speech speed.",
       voiceTitle: "Voice",
     },
@@ -224,6 +228,8 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       reloadPending: "Download finished. Reloading plugins so the new settings pages become available...",
       selectedCount: "{count} selected",
       title: "Common plugins",
+      uninstalledWarning:
+        "No plugins have been installed yet. Voice, vision, and browser features won't be available. Skip anyway?",
       visualBody: "Gives the assistant visual understanding for screen and image workflows.",
       visualGuide: "After installation, enable active screen recognition in the visual plugin settings.",
       visualTitle: "Visual plugin",
@@ -278,6 +284,8 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       ttsPath: "TTS サービスパス / URL",
       ttsProvider: "音声プロバイダー",
       ttsSpeed: "話速",
+      unsavedWarning:
+        "API 設定がまだ保存されていません。LLM プロバイダーがないと AI は応答できません。それでもスキップしますか？",
       voiceDescription: "音声プロバイダーと実用的な話速を設定します。",
       voiceTitle: "音声",
     },
@@ -344,6 +352,8 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
         "ダウンロードが完了しました。新しい設定ページを有効にするため、プラグインを再読み込みしています...",
       selectedCount: "{count} 件選択中",
       title: "よく使うプラグイン",
+      uninstalledWarning:
+        "プラグインがまだインストールされていません。音声・視覚・ブラウザ機能は利用できません。それでもスキップしますか？",
       visualBody: "画面や画像を理解するための視覚拡張です。",
       visualGuide: "インストール後、視覚プラグイン設定で画面の自動認識を有効にしてください。",
       visualTitle: "視覚プラグイン",
@@ -397,6 +407,7 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       ttsPath: "TTS 服务路径 / URL",
       ttsProvider: "语音服务商",
       ttsSpeed: "语速",
+      unsavedWarning: "API 配置还没有保存哦。没有 LLM 服务商 AI 就无法回复。确定要跳过吗？",
       voiceDescription: "需要本地语音能力时，直接下载推荐语音包即可。",
       voiceTitle: "语音",
     },
@@ -459,6 +470,7 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       reloadPending: "下载已完成，正在重载插件服务，让新的设置页生效...",
       selectedCount: "已选择 {count} 项",
       title: "常见插件",
+      uninstalledWarning: "你还没有安装插件哦。跳过的话语音、视觉、浏览器功能都用不了。确定要跳过吗？",
       visualBody: "让助手具备屏幕和图片理解能力。",
       visualGuide: "安装后进入视觉插件设置，勾选主动识别屏幕。",
       visualTitle: "视觉插件",

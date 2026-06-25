@@ -8,7 +8,16 @@ from config.schema import (
     ApiConfig,
     SystemConfig,
     Background,
+    Effect,
     clamp_compact_target_ratio,
+)
+from config.tts_provider_config import (
+    default_tts_work_path,
+    is_http_url,
+    normalize_tts_provider,
+    requires_tts_work_path,
+    tts_server_url_or_default,
+    uses_shared_tts_server_config,
 )
 from llm.constants import LLM_BASE_URLS
 from config.mirror_env import apply_mirror_environment
@@ -41,6 +50,7 @@ class ConfigManager:
     _CHARACTERS_CONFIG_PATH = Path("data/config/characters.yaml")
     _SYSTEM_CONFIG_PATH = Path("data/config/system_config.yaml")
     _BACKGOUND_CONFIG_PATH = Path("data/config/background.yaml")
+    _EFFECT_CONFIG_PATH = Path("data/config/effect.yaml")
     _VERSION_PATH = Path("VERSION")
 
     def __new__(cls, *args, **kwargs):
@@ -108,6 +118,7 @@ class ConfigManager:
             characters_data = self._load_yaml(self._CHARACTERS_CONFIG_PATH)
             system_data = self._load_yaml(self._SYSTEM_CONFIG_PATH)
             background_data = self._load_yaml(self._BACKGOUND_CONFIG_PATH)
+            effect_data = self._load_yaml(self._EFFECT_CONFIG_PATH)
 
             # 通过 Pydantic 进行验证和结构化
             api_config = ApiConfig.model_validate(api_data)
@@ -119,13 +130,17 @@ class ConfigManager:
                 
             character_list = [Character.model_validate(item) for item in characters_data]
             background = [Background.model_validate(item) for item in background_data]
+            if not isinstance(effect_data, list):
+                effect_data = []
+            effect_list = [Effect.model_validate(item) for item in effect_data]
 
             # 构建顶层 AppConfig 实体
             self._config = AppConfig(
                 api_config=api_config,
                 system_config=system_config,
                 characters=character_list,
-                background_list=background
+                background_list=background,
+                effect_list=effect_list,
             )
             apply_network_proxy_environment(system_config)
             apply_mirror_environment(system_config)
@@ -227,17 +242,7 @@ class ConfigManager:
         current_api_config.llm_provider = llm_provider
         current_api_config.llm_base_url = base_url
         current_api_config.is_streaming = (is_streaming == "是")
-        def _norm_tts(v: str) -> str:
-            s = (v or "").strip().lower()
-            if s in ("none", "off", "disable", "disabled", "不使用"):
-                return "none"
-            legacy = {
-                "gpt sovits": "gpt-sovits",
-                "genie tts": "genie-tts",
-            }
-            return legacy.get(s, (v or "").strip().lower())
-
-        current_api_config.tts_provider = _norm_tts(tts_provider)
+        current_api_config.tts_provider = normalize_tts_provider(tts_provider)
 
         def _norm_t2i_provider(v: str) -> str:
             s = (v or "").strip()
@@ -255,8 +260,29 @@ class ConfigManager:
             return s
 
         current_api_config.t2i_provider = _norm_t2i_provider(t2i_provider)
-        current_api_config.gpt_sovits_url = sovits_url
-        current_api_config.gpt_sovits_api_path = gpt_sovits_api_path
+        current_api_config.gpt_sovits_url = tts_server_url_or_default(
+            current_api_config.tts_provider,
+            sovits_url,
+        )
+        current_api_config.gpt_sovits_api_path = default_tts_work_path(
+            current_api_config.tts_provider,
+            gpt_sovits_api_path,
+        )
+        if uses_shared_tts_server_config(current_api_config.tts_provider):
+            tts_url = str(current_api_config.gpt_sovits_url or "").strip()
+            tts_path = str(current_api_config.gpt_sovits_api_path or "").strip()
+            if not tts_url:
+                return "错误：当前 TTS 引擎需要填写 URL。"
+            if not is_http_url(tts_url):
+                return "错误：TTS URL 必须是有效的 http(s) URL。"
+            if requires_tts_work_path(current_api_config.tts_provider) and not tts_path:
+                return "错误：本地 TTS 引擎需要填写服务启动路径。"
+            if (
+                tts_path
+                and current_api_config.tts_provider != "kaggle-gpt-sovits"
+                and not Path(tts_path).expanduser().is_dir()
+            ):
+                return "错误：TTS 服务启动路径必须是已存在的目录。"
         current_api_config.t2i_api_url=t2i_url
         current_api_config.t2i_work_path=t2i_work_path
         current_api_config.t2i_default_workflow_path=t2i_default_workflow_path
@@ -323,12 +349,21 @@ class ConfigManager:
         if self._config is None:
             print("警告：配置未加载或加载失败，无法保存角色配置。")
             return
-            
+
         print("正在保存 background.yaml...")
-        # 角色列表需要将每个 Character 实体转换为字典
         background_data = [char.model_dump(by_alias=True) for char in self.config.background_list]
         self._save_single_config(self._BACKGOUND_CONFIG_PATH, background_data)
         print("background.yaml 保存完成。")
+
+    def save_effect_config(self) -> None:
+        if self._config is None:
+            print("警告：配置未加载或加载失败，无法保存特效配置。")
+            return
+
+        print("正在保存 effect.yaml...")
+        effect_data = [ef.model_dump(by_alias=True) for ef in self.config.effect_list]
+        self._save_single_config(self._EFFECT_CONFIG_PATH, effect_data)
+        print("effect.yaml 保存完成。")
 
     def _save_single_config(self, file_path: Path, data: Union[Dict, List]) -> None:
         """保存单个配置到 YAML 文件"""
@@ -344,6 +379,12 @@ class ConfigManager:
         for char in self.config.background_list:
             if char.name.lower() == name.lower():
                 return char
+        return None
+
+    def get_effect_by_name(self, name: str) -> Optional[Effect]:
+        for ef in self.config.effect_list:
+            if ef.name.lower() == name.lower():
+                return ef
         return None
 
     def get_character_by_name(self, name: str) -> Optional[Character]:
@@ -363,10 +404,11 @@ class ConfigManager:
         return llm_provider, model, base_url, api_key
 
     def get_gpt_sovits_config(self):
+        provider = normalize_tts_provider(self.config.api_config.tts_provider)
         return (
-            self.config.api_config.gpt_sovits_url,
-            self.config.api_config.gpt_sovits_api_path,
-            self.config.api_config.tts_provider
+            tts_server_url_or_default(provider, self.config.api_config.gpt_sovits_url),
+            default_tts_work_path(provider, self.config.api_config.gpt_sovits_api_path),
+            provider,
         )
 
     def get_adapter_extra_config(self, kind: str, provider_key: str) -> Dict[str, Any]:

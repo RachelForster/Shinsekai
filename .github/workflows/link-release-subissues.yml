@@ -1,0 +1,405 @@
+name: Link release sub-issues
+
+on:
+  issue_comment:
+    types: [created, edited]
+  issues:
+    types: [opened, edited, reopened, closed, assigned, unassigned, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to link as a release sub-issue"
+        required: true
+        type: number
+      parent_issue_number:
+        description: "Optional release tracking issue number"
+        required: false
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Link issue to release tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          INPUT_PARENT_ISSUE_NUMBER: ${{ inputs.parent_issue_number }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          from urllib.parse import quote
+
+          repo = os.environ["REPO"]
+          owner, name = repo.split("/", 1)
+          event_name = os.environ["EVENT_NAME"]
+          issue_number = os.environ.get("INPUT_ISSUE_NUMBER") or os.environ.get("EVENT_ISSUE_NUMBER")
+          input_parent_issue_number = os.environ.get("INPUT_PARENT_ISSUE_NUMBER")
+          comment_body = os.environ.get("COMMENT_BODY") or ""
+
+          def gh_api(*args: str, input_json: dict | None = None, check: bool = True) -> str:
+              command = ["gh", "api", *args]
+              payload = None if input_json is None else json.dumps(input_json)
+              result = subprocess.run(
+                  command,
+                  input=payload,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+              if check and result.returncode != 0:
+                  print(f"gh api failed: {' '.join(command[2:])}", file=sys.stderr)
+                  print(result.stderr, file=sys.stderr)
+                  raise SystemExit(result.returncode)
+              return result.stdout
+
+          def fetch_issue(number: int) -> dict:
+              return json.loads(gh_api(f"repos/{repo}/issues/{number}"))
+
+          def fetch_parent_issue(number: int) -> dict | None:
+              result = subprocess.run(
+                  ["gh", "api", f"repos/{repo}/issues/{number}/parent"],
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+              if result.returncode == 0:
+                  return json.loads(result.stdout)
+              if "not found" in result.stderr.lower() or "404" in result.stderr:
+                  return None
+              print(result.stderr, file=sys.stderr)
+              raise SystemExit(result.returncode)
+
+          def patch_issue_body(number: int, body: str) -> None:
+              gh_api(
+                  f"repos/{repo}/issues/{number}",
+                  "--method",
+                  "PATCH",
+                  "--input",
+                  "-",
+                  input_json={"body": body},
+              )
+
+          def set_issue_milestone(issue: dict, milestone_number: int) -> None:
+              issue_number = int(issue["number"])
+              current = issue.get("milestone") or {}
+              if current.get("number") == milestone_number:
+                  return
+              gh_api(
+                  f"repos/{repo}/issues/{issue_number}",
+                  "--method",
+                  "PATCH",
+                  "--input",
+                  "-",
+                  input_json={"milestone": milestone_number},
+              )
+              print(f"Set milestone #{milestone_number} on issue #{issue_number}")
+
+          def issue_ref(number: int) -> str:
+              return f"#{number}"
+
+          def issue_severity(issue: dict) -> str:
+              labels = {label["name"].lower() for label in issue.get("labels", [])}
+              for severity in ("p0", "p1", "p2", "p3"):
+                  if severity in labels:
+                      return severity.upper()
+              body = issue.get("body") or ""
+              for severity in ("P0", "P1", "P2", "P3"):
+                  if re.search(rf"- \[[xX ]\]\s+{severity}\b", body):
+                      return severity
+              return "TBD"
+
+          def issue_owner(issue: dict) -> str:
+              assignees = issue.get("assignees") or []
+              if assignees:
+                  return ", ".join(f"@{assignee['login']}" for assignee in assignees)
+              return "TBD"
+
+          def issue_status(issue: dict) -> str:
+              if issue.get("state") == "closed":
+                  return "closed"
+              labels = {label["name"].lower() for label in issue.get("labels", [])}
+              if "cherry-picked" in labels:
+                  return "cherry-picked"
+              if "needs-cherrypick" in labels:
+                  return "needs cherrypick"
+              if "fixed-on-main" in labels:
+                  return "fixed on main"
+              if "needs-fix" in labels:
+                  return "needs fix"
+              return "open"
+
+          def parse_fix_field(issue: dict, label: str) -> str:
+              body = issue.get("body") or ""
+              pattern = rf"{re.escape(label)}\s*:\s*(.+)"
+              match = re.search(pattern, body, flags=re.IGNORECASE)
+              if not match:
+                  return "TBD"
+              value = match.group(1).strip()
+              return value or "TBD"
+
+          def blocker_row(issue: dict) -> str:
+              number = int(issue["number"])
+              cherry_pick = parse_fix_field(issue, "Cherry-picked to release branch")
+              if cherry_pick == "TBD" and "cherry-picked" in {
+                  label["name"].lower() for label in issue.get("labels", [])
+              }:
+                  cherry_pick = "yes"
+              return (
+                  f"| {issue_ref(number)} | {issue_severity(issue)} | {issue_owner(issue)} | "
+                  f"{issue_status(issue)} | {parse_fix_field(issue, 'Fix commit on `main`')} | {cherry_pick} |"
+              )
+
+          def ensure_blockers_table(parent: dict, children: list[dict]) -> None:
+              if not children:
+                  return
+
+              original_body = parent.get("body") or ""
+              body = original_body
+              if "## Blockers" not in body:
+                  body = body.rstrip() + (
+                      "\n\n## Blockers\n\n"
+                      "| Issue | Severity | Owner | Status | Fix commit | Cherry-picked |\n"
+                      "| --- | --- | --- | --- | --- | --- |\n"
+                  )
+
+              lines = body.splitlines()
+              blockers_index = next(
+                  (index for index, line in enumerate(lines) if line.strip().lower() == "## blockers"),
+                  None,
+              )
+              if blockers_index is None:
+                  return
+
+              table_header = "| Issue | Severity | Owner | Status | Fix commit | Cherry-picked |"
+              table_separator = "| --- | --- | --- | --- | --- | --- |"
+
+              header_index = None
+              for index in range(blockers_index + 1, len(lines)):
+                  stripped = lines[index].strip()
+                  if stripped.startswith("## "):
+                      break
+                  if stripped.startswith("| Issue |"):
+                      header_index = index
+                      break
+
+              if header_index is None:
+                  insert_at = blockers_index + 1
+                  lines[insert_at:insert_at] = ["", table_header, table_separator]
+                  header_index = insert_at + 1
+              elif header_index + 1 >= len(lines) or not lines[header_index + 1].strip().startswith("| ---"):
+                  lines.insert(header_index + 1, table_separator)
+
+              table_start = header_index + 2
+              table_end = table_start
+              while table_end < len(lines) and lines[table_end].strip().startswith("|"):
+                  table_end += 1
+
+              child_by_number = {int(child["number"]): child for child in children}
+              seen: set[int] = set()
+              new_rows: list[str] = []
+              for row in lines[table_start:table_end]:
+                  match = re.search(r"#(\d+)", row)
+                  if match and int(match.group(1)) in child_by_number:
+                      number = int(match.group(1))
+                      new_rows.append(blocker_row(child_by_number[number]))
+                      seen.add(number)
+                  else:
+                      new_rows.append(row)
+
+              for number, child in sorted(child_by_number.items()):
+                  if number not in seen:
+                      new_rows.append(blocker_row(child))
+
+              lines[table_start:table_end] = new_rows
+              new_body = "\n".join(lines).rstrip() + "\n"
+              if new_body != original_body:
+                  patch_issue_body(int(parent["number"]), new_body)
+                  print(f"Updated blockers table on #{parent['number']}")
+
+          def parse_parent_number(body: str) -> int | None:
+              patterns = [
+                  r"Parent tracking issue\s*:\s*#(\d+)",
+                  r"Parent tracking issue\s*:\s*.*/issues/(\d+)",
+                  r"Release tracking issue\s*:\s*#(\d+)",
+                  r"Release tracking issue\s*:\s*.*/issues/(\d+)",
+              ]
+              for pattern in patterns:
+                  match = re.search(pattern, body, flags=re.IGNORECASE)
+                  if match:
+                      return int(match.group(1))
+              return None
+
+          def parse_parent_release(issue: dict) -> str | None:
+              body = issue.get("body") or ""
+              patterns = [
+                  r"Parent release\s*:\s*`?(v\d+\.\d+\.\d+)`?",
+                  r"Release\s*:\s*`?(v\d+\.\d+\.\d+)`?",
+                  r"Found in RC\s*:\s*`?(v\d+\.\d+\.\d+)-rc\.\d+`?",
+                  r"\[(?:RC\s+)?(v\d+\.\d+\.\d+)-rc\.\d+\]",
+              ]
+              haystacks = [body, issue.get("title") or ""]
+              for haystack in haystacks:
+                  for pattern in patterns:
+                      match = re.search(pattern, haystack, flags=re.IGNORECASE)
+                      if match:
+                          return match.group(1)
+              return None
+
+          def search_tracking_issue(release: str) -> dict | None:
+              title = f"Release tracking: {release}"
+              query = f'repo:{repo} is:issue in:title "{title}"'
+              output = gh_api(f"search/issues?q={quote(query, safe='')}&per_page=10")
+              for item in json.loads(output).get("items", []):
+                  if item.get("title") == title:
+                      return item
+              return None
+
+          def parse_issue_numbers_from_comment(body: str) -> list[int]:
+              numbers: list[int] = []
+              seen: set[int] = set()
+              patterns = [
+                  rf"https://github\.com/{re.escape(owner)}/{re.escape(name)}/issues/(\d+)",
+                  r"(?<![\w/-])#(\d+)\b",
+              ]
+              for pattern in patterns:
+                  for match in re.finditer(pattern, body, flags=re.IGNORECASE):
+                      number = int(match.group(1))
+                      if number not in seen:
+                          numbers.append(number)
+                          seen.add(number)
+              return numbers
+
+          def link_child(parent: dict, child: dict) -> bool:
+              parent_number = int(parent["number"])
+              child_number = int(child["number"])
+              parent_milestone = parent.get("milestone")
+
+              if "pull_request" in child:
+                  print(f"#{child_number}: skipping pull request")
+                  return False
+
+              if parent_number == child_number:
+                  print(f"#{child_number}: parent and child are the same issue")
+                  return False
+
+              if not (parent.get("title") or "").startswith("Release tracking:"):
+                  print(f"#{child_number}: target parent #{parent_number} is not a release tracking issue")
+                  return False
+
+              result = subprocess.run(
+                  [
+                      "gh",
+                      "api",
+                      f"repos/{repo}/issues/{parent_number}/sub_issues",
+                      "--method",
+                      "POST",
+                      "--input",
+                      "-",
+                  ],
+                  input=json.dumps({
+                      "sub_issue_id": child["id"],
+                      "replace_parent": True,
+                  }),
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+
+              if result.returncode == 0:
+                  print(f"Linked #{child_number} under release tracking issue #{parent_number}")
+                  if parent_milestone:
+                      set_issue_milestone(child, int(parent_milestone["number"]))
+                  return True
+
+              stderr = result.stderr.lower()
+              if "already" in stderr or "validation failed" in stderr:
+                  print(f"#{child_number}: may already be linked to #{parent_number}: {result.stderr.strip()}")
+                  if parent_milestone:
+                      set_issue_milestone(child, int(parent_milestone["number"]))
+                  return True
+
+              print(result.stderr, file=sys.stderr)
+              raise SystemExit(result.returncode)
+
+          if event_name == "issue_comment":
+              if not issue_number:
+                  raise SystemExit("No parent issue number was provided for the issue_comment event.")
+              parent = fetch_issue(int(issue_number))
+              if not (parent.get("title") or "").startswith("Release tracking:"):
+                  print(f"#{issue_number}: comment is not on a release tracking issue")
+                  sys.exit(0)
+
+              child_numbers = parse_issue_numbers_from_comment(comment_body)
+              if not child_numbers:
+                  print(f"#{issue_number}: no issue references found in comment")
+                  sys.exit(0)
+
+              linked_children: list[dict] = []
+              for child_number in child_numbers:
+                  child = fetch_issue(child_number)
+                  if link_child(parent, child):
+                      linked_children.append(child)
+
+              ensure_blockers_table(parent, linked_children)
+              sys.exit(0)
+
+          if not issue_number:
+              raise SystemExit("No issue number was provided.")
+
+          child = fetch_issue(int(issue_number))
+          if "pull_request" in child:
+              print(f"#{issue_number}: skipping pull request")
+              sys.exit(0)
+
+          if (child.get("title") or "").startswith("Release tracking:"):
+              print(f"#{issue_number}: skipping release tracking parent issue")
+              sys.exit(0)
+
+          body = child.get("body") or ""
+          parent_number = int(input_parent_issue_number) if input_parent_issue_number else parse_parent_number(body)
+          parent = fetch_issue(parent_number) if parent_number else None
+
+          if parent is None:
+              release = parse_parent_release(child)
+              if release:
+                  parent = search_tracking_issue(release)
+                  if parent is None:
+                      print(f"#{issue_number}: no tracking issue found for {release}")
+
+          if parent is None:
+              parent = fetch_parent_issue(int(issue_number))
+
+          if parent is None:
+              print(f"#{issue_number}: no Parent release, Parent tracking issue, or sub-issue parent found")
+              sys.exit(0)
+
+          parent_number = int(parent["number"])
+          if parent_number == int(issue_number):
+              print(f"#{issue_number}: parent and child are the same issue")
+              sys.exit(0)
+
+          if not (parent.get("title") or "").startswith("Release tracking:"):
+              print(f"#{issue_number}: target parent #{parent_number} is not a release tracking issue")
+              sys.exit(0)
+
+          if link_child(parent, child):
+              ensure_blockers_table(parent, [child])
+          PY

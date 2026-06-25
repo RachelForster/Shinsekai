@@ -253,7 +253,6 @@ check(
   !releaseWorkflow.includes("find frontend/src-tauri/target/release/bundle -type f") &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/appimage/*.AppImage"') &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/deb/*.deb"') &&
-    releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/msi/*.msi"') &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/nsis/*.exe"') &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/dmg/*.dmg"') &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz"'),
