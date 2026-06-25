@@ -28,7 +28,7 @@ def _clean_template_filename(filename: str) -> str:
         raise ValueError("模板文件名不能为空")
     if not name.endswith(".txt"):
         name = f"{name}.txt"
-    if Path(name).name != name or name in {".", ".."}:
+    if os.path.basename(name) != name or name in {".", ".."}:
         raise ValueError("模板文件名不能包含目录")
     if not _TEMPLATE_FILENAME_RE.fullmatch(name):
         raise ValueError("模板文件名包含非法字符")
@@ -141,8 +141,13 @@ def save_template(ctx: WebUIContext, template: str, filename: str):
     if filename == "":
         return "保存文件名不能为空！", template_files
     try:
-        _, dest_path = _template_file_for_write(ctx, filename)
-        with dest_path.open(mode="+wt", encoding="utf-8") as file:
+        name = _clean_template_filename(filename)
+        root = _template_root(ctx)
+        root_str = os.path.realpath(str(root))
+        dest_path = os.path.realpath(os.path.join(root_str, name))
+        if os.path.commonpath([root_str, dest_path]) != root_str:
+            raise PermissionError("模板路径越界")
+        with open(dest_path, mode="+wt", encoding="utf-8") as file:
             file.write(template)
         path_obj = Path(ctx.template_dir_path)
         template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
