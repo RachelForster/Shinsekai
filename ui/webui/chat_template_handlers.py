@@ -70,6 +70,10 @@ def _template_file_for_write(ctx: WebUIContext, filename: str) -> tuple[str, Pat
     return name, Path(path_str)
 
 
+def _template_file_names(ctx: WebUIContext) -> list[str]:
+    return sorted(_template_catalog(ctx).keys())
+
+
 def launch_chat(
     ctx: WebUIContext,
     template: str,
@@ -112,6 +116,7 @@ def launch_chat(
         return "进程已经在运行中！PID: " + str(_main_chat_process.pid)
     except Exception as e:
         print("启动模版失败：", e)
+        return f"启动模版失败：{e}"
 
 
 def stop_chat() -> str:
@@ -136,22 +141,17 @@ def load_template_from_file(ctx: WebUIContext, file_path: str):
 
 
 def save_template(ctx: WebUIContext, template: str, filename: str):
-    path_obj = Path(ctx.template_dir_path)
-    template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
+    try:
+        template_files = _template_file_names(ctx)
+    except Exception:
+        template_files = []
     if filename == "":
         return "保存文件名不能为空！", template_files
     try:
-        name = _clean_template_filename(filename)
-        root = _template_root(ctx)
-        root_str = os.path.realpath(str(root))
-        dest_path = os.path.realpath(os.path.join(root_str, name))
-        if os.path.commonpath([root_str, dest_path]) != root_str:
-            raise PermissionError("模板路径越界")
-        with open(dest_path, mode="+wt", encoding="utf-8") as file:
+        _name, dest_path = _template_file_for_write(ctx, filename)
+        with dest_path.open(mode="+wt", encoding="utf-8") as file:
             file.write(template)
-        path_obj = Path(ctx.template_dir_path)
-        template_files = [file.name for file in path_obj.iterdir() if file.is_file()]
-        return "保存成功", template_files
+        return "保存成功", _template_file_names(ctx)
     except Exception as e:
         return f"保存失败，{e}", template_files
 

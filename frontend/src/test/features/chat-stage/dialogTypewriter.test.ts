@@ -2,9 +2,26 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDialogTypewriterSource,
+  type DialogHtmlNode,
+  type DialogTypewriterSource,
   renderDialogTypewriterFrame,
   renderDialogTypewriterRichFrame,
 } from "../../../features/chat-stage/dialogTypewriter";
+
+type DialogElementNode = Extract<DialogHtmlNode, { kind: "element" }>;
+
+function isDialogElementNode(node: DialogHtmlNode): node is DialogElementNode {
+  return node.kind === "element";
+}
+
+function collectDialogElementNodes(nodes: DialogHtmlNode[]): DialogElementNode[] {
+  return nodes.flatMap((node) => {
+    if (!isDialogElementNode(node)) {
+      return [];
+    }
+    return [node, ...collectDialogElementNodes(node.children)];
+  });
+}
 
 describe("dialog typewriter helpers", () => {
   it("strips the duplicated speaker prefix from html and text sources", () => {
@@ -17,6 +34,17 @@ describe("dialog typewriter helpers", () => {
     expect(source.fullHtml).toBe("<p>Hello<br>world</p>");
     expect(source.fullText).toBe("Hello\nworld");
     expect(source.totalCharacters).toBe(10);
+  });
+
+  it("strips html speaker labels with the separator inside the bold node", () => {
+    const source = buildDialogTypewriterSource({
+      characterName: "Mio",
+      html: "<p><b>Mio：</b>Hello</p>",
+      text: "Mio：Hello",
+    });
+
+    expect(source.fullHtml).toBe("<p>Hello</p>");
+    expect(source.fullText).toBe("Hello");
   });
 
   it("renders html frames without breaking markup", () => {
@@ -87,6 +115,68 @@ describe("dialog typewriter helpers", () => {
         },
       ],
       text: "Hello world\ndocs",
+    });
+  });
+
+  it("sanitizes disallowed tags in rich HTML nodes", () => {
+    const source = buildDialogTypewriterSource({
+      html: `<p>Hello <script>alert(1)</script><iframe src="https://evil.test"></iframe><style>body{background-image:url('x')}</style></p>`,
+      text: "Hello alert(1)",
+    });
+
+    const frame = renderDialogTypewriterRichFrame(source, source.totalCharacters);
+    const tags = collectDialogElementNodes(frame.nodes ?? []).map((node) => node.tag);
+
+    expect(frame.html).not.toContain("<script");
+    expect(frame.html).not.toContain("<iframe");
+    expect(frame.html).not.toContain("<style");
+    expect(tags).not.toContain("script");
+    expect(tags).not.toContain("iframe");
+    expect(tags).not.toContain("style");
+  });
+
+  it("filters unsafe inline styles in rich HTML nodes", () => {
+    const source = buildDialogTypewriterSource({
+      html: `<p style="background-image:url('x');position:fixed;color:red;">Styled</p>`,
+      text: "Styled",
+    });
+
+    const frame = renderDialogTypewriterRichFrame(source, source.totalCharacters);
+    const pNode = collectDialogElementNodes(frame.nodes ?? []).find((node) => node.tag === "p");
+
+    expect(frame.html).not.toContain("background-image");
+    expect(frame.html).not.toContain("position");
+    expect(frame.html).toContain("color: red");
+    expect(pNode?.attrs?.style).toEqual({ color: "red" });
+  });
+
+  it("removes unsafe link schemes from rich HTML nodes", () => {
+    const source = buildDialogTypewriterSource({
+      html: `<p><a href="javascript:alert(1)">js link</a> <a href="data:text/plain;base64,AAAA">data link</a> <a href="https://safe.test">safe</a></p>`,
+      text: "js link data link safe",
+    });
+
+    const frame = renderDialogTypewriterRichFrame(source, source.totalCharacters);
+    const anchors = collectDialogElementNodes(frame.nodes ?? []).filter((node) => node.tag === "a");
+
+    expect(frame.html).not.toContain("javascript:");
+    expect(frame.html).not.toContain("data:");
+    expect(anchors.map((node) => node.attrs?.href)).toEqual([undefined, undefined, "https://safe.test"]);
+  });
+
+  it("returns text nodes when no HTML source is present", () => {
+    const source: DialogTypewriterSource = {
+      cacheKey: "text:Hello world",
+      fullRtlText: "Hello world",
+      fullText: "Hello world",
+      totalCharacters: 11,
+      totalRtlCharacters: 11,
+    };
+
+    expect(renderDialogTypewriterRichFrame(source, source.totalCharacters)).toMatchObject({
+      html: "Hello world",
+      nodes: [{ kind: "text", text: "Hello world" }],
+      text: "Hello world",
     });
   });
 

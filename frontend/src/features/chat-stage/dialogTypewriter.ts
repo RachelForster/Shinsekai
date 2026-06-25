@@ -1,3 +1,4 @@
+import { parseHtmlFragment, stripHtmlFallback } from "./htmlFragment";
 import { markdownToDialogHtml } from "./markdownRenderer";
 
 const typewriterCacheMaxEntries = 96;
@@ -189,28 +190,13 @@ function createTemplate(html: string) {
     template.content.append(cached.cloneNode(true));
     return template;
   }
-  template.innerHTML = html;
+  const fragment = parseHtmlFragment(html);
+  if (!fragment) {
+    return null;
+  }
+  template.content.append(fragment);
   refreshCacheEntry(parsedTemplateCache, html, template.content.cloneNode(true) as DocumentFragment);
   return template;
-}
-
-function stripHtmlFallback(html: string) {
-  let output = "";
-  let inTag = false;
-  for (const char of codepoints(html)) {
-    if (char === "<") {
-      inTag = true;
-      continue;
-    }
-    if (char === ">") {
-      inTag = false;
-      continue;
-    }
-    if (!inTag) {
-      output += char;
-    }
-  }
-  return output;
 }
 
 function htmlPlainText(html: string) {
@@ -577,6 +563,39 @@ function stripLeadingSpeakerSeparator(text: string) {
   return chars.slice(index).join("");
 }
 
+function leadingSpeakerTextPattern(characterName: string) {
+  return new RegExp(`^\\s*${escapeRegExp(characterName.trim())}\\s*[：:]\\s*`, "u");
+}
+
+function leadingSpeakerHtmlLabelMatch(label: string, characterName: string) {
+  const escapedName = escapeRegExp(characterName.trim());
+  const nameOnlyPattern = new RegExp(`^\\s*${escapedName}\\s*$`, "u");
+  const labelWithSeparatorPattern = new RegExp(`^\\s*${escapedName}\\s*[：:]\\s*$`, "u");
+  if (labelWithSeparatorPattern.test(label)) {
+    return { hasSeparator: true, matches: true };
+  }
+  if (nameOnlyPattern.test(label)) {
+    return { hasSeparator: false, matches: true };
+  }
+  return { hasSeparator: false, matches: false };
+}
+
+function firstMeaningfulSiblingAfter(node: Node) {
+  let next = node.nextSibling;
+  while (next) {
+    if (next.nodeType === Node.TEXT_NODE && !(next.textContent ?? "").trim()) {
+      next = next.nextSibling;
+      continue;
+    }
+    return next;
+  }
+  return null;
+}
+
+function startsWithSpeakerSeparator(node: Node | null) {
+  return node?.nodeType === Node.TEXT_NODE && /^\s*[：:]/u.test(node.textContent ?? "");
+}
+
 function firstMeaningfulChild(parent: ParentNode) {
   for (const child of Array.from(parent.childNodes)) {
     if (child.nodeType === Node.TEXT_NODE && !(child.textContent ?? "").trim()) {
@@ -598,12 +617,15 @@ function stripLeadingSpeakerFromParent(parent: ParentNode, characterName: string
   if (first.nodeType !== Node.ELEMENT_NODE || (first as Element).tagName.toLowerCase() !== "b") {
     return false;
   }
-  const speaker = (first.textContent ?? "").trim();
-  if (speaker !== characterName.trim()) {
+  const speakerMatch = leadingSpeakerHtmlLabelMatch(first.textContent ?? "", characterName);
+  if (!speakerMatch.matches) {
     return false;
   }
   const owner = first.parentNode;
   if (!owner) {
+    return false;
+  }
+  if (!speakerMatch.hasSeparator && !startsWithSpeakerSeparator(firstMeaningfulSiblingAfter(first))) {
     return false;
   }
   owner.removeChild(first);
@@ -637,8 +659,7 @@ export function stripLeadingSpeakerText(text: string, characterName?: string) {
   if (!characterName?.trim()) {
     return text;
   }
-  const pattern = new RegExp(`^\\s*${escapeRegExp(characterName.trim())}\\s*[：:]\\s*`);
-  return text.replace(pattern, "");
+  return text.replace(leadingSpeakerTextPattern(characterName), "");
 }
 
 export function countVisibleHtmlCharacters(html: string) {
@@ -843,11 +864,13 @@ export function renderDialogTypewriterRichFrame(
           : sliceVisibleText(source.fullText, visibleCharacters, normalizedDirection),
     };
   }
+  const text =
+    normalizedDirection === "rtl"
+      ? sliceVisibleDirectionalText(source.fullRtlText, visibleCharacters)
+      : sliceVisibleText(source.fullText, visibleCharacters, normalizedDirection);
   return {
-    html: undefined,
-    text:
-      normalizedDirection === "rtl"
-        ? sliceVisibleDirectionalText(source.fullRtlText, visibleCharacters)
-        : sliceVisibleText(source.fullText, visibleCharacters, normalizedDirection),
+    html: text,
+    nodes: text ? [{ kind: "text" as const, text }] : [],
+    text,
   };
 }

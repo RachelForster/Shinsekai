@@ -151,6 +151,8 @@ def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tu
         + f"cmd: {' '.join(safe_cmd)}\n"
     )
     env = {**env, "PYTHONUNBUFFERED": "1"}
+    # safe_cmd is an argv list whose entries have passed control-character validation; shell=False is the default.
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     process = subprocess.Popen(
         safe_cmd,
         cwd=str(cwd),

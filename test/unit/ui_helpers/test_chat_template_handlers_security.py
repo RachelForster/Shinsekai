@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from ui.webui.chat_template_handlers import load_template_from_file, save_template
+from ui.webui.chat_template_handlers import launch_chat, load_template_from_file, save_template
 
 
 def _ctx(template_dir):
@@ -52,3 +52,60 @@ def test_save_template_writes_single_safe_txt_name(tmp_path):
     assert message == "保存成功"
     assert files == ["story.txt"]
     assert (template_dir / "story.txt").read_text(encoding="utf-8") == "body"
+
+
+def test_save_template_rejects_control_chars_in_filename(tmp_path):
+    template_dir = tmp_path / "templates"
+    template_dir.mkdir()
+
+    message, files = save_template(_ctx(template_dir), "body", "story\n.txt")
+
+    assert "保存失败" in message
+    assert files == []
+    assert not any(template_dir.iterdir())
+
+
+def test_load_template_rejects_control_chars_in_filename(tmp_path):
+    template_dir = tmp_path / "templates"
+    template_dir.mkdir()
+
+    template, filename = load_template_from_file(_ctx(template_dir), "story\n.txt")
+
+    assert "加载失败" in template
+    assert filename == "story\n.txt"
+
+
+def test_launch_chat_rejects_control_chars_in_init_sprite_path(tmp_path):
+    template_dir = tmp_path / "templates"
+    template_dir.mkdir()
+
+    message = launch_chat(
+        _ctx(template_dir),
+        "body",
+        ["sprite\n.png"],
+        "",
+        "",
+        "否",
+        "",
+    )
+
+    assert "启动模版失败" in message
+    assert "控制字符" in message
+
+
+def test_launch_chat_rejects_control_chars_in_history_file(tmp_path):
+    template_dir = tmp_path / "templates"
+    template_dir.mkdir()
+
+    message = launch_chat(
+        _ctx(template_dir),
+        "body",
+        [],
+        "history\r.json",
+        "",
+        "否",
+        "",
+    )
+
+    assert "启动模版失败" in message
+    assert "控制字符" in message

@@ -141,10 +141,13 @@ def safe_existing_dir_path(raw_path: str | os.PathLike[str], *, field: str = "pa
 
 
 def safe_filename(raw_name: str, *, default_suffix: str = "") -> str:
-    name = Path(reject_control_chars(raw_name, field="filename")).name
+    raw = reject_control_chars(raw_name, field="filename")
+    if "/" in raw or "\\" in raw:
+        raise ValueError("filename must not contain path separators")
+    name = Path(raw).name
     if not name or name in {".", ".."}:
         raise ValueError("filename is invalid")
-    if name != raw_name:
+    if name != raw:
         raise ValueError("filename must not contain path separators")
     if default_suffix and not name.endswith(default_suffix):
         name = f"{name}{default_suffix}"

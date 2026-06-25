@@ -1,28 +1,10 @@
 import type { ChatRuntimeStatus } from "../../../shared/platform/types";
+import { parseHtmlFragment, stripHtmlFallback } from "../htmlFragment";
 import type { ChatStageState } from "./types";
 
 export const defaultUserDialogSpeaker = "你";
 
 const blockTextTags = new Set(["div", "li", "p"]);
-
-function stripHtmlFallback(value: string) {
-  let output = "";
-  let inTag = false;
-  for (const char of Array.from(value ?? "")) {
-    if (char === "<") {
-      inTag = true;
-      continue;
-    }
-    if (char === ">") {
-      inTag = false;
-      continue;
-    }
-    if (!inTag) {
-      output += char;
-    }
-  }
-  return output;
-}
 
 function collapseExcessBlankLines(value: string) {
   const lines = value.split(/\n/u);
@@ -62,13 +44,12 @@ function appendNodeText(node: Node, chunks: string[]) {
 }
 
 export function htmlToText(value: string) {
-  if (typeof document === "undefined") {
+  const fragment = parseHtmlFragment(value);
+  if (!fragment) {
     return collapseExcessBlankLines(stripHtmlFallback(value)).trim();
   }
-  const template = document.createElement("template");
-  template.innerHTML = value;
   const chunks: string[] = [];
-  template.content.childNodes.forEach((node) => appendNodeText(node, chunks));
+  fragment.childNodes.forEach((node) => appendNodeText(node, chunks));
   return collapseExcessBlankLines(chunks.join("")).trim();
 }
 
