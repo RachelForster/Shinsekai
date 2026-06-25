@@ -68,9 +68,9 @@ def _template_file_for_write(ctx: WebUIContext, filename: str) -> tuple[str, Pat
     root_str = os.path.realpath(str(root))
     path_str = os.path.realpath(os.path.join(root_str, name))
     root_prefix = root_str + os.sep
-    if path_str != root_str and not path_str.startswith(root_prefix):
-        raise PermissionError("模板路径越界")
-    return name, Path(path_str)
+    if path_str.startswith(root_prefix):
+        return name, Path(path_str)
+    raise PermissionError("模板路径越界")
 
 
 def _template_file_names(ctx: WebUIContext) -> list[str]:
@@ -156,10 +156,11 @@ def save_template(ctx: WebUIContext, template: str, filename: str):
         dest_path_str = os.path.realpath(os.fspath(dest_path))
         root_str = os.path.realpath(str(_template_root(ctx)))
         root_prefix = root_str + os.sep
-        if dest_path_str != root_str and not dest_path_str.startswith(root_prefix):
+        if dest_path_str.startswith(root_prefix):
+            with open(dest_path_str, mode="+wt", encoding="utf-8") as file:
+                file.write(template)
+        else:
             raise PermissionError("模板路径越界")
-        with open(dest_path_str, mode="+wt", encoding="utf-8") as file:
-            file.write(template)
         return "保存成功", _template_file_names(ctx)
     except Exception as e:
         return f"保存失败，{e}", template_files
