@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { closeChat } from "../../entities/chat/repository";
-import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import { closeChat, installMissingRuntimeDependency } from "../../entities/chat/repository";
+import { isTauriDesktop, supportsTransparentDesktopClickThrough } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
@@ -65,6 +65,7 @@ export function ChatStagePage() {
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
   const voskModelState = useVoskModelAvailability();
+  const runtimeDependencyPromptRef = useRef("");
   const { showToast } = useToast();
   const { t } = useI18n();
   const theme = useOptionalChatTheme();
@@ -99,7 +100,8 @@ export function ChatStagePage() {
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
     toolbarConfigOpen || branchDialogOpen || historyDialogOpen || confirmClearHistory || confirmRevertUserIndex != null;
-  const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
+  const clickThroughEnabled =
+    standaloneDesktopWindow && supportsTransparentDesktopClickThrough() && transparentBackground && !modalOpen;
   const dialogToolbarPlacement =
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
       ? themeStyle["--chat-dialog-toolbar-placement"]
@@ -185,6 +187,49 @@ export function ChatStagePage() {
       setRuntimeConfig((current) => (current.longPressTalk ? { ...current, longPressTalk: false } : current));
     }
   }, [runtimeConfig.longPressTalk, voskModelState.available, voskModelState.loading]);
+
+  useEffect(() => {
+    const dependencyError = state.runtimeDependencyError;
+    if (!dependencyError) {
+      return;
+    }
+    const promptKey = [dependencyError.moduleName, dependencyError.packageName, dependencyError.logPath ?? ""].join(
+      "\n",
+    );
+    if (runtimeDependencyPromptRef.current === promptKey) {
+      return;
+    }
+    runtimeDependencyPromptRef.current = promptKey;
+    const shouldInstall = window.confirm(
+      t("runtimeDeps.installConfirm", {
+        module: dependencyError.moduleName,
+        package: dependencyError.packageName,
+      }),
+    );
+    if (!shouldInstall) {
+      showToast({
+        kind: "error",
+        message: state.dialogText || dependencyError.message,
+        title: t("runtimeDeps.installTitle"),
+      });
+      return;
+    }
+    void installMissingRuntimeDependency({ moduleName: dependencyError.moduleName })
+      .then((result) => {
+        showToast({
+          kind: "success",
+          message: result.message || t("runtimeDeps.installSucceeded"),
+          title: t("runtimeDeps.installTitle"),
+        });
+      })
+      .catch((error) => {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("runtimeDeps.installFailed"),
+          title: t("runtimeDeps.installFailed"),
+        });
+      });
+  }, [showToast, state.dialogText, state.runtimeDependencyError, t]);
 
   const submit = () => {
     const text = viewModel.inputDraft.trim();
