@@ -5,6 +5,7 @@ from frontend_bridge_core.templates import (
     _has_untranslated_template_keys,
     _history_id_from_scenario,
     _parse_stored_template,
+    _scenario_from_template_like,
     _safe_session_int,
     _template_session_to_frontend,
 )
@@ -23,14 +24,19 @@ def test_parse_stored_template_handles_legacy_single_body_text():
 
 
 def test_history_id_uses_effective_scenario_and_selected_characters():
-    scenario_id = _history_id_from_scenario("scenario", "system", ["Alice", "Bob"])
-    assert scenario_id == _history_id_from_scenario(" scenario ", "ignored", ["Bob", "Alice", "Alice"])
-    assert scenario_id != _history_id_from_scenario("scenario", "system", ["Alice"])
-    assert scenario_id != _history_id_from_scenario("another scenario", "system", ["Alice", "Bob"])
-    assert _history_id_from_scenario("", "system") == _history_id_from_scenario(
+    scenario_id = _history_id_from_scenario("scenario", ["Alice", "Bob"])
+    assert scenario_id == _history_id_from_scenario(" scenario ", ["Bob", "Alice", "Alice"])
+    assert scenario_id != _history_id_from_scenario("scenario", ["Alice"])
+    assert scenario_id != _history_id_from_scenario("another scenario", ["Alice", "Bob"])
+    assert _history_id_from_scenario("") == _history_id_from_scenario(
         "你扮演一个RPG系统。",
-        "ignored",
     )
+
+
+def test_scenario_from_template_like_falls_back_only_for_none():
+    assert _scenario_from_template_like({"scenario": None, "content": "legacy"}) == "legacy"
+    assert _scenario_from_template_like({"scenario": "", "content": "legacy"}) == ""
+    assert _scenario_from_template_like({"content": "legacy"}) == "legacy"
 
 
 def test_template_session_to_frontend_normalizes_types_and_defaults():

@@ -121,6 +121,7 @@ from .templates import (
     _list_templates,
     _repair_template_parts_from_session_if_needed,
     _resume_template_parts,
+    _scenario_from_template_like,
     _save_template_session_payload,
     _save_template_summary,
     _generate_template_summary,
@@ -985,7 +986,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if reset_history:
             for item in {history_path, default_history_path}:
                 remove_chat_history_storage(item)
-        user_scenario = str(row.get("scenario") if "scenario" in row else row.get("content") or "")
+        user_scenario = _scenario_from_template_like(row)
         system_template = str(row.get("system") or "")
         user_scenario, system_template = _repair_template_parts_from_session_if_needed(
             self.state,

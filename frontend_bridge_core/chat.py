@@ -44,6 +44,7 @@ from .templates import (
     TEMP_SPLIT_META,
     _effective_user_scenario,
     _history_id_from_scenario,
+    _scenario_from_template_like,
     _template_dir,
 )
 
@@ -351,7 +352,7 @@ def _launch_chat(
         state.config_manager.config.system_config = sc
         state.config_manager.save_system_config()
 
-        template_hash = _history_id_from_scenario(user_scenario, system_template, character_names)
+        template_hash = _history_id_from_scenario(user_scenario, character_names)
         history_path = Path(history_file) if history_file else Path(state.history_dir) / template_hash
         if history_path.suffix.lower() == ".json" and history_path.exists() and history_path.is_file():
             history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -447,8 +448,8 @@ def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: di
     characters = payload.get("characters")
     if not isinstance(characters, list):
         characters = template.get("selectedCharacters")
-    scenario = str(template.get("scenario") if "scenario" in template else template.get("content") or "")
-    template_hash = _history_id_from_scenario(scenario, str(template.get("system") or ""), characters)
+    scenario = _scenario_from_template_like(template)
+    template_hash = _history_id_from_scenario(scenario, characters)
     return _resolve_project_file(Path(state.history_dir) / template_hash)
 
 
