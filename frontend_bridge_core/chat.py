@@ -27,6 +27,7 @@ from core.messaging.dialog_tokens import (
 from core.paths import app_root as runtime_app_root
 from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
+from core.runtime.restart_debug import write_restart_debug_log
 from core.sprite.chat_branch_storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
@@ -71,6 +72,10 @@ _SYSTEM_HISTORY_NAMES = COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASE
 _DEFAULT_USER_DISPLAY_NAME = "你"
 
 
+def _chat_debug_log(message: str) -> None:
+    write_restart_debug_log("chat_launch", message)
+
+
 def _is_transparent_background_name(name: str | None) -> bool:
     value = str(name or "").strip()
     return not value or value in {TRANSPARENT_BACKGROUND_NAME, _TRANSPARENT_BACKGROUND_ALIAS}
@@ -94,16 +99,27 @@ def _chat_experimental_features(state: BridgeState) -> dict[str, bool]:
 
 def _hidden_subprocess_kwargs() -> dict[str, Any]:
     if os.name != "nt":
+        _chat_debug_log("subprocess_kwargs platform=posix start_new_session=true")
         return {"start_new_session": True}
-    return {
-        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
-    }
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) | getattr(
+        subprocess,
+        "CREATE_NEW_PROCESS_GROUP",
+        0x00000200,
+    )
+    _chat_debug_log(f"subprocess_kwargs platform=windows creationflags={flags}")
+    return {"creationflags": flags}
 
 
 def _chat_process_running() -> bool:
     with _main_chat_process_lock:
         return _main_chat_process is not None and _main_chat_process.poll() is None
+
+
+def _process_return_code(process: subprocess.Popen[bytes]) -> int | None:
+    return_code = getattr(process, "returncode", None)
+    if return_code is not None:
+        return return_code
+    return process.poll()
 
 
 def _chat_log_path() -> Path:
@@ -151,6 +167,9 @@ def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tu
         + f"cmd: {' '.join(safe_cmd)}\n"
     )
     env = {**env, "PYTHONUNBUFFERED": "1"}
+    _chat_debug_log(
+        f"subprocess_launch cwd={cwd} executable={safe_cmd[0] if safe_cmd else ''} args_count={max(len(safe_cmd) - 1, 0)} log_path={log_path}"
+    )
     # safe_cmd is an argv list whose entries have passed control-character validation; shell=False is the default.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     process = subprocess.Popen(
@@ -161,6 +180,7 @@ def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tu
         stderr=subprocess.STDOUT,
         **_hidden_subprocess_kwargs(),
     )
+    _chat_debug_log(f"subprocess_started pid={process.pid} log_path={log_path}")
     return process, log_path
 
 
@@ -207,8 +227,12 @@ def _wait_process_exit(process: subprocess.Popen[bytes], timeout: float) -> bool
 
 def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float) -> None:
     if process.poll() is not None:
+        _chat_debug_log(
+            f"stop_process skipped pid={process.pid} reason=already_exited code={_process_return_code(process)}"
+        )
         return
 
+    _chat_debug_log(f"stop_process start pid={process.pid} wait_timeout={wait_timeout}")
     deadline = time.monotonic() + max(wait_timeout, 0.15)
     steps: list[tuple[int | str, float]] = [
         (signal.SIGINT, 0.45),
@@ -236,7 +260,11 @@ def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float)
                 _signal_process_tree(process, int(action))
         remaining = max(0.05, min(step_timeout, deadline - time.monotonic()))
         if _wait_process_exit(process, remaining):
+            _chat_debug_log(
+                f"stop_process completed pid={process.pid} action={action} code={_process_return_code(process)}"
+            )
             return
+    _chat_debug_log(f"stop_process timeout pid={process.pid} code={process.poll()}")
 
 
 def shutdown_active_chat_process(*, wait_timeout: float = 1.2) -> None:
@@ -335,9 +363,16 @@ def _launch_chat(
     global _main_chat_process
 
     with _main_chat_process_lock:
+        _chat_debug_log(
+            f"launch_chat start runtime_mode={_chat_runtime_mode(state)} has_stream_endpoint={bool(stream_endpoint)} history_file={history_file or ''} workflow_path={workflow_path or ''}"
+        )
         if _main_chat_process is not None and _main_chat_process.poll() is not None:
+            _chat_debug_log(
+                f"launch_chat previous_process_exited pid={_main_chat_process.pid} code={_process_return_code(_main_chat_process)}"
+            )
             _close_chat_log_if_needed()
         if _main_chat_process is not None and _main_chat_process.poll() is None:
+            _chat_debug_log(f"launch_chat skipped reason=already_running pid={_main_chat_process.pid}")
             return f"进程已经在运行中！PID: {_main_chat_process.pid}"
 
         # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
@@ -389,11 +424,13 @@ def _launch_chat(
             exe = next((item for item in candidates if item.is_file()), None)
             if exe is None:
                 checked = " 与 ".join(str(item) for item in candidates)
+                _chat_debug_log(f"launch_chat failed reason=main_exe_missing checked={checked}")
                 return f"启动失败: 未找到 main.exe（已检查 {checked}）。"
             _main_chat_process, log_path = _popen_chat_process([str(exe)] + args, cwd=project_root, env=env)
         else:
             main_py = _main_py_path()
             if not main_py.is_file():
+                _chat_debug_log(f"launch_chat failed reason=main_py_missing checked={main_py}")
                 return f"启动失败: 未找到 main.py（已检查 {main_py}）。"
             _main_chat_process, log_path = _popen_chat_process(
                 [sys.executable, str(main_py)] + args,
@@ -403,8 +440,10 @@ def _launch_chat(
         try:
             exit_code = _main_chat_process.wait(timeout=1.2)
         except subprocess.TimeoutExpired:
+            _chat_debug_log(f"launch_chat running pid={_main_chat_process.pid}")
             return _chat_process_started_message(_main_chat_process)
         _close_chat_log_if_needed()
+        _chat_debug_log(f"launch_chat exited_early pid={_main_chat_process.pid} code={exit_code} log_path={log_path}")
         return _failed_launch_message(exit_code, log_path)
 
 
@@ -418,6 +457,7 @@ def _close_chat(
 
     session_id = str(state.chat_session.get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
+    _chat_debug_log(f"close_chat start session={session_id} reason={reason} wait_timeout={wait_timeout}")
     if session_id and chat_stream is not None:
         snapshot = chat_stream.get_snapshot(session_id)
         if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
@@ -425,6 +465,7 @@ def _close_chat(
 
     shutdown_active_chat_process(wait_timeout=wait_timeout)
 
+    _chat_debug_log(f"close_chat completed session={session_id}")
     return _chat_snapshot(state, "idle", "")
 
 

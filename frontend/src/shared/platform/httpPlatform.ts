@@ -302,6 +302,25 @@ function sanitizeRestartLogUrl(url: string) {
   }
 }
 
+function sanitizeChatStageWebSocketUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url.split("?", 1)[0] ?? url;
+  }
+}
+
+function logChatStageTransport(message: string, data?: Record<string, unknown>) {
+  if (data) {
+    console.log(`[ChatStage] ${message}`, data);
+  } else {
+    console.log(`[ChatStage] ${message}`);
+  }
+  const suffix = data ? ` ${JSON.stringify(data)}` : "";
+  void writeDesktopRestartDebugLog(`ChatStageTransport ${message}${suffix}`);
+}
+
 function buildChatViewerWebSocketUrl(wsUrl: string, sessionId: string, authToken = "") {
   const url = new URL(wsUrl);
   url.searchParams.set("sessionId", sessionId);
@@ -565,6 +584,8 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         let socket: WebSocket | null = null;
         let lastEventSeq = 0;
 
+        logChatStageTransport("subscribe_events_start");
+
         const emitSnapshot = (snapshot: ChatSnapshot) => {
           const snapshotSeq =
             typeof snapshot.eventSeq === "number" && Number.isFinite(snapshot.eventSeq) ? snapshot.eventSeq : 0;
@@ -577,6 +598,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           };
           lastEventSeq = Math.max(lastEventSeq, snapshotSeq);
           seq = Math.max(seq, event.seq);
+          logChatStageTransport("snapshot_emitted", {
+            eventSeq: snapshotSeq,
+            hasSessionId: Boolean(snapshot.sessionId),
+            hasWsUrl: Boolean(snapshot.wsUrl),
+          });
           listener(event);
         };
 
@@ -586,6 +612,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         ) => {
           const nextSeq = Math.max(seq, lastEventSeq);
           seq = Math.max(seq, nextSeq);
+          logChatStageTransport("transport_state", { state, transport });
           listener({
             seq: nextSeq,
             state,
@@ -602,6 +629,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           if (!socket) {
             return;
           }
+          logChatStageTransport("websocket_closing");
           socket.onclose = null;
           socket.onerror = null;
           socket.onmessage = null;
@@ -616,19 +644,26 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         const connectWebSocket = (snapshot: ChatSnapshot) => {
           const WebSocketCtor = globalThis.WebSocket;
           if (!snapshot.wsUrl || !snapshot.sessionId || typeof WebSocketCtor === "undefined") {
+            logChatStageTransport("polling_started", {
+              reason: typeof WebSocketCtor === "undefined" ? "missing_websocket" : "missing_session",
+            });
             emitTransportState("polling", "snapshot");
             return false;
           }
           closeSocket();
           let websocketConnected = false;
-          const ws = new WebSocketCtor(
-            buildChatViewerWebSocketUrl(snapshot.wsUrl, snapshot.sessionId, bridgeAuthToken(apiBase)),
-          );
+          const viewerWsUrl = buildChatViewerWebSocketUrl(snapshot.wsUrl, snapshot.sessionId, bridgeAuthToken(apiBase));
+          logChatStageTransport("websocket_connecting", {
+            sessionId: snapshot.sessionId,
+            wsUrl: sanitizeChatStageWebSocketUrl(viewerWsUrl),
+          });
+          const ws = new WebSocketCtor(viewerWsUrl);
           socket = ws;
           connectTimeoutId = window.setTimeout(() => {
             if (stopped || socket !== ws || websocketConnected) {
               return;
             }
+            logChatStageTransport("websocket_handshake_timeout", { sessionId: snapshot.sessionId });
             closeSocket();
             emitTransportState("polling", "snapshot");
             timeoutId = window.setTimeout(poll, 0);
@@ -640,6 +675,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
             websocketConnected = true;
             window.clearTimeout(connectTimeoutId);
             connectTimeoutId = 0;
+            logChatStageTransport("websocket_connected", { sessionId: snapshot.sessionId });
             emitTransportState("connected", "websocket");
           };
           ws.onmessage = (message) => {
@@ -648,14 +684,23 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
                 websocketConnected = true;
                 window.clearTimeout(connectTimeoutId);
                 connectTimeoutId = 0;
+                logChatStageTransport("websocket_connected", { sessionId: snapshot.sessionId, source: "message" });
                 emitTransportState("connected", "websocket");
               }
               const parsed = JSON.parse(String(message.data ?? ""));
               if (!parsed || typeof parsed !== "object" || typeof parsed.type !== "string") {
                 return;
               }
+              logChatStageTransport("websocket_message", {
+                seq: typeof parsed.seq === "number" ? parsed.seq : 0,
+                type: parsed.type,
+              });
               if (typeof parsed.seq === "number") {
                 if (lastEventSeq > 0 && parsed.seq > lastEventSeq + 1) {
+                  logChatStageTransport("websocket_gap_detected", {
+                    lastEventSeq,
+                    nextSeq: parsed.seq,
+                  });
                   void requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot")
                     .then((nextSnapshot) => {
                       if (!stopped) {
@@ -664,6 +709,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
                     })
                     .catch(() => {
                       // ignore gap recovery failure; normal reconnect path will retry
+                      logChatStageTransport("websocket_gap_recovery_failed");
                     });
                 }
                 lastEventSeq = Math.max(lastEventSeq, parsed.seq);
@@ -671,9 +717,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
               listener(parsed as ChatStageEvent);
             } catch {
               // ignore malformed websocket payloads
+              logChatStageTransport("websocket_message_malformed");
             }
           };
           ws.onerror = () => {
+            logChatStageTransport("websocket_error", { sessionId: snapshot.sessionId });
             try {
               ws.close();
             } catch {
@@ -687,6 +735,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
             websocketConnected = false;
             window.clearTimeout(connectTimeoutId);
             connectTimeoutId = 0;
+            logChatStageTransport("websocket_closed", { sessionId: snapshot.sessionId });
             if (!stopped) {
               emitTransportState("reconnecting", "websocket");
               timeoutId = window.setTimeout(connectFromSnapshot, 800);
@@ -697,6 +746,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
 
         const poll = async () => {
           try {
+            logChatStageTransport("polling_snapshot_request");
             const snapshot = await requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot");
             if (!stopped) {
               emitSnapshot(snapshot);
@@ -714,6 +764,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
 
         const connectFromSnapshot = async () => {
           try {
+            logChatStageTransport("connect_from_snapshot_request");
             const snapshot = await requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot");
             if (stopped) {
               return;
@@ -724,6 +775,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
             }
           } catch {
             if (!stopped) {
+              logChatStageTransport("connect_from_snapshot_failed");
               emitTransportState("polling", "snapshot");
               timeoutId = window.setTimeout(poll, 1400);
             }
@@ -733,6 +785,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         void connectFromSnapshot();
         return () => {
           stopped = true;
+          logChatStageTransport("subscribe_events_stop");
           window.clearTimeout(timeoutId);
           window.clearTimeout(connectTimeoutId);
           closeSocket();

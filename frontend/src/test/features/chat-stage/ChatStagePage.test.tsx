@@ -1191,6 +1191,37 @@ describe("ChatStagePage", () => {
     );
   });
 
+  it("closes the chat surface with Escape but leaves system key combinations alone", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        runtimeMode: "react",
+        sessionId: "session-1",
+        wsUrl: "ws://127.0.0.1:8788/ws",
+      }),
+    );
+
+    renderPage();
+    await screen.findByText("Ready");
+
+    fireEvent.keyDown(window, { altKey: true, key: "F4" });
+    expect(chatWindowMocks.closeChatSurface).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1));
+    const [options] = chatWindowMocks.closeChatSurface.mock.calls[0] ?? [];
+    expect(options).toEqual(
+      expect.objectContaining({
+        closeRuntime: expect.any(Function),
+        snapshot: expect.objectContaining({
+          runtimeMode: "react",
+          sessionId: "session-1",
+          wsUrl: "ws://127.0.0.1:8788/ws",
+        }),
+      }),
+    );
+  });
+
   it("renders dedicated window controls for the standalone desktop chat route", async () => {
     desktopApiMocks.isTauriDesktop.mockReturnValue(true);
 

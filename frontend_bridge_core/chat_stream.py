@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import hmac
 import json
+import sys
 import threading
 import time
 import uuid
@@ -14,6 +15,11 @@ from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 
 from core.runtime.event_sink import build_event, fold_event_into_snapshot, make_empty_chat_snapshot
+from core.runtime.restart_debug import write_restart_debug_log
+
+
+def _stream_debug_log(message: str) -> None:
+    write_restart_debug_log("chat_stream", message)
 
 
 def _external_host(bind_host: str) -> str:
@@ -133,30 +139,38 @@ class ChatStreamService:
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
+            _stream_debug_log("start skipped reason=already_running")
             return
+        _stream_debug_log(f"start requested host={self.host} bridge_port={self.bridge_port} ws_port={self.ws_port}")
         self._ready.clear()
         self._start_error = None
         self._thread = threading.Thread(target=self._run_loop, name="shinsekai-chat-stream", daemon=True)
         self._thread.start()
         self._ready.wait(timeout=5.0)
         if self._start_error is not None:
+            _stream_debug_log(f"start failed error_type={self._start_error.__class__.__name__} error={self._start_error}")
             raise self._start_error
+        _stream_debug_log(f"start ready thread_alive={self._thread.is_alive() if self._thread else False}")
 
     def stop(self) -> None:
         loop = self._loop
         if loop is None:
+            _stream_debug_log("stop skipped reason=no_loop")
             return
+        _stream_debug_log("stop requested")
         try:
             future = asyncio.run_coroutine_threadsafe(self._shutdown_async(), loop)
             future.result(timeout=5.0)
-        except Exception:
-            pass
+            _stream_debug_log("shutdown_async completed")
+        except Exception as exc:
+            _stream_debug_log(f"shutdown_async failed error_type={exc.__class__.__name__} error={exc}")
         try:
             loop.call_soon_threadsafe(loop.stop)
         except RuntimeError:
             pass
         if self._thread is not None:
             self._thread.join(timeout=5.0)
+            _stream_debug_log(f"thread joined alive={self._thread.is_alive()}")
         self._loop = None
         self._thread = None
         self._server = None
@@ -172,6 +186,9 @@ class ChatStreamService:
         snapshot["wsUrl"] = self.ws_base
         with self._lock:
             self._sessions[session_id] = _ChatStreamSession(session_id=session_id, snapshot=snapshot)
+        _stream_debug_log(
+            f"session_created session={session_id} snapshot_keys={','.join(sorted(str(key) for key in snapshot.keys()))}"
+        )
         producer_endpoint = f"{self.ws_base}?sessionId={quote(session_id)}&role=producer"
         if self.auth_token:
             producer_endpoint = _append_query(
@@ -193,17 +210,23 @@ class ChatStreamService:
 
     def delete_session(self, session_id: str) -> None:
         with self._lock:
-            self._sessions.pop(session_id, None)
+            removed = self._sessions.pop(session_id, None) is not None
+        _stream_debug_log(f"session_deleted session={session_id} removed={removed}")
 
     def wait_for_producer(self, session_id: str, *, timeout: float = 5.0) -> bool:
         with self._lock:
             session = self._sessions.get(session_id)
             if session is None:
+                _stream_debug_log(f"producer_wait skipped session={session_id} reason=missing_session")
                 return False
             if session.producer is not None:
+                _stream_debug_log(f"producer_wait ready session={session_id} reason=already_connected")
                 return True
             ready = session.producer_ready
-        return ready.wait(timeout=max(float(timeout), 0.0))
+        _stream_debug_log(f"producer_wait start session={session_id} timeout={timeout:.3f}")
+        result = ready.wait(timeout=max(float(timeout), 0.0))
+        _stream_debug_log(f"producer_wait done session={session_id} ready={result}")
+        return result
 
     def close_session(self, session_id: str, *, reason: str = "聊天会话已结束。") -> None:
         event: dict[str, Any] | None = None
@@ -212,6 +235,7 @@ class ChatStreamService:
             if session is None:
                 return
             event = build_event(session.last_seq + 1, {"type": "session.closed", "reason": reason})
+        _stream_debug_log(f"close_session publish session={session_id} reason={reason}")
 
         loop = self._loop
         if loop is None:
@@ -228,7 +252,10 @@ class ChatStreamService:
         future = asyncio.run_coroutine_threadsafe(self._publish_event(session_id, event), loop)
         try:
             future.result(timeout=0.35)
-        except Exception:
+        except Exception as exc:
+            _stream_debug_log(
+                f"close_session publish fallback session={session_id} error_type={exc.__class__.__name__} error={exc}"
+            )
             with self._lock:
                 session = self._sessions.get(session_id)
                 if session is None:
@@ -249,6 +276,9 @@ class ChatStreamService:
             next_snapshot["sessionId"] = session_id
             next_snapshot["wsUrl"] = self.ws_base
             session.snapshot = next_snapshot
+        _stream_debug_log(
+            f"session_snapshot_updated session={session_id} keys={','.join(sorted(str(key) for key in snapshot.keys()))}"
+        )
 
     def send_command(self, session_id: str, command: dict[str, Any]) -> bool:
         loop = self._loop
@@ -264,10 +294,16 @@ class ChatStreamService:
             future = asyncio.run_coroutine_threadsafe(self._send_command(session_id, command), loop)
             try:
                 if bool(future.result(timeout=0.5)):
+                    _stream_debug_log(
+                        f"command_sent session={session_id} type={command.get('type', 'unknown')} cmd_id={command.get('cmdId', '')}"
+                    )
                     return True
-            except Exception:
-                pass
+            except Exception as exc:
+                _stream_debug_log(
+                    f"command_send_failed session={session_id} type={command.get('type', 'unknown')} error_type={exc.__class__.__name__} error={exc}"
+                )
             time.sleep(0.1)
+        _stream_debug_log(f"command_send_timeout session={session_id} type={command.get('type', 'unknown')}")
         return False
 
     def media_url(self, raw_path: str) -> str:
@@ -282,6 +318,7 @@ class ChatStreamService:
         )
 
     async def _shutdown_async(self) -> None:
+        _stream_debug_log("shutdown_async start")
         server = self._server
         if server is not None:
             server.close()
@@ -303,21 +340,39 @@ class ChatStreamService:
                 session.viewers.clear()
                 session.producer = None
                 session.producer_ready.clear()
+        _stream_debug_log(f"shutdown_async done sessions={len(sessions)}")
 
     def _run_loop(self) -> None:
-        loop = asyncio.new_event_loop()
+        if sys.platform == "win32":
+            default_loop = asyncio.new_event_loop()
+            default_loop_type = type(default_loop).__name__
+            default_loop.close()
+            loop = asyncio.SelectorEventLoop()
+            loop_strategy = "selector"
+        else:
+            loop = asyncio.new_event_loop()
+            default_loop_type = type(loop).__name__
+            loop_strategy = "default"
+        _stream_debug_log(
+            f"event_loop_created platform={sys.platform} default_loop_type={default_loop_type} active_loop_type={type(loop).__name__} strategy={loop_strategy}"
+        )
         self._loop = loop
         asyncio.set_event_loop(loop)
         try:
+            _stream_debug_log(f"binding ws://{self.host}:{self.ws_port}")
             self._server = loop.run_until_complete(asyncio.start_server(self._handle_client, self.host, self.ws_port))
+            _stream_debug_log("server_bound ok")
         except Exception as exc:  # pragma: no cover - startup failure path
             self._start_error = exc
             self._ready.set()
+            _stream_debug_log(f"server_bound failed error_type={exc.__class__.__name__} error={exc}")
             return
         self._ready.set()
+        _stream_debug_log("run_forever enter")
         try:
             loop.run_forever()
         finally:  # pragma: no cover - shutdown path
+            _stream_debug_log("run_forever exit")
             pending = asyncio.all_tasks(loop)
             for task in pending:
                 task.cancel()
@@ -325,6 +380,7 @@ class ChatStreamService:
                 with contextlib.suppress(Exception):
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             loop.close()
+            _stream_debug_log(f"event_loop_closed pending_tasks={len(pending)}")
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         connection: _WebSocketConnection | None = None
@@ -335,9 +391,9 @@ class ChatStreamService:
                 await self._send_snapshot(connection)
             await self._receive_loop(connection)
         except asyncio.IncompleteReadError:
-            pass
-        except Exception:
-            pass
+            _stream_debug_log("client_disconnected reason=incomplete_read")
+        except Exception as exc:
+            _stream_debug_log(f"client_error error_type={exc.__class__.__name__} error={exc}")
         finally:
             if connection is not None:
                 await self._detach(connection)
@@ -406,10 +462,16 @@ class ChatStreamService:
                     old_producer = session.producer
                 session.producer = connection
                 session.producer_ready.set()
+                producer_count = 1
+                viewer_count = len(session.viewers)
             else:
                 session.viewers.add(connection)
+                producer_count = 1 if session.producer is not None else 0
+                viewer_count = len(session.viewers)
+        _stream_debug_log(f"{role}_connected session={session_id} producers={producer_count} viewers={viewer_count}")
         if old_producer is not None:
             await old_producer.close()
+            _stream_debug_log(f"producer_replaced session={session_id}")
         return connection
 
     async def _receive_loop(self, connection: _WebSocketConnection) -> None:
@@ -427,6 +489,9 @@ class ChatStreamService:
                 continue
             event = json.loads(payload.decode("utf-8"))
             if isinstance(event, dict):
+                _stream_debug_log(
+                    f"producer_event_received session={connection.session_id} type={event.get('type', 'unknown')} seq={event.get('seq', 0)}"
+                )
                 await self._publish_event(connection.session_id, event)
 
     async def _publish_event(self, session_id: str, event: dict[str, Any]) -> None:
@@ -442,11 +507,18 @@ class ChatStreamService:
             session.snapshot["sessionId"] = session_id
             session.snapshot["wsUrl"] = self.ws_base
             viewers = list(session.viewers)
+            event_seq = session.last_seq
+        _stream_debug_log(
+            f"publish_event session={session_id} type={event.get('type', 'unknown')} seq={event.get('seq', event_seq)} viewers={len(viewers)}"
+        )
         stale: list[_WebSocketConnection] = []
         for viewer in viewers:
             try:
                 await viewer.send_json(event)
-            except Exception:
+            except Exception as exc:
+                _stream_debug_log(
+                    f"viewer_send_failed session={session_id} type={event.get('type', 'unknown')} error_type={exc.__class__.__name__} error={exc}"
+                )
                 stale.append(viewer)
         for viewer in stale:
             await self._detach(viewer)
@@ -458,6 +530,7 @@ class ChatStreamService:
                 return
             snapshot = dict(session.snapshot)
             seq = session.last_seq
+        _stream_debug_log(f"snapshot_sent session={connection.session_id} seq={seq}")
         await connection.send_json(
             {
                 "v": 1,
@@ -493,5 +566,7 @@ class ChatStreamService:
                 if session.producer is connection:
                     session.producer = None
                     session.producer_ready.clear()
+                    _stream_debug_log(f"producer_detached session={connection.session_id}")
             else:
                 session.viewers.discard(connection)
+                _stream_debug_log(f"viewer_detached session={connection.session_id} viewers={len(session.viewers)}")

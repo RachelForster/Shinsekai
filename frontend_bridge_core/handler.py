@@ -6,6 +6,7 @@ import mimetypes
 import shutil
 import tempfile
 import threading
+import time
 from email.parser import BytesParser
 from email.policy import default as default_email_policy
 from http import HTTPStatus
@@ -15,6 +16,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
+from core.runtime.restart_debug import write_restart_debug_log
 from core.sprite.chat_branch_storage import remove_chat_history_storage
 
 from .backgrounds import (
@@ -152,6 +154,10 @@ _ALLOWED_LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "::1", "localhost", "tauri.localhost
 CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
 
 
+def _bridge_debug_log(message: str) -> None:
+    write_restart_debug_log("bridge", message)
+
+
 class _RangeNotSatisfiable(Exception):
     pass
 
@@ -164,8 +170,57 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         return self.server.state  # type: ignore[attr-defined]
 
     def handle_one_request(self) -> None:
-        with log_context(request_id=new_log_id("req_")):
-            super().handle_one_request()
+        request_id = new_log_id("req_")
+        self._request_id = request_id
+        self._request_started_at = None
+        self._response_status = None
+        with log_context(request_id=request_id):
+            try:
+                super().handle_one_request()
+            finally:
+                self._log_request_completed()
+
+    def parse_request(self) -> bool:
+        parsed = super().parse_request()
+        if parsed:
+            self._request_started_at = time.perf_counter()
+            self._log_request_started()
+        return parsed
+
+    def send_response(self, code: int, message: str | None = None) -> None:
+        self._response_status = int(code)
+        super().send_response(code, message)
+
+    def _log_request_started(self) -> None:
+        path = urlparse(getattr(self, "path", "")).path
+        logger.info(
+            "Frontend bridge request started",
+            extra={
+                "event": "http.request.started",
+                "method": getattr(self, "command", ""),
+                "path": path,
+                "request_id": getattr(self, "_request_id", ""),
+                "content_length": self.headers.get("Content-Length", ""),
+            },
+        )
+
+    def _log_request_completed(self) -> None:
+        started_at = getattr(self, "_request_started_at", None)
+        if started_at is None:
+            return
+        path = urlparse(getattr(self, "path", "")).path
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            "Frontend bridge request completed",
+            extra={
+                "event": "http.request.completed",
+                "method": getattr(self, "command", ""),
+                "path": path,
+                "request_id": getattr(self, "_request_id", ""),
+                "status": getattr(self, "_response_status", None),
+                "duration_ms": duration_ms,
+            },
+        )
 
     def log_message(self, fmt: str, *args: Any) -> None:
         logger.info(
@@ -303,12 +358,19 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         session_id = str(stream_info.get("sessionId") or "").strip()
         chat_stream = getattr(self.state, "chat_stream", None)
         if not session_id or chat_stream is None:
+            _bridge_debug_log(
+                f"launch_chat producer_wait skipped session={session_id} reason={'missing_session' if not session_id else 'missing_chat_stream'}"
+            )
             return
         wait_for_producer = getattr(chat_stream, "wait_for_producer", None)
         if wait_for_producer is None:
+            _bridge_debug_log(f"launch_chat producer_wait skipped session={session_id} reason=missing_wait_method")
             return
+        _bridge_debug_log(f"launch_chat waiting_for_producer session={session_id} timeout={timeout}")
         if wait_for_producer(session_id, timeout=timeout):
+            _bridge_debug_log(f"launch_chat producer_ready ok session={session_id}")
             return
+        _bridge_debug_log(f"launch_chat producer_ready timeout session={session_id}")
         try:
             _close_chat(self.state, reason="聊天会话启动超时。")
         finally:
@@ -982,6 +1044,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
 
     def _launch_chat(self, body: dict[str, Any]) -> dict[str, Any]:
         template_id = str(body.get("templateId") or "")
+        _bridge_debug_log(f"launch_chat request start runtime_mode={_chat_runtime_mode(self.state)} template_id={template_id}")
         rows = _list_templates(self.state)
         row = next((item for item in rows if item["id"] == template_id), None)
         has_inline_template = "scenario" in body or "system" in body
@@ -1043,6 +1106,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if use_react_runtime and self.state.chat_stream is not None
             else {}
         )
+        if stream_info:
+            _bridge_debug_log(
+                f"launch_chat session_created session={stream_info.get('sessionId', '')} has_ws_url={bool(stream_info.get('wsUrl'))}"
+            )
+        else:
+            _bridge_debug_log(f"launch_chat session_skipped runtime_mode={_chat_runtime_mode(self.state)}")
         effect_names_list = body.get("effectNames") or []
         if isinstance(effect_names_list, list):
             effect_names_str = ",".join(str(n) for n in effect_names_list)
@@ -1068,6 +1137,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         dependency_error = runtime_dependency_error_from_text(message)
         if dependency_error:
             session_id = str(stream_info.get("sessionId") or "")
+            _bridge_debug_log(f"launch_chat dependency_error session={session_id} module={dependency_error.get('moduleName', '')}")
             if session_id and self.state.chat_stream is not None:
                 self.state.chat_stream.delete_session(session_id)
             self.state.chat_session = {**self.state.chat_session, **session_base}
@@ -1079,6 +1149,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             )
         if message.startswith("启动失败"):
             session_id = str(stream_info.get("sessionId") or "")
+            _bridge_debug_log(f"launch_chat failed session={session_id} message={message}")
             if session_id and self.state.chat_stream is not None:
                 self.state.chat_stream.delete_session(session_id)
             raise RuntimeError(message)
@@ -1102,6 +1173,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
+        _bridge_debug_log(f"launch_chat request completed session={stream_info.get('sessionId', '')} message={message}")
         return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
 
     def _resume_last_chat(self) -> dict[str, Any]:
@@ -1161,6 +1233,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if use_react_runtime and self.state.chat_stream is not None
             else {}
         )
+        _bridge_debug_log(
+            f"resume_last_chat session={'created' if stream_info else 'skipped'} session_id={stream_info.get('sessionId', '')} runtime_mode={_chat_runtime_mode(self.state)}"
+        )
         message = _launch_chat(
             self.state,
             history_file=history_path.resolve().as_posix(),
@@ -1176,6 +1251,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         dependency_error = runtime_dependency_error_from_text(message)
         if dependency_error:
             session_id = str(stream_info.get("sessionId") or "")
+            _bridge_debug_log(f"resume_last_chat dependency_error session={session_id} module={dependency_error.get('moduleName', '')}")
             if session_id and self.state.chat_stream is not None:
                 self.state.chat_stream.delete_session(session_id)
             self.state.chat_session = {**self.state.chat_session, **session_base}
@@ -1187,6 +1263,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             )
         if message.startswith("启动失败"):
             session_id = str(stream_info.get("sessionId") or "")
+            _bridge_debug_log(f"resume_last_chat failed session={session_id} message={message}")
             if session_id and self.state.chat_stream is not None:
                 self.state.chat_stream.delete_session(session_id)
             raise RuntimeError(message)
@@ -1210,6 +1287,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
+        _bridge_debug_log(f"resume_last_chat completed session={stream_info.get('sessionId', '')} message={message}")
         return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
 
     def _resolve_project_path(self, raw_path: str) -> Path:
