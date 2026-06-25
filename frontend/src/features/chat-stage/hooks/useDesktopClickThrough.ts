@@ -7,7 +7,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import { getDesktopWindowCursorPosition, setDesktopWindowClickThrough } from "../../../shared/desktop/desktopApi";
+import {
+  getDesktopWindowCursorPosition,
+  setDesktopWindowClickThrough,
+  writeDesktopRestartDebugLog,
+} from "../../../shared/desktop/desktopApi";
 import { isChatStageHitbox, isPointInsideChatStageHitbox } from "../chatStageUtils";
 import { clickThroughGuardIntervalMs } from "../runtimeConfig";
 
@@ -32,20 +36,24 @@ export function useDesktopClickThrough({
     clickThroughGuardIntervalRef.current = null;
   }, []);
 
-  const applyClickThroughIgnored = useCallback((ignore: boolean) => {
+  const applyClickThroughIgnored = useCallback((ignore: boolean, reason: string) => {
     if (clickThroughIgnoredRef.current === ignore) {
       return;
     }
     clickThroughIgnoredRef.current = ignore;
+    void writeDesktopRestartDebugLog(`ChatStage click_through_ignore=${ignore} reason=${reason}`);
     void setDesktopWindowClickThrough(ignore).catch((error) => {
       console.error("Desktop chat window click-through update failed", error);
     });
   }, []);
 
-  const disableClickThrough = useCallback(() => {
-    stopClickThroughGuard();
-    applyClickThroughIgnored(false);
-  }, [applyClickThroughIgnored, stopClickThroughGuard]);
+  const disableClickThrough = useCallback(
+    (reason: string) => {
+      stopClickThroughGuard();
+      applyClickThroughIgnored(false, reason);
+    },
+    [applyClickThroughIgnored, stopClickThroughGuard],
+  );
 
   const startClickThroughGuard = useCallback(() => {
     if (clickThroughGuardIntervalRef.current != null) {
@@ -59,11 +67,11 @@ export function useDesktopClickThrough({
       try {
         const cursor = await getDesktopWindowCursorPosition();
         if (isPointInsideChatStageHitbox(cursor.x, cursor.y)) {
-          disableClickThrough();
+          disableClickThrough("guard-hitbox");
         }
       } catch (error) {
         console.error("Desktop chat window cursor guard failed", error);
-        disableClickThrough();
+        disableClickThrough("guard-error");
       } finally {
         clickThroughGuardPollingRef.current = false;
       }
@@ -72,21 +80,30 @@ export function useDesktopClickThrough({
     void pollCursor();
   }, [disableClickThrough]);
 
-  const enableClickThrough = useCallback(() => {
-    applyClickThroughIgnored(true);
-    startClickThroughGuard();
-  }, [applyClickThroughIgnored, startClickThroughGuard]);
+  const enableClickThrough = useCallback(
+    (reason: string) => {
+      applyClickThroughIgnored(true, reason);
+      startClickThroughGuard();
+    },
+    [applyClickThroughIgnored, startClickThroughGuard],
+  );
 
   const setClickThroughIgnored = useCallback(
-    (ignore: boolean) => {
+    (ignore: boolean, reason: string) => {
       if (ignore) {
-        enableClickThrough();
+        enableClickThrough(reason);
       } else {
-        disableClickThrough();
+        disableClickThrough(reason);
       }
     },
     [disableClickThrough, enableClickThrough],
   );
+
+  useEffect(() => {
+    void writeDesktopRestartDebugLog(
+      `ChatStage click_through_state enabled=${clickThroughEnabled} standalone=${standaloneDesktopWindow} transparent=${transparentBackground}`,
+    );
+  }, [clickThroughEnabled, standaloneDesktopWindow, transparentBackground]);
 
   useEffect(() => {
     if (transparentBackground) {
@@ -106,11 +123,9 @@ export function useDesktopClickThrough({
     if (!standaloneDesktopWindow) {
       return;
     }
-    if (!clickThroughEnabled) {
-      setClickThroughIgnored(false);
-    }
+    setClickThroughIgnored(clickThroughEnabled, clickThroughEnabled ? "enabled-transparent-stage" : "disabled-stage");
     return () => {
-      setClickThroughIgnored(false);
+      setClickThroughIgnored(false, "cleanup");
     };
   }, [clickThroughEnabled, setClickThroughIgnored, standaloneDesktopWindow]);
 
@@ -127,34 +142,38 @@ export function useDesktopClickThrough({
         return;
       }
       if (isChatStageHitbox(event.target)) {
-        setClickThroughIgnored(false);
+        setClickThroughIgnored(false, "pointer-hitbox");
         return;
       }
-      setClickThroughIgnored(true);
+      setClickThroughIgnored(true, "pointer-transparent");
     },
     [clickThroughEnabled, setClickThroughIgnored],
   );
 
   const handleStagePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
-      if (!clickThroughEnabled || isChatStageHitbox(event.target)) {
+      if (!clickThroughEnabled) {
         return;
       }
-      setClickThroughIgnored(true);
+      setClickThroughIgnored(!isChatStageHitbox(event.target), "pointer-down");
     },
     [clickThroughEnabled, setClickThroughIgnored],
   );
 
   const handleStagePointerLeave = useCallback(() => {
-    if (standaloneDesktopWindow) {
-      setClickThroughIgnored(false);
+    if (!standaloneDesktopWindow) {
+      return;
     }
-  }, [setClickThroughIgnored, standaloneDesktopWindow]);
+    setClickThroughIgnored(
+      clickThroughEnabled,
+      clickThroughEnabled ? "pointer-leave-transparent" : "pointer-leave-disabled",
+    );
+  }, [clickThroughEnabled, setClickThroughIgnored, standaloneDesktopWindow]);
 
   const handleStageFocus = useCallback(
     (event: FocusEvent<HTMLElement>) => {
       if (clickThroughEnabled && isChatStageHitbox(event.target)) {
-        setClickThroughIgnored(false);
+        setClickThroughIgnored(false, "focus-hitbox");
       }
     },
     [clickThroughEnabled, setClickThroughIgnored],
