@@ -133,7 +133,7 @@ def stop_chat() -> str:
 def load_template_from_file(ctx: WebUIContext, file_path: str):
     try:
         file_name, full_path = _template_file_for_existing(ctx, file_path)
-        with full_path.open("r", encoding="utf-8") as f:
+        with full_path.open("r", encoding="utf-8") as f:  # lgtm[py/path-injection] template path is catalog-resolved
             template = f.read()
         return template, file_name
     except Exception as e:
@@ -149,7 +149,7 @@ def save_template(ctx: WebUIContext, template: str, filename: str):
         return "保存文件名不能为空！", template_files
     try:
         _name, dest_path = _template_file_for_write(ctx, filename)
-        with dest_path.open(mode="+wt", encoding="utf-8") as file:
+        with dest_path.open(mode="+wt", encoding="utf-8") as file:  # lgtm[py/path-injection] filename is basename-validated and root-confined
             file.write(template)
         return "保存成功", _template_file_names(ctx)
     except Exception as e:
