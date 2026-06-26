@@ -652,8 +652,8 @@
   "template_gen": {
     "narr_token": "旁白",
     "err_no_characters": "请至少选择一个角色！",
-    "name_sep": "、",
-    "preamble": "你需要模拟一个RPG剧情对话系统，出场人物有：{names}以及其他相关人物，请根据剧情调度人物\n",
+    "name_sep": "，",
+    "preamble": "出场人物有：{names}\n",
     "json_line_effect": "        \"effect\": \"特效关键词（可选），直接写关键词播放一次；loop:关键词 循环播放；stop:关键词 停止循环；before:关键词 对话前播放；after:关键词 对话后播放。可用关键词见下方特效列表\",\n",
     "voice_target_ja": "日语",
     "voice_target_en": "英语",

@@ -859,6 +859,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "template.action.quickRestart": "快速重开",
   "template.action.selectAllCharacters": "全选角色",
   "template.defaultName": "新模板",
+  "template.defaultScenario": "你扮演一个RPG系统，请根据情景调度人物",
   "template.description": "模板编辑与生成功能复用角色、背景 query，保存后刷新启动聊天页。",
   "template.emptyBody": "先生成一个模板。",
   "template.emptySelection": "未选择模板",
