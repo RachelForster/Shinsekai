@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
+from .security import safe_child_path, safe_existing_file_path
 from .state import BridgeState, _jsonify
 
 EFFECT_UPLOAD_DIR = "data/effects"
@@ -36,8 +38,8 @@ def _effect_dir(name: str) -> Path:
     """Get the managed directory for an effect's audio files."""
     safe_name = _validate_effect_storage_name(name)
     root = _effect_root()
-    candidate = (root / safe_name).resolve()
-    if candidate == root or root not in candidate.parents:
+    candidate = safe_child_path(root, safe_name)
+    if candidate == root:
         raise ValueError("effect directory escapes managed storage")
     return candidate
 
@@ -48,10 +50,10 @@ def _unlink_managed_effect_file(effect_name: str, raw_path: str) -> None:
         return
     try:
         root = _effect_dir(effect_name).resolve()
-        target = Path(str(raw_path)).resolve()
-    except (OSError, ValueError):
+        target = safe_existing_file_path(str(raw_path), field="effect audio path")
+    except (OSError, ValueError, FileNotFoundError):
         return
-    if root not in target.parents:
+    if os.path.commonpath([str(root), str(target)]) != str(root):
         return
     try:
         if target.is_file():
@@ -196,11 +198,12 @@ def _upload_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[st
     tags = str(payload.get("audioTags") or effect.audio_tags or "")
 
     for file_path in paths:
-        src = Path(str(file_path))
-        if not src.is_file():
+        try:
+            src = safe_existing_file_path(str(file_path), field="effect audio path")
+        except (OSError, ValueError, FileNotFoundError):
             continue
         # Copy to managed directory
-        dest = ef_dir / src.name
+        dest = safe_child_path(ef_dir, src.name)
         # Avoid overwriting: add suffix if file already exists
         counter = 1
         while dest.exists():

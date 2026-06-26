@@ -40,6 +40,7 @@ from llm.tools.chat_ui_tools import sanitize_user_display_name
 
 from .state import BridgeState
 from .runtime_dependencies import runtime_dependency_error_from_text
+from .security import reject_control_chars, safe_project_path
 from .templates import (
     TEMP_SPLIT_META,
     _effective_user_scenario,
@@ -134,9 +135,14 @@ def _close_chat_log_if_needed() -> None:
     _main_chat_log_file = None
 
 
+def _safe_chat_command(cmd: list[str]) -> list[str]:
+    return [reject_control_chars(item, field="command argument") for item in cmd]
+
+
 def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tuple[subprocess.Popen[bytes], Path]:
     global _main_chat_log_file
     _close_chat_log_if_needed()
+    safe_cmd = _safe_chat_command(cmd)
     log_path = _chat_log_path()
     _main_chat_log_file = log_path.open("a", encoding="utf-8", buffering=1)
     _main_chat_log_file.write(
@@ -144,11 +150,13 @@ def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tu
         + "=" * 60
         + f"\n{datetime.now().isoformat(sep=' ', timespec='seconds')}  main.py launch\n"
         + f"cwd: {cwd}\n"
-        + f"cmd: {' '.join(cmd)}\n"
+        + f"cmd: {' '.join(safe_cmd)}\n"
     )
     env = {**env, "PYTHONUNBUFFERED": "1"}
+    # safe_cmd is an argv list whose entries have passed control-character validation; shell=False is the default.
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     process = subprocess.Popen(
-        cmd,
+        safe_cmd,
         cwd=str(cwd),
         env=env,
         stdout=_main_chat_log_file,
@@ -425,21 +433,13 @@ def _close_chat(
 
 
 def _resolve_project_file(raw_path: str | Path) -> Path:
-    root = Path.cwd().resolve()
-    path = Path(raw_path)
-    if not path.is_absolute():
-        path = root / path
-    path = path.resolve()
-    if root not in path.parents and path != root:
-        raise PermissionError("path is outside project root")
-    return path
+    return safe_project_path(raw_path)
 
 
 def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: dict[str, Any]) -> Path:
     raw = str(payload.get("historyPath") or "").strip()
     if raw:
-        path = Path(raw).expanduser()
-        path = path if path.is_absolute() else Path.cwd() / path
+        path = safe_project_path(raw)
         if path.name in {ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME}:
             return path.parent
         if path.suffix.lower() == ".json" and not path.is_file():

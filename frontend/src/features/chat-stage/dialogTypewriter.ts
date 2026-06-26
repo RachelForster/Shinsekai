@@ -1,3 +1,4 @@
+import { parseHtmlFragment, stripHtmlFallback } from "./htmlFragment";
 import { markdownToDialogHtml } from "./markdownRenderer";
 
 const typewriterCacheMaxEntries = 96;
@@ -189,22 +190,57 @@ function createTemplate(html: string) {
     template.content.append(cached.cloneNode(true));
     return template;
   }
-  template.innerHTML = html;
+  const fragment = parseHtmlFragment(html);
+  if (!fragment) {
+    return null;
+  }
+  template.content.append(fragment);
   refreshCacheEntry(parsedTemplateCache, html, template.content.cloneNode(true) as DocumentFragment);
   return template;
 }
 
-const allowedDialogTags = new Set(["a", "b", "br", "code", "em", "i", "p", "s", "span", "strong"]);
+function htmlPlainText(html: string) {
+  const template = createTemplate(html);
+  return template ? (template.content.textContent ?? "") : stripHtmlFallback(html);
+}
+
+const allowedDialogTagNames = ["a", "b", "br", "code", "em", "i", "p", "s", "span", "strong"] as const;
+export type DialogHtmlTag = (typeof allowedDialogTagNames)[number];
+export type DialogHtmlStyleProperty =
+  | "color"
+  | "font-style"
+  | "font-weight"
+  | "letter-spacing"
+  | "line-height"
+  | "text-decoration";
+
+export type DialogHtmlNode =
+  | { kind: "text"; text: string }
+  | {
+      attrs?: {
+        className?: string;
+        href?: string;
+        rel?: string;
+        style?: Partial<Record<DialogHtmlStyleProperty, string>>;
+        target?: string;
+      };
+      children: DialogHtmlNode[];
+      kind: "element";
+      tag: DialogHtmlTag;
+    };
+
+const allowedDialogTags = new Set<string>(allowedDialogTagNames);
 const removedDialogTags = new Set(["embed", "iframe", "link", "meta", "object", "script", "style"]);
 const allowedDialogClasses = new Set(["dialog-layer__md-bullet", "dialog-layer__md-quote"]);
-const allowedDialogStyleProperties = new Set([
+const allowedDialogStylePropertyNames = [
   "color",
   "font-style",
   "font-weight",
   "letter-spacing",
   "line-height",
   "text-decoration",
-]);
+] as const;
+const allowedDialogStyleProperties = new Set<string>(allowedDialogStylePropertyNames);
 
 function isSafeCssValue(property: string, value: string) {
   const next = value.trim();
@@ -250,6 +286,20 @@ function sanitizeDialogStyle(value: string) {
     })
     .filter(Boolean)
     .join("; ");
+}
+
+function dialogStyleRecord(value: string) {
+  const style: Partial<Record<DialogHtmlStyleProperty, string>> = {};
+  value.split(";").forEach((declaration) => {
+    const [rawProperty, ...rawValueParts] = declaration.split(":");
+    const property = rawProperty?.trim().toLowerCase() ?? "";
+    const nextValue = rawValueParts.join(":").trim();
+    if (!allowedDialogStyleProperties.has(property) || !isSafeCssValue(property, nextValue)) {
+      return;
+    }
+    style[property as DialogHtmlStyleProperty] = nextValue;
+  });
+  return style;
 }
 
 function sanitizeDialogLink(value: string) {
@@ -328,10 +378,66 @@ function sanitizeDialogNode(node: Node) {
   }
 }
 
+function dialogElementAttrs(element: Element) {
+  const attrs: Extract<DialogHtmlNode, { kind: "element" }>["attrs"] = {};
+  const className = element.getAttribute("class") ?? "";
+  const classes = className
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => allowedDialogClasses.has(item));
+  if (classes.length) {
+    attrs.className = classes.join(" ");
+  }
+
+  const style = dialogStyleRecord(element.getAttribute("style") ?? "");
+  if (Object.keys(style).length) {
+    attrs.style = style;
+  }
+
+  if (element.tagName.toLowerCase() === "a") {
+    const href = sanitizeDialogLink(element.getAttribute("href") ?? "");
+    if (href) {
+      attrs.href = href;
+      attrs.rel = "noreferrer";
+      attrs.target = "_blank";
+    }
+  }
+
+  return Object.keys(attrs).length ? attrs : undefined;
+}
+
+function dialogNodeFromDom(node: Node): DialogHtmlNode | null {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return { kind: "text", text: node.textContent ?? "" };
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return null;
+  }
+  const element = node as Element;
+  const tag = element.tagName.toLowerCase();
+  if (!allowedDialogTags.has(tag)) {
+    const text = element.textContent ?? "";
+    return text ? { kind: "text", text } : null;
+  }
+  return {
+    attrs: dialogElementAttrs(element),
+    children: dialogNodesFromParent(element),
+    kind: "element",
+    tag: tag as DialogHtmlTag,
+  };
+}
+
+function dialogNodesFromParent(parent: ParentNode): DialogHtmlNode[] {
+  return Array.from(parent.childNodes).flatMap((node) => {
+    const next = dialogNodeFromDom(node);
+    return next ? [next] : [];
+  });
+}
+
 export function sanitizeDialogHtml(html: string) {
   const template = createTemplate(html);
   if (!template) {
-    return html.replace(/<[^>]+>/g, "");
+    return stripHtmlFallback(html);
   }
   Array.from(template.content.childNodes).forEach(sanitizeDialogNode);
   const wrapper = document.createElement("div");
@@ -442,25 +548,124 @@ function normalizeTypewriterDirection(direction?: string): DialogTypewriterDirec
   return direction === "rtl" ? "rtl" : "ltr";
 }
 
+function stripLeadingSpeakerSeparator(text: string) {
+  const chars = codepoints(text);
+  let index = 0;
+  while (index < chars.length && /\s/u.test(chars[index] ?? "")) {
+    index += 1;
+  }
+  if ((chars[index] ?? "") === "：" || (chars[index] ?? "") === ":") {
+    index += 1;
+  }
+  while (index < chars.length && /\s/u.test(chars[index] ?? "")) {
+    index += 1;
+  }
+  return chars.slice(index).join("");
+}
+
+function leadingSpeakerTextPattern(characterName: string) {
+  return new RegExp(`^\\s*${escapeRegExp(characterName.trim())}\\s*[：:]\\s*`, "u");
+}
+
+function leadingSpeakerHtmlLabelMatch(label: string, characterName: string) {
+  const escapedName = escapeRegExp(characterName.trim());
+  const nameOnlyPattern = new RegExp(`^\\s*${escapedName}\\s*$`, "u");
+  const labelWithSeparatorPattern = new RegExp(`^\\s*${escapedName}\\s*[：:]\\s*$`, "u");
+  if (labelWithSeparatorPattern.test(label)) {
+    return { hasSeparator: true, matches: true };
+  }
+  if (nameOnlyPattern.test(label)) {
+    return { hasSeparator: false, matches: true };
+  }
+  return { hasSeparator: false, matches: false };
+}
+
+function firstMeaningfulSiblingAfter(node: Node) {
+  let next = node.nextSibling;
+  while (next) {
+    if (next.nodeType === Node.TEXT_NODE && !(next.textContent ?? "").trim()) {
+      next = next.nextSibling;
+      continue;
+    }
+    return next;
+  }
+  return null;
+}
+
+function startsWithSpeakerSeparator(node: Node | null) {
+  return node?.nodeType === Node.TEXT_NODE && /^\s*[：:]/u.test(node.textContent ?? "");
+}
+
+function firstMeaningfulChild(parent: ParentNode) {
+  for (const child of Array.from(parent.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE && !(child.textContent ?? "").trim()) {
+      continue;
+    }
+    return child;
+  }
+  return null;
+}
+
+function stripLeadingSpeakerFromParent(parent: ParentNode, characterName: string) {
+  const first = firstMeaningfulChild(parent);
+  if (!first) {
+    return false;
+  }
+  if (first.nodeType === Node.ELEMENT_NODE && (first as Element).tagName.toLowerCase() !== "b") {
+    return stripLeadingSpeakerFromParent(first as Element, characterName);
+  }
+  if (first.nodeType !== Node.ELEMENT_NODE || (first as Element).tagName.toLowerCase() !== "b") {
+    return false;
+  }
+  const speakerMatch = leadingSpeakerHtmlLabelMatch(first.textContent ?? "", characterName);
+  if (!speakerMatch.matches) {
+    return false;
+  }
+  const owner = first.parentNode;
+  if (!owner) {
+    return false;
+  }
+  if (!speakerMatch.hasSeparator && !startsWithSpeakerSeparator(firstMeaningfulSiblingAfter(first))) {
+    return false;
+  }
+  owner.removeChild(first);
+  const next = firstMeaningfulChild(owner);
+  if (next?.nodeType === Node.TEXT_NODE) {
+    next.textContent = stripLeadingSpeakerSeparator(next.textContent ?? "");
+    if (!next.textContent) {
+      next.parentNode?.removeChild(next);
+    }
+  }
+  return true;
+}
+
 export function stripLeadingSpeakerHtml(html: string, characterName?: string) {
   if (!characterName?.trim() || !html.trim()) {
     return html;
   }
-  return html.replace(/<b[^>]*>[^<]+<\/b>[：:]?\s*/, "");
+  const template = createTemplate(html);
+  if (!template) {
+    return html;
+  }
+  if (!stripLeadingSpeakerFromParent(template.content, characterName)) {
+    return html;
+  }
+  const wrapper = document.createElement("div");
+  wrapper.append(template.content.cloneNode(true));
+  return wrapper.innerHTML;
 }
 
 export function stripLeadingSpeakerText(text: string, characterName?: string) {
   if (!characterName?.trim()) {
     return text;
   }
-  const pattern = new RegExp(`^\\s*${escapeRegExp(characterName.trim())}\\s*[：:]\\s*`);
-  return text.replace(pattern, "");
+  return text.replace(leadingSpeakerTextPattern(characterName), "");
 }
 
 export function countVisibleHtmlCharacters(html: string) {
   const template = createTemplate(html);
   if (!template) {
-    return codepoints(html.replace(/<[^>]+>/g, "")).length;
+    return codepoints(stripHtmlFallback(html)).length;
   }
   let total = 0;
   template.content.childNodes.forEach((node) => {
@@ -472,7 +677,7 @@ export function countVisibleHtmlCharacters(html: string) {
 export function countVisibleHtmlUnits(html: string) {
   const template = createTemplate(html);
   if (!template) {
-    return visibleDirectionalUnitLength(html.replace(/<[^>]+>/g, ""));
+    return visibleDirectionalUnitLength(stripHtmlFallback(html));
   }
   let total = 0;
   template.content.childNodes.forEach((node) => {
@@ -517,7 +722,7 @@ function cloneNodeAsRtlVisual(node: Node): Node | null {
 export function reorderHtmlForRtl(html: string) {
   const template = createTemplate(html);
   if (!template) {
-    return reorderRtlPlainText(html.replace(/<[^>]+>/g, ""));
+    return reorderRtlPlainText(stripHtmlFallback(html));
   }
   const wrapper = document.createElement("div");
   for (const node of Array.from(template.content.childNodes)) {
@@ -534,10 +739,19 @@ export function renderDialogHtmlFrame(
   visibleCharacters: number,
   direction: DialogTypewriterDirection = "ltr",
 ) {
+  return renderDialogHtmlFrameContent(html, visibleCharacters, direction).html;
+}
+
+function renderDialogHtmlFrameContent(
+  html: string,
+  visibleCharacters: number,
+  direction: DialogTypewriterDirection = "ltr",
+) {
   const normalizedDirection = normalizeTypewriterDirection(direction);
   const template = createTemplate(html);
   if (!template) {
-    return sliceVisibleText(html.replace(/<[^>]+>/g, ""), visibleCharacters, normalizedDirection);
+    const text = sliceVisibleText(htmlPlainText(html), visibleCharacters, normalizedDirection);
+    return { html: text, nodes: text ? [{ kind: "text" as const, text }] : [] };
   }
   const wrapper = document.createElement("div");
   const remaining = { value: Math.max(0, visibleCharacters) };
@@ -551,7 +765,7 @@ export function renderDialogHtmlFrame(
         break;
       }
     }
-    return wrapper.innerHTML;
+    return { html: wrapper.innerHTML, nodes: dialogNodesFromParent(wrapper) };
   }
   for (const node of Array.from(template.content.childNodes)) {
     const nextNode = cloneNodeUntil(node, remaining);
@@ -562,7 +776,7 @@ export function renderDialogHtmlFrame(
       break;
     }
   }
-  return wrapper.innerHTML;
+  return { html: wrapper.innerHTML, nodes: dialogNodesFromParent(wrapper) };
 }
 
 export interface DialogTypewriterSource {
@@ -625,22 +839,38 @@ export function renderDialogTypewriterFrame(
   visibleCharacters: number,
   direction: DialogTypewriterDirection = "ltr",
 ) {
+  const frame = renderDialogTypewriterRichFrame(source, visibleCharacters, direction);
+  return {
+    html: frame.html,
+    text: frame.text,
+  };
+}
+
+export function renderDialogTypewriterRichFrame(
+  source: DialogTypewriterSource,
+  visibleCharacters: number,
+  direction: DialogTypewriterDirection = "ltr",
+) {
   const normalizedDirection = normalizeTypewriterDirection(direction);
   if (source.fullHtml) {
     const html = normalizedDirection === "rtl" ? (source.fullRtlHtml ?? source.fullHtml) : source.fullHtml;
+    const frame = renderDialogHtmlFrameContent(html, visibleCharacters, normalizedDirection);
     return {
-      html: renderDialogHtmlFrame(html, visibleCharacters, normalizedDirection),
+      html: frame.html,
+      nodes: frame.nodes,
       text:
         normalizedDirection === "rtl"
           ? sliceVisibleDirectionalText(source.fullRtlText, visibleCharacters)
           : sliceVisibleText(source.fullText, visibleCharacters, normalizedDirection),
     };
   }
+  const text =
+    normalizedDirection === "rtl"
+      ? sliceVisibleDirectionalText(source.fullRtlText, visibleCharacters)
+      : sliceVisibleText(source.fullText, visibleCharacters, normalizedDirection);
   return {
-    html: undefined,
-    text:
-      normalizedDirection === "rtl"
-        ? sliceVisibleDirectionalText(source.fullRtlText, visibleCharacters)
-        : sliceVisibleText(source.fullText, visibleCharacters, normalizedDirection),
+    html: text,
+    nodes: text ? [{ kind: "text" as const, text }] : [],
+    text,
   };
 }

@@ -6,12 +6,18 @@ from core.plugins.registry_catalog import (
     fetch_registry_plugins,
     parse_registry_plugins,
 )
+from core.plugins.registry_download import normalize_repo_slug
 
 
 def test_default_registry_url_points_to_r2_generated_cache():
     assert DEFAULT_REGISTRY_JSON_URL == (
         "https://r2.shinsekai.studio/registry/plugin_cache_original.json"
     )
+
+
+def test_normalize_repo_slug_rejects_github_lookalike_hosts():
+    assert normalize_repo_slug("https://github.com/example/demo") == "example/demo"
+    assert normalize_repo_slug("https://github.com.evil/example/demo") == ""
     assert LEGACY_REGISTRY_JSON_URL == (
         "https://raw.githubusercontent.com/RachelForster/Shinsekai-Plugin-Registry/main/plugins.json"
     )

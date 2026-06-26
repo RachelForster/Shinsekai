@@ -28,6 +28,7 @@ from sdk.chat_ui_theme import (
     validate_theme_dir,
 )
 
+from .security import safe_child_path, safe_existing_file_path
 from .state import BridgeState
 
 #: 用户可写主题目录（相对项目根 / cwd）。
@@ -57,6 +58,14 @@ def _is_builtin_theme_id(theme_id: str) -> bool:
 
 def _is_retired_builtin_theme_id(theme_id: str) -> bool:
     return theme_id in RETIRED_BUILTIN_THEME_IDS
+
+
+def _safe_theme_id(theme_id: str) -> str:
+    raw = str(theme_id or "").strip()
+    safe_id = slugify_theme_id(raw)
+    if not safe_id or safe_id != raw:
+        raise ValueError("主题 id 无效")
+    return safe_id
 
 
 def _seed_builtin_themes() -> None:
@@ -108,7 +117,7 @@ def _summary(theme_dir: Path, manifest: Dict[str, Any]) -> Dict[str, Any]:
     preview = manifest.get("preview")
     preview_url = None
     if isinstance(preview, str) and preview:
-        candidate = theme_dir / preview
+        candidate = safe_child_path(theme_dir, preview)
         if candidate.is_file():
             preview_url = _media_url(USER_THEMES_DIR / theme_dir.name / preview)
     return {
@@ -143,7 +152,7 @@ def list_chat_themes(state: BridgeState) -> List[Dict[str, Any]]:
 def get_chat_theme_manifest(state: BridgeState, theme_id: str) -> Dict[str, Any]:
     """读取并返回单个主题的完整 manifest。"""
     _seed_builtin_themes()
-    safe_id = Path(theme_id).name  # 防目录穿越
+    safe_id = _safe_theme_id(theme_id)
     if _is_retired_builtin_theme_id(safe_id):
         raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
     theme_dir = _themes_root() / safe_id
@@ -168,7 +177,7 @@ def set_active_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str,
     if not theme_id:
         raise ValueError("缺少主题 id")
     _seed_builtin_themes()
-    safe_id = Path(theme_id).name
+    safe_id = _safe_theme_id(theme_id)
     if _is_retired_builtin_theme_id(safe_id):
         raise FileNotFoundError(f"主题不存在：{theme_id}")
     if _read_manifest(_themes_root() / safe_id) is None:
@@ -200,7 +209,7 @@ def install_theme_from_zip(
     _seed_builtin_themes()
 
     with tempfile.TemporaryDirectory(prefix="chat_theme_") as tmp:
-        extracted = safe_extract(Path(zip_path), Path(tmp))
+        extracted = safe_extract(safe_existing_file_path(zip_path, field="theme zip path"), Path(tmp))
         manifest_root = locate_manifest_root(extracted)
         if manifest_root is None:
             raise ValueError(f"压缩包内未找到 {MANIFEST_NAME}")
@@ -210,7 +219,7 @@ def install_theme_from_zip(
             raise ValueError("主题校验失败：\n" + "\n".join(result.errors))
 
         theme_id = slugify_theme_id(result.normalized.get("id") or manifest_root.name)
-        target = root / theme_id
+        target = safe_child_path(root, theme_id)
         if target.exists():
             if not overwrite:
                 raise FileExistsError(f"主题已存在：{theme_id}（如需覆盖请传 overwrite=true）")
@@ -228,10 +237,10 @@ def install_theme_from_zip(
 
 def delete_chat_theme(state: BridgeState, theme_id: str) -> Dict[str, Any]:
     """删除一个用户主题目录。内置主题（M5 种子化后只读）不可删。"""
-    safe_id = Path(theme_id).name
+    safe_id = _safe_theme_id(theme_id)
     if _is_builtin_theme_id(safe_id):
         raise PermissionError(f"内置主题不可删除：{theme_id}")
-    target = _themes_root() / safe_id
+    target = safe_child_path(_themes_root(), safe_id)
     if not target.is_dir():
         raise FileNotFoundError(f"主题不存在：{theme_id}")
     shutil.rmtree(target, ignore_errors=True)
