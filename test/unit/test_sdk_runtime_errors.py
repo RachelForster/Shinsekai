@@ -129,6 +129,53 @@ def test_classify_exception_maps_openai_status_error():
     }
 
 
+def test_classify_exception_marks_unpaired_tool_messages_reason():
+    exc = _http_status_error(
+        "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'",
+        400,
+    )
+
+    assert types.http_client_error_from_exception(exc) == {
+        "kind": "http_client",
+        "message": (
+            "HTTP request failed: "
+            "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
+        ),
+        "errorType": "APIStatusError",
+        "timeout": False,
+        "statusCode": 400,
+        "url": "https://example.test/api",
+        "reason": types.HTTP_REASON_UNPAIRED_TOOL_MESSAGES,
+    }
+    assert types.is_unpaired_tool_messages_error(exc)
+
+
+def test_unpaired_tool_messages_reason_avoids_broad_keyword_false_positive():
+    exc = _http_status_error(
+        "Invalid role value for tool when tool_calls are disabled by this model",
+        400,
+    )
+
+    error = types.http_client_error_from_exception(exc)
+
+    assert error is not None
+    assert "reason" not in error
+    assert not types.is_unpaired_tool_messages_error(exc)
+
+
+def test_classify_exception_marks_missing_tool_call_id_responses_reason():
+    exc = _http_status_error(
+        "An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. "
+        "The following tool_call_ids did not have response messages: call_1",
+        400,
+    )
+
+    error = types.http_client_error_from_exception(exc)
+
+    assert error is not None
+    assert error["reason"] == types.HTTP_REASON_UNPAIRED_TOOL_MESSAGES
+
+
 def test_classify_exception_maps_anthropic_timeout():
     exc = AnthropicAPITimeoutError("anthropic timeout")
     exc.request = _FakeRequest()
