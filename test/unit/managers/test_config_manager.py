@@ -219,7 +219,7 @@ def test_save_api_config_new_defaults_local_tts_path_to_installed_bundle_root(tm
     )
 
     assert result == "API配置已保存！"
-    assert manager.config.api_config.gpt_sovits_url == "https://127.0.0.1:9880"
+    assert manager.config.api_config.gpt_sovits_url == "http://127.0.0.1:9880"
     assert manager.config.api_config.gpt_sovits_api_path == expected_path
     assert saved["gpt_sovits_api_path"] == expected_path
 
