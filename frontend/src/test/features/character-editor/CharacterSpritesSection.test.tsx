@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { CharacterSpritesSection } from "../../../features/character-editor/CharacterSpritesSection";
 import { createCharacter } from "../../../features/character-editor/characterEditorUtils";
+import type { Character } from "../../../shared/platform/types";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
 let originalMediaLoad: PropertyDescriptor | undefined;
@@ -35,12 +36,17 @@ vi.mock("../../../entities/files/repository", () => ({
 }));
 
 function renderSection(overrides: Partial<Parameters<typeof CharacterSpritesSection>[0]> = {}) {
-  const draft = {
+  const draft: Character = {
     ...createCharacter(),
     sprite_scale: 1.25,
     sprites: [
       { path: "D:/sprites/sprite-a.png" },
-      { path: "D:/sprites/sprite-b.png", voice_path: "D:/voices/sprite-b.wav", voice_text: "Hello" },
+      {
+        path: "D:/sprites/sprite-b.png",
+        voice_path: "D:/voices/sprite-b.wav",
+        voice_text: "Hello",
+        voice_type: "reference",
+      },
     ],
   };
   const props: Parameters<typeof CharacterSpritesSection>[0] = {
