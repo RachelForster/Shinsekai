@@ -290,9 +290,13 @@ def test_dialog_helpers_handle_import_failure_and_single_display(monkeypatch):
 
     monkeypatch.setattr("builtins.__import__", fake_import)
     assert handler._show_qt_dialog("Title", "Message", "detail") is False
+    monkeypatch.setenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", "1")
     assert handler._show_windows_dialog("Title", "Message") is False
 
     calls = []
+    monkeypatch.delenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.delenv("SHINSEKAI_DISABLE_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.setattr(handler, "_running_under_pytest", lambda: False)
     monkeypatch.setattr(handler, "_dialog_shown", False)
     monkeypatch.setattr(
         handler,
@@ -366,6 +370,7 @@ def test_report_main_exception_still_reports_when_logger_or_stderr_fail(monkeypa
     dialog_calls = []
     monkeypatch.delenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", raising=False)
     monkeypatch.delenv("SHINSEKAI_DISABLE_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.setattr(handler, "_running_under_pytest", lambda: False)
     monkeypatch.setattr(
         handler,
         "show_error_dialog",
@@ -394,6 +399,31 @@ def test_report_main_exception_still_reports_when_logger_or_stderr_fail(monkeypa
 
     monkeypatch.setattr(handler.sys, "stderr", BrokenStderr())
     handler._write_stderr("App", RuntimeError, RuntimeError("boom"), "detail", None)
+
+
+def test_report_main_exception_suppresses_dialog_under_pytest(monkeypatch, capsys):
+    dialog_calls = []
+    monkeypatch.delenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.delenv("SHINSEKAI_DISABLE_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.setattr(handler, "_running_under_pytest", lambda: True)
+    monkeypatch.setattr(
+        handler,
+        "show_error_dialog",
+        lambda *args: dialog_calls.append(args) or True,
+    )
+
+    exc = RuntimeError("boom")
+    handler.report_main_exception(
+        type(exc),
+        exc,
+        exc.__traceback__,
+        app_name="App",
+        logger=None,
+        show_dialog=True,
+    )
+
+    assert "App startup failed: RuntimeError: boom" in capsys.readouterr().err
+    assert dialog_calls == []
 
 
 def test_main_exception_hooks_report_sys_and_thread_exceptions(monkeypatch):

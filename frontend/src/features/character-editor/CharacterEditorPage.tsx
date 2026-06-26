@@ -157,7 +157,15 @@ export function CharacterEditorPage() {
       showToast({ kind: "success", title: t("character.memory.depInstalled") });
       setMemoryDepOpen(false);
       setMemoryDepTask(null);
-      void memoryQuery.refetch();
+      queryClient.setQueryData(["character-memories", memoryName], {
+        agentId: memoryName || "user",
+        count: 0,
+        memories: [],
+      });
+      setMemoryDepInstalling(false);
+      if (await ensureMem0Ready()) {
+        void memoryQuery.refetch();
+      }
     } catch (error) {
       showToast({
         kind: "error",
@@ -614,11 +622,13 @@ export function CharacterEditorPage() {
   const characterHasGptSovitsModel = (character: Character) =>
     Boolean(character.gpt_model_path?.trim() && character.sovits_model_path?.trim());
 
-  const defaultSpriteVoiceType = (character: Character): "preset" | "reference" =>
-    characterHasGptSovitsModel(character) ? "reference" : "preset";
+  const spriteHasReferenceVoiceText = (sprite: Sprite | undefined) => Boolean(sprite?.voice_text?.trim());
+
+  const defaultSpriteVoiceType = (sprite: Sprite | undefined, character: Character): "preset" | "reference" =>
+    characterHasGptSovitsModel(character) && spriteHasReferenceVoiceText(sprite) ? "reference" : "preset";
 
   const spriteVoiceType = (sprite: Sprite | undefined, character: Character): "preset" | "reference" =>
-    sprite?.voice_type ?? defaultSpriteVoiceType(character);
+    sprite?.voice_type ?? defaultSpriteVoiceType(sprite, character);
 
   const updateSpriteTag = (index: number, value: string) => {
     setDraft((current) => {
