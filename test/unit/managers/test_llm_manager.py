@@ -6,11 +6,19 @@ from types import SimpleNamespace
 import pytest
 
 from llm.llm_manager import LLMManager, LLMAdapterFactory
+from llm.message_sanitizer import filter_unpaired_tool_messages_for_request
 from llm.compact_manager import CompactManager
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
 from llm.tools.tool_manager import ToolManager
 from sdk.register import PluginCapabilityRegistry
 from test.mocks import MockLLMAdapter
+
+
+class ToolPairBadRequest(Exception):
+    status_code = 400
+
+    def __str__(self) -> str:
+        return "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
 
 
 class TestLLMManagerMessageManagement:
@@ -590,6 +598,97 @@ class TestLLMManagerCompact:
         request = mock_llm_adapter.call_history[0]
         assert request["messages"][-1] == {"role": "system", "content": "temporary stream context"}
         assert all(msg.get("content") != "temporary stream context" for msg in mgr.messages)
+
+    def test_request_filter_removes_unpaired_tool_messages(self):
+        messages = [
+            {"role": "user", "content": "search"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "ok", "arguments": "{}"}},
+                    {"id": "call_2", "type": "function", "function": {"name": "missing", "arguments": "{}"}},
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "name": "ok", "content": "{}"},
+            {"role": "tool", "tool_call_id": "orphan", "name": "bad", "content": "{}"},
+        ]
+
+        filtered = filter_unpaired_tool_messages_for_request(messages)
+
+        assert filtered is not messages
+        assert filtered == [
+            {"role": "user", "content": "search"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "ok", "arguments": "{}"}},
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "name": "ok", "content": "{}"},
+        ]
+
+    def test_request_filter_drops_empty_assistant_tool_call_without_result(self):
+        messages = [
+            {"role": "user", "content": "search"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "missing", "arguments": "{}"}},
+                ],
+            },
+            {"role": "user", "content": "next"},
+        ]
+
+        assert filter_unpaired_tool_messages_for_request(messages) == [
+            {"role": "user", "content": "search"},
+            {"role": "user", "content": "next"},
+        ]
+
+    def test_unpaired_tools_are_filtered_only_after_request_error(self, mock_llm_adapter):
+        class RecoveringAdapter(MockLLMAdapter):
+            def chat(self, messages, stream=False, **kwargs):
+                if not self.call_history:
+                    self.call_history.append({"messages": messages, "stream": stream, "kwargs": kwargs})
+                    raise ToolPairBadRequest()
+                return super().chat(messages, stream=stream, **kwargs)
+
+        adapter = RecoveringAdapter(responses=["Response."])
+        dispatcher = PluginHookDispatcher()
+
+        def inject_bad_tool_context(context: BeforeChatContext) -> None:
+            context.messages.append(
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {"id": "call_missing", "type": "function", "function": {"name": "missing", "arguments": "{}"}},
+                    ],
+                }
+            )
+            context.messages.append(
+                {"role": "tool", "tool_call_id": "orphan", "name": "missing", "content": "{}"}
+            )
+
+        dispatcher.register_before_chat(inject_bad_tool_context)
+        mgr = LLMManager(
+            adapter=adapter,
+            user_template="S",
+            hook_dispatcher=dispatcher,
+        )
+
+        mgr.chat("Hello", stream=False, include_local_time=False)
+
+        first_request_messages = adapter.call_history[0]["messages"]
+        assert any(message.get("role") == "tool" for message in first_request_messages)
+        assert any(message.get("tool_calls") for message in first_request_messages)
+
+        recovered_request_messages = adapter.call_history[1]["messages"]
+        assert all(message.get("role") != "tool" for message in recovered_request_messages)
+        assert all(not message.get("tool_calls") for message in recovered_request_messages)
+        assert mgr.messages[-1]["role"] == "assistant"
 
     def test_before_chat_context_skips_copy_without_before_chat_hooks(
         self,

@@ -129,6 +129,27 @@ def test_classify_exception_maps_openai_status_error():
     }
 
 
+def test_classify_exception_marks_unpaired_tool_messages_reason():
+    exc = _http_status_error(
+        "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'",
+        400,
+    )
+
+    assert types.http_client_error_from_exception(exc) == {
+        "kind": "http_client",
+        "message": (
+            "HTTP request failed: "
+            "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
+        ),
+        "errorType": "APIStatusError",
+        "timeout": False,
+        "statusCode": 400,
+        "url": "https://example.test/api",
+        "reason": types.HTTP_REASON_UNPAIRED_TOOL_MESSAGES,
+    }
+    assert types.is_unpaired_tool_messages_error(exc)
+
+
 def test_classify_exception_maps_anthropic_timeout():
     exc = AnthropicAPITimeoutError("anthropic timeout")
     exc.request = _FakeRequest()

@@ -25,6 +25,7 @@ class HttpClientError(TypedDict):
     timeout: bool
     statusCode: int | None
     url: str
+    reason: NotRequired[str]
 
 
 ExceptionInfo = RuntimeDependencyError | HttpClientError
@@ -138,6 +139,14 @@ _HTTP_CLIENT_ERROR_NAMES = {
     "UnprocessableEntityError",
 }
 
+HTTP_REASON_UNPAIRED_TOOL_MESSAGES = "unpaired_tool_messages"
+
+_UNPAIRED_TOOL_MESSAGE_MARKERS = (
+    "messages with role 'tool' must be a response to a preceding message with 'tool_calls'",
+    "tool_call_id",
+    "tool_calls",
+)
+
 
 def _module_is(module_name: str, package: str) -> bool:
     return module_name == package or module_name.startswith(f"{package}.")
@@ -204,7 +213,7 @@ def http_client_error_from_exception(exc: BaseException) -> HttpClientError | No
         "WriteTimeout",
     }
     message = str(exc).strip() or error_type
-    return {
+    error: HttpClientError = {
         "kind": "http_client",
         "message": f"HTTP request failed: {message}",
         "errorType": error_type,
@@ -212,6 +221,22 @@ def http_client_error_from_exception(exc: BaseException) -> HttpClientError | No
         "statusCode": _httpx_status_code(exc),
         "url": _httpx_url(exc),
     }
+    if is_unpaired_tool_messages_error(exc, status_code=error["statusCode"]):
+        error["reason"] = HTTP_REASON_UNPAIRED_TOOL_MESSAGES
+    return error
+
+
+def is_unpaired_tool_messages_error(
+    exc: BaseException,
+    *,
+    status_code: int | None = None,
+) -> bool:
+    if status_code not in (400, 422, None):
+        return False
+    text = str(exc).lower()
+    if "role" in text and "tool" in text and "tool_calls" in text:
+        return True
+    return any(marker in text for marker in _UNPAIRED_TOOL_MESSAGE_MARKERS)
 
 
 def classify_exception(exc: BaseException) -> ExceptionInfo | None:
