@@ -279,6 +279,22 @@ export function TemplateEditorPage() {
     useStat,
     useTranslation,
   };
+
+  const hasTemplateRulesChanged = (
+    session: typeof launchSession,
+    options: typeof templateOptionsState,
+  ): boolean => {
+    if (!session) return false;
+    return (Object.keys(options) as (keyof typeof options)[]).some((key) => {
+      const current = options[key];
+      const saved = (session as Record<string, unknown>)[key];
+      // Only compare primitive flags — objects/arrays would always
+      // spuriously report a change under strict equality.
+      if (typeof current !== "boolean" || typeof saved !== "boolean") return false;
+      return saved !== current;
+    });
+  };
+
   const runtimeOptionsState = {
     historyPath,
     initSpritePath,
@@ -859,12 +875,7 @@ export function TemplateEditorPage() {
           icon={<Play aria-hidden className="button__icon" />}
           loading={launchMutation.isPending}
           onClick={() => {
-            if (
-              launchSession &&
-              (Object.keys(templateOptionsState) as (keyof typeof templateOptionsState)[]).some(
-                (key) => (launchSession as Record<string, unknown>)[key] !== templateOptionsState[key],
-              )
-            ) {
+            if (hasTemplateRulesChanged(launchSession, templateOptionsState)) {
               setRuleChangeDialogOpen(true);
             } else {
               launchMutation.mutate({ resetHistory: false });
