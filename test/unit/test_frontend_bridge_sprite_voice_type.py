@@ -80,7 +80,7 @@ def test_upload_sprite_voice_rejects_invalid_voice_type(tmp_path):
         )
 
 
-def test_upload_sprite_voice_defaults_to_preset_without_gpt_sovits_model(tmp_path):
+def test_upload_sprite_voice_defaults_to_fallback_without_gpt_sovits_model(tmp_path):
     voice = tmp_path / "voice.mp3"
     voice.write_bytes(b"not really audio")
     character = make_character()
@@ -96,7 +96,7 @@ def test_upload_sprite_voice_defaults_to_preset_without_gpt_sovits_model(tmp_pat
         },
     )
 
-    assert character.sprites[0]["voice_type"] == "preset"
+    assert character.sprites[0]["voice_type"] == "fallback"
 
 
 def test_upload_sprite_voice_defaults_to_reference_with_gpt_sovits_model(tmp_path, monkeypatch):
@@ -126,6 +126,15 @@ def test_save_sprite_voice_type_rejects_invalid_voice_type():
 
     with pytest.raises(ValueError, match="voice type"):
         _save_sprite_voice_type(state, {"name": "Mika", "spriteIndex": 0, "voiceType": "bad"})
+
+
+def test_save_sprite_voice_type_accepts_fallback():
+    character = make_character()
+    state = make_state(character)
+
+    _save_sprite_voice_type(state, {"name": "Mika", "spriteIndex": 0, "voiceType": "fallback"})
+
+    assert character.sprites[0]["voice_type"] == "fallback"
 
 
 def test_save_sprite_voice_type_rejects_missing_reference_audio():
