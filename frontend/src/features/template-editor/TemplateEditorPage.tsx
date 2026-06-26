@@ -284,7 +284,7 @@ export function TemplateEditorPage() {
     if (!session) return false;
     return (Object.keys(options) as (keyof typeof options)[]).some((key) => {
       const current = options[key];
-      const saved = (session as Record<string, unknown>)[key];
+      const saved = (session as unknown as Record<string, unknown>)[key];
       // Only compare primitive flags — objects/arrays would always
       // spuriously report a change under strict equality.
       if (typeof current !== "boolean" || typeof saved !== "boolean") return false;
