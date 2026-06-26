@@ -32,7 +32,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import type { TaskSnapshot } from "../../shared/platform/types";
+import type { SpriteVoiceType, TaskSnapshot } from "../../shared/platform/types";
 import { AlertDialog, Button, Dialog, PageSectionNav, TaskProgress, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemorySection } from "./CharacterMemorySection";
@@ -447,7 +447,7 @@ export function CharacterEditorPage() {
   });
 
   const voiceTypeMutation = useMutation({
-    mutationFn: ({ index, voiceType: vt }: { index: number; voiceType: string }) =>
+    mutationFn: ({ index, voiceType: vt }: { index: number; voiceType: SpriteVoiceType }) =>
       saveSpriteVoiceType(currentCharacterName, index, vt),
     onError(error) {
       showToast({
@@ -624,10 +624,10 @@ export function CharacterEditorPage() {
 
   const spriteHasReferenceVoiceText = (sprite: Sprite | undefined) => Boolean(sprite?.voice_text?.trim());
 
-  const defaultSpriteVoiceType = (sprite: Sprite | undefined, character: Character): "preset" | "reference" =>
-    characterHasGptSovitsModel(character) && spriteHasReferenceVoiceText(sprite) ? "reference" : "preset";
+  const defaultSpriteVoiceType = (sprite: Sprite | undefined, character: Character): SpriteVoiceType =>
+    characterHasGptSovitsModel(character) && spriteHasReferenceVoiceText(sprite) ? "reference" : "fallback";
 
-  const spriteVoiceType = (sprite: Sprite | undefined, character: Character): "preset" | "reference" =>
+  const spriteVoiceType = (sprite: Sprite | undefined, character: Character): SpriteVoiceType =>
     sprite?.voice_type ?? defaultSpriteVoiceType(sprite, character);
 
   const updateSpriteTag = (index: number, value: string) => {
@@ -927,7 +927,7 @@ export function CharacterEditorPage() {
     }
   };
 
-  const handleSpriteVoiceTypeChange = (value: "preset" | "reference") => {
+  const handleSpriteVoiceTypeChange = (value: SpriteVoiceType) => {
     updateSprite(selectedSpriteIndex, { voice_type: value });
     if (isSavedCharacter) {
       voiceTypeMutation.mutate({ index: selectedSpriteIndex, voiceType: value });

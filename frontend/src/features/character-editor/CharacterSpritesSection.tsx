@@ -4,6 +4,7 @@ import { Image as ImageIcon, Tags, Trash2, Upload, Volume2 } from "lucide-react"
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
+import type { SpriteVoiceType } from "../../shared/platform/types";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
   AsyncButton,
@@ -43,7 +44,7 @@ interface CharacterSpritesSectionProps {
   onSpriteVoiceTextBlur: (text: string) => void;
   onSpriteVoiceTextChange: (value: string) => void;
   onSpriteVoiceUpload: () => void;
-  onSpriteVoiceTypeChange: (value: "preset" | "reference") => void;
+  onSpriteVoiceTypeChange: (value: SpriteVoiceType) => void;
   pendingSpritePaths: string[];
   pendingVoicePath: string;
   selectedSprite?: Sprite;
@@ -91,7 +92,13 @@ export function CharacterSpritesSection({
   voiceUploadPending,
 }: CharacterSpritesSectionProps) {
   const { t } = useI18n();
-  const voiceType = selectedSprite?.voice_type ?? "preset";
+  const voiceType = selectedSprite?.voice_type ?? "fallback";
+  const voiceTypeHintKey =
+    voiceType === "reference"
+      ? "character.sprite.voiceRefHint"
+      : voiceType === "preset"
+        ? "character.sprite.voicePresetHint"
+        : "character.sprite.voiceFallbackHint";
 
   return (
     <section className="section page-section-anchor" id={id}>
@@ -215,6 +222,16 @@ export function CharacterSpritesSection({
                   <div className="voice-type-selector">
                     <label className="radio-row">
                       <input
+                        checked={voiceType === "reference"}
+                        name="voiceType"
+                        onChange={() => onSpriteVoiceTypeChange("reference")}
+                        type="radio"
+                        value="reference"
+                      />
+                      <span>{t("character.sprite.voiceTypeReference")}</span>
+                    </label>
+                    <label className="radio-row">
+                      <input
                         checked={voiceType === "preset"}
                         name="voiceType"
                         onChange={() => onSpriteVoiceTypeChange("preset")}
@@ -225,18 +242,16 @@ export function CharacterSpritesSection({
                     </label>
                     <label className="radio-row">
                       <input
-                        checked={voiceType === "reference"}
+                        checked={voiceType === "fallback"}
                         name="voiceType"
-                        onChange={() => onSpriteVoiceTypeChange("reference")}
+                        onChange={() => onSpriteVoiceTypeChange("fallback")}
                         type="radio"
-                        value="reference"
+                        value="fallback"
                       />
-                      <span>{t("character.sprite.voiceTypeReference")}</span>
+                      <span>{t("character.sprite.voiceTypeFallback")}</span>
                     </label>
                   </div>
-                  {voiceType === "reference" ? (
-                    <p className="field-row__hint field-row__hint--voice-ref">{t("character.sprite.voiceRefHint")}</p>
-                  ) : null}
+                  <p className="field-row__hint field-row__hint--voice-ref">{t(voiceTypeHintKey)}</p>
                 </span>
               </div>
               <label className="field-row field-row--stack">
@@ -253,25 +268,27 @@ export function CharacterSpritesSection({
                   />
                 </span>
               </label>
-              <label className="field-row field-row--stack">
-                <span className="field-row__label">{t("character.sprite.voiceText")}</span>
-                <span className="field-row__control">
-                  <div className="input-group sprite-tag-row">
-                    <TextInput
-                      className="sprite-tag-input"
-                      onBlur={(event) => onSpriteVoiceTextBlur(event.currentTarget.value)}
-                      onChange={(event) => onSpriteVoiceTextChange(event.target.value)}
-                      value={selectedSprite.voice_text ?? ""}
-                    />
-                    <AsyncButton
-                      onClick={() => onSpriteVoiceTextBlur(selectedSprite?.voice_text ?? "")}
-                      variant="ghost"
-                    >
-                      {t("character.sprite.saveVoiceText")}
-                    </AsyncButton>
-                  </div>
-                </span>
-              </label>
+              {voiceType !== "fallback" ? (
+                <label className="field-row field-row--stack">
+                  <span className="field-row__label">{t("character.sprite.voiceText")}</span>
+                  <span className="field-row__control">
+                    <div className="input-group sprite-tag-row">
+                      <TextInput
+                        className="sprite-tag-input"
+                        onBlur={(event) => onSpriteVoiceTextBlur(event.currentTarget.value)}
+                        onChange={(event) => onSpriteVoiceTextChange(event.target.value)}
+                        value={selectedSprite.voice_text ?? ""}
+                      />
+                      <AsyncButton
+                        onClick={() => onSpriteVoiceTextBlur(selectedSprite?.voice_text ?? "")}
+                        variant="ghost"
+                      >
+                        {t("character.sprite.saveVoiceText")}
+                      </AsyncButton>
+                    </div>
+                  </span>
+                </label>
+              ) : null}
               <div className="asset-inspector__actions">
                 <AsyncButton loading={voiceUploadPending} onClick={onSpriteVoiceUpload} variant="ghost">
                   {t("character.sprite.uploadVoice")}

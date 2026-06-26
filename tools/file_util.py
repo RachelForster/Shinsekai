@@ -409,11 +409,11 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                         s['voice_path'] = filename
                     voice_type = str(s.get('voice_type') or '').strip().lower()
                     if voice_type:
-                        if voice_type not in {'preset', 'reference'}:
-                            raise ValueError(f"voice_type must be preset or reference: {voice_type!r}")
+                        if voice_type not in {'fallback', 'preset', 'reference'}:
+                            raise ValueError(f"voice_type must be fallback, preset, or reference: {voice_type!r}")
                         s['voice_type'] = voice_type
                     else:
-                        s['voice_type'] = 'reference' if str(s.get('voice_text') or '').strip() else 'preset'
+                        s['voice_type'] = 'reference' if str(s.get('voice_text') or '').strip() else 'fallback'
             
             # 恢复模型文件并更新路径
             model_paths = {

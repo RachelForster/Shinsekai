@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 import config.network_proxy as network_proxy
-from config.config_manager import ConfigManager
+from config.config_manager import ConfigManager, normalize_sprite_voice_types
 from config.schema import AppConfig, ApiConfig, Background, Character, SystemConfig
 
 
@@ -62,6 +62,21 @@ def test_get_llm_api_config_defaults_known_provider_base_url_when_empty():
     assert model == "deepseek-chat"
     assert base_url == "https://api.deepseek.com/v1"
     assert api_key == "sk-test"
+
+
+def test_normalize_sprite_voice_types_sets_voice_without_text_to_fallback():
+    data = {
+        "name": "Mika",
+        "sprites": [
+            {"path": "sprite.png", "voice_path": "voice.wav", "voice_type": "preset"},
+            {"path": "ref.png", "voice_path": "ref.wav", "voice_text": "hello"},
+        ],
+    }
+
+    normalized = normalize_sprite_voice_types(data)
+
+    assert normalized["sprites"][0]["voice_type"] == "fallback"
+    assert normalized["sprites"][1]["voice_type"] == "reference"
 
 
 def test_get_llm_api_config_keeps_saved_base_url():

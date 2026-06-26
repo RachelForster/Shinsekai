@@ -25,6 +25,25 @@ from config.network_proxy import apply_network_proxy_environment
 import traceback
 
 
+def normalize_sprite_voice_types(character_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize legacy sprite voice semantics while reading characters."""
+    sprites = character_data.get("sprites")
+    if not isinstance(sprites, list):
+        return character_data
+    for sprite in sprites:
+        if not isinstance(sprite, dict):
+            continue
+        voice_path = str(sprite.get("voice_path") or "").strip()
+        if not voice_path:
+            continue
+        voice_text = str(sprite.get("voice_text") or "").strip()
+        if voice_text:
+            sprite["voice_type"] = str(sprite.get("voice_type") or "reference").strip().lower() or "reference"
+        else:
+            sprite["voice_type"] = "fallback"
+    return character_data
+
+
 def _llm_default_base_url(llm_provider: str) -> str:
     """Return the built-in base URL for a provider, accepting minor case drift."""
     provider = (llm_provider or "").strip()
@@ -128,7 +147,7 @@ class ConfigManager:
             if not isinstance(characters_data, list):
                 characters_data = [] # 处理文件为空或格式错误的情况
                 
-            character_list = [Character.model_validate(item) for item in characters_data]
+            character_list = [Character.model_validate(normalize_sprite_voice_types(item)) for item in characters_data]
             background = [Background.model_validate(item) for item in background_data]
             if not isinstance(effect_data, list):
                 effect_data = []

@@ -1,5 +1,6 @@
 import { getPlatform } from "../../shared/platform/platform";
 import type { Character } from "../config/types";
+import type { SpriteVoiceType } from "../../shared/platform/types";
 
 export const charactersQueryKey = ["characters"] as const;
 
@@ -72,7 +73,7 @@ export function uploadSpriteVoice(input: {
   spriteIndex: number;
   voicePath: string;
   voiceText: string;
-  voiceType?: "preset" | "reference";
+  voiceType?: SpriteVoiceType;
 }) {
   return getPlatform().characters.uploadSpriteVoice(input);
 }
@@ -81,7 +82,7 @@ export function saveSpriteVoiceText(name: string, spriteIndex: number, voiceText
   return getPlatform().characters.saveSpriteVoiceText(name, spriteIndex, voiceText);
 }
 
-export function saveSpriteVoiceType(name: string, spriteIndex: number, voiceType: string) {
+export function saveSpriteVoiceType(name: string, spriteIndex: number, voiceType: SpriteVoiceType) {
   return getPlatform().characters.saveSpriteVoiceType(name, spriteIndex, voiceType);
 }
 
