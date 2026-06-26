@@ -104,6 +104,16 @@ BASIC_CHAR = {
 # ── Import tests ────────────────────────────────────────────────────────────
 
 class TestImport:
+    def test_character_config_parse_normalizes_voice_without_text_to_fallback(self):
+        from config.character_config import CharacterConfig
+
+        data = dict(BASIC_CHAR)
+        data["sprites"] = [{"path": "smile.png", "voice_path": "greet.wav", "voice_type": "preset"}]
+
+        result = CharacterConfig.parse_dic(data)
+
+        assert result.sprites[0]["voice_type"] == "fallback"
+
     def test_sprite_paths_rewritten(self, tmp_path):
         """Imported sprite paths point to the local data/sprite/{prefix}/ dir."""
         with tempfile.TemporaryDirectory() as td:
@@ -156,8 +166,8 @@ class TestImport:
 
         assert result[0].sprites[0]["voice_type"] == "reference"
 
-    def test_old_voice_without_voice_text_or_voice_type_imports_as_preset(self, tmp_path):
-        """Old character packages without reference text are preset sprite voices."""
+    def test_old_voice_without_voice_text_or_voice_type_imports_as_fallback(self, tmp_path):
+        """Old character packages without reference text are fallback sprite voices."""
         data = dict(BASIC_CHAR)
         data["sprites"] = [{"path": "smile.png", "voice_path": "greet.wav"}]
         with tempfile.TemporaryDirectory() as td:
@@ -170,7 +180,7 @@ class TestImport:
             with _mock_dirs(tmp_path):
                 result = file_util.import_character(str(z))
 
-        assert result[0].sprites[0]["voice_type"] == "preset"
+        assert result[0].sprites[0]["voice_type"] == "fallback"
 
     def test_fields_preserved(self, tmp_path):
         """Name, sprite_scale, emotion_tags, voice_text etc. survive import."""

@@ -310,8 +310,12 @@ export const enMessages: Record<MessageKey, string> = {
   "character.sprite.voiceText": "Voice text",
   "character.sprite.voiceUploadPath": "Voice upload file",
   "character.sprite.voiceType": "Voice type",
+  "character.sprite.voiceTypeFallback": "Fallback voice",
   "character.sprite.voiceTypePreset": "Preset voice",
-  "character.sprite.voiceTypeReference": "Reference voice (requires validation)",
+  "character.sprite.voiceTypeReference": "Reference voice",
+  "character.sprite.voiceFallbackHint":
+    "Fallback voice plays only when no usable TTS engine is configured, preserving legacy sprite audio behavior.",
+  "character.sprite.voicePresetHint": "Preset voice skips TTS and always plays the audio file attached to this sprite.",
   "character.sprite.voiceRefHint":
     "Reference audio will be used for TTS voice cloning. Please upload a WAV file within 3–10 s.",
   "character.title": "Characters",

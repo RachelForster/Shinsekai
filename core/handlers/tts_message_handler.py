@@ -6,6 +6,7 @@ TTS worker 用 LLM dialog 处理器（见 handler_registry.MessageHandler）。
 
 from __future__ import annotations
 
+import logging
 import re
 import traceback
 from pathlib import Path
@@ -27,6 +28,7 @@ from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
 from i18n import tr as tr_i18n
 
 _config = ConfigManager()
+logger = logging.getLogger(__name__)
 
 
 def _read_sprite_voice_cfg(name_s: str, sprite_id: int):
@@ -84,6 +86,39 @@ def _is_remote_gpt_sovits() -> bool:
 
 def _is_remote_reference_path(path: str) -> bool:
     return str(path or "").strip().startswith("/kaggle/")
+
+
+def _sprite_value(sprite_data, key: str, default=None):
+    if isinstance(sprite_data, dict):
+        return sprite_data.get(key, default)
+    return getattr(sprite_data, key, default)
+
+
+def _sprite_voice_audio(character_config, sprite_id: int, *allowed_types: str):
+    if sprite_id < 0:
+        return None, "", ""
+    try:
+        yaml_voice_type, yaml_voice_path, yaml_voice_text = _read_sprite_voice_cfg(
+            character_config.name, sprite_id
+        )
+        voice_type = yaml_voice_type
+        voice_path = str(yaml_voice_path or "").strip()
+        voice_text = yaml_voice_text or ""
+        if not voice_path:
+            sprite_data = character_config.sprites[sprite_id]
+            voice_type = _sprite_value(sprite_data, "voice_type")
+            voice_path = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
+            voice_text = _sprite_value(sprite_data, "voice_text", "") or ""
+        if voice_type in allowed_types and voice_path:
+            return voice_type, Path(voice_path).resolve().as_posix(), voice_text
+    except Exception:
+        logger.debug(
+            "Failed to resolve sprite voice audio for character=%s sprite_id=%s",
+            getattr(character_config, "name", None),
+            sprite_id,
+            exc_info=True,
+        )
+    return None, "", ""
 
 
 class ChainOfThoughtTtsHandler(MessageHandler):
@@ -197,12 +232,13 @@ class DefaultCharacterTtsHandler(MessageHandler):
 
                 # 预设语音：跳过 TTS 合成，直接播放立绘上传的语音文件
                 if sprite_id >= 0:
-                    _yaml_vt, _yaml_vp, _yaml_vtext = _read_sprite_voice_cfg(name_s, sprite_id)
-                    if _yaml_vt == "preset" and _yaml_vp:
-                        audio_path = Path(_yaml_vp).resolve().as_posix()
+                    _voice_type, _voice_audio_path, _voice_text = _sprite_voice_audio(
+                        character_config, sprite_id, "preset"
+                    )
+                    if _voice_audio_path:
                         _hide_tts_busy()
                         tts_emit_to_ui_queue(
-                            name_s, _yaml_vtext or speech, str(asset_id), audio_path,
+                            name_s, _voice_text or speech, str(asset_id), _voice_audio_path,
                             is_system_message=False, effect=msg.effect,
                         )
                         return
@@ -210,14 +246,13 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 ref_audio_path = Path(character_config.refer_audio_path).resolve().as_posix()
                 prompt_text = character_config.prompt_text
                 try:
+                    if sprite_id < 0:
+                        raise IndexError("Sprite ID out of range")
                     sprite_data = character_config.sprites[sprite_id]
-                    if isinstance(sprite_data, dict):
-                        _vt = sprite_data.get("voice_text")
-                        _vp = str(sprite_data.get("voice_path") or "").strip()
-                    else:
-                        _vt = getattr(sprite_data, "voice_text", None)
-                        _vp = str(getattr(sprite_data, "voice_path", "") or "").strip()
-                    if sprite_id >= 0 and _vt and (
+                    _voice_type = _sprite_value(sprite_data, "voice_type")
+                    _vt = _sprite_value(sprite_data, "voice_text")
+                    _vp = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
+                    if _vp and (_voice_type == "reference" or (_voice_type is None and _vt)) and _vt and (
                         not _is_remote_gpt_sovits() or _is_remote_reference_path(_vp)
                     ):
                         ref_audio_path = Path(_vp).resolve().as_posix()
@@ -300,7 +335,13 @@ class DefaultCharacterTtsHandler(MessageHandler):
             finally:
                 _hide_tts_busy()
         else:
-            audio_path = character_config.sprites[int(asset_id) - 1].get("voice_path", "")
+            try:
+                sprite_id = int(asset_id) - 1
+            except (TypeError, ValueError):
+                sprite_id = -1
+            _voice_type, audio_path, _voice_text = _sprite_voice_audio(
+                character_config, sprite_id, "fallback", "preset"
+            )
         tts_emit_to_ui_queue(
             name_s, speech, str(asset_id), audio_path, is_system_message=False, effect=msg.effect,
         )

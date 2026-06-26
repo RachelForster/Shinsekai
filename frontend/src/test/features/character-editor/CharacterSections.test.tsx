@@ -29,6 +29,7 @@ const characterDraft: Character = {
       path: "/project/chars/mika/Sprite01.webp",
       voice_path: "/project/chars/mika/voice/Sprite01.wav",
       voice_text: "Hello",
+      voice_type: "reference",
     },
   ],
 };

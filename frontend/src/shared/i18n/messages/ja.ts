@@ -315,8 +315,13 @@ export const jaMessages: Record<MessageKey, string> = {
   "character.sprite.voiceText": "音声テキスト",
   "character.sprite.voiceUploadPath": "アップロード音声",
   "character.sprite.voiceType": "音声タイプ",
+  "character.sprite.voiceTypeFallback": "フォールバック音声",
   "character.sprite.voiceTypePreset": "プリセット音声",
-  "character.sprite.voiceTypeReference": "参照音声（検証が必要）",
+  "character.sprite.voiceTypeReference": "参照音声",
+  "character.sprite.voiceFallbackHint":
+    "フォールバック音声は、利用できるTTSエンジンがない場合だけ再生されます。旧版の立ち絵音声の挙動を保ちます。",
+  "character.sprite.voicePresetHint":
+    "プリセット音声はTTSをスキップし、この立ち絵に紐づいた音声ファイルを常に直接再生します。",
   "character.sprite.voiceRefHint":
     "参照音声はTTS音声クローンに使用されます。3〜10秒のWAVファイルをアップロードしてください。",
   "character.title": "キャラクター",

@@ -39,7 +39,7 @@ class Sprite(BaseModel):
     path: FilePath = Field(..., description="立绘图片的文件路径")
     voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
-    voice_type: Optional[str] = Field(None, description="语音类型: preset 或 reference")
+    voice_type: Optional[str] = Field(None, description="语音类型: fallback、preset 或 reference")
 
 class Character(BaseModel):
     """单个角色配置的实体模型"""
@@ -77,7 +77,7 @@ class Background(BaseModel):
 class ApiConfig(BaseModel):
     """API 相关的配置，如 GPT-SoVITS 和 LLM 的设置"""
     gpt_sovits_api_path: DefaultIfNone[str] = Field(default='', description="TTS 服务启动目录（历史字段名）")
-    gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='https://127.0.0.1:9880', description="TTS 服务访问 URL")
+    gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='http://127.0.0.1:9880', description="TTS 服务访问 URL")
     tts_provider: DefaultIfNone[str] = Field(
         default="gpt-sovits",
         description="TTS 提供器: gpt-sovits / kaggle-gpt-sovits / genie-tts / index-tts / cosyvoice / none（不使用语音合成）",

@@ -259,7 +259,7 @@ describe("CharacterEditorPage", () => {
       name: input.name,
       sprites: input.paths.map((path) => ({ path })),
     }));
-    mockUploadSpriteVoice.mockImplementation(async (input: { voiceType?: "preset" | "reference" }) => ({
+    mockUploadSpriteVoice.mockImplementation(async (input: { voiceType?: "fallback" | "preset" | "reference" }) => ({
       ...character,
       sprites: [{ ...character.sprites[0], voice_path: "D:/new/sora.wav", voice_type: input.voiceType }],
     }));
@@ -332,7 +332,7 @@ describe("CharacterEditorPage", () => {
     await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Sora"));
   });
 
-  it("uploads sprite voice with the displayed default preset type", async () => {
+  it("uploads sprite voice with the displayed default fallback type", async () => {
     renderPage();
 
     await screen.findByDisplayValue("Mika");
@@ -345,13 +345,13 @@ describe("CharacterEditorPage", () => {
           name: "Mika",
           spriteIndex: 0,
           voicePath: "D:/new/sora.wav",
-          voiceType: "preset",
+          voiceType: "fallback",
         }),
       ),
     );
   });
 
-  it("keeps sprite voice uploads preset when GPT-SoVITS models have no sprite voice text", async () => {
+  it("keeps sprite voice uploads fallback when GPT-SoVITS models have no sprite voice text", async () => {
     mockListCharacters.mockResolvedValue([
       {
         ...structuredClone(character),
@@ -362,7 +362,27 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     await screen.findByDisplayValue("Mika");
-    expect(screen.getByRole("radio", { name: "Preset voice" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Fallback voice" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
+
+    await waitFor(() =>
+      expect(mockUploadSpriteVoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Mika",
+          spriteIndex: 0,
+          voicePath: "D:/new/sora.wav",
+          voiceType: "fallback",
+        }),
+      ),
+    );
+  });
+
+  it("uploads sprite voice as preset after explicit selection", async () => {
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    fireEvent.click(screen.getByRole("radio", { name: "Preset voice" }));
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
@@ -390,7 +410,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     await screen.findByDisplayValue("Mika");
-    expect(screen.getByRole("radio", { name: "Reference voice (requires validation)" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Reference voice" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
@@ -456,7 +476,7 @@ describe("CharacterEditorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save scale" }));
     await waitFor(() => expect(mockSaveSpriteScale).toHaveBeenCalledWith("Mika", 1.25));
 
-    fireEvent.click(screen.getByRole("radio", { name: "Reference voice (requires validation)" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Reference voice" }));
     await waitFor(() => expect(mockSaveSpriteVoiceType).toHaveBeenCalledWith("Mika", 0, "reference"));
 
     const voiceTextInput = screen.getByDisplayValue("hello");

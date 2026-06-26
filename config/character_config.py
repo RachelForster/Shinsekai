@@ -1,5 +1,8 @@
 import yaml
 
+from config.sprite_voice import normalize_sprite_voice_types
+
+
 class CharacterConfig:
     def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None):
         # 角色基本信息
@@ -49,6 +52,7 @@ class CharacterConfig:
     
     @staticmethod
     def parse_dic(char_data):
+        char_data = normalize_sprite_voice_types(char_data)
         character = CharacterConfig(
                 name=char_data['name'],
                 color=char_data['color'],
