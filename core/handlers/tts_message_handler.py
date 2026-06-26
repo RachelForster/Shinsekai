@@ -6,6 +6,7 @@ TTS worker 用 LLM dialog 处理器（见 handler_registry.MessageHandler）。
 
 from __future__ import annotations
 
+import logging
 import re
 import traceback
 from pathlib import Path
@@ -27,6 +28,7 @@ from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
 from i18n import tr as tr_i18n
 
 _config = ConfigManager()
+logger = logging.getLogger(__name__)
 
 
 def _read_sprite_voice_cfg(name_s: str, sprite_id: int):
@@ -110,7 +112,12 @@ def _sprite_voice_audio(character_config, sprite_id: int, *allowed_types: str):
         if voice_type in allowed_types and voice_path:
             return voice_type, Path(voice_path).resolve().as_posix(), voice_text
     except Exception:
-        pass
+        logger.debug(
+            "Failed to resolve sprite voice audio for character=%s sprite_id=%s",
+            getattr(character_config, "name", None),
+            sprite_id,
+            exc_info=True,
+        )
     return None, "", ""
 
 
@@ -239,11 +246,13 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 ref_audio_path = Path(character_config.refer_audio_path).resolve().as_posix()
                 prompt_text = character_config.prompt_text
                 try:
+                    if sprite_id < 0:
+                        raise IndexError("Sprite ID out of range")
                     sprite_data = character_config.sprites[sprite_id]
                     _voice_type = _sprite_value(sprite_data, "voice_type")
                     _vt = _sprite_value(sprite_data, "voice_text")
                     _vp = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
-                    if sprite_id >= 0 and (_voice_type == "reference" or (_voice_type is None and _vt)) and _vt and (
+                    if _vp and (_voice_type == "reference" or (_voice_type is None and _vt)) and _vt and (
                         not _is_remote_gpt_sovits() or _is_remote_reference_path(_vp)
                     ):
                         ref_audio_path = Path(_vp).resolve().as_posix()

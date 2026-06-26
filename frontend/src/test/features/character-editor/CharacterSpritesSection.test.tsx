@@ -147,4 +147,63 @@ describe("CharacterSpritesSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(props.onSpriteDelete).toHaveBeenCalledTimes(1);
   });
+
+  it("renders the matching voice type hint for each sprite voice mode", () => {
+    const { props, rerender } = renderSection();
+    const selectedSprite = props.selectedSprite;
+    expect(selectedSprite).toBeDefined();
+
+    expect(screen.getByText(/Reference audio will be used for TTS voice cloning/)).toBeInTheDocument();
+
+    rerender(
+      <I18nProvider language="en">
+        <CharacterSpritesSection {...props} selectedSprite={{ ...selectedSprite!, voice_type: "preset" }} />
+      </I18nProvider>,
+    );
+    expect(
+      screen.getByText("Preset voice skips TTS and always plays the audio file attached to this sprite."),
+    ).toBeInTheDocument();
+
+    rerender(
+      <I18nProvider language="en">
+        <CharacterSpritesSection {...props} selectedSprite={{ ...selectedSprite!, voice_type: "fallback" }} />
+      </I18nProvider>,
+    );
+    expect(
+      screen.getByText(
+        "Fallback voice plays only when no usable TTS engine is configured, preserving legacy sprite audio behavior.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("hides voice text controls for fallback voices and keeps them for preset voices", () => {
+    const { props, rerender } = renderSection({
+      selectedSprite: {
+        path: "D:/sprites/sprite-b.png",
+        voice_path: "D:/voices/sprite-b.wav",
+        voice_text: "Hello",
+        voice_type: "fallback",
+      },
+    });
+
+    expect(screen.queryByLabelText("Voice text")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save text" })).not.toBeInTheDocument();
+
+    rerender(
+      <I18nProvider language="en">
+        <CharacterSpritesSection
+          {...props}
+          selectedSprite={{
+            path: "D:/sprites/sprite-b.png",
+            voice_path: "D:/voices/sprite-b.wav",
+            voice_text: "Hello",
+            voice_type: "preset",
+          }}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByLabelText("Voice text")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save text" })).toBeInTheDocument();
+  });
 });

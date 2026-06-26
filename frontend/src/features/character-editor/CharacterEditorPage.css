@@ -200,7 +200,7 @@
   cursor: pointer;
 }
 
-.field-row__hint--voice-ref {
+.field-row__hint--voice-type {
   margin: var(--space-1) 0 0;
   font-size: 12px;
   color: var(--color-accent-secondary);

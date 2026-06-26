@@ -3,8 +3,9 @@ from __future__ import annotations
 import os
 
 import config.network_proxy as network_proxy
-from config.config_manager import ConfigManager, normalize_sprite_voice_types
+from config.config_manager import ConfigManager
 from config.schema import AppConfig, ApiConfig, Background, Character, SystemConfig
+from config.sprite_voice import normalize_sprite_voice_types
 
 
 def _config_manager_with_api(**api_overrides) -> ConfigManager:

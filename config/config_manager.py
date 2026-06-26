@@ -22,26 +22,8 @@ from config.tts_provider_config import (
 from llm.constants import LLM_BASE_URLS
 from config.mirror_env import apply_mirror_environment
 from config.network_proxy import apply_network_proxy_environment
+from config.sprite_voice import normalize_sprite_voice_types
 import traceback
-
-
-def normalize_sprite_voice_types(character_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize legacy sprite voice semantics while reading characters."""
-    sprites = character_data.get("sprites")
-    if not isinstance(sprites, list):
-        return character_data
-    for sprite in sprites:
-        if not isinstance(sprite, dict):
-            continue
-        voice_path = str(sprite.get("voice_path") or "").strip()
-        if not voice_path:
-            continue
-        voice_text = str(sprite.get("voice_text") or "").strip()
-        if voice_text:
-            sprite["voice_type"] = str(sprite.get("voice_type") or "reference").strip().lower() or "reference"
-        else:
-            sprite["voice_type"] = "fallback"
-    return character_data
 
 
 def _llm_default_base_url(llm_provider: str) -> str:

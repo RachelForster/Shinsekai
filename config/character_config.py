@@ -1,22 +1,7 @@
 import yaml
 
+from config.sprite_voice import normalize_sprite_voice_types
 
-def normalize_sprite_voice_types(char_data):
-    sprites = char_data.get("sprites")
-    if not isinstance(sprites, list):
-        return char_data
-    for sprite in sprites:
-        if not isinstance(sprite, dict):
-            continue
-        voice_path = str(sprite.get("voice_path") or "").strip()
-        if not voice_path:
-            continue
-        voice_text = str(sprite.get("voice_text") or "").strip()
-        if voice_text:
-            sprite["voice_type"] = str(sprite.get("voice_type") or "reference").strip().lower() or "reference"
-        else:
-            sprite["voice_type"] = "fallback"
-    return char_data
 
 class CharacterConfig:
     def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None):

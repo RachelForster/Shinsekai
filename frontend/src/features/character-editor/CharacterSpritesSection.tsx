@@ -251,7 +251,7 @@ export function CharacterSpritesSection({
                       <span>{t("character.sprite.voiceTypeFallback")}</span>
                     </label>
                   </div>
-                  <p className="field-row__hint field-row__hint--voice-ref">{t(voiceTypeHintKey)}</p>
+                  <p className="field-row__hint field-row__hint--voice-type">{t(voiceTypeHintKey)}</p>
                 </span>
               </div>
               <label className="field-row field-row--stack">
