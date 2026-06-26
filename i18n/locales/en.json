@@ -656,7 +656,7 @@
     "narr_token": "NARR",
     "err_no_characters": "Select at least one character.",
     "name_sep": ", ",
-    "preamble": "You are simulating an RPG-style dialog system. Cast includes: {names} and other related characters; schedule who speaks as the story requires.\n",
+    "preamble": "Cast includes: {names}\n",
     "json_line_effect": "        \"effect\": \"Effect keyword (optional). Plain keyword = play once; loop:keyword = start loop; stop:keyword = stop loop; before:keyword = play before dialog; after:keyword = play after dialog. See effect list below for available keywords.\",\n",
     "voice_target_ja": "Japanese",
     "voice_target_en": "English",

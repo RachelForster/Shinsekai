@@ -873,6 +873,7 @@ export const enMessages: Record<MessageKey, string> = {
   "template.action.quickRestart": "Quick restart",
   "template.action.selectAllCharacters": "Select all characters",
   "template.defaultName": "New template",
+  "template.defaultScenario": "You play an RPG system. Schedule characters according to the scenario.",
   "template.description":
     "Template editing and generation reuse character and background queries, then refresh chat launch after saving.",
   "template.emptyBody": "Generate a template first.",

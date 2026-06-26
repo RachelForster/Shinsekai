@@ -351,12 +351,40 @@ describe("CharacterEditorPage", () => {
     );
   });
 
-  it("defaults sprite voice uploads to reference when the character has GPT-SoVITS models", async () => {
+  it("keeps sprite voice uploads preset when GPT-SoVITS models have no sprite voice text", async () => {
     mockListCharacters.mockResolvedValue([
       {
         ...structuredClone(character),
         gpt_model_path: "D:/models/mika.ckpt",
         sovits_model_path: "D:/models/mika.pth",
+      },
+    ]);
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    expect(screen.getByRole("radio", { name: "Preset voice" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
+
+    await waitFor(() =>
+      expect(mockUploadSpriteVoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Mika",
+          spriteIndex: 0,
+          voicePath: "D:/new/sora.wav",
+          voiceType: "preset",
+        }),
+      ),
+    );
+  });
+
+  it("defaults sprite voice uploads to reference when GPT-SoVITS models have sprite voice text", async () => {
+    mockListCharacters.mockResolvedValue([
+      {
+        ...structuredClone(character),
+        gpt_model_path: "D:/models/mika.ckpt",
+        sovits_model_path: "D:/models/mika.pth",
+        sprites: [{ ...character.sprites[0], voice_text: "Reference line" }],
       },
     ]);
     renderPage();
@@ -540,13 +568,17 @@ describe("CharacterEditorPage", () => {
     expect(mockUploadSpriteVoice).not.toHaveBeenCalled();
   });
 
-  it("surfaces missing memory dependencies and installs them with task progress", async () => {
-    mockGetMem0Status.mockResolvedValueOnce({ status: "missing_dependency" });
-    mockListCharacterMemories.mockResolvedValueOnce({
-      kind: "missing_dependency",
-      moduleName: "mem0",
-      packageName: "mem0ai",
-    });
+  it("installs missing memory dependencies and starts memory loading", async () => {
+    mockGetMem0Status
+      .mockResolvedValueOnce({ status: "missing_dependency" })
+      .mockResolvedValueOnce({ status: "ready" });
+    mockListCharacterMemories
+      .mockResolvedValueOnce({
+        kind: "missing_dependency",
+        moduleName: "mem0",
+        packageName: "mem0ai",
+      })
+      .mockResolvedValueOnce({ agentId: "Mika", count: 0, memories: [] });
     mockInstallMissingRuntimeDependency.mockImplementation(
       async (_input, options?: { onTaskUpdate?: (task: unknown) => void }) => {
         options?.onTaskUpdate?.({
@@ -572,6 +604,8 @@ describe("CharacterEditorPage", () => {
         expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
       ),
     );
+    await waitFor(() => expect(screen.queryByText("Missing Python dependency")).not.toBeInTheDocument());
+    await waitFor(() => expect(mockGetMem0Status).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(mockListCharacterMemories).toHaveBeenCalledTimes(2));
   });
 });

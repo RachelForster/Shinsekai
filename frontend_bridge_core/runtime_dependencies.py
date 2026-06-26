@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import re
 import sys
 from pathlib import Path
@@ -81,8 +82,9 @@ def install_runtime_dependency(
                 message=f"安装 {package_name} 失败。",
                 phase="failed",
                 status="failed",
-            )
+        )
         raise RuntimeError(detail or output[-4000:] or f"pip install failed ({code})")
+    importlib.invalidate_caches()
     return {
         "message": f"Installed {package_name}. Please launch chat again.",
         "moduleName": module_name,

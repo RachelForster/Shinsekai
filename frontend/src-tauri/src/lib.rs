@@ -1255,14 +1255,52 @@ fn desktop_window_close(
 }
 
 #[tauri::command]
+#[cfg(target_os = "windows")]
 fn desktop_open_chat_window(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
+    debug_assert!(current_chat_window_open_plan().defer_command);
+    let thread_app = app.clone();
+    let bridge_port = state.bridge_port;
+    let auth_token = state.bridge_auth_token.clone();
+    restart_debug_log("desktop_open_chat_window windows schedule requested");
+    thread::spawn(move || {
+        restart_debug_log("desktop_open_chat_window windows thread start");
+        thread::sleep(Duration::from_millis(100));
+        let scheduled_app = thread_app.clone();
+        match thread_app.run_on_main_thread(move || {
+            restart_debug_log("desktop_open_chat_window windows scheduled start");
+            match open_chat_window(&scheduled_app, bridge_port, &auth_token) {
+                Ok(()) => restart_debug_log("desktop_open_chat_window windows scheduled completed"),
+                Err(error) => restart_debug_log(format!(
+                    "desktop_open_chat_window windows scheduled failed error={error}"
+                )),
+            }
+        }) {
+            Ok(()) => restart_debug_log("desktop_open_chat_window windows run_on_main_thread ok"),
+            Err(error) => restart_debug_log(format!(
+                "desktop_open_chat_window windows run_on_main_thread failed error={error}"
+            )),
+        }
+    });
+    restart_debug_log("desktop_open_chat_window windows command returned after spawn");
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(not(target_os = "windows"))]
+fn desktop_open_chat_window(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
+    debug_assert!(!current_chat_window_open_plan().defer_command);
+    open_chat_window(&app, state.bridge_port, &state.bridge_auth_token)
+}
+
+fn open_chat_window(app: &AppHandle, bridge_port: u16, auth_token: &str) -> Result<(), String> {
+    let open_plan = current_chat_window_open_plan();
     let chat_window = if let Some(window) = app.get_webview_window("chat") {
         restart_debug_log("desktop_open_chat_window reuse existing window");
         window
     } else {
-        let url = chat_window_url(state.bridge_port, &state.bridge_auth_token);
+        let url = chat_window_url(bridge_port, auth_token);
         restart_debug_log(format!("desktop_open_chat_window create url={url}"));
-        WebviewWindowBuilder::new(&app, "chat", WebviewUrl::App(url.into()))
+        WebviewWindowBuilder::new(app, "chat", WebviewUrl::App(url.into()))
             .title("Shinsekai Chat")
             .inner_size(1280.0, 820.0)
             .min_inner_size(960.0, 620.0)
@@ -1277,11 +1315,47 @@ fn desktop_open_chat_window(app: AppHandle, state: State<'_, DesktopState>) -> R
             .map_err(|error| error.to_string())?
     };
 
-    navigate_chat_window_to_live_frontend(&app, state.bridge_port, &state.bridge_auth_token)?;
+    #[cfg(not(target_os = "windows"))]
+    if open_plan.navigate_after_create {
+        navigate_chat_window_to_live_frontend(app, bridge_port, auth_token)?;
+    }
     let _ = chat_window.show();
     let _ = chat_window.unminimize();
-    let _ = chat_window.set_focus();
+
+    if open_plan.focus_after_show {
+        let _ = chat_window.set_focus();
+    } else {
+        restart_debug_log("desktop_open_chat_window windows focus skipped");
+    }
+
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ChatWindowOpenPlan {
+    defer_command: bool,
+    navigate_after_create: bool,
+    focus_after_show: bool,
+}
+
+fn current_chat_window_open_plan() -> ChatWindowOpenPlan {
+    chat_window_open_plan_for_windows(cfg!(target_os = "windows"))
+}
+
+fn chat_window_open_plan_for_windows(is_windows: bool) -> ChatWindowOpenPlan {
+    if is_windows {
+        ChatWindowOpenPlan {
+            defer_command: true,
+            focus_after_show: false,
+            navigate_after_create: false,
+        }
+    } else {
+        ChatWindowOpenPlan {
+            defer_command: false,
+            focus_after_show: true,
+            navigate_after_create: true,
+        }
+    }
 }
 
 #[tauri::command]
@@ -1414,6 +1488,7 @@ fn navigate_main_window_to_live_frontend(
     navigate_window_to_live_frontend(app, "main", &live_frontend_url(bridge_port, auth_token))
 }
 
+#[cfg(not(target_os = "windows"))]
 fn navigate_chat_window_to_live_frontend(
     app: &AppHandle,
     bridge_port: u16,
@@ -1825,6 +1900,24 @@ mod tests {
         assert!(targets[0].1.contains("#/settings/api"));
         assert_eq!(targets[1].0, "chat");
         assert!(targets[1].1.contains("#/chat-stage"));
+    }
+
+    #[test]
+    fn windows_chat_window_open_plan_avoids_webview_timing_hazards() {
+        let plan = chat_window_open_plan_for_windows(true);
+
+        assert!(plan.defer_command);
+        assert!(!plan.navigate_after_create);
+        assert!(!plan.focus_after_show);
+    }
+
+    #[test]
+    fn non_windows_chat_window_open_plan_keeps_existing_live_navigation() {
+        let plan = chat_window_open_plan_for_windows(false);
+
+        assert!(!plan.defer_command);
+        assert!(plan.navigate_after_create);
+        assert!(plan.focus_after_show);
     }
 
     #[test]

@@ -872,6 +872,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "template.action.quickRestart": "クイック再起動",
   "template.action.selectAllCharacters": "全キャラクターを選択",
   "template.defaultName": "新規テンプレート",
+  "template.defaultScenario": "あなたはRPGシステムを演じ、シナリオに応じて登場人物を動かしてください",
   "template.description":
     "テンプレート編集と生成はキャラクター、背景 query を再利用し、保存後にチャット開始を更新します。",
   "template.emptyBody": "まずテンプレートを生成してください。",
