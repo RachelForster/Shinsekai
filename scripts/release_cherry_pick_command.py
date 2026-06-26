@@ -4,6 +4,7 @@ import re
 import shlex
 import subprocess
 import sys
+from collections.abc import Sequence
 from urllib.parse import quote
 
 
@@ -15,20 +16,56 @@ ISSUE_NUMBER = int(os.environ["ISSUE_NUMBER"])
 RUN_ID = os.environ.get("RUN_ID") or "manual"
 
 ALLOWED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
-ALLOWED_EXECUTABLES = {"gh", "git"}
+ALLOWED_SUBCOMMANDS = {
+    "gh": {"api", "pr"},
+    "git": {"checkout", "cherry-pick", "config", "fetch", "push", "rev-parse"},
+}
+RELEASE_PROCESS_LINK = (
+    f"https://github.com/{REPO}/blob/main/"
+    "docs/RELEASE_PROCESS_zh-CN.md#5-bug-修复与-cherry-pick"
+)
+INPUT_HINT = (
+    "Expected command examples: `/cherry-pick <commit-sha>` or "
+    "`/cherry-pick <commit-sha> release/2.1`.\n\n"
+    "Expected RC bug fields:\n"
+    "```markdown\n"
+    "- Parent release: v2.1.0\n"
+    "- Found in RC: v2.1.0-rc.1\n"
+    "- Fix commit on `main`: <commit-sha>\n"
+    "```\n"
+    f"See the release process: {RELEASE_PROCESS_LINK}."
+)
+
+
+def input_error(message: str) -> str:
+    return f"{message}\n\n{INPUT_HINT}"
+
+
+def validate_subprocess_command(command: Sequence[str]) -> list[str]:
+    if not command:
+        raise ValueError("Refused empty subprocess command")
+    if any(not isinstance(part, str) or not part for part in command):
+        raise ValueError("Refused subprocess command with an empty or non-string part")
+
+    executable = command[0]
+    subcommand = command[1] if len(command) > 1 else ""
+    if subcommand not in ALLOWED_SUBCOMMANDS.get(executable, set()):
+        raise ValueError(f"Refused subprocess command: {shlex.join(command)}")
+    return list(command)
 
 
 def run(
-    command: list[str],
+    command: Sequence[str],
     *,
     input_text: str | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess:
-    if not command or command[0] not in ALLOWED_EXECUTABLES:
-        raise ValueError(f"Refused subprocess command: {shlex.join(command)}")
+    safe_command = validate_subprocess_command(command)
 
+    # nosemgrep justification: argv is validated against a gh/git subcommand
+    # allowlist, shell is disabled, and user-controlled values stay literal args.
     result = subprocess.run(
-        command,
+        safe_command,
         input=input_text,
         shell=False,
         text=True,
@@ -104,8 +141,10 @@ def parse_command(body: str) -> tuple[str | None, str | None]:
             branch = arg
         else:
             raise ValueError(
-                "Usage: `/cherry-pick [commit-sha] [release/x.y]`. "
-                "If omitted, the workflow reads them from the release issue fields."
+                input_error(
+                    "Usage: `/cherry-pick [commit-sha] [release/x.y]`. "
+                    "If omitted, the workflow reads them from the release issue fields."
+                )
             )
     return commit, branch
 
@@ -168,43 +207,73 @@ def search_tracking_issue(release_branch: str) -> dict | None:
     return None
 
 
+def as_release_tracking_issue(issue: dict | None) -> dict | None:
+    if issue and (issue.get("title") or "").startswith("Release tracking:"):
+        return issue
+    return None
+
+
+def resolve_commit(
+    command_commit: str | None,
+    issue: dict,
+    parent: dict | None,
+) -> str | None:
+    if command_commit:
+        return command_commit
+    issue_commit = parse_commit_from_issue(issue)
+    if issue_commit:
+        return issue_commit
+    return parse_commit_from_issue(parent) if parent is not None else None
+
+
+def resolve_branch(
+    command_branch: str | None,
+    issue: dict,
+    parent: dict | None,
+) -> str | None:
+    if command_branch:
+        return command_branch
+    issue_branch = parse_branch_from_issue(issue)
+    if issue_branch:
+        return issue_branch
+    return parse_branch_from_issue(parent) if parent is not None else None
+
+
+def resolve_tracking_parent(parent: dict | None, branch: str | None) -> dict | None:
+    if parent is not None or branch is None:
+        return parent
+    return search_tracking_issue(branch)
+
+
 def resolve_inputs() -> tuple[str, str, dict | None]:
-    commit, branch = parse_command(COMMENT_BODY)
+    # Precedence is deliberately explicit:
+    # 1. command arguments
+    # 2. fields on the commented issue
+    # 3. fields on the GitHub sub-issue parent, when it is a release tracking issue
+    # 4. release tracking search by the resolved branch, only to recover PR linkage
+    command_commit, command_branch = parse_command(COMMENT_BODY)
     issue = fetch_issue(ISSUE_NUMBER)
-    parent = fetch_parent_issue(ISSUE_NUMBER)
-    parent = (
-        parent
-        if parent and (parent.get("title") or "").startswith("Release tracking:")
-        else None
-    )
-
-    if commit is None:
-        commit = parse_commit_from_issue(issue)
-    if commit is None and parent is not None:
-        commit = parse_commit_from_issue(parent)
-
-    if branch is None:
-        branch = parse_branch_from_issue(issue)
-    if branch is None and parent is not None:
-        branch = parse_branch_from_issue(parent)
-    if branch is None and commit:
-        inferred = parse_branch_from_issue(issue)
-        parent = search_tracking_issue(inferred) if inferred else parent
-        if parent is not None:
-            branch = parse_branch_from_issue(parent)
+    parent = as_release_tracking_issue(fetch_parent_issue(ISSUE_NUMBER))
+    commit = resolve_commit(command_commit, issue, parent)
+    branch = resolve_branch(command_branch, issue, parent)
 
     if not commit:
         raise ValueError(
-            "No commit SHA found. Use `/cherry-pick <commit-sha>` or fill the "
-            "`Fix commit on main` field on this issue."
+            input_error(
+                "No commit SHA found. Use `/cherry-pick <commit-sha>` or fill the "
+                "`Fix commit on main` field on this issue."
+            )
         )
     if not branch:
         raise ValueError(
-            "No release branch found. Use `/cherry-pick <commit-sha> release/x.y` "
-            "or fill release linkage fields."
+            input_error(
+                "No release branch found. Use `/cherry-pick <commit-sha> release/x.y` "
+                "or fill release linkage fields."
+            )
         )
     if not re.fullmatch(r"release/[A-Za-z0-9._-]+", branch):
-        raise ValueError(f"Refused non-release target branch: `{branch}`")
+        raise ValueError(input_error(f"Refused non-release target branch: `{branch}`"))
+    parent = resolve_tracking_parent(parent, branch)
     return commit, branch, parent
 
 
