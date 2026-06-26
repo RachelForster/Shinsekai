@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from urllib.parse import quote
@@ -14,17 +15,28 @@ ISSUE_NUMBER = int(os.environ["ISSUE_NUMBER"])
 RUN_ID = os.environ.get("RUN_ID") or "manual"
 
 ALLOWED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+ALLOWED_EXECUTABLES = {"gh", "git"}
 
 
-def run(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess:
+def run(
+    command: list[str],
+    *,
+    input_text: str | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    if not command or command[0] not in ALLOWED_EXECUTABLES:
+        raise ValueError(f"Refused subprocess command: {shlex.join(command)}")
+
     result = subprocess.run(
         command,
+        input=input_text,
+        shell=False,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-    )
+    )  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     if check and result.returncode != 0:
-        print(f"Command failed: {' '.join(command)}", file=sys.stderr)
+        print(f"Command failed: {shlex.join(command)}", file=sys.stderr)
         if result.stdout:
             print(result.stdout, file=sys.stderr)
         if result.stderr:
@@ -36,15 +48,13 @@ def run(command: list[str], *, check: bool = True) -> subprocess.CompletedProces
 def gh_api(*args: str, input_json: dict | None = None, check: bool = True) -> str:
     command = ["gh", "api", *args]
     payload = None if input_json is None else json.dumps(input_json)
-    result = subprocess.run(
+    result = run(
         command,
-        input=payload,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        input_text=payload,
+        check=False,
     )
     if check and result.returncode != 0:
-        print(f"gh api failed: {' '.join(command[2:])}", file=sys.stderr)
+        print(f"gh api failed: {shlex.join(command[2:])}", file=sys.stderr)
         print(result.stderr, file=sys.stderr)
         raise SystemExit(result.returncode)
     return result.stdout
