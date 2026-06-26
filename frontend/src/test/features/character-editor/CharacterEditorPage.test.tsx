@@ -225,12 +225,40 @@ describe("CharacterEditorPage", () => {
     );
   });
 
-  it("defaults sprite voice uploads to reference when the character has GPT-SoVITS models", async () => {
+  it("keeps sprite voice uploads preset when GPT-SoVITS models have no sprite voice text", async () => {
     mockListCharacters.mockResolvedValue([
       {
         ...structuredClone(character),
         gpt_model_path: "D:/models/mika.ckpt",
         sovits_model_path: "D:/models/mika.pth",
+      },
+    ]);
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    expect(screen.getByRole("radio", { name: "Preset voice" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
+
+    await waitFor(() =>
+      expect(mockUploadSpriteVoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Mika",
+          spriteIndex: 0,
+          voicePath: "D:/new/sora.wav",
+          voiceType: "preset",
+        }),
+      ),
+    );
+  });
+
+  it("defaults sprite voice uploads to reference when GPT-SoVITS models have sprite voice text", async () => {
+    mockListCharacters.mockResolvedValue([
+      {
+        ...structuredClone(character),
+        gpt_model_path: "D:/models/mika.ckpt",
+        sovits_model_path: "D:/models/mika.pth",
+        sprites: [{ ...character.sprites[0], voice_text: "Reference line" }],
       },
     ]);
     renderPage();

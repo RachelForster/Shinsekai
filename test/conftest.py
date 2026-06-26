@@ -43,6 +43,7 @@ def _configure_test_temp_dir() -> None:
 
 
 _configure_test_temp_dir()
+os.environ.setdefault("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", "1")
 
 from queue import Queue
 from unittest.mock import MagicMock

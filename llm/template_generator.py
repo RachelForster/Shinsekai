@@ -271,7 +271,7 @@ class TemplateGenerator:
         selected_characters = sorted(selected_characters)
 
         sep = _T("name_sep")
-        names = sep.join(selected_characters) + sep
+        names = sep.join(selected_characters)
 
         effect_line = _T("json_line_effect") if use_effect else ""
         vlang = _target_voice_display_name()

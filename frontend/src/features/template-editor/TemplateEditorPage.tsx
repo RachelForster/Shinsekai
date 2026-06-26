@@ -290,7 +290,7 @@ export function TemplateEditorPage() {
 
   const scenarioForSelectedCharacters = () => {
     const currentScenario = String(draft.scenario ?? "");
-    const defaultScenario = buildDefaultTemplateScenario(selectedCharacters);
+    const defaultScenario = buildDefaultTemplateScenario(selectedCharacters, t("template.defaultScenario"));
     if (!defaultScenario) {
       if (currentScenario === lastAutoScenarioRef.current) {
         return "";

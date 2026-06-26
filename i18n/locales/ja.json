@@ -653,7 +653,7 @@
     "narr_token": "NARR",
     "err_no_characters": "少なくとも1人のキャラを選んでください。",
     "name_sep": "、",
-    "preamble": "RPG 形式の会話をシミュレートしてください。登場人物：{names}他、劇付き合わせで登場者を使い分けてください。\n",
+    "preamble": "登場人物：{names}\n",
     "json_line_effect": "        \"effect\": \"エフェクトキーワード（任意）。キーワードのみ = 1回再生; loop:キーワード = ループ開始; stop:キーワード = ループ停止; before:キーワード = セリフ前; after:キーワード = セリフ後。利用可能なキーワードは下記エフェクト一覧を参照\",\n",
     "voice_target_ja": "日本語",
     "voice_target_en": "英語",

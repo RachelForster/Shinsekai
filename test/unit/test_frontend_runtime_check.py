@@ -267,6 +267,19 @@ def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkey
     ]
 
 
+def test_install_runtime_dependency_invalidates_import_caches_after_success(monkeypatch):
+    from frontend_bridge_core import runtime_dependencies
+
+    calls = []
+    invalidated = []
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
+    monkeypatch.setattr(runtime_dependencies.importlib, "invalidate_caches", lambda: invalidated.append(True))
+
+    runtime_dependencies.install_runtime_dependency("openai")
+
+    assert invalidated == [True]
+
+
 def test_install_runtime_dependency_uses_manifest_china_index_by_default(monkeypatch):
     from frontend_bridge_core import runtime_dependencies
 
