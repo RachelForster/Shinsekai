@@ -15,8 +15,8 @@ from i18n import tr
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 from llm.compact_manager import CompactManager
 from llm.message_sanitizer import (
-    filter_unpaired_tool_messages_for_request as sanitize_request_tool_messages,
-    strip_orphaned_tool_calls as repair_orphaned_tool_calls,
+    filter_unpaired_tool_messages_for_request,
+    strip_orphaned_tool_calls,
 )
 from llm.tools.tool_manager import ToolManager
 from llm.tools.tool_executor import ToolExecutor
@@ -754,7 +754,7 @@ class LLMManager:
 
     def _strip_orphaned_tool_calls(self) -> None:
         """清理不完整的 tool call 对：删孤立的 tool，补缺失的回执。"""
-        repair_orphaned_tool_calls(self.get_messages())
+        strip_orphaned_tool_calls(self.get_messages())
 
     def _recover_request_tool_pairs(self, exc: Exception, messages: list[dict]) -> list[dict] | None:
         error_info = classify_exception(exc)
@@ -764,7 +764,7 @@ class LLMManager:
             or error_info.get("reason") != HTTP_REASON_UNPAIRED_TOOL_MESSAGES
         ):
             return None
-        filtered = sanitize_request_tool_messages(messages)
+        filtered = filter_unpaired_tool_messages_for_request(messages)
         if filtered is messages:
             return None
         self.logger.warning(

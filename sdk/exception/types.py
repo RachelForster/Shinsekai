@@ -143,8 +143,8 @@ HTTP_REASON_UNPAIRED_TOOL_MESSAGES = "unpaired_tool_messages"
 
 _UNPAIRED_TOOL_MESSAGE_MARKERS = (
     "messages with role 'tool' must be a response to a preceding message with 'tool_calls'",
-    "tool_call_id",
-    "tool_calls",
+    "an assistant message with 'tool_calls' must be followed by tool messages",
+    "tool_call_ids did not have response messages",
 )
 
 
@@ -234,8 +234,6 @@ def is_unpaired_tool_messages_error(
     if status_code not in (400, 422, None):
         return False
     text = str(exc).lower()
-    if "role" in text and "tool" in text and "tool_calls" in text:
-        return True
     return any(marker in text for marker in _UNPAIRED_TOOL_MESSAGE_MARKERS)
 
 

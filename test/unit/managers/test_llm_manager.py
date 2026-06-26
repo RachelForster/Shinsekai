@@ -647,6 +647,25 @@ class TestLLMManagerCompact:
             {"role": "user", "content": "next"},
         ]
 
+    def test_request_filter_preserves_assistant_content_when_stripping_unpaired_tool_calls(self):
+        messages = [
+            {"role": "user", "content": "search"},
+            {
+                "role": "assistant",
+                "content": "Here are the results",
+                "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "missing", "arguments": "{}"}},
+                ],
+            },
+            {"role": "user", "content": "next"},
+        ]
+
+        assert filter_unpaired_tool_messages_for_request(messages) == [
+            {"role": "user", "content": "search"},
+            {"role": "assistant", "content": "Here are the results"},
+            {"role": "user", "content": "next"},
+        ]
+
     def test_unpaired_tools_are_filtered_only_after_request_error(self, mock_llm_adapter):
         class RecoveringAdapter(MockLLMAdapter):
             def chat(self, messages, stream=False, **kwargs):
