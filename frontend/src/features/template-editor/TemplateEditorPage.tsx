@@ -280,10 +280,7 @@ export function TemplateEditorPage() {
     useTranslation,
   };
 
-  const hasTemplateRulesChanged = (
-    session: typeof launchSession,
-    options: typeof templateOptionsState,
-  ): boolean => {
+  const hasTemplateRulesChanged = (session: typeof launchSession, options: typeof templateOptionsState): boolean => {
     if (!session) return false;
     return (Object.keys(options) as (keyof typeof options)[]).some((key) => {
       const current = options[key];

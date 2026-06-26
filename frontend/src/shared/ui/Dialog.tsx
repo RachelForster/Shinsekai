@@ -111,7 +111,9 @@ export function AlertDialog({
       closeLabel={closeLabel}
       footer={
         <>
-          <Button onClick={onCancel} tooltip={cancelTitle}>{cancelLabel}</Button>
+          <Button onClick={onCancel} tooltip={cancelTitle}>
+            {cancelLabel}
+          </Button>
           <Button onClick={onConfirm} variant="danger">
             {confirmLabel}
           </Button>
