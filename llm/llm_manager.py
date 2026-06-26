@@ -14,8 +14,13 @@ from core.runtime.app_runtime import try_get_app_runtime
 from i18n import tr
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 from llm.compact_manager import CompactManager
+from llm.message_sanitizer import (
+    filter_unpaired_tool_messages_for_request,
+    strip_orphaned_tool_calls,
+)
 from llm.tools.tool_manager import ToolManager
 from llm.tools.tool_executor import ToolExecutor
+from sdk.exception.types import HTTP_REASON_UNPAIRED_TOOL_MESSAGES, classify_exception
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher, PluginHookEvent
 from sdk.logging import get_logger
 
@@ -223,66 +228,6 @@ class LLMAdapterFactory:
             print(f"Error creating adapter '{llm_provider}'. Check the required arguments.")
             raise e
 
-
-def strip_orphaned_tool_calls(msgs: list) -> None:
-    """纯函数，便于测试。清理不完整的 tool call 对：删孤立的 tool，补缺失的回执。"""
-    if not msgs:
-        return
-
-    # 1. 找出孤立的 tool 消息（没有紧邻的 assistant 包含其 tool_call_id，或中间有 user 插入）
-    orphan_tool_indices: list[int] = []
-    for i, m in enumerate(msgs):
-        if m.get("role") != "tool":
-            continue
-        tc_id = m.get("tool_call_id", "")
-        ok = False
-        for j in range(i - 1, -1, -1):
-            r = msgs[j].get("role", "")
-            if r == "user":
-                break
-            if r == "assistant" and msgs[j].get("tool_calls"):
-                if any(tc.get("id") == tc_id for tc in msgs[j]["tool_calls"]):
-                    ok = True
-                break
-        if not ok:
-            orphan_tool_indices.append(i)
-
-    # 2. 删孤立的 tool 消息（从后往前）
-    for i in reversed(orphan_tool_indices):
-        del msgs[i]
-
-    # 3. 重建索引，收集 assistant(tool_calls)
-    pending_calls: dict[int, list[dict]] = {}
-    for i, m in enumerate(msgs):
-        if m.get("role") == "assistant" and m.get("tool_calls"):
-            pending_calls[i] = [
-                {"id": tc.get("id", ""), "name": tc.get("function", {}).get("name", "")}
-                for tc in m["tool_calls"]
-            ]
-
-    # 4. 补上缺失的 tool 回执
-    inserts: list[tuple[int, dict]] = []
-    for ai, calls in pending_calls.items():
-        seen_ids: set[str] = set()
-        insert_at = ai + 1
-        for j in range(ai + 1, len(msgs)):
-            r = msgs[j].get("role", "")
-            if r == "user":
-                break
-            if r == "tool":
-                seen_ids.add(msgs[j].get("tool_call_id", ""))
-                insert_at = j + 1
-        for tc in calls:
-            if tc["id"] not in seen_ids:
-                inserts.append((insert_at, {
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "name": tc["name"],
-                    "content": json.dumps({"error": "工具调用失败，请尝试其他方式"}),
-                }))
-                insert_at += 1
-    for pos, msg in sorted(inserts, key=lambda x: x[0], reverse=True):
-        msgs.insert(pos, msg)
 
 
 class LLMManager:
@@ -811,6 +756,56 @@ class LLMManager:
         """清理不完整的 tool call 对：删孤立的 tool，补缺失的回执。"""
         strip_orphaned_tool_calls(self.get_messages())
 
+    def _recover_request_tool_pairs(self, exc: Exception, messages: list[dict]) -> list[dict] | None:
+        error_info = classify_exception(exc)
+        if (
+            not error_info
+            or error_info.get("kind") != "http_client"
+            or error_info.get("reason") != HTTP_REASON_UNPAIRED_TOOL_MESSAGES
+        ):
+            return None
+        filtered = filter_unpaired_tool_messages_for_request(messages)
+        if filtered is messages:
+            return None
+        self.logger.warning(
+            "Recovering LLM request by filtering unpaired tool messages",
+            extra={
+                "event": "llm.request.tool_pairs.recovered",
+                "before_count": len(messages),
+                "after_count": len(filtered),
+                "error_type": type(exc).__name__,
+            },
+        )
+        return filtered
+
+    def _send_llm_request_with_recovery(
+        self,
+        *,
+        messages: list[dict],
+        stream: bool,
+        tools_defs: list[dict],
+        generation_kwargs: dict[str, Any],
+    ) -> tuple[Any, list[dict]]:
+        try:
+            response = self.llm_adapter.chat(
+                messages=messages,
+                stream=stream,
+                tools=tools_defs if tools_defs else None,
+                **generation_kwargs,
+            )
+            return response, messages
+        except Exception as exc:
+            recovered_messages = self._recover_request_tool_pairs(exc, messages)
+            if recovered_messages is None:
+                raise
+            response = self.llm_adapter.chat(
+                messages=recovered_messages,
+                stream=stream,
+                tools=tools_defs if tools_defs else None,
+                **generation_kwargs,
+            )
+            return response, recovered_messages
+
     def _budget_exhausted_tool_result(self, tool_name: str) -> str:
         return json.dumps(
             {
@@ -973,9 +968,10 @@ class LLMManager:
             message_count=len(chat_context.messages),
         )
         try:
-            response_stream = self.llm_adapter.chat(
+            response_stream, chat_context.messages = self._send_llm_request_with_recovery(
                 messages=chat_context.messages, stream=True,
-                tools=tools_defs if tools_defs else None, **merged_kwargs
+                tools_defs=tools_defs,
+                generation_kwargs=merged_kwargs,
             )
         except Exception as exc:
             self._log_llm_request_failed(
@@ -1109,9 +1105,10 @@ class LLMManager:
             message_count=len(chat_context.messages),
         )
         try:
-            response = self.llm_adapter.chat(
+            response, chat_context.messages = self._send_llm_request_with_recovery(
                 messages=chat_context.messages, stream=False,
-                tools=tools_defs if tools_defs else None, **merged_kwargs
+                tools_defs=tools_defs,
+                generation_kwargs=merged_kwargs,
             )
         except Exception as exc:
             self._log_llm_request_failed(
