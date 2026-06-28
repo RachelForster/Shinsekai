@@ -145,6 +145,8 @@ git push
 /cherry-pick
 /cherry-pick <fix_commit_sha>
 /cherry-pick <fix_commit_sha> release/2.1
+/cherrypick <fix_commit_sha>
+/cherrypick <fix_commit_sha> release/2.1
 ```
 
 当命令省略 commit 或 release 分支时，workflow 会从 issue 的 `Fix commit on main`、`Parent release`、`Found in RC`、父级 release tracking issue 等字段推断。只有仓库 maintainer 可以使用该命令；如果 cherry-pick 发生冲突，workflow 会在 issue 中评论冲突信息，等待人工处理。
