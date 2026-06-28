@@ -139,6 +139,16 @@ git cherry-pick -x <fix_commit_sha>
 git push
 ```
 
+也可以在 RC bug issue 里使用评论命令让 GitHub Actions 自动创建 cherry-pick PR：
+
+```markdown
+/cherry-pick
+/cherry-pick <fix_commit_sha>
+/cherry-pick <fix_commit_sha> release/2.1
+```
+
+当命令省略 commit 或 release 分支时，workflow 会从 issue 的 `Fix commit on main`、`Parent release`、`Found in RC`、父级 release tracking issue 等字段推断。只有仓库 maintainer 可以使用该命令；如果 cherry-pick 发生冲突，workflow 会在 issue 中评论冲突信息，等待人工处理。
+
 `-x` 会在提交信息中记录来源 commit，方便追踪 release 分支与 `main` 的差异。
 
 如果 bug 只存在于 release 分支，可以直接修 release 分支，但 PR 描述里需要说明为什么不需要回灌 `main`。
