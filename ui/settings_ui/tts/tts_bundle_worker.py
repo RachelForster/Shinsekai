@@ -342,6 +342,21 @@ def _rmtree(p: Path) -> None:
         shutil.rmtree(p, ignore_errors=True)
 
 
+def _strip_verbatim_prefix(path: str) -> str:
+    # Path.resolve() can return an extended-length path on Windows; the `\\?\`
+    # prefix breaks the TTS engine, so normalize it to the plain form a manual
+    # directory pick produces.
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[len("\\\\?\\UNC\\") :]
+    if path.startswith("\\\\?\\"):
+        return path[len("\\\\?\\") :]
+    if path.startswith("//?/UNC/"):
+        return "//" + path[len("//?/UNC/") :]
+    if path.startswith("//?/"):
+        return path[len("//?/") :]
+    return path
+
+
 def _resolve_extracted_root(extract_to: Path) -> Path:
     if not extract_to.is_dir():
         return extract_to.resolve()
@@ -445,4 +460,4 @@ class TtsBundleDownloadWorker(QThread):
 
         self.progress.emit(100)
         root = _resolve_extracted_root(out_dir)
-        self.finished_ok.emit(str(root.resolve()))
+        self.finished_ok.emit(_strip_verbatim_prefix(str(root.resolve())))
