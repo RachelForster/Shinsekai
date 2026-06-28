@@ -18,14 +18,23 @@ RUN_ID = os.environ.get("RUN_ID") or "manual"
 ALLOWED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 ALLOWED_SUBCOMMANDS = {
     "gh": {"api", "pr"},
-    "git": {"checkout", "cherry-pick", "config", "fetch", "push", "rev-parse"},
+    "git": {
+        "checkout",
+        "cherry-pick",
+        "config",
+        "fetch",
+        "push",
+        "rev-list",
+        "rev-parse",
+    },
 }
 RELEASE_PROCESS_LINK = (
     f"https://github.com/{REPO}/blob/main/"
     "docs/RELEASE_PROCESS_zh-CN.md#5-bug-修复与-cherry-pick"
 )
 INPUT_HINT = (
-    "Expected command examples: `/cherry-pick <commit-sha>` or "
+    "Expected command examples: `/cherry-pick <commit-sha>`, "
+    "`/cherrypick <commit-sha>`, or "
     "`/cherry-pick <commit-sha> release/2.1`.\n\n"
     "Expected RC bug fields:\n"
     "```markdown\n"
@@ -142,7 +151,8 @@ def parse_command(body: str) -> tuple[str | None, str | None]:
         else:
             raise ValueError(
                 input_error(
-                    "Usage: `/cherry-pick [commit-sha] [release/x.y]`. "
+                    "Usage: `/cherry-pick [commit-sha] [release/x.y]` "
+                    "or `/cherrypick [commit-sha] [release/x.y]`. "
                     "If omitted, the workflow reads them from the release issue fields."
                 )
             )
@@ -260,14 +270,16 @@ def resolve_inputs() -> tuple[str, str, dict | None]:
     if not commit:
         raise ValueError(
             input_error(
-                "No commit SHA found. Use `/cherry-pick <commit-sha>` or fill the "
+                "No commit SHA found. Use `/cherry-pick <commit-sha>`, "
+                "`/cherrypick <commit-sha>`, or fill the "
                 "`Fix commit on main` field on this issue."
             )
         )
     if not branch:
         raise ValueError(
             input_error(
-                "No release branch found. Use `/cherry-pick <commit-sha> release/x.y` "
+                "No release branch found. Use `/cherry-pick <commit-sha> release/x.y`, "
+                "`/cherrypick <commit-sha> release/x.y`, "
                 "or fill release linkage fields."
             )
         )
@@ -290,6 +302,18 @@ def ensure_maintainer() -> None:
     raise PermissionError(
         f"Sorry @{COMMENT_AUTHOR}, only maintainers can use `/cherry-pick`."
     )
+
+
+def commit_parent_count(commit: str) -> int:
+    result = run(["git", "rev-list", "--parents", "-n", "1", commit])
+    parts = result.stdout.strip().split()
+    return max(0, len(parts) - 1)
+
+
+def cherry_pick_command_for_commit(commit: str) -> list[str]:
+    if commit_parent_count(commit) > 1:
+        return ["git", "cherry-pick", "-m", "1", "-x", commit]
+    return ["git", "cherry-pick", "-x", commit]
 
 
 def create_cherry_pick_pr(commit: str, release_branch: str, parent: dict | None) -> str:
@@ -332,7 +356,7 @@ def create_cherry_pick_pr(commit: str, release_branch: str, parent: dict | None)
     work_branch = f"automation/cherry-pick-{safe_release}-{short_sha}-{RUN_ID}"
 
     run(["git", "checkout", "-B", work_branch, f"origin/{release_branch}"])
-    cherry_pick = run(["git", "cherry-pick", "-x", full_sha], check=False)
+    cherry_pick = run(cherry_pick_command_for_commit(full_sha), check=False)
     if cherry_pick.returncode != 0:
         run(["git", "cherry-pick", "--abort"], check=False)
         detail = (cherry_pick.stderr or cherry_pick.stdout or "unknown conflict").strip()

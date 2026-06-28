@@ -53,8 +53,8 @@ def test_resolve_inputs_searches_tracking_issue_from_resolved_branch(monkeypatch
 
 def test_resolve_inputs_uses_release_tracking_parent_fields(monkeypatch):
     module = load_module(monkeypatch)
-    monkeypatch.setenv("COMMENT_BODY", "/cherry-pick abcdef1")
-    module.COMMENT_BODY = "/cherry-pick abcdef1"
+    monkeypatch.setenv("COMMENT_BODY", "/cherrypick abcdef1")
+    module.COMMENT_BODY = "/cherrypick abcdef1"
     issue = {"number": 123, "title": "Bug", "body": ""}
     parent = {
         "number": 456,
@@ -121,3 +121,49 @@ def test_run_rejects_unsupported_subcommand(monkeypatch):
 
     with pytest.raises(ValueError, match="Refused subprocess command"):
         module.run(["git", "remote", "-v"])
+
+
+def test_cherry_pick_command_keeps_regular_commit_simple(monkeypatch):
+    module = load_module(monkeypatch)
+
+    def fake_run(command, **kwargs):
+        assert command == ["git", "rev-list", "--parents", "-n", "1", "abc123"]
+        return module.subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="abc123 parent1\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(module, "run", fake_run)
+
+    assert module.cherry_pick_command_for_commit("abc123") == [
+        "git",
+        "cherry-pick",
+        "-x",
+        "abc123",
+    ]
+
+
+def test_cherry_pick_command_uses_mainline_for_merge_commit(monkeypatch):
+    module = load_module(monkeypatch)
+
+    def fake_run(command, **kwargs):
+        assert command == ["git", "rev-list", "--parents", "-n", "1", "merge123"]
+        return module.subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="merge123 parent1 parent2\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(module, "run", fake_run)
+
+    assert module.cherry_pick_command_for_commit("merge123") == [
+        "git",
+        "cherry-pick",
+        "-m",
+        "1",
+        "-x",
+        "merge123",
+    ]
