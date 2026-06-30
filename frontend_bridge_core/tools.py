@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .path_utils import strip_windows_verbatim_prefix as _strip_windows_verbatim_prefix
 from .security import reject_control_chars, safe_existing_dir_path, safe_existing_file_path
 from .state import BridgeState
 from .tasks import _update_task
@@ -117,18 +118,6 @@ def _remove_sprite_background(state: BridgeState, task_id: str, payload: dict[st
     result = {"message": str(message), "outputDir": output_dir.as_posix()}
     _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
     return result
-
-
-def _strip_windows_verbatim_prefix(value: str) -> str:
-    if value.startswith("\\\\?\\UNC\\"):
-        return "\\\\" + value[len("\\\\?\\UNC\\") :]
-    if value.startswith("\\\\?\\"):
-        return value[len("\\\\?\\") :]
-    if value.startswith("//?/UNC/"):
-        return "//" + value[len("//?/UNC/") :]
-    if value.startswith("//?/"):
-        return value[len("//?/") :]
-    return value
 
 
 def _display_path(path: Path) -> str:

@@ -268,17 +268,3 @@ def test_extract_archive_reports_bcj2_when_no_external_cli(tmp_path, monkeypatch
     assert err is not None
     assert "external 7-Zip CLI is required" in err
     assert "BCJ2 filter is not supported by py7zr" in err
-
-
-def test_strip_verbatim_prefix_drops_long_path_prefix():
-    assert worker_mod._strip_verbatim_prefix("\\\\?\\D:\\tts_bundles\\gpt") == "D:\\tts_bundles\\gpt"
-    assert worker_mod._strip_verbatim_prefix("//?/D:/tts_bundles/gpt") == "D:/tts_bundles/gpt"
-
-
-def test_strip_verbatim_prefix_keeps_unc_root():
-    assert worker_mod._strip_verbatim_prefix(r"\\?\UNC\server\share\tts") == r"\\server\share\tts"
-    assert worker_mod._strip_verbatim_prefix("//?/UNC/server/share/tts") == "//server/share/tts"
-
-
-def test_strip_verbatim_prefix_leaves_plain_path_untouched():
-    assert worker_mod._strip_verbatim_prefix("D:/tts_bundles/gpt") == "D:/tts_bundles/gpt"
