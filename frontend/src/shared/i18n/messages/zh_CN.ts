@@ -805,6 +805,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "plugin.supportBadge": "支持 {version}",
   "plugin.table.actionHeader": "操作",
   "plugin.table.slots": "Slot",
+  "plugin.toast.activated": "插件已生效。",
   "plugin.toast.disabled": "插件已停用",
   "plugin.toast.enabled": "插件已启用",
   "plugin.toast.installFailed": "安装失败",

@@ -818,6 +818,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "plugin.supportBadge": "{version} 対応",
   "plugin.table.actionHeader": "操作",
   "plugin.table.slots": "Slots",
+  "plugin.toast.activated": "プラグインが有効になりました。",
   "plugin.toast.disabled": "プラグインを無効化しました",
   "plugin.toast.enabled": "プラグインを有効化しました",
   "plugin.toast.installFailed": "インストール失敗",

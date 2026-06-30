@@ -818,6 +818,7 @@ export const enMessages: Record<MessageKey, string> = {
   "plugin.supportBadge": "Supports {version}",
   "plugin.table.actionHeader": "Actions",
   "plugin.table.slots": "Slots",
+  "plugin.toast.activated": "The plugin is ready to use.",
   "plugin.toast.disabled": "Plugin disabled",
   "plugin.toast.enabled": "Plugin enabled",
   "plugin.toast.installFailed": "Install failed",

@@ -275,6 +275,18 @@ function hasCatalogUpdate(catalog: PluginCatalogItem | null | undefined, plugin:
   return hasVersionUpdate(catalog?.version, plugin?.version);
 }
 
+class PluginInstallReloadError extends Error {
+  plugin: PluginManifest;
+  reason: unknown;
+
+  constructor(plugin: PluginManifest, reason: unknown) {
+    super("Plugin reload after install failed.");
+    this.name = "PluginInstallReloadError";
+    this.plugin = plugin;
+    this.reason = reason;
+  }
+}
+
 export function PluginManagerPage() {
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -359,12 +371,36 @@ export function PluginManagerPage() {
   });
 
   const installMutation = useMutation({
-    mutationFn: (input: PluginInstallInput | string) => installPlugin(input, { onTaskUpdate: setInstallTask }),
+    mutationFn: async (input: PluginInstallInput | string) => {
+      const plugin = await installPlugin(input, { onTaskUpdate: setInstallTask });
+      if (isTauriDesktop()) {
+        setPluginReloadPending(true);
+        try {
+          await reloadPluginService();
+        } catch (error) {
+          await writeDesktopRestartDebugLog(
+            `PluginManagerPage install reload catch: ${desktopRestartErrorMessage(error)}`,
+          );
+          throw new PluginInstallReloadError(plugin, error);
+        }
+      }
+      return plugin;
+    },
     onMutate(input) {
       setInstallTask(null);
       setInstallingSource(pluginInstallSource(input));
     },
     onError(error) {
+      if (error instanceof PluginInstallReloadError) {
+        queryClient.invalidateQueries({ queryKey: pluginsQueryKey });
+        queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey });
+        showToast({
+          kind: "error",
+          message: `${error.plugin.title}: ${desktopRestartErrorMessage(error.reason) || t("plugin.appRestart.failed")}`,
+          title: t("plugin.appRestart.failed"),
+        });
+        return;
+      }
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("plugin.error.installFallback"),
@@ -376,12 +412,13 @@ export function PluginManagerPage() {
       queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey });
       showToast({
         kind: "success",
-        message: `${plugin.title}。${t("plugin.toast.restartHint")}`,
+        message: `${plugin.title}。${isTauriDesktop() ? t("plugin.toast.activated") : t("plugin.toast.restartHint")}`,
         title: t("plugin.toast.installSuccess"),
       });
     },
     onSettled() {
       setInstallingSource("");
+      setPluginReloadPending(false);
     },
   });
 
