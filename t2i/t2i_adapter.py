@@ -11,6 +11,78 @@ from typing import Optional, Dict, Any
 from sdk.adapters.t2i import T2IAdapter
 
 
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _infer_image_size(
+    prompt: str,
+    *,
+    default_size: str,
+    square_size: str,
+    portrait_size: str,
+    landscape_size: str,
+    explicit_size: Optional[Any] = None,
+) -> str:
+    if explicit_size:
+        named_size = str(explicit_size).strip().lower()
+        if named_size in {"landscape", "wide", "horizontal", "cg"}:
+            return landscape_size
+        if named_size in {"portrait", "vertical", "character", "sprite"}:
+            return portrait_size
+        if named_size in {"square", "default"}:
+            return square_size
+        return str(explicit_size)
+
+    text = str(prompt or "").lower()
+    person_markers = (
+        "1girl",
+        "1boy",
+        "girl",
+        "boy",
+        "woman",
+        "man",
+        "character",
+        "portrait",
+        "full body",
+        "upper body",
+        "角色",
+        "人物",
+        "立绘",
+        "全身",
+        "半身",
+    )
+    landscape_markers = (
+        "landscape",
+        "scenery",
+        "wide shot",
+        "panoramic",
+        "room",
+        "street",
+        "classroom",
+        "city",
+        "forest",
+        "背景",
+        "风景",
+        "场景",
+        "街道",
+        "房间",
+        "教室",
+        "城市",
+        "森林",
+    )
+
+    if any(marker in text for marker in person_markers):
+        return portrait_size
+    if any(marker in text for marker in landscape_markers):
+        return landscape_size
+    return default_size or square_size
+
+
 class StableDiffusionAdapter(T2IAdapter):
     """
     Adapter for a Stable Diffusion (e.g., AUTOMATIC1111/ComfyUI) API.
@@ -82,6 +154,203 @@ class StableDiffusionAdapter(T2IAdapter):
             self.current_model = model_checkpoint
             # In a real-world scenario, you might call a separate API endpoint to load the model
             # e.g., requests.post("http://127.0.0.1:7860/sdapi/v1/options", json={"sd_model_checkpoint": model_checkpoint})
+
+
+class OpenAIImageAdapter(T2IAdapter):
+    """OpenAI/NewAPI-compatible image generation adapter."""
+
+    def __init__(
+        self,
+        api_url: str = "https://api.openai.com/v1",
+        api_key: str = "",
+        model: str = "gpt-image-2",
+        size: str = "1024x1024",
+        auto_size: bool = True,
+        square_size: str = "1024x1024",
+        portrait_size: str = "1024x1536",
+        landscape_size: str = "1536x1024",
+        quality: str = "low",
+        response_format: str = "b64_json",
+        moderation: str = "",
+        timeout_seconds: int = 180,
+        **kwargs,
+    ):
+        self.api_url = str(api_url or "https://api.openai.com/v1").rstrip("/")
+        self.api_key = str(api_key or "")
+        self.model = str(model or "gpt-image-2")
+        self.size = str(size or "1024x1024")
+        self.auto_size = _coerce_bool(auto_size, True)
+        self.square_size = str(square_size or "1024x1024")
+        self.portrait_size = str(portrait_size or "1024x1536")
+        self.landscape_size = str(landscape_size or "1536x1024")
+        self.quality = str(quality or "").strip()
+        self.response_format = str(response_format or "").strip()
+        self.moderation = str(moderation or "").strip()
+        self.timeout_seconds = int(timeout_seconds or 180)
+        print(f"OpenAIImageAdapter initialized with model: {self.model}")
+
+    @classmethod
+    def get_config_schema(cls) -> dict[str, dict]:
+        return {
+            "api_key": {
+                "type": "str",
+                "label": "Image API key",
+                "default": "",
+                "secret": True,
+            },
+            "model": {
+                "type": "str",
+                "label": "Image model",
+                "default": "gpt-image-2",
+            },
+            "size": {
+                "type": "str",
+                "label": "Image size",
+                "default": "1024x1024",
+                "choices": ["1024x1024", "1024x1536", "1536x1024", "auto"],
+            },
+            "auto_size": {
+                "type": "bool",
+                "label": "Auto choose size by prompt",
+                "default": True,
+            },
+            "square_size": {
+                "type": "str",
+                "label": "Square size",
+                "default": "1024x1024",
+            },
+            "portrait_size": {
+                "type": "str",
+                "label": "Portrait size",
+                "default": "1024x1536",
+            },
+            "landscape_size": {
+                "type": "str",
+                "label": "Landscape size",
+                "default": "1536x1024",
+            },
+            "quality": {
+                "type": "str",
+                "label": "Image quality",
+                "default": "low",
+                "choices": ["", "low", "medium", "high", "auto"],
+            },
+            "response_format": {
+                "type": "str",
+                "label": "Response format",
+                "default": "b64_json",
+                "choices": ["b64_json", "url", ""],
+            },
+            "moderation": {
+                "type": "str",
+                "label": "Moderation",
+                "default": "",
+                "choices": ["", "low", "auto"],
+            },
+            "timeout_seconds": {
+                "type": "int",
+                "label": "Timeout seconds",
+                "default": 180,
+                "min": 30,
+                "max": 600,
+            },
+        }
+
+    def _generation_endpoint(self) -> str:
+        if self.api_url.endswith("/images/generations"):
+            return self.api_url
+        if self.api_url.endswith("/v1"):
+            return f"{self.api_url}/images/generations"
+        return f"{self.api_url}/v1/images/generations"
+
+    def _resolve_size(self, prompt: str, explicit_size: Optional[Any] = None) -> str:
+        if explicit_size or self.auto_size or self.size == "auto":
+            return _infer_image_size(
+                prompt,
+                default_size=self.square_size if self.size == "auto" else self.size,
+                square_size=self.square_size,
+                portrait_size=self.portrait_size,
+                landscape_size=self.landscape_size,
+                explicit_size=explicit_size,
+            )
+        return self.size
+
+    def _build_payload(self, prompt: str, size: str, *, include_optional: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "prompt": prompt,
+            "n": 1,
+        }
+        if self.response_format:
+            payload["response_format"] = self.response_format
+        if include_optional:
+            if size:
+                payload["size"] = size
+            if self.quality:
+                payload["quality"] = self.quality
+            if self.moderation:
+                payload["moderation"] = self.moderation
+        return payload
+
+    def _save_image_bytes(self, image_data: bytes, file_path: Optional[str]) -> str:
+        if not file_path:
+            file_path = os.path.join(os.getcwd(), "temp_openai_image.png")
+        with open(file_path, "wb") as f:
+            f.write(image_data)
+        return os.path.abspath(file_path)
+
+    def generate_image(self, prompt: str, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
+        if not self.api_key:
+            print("OpenAI image generation failed: missing API key.")
+            return None
+
+        prompt = str(prompt or "").strip()
+        if not prompt:
+            print("OpenAI image generation failed: empty prompt.")
+            return None
+
+        size = self._resolve_size(prompt, kwargs.get("size") or kwargs.get("image_size"))
+        endpoint = self._generation_endpoint()
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = self._build_payload(prompt, size, include_optional=True)
+
+        try:
+            response = requests.post(
+                endpoint,
+                headers=headers,
+                json=payload,
+                timeout=self.timeout_seconds,
+            )
+            if response.status_code == 400:
+                response = requests.post(
+                    endpoint,
+                    headers=headers,
+                    json=self._build_payload(prompt, size, include_optional=False),
+                    timeout=self.timeout_seconds,
+                )
+            response.raise_for_status()
+            data = response.json()
+            item = (data.get("data") or [{}])[0]
+            if item.get("b64_json"):
+                return self._save_image_bytes(base64.b64decode(item["b64_json"]), file_path)
+            if item.get("url"):
+                image_response = requests.get(item["url"], timeout=self.timeout_seconds)
+                image_response.raise_for_status()
+                return self._save_image_bytes(image_response.content, file_path)
+            print("OpenAI image generation failed: response contained no image data.")
+            return None
+        except Exception as e:
+            print(f"OpenAI image generation failed: {e}")
+            return None
+
+    def switch_model(self, model_info: Dict[str, Any]):
+        model = model_info.get("model") if model_info else None
+        if model:
+            self.model = str(model)
+
 
 class ComfyUIT2IAdapter(T2IAdapter):
     """
