@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlparse
 import requests
 from PySide6.QtCore import QObject, QThread, Signal
 
+from frontend_bridge_core.path_utils import strip_windows_verbatim_prefix
 from ui.settings_ui.tts.tts_bundle_manifest import (
     TtsBundleManifestEntry,
     bundle_manifest_for_key,
@@ -445,4 +446,4 @@ class TtsBundleDownloadWorker(QThread):
 
         self.progress.emit(100)
         root = _resolve_extracted_root(out_dir)
-        self.finished_ok.emit(str(root.resolve()))
+        self.finished_ok.emit(strip_windows_verbatim_prefix(str(root.resolve())))
