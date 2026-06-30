@@ -5,6 +5,7 @@ import os
 import config.network_proxy as network_proxy
 from config.config_manager import ConfigManager
 from config.schema import AppConfig, ApiConfig, Background, Character, SystemConfig
+from config.sprite_voice import normalize_sprite_voice_types
 
 
 def _config_manager_with_api(**api_overrides) -> ConfigManager:
@@ -62,6 +63,21 @@ def test_get_llm_api_config_defaults_known_provider_base_url_when_empty():
     assert model == "deepseek-chat"
     assert base_url == "https://api.deepseek.com/v1"
     assert api_key == "sk-test"
+
+
+def test_normalize_sprite_voice_types_sets_voice_without_text_to_fallback():
+    data = {
+        "name": "Mika",
+        "sprites": [
+            {"path": "sprite.png", "voice_path": "voice.wav", "voice_type": "preset"},
+            {"path": "ref.png", "voice_path": "ref.wav", "voice_text": "hello"},
+        ],
+    }
+
+    normalized = normalize_sprite_voice_types(data)
+
+    assert normalized["sprites"][0]["voice_type"] == "fallback"
+    assert normalized["sprites"][1]["voice_type"] == "reference"
 
 
 def test_get_llm_api_config_keeps_saved_base_url():
@@ -204,7 +220,7 @@ def test_save_api_config_new_defaults_local_tts_path_to_installed_bundle_root(tm
     )
 
     assert result == "API配置已保存！"
-    assert manager.config.api_config.gpt_sovits_url == "https://127.0.0.1:9880"
+    assert manager.config.api_config.gpt_sovits_url == "http://127.0.0.1:9880"
     assert manager.config.api_config.gpt_sovits_api_path == expected_path
     assert saved["gpt_sovits_api_path"] == expected_path
 

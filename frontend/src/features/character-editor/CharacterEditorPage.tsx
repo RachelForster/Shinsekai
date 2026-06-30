@@ -32,7 +32,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import type { TaskSnapshot } from "../../shared/platform/types";
+import type { SpriteVoiceType, TaskSnapshot } from "../../shared/platform/types";
 import { AlertDialog, Button, Dialog, PageSectionNav, TaskProgress, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemorySection } from "./CharacterMemorySection";
@@ -157,7 +157,15 @@ export function CharacterEditorPage() {
       showToast({ kind: "success", title: t("character.memory.depInstalled") });
       setMemoryDepOpen(false);
       setMemoryDepTask(null);
-      void memoryQuery.refetch();
+      queryClient.setQueryData(["character-memories", memoryName], {
+        agentId: memoryName || "user",
+        count: 0,
+        memories: [],
+      });
+      setMemoryDepInstalling(false);
+      if (await ensureMem0Ready()) {
+        void memoryQuery.refetch();
+      }
     } catch (error) {
       showToast({
         kind: "error",
@@ -439,7 +447,7 @@ export function CharacterEditorPage() {
   });
 
   const voiceTypeMutation = useMutation({
-    mutationFn: ({ index, voiceType: vt }: { index: number; voiceType: string }) =>
+    mutationFn: ({ index, voiceType: vt }: { index: number; voiceType: SpriteVoiceType }) =>
       saveSpriteVoiceType(currentCharacterName, index, vt),
     onError(error) {
       showToast({
@@ -614,11 +622,13 @@ export function CharacterEditorPage() {
   const characterHasGptSovitsModel = (character: Character) =>
     Boolean(character.gpt_model_path?.trim() && character.sovits_model_path?.trim());
 
-  const defaultSpriteVoiceType = (character: Character): "preset" | "reference" =>
-    characterHasGptSovitsModel(character) ? "reference" : "preset";
+  const spriteHasReferenceVoiceText = (sprite: Sprite | undefined) => Boolean(sprite?.voice_text?.trim());
 
-  const spriteVoiceType = (sprite: Sprite | undefined, character: Character): "preset" | "reference" =>
-    sprite?.voice_type ?? defaultSpriteVoiceType(character);
+  const defaultSpriteVoiceType = (sprite: Sprite | undefined, character: Character): SpriteVoiceType =>
+    characterHasGptSovitsModel(character) && spriteHasReferenceVoiceText(sprite) ? "reference" : "fallback";
+
+  const spriteVoiceType = (sprite: Sprite | undefined, character: Character): SpriteVoiceType =>
+    sprite?.voice_type ?? defaultSpriteVoiceType(sprite, character);
 
   const updateSpriteTag = (index: number, value: string) => {
     setDraft((current) => {
@@ -917,7 +927,7 @@ export function CharacterEditorPage() {
     }
   };
 
-  const handleSpriteVoiceTypeChange = (value: "preset" | "reference") => {
+  const handleSpriteVoiceTypeChange = (value: SpriteVoiceType) => {
     updateSprite(selectedSpriteIndex, { voice_type: value });
     if (isSavedCharacter) {
       voiceTypeMutation.mutate({ index: selectedSpriteIndex, voiceType: value });

@@ -13,6 +13,7 @@ from .security import safe_child_path, safe_filename
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
 MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
 TEMP_SPLIT_META = "_temp_split.json"
+DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。"
 
 
 def _template_dir(state: BridgeState) -> Path:
@@ -52,9 +53,35 @@ def _compose_for_llm(scenario: str, system: str) -> str:
     return a or b
 
 
-def _history_id_from_scenario(user_scenario: str, system_template: str) -> str:
-    stable = (user_scenario or "").strip() or (system_template or "").strip()
-    return hashlib.md5(stable.encode("utf-8")).hexdigest()
+def _effective_user_scenario(user_scenario: str) -> str:
+    return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
+
+
+def _normalize_hash_character_names(character_names: Any = None) -> list[str]:
+    if not isinstance(character_names, list):
+        return []
+    names = {str(item).strip() for item in character_names if str(item).strip()}
+    return sorted(names)
+
+
+def _scenario_from_template_like(template: dict[str, Any]) -> str:
+    raw_scenario = template.get("scenario")
+    if raw_scenario is not None:
+        return str(raw_scenario)
+    return str(template.get("content") or "")
+
+
+def _history_id_from_scenario(
+    user_scenario: str,
+    character_names: Any = None,
+) -> str:
+    stable = {
+        "characters": _normalize_hash_character_names(character_names),
+        "scenario": _effective_user_scenario(user_scenario),
+    }
+    return hashlib.md5(
+        json.dumps(stable, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def _latest_history_json(history_dir: str) -> Path | None:
@@ -187,7 +214,7 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
     name = str(template.get("name") or template.get("id") or "").strip()
     if not name:
         raise ValueError("template name is required")
-    scenario = str(template.get("scenario") or template.get("content") or "")
+    scenario = _scenario_from_template_like(template)
     system = str(template.get("system") or "")
     file_name = safe_filename(name, default_suffix=".txt")
     safe_child_path(_template_dir(state), file_name).write_text(

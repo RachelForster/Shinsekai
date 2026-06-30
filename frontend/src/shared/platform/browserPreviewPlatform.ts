@@ -1187,7 +1187,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         character.sprites[spriteIndex] = {
           ...character.sprites[spriteIndex],
-          voice_type: voiceType as "preset" | "reference" | undefined,
+          voice_type: voiceType,
         };
         return delay(character);
       },
@@ -1221,6 +1221,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...character.sprites[input.spriteIndex],
           voice_path: input.voicePath,
           voice_text: input.voiceText,
+          voice_type: input.voiceType,
         };
         return delay(character);
       },

@@ -22,6 +22,7 @@ from config.tts_provider_config import (
 from llm.constants import LLM_BASE_URLS
 from config.mirror_env import apply_mirror_environment
 from config.network_proxy import apply_network_proxy_environment
+from config.sprite_voice import normalize_sprite_voice_types
 import traceback
 
 
@@ -128,7 +129,7 @@ class ConfigManager:
             if not isinstance(characters_data, list):
                 characters_data = [] # 处理文件为空或格式错误的情况
                 
-            character_list = [Character.model_validate(item) for item in characters_data]
+            character_list = [Character.model_validate(normalize_sprite_voice_types(item)) for item in characters_data]
             background = [Background.model_validate(item) for item in background_data]
             if not isinstance(effect_data, list):
                 effect_data = []

@@ -259,7 +259,7 @@ describe("CharacterEditorPage", () => {
       name: input.name,
       sprites: input.paths.map((path) => ({ path })),
     }));
-    mockUploadSpriteVoice.mockImplementation(async (input: { voiceType?: "preset" | "reference" }) => ({
+    mockUploadSpriteVoice.mockImplementation(async (input: { voiceType?: "fallback" | "preset" | "reference" }) => ({
       ...character,
       sprites: [{ ...character.sprites[0], voice_path: "D:/new/sora.wav", voice_type: input.voiceType }],
     }));
@@ -332,10 +332,57 @@ describe("CharacterEditorPage", () => {
     await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Sora"));
   });
 
-  it("uploads sprite voice with the displayed default preset type", async () => {
+  it("uploads sprite voice with the displayed default fallback type", async () => {
     renderPage();
 
     await screen.findByDisplayValue("Mika");
+    fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
+
+    await waitFor(() =>
+      expect(mockUploadSpriteVoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Mika",
+          spriteIndex: 0,
+          voicePath: "D:/new/sora.wav",
+          voiceType: "fallback",
+        }),
+      ),
+    );
+  });
+
+  it("keeps sprite voice uploads fallback when GPT-SoVITS models have no sprite voice text", async () => {
+    mockListCharacters.mockResolvedValue([
+      {
+        ...structuredClone(character),
+        gpt_model_path: "D:/models/mika.ckpt",
+        sovits_model_path: "D:/models/mika.pth",
+      },
+    ]);
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    expect(screen.getByRole("radio", { name: "Fallback voice" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
+
+    await waitFor(() =>
+      expect(mockUploadSpriteVoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Mika",
+          spriteIndex: 0,
+          voicePath: "D:/new/sora.wav",
+          voiceType: "fallback",
+        }),
+      ),
+    );
+  });
+
+  it("uploads sprite voice as preset after explicit selection", async () => {
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    fireEvent.click(screen.getByRole("radio", { name: "Preset voice" }));
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
@@ -351,18 +398,19 @@ describe("CharacterEditorPage", () => {
     );
   });
 
-  it("defaults sprite voice uploads to reference when the character has GPT-SoVITS models", async () => {
+  it("defaults sprite voice uploads to reference when GPT-SoVITS models have sprite voice text", async () => {
     mockListCharacters.mockResolvedValue([
       {
         ...structuredClone(character),
         gpt_model_path: "D:/models/mika.ckpt",
         sovits_model_path: "D:/models/mika.pth",
+        sprites: [{ ...character.sprites[0], voice_text: "Reference line" }],
       },
     ]);
     renderPage();
 
     await screen.findByDisplayValue("Mika");
-    expect(screen.getByRole("radio", { name: "Reference voice (requires validation)" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Reference voice" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
@@ -428,7 +476,7 @@ describe("CharacterEditorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save scale" }));
     await waitFor(() => expect(mockSaveSpriteScale).toHaveBeenCalledWith("Mika", 1.25));
 
-    fireEvent.click(screen.getByRole("radio", { name: "Reference voice (requires validation)" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Reference voice" }));
     await waitFor(() => expect(mockSaveSpriteVoiceType).toHaveBeenCalledWith("Mika", 0, "reference"));
 
     const voiceTextInput = screen.getByDisplayValue("hello");
@@ -540,13 +588,17 @@ describe("CharacterEditorPage", () => {
     expect(mockUploadSpriteVoice).not.toHaveBeenCalled();
   });
 
-  it("surfaces missing memory dependencies and installs them with task progress", async () => {
-    mockGetMem0Status.mockResolvedValueOnce({ status: "missing_dependency" });
-    mockListCharacterMemories.mockResolvedValueOnce({
-      kind: "missing_dependency",
-      moduleName: "mem0",
-      packageName: "mem0ai",
-    });
+  it("installs missing memory dependencies and starts memory loading", async () => {
+    mockGetMem0Status
+      .mockResolvedValueOnce({ status: "missing_dependency" })
+      .mockResolvedValueOnce({ status: "ready" });
+    mockListCharacterMemories
+      .mockResolvedValueOnce({
+        kind: "missing_dependency",
+        moduleName: "mem0",
+        packageName: "mem0ai",
+      })
+      .mockResolvedValueOnce({ agentId: "Mika", count: 0, memories: [] });
     mockInstallMissingRuntimeDependency.mockImplementation(
       async (_input, options?: { onTaskUpdate?: (task: unknown) => void }) => {
         options?.onTaskUpdate?.({
@@ -572,6 +624,8 @@ describe("CharacterEditorPage", () => {
         expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
       ),
     );
+    await waitFor(() => expect(screen.queryByText("Missing Python dependency")).not.toBeInTheDocument());
+    await waitFor(() => expect(mockGetMem0Status).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(mockListCharacterMemories).toHaveBeenCalledTimes(2));
   });
 });

@@ -23,8 +23,8 @@ def _normalize_sprite_voice_type(value: Any, *, allow_empty: bool = False) -> st
     voice_type = str(value or "").strip().lower()
     if not voice_type and allow_empty:
         return ""
-    if voice_type not in {"preset", "reference"}:
-        raise ValueError("voice type must be preset or reference")
+    if voice_type not in {"fallback", "preset", "reference"}:
+        raise ValueError("voice type must be fallback, preset, or reference")
     return voice_type
 
 
@@ -36,7 +36,7 @@ def _has_gpt_sovits_model(character: Any) -> bool:
 
 
 def _default_sprite_voice_type(character: Any) -> str:
-    return "reference" if _has_gpt_sovits_model(character) else "preset"
+    return "reference" if _has_gpt_sovits_model(character) else "fallback"
 
 
 def _as_character_config(character: Any) -> Any:
@@ -290,8 +290,6 @@ def _upload_sprite_voice(state: BridgeState, payload: dict[str, Any]) -> dict[st
         raise ValueError("voice path is required")
     if voice_type == "reference":
         _validate_reference_audio(voice_path)
-    elif voice_type != "preset" and voice_text.strip():
-        _validate_sprite_voice_duration(voice_path, voice_text)
     message, _path = state.character_manager.upload_voice(name, sprite_index, voice_path, voice_text, voice_type)
     if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请选择") or message.startswith("请先"):
         raise RuntimeError(message)
@@ -367,7 +365,7 @@ def _save_sprite_voice_text(state: BridgeState, payload: dict[str, Any]) -> dict
             _vt = _s.voice_type
         else:
             _vt = _s.get("voice_type") if isinstance(_s, dict) else None
-        if _vt != "preset":
+        if _vt == "reference":
             voice_path = _sprite_voice_path(_s)
             if voice_path and Path(voice_path).is_file():
                 _validate_sprite_voice_duration(voice_path, voice_text)

@@ -129,6 +129,53 @@ def test_classify_exception_maps_openai_status_error():
     }
 
 
+def test_classify_exception_marks_unpaired_tool_messages_reason():
+    exc = _http_status_error(
+        "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'",
+        400,
+    )
+
+    assert types.http_client_error_from_exception(exc) == {
+        "kind": "http_client",
+        "message": (
+            "HTTP request failed: "
+            "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
+        ),
+        "errorType": "APIStatusError",
+        "timeout": False,
+        "statusCode": 400,
+        "url": "https://example.test/api",
+        "reason": types.HTTP_REASON_UNPAIRED_TOOL_MESSAGES,
+    }
+    assert types.is_unpaired_tool_messages_error(exc)
+
+
+def test_unpaired_tool_messages_reason_avoids_broad_keyword_false_positive():
+    exc = _http_status_error(
+        "Invalid role value for tool when tool_calls are disabled by this model",
+        400,
+    )
+
+    error = types.http_client_error_from_exception(exc)
+
+    assert error is not None
+    assert "reason" not in error
+    assert not types.is_unpaired_tool_messages_error(exc)
+
+
+def test_classify_exception_marks_missing_tool_call_id_responses_reason():
+    exc = _http_status_error(
+        "An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. "
+        "The following tool_call_ids did not have response messages: call_1",
+        400,
+    )
+
+    error = types.http_client_error_from_exception(exc)
+
+    assert error is not None
+    assert error["reason"] == types.HTTP_REASON_UNPAIRED_TOOL_MESSAGES
+
+
 def test_classify_exception_maps_anthropic_timeout():
     exc = AnthropicAPITimeoutError("anthropic timeout")
     exc.request = _FakeRequest()
@@ -290,9 +337,13 @@ def test_dialog_helpers_handle_import_failure_and_single_display(monkeypatch):
 
     monkeypatch.setattr("builtins.__import__", fake_import)
     assert handler._show_qt_dialog("Title", "Message", "detail") is False
+    monkeypatch.setenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", "1")
     assert handler._show_windows_dialog("Title", "Message") is False
 
     calls = []
+    monkeypatch.delenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.delenv("SHINSEKAI_DISABLE_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.setattr(handler, "_running_under_pytest", lambda: False)
     monkeypatch.setattr(handler, "_dialog_shown", False)
     monkeypatch.setattr(
         handler,
@@ -366,6 +417,7 @@ def test_report_main_exception_still_reports_when_logger_or_stderr_fail(monkeypa
     dialog_calls = []
     monkeypatch.delenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", raising=False)
     monkeypatch.delenv("SHINSEKAI_DISABLE_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.setattr(handler, "_running_under_pytest", lambda: False)
     monkeypatch.setattr(
         handler,
         "show_error_dialog",
@@ -394,6 +446,31 @@ def test_report_main_exception_still_reports_when_logger_or_stderr_fail(monkeypa
 
     monkeypatch.setattr(handler.sys, "stderr", BrokenStderr())
     handler._write_stderr("App", RuntimeError, RuntimeError("boom"), "detail", None)
+
+
+def test_report_main_exception_suppresses_dialog_under_pytest(monkeypatch, capsys):
+    dialog_calls = []
+    monkeypatch.delenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.delenv("SHINSEKAI_DISABLE_MAIN_ERROR_DIALOG", raising=False)
+    monkeypatch.setattr(handler, "_running_under_pytest", lambda: True)
+    monkeypatch.setattr(
+        handler,
+        "show_error_dialog",
+        lambda *args: dialog_calls.append(args) or True,
+    )
+
+    exc = RuntimeError("boom")
+    handler.report_main_exception(
+        type(exc),
+        exc,
+        exc.__traceback__,
+        app_name="App",
+        logger=None,
+        show_dialog=True,
+    )
+
+    assert "App startup failed: RuntimeError: boom" in capsys.readouterr().err
+    assert dialog_calls == []
 
 
 def test_main_exception_hooks_report_sys_and_thread_exceptions(monkeypatch):

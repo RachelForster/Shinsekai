@@ -265,7 +265,6 @@ describe("ChatStagePage", () => {
     expect(stage).toHaveAttribute("data-click-through", "true");
     expect(document.querySelector(".desktop-resize-handles")).not.toBeNull();
 
-    fireEvent.pointerMove(stage!);
     await waitFor(() => expect(desktopApiMocks.setDesktopWindowClickThrough).toHaveBeenCalledWith(true));
 
     const input = screen.getByRole("textbox");

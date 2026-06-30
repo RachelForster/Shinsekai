@@ -40,7 +40,8 @@ export const DEFAULT_T2I_API_URL = "http://127.0.0.1:8188";
 export const DEFAULT_T2I_PROMPT_NODE_ID = "6";
 export const DEFAULT_T2I_OUTPUT_NODE_ID = "9";
 export const LEGACY_DEFAULT_TTS_SERVER_URL = "http://127.0.0.1:9880";
-export const DEFAULT_TTS_SERVER_URL = "https://127.0.0.1:9880";
+export const HTTPS_DEFAULT_TTS_SERVER_URL = "https://127.0.0.1:9880";
+export const DEFAULT_TTS_SERVER_URL = LEGACY_DEFAULT_TTS_SERVER_URL;
 const LOCAL_SERVER_TTS_PROVIDERS = new Set(["gpt-sovits", "genie-tts", "index-tts"]);
 const REMOTE_SERVER_TTS_PROVIDERS = new Set(["kaggle-gpt-sovits"]);
 const SERVER_CONFIG_TTS_PROVIDERS = new Set([...LOCAL_SERVER_TTS_PROVIDERS, ...REMOTE_SERVER_TTS_PROVIDERS]);
@@ -49,7 +50,11 @@ const TTS_PROVIDER_DEFAULT_URLS: Record<string, string> = {
   "gpt-sovits": DEFAULT_TTS_SERVER_URL,
   "index-tts": LEGACY_DEFAULT_TTS_SERVER_URL,
 };
-const BUILTIN_TTS_SERVER_URLS = new Set([LEGACY_DEFAULT_TTS_SERVER_URL, DEFAULT_TTS_SERVER_URL]);
+const BUILTIN_TTS_SERVER_URLS = new Set([
+  LEGACY_DEFAULT_TTS_SERVER_URL,
+  HTTPS_DEFAULT_TTS_SERVER_URL,
+  DEFAULT_TTS_SERVER_URL,
+]);
 const TTS_PROVIDER_ALIASES: Record<string, string> = {
   "genie tts": "genie-tts",
   "gpt sovits": "gpt-sovits",
@@ -200,7 +205,7 @@ function ttsSharedServerFieldCopy(provider: string) {
         pathPlaceholder: "选择 Genie TTS Server 整合包根目录",
         urlDescription: "Genie TTS Server 的 HTTP 地址。",
         urlLabel: "Genie TTS 服务 URL",
-        urlPlaceholder: "如 https://127.0.0.1:9880/",
+        urlPlaceholder: "如 http://127.0.0.1:9880/",
       };
     case "index-tts":
       return {
@@ -230,7 +235,7 @@ function ttsSharedServerFieldCopy(provider: string) {
         pathPlaceholder: "选择 GPT-SoVITS 整合包或工程根目录",
         urlDescription: "GPT-SoVITS API 服务的 HTTP 地址。",
         urlLabel: "GPT-SoVITS 服务 URL",
-        urlPlaceholder: "如 https://127.0.0.1:9880/",
+        urlPlaceholder: "如 http://127.0.0.1:9880/",
       };
     default:
       return {
