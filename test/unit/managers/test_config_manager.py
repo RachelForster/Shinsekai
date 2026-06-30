@@ -65,11 +65,26 @@ def test_get_llm_api_config_defaults_known_provider_base_url_when_empty():
     assert api_key == "sk-test"
 
 
-def test_normalize_sprite_voice_types_sets_voice_without_text_to_fallback():
+def test_normalize_sprite_voice_types_preserves_explicit_voice_type():
     data = {
         "name": "Mika",
         "sprites": [
             {"path": "sprite.png", "voice_path": "voice.wav", "voice_type": "preset"},
+            {"path": "ref.png", "voice_path": "ref.wav", "voice_text": "hello", "voice_type": "reference"},
+        ],
+    }
+
+    normalized = normalize_sprite_voice_types(data)
+
+    assert normalized["sprites"][0]["voice_type"] == "preset"
+    assert normalized["sprites"][1]["voice_type"] == "reference"
+
+
+def test_normalize_sprite_voice_types_infers_legacy_voice_type_when_missing():
+    data = {
+        "name": "Mika",
+        "sprites": [
+            {"path": "sprite.png", "voice_path": "voice.wav"},
             {"path": "ref.png", "voice_path": "ref.wav", "voice_text": "hello"},
         ],
     }
