@@ -27,6 +27,8 @@ const mockListPlugins = vi.fn<() => Promise<PluginManifest[]>>();
 const mockListRepoTags = vi.fn<() => Promise<string[]>>();
 const mockOpenExternal = vi.fn();
 const mockRunAppUpdate = vi.fn();
+const mockIsTauriDesktop = vi.fn(() => false);
+const mockReloadPluginService = vi.fn<() => Promise<unknown>>();
 
 vi.mock("../../../entities/plugin/repository", () => ({
   getAppUpdateInfo: () => mockGetAppUpdateInfo(),
@@ -57,6 +59,18 @@ vi.mock("../../../entities/files/repository", async (importOriginal) => {
     openExternal: (...args: unknown[]) => mockOpenExternal(...args),
   };
 });
+
+vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../shared/desktop/desktopApi")>();
+  return {
+    ...actual,
+    isTauriDesktop: () => mockIsTauriDesktop(),
+  };
+});
+
+vi.mock("../../../features/plugin-manager/pluginReload", () => ({
+  reloadPluginService: () => mockReloadPluginService(),
+}));
 
 const configurablePlugin: PluginManifest = {
   author: "Tester",
@@ -190,6 +204,8 @@ async function findPluginCard(title: string) {
 describe("PluginManagerPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsTauriDesktop.mockReturnValue(false);
+    mockReloadPluginService.mockResolvedValue(undefined);
     mockGetPluginUiDetail.mockResolvedValue({ pages: [detailPage], plugin: configurablePlugin });
     mockInstallPlugin.mockImplementation(async (_input, options) => {
       options?.onTaskUpdate?.({
@@ -545,6 +561,43 @@ describe("PluginManagerPage", () => {
         expect.any(Object),
       ),
     );
+  });
+
+  it("reloads the plugin service after installing a plugin on desktop", async () => {
+    mockIsTauriDesktop.mockReturnValue(true);
+    mockListPlugins.mockResolvedValue([]);
+    mockListPluginCatalog.mockResolvedValue([catalogItem]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+    const card = (await screen.findByRole("heading", { name: "Registry Display" })).closest(
+      ".plugin-market-card",
+    ) as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose plugin version" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Install" }));
+
+    await waitFor(() => expect(mockInstallPlugin).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockReloadPluginService).toHaveBeenCalledTimes(1));
+  });
+
+  it("surfaces a reload failure after install instead of reporting success", async () => {
+    mockIsTauriDesktop.mockReturnValue(true);
+    mockReloadPluginService.mockRejectedValue(new Error("bridge restart failed"));
+    mockListPlugins.mockResolvedValue([]);
+    mockListPluginCatalog.mockResolvedValue([catalogItem]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+    const card = (await screen.findByRole("heading", { name: "Registry Display" })).closest(
+      ".plugin-market-card",
+    ) as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose plugin version" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Install" }));
+
+    expect(await screen.findByText(/bridge restart failed/)).toBeInTheDocument();
+    expect(screen.queryByText("Plugin installed")).not.toBeInTheDocument();
   });
 
   it("installs a repository catalog plugin from a selected tag", async () => {

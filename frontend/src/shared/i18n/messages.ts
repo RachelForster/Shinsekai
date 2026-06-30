@@ -761,6 +761,7 @@ export type MessageKey =
   | "plugin.supportBadge"
   | "plugin.table.actionHeader"
   | "plugin.table.slots"
+  | "plugin.toast.activated"
   | "plugin.toast.disabled"
   | "plugin.toast.enabled"
   | "plugin.toast.installFailed"
