@@ -615,9 +615,14 @@ export function CharacterEditorPage() {
     });
   };
 
-  /** Merge server sprites while preserving local per-sprite voice_type. */
-  const mergeSprites = (serverSprites: Sprite[], current: Character) =>
-    serverSprites.map((s, i) => ({ ...s, voice_type: current.sprites[i]?.voice_type ?? s.voice_type }));
+  /** Preserve unsaved local voice type only for the same sprite path. */
+  const mergeSprites = (serverSprites: Sprite[], current: Character) => {
+    const currentSpritesByPath = new Map(current.sprites.map((sprite) => [sprite.path, sprite]));
+    return serverSprites.map((sprite) => ({
+      ...sprite,
+      voice_type: sprite.voice_type ?? currentSpritesByPath.get(sprite.path)?.voice_type,
+    }));
+  };
 
   const characterHasGptSovitsModel = (character: Character) =>
     Boolean(character.gpt_model_path?.trim() && character.sovits_model_path?.trim());

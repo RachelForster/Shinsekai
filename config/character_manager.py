@@ -1,5 +1,7 @@
 import os
 import shutil
+import hashlib
+import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
 from config.schema import Character, Sprite
@@ -10,6 +12,23 @@ UPLOAD_DIR = "data/sprite"
 VOICE_DIR = "data/speech"
 MODEL_DIR = "data/models"
 CHARACTER_CONFIG_PATH = ConfigManager._CHARACTERS_CONFIG_PATH 
+
+
+def _sprite_field(sprite_data: Union[Sprite, dict], key: str, default: Any = "") -> Any:
+    if isinstance(sprite_data, Sprite):
+        return getattr(sprite_data, key, default)
+    return sprite_data.get(key, default)
+
+
+def _voice_filename_for_sprite(sprite_data: Union[Sprite, dict], sprite_index: int, file_ext: str) -> str:
+    sprite_path = str(_sprite_field(sprite_data, "path", "") or "")
+    sprite_stem = Path(sprite_path).stem
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", sprite_stem).strip("._-")
+    if not safe_stem:
+        safe_stem = f"sprite_{sprite_index:02d}"
+    digest_source = sprite_path or safe_stem or str(sprite_index)
+    digest = hashlib.sha1(digest_source.encode("utf-8")).hexdigest()[:10]
+    return f"voice_{safe_stem}_{digest}{file_ext}"
 
 
 class CharacterManager:
@@ -504,7 +523,7 @@ class CharacterManager:
             return "立绘不存在！", None
         
         sprite_data: Union[Sprite, dict] = character.sprites[sprite_index]
-        original_voice_path = sprite_data.voice_path if isinstance(sprite_data, Sprite) else sprite_data.get("voice_path", "")
+        original_voice_path = str(_sprite_field(sprite_data, "voice_path", "") or "")
         
         if (not voice_file) and (not original_voice_path):
             return "请选择语音文件！", None
@@ -513,7 +532,7 @@ class CharacterManager:
         Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
         
         file_ext = Path(voice_file).suffix
-        voice_filename = f"voice_{sprite_index:02d}{file_ext}"
+        voice_filename = _voice_filename_for_sprite(sprite_data, sprite_index, file_ext)
         voice_path = os.path.join(voice_char_dir, voice_filename)
         shutil.copyfile(voice_file, voice_path)
         
@@ -530,6 +549,13 @@ class CharacterManager:
                 character.sprites[sprite_index]["voice_type"] = voice_type
             
         self._config_manager.save_characters_config()
+
+        if original_voice_path and os.path.abspath(original_voice_path) != os.path.abspath(voice_path):
+            try:
+                if os.path.isfile(original_voice_path):
+                    os.remove(original_voice_path)
+            except OSError:
+                pass
         
         return f"语音已上传到立绘 {sprite_index+1}！", voice_path
 

@@ -22,6 +22,10 @@ def build_manager(characters):
     return manager
 
 
+def sprite_field(sprite, key):
+    return getattr(sprite, key, None) if hasattr(sprite, key) else sprite.get(key)
+
+
 def test_add_character_updates_existing_emotion_tags():
     character = Character(name="Mika", color="#66ccff", sprite_prefix="mika", emotion_tags="Sprite 1: old\n")
     manager = build_manager([character])
@@ -85,3 +89,42 @@ def test_add_character_creates_when_edit_target_is_missing():
     assert manager._config_manager.config.characters[0].name == "Sora"
     assert manager._config_manager.config.characters[0].emotion_tags == "Sprite 1: smile\n"
     assert manager._config_manager.save_count == 1
+
+
+def test_upload_voice_after_sprite_delete_does_not_overwrite_shifted_sprite_voice(tmp_path, monkeypatch):
+    voice_dir = tmp_path / "speech"
+    char_voice_dir = voice_dir / "mika"
+    char_voice_dir.mkdir(parents=True)
+    old_a = char_voice_dir / "voice_00.wav"
+    old_b = char_voice_dir / "voice_01.wav"
+    old_c = char_voice_dir / "voice_02.wav"
+    old_a.write_bytes(b"old-a")
+    old_b.write_bytes(b"old-b")
+    old_c.write_bytes(b"old-c")
+    new_c = tmp_path / "new-c.wav"
+    new_c.write_bytes(b"new-c")
+    monkeypatch.setattr("config.character_manager.VOICE_DIR", str(voice_dir))
+    character = Character(
+        name="Mika",
+        color="#66ccff",
+        sprite_prefix="mika",
+        sprites=[
+            {"path": "data/sprite/mika/sprite-a.png", "voice_path": str(old_a)},
+            {"path": "data/sprite/mika/sprite-b.png", "voice_path": str(old_b), "voice_type": "preset"},
+            {"path": "data/sprite/mika/sprite-c.png", "voice_path": str(old_c), "voice_type": "preset"},
+        ],
+    )
+    manager = build_manager([character])
+
+    manager.delete_single_sprite("Mika", 0)
+    _message, uploaded_path = manager.upload_voice("Mika", 1, str(new_c), "", "preset")
+
+    assert sprite_field(character.sprites[0], "voice_path") == str(old_b)
+    assert old_b.read_bytes() == b"old-b"
+    assert uploaded_path
+    assert sprite_field(character.sprites[1], "voice_path") == uploaded_path
+    assert uploaded_path != str(old_b)
+    assert "voice_01" not in uploaded_path
+    assert old_c.exists() is False
+    assert old_a.exists() is False
+    assert manager._config_manager.save_count == 2

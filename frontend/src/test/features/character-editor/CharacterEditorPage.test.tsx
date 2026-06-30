@@ -502,6 +502,55 @@ describe("CharacterEditorPage", () => {
     await waitFor(() => expect(mockDeleteAllCharacterSprites).toHaveBeenCalledWith("Mika"));
   });
 
+  it("keeps sprite voice types aligned by path after deleting a sprite", async () => {
+    const sprites = [
+      {
+        path: "D:/sprites/mika/sprite-a.png",
+        voice_path: "D:/voices/a.wav",
+        voice_type: "preset" as const,
+      },
+      {
+        path: "D:/sprites/mika/sprite-b.png",
+        voice_path: "D:/voices/b.wav",
+        voice_type: "fallback" as const,
+      },
+      {
+        path: "D:/sprites/mika/sprite-c.png",
+        voice_path: "D:/voices/c.wav",
+        voice_text: "reference line",
+        voice_type: "reference" as const,
+      },
+    ];
+    const originalCharacter = {
+      ...structuredClone(character),
+      emotion_tags: "Sprite 1: first\nSprite 2: second\nSprite 3: third\n",
+      sprites,
+    };
+    const updatedCharacter = {
+      ...originalCharacter,
+      emotion_tags: "Sprite 1: second\nSprite 2: third\n",
+      sprites: sprites.slice(1),
+    };
+    mockListCharacters.mockResolvedValueOnce([originalCharacter]).mockResolvedValue([updatedCharacter]);
+    mockDeleteCharacterSprite.mockResolvedValue(updatedCharacter);
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    expect(screen.getByRole("radio", { name: "Preset voice" })).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(mockDeleteCharacterSprite).toHaveBeenCalledWith("Mika", 0));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove" })).not.toBeInTheDocument());
+    expect(screen.getByTitle("sprite-b.png")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("radio", { name: "Fallback voice" })).toBeChecked();
+
+    fireEvent.click(screen.getByTitle("sprite-c.png"));
+    expect(screen.getByRole("radio", { name: "Reference voice" })).toBeChecked();
+  });
+
   it("refreshes, adds, and deletes long-term memories", async () => {
     renderPage();
 
