@@ -51,6 +51,21 @@ import {
 } from "./characterEditorUtils";
 import "./CharacterEditorPage.css";
 
+export function mergeSprites(serverSprites: Sprite[], current: Character) {
+  const currentSpritesByPath = new Map(
+    current.sprites.filter((sprite) => sprite.path).map((sprite) => [sprite.path, sprite]),
+  );
+  const canFallbackToIndex = serverSprites.length === current.sprites.length;
+  return serverSprites.map((sprite, index) => {
+    const currentSprite =
+      currentSpritesByPath.get(sprite.path) ?? (canFallbackToIndex ? current.sprites[index] : undefined);
+    return {
+      ...sprite,
+      voice_type: sprite.voice_type ?? currentSprite?.voice_type,
+    };
+  });
+}
+
 export function CharacterEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -614,10 +629,6 @@ export function CharacterEditorPage() {
       return { ...current, sprites };
     });
   };
-
-  /** Merge server sprites while preserving local per-sprite voice_type. */
-  const mergeSprites = (serverSprites: Sprite[], current: Character) =>
-    serverSprites.map((s, i) => ({ ...s, voice_type: current.sprites[i]?.voice_type ?? s.voice_type }));
 
   const characterHasGptSovitsModel = (character: Character) =>
     Boolean(character.gpt_model_path?.trim() && character.sovits_model_path?.trim());
