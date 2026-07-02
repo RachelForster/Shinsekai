@@ -1,28 +1,26 @@
-# Plugin Developer Guide (Revised)
+# Plugin Developer Guide
 
 > **中文版完整文档**: [Shinsekai 插件开发规范](https://plugins.shinsekai.studio/docs/plugin)
-
-> **Revised edition based on `docs/PLUGIN_DEVELOPER_GUIDE.md` @ v2.2.0-rc.2.**
-> All API signatures re-verified against `sdk/` and `core/plugins/` source. Summary of fixes relative to the original:
->
-> 1. **Syntax fixes** — curly quotes (`”...“`) inside Python code blocks replaced with straight quotes; broken bold markers (`**entry`**`) repaired; `PluginSetingsUIContext` typo corrected to `PluginSettingsUIContext`.
-> 2. **Field corrections** — removed `OutputFieldSpec.example`, `FieldPatch.examples`, and `ChatOutputContract.example`, which do not exist in `sdk/types.py`; documented the real `ChatOutputContract` fields (`id`, `json_schema`, `requirements`, `target_export`, `stream_mode`).
-> 3. **Previously undocumented APIs added** — `PluginBase.shutdown()` / `enabled` / `plugin_description` / `plugin_author`; `@tool(risk=...)`; `notify_tool_ready`; `FrontendConfigAction` and `FrontendConfigContribution.actions` / `description` / `restart_hint`; `registry-append` CLI; plugin `requirements.txt` install behavior; `stopwatch`; `ChatUIContext` full member list.
-> 4. **Import paths modernized** — examples now import from `sdk.messages` / `sdk.handlers` instead of host-internal `core.messaging` / `core.handlers`.
 
 ## Part 1 — Overview
 
 ### What a plugin is
 
-Plugins are ordinary Python packages under `plugins/<package>/`, loaded from `data/config/plugins.yaml`, and executed **in-process** with the host. They are **not** a security boundary.
+Plugins are ordinary Python packages under `plugins/<package>/`, loaded from
+`data/config/plugins.yaml`, and executed **in-process** with the host. They are **not**
+a security boundary.
 
 ### How the host uses your code
 
 1. **Load** the manifest and import each `entry` → `PluginBase` subclass.
 2. **Construct** plugins with `cls()` (no constructor arguments).
-3. **Call** `initialize(register, plugin_root, host)` in **priority** order (lower `priority` runs first).
-4. **Merge** everything you registered on `register` (`PluginCapabilityRegistry`, alias `PluginRegister`) into global factories, tool lists, and UI contribution lists — see `core/plugins/plugin_host.py` and `sdk/manager.py`.
-5. **Shut down**: on host exit, `shutdown()` is called on each plugin in **reverse** priority order (higher `priority` first). Exceptions are logged and ignored.
+3. **Call** `initialize(register, plugin_root, host)` in **priority** order (lower
+   `priority` runs first).
+4. **Merge** everything you registered on `register` (`PluginCapabilityRegistry`, alias
+   `PluginRegister`) into global factories, tool lists, and UI contribution lists — see
+   `core/plugins/plugin_host.py` and `sdk/manager.py`.
+5. **Shut down**: on host exit, `shutdown()` is called on each plugin in **reverse**
+   priority order (higher `priority` first). Exceptions are logged and ignored.
 
 You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-apply).
 
@@ -65,9 +63,14 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_before_chat_hook`     | Lifecycle hook before an adapter chat request is sent      |
 | `register_compact_hook`         | *Legacy* pre-compaction hook receiving the raw message list; prefer `register_before_compact_hook` |
 
-**Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`, `clear_settings_ui_plugin_context`. The host wraps `initialize` so `SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` / `FrontendPageContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version` when you leave those fields `None`.
+**Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`,
+`clear_settings_ui_plugin_context`. The host wraps `initialize` so
+`SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` /
+`FrontendPageContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version`
+when you leave those fields `None`.
 
-Adapter registration stores the **class** (not an instance); registering the same provider name again overwrites the earlier one, including built-ins.
+Adapter registration stores the **class** (not an instance); registering the same
+provider name again overwrites the earlier one, including built-ins.
 
 ---
 
@@ -95,7 +98,10 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
     register.register_before_chat_hook(before_chat)
 ```
 
-`before_compact` and `message_added` are observation hooks. They receive snapshots of the host state; mutating the context does not modify the live conversation history. `before_chat` may modify the request-local `messages`, `tools`, and `generation_kwargs`; those changes are sent to the adapter but are not written back to `LLMManager.messages`.
+`before_compact` and `message_added` are observation hooks. They receive snapshots of
+the host state; mutating the context does not modify the live conversation history.
+`before_chat` may modify the request-local `messages`, `tools`, and `generation_kwargs`;
+those changes are sent to the adapter but are not written back to `LLMManager.messages`.
 
 Context fields:
 
@@ -105,7 +111,8 @@ Context fields:
 | `MessageAddedContext` | `role: str`, `message: dict`, `messages: list` |
 | `BeforeChatContext` | `messages: list`, `tools: list \| None`, `generation_kwargs: dict`, `stream: bool` |
 
-Hook exceptions are caught and logged (warning); they never interrupt other hooks or the host.
+Hook exceptions are caught and logged (warning); they never interrupt other hooks or the
+host.
 
 ---
 
@@ -113,12 +120,17 @@ Hook exceptions are caught and logged (warning); they never interrupt other hook
 
 ### Manifest and `entry`
 
-- **Path:** `data/config/plugins.yaml` — YAML **list** of dicts with at least `entry`, optional `enabled` (default `true`).
+- **Path:** `data/config/plugins.yaml` — YAML **list** of dicts with at least `entry`,
+  optional `enabled` (default `true`).
 - **Explicit class (recommended):** `plugins.my_pkg.plugin:MyPkgPlugin`
 - **Module + `Plugin` attribute:** `plugins.my_pkg.plugin` expects `Plugin = class`.
-- **Other keys** in YAML become `PluginDescriptor.extra`; the host **does not** inject `extra` into `initialize` today — use `plugin_root` or files under `data/plugins/` for plugin state.
-- Registry-installed entries may omit the `plugins.` prefix; the host's `normalize_manifest_entry` adds it automatically.
-- A broken entry (import error, bad class) is logged and skipped; other plugins load normally.
+- **Other keys** in YAML become `PluginDescriptor.extra`; the host **does not** inject
+  `extra` into `initialize` today — use `plugin_root` or files under `data/plugins/` for
+  plugin state.
+- Registry-installed entries may omit the `plugins.` prefix; the host's
+  `normalize_manifest_entry` adds it automatically.
+- A broken entry (import error, bad class) is logged and skipped; other plugins load
+  normally.
 
 ### UI contexts (read-only surfaces)
 
@@ -128,21 +140,31 @@ Hook exceptions are caught and logged (warning); they never interrupt other hook
 | `PluginSettingsUIContext` | `SettingsUIContribution.build` / `ToolsTabContribution.build` | `host` snapshot + `template_dir_path`, `history_dir`, `character_names`, `background_names`.                                                                                       |
 | `ChatUIContext`           | `ChatUIContribution.build`                                    | Safe chat state reads, queued UI updates, `on_*` event subscriptions, `submit_user_message` when the host bound it.                                                                |
 
-Prefer these over raw Qt signals on internal windows. `ChatUIContext` is also reachable at runtime via `sdk.chat_ui_context.try_get_chat_ui_context()` (returns `None` before the chat window exists) or `get_chat_ui_context()` (raises `RuntimeError` instead).
+Prefer these over raw Qt signals on internal windows. `ChatUIContext` is also reachable
+at runtime via `sdk.chat_ui_context.try_get_chat_ui_context()` (returns `None` before
+the chat window exists) or `get_chat_ui_context()` (raises `RuntimeError` instead).
 
-`ChatUIContext` members beyond the examples below — state reads: `notification_hint()`, `input_draft()`, `choice_options()`, `is_dialog_visible()`, `is_choice_panel_visible()`, `dialog_text()`, `background_image_path()`, `base_font_size_px()`; thread-safe UI updates: `set_notification_hint`, `set_busy_bar(text, duration_seconds=3.0)`, `hide_busy_bar()`, `set_input_draft`, `clear_input_draft`, `set_choice_options`, `set_dialog_html`, `submit_user_message`; plus 28 `on_*` event subscriptions, each returning a disconnect callable.
+`ChatUIContext` members beyond the examples below — state reads: `notification_hint()`,
+`input_draft()`, `choice_options()`, `is_dialog_visible()`, `is_choice_panel_visible()`,
+`dialog_text()`, `background_image_path()`, `base_font_size_px()`; thread-safe UI
+updates: `set_notification_hint`, `set_busy_bar(text, duration_seconds=3.0)`,
+`hide_busy_bar()`, `set_input_draft`, `clear_input_draft`, `set_choice_options`,
+`set_dialog_html`, `submit_user_message`; plus 28 `on_*` event subscriptions, each
+returning a disconnect callable.
 
 ### Runtime workflows
 
-Runtime workflows are declared as YAML and loaded through `core.runtime.workflow`.
-The host runs exactly one workflow at a time:
+Runtime workflows are declared as YAML and loaded through `core.runtime.workflow`. The
+host runs exactly one workflow at a time:
 
 - If the user passes `--workflow path/to/workflow.yaml`, only that YAML is loaded.
-- If no workflow is selected, the host loads `assets/system/workflow/default.yaml`.
-  In headless mode (`--headless`) the default is `assets/system/workflow/headless.yaml`,
+- If no workflow is selected, the host loads `assets/system/workflow/default.yaml`. In
+  headless mode (`--headless`) the default is `assets/system/workflow/headless.yaml`,
   which omits UIWorker and avoids pygame/Qt window dependencies.
-- Plugin workflow YAML files are selectable candidates; they are not merged into the default workflow automatically.
-  Plugin workflow YAML files registered via `register_dag_yaml` or `register_workflow` are collected as `WorkflowContribution` objects and are selectable candidates for the workflow runner.
+- Plugin workflow YAML files are selectable candidates; they are not merged into the
+  default workflow automatically. Plugin workflow YAML files registered via
+  `register_dag_yaml` or `register_workflow` are collected as `WorkflowContribution`
+  objects and are selectable candidates for the workflow runner.
 
 A workflow YAML has three top-level sections:
 
@@ -170,12 +192,18 @@ exports:
 
 - `nodes` instantiate classes by dotted import path. The `params` dict under each node
   maps directly to the node class constructor kwargs.
-- `edges` connect an output port to an input port with a shared queue. The builder validates topology: **cycles, fan-in (two upstreams into one input port), and fan-out (one output port to two downstreams) are all rejected**.
+- `edges` connect an output port to an input port with a shared queue. The builder
+  validates topology: **cycles, fan-in (two upstreams into one input port), and fan-out
+  (one output port to two downstreams) are all rejected**.
 - `exports` expose queues or node handles to the host.
 
-`DagNode` is passive by default. Its sync lifecycle hooks (`start` / `stop`) and async lifecycle hooks (`astart` / `astop`) do nothing unless your subclass overrides them. Queue-driven nodes should own their execution loop in lifecycle hooks. Passive helper nodes should expose normal Python methods and be called by another node or by the host.
+`DagNode` is passive by default. Its sync lifecycle hooks (`start` / `stop`) and async
+lifecycle hooks (`astart` / `astop`) do nothing unless your subclass overrides them.
+Queue-driven nodes should own their execution loop in lifecycle hooks. Passive helper
+nodes should expose normal Python methods and be called by another node or by the host.
 
-To reference another node from YAML, pass its name as a constructor parameter and resolve it in `configure(nodes)`:
+To reference another node from YAML, pass its name as a constructor parameter and
+resolve it in `configure(nodes)`:
 
 ```python
 from sdk.graph import DagNode, Port
@@ -213,11 +241,16 @@ class RouterNode(DagNode):
         return {"rule_node": self.rule_node_name}
 ```
 
-Important boundary: `edges` only wire queues. A passive node is not executed just because it appears in YAML. Something must call its methods, or it must implement its own lifecycle.
+Important boundary: `edges` only wire queues. A passive node is not executed just
+because it appears in YAML. Something must call its methods, or it must implement its
+own lifecycle.
 
 ### Output contract patching
 
-Plugins can customise the LLM output template (the JSON dialog format) without replacing the entire workflow. Use `OutputContractPatch` to add fields, modify field descriptions, tweak requirement text, or append new requirements — all targeting the default dialog contract `"default.dialog.v1"`.
+Plugins can customise the LLM output template (the JSON dialog format) without replacing
+the entire workflow. Use `OutputContractPatch` to add fields, modify field descriptions,
+tweak requirement text, or append new requirements — all targeting the default dialog
+contract `"default.dialog.v1"`.
 
 **Key types** (from `sdk.types`; fields verified against source):
 
@@ -231,7 +264,9 @@ Plugins can customise the LLM output template (the JSON dialog format) without r
 | `ChatOutputContract` | Complete declarative contract: `id`, `json_schema`, `requirements=()`, `target_export="llm.output"`, `stream_mode="json_object"` (`"json_object" \| "json_lines" \| "json_array"`) — attach to `WorkflowContribution` |
 | `WorkflowContribution` | `id`, `name`, `yaml_path`, `description=""`, plus optional `output_contract` (use `register_workflow` to register) |
 
-> Note: `OutputFieldSpec` has **no** `example` field, `FieldPatch` has **no** `examples` field, and `ChatOutputContract` has **no** `example` field. Earlier revisions of this guide listed them in error.
+> Note: `OutputFieldSpec` has **no** `example` field, `FieldPatch` has **no** `examples`
+> field, and `ChatOutputContract` has **no** `example` field. Earlier revisions of this
+> guide listed them in error.
 
 **Example: tightening speech rules**
 
@@ -288,11 +323,16 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 **How patches apply:**
 
 1. Patches are sorted by `priority` (lower first, higher wins on conflict).
-2. `remove_fields` runs first (core fields `character_name`, `speech`, `sprite` are **protected**).
-3. `field_patches` modify existing fields — `description` replaces when non-empty; `enum` values are appended to the description text.
-4. `add_fields` inserts new fields and generates corresponding JSON example lines in the prompt.
-5. Requirement patches (`requirement_patches`) target stable requirement IDs like `r_speech`, `r_format`, `r_cname`, etc.
-6. `add_requirements` inserts new requirement entries; they participate in the same priority-ordered sort.
+2. `remove_fields` runs first (core fields `character_name`, `speech`, `sprite` are
+   **protected**).
+3. `field_patches` modify existing fields — `description` replaces when non-empty;
+   `enum` values are appended to the description text.
+4. `add_fields` inserts new fields and generates corresponding JSON example lines in the
+   prompt.
+5. Requirement patches (`requirement_patches`) target stable requirement IDs like
+   `r_speech`, `r_format`, `r_cname`, etc.
+6. `add_requirements` inserts new requirement entries; they participate in the same
+   priority-ordered sort.
 
 **Stable requirement IDs** (for `requirement_patches`):
 
@@ -320,7 +360,8 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 
 ### Logging
 
-Plugins should use the SDK logging facade instead of configuring Python logging handlers directly:
+Plugins should use the SDK logging facade instead of configuring Python logging handlers
+directly:
 
 ```python
 from sdk.logging import get_logger, log_context, stopwatch
@@ -337,13 +378,21 @@ with stopwatch("my_plugin.index_build", threshold=0.5):
     build_index()
 ```
 
-The host owns log levels, files, rotation, formatting, and redaction (`configure_logging` / `shutdown_logging` are host-only). Plugins must not call `logging.basicConfig()`, add handlers, or write API keys, user messages, prompts, tool arguments, or model responses to logs. Prefer stable `event` names and summary fields such as character counts, item counts, and durations. `new_log_id(prefix="")` generates correlation ids; recognised context fields are `session_id`, `turn_id`, `request_id`, `task_id`, `plugin_id`.
+The host owns log levels, files, rotation, formatting, and redaction
+(`configure_logging` / `shutdown_logging` are host-only). Plugins must not call
+`logging.basicConfig()`, add handlers, or write API keys, user messages, prompts, tool
+arguments, or model responses to logs. Prefer stable `event` names and summary fields
+such as character counts, item counts, and durations. `new_log_id(prefix="")` generates
+correlation ids; recognised context fields are `session_id`, `turn_id`, `request_id`,
+`task_id`, `plugin_id`.
 
 ### Adapter classes: schemas and "extra" kwargs
 
 #### Where adapters show up, and who owns the parameters
 
-Registering an adapter only adds a **class** to the host factories. **Users** choose the backend and fill in secrets/options in the **Settings** window. Those values are **not** stored in `plugins.yaml` or in your package tree by default.
+Registering an adapter only adds a **class** to the host factories. **Users** choose the
+backend and fill in secrets/options in the **Settings** window. Those values are **not**
+stored in `plugins.yaml` or in your package tree by default.
 
 | Kind    | Where users pick it (Settings UI) | Persisted to disk (typical) | Your responsibility as the plugin author |
 | ------- | -------------------------------- | --------------------------- | ---------------------------------------- |
@@ -352,12 +401,26 @@ Registering an adapter only adds a **class** to the host factories. **Users** ch
 | **ASR** | **System**-side provider choice (`asr_provider`: Vosk / Whisper-class plugins, etc.). Extra per-backend fields appear under **API settings** when that ASR class exposes `get_config_schema()`. | `data/config/system_config.yaml` for global mic/Whisper options (`asr_provider`, model size, device, …) + `data/config/api.yaml` → `asr_extra_configs[<normalized_slug>]` for schema-driven extras. | `register_asr_adapter` slug must match the normalized key the host uses when creating the adapter (`asr/asr_adapter.py`). Base ctor signature is fixed: `__init__(self, language: str, callback: TranscriptionCallback)` where `TranscriptionCallback = Callable[[str, bool], None]`. |
 | **T2I** | **API settings** — Comfy-style URL, workflow paths, node IDs, etc. The dynamic "extra" panel is currently wired to the built-in Comfy adapter's schema in `api_tab.py`. | `data/config/api.yaml`: `t2i_*` fields plus `t2i_extra_configs` (default engine key `"comfyui"` in the UI today). | `register_t2i_adapter` keys are **lowercased**. For non-Comfy engines, users may need to edit `t2i_extra_configs[<your_engine>]` manually until the Settings UI grows a provider switch; ctor should still accept kwargs from `merged_t2i_factory_kwargs`. |
 
-**Summary:** Adapter tuning is **centralized** in `api.yaml` / `system_config.yaml`, edited through **Settings** and `ConfigManager`. You expose **fields** via `get_config_schema()` and **parameter names** on `__init__`; you normally **do not** ship a parallel config format for the same secrets. Optional plugin-specific data (licenses, experimental flags) can still go under `plugin_root` or a page you add with `register_settings_ui`.
+**Summary:** Adapter tuning is **centralized** in `api.yaml` / `system_config.yaml`,
+edited through **Settings** and `ConfigManager`. You expose **fields** via
+`get_config_schema()` and **parameter names** on `__init__`; you normally **do not**
+ship a parallel config format for the same secrets. Optional plugin-specific data
+(licenses, experimental flags) can still go under `plugin_root` or a page you add with
+`register_settings_ui`.
 
-- `get_config_schema()` — Optional classmethod; per-provider fields rendered on the API settings page. Metadata keys: `type` (str/int/float/bool), `label`, `default`, `secret`, `min`, `max`, `step`, `choices` (list of strings → dropdown). Empty `{}` adds no extra widgets.
-- **Factory merge** — Host builds adapters with `merged_*_factory_kwargs`: **base** kwargs from `api.yaml` / `system_config.yaml` plus `llm_extra_configs` / `tts_extra_configs` / `asr_extra_configs` / `t2i_extra_configs`, filtered by `config.adapter_extra_kwargs.filter_kwargs_for_ctor` (or full dict if `__init__` has `**kwargs`).
+- `get_config_schema()` — Optional classmethod; per-provider fields rendered on the API
+  settings page. Metadata keys: `type` (str/int/float/bool), `label`, `default`,
+  `secret`, `min`, `max`, `step`, `choices` (list of strings → dropdown). Empty `{}`
+  adds no extra widgets.
+- **Factory merge** — Host builds adapters with `merged_*_factory_kwargs`: **base**
+  kwargs from `api.yaml` / `system_config.yaml` plus `llm_extra_configs` /
+  `tts_extra_configs` / `asr_extra_configs` / `t2i_extra_configs`, filtered by
+  `config.adapter_extra_kwargs.filter_kwargs_for_ctor` (or full dict if `__init__` has
+  `**kwargs`).
 - **Subclass** `sdk/adapters` ABCs and register the **class**, not an instance.
-- LLM adapters may also override `get_unsupported_chat_params(provider) -> set[str]` to strip sampling params a backend rejects (e.g. penalty parameters on Gemini's OpenAI-compatible bridge).
+- LLM adapters may also override `get_unsupported_chat_params(provider) -> set[str]` to
+  strip sampling params a backend rejects (e.g. penalty parameters on Gemini's
+  OpenAI-compatible bridge).
 
 ---
 
@@ -365,7 +428,8 @@ Registering an adapter only adds a **class** to the host factories. **Users** ch
 
 ### `register_llm_adapter(provider, adapter_cls)`
 
-**Provider string** must match the **exact** LLM provider name the UI saves (e.g. `"Deepseek"`, `"ChatGPT"`).
+**Provider string** must match the **exact** LLM provider name the UI saves (e.g.
+`"Deepseek"`, `"ChatGPT"`).
 
 ```python
 from sdk.adapters.llm import LLMAdapter
@@ -386,7 +450,8 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
     register.register_llm_adapter("MyEchoLLM", EchoLLMAdapter)
 ```
 
-Shippable adapters should honor `api_key`, `base_url`, `model`, streaming, and tool loops like the built-ins in `llm/llm_adapter.py`.
+Shippable adapters should honor `api_key`, `base_url`, `model`, streaming, and tool
+loops like the built-ins in `llm/llm_adapter.py`.
 
 ---
 
@@ -417,7 +482,9 @@ Align your real `__init__` signature with what `merged_tts_factory_kwargs` suppl
 
 ### `register_asr_adapter(provider_slug, adapter_cls)`
 
-**Slug** must match the normalized ASR provider in settings (`asr/asr_adapter.py`). **Base signature:** `__init__(self, language: str, callback: TranscriptionCallback)`. All five abstract methods are required.
+**Slug** must match the normalized ASR provider in settings (`asr/asr_adapter.py`).
+**Base signature:** `__init__(self, language: str, callback: TranscriptionCallback)`.
+All five abstract methods are required.
 
 ```python
 from sdk.adapters.asr import ASRAdapter
@@ -476,7 +543,9 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 
 ### `register_llm_tool(registrar)`
 
-**Prefer** module-level `@tool` from `sdk.tool_registry` (the host runs `apply_registered_tools` **before** these callbacks). Use `register_llm_tool` when you need **dynamic** registration based on `plugin_root` or config.
+**Prefer** module-level `@tool` from `sdk.tool_registry` (the host runs
+`apply_registered_tools` **before** these callbacks). Use `register_llm_tool` when you
+need **dynamic** registration based on `plugin_root` or config.
 
 ```python
 from llm.tools.tool_manager import ToolManager
@@ -507,13 +576,17 @@ The `@tool` decorator's full parameter set:
 def example_lookup(query: str) -> dict: ...
 ```
 
-Remember the decorator only runs when its module is imported — import your tool module once inside `initialize()` if the tools live in a separate file.
+Remember the decorator only runs when its module is imported — import your tool module
+once inside `initialize()` if the tools live in a separate file.
 
 ---
 
 ### Slow model loading tools: `ToolNotReady`
 
-When your `@tool` depends on a model that loads **slowly** (downloading weights, warming up GPU), don't block the LLM thread — raise `ToolNotReady`. The host's `ToolExecutor` catches it, converts it to a structured loading response, and sets a **cooldown** so the LLM won't hammer the tool.
+When your `@tool` depends on a model that loads **slowly** (downloading weights, warming
+up GPU), don't block the LLM thread — raise `ToolNotReady`. The host's `ToolExecutor`
+catches it, converts it to a structured loading response, and sets a **cooldown** so the
+LLM won't hammer the tool.
 
 ```python
 import threading
@@ -543,11 +616,15 @@ def my_vision_tool(question: str) -> dict:
 
 **What happens when you raise `ToolNotReady`:**
 
-1. `ToolExecutor` catches the exception → returns `{"status": "loading", "message": "..."}` to the LLM.
-2. `ToolExecutor` sets a **group-level cooldown** (default: 300 s for `"memory"`, 600 s for `"vision"`, 120 s for other groups).
-3. While the group is on cooldown, **any** tool in the same group returns a cooldown message immediately — the function body is never called.
+1. `ToolExecutor` catches the exception → returns `{"status": "loading", "message":
+   "..."}` to the LLM.
+2. `ToolExecutor` sets a **group-level cooldown** (default: 300 s for `"memory"`, 600 s
+   for `"vision"`, 120 s for other groups).
+3. While the group is on cooldown, **any** tool in the same group returns a cooldown
+   message immediately — the function body is never called.
 
-**Signalling readiness** — when your background load completes, notify the host to clear the cooldown and surface a chat notification:
+**Signalling readiness** — when your background load completes, notify the host to clear
+the cooldown and surface a chat notification:
 
 ```python
 from sdk.tool_registry import notify_tool_ready
@@ -581,9 +658,13 @@ tool_executor.set_group_cooldown("my_group", 180.0)  # 3 minutes
 
 ### `register_message_handler(tts_handler=..., ui_handler=...)`
 
-Extend the TTS pipeline (`MessageHandler` for `LLMDialogMessage`) and/or UI output (`UIOutputMessageHandler` for `TTSOutputMessage`). First handler with `can_handle` wins. Import the ABCs and message models from the SDK (`sdk.handlers`, `sdk.messages`) rather than host-internal modules.
+Extend the TTS pipeline (`MessageHandler` for `LLMDialogMessage`) and/or UI output
+(`UIOutputMessageHandler` for `TTSOutputMessage`). First handler with `can_handle` wins.
+Import the ABCs and message models from the SDK (`sdk.handlers`, `sdk.messages`) rather
+than host-internal modules.
 
-Note the SDK field names: `LLMDialogMessage` exposes `name` / `text` / `asset_id` (with aliases `character_name` / `speech` / `sprite` accepted when parsing LLM JSON).
+Note the SDK field names: `LLMDialogMessage` exposes `name` / `text` / `asset_id` (with
+aliases `character_name` / `speech` / `sprite` accepted when parsing LLM JSON).
 
 ```python
 from sdk.handlers import MessageHandler
@@ -604,13 +685,16 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
     register.register_message_handler(tts_handler=LogDialogHandler())
 ```
 
-Handlers also have optional `pre_process` / `post_process` / `init()` hooks; `init()` runs once after the TTS worker builds its dispatcher.
+Handlers also have optional `pre_process` / `post_process` / `init()` hooks; `init()`
+runs once after the TTS worker builds its dispatcher.
 
 ---
 
 ### `register_user_input_trigger(trigger)`
 
-Receive `emit_user_text: Callable[[str], None]` — call it when your custom source has text (hotkey bridge, serial port, etc.). Usually stash `emit_user_text` and invoke it from your wiring.
+Receive `emit_user_text: Callable[[str], None]` — call it when your custom source has
+text (hotkey bridge, serial port, etc.). Usually stash `emit_user_text` and invoke it
+from your wiring.
 
 ```python
 from collections.abc import Callable
@@ -625,13 +709,15 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
     register.register_user_input_trigger(trigger)
 ```
 
-`plugin_host.wire_user_input_plugins` passes the same `emit_user_text` used by the chat input path.
+`plugin_host.wire_user_input_plugins` passes the same `emit_user_text` used by the chat
+input path.
 
 ---
 
 ### `register_user_input_processor(processor)`
 
-Return **new string** to continue the pipeline, or `None` to **drop** the message. A processor that raises also drops that message (logged).
+Return **new string** to continue the pipeline, or `None` to **drop** the message. A
+processor that raises also drops that message (logged).
 
 ```python
 from sdk.register import PluginCapabilityRegistry
@@ -678,7 +764,8 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 
 ### `register_tools_tab(contribution)`
 
-Same `PluginSettingsUIContext` builder as settings pages; appears under **Settings → Tools**.
+Same `PluginSettingsUIContext` builder as settings pages; appears under **Settings →
+Tools**.
 
 ```python
 from sdk.plugin_host_context import PluginSettingsUIContext
@@ -709,7 +796,9 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 
 ### `register_frontend_config_page(contribution)`
 
-Use this when the React settings frontend should render your plugin page. Keep the existing Qt `register_settings_ui` / `register_tools_tab` page if you still support the PySide settings window.
+Use this when the React settings frontend should render your plugin page. Keep the
+existing Qt `register_settings_ui` / `register_tools_tab` page if you still support the
+PySide settings window.
 
 ```python
 from dataclasses import asdict
@@ -786,19 +875,33 @@ def initialize(self, register, plugin_root: Path, host) -> None:
     )
 ```
 
-The schema must be JSON-safe. Supported field types match the React `PluginConfigFieldType`: `boolean`, `integer`, `json`, `number`, `password`, `select`, `text`, `textarea`, and `url`.
+The schema must be JSON-safe. Supported field types match the React
+`PluginConfigFieldType`: `boolean`, `integer`, `json`, `number`, `password`, `select`,
+`text`, `textarea`, and `url`.
 
-The optional `i18n` map is keyed by frontend language (`zh_CN`, `en`, `ja`). It can override page `title`, `description`, `restartHint`, group `title` / `description`, and field `label` / `description` / `placeholder`. For select fields, use `options` keyed by option `value`, for example `{"options": {"chromium": "Chromium (Playwright)"}}`.
+The optional `i18n` map is keyed by frontend language (`zh_CN`, `en`, `ja`). It can
+override page `title`, `description`, `restartHint`, group `title` / `description`, and
+field `label` / `description` / `placeholder`. For select fields, use `options` keyed by
+option `value`, for example `{"options": {"chromium": "Chromium (Playwright)"}}`.
 
-`actions` (`FrontendConfigAction`) render buttons next to Save: `run(values)` receives the current form values and may return a dict that is forwarded to the frontend; `confirm` (non-empty) shows a confirmation dialog first; `variant` picks the button style.
+`actions` (`FrontendConfigAction`) render buttons next to Save: `run(values)` receives
+the current form values and may return a dict that is forwarded to the frontend;
+`confirm` (non-empty) shows a confirmation dialog first; `variant` picks the button
+style.
 
 ---
 
 ### `register_frontend_page(contribution)`
 
-Use this when a plugin needs its own richer frontend than the schema renderer can provide. Ship a built static page in the plugin directory, usually `plugins/<package>/frontend/dist/index.html`, and register that file as the entry. The host serves files from the entry directory and embeds the page in an iframe.
+Use this when a plugin needs its own richer frontend than the schema renderer can
+provide. Ship a built static page in the plugin directory, usually
+`plugins/<package>/frontend/dist/index.html`, and register that file as the entry. The
+host serves files from the entry directory and embeds the page in an iframe.
 
-If you also register a `FrontendConfigContribution` with the same `page_id` and `kind`, the page payload includes that schema and current values. The iframe can read `/api/plugins/<plugin_id>/ui` and save to `/api/plugins/<plugin_id>/ui/<page_id>/config`.
+If you also register a `FrontendConfigContribution` with the same `page_id` and `kind`,
+the page payload includes that schema and current values. The iframe can read
+`/api/plugins/<plugin_id>/ui` and save to
+`/api/plugins/<plugin_id>/ui/<page_id>/config`.
 
 ```python
 from pathlib import Path
@@ -830,7 +933,9 @@ def initialize(self, register, plugin_root: Path, host) -> None:
     )
 ```
 
-This keeps downloaded plugins self-contained: after install and app restart, the host discovers the contribution from the plugin's Python entry point and serves the bundled frontend files without rebuilding the main React app.
+This keeps downloaded plugins self-contained: after install and app restart, the host
+discovers the contribution from the plugin's Python entry point and serves the bundled
+frontend files without rebuilding the main React app.
 
 ---
 
@@ -946,7 +1051,8 @@ class ExampleDemoPlugin(PluginBase):
         )
 ```
 
-Restart the app after adding the YAML row. The model can call `demo_ping` when tools are enabled for your template.
+Restart the app after adding the YAML row. The model can call `demo_ping` when tools are
+enabled for your template.
 
 ---
 
@@ -959,16 +1065,20 @@ python -m sdk.cli create my_plugin_name
 # options: --root PATH  --plugin-id com.you.my_plugin_name  --display-name "My Plugin"  --minimal
 ```
 
-The package name must match `^[a-z][a-z0-9_]*$`. This generates `plugins/<package>/{__init__.py, plugin.py, README.md}`. Add the printed `entry` to `data/config/plugins.yaml`, restart, and iterate.
+The package name must match `^[a-z][a-z0-9_]*$`. This generates
+`plugins/<package>/{__init__.py, plugin.py, README.md}`. Add the printed `entry` to
+`data/config/plugins.yaml`, restart, and iterate.
 
-To list a plugin in the in-app catalog, publish a row to [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry):
+To list a plugin in the in-app catalog, publish a row to
+[Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry):
 
 ```bash
 python -m sdk.cli registry-snippet --name "my_plugin_name" --author "You" \
   --repo owner/repo --description "..." --entry "my_plugin_name.plugin:MyPkgPlugin"
 ```
 
-Note the registry `entry` conventionally **omits** the `plugins.` prefix; the desktop client adds it on install via `normalize_manifest_entry`.
+Note the registry `entry` conventionally **omits** the `plugins.` prefix; the desktop
+client adds it on install via `normalize_manifest_entry`.
 
 To merge directly into a local clone of the registry instead of copy-pasting:
 
@@ -979,27 +1089,51 @@ python -m sdk.cli registry-append --registry /path/to/Shinsekai-Plugin-Registry 
   [--replace] [--dry-run] [--commit] [--message "registry: add my_plugin_name"]
 ```
 
-Rows are deduplicated by repo slug (lowercase; pass `--replace` to overwrite) and sorted by name.
+Rows are deduplicated by repo slug (lowercase; pass `--replace` to overwrite) and sorted
+by name.
 
-Alternatively, submit through the plugin market at <https://plugins.shinsekai.studio> — it generates a normalized JSON payload and opens a prefilled `Publish Plugin` issue (`PLUGIN_PUBLISH.yml`) on the registry; CI infers the `entry` automatically from your repository's root-level `plugin.py`, so market submissions don't need `--entry` at all. Submission constraints: `display_name` / `desc` / `author` / `repo` required, `desc` ≤ 200 chars, `repo` must be `https://github.com/{owner}/{repo}`, at most 5 `tags`. You may also ship a `plugin.json` (or `shinsekai.plugin.json`) in the repo root carrying these fields.
+Alternatively, submit through the plugin market at <https://plugins.shinsekai.studio> —
+it generates a normalized JSON payload and opens a prefilled `Publish Plugin` issue
+(`PLUGIN_PUBLISH.yml`) on the registry; CI infers the `entry` automatically from your
+repository's root-level `plugin.py`, so market submissions don't need `--entry` at all.
+Submission constraints: `display_name` / `desc` / `author` / `repo` required, `desc` ≤
+200 chars, `repo` must be `https://github.com/{owner}/{repo}`, at most 5 `tags`. You may
+also ship a `plugin.json` (or `shinsekai.plugin.json`) in the repo root carrying these
+fields.
 
 ### Plugin dependencies
 
-Ship a `requirements.txt` next to your plugin. It is installed when the user **installs or updates** the plugin (not on every launch): already-satisfied lines are skipped, `torch`/`torchvision`/`torchaudio` are routed to the PyTorch wheel index with automatic CUDA/CPU channel selection, and frozen (packaged) installs go to `data/plugin_site_packages` via the bundled runtime. Mirror selection honours `PIP_INDEX_URL` (and friends), `SHINSEKAI_PIP_INDEX_URL(S)`, `SHINSEKAI_RUNTIME_SOURCE`, and `SHINSEKAI_MIRROR_REGION`; a requirements file that sets its own `-i` / `--index-url` is left untouched. Document download size, model caches, and hardware requirements in your README for heavy dependencies.
+Ship a `requirements.txt` next to your plugin. It is installed when the user **installs
+or updates** the plugin (not on every launch): already-satisfied lines are skipped,
+`torch`/`torchvision`/`torchaudio` are routed to the PyTorch wheel index with automatic
+CUDA/CPU channel selection, and frozen (packaged) installs go to
+`data/plugin_site_packages` via the bundled runtime. Mirror selection honours
+`PIP_INDEX_URL` (and friends), `SHINSEKAI_PIP_INDEX_URL(S)`, `SHINSEKAI_RUNTIME_SOURCE`,
+and `SHINSEKAI_MIRROR_REGION`; a requirements file that sets its own `-i` /
+`--index-url` is left untouched. Document download size, model caches, and hardware
+requirements in your README for heavy dependencies.
 
 ---
 
 ## Testing plugins
 
-Keep plugin-specific tests with the plugin, not in the host repository's top-level `test/` tree. The Shinsekai CI only checks code that is tracked by the main repository; optional or locally installed packages under `plugins/` may be absent on GitHub Actions, so tests such as `test/unit/test_<plugin_name>.py` must not import `plugins.<plugin_name>`.
+Keep plugin-specific tests with the plugin, not in the host repository's top-level
+`test/` tree. The Shinsekai CI only checks code that is tracked by the main repository;
+optional or locally installed packages under `plugins/` may be absent on GitHub Actions,
+so tests such as `test/unit/test_<plugin_name>.py` must not import
+`plugins.<plugin_name>`.
 
 Use this split:
 
-- **Plugin business logic:** test it in the plugin's own repository, or in the plugin package beside the code, for example `plugins/my_plugin/tests/`.
-- **Host/plugin contract:** test it in this repository with fake plugins or fixtures under `test/fixtures/`, not with a real optional plugin package.
-- **SDK behavior:** test shared helpers in the main repository when the code lives in `sdk/`, `core/plugins/`, or another tracked host module.
+- **Plugin business logic:** test it in the plugin's own repository, or in the plugin
+  package beside the code, for example `plugins/my_plugin/tests/`.
+- **Host/plugin contract:** test it in this repository with fake plugins or fixtures
+  under `test/fixtures/`, not with a real optional plugin package.
+- **SDK behavior:** test shared helpers in the main repository when the code lives in
+  `sdk/`, `core/plugins/`, or another tracked host module.
 
-A plugin test suite can depend on the host SDK by installing or checking out Shinsekai in CI, then running the plugin's own tests:
+A plugin test suite can depend on the host SDK by installing or checking out Shinsekai
+in CI, then running the plugin's own tests:
 
 ```bash
 python -m pip install -e /path/to/Shinsekai
@@ -1020,7 +1154,9 @@ my_plugin/
     test_plugin_registration.py
 ```
 
-If you need to verify host discovery or registration behavior in Shinsekai's main CI, create a tiny fake plugin fixture that is committed with the tests. Do not rely on a downloaded, ignored, or user-local plugin directory.
+If you need to verify host discovery or registration behavior in Shinsekai's main CI,
+create a tiny fake plugin fixture that is committed with the tests. Do not rely on a
+downloaded, ignored, or user-local plugin directory.
 
 ---
 
@@ -1028,12 +1164,17 @@ If you need to verify host discovery or registration behavior in Shinsekai's mai
 
 ### Before you ship
 
-- Stable `plugin_id` / semver `plugin_version` (bump it on every release; the market reads it for display).
-- Document the exact `entry` string and any **provider keys** users must select in Settings.
+- Stable `plugin_id` / semver `plugin_version` (bump it on every release; the market
+  reads it for display).
+- Document the exact `entry` string and any **provider keys** users must select in
+  Settings.
 - Optional `requirements.txt`; note GPU / external binaries if needed.
 - Restart required after `plugins.yaml` changes.
-- Prefer `@tool` + `PluginSettingsUIContext` / `ChatUIContext` over reaching into host internals.
-- Tag a GitHub Release (or at least a tag like `v0.1.0`) — the registry CI resolves Latest Release → newest tag → default branch HEAD, in that order, and only repackages when the resolved commit changes.
+- Prefer `@tool` + `PluginSettingsUIContext` / `ChatUIContext` over reaching into host
+  internals.
+- Tag a GitHub Release (or at least a tag like `v0.1.0`) — the registry CI resolves
+  Latest Release → newest tag → default branch HEAD, in that order, and only repackages
+  when the resolved commit changes.
 
 ### Source map
 
@@ -1058,4 +1199,5 @@ If you need to verify host discovery or registration behavior in Shinsekai's mai
 | Extra ctor kwargs            | `config/adapter_extra_kwargs.py`, `config/config_manager.py` |
 | CLI                          | `sdk/cli/`                                                   |
 
-This guide stays aligned with `PluginCapabilityRegistry` in `sdk/register.py`; if APIs drift, treat that file as the source of truth.
+This guide stays aligned with `PluginCapabilityRegistry` in `sdk/register.py`; if APIs
+drift, treat that file as the source of truth.
