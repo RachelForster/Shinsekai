@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from config.config_manager import ConfigManager
+from sdk.exception.types import download_error_from_exception
 from sdk.tool_registry import ToolNotReady, tool
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,52 @@ _mem0_load_error: BaseException | None = None
 _mem0_loading = False
 _loading_started_at: float = 0.0
 _lock = threading.Lock()
+_mem0_task: dict[str, Any] | None = None
+
+_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+_EMBEDDING_DIMS = 384
+_VECTOR_COLLECTION = "character_memories_multilingual_minilm"
+
+
+def _new_mem0_task(*, phase: str, status: str, message: str, progress: float | None) -> dict[str, Any]:
+    now = int(time.time() * 1000)
+    return {
+        "createdAt": now,
+        "error": "",
+        "id": "mem0-embedding-model",
+        "kind": "model-download",
+        "logs": [],
+        "message": message,
+        "phase": phase,
+        "progress": progress,
+        "result": None,
+        "status": status,
+        "title": "mem0 embedding model",
+        "updatedAt": now,
+    }
+
+
+def _set_mem0_task(**changes: Any) -> None:
+    global _mem0_task
+    now = int(time.time() * 1000)
+    with _lock:
+        task = dict(
+            _mem0_task
+            or _new_mem0_task(
+                phase="queued",
+                status="queued",
+                message="Preparing mem0 embedding model.",
+                progress=0,
+            )
+        )
+        task.update(changes)
+        task["updatedAt"] = now
+        _mem0_task = task
+
+
+def _current_mem0_task() -> dict[str, Any] | None:
+    with _lock:
+        return dict(_mem0_task) if _mem0_task is not None else None
 
 _LOADING_FIRST_MSG = (
     "记忆系统正在后台初始化（embedding + 向量库），首次约需 2-5 分钟，后续约 10-30 秒。"
@@ -98,26 +145,14 @@ def _build_mem0_config() -> dict[str, Any]:
         }
 
     # ── Embedder ──
-    # ChatGPT 用 OpenAI embedding；其他供应商用本地 HuggingFace 英文模型
-    _embedding_dims = 384
-    if _provider_lower == "chatgpt" and api_key:
-        _embedding_dims = 1536
-        embedder_config: dict[str, Any] = {
-            "provider": "openai",
-            "config": {
-                "model": "text-embedding-3-small",
-                "embedding_dims": _embedding_dims,
-                "api_key": api_key,
-            },
-        }
-    else:
-        embedder_config = {
-            "provider": "huggingface",
-            "config": {
-                "model": "sentence-transformers/all-MiniLM-L6-v2",
-                "embedding_dims": _embedding_dims,
-            },
-        }
+    # Use a local multilingual MiniLM embedder for fast Chinese/English retrieval.
+    embedder_config: dict[str, Any] = {
+        "provider": "huggingface",
+        "config": {
+            "model": _EMBEDDING_MODEL,
+            "embedding_dims": _EMBEDDING_DIMS,
+        },
+    }
 
     # ── Vector store (本地 Qdrant，数据落在项目 data 目录) ──
     qdrant_path = (Path.cwd() / "data" / "memory" / "qdrant").as_posix()
@@ -128,8 +163,8 @@ def _build_mem0_config() -> dict[str, Any]:
             "provider": "qdrant",
             "config": {
                 "path": qdrant_path,
-                "collection_name": "character_memories",
-                "embedding_model_dims": _embedding_dims,
+                "collection_name": _VECTOR_COLLECTION,
+                "embedding_model_dims": _EMBEDDING_DIMS,
                 "on_disk": True,
             },
         },
@@ -143,12 +178,26 @@ def _build_mem0_config() -> dict[str, Any]:
 
 def _start_mem0_loading() -> None:
     """在后台线程启动 mem0 初始化，不阻塞调用方。"""
-    global _mem0_loading, _loading_started_at
+    global _mem0_loading, _loading_started_at, _mem0_load_error
     with _lock:
         if _mem0 is not None or _mem0_loading:
             return
         _mem0_loading = True
+        _mem0_load_error = None
         _loading_started_at = time.time()
+    cached = _is_embedding_model_cached()
+    _set_mem0_task(
+        error="",
+        errorCode="",
+        errorUserMessage="",
+        httpStatus=None,
+        phase="reload" if cached else "download",
+        notice="",
+        noticeKind="info",
+        status="running",
+        message="Loading cached mem0 embedding model." if cached else "Downloading mem0 embedding model.",
+        progress=None,
+    )
 
     def _load() -> None:
         global _mem0, _mem0_loading, _mem0_load_error
@@ -166,6 +215,12 @@ def _start_mem0_loading() -> None:
             mem = Memory.from_config(config)
             with _lock:
                 _mem0 = mem
+            _set_mem0_task(
+                phase="completed",
+                status="succeeded",
+                message="mem0 embedding model is ready.",
+                progress=1,
+            )
             print("[mem0] 后台加载完成，记忆系统已就绪")
             logger.info("mem0 后台加载完成")
         except ModuleNotFoundError:
@@ -173,9 +228,39 @@ def _start_mem0_loading() -> None:
             logger.exception("mem0 后台加载失败: mem0ai 未安装")
             with _lock:
                 _mem0_load_error = ModuleNotFoundError("No module named 'mem0'")
-        except Exception:
+            _set_mem0_task(
+                error="No module named 'mem0'",
+                errorCode="missing_dependency",
+                errorUserMessage="长期记忆缺少 mem0ai，请先安装运行时依赖。",
+                message="mem0ai is not installed.",
+                notice="长期记忆缺少 mem0ai，请先安装运行时依赖。",
+                noticeKind="error",
+                phase="failed",
+                progress=None,
+                status="failed",
+            )
+        except Exception as exc:
             print("[mem0] 后台加载失败！详见日志")
             logger.exception("mem0 后台加载失败")
+            download_error = download_error_from_exception(
+                exc,
+                source="huggingface",
+                url=_EMBEDDING_MODEL,
+            )
+            with _lock:
+                _mem0_load_error = exc
+            _set_mem0_task(
+                error=str(exc),
+                errorCode=download_error["errorType"],
+                errorUserMessage=download_error["userMessage"],
+                httpStatus=download_error["statusCode"],
+                message=download_error["userMessage"],
+                notice=download_error["message"],
+                noticeKind="error",
+                phase="failed",
+                progress=None,
+                status="failed",
+            )
         else:
             # 加载成功 → 通知宿主清除冷却 + 推送聊天通知
             try:
@@ -227,7 +312,7 @@ def _is_embedding_model_cached() -> bool:
         )
         _model_dir = os.path.join(
             _cache_home,
-            "models--sentence-transformers--all-MiniLM-L6-v2",
+            f"models--{_EMBEDDING_MODEL.replace('/', '--')}",
         )
         return os.path.isdir(_model_dir)
     except Exception:
@@ -246,21 +331,38 @@ def check_mem0_status() -> dict[str, Any]:
     """
     global _mem0, _mem0_loading, _mem0_load_error
     if _mem0 is not None:
-        return {"status": "ready"}
+        task = _current_mem0_task()
+        return {"status": "ready", **({"task": task} if task else {})}
     if _mem0_loading:
-        return {"status": "loading", "modelCached": _is_embedding_model_cached()}
+        task = _current_mem0_task()
+        return {
+            "status": "loading",
+            "modelCached": _is_embedding_model_cached(),
+            **({"task": task} if task else {}),
+        }
     if isinstance(_mem0_load_error, ModuleNotFoundError):
-        return {"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}
+        task = _current_mem0_task()
+        return {
+            "status": "missing_dependency",
+            "moduleName": "mem0",
+            "packageName": "mem0ai",
+            **({"task": task} if task else {}),
+        }
     if _mem0_load_error is not None:
-        return {"status": "error", "message": str(_mem0_load_error)}
+        task = _current_mem0_task()
+        if task and task.get("errorUserMessage"):
+            return {"status": "error", "message": str(task["errorUserMessage"]), "task": task}
+        return {"status": "error", "message": str(_mem0_load_error), **({"task": task} if task else {})}
     # 尚未尝试加载，检查 mem0 是否可导入
     try:
         import mem0  # noqa: F401
         # 触发后台加载（非阻塞），这样后续轮询可以看到 loading → ready 的过渡
         _start_mem0_loading()
+        task = _current_mem0_task()
         return {
             "status": "loading",
             "modelCached": _is_embedding_model_cached(),
+            **({"task": task} if task else {}),
         }
     except ImportError:
         return {"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}
@@ -349,7 +451,7 @@ def memory_forget(memory_id: str) -> dict[str, Any]:
         "Search YOUR memory. "
         "character_name: YOUR OWN full name from dialog (the character who is speaking). "
         "When you are playing a character, use that character's name. "
-        "query: English keywords. Call BEFORE using cross-session info. "
+        "query: Chinese or English keywords. Call BEFORE using cross-session info. "
         "NOTE: first call may return status:'loading' (model initializing, 2-5 min). "
         "If you get status:'loading', follow the message instruction — do NOT retry this tool or any memory_* tool."
     ),
@@ -369,7 +471,7 @@ def _tool_memory_search(
         "Save a fact to YOUR memory. "
         "character_name: YOUR OWN full name from dialog (the character who is speaking). "
         "When you are playing 狛枝凪斗, use '狛枝凪斗', NOT 'user'. "
-        "content: the fact IN ENGLISH. "
+        "content: the fact in Chinese or English. "
         "Only use character_name='user' for facts about the human user, not about yourself. "
         "NOTE: first call may return status:'loading'. If so, follow the message — do NOT retry any memory_* tool."
     ),

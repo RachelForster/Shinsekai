@@ -641,6 +641,7 @@ export interface Mem0Status {
   modelCached?: boolean;
   moduleName?: string;
   packageName?: string;
+  task?: TaskSnapshot;
 }
 
 export interface BackgroundTranslateResult {

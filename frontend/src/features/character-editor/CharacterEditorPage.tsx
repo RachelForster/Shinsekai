@@ -78,6 +78,7 @@ export function CharacterEditorPage() {
   const [memoryDepTask, setMemoryDepTask] = useState<TaskSnapshot | null>(null);
   const [mem0LoadingOpen, setMem0LoadingOpen] = useState(false);
   const [mem0LoadingMessage, setMem0LoadingMessage] = useState("");
+  const [mem0Task, setMem0Task] = useState<TaskSnapshot | null>(null);
   const [mem0Checking, setMem0Checking] = useState(false);
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const memoryName = draft.name.trim();
@@ -188,6 +189,7 @@ export function CharacterEditorPage() {
         return false;
       }
       if (status.status === "loading" || status.status === "not_started") {
+        setMem0Task(status.task ?? null);
         // 模型已缓存 → 弹窗 "加载"；未缓存 → 弹窗 "下载"
         setMem0LoadingMessage(
           status.modelCached ? t("character.memory.loadingModel") : t("character.memory.downloadingModel"),
@@ -199,6 +201,7 @@ export function CharacterEditorPage() {
           await new Promise((r) => setTimeout(r, pollMs));
           try {
             pollStatus = await getMem0Status();
+            setMem0Task(pollStatus.task ?? null);
           } catch {
             break;
           }
@@ -211,7 +214,7 @@ export function CharacterEditorPage() {
         if (pollStatus.status === "error") {
           showToast({
             kind: "error",
-            message: pollStatus.message || t("character.memory.error"),
+            message: pollStatus.task?.errorUserMessage || pollStatus.message || t("character.memory.error"),
             title: t("common.operationFailed"),
           });
           return false;
@@ -1182,7 +1185,11 @@ export function CharacterEditorPage() {
       >
         <div className="memory-dep-dialog">
           <p>{mem0LoadingMessage}</p>
-          <span className="memory-dep-progress" role="progressbar" />
+          {mem0Task ? (
+            <TaskProgress logLimit={6} task={mem0Task} />
+          ) : (
+            <span className="memory-dep-progress" role="progressbar" />
+          )}
         </div>
       </Dialog>
     </div>
