@@ -192,7 +192,7 @@ def _get_mem0_status() -> dict[str, Any]:
         _dep["status"] = "missing_dependency"
         return _dep
 
-    from llm.tools.memory_tools import check_mem0_status
+    from ai.memory.service import check_mem0_status
 
     return check_mem0_status()
 
@@ -207,7 +207,7 @@ def _list_character_memories(name: str) -> dict[str, Any]:
     if _dep_error is not None:
         return _dep_error
 
-    from llm.tools.memory_tools import _get_mem0
+    from ai.memory.service import _get_mem0
 
     agent_id = _character_agent_id(name)
     mem = _get_mem0()
@@ -227,7 +227,7 @@ def _add_character_memory(name: str, content: str) -> dict[str, Any]:
     if _dep_error is not None:
         return _dep_error
 
-    from llm.tools.memory_tools import memory_remember
+    from ai.memory.service import memory_remember
 
     text = str(content or "").strip()
     if not text:
@@ -243,7 +243,7 @@ def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
     if _dep_error is not None:
         return _dep_error
 
-    from llm.tools.memory_tools import memory_forget
+    from ai.memory.service import memory_forget
 
     mid = str(memory_id or "").strip()
     if not mid:

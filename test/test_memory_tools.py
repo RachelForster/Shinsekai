@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root))
 
 import time as _time
 
-from llm.tools.memory_tools import memory_remember, memory_search, memory_forget
+from ai.memory.service import memory_forget, memory_remember, memory_search
 
 
 def _flush() -> None:
@@ -115,7 +115,7 @@ def test_forget():
 def _test_check_mem0_status():
     """Verify check_mem0_status returns all expected status shapes."""
     print("\n=== 5. check_mem0_status ===")
-    from llm.tools.memory_tools import check_mem0_status
+    from ai.memory.service import check_mem0_status
 
     status = check_mem0_status()
     assert isinstance(status, dict), f"expected dict, got {type(status)}"
@@ -137,7 +137,7 @@ def _test_check_mem0_status():
 def _test_is_embedding_model_cached():
     """Verify embedding model cache detection is a boolean."""
     print("\n=== 6. _is_embedding_model_cached ===")
-    from llm.tools.memory_tools import _is_embedding_model_cached
+    from ai.memory.service import _is_embedding_model_cached
 
     cached = _is_embedding_model_cached()
     assert isinstance(cached, bool), f"expected bool, got {type(cached)}"
