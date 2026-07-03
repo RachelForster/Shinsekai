@@ -70,6 +70,24 @@ Shinsekai/
 
 这个结构是目标状态。短期内可以保留现有 `llm/`、`tts/`、`asr/`、`t2i/`、`core/plugins/`、`frontend_bridge_core/*.py`，但新增或重构时应向目标结构靠拢。
 
+## 现有模块迁移示例
+
+下面这些映射用于说明迁移意图。迁移不是一次性要求；当对应文件被重构或大幅修改时，优先按这些方向拆分。
+
+| 当前路径 | 当前问题 | 最终位置 | 迁移说明 |
+| --- | --- | --- | --- |
+| `llm/llm_adapter.py`、`llm/llm_manager.py` | LLM 能力和旧目录名绑定 | `ai/llm/` | 保留 adapter、manager、消息参数处理等 LLM 核心逻辑。 |
+| `llm/tools/memory_tools.py` | 同时负责 mem0 runtime、embedding 配置、memory 增删查和 LLM tool 注册 | `ai/memory/` + `ai/tools/memory_tools.py` | mem0 初始化、Qdrant、embedding 配置进 `ai/memory/`；`@tool` 包装留在 `ai/tools/`。 |
+| `llm/tools/character_tools.py` | LLM tool 包装和角色业务容易混在一起 | `ai/tools/character_tools.py`，必要时调用 `config/character_manager.py` 或未来 `core/characters/` | tool 文件只保留 LLM 可调用入口，角色数据读写仍走配置/领域服务。 |
+| `core/plugins/plugin_host.py`、`core/plugins/registry_download.py` | 插件系统已经形成独立子系统 | `plugins/host/`、`plugins/registry/` | 插件加载和 registry 下载逻辑从 `core/` 中逐步独立。 |
+| `core/plugins/plugin_requirements_install.py` | 插件依赖安装属于插件安装流程 | `plugins/requirements/` | 和插件安装、更新流程放在同一子系统。 |
+| `core/plugins/publisher/*` | 插件发布是完整业务域 | `plugins/publisher/` | 保持校验、metadata、submission 等发布逻辑集中。 |
+| `frontend_bridge_core/plugin_updates.py` | bridge 文件承载了插件安装/更新业务 | `plugins/update/` + `frontend_bridge_core/routes/` | bridge 只保留 API 入口和 task 更新，下载/合并/安装逻辑进 `plugins/update/`。 |
+| `frontend_bridge_core/runtime_dependencies.py` | bridge 文件承载 runtime 依赖安装 | `core/runtime/` + `frontend_bridge_core/routes/` | bridge 调用 runtime 服务，不直接实现安装流程。 |
+| `frontend_bridge_core/tts.py` 中的 TTS 包下载逻辑 | TTS 资源下载和任务桥接混在一起 | `core/model_assets/` 或 `ai/tts/` | 通用下载/缓存进 `core/model_assets/`；TTS 领域选择和校验进 `ai/tts/`。 |
+| `core/model_assets/downloads.py` | 新增的模型资产下载进度逻辑 | 保持在 `core/model_assets/` | 作为 HuggingFace、ModelScope 等模型源下载进度的统一入口。 |
+| `config/character_manager.py`、`config/background_manager.py` | 当前和本地配置数据交互清晰 | 保持在 `config/` | 不为了目录统一而强搬；除非未来出现非配置型复杂业务，再抽到领域服务。 |
+
 ## 目录职责
 
 ### `frontend/`
@@ -230,6 +248,18 @@ bridge 中只保留 API 入口，前端只保留 UI。
 
 LLM 可调用工具最终应放到 `ai/tools/` 或对应领域的 tool wrapper 中。
 
+`tools/` 和 `ai/tools/` 的区别：
+
+| 场景 | 应该放 | 不应该放 |
+| --- | --- | --- |
+| 裁剪图片、移除背景、处理音频、转换资源格式 | `tools/` 或对应 `core/media/` 服务 | `ai/tools/` |
+| 给开发脚本、导入导出流程复用的本地工具函数 | `tools/` | `ai/tools/` |
+| 用 `@tool` 注册，允许 LLM 在聊天中调用 | `ai/tools/` | 根目录 `tools/` |
+| LLM tool 只是调用一个已有本地处理能力 | `ai/tools/` 放薄包装，实际实现放 `tools/`、`core/` 或领域服务 | 把完整业务实现写进 `ai/tools/` |
+| 需要读取角色/背景配置后执行资源处理 | 资源处理在 `tools/` 或 `core/media/`，配置读写走 `config/` | 直接在 `ai/tools/` 里混合文件处理和配置写入 |
+
+简单判断：如果它是“程序自己用的本地处理能力”，放 `tools/` 或 `core/`；如果它是“给 LLM 暴露的可调用入口”，放 `ai/tools/`。`ai/tools/` 应尽量薄，只做参数校验、权限/上下文判断和调用领域服务。
+
 ### `test/`
 
 测试目录应尽量跟源码职责对齐。新增测试优先按目标结构放：
@@ -283,4 +313,3 @@ test/unit/sdk/
 - 新的插件安装/更新/registry 逻辑：放 `plugins/`。
 - 新的 HTTP API：入口放 `frontend_bridge_core/`，实现放对应领域目录。
 - 新的本地配置读写：放 `config/`。
-
