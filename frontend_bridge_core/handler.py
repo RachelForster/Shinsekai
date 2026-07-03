@@ -63,15 +63,11 @@ from .chat_themes import (
     set_active_chat_theme,
 )
 from .characters import (
-    _add_character_memory,
     _as_character_config,
     _delete_all_character_sprites,
-    _delete_character_memory,
     _delete_character_sprite,
     _delete_sprite_voice,
     _generate_character_setting,
-    _get_mem0_status,
-    _list_character_memories,
     _save_character,
     _save_character_emotion_tags,
     _save_sprite_scale,
@@ -80,6 +76,12 @@ from .characters import (
     _translate_character_fields,
     _upload_character_sprites,
     _upload_sprite_voice,
+)
+from .memory import (
+    _add_character_memory,
+    _delete_character_memory,
+    _get_mem0_status,
+    _list_character_memories,
 )
 from .config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
 from .logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
