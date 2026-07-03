@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ai.memory import service as memory_service
+from ai.memory import config as memory_config
 
 
 class _FakeConfigManager:
@@ -12,9 +12,9 @@ class _FakeConfigManager:
 
 def test_mem0_uses_local_multilingual_embedding(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(memory_service, "ConfigManager", _FakeConfigManager)
+    monkeypatch.setattr(memory_config, "ConfigManager", _FakeConfigManager)
 
-    config = memory_service._build_mem0_config()
+    config = memory_config.build_mem0_config()
 
     assert config["embedder"]["provider"] == "huggingface"
     assert (
@@ -41,4 +41,4 @@ def test_embedding_model_cache_detection_uses_multilingual_model(monkeypatch, tm
     model_dir.mkdir(parents=True)
     monkeypatch.setenv("HF_HOME", str(cache_home))
 
-    assert memory_service._is_embedding_model_cached() is True
+    assert memory_config.is_embedding_model_cached() is True

@@ -1,6 +1,6 @@
 """LLM tool wrappers for long-term memory.
 
-The memory runtime lives in :mod:`ai.memory.service`. This module keeps the
+The memory implementation lives under :mod:`ai.memory`. This module keeps the
 existing import path for tool registration and compatibility, but should stay a
 thin LLM-facing wrapper.
 """
@@ -9,15 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai.memory.service import (
-    _build_mem0_config,
-    _get_mem0,
-    _is_embedding_model_cached,
-    check_mem0_status,
-    memory_forget,
-    memory_remember,
-    memory_search,
-)
+from ai.memory.config import build_mem0_config as _build_mem0_config
+from ai.memory.config import is_embedding_model_cached as _is_embedding_model_cached
+from ai.memory.operations import memory_forget, memory_remember, memory_search
+from ai.memory.runtime import check_mem0_status
+from ai.memory.runtime import get_mem0 as _get_mem0
 from sdk.tool_registry import tool
 
 __all__ = [
