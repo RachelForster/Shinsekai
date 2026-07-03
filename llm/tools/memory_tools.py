@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from config.config_manager import ConfigManager
+from core.model_assets.downloads import preload_huggingface_snapshot
 from sdk.exception.types import download_error_from_exception
 from sdk.tool_registry import ToolNotReady, tool
 
@@ -76,6 +77,17 @@ def _set_mem0_task(**changes: Any) -> None:
 def _current_mem0_task() -> dict[str, Any] | None:
     with _lock:
         return dict(_mem0_task) if _mem0_task is not None else None
+
+
+def _preload_embedding_model(*, cached: bool) -> None:
+    preload_huggingface_snapshot(
+        _EMBEDDING_MODEL,
+        cached=cached,
+        update_task=_set_mem0_task,
+        download_message="Downloading mem0 embedding model",
+        cached_message="Loading cached mem0 embedding model.",
+        load_message="Loading mem0 embedding model.",
+    )
 
 _LOADING_FIRST_MSG = (
     "记忆系统正在后台初始化（embedding + 向量库），首次约需 2-5 分钟，后续约 10-30 秒。"
@@ -212,6 +224,7 @@ def _start_mem0_loading() -> None:
                 config["embedder"]["provider"],
             )
             print("[mem0] 正在初始化 Memory.from_config（首次会下载 embedding 模型）…")
+            _preload_embedding_model(cached=cached)
             mem = Memory.from_config(config)
             with _lock:
                 _mem0 = mem
