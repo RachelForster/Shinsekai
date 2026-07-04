@@ -104,7 +104,7 @@ BASIC_CHAR = {
 # ── Import tests ────────────────────────────────────────────────────────────
 
 class TestImport:
-    def test_character_config_parse_normalizes_voice_without_text_to_fallback(self):
+    def test_character_config_parse_preserves_explicit_preset_voice(self):
         from config.character_config import CharacterConfig
 
         data = dict(BASIC_CHAR)
@@ -112,7 +112,7 @@ class TestImport:
 
         result = CharacterConfig.parse_dic(data)
 
-        assert result.sprites[0]["voice_type"] == "fallback"
+        assert result.sprites[0]["voice_type"] == "preset"
 
     def test_sprite_paths_rewritten(self, tmp_path):
         """Imported sprite paths point to the local data/sprite/{prefix}/ dir."""
