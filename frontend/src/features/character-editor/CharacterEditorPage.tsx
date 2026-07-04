@@ -7,16 +7,12 @@ import {
   charactersQueryKey,
   deleteCharacter,
   deleteAllCharacterSprites,
-  deleteCharacterMemory,
   deleteCharacterSprite,
   deleteSpriteVoice,
   exportCharacter,
   generateCharacterSetting,
-  getMem0Status,
   importCharacters,
-  listCharacterMemories,
   listCharacters,
-  rememberCharacterMemory,
   saveCharacter,
   saveCharacterEmotionTags,
   saveSpriteScale,
@@ -26,15 +22,15 @@ import {
   uploadCharacterSprites,
   uploadSpriteVoice,
 } from "../../entities/character/repository";
-import { installMissingRuntimeDependency } from "../../entities/chat/repository";
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import type { SpriteVoiceType, TaskSnapshot } from "../../shared/platform/types";
-import { AlertDialog, Button, Dialog, PageSectionNav, TaskProgress, useToast } from "../../shared/ui";
+import type { SpriteVoiceType } from "../../shared/platform/types";
+import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
+import { CharacterMemoryDialogs } from "./CharacterMemoryDialogs";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
@@ -49,6 +45,7 @@ import {
   pronunciationTextToMap,
   type CharacterResourceDeleteTarget,
 } from "./characterEditorUtils";
+import { useCharacterMemoryController } from "./useCharacterMemoryController";
 import "./CharacterEditorPage.css";
 
 export function CharacterEditorPage() {
@@ -72,16 +69,9 @@ export function CharacterEditorPage() {
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
-  const [memoryInput, setMemoryInput] = useState("");
-  const [memoryDepOpen, setMemoryDepOpen] = useState(false);
-  const [memoryDepInstalling, setMemoryDepInstalling] = useState(false);
-  const [memoryDepTask, setMemoryDepTask] = useState<TaskSnapshot | null>(null);
-  const [mem0LoadingOpen, setMem0LoadingOpen] = useState(false);
-  const [mem0LoadingMessage, setMem0LoadingMessage] = useState("");
-  const [mem0Task, setMem0Task] = useState<TaskSnapshot | null>(null);
-  const [mem0Checking, setMem0Checking] = useState(false);
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const memoryName = draft.name.trim();
+  const memoryController = useCharacterMemoryController({ memoryName });
   const currentCharacterName = isCreating ? "" : selectedName;
   const isSavedCharacter = Boolean(
     currentCharacterName && data.some((character) => character.name === currentCharacterName),
@@ -124,120 +114,6 @@ export function CharacterEditorPage() {
   useEffect(() => {
     setSelectedSpriteIndex((current) => Math.min(current, Math.max(0, draft.sprites.length - 1)));
   }, [draft.sprites.length]);
-
-  const memoryQuery = useQuery({
-    enabled: false,
-    queryFn: () => listCharacterMemories(memoryName),
-    queryKey: ["character-memories", memoryName],
-  });
-
-  const memoryDepError: { kind: string; moduleName: string; packageName: string } | null = useMemo(() => {
-    const data = memoryQuery.data as Record<string, unknown> | undefined;
-    if (data && typeof data.kind === "string" && data.kind === "missing_dependency") {
-      return {
-        kind: data.kind,
-        moduleName: String(data.moduleName || ""),
-        packageName: String(data.packageName || ""),
-      };
-    }
-    return null;
-  }, [memoryQuery.data]);
-
-  const installMemoryDep = async () => {
-    if (!memoryDepError) {
-      return;
-    }
-    setMemoryDepInstalling(true);
-    setMemoryDepOpen(true);
-    setMemoryDepTask(null);
-    try {
-      await installMissingRuntimeDependency(
-        { moduleName: memoryDepError.moduleName },
-        { onTaskUpdate: (task) => setMemoryDepTask(task) },
-      );
-      showToast({ kind: "success", title: t("character.memory.depInstalled") });
-      setMemoryDepOpen(false);
-      setMemoryDepTask(null);
-      queryClient.setQueryData(["character-memories", memoryName], {
-        agentId: memoryName || "user",
-        count: 0,
-        memories: [],
-      });
-      setMemoryDepInstalling(false);
-      if (await ensureMem0Ready()) {
-        void memoryQuery.refetch();
-      }
-    } catch (error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.memory.depInstallFailed"),
-        title: t("character.memory.depInstallFailed"),
-      });
-    } finally {
-      setMemoryDepInstalling(false);
-    }
-  };
-
-  // 确保 mem0 就绪：缺依赖→弹安装窗 / 首次下载模型→弹等待窗 / 模型已缓存→静默加载。
-  // 返回 true 表示可以继续操作，false 表示需要等待或已处理。
-  const ensureMem0Ready = async (): Promise<boolean> => {
-    setMem0Checking(true);
-    try {
-      const status = await getMem0Status();
-      if (status.status === "missing_dependency") {
-        void memoryQuery.refetch();
-        return false;
-      }
-      if (status.status === "loading" || status.status === "not_started") {
-        setMem0Task(status.task ?? null);
-        // 模型已缓存 → 弹窗 "加载"；未缓存 → 弹窗 "下载"
-        setMem0LoadingMessage(
-          status.modelCached ? t("character.memory.loadingModel") : t("character.memory.downloadingModel"),
-        );
-        setMem0LoadingOpen(true);
-        const pollMs = status.modelCached ? 2000 : 3000;
-        let pollStatus = status;
-        while (pollStatus.status === "loading" || pollStatus.status === "not_started") {
-          await new Promise((r) => setTimeout(r, pollMs));
-          try {
-            pollStatus = await getMem0Status();
-            setMem0Task(pollStatus.task ?? null);
-          } catch {
-            break;
-          }
-        }
-        setMem0LoadingOpen(false);
-        if (pollStatus.status === "missing_dependency") {
-          void memoryQuery.refetch();
-          return false;
-        }
-        if (pollStatus.status === "error") {
-          showToast({
-            kind: "error",
-            message: pollStatus.task?.errorUserMessage || pollStatus.message || t("character.memory.error"),
-            title: t("common.operationFailed"),
-          });
-          return false;
-        }
-      }
-      return true;
-    } catch {
-      return true;
-    } finally {
-      setMem0Checking(false);
-    }
-  };
-
-  const refreshMemories = async () => {
-    if (!memoryName) return;
-    if (!(await ensureMem0Ready())) return;
-    void memoryQuery.refetch();
-  };
-
-  const addMemory = async () => {
-    if (!(await ensureMem0Ready())) return;
-    memoryAddMutation.mutate();
-  };
 
   const saveMutation = useMutation({
     mutationFn: ({ character, originalName }: { character: Character; originalName?: string }) =>
@@ -357,36 +233,6 @@ export function CharacterEditorPage() {
         setNameError("");
       }
       showToast({ kind: "success", title: t("character.action.aiTranslate") });
-    },
-  });
-
-  const memoryAddMutation = useMutation({
-    mutationFn: () => rememberCharacterMemory(memoryName, memoryInput),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.memory.error"),
-        title: t("character.memory.add"),
-      });
-    },
-    onSuccess(result) {
-      setMemoryInput("");
-      queryClient.setQueryData(["character-memories", memoryName], result);
-      showToast({ kind: "success", title: t("character.memory.add") });
-    },
-  });
-
-  const memoryDeleteMutation = useMutation({
-    mutationFn: ({ memoryId, name }: { memoryId: string; name: string }) => deleteCharacterMemory(name, memoryId),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.memory.error"),
-        title: t("character.memory.delete"),
-      });
-    },
-    onSuccess(result, variables) {
-      queryClient.setQueryData(["character-memories", variables.name], result);
     },
   });
 
@@ -748,8 +594,7 @@ export function CharacterEditorPage() {
     const target = pendingResourceDelete;
     setPendingResourceDelete(null);
     if (target.kind === "memory") {
-      if (!(await ensureMem0Ready())) return;
-      memoryDeleteMutation.mutate({ memoryId: target.memoryId, name: target.characterName });
+      await memoryController.deleteMemory({ memoryId: target.memoryId, name: target.characterName });
       return;
     }
     if (target.kind === "sprite") {
@@ -1090,25 +935,25 @@ export function CharacterEditorPage() {
         />
 
         <CharacterMemorySection
-          addPending={memoryAddMutation.isPending}
-          data={memoryDepError ? undefined : memoryQuery.data}
-          deletePending={memoryDeleteMutation.isPending}
-          depError={memoryDepError}
-          depInstalling={memoryDepInstalling}
-          error={memoryQuery.error}
+          addPending={memoryController.addPending}
+          data={memoryController.data}
+          deletePending={memoryController.deletePending}
+          depError={memoryController.depError}
+          depInstalling={memoryController.depInstalling}
+          error={memoryController.error}
           id="character-memory"
-          isChecking={mem0Checking}
-          isError={memoryQuery.isError || !!memoryDepError}
-          isFetched={memoryQuery.isFetched}
-          isFetching={memoryQuery.isFetching}
-          isLoading={memoryQuery.isLoading}
-          memoryInput={memoryInput}
+          isChecking={memoryController.isChecking}
+          isError={memoryController.isError}
+          isFetched={memoryController.isFetched}
+          isFetching={memoryController.isFetching}
+          isLoading={memoryController.isLoading}
+          memoryInput={memoryController.memoryInput}
           memoryName={memoryName}
-          onAddMemory={() => void addMemory()}
+          onAddMemory={() => void memoryController.add()}
           onDeleteMemory={requestMemoryDelete}
-          onInstallDep={() => void installMemoryDep()}
-          onMemoryInputChange={setMemoryInput}
-          onRefresh={() => void refreshMemories()}
+          onInstallDep={() => void memoryController.installDependency()}
+          onMemoryInputChange={memoryController.setMemoryInput}
+          onRefresh={() => void memoryController.refresh()}
         />
       </div>
 
@@ -1141,57 +986,16 @@ export function CharacterEditorPage() {
         title={pendingResourceDeleteCopy?.title ?? t("common.delete")}
       />
 
-      <Dialog
-        closeLabel={t("common.close")}
-        footer={
-          memoryDepInstalling ? (
-            <Button disabled>{t("character.memory.depInstalling")}</Button>
-          ) : (
-            <Button
-              onClick={() => {
-                setMemoryDepOpen(false);
-                setMemoryDepTask(null);
-              }}
-            >
-              {t("common.close")}
-            </Button>
-          )
-        }
-        onClose={() => {
-          if (!memoryDepInstalling) {
-            setMemoryDepOpen(false);
-            setMemoryDepTask(null);
-          }
-        }}
-        open={memoryDepOpen}
-        title={t("character.memory.depMissingTitle")}
-      >
-        <div className="memory-dep-dialog">
-          <p>{t("character.memory.depMissingBody")}</p>
-          {memoryDepTask ? (
-            <TaskProgress logLimit={6} task={memoryDepTask} />
-          ) : (
-            <p className="inline-status">{t("character.memory.depInstalling")}</p>
-          )}
-        </div>
-      </Dialog>
-
-      <Dialog
-        closeLabel={t("common.close")}
-        footer={<Button onClick={() => setMem0LoadingOpen(false)}>{t("common.cancel")}</Button>}
-        onClose={() => setMem0LoadingOpen(false)}
-        open={mem0LoadingOpen}
-        title={t("character.memory.section")}
-      >
-        <div className="memory-dep-dialog">
-          <p>{mem0LoadingMessage}</p>
-          {mem0Task ? (
-            <TaskProgress logLimit={6} task={mem0Task} />
-          ) : (
-            <span className="memory-dep-progress" role="progressbar" />
-          )}
-        </div>
-      </Dialog>
+      <CharacterMemoryDialogs
+        depInstalling={memoryController.depInstalling}
+        dependencyOpen={memoryController.dependencyDialogOpen}
+        dependencyTask={memoryController.dependencyTask}
+        loadingMessage={memoryController.loadingMessage}
+        loadingOpen={memoryController.loadingDialogOpen}
+        loadingTask={memoryController.loadingTask}
+        onCloseDependency={memoryController.closeDependencyDialog}
+        onCloseLoading={memoryController.closeLoadingDialog}
+      />
     </div>
   );
 }
