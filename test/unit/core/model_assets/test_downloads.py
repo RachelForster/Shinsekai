@@ -13,17 +13,24 @@ def test_preload_huggingface_snapshot_reports_download_progress(monkeypatch):
         def __init__(self, *args, total=None, initial=0, **kwargs):
             self.total = total
             self.n = initial
+            self.unit = kwargs.get("unit")
+            self.name = kwargs.get("name")
 
         def update(self, n=1):
             self.n += n
             return True
 
+        def refresh(self, *args, **kwargs):
+            return True
+
     def fake_snapshot_download(repo_id, *, tqdm_class, **kwargs):
         assert repo_id == "owner/model"
         assert kwargs == {"allow_patterns": ["*.json"]}
-        bar = tqdm_class(total=4)
+        bar = tqdm_class(total=0, initial=0, unit="B", unit_scale=True, name="huggingface_hub.snapshot_download")
+        bar.total += 4096
+        bar.refresh()
         for _ in range(4):
-            bar.update(1)
+            bar.update(1024)
         return "cached-model"
 
     fake_hub = types.SimpleNamespace(snapshot_download=fake_snapshot_download)
@@ -46,6 +53,9 @@ def test_preload_huggingface_snapshot_reports_download_progress(monkeypatch):
     assert progress_values[0] == downloads.HUGGINGFACE_DOWNLOAD_PROGRESS_START
     assert downloads.HUGGINGFACE_DOWNLOAD_PROGRESS_END in progress_values
     assert progress_values[-1] == downloads.HUGGINGFACE_LOAD_PROGRESS
+    assert any(update.get("logs") for update in updates)
+    assert any("4.0 KB / 4.0 KB" in "\n".join(update.get("logs", [])) for update in updates)
+    assert not any("files" in "\n".join(update.get("logs", [])) for update in updates)
     assert updates[-1]["phase"] == "reload"
     assert updates[-1]["message"] == "Loading test model."
 

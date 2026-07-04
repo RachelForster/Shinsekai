@@ -82,14 +82,24 @@ def build_mem0_config() -> dict[str, Any]:
 def is_embedding_model_cached() -> bool:
     """Return whether the configured HuggingFace embedding model is cached."""
     try:
-        cache_home = os.environ.get(
-            "HF_HOME",
-            os.path.join(str(Path.home()), ".cache", "huggingface", "hub"),
-        )
-        model_dir = os.path.join(
-            cache_home,
-            f"models--{EMBEDDING_MODEL.replace('/', '--')}",
-        )
-        return os.path.isdir(model_dir)
+        model_dir_name = f"models--{EMBEDDING_MODEL.replace('/', '--')}"
+        cache_roots = []
+        for env_name in ("HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE"):
+            raw = os.environ.get(env_name)
+            if raw:
+                cache_roots.append(Path(raw))
+        hf_home = Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface")
+        cache_roots.extend([hf_home / "hub", hf_home])
+
+        seen: set[Path] = set()
+        for root in cache_roots:
+            model_dir = (root / model_dir_name).resolve(strict=False)
+            if model_dir in seen:
+                continue
+            seen.add(model_dir)
+            snapshots_dir = model_dir / "snapshots"
+            if snapshots_dir.is_dir() and any(snapshots_dir.iterdir()):
+                return True
+        return False
     except Exception:
         return False

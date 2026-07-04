@@ -36,9 +36,34 @@ def test_embedding_model_cache_detection_uses_multilingual_model(monkeypatch, tm
     cache_home = tmp_path / "hf"
     model_dir = (
         cache_home
+        / "hub"
         / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
     )
-    model_dir.mkdir(parents=True)
+    (model_dir / "snapshots" / "abc123").mkdir(parents=True)
     monkeypatch.setenv("HF_HOME", str(cache_home))
 
     assert memory_config.is_embedding_model_cached() is True
+
+
+def test_embedding_model_cache_detection_uses_hub_cache_env(monkeypatch, tmp_path):
+    hub_cache = tmp_path / "hub-cache"
+    model_dir = (
+        hub_cache
+        / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
+    )
+    (model_dir / "snapshots" / "abc123").mkdir(parents=True)
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
+
+    assert memory_config.is_embedding_model_cached() is True
+
+
+def test_embedding_model_cache_detection_ignores_incomplete_cache(monkeypatch, tmp_path):
+    hub_cache = tmp_path / "hub-cache"
+    model_dir = (
+        hub_cache
+        / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
+    )
+    (model_dir / "refs").mkdir(parents=True)
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
+
+    assert memory_config.is_embedding_model_cached() is False
