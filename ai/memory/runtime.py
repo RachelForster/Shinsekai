@@ -225,4 +225,10 @@ def check_mem0_status() -> dict[str, Any]:
             **({"task": task} if task else {}),
         }
     except ImportError:
-        return {"status": "missing_dependency", "moduleName": "mem0", "packageName": "mem0ai"}
+        task = current_mem0_task()
+        return {
+            "status": "missing_dependency",
+            "moduleName": "mem0",
+            "packageName": "mem0ai",
+            **({"task": task} if task else {}),
+        }

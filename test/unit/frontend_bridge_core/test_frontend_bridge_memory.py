@@ -50,3 +50,32 @@ def test_get_mem0_status_missing_dependency_when_not_importable(monkeypatch):
     assert result["status"] == "missing_dependency"
     assert result["moduleName"] == "mem0"
     assert result["packageName"] == "mem0ai[extras]"
+
+
+def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):
+    import builtins
+
+    from ai.memory import runtime
+
+    original_import = builtins.__import__
+    task = {"id": "mem0-embedding-model", "status": "running"}
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "mem0":
+            raise ImportError("No module named 'mem0'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(runtime, "_mem0", None)
+    monkeypatch.setattr(runtime, "_mem0_loading", False)
+    monkeypatch.setattr(runtime, "_mem0_load_error", None)
+    monkeypatch.setattr(runtime, "current_mem0_task", lambda: task)
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+
+    result = runtime.check_mem0_status()
+
+    assert result == {
+        "status": "missing_dependency",
+        "moduleName": "mem0",
+        "packageName": "mem0ai",
+        "task": task,
+    }

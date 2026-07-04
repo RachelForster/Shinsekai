@@ -285,18 +285,20 @@ def download_error_from_exception(
 ) -> DownloadError:
     http_error = http_client_error_from_exception(exc)
     if http_error is not None:
-        status_code = http_error["statusCode"]
-        timeout = http_error["timeout"]
-        error_url = url or http_error["url"]
+        status_code = http_error.get("statusCode")
+        timeout = http_error.get("timeout", False)
+        error_url = url or http_error.get("url", "")
+        error_type = http_error.get("errorType") or type(exc).__name__
+        message = http_error.get("message") or str(exc).strip() or error_type
     else:
         status_code = _httpx_status_code(exc)
         error_text = str(exc).lower()
-        error_type_lower = type(exc).__name__.lower()
+        error_type = type(exc).__name__
+        error_type_lower = error_type.lower()
         timeout = "timeout" in error_type_lower or "timed out" in error_text
         error_url = url or _httpx_url(exc)
+        message = str(exc).strip() or error_type
 
-    error_type = type(exc).__name__
-    message = str(exc).strip() or error_type
     return {
         "kind": "download",
         "message": f"Download failed: {message}",
