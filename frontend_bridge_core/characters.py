@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from .media_utils import _optional_suffix_check, _path_namespace_list
-from .state import BridgeState, _jsonify
+from frontend_bridge_core.media_utils import _optional_suffix_check, _path_namespace_list
+from frontend_bridge_core.state import BridgeState, _jsonify
 
 
 def _validate_reference_audio(voice_path: str) -> None:

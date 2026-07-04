@@ -11,9 +11,9 @@ from core.model_assets.downloads import preload_huggingface_snapshot
 from sdk.exception.types import download_error_from_exception
 from sdk.tool_registry import ToolNotReady
 
-from .config import build_mem0_config, is_embedding_model_cached
-from .constants import EMBEDDING_MODEL
-from .tasks import current_mem0_task, set_mem0_task
+from ai.memory.config import build_mem0_config, is_embedding_model_cached
+from ai.memory.constants import EMBEDDING_MODEL
+from ai.memory.tasks import current_mem0_task, set_mem0_task
 
 logger = logging.getLogger(__name__)
 

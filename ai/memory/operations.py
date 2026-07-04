@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .runtime import ensure_mem0, get_mem0
+from ai.memory.runtime import ensure_mem0, get_mem0
 
 logger = logging.getLogger(__name__)
 

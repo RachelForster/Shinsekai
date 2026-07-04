@@ -8,7 +8,7 @@ from typing import Any
 
 from config.config_manager import ConfigManager
 
-from .constants import EMBEDDING_DIMS, EMBEDDING_MODEL, VECTOR_COLLECTION
+from ai.memory.constants import EMBEDDING_DIMS, EMBEDDING_MODEL, VECTOR_COLLECTION
 
 
 def build_mem0_config() -> dict[str, Any]:

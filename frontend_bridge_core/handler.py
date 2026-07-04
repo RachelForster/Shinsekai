@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, unquote, urlparse, urlunparse
 from sdk.logging import get_logger, log_context, new_log_id
 from core.sprite.chat_branch_storage import remove_chat_history_storage
 
-from .backgrounds import (
+from frontend_bridge_core.backgrounds import (
     _delete_all_background_bgm,
     _delete_all_background_images,
     _delete_background_bgm,
@@ -29,7 +29,7 @@ from .backgrounds import (
     _upload_background_bgm,
     _upload_background_images,
 )
-from .effects import (
+from frontend_bridge_core.effects import (
     _build_effect_usage_guide,
     _delete_all_effect_audio,
     _delete_effect,
@@ -40,7 +40,7 @@ from .effects import (
     _upload_effect_audio,
     _validate_effect_storage_name,
 )
-from .chat import (
+from frontend_bridge_core.chat import (
     _chat_history,
     _close_chat,
     TRANSPARENT_BACKGROUND_NAME,
@@ -54,7 +54,7 @@ from .chat import (
     _sanitize_user_display_name,
     _sprite_path,
 )
-from .chat_themes import (
+from frontend_bridge_core.chat_themes import (
     delete_chat_theme,
     get_active_chat_theme_id,
     get_chat_theme_manifest,
@@ -62,7 +62,7 @@ from .chat_themes import (
     list_chat_themes,
     set_active_chat_theme,
 )
-from .characters import (
+from frontend_bridge_core.characters import (
     _as_character_config,
     _delete_all_character_sprites,
     _delete_character_sprite,
@@ -77,44 +77,44 @@ from .characters import (
     _upload_character_sprites,
     _upload_sprite_voice,
 )
-from .memory import (
+from frontend_bridge_core.memory import (
     _add_character_memory,
     _delete_character_memory,
     _get_mem0_status,
     _list_character_memories,
 )
-from .config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
-from .logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
-from .media import _media_thumbnail, _media_thumbnail_batch
-from .mcp import (
+from frontend_bridge_core.config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
+from frontend_bridge_core.logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
+from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
+from frontend_bridge_core.mcp import (
     _mcp_config_response,
     _open_mcp_config_file,
     _preview_mcp_tools_from_payload,
     _save_and_apply_mcp_config,
 )
-from .music import _music_cover_search, _run_music_cover, _save_music_cover_config
-from .plugin_catalog import (
+from frontend_bridge_core.music import _music_cover_search, _run_music_cover, _save_music_cover_config
+from frontend_bridge_core.plugin_catalog import (
     _plugin_registry_rows,
     _plugin_rows,
     _set_plugin_enabled,
     _uninstall_plugin,
 )
-from .plugin_publisher import (
+from frontend_bridge_core.plugin_publisher import (
     _build_plugin_submission_issue_url,
     _copy_plugin_submission_json,
     _scan_local_plugin,
     _validate_plugin_submission,
 )
-from .plugin_ui import _plugin_ui_detail, _resolve_plugin_frontend_file, _run_plugin_ui_action, _save_plugin_ui_config
-from .plugin_updates import (
+from frontend_bridge_core.plugin_ui import _plugin_ui_detail, _resolve_plugin_frontend_file, _run_plugin_ui_action, _save_plugin_ui_config
+from frontend_bridge_core.plugin_updates import (
     _app_update_info,
     _app_update_tags,
     _install_plugin_source,
     _repo_tags,
     _run_app_update,
 )
-from .runtime_dependencies import install_runtime_dependency, runtime_dependency_error_from_text
-from .security import (
+from frontend_bridge_core.runtime_dependencies import install_runtime_dependency, runtime_dependency_error_from_text
+from frontend_bridge_core.security import (
     reject_control_chars,
     safe_child_path,
     safe_content_disposition,
@@ -122,10 +122,10 @@ from .security import (
     safe_header_value,
     safe_project_path,
 )
-from .state import BridgeState, _jsonify, plugin_load_snapshot
-from .static import _frontend_dist_root
-from .tasks import _create_task, _get_task, _is_running_task, _request_task_cancel, _run_background_task, _update_task
-from .templates import (
+from frontend_bridge_core.state import BridgeState, _jsonify, plugin_load_snapshot
+from frontend_bridge_core.static import _frontend_dist_root
+from frontend_bridge_core.tasks import _create_task, _get_task, _is_running_task, _request_task_cancel, _run_background_task, _update_task
+from frontend_bridge_core.templates import (
     _compose_for_llm,
     _latest_history_json,
     _list_templates,
@@ -137,14 +137,14 @@ from .templates import (
     _generate_template_summary,
     _load_template_session_payload,
 )
-from .tools import (
+from frontend_bridge_core.tools import (
     _browse_local_files,
     _crop_sprites,
     _generate_sprite_prompts,
     _generate_sprites,
     _remove_sprite_background,
 )
-from .tts import _download_tts_bundle, _tts_bundle_recommendation
+from frontend_bridge_core.tts import _download_tts_bundle, _tts_bundle_recommendation
 
 logger = get_logger(__name__)
 BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
