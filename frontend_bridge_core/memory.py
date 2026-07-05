@@ -47,6 +47,48 @@ def _list_character_memories(name: str) -> dict[str, Any]:
     return memory_list(name)
 
 
+def _memory_tool_search(query: str, character_name: str, limit: int = 10) -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from ai.memory.operations import memory_search
+
+    try:
+        return memory_search(query, character_name=character_name, limit=limit)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+
+
+def _memory_tool_remember(content: str, character_name: str) -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from ai.memory.operations import memory_remember
+
+    try:
+        return memory_remember(content, character_name=character_name)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+
+
+def _memory_tool_forget(memory_id: str) -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from ai.memory.operations import memory_forget
+
+    try:
+        return memory_forget(memory_id)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+
+
 def _add_character_memory(name: str, content: str) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:

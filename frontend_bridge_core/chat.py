@@ -387,6 +387,13 @@ def _launch_chat(
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"
+        chat_stream = getattr(state, "chat_stream", None)
+        memory_service_base = str(getattr(chat_stream, "http_base", "") or "").strip()
+        if memory_service_base:
+            env["SHINSEKAI_MEMORY_SERVICE_URL"] = f"{memory_service_base.rstrip('/')}/api/memory"
+            env["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "0"
+        if str(getattr(state, "auth_token", "") or "").strip():
+            env["SHINSEKAI_MEMORY_SERVICE_TOKEN"] = str(state.auth_token)
 
         if getattr(sys, "frozen", False):
             candidates = _main_exe_candidates(state)

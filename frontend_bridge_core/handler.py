@@ -82,6 +82,9 @@ from frontend_bridge_core.memory import (
     _delete_character_memory,
     _get_mem0_status,
     _list_character_memories,
+    _memory_tool_forget,
+    _memory_tool_remember,
+    _memory_tool_search,
 )
 from frontend_bridge_core.config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
 from frontend_bridge_core.logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
@@ -633,6 +636,27 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(
                     _delete_character_memory(str(body.get("name") or ""), str(body.get("memoryId") or ""))
                 )
+            elif method == "POST" and path == "/api/memory/status":
+                self._send_json(_get_mem0_status())
+            elif method == "POST" and path == "/api/memory/list":
+                self._send_json(_list_character_memories(str(body.get("name") or body.get("characterName") or "")))
+            elif method == "POST" and path == "/api/memory/search":
+                self._send_json(
+                    _memory_tool_search(
+                        str(body.get("query") or ""),
+                        str(body.get("characterName") or body.get("character_name") or ""),
+                        int(body.get("limit") or 10),
+                    )
+                )
+            elif method == "POST" and path == "/api/memory/remember":
+                self._send_json(
+                    _memory_tool_remember(
+                        str(body.get("content") or ""),
+                        str(body.get("characterName") or body.get("character_name") or ""),
+                    )
+                )
+            elif method == "POST" and path == "/api/memory/forget":
+                self._send_json(_memory_tool_forget(str(body.get("memoryId") or body.get("memory_id") or "")))
             elif method == "POST" and path == "/api/characters/sprite-voice/upload":
                 self._send_json(_upload_sprite_voice(self.state, body))
             elif method == "POST" and path == "/api/characters/sprites/upload":

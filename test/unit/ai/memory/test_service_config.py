@@ -59,11 +59,14 @@ def test_embedding_model_cache_detection_uses_hub_cache_env(monkeypatch, tmp_pat
 
 def test_embedding_model_cache_detection_ignores_incomplete_cache(monkeypatch, tmp_path):
     hub_cache = tmp_path / "hub-cache"
+    empty_home = tmp_path / "hf-home"
     model_dir = (
         hub_cache
         / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
     )
     (model_dir / "refs").mkdir(parents=True)
+    monkeypatch.setenv("HF_HOME", str(empty_home))
     monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
 
     assert memory_config.is_embedding_model_cached() is False
