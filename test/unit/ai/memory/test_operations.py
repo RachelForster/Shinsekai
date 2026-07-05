@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import io
+import urllib.error
+
 from ai.memory import operations
 
 
@@ -112,6 +115,20 @@ class _FakeHttpResponse:
         return json.dumps(self.payload).encode("utf-8")
 
 
+class _RawHttpResponse:
+    def __init__(self, body: bytes):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, _limit: int = -1):
+        return self.body
+
+
 def test_memory_search_uses_memory_service_without_local_mem0(monkeypatch):
     captured = {}
 
@@ -139,6 +156,55 @@ def test_memory_search_uses_memory_service_without_local_mem0(monkeypatch):
     assert b'"query": "tea"' in captured["body"]
     assert b'"characterName": "Alice"' in captured["body"]
     assert b'"limit": 3' in captured["body"]
+
+
+def test_memory_search_uses_configured_memory_service_timeout(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(_request, timeout):
+        captured["timeout"] = timeout
+        return _FakeHttpResponse({"count": 0, "memories": []})
+
+    monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_URL", "http://127.0.0.1:8787/api/memory")
+    monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_TIMEOUT_SEC", "12.5")
+    monkeypatch.setattr(operations.urllib.request, "urlopen", fake_urlopen)
+
+    assert operations.memory_search("tea", character_name="Alice") == {"count": 0, "memories": []}
+    assert captured["timeout"] == 12.5
+
+
+def test_memory_search_reports_memory_service_http_error(monkeypatch):
+    def fake_urlopen(_request, timeout=None):
+        raise urllib.error.HTTPError(
+            url="http://127.0.0.1:8787/api/memory/search",
+            code=503,
+            msg="Service Unavailable",
+            hdrs=None,
+            fp=io.BytesIO(b"bridge unavailable"),
+        )
+
+    monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_URL", "http://127.0.0.1:8787/api/memory")
+    monkeypatch.setattr(operations.urllib.request, "urlopen", fake_urlopen)
+
+    result = operations.memory_search("tea", character_name="Alice")
+
+    assert "error" in result
+    assert "503" in result["error"]
+    assert "bridge unavailable" in result["error"]
+
+
+def test_memory_search_reports_memory_service_invalid_json(monkeypatch):
+    def fake_urlopen(_request, timeout=None):
+        return _RawHttpResponse(b"not-json")
+
+    monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_URL", "http://127.0.0.1:8787/api/memory")
+    monkeypatch.setattr(operations.urllib.request, "urlopen", fake_urlopen)
+
+    result = operations.memory_search("tea", character_name="Alice")
+
+    assert "error" in result
+    assert "memory service returned invalid JSON" in result["error"]
+    assert "not-json" in result["error"]
 
 
 def test_memory_service_loading_starts_ready_monitor(monkeypatch):

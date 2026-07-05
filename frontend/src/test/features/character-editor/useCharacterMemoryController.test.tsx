@@ -75,6 +75,24 @@ describe("useCharacterMemoryController", () => {
     expect(mockGetMem0Status).toHaveBeenCalledTimes(2);
   });
 
+  it("does not add memory when mem0 status check fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockGetMem0Status.mockRejectedValue(new Error("bridge unavailable"));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useCharacterMemoryController({ memoryName: "Mika" }), { wrapper: Wrapper });
+
+    act(() => result.current.setMemoryInput("Likes tea"));
+    await act(async () => {
+      await result.current.add();
+    });
+
+    expect(mockGetMem0Status).toHaveBeenCalledWith();
+    expect(mockRememberCharacterMemory).not.toHaveBeenCalled();
+    expect(result.current.isChecking).toBe(false);
+    expect(consoleError).toHaveBeenCalledWith("Failed to get mem0 status", expect.any(Error));
+    consoleError.mockRestore();
+  });
+
   it("installs missing memory dependency from cached dependency error", async () => {
     mockInstallMissingRuntimeDependency.mockResolvedValue({
       message: "installed",

@@ -31,6 +31,18 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
   const [mem0Task, setMem0Task] = useState<TaskSnapshot | null>(null);
   const [mem0Checking, setMem0Checking] = useState(false);
 
+  const reportMem0StatusError = (error: unknown) => {
+    console.error("Failed to get mem0 status", error);
+    setMem0Task(null);
+    setMem0LoadingOpen(false);
+    setMem0LoadingMessage(t("character.memory.error"));
+    showToast({
+      kind: "error",
+      message: error instanceof Error ? error.message : t("character.memory.error"),
+      title: t("common.operationFailed"),
+    });
+  };
+
   const query = useQuery({
     enabled: false,
     queryFn: () => listCharacterMemories(memoryName),
@@ -70,8 +82,9 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
           try {
             pollStatus = await getMem0Status();
             setMem0Task(pollStatus.task ?? null);
-          } catch {
-            break;
+          } catch (error) {
+            reportMem0StatusError(error);
+            return false;
           }
         }
         setMem0LoadingOpen(false);
@@ -89,8 +102,9 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
         }
       }
       return true;
-    } catch {
-      return true;
+    } catch (error) {
+      reportMem0StatusError(error);
+      return false;
     } finally {
       setMem0Checking(false);
     }
