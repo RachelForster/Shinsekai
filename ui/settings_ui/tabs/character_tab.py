@@ -936,8 +936,8 @@ class CharacterSettingsTab(QWidget):
         dlg.setCancelButton(None)
         dlg.show()
         try:
-            from llm.tools.memory_tools import _get_mem0
-            mem = _get_mem0()
+            from ai.memory.runtime import get_mem0
+            mem = get_mem0()
             raw = mem.get_all(filters={"user_id": agent_id}, limit=200)
             mems = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
         except Exception as e:
@@ -981,7 +981,7 @@ class CharacterSettingsTab(QWidget):
         dlg.setCancelButton(None)
         dlg.show()
         try:
-            from llm.tools.memory_tools import memory_remember
+            from ai.memory.operations import memory_remember
             memory_remember(text, character_name=agent_id)
         except Exception as e:
             dlg.close()
@@ -993,7 +993,7 @@ class CharacterSettingsTab(QWidget):
 
     def _on_mem_delete(self, memory_id: str) -> None:
         try:
-            from llm.tools.memory_tools import memory_forget
+            from ai.memory.operations import memory_forget
             memory_forget(memory_id)
         except Exception as e:
             toast_info(self, tr_i18n("char.mem_del"), str(e))

@@ -214,11 +214,20 @@ describe("Character editor sections", () => {
         isLoading={false}
         memoryInput="New memory"
         memoryName="Mika"
+        memoryPage={1}
+        memoryTotalPages={1}
+        activeSearchQuery=""
         onAddMemory={onAddMemory}
+        onClearSearch={vi.fn()}
         onDeleteMemory={onDeleteMemory}
         onInstallDep={vi.fn()}
         onMemoryInputChange={onMemoryInputChange}
+        onMemoryPageChange={vi.fn()}
         onRefresh={onRefresh}
+        onSearch={vi.fn()}
+        onSearchInputChange={vi.fn()}
+        searchInput=""
+        searchPending={false}
       />,
     );
 

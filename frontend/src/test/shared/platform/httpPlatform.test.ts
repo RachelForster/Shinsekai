@@ -422,19 +422,34 @@ describe("http platform", () => {
       .mockResolvedValueOnce(
         await mockJsonResponse({ agentId: "Nanami", count: 1, memories: [{ id: "mem-1", memory: "likes tea" }] }),
       )
+      .mockResolvedValueOnce(
+        await mockJsonResponse({ agent_id: "Nanami", count: 1, memories: [{ id: "mem-2", content: "likes coffee" }] }),
+      )
       .mockResolvedValueOnce(await mockJsonResponse({ agentId: "Nanami", count: 0, memories: [] }));
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
     await platform.characters.generateSetting({ name: "Nanami", setting: "" });
     await platform.characters.remember("Nanami", "likes tea");
+    const searchResult = await platform.characters.searchMemories({ limit: 25, name: "Nanami", query: "coffee" });
     await platform.characters.deleteMemory("Nanami", "mem-1");
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://127.0.0.1:8787/api/characters/ai-setting",
       "http://127.0.0.1:8787/api/characters/memories/add",
+      "http://127.0.0.1:8787/api/memory/search",
       "http://127.0.0.1:8787/api/characters/memories/delete",
     ]);
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
+      characterName: "Nanami",
+      limit: 25,
+      query: "coffee",
+    });
+    expect(searchResult).toEqual({
+      agentId: "Nanami",
+      count: 1,
+      memories: [{ id: "mem-2", memory: "likes coffee" }],
+    });
   });
 
   it("calls sprite voice endpoints and resolves media URLs", async () => {

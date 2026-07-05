@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from .media_utils import _optional_suffix_check, _path_namespace_list
-from .state import BridgeState, _jsonify
+from frontend_bridge_core.media_utils import _optional_suffix_check, _path_namespace_list
+from frontend_bridge_core.state import BridgeState, _jsonify
 
 
 def _validate_reference_audio(voice_path: str) -> None:
@@ -155,103 +155,6 @@ def _character_by_name(state: BridgeState, name: str) -> Any:
 def _character_json_after_reload(state: BridgeState, name: str) -> dict[str, Any]:
     state.config_manager.reload()
     return _jsonify(_character_by_name(state, name))
-
-
-def _check_mem0_before_call() -> dict[str, Any] | None:
-    """Check if mem0 is available before a memory operation.
-
-    Returns a :class:`RuntimeDependencyError`-shaped dict if the dependency
-    is missing; returns ``None`` if mem0 is ready or needs loading.
-    """
-    import importlib.util as _importlib_util
-
-    _spec = _importlib_util.find_spec("mem0")
-    if _spec is not None:
-        return None
-    from sdk.exception.types import runtime_dependency_error_from_module
-
-    return runtime_dependency_error_from_module("mem0")
-
-
-def _get_mem0_status() -> dict[str, Any]:
-    """Return mem0 availability status for polling from the frontend.
-
-    Never blocks — returns the current state immediately so the frontend
-    can show an appropriate loading dialog.
-
-    Always returns a dict with a ``status`` key matching
-    :class:`Mem0Status` on the frontend.
-    """
-    import importlib.util as _importlib_util
-
-    _spec = _importlib_util.find_spec("mem0")
-    if _spec is None:
-        from sdk.exception.types import runtime_dependency_error_from_module
-
-        _dep = runtime_dependency_error_from_module("mem0")
-        _dep["status"] = "missing_dependency"
-        return _dep
-
-    from llm.tools.memory_tools import check_mem0_status
-
-    return check_mem0_status()
-
-
-def _character_agent_id(name: str) -> str:
-    value = str(name or "").strip()
-    return value if value else "user"
-
-
-def _list_character_memories(name: str) -> dict[str, Any]:
-    _dep_error = _check_mem0_before_call()
-    if _dep_error is not None:
-        return _dep_error
-
-    from llm.tools.memory_tools import _get_mem0
-
-    agent_id = _character_agent_id(name)
-    mem = _get_mem0()
-    raw = mem.get_all(filters={"user_id": agent_id}, limit=200)
-    rows = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
-    memories = []
-    for row in rows:
-        if isinstance(row, dict):
-            memories.append({"id": str(row.get("id") or ""), "memory": str(row.get("memory") or row.get("content") or "")})
-        else:
-            memories.append({"id": "", "memory": str(row)})
-    return {"agentId": agent_id, "count": len(memories), "memories": memories}
-
-
-def _add_character_memory(name: str, content: str) -> dict[str, Any]:
-    _dep_error = _check_mem0_before_call()
-    if _dep_error is not None:
-        return _dep_error
-
-    from llm.tools.memory_tools import memory_remember
-
-    text = str(content or "").strip()
-    if not text:
-        raise ValueError("memory content is required")
-    result = memory_remember(text, character_name=_character_agent_id(name))
-    if isinstance(result, dict) and result.get("error"):
-        raise RuntimeError(str(result["error"]))
-    return _list_character_memories(name)
-
-
-def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
-    _dep_error = _check_mem0_before_call()
-    if _dep_error is not None:
-        return _dep_error
-
-    from llm.tools.memory_tools import memory_forget
-
-    mid = str(memory_id or "").strip()
-    if not mid:
-        raise ValueError("memory id is required")
-    result = memory_forget(mid)
-    if isinstance(result, dict) and result.get("error"):
-        raise RuntimeError(str(result["error"]))
-    return _list_character_memories(name)
 
 
 def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:

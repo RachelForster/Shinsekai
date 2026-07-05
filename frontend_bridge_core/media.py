@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from .backgrounds import (
+from frontend_bridge_core.backgrounds import (
     _delete_all_background_bgm,
     _delete_all_background_images,
     _delete_background_bgm,
@@ -21,15 +21,12 @@ from .backgrounds import (
     _upload_background_bgm,
     _upload_background_images,
 )
-from .characters import (
-    _add_character_memory,
+from frontend_bridge_core.characters import (
     _as_character_config,
     _delete_all_character_sprites,
-    _delete_character_memory,
     _delete_character_sprite,
     _delete_sprite_voice,
     _generate_character_setting,
-    _list_character_memories,
     _save_character,
     _save_character_emotion_tags,
     _save_sprite_scale,
@@ -38,7 +35,8 @@ from .characters import (
     _upload_character_sprites,
     _upload_sprite_voice,
 )
-from .security import safe_child_path, safe_existing_file_path
+from frontend_bridge_core.memory import _add_character_memory, _delete_character_memory, _list_character_memories
+from frontend_bridge_core.security import safe_child_path, safe_existing_file_path
 
 
 def _media_thumbnail(source: Path, *, project_root: Path, size: int = 160) -> Path:

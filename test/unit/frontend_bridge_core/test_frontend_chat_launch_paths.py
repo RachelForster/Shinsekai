@@ -189,6 +189,54 @@ def test_launch_chat_passes_stream_endpoint(tmp_path, monkeypatch):
     assert "--stream-endpoint=ws://127.0.0.1:8788/ws?sessionId=test&role=producer" in captured["cmd"]
 
 
+def test_launch_chat_passes_memory_service_env(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    template_dir = project_root / "data" / "character_templates"
+    history_dir = project_root / "data" / "chat_history"
+    app_root.mkdir()
+    template_dir.mkdir(parents=True)
+    history_dir.mkdir(parents=True)
+
+    captured = {}
+
+    def fake_popen(cmd, *, cwd, env, **kwargs):
+        captured["cmd"] = cmd
+        captured["cwd"] = cwd
+        captured["env"] = env
+        return _DummyProcess()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setattr(chat.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(chat, "_main_chat_process", None)
+
+    state = SimpleNamespace(
+        app_root_dir=str(app_root),
+        auth_token="bridge-secret",
+        chat_stream=SimpleNamespace(http_base="http://127.0.0.1:8787"),
+        config_manager=_ConfigManager(),
+        history_dir=str(history_dir),
+        template_dir_path=str(template_dir),
+    )
+
+    message = chat._launch_chat(
+        state,
+        history_file="",
+        init_sprite_path="",
+        room_id="",
+        selected_bg="",
+        system_template="system",
+        use_cg=False,
+        user_scenario="scenario",
+    )
+
+    assert "12345" in message
+    assert captured["env"]["SHINSEKAI_MEMORY_SERVICE_URL"] == "http://127.0.0.1:8787/api/memory"
+    assert captured["env"]["SHINSEKAI_MEMORY_SERVICE_OWNER"] == "0"
+    assert captured["env"]["SHINSEKAI_MEMORY_SERVICE_TOKEN"] == "bridge-secret"
+
+
 def test_launch_chat_passes_workflow_path(tmp_path, monkeypatch):
     project_root = tmp_path / "project"
     app_root = tmp_path / "Shinsekai"

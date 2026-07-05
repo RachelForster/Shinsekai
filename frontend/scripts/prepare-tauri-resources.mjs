@@ -19,6 +19,7 @@ const files = [
   "requirements-dev.txt",
 ];
 const directories = [
+  "ai",
   "assets",
   "asr",
   "config",

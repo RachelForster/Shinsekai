@@ -190,6 +190,36 @@ def test_classify_exception_maps_anthropic_timeout():
     }
 
 
+def test_download_error_formats_http_status_for_user():
+    exc = _http_status_error("permission denied", 403)
+
+    error = types.download_error_from_exception(
+        exc,
+        source="huggingface",
+        url="sentence-transformers/example",
+    )
+
+    assert error["kind"] == "download"
+    assert error["source"] == "huggingface"
+    assert error["errorType"] == "APIStatusError"
+    assert error["message"] == "Download failed: HTTP request failed: permission denied"
+    assert error["statusCode"] == 403
+    assert error["url"] == "sentence-transformers/example"
+    assert "没有权限" in error["userMessage"]
+
+
+def test_download_error_formats_timeout_for_user():
+    exc = _FakeHttpxTimeout("request timed out")
+    exc.request = _FakeRequest()
+
+    error = types.download_error_from_exception(exc, source="huggingface")
+
+    assert error["errorType"] == "_FakeHttpxTimeout"
+    assert error["message"] == "Download failed: HTTP request failed: request timed out"
+    assert error["timeout"] is True
+    assert "下载超时" in error["userMessage"]
+
+
 def test_report_main_exception_writes_bridge_detectable_dependency_error(capsys):
     logger = logging.getLogger("test.runtime_errors")
 

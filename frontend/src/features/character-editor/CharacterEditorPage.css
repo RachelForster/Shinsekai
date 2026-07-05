@@ -225,6 +225,28 @@
   background: var(--color-surface-raised);
 }
 
+.memory-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.memory-search-row__input {
+  display: block;
+  min-width: 0;
+}
+
+.memory-search-row__input .text-input {
+  width: 100%;
+}
+
+.memory-search-row__status {
+  display: block;
+  margin: calc(var(--space-2) * -1) 0 var(--space-3);
+}
+
 /* ── Memory dep dialog ── */
 
 .memory-dep-dialog {
@@ -285,6 +307,14 @@
   gap: var(--space-2);
 }
 
+.memory-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin: calc(var(--space-2) * -1) 0 var(--space-3);
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 860px) {
@@ -310,8 +340,13 @@
   .character-page__top-grid,
   .asset-gallery-layout,
   .memory-row,
+  .memory-search-row,
   .memory-add-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .memory-pagination {
+    justify-content: flex-start;
   }
 
   .asset-inspector {

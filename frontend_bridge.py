@@ -185,6 +185,7 @@ def run(
 
     apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
+    os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "1"
 
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
