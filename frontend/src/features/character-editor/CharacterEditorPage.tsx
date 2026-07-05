@@ -960,11 +960,20 @@ export function CharacterEditorPage() {
           isLoading={memoryController.isLoading}
           memoryInput={memoryController.memoryInput}
           memoryName={memoryName}
+          memoryPage={memoryController.memoryPage}
+          memoryTotalPages={memoryController.memoryTotalPages}
+          activeSearchQuery={memoryController.activeSearchQuery}
           onAddMemory={() => void memoryController.add()}
+          onClearSearch={memoryController.clearSearch}
           onDeleteMemory={requestMemoryDelete}
           onInstallDep={() => void memoryController.installDependency()}
           onMemoryInputChange={memoryController.setMemoryInput}
+          onMemoryPageChange={memoryController.setMemoryPage}
           onRefresh={() => void memoryController.refresh()}
+          onSearch={() => void memoryController.search()}
+          onSearchInputChange={memoryController.setSearchInput}
+          searchInput={memoryController.searchInput}
+          searchPending={memoryController.searchPending}
         />
       </div>
 

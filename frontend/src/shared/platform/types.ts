@@ -635,6 +635,12 @@ export interface CharacterMemoryList {
   memories: CharacterMemory[];
 }
 
+export interface CharacterMemorySearchInput {
+  limit?: number;
+  name: string;
+  query: string;
+}
+
 export interface Mem0Status {
   status: "ready" | "loading" | "not_started" | "error" | "missing_dependency";
   message?: string;
@@ -993,6 +999,7 @@ export interface ShinsekaiPlatform {
     getMem0Status: () => Promise<Mem0Status>;
     listMemories: (name: string) => Promise<CharacterMemoryList>;
     remember: (name: string, content: string) => Promise<CharacterMemoryList>;
+    searchMemories: (input: CharacterMemorySearchInput) => Promise<CharacterMemoryList>;
     save: (character: Character, originalName?: string) => Promise<Character>;
     saveEmotionTags: (name: string, emotionTags: string) => Promise<Character>;
     saveSpriteScale: (name: string, scale: number) => Promise<Character>;

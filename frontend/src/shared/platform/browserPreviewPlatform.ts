@@ -1111,6 +1111,16 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         characterMemories.set(agentId, existing);
         return delay(existing);
       },
+      async searchMemories({ limit = 200, name, query }) {
+        const agentId = name || "user";
+        const existing = await this.listMemories(agentId);
+        const normalizedQuery = query.trim().toLowerCase();
+        const memories = normalizedQuery
+          ? existing.memories.filter((memory) => memory.memory.toLowerCase().includes(normalizedQuery))
+          : existing.memories;
+        const limitedMemories = memories.slice(0, limit);
+        return delay({ agentId, count: limitedMemories.length, memories: limitedMemories });
+      },
       async remember(name, content) {
         const agentId = name || "user";
         const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };

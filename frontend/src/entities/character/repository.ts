@@ -40,6 +40,10 @@ export function listCharacterMemories(name: string) {
   return getPlatform().characters.listMemories(name);
 }
 
+export function searchCharacterMemories(input: { limit?: number; name: string; query: string }) {
+  return getPlatform().characters.searchMemories(input);
+}
+
 export function rememberCharacterMemory(name: string, content: string) {
   return getPlatform().characters.remember(name, content);
 }

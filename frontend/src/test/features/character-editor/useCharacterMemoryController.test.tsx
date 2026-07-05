@@ -12,6 +12,7 @@ const mockGetMem0Status = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
 const mockListCharacterMemories = vi.fn();
 const mockRememberCharacterMemory = vi.fn();
+const mockSearchCharacterMemories = vi.fn();
 
 vi.mock("../../../entities/chat/repository", () => ({
   installMissingRuntimeDependency: (...args: unknown[]) => mockInstallMissingRuntimeDependency(...args),
@@ -22,6 +23,8 @@ vi.mock("../../../entities/character/repository", () => ({
   getMem0Status: () => mockGetMem0Status(),
   listCharacterMemories: (name: string) => mockListCharacterMemories(name),
   rememberCharacterMemory: (name: string, memory: string) => mockRememberCharacterMemory(name, memory),
+  searchCharacterMemories: (input: { limit?: number; name: string; query: string }) =>
+    mockSearchCharacterMemories(input),
 }));
 
 function createWrapper() {
@@ -47,6 +50,7 @@ describe("useCharacterMemoryController", () => {
     vi.clearAllMocks();
     mockGetMem0Status.mockResolvedValue({ status: "ready" });
     mockListCharacterMemories.mockResolvedValue({ agentId: "Mika", count: 0, memories: [] });
+    mockSearchCharacterMemories.mockResolvedValue({ agentId: "Mika", count: 0, memories: [] });
   });
 
   it("adds and deletes memories after confirming mem0 is ready", async () => {
@@ -91,6 +95,33 @@ describe("useCharacterMemoryController", () => {
     expect(result.current.isChecking).toBe(false);
     expect(consoleError).toHaveBeenCalledWith("Failed to get mem0 status", expect.any(Error));
     consoleError.mockRestore();
+  });
+
+  it("searches memories and exposes paged results", async () => {
+    mockSearchCharacterMemories.mockResolvedValue({
+      agentId: "Mika",
+      count: 9,
+      memories: Array.from({ length: 9 }, (_, index) => ({
+        id: `memory-${index + 1}`,
+        memory: `Memory ${index + 1}`,
+      })),
+    });
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useCharacterMemoryController({ memoryName: "Mika" }), { wrapper: Wrapper });
+
+    act(() => result.current.setSearchInput("tea"));
+    await act(async () => {
+      await result.current.search();
+    });
+
+    expect(mockSearchCharacterMemories).toHaveBeenCalledWith({ limit: 200, name: "Mika", query: "tea" });
+    expect(result.current.activeSearchQuery).toBe("tea");
+    expect(result.current.data?.memories).toHaveLength(8);
+    expect(result.current.memoryTotalPages).toBe(2);
+
+    act(() => result.current.setMemoryPage(() => 2));
+
+    expect(result.current.data?.memories).toEqual([{ id: "memory-9", memory: "Memory 9" }]);
   });
 
   it("installs missing memory dependency from cached dependency error", async () => {

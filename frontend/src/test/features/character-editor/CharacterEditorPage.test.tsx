@@ -28,6 +28,7 @@ const mockInstallMissingRuntimeDependency = vi.fn();
 const mockListCharacterMemories = vi.fn();
 const mockOpenExternal = vi.fn();
 const mockRememberCharacterMemory = vi.fn();
+const mockSearchCharacterMemories = vi.fn();
 const mockSaveSpriteScale = vi.fn();
 const mockSaveSpriteVoiceText = vi.fn();
 const mockSaveSpriteVoiceType = vi.fn();
@@ -126,6 +127,8 @@ vi.mock("../../../entities/character/repository", () => ({
   listCharacterMemories: (name: string) => mockListCharacterMemories(name),
   listCharacters: () => mockListCharacters(),
   rememberCharacterMemory: (name: string, memory: string) => mockRememberCharacterMemory(name, memory),
+  searchCharacterMemories: (input: { limit?: number; name: string; query: string }) =>
+    mockSearchCharacterMemories(input),
   saveCharacter: (character: Character, originalName?: string) => mockSaveCharacter(character, originalName),
   saveCharacterEmotionTags: (name: string, emotionTags: string) => mockSaveCharacterEmotionTags(name, emotionTags),
   saveSpriteScale: (name: string, scale: number) => mockSaveSpriteScale(name, scale),
@@ -255,6 +258,7 @@ describe("CharacterEditorPage", () => {
         { id: "memory-2", memory },
       ],
     }));
+    mockSearchCharacterMemories.mockResolvedValue({ agentId: "Mika", count: 0, memories: [] });
     mockSaveCharacter.mockImplementation(async (input: Character) => input);
     mockSaveCharacterEmotionTags.mockImplementation(async (_name: string, emotionTags: string) => ({
       ...character,
