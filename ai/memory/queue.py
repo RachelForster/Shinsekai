@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import uuid
@@ -14,6 +15,10 @@ from typing import Any, Callable
 from ai.memory.operations import memory_remember
 
 logger = logging.getLogger(__name__)
+
+
+class QueuePersistenceError(RuntimeError):
+    """Raised when the memory write queue cannot be persisted."""
 
 
 def _default_queue_path() -> Path:
@@ -140,8 +145,13 @@ class MemoryWriteQueue:
 
         with self._lock:
             if saved_ids:
+                previous_items = list(self._items)
                 self._items = [item for item in self._items if item.id not in saved_ids]
-                self._save_locked()
+                try:
+                    self._save_locked()
+                except QueuePersistenceError:
+                    self._items = previous_items
+                    raise
             return {
                 "attempted": len(items),
                 "saved": len(saved_ids),
@@ -176,9 +186,22 @@ class MemoryWriteQueue:
                 self._items.append(item)
 
     def _save_locked(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"items": [asdict(item) for item in self._items]}
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        data = json.dumps(payload, ensure_ascii=False, indent=2)
+        tmp_path = self.path.with_name(f"{self.path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path.write_text(data, encoding="utf-8")
+            os.replace(tmp_path, self.path)
+        except OSError as exc:
+            logger.error("failed to persist memory queue to %s", self.path, exc_info=True)
+            raise QueuePersistenceError(f"failed to persist memory queue to {self.path}") from exc
+        finally:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                logger.debug("failed to remove memory queue temp file %s", tmp_path, exc_info=True)
 
     @staticmethod
     def _dedupe_key(character_name: str, memory: str) -> str:

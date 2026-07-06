@@ -8,6 +8,15 @@ from sdk.hooks import PluginHookDispatcher, clear_shutdown_hooks
 from test.mocks import MockLLMAdapter
 
 
+def _before_chat_context(content="hello"):
+    return BeforeChatContext(
+        messages=[{"role": "system", "content": "S"}, {"role": "user", "content": content}],
+        tools=None,
+        generation_kwargs={},
+        stream=False,
+    )
+
+
 def test_before_chat_injects_relevant_memories_without_persisting(tmp_path):
     searched = []
 
@@ -36,6 +45,47 @@ def test_before_chat_injects_relevant_memories_without_persisting(tmp_path):
         {"role": "system", "content": "S"},
         {"role": "user", "content": "[本地时间 2026-07-05 12:00:00]\n今天想喝咖啡"},
     ]
+
+
+def test_before_chat_ignores_memory_search_failure(tmp_path):
+    def search(_query, character_name=None, limit=5):
+        raise RuntimeError("search unavailable")
+
+    hooks = MemoryAutoHooks(
+        llm_adapter=MockLLMAdapter(),
+        character_names=["Mika"],
+        queue=MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=lambda *_args: {"ok": True}),
+        search_func=search,
+    )
+    context = _before_chat_context()
+    original_messages = list(context.messages)
+
+    hooks.before_chat(context)
+
+    assert context.messages == original_messages
+
+
+def test_before_chat_ignores_unavailable_or_empty_memory_search_results(tmp_path):
+    results = [
+        {"status": "loading", "message": "still loading"},
+        {"error": "forbidden"},
+        {"memories": []},
+        {"memories": "not a list"},
+    ]
+
+    for index, result in enumerate(results):
+        hooks = MemoryAutoHooks(
+            llm_adapter=MockLLMAdapter(),
+            character_names=["Mika"],
+            queue=MemoryWriteQueue(path=tmp_path / f"queue-{index}.json", remember_func=lambda *_args: {"ok": True}),
+            search_func=lambda *_args, _result=result, **_kwargs: _result,
+        )
+        context = _before_chat_context()
+        original_messages = list(context.messages)
+
+        hooks.before_chat(context)
+
+        assert context.messages == original_messages
 
 
 def test_periodic_extraction_enqueues_and_flushes_memories(tmp_path):
@@ -68,6 +118,38 @@ def test_periodic_extraction_enqueues_and_flushes_memories(tmp_path):
     hooks.wait_for_idle()
 
     assert saved == [("Mika", "用户喜欢把重要决定先写成列表。")]
+    assert len(hooks.queue) == 0
+
+
+def test_periodic_extraction_skips_assistant_tool_call_messages(tmp_path):
+    saved = []
+    adapter = MockLLMAdapter(responses=['[{"character_name":"Mika","memory":"should not save"}]'])
+    hooks = MemoryAutoHooks(
+        llm_adapter=adapter,
+        character_names=["Mika"],
+        queue=MemoryWriteQueue(
+            path=tmp_path / "queue.json",
+            remember_func=lambda content, character_name=None: saved.append((character_name, content)) or {"ok": True},
+        ),
+        extract_interval_turns=1,
+    )
+
+    hooks.message_added(MessageAddedContext(role="user", message={"role": "user", "content": "hello"}, messages=[]))
+    hooks.message_added(
+        MessageAddedContext(
+            role="assistant",
+            message={
+                "role": "assistant",
+                "content": "tool result",
+                "tool_calls": [{"id": "call_1", "type": "function"}],
+            },
+            messages=[],
+        )
+    )
+    hooks.wait_for_idle()
+
+    assert adapter.call_history == []
+    assert saved == []
     assert len(hooks.queue) == 0
 
 

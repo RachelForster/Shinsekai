@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 
-from ai.memory.queue import MemoryWriteQueue
+import pytest
+
+import ai.memory.queue as memory_queue_module
+from ai.memory.queue import MemoryWriteQueue, QueuePersistenceError
 
 
 def test_memory_write_queue_persists_dedupes_and_flushes(tmp_path):
@@ -45,3 +48,26 @@ def test_memory_write_queue_keeps_failed_items(tmp_path):
     assert result["saved"] == 0
     assert result["pending"] == 1
     assert result["errors"]
+
+
+def test_memory_write_queue_reports_persistence_failure_and_keeps_items(tmp_path, monkeypatch):
+    saved = []
+
+    def remember(content, character_name=None):
+        saved.append((character_name, content))
+        return {"ok": True}
+
+    queue = MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=remember)
+    queue.enqueue("persist me", character_name="Alice")
+
+    def fail_replace(_src, _dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(memory_queue_module.os, "replace", fail_replace)
+
+    with pytest.raises(QueuePersistenceError):
+        queue.flush()
+
+    assert saved == [("Alice", "persist me")]
+    assert len(queue) == 1
+    assert queue.pending()[0]["memory"] == "persist me"

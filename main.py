@@ -243,10 +243,18 @@ def _memory_character_names(args, config: ConfigManager) -> list[str]:
     names = _parse_character_names(getattr(args, "characters", ""))
     if names:
         return names
+    init_sprite_path = str(getattr(args, "init_sprite_path", "") or "")
+    if not init_sprite_path:
+        return []
     try:
-        matched = find_character_sprite_by_path(config, str(getattr(args, "init_sprite_path", "") or ""))
-    except Exception:
-        matched = None
+        matched = find_character_sprite_by_path(config, init_sprite_path)
+    except OSError:
+        logger.warning(
+            "Failed to resolve memory character from initial sprite path",
+            extra={"event": "memory.character.resolve_failed", "sprite_path": init_sprite_path},
+            exc_info=True,
+        )
+        return []
     if matched is not None:
         return [matched[0]]
     return []
