@@ -50,6 +50,32 @@ def test_memory_write_queue_keeps_failed_items(tmp_path):
     assert result["errors"]
 
 
+def test_memory_write_queue_only_removes_explicitly_successful_items(tmp_path):
+    outcomes = [
+        {"ok": True},
+        {"status": "missing_dependency", "message": "mem0 is not installed"},
+        {"kind": "missing_dependency", "message": "mem0 is not installed"},
+        {"status": "error", "message": "runtime failed"},
+        {"ok": False},
+        None,
+    ]
+
+    def remember(_content, character_name=None):
+        return outcomes.pop(0)
+
+    queue = MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=remember)
+    for index in range(6):
+        queue.enqueue(f"memory {index}", character_name="Alice")
+
+    result = queue.flush()
+
+    assert result["saved"] == 1
+    assert result["pending"] == 5
+    assert len(result["errors"]) == 5
+    assert len(queue) == 5
+    assert [item["memory"] for item in queue.pending()] == [f"memory {index}" for index in range(1, 6)]
+
+
 def test_memory_write_queue_reports_persistence_failure_and_keeps_items(tmp_path, monkeypatch):
     saved = []
 

@@ -33,6 +33,20 @@ def _resolve_character_name(value: str | None) -> str:
     return _clean_text(value) or "user"
 
 
+def _remember_succeeded(result: Any) -> bool:
+    return isinstance(result, dict) and result.get("ok") is True
+
+
+def _remember_failure_message(result: Any) -> str:
+    if not isinstance(result, dict):
+        return f"unexpected remember result: {result!r}"
+    for key in ("error", "message", "kind", "status"):
+        value = _clean_text(result.get(key))
+        if value:
+            return value
+    return f"remember did not report success: {result!r}"
+
+
 @dataclass
 class MemoryQueueItem:
     id: str
@@ -138,8 +152,8 @@ class MemoryWriteQueue:
                 logger.exception("memory queue flush failed")
                 errors.append({"id": item.id, "error": str(exc)})
                 continue
-            if isinstance(result, dict) and (result.get("error") or result.get("status") == "loading"):
-                errors.append({"id": item.id, "error": str(result.get("error") or result.get("message") or result)})
+            if not _remember_succeeded(result):
+                errors.append({"id": item.id, "error": _remember_failure_message(result)})
                 continue
             saved_ids.add(item.id)
 
