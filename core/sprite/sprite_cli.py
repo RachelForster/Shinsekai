@@ -22,6 +22,12 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
     parser.add_argument("--llm", type=str, default="deepseek")
     parser.add_argument("--bg", type=str, default="")
     parser.add_argument("--effect_names", type=str, default="")
+    parser.add_argument(
+        "--characters",
+        type=str,
+        default="",
+        help="JSON array or comma-separated character names selected for this chat.",
+    )
     parser.add_argument("--t2i", type=str, default="ComfyUI")
     parser.add_argument(
         "--workflow",

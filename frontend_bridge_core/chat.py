@@ -379,6 +379,8 @@ def _launch_chat(
             f"--room_id={room_id}",
             f"--tts={tts_slug}",
         ]
+        if character_names:
+            args.append(f"--characters={json.dumps(character_names, ensure_ascii=False)}")
         if stream_endpoint:
             args.append(f"--stream-endpoint={stream_endpoint}")
         if workflow_path:

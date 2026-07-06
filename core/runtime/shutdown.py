@@ -7,6 +7,7 @@ from typing import Any
 def shutdown_chat_runtime(
     *,
     workflow: Any | None = None,
+    memory_shutdown: Callable[[], None] | None = None,
     plugin_shutdown: Callable[[], None] | None = None,
     tts_shutdown: Callable[[], None] | None = None,
     save_history: Callable[[], None] | None = None,
@@ -26,6 +27,8 @@ def shutdown_chat_runtime(
         steps.append(("emit_session_closed", emit_session_closed))
     if workflow is not None and hasattr(workflow, "stop"):
         steps.append(("workflow_stop", workflow.stop))
+    if memory_shutdown is not None:
+        steps.append(("memory_shutdown", memory_shutdown))
     if plugin_shutdown is not None:
         steps.append(("plugin_shutdown", plugin_shutdown))
     if tts_shutdown is not None:

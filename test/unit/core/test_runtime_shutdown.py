@@ -18,6 +18,7 @@ class RuntimeShutdownTests(unittest.TestCase):
 
         shutdown_chat_runtime(
             workflow=workflow,
+            memory_shutdown=lambda: calls.append("memory_shutdown"),
             plugin_shutdown=lambda: calls.append("plugin_shutdown"),
             tts_shutdown=lambda: calls.append("tts_shutdown"),
             save_history=lambda: calls.append("save_history"),
@@ -31,6 +32,7 @@ class RuntimeShutdownTests(unittest.TestCase):
             [
                 "emit_session_closed",
                 "workflow_stop",
+                "memory_shutdown",
                 "plugin_shutdown",
                 "tts_shutdown",
                 "save_history",
@@ -50,6 +52,7 @@ class RuntimeShutdownTests(unittest.TestCase):
 
         result = shutdown_chat_runtime(
             workflow=workflow,
+            memory_shutdown=lambda: calls.append("memory_shutdown"),
             plugin_shutdown=broken_plugin_shutdown,
             tts_shutdown=lambda: calls.append("tts_shutdown"),
             save_history=lambda: calls.append("save_history"),
@@ -64,6 +67,7 @@ class RuntimeShutdownTests(unittest.TestCase):
             [
                 "emit_session_closed",
                 "workflow_stop",
+                "memory_shutdown",
                 "plugin_shutdown",
                 "tts_shutdown",
                 "save_history",
