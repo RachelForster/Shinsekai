@@ -58,6 +58,7 @@ import { reloadPluginService } from "./pluginReload";
 import "./PluginManagerPage.css";
 
 const INSTALLED_PLUGIN_PAGE_SIZE = 8;
+const PLUGIN_DEVELOPER_DOCS_URL = "https://plugins.shinsekai.studio/docs/plugin";
 
 interface PluginRouteReturnTo {
   hash?: string;
@@ -293,6 +294,8 @@ export function PluginManagerPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { t } = useI18n();
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
   const pluginsQuery = useQuery({ queryFn: listPlugins, queryKey: pluginsQueryKey });
   const data = pluginsQuery.data ?? [];
   const isLoading = pluginsQuery.isLoading;
@@ -324,6 +327,34 @@ export function PluginManagerPage() {
     matcher: installedPluginMatches,
     pageSize: INSTALLED_PLUGIN_PAGE_SIZE,
   });
+
+  useEffect(() => {
+    const page = pageRef.current;
+    const header = headerRef.current;
+    if (!page || !header) {
+      return undefined;
+    }
+
+    const updateStickyHeaderHeight = () => {
+      page.style.setProperty("--plugin-sticky-header-height", `${Math.ceil(header.getBoundingClientRect().height)}px`);
+    };
+
+    updateStickyHeaderHeight();
+    window.addEventListener("resize", updateStickyHeaderHeight);
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.removeEventListener("resize", updateStickyHeaderHeight);
+      };
+    }
+
+    const observer = new ResizeObserver(updateStickyHeaderHeight);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateStickyHeaderHeight);
+    };
+  }, []);
 
   useEffect(() => {
     const state = location.state as PluginRouteState | null;
@@ -544,8 +575,8 @@ export function PluginManagerPage() {
   }
 
   return (
-    <div className="page plugin-page">
-      <header className="page__header">
+    <div className="page plugin-page" ref={pageRef}>
+      <header className="page__header" ref={headerRef}>
         <div>
           <h1 className="page__title">{t("nav.plugins")}</h1>
           {pluginReloadPending ? (
@@ -553,6 +584,13 @@ export function PluginManagerPage() {
           ) : null}
         </div>
         <div className="page__actions plugin-page__actions">
+          <Button
+            icon={<BookOpen aria-hidden className="button__icon" />}
+            onClick={() => openExternal(PLUGIN_DEVELOPER_DOCS_URL)}
+            variant="ghost"
+          >
+            {t("plugin.action.developerDocs")}
+          </Button>
           <Button
             icon={<Send aria-hidden className="button__icon" />}
             onClick={() => setPublisherOpen(true)}

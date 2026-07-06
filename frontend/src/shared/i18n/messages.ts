@@ -673,6 +673,7 @@ export type MessageKey =
   | "plugin.catalog.securityScanPassed"
   | "plugin.catalog.title"
   | "plugin.description"
+  | "plugin.action.developerDocs"
   | "plugin.action.docs"
   | "plugin.publisher.author"
   | "plugin.publisher.copy"

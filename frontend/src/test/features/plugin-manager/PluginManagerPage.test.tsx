@@ -322,6 +322,14 @@ describe("PluginManagerPage", () => {
     expect(screen.getByRole("button", { name: "Read metadata" })).toBeInTheDocument();
   });
 
+  it("opens the plugin developer documentation from the page header", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Developer docs" }));
+
+    expect(mockOpenExternal).toHaveBeenCalledWith("https://plugins.shinsekai.studio/docs/plugin");
+  });
+
   it("uses the installed manifest title as the primary name and the registry name as the secondary name", async () => {
     const installedPlugin = {
       ...plainPlugin,

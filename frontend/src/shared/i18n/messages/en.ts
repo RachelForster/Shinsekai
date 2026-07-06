@@ -727,6 +727,7 @@ export const enMessages: Record<MessageKey, string> = {
   "plugin.catalog.title": "Discover",
   "plugin.description":
     "Plugins contribute only to fixed slots and are installed, enabled, or disabled through the platform layer.",
+  "plugin.action.developerDocs": "Developer docs",
   "plugin.action.docs": "Docs",
   "plugin.publisher.author": "Author",
   "plugin.publisher.copy": "Copy payload",

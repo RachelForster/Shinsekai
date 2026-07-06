@@ -716,6 +716,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "plugin.catalog.securityScanPassed": "扫描通过",
   "plugin.catalog.title": "发现",
   "plugin.description": "插件只能贡献到固定 slot，并通过平台层安装、启用和停用。",
+  "plugin.action.developerDocs": "插件开发文档",
   "plugin.action.docs": "文档",
   "plugin.publisher.author": "作者",
   "plugin.publisher.copy": "复制 Payload",

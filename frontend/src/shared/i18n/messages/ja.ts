@@ -726,6 +726,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "plugin.catalog.securityScanPassed": "スキャン通過",
   "plugin.catalog.title": "発見",
   "plugin.description": "プラグインは固定 slot にのみ貢献し、platform 層を通じてインストール、有効化、無効化します。",
+  "plugin.action.developerDocs": "開発者ドキュメント",
   "plugin.action.docs": "ドキュメント",
   "plugin.publisher.author": "作者",
   "plugin.publisher.copy": "Payload をコピー",

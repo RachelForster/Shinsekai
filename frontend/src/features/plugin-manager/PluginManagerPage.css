@@ -20,11 +20,19 @@
 }
 
 .plugin-list-controls {
+  position: sticky;
+  top: calc(var(--plugin-sticky-header-height, 64px) + var(--space-2));
+  z-index: 12;
   display: grid;
   grid-template-columns: minmax(180px, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
   margin: var(--space-3) 0;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid color-mix(in oklch, var(--color-border) 72%, transparent);
+  background: color-mix(in oklch, var(--color-surface) 92%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 18px color-mix(in oklch, var(--color-shadow) 42%, transparent);
 }
 
 .plugin-list-controls__search {
