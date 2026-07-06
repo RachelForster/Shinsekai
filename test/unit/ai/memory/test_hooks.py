@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from ai.memory.hooks import MemoryAutoHooks
+from ai.memory.hooks import MemoryAutoHooks, install_memory_hooks
 from ai.memory.queue import MemoryWriteQueue
+from core.runtime.shutdown import shutdown_chat_runtime
 from sdk.hooks import BeforeChatContext, MessageAddedContext
+from sdk.hooks import PluginHookDispatcher, clear_shutdown_hooks
 from test.mocks import MockLLMAdapter
 
 
@@ -104,3 +106,31 @@ def test_before_chat_uses_last_assistant_speaker_as_active_character(tmp_path):
 
     assert searched == [("继续刚才的话题", "Nanami", 5)]
     assert "Nanami 记得这件事" in context.messages[-1]["content"]
+
+
+def test_install_memory_hooks_registers_shutdown_flush(tmp_path):
+    saved = []
+
+    def remember(content, character_name=None):
+        saved.append((character_name, content))
+        return {"ok": True}
+
+    clear_shutdown_hooks()
+    try:
+        queue = MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=remember)
+        queue.enqueue("关闭时写入", character_name="Mika")
+        dispatcher = PluginHookDispatcher()
+
+        hooks = install_memory_hooks(
+            dispatcher,
+            llm_adapter=MockLLMAdapter(),
+            character_names=["Mika"],
+            queue=queue,
+        )
+
+        assert hooks is not None
+        shutdown_chat_runtime()
+        assert saved == [("Mika", "关闭时写入")]
+        assert len(queue) == 0
+    finally:
+        clear_shutdown_hooks()

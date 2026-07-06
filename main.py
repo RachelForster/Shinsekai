@@ -291,8 +291,6 @@ def main():
 
     with _startup_phase("plugins.load"):
         plugin_manager = ensure_plugins_loaded(config)
-    memory_hooks = None
-
     with _startup_phase("args.parse"):
         args = parse_sprite_args(tr_i18n)
     stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None
@@ -418,7 +416,7 @@ def main():
         if plugin_manager is not None:
             from ai.memory.hooks import install_memory_hooks
 
-            memory_hooks = install_memory_hooks(
+            install_memory_hooks(
                 plugin_manager.hook_dispatcher,
                 llm_adapter=llm_adapter,
                 character_names=_memory_character_names(args, config),
@@ -964,7 +962,6 @@ def main():
             restore_interrupt_handlers()
             shutdown_chat_runtime(
                 workflow=workflow,
-                memory_shutdown=(lambda: memory_hooks.shutdown()) if memory_hooks is not None else None,
                 plugin_shutdown=_shutdown_plugins,
                 tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
                 save_history=_persist_branch_state,
@@ -1012,7 +1009,6 @@ def main():
             restore_interrupt_handlers()
             shutdown_chat_runtime(
                 workflow=workflow,
-                memory_shutdown=(lambda: memory_hooks.shutdown()) if memory_hooks is not None else None,
                 plugin_shutdown=_shutdown_plugins,
                 tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
                 save_history=lambda: _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())
@@ -1154,7 +1150,6 @@ def main():
     app.aboutToQuit.connect(
         lambda: shutdown_chat_runtime(
             workflow=workflow,
-            memory_shutdown=(lambda: memory_hooks.shutdown()) if memory_hooks is not None else None,
             plugin_shutdown=_shutdown_plugins,
             tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
             save_history=lambda: _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())

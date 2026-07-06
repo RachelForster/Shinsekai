@@ -375,6 +375,12 @@ def install_memory_hooks(
         ),
     )
     hooks.register(dispatcher)
+    try:
+        from sdk.hooks import register_shutdown_hook
+
+        register_shutdown_hook(hooks.shutdown, label="memory_shutdown")
+    except Exception:
+        logger.exception("failed to register memory shutdown hook")
     logger.info(
         "automatic memory hooks installed",
         extra={
