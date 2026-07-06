@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from frontend_bridge_core.security import safe_existing_dir_path
+
 
 METADATA_NAMES = ("plugin.json", "shinsekai.plugin.json")
 README_NAMES = ("README.md", "README.MD", "readme.md", "README.txt")
@@ -15,12 +17,8 @@ TAG_SPLIT_RE = re.compile(r"[,\s\uFF0C\u3001]+")
 
 
 def scan_local_plugin(path: str | Path) -> dict[str, Any]:
-    root = Path(path or ".").expanduser().resolve()
+    root = safe_existing_dir_path(path or ".", field="plugin path")
     warnings: list[str] = []
-    if not root.exists():
-        raise FileNotFoundError(f"plugin path not found: {root}")
-    if not root.is_dir():
-        raise ValueError("plugin path must be a directory")
 
     readme = find_first(root, README_NAMES)
     metadata_path = find_first(root, METADATA_NAMES)
@@ -201,8 +199,11 @@ def read_git_remote(root: Path) -> str:
     else:
         return ""
 
-    parser = configparser.ConfigParser()
-    parser.read(current / ".git" / "config", encoding="utf-8")
+    parser = configparser.ConfigParser(strict=False)
+    try:
+        parser.read(current / ".git" / "config", encoding="utf-8")
+    except (configparser.Error, OSError):
+        return ""
     for section in ("remote \"origin\"", "remote \"upstream\""):
         if parser.has_option(section, "url"):
             return normalize_remote_url(parser.get(section, "url"))

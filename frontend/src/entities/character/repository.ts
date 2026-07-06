@@ -1,5 +1,6 @@
 import { getPlatform } from "../../shared/platform/platform";
 import type { Character } from "../config/types";
+import type { SpriteVoiceType } from "../../shared/platform/types";
 
 export const charactersQueryKey = ["characters"] as const;
 
@@ -31,8 +32,16 @@ export function translateCharacterFields(input: { characterSetting: string; emot
   return getPlatform().characters.translateFields(input);
 }
 
+export function getMem0Status() {
+  return getPlatform().characters.getMem0Status();
+}
+
 export function listCharacterMemories(name: string) {
   return getPlatform().characters.listMemories(name);
+}
+
+export function searchCharacterMemories(input: { limit?: number; name: string; query: string }) {
+  return getPlatform().characters.searchMemories(input);
 }
 
 export function rememberCharacterMemory(name: string, content: string) {
@@ -63,12 +72,22 @@ export function saveSpriteScale(name: string, scale: number) {
   return getPlatform().characters.saveSpriteScale(name, scale);
 }
 
-export function uploadSpriteVoice(input: { name: string; spriteIndex: number; voicePath: string; voiceText: string }) {
+export function uploadSpriteVoice(input: {
+  name: string;
+  spriteIndex: number;
+  voicePath: string;
+  voiceText: string;
+  voiceType?: SpriteVoiceType;
+}) {
   return getPlatform().characters.uploadSpriteVoice(input);
 }
 
 export function saveSpriteVoiceText(name: string, spriteIndex: number, voiceText: string) {
   return getPlatform().characters.saveSpriteVoiceText(name, spriteIndex, voiceText);
+}
+
+export function saveSpriteVoiceType(name: string, spriteIndex: number, voiceType: SpriteVoiceType) {
+  return getPlatform().characters.saveSpriteVoiceType(name, spriteIndex, voiceType);
 }
 
 export function deleteSpriteVoice(name: string, spriteIndex: number) {

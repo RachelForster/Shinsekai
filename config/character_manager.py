@@ -1,5 +1,7 @@
 import os
 import shutil
+import hashlib
+import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
 from config.schema import Character, Sprite
@@ -10,6 +12,31 @@ UPLOAD_DIR = "data/sprite"
 VOICE_DIR = "data/speech"
 MODEL_DIR = "data/models"
 CHARACTER_CONFIG_PATH = ConfigManager._CHARACTERS_CONFIG_PATH 
+
+
+def _sprite_field(sprite_data: Union[Sprite, dict], key: str, default: Any = "") -> Any:
+    if isinstance(sprite_data, Sprite):
+        return getattr(sprite_data, key, default)
+    return sprite_data.get(key, default)
+
+
+def _voice_filename_for_sprite(sprite_data: Union[Sprite, dict], sprite_index: int, file_ext: str) -> str:
+    sprite_path = str(_sprite_field(sprite_data, "path", "") or "")
+    sprite_stem = Path(sprite_path).stem
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", sprite_stem).strip("._-")
+    if not safe_stem:
+        safe_stem = f"sprite_{sprite_index:02d}"
+    digest_source = sprite_path or safe_stem or str(sprite_index)
+    digest = hashlib.sha1(digest_source.encode("utf-8")).hexdigest()[:10]
+    return f"voice_{safe_stem}_{digest}{file_ext}"
+
+
+def _is_path_inside_directory(path: str, directory: str) -> bool:
+    try:
+        Path(path).resolve(strict=False).relative_to(Path(directory).resolve(strict=False))
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 class CharacterManager:
@@ -486,7 +513,7 @@ class CharacterManager:
             return f"标注出错了：{e}"
 
 
-    def upload_voice(self, character_name: str, sprite_index: int, voice_file: str, voice_text: str) -> Tuple[str, Optional[str]]:
+    def upload_voice(self, character_name: str, sprite_index: int, voice_file: str, voice_text: str, voice_type: str = "") -> Tuple[str, Optional[str]]:
         """
         为指定立绘上传语音文件。
         
@@ -504,7 +531,7 @@ class CharacterManager:
             return "立绘不存在！", None
         
         sprite_data: Union[Sprite, dict] = character.sprites[sprite_index]
-        original_voice_path = sprite_data.voice_path if isinstance(sprite_data, Sprite) else sprite_data.get("voice_path", "")
+        original_voice_path = str(_sprite_field(sprite_data, "voice_path", "") or "")
         
         if (not voice_file) and (not original_voice_path):
             return "请选择语音文件！", None
@@ -513,7 +540,7 @@ class CharacterManager:
         Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
         
         file_ext = Path(voice_file).suffix
-        voice_filename = f"voice_{sprite_index:02d}{file_ext}"
+        voice_filename = _voice_filename_for_sprite(sprite_data, sprite_index, file_ext)
         voice_path = os.path.join(voice_char_dir, voice_filename)
         shutil.copyfile(voice_file, voice_path)
         
@@ -521,11 +548,26 @@ class CharacterManager:
         if isinstance(sprite_data, Sprite):
             sprite_data.voice_path = voice_path
             sprite_data.voice_text = voice_text
+            if voice_type:
+                sprite_data.voice_type = voice_type
         else:
             character.sprites[sprite_index]["voice_path"] = voice_path
             character.sprites[sprite_index]["voice_text"] = voice_text
+            if voice_type:
+                character.sprites[sprite_index]["voice_type"] = voice_type
             
         self._config_manager.save_characters_config()
+
+        if (
+            original_voice_path
+            and os.path.abspath(original_voice_path) != os.path.abspath(voice_path)
+            and _is_path_inside_directory(original_voice_path, voice_char_dir)
+        ):
+            try:
+                if os.path.isfile(original_voice_path):
+                    os.remove(original_voice_path)
+            except OSError:
+                pass
         
         return f"语音已上传到立绘 {sprite_index+1}！", voice_path
 
@@ -574,6 +616,25 @@ class CharacterManager:
 
         self._config_manager.save_characters_config()
         return "语音文字已保存"
+
+    def save_sprite_voice_type(self, character_name: str, sprite_index: int, voice_type: str) -> str:
+        """单独保存立绘的语音类型（preset/reference），不需要重新上传音频。"""
+        if not character_name:
+            return "请先选择角色！"
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}"
+        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
+            return "立绘不存在！"
+
+        sprite_data = character.sprites[sprite_index]
+        if isinstance(sprite_data, Sprite):
+            sprite_data.voice_type = voice_type if voice_type else None
+        else:
+            sprite_data["voice_type"] = voice_type if voice_type else None
+
+        self._config_manager.save_characters_config()
+        return "语音类型已保存"
 
     def delete_sprite_voice(self, character_name: str, sprite_index: int) -> str:
         """删除指定立绘的语音文件和引用。"""

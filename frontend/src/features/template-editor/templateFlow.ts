@@ -48,12 +48,12 @@ export function composeTemplateContent(scenario: unknown, system: unknown) {
   return [String(scenario ?? "").trim(), String(system ?? "").trim()].filter(Boolean).join("\n\n");
 }
 
-export function buildDefaultTemplateScenario(selectedCharacters: string[]) {
+export function buildDefaultTemplateScenario(selectedCharacters: string[], defaultScenario: string) {
   const names = selectedCharacters.map((name) => name.trim()).filter(Boolean);
   if (!names.length) {
     return "";
   }
-  return `你需要模拟一个RPG剧情对话系统，出场人物有：${names.join("、")} 以及其他相关人物，请根据剧情调度人物。`;
+  return defaultScenario;
 }
 
 export function createTemplateDraft(name: string): TemplateSummary {
@@ -95,6 +95,7 @@ export function buildTemplateSummary(draft: TemplateSummary): TemplateSummary {
 export function buildTemplateGenerateInput(input: {
   backgroundName: string;
   draft: TemplateSummary;
+  effectNames?: string[];
   options: TemplateFlowOptions;
   runtime: Pick<TemplateRuntimeOptions, "maxDialogItems" | "maxSpeechChars" | "voiceLanguage">;
   selectedCharacters: string[];
@@ -102,6 +103,7 @@ export function buildTemplateGenerateInput(input: {
   return {
     backgroundName: input.backgroundName,
     characters: input.selectedCharacters,
+    effectNames: input.effectNames?.length ? input.effectNames : undefined,
     maxDialogItems: input.runtime.maxDialogItems,
     maxSpeechChars: input.runtime.maxSpeechChars,
     name: input.draft.name.trim(),
@@ -120,6 +122,7 @@ export function buildTemplateGenerateInput(input: {
 export function buildTemplateLaunchSession(input: {
   backgroundName: string;
   draft: TemplateSummary;
+  effectNames?: string[];
   options: TemplateFlowOptions;
   runtime: TemplateRuntimeOptions;
   selectedCharacters: string[];
@@ -127,6 +130,7 @@ export function buildTemplateLaunchSession(input: {
 }): TemplateLaunchSession {
   return {
     background: input.backgroundName,
+    effectNames: input.effectNames ?? [],
     filenameStub: input.draft.name.trim(),
     historyPath: input.runtime.historyPath.trim(),
     initSpritePath: input.runtime.initSpritePath.trim(),
@@ -150,6 +154,7 @@ export function buildTemplateLaunchSession(input: {
 
 export function buildChatLaunchPayload(input: {
   backgroundName: string;
+  effectNames?: string[];
   resetHistory: boolean;
   runtime: Pick<TemplateRuntimeOptions, "historyPath" | "initSpritePath" | "roomId">;
   selectedCharacters: string[];
@@ -159,6 +164,7 @@ export function buildChatLaunchPayload(input: {
   return {
     backgroundName: input.backgroundName,
     characters: input.selectedCharacters,
+    effectNames: input.effectNames?.length ? input.effectNames : undefined,
     historyPath: input.runtime.historyPath.trim(),
     initSpritePath: input.runtime.initSpritePath.trim(),
     resetHistory: input.resetHistory,

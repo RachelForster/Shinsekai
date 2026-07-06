@@ -21,6 +21,7 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
     parser.add_argument("--tts", type=str, default="")
     parser.add_argument("--llm", type=str, default="deepseek")
     parser.add_argument("--bg", type=str, default="")
+    parser.add_argument("--effect_names", type=str, default="")
     parser.add_argument("--t2i", type=str, default="ComfyUI")
     parser.add_argument(
         "--workflow",
@@ -43,6 +44,18 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
         type=str,
         default="",
         help=tr_i18n("main.arg_room_help"),
+    )
+    parser.add_argument(
+        "--stream-endpoint",
+        type=str,
+        default="",
+        help="Connect the chat worker to a bridge WebSocket endpoint instead of opening the desktop chat window.",
+    )
+    parser.add_argument(
+        "--mirror-stream-endpoint",
+        type=str,
+        default="",
+        help="Mirror desktop chat UI updates to a bridge WebSocket endpoint while keeping the native Qt chat window.",
     )
     return parser
 

@@ -4,6 +4,7 @@ import { Image as ImageIcon, Tags, Trash2, Upload, Volume2 } from "lucide-react"
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
+import type { SpriteVoiceType } from "../../shared/platform/types";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
   AsyncButton,
@@ -43,6 +44,7 @@ interface CharacterSpritesSectionProps {
   onSpriteVoiceTextBlur: (text: string) => void;
   onSpriteVoiceTextChange: (value: string) => void;
   onSpriteVoiceUpload: () => void;
+  onSpriteVoiceTypeChange: (value: SpriteVoiceType) => void;
   pendingSpritePaths: string[];
   pendingVoicePath: string;
   selectedSprite?: Sprite;
@@ -76,6 +78,7 @@ export function CharacterSpritesSection({
   onSpriteVoiceTextBlur,
   onSpriteVoiceTextChange,
   onSpriteVoiceUpload,
+  onSpriteVoiceTypeChange,
   pendingSpritePaths,
   pendingVoicePath,
   selectedSprite,
@@ -89,6 +92,13 @@ export function CharacterSpritesSection({
   voiceUploadPending,
 }: CharacterSpritesSectionProps) {
   const { t } = useI18n();
+  const voiceType = selectedSprite?.voice_type ?? "fallback";
+  const voiceTypeHintKey =
+    voiceType === "reference"
+      ? "character.sprite.voiceRefHint"
+      : voiceType === "preset"
+        ? "character.sprite.voicePresetHint"
+        : "character.sprite.voiceFallbackHint";
 
   return (
     <section className="section page-section-anchor" id={id}>
@@ -206,11 +216,51 @@ export function CharacterSpritesSection({
                   ) : null}
                 </span>
               </label>
+              <div className="field-row field-row--stack">
+                <span className="field-row__label">{t("character.sprite.voiceType")}</span>
+                <span className="field-row__control">
+                  <div className="voice-type-selector">
+                    <label className="radio-row">
+                      <input
+                        checked={voiceType === "reference"}
+                        name="voiceType"
+                        onChange={() => onSpriteVoiceTypeChange("reference")}
+                        type="radio"
+                        value="reference"
+                      />
+                      <span>{t("character.sprite.voiceTypeReference")}</span>
+                    </label>
+                    <label className="radio-row">
+                      <input
+                        checked={voiceType === "preset"}
+                        name="voiceType"
+                        onChange={() => onSpriteVoiceTypeChange("preset")}
+                        type="radio"
+                        value="preset"
+                      />
+                      <span>{t("character.sprite.voiceTypePreset")}</span>
+                    </label>
+                    <label className="radio-row">
+                      <input
+                        checked={voiceType === "fallback"}
+                        name="voiceType"
+                        onChange={() => onSpriteVoiceTypeChange("fallback")}
+                        type="radio"
+                        value="fallback"
+                      />
+                      <span>{t("character.sprite.voiceTypeFallback")}</span>
+                    </label>
+                  </div>
+                  <p className="field-row__hint field-row__hint--voice-type">{t(voiceTypeHintKey)}</p>
+                </span>
+              </div>
               <label className="field-row field-row--stack">
                 <span className="field-row__label">{t("character.sprite.voiceUploadPath")}</span>
                 <span className="field-row__control">
                   <FilePicker
-                    acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
+                    acceptedExtensions={
+                      voiceType === "reference" ? [".wav"] : [".flac", ".m4a", ".mp3", ".ogg", ".wav"]
+                    }
                     onPathChange={onPendingVoicePathChange}
                     pickLabel={t("common.chooseFile")}
                     pickerTitle={t("character.sprite.voiceUploadPath")}
@@ -218,16 +268,27 @@ export function CharacterSpritesSection({
                   />
                 </span>
               </label>
-              <label className="field-row field-row--stack">
-                <span className="field-row__label">{t("character.sprite.voiceText")}</span>
-                <span className="field-row__control">
-                  <TextInput
-                    onBlur={(event) => onSpriteVoiceTextBlur(event.currentTarget.value)}
-                    onChange={(event) => onSpriteVoiceTextChange(event.target.value)}
-                    value={selectedSprite.voice_text ?? ""}
-                  />
-                </span>
-              </label>
+              {voiceType !== "fallback" ? (
+                <label className="field-row field-row--stack">
+                  <span className="field-row__label">{t("character.sprite.voiceText")}</span>
+                  <span className="field-row__control">
+                    <div className="input-group sprite-tag-row">
+                      <TextInput
+                        className="sprite-tag-input"
+                        onBlur={(event) => onSpriteVoiceTextBlur(event.currentTarget.value)}
+                        onChange={(event) => onSpriteVoiceTextChange(event.target.value)}
+                        value={selectedSprite.voice_text ?? ""}
+                      />
+                      <AsyncButton
+                        onClick={() => onSpriteVoiceTextBlur(selectedSprite?.voice_text ?? "")}
+                        variant="ghost"
+                      >
+                        {t("character.sprite.saveVoiceText")}
+                      </AsyncButton>
+                    </div>
+                  </span>
+                </label>
+              ) : null}
               <div className="asset-inspector__actions">
                 <AsyncButton loading={voiceUploadPending} onClick={onSpriteVoiceUpload} variant="ghost">
                   {t("character.sprite.uploadVoice")}

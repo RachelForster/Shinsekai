@@ -9,12 +9,15 @@ from typing import Any
 from core.paths import resource_path
 from sdk.logging.environment import runtime_environment
 
+from .security import safe_child_path, safe_existing_file_path
+
 MAX_LOG_BYTES = 4 * 1024 * 1024
 MAX_LOG_FILES = 200
 MAX_DIAGNOSTIC_FILES = 12
 
 
 def _log_snapshot(path: Path, *, max_bytes: int = MAX_LOG_BYTES) -> dict[str, Any]:
+    path = safe_existing_file_path(path, field="log path")
     if not path.is_file():
         raise FileNotFoundError(path.as_posix())
     size = path.stat().st_size
@@ -54,7 +57,7 @@ def _diagnostic_bundle(project_root: Path) -> dict[str, Any]:
     output_dir = log_root / "diagnostics"
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    output = output_dir / f"shinsekai-diagnostics-{stamp}.zip"
+    output = safe_child_path(output_dir, f"shinsekai-diagnostics-{stamp}.zip")
 
     files = _log_file_candidates(project_root)[:MAX_DIAGNOSTIC_FILES]
     runtime = runtime_environment(project_root)

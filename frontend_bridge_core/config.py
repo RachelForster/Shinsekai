@@ -6,8 +6,18 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
+from config.tts_provider_config import (
+    default_tts_work_path,
+    installed_tts_bundle_paths,
+    is_http_url,
+    normalize_tts_provider,
+    requires_tts_work_path,
+    tts_server_url_or_default,
+    uses_shared_tts_server_config,
+)
+from llm.claude_url import claude_messages_endpoint_url, claude_models_endpoint_url
+from .security import host_matches, validated_http_url
 from .state import BridgeState, _jsonify
 
 _MODEL_REQUEST_USER_AGENT = (
@@ -27,6 +37,7 @@ _IMAGE_ONLY_MODEL_MARKERS = (
 )
 _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
     ("genie-tts", "Genie TTS"),
+    ("kaggle-gpt-sovits", "Kaggle GPT-SoVITS"),
     ("gpt-sovits", "GPT SoVITS"),
     ("index-tts", "IndexTTS"),
     ("cosyvoice", "CosyVoice"),
@@ -141,6 +152,7 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     payload = _jsonify(state.config_manager.config)
     if not isinstance(payload, dict):
         return {}
+    project_root = state.app_root_dir or None
     try:
         from config.mirror_env import system_config_payload_with_resolved_mirrors
 
@@ -148,6 +160,7 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     except Exception:
         pass
     api_config = payload.get("api_config")
+    tts_bundle_paths = installed_tts_bundle_paths(project_root)
     if isinstance(api_config, dict):
         provider = str(api_config.get("llm_provider") or "Deepseek").strip() or "Deepseek"
         if not str(api_config.get("llm_base_url") or "").strip():
@@ -161,6 +174,19 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
         if not isinstance(llm_model, dict):
             llm_model = {}
             api_config["llm_model"] = llm_model
+        tts_provider = normalize_tts_provider(str(api_config.get("tts_provider") or ""))
+        api_config["tts_provider"] = tts_provider
+        api_config["gpt_sovits_url"] = tts_server_url_or_default(
+            tts_provider,
+            str(api_config.get("gpt_sovits_url") or ""),
+        )
+        api_config["gpt_sovits_api_path"] = default_tts_work_path(
+            tts_provider,
+            str(api_config.get("gpt_sovits_api_path") or ""),
+            project_root,
+        )
+    if tts_bundle_paths:
+        payload["tts_bundle_installed_paths"] = tts_bundle_paths
     payload["adapter_catalog"] = _adapter_catalog()
     return payload
 
@@ -169,26 +195,8 @@ def _contains_quotes(value: str) -> bool:
     return '"' in value or "'" in value
 
 
-def _is_http_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-
 def _provider_map_value(mapping: dict[str, str], provider: str) -> str:
     return str((mapping or {}).get(provider, "") or "").strip()
-
-
-def _normalize_tts_provider(value: str) -> str:
-    raw = str(value or "").strip()
-    low = raw.lower()
-    if low in {"none", "off", "disable", "disabled", "不使用"}:
-        return "none"
-    legacy = {
-        "genie tts": "genie-tts",
-        "gpt sovits": "gpt-sovits",
-        "gpt-sovits": "gpt-sovits",
-    }
-    return legacy.get(low, low or "gpt-sovits")
 
 
 def _normalize_t2i_provider(value: str) -> str:
@@ -217,19 +225,21 @@ def _validate_api_config_for_save(config: Any) -> None:
     if _contains_quotes(base_url):
         raise ValueError("LLM API 基础网址不能包含引号。")
 
-    tts_provider = _normalize_tts_provider(config.tts_provider)
-    if tts_provider not in {"gpt-sovits", "genie-tts"}:
+    tts_provider = normalize_tts_provider(config.tts_provider)
+    if not uses_shared_tts_server_config(tts_provider):
         return
 
     tts_url = str(config.gpt_sovits_url or "").strip()
     tts_path = str(config.gpt_sovits_api_path or "").strip()
-    if not tts_url or not tts_path:
-        raise ValueError("当前 TTS 引擎需要填写 URL 和服务启动路径。")
+    if not tts_url:
+        raise ValueError("当前 TTS 引擎需要填写 URL。")
     if _contains_quotes(tts_url) or _contains_quotes(tts_path):
         raise ValueError("TTS URL 和服务启动路径不能包含引号。")
-    if not _is_http_url(tts_url):
+    if not is_http_url(tts_url):
         raise ValueError("TTS URL 必须是有效的 http(s) URL。")
-    if not Path(tts_path).expanduser().is_dir():
+    if requires_tts_work_path(tts_provider) and not tts_path:
+        raise ValueError("本地 TTS 引擎需要填写服务启动路径。")
+    if tts_path and tts_provider != "kaggle-gpt-sovits" and not Path(tts_path).expanduser().is_dir():
         raise ValueError("TTS 服务启动路径必须是已存在的目录。")
 
 
@@ -237,8 +247,17 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
     from config.schema import ApiConfig
 
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
-    config.tts_provider = _normalize_tts_provider(config.tts_provider)
+    config.tts_provider = normalize_tts_provider(config.tts_provider)
     config.t2i_provider = _normalize_t2i_provider(config.t2i_provider)
+    config.gpt_sovits_url = tts_server_url_or_default(config.tts_provider, config.gpt_sovits_url)
+    if config.tts_provider == "kaggle-gpt-sovits":
+        config.gpt_sovits_api_path = ""
+    else:
+        config.gpt_sovits_api_path = default_tts_work_path(
+            config.tts_provider,
+            config.gpt_sovits_api_path,
+            state.app_root_dir or None,
+        )
     _validate_api_config_for_save(config)
     state.config_manager.config.api_config = config
     state.config_manager.save_api_config()
@@ -247,15 +266,14 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
 
 def _llm_model_provider_kind(provider: str, base_url: str) -> str:
     low_provider = provider.strip().lower()
-    low_base = base_url.strip().lower()
-    if "gemini" in low_provider or "generativelanguage.googleapis.com" in low_base:
+    if "gemini" in low_provider or _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"}):
         return "gemini"
-    if "deepseek" in low_provider or "api.deepseek.com" in low_base:
+    if "deepseek" in low_provider or _base_url_host_matches(base_url, {"api.deepseek.com"}):
         return "deepseek"
-    if low_provider == "claude" or "claude" in low_provider or "anthropic.com" in low_base:
+    if low_provider == "claude" or "claude" in low_provider or _base_url_host_matches(base_url, {"anthropic.com"}):
         return "anthropic"
     if (
-        "dashscope.aliyuncs.com" in low_base
+        _base_url_host_matches(base_url, {"dashscope.aliyuncs.com"})
         or "通义" in low_provider
         or "qwen" in low_provider
         or "dashscope" in low_provider
@@ -264,26 +282,45 @@ def _llm_model_provider_kind(provider: str, base_url: str) -> str:
     return "openai_compatible"
 
 
+def _base_url_host_matches(base_url: str, allowed_hosts: set[str]) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(str(base_url or "").strip())
+    except ValueError:
+        return False
+    return parsed.hostname is not None and host_matches(parsed.hostname, allowed_hosts)
+
+
 def _openai_models_endpoint(base_url: str) -> str:
     base = base_url.strip().rstrip("/")
     if not base:
         raise ValueError("请先填写 LLM 基础地址和 API Key。")
     if base.lower().endswith("/models"):
-        return base
-    return f"{base}/models"
+        return _validated_llm_endpoint(base)
+    return _validated_llm_endpoint(f"{base}/models")
+
+
+def _validated_llm_endpoint(endpoint: str) -> str:
+    return validated_http_url(
+        endpoint,
+        allow_localhost=True,
+        allow_private_hosts=True,
+        field="LLM endpoint",
+    )
 
 
 def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
     kind = _llm_model_provider_kind(provider, base_url)
     base = base_url.strip().rstrip("/")
-    if kind == "gemini" and "generativelanguage.googleapis.com" in base.lower():
+    if kind == "anthropic":
+        return _validated_llm_endpoint(claude_models_endpoint_url(base))
+    if kind == "gemini" and _base_url_host_matches(base, {"generativelanguage.googleapis.com"}):
         marker_ix = base.lower().rfind("/openai")
         if marker_ix >= 0:
             base = base[:marker_ix]
         if not base.lower().endswith("/v1beta"):
             base = "https://generativelanguage.googleapis.com/v1beta"
-        return f"{base}/models?{urllib.parse.urlencode({'key': api_key.strip()})}"
-    if kind == "deepseek" and "api.deepseek.com" in base.lower() and base.lower().endswith("/v1"):
+        return _validated_llm_endpoint(f"{base}/models?{urllib.parse.urlencode({'key': api_key.strip()})}")
+    if kind == "deepseek" and _base_url_host_matches(base, {"api.deepseek.com"}) and base.lower().endswith("/v1"):
         base = base[:-3]
     if kind == "dashscope":
         low_base = base.lower()
@@ -293,7 +330,7 @@ def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
         if low_base.endswith("/compatible-mode/v1"):
             base = base[: -len("/compatible-mode/v1")] + "/api/v1"
         if base.lower().endswith("/api/v1"):
-            return f"{base}/deployments/models?{query}"
+            return _validated_llm_endpoint(f"{base}/deployments/models?{query}")
     return _openai_models_endpoint(base)
 
 
@@ -302,17 +339,12 @@ def _openai_chat_endpoint(base_url: str) -> str:
     if not base:
         raise ValueError("请先填写 LLM 基础地址和 API Key。")
     if base.lower().endswith("/chat/completions"):
-        return base
-    return f"{base}/chat/completions"
+        return _validated_llm_endpoint(base)
+    return _validated_llm_endpoint(f"{base}/chat/completions")
 
 
 def _anthropic_messages_endpoint(base_url: str) -> str:
-    base = base_url.strip().rstrip("/")
-    if not base:
-        raise ValueError("请先填写 LLM 基础地址和 API Key。")
-    if base.lower().endswith("/messages"):
-        return base
-    return f"{base}/messages"
+    return _validated_llm_endpoint(claude_messages_endpoint_url(base_url))
 
 
 def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> dict[str, str]:
@@ -327,7 +359,7 @@ def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> di
         "User-Agent": _MODEL_REQUEST_USER_AGENT,
     }
     kind = _llm_model_provider_kind(provider, base_url)
-    if kind == "gemini" and "generativelanguage.googleapis.com" in base_url.lower():
+    if kind == "gemini" and _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"}):
         return headers
     if kind == "anthropic":
         headers["x-api-key"] = key

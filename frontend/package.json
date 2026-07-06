@@ -1,7 +1,7 @@
 {
   "name": "shinsekai-frontend",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "license": "SEE LICENSE IN ../LICENSE",
   "type": "module",
   "scripts": {
@@ -24,10 +24,11 @@
     "format:check": "prettier --check . --ignore-unknown",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:cuj": "playwright test --config playwright.cuj.config.ts",
     "test:functional": "playwright test e2e/functionality.spec.ts",
-    "test:visual": "playwright test e2e/visual.spec.ts",
-    "test:visual:update": "playwright test e2e/visual.spec.ts --update-snapshots",
+    "test:visual": "playwright test --config=playwright.visual.config.ts e2e/visual.spec.ts",
+    "test:visual:update": "playwright test --config=playwright.visual.config.ts e2e/visual.spec.ts --update-snapshots",
     "test:watch": "vitest",
     "lint:types": "tsc -b --pretty false"
   },
@@ -47,6 +48,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
+    "@vitest/coverage-v8": "^2.1.9",
     "jsdom": "^25.0.1",
     "prettier": "^3.8.3",
     "typescript": "^5.6.3",

@@ -2,23 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WheelEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
   charactersQueryKey,
   deleteCharacter,
   deleteAllCharacterSprites,
-  deleteCharacterMemory,
   deleteCharacterSprite,
   deleteSpriteVoice,
   exportCharacter,
   generateCharacterSetting,
   importCharacters,
-  listCharacterMemories,
   listCharacters,
-  rememberCharacterMemory,
   saveCharacter,
   saveCharacterEmotionTags,
   saveSpriteScale,
   saveSpriteVoiceText,
+  saveSpriteVoiceType,
   translateCharacterFields,
   uploadCharacterSprites,
   uploadSpriteVoice,
@@ -28,8 +27,10 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
+import type { SpriteVoiceType } from "../../shared/platform/types";
 import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
+import { CharacterMemoryDialogs } from "./CharacterMemoryDialogs";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
@@ -44,15 +45,33 @@ import {
   pronunciationTextToMap,
   type CharacterResourceDeleteTarget,
 } from "./characterEditorUtils";
+import { useCharacterMemoryController } from "./useCharacterMemoryController";
 import "./CharacterEditorPage.css";
+
+export function mergeSprites(serverSprites: Sprite[], current: Character) {
+  const currentSpritesByPath = new Map(
+    current.sprites.filter((sprite) => sprite.path).map((sprite) => [sprite.path, sprite]),
+  );
+  const canFallbackToIndex = serverSprites.length === current.sprites.length;
+  return serverSprites.map((sprite, index) => {
+    const currentSprite =
+      currentSpritesByPath.get(sprite.path) ?? (canFallbackToIndex ? current.sprites[index] : undefined);
+    return {
+      ...sprite,
+      voice_type: sprite.voice_type ?? currentSprite?.voice_type,
+    };
+  });
+}
 
 export function CharacterEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const data = charactersQuery.data ?? [];
   const isLoading = charactersQuery.isLoading;
+  const voiceReferenceReadOnly = configQuery.data?.api_config?.tts_provider === "kaggle-gpt-sovits";
   const [selectedName, setSelectedName] = useState("");
   const [draft, setDraft] = useState<Character>(createCharacter());
   const [isCreating, setIsCreating] = useState(false);
@@ -65,9 +84,9 @@ export function CharacterEditorPage() {
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
-  const [memoryInput, setMemoryInput] = useState("");
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const memoryName = draft.name.trim();
+  const memoryController = useCharacterMemoryController({ memoryName });
   const currentCharacterName = isCreating ? "" : selectedName;
   const isSavedCharacter = Boolean(
     currentCharacterName && data.some((character) => character.name === currentCharacterName),
@@ -90,8 +109,10 @@ export function CharacterEditorPage() {
     return data[0];
   }, [data, isCreating, selectedName]);
 
+  const prevSelectedNameRef = useRef<string>("");
   useEffect(() => {
-    if (selected) {
+    if (selected && selected.name !== prevSelectedNameRef.current) {
+      prevSelectedNameRef.current = selected.name;
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
       setPronunciationText(pronunciationMapToText(selected.pronunciation_map));
@@ -99,18 +120,15 @@ export function CharacterEditorPage() {
       setPendingVoicePaths({});
       setSelectedSpriteIndex(0);
       setNameError("");
+    } else if (selected) {
+      // same character, just sync draft silently (e.g. after invalidateQueries)
+      setDraft(structuredClone(selected));
     }
   }, [selected]);
 
   useEffect(() => {
     setSelectedSpriteIndex((current) => Math.min(current, Math.max(0, draft.sprites.length - 1)));
   }, [draft.sprites.length]);
-
-  const memoryQuery = useQuery({
-    enabled: false,
-    queryFn: () => listCharacterMemories(memoryName),
-    queryKey: ["character-memories", memoryName],
-  });
 
   const saveMutation = useMutation({
     mutationFn: ({ character, originalName }: { character: Character; originalName?: string }) =>
@@ -233,36 +251,6 @@ export function CharacterEditorPage() {
     },
   });
 
-  const memoryAddMutation = useMutation({
-    mutationFn: () => rememberCharacterMemory(memoryName, memoryInput),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.memory.error"),
-        title: t("character.memory.add"),
-      });
-    },
-    onSuccess(result) {
-      setMemoryInput("");
-      queryClient.setQueryData(["character-memories", memoryName], result);
-      showToast({ kind: "success", title: t("character.memory.add") });
-    },
-  });
-
-  const memoryDeleteMutation = useMutation({
-    mutationFn: ({ memoryId, name }: { memoryId: string; name: string }) => deleteCharacterMemory(name, memoryId),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.memory.error"),
-        title: t("character.memory.delete"),
-      });
-    },
-    onSuccess(result, variables) {
-      queryClient.setQueryData(["character-memories", variables.name], result);
-    },
-  });
-
   const voiceUploadMutation = useMutation({
     mutationFn: ({ index, voicePath, voiceText }: { index: number; voicePath: string; voiceText: string }) =>
       uploadSpriteVoice({
@@ -270,6 +258,7 @@ export function CharacterEditorPage() {
         spriteIndex: index,
         voicePath,
         voiceText,
+        voiceType: spriteVoiceType(draft.sprites[index], draft),
       }),
     onError(error) {
       showToast({
@@ -280,7 +269,10 @@ export function CharacterEditorPage() {
     },
     onSuccess(character, variables) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       setPendingVoicePaths((current) => {
         const next = { ...current };
         delete next[variables.index];
@@ -318,6 +310,18 @@ export function CharacterEditorPage() {
     },
   });
 
+  const voiceTypeMutation = useMutation({
+    mutationFn: ({ index, voiceType: vt }: { index: number; voiceType: SpriteVoiceType }) =>
+      saveSpriteVoiceType(currentCharacterName, index, vt),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+        title: t("character.sprite.voiceType"),
+      });
+    },
+  });
+
   const voiceDeleteMutation = useMutation({
     mutationFn: ({ index, name }: { index: number; name: string }) => deleteSpriteVoice(name, index),
     onError(error) {
@@ -329,7 +333,10 @@ export function CharacterEditorPage() {
     },
     onSuccess(character, variables) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       setPendingVoicePaths((current) => {
         const next = { ...current };
         delete next[variables.index];
@@ -375,7 +382,10 @@ export function CharacterEditorPage() {
       });
       setIsCreating(false);
       setSelectedName(character.name);
-      setDraft(structuredClone(character));
+      setDraft((current) => ({
+        ...structuredClone(character),
+        sprites: mergeSprites(character.sprites, current),
+      }));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
       setPendingSpritePaths([]);
       showToast({ kind: "success", title: t("character.sprite.uploadImages") });
@@ -409,7 +419,11 @@ export function CharacterEditorPage() {
     },
     onSuccess(character) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        emotion_tags: character.emotion_tags,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       showToast({ kind: "success", title: t("common.remove") });
     },
   });
@@ -425,7 +439,11 @@ export function CharacterEditorPage() {
     },
     onSuccess(character) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        emotion_tags: character.emotion_tags,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       showToast({ kind: "success", title: t("character.sprite.clear") });
     },
   });
@@ -460,6 +478,17 @@ export function CharacterEditorPage() {
       return { ...current, sprites };
     });
   };
+
+  const characterHasGptSovitsModel = (character: Character) =>
+    Boolean(character.gpt_model_path?.trim() && character.sovits_model_path?.trim());
+
+  const spriteHasReferenceVoiceText = (sprite: Sprite | undefined) => Boolean(sprite?.voice_text?.trim());
+
+  const defaultSpriteVoiceType = (sprite: Sprite | undefined, character: Character): SpriteVoiceType =>
+    characterHasGptSovitsModel(character) && spriteHasReferenceVoiceText(sprite) ? "reference" : "fallback";
+
+  const spriteVoiceType = (sprite: Sprite | undefined, character: Character): SpriteVoiceType =>
+    sprite?.voice_type ?? defaultSpriteVoiceType(sprite, character);
 
   const updateSpriteTag = (index: number, value: string) => {
     setDraft((current) => {
@@ -569,14 +598,14 @@ export function CharacterEditorPage() {
     { id: "character-memory", label: t("character.memory.section") },
   ];
 
-  const confirmPendingResourceDelete = () => {
+  const confirmPendingResourceDelete = async () => {
     if (!pendingResourceDelete) {
       return;
     }
     const target = pendingResourceDelete;
     setPendingResourceDelete(null);
     if (target.kind === "memory") {
-      memoryDeleteMutation.mutate({ memoryId: target.memoryId, name: target.characterName });
+      await memoryController.deleteMemory({ memoryId: target.memoryId, name: target.characterName });
       return;
     }
     if (target.kind === "sprite") {
@@ -757,6 +786,13 @@ export function CharacterEditorPage() {
     }
   };
 
+  const handleSpriteVoiceTypeChange = (value: SpriteVoiceType) => {
+    updateSprite(selectedSpriteIndex, { voice_type: value });
+    if (isSavedCharacter) {
+      voiceTypeMutation.mutate({ index: selectedSpriteIndex, voiceType: value });
+    }
+  };
+
   const uploadSelectedSpriteVoice = () => {
     const voicePath = pendingVoicePaths[selectedSpriteIndex]?.trim() ?? "";
     if (!isSavedCharacter) {
@@ -866,7 +902,12 @@ export function CharacterEditorPage() {
           />
         </div>
 
-        <CharacterVoiceSection draft={draft} id="character-voice" onChange={update} />
+        <CharacterVoiceSection
+          draft={draft}
+          id="character-voice"
+          onChange={update}
+          voiceReferenceReadOnly={voiceReferenceReadOnly}
+        />
 
         <CharacterSpritesSection
           draft={draft}
@@ -888,9 +929,12 @@ export function CharacterEditorPage() {
           onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
           onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
           onSpriteVoiceUpload={uploadSelectedSpriteVoice}
+          onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
           pendingSpritePaths={pendingSpritePaths}
           pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
-          selectedSprite={selectedSprite}
+          selectedSprite={
+            selectedSprite ? { ...selectedSprite, voice_type: spriteVoiceType(selectedSprite, draft) } : undefined
+          }
           selectedSpriteIndex={selectedSpriteIndex}
           selectedSpriteTag={selectedSpriteTag}
           spriteDeletePending={spriteDeleteMutation.isPending}
@@ -902,21 +946,34 @@ export function CharacterEditorPage() {
         />
 
         <CharacterMemorySection
-          addPending={memoryAddMutation.isPending}
-          data={memoryQuery.data}
-          deletePending={memoryDeleteMutation.isPending}
-          error={memoryQuery.error}
+          addPending={memoryController.addPending}
+          data={memoryController.data}
+          deletePending={memoryController.deletePending}
+          depError={memoryController.depError}
+          depInstalling={memoryController.depInstalling}
+          error={memoryController.error}
           id="character-memory"
-          isError={memoryQuery.isError}
-          isFetched={memoryQuery.isFetched}
-          isFetching={memoryQuery.isFetching}
-          isLoading={memoryQuery.isLoading}
-          memoryInput={memoryInput}
+          isChecking={memoryController.isChecking}
+          isError={memoryController.isError}
+          isFetched={memoryController.isFetched}
+          isFetching={memoryController.isFetching}
+          isLoading={memoryController.isLoading}
+          memoryInput={memoryController.memoryInput}
           memoryName={memoryName}
-          onAddMemory={() => memoryAddMutation.mutate()}
+          memoryPage={memoryController.memoryPage}
+          memoryTotalPages={memoryController.memoryTotalPages}
+          activeSearchQuery={memoryController.activeSearchQuery}
+          onAddMemory={() => void memoryController.add()}
+          onClearSearch={memoryController.clearSearch}
           onDeleteMemory={requestMemoryDelete}
-          onMemoryInputChange={setMemoryInput}
-          onRefresh={() => void memoryQuery.refetch()}
+          onInstallDep={() => void memoryController.installDependency()}
+          onMemoryInputChange={memoryController.setMemoryInput}
+          onMemoryPageChange={memoryController.setMemoryPage}
+          onRefresh={() => void memoryController.refresh()}
+          onSearch={() => void memoryController.search()}
+          onSearchInputChange={memoryController.setSearchInput}
+          searchInput={memoryController.searchInput}
+          searchPending={memoryController.searchPending}
         />
       </div>
 
@@ -947,6 +1004,17 @@ export function CharacterEditorPage() {
         onConfirm={confirmPendingResourceDelete}
         open={Boolean(pendingResourceDelete)}
         title={pendingResourceDeleteCopy?.title ?? t("common.delete")}
+      />
+
+      <CharacterMemoryDialogs
+        depInstalling={memoryController.depInstalling}
+        dependencyOpen={memoryController.dependencyDialogOpen}
+        dependencyTask={memoryController.dependencyTask}
+        loadingMessage={memoryController.loadingMessage}
+        loadingOpen={memoryController.loadingDialogOpen}
+        loadingTask={memoryController.loadingTask}
+        onCloseDependency={memoryController.closeDependencyDialog}
+        onCloseLoading={memoryController.closeLoadingDialog}
       />
     </div>
   );

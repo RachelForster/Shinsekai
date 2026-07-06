@@ -9,17 +9,30 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterMemorySecti
     addPending: false,
     data: undefined,
     deletePending: false,
+    depError: null,
+    depInstalling: false,
     error: null,
+    isChecking: false,
     isError: false,
     isFetched: false,
     isFetching: false,
     isLoading: false,
     memoryInput: "",
     memoryName: "",
+    memoryPage: 1,
+    memoryTotalPages: 1,
+    activeSearchQuery: "",
     onAddMemory: vi.fn(),
+    onClearSearch: vi.fn(),
     onDeleteMemory: vi.fn(),
+    onInstallDep: vi.fn(),
     onMemoryInputChange: vi.fn(),
+    onMemoryPageChange: vi.fn(),
     onRefresh: vi.fn(),
+    onSearch: vi.fn(),
+    onSearchInputChange: vi.fn(),
+    searchInput: "",
+    searchPending: false,
     ...overrides,
   };
 
@@ -37,7 +50,7 @@ describe("CharacterMemorySection", () => {
     renderSection({ memoryInput: "A remembered line" });
 
     expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
-    expect(screen.getByRole("textbox")).toBeDisabled();
+    screen.getAllByRole("textbox").forEach((textbox) => expect(textbox).toBeDisabled());
     expect(screen.getByRole("button", { name: "Add memory" })).toBeDisabled();
   });
 
@@ -64,10 +77,91 @@ describe("CharacterMemorySection", () => {
     expect(props.onDeleteMemory).toHaveBeenCalledWith({ id: "mem-1", memory: "Likes the rooftop." });
     expect(deleteButtons[1]).toBeDisabled();
 
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Fresh memory" } });
+    fireEvent.change(screen.getByPlaceholderText("Memory content"), { target: { value: "Fresh memory" } });
     expect(props.onMemoryInputChange).toHaveBeenCalledWith("Fresh memory");
 
     fireEvent.click(screen.getByRole("button", { name: "Add memory" }));
     expect(props.onAddMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits memory search and pages through results", () => {
+    const onSearch = vi.fn();
+    const onSearchInputChange = vi.fn();
+    const onMemoryPageChange = vi.fn();
+    const onClearSearch = vi.fn();
+
+    renderSection({
+      activeSearchQuery: "tea",
+      data: {
+        agentId: "agent-1",
+        count: 9,
+        memories: [{ id: "mem-9", memory: "Likes jasmine tea." }],
+      },
+      isFetched: true,
+      memoryName: "Mio",
+      memoryPage: 2,
+      memoryTotalPages: 2,
+      onClearSearch,
+      onMemoryPageChange,
+      onSearch,
+      onSearchInputChange,
+      searchInput: "tea",
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Search related memories"), { target: { value: "coffee" } });
+    expect(onSearchInputChange).toHaveBeenCalledWith("coffee");
+
+    fireEvent.keyDown(screen.getByPlaceholderText("Search related memories"), { key: "Enter" });
+    expect(onSearch).toHaveBeenCalledTimes(1);
+
+    expect(screen.getByText('9 results for "tea"')).toBeInTheDocument();
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("Previous page"));
+    expect(onMemoryPageChange).toHaveBeenCalledWith(expect.any(Function));
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(onClearSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows dependency install UI when depError is set", () => {
+    const onInstall = vi.fn();
+
+    renderSection({
+      depError: { kind: "missing_dependency", moduleName: "mem0", packageName: "mem0ai" },
+      memoryName: "Mio",
+      onInstallDep: onInstall,
+    });
+
+    // Install button is present (not "Add memory" which should be hidden)
+    expect(screen.getByRole("button", { name: "Install" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add memory" })).not.toBeInTheDocument();
+    expect(screen.getByText("Missing Python dependency")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
+    expect(onInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows installing state and disables refresh when depInstalling is true", () => {
+    renderSection({
+      depError: { kind: "missing_dependency", moduleName: "mem0", packageName: "mem0ai" },
+      depInstalling: true,
+      memoryName: "Mio",
+    });
+
+    expect(screen.getByRole("button", { name: "Installing mem0ai…" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Installing mem0ai…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+  });
+
+  it("shows checking state with initializing text when isChecking is true", () => {
+    renderSection({
+      isChecking: true,
+      memoryName: "Mio",
+    });
+
+    expect(screen.getByRole("button", { name: "Initializing memory system…" })).toBeDisabled();
+    // Button label + EmptyState title both show the text
+    expect(screen.getAllByText("Initializing memory system…")).toHaveLength(2);
   });
 });

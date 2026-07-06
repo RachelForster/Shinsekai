@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .path_utils import strip_windows_verbatim_prefix as _strip_windows_verbatim_prefix
+from .security import reject_control_chars, safe_existing_dir_path, safe_existing_file_path
 from .state import BridgeState
 from .tasks import _update_task
 
@@ -24,7 +26,7 @@ def _extract_prompt_from_line(line: str) -> str:
 def _sprite_output_dir(state: BridgeState, character_name: str, requested: Any = "") -> Path:
     raw = str(requested or "").strip()
     if raw:
-        return Path(raw)
+        return Path(reject_control_chars(raw, field="output directory"))
     character = state.config_manager.get_character_by_name(character_name)
     if character is None:
         raise KeyError(f"character not found: {character_name}")
@@ -57,9 +59,10 @@ def _generate_sprites(state: BridgeState, task_id: str, payload: dict[str, Any])
     character_name = str(payload.get("characterName") or "").strip()
     if not character_name:
         raise ValueError("characterName is required")
-    reference = Path(str(payload.get("referenceImage") or "").strip())
-    if not reference.is_file():
-        raise ValueError("referenceImage must point to an existing file")
+    reference = safe_existing_file_path(
+        str(payload.get("referenceImage") or "").strip(),
+        field="referenceImage",
+    )
     raw_prompts = payload.get("prompts") or []
     if isinstance(raw_prompts, str):
         prompts = [_extract_prompt_from_line(line) for line in raw_prompts.splitlines()]
@@ -87,9 +90,11 @@ def _generate_sprites(state: BridgeState, task_id: str, payload: dict[str, Any])
 def _crop_sprites(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     from tools.crop_sprite import batch_crop_upper_half
 
-    input_dir = Path(str(payload.get("inputDir") or "").strip())
+    input_dir = safe_existing_dir_path(str(payload.get("inputDir") or "").strip(), field="inputDir")
     ratio = float(payload.get("ratio") or 1.0)
     requested_output = str(payload.get("outputDir") or "").strip()
+    if requested_output:
+        requested_output = reject_control_chars(requested_output, field="outputDir")
     output_dir = Path(requested_output) if requested_output else input_dir / f"cropped_upper_{ratio}"
 
     _update_task(state, task_id, message="正在批量裁剪立绘。", phase="crop", progress=0.25)
@@ -102,8 +107,10 @@ def _crop_sprites(state: BridgeState, task_id: str, payload: dict[str, Any]) -> 
 def _remove_sprite_background(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     from tools.remove_bg import batch_remove_background
 
-    input_dir = Path(str(payload.get("inputDir") or "").strip())
+    input_dir = safe_existing_dir_path(str(payload.get("inputDir") or "").strip(), field="inputDir")
     requested_output = str(payload.get("outputDir") or "").strip()
+    if requested_output:
+        requested_output = reject_control_chars(requested_output, field="outputDir")
     output_dir = Path(requested_output) if requested_output else input_dir / "removed_backgrounds"
 
     _update_task(state, task_id, message="正在批量抠出立绘。", phase="remove-background", progress=0.25)
@@ -111,18 +118,6 @@ def _remove_sprite_background(state: BridgeState, task_id: str, payload: dict[st
     result = {"message": str(message), "outputDir": output_dir.as_posix()}
     _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
     return result
-
-
-def _strip_windows_verbatim_prefix(value: str) -> str:
-    if value.startswith("\\\\?\\UNC\\"):
-        return "\\\\" + value[len("\\\\?\\UNC\\") :]
-    if value.startswith("\\\\?\\"):
-        return value[len("\\\\?\\") :]
-    if value.startswith("//?/UNC/"):
-        return "//" + value[len("//?/UNC/") :]
-    if value.startswith("//?/"):
-        return value[len("//?/") :]
-    return value
 
 
 def _display_path(path: Path) -> str:
@@ -261,6 +256,8 @@ def _filesystem_roots(project_root: Path, app_root: Path) -> list[dict[str, str]
 
 def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     raw_path = str(payload.get("path") or "").strip()
+    if raw_path:
+        raw_path = reject_control_chars(raw_path, field="path")
     show_hidden = bool(payload.get("showHidden"))
     root_raw = os.environ.get("EASYAI_PROJECT_ROOT") or str(Path.cwd())
     project_root = _resolve_path(Path(root_raw).expanduser())

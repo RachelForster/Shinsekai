@@ -36,6 +36,28 @@ logger = get_logger(__name__)
 
 # --- QThread + DagNode 基类 ---
 
+class _CancelAwareQueue:
+    """Delegate queue operations, but drop new outputs after cancellation."""
+
+    def __init__(self, queue, *cancel_events: threading.Event | None) -> None:
+        self._queue = queue
+        self._cancel_events = tuple(event for event in cancel_events if event is not None)
+
+    def _cancelled(self) -> bool:
+        return any(event.is_set() for event in self._cancel_events)
+
+    def put(self, *args, **kwargs):
+        if self._cancelled():
+            return None
+        return self._queue.put(*args, **kwargs)
+
+    def put_nowait(self, item):
+        return self.put(item, block=False)
+
+    def __getattr__(self, name: str):
+        return getattr(self._queue, name)
+
+
 class QThreadDagNode(DagNode, QThread):
     """每个 DagNode 自带一个 QThread 运行循环。"""
 
@@ -143,6 +165,15 @@ class LLMWorker(QThreadDagNode):
                 )
                 tracker.start_cross("e2e")
                 self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
+
+                if hasattr(self.ui_update_manager, "record_user_message"):
+                    self.ui_update_manager.record_user_message(message.text)
+                else:
+                    formatted_user_message = (
+                        "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+                        f"<b style='color:white;'>你</b>: {message.text}</p>"
+                    )
+                    self.ui_update_manager.chat_history.append(formatted_user_message)
 
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
@@ -266,6 +297,7 @@ class TTSWorker(QThreadDagNode):
         self.tts_queue = input_queue
         self.audio_path_queue = output_queue
         self.tts_message_dispatcher = None
+        self._cancel_event = threading.Event()          # 新增：取消当前合成用
         if input_queue is not None:
             self.bind_input(self.PORT_LLM_OUTPUT, input_queue)
         if output_queue is not None:
@@ -280,7 +312,8 @@ class TTSWorker(QThreadDagNode):
         self.tts_message_dispatcher.init_handlers()
         self._app_inited = True
 
-    def put_data(self, character_name: str, speech: str, sprite: str, audio_path, is_system_message: bool = False, effect: str = ""):
+    def put_data(self, character_name: str, speech: str, sprite: str, audio_path,
+                 is_system_message: bool = False, effect: str = ""):
         """与 handler 中 tts_emit_to_ui_queue 一致，供本 worker 异常路径使用。"""
         tts_emit_to_ui_queue(
             character_name, speech, sprite, audio_path or "",
@@ -292,6 +325,67 @@ class TTSWorker(QThreadDagNode):
 
     def outputs(self) -> dict[str, Port]:
         return {self.PORT_TTS_OUTPUT: Port(self.PORT_TTS_OUTPUT)}
+
+    def start(self) -> None:
+        if self.isRunning():
+            return
+        self._cancel_event.clear()
+        super().start()
+
+    def _dispatch_with_cancel(self, item):
+        """
+        在 daemon 子线程中执行 dispatcher.dispatch，主线程等待完成或取消。
+        - worker stop 或 runtime interrupt 取消时，直接返回，不等待子线程。
+        - 子线程异常会被捕获并在主线程重新抛出，保持原有异常处理路径。
+        """
+        done = threading.Event()
+        error = [None]
+        rt = try_get_app_runtime()
+        runtime_cancel_event = getattr(rt, "cancellation_requested", None) if rt is not None else None
+
+        def cancelled() -> bool:
+            return self._cancel_event.is_set() or bool(
+                runtime_cancel_event is not None and runtime_cancel_event.is_set()
+            )
+
+        def work():
+            original_audio_queue = None
+            guarded_audio_queue = None
+            try:
+                if rt is not None:
+                    original_audio_queue = rt.audio_path_queue
+                    guarded_audio_queue = _CancelAwareQueue(
+                        original_audio_queue,
+                        self._cancel_event,
+                        runtime_cancel_event,
+                    )
+                    rt.audio_path_queue = guarded_audio_queue
+                if cancelled():
+                    return
+                self.tts_message_dispatcher.dispatch(item)
+            except Exception as e:
+                if not cancelled():
+                    error[0] = e
+            finally:
+                if (
+                    rt is not None
+                    and guarded_audio_queue is not None
+                    and rt.audio_path_queue is guarded_audio_queue
+                ):
+                    rt.audio_path_queue = original_audio_queue
+                done.set()
+
+        t = threading.Thread(target=work, daemon=True)
+        t.start()
+
+        while not done.is_set() and not cancelled():
+            t.join(timeout=0.1)
+
+        if cancelled() and not done.is_set():
+            return
+
+        if error[0] is not None:
+            raise error[0]
 
     def run(self):
         self._init_app()
@@ -306,9 +400,7 @@ class TTSWorker(QThreadDagNode):
                 if get_app_runtime().cancellation_requested.is_set():
                     continue
                 with tracker.track("TTS dispatch"):
-                    self.tts_message_dispatcher.dispatch(item)
-                # If we were cancelled mid-synthesis, discard stale audio output
-                # (dispatch already pushed to audio_path_queue internally).
+                    self._dispatch_with_cancel(item)
                 if get_app_runtime().cancellation_requested.is_set():
                     self.audio_path_queue.clear()
             except Exception as e:
@@ -327,9 +419,11 @@ class TTSWorker(QThreadDagNode):
                     self.tts_queue.task_done()
 
     def stop(self):
+        self._cancel_event.set()        # 通知取消当前合成
         self.running = False
-        self.tts_queue.put(None)
+        self.tts_queue.put(None)        # 唤醒 queue.get()
         super().stop()
+
 
 class UIWorker(QThreadDagNode):
     PORT_TTS_OUTPUT = "tts_output"
@@ -346,6 +440,7 @@ class UIWorker(QThreadDagNode):
         self._app_inited = False
         self.audio_path_queue = input_queue
         self.task_done_requested = threading.Event()
+        self._dialog_active = False
         self.current_audio_path = None
         self.DIALOG_CHANNEL_ID = 7
         self.ui_out_dispatcher = default_ui_output_handler_chain()
@@ -383,18 +478,22 @@ class UIWorker(QThreadDagNode):
             self.dialog_channel = None
 
     def skip_speech(self):
-        """Stop audio playback immediately, regardless of queue state.
-
-        Always stops the active audio channel.  Used by interrupt to cut off
-        both synthesised TTS and preset voice playback.
-        """
-        if self.dialog_channel and self.dialog_channel.get_busy():
+        runtime = get_app_runtime()
+        playback = runtime.ui_playback
+        current_audio_path = self.current_audio_path or getattr(playback, "current_audio_path", None)
+        dialog_channel_busy = bool(self.dialog_channel and self.dialog_channel.get_busy())
+        active_dialog = self._dialog_active and not self.task_done_requested.is_set()
+        audio_active = dialog_channel_busy or bool(current_audio_path)
+        if not audio_active and not active_dialog:
+            return
+        if dialog_channel_busy:
             self.dialog_channel.stop()
-        self.current_audio_path = None
-        try:
-            get_app_runtime().ui_playback.current_audio_path = None
-        except Exception:
-            pass
+        if audio_active:
+            self.current_audio_path = None
+            playback.current_audio_path = None
+            ui_updates = getattr(self, "ui_update_manager", None) or runtime.ui_update_manager
+            if hasattr(ui_updates, "post_tts_skip"):
+                ui_updates.post_tts_skip()
         self.task_done_requested.set()
 
     def run(self):
@@ -425,6 +524,7 @@ class UIWorker(QThreadDagNode):
                     break
                 if get_app_runtime().cancellation_requested.is_set():
                     continue
+                self._dialog_active = True
                 self.ui_out_dispatcher.dispatch(output_data)
             except Exception as e:
                 logger.exception("UI worker task failed", extra={"event": "ui.worker.failed"})
@@ -437,6 +537,7 @@ class UIWorker(QThreadDagNode):
                     wait = max(len(_text) / 10, 0.3) if _text else 0.3
                     self.task_done_requested.wait(timeout=wait)
             finally:
+                self._dialog_active = False
                 if got_item:
                     self.audio_path_queue.task_done()
 

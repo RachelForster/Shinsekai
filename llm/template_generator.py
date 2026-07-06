@@ -8,6 +8,7 @@ from sdk.lang import normalize_lang
 from config.character_manager import ConfigManager
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 from llm.tools.tool_manager import ToolManager
+from sdk.tool_registry import apply_registered_tools
 from sdk.types import (
     FieldPatch,
     OutputContractPatch,
@@ -21,6 +22,7 @@ import llm.tools.character_tools  # noqa: F401
 import llm.tools.memory_tools    # noqa: F401
 import llm.tools.tool_search      # noqa: F401
 import llm.tools.file_tools       # noqa: F401
+import llm.tools.chat_ui_tools    # noqa: F401
 
 config_manager = ConfigManager()
 DEFAULT_DIALOG_CONTRACT_ID = "default.dialog.v1"
@@ -76,6 +78,7 @@ def _summarize_tool_parameters(parameters: Any) -> str:
 def _format_llm_tools_block() -> str:
     """Only include default-group tools in the system prompt.
     Use search_tools to discover tools from other groups on demand."""
+    apply_registered_tools(ToolManager())
     definitions = ToolManager().get_definitions(groups="default")
     if not definitions:
         return ""
@@ -185,10 +188,9 @@ def _render_field_notes(fields: dict[str, _FieldSpec]) -> str:
         aliases = ""
         if field.aliases:
             aliases = f" Aliases: {', '.join(field.aliases)}."
-        lines.append(
-            f"- {field.key} ({field.type}, {required}): {field.description}{aliases}\n"
-        )
+        lines.append(f"- {field.key} ({field.type}, {required}): {field.description}{aliases}\n")
     return "".join(lines)
+
 
 
 def _target_voice_key(code: str | None) -> str:
@@ -269,7 +271,7 @@ class TemplateGenerator:
         selected_characters = sorted(selected_characters)
 
         sep = _T("name_sep")
-        names = sep.join(selected_characters) + sep
+        names = sep.join(selected_characters)
 
         effect_line = _T("json_line_effect") if use_effect else ""
         vlang = _target_voice_display_name()
@@ -367,7 +369,9 @@ class TemplateGenerator:
                 character_setting = char_detail.character_setting
                 template += f"{character_setting}\n\n"
 
-        if bg_name and not is_transparent_background(bg_name):
+        has_real_background = bool(bg_name) and not is_transparent_background(bg_name)
+
+        if has_real_background:
             bg = config_manager.get_background_by_name(bg_name)
             if bg and bg.sprites:
                 template += _T("scene_block_header")
@@ -380,12 +384,12 @@ class TemplateGenerator:
                 template += f"{bg.bgm_tags}\n\n"
 
         # 保留字新代号（与 core.messaging.dialog_tokens 及 handlers 一致；旧版中文仍兼容）
-        opt_scene = (f", {SCENE}" if bg_name else "")
-        opt_bgm = (f", {BGM}" if bg_name else "")
+        opt_scene = (f", {SCENE}" if has_real_background else "")
+        opt_bgm = (f", {BGM}" if has_real_background else "")
         opt_cg = (f", {CG}" if use_cg else "")
         cot_part = (f"{COT}," if use_cot else "")
 
-        need_real = bool(bg_name) and not is_transparent_background(bg_name)
+        need_real = has_real_background
 
         _toks = {
             "narr": _narr_label(),
@@ -408,6 +412,7 @@ class TemplateGenerator:
 
         requirements: list[RequirementSpec] = [
             RequirementSpec("r_format", _T("r_format"), 10),
+            RequirementSpec("r_user_display_name_tool", _T("r_user_display_name_tool"), 15),
             RequirementSpec(
                 "r_cname",
                 _T(

@@ -1,6 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5174";
+const launchOptions =
+  process.platform === "linux"
+    ? {
+        args: ["--disable-dev-shm-usage", "--disable-setuid-sandbox", "--no-sandbox"],
+        chromiumSandbox: false,
+      }
+    : undefined;
 
 export default defineConfig({
   expect: {
@@ -18,6 +25,7 @@ export default defineConfig({
   use: {
     baseURL,
     colorScheme: "dark",
+    launchOptions,
     trace: "retain-on-failure",
     viewport: { height: 900, width: 1280 },
   },

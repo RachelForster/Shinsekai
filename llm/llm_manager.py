@@ -1,7 +1,9 @@
-
 from asyncio import Queue
+import copy
+from dataclasses import dataclass, field
 import json
 import threading
+import time
 from datetime import datetime
 from threading import Thread
 from typing import Any, Dict, Generator, List, Optional, Union
@@ -12,8 +14,14 @@ from core.runtime.app_runtime import try_get_app_runtime
 from i18n import tr
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 from llm.compact_manager import CompactManager
+from llm.message_sanitizer import (
+    filter_unpaired_tool_messages_for_request,
+    strip_orphaned_tool_calls,
+)
 from llm.tools.tool_manager import ToolManager
 from llm.tools.tool_executor import ToolExecutor
+from sdk.exception.types import HTTP_REASON_UNPAIRED_TOOL_MESSAGES, classify_exception
+from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher, PluginHookEvent
 from sdk.logging import get_logger
 
 tool_manager = ToolManager()
@@ -43,6 +51,44 @@ set_tool_ready_callback(_on_tool_ready)
 
 # 流式输出中非正文的片段（供 LLMWorker 显示思考过程，且不混入 JSON 解析缓冲区）
 STREAM_REASONING_DELTA_KEY = "reasoning_delta"
+FIRST_USER_TURN_TOOL_CALL_LIMIT = 1
+
+
+@dataclass
+class _ChatTurnState:
+    started_at: float
+    first_user_turn: bool
+    first_turn_tool_call_limit: int
+    llm_rounds: int = 0
+    tool_call_attempts: int = 0
+    tool_calls_executed: int = 0
+    tool_calls_skipped: int = 0
+    tool_failures: dict[str, str] = field(default_factory=dict)
+
+    def tool_budget_exhausted(self) -> bool:
+        return (
+            self.first_user_turn
+            and self.first_turn_tool_call_limit >= 0
+            and self.tool_call_attempts >= self.first_turn_tool_call_limit
+        )
+
+
+def _tool_result_status(result: str) -> str:
+    if not result:
+        return "empty"
+    try:
+        parsed = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return "raw"
+    if not isinstance(parsed, dict):
+        return "success"
+    if parsed.get("status") == "loading":
+        return "loading"
+    if parsed.get("cancelled") is True:
+        return "cancelled"
+    if "error" in parsed:
+        return "error"
+    return str(parsed.get("status") or "success")
 
 def _prefix_user_text_with_local_time(text: str) -> str:
     """为发送给模型的用户正文加上本机本地时间（供模型感知「何时」发送）。"""
@@ -183,66 +229,6 @@ class LLMAdapterFactory:
             raise e
 
 
-def strip_orphaned_tool_calls(msgs: list) -> None:
-    """纯函数，便于测试。清理不完整的 tool call 对：删孤立的 tool，补缺失的回执。"""
-    if not msgs:
-        return
-
-    # 1. 找出孤立的 tool 消息（没有紧邻的 assistant 包含其 tool_call_id，或中间有 user 插入）
-    orphan_tool_indices: list[int] = []
-    for i, m in enumerate(msgs):
-        if m.get("role") != "tool":
-            continue
-        tc_id = m.get("tool_call_id", "")
-        ok = False
-        for j in range(i - 1, -1, -1):
-            r = msgs[j].get("role", "")
-            if r == "user":
-                break
-            if r == "assistant" and msgs[j].get("tool_calls"):
-                if any(tc.get("id") == tc_id for tc in msgs[j]["tool_calls"]):
-                    ok = True
-                break
-        if not ok:
-            orphan_tool_indices.append(i)
-
-    # 2. 删孤立的 tool 消息（从后往前）
-    for i in reversed(orphan_tool_indices):
-        del msgs[i]
-
-    # 3. 重建索引，收集 assistant(tool_calls)
-    pending_calls: dict[int, list[dict]] = {}
-    for i, m in enumerate(msgs):
-        if m.get("role") == "assistant" and m.get("tool_calls"):
-            pending_calls[i] = [
-                {"id": tc.get("id", ""), "name": tc.get("function", {}).get("name", "")}
-                for tc in m["tool_calls"]
-            ]
-
-    # 4. 补上缺失的 tool 回执
-    inserts: list[tuple[int, dict]] = []
-    for ai, calls in pending_calls.items():
-        seen_ids: set[str] = set()
-        insert_at = ai + 1
-        for j in range(ai + 1, len(msgs)):
-            r = msgs[j].get("role", "")
-            if r == "user":
-                break
-            if r == "tool":
-                seen_ids.add(msgs[j].get("tool_call_id", ""))
-                insert_at = j + 1
-        for tc in calls:
-            if tc["id"] not in seen_ids:
-                inserts.append((insert_at, {
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "name": tc["name"],
-                    "content": json.dumps({"error": "工具调用失败，请尝试其他方式"}),
-                }))
-                insert_at += 1
-    for pos, msg in sorted(inserts, key=lambda x: x[0], reverse=True):
-        msgs.insert(pos, msg)
-
 
 class LLMManager:
     def __init__(
@@ -255,20 +241,26 @@ class LLMManager:
         history_recent_messages: int = 20,
         max_tool_result_chars: int = 6000,
         max_active_tool_groups: int = 3,
-        generation_config: Optional[Dict[str, Any]] = None
+        first_turn_tool_call_limit: int = FIRST_USER_TURN_TOOL_CALL_LIMIT,
+        generation_config: Optional[Dict[str, Any]] = None,
+        history_file: str = "",
+        hook_dispatcher: PluginHookDispatcher | None = None,
     ):
         self.llm_adapter = adapter
         self.messages = []
         self.user_template = user_template
+        self.hook_dispatcher = hook_dispatcher
         self.max_context_tokens = int(max_tokens)
         self.history_recent_messages = max(1, int(history_recent_messages))
         self.max_tool_result_chars = max(1, int(max_tool_result_chars))
+        self.first_turn_tool_call_limit = max(0, int(first_turn_tool_call_limit))
         self.compact_manager = CompactManager(
             adapter,
             self.max_context_tokens,
             compact_threshold,
             compact_target_ratio=compact_target_ratio,
             recent_message_limit=self.history_recent_messages,
+            hook_dispatcher=self.hook_dispatcher,
         )
         self.generation_config = generation_config or {}
         self.set_user_template(user_template)
@@ -285,6 +277,8 @@ class LLMManager:
         }
         self._chat_depth = 0
         self._cancel_requested = False
+        self._turn_state: Optional[_ChatTurnState] = None
+        self._history_file = history_file
 
         # 设置日志
         self.logger = logger
@@ -370,6 +364,23 @@ class LLMManager:
         msg.update(kwargs)
         self.messages.append(msg)
         
+        # --- 增量写入临时文件 ---
+        if self._history_file:
+            from llm.history_manager import HistoryManager
+            HistoryManager.append_message_to_tmp(self._history_file, msg)
+
+        if (
+            self.hook_dispatcher is not None
+            and self.hook_dispatcher.has_hooks(PluginHookEvent.MESSAGE_ADDED)
+        ):
+            self.hook_dispatcher.dispatch_message_added(
+                MessageAddedContext(
+                    role=role,
+                    message=copy.deepcopy(msg),
+                    messages=copy.deepcopy(self.messages),
+                )
+            )
+
         # --- Auto-Compact 逻辑 ---
         # 自动调用 compact_manager 检查 token 是否超限并执行压缩
         compacted_messages = self.compact_manager.auto_compact_if_needed(self.messages)
@@ -434,8 +445,39 @@ class LLMManager:
             recent_message_limit=self.history_recent_messages,
         )
 
-    def _estimate_context_tokens(self, tools_defs: list[dict] | None) -> dict[str, int]:
-        messages = self.get_messages()
+    def _before_chat_context(
+        self,
+        *,
+        stream: bool,
+        tools_defs: list[dict] | None,
+        generation_kwargs: dict[str, Any],
+    ) -> BeforeChatContext:
+        if (
+            self.hook_dispatcher is None
+            or not self.hook_dispatcher.has_hooks(PluginHookEvent.BEFORE_CHAT)
+        ):
+            return BeforeChatContext(
+                messages=self.get_messages(),
+                tools=tools_defs,
+                generation_kwargs=generation_kwargs,
+                stream=stream,
+            )
+
+        context = BeforeChatContext(
+            messages=copy.deepcopy(self.get_messages()),
+            tools=copy.deepcopy(tools_defs) if tools_defs else None,
+            generation_kwargs=copy.deepcopy(generation_kwargs),
+            stream=stream,
+        )
+        self.hook_dispatcher.dispatch_before_chat(context)
+        return context
+
+    def _estimate_context_tokens(
+        self,
+        tools_defs: list[dict] | None,
+        messages: list[dict] | None = None,
+    ) -> dict[str, int]:
+        messages = self.get_messages() if messages is None else messages
         system_messages = [m for m in messages if m.get("role") == "system"]
         history_messages = [m for m in messages if m.get("role") != "system"]
         tool_definition_tokens = 0
@@ -474,6 +516,147 @@ class LLMManager:
         except Exception:
             self.logger.debug("Failed to post context token estimate to UI", exc_info=True)
 
+    def _has_conversation_history(self) -> bool:
+        return any(m.get("role") != "system" for m in self.messages)
+
+    def _begin_chat_turn(self, *, first_user_turn: bool) -> None:
+        self._turn_state = _ChatTurnState(
+            started_at=time.perf_counter(),
+            first_user_turn=first_user_turn,
+            first_turn_tool_call_limit=self.first_turn_tool_call_limit,
+        )
+        self.logger.info(
+            "Chat turn profile started",
+            extra={
+                "event": "chat.turn.profile.started",
+                "first_user_turn": first_user_turn,
+                "first_turn_tool_call_limit": self.first_turn_tool_call_limit,
+            },
+        )
+
+    def _next_llm_round(self) -> int:
+        if self._turn_state is None:
+            return 1
+        self._turn_state.llm_rounds += 1
+        return self._turn_state.llm_rounds
+
+    def _adapter_profile(self) -> dict[str, str]:
+        return {
+            "adapter": type(self.llm_adapter).__name__,
+            "model": str(getattr(self.llm_adapter, "model", "") or ""),
+        }
+
+    def _current_tool_definitions(self) -> list[dict]:
+        state = self._turn_state
+        if state is not None and state.tool_budget_exhausted():
+            self.logger.info(
+                "LLM tools disabled by first-turn tool budget",
+                extra={
+                    "event": "llm.tools.disabled",
+                    "reason": "first_turn_tool_budget_exhausted",
+                    "tool_call_attempts": state.tool_call_attempts,
+                    "first_turn_tool_call_limit": state.first_turn_tool_call_limit,
+                },
+            )
+            return []
+
+        defs = tool_manager.get_definitions(groups=self._active_tool_groups)
+        available: list[dict] = []
+        filtered: list[dict[str, str]] = []
+        for definition in defs:
+            func = definition.get("function", {})
+            name = str(func.get("name") or "")
+            group = tool_manager.get_tool_group(name)
+            if self.tool_executor.is_in_cooldown(group):
+                filtered.append({"name": name, "group": group})
+                continue
+            available.append(definition)
+
+        if filtered:
+            self.logger.info(
+                "Filtered tool definitions in cooldown",
+                extra={
+                    "event": "llm.tools.filtered",
+                    "filtered_tool_count": len(filtered),
+                    "filtered_groups": sorted({item["group"] for item in filtered}),
+                    "filtered_tools": [item["name"] for item in filtered],
+                },
+            )
+        return available
+
+    def _log_llm_request_started(
+        self,
+        *,
+        round_index: int,
+        stream: bool,
+        tools_defs: list[dict],
+        estimate: dict[str, int],
+        message_count: int | None = None,
+    ) -> None:
+        self.logger.info(
+            "LLM request started",
+            extra={
+                "event": "llm.request.started",
+                "llm_round": round_index,
+                "stream": stream,
+                "message_count": len(self.get_messages()) if message_count is None else message_count,
+                "active_tool_groups": list(self._active_tool_groups),
+                "tool_count": len(tools_defs or []),
+                "tool_names": [
+                    str(d.get("function", {}).get("name") or "")
+                    for d in (tools_defs or [])
+                ],
+                **self._adapter_profile(),
+                **estimate,
+            },
+        )
+
+    def _log_llm_request_completed(
+        self,
+        *,
+        round_index: int,
+        stream: bool,
+        started: float,
+        outcome: str,
+        content_chars: int = 0,
+        reasoning_chars: int = 0,
+        tool_call_count: int = 0,
+    ) -> None:
+        self.logger.info(
+            "LLM request completed",
+            extra={
+                "event": "llm.request.completed",
+                "llm_round": round_index,
+                "stream": stream,
+                "outcome": outcome,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "content_chars": content_chars,
+                "reasoning_chars": reasoning_chars,
+                "tool_call_count": tool_call_count,
+                **self._adapter_profile(),
+            },
+        )
+
+    def _log_llm_request_failed(
+        self,
+        *,
+        round_index: int,
+        stream: bool,
+        started: float,
+        exc: Exception,
+    ) -> None:
+        self.logger.exception(
+            "LLM request failed",
+            extra={
+                "event": "llm.request.failed",
+                "llm_round": round_index,
+                "stream": stream,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "error_type": type(exc).__name__,
+                **self._adapter_profile(),
+            },
+        )
+
     def _reset_active_tool_groups(self) -> None:
         self._active_tool_groups = ["default"]
 
@@ -507,6 +690,22 @@ class LLMManager:
     def _finish_chat_scope(self) -> None:
         self._chat_depth = max(0, self._chat_depth - 1)
         if self._chat_depth == 0:
+            state = self._turn_state
+            if state is not None:
+                self.logger.info(
+                    "Chat turn profile completed",
+                    extra={
+                        "event": "chat.turn.profile.completed",
+                        "duration_ms": round((time.perf_counter() - state.started_at) * 1000, 2),
+                        "first_user_turn": state.first_user_turn,
+                        "llm_rounds": state.llm_rounds,
+                        "tool_call_attempts": state.tool_call_attempts,
+                        "tool_calls_executed": state.tool_calls_executed,
+                        "tool_calls_skipped": state.tool_calls_skipped,
+                        "tool_failures": dict(state.tool_failures),
+                    },
+                )
+            self._turn_state = None
             self._reset_active_tool_groups()
 
     def _stream_with_chat_scope(self, stream: Generator[Union[str, dict[str, str]], None, None]):
@@ -545,6 +744,10 @@ class LLMManager:
         ``include_local_time``（默认 True）：为本次 user 消息追加本机日期时间前缀，再写入对话历史。
         翻译、设定生成等非聊天调用请传 ``include_local_time=False``。
         """
+        outer_chat = self._chat_depth == 0
+        first_user_turn = outer_chat and user_input is not None and not self._has_conversation_history()
+        if outer_chat:
+            self._begin_chat_turn(first_user_turn=first_user_turn)
         self._chat_depth += 1
         self._cancel_requested = False
         # 清理孤立的 tool_calls（必须在加 user 消息之前，否则占位 tool 回执会插在 user 后面）
@@ -568,10 +771,190 @@ class LLMManager:
         """清理不完整的 tool call 对：删孤立的 tool，补缺失的回执。"""
         strip_orphaned_tool_calls(self.get_messages())
 
+    def _recover_request_tool_pairs(self, exc: Exception, messages: list[dict]) -> list[dict] | None:
+        error_info = classify_exception(exc)
+        if (
+            not error_info
+            or error_info.get("kind") != "http_client"
+            or error_info.get("reason") != HTTP_REASON_UNPAIRED_TOOL_MESSAGES
+        ):
+            return None
+        filtered = filter_unpaired_tool_messages_for_request(messages)
+        if filtered is messages:
+            return None
+        self.logger.warning(
+            "Recovering LLM request by filtering unpaired tool messages",
+            extra={
+                "event": "llm.request.tool_pairs.recovered",
+                "before_count": len(messages),
+                "after_count": len(filtered),
+                "error_type": type(exc).__name__,
+            },
+        )
+        return filtered
+
+    def _send_llm_request_with_recovery(
+        self,
+        *,
+        messages: list[dict],
+        stream: bool,
+        tools_defs: list[dict],
+        generation_kwargs: dict[str, Any],
+    ) -> tuple[Any, list[dict]]:
+        try:
+            response = self.llm_adapter.chat(
+                messages=messages,
+                stream=stream,
+                tools=tools_defs if tools_defs else None,
+                **generation_kwargs,
+            )
+            return response, messages
+        except Exception as exc:
+            recovered_messages = self._recover_request_tool_pairs(exc, messages)
+            if recovered_messages is None:
+                raise
+            response = self.llm_adapter.chat(
+                messages=recovered_messages,
+                stream=stream,
+                tools=tools_defs if tools_defs else None,
+                **generation_kwargs,
+            )
+            return response, recovered_messages
+
+    def _budget_exhausted_tool_result(self, tool_name: str) -> str:
+        return json.dumps(
+            {
+                "status": "skipped",
+                "reason": "first_turn_tool_budget_exhausted",
+                "message": (
+                    f"首轮工具调用预算已用完，已跳过 {tool_name}。"
+                    "请基于已有信息直接回复用户，不要继续调用工具。"
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    def _cooldown_skipped_tool_result(self, tool_name: str, cooldown_message: str) -> str:
+        try:
+            parsed = json.loads(cooldown_message)
+        except (json.JSONDecodeError, TypeError):
+            parsed = {"status": "loading", "message": str(cooldown_message or "")}
+        if isinstance(parsed, dict):
+            parsed.setdefault("status", "skipped")
+            parsed["tool"] = tool_name
+            parsed["reason"] = "tool_group_in_cooldown"
+            parsed["message"] = (
+                str(parsed.get("message") or "")
+                + " 请基于已有信息直接回复用户，不要继续调用这个工具组。"
+            ).strip()
+        return json.dumps(parsed, ensure_ascii=False)
+
+    def _repeated_failure_tool_result(self, tool_name: str, previous_status: str) -> str:
+        return json.dumps(
+            {
+                "status": "skipped",
+                "reason": "tool_failed_earlier_in_turn",
+                "tool": tool_name,
+                "previous_status": previous_status,
+                "message": (
+                    f"{tool_name} 已在本轮失败或不可用，已跳过重复调用。"
+                    "请基于已有信息直接回复用户。"
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    def _execute_formatted_tool_call(self, call: dict) -> tuple[str, str]:
+        func_name = call["function"]["name"]
+        func_args = call["function"]["arguments"]
+        if isinstance(func_args, str) and not func_args.strip():
+            func_args = "{}"
+
+        state = self._turn_state
+        if state is not None and state.tool_budget_exhausted():
+            state.tool_calls_skipped += 1
+            result = self._budget_exhausted_tool_result(func_name)
+            self.logger.info(
+                "Tool call skipped by first-turn budget",
+                extra={
+                    "event": "tool.call.skipped",
+                    "tool_name": func_name,
+                    "reason": "first_turn_tool_budget_exhausted",
+                    "tool_call_attempts": state.tool_call_attempts,
+                    "first_turn_tool_call_limit": state.first_turn_tool_call_limit,
+                },
+            )
+            return func_name, result
+
+        if state is not None:
+            state.tool_call_attempts += 1
+            previous_failure = state.tool_failures.get(func_name)
+            if previous_failure:
+                state.tool_calls_skipped += 1
+                result = self._repeated_failure_tool_result(func_name, previous_failure)
+                self.logger.info(
+                    "Tool call skipped after previous failure in same turn",
+                    extra={
+                        "event": "tool.call.skipped",
+                        "tool_name": func_name,
+                        "reason": "tool_failed_earlier_in_turn",
+                        "previous_status": previous_failure,
+                    },
+                )
+                return func_name, result
+
+        cooldown_message = self.tool_executor.cooldown_message_for_tool(func_name)
+        if cooldown_message is not None:
+            if state is not None:
+                state.tool_calls_skipped += 1
+            result = self._cooldown_skipped_tool_result(func_name, cooldown_message)
+            self.logger.info(
+                "Tool call skipped because group is in cooldown",
+                extra={
+                    "event": "tool.call.skipped",
+                    "tool_name": func_name,
+                    "tool_group": tool_manager.get_tool_group(func_name),
+                    "reason": "tool_group_in_cooldown",
+                },
+            )
+            return func_name, result
+
+        _notify_tool_call_hint(func_name)
+        result = self.tool_executor.execute(
+            func_name,
+            func_args,
+            risk_confirm=self._confirm_risky_tool,
+        )
+
+        if func_name == "search_tools":
+            self._activate_tool_group_from_search(func_args)
+
+        if result is None:
+            result = json.dumps({"status": "success", "result": "no return value"})
+        elif not isinstance(result, str):
+            result = json.dumps(result)
+
+        status = _tool_result_status(result)
+        if state is not None:
+            state.tool_calls_executed += 1
+            if status in {"error", "loading", "cancelled"}:
+                state.tool_failures[func_name] = status
+        self.logger.info(
+            "Tool call handled",
+            extra={
+                "event": "tool.call.handled",
+                "tool_name": func_name,
+                "tool_group": tool_manager.get_tool_group(func_name),
+                "status": status,
+                "result_chars": len(result or ""),
+            },
+        )
+        return func_name, result
+
     # llm_manager.py 修正核心片段
 
     def _chat_with_tools_stream(self, **kwargs) -> Generator[Union[str, dict[str, str]], None, None]:
-        tools_defs = tool_manager.get_definitions(groups=self._active_tool_groups)
+        tools_defs = self._current_tool_definitions()
 
         # Gemini's OpenAI-compatible streaming endpoint omits thought_signature from
         # tool call deltas. Fall back to non-streaming so the field is preserved.
@@ -582,12 +965,45 @@ class LLMManager:
 
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
-        self._estimate_context_tokens(tools_defs)
-        response_stream = self.llm_adapter.chat(
-            messages=self.get_messages(), stream=True,
-            tools=tools_defs if tools_defs else None, **merged_kwargs
+        chat_context = self._before_chat_context(
+            stream=True,
+            tools_defs=tools_defs,
+            generation_kwargs=merged_kwargs,
         )
-        if response_stream is None: return
+        tools_defs = chat_context.tools or []
+        merged_kwargs = chat_context.generation_kwargs
+        estimate = self._estimate_context_tokens(tools_defs, chat_context.messages)
+        round_index = self._next_llm_round()
+        request_started = time.perf_counter()
+        self._log_llm_request_started(
+            round_index=round_index,
+            stream=True,
+            tools_defs=tools_defs,
+            estimate=estimate,
+            message_count=len(chat_context.messages),
+        )
+        try:
+            response_stream, chat_context.messages = self._send_llm_request_with_recovery(
+                messages=chat_context.messages, stream=True,
+                tools_defs=tools_defs,
+                generation_kwargs=merged_kwargs,
+            )
+        except Exception as exc:
+            self._log_llm_request_failed(
+                round_index=round_index,
+                stream=True,
+                started=request_started,
+                exc=exc,
+            )
+            raise
+        if response_stream is None:
+            self._log_llm_request_completed(
+                round_index=round_index,
+                stream=True,
+                started=request_started,
+                outcome="no_response",
+            )
+            return
 
         # self.logger.info(f"Tools definitions: {tools_defs}")
         
@@ -595,12 +1011,15 @@ class LLMManager:
         has_tool_use = False
         collected_content = ""
         collected_reasoning = ""
+        stream_failed = False
+        stream_cancelled = False
 
         try:
             if isinstance(self.llm_adapter, ClaudeAdapter):
                 with response_stream as stream:
                     for event in stream:
                         if self._cancel_requested:
+                            stream_cancelled = True
                             break
                         if event.type == "content_block_delta" and event.delta.type == "text_delta":
                             yield event.delta.text
@@ -613,6 +1032,7 @@ class LLMManager:
             else:
                 for chunk in response_stream:
                     if self._cancel_requested:
+                        stream_cancelled = True
                         break
                     if not chunk or not chunk.choices: continue
                     delta = chunk.choices[0].delta
@@ -623,7 +1043,7 @@ class LLMManager:
                                 full_tool_calls[tc.index] = tc
                             elif tc.function and tc.function.arguments:
                                 if full_tool_calls[tc.index].function.arguments is None:
-                                    full_tool_calls[tc.index].arguments = ""
+                                    full_tool_calls[tc.index].function.arguments = ""
                                 full_tool_calls[tc.index].function.arguments += tc.function.arguments
                     r_part = getattr(delta, "reasoning_content", None)
                     if r_part:
@@ -632,13 +1052,34 @@ class LLMManager:
                     if hasattr(delta, 'content') and delta.content:
                         yield delta.content
                         collected_content += delta.content
-        except Exception:
-            # Stream aborted (expected on cancel) — re-raise if not our own cancel
+        except Exception as exc:
             if self._cancel_requested:
+                stream_cancelled = True
                 return
+            stream_failed = True
+            self._log_llm_request_failed(
+                round_index=round_index,
+                stream=True,
+                started=request_started,
+                exc=exc,
+            )
             raise
+        finally:
+            if not stream_failed:
+                outcome = "cancelled" if stream_cancelled or self._cancel_requested else (
+                    "tool_calls" if has_tool_use else "content"
+                )
+                self._log_llm_request_completed(
+                    round_index=round_index,
+                    stream=True,
+                    started=request_started,
+                    outcome=outcome,
+                    content_chars=len(collected_content),
+                    reasoning_chars=len(collected_reasoning),
+                    tool_call_count=len(full_tool_calls),
+                )
 
-        if self._cancel_requested:
+        if self._cancel_requested or stream_cancelled:
             return
 
         if has_tool_use:
@@ -662,31 +1103,11 @@ class LLMManager:
             # --- 然后添加 Tool 结果消息 ---
             for call in formatted_calls:
                 try:
-                    func_name = call['function']['name']
-                    func_args = call['function']['arguments']
-                    if isinstance(func_args, str):
-                        if not func_args.strip():
-                            func_args = "{}"  # 修正为空 JSON 对象字符串
-
-                    _notify_tool_call_hint(func_name)
-                    result = self.tool_executor.execute(
-                        func_name, func_args,
-                        risk_confirm=self._confirm_risky_tool,
-                    )
-
-                    # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
-                    if func_name == "search_tools":
-                        self._activate_tool_group_from_search(func_args)
-
-                    # 3. 确保结果不为空且为字符串（以便 LLM 接收）
-                    if result is None:
-                        result = json.dumps({"status": "success", "result": "no return value"})
-                    elif not isinstance(result, str):
-                        result = json.dumps(result)
-
+                    func_name, result = self._execute_formatted_tool_call(call)
                 except Exception as e:
                     self.logger.error(f"Tool execution failed: {e}")
                     result = json.dumps({"error": str(e)})
+                    func_name = call['function']['name']
                 self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
 
             if self._cancel_requested:
@@ -696,15 +1117,48 @@ class LLMManager:
             self._persist_plain_assistant_turn(collected_content, collected_reasoning)
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
-        tools_defs = tool_manager.get_definitions(groups=self._active_tool_groups)
+        tools_defs = self._current_tool_definitions()
         merged_kwargs = dict(self.generation_config)
         merged_kwargs.update(kwargs)
-        self._estimate_context_tokens(tools_defs)
-        response = self.llm_adapter.chat(
-            messages=self.get_messages(), stream=False,
-            tools=tools_defs if tools_defs else None, **merged_kwargs
+        chat_context = self._before_chat_context(
+            stream=False,
+            tools_defs=tools_defs,
+            generation_kwargs=merged_kwargs,
         )
-        if not response: return ""
+        tools_defs = chat_context.tools or []
+        merged_kwargs = chat_context.generation_kwargs
+        estimate = self._estimate_context_tokens(tools_defs, chat_context.messages)
+        round_index = self._next_llm_round()
+        request_started = time.perf_counter()
+        self._log_llm_request_started(
+            round_index=round_index,
+            stream=False,
+            tools_defs=tools_defs,
+            estimate=estimate,
+            message_count=len(chat_context.messages),
+        )
+        try:
+            response, chat_context.messages = self._send_llm_request_with_recovery(
+                messages=chat_context.messages, stream=False,
+                tools_defs=tools_defs,
+                generation_kwargs=merged_kwargs,
+            )
+        except Exception as exc:
+            self._log_llm_request_failed(
+                round_index=round_index,
+                stream=False,
+                started=request_started,
+                exc=exc,
+            )
+            raise
+        if not response:
+            self._log_llm_request_completed(
+                round_index=round_index,
+                stream=False,
+                started=request_started,
+                outcome="no_response",
+            )
+            return ""
 
         if self._cancel_requested:
             return ""
@@ -722,6 +1176,16 @@ class LLMManager:
             content = message.content or ""
             tool_calls = getattr(message, 'tool_calls', []) or []
             reasoning = getattr(message, "reasoning_content", None) or ""
+
+        self._log_llm_request_completed(
+            round_index=round_index,
+            stream=False,
+            started=request_started,
+            outcome="tool_calls" if tool_calls else "content",
+            content_chars=len(content or ""),
+            reasoning_chars=len(reasoning or ""),
+            tool_call_count=len(tool_calls or []),
+        )
 
         if tool_calls:
             # Gemini 的 thought_signature 会被 OpenAI SDK Pydantic 模型丢弃，
@@ -744,31 +1208,11 @@ class LLMManager:
             self.add_message("assistant", content, tool_calls=formatted_calls, **assistant_sync_kw)
             for call in formatted_calls:
                 try:
-                    func_name = call['function']['name']
-                    func_args = call['function']['arguments']
-                    if isinstance(func_args, str):
-                        if not func_args.strip():
-                            func_args = "{}"  # 修正为空 JSON 对象字符串
-
-                    _notify_tool_call_hint(func_name)
-                    result = self.tool_executor.execute(
-                        func_name, func_args,
-                        risk_confirm=self._confirm_risky_tool,
-                    )
-
-                    # 动态扩展工具组：search_tools 被调用后，把匹配的组加入活跃列表
-                    if func_name == "search_tools":
-                        self._activate_tool_group_from_search(func_args)
-
-                    # 3. 确保结果不为空且为字符串（以便 LLM 接收）
-                    if result is None:
-                        result = json.dumps({"status": "success", "result": "no return value"})
-                    elif not isinstance(result, str):
-                        result = json.dumps(result)
-
+                    func_name, result = self._execute_formatted_tool_call(call)
                 except Exception as e:
                     self.logger.error(f"Tool execution failed: {e}")
                     result = json.dumps({"error": str(e)})
+                    func_name = call['function']['name']
                 self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
 
             if self._cancel_requested:

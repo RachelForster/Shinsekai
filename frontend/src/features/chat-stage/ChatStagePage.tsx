@@ -1,396 +1,475 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Copy, History, Mic, MicOff, RotateCcw, Send, SkipForward, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { getChatSnapshot, getChatTheme, sendChatCommand, subscribeChat } from "../../entities/chat/repository";
+import { closeChat } from "../../entities/chat/repository";
+import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import { PluginSlot } from "../../shared/plugin/PluginSlot";
-import type { ChatCommand, ChatSnapshot, ChatSprite } from "../../shared/platform/types";
-import { parseChatChromeTheme } from "../../shared/theme/chatChromeTheme";
-import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
-import { AlertDialog, Button, IconButton, TextArea, ToolbarButton, useToast } from "../../shared/ui";
+import { normalizeThemeColor } from "../../shared/theme/appTheme";
+import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
+import { AlertDialog, useToast } from "../../shared/ui";
+import { VOSK_MODEL_PATH } from "../api-settings/apiSettingsUtils";
+import { ChatConfigDialog } from "./components/ChatConfigDialog";
+import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
+import { DialogStageControls } from "./components/DialogStageControls";
+import { HistoryDialog } from "./components/HistoryDialog";
+import { InputLayer } from "./components/InputLayer";
+import {
+  BackgroundLayer,
+  BusyLayer,
+  CgLayer,
+  DialogLayer,
+  NotificationLayer,
+  OptionsLayer,
+  SpriteLayer,
+  StandaloneDesktopResizeHandles,
+  TokenUsageLayer,
+} from "./components/StageLayers";
+import { TopStageTools } from "./components/TopStageTools";
 import "./chat-stage.css";
-import { chatStageReducer, emptyChatState } from "./chatState";
+import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
+import { layerClassName } from "./chatStageUtils";
+import { useChatStageCommands } from "./hooks/useChatStageCommands";
+import { useChatStageEvents } from "./hooks/useChatStageEvents";
+import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
+import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
+import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
+import { useMainThemeColor } from "./hooks/useMainThemeColor";
+import { useVoskModelAvailability } from "./hooks/useVoskModelAvailability";
+import {
+  chatStageRuntimeStyle,
+  defaultChatStageRuntimeConfig,
+  effectiveChatStageTextStyle,
+  readChatStageRuntimeConfig,
+  runtimeSpriteScale,
+  writeChatStageRuntimeConfig,
+} from "./runtimeConfig";
+import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 
-interface BrowserSpeechRecognition {
-  abort: () => void;
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onend: (() => void) | null;
-  onerror: ((event: { error?: string; message?: string }) => void) | null;
-  onresult:
-    | ((event: { resultIndex: number; results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void)
-    | null;
-  start: () => void;
-  stop: () => void;
-}
-
-type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
-
-function getSpeechRecognitionConstructor(): BrowserSpeechRecognitionConstructor | null {
-  const scope = window as typeof window & {
-    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
-    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
-  };
-  return scope.SpeechRecognition ?? scope.webkitSpeechRecognition ?? null;
-}
-
-function speechRecognitionLanguage(language: string) {
-  if (language === "en") {
-    return "en-US";
-  }
-  if (language === "ja") {
-    return "ja-JP";
-  }
-  return "zh-CN";
-}
-
-function cleanTranscript(text: string, language: string) {
-  const trimmed = text.trim();
-  if (language === "en") {
-    return trimmed;
-  }
-  return trimmed.replace(/\s+/g, "");
-}
-
-function appendTranscript(base: string, transcript: string, language: string) {
-  const text = cleanTranscript(transcript, language);
-  if (!text) {
-    return base;
-  }
-  const current = base.trim();
-  if (!current) {
-    return text;
-  }
-  const separator = language === "en" ? " " : "，";
-  if (/[，。！？,.!?;；:：\s]$/.test(current)) {
-    return `${current}${text}`;
-  }
-  return `${current}${separator}${text}`;
-}
-
-function BackgroundLayer({ path }: { path?: string }) {
-  return (
-    <div className="chat-stage__background">
-      {path ? <img alt="" src={path} /> : <div className="chat-stage__fallback">Background</div>}
-    </div>
-  );
-}
-
-function SpriteLayer({ sprites }: { sprites: ChatSprite[] }) {
-  return (
-    <div className="sprite-layer">
-      {sprites.map((sprite) => (
-        <figure className="sprite-layer__figure" key={sprite.id}>
-          <img alt={sprite.label} className="sprite-layer__image" src={sprite.path} />
-        </figure>
-      ))}
-    </div>
-  );
-}
-
-function DialogLayer({ characterName, text }: { characterName?: string; text: string }) {
-  const { t } = useI18n();
-  return (
-    <section aria-live="polite" className="dialog-layer">
-      {characterName ? <p className="dialog-layer__name">{characterName}</p> : null}
-      <p className="dialog-layer__text">{text || t("chat.emptyDialog")}</p>
-      <PluginSlot slot="chat-output" />
-    </section>
-  );
-}
-
-function OptionsLayer({ onSelect, options }: { onSelect: (option: string) => void; options: string[] }) {
-  if (!options.length) {
-    return null;
-  }
-  return (
-    <div className="options-layer">
-      {options.map((option) => (
-        <Button className="options-layer__button" key={option} onClick={() => onSelect(option)}>
-          {option}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
-function FloatingToolbar({ onCommand, status }: { onCommand: (command: ChatCommand) => void; status: string }) {
-  const { t } = useI18n();
-  return (
-    <div className="floating-toolbar">
-      <IconButton label={t("chat.toolbar.reroll")} onClick={() => onCommand({ type: "reroll" })}>
-        <RotateCcw aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.copyHistory")} onClick={() => onCommand({ type: "copy-history" })}>
-        <Copy aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.openHistory")} onClick={() => onCommand({ type: "open-history" })}>
-        <History aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.clearHistory")} onClick={() => onCommand({ type: "clear-history" })}>
-        <Trash2 aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.pauseAsr")} onClick={() => onCommand({ type: "pause-asr" })}>
-        <MicOff aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <ToolbarButton
-        icon={<SkipForward aria-hidden className="button__icon" />}
-        onClick={() => onCommand({ type: "skip-speech" })}
-      >
-        {t("chat.toolbar.skipSpeech")}
-      </ToolbarButton>
-      <span className="floating-toolbar__status">{status}</span>
-      <PluginSlot slot="chat-toolbar" />
-    </div>
-  );
-}
-
-function InputLayer({
-  disabled,
-  onChange,
-  onSubmit,
-  value,
-}: {
-  disabled: boolean;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  value: string;
-}) {
-  const { language, t } = useI18n();
-  const { showToast } = useToast();
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
-  const transcriptBaseRef = useRef("");
-  const valueRef = useRef(value);
-
-  useEffect(() => {
-    valueRef.current = value;
-  }, [value]);
-
-  const stopListening = () => {
-    const recognition = recognitionRef.current;
-    recognitionRef.current = null;
-    if (recognition) {
-      recognition.stop();
-    }
-    setListening(false);
-  };
-
-  useEffect(() => {
-    if (disabled && listening) {
-      stopListening();
-    }
-  }, [disabled, listening]);
-
-  useEffect(
-    () => () => {
-      recognitionRef.current?.abort();
-      recognitionRef.current = null;
-    },
-    [],
-  );
-
-  const startListening = () => {
-    const Recognition = getSpeechRecognitionConstructor();
-    if (!Recognition) {
-      showToast({ kind: "error", message: t("chat.input.micUnsupported"), title: t("common.operationFailed") });
-      return;
-    }
-    try {
-      const recognition = new Recognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = speechRecognitionLanguage(language);
-      transcriptBaseRef.current = valueRef.current.trim();
-      recognition.onresult = (event) => {
-        let finalText = "";
-        let interimText = "";
-        for (let index = event.resultIndex; index < event.results.length; index += 1) {
-          const result = event.results[index];
-          const transcript = result[0]?.transcript ?? "";
-          if (result.isFinal) {
-            finalText += transcript;
-          } else {
-            interimText += transcript;
-          }
-        }
-        if (finalText) {
-          const next = appendTranscript(transcriptBaseRef.current, finalText, language);
-          transcriptBaseRef.current = next;
-          onChange(next);
-        } else if (interimText) {
-          onChange(appendTranscript(transcriptBaseRef.current, interimText, language));
-        }
-      };
-      recognition.onerror = (event) => {
-        recognitionRef.current = null;
-        setListening(false);
-        const denied = event.error === "not-allowed" || event.error === "service-not-allowed";
-        if (event.error !== "no-speech") {
-          showToast({
-            kind: "error",
-            message: denied ? t("chat.input.micDenied") : event.message || event.error || t("chat.input.micError"),
-            title: t("common.operationFailed"),
-          });
-        }
-      };
-      recognition.onend = () => {
-        recognitionRef.current = null;
-        setListening(false);
-      };
-      recognitionRef.current = recognition;
-      recognition.start();
-      setListening(true);
-    } catch (error) {
-      recognitionRef.current = null;
-      setListening(false);
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("chat.input.micError"),
-        title: t("common.operationFailed"),
-      });
-    }
-  };
-
-  return (
-    <div className="input-layer">
-      <TextArea
-        className="input-layer__input"
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-            event.preventDefault();
-            onSubmit();
-          }
-        }}
-        placeholder={t("chat.input.placeholder")}
-        value={value}
-      />
-      <IconButton
-        className={["input-layer__mic", listening ? "input-layer__mic--active" : ""].filter(Boolean).join(" ")}
-        disabled={disabled && !listening}
-        label={listening ? t("chat.input.micStop") : t("chat.input.micStart")}
-        onClick={() => {
-          if (listening) {
-            stopListening();
-          } else {
-            startListening();
-          }
-        }}
-      >
-        {listening ? (
-          <MicOff aria-hidden className="icon-button__icon" />
-        ) : (
-          <Mic aria-hidden className="icon-button__icon" />
-        )}
-      </IconButton>
-      <Button
-        disabled={!value.trim() || disabled}
-        icon={<Send aria-hidden className="button__icon" />}
-        onClick={onSubmit}
-        variant="primary"
-      >
-        {t("chat.input.send")}
-      </Button>
-    </div>
-  );
+function isStartOptionLabel(option: string) {
+  const normalized = option.trim().toLocaleLowerCase();
+  return normalized === "start" || normalized === "开始" || normalized === "開始" || normalized === "スタート";
 }
 
 export function ChatStagePage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [state, dispatch] = useReducer(chatStageReducer, emptyChatState);
-  const [themePayload, setThemePayload] = useState<ChatThemePayload | null>(null);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+  const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
+  const [branchDialogOpen, setBranchDialogOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
+  const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
+  const mainThemeColor = useMainThemeColor();
+  const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
+  const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
+  const voskModelState = useVoskModelAvailability();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const themeStyle = useMemo(() => parseChatChromeTheme(themePayload), [themePayload]);
+  const theme = useOptionalChatTheme();
+  const themeStyle = theme?.style ?? {};
+  const stageStyle = useMemo(
+    () => chatStageRuntimeStyle(runtimeConfig, themeStyle, mainThemeColor),
+    [mainThemeColor, runtimeConfig, themeStyle],
+  );
+  const effectiveDialogText = useMemo(
+    () =>
+      effectiveChatStageTextStyle(
+        runtimeConfig.dialogText,
+        defaultChatStageRuntimeConfig.dialogText,
+        themeStyle,
+        "dialogText",
+      ),
+    [runtimeConfig.dialogText, themeStyle],
+  );
+  const effectiveNameText = useMemo(
+    () =>
+      effectiveChatStageTextStyle(
+        runtimeConfig.nameText,
+        defaultChatStageRuntimeConfig.nameText,
+        themeStyle,
+        "nameText",
+      ),
+    [runtimeConfig.nameText, themeStyle],
+  );
+  const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
+  const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
+  const transparentBackground = !viewModel.backgroundPath;
+  const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
+  const modalOpen =
+    toolbarConfigOpen || branchDialogOpen || historyDialogOpen || confirmClearHistory || confirmRevertUserIndex != null;
+  const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
+  const dialogToolbarPlacement =
+    typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
+      ? themeStyle["--chat-dialog-toolbar-placement"]
+      : "";
+  const dialogToolbarDetached = dialogToolbarPlacement === "input" || dialogToolbarPlacement === "dialog-top";
+  const dialogToolbarReveal = themeStyle["--chat-dialog-toolbar-reveal"] === "hover" ? "hover" : "always";
+  const inputLayout = themeStyle["--chat-input-layout"] === "pill" ? "pill" : "default";
+  const longPressTalkVisible = inputLayout === "pill";
+  const longPressTalkEnabled = longPressTalkVisible && runtimeConfig.longPressTalk && voskModelState.available;
+  const forkHistoryEnabled = state.experimentalFeatures?.forkHistory === true;
+  const conversationTreeEnabled = state.experimentalFeatures?.conversationTree === true;
+  const hideNameWhenStartOption = themeStyle["--chat-name-hide-when-start-option"] === "true";
+  const nameHiddenForStartOption =
+    hideNameWhenStartOption && viewModel.layers.options && viewModel.options.some(isStartOptionLabel);
+  const dialogTextDirection = effectiveDialogText.direction ?? "ltr";
+  const typewriterCps = runtimeConfig.typewriterCps ?? theme?.resolved?.typewriter.cps ?? DEFAULT_TYPEWRITER_CPS;
+  const { historyLoading, refreshHistory, sendCommand } = useChatStageCommands({
+    confirmClearHistory,
+    dispatch,
+    operationFailedTitle: t("common.operationFailed"),
+    setConfirmClearHistory,
+    showToast,
+    t,
+  });
+  const autoAdvanceDialog = useCallback(() => {
+    void sendCommand({ type: "dialog-advance" });
+  }, [sendCommand]);
+  const { dialogTotalCharacters, displayedDialog, queueAnimatedDialog, showFullDialog, typingDialog } =
+    useDialogTypewriter({
+      auto: runtimeConfig.auto,
+      characterName: viewModel.dialogCharacterName,
+      dialogVisible: viewModel.layers.dialog,
+      html: viewModel.dialogHtml,
+      onAutoAdvance: autoAdvanceDialog,
+      optionsVisible: viewModel.layers.options,
+      status: viewModel.status,
+      text: viewModel.dialogText,
+      textDirection: dialogTextDirection,
+      typewriterCps,
+    });
+  const {
+    handleStageContextMenu,
+    handleStageFocus,
+    handleStagePointerDown,
+    handleStagePointerLeave,
+    handleStagePointerMove,
+  } = useDesktopClickThrough({
+    clickThroughEnabled,
+    standaloneDesktopWindow,
+    transparentBackground,
+  });
+  useChatStageEvents({
+    dispatch,
+    eventSeq: state.eventSeq,
+    loadFallbackMessage: t("chat.error.loadFallback"),
+    queueAnimatedDialog,
+  });
 
   useEffect(() => {
-    let mounted = true;
-    getChatTheme()
-      .then((theme) => {
-        if (mounted) {
-          setThemePayload(theme);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setThemePayload(null);
-        }
-      });
-    getChatSnapshot()
-      .then((snapshot: ChatSnapshot) => {
-        if (mounted) {
-          dispatch({ snapshot, type: "hydrate" });
-        }
-      })
-      .catch((error) => {
-        dispatch({ message: error instanceof Error ? error.message : t("chat.error.loadFallback"), type: "error" });
-      });
-    const unsubscribe = subscribeChat((snapshot) => dispatch({ snapshot, type: "hydrate" }));
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, [t]);
+    if (!viewModel.layers.dialog) {
+      setToolbarConfigOpen(false);
+    }
+  }, [viewModel.layers.dialog]);
 
-  const sendCommand = async (command: ChatCommand) => {
-    if (command.type === "clear-history" && !confirmClearHistory) {
-      setConfirmClearHistory(true);
-      return;
+  useEffect(() => {
+    if (!viewModel.tokenUsageText) {
+      setTokenUsageOpen(false);
     }
-    try {
-      const snapshot = await sendChatCommand(command);
-      dispatch({ snapshot, type: "hydrate" });
-      if (command.type === "copy-history") {
-        showToast({ kind: "success", title: t("chat.toast.historyCopied") });
-      }
-      if (command.type === "open-history") {
-        showToast({
-          kind: "success",
-          message: snapshot.openedPath || snapshot.historyPath,
-          title: t("chat.toast.historyOpened"),
-        });
-      }
-      if (command.type === "clear-history") {
-        setConfirmClearHistory(false);
-        showToast({ kind: "success", title: t("chat.toast.historyCleared") });
-      }
-    } catch (error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("chat.error.commandFallback"),
-        title: t("common.operationFailed"),
-      });
+  }, [viewModel.tokenUsageText]);
+
+  useEffect(() => {
+    if (!conversationTreeEnabled) {
+      setBranchDialogOpen(false);
     }
-  };
+  }, [conversationTreeEnabled]);
+
+  useEffect(() => {
+    writeChatStageRuntimeConfig(runtimeConfig);
+  }, [runtimeConfig]);
+
+  useEffect(() => {
+    if (!voskModelState.loading && !voskModelState.available && runtimeConfig.longPressTalk) {
+      setRuntimeConfig((current) => (current.longPressTalk ? { ...current, longPressTalk: false } : current));
+    }
+  }, [runtimeConfig.longPressTalk, voskModelState.available, voskModelState.loading]);
 
   const submit = () => {
-    const text = state.inputDraft.trim();
+    const text = viewModel.inputDraft.trim();
     if (!text) {
       return;
     }
     dispatch({ status: "generating", type: "setStatus" });
-    sendCommand({ payload: text, type: "send-message" });
+    void sendCommand({ payload: text, type: "send-message" });
   };
+
+  const updateRuntimeTextSpeed = (typewriterCps: number) => {
+    setRuntimeConfig((current) => ({ ...current, typewriterCps }));
+  };
+
+  const updateRuntimeDialogOpacity = (dialogOpacity: number) => {
+    setRuntimeConfig((current) => ({ ...current, dialogOpacity }));
+  };
+
+  const updateRuntimeDialogFill: Parameters<typeof ChatConfigDialog>[0]["onDialogFillChange"] = (patch) => {
+    setRuntimeConfig((current) => ({ ...current, dialogFill: { ...current.dialogFill, ...patch } }));
+  };
+
+  const updateRuntimeDialogScale = (dialogScale: number) => {
+    setRuntimeConfig((current) => ({ ...current, dialogScale }));
+  };
+
+  const updateRuntimeSpriteOffsetX = (spriteOffsetX: number) => {
+    setRuntimeConfig((current) => ({ ...current, spriteOffsetX }));
+  };
+
+  const updateRuntimeSpriteOffsetY = (spriteOffsetY: number) => {
+    setRuntimeConfig((current) => ({ ...current, spriteOffsetY }));
+  };
+
+  const updateRuntimeSpriteScale = (spriteKey: string, spriteScale: number) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      spriteScales: {
+        ...current.spriteScales,
+        [spriteKey]: spriteScale,
+      },
+    }));
+  };
+
+  const updateRuntimeWindowScale = (windowScale: number) => {
+    setRuntimeConfig((current) => ({ ...current, windowScale }));
+  };
+
+  const updateRuntimeConfigThemeColor = (configThemeColor: string) => {
+    setRuntimeConfig((current) => ({ ...current, configThemeColor: normalizeThemeColor(configThemeColor) }));
+  };
+
+  const updateRuntimeConfigUseMainThemeColor = (configUseMainThemeColor: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, configUseMainThemeColor }));
+  };
+
+  const updateRuntimeLongPressTalk = (longPressTalk: boolean) => {
+    if (longPressTalk && !voskModelState.available) {
+      showToast({
+        kind: "info",
+        message: t("chat.config.longPressTalkVoskMissing", { path: voskModelState.path || VOSK_MODEL_PATH }),
+        title: t("chat.config.longPressTalk"),
+      });
+      return;
+    }
+    setRuntimeConfig((current) => ({ ...current, longPressTalk }));
+  };
+
+  const updateRuntimeTextStyle: Parameters<typeof ChatConfigDialog>[0]["onTextStyleChange"] = (target, patch) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      [target]: {
+        ...current[target],
+        ...patch,
+      },
+    }));
+  };
+
+  const advanceDialog = useCallback(() => {
+    if (typingDialog) {
+      showFullDialog();
+      return;
+    }
+    if (!viewModel.layers.dialog || !dialogTotalCharacters) {
+      return;
+    }
+    void sendCommand({ type: "dialog-advance" });
+  }, [dialogTotalCharacters, sendCommand, showFullDialog, typingDialog, viewModel.layers.dialog]);
+
+  const toggleAuto = useCallback(() => {
+    setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
+  }, []);
+
+  useChatStageKeyboardShortcuts({
+    disabled: modalOpen,
+    onAdvance: advanceDialog,
+    onToggleAuto: toggleAuto,
+  });
+
+  const openHistoryDialog = () => {
+    setHistoryDialogOpen(true);
+    void refreshHistory();
+  };
+
+  const closeSurface = () => {
+    void closeChatSurface({
+      closeRuntime: closeChat,
+      navigate,
+      snapshot: state,
+    });
+  };
+
+  const dialogToolbar = (
+    <DialogStageControls
+      asrPaused={viewModel.status === "paused"}
+      auto={runtimeConfig.auto}
+      closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
+      configOpen={toolbarConfigOpen}
+      hidden={!viewModel.layers.dialog}
+      hideCloseButton={standaloneDesktopWindow}
+      locked={dialogControlsLocked}
+      onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
+      onCloseSurface={closeSurface}
+      onCommand={sendCommand}
+      onConfigOpenChange={setToolbarConfigOpen}
+      onLockedChange={setDialogControlsLocked}
+      onOpenBranches={() => setBranchDialogOpen(true)}
+      onOpenHistory={openHistoryDialog}
+      showBranches={conversationTreeEnabled}
+      showAsrControl={!viewModel.layers.input && viewModel.status === "paused"}
+    />
+  );
 
   return (
     <>
-      <main className="chat-stage" style={themeStyle}>
-        <BackgroundLayer path={state.backgroundPath} />
-        <SpriteLayer sprites={state.sprites} />
-        <DialogLayer characterName={state.characterName} text={state.error ?? state.dialogText} />
-        <OptionsLayer
-          onSelect={(option) => sendCommand({ payload: option, type: "submit-option" })}
-          options={state.options}
+      <main
+        className="chat-stage"
+        data-background={transparentBackground ? "transparent" : "media"}
+        data-click-through={clickThroughEnabled ? "true" : "false"}
+        data-token-visible={tokenUsageVisible ? "true" : "false"}
+        onContextMenuCapture={handleStageContextMenu}
+        onFocusCapture={handleStageFocus}
+        onPointerDownCapture={handleStagePointerDown}
+        onPointerLeave={handleStagePointerLeave}
+        onPointerMoveCapture={handleStagePointerMove}
+        style={stageStyle}
+      >
+        <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow} />
+        <TopStageTools
+          hidden={!viewModel.layers.toolbar}
+          onTokenUsageOpenChange={setTokenUsageOpen}
+          standaloneDesktopWindow={standaloneDesktopWindow}
+          status={viewModel.statusText}
+          tokenUsageAvailable={Boolean(viewModel.tokenUsageText)}
+          tokenUsageOpen={tokenUsageOpen}
+          transportMode={viewModel.transportMode}
+          transportState={viewModel.transportState}
         />
-        <FloatingToolbar onCommand={sendCommand} status={state.numericInfo ?? state.status} />
+        <BackgroundLayer
+          hidden={!viewModel.layers.background}
+          path={viewModel.backgroundPath}
+          transparent={transparentBackground}
+        />
+        <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
+        <SpriteLayer
+          hidden={!viewModel.layers.sprites}
+          runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
+          speaker={viewModel.dialogCharacterName}
+          sprites={viewModel.sprites}
+        />
+        <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
+        <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
+        <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />
+        <div
+          aria-hidden={!viewModel.layers.dialog}
+          className={layerClassName("dialog-stack", !viewModel.layers.dialog)}
+          hidden={!viewModel.layers.dialog}
+        >
+          <DialogLayer
+            canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
+            characterName={nameHiddenForStartOption ? undefined : viewModel.dialogCharacterName}
+            hidden={!viewModel.layers.dialog}
+            htmlNodes={displayedDialog.nodes}
+            onAdvance={advanceDialog}
+            onSkip={typingDialog ? advanceDialog : undefined}
+            text={typingDialog ? displayedDialog.text : viewModel.dialogText}
+            textDirection={dialogTextDirection}
+            toolbar={dialogToolbarDetached ? undefined : dialogToolbar}
+            typing={typingDialog}
+          />
+        </div>
+        {dialogToolbarDetached ? (
+          <div
+            aria-hidden={!viewModel.layers.dialog}
+            className={layerClassName("dialog-toolbar-layer", !viewModel.layers.dialog)}
+            data-chat-stage-hitbox="true"
+            data-locked={dialogControlsLocked ? "true" : "false"}
+            data-placement={dialogToolbarPlacement}
+            data-reveal={dialogToolbarReveal}
+            hidden={!viewModel.layers.dialog}
+          >
+            {dialogToolbar}
+          </div>
+        ) : null}
+        <OptionsLayer
+          hidden={!viewModel.layers.options}
+          onSelect={(option) => void sendCommand({ payload: option, type: "submit-option" })}
+          options={viewModel.options}
+        />
         <InputLayer
-          disabled={state.status === "generating" || state.status === "streaming"}
+          asrPaused={viewModel.status === "paused"}
+          disabled={viewModel.inputDisabled}
+          hidden={!viewModel.layers.input}
+          inputLayout={inputLayout}
+          longPressTalkEnabled={longPressTalkEnabled}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
+          onCommand={sendCommand}
           onSubmit={submit}
-          value={state.inputDraft}
+          value={viewModel.inputDraft}
+        />
+        <HistoryDialog
+          entries={state.historyEntries ?? []}
+          forkEnabled={forkHistoryEnabled}
+          loading={historyLoading}
+          onClose={() => setHistoryDialogOpen(false)}
+          onFork={(userIndex) => {
+            setHistoryDialogOpen(false);
+            void sendCommand({ payload: { userIndex }, type: "fork-history" });
+          }}
+          onRefresh={() => {
+            void refreshHistory();
+          }}
+          onRevert={(userIndex) => setConfirmRevertUserIndex(userIndex)}
+          open={historyDialogOpen}
+          userDisplayName={viewModel.userDisplayName}
+        />
+        {conversationTreeEnabled ? (
+          <ConversationTreeDialog
+            onClose={() => setBranchDialogOpen(false)}
+            onRenameBranch={(branchId, label) => {
+              void sendCommand({ payload: { branchId, label }, type: "rename-branch" });
+            }}
+            onSwitchBranch={(branchId) => {
+              void sendCommand({ payload: branchId, type: "switch-branch" });
+            }}
+            open={branchDialogOpen}
+            tree={state.conversationTree}
+          />
+        ) : null}
+        <ChatConfigDialog
+          configThemeColor={runtimeConfig.configThemeColor}
+          configUseMainThemeColor={runtimeConfig.configUseMainThemeColor}
+          dialogFill={runtimeConfig.dialogFill}
+          dialogText={runtimeConfig.dialogText}
+          dialogOpacity={runtimeConfig.dialogOpacity}
+          dialogScale={runtimeConfig.dialogScale}
+          effectiveDialogText={effectiveDialogText}
+          effectiveNameText={effectiveNameText}
+          longPressTalk={runtimeConfig.longPressTalk}
+          longPressTalkAvailable={voskModelState.available}
+          longPressTalkVisible={longPressTalkVisible}
+          mainThemeColor={mainThemeColor}
+          nameText={runtimeConfig.nameText}
+          onClose={() => setToolbarConfigOpen(false)}
+          onCommand={sendCommand}
+          onConfigThemeColorChange={updateRuntimeConfigThemeColor}
+          onConfigUseMainThemeColorChange={updateRuntimeConfigUseMainThemeColor}
+          onDialogFillChange={updateRuntimeDialogFill}
+          onDialogOpacityChange={updateRuntimeDialogOpacity}
+          onDialogScaleChange={updateRuntimeDialogScale}
+          onLongPressTalkChange={updateRuntimeLongPressTalk}
+          onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
+          onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
+          onSpriteScaleChange={updateRuntimeSpriteScale}
+          onTextSpeedChange={updateRuntimeTextSpeed}
+          onTextStyleChange={updateRuntimeTextStyle}
+          onWindowScaleChange={updateRuntimeWindowScale}
+          open={toolbarConfigOpen}
+          spriteOffsetX={runtimeConfig.spriteOffsetX}
+          spriteOffsetY={runtimeConfig.spriteOffsetY}
+          spriteScales={runtimeConfig.spriteScales}
+          sprites={viewModel.sprites}
+          textSpeed={typewriterCps}
+          voiceLanguage={viewModel.voiceLanguage || "ja"}
+          windowScale={runtimeConfig.windowScale}
         />
       </main>
       <AlertDialog
@@ -399,9 +478,26 @@ export function ChatStagePage() {
         closeLabel={t("common.close")}
         confirmLabel={t("chat.clear.confirmAction")}
         onCancel={() => setConfirmClearHistory(false)}
-        onConfirm={() => sendCommand({ type: "clear-history" })}
+        onConfirm={() => void sendCommand({ type: "clear-history" })}
         open={confirmClearHistory}
         title={t("chat.clear.confirmTitle")}
+      />
+      <AlertDialog
+        body={t("chat.history.revertConfirmBody")}
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={t("chat.history.revertConfirmAction")}
+        onCancel={() => setConfirmRevertUserIndex(null)}
+        onConfirm={() => {
+          if (confirmRevertUserIndex == null) {
+            return;
+          }
+          setConfirmRevertUserIndex(null);
+          setHistoryDialogOpen(false);
+          void sendCommand({ payload: confirmRevertUserIndex, type: "revert-history" });
+        }}
+        open={confirmRevertUserIndex != null}
+        title={t("chat.history.revertConfirmTitle")}
       />
     </>
   );

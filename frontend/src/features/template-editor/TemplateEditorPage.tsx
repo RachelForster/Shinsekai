@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
+import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import {
@@ -16,6 +18,7 @@ import {
   type TemplateSummary,
 } from "../../entities/template/repository";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
+import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import type { ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
 import {
@@ -60,6 +63,7 @@ export function TemplateEditorPage() {
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
+  const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
   const templates = templatesQuery.data ?? [];
   const isLoading = templatesQuery.isLoading;
   const launchSession = sessionQuery.data;
@@ -67,6 +71,7 @@ export function TemplateEditorPage() {
   const appConfig = configQuery.data;
   const characters = charactersQuery.data ?? [];
   const backgrounds = backgroundsQuery.data ?? [];
+  const effects = Array.isArray(effectsQuery.data) ? effectsQuery.data : [];
   const [selectedId, setSelectedId] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [sessionDraftActive, setSessionDraftActive] = useState(false);
@@ -75,6 +80,7 @@ export function TemplateEditorPage() {
   const [nameError, setNameError] = useState("");
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [selectedBackground, setSelectedBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
+  const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
   const [voiceLanguage, setVoiceLanguage] = useState("ja");
   const [useEffectPrompt, setUseEffectPrompt] = useState(true);
   const [useTranslation, setUseTranslation] = useState(true);
@@ -104,7 +110,69 @@ export function TemplateEditorPage() {
     return names.includes(TRANSPARENT_BACKGROUND_NAME) ? names : [...names, TRANSPARENT_BACKGROUND_NAME];
   }, [backgrounds]);
   const selectedCharacterNames = useMemo(() => new Set(selectedCharacters), [selectedCharacters]);
-  const failedQuery = [templatesQuery, sessionQuery, configQuery, charactersQuery, backgroundsQuery].find(
+  const selectedEffectNames = useMemo(() => new Set(selectedEffects), [selectedEffects]);
+
+  const effectHintText = useMemo(() => {
+    if (!selectedEffects.length) return "";
+    const lines: string[] = ["可用音效："];
+    for (const ef of effects) {
+      if (selectedEffectNames.has(ef.name)) {
+        const tags = (ef.audio_tags || "").split("\n").filter(Boolean);
+        const kws: string[] = [];
+        for (const tag of tags) {
+          const kw = tag.replace(/^特效\s*\d+\s*[：:]\s*/, "").trim();
+          if (kw) kws.push(kw);
+        }
+        if (kws.length) {
+          lines.push(`${ef.name}有${kws.length}条特效音频：`);
+          kws.forEach((kw, i) => lines.push(`${i + 1}. ${kw}`));
+        }
+      }
+    }
+    if (lines.length <= 1) return "";
+    lines.push("");
+    lines.push("音效触发时机与模式：");
+    lines.push("- before:关键词 → 对话前播放一次");
+    lines.push("- after:关键词 → 对话后播放一次");
+    lines.push("- loop:关键词 → 开始循环播放（用于持续性音效如雨声、风声）");
+    lines.push("- stop:关键词 → 停止循环播放");
+    lines.push("- 关键词 → 默认对话前播放一次");
+    lines.push('循环示例：开始时 {"effect": "loop:雨声"}，结束时 {"effect": "stop:雨声"}');
+    return lines.join("\n");
+  }, [effects, selectedEffectNames, selectedEffects]);
+
+  // 选特效后自动写入/更新系统提示词（插在背景和可调用工具之间）
+  useEffect(() => {
+    setDraft((current) => {
+      let sys = current.system ?? "";
+      // 先移除旧的音效段落
+      const hintIdx = sys.indexOf("可用音效：");
+      if (hintIdx !== -1) {
+        let endIdx = sys.indexOf("\n\n", hintIdx + 12);
+        if (endIdx === -1) endIdx = sys.indexOf("\n", hintIdx + 12);
+        if (endIdx === -1) endIdx = sys.length;
+        // 向后找连续的空白行
+        while (endIdx < sys.length && sys[endIdx] === "\n") endIdx++;
+        sys = sys.slice(0, hintIdx) + sys.slice(endIdx);
+      }
+      if (!effectHintText) {
+        if (sys === (current.system ?? "")) return current;
+        return { ...current, system: sys };
+      }
+      // 插入到背景段落后、可调用工具前
+      const toolIdx = sys.indexOf("可调用工具");
+      if (toolIdx !== -1) {
+        // 在可调用工具前插入
+        sys = sys.slice(0, toolIdx) + "\n" + effectHintText + "\n\n" + sys.slice(toolIdx);
+      } else {
+        // 找不到可调用工具，追加到末尾
+        sys = sys.trimEnd() + "\n\n" + effectHintText;
+      }
+      if (sys === (current.system ?? "")) return current;
+      return { ...current, system: sys };
+    });
+  }, [effectHintText]);
+  const failedQuery = [templatesQuery, sessionQuery, configQuery, charactersQuery, backgroundsQuery, effectsQuery].find(
     (query) => query.isError,
   );
   const templateSelectValue = !isCreating && !sessionDraftActive ? selectedId || selected?.id || "" : "";
@@ -131,6 +199,7 @@ export function TemplateEditorPage() {
     setSessionDraftActive(true);
     setSelectedCharacters(Array.isArray(launchSession.selectedCharacters) ? launchSession.selectedCharacters : []);
     setSelectedBackground(launchSession.background || TRANSPARENT_BACKGROUND_NAME);
+    setSelectedEffects(Array.isArray(launchSession.effectNames) ? launchSession.effectNames : []);
     setVoiceLanguage(launchSession.voiceLanguage || "ja");
     setUseEffectPrompt(launchSession.useEffect ?? true);
     setUseTranslation(launchSession.useTranslation ?? true);
@@ -221,7 +290,7 @@ export function TemplateEditorPage() {
 
   const scenarioForSelectedCharacters = () => {
     const currentScenario = String(draft.scenario ?? "");
-    const defaultScenario = buildDefaultTemplateScenario(selectedCharacters);
+    const defaultScenario = buildDefaultTemplateScenario(selectedCharacters, t("template.defaultScenario"));
     if (!defaultScenario) {
       if (currentScenario === lastAutoScenarioRef.current) {
         return "";
@@ -315,6 +384,7 @@ export function TemplateEditorPage() {
         buildTemplateGenerateInput({
           backgroundName: selectedBackground,
           draft: { ...draft, scenario },
+          effectNames: selectedEffects,
           options: templateOptionsState,
           runtime: runtimeOptionsState,
           selectedCharacters,
@@ -335,6 +405,25 @@ export function TemplateEditorPage() {
       const normalized = normalizeTemplateSummary(template);
       setIsCreating(true);
       setSessionDraftActive(true);
+      // 自动生成后重新注入音效信息
+      let sys = normalized.system ?? "";
+      const hintIdx = sys.indexOf("可用音效：");
+      if (hintIdx !== -1) {
+        let endIdx = sys.indexOf("\n\n", hintIdx + 12);
+        if (endIdx === -1) endIdx = sys.indexOf("\n", hintIdx + 12);
+        if (endIdx === -1) endIdx = sys.length;
+        while (endIdx < sys.length && sys[endIdx] === "\n") endIdx++;
+        sys = sys.slice(0, hintIdx) + sys.slice(endIdx);
+      }
+      if (effectHintText) {
+        const toolIdx = sys.indexOf("可调用工具");
+        if (toolIdx !== -1) {
+          sys = sys.slice(0, toolIdx) + "\n" + effectHintText + "\n\n" + sys.slice(toolIdx);
+        } else {
+          sys = sys.trimEnd() + "\n\n" + effectHintText;
+        }
+      }
+      normalized.system = sys;
       setDraft(normalized);
       if (!options?.silent) {
         showToast({ kind: "success", message: template.generationMessage, title: t("template.toast.generated") });
@@ -368,7 +457,22 @@ export function TemplateEditorPage() {
     }
     const timer = window.setTimeout(() => generateMutation.mutate({ scenario, silent: true }), 160);
     return () => window.clearTimeout(timer);
-  }, [selectedCharactersKey, sessionRestored]);
+  }, [
+    selectedCharactersKey,
+    selectedBackground,
+    selectedEffects,
+    voiceLanguage,
+    useEffectPrompt,
+    useTranslation,
+    useCg,
+    useCot,
+    useChoice,
+    useNarration,
+    useStat,
+    maxSpeechChars,
+    maxDialogItems,
+    sessionRestored,
+  ]);
 
   const launchMutation = useMutation({
     mutationFn: async ({ resetHistory }: { resetHistory: boolean }) => {
@@ -376,6 +480,7 @@ export function TemplateEditorPage() {
       const session: TemplateLaunchSession = buildTemplateLaunchSession({
         backgroundName: selectedBackground,
         draft,
+        effectNames: selectedEffects,
         options: templateOptionsState,
         runtime: runtimeOptionsState,
         selectedCharacters,
@@ -386,6 +491,7 @@ export function TemplateEditorPage() {
       const snapshot = await launchChat(
         buildChatLaunchPayload({
           backgroundName: selectedBackground,
+          effectNames: selectedEffects,
           resetHistory,
           runtime: runtimeOptionsState,
           selectedCharacters,
@@ -410,12 +516,23 @@ export function TemplateEditorPage() {
         void handleRuntimeDependencyError(snapshot);
         return;
       }
-      showToast({ kind: "success", message: snapshot.dialogText, title: t("template.toast.launched") });
+      showToast({
+        kind: "success",
+        message: snapshot.statusMessage || snapshot.dialogText,
+        title: t("template.toast.launched"),
+      });
+      void showChatSurface({ snapshot });
     },
   });
 
   const toggleCharacter = (name: string, checked: boolean) => {
     setSelectedCharacters((current) =>
+      checked ? [...new Set([...current, name])] : current.filter((item) => item !== name),
+    );
+  };
+
+  const toggleEffect = (name: string, checked: boolean) => {
+    setSelectedEffects((current) =>
       checked ? [...new Set([...current, name])] : current.filter((item) => item !== name),
     );
   };
@@ -574,6 +691,31 @@ export function TemplateEditorPage() {
                   );
                 })}
               </div>
+
+              {effects.length > 0 ? (
+                <div className="template-effect-section">
+                  <span className="template-effect-section__label">{t("template.field.effectName")}</span>
+                  <div aria-label={t("template.field.effectName")} className="template-character-grid" role="group">
+                    {effects.map((effect) => {
+                      const isSelected = selectedEffectNames.has(effect.name);
+                      return (
+                        <button
+                          aria-pressed={isSelected}
+                          className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
+                          key={effect.name}
+                          onClick={() => toggleEffect(effect.name, !isSelected)}
+                          style={{ "--template-character-color": effect.color || "#5b8def" } as CSSProperties}
+                          title={effect.name}
+                          type="button"
+                        >
+                          <span aria-hidden className="template-character-card__dot" />
+                          <span className="template-character-card__name">{effect.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </section>
 

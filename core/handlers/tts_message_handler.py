@@ -6,11 +6,14 @@ TTS worker 用 LLM dialog 处理器（见 handler_registry.MessageHandler）。
 
 from __future__ import annotations
 
+import logging
 import re
 import traceback
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
+import yaml
 from config.config_manager import ConfigManager
 from sdk.handlers import MessageHandler
 from core.messaging.dialog_tokens import (
@@ -25,6 +28,26 @@ from core.runtime.app_runtime import get_app_runtime, tts_emit_to_ui_queue
 from i18n import tr as tr_i18n
 
 _config = ConfigManager()
+logger = logging.getLogger(__name__)
+
+
+def _read_sprite_voice_cfg(name_s: str, sprite_id: int):
+    """直接从 YAML 读取立绘的 voice_type、voice_path、voice_text，避免跨进程缓存。"""
+    try:
+        _chars_path = Path("data/config/characters.yaml")
+        if not _chars_path.is_file():
+            return None, None, None
+        with open(_chars_path, "r", encoding="utf-8") as _fh:
+            _data = yaml.safe_load(_fh) or []
+        for _c in _data:
+            if _c.get("name") == name_s:
+                _sprites = _c.get("sprites") or []
+                if 0 <= sprite_id < len(_sprites):
+                    _s = _sprites[sprite_id]
+                    return _s.get("voice_type"), _s.get("voice_path"), _s.get("voice_text")
+    except Exception:
+        pass
+    return None, None, None
 
 
 def get_character_by_name(name: str):
@@ -47,6 +70,55 @@ def _hide_tts_busy() -> None:
 
 def _cc():
     return get_app_runtime().opencc
+
+
+def _is_remote_gpt_sovits() -> bool:
+    try:
+        api_config = _config.config.api_config
+        provider = str(getattr(api_config, "tts_provider", "") or "").strip().lower()
+        host = (urlparse(str(getattr(api_config, "gpt_sovits_url", "") or "")).hostname or "").lower()
+        return provider == "kaggle-gpt-sovits" or (
+            provider == "gpt-sovits" and host not in {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
+        )
+    except Exception:
+        return False
+
+
+def _is_remote_reference_path(path: str) -> bool:
+    return str(path or "").strip().startswith("/kaggle/")
+
+
+def _sprite_value(sprite_data, key: str, default=None):
+    if isinstance(sprite_data, dict):
+        return sprite_data.get(key, default)
+    return getattr(sprite_data, key, default)
+
+
+def _sprite_voice_audio(character_config, sprite_id: int, *allowed_types: str):
+    if sprite_id < 0:
+        return None, "", ""
+    try:
+        yaml_voice_type, yaml_voice_path, yaml_voice_text = _read_sprite_voice_cfg(
+            character_config.name, sprite_id
+        )
+        voice_type = yaml_voice_type
+        voice_path = str(yaml_voice_path or "").strip()
+        voice_text = yaml_voice_text or ""
+        if not voice_path:
+            sprite_data = character_config.sprites[sprite_id]
+            voice_type = _sprite_value(sprite_data, "voice_type")
+            voice_path = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
+            voice_text = _sprite_value(sprite_data, "voice_text", "") or ""
+        if voice_type in allowed_types and voice_path:
+            return voice_type, Path(voice_path).resolve().as_posix(), voice_text
+    except Exception:
+        logger.debug(
+            "Failed to resolve sprite voice audio for character=%s sprite_id=%s",
+            getattr(character_config, "name", None),
+            sprite_id,
+            exc_info=True,
+        )
+    return None, "", ""
 
 
 class ChainOfThoughtTtsHandler(MessageHandler):
@@ -157,13 +229,34 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 except (ValueError, IndexError):
                     print(f"无效或缺失的立绘编号: {asset_id}. 使用默认立绘。")
                     sprite_id = -1
+
+                # 预设语音：跳过 TTS 合成，直接播放立绘上传的语音文件
+                if sprite_id >= 0:
+                    _voice_type, _voice_audio_path, _voice_text = _sprite_voice_audio(
+                        character_config, sprite_id, "preset"
+                    )
+                    if _voice_audio_path:
+                        _hide_tts_busy()
+                        tts_emit_to_ui_queue(
+                            name_s, _voice_text or speech, str(asset_id), _voice_audio_path,
+                            is_system_message=False, effect=msg.effect,
+                        )
+                        return
+
                 ref_audio_path = Path(character_config.refer_audio_path).resolve().as_posix()
                 prompt_text = character_config.prompt_text
                 try:
+                    if sprite_id < 0:
+                        raise IndexError("Sprite ID out of range")
                     sprite_data = character_config.sprites[sprite_id]
-                    if sprite_data.get("voice_text", None):
-                        ref_audio_path = Path(sprite_data.get("voice_path")).resolve().as_posix()
-                        prompt_text = sprite_data.get("voice_text")
+                    _voice_type = _sprite_value(sprite_data, "voice_type")
+                    _vt = _sprite_value(sprite_data, "voice_text")
+                    _vp = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
+                    if _vp and (_voice_type == "reference" or (_voice_type is None and _vt)) and _vt and (
+                        not _is_remote_gpt_sovits() or _is_remote_reference_path(_vp)
+                    ):
+                        ref_audio_path = Path(_vp).resolve().as_posix()
+                        prompt_text = _vt
                 except Exception:
                     print("没有立绘")
                 if text_processor:
@@ -213,6 +306,20 @@ class DefaultCharacterTtsHandler(MessageHandler):
                             character_name=name_s,
                             speed_factor=_speed,
                         )
+                        if not _path or not Path(_path).is_file() or Path(_path).stat().st_size <= 0:
+                            print(
+                                "TTSWorker: 分句语音生成失败，停止后续分句播放，"
+                                f"segment={_i + 1}/{len(_sentences)}, text={_sent!r}"
+                            )
+                            tts_emit_to_ui_queue(
+                                name_s,
+                                speech,
+                                _asset_str,
+                                "",
+                                is_system_message=False,
+                                effect=msg.effect,
+                            )
+                            return
                         _is_first = _i == 0
                         _is_last = _i == len(_sentences) - 1
                         rt.audio_path_queue.put(TTSOutputMessage(
@@ -228,7 +335,13 @@ class DefaultCharacterTtsHandler(MessageHandler):
             finally:
                 _hide_tts_busy()
         else:
-            audio_path = character_config.sprites[int(asset_id) - 1].get("voice_path", "")
+            try:
+                sprite_id = int(asset_id) - 1
+            except (TypeError, ValueError):
+                sprite_id = -1
+            _voice_type, audio_path, _voice_text = _sprite_voice_audio(
+                character_config, sprite_id, "fallback", "preset"
+            )
         tts_emit_to_ui_queue(
             name_s, speech, str(asset_id), audio_path, is_system_message=False, effect=msg.effect,
         )

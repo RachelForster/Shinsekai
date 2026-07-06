@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 import time
@@ -43,12 +42,21 @@ from PySide6.QtWidgets import (
 
 from asr.asr_adapter import normalize_asr_provider_storage_key
 from asr.asr_manager import ASRAdapterFactory
+from config.tts_provider_config import (
+    default_tts_work_path,
+    normalize_tts_provider,
+    requires_tts_work_path,
+    tts_server_url_or_default,
+    uses_shared_tts_server_config,
+)
 from i18n import init_i18n, tr as tr_i18n
 from sdk.lang import normalize_lang
 from llm.constants import LLM_BASE_URLS
+from llm.claude_url import claude_models_endpoint_url
 from llm.llm_manager import LLMAdapterFactory
 from t2i.t2i_manager import T2IAdapterFactory
 from tts.tts_manager import TTSAdapterFactory
+from frontend_bridge_core.security import host_matches
 from ui.settings_ui.widgets.adapter_extra_form import (
     build_schema_widgets,
     read_schema_values,
@@ -77,6 +85,7 @@ _ASR_WHISPER_MODEL_PRESETS: tuple[str, ...] = (
 )
 _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
     ("genie-tts", "Genie TTS"),
+    ("kaggle-gpt-sovits", "Kaggle GPT-SoVITS"),
     ("gpt-sovits", "GPT SoVITS"),
     ("index-tts", "IndexTTS"),
     ("cosyvoice", "CosyVoice"),
@@ -87,6 +96,8 @@ _MODEL_REQUEST_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0 Safari/537.36 Shinsekai/1.0"
 )
+
+
 _OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 _LLM_CAPABILITY_CACHE_PATH = Path("data/config/llm_model_capabilities.json")
 _LLM_CAPABILITY_CACHE_VERSION = 2
@@ -486,25 +497,32 @@ class _LLMModelLineEdit(QLineEdit):
 
 def _llm_model_provider_kind(provider: str, base_url: str) -> str:
     low_provider = (provider or "").strip().lower()
-    low_base = (base_url or "").strip().lower()
-    if "gemini" in low_provider or "generativelanguage.googleapis.com" in low_base:
+    if "gemini" in low_provider or _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"}):
         return "gemini"
-    if "deepseek" in low_provider or "api.deepseek.com" in low_base:
+    if "deepseek" in low_provider or _base_url_host_matches(base_url, {"api.deepseek.com"}):
         return "deepseek"
     if (
         low_provider == "claude"
         or "claude" in low_provider
-        or "anthropic.com" in low_base
+        or _base_url_host_matches(base_url, {"anthropic.com"})
     ):
         return "anthropic"
     if (
-        "dashscope.aliyuncs.com" in low_base
+        _base_url_host_matches(base_url, {"dashscope.aliyuncs.com"})
         or "通义" in low_provider
         or "qwen" in low_provider
         or "dashscope" in low_provider
     ):
         return "dashscope"
     return "openai_compatible"
+
+
+def _base_url_host_matches(base_url: str, allowed_hosts: set[str]) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(str(base_url or "").strip())
+    except ValueError:
+        return False
+    return parsed.hostname is not None and host_matches(parsed.hostname, allowed_hosts)
 
 
 def _base_url_required(base_url: str) -> str:
@@ -524,7 +542,7 @@ def _openai_compatible_models_endpoint_url(base_url: str) -> str:
 def _gemini_models_endpoint_url(base_url: str, api_key: str) -> str:
     base = _base_url_required(base_url).rstrip("/")
     low_base = base.lower()
-    if "generativelanguage.googleapis.com" not in low_base:
+    if not _base_url_host_matches(base, {"generativelanguage.googleapis.com"}):
         return _openai_compatible_models_endpoint_url(base)
     marker = "/openai"
     marker_ix = low_base.rfind(marker)
@@ -538,7 +556,7 @@ def _gemini_models_endpoint_url(base_url: str, api_key: str) -> str:
 
 def _deepseek_models_endpoint_url(base_url: str) -> str:
     base = _base_url_required(base_url).rstrip("/")
-    if "api.deepseek.com" in base.lower() and base.lower().endswith("/v1"):
+    if _base_url_host_matches(base, {"api.deepseek.com"}) and base.lower().endswith("/v1"):
         base = base[:-3]
     return _openai_compatible_models_endpoint_url(base)
 
@@ -565,6 +583,8 @@ def _llm_models_endpoint_url(
     base_url: str, provider: str = "", api_key: str = ""
 ) -> str:
     kind = _llm_model_provider_kind(provider, base_url)
+    if kind == "anthropic":
+        return claude_models_endpoint_url(base_url)
     if kind == "gemini":
         return _gemini_models_endpoint_url(base_url, api_key)
     if kind == "deepseek":
@@ -584,7 +604,7 @@ def _llm_models_request_headers(
     kind = _llm_model_provider_kind(provider, base_url)
     if (
         kind == "gemini"
-        and "generativelanguage.googleapis.com" in (base_url or "").lower()
+        and _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"})
     ):
         return headers
     if kind == "anthropic":
@@ -931,23 +951,13 @@ def _match_openrouter_capability(
     return _unique_capability(suffix_matches)
 
 
-def _api_key_fingerprint(api_key: str) -> str:
-    key = (api_key or "").strip()
-    if not key:
-        return "no-key"
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
-
-
-def _llm_probe_cache_key(
-    provider: str, base_url: str, api_key: str, model_id: str
-) -> str:
+def _llm_probe_cache_key(provider: str, base_url: str, model_id: str) -> str:
     probe_url = _chat_completions_probe_url(provider, base_url)
     return "|".join(
         (
             (provider or "").strip().lower(),
             (base_url or "").strip().rstrip("/").lower(),
             probe_url.strip().rstrip("/").lower(),
-            _api_key_fingerprint(api_key),
             (model_id or "").strip().lower(),
         )
     )
@@ -1137,7 +1147,7 @@ def _probe_cache_entry_valid(
 
 
 def _should_cache_probe_capability(cap: _LLMModelCapability) -> bool:
-    return cap.status not in _UNCERTAIN_PROBE_STATUS
+    return cap.status not in _UNCERTAIN_PROBE_STATUS and cap.status != "no_access"
 
 
 def _unknown_llm_model_capability(status: str = "unknown") -> _LLMModelCapability:
@@ -1164,13 +1174,12 @@ def _lookup_probe_cache(
     cache: _LLMCapabilityCache,
     provider: str,
     base_url: str,
-    api_key: str,
     model_id: str,
     *,
     now: float,
 ) -> _LLMModelCapability | None:
     cap = _probe_cache_entry_valid(
-        cache.probe.get(_llm_probe_cache_key(provider, base_url, api_key, model_id)),
+        cache.probe.get(_llm_probe_cache_key(provider, base_url, model_id)),
         now=now,
     )
     if cap is not None:
@@ -1182,7 +1191,6 @@ def _store_probe_cache(
     cache: _LLMCapabilityCache,
     provider: str,
     base_url: str,
-    api_key: str,
     model_id: str,
     cap: _LLMModelCapability,
     *,
@@ -1190,7 +1198,7 @@ def _store_probe_cache(
 ) -> None:
     if not _should_cache_probe_capability(cap):
         return
-    cache.probe[_llm_probe_cache_key(provider, base_url, api_key, model_id)] = (
+    cache.probe[_llm_probe_cache_key(provider, base_url, model_id)] = (
         cap,
         now,
     )
@@ -1203,7 +1211,7 @@ def _chat_completions_probe_url(provider: str, base_url: str) -> str:
         base = base[: -len("/models")]
         low = base.lower()
     kind = _llm_model_provider_kind(provider, base)
-    if kind == "dashscope" and "dashscope.aliyuncs.com" in low:
+    if kind == "dashscope" and _base_url_host_matches(base, {"dashscope.aliyuncs.com"}):
         if low.endswith("/api/v1/deployments"):
             base = base[: -len("/api/v1/deployments")] + "/compatible-mode/v1"
             low = base.lower()
@@ -1213,7 +1221,7 @@ def _chat_completions_probe_url(provider: str, base_url: str) -> str:
         elif low.endswith("/api/v1"):
             base = base[: -len("/api/v1")] + "/compatible-mode/v1"
             low = base.lower()
-    elif kind == "gemini" and "generativelanguage.googleapis.com" in low:
+    elif kind == "gemini" and _base_url_host_matches(base, {"generativelanguage.googleapis.com"}):
         if low.endswith("/v1beta") or low.endswith("/v1"):
             base = f"{base}/openai"
             low = base.lower()
@@ -1375,7 +1383,6 @@ def _fetch_llm_model_options(
                 cache,
                 provider,
                 base_url,
-                api_key,
                 model_id,
                 now=now,
             )
@@ -1397,7 +1404,6 @@ def _fetch_llm_model_options(
                     cache,
                     provider,
                     base_url,
-                    api_key,
                     model_id,
                     cap,
                     now=now,
@@ -2226,6 +2232,7 @@ class ApiSettingsTab(QWidget):
         self.tts_provider.currentIndexChanged.connect(self._on_tts_provider_changed)
         self.t2i_engine.currentIndexChanged.connect(self._on_t2i_engine_changed)
         self._asr_provider.currentIndexChanged.connect(self._on_asr_provider_changed)
+        self._update_tts_path_edit_state()
         self._rebuild_llm_extra_panel()
         self._rebuild_tts_extra_panel()
         self._rebuild_asr_extra_panel()
@@ -2326,7 +2333,7 @@ class ApiSettingsTab(QWidget):
         self.gpt_sovits_api_path.setPlaceholderText(tr_i18n("api.tts.ph_path"))
         self._tts_engine.setText(tr_i18n("api.tts.engine"))
         self._tts_url.setText(tr_i18n("api.tts.url"))
-        self._tts_path.setText(tr_i18n("api.tts.path"))
+        self._tts_path.setText(tr_i18n(self._tts_path_label_key()))
         i_none = self.tts_provider.findData("none")
         if i_none >= 0:
             self.tts_provider.setItemText(i_none, tr_i18n("api.tts.none"))
@@ -2334,6 +2341,7 @@ class ApiSettingsTab(QWidget):
         _ti = self.tts_provider.findData(_cur_tts)
         if _ti >= 0:
             self.tts_provider.setCurrentIndex(_ti)
+        self._update_tts_path_edit_state(clear_kaggle_path=False)
         self._c_hint.setText(tr_i18n("api.comfy.hint"))
         self._f_t2i_engine.setText(tr_i18n("api.comfy.engine"))
         self.t2i_url.setPlaceholderText(tr_i18n("api.comfy.ph_t2i"))
@@ -2771,7 +2779,45 @@ class ApiSettingsTab(QWidget):
         self._rebuild_t2i_extra_panel()
 
     def _on_tts_provider_changed(self, _index: int = 0) -> None:
+        self._update_tts_path_edit_state()
         self._rebuild_tts_extra_panel()
+
+    def _current_tts_provider_key(self) -> str:
+        value = self.tts_provider.currentData()
+        if value is None:
+            value = self.tts_provider.currentText()
+        return normalize_tts_provider(str(value or ""))
+
+    def _tts_path_label_key(self, provider_key: str | None = None) -> str:
+        key = provider_key or self._current_tts_provider_key()
+        return {
+            "genie-tts": "api.tts.path_genie",
+            "gpt-sovits": "api.tts.path_gpt_sovits",
+            "index-tts": "api.tts.path_index",
+            "kaggle-gpt-sovits": "api.tts.path_kaggle",
+        }.get(key, "api.tts.path")
+
+    def _update_tts_path_edit_state(self, *, clear_kaggle_path: bool = True) -> None:
+        provider_key = self._current_tts_provider_key()
+        is_kaggle = provider_key == "kaggle-gpt-sovits"
+        default_url = tts_server_url_or_default(provider_key, self.sovits_url.text())
+        if default_url != self.sovits_url.text().strip():
+            self.sovits_url.setText(default_url)
+        self._tts_path.setText(tr_i18n(self._tts_path_label_key(provider_key)))
+        self.gpt_sovits_api_path.setEnabled(not is_kaggle)
+        self._tts_path.setEnabled(not is_kaggle)
+        if is_kaggle:
+            if clear_kaggle_path:
+                self.gpt_sovits_api_path.clear()
+            self.gpt_sovits_api_path.setPlaceholderText(tr_i18n("api.tts.ph_path_kaggle"))
+            self.gpt_sovits_api_path.setToolTip(tr_i18n("api.tts.tt_path_kaggle"))
+        else:
+            if requires_tts_work_path(provider_key) and not self.gpt_sovits_api_path.text().strip():
+                default_path = default_tts_work_path(provider_key)
+                if default_path:
+                    self.gpt_sovits_api_path.setText(default_path)
+            self.gpt_sovits_api_path.setPlaceholderText(tr_i18n("api.tts.ph_path"))
+            self.gpt_sovits_api_path.setToolTip("")
 
     def _on_asr_provider_changed(self, _index: int = 0) -> None:
         self._update_asr_whisper_specific_visibility()
@@ -2806,19 +2852,31 @@ class ApiSettingsTab(QWidget):
         ):
             return
 
-        tts_slug = self.tts_provider.currentData()
-        if tts_slug is None:
-            tts_slug = "gpt-sovits"
-        tts_slug = str(tts_slug).strip().lower()
+        tts_slug = self._current_tts_provider_key() or "gpt-sovits"
 
-        if tts_slug in ("gpt-sovits", "genie-tts"):
+        if uses_shared_tts_server_config(tts_slug):
+            tts_url = self.sovits_url.text().strip()
+            tts_checks = [
+                not_empty(tts_url, tr_i18n("api.tts.url")),
+                no_quotes(tts_url, tr_i18n("api.tts.url")),
+                valid_url(tts_url, tr_i18n("api.tts.url")),
+            ]
+            tts_path = self.gpt_sovits_api_path.text().strip()
+            tts_path_label = tr_i18n(self._tts_path_label_key(tts_slug))
+            requires_local_tts_path = requires_tts_work_path(tts_slug)
+            if requires_local_tts_path:
+                tts_checks.extend([
+                    not_empty(tts_path, tts_path_label),
+                    no_quotes(tts_path, tts_path_label),
+                    dir_exists(tts_path, tts_path_label),
+                ])
+            elif tts_path and tts_slug != "kaggle-gpt-sovits":
+                tts_checks.extend([
+                    no_quotes(tts_path, tts_path_label),
+                    dir_exists(tts_path, tts_path_label),
+                ])
             if not validate_or_block(
-                not_empty(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
-                no_quotes(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
-                valid_url(self.sovits_url.text().strip(), tr_i18n("api.tts.url")),
-                not_empty(self.gpt_sovits_api_path.text().strip(), tr_i18n("api.tts.path")),
-                no_quotes(self.gpt_sovits_api_path.text().strip(), tr_i18n("api.tts.path")),
-                dir_exists(self.gpt_sovits_api_path.text().strip(), tr_i18n("api.tts.path")),
+                *tts_checks,
                 title=tr_i18n("api.msg.validation_title"),
                 parent=self,
             ):
@@ -2866,7 +2924,7 @@ class ApiSettingsTab(QWidget):
             is_streaming,
             tts_slug,
             self.sovits_url.text().strip(),
-            self.gpt_sovits_api_path.text().strip(),
+            "" if tts_slug == "kaggle-gpt-sovits" else self.gpt_sovits_api_path.text().strip(),
             self._current_t2i_engine_key(),
             self.t2i_url.text().strip(),
             self.t2i_work_path.text().strip(),

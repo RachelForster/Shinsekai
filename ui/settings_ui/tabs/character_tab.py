@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from PySide6.QtCore import Qt, QSize, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
@@ -272,6 +273,8 @@ class CharacterSettingsTab(QWidget):
         # --- 3. 语音参考路径（TTS 侧）---
         self._voice_box = QGroupBox(tr_i18n("char.voice_box"))
         vf = QFormLayout(self._voice_box)
+        self._voice_kaggle_note = QLabel(tr_i18n("char.kaggle_voice_locked_hint"))
+        self._voice_kaggle_note.setWordWrap(True)
         self.gpt_model_path = QLineEdit()
         self.sovits_model_path = QLineEdit()
         self.refer_audio_path = QLineEdit()
@@ -292,6 +295,7 @@ class CharacterSettingsTab(QWidget):
         self._v_pl = QLabel(tr_i18n("char.prompt_lang"))
         self._v_sp = QLabel(tr_i18n("char.speech_speed_lbl"))
         self._v_vol = QLabel(tr_i18n("char.speech_volume_lbl"))
+        vf.addRow(self._voice_kaggle_note)
         vf.addRow(self._v_gpt, self.gpt_model_path)
         vf.addRow(self._v_sov, self.sovits_model_path)
         vf.addRow(self._v_ref, self.refer_audio_path)
@@ -300,6 +304,7 @@ class CharacterSettingsTab(QWidget):
         vf.addRow(self._v_sp, self.speech_speed)
         vf.addRow(self._v_vol, self.speech_volume)
         lay.addWidget(self._voice_box)
+        self._update_voice_reference_edit_state()
 
         # --- 4. 立绘：先上传与缩放，再「画廊+情绪」并列，最下为当前立绘语音 ---（可滚动；保存见底部栏）
         self._h2s = QLabel(tr_i18n("char.h2_sprites"))
@@ -496,6 +501,7 @@ class CharacterSettingsTab(QWidget):
         self._ai_translate_btn.setText(tr_i18n("char.ai_translate"))
         self._ai_translate_btn.setToolTip(tr_i18n("char.tt_ai_translate"))
         self._voice_box.setTitle(tr_i18n("char.voice_box"))
+        self._voice_kaggle_note.setText(tr_i18n("char.kaggle_voice_locked_hint"))
         self._v_gpt.setText(tr_i18n("char.gpt_path"))
         self._v_sov.setText(tr_i18n("char.sovits_path"))
         self._v_ref.setText(tr_i18n("char.ref_audio"))
@@ -527,6 +533,30 @@ class CharacterSettingsTab(QWidget):
     def _current_char(self) -> str:
         return self.selected_character.currentText().strip()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._update_voice_reference_edit_state()
+
+    def _is_kaggle_tts_provider(self) -> bool:
+        api_config = self._ctx.config_manager.config.api_config
+        provider = str(getattr(api_config, "tts_provider", "") or "").strip().lower()
+        return provider == "kaggle-gpt-sovits"
+
+    def _update_voice_reference_edit_state(self) -> None:
+        read_only = self._is_kaggle_tts_provider()
+        for widget in (
+            self.gpt_model_path,
+            self.sovits_model_path,
+            self.refer_audio_path,
+            self.prompt_text,
+            self.prompt_lang,
+        ):
+            widget.setReadOnly(read_only)
+        self.prompt_text.setEnabled(not read_only)
+        self.prompt_lang.setEnabled(not read_only)
+        self.speech_speed.setEnabled(not read_only)
+        self._voice_kaggle_note.setVisible(read_only)
+
     def _refresh_character_combo(self, select: str | None = None) -> None:
         self.selected_character.blockSignals(True)
         self.selected_character.clear()
@@ -553,10 +583,17 @@ class CharacterSettingsTab(QWidget):
             self.char_color.setText(_DEFAULT_NAME_COLOR)
             self._update_color_swatch()
             self.sprite_prefix.setText("temp")
-            for w in (self.gpt_model_path, self.sovits_model_path, self.refer_audio_path, self.prompt_text, self.prompt_lang):
+            for w in (
+                self.gpt_model_path,
+                self.sovits_model_path,
+                self.refer_audio_path,
+                self.prompt_text,
+                self.prompt_lang,
+            ):
                 w.clear()
             self.character_setting.clear()
             self.pronunciation_map_edit.clear()
+            self._update_voice_reference_edit_state()
             return
         self.char_name.setText(c.name)
         self.char_color.setText(c.color or _DEFAULT_NAME_COLOR)
@@ -572,6 +609,7 @@ class CharacterSettingsTab(QWidget):
         self.character_setting.setPlainText(c.character_setting or "")
         _pm = getattr(c, "pronunciation_map", None) or {}
         self.pronunciation_map_edit.setPlainText("\n".join(f"{k}={v}" for k, v in _pm.items()))
+        self._update_voice_reference_edit_state()
 
     def _on_character_change(self, name: str) -> None:
         if self._is_new_char(name):
@@ -811,19 +849,35 @@ class CharacterSettingsTab(QWidget):
         _gpt = self.gpt_model_path.text().strip()
         _sovits = self.sovits_model_path.text().strip()
         _ref = self.refer_audio_path.text().strip()
-        ok, errors = check_all(
+        _api_config = self._ctx.config_manager.config.api_config
+        _tts_provider = str(getattr(_api_config, "tts_provider", "") or "").strip().lower()
+        _tts_host = (urlparse(str(getattr(_api_config, "gpt_sovits_url", "") or "")).hostname or "").lower()
+        _remote_gpt_sovits = _tts_provider == "kaggle-gpt-sovits" or (
+            _tts_provider == "gpt-sovits" and _tts_host not in {
+                "",
+                "127.0.0.1",
+                "localhost",
+                "0.0.0.0",
+                "::1",
+            }
+        )
+        _checks = [
             not_empty(_spr, tr_i18n("char.sprite_dir")),
             ascii_only(_spr, tr_i18n("char.sprite_dir")),
             no_quotes(_gpt, tr_i18n("char.gpt_path")),
-            file_exists(_gpt, tr_i18n("char.gpt_path")),
             _ends_with(_gpt, ".ckpt", tr_i18n("char.gpt_path")),
             no_quotes(_sovits, tr_i18n("char.sovits_path")),
-            file_exists(_sovits, tr_i18n("char.sovits_path")),
             _ends_with(_sovits, ".pth", tr_i18n("char.sovits_path")),
             no_quotes(_ref, tr_i18n("char.ref_audio")),
-            file_exists(_ref, tr_i18n("char.ref_audio")),
-            audio_duration_between(_ref, 3.0, 10.0, tr_i18n("char.ref_audio")),
-        )
+        ]
+        if not _remote_gpt_sovits:
+            _checks.extend([
+                file_exists(_gpt, tr_i18n("char.gpt_path")),
+                file_exists(_sovits, tr_i18n("char.sovits_path")),
+                file_exists(_ref, tr_i18n("char.ref_audio")),
+                audio_duration_between(_ref, 3.0, 10.0, tr_i18n("char.ref_audio")),
+            ])
+        ok, errors = check_all(*_checks)
         if not ok:
             warn_if_invalid(ok, errors, title=tr_i18n("char.msg_validation_title"), parent=self)
             return
@@ -882,8 +936,8 @@ class CharacterSettingsTab(QWidget):
         dlg.setCancelButton(None)
         dlg.show()
         try:
-            from llm.tools.memory_tools import _get_mem0
-            mem = _get_mem0()
+            from ai.memory.runtime import get_mem0
+            mem = get_mem0()
             raw = mem.get_all(filters={"user_id": agent_id}, limit=200)
             mems = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
         except Exception as e:
@@ -927,7 +981,7 @@ class CharacterSettingsTab(QWidget):
         dlg.setCancelButton(None)
         dlg.show()
         try:
-            from llm.tools.memory_tools import memory_remember
+            from ai.memory.operations import memory_remember
             memory_remember(text, character_name=agent_id)
         except Exception as e:
             dlg.close()
@@ -939,7 +993,7 @@ class CharacterSettingsTab(QWidget):
 
     def _on_mem_delete(self, memory_id: str) -> None:
         try:
-            from llm.tools.memory_tools import memory_forget
+            from ai.memory.operations import memory_forget
             memory_forget(memory_id)
         except Exception as e:
             toast_info(self, tr_i18n("char.mem_del"), str(e))

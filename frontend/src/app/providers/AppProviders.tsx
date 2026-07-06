@@ -3,6 +3,7 @@ import { useEffect, type ReactNode } from "react";
 
 import { browseFiles } from "../../entities/files/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
+import { ChatThemeProvider } from "../../features/chat-stage/theme/ChatThemeProvider";
 import { queryClient } from "../../shared/async/queryClient";
 import { AppStateProvider, useAppState } from "../../shared/app-state/AppState";
 import { I18nProvider } from "../../shared/i18n";
@@ -24,7 +25,9 @@ export function AppRuntimeProviders({ children }: { children: ReactNode }) {
 
   return (
     <FileBrowserProvider browse={browseFiles}>
-      <ToastProvider>{children}</ToastProvider>
+      <ToastProvider>
+        <ChatThemeProvider>{children}</ChatThemeProvider>
+      </ToastProvider>
     </FileBrowserProvider>
   );
 }

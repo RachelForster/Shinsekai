@@ -5,11 +5,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
+
 from .state import BridgeState
+from .security import safe_child_path, safe_filename
 
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
 MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
 TEMP_SPLIT_META = "_temp_split.json"
+DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。"
 
 
 def _template_dir(state: BridgeState) -> Path:
@@ -49,19 +53,72 @@ def _compose_for_llm(scenario: str, system: str) -> str:
     return a or b
 
 
-def _history_id_from_scenario(user_scenario: str, system_template: str) -> str:
-    stable = (user_scenario or "").strip() or (system_template or "").strip()
-    return hashlib.md5(stable.encode("utf-8")).hexdigest()
+def _effective_user_scenario(user_scenario: str) -> str:
+    return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
+
+
+def _normalize_hash_character_names(character_names: Any = None) -> list[str]:
+    if not isinstance(character_names, list):
+        return []
+    names = {str(item).strip() for item in character_names if str(item).strip()}
+    return sorted(names)
+
+
+def _scenario_from_template_like(template: dict[str, Any]) -> str:
+    raw_scenario = template.get("scenario")
+    if raw_scenario is not None:
+        return str(raw_scenario)
+    return str(template.get("content") or "")
+
+
+def _history_id_from_scenario(
+    user_scenario: str,
+    character_names: Any = None,
+) -> str:
+    stable = {
+        "characters": _normalize_hash_character_names(character_names),
+        "scenario": _effective_user_scenario(user_scenario),
+    }
+    return hashlib.md5(
+        json.dumps(stable, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def _latest_history_json(history_dir: str) -> Path | None:
     path = Path(history_dir)
     if not path.is_dir():
         return None
-    files = [item for item in path.glob("*.json") if item.is_file()]
-    if not files:
+    candidates: list[tuple[Path, float]] = [
+        (item, item.stat().st_mtime) for item in path.glob("*.json") if item.is_file()
+    ]
+    candidates.extend(
+        (
+            item,
+            max(
+                child.stat().st_mtime
+                for child in (
+                    item / ACTIVE_HISTORY_FILENAME,
+                    item / BRANCH_TREE_FILENAME,
+                    item / f"{ACTIVE_HISTORY_FILENAME}.tmp",
+                )
+                if child.is_file()
+            ),
+        )
+        for item in path.iterdir()
+        if item.is_dir()
+        and any(
+            (item / name).is_file()
+            for name in (ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME, f"{ACTIVE_HISTORY_FILENAME}.tmp")
+        )
+    )
+    candidates.extend(
+        (item.parent / item.name[:-4], item.stat().st_mtime)
+        for item in path.glob("*.json.tmp")
+        if item.is_file()
+    )
+    if not candidates:
         return None
-    return max(files, key=lambda item: item.stat().st_mtime)
+    return max(candidates, key=lambda item: item[1])[0]
 
 
 def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:
@@ -157,11 +214,13 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
     name = str(template.get("name") or template.get("id") or "").strip()
     if not name:
         raise ValueError("template name is required")
-    scenario = str(template.get("scenario") or template.get("content") or "")
+    scenario = _scenario_from_template_like(template)
     system = str(template.get("system") or "")
-    file_name = name if name.endswith(".txt") else f"{name}.txt"
-    (_template_dir(state) / file_name).write_text(_compose_stored_template(scenario, system), encoding="utf-8")
-    file_name = f"{name}.txt" if not name.endswith(".txt") else name
+    file_name = safe_filename(name, default_suffix=".txt")
+    safe_child_path(_template_dir(state), file_name).write_text(
+        _compose_stored_template(scenario, system),
+        encoding="utf-8",
+    )
     for row in _list_templates(state):
         if row["id"] == file_name:
             return row
@@ -232,6 +291,7 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         "selectedCharacters": [str(item) for item in (raw.get("selected_characters") or []) if str(item)],
         "system": str(raw.get("system_template_text") or ""),
         "templateFileDropdown": str(raw.get("template_file_dropdown") or ""),
+        "workflowPath": str(raw.get("workflow_path") or ""),
         "useCg": bool(raw.get("use_cg_yes", False)),
         "useChoice": bool(raw.get("use_choice_yes", True)),
         "useCot": bool(raw.get("use_cot_yes", False)),
@@ -274,6 +334,7 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         "init_sprite_path": str(payload.get("initSpritePath") or ""),
         "history_file": str(payload.get("historyPath") or ""),
         "room_id": str(payload.get("roomId") or ""),
+        "workflow_path": str(payload.get("workflowPath") or ""),
     }
     save_template_session(state.template_dir_path, data)
     loaded = _load_template_session_payload(state)

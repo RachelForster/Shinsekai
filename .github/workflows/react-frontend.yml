@@ -26,6 +26,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FRONTEND_COVERAGE_THRESHOLD: 85
 
 concurrency:
   group: react-frontend-${{ github.workflow }}-${{ github.ref }}
@@ -60,8 +61,52 @@ jobs:
       - name: Type check
         run: pnpm lint:types
 
-      - name: Unit tests
-        run: pnpm test
+      - name: Unit tests with coverage
+        run: pnpm test:coverage
+
+      - name: Summarize and enforce frontend coverage threshold
+        if: always()
+        run: |
+          node - <<'JS'
+          const fs = require("fs");
+          const path = "coverage/coverage-summary.json";
+          if (!fs.existsSync(path)) {
+            process.exit(0);
+          }
+
+          const total = JSON.parse(fs.readFileSync(path, "utf8")).total;
+          const threshold = Number(process.env.FRONTEND_COVERAGE_THRESHOLD);
+          const requiredMetrics = ["lines", "statements"];
+          const failures = requiredMetrics.filter((metric) => total[metric].pct < threshold);
+          const summary = [
+            "## Frontend coverage",
+            "",
+            `- Required threshold: ${threshold}% for lines and statements`,
+            `- Lines: ${total.lines.pct}%`,
+            `- Statements: ${total.statements.pct}%`,
+            `- Branches: ${total.branches.pct}%`,
+            `- Functions: ${total.functions.pct}%`,
+            "- HTML artifact: `frontend-coverage`",
+            "",
+          ].join("\n");
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+
+          if (failures.length > 0) {
+            for (const metric of failures) {
+              console.error(`Frontend coverage ${metric} is ${total[metric].pct}%, below the ${threshold}% threshold.`);
+            }
+            process.exit(1);
+          }
+          JS
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          if-no-files-found: warn
+          path: |
+            frontend/coverage
 
       - name: Build
         run: pnpm build

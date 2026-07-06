@@ -1,0 +1,30 @@
+[run]
+branch = True
+source =
+    core/messaging
+    i18n
+    sdk
+omit =
+    test/*
+    sdk/cli/*
+    **/__pycache__/*
+    **/*.pyc
+
+[report]
+fail_under = 85
+precision = 2
+show_missing = True
+skip_empty = True
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+
+[html]
+directory = coverage/python/html
+
+[xml]
+output = coverage/python/coverage.xml
+
+[json]
+output = coverage/python/coverage.json

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import re
 import sys
 from pathlib import Path
@@ -25,7 +26,12 @@ def _runtime_pip_install_cmd(package_name: str) -> list[str]:
     )
 
 
-def install_runtime_dependency(module_name: str) -> dict[str, Any]:
+def install_runtime_dependency(
+    module_name: str,
+    *,
+    _task_id: str | None = None,
+    _state: Any = None,
+) -> dict[str, Any]:
     module_name = (module_name or "").strip()
     if not module_name:
         raise ValueError("moduleName is required")
@@ -35,17 +41,50 @@ def install_runtime_dependency(module_name: str) -> dict[str, Any]:
     if getattr(sys, "frozen", False):
         raise RuntimeError("cannot run pip from a frozen executable; install dependencies in the bundled Python runtime")
 
+    _task_available = bool(_task_id and _state is not None)
+
+    if _task_available:
+        from .tasks import _append_task_log, _update_task
+
+        _update_task(
+            _state, _task_id,
+            message=f"正在安装 {package_name}…",
+            phase="pip",
+            progress=0.05,
+        )
+
     output_lines: list[str] = []
+
+    def _on_line(line: str) -> None:
+        output_lines.append(line)
+        if _task_available:
+            _append_task_log(_state, _task_id, line)
+            _update_task(
+                _state, _task_id,
+                message=f"正在安装 {package_name}…",
+                phase="pip",
+                progress=min(0.9, 0.05 + len(output_lines) * 0.01),
+            )
+
     code, detail = _run_pip_install(
         _runtime_pip_install_cmd(package_name),
         cwd=Path.cwd(),
         detail_max=4000,
         timeout_sec=900,
-        on_output_line=output_lines.append,
+        on_output_line=_on_line,
     )
     output = "\n".join(output_lines).strip()
     if code != "pip_ok":
+        if _task_available:
+            _update_task(
+                _state, _task_id,
+                error=detail or output[-4000:],
+                message=f"安装 {package_name} 失败。",
+                phase="failed",
+                status="failed",
+        )
         raise RuntimeError(detail or output[-4000:] or f"pip install failed ({code})")
+    importlib.invalidate_caches()
     return {
         "message": f"Installed {package_name}. Please launch chat again.",
         "moduleName": module_name,

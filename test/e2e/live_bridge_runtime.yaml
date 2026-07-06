@@ -1,0 +1,15 @@
+nodes:
+  - name: scripted_live_bridge
+    type: test.e2e.live_bridge_runtime.ScriptedLiveBridgeNode
+exports:
+  chat.input:
+    node: scripted_live_bridge
+    port: user_input
+    direction: input
+  chat.audio_output:
+    node: scripted_live_bridge
+    port: audio_output
+    direction: output
+  chat.ui_worker:
+    node: scripted_live_bridge
+    direction: node

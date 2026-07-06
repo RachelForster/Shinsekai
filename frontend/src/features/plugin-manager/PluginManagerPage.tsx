@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, BookOpen, Power, RotateCcw, Send, Settings, Trash2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -69,6 +69,11 @@ interface PluginRouteReturnTo {
 interface PluginRouteState {
   pluginId?: unknown;
   returnTo?: unknown;
+}
+
+interface PluginDetailState {
+  plugin: PluginManifest;
+  returnTo: PluginRouteReturnTo | null;
 }
 
 function parsePluginRouteReturnTo(value: unknown): PluginRouteReturnTo | null {
@@ -193,6 +198,13 @@ function installedTechnicalName(plugin: PluginManifest, catalog: PluginCatalogIt
   return "";
 }
 
+function pluginRouteIntentKey(
+  location: Pick<ReturnType<typeof useLocation>, "hash" | "key" | "pathname" | "search">,
+  pluginId: string,
+) {
+  return `${location.key}:${location.pathname}${location.search}${location.hash}:${pluginId}`;
+}
+
 function catalogDescription(plugin: PluginCatalogItem | null | undefined) {
   return plugin?.shortDescription || plugin?.description || "";
 }
@@ -263,6 +275,18 @@ function hasCatalogUpdate(catalog: PluginCatalogItem | null | undefined, plugin:
   return hasVersionUpdate(catalog?.version, plugin?.version);
 }
 
+class PluginInstallReloadError extends Error {
+  plugin: PluginManifest;
+  reason: unknown;
+
+  constructor(plugin: PluginManifest, reason: unknown) {
+    super("Plugin reload after install failed.");
+    this.name = "PluginInstallReloadError";
+    this.plugin = plugin;
+    this.reason = reason;
+  }
+}
+
 export function PluginManagerPage() {
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -277,8 +301,8 @@ export function PluginManagerPage() {
   const [installTask, setInstallTask] = useState<TaskSnapshot<PluginManifest> | null>(null);
   const [pendingCatalogInstall, setPendingCatalogInstall] = useState<PluginCatalogItem | null>(null);
   const [pendingUninstall, setPendingUninstall] = useState<PluginManifest | null>(null);
-  const [detailPlugin, setDetailPlugin] = useState<PluginManifest | null>(null);
-  const [detailReturnTo, setDetailReturnTo] = useState<PluginRouteReturnTo | null>(null);
+  const [detail, setDetail] = useState<PluginDetailState | null>(null);
+  const consumedRouteIntentRef = useRef("");
   const [pluginReloadPending, setPluginReloadPending] = useState(false);
   const [publisherOpen, setPublisherOpen] = useState(false);
   const [appUpdateTask, setAppUpdateTask] = useState<TaskSnapshot<AppUpdateResult> | null>(null);
@@ -304,17 +328,20 @@ export function PluginManagerPage() {
   useEffect(() => {
     const state = location.state as PluginRouteState | null;
     const pluginId = typeof state?.pluginId === "string" ? state.pluginId : "";
-    if (!pluginId || !data.length || detailPlugin?.id === pluginId) {
+    if (!pluginId || !data.length || detail?.plugin.id === pluginId) {
+      return;
+    }
+    const intentKey = pluginRouteIntentKey(location, pluginId);
+    if (consumedRouteIntentRef.current === intentKey) {
       return;
     }
     const plugin = data.find((item) => item.id === pluginId || pluginActionId(item) === pluginId);
     if (!plugin) {
       return;
     }
-    setDetailPlugin(plugin);
-    setDetailReturnTo(parsePluginRouteReturnTo(state?.returnTo));
-    navigate(location.pathname, { replace: true, state: null });
-  }, [data, detailPlugin?.id, location.pathname, location.state, navigate]);
+    consumedRouteIntentRef.current = intentKey;
+    setDetail({ plugin, returnTo: parsePluginRouteReturnTo(state?.returnTo) });
+  }, [data, detail?.plugin.id, location, location.state]);
 
   const catalogQuery = useQuery({
     enabled: view !== "mcp",
@@ -344,12 +371,36 @@ export function PluginManagerPage() {
   });
 
   const installMutation = useMutation({
-    mutationFn: (input: PluginInstallInput | string) => installPlugin(input, { onTaskUpdate: setInstallTask }),
+    mutationFn: async (input: PluginInstallInput | string) => {
+      const plugin = await installPlugin(input, { onTaskUpdate: setInstallTask });
+      if (isTauriDesktop()) {
+        setPluginReloadPending(true);
+        try {
+          await reloadPluginService();
+        } catch (error) {
+          await writeDesktopRestartDebugLog(
+            `PluginManagerPage install reload catch: ${desktopRestartErrorMessage(error)}`,
+          );
+          throw new PluginInstallReloadError(plugin, error);
+        }
+      }
+      return plugin;
+    },
     onMutate(input) {
       setInstallTask(null);
       setInstallingSource(pluginInstallSource(input));
     },
     onError(error) {
+      if (error instanceof PluginInstallReloadError) {
+        queryClient.invalidateQueries({ queryKey: pluginsQueryKey });
+        queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey });
+        showToast({
+          kind: "error",
+          message: `${error.plugin.title}: ${desktopRestartErrorMessage(error.reason) || t("plugin.appRestart.failed")}`,
+          title: t("plugin.appRestart.failed"),
+        });
+        return;
+      }
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("plugin.error.installFallback"),
@@ -361,12 +412,13 @@ export function PluginManagerPage() {
       queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey });
       showToast({
         kind: "success",
-        message: `${plugin.title}。${t("plugin.toast.restartHint")}`,
+        message: `${plugin.title}。${isTauriDesktop() ? t("plugin.toast.activated") : t("plugin.toast.restartHint")}`,
         title: t("plugin.toast.installSuccess"),
       });
     },
     onSettled() {
       setInstallingSource("");
+      setPluginReloadPending(false);
     },
   });
 
@@ -478,18 +530,17 @@ export function PluginManagerPage() {
   };
 
   const handleDetailBack = () => {
-    if (detailReturnTo) {
-      const { state, ...to } = detailReturnTo;
-      setDetailPlugin(null);
-      setDetailReturnTo(null);
+    if (detail?.returnTo) {
+      const { state, ...to } = detail.returnTo;
+      setDetail(null);
       navigate(to, { state });
       return;
     }
-    setDetailPlugin(null);
+    setDetail(null);
   };
 
-  if (detailPlugin) {
-    return <PluginDetailPanel detailPlugin={detailPlugin} onBack={handleDetailBack} />;
+  if (detail) {
+    return <PluginDetailPanel detailPlugin={detail.plugin} onBack={handleDetailBack} />;
   }
 
   return (
@@ -720,8 +771,7 @@ export function PluginManagerPage() {
                           disabled={pluginBusy || !loaded}
                           icon={<Settings aria-hidden className="button__icon" />}
                           onClick={() => {
-                            setDetailReturnTo(null);
-                            setDetailPlugin(plugin);
+                            setDetail({ plugin, returnTo: null });
                           }}
                           tooltip={t("plugin.action.viewConfig")}
                           variant="ghost"

@@ -1,14 +1,23 @@
 name: Release
 
 on:
-  schedule:
-    - cron: "0 9 1,15 * *"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to create, for example v2.1.0-rc.1 or v2.1.0"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease"
+        required: true
+        default: true
+        type: boolean
   push:
     tags: ["v*"]
 
 permissions:
   contents: write
+  issues: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -22,47 +31,301 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.gen.outputs.tag }}
+      prerelease: ${{ steps.gen.outputs.prerelease }}
+      make_latest: ${{ steps.gen.outputs.make_latest }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Resolve release tag
         id: gen
         shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.release_tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ -n "${INPUT_TAG}" ]]; then
+            TAG="${INPUT_TAG}"
+            PRERELEASE="${INPUT_PRERELEASE}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF_NAME}"
+            if [[ "${TAG}" == *"-rc."* ]]; then
+              PRERELEASE="true"
+            else
+              PRERELEASE="false"
+            fi
           else
-            VER="$(head -1 VERSION | sed 's/-dev//' | sed 's/^v//')"
-            TAG="v${VER}"
+            echo "release_tag is required for manual release runs." >&2
+            exit 1
+          fi
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "Invalid release tag: ${TAG}" >&2
+            echo "Expected vX.Y.Z or vX.Y.Z-rc.N." >&2
+            exit 1
+          fi
+          if [[ "${PRERELEASE}" != "true" && "${PRERELEASE}" != "false" ]]; then
+            echo "Invalid prerelease value: ${PRERELEASE}" >&2
+            exit 1
+          fi
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            MAKE_LATEST="false"
+          else
+            MAKE_LATEST="true"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "make_latest=${MAKE_LATEST}" >> "$GITHUB_OUTPUT"
+
+  tracking-issue:
+    needs: tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or update release tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.tag.outputs.tag }}
+          IS_PRERELEASE: ${{ needs.tag.outputs.prerelease }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          import textwrap
+          from urllib.parse import quote
+
+          repo = os.environ["REPO"]
+          tag = os.environ["RELEASE_TAG"]
+          is_prerelease = os.environ["IS_PRERELEASE"].lower() == "true"
+          ref_name = os.environ["REF_NAME"]
+          sha = os.environ["SHA"]
+          run_url = os.environ["RUN_URL"]
+          actor = os.environ["ACTOR"]
+
+          base_tag = re.sub(r"-rc\.\d+$", "", tag)
+          version = base_tag.removeprefix("v")
+          match = re.match(r"^(\d+)\.(\d+)\.\d+$", version)
+          if not match:
+              raise SystemExit(f"Cannot derive release branch from tag: {tag}")
+
+          release_branch = ref_name if ref_name.startswith("release/") else f"release/{match.group(1)}.{match.group(2)}"
+          title = f"Release tracking: {base_tag}"
+          release_kind = "RC" if is_prerelease else "formal release"
+
+          def gh_api(*args: str, input_json: dict | None = None, check: bool = True) -> str:
+              command = ["gh", "api", *args]
+              payload = None if input_json is None else json.dumps(input_json)
+              result = subprocess.run(
+                  command,
+                  input=payload,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+              if check and result.returncode != 0:
+                  print(f"gh api failed: {' '.join(command[2:])}", file=sys.stderr)
+                  print(result.stderr, file=sys.stderr)
+                  raise SystemExit(result.returncode)
+              return result.stdout
+
+          def ensure_label(name: str, color: str, description: str) -> None:
+              label_path = f"repos/{repo}/labels/{quote(name, safe='')}"
+              existing = subprocess.run(
+                  ["gh", "api", label_path],
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+              if existing.returncode == 0:
+                  return
+              gh_api(
+                  f"repos/{repo}/labels",
+                  "--method",
+                  "POST",
+                  "--input",
+                  "-",
+                  input_json={"name": name, "color": color, "description": description},
+              )
+
+          def search_issue() -> dict | None:
+              query = f'repo:{repo} is:issue in:title "{title}"'
+              output = gh_api(f"search/issues?q={quote(query, safe='')}&per_page=10")
+              items = json.loads(output).get("items", [])
+              for item in items:
+                  if item.get("title") == title:
+                      return item
+              return None
+
+          def ensure_milestone(milestone_title: str) -> int:
+              page = 1
+              while True:
+                  output = gh_api(
+                      f"repos/{repo}/milestones?state=all&per_page=100&page={page}"
+                  )
+                  milestones = json.loads(output)
+                  if not milestones:
+                      break
+                  for milestone in milestones:
+                      if milestone.get("title") == milestone_title:
+                          number = int(milestone["number"])
+                          if milestone.get("state") == "closed":
+                              gh_api(
+                                  f"repos/{repo}/milestones/{number}",
+                                  "--method",
+                                  "PATCH",
+                                  "--input",
+                                  "-",
+                                  input_json={"state": "open"},
+                              )
+                          return number
+                  page += 1
+
+              created = json.loads(
+                  gh_api(
+                      f"repos/{repo}/milestones",
+                      "--method",
+                      "POST",
+                      "--input",
+                      "-",
+                      input_json={
+                          "title": milestone_title,
+                          "description": f"Release milestone for {milestone_title}",
+                      },
+                  )
+              )
+              return int(created["number"])
+
+          body = textwrap.dedent(f"""\
+          ## Release
+
+          - Version: {version}
+          - Release branch: `{release_branch}`
+          - Current RC tag: `{tag if is_prerelease else "n/a"}`
+          - Owner: @{actor}
+
+          ## Release setup
+
+          - [ ] Root `VERSION` updated if needed
+          - [ ] `pnpm sync:version` run from `frontend`
+
+          ## Manual smoke tests
+
+          - [ ] Windows x64 install/start/restart
+          - [ ] Core chat
+          - [ ] Plugin/tool call
+          - [ ] Character/template/config read-write
+          - [ ] Runtime diagnostics
+          - [ ] Updater manifest/signature
+
+          ## Blockers
+
+          | Issue | Severity | Owner | Status | Fix commit | Cherry-picked |
+          | --- | --- | --- | --- | --- | --- |
+
+          Comment with an issue reference, such as `#123`, to automatically add it as a sub-issue and sync it into this table.
+
+          ## Release runs
+
+          | Tag | Type | Commit | Workflow |
+          | --- | --- | --- | --- |
+          | `{tag}` | {release_kind} | `{sha[:12]}` | [run]({run_url}) |
+
+          ## Release decision
+
+          - [ ] Ship
+          - [ ] Re-spin RC
+          - [ ] Abort release
+
+          ## Labels
+
+          labels:
+            - maintenance
+            - p1
+          """)
+
+          comment = textwrap.dedent(f"""\
+          Release workflow started for `{tag}`.
+
+          - Type: {release_kind}
+          - Branch/ref: `{ref_name}`
+          - Commit: `{sha}`
+          - Workflow: {run_url}
+          """)
+
+          ensure_label("maintenance", "5319e7", "Project maintenance work")
+          ensure_label("p1", "d93f0b", "Priority 1")
+          milestone_number = ensure_milestone(base_tag)
+
+          issue = search_issue()
+          if issue is None:
+              created = json.loads(
+                  gh_api(
+                      f"repos/{repo}/issues",
+                      "--method",
+                      "POST",
+                      "--input",
+                      "-",
+                      input_json={
+                          "title": title,
+                          "body": body,
+                          "labels": ["maintenance", "p1"],
+                          "milestone": milestone_number,
+                      },
+                  )
+              )
+              print(f"Created release tracking issue: {created['html_url']}")
+          else:
+              number = issue["number"]
+              gh_api(
+                  f"repos/{repo}/issues/{number}",
+                  "--method",
+                  "PATCH",
+                  "--input",
+                  "-",
+                  input_json={"milestone": milestone_number},
+              )
+              gh_api(
+                  f"repos/{repo}/issues/{number}/comments",
+                  "--method",
+                  "POST",
+                  "--input",
+                  "-",
+                  input_json={"body": comment},
+              )
+              if issue.get("state") == "closed":
+                  gh_api(
+                      f"repos/{repo}/issues/{number}",
+                      "--method",
+                      "PATCH",
+                      "--input",
+                      "-",
+                      input_json={"state": "open"},
+                  )
+              print(f"Updated release tracking issue: {issue['html_url']}")
+          PY
 
   release:
-    needs: tag
+    needs: [tag, tracking-issue]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create or update release (tag)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.tag.outputs.tag }}
-          name: ${{ needs.tag.outputs.tag }}
-          generate_release_notes: true
-          prerelease: true
-          make_latest: false
-
-      - name: Create or update release (scheduled/manual)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - name: Create or update release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
           name: ${{ needs.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
-          prerelease: true
-          make_latest: false
+          prerelease: ${{ needs.tag.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.tag.outputs.make_latest }}
 
   package:
     needs: [tag, release]
@@ -81,10 +344,10 @@ jobs:
             bundles: deb,appimage
           - platform: windows-x64
             os: windows-latest
-            bundles: msi,nsis
+            bundles: nsis
           - platform: windows-arm64
             os: windows-11-arm
-            bundles: msi,nsis
+            bundles: nsis
           - platform: macos-arm64
             os: macos-14
             bundles: dmg,app
@@ -125,7 +388,7 @@ jobs:
       - name: Install Windows installer dependencies
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install wixtoolset nsis --no-progress -y
+        run: choco install nsis --no-progress -y
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -271,7 +534,6 @@ jobs:
               collect_required "frontend/src-tauri/target/release/bundle/deb/*.deb" "${base}.deb" "deb" false
               ;;
             windows-*)
-              collect_required "frontend/src-tauri/target/release/bundle/msi/*.msi" "${base}.msi" "msi" false
               collect_required "frontend/src-tauri/target/release/bundle/nsis/*.exe" "${base}-setup.exe" "nsis" true
               ;;
             macos-*)
@@ -289,12 +551,27 @@ jobs:
           fi
           ls -lh release-assets
 
+      - name: Delete stale Windows MSI release assets
+        if: startsWith(matrix.platform, 'windows-')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./frontend/package.json').version")"
+          base="Shinsekai-${version}_${{ matrix.platform }}"
+          for asset in "${base}.msi" "${base}.msi.sig"; do
+            existing="$(gh release view "${{ needs.tag.outputs.tag }}" --json assets --jq ".assets[].name | select(. == \"${asset}\")")"
+            if [[ -n "${existing}" ]]; then
+              gh release delete-asset "${{ needs.tag.outputs.tag }}" "${asset}" --yes
+            fi
+          done
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
-          prerelease: true
-          make_latest: false
+          prerelease: ${{ needs.tag.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.tag.outputs.make_latest }}
           files: release-assets/*
 
       - name: Upload latest manifest fragments
@@ -306,6 +583,7 @@ jobs:
 
   latest:
     needs: [tag, release, package]
+    if: ${{ needs.tag.outputs.prerelease != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -352,6 +630,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
-          prerelease: true
-          make_latest: false
+          prerelease: false
+          make_latest: true
           files: latest.json

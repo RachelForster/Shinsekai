@@ -17,6 +17,14 @@ from tools import file_util
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _prevent_export_folder_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_open_folder(output_path):
+        pytest.fail(f"test attempted to open export folder for {output_path}")
+
+    monkeypatch.setattr(file_util, "_open_export_folder", fail_open_folder)
+
+
 def _make_export_zip(root: Path, char_data: dict, *,
                      sprites: dict[str, str] | None = None,
                      speeches: dict[str, str] | None = None) -> Path:
@@ -96,6 +104,16 @@ BASIC_CHAR = {
 # ── Import tests ────────────────────────────────────────────────────────────
 
 class TestImport:
+    def test_character_config_parse_preserves_explicit_preset_voice(self):
+        from config.character_config import CharacterConfig
+
+        data = dict(BASIC_CHAR)
+        data["sprites"] = [{"path": "smile.png", "voice_path": "greet.wav", "voice_type": "preset"}]
+
+        result = CharacterConfig.parse_dic(data)
+
+        assert result.sprites[0]["voice_type"] == "preset"
+
     def test_sprite_paths_rewritten(self, tmp_path):
         """Imported sprite paths point to the local data/sprite/{prefix}/ dir."""
         with tempfile.TemporaryDirectory() as td:
@@ -131,6 +149,38 @@ class TestImport:
         vp = result[0].sprites[0].get("voice_path")
         assert vp
         assert Path(vp).is_file()
+
+    def test_old_voice_with_voice_text_without_voice_type_imports_as_reference(self, tmp_path):
+        """Old character packages used voice_text to mark reference voice semantics."""
+        data = dict(BASIC_CHAR)
+        data["sprites"] = [{"path": "smile.png", "voice_path": "greet.wav", "voice_text": "hello"}]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(
+                Path(td),
+                data,
+                sprites={"smile.png": "png"},
+                speeches={"greet.wav": "wav"},
+            )
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+
+        assert result[0].sprites[0]["voice_type"] == "reference"
+
+    def test_old_voice_without_voice_text_or_voice_type_imports_as_fallback(self, tmp_path):
+        """Old character packages without reference text are fallback sprite voices."""
+        data = dict(BASIC_CHAR)
+        data["sprites"] = [{"path": "smile.png", "voice_path": "greet.wav"}]
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(
+                Path(td),
+                data,
+                sprites={"smile.png": "png"},
+                speeches={"greet.wav": "wav"},
+            )
+            with _mock_dirs(tmp_path):
+                result = file_util.import_character(str(z))
+
+        assert result[0].sprites[0]["voice_type"] == "fallback"
 
     def test_fields_preserved(self, tmp_path):
         """Name, sprite_scale, emotion_tags, voice_text etc. survive import."""
@@ -299,7 +349,7 @@ def _run_export(char_data: dict, tmp_path: Path, output: str | None = None) -> s
     from config.character_config import CharacterConfig
     cc = CharacterConfig.parse_dic(char_data=char_data)
     out = output or str(tmp_path / "out.char")
-    file_util.export_character([cc], out)
+    file_util.export_character([cc], out, open_folder=False)
     return out
 
 
@@ -477,7 +527,7 @@ class TestRoundTrip:
 
             cc = CharacterConfig.parse_dic(char_data=BASIC_CHAR)
             out = str(tmp_path / "roundtrip.char")
-            file_util.export_character([cc], out)
+            file_util.export_character([cc], out, open_folder=False)
 
             # Import to same mocked destination
             result = file_util.import_character(out)

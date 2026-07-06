@@ -25,9 +25,38 @@ class HttpClientError(TypedDict):
     timeout: bool
     statusCode: int | None
     url: str
+    reason: NotRequired[str]
 
 
-ExceptionInfo = RuntimeDependencyError | HttpClientError
+class DownloadError(TypedDict):
+    kind: Literal["download"]
+    message: str
+    errorType: str
+    timeout: bool
+    statusCode: int | None
+    url: str
+    source: str
+    userMessage: str
+
+
+class ProgressSnapshot(TypedDict):
+    id: str
+    kind: str
+    title: str
+    phase: str
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    message: str
+    progress: float | None
+    logs: list[str]
+    error: NotRequired[str]
+    errorCode: NotRequired[str]
+    errorUserMessage: NotRequired[str]
+    httpStatus: NotRequired[int | None]
+    notice: NotRequired[str]
+    noticeKind: NotRequired[Literal["error", "info", "warning"]]
+
+
+ExceptionInfo = RuntimeDependencyError | HttpClientError | DownloadError
 
 
 _NO_MODULE_PATTERNS = (
@@ -39,9 +68,10 @@ MODULE_PACKAGE_MAP = {
     "PIL": "Pillow",
     "anthropic": "anthropic",
     "cv2": "opencv-python",
+    "fastembed": "fastembed",
     "google": "google-genai",
     "google.genai": "google-genai",
-    "mem0": "mem0ai",
+    "mem0": "mem0ai[extras]",
     "numpy": "numpy",
     "openai": "openai",
     "opencc": "opencc-python-reimplemented",
@@ -49,6 +79,7 @@ MODULE_PACKAGE_MAP = {
     "pygame": "pygame",
     "PySide6": "PySide6",
     "requests": "requests",
+    "sentence_transformers": "sentence-transformers",
     "socksio": "socksio",
     "tiktoken": "tiktoken",
     "yaml": "PyYAML",
@@ -136,6 +167,14 @@ _HTTP_CLIENT_ERROR_NAMES = {
     "UnprocessableEntityError",
 }
 
+HTTP_REASON_UNPAIRED_TOOL_MESSAGES = "unpaired_tool_messages"
+
+_UNPAIRED_TOOL_MESSAGE_MARKERS = (
+    "messages with role 'tool' must be a response to a preceding message with 'tool_calls'",
+    "an assistant message with 'tool_calls' must be followed by tool messages",
+    "tool_call_ids did not have response messages",
+)
+
 
 def _module_is(module_name: str, package: str) -> bool:
     return module_name == package or module_name.startswith(f"{package}.")
@@ -202,7 +241,7 @@ def http_client_error_from_exception(exc: BaseException) -> HttpClientError | No
         "WriteTimeout",
     }
     message = str(exc).strip() or error_type
-    return {
+    error: HttpClientError = {
         "kind": "http_client",
         "message": f"HTTP request failed: {message}",
         "errorType": error_type,
@@ -210,6 +249,77 @@ def http_client_error_from_exception(exc: BaseException) -> HttpClientError | No
         "statusCode": _httpx_status_code(exc),
         "url": _httpx_url(exc),
     }
+    if is_unpaired_tool_messages_error(exc, status_code=error["statusCode"]):
+        error["reason"] = HTTP_REASON_UNPAIRED_TOOL_MESSAGES
+    return error
+
+
+def _download_user_message(error_type: str, message: str, status_code: int | None, timeout: bool) -> str:
+    if status_code == 401:
+        return "下载失败：认证失效或缺少访问令牌，请检查 Hugging Face token / 网络代理后重试。"
+    if status_code == 403:
+        return "下载失败：没有权限访问该资源，可能需要登录、申请模型权限，或切换可访问的镜像源。"
+    if status_code == 404:
+        return "下载失败：资源不存在或模型名称不正确，请检查下载地址。"
+    if status_code == 429:
+        return "下载失败：请求过于频繁或被限流，请稍后重试。"
+    if timeout:
+        return "下载超时：请检查网络、代理或镜像源设置，然后重试。"
+    lowered = f"{error_type} {message}".lower()
+    if "timeout" in lowered or "timed out" in lowered:
+        return "下载超时：请检查网络、代理或镜像源设置，然后重试。"
+    if "proxy" in lowered:
+        return "下载失败：代理连接异常，请检查系统代理或 Shinsekai 网络代理设置。"
+    if "ssl" in lowered or "certificate" in lowered:
+        return "下载失败：SSL 证书校验失败，请检查网络代理、证书或镜像源。"
+    if status_code is not None:
+        return f"下载失败：服务器返回 HTTP {status_code}，请检查网络、权限或镜像源。"
+    return "下载失败：请检查网络、代理、镜像源或稍后重试。"
+
+
+def download_error_from_exception(
+    exc: BaseException,
+    *,
+    source: str = "",
+    url: str = "",
+) -> DownloadError:
+    http_error = http_client_error_from_exception(exc)
+    if http_error is not None:
+        status_code = http_error.get("statusCode")
+        timeout = http_error.get("timeout", False)
+        error_url = url or http_error.get("url", "")
+        error_type = http_error.get("errorType") or type(exc).__name__
+        message = http_error.get("message") or str(exc).strip() or error_type
+    else:
+        status_code = _httpx_status_code(exc)
+        error_text = str(exc).lower()
+        error_type = type(exc).__name__
+        error_type_lower = error_type.lower()
+        timeout = "timeout" in error_type_lower or "timed out" in error_text
+        error_url = url or _httpx_url(exc)
+        message = str(exc).strip() or error_type
+
+    return {
+        "kind": "download",
+        "message": f"Download failed: {message}",
+        "errorType": error_type,
+        "timeout": timeout,
+        "statusCode": status_code,
+        "url": error_url,
+        "source": source,
+        "userMessage": _download_user_message(error_type, message, status_code, timeout),
+    }
+
+
+def is_unpaired_tool_messages_error(
+    exc: BaseException,
+    *,
+    status_code: int | None = None,
+) -> bool:
+    if status_code not in (400, 422, None):
+        return False
+    text = str(exc).lower()
+    return any(marker in text for marker in _UNPAIRED_TOOL_MESSAGE_MARKERS)
 
 
 def classify_exception(exc: BaseException) -> ExceptionInfo | None:

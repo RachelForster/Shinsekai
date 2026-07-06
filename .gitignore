@@ -81,11 +81,14 @@ node_modules/
 **/*.pyc
 # 项目运行缓存 / Runtime cache
 /cache
-/.cache
+/.cache/
 /onnx
 # 测试缓存 / Test cache
 /.pytest_cache
 /.tmp_pytest_*
+/.coverage
+/coverage
+/coverage.xml
 # 虚拟环境 & 依赖缓存 / Env & package cache
 /*.egg-info
 /.venv
@@ -94,3 +97,4 @@ node_modules/
 /__pypackages__
 .python-version
 uv.lock
+frontend/pnpm-workspace.yaml

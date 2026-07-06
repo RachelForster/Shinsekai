@@ -31,6 +31,7 @@ class AppRuntime:
     audio_path_queue: Any
     text_processor: Any  # TextProcessor
     opencc: Any  # OpenCC
+    effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
     ui_playback: UiPlaybackBridge = field(default_factory=UiPlaybackBridge)
     cancellation_requested: Any = field(default_factory=lambda: __import__('threading').Event())
     generating: Any = field(default_factory=lambda: __import__('threading').Event())

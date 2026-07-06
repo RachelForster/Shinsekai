@@ -9,6 +9,10 @@ export function getAppConfig() {
   return getPlatform().config.get();
 }
 
+export function detectNetworkProxy() {
+  return getPlatform().config.detectNetworkProxy();
+}
+
 export function fetchLlmModels(input: { apiKey: string; baseUrl: string; provider: string }) {
   return getPlatform().config.fetchLlmModels(input);
 }
