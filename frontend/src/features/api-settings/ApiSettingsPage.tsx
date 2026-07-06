@@ -40,6 +40,7 @@ import { AdapterExtraSection } from "./AdapterExtraSection";
 import { ApiLanguageSection } from "./ApiLanguageSection";
 import { AsrSettingsSection } from "./AsrSettingsSection";
 import { LlmConnectionSection } from "./LlmConnectionSection";
+import { MemorySettingsSection } from "./MemorySettingsSection";
 import { ResourceLinksSection } from "./ResourceLinksSection";
 import { T2iSetupSection } from "./T2iSetupSection";
 import { TtsBundleSection } from "./TtsBundleSection";
@@ -549,6 +550,7 @@ export function ApiSettingsPage() {
   const apiSectionNavItems = [
     { id: "api-language", label: t("api.language.title") },
     { id: "api-llm", label: t("api.llm.connectionTitle") },
+    { id: "api-memory", label: t("api.memory.title") },
     { id: "api-tts", label: t("api.tts.bundleTitle") },
     { id: "api-t2i", label: t("api.t2i.title") },
     { id: "api-asr", label: t("system.asr.title") },
@@ -685,6 +687,12 @@ export function ApiSettingsPage() {
         groups={apiSchema.filter((g) => g.id === "llm")}
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
         value={draft}
+      />
+      <MemorySettingsSection
+        disabled={saveMutation.isPending}
+        draft={draft}
+        id="api-memory"
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
       />
       <TtsBundleSection
         canCancelDownload={canCancelTtsBundleDownload}

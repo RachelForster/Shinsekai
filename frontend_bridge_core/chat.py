@@ -389,6 +389,17 @@ def _launch_chat(
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"
+        api_config = state.config_manager.config.api_config
+        env["SHINSEKAI_MEMORY_AUTO_ENABLED"] = "1" if bool(getattr(api_config, "memory_auto_enabled", True)) else "0"
+        env["SHINSEKAI_MEMORY_EXTRACT_INTERVAL_TURNS"] = str(
+            max(1, int(getattr(api_config, "memory_extract_interval_turns", 5) or 5))
+        )
+        env["SHINSEKAI_MEMORY_SEARCH_LIMIT"] = str(
+            max(1, int(getattr(api_config, "memory_search_limit", 5) or 5))
+        )
+        env["SHINSEKAI_MEMORY_RECENT_BUFFER_MESSAGES"] = str(
+            max(2, int(getattr(api_config, "memory_recent_buffer_messages", 16) or 16))
+        )
         chat_stream = getattr(state, "chat_stream", None)
         memory_service_base = str(getattr(chat_stream, "http_base", "") or "").strip()
         if memory_service_base:

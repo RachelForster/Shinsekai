@@ -9,6 +9,10 @@ export function getAppConfig() {
   return getPlatform().config.get();
 }
 
+export function getMemoryStatus() {
+  return getPlatform().config.getMemoryStatus();
+}
+
 export function detectNetworkProxy() {
   return getPlatform().config.detectNetworkProxy();
 }
