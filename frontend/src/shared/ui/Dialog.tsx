@@ -84,9 +84,11 @@ export function Dialog({
 interface AlertDialogProps {
   body: string;
   cancelLabel?: string;
+  cancelTitle?: string;
   closeLabel?: string;
   confirmLabel?: string;
   onCancel: () => void;
+  onClose?: () => void;
   onConfirm: () => void;
   open: boolean;
   title: string;
@@ -95,9 +97,11 @@ interface AlertDialogProps {
 export function AlertDialog({
   body,
   cancelLabel = "Cancel",
+  cancelTitle,
   closeLabel,
   confirmLabel = "Confirm",
   onCancel,
+  onClose,
   onConfirm,
   open,
   title,
@@ -107,13 +111,15 @@ export function AlertDialog({
       closeLabel={closeLabel}
       footer={
         <>
-          <Button onClick={onCancel}>{cancelLabel}</Button>
+          <Button onClick={onCancel} tooltip={cancelTitle}>
+            {cancelLabel}
+          </Button>
           <Button onClick={onConfirm} variant="danger">
             {confirmLabel}
           </Button>
         </>
       }
-      onClose={onCancel}
+      onClose={onClose ?? onCancel}
       open={open}
       title={title}
     >
