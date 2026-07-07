@@ -191,6 +191,29 @@ def test_inject_bridge_token_appends_token_to_frontend_urls():
     assert result["pages"][1]["frontendUrl"].endswith("?shinsekai_bridge_token=secret-token")
 
 
+def test_inject_bridge_token_leaves_non_api_frontend_urls_unchanged():
+    handler = _handler_with_auth_token("secret-token")
+    detail = {
+        "pages": [
+            {
+                "id": "external-page",
+                "kind": "settings",
+                "frontendUrl": "https://example.com/plugin",
+            },
+            {
+                "id": "internal-non-api-page",
+                "kind": "settings",
+                "frontendUrl": "/plugins/demo/frontend/page/",
+            },
+        ]
+    }
+
+    result = handler._inject_bridge_token(detail)
+
+    assert result["pages"][0]["frontendUrl"] == "https://example.com/plugin"
+    assert result["pages"][1]["frontendUrl"] == "/plugins/demo/frontend/page/"
+
+
 def test_inject_bridge_token_leaves_pages_without_frontend_url_untouched():
     handler = _handler_with_auth_token("secret-token")
     detail = {"pages": [{"id": "widget-page", "kind": "settings"}]}
