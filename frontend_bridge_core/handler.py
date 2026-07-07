@@ -12,7 +12,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, unquote, urlparse, urlunparse
+from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
 from core.sprite.chat_branch_storage import remove_chat_history_storage
@@ -249,6 +249,17 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         supplied = self._auth_token_from_request()
         return bool(supplied) and hmac.compare_digest(supplied, required)
 
+    def _inject_bridge_token(self, detail: dict[str, Any]) -> dict[str, Any]:
+        token = str(getattr(self.state, "auth_token", "") or "").strip()
+        if not token:
+            return detail
+        for page in detail.get("pages") or []:
+            url = str(page.get("frontendUrl") or "")
+            if url.startswith("/api/") and BRIDGE_AUTH_QUERY not in url:
+                sep = "&" if "?" in url else "?"
+                page["frontendUrl"] = f"{url}{sep}{BRIDGE_AUTH_QUERY}={quote(token, safe='')}"
+        return detail
+
     def _require_authorized_write(self, path: str) -> None:
         if not self._request_origin_allowed():
             raise PermissionError("request origin is not allowed")
@@ -427,7 +438,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(plugin_load_snapshot(self.state))
             elif path.startswith("/api/plugins/") and path.endswith("/ui"):
                 plugin_id = unquote(path[len("/api/plugins/") : -len("/ui")])
-                self._send_json(_plugin_ui_detail(plugin_id))
+                self._send_json(self._inject_bridge_token(_plugin_ui_detail(plugin_id)))
             elif path.startswith("/api/plugins/") and "/frontend/" in path:
                 rest = path[len("/api/plugins/") :]
                 plugin_part, _, frontend_tail = rest.partition("/frontend/")
