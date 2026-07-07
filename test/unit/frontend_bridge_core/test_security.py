@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from frontend_bridge_core.config import _openai_chat_endpoint
@@ -166,3 +168,76 @@ def test_cors_drops_crlf_origin():
     handler._send_cors()
 
     assert not any(key == "Access-Control-Allow-Origin" for key, _value in headers)
+
+
+def _handler_with_auth_token(token: str) -> FrontendBridgeHandler:
+    handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+    handler.server = SimpleNamespace(state=SimpleNamespace(auth_token=token))  # type: ignore[assignment]
+    return handler
+
+
+def test_inject_bridge_token_appends_token_to_frontend_urls():
+    handler = _handler_with_auth_token("secret-token")
+    detail = {
+        "pages": [
+            {"frontendUrl": "/api/plugins/demo/frontend/page/?pluginId=demo&pageId=page"},
+            {"frontendUrl": "/api/plugins/demo/frontend/bare/"},
+        ]
+    }
+
+    result = handler._inject_bridge_token(detail)
+
+    assert result["pages"][0]["frontendUrl"].endswith("&shinsekai_bridge_token=secret-token")
+    assert result["pages"][1]["frontendUrl"].endswith("?shinsekai_bridge_token=secret-token")
+
+
+def test_inject_bridge_token_leaves_non_api_frontend_urls_unchanged():
+    handler = _handler_with_auth_token("secret-token")
+    detail = {
+        "pages": [
+            {
+                "id": "external-page",
+                "kind": "settings",
+                "frontendUrl": "https://example.com/plugin",
+            },
+            {
+                "id": "internal-non-api-page",
+                "kind": "settings",
+                "frontendUrl": "/plugins/demo/frontend/page/",
+            },
+        ]
+    }
+
+    result = handler._inject_bridge_token(detail)
+
+    assert result["pages"][0]["frontendUrl"] == "https://example.com/plugin"
+    assert result["pages"][1]["frontendUrl"] == "/plugins/demo/frontend/page/"
+
+
+def test_inject_bridge_token_leaves_pages_without_frontend_url_untouched():
+    handler = _handler_with_auth_token("secret-token")
+    detail = {"pages": [{"id": "widget-page", "kind": "settings"}]}
+
+    result = handler._inject_bridge_token(detail)
+
+    assert result["pages"][0] == {"id": "widget-page", "kind": "settings"}
+
+
+def test_inject_bridge_token_noop_when_auth_disabled():
+    handler = _handler_with_auth_token("")
+    url = "/api/plugins/demo/frontend/page/?pluginId=demo&pageId=page"
+    detail = {"pages": [{"frontendUrl": url}]}
+
+    result = handler._inject_bridge_token(detail)
+
+    assert result["pages"][0]["frontendUrl"] == url
+
+
+def test_inject_bridge_token_does_not_duplicate_existing_token():
+    handler = _handler_with_auth_token("secret-token")
+    url = "/api/plugins/demo/frontend/page/?shinsekai_bridge_token=secret-token"
+    detail = {"pages": [{"frontendUrl": url}]}
+
+    result = handler._inject_bridge_token(detail)
+
+    assert result["pages"][0]["frontendUrl"] == url
