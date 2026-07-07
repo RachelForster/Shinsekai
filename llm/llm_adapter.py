@@ -218,12 +218,15 @@ class ClaudeAdapter(LLMAdapter):
         核心修复逻辑：确保消息完全符合 Claude API 规范
         """
         api_messages = []
-        system_content = self.system_prompt
+        system_parts = [self.system_prompt] if self.system_prompt else []
         
-        # 1. 提取最新的 system 消息
+        # 1. 合并所有 system 消息
         for msg in messages:
             if msg.get("role") == "system":
-                system_content = msg.get("content", "")
+                content = msg.get("content", "")
+                if content:
+                    system_parts.append(content)
+        system_content = "\n\n".join(system_parts)
 
         # 2. 过滤并转换 user/assistant/tool 消息
         raw_msgs = [m for m in messages if m.get("role") != "system"]
