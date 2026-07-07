@@ -143,14 +143,6 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
           void query.refetch();
           return false;
         }
-        if (pollStatus.status === "error") {
-          showToast({
-            kind: "error",
-            message: pollStatus.task?.errorUserMessage || pollStatus.message || t("character.memory.error"),
-            title: t("common.operationFailed"),
-          });
-          return false;
-        }
       }
       return true;
     } catch (error) {
