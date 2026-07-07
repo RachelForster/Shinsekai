@@ -57,7 +57,7 @@ class _LockedFakeMemory:
 
 def test_memory_list_normalizes_rows(monkeypatch):
     monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
-    monkeypatch.setattr(operations, "get_mem0", lambda: _FakeMemory())
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: _FakeMemory())
 
     result = operations.memory_list("Alice")
 
@@ -77,7 +77,6 @@ def test_local_memory_operations_are_serialized(monkeypatch):
     memory = _LockedFakeMemory(lock)
     monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
     monkeypatch.setattr(operations, "_mem0_operation_lock", lock)
-    monkeypatch.setattr(operations, "get_mem0", lambda: memory)
     monkeypatch.setattr(operations, "ensure_mem0", lambda: memory)
 
     assert operations.memory_list("Alice")["count"] == 0
@@ -224,7 +223,7 @@ def test_memory_service_loading_starts_ready_monitor(monkeypatch):
 def test_memory_service_owner_skips_proxy(monkeypatch):
     monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_URL", "http://127.0.0.1:8787/api/memory")
     monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_OWNER", "1")
-    monkeypatch.setattr(operations, "get_mem0", lambda: _FakeMemory())
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: _FakeMemory())
 
     result = operations.memory_list("Alice")
 

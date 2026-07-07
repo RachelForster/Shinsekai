@@ -116,7 +116,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
         void query.refetch();
         return false;
       }
-      if (status.status === "loading" || status.status === "not_started") {
+      if (status.status === "loading" || status.status === "not_started" || status.status === "error") {
         setMem0Task(status.task ?? null);
         setMem0LoadingMessage(
           status.modelCached ? t("character.memory.loadingModel") : t("character.memory.downloadingModel"),
@@ -124,7 +124,11 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
         setMem0LoadingOpen(true);
         const pollMs = status.modelCached ? 2000 : 3000;
         let pollStatus = status;
-        while (pollStatus.status === "loading" || pollStatus.status === "not_started") {
+        while (
+          pollStatus.status === "loading" ||
+          pollStatus.status === "not_started" ||
+          pollStatus.status === "error"
+        ) {
           await new Promise((resolve) => setTimeout(resolve, pollMs));
           try {
             pollStatus = await getMem0Status();

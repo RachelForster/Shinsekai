@@ -162,16 +162,31 @@ def start_mem0_loading() -> None:
     logger.info("mem0 后台加载线程已启动")
 
 
+_GET_MEM0_TIMEOUT_SEC = 600  # 10 minutes — covers worst-case first-time model download
+
+
 def get_mem0() -> Any:
-    """Return the mem0 instance, waiting for background initialization."""
+    """Return the mem0 instance, waiting for background initialization.
+
+    Blocks until mem0 is ready or a fatal error occurs, with a timeout
+    to prevent indefinite hangs if the download stalls.
+    Prefer :func:`ensure_mem0` for non-blocking callers.
+    """
     global _mem0, _mem0_load_error
     if _mem0 is not None:
         return _mem0
 
     start_mem0_loading()
 
+    waited = 0.0
     while _mem0 is None and _mem0_loading:
         time.sleep(0.5)
+        waited += 0.5
+        if waited >= _GET_MEM0_TIMEOUT_SEC:
+            raise TimeoutError(
+                f"mem0 加载超时（已等待 {int(waited)} 秒 / {_GET_MEM0_TIMEOUT_SEC} 秒上限）。"
+                "请检查网络连接和 HuggingFace 模型下载是否正常。"
+            )
 
     if _mem0 is None:
         if isinstance(_mem0_load_error, ModuleNotFoundError):
@@ -211,9 +226,15 @@ def check_mem0_status() -> dict[str, Any]:
         }
     if _mem0_load_error is not None:
         task = current_mem0_task()
+        result: dict[str, Any]
         if task and task.get("errorUserMessage"):
-            return {"status": "error", "message": str(task["errorUserMessage"]), "task": task}
-        return {"status": "error", "message": str(_mem0_load_error), **({"task": task} if task else {})}
+            result = {"status": "error", "message": str(task["errorUserMessage"]), "task": task}
+        else:
+            result = {"status": "error", "message": str(_mem0_load_error), **({"task": task} if task else {})}
+        # Restart loading on status check so the next poll picks up a
+        # "loading" state and carries through to ready (or back to error).
+        start_mem0_loading()
+        return result
     try:
         import mem0  # noqa: F401
 

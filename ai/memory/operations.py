@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from ai.memory.runtime import ensure_mem0, get_mem0
+from ai.memory.runtime import ensure_mem0
 
 logger = logging.getLogger(__name__)
 _MEMORY_SERVICE_URL_ENV = "SHINSEKAI_MEMORY_SERVICE_URL"
@@ -145,7 +145,7 @@ def memory_list(character_name: str | None = None, *, limit: int = 200) -> dict[
     service_result = _memory_service_request("list", {"name": agent_id, "limit": limit})
     if service_result is not None:
         return service_result
-    mem = get_mem0()
+    mem = ensure_mem0()
     with _mem0_operation_lock:
         raw = mem.get_all(filters={"user_id": agent_id}, limit=limit)
     rows = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])

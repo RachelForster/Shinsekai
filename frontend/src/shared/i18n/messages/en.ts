@@ -2,7 +2,8 @@ import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
   "api.memory.checking": "Checking",
-  "api.memory.description": "Controls long-term memory retrieval, periodic extraction, and embedding model preparation for chat.",
+  "api.memory.description":
+    "Controls long-term memory retrieval, periodic extraction, and embedding model preparation for chat.",
   "api.memory.downloadModel": "Download/check model",
   "api.memory.downloading": "Downloading embedding model...",
   "api.memory.enabled": "Enable automatic long-term memory",

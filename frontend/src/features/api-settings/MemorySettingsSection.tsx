@@ -153,9 +153,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
         <span className="field-row__label">{t("api.memory.modelStatus")}</span>
         <span className="field-row__control">
           <span className="memory-settings__status-value">{memoryStatusLabel(status, t)}</span>
-          {task ? (
-            <TaskProgress logLimit={0} task={task} />
-          ) : null}
+          {task ? <TaskProgress logLimit={0} task={task} /> : null}
         </span>
       </div>
     </section>
