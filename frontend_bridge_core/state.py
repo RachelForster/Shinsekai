@@ -21,6 +21,8 @@ class BridgeState:
     auth_token: str = ""
     chat_session: dict[str, Any] = field(default_factory=dict)
     chat_stream: Any = None
+    chat_runtime_lock: threading.Lock = field(default_factory=threading.Lock)
+    chat_runtime_closing: bool = False
     plugin_load_lock: threading.Lock = field(default_factory=threading.Lock)
     plugin_load_status: str = "idle"
     plugin_load_error: str = ""

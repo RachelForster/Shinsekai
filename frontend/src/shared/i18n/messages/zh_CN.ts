@@ -568,6 +568,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "launch.history": "历史记录",
   "launch.historyHelp": "多角色模板会按这里的选择顺序进入启动 payload。",
   "launch.historyPlaceholder": "./data/chat_history/...",
+  "launch.runtimeBusy": "上一段聊天仍在关闭，请稍后再启动。",
   "launch.start": "启动",
   "launch.template": "模板",
   "launch.title": "开始聊天",

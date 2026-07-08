@@ -46,6 +46,7 @@ from frontend_bridge_core.chat import (
     TRANSPARENT_BACKGROUND_NAME,
     _chat_history_path,
     _chat_process_running,
+    _chat_runtime_closing,
     _chat_runtime_mode,
     _chat_snapshot,
     _chat_theme_payload,
@@ -1019,6 +1020,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         return [_jsonify(item) for item in imported]
 
     def _launch_chat(self, body: dict[str, Any]) -> dict[str, Any]:
+        if _chat_runtime_closing(self.state):
+            raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
         template_id = str(body.get("templateId") or "")
         rows = _list_templates(self.state)
         row = next((item for item in rows if item["id"] == template_id), None)
@@ -1148,6 +1151,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
 
     def _resume_last_chat(self) -> dict[str, Any]:
+        if _chat_runtime_closing(self.state):
+            raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
         session = _load_template_session_payload(self.state) or {}
         session_history_path = str(session.get("historyPath") or "").strip()
         history_path = (

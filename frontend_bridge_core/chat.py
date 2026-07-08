@@ -108,6 +108,23 @@ def _chat_process_running() -> bool:
         return _main_chat_process is not None and _main_chat_process.poll() is None
 
 
+def _chat_runtime_closing(state: BridgeState) -> bool:
+    lock = getattr(state, "chat_runtime_lock", None)
+    if lock is None:
+        return bool(getattr(state, "chat_runtime_closing", False))
+    with lock:
+        return bool(getattr(state, "chat_runtime_closing", False))
+
+
+def _set_chat_runtime_closing(state: BridgeState, closing: bool) -> None:
+    lock = getattr(state, "chat_runtime_lock", None)
+    if lock is None:
+        state.chat_runtime_closing = closing
+        return
+    with lock:
+        state.chat_runtime_closing = closing
+
+
 def _chat_log_path() -> Path:
     log_dir = _project_root() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -440,15 +457,18 @@ def _close_chat(
 ) -> dict[str, Any]:
     global _main_chat_process
 
-    session_id = str(state.chat_session.get("sessionId") or "").strip()
-    chat_stream = getattr(state, "chat_stream", None)
-    if session_id and chat_stream is not None:
-        snapshot = chat_stream.get_snapshot(session_id)
-        if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
-            chat_stream.close_session(session_id, reason=reason)
+    _set_chat_runtime_closing(state, True)
+    try:
+        session_id = str(state.chat_session.get("sessionId") or "").strip()
+        chat_stream = getattr(state, "chat_stream", None)
+        if session_id and chat_stream is not None:
+            snapshot = chat_stream.get_snapshot(session_id)
+            if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
+                chat_stream.close_session(session_id, reason=reason)
 
-    shutdown_active_chat_process(wait_timeout=wait_timeout)
-
+        shutdown_active_chat_process(wait_timeout=wait_timeout)
+    finally:
+        _set_chat_runtime_closing(state, False)
     return _chat_snapshot(state, "idle", "")
 
 
@@ -660,6 +680,10 @@ def _chat_snapshot(
     runtime_mode = _chat_runtime_mode(state)
     experimental_features = _chat_experimental_features(state)
     user_display_name = _chat_user_display_name(state)
+    runtime_state = {
+        "chatProcessRunning": _chat_process_running(),
+        "chatRuntimeClosing": _chat_runtime_closing(state),
+    }
     if session_id and chat_stream is not None:
         snapshot = chat_stream.get_snapshot(session_id)
         if snapshot is not None:
@@ -681,6 +705,7 @@ def _chat_snapshot(
             if status is not None:
                 next_snapshot["status"] = status
                 next_snapshot["numericInfo"] = status
+            next_snapshot.update(runtime_state)
             if extra:
                 next_snapshot.update(extra)
             return next_snapshot
@@ -703,6 +728,7 @@ def _chat_snapshot(
         "statusMessage": message,
         "userDisplayName": user_display_name,
         "voiceLanguage": voice_language,
+        **runtime_state,
         **(extra or {}),
     }
 

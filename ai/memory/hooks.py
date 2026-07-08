@@ -236,6 +236,9 @@ class MemoryAutoHooks:
             self._start_extraction(snapshot, source=f"periodic:{turn}")
 
     def shutdown(self, *, wait_timeout: float = 3.0) -> dict[str, Any]:
+        tail_snapshot, tail_turn = self._shutdown_tail_snapshot()
+        if tail_snapshot:
+            self._extract_enqueue_and_flush(tail_snapshot, source=f"shutdown:{tail_turn}")
         for worker in self._live_workers():
             worker.join(timeout=max(0.0, wait_timeout))
         return self.queue.flush()
@@ -270,6 +273,13 @@ class MemoryAutoHooks:
                 self.queue.flush()
             except Exception:
                 logger.exception("automatic memory extraction failed")
+
+    def _shutdown_tail_snapshot(self) -> tuple[list[dict[str, str]], int]:
+        with self._lock:
+            if not self._buffer or self._user_turns <= self._last_extract_turn:
+                return [], self._user_turns
+            self._last_extract_turn = self._user_turns
+            return list(self._buffer), self._user_turns
 
     def _extract_memories(self, messages: list[dict[str, str]]) -> list[dict[str, Any]]:
         prompt = self._build_extraction_prompt(messages)

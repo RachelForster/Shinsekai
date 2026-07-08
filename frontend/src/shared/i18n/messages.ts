@@ -558,6 +558,7 @@ export type MessageKey =
   | "launch.history"
   | "launch.historyHelp"
   | "launch.historyPlaceholder"
+  | "launch.runtimeBusy"
   | "launch.start"
   | "launch.template"
   | "launch.title"

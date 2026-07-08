@@ -12,6 +12,7 @@ import { ToastProvider } from "../../../shared/ui";
 const mockListBackgrounds = vi.fn();
 const mockListCharacters = vi.fn();
 const mockLaunchChat = vi.fn();
+const mockGetChatSnapshot = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
 const mockGetAppConfig = vi.fn();
 const mockSaveSystemConfig = vi.fn();
@@ -34,6 +35,8 @@ vi.mock("../../../entities/character/repository", () => ({
 }));
 
 vi.mock("../../../entities/chat/repository", () => ({
+  chatQueryKey: ["chat"],
+  getChatSnapshot: () => mockGetChatSnapshot(),
   installMissingRuntimeDependency: (input: unknown) => mockInstallMissingRuntimeDependency(input),
   launchChat: (input: unknown) => mockLaunchChat(input),
 }));
@@ -109,6 +112,13 @@ describe("TemplateEditorPage", () => {
       system: "Generated system",
     });
     mockLaunchChat.mockResolvedValue({ dialogText: "launched" });
+    mockGetChatSnapshot.mockResolvedValue({
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    });
     mockInstallMissingRuntimeDependency.mockResolvedValue({ message: "installed" });
     mockSaveTemplateSession.mockResolvedValue(undefined);
     mockSaveSystemConfig.mockResolvedValue(sampleConfig.system_config);
@@ -246,6 +256,23 @@ describe("TemplateEditorPage", () => {
         useCg: true,
       }),
     );
+  });
+
+  it("disables launch actions while an existing chat process is still running", async () => {
+    mockGetChatSnapshot.mockResolvedValue({
+      chatProcessRunning: true,
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    });
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Launch chat" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Quick restart" })).toBeDisabled();
   });
 
   it("renders empty and query error states", async () => {

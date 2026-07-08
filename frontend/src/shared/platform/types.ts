@@ -770,6 +770,8 @@ export interface ChatSnapshot {
   characterName?: string;
   conversationTree?: ChatConversationTree;
   cgPath?: string;
+  chatProcessRunning?: boolean;
+  chatRuntimeClosing?: boolean;
   dialogHtml?: string;
   dialogText: string;
   /** 后端已折叠进该 snapshot 的最新事件 seq，用于重连恢复幂等处理。 */

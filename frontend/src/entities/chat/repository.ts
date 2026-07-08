@@ -12,6 +12,7 @@ import type {
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary } from "../../shared/theme/chatTheme";
 import type { ChatStageEvent } from "../../shared/platform/types";
+import { beginChatRuntimeClosing } from "./runtimeState";
 
 export const chatQueryKey = ["chat"] as const;
 export const chatThemeQueryKey = ["chat", "themes"] as const;
@@ -20,8 +21,13 @@ export function getChatSnapshot(): Promise<ChatSnapshot> {
   return getPlatform().chat.getSnapshot();
 }
 
-export function closeChat(): Promise<ChatSnapshot> {
-  return getPlatform().chat.close();
+export async function closeChat(): Promise<ChatSnapshot> {
+  const releaseClosing = beginChatRuntimeClosing();
+  try {
+    return await getPlatform().chat.close();
+  } finally {
+    releaseClosing();
+  }
 }
 
 export function getChatTheme(): Promise<ChatThemePayload> {

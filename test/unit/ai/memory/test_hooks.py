@@ -153,6 +153,65 @@ def test_periodic_extraction_skips_assistant_tool_call_messages(tmp_path):
     assert len(hooks.queue) == 0
 
 
+def test_shutdown_extracts_tail_messages_below_interval(tmp_path):
+    saved = []
+
+    def remember(content, character_name=None):
+        saved.append((character_name, content))
+        return {"ok": True}
+
+    adapter = MockLLMAdapter(
+        responses=['[{"character_name":"Mika","memory":"User likes concise answers.","confidence":0.9}]']
+    )
+    hooks = MemoryAutoHooks(
+        llm_adapter=adapter,
+        character_names=["Mika"],
+        queue=MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=remember),
+        extract_interval_turns=5,
+    )
+
+    hooks.message_added(MessageAddedContext(role="user", message={"role": "user", "content": "Please be concise."}, messages=[]))
+    hooks.message_added(
+        MessageAddedContext(role="assistant", message={"role": "assistant", "content": "Got it."}, messages=[])
+    )
+
+    assert saved == []
+    hooks.shutdown()
+
+    assert saved == [("Mika", "User likes concise answers.")]
+    assert len(adapter.call_history) == 1
+    assert len(hooks.queue) == 0
+
+
+def test_shutdown_does_not_reextract_already_extracted_turn(tmp_path):
+    saved = []
+
+    def remember(content, character_name=None):
+        saved.append((character_name, content))
+        return {"ok": True}
+
+    adapter = MockLLMAdapter(
+        responses=['[{"character_name":"Mika","memory":"Already saved at interval.","confidence":0.9}]']
+    )
+    hooks = MemoryAutoHooks(
+        llm_adapter=adapter,
+        character_names=["Mika"],
+        queue=MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=remember),
+        extract_interval_turns=1,
+    )
+
+    hooks.message_added(MessageAddedContext(role="user", message={"role": "user", "content": "Remember this."}, messages=[]))
+    hooks.message_added(
+        MessageAddedContext(role="assistant", message={"role": "assistant", "content": "Saved soon."}, messages=[])
+    )
+    hooks.wait_for_idle()
+    hooks.shutdown()
+
+    assert saved == [("Mika", "Already saved at interval.")]
+    assert len(adapter.call_history) == 1
+    assert len(hooks.queue) == 0
+
+
 def test_before_chat_uses_last_assistant_speaker_as_active_character(tmp_path):
     searched = []
 

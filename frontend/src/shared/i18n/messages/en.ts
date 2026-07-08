@@ -573,6 +573,7 @@ export const enMessages: Record<MessageKey, string> = {
   "launch.history": "History",
   "launch.historyHelp": "Multiple characters are sent to the launch payload in this selection order.",
   "launch.historyPlaceholder": "./data/chat_history/...",
+  "launch.runtimeBusy": "The previous chat is still closing. Please try again in a moment.",
   "launch.start": "Launch",
   "launch.template": "Template",
   "launch.title": "Launch chat",

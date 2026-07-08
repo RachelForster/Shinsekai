@@ -578,6 +578,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "launch.history": "履歴",
   "launch.historyHelp": "複数キャラクターはこの選択順で起動 payload に入ります。",
   "launch.historyPlaceholder": "./data/chat_history/...",
+  "launch.runtimeBusy": "前のチャットを終了しています。少し待ってから再度開始してください。",
   "launch.start": "開始",
   "launch.template": "テンプレート",
   "launch.title": "チャット開始",
