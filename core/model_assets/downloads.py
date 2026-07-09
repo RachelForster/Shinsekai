@@ -64,6 +64,8 @@ def preload_huggingface_snapshot(
     def update_byte_progress(current: float, total: float, *, force: bool = False) -> None:
         nonlocal last_progress_update, last_progress_value
         if total <= 0:
+            print(f"[snapshot-progress] update_byte_progress SKIP total<=0  "
+                  f"current={current}  total={total}")
             return
         current = min(max(0.0, current), total)
         ratio = min(1.0, max(0.0, current / total))
@@ -80,10 +82,16 @@ def preload_huggingface_snapshot(
                 or now - last_progress_update >= HUGGINGFACE_PROGRESS_UPDATE_INTERVAL_SEC
             )
             if not should_update:
+                print(f"[snapshot-progress] update_byte_progress THROTTLED  "
+                      f"current={current:.0f}  total={total:.0f}  progress={progress:.4f}  "
+                      f"last={last_progress_value:.4f}  delta={progress - last_progress_value:.6f}  "
+                      f"force={force}")
                 return
             last_progress_value = progress
             last_progress_update = now
             message = f"{download_message} ({format_bytes(current)} / {format_bytes(total)})."
+            print(f"[snapshot-progress] update_byte_progress FIRE  progress={progress:.4f}  "
+                  f"current={current:.0f}  total={total:.0f}  ratio={ratio:.4f}  force={force}")
             update_task(
                 phase="download",
                 message=message,
@@ -106,6 +114,10 @@ def preload_huggingface_snapshot(
                 # frontend progress stays stuck at HUGGINGFACE_DOWNLOAD_PROGRESS_START
                 # (2 %) forever.
                 self.disable = False
+                print(f"[snapshot-progress] __init__  n={self.n}  total={self.total}  "
+                      f"disable_was={getattr(self, 'disable', None)}  "
+                      f"unit={self._shinsekai_unit}  name={self._shinsekai_name}  "
+                      f"desc={self._shinsekai_desc}")
                 update_byte_progress(float(self.n), float(self.total or 0), force=True)
 
         def _is_byte_progress(self) -> bool:
@@ -132,6 +144,8 @@ def preload_huggingface_snapshot(
                 if n and current <= previous:
                     current = previous + float(n)
                     self.n = current
+                print(f"[snapshot-progress] update  n_delta={n}  previous={previous}  "
+                      f"current={current}  total={self.total}  disable={self.disable}")
                 update_byte_progress(current, float(self.total or 0))
             return result
 

@@ -227,6 +227,10 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
         return {"status": "ready", "modelCached": True, **({"task": task} if task else {})}
     if _mem0_loading:
         task = current_mem0_task()
+        progress = task.get("progress") if task else None
+        print(f"[mem0-status] loading  progress={progress}  "
+              f"phase={task.get('phase') if task else None}  "
+              f"modelCached={is_embedding_model_cached()}")
         return {
             "status": "loading",
             "modelCached": is_embedding_model_cached(),
