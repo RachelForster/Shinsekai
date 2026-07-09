@@ -93,14 +93,30 @@ def preload_huggingface_snapshot(
 
     class HuggingFaceSnapshotProgress(hf_tqdm):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self._shinsekai_desc = kwargs.get("desc")
             self._shinsekai_unit = kwargs.get("unit")
             self._shinsekai_name = kwargs.get("name")
             super().__init__(*args, **kwargs)
             if self._is_byte_progress():
+                # Force disable=False so that super().update() always increments
+                # self.n and super().refresh() is never a no-op.  The huggingface_hub
+                # v1.x snapshot_download creates bytes_progress with total=0 and may
+                # leave disable=None/True depending on the logger effective level;
+                # when disabled, update() returns without touching self.n and our
+                # frontend progress stays stuck at HUGGINGFACE_DOWNLOAD_PROGRESS_START
+                # (2 %) forever.
+                self.disable = False
                 update_byte_progress(float(self.n), float(self.total or 0), force=True)
 
         def _is_byte_progress(self) -> bool:
-            return self._shinsekai_unit == "B" or self._shinsekai_name == "huggingface_hub.snapshot_download"
+            unit = str(self._shinsekai_unit or getattr(self, "unit", "") or "").lower()
+            name = str(self._shinsekai_name or "").lower()
+            desc = str(self._shinsekai_desc or getattr(self, "desc", "") or "").lower()
+            return (
+                unit in {"b", "ib", "byte", "bytes"}
+                or name == "huggingface_hub.snapshot_download"
+                or (desc.startswith("download") and isinstance(getattr(self, "total", None), (int, float)))
+            )
 
         def refresh(self, *args: Any, **kwargs: Any) -> bool | None:
             result = super().refresh(*args, **kwargs)

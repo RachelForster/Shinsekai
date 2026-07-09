@@ -54,7 +54,9 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
         if (next.status !== "loading" && next.status !== "not_started") {
           break;
         }
-        await new Promise((resolve) => setTimeout(resolve, next.modelCached ? 2000 : 3000));
+        await new Promise((resolve) =>
+          setTimeout(resolve, next.task?.phase === "download" ? 1000 : next.modelCached ? 2000 : 3000),
+        );
         next = await getMemoryStatus({ startLoading: true });
       }
       if (next.status === "ready") {

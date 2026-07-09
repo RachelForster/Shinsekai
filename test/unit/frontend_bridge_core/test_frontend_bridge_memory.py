@@ -113,3 +113,27 @@ def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):
         "packageName": "mem0ai",
         "task": task,
     }
+
+
+def test_preload_embedding_model_limits_huggingface_snapshot(monkeypatch):
+    from ai.memory import runtime
+
+    captured = {}
+
+    def _fake_preload_huggingface_snapshot(repo_id, **kwargs):
+        captured["repo_id"] = repo_id
+        captured.update(kwargs)
+
+    monkeypatch.setattr(runtime, "preload_huggingface_snapshot", _fake_preload_huggingface_snapshot)
+
+    runtime._preload_embedding_model(cached=False)
+
+    assert captured["repo_id"] == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    assert captured["cached"] is False
+    patterns = captured["allow_patterns"]
+    assert "model.safetensors" in patterns
+    assert "tokenizer.json" in patterns
+    assert not any(pattern.startswith("onnx/") for pattern in patterns)
+    assert not any(pattern.startswith("openvino/") for pattern in patterns)
+    assert "tf_model.h5" not in patterns
+    assert "pytorch_model.bin" not in patterns

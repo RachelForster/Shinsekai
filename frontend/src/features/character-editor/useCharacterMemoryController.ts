@@ -122,13 +122,13 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
           status.modelCached ? t("character.memory.loadingModel") : t("character.memory.downloadingModel"),
         );
         setMem0LoadingOpen(true);
-        const pollMs = status.modelCached ? 2000 : 3000;
         let pollStatus = status;
         while (
           pollStatus.status === "loading" ||
           pollStatus.status === "not_started" ||
           pollStatus.status === "error"
         ) {
+          const pollMs = pollStatus.task?.phase === "download" ? 1000 : pollStatus.modelCached ? 2000 : 3000;
           await new Promise((resolve) => setTimeout(resolve, pollMs));
           try {
             pollStatus = await getMem0Status();

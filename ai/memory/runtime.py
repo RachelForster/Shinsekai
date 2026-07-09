@@ -29,6 +29,21 @@ _LOADING_FIRST_MSG = (
 )
 
 
+_EMBEDDING_MODEL_ALLOW_PATTERNS = [
+    "1_Pooling/config.json",
+    "config.json",
+    "config_sentence_transformers.json",
+    "model.safetensors",
+    "modules.json",
+    "sentence_bert_config.json",
+    "sentencepiece.bpe.model",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "unigram.json",
+]
+
+
 def _preload_embedding_model(*, cached: bool) -> None:
     preload_huggingface_snapshot(
         EMBEDDING_MODEL,
@@ -37,6 +52,7 @@ def _preload_embedding_model(*, cached: bool) -> None:
         download_message="Downloading mem0 embedding model",
         cached_message="Loading cached mem0 embedding model.",
         load_message="Loading mem0 embedding model.",
+        allow_patterns=_EMBEDDING_MODEL_ALLOW_PATTERNS,
     )
 
 
