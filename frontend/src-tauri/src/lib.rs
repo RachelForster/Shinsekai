@@ -43,6 +43,7 @@ const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 const BRIDGE_RESTART_STATE_EVENT: &str = "shinsekai:bridge-restart-state";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
+const SHOW_BACKEND_CONSOLE_ENV: &str = "SHINSEKAI_SHOW_BACKEND_CONSOLE";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -2052,7 +2053,15 @@ fn spawn_bridge(
         .current_dir(&source_root);
 
     #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
+    {
+        if show_backend_console() {
+            const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+            command.creation_flags(CREATE_NEW_CONSOLE);
+        } else {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+    }
 
     let mut child = command.spawn().map_err(|error| {
         restart_debug_log(format!("spawn_bridge failed error={error}"));
@@ -2070,6 +2079,16 @@ fn spawn_bridge(
         port
     ));
     Ok(BridgeLaunch { child })
+}
+
+fn show_backend_console() -> bool {
+    matches!(
+        env::var(SHOW_BACKEND_CONSOLE_ENV)
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {

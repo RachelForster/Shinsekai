@@ -223,12 +223,26 @@ fn runtime_profile() -> String {
 fn bridge_launch_python(python: &Path) -> PathBuf {
     #[cfg(windows)]
     {
+        if show_backend_console() {
+            return python.to_path_buf();
+        }
         pythonw_for_python(python).unwrap_or_else(|| python.to_path_buf())
     }
     #[cfg(not(windows))]
     {
         python.to_path_buf()
     }
+}
+
+#[cfg(windows)]
+fn show_backend_console() -> bool {
+    matches!(
+        env::var("SHINSEKAI_SHOW_BACKEND_CONSOLE")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 #[allow(dead_code)]
