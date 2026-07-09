@@ -904,9 +904,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         }),
       get: () => requestJson<AppConfig>(apiBase, "/api/config"),
       detectNetworkProxy: () => requestJson<NetworkProxyDetectionResult>(apiBase, "/api/config/network-proxy/detect"),
-      getMemoryStatus: () =>
+      getMemoryStatus: (options) =>
         requestJson<Mem0Status>(apiBase, "/api/memory/status", {
-          body: "{}",
+          body: JSON.stringify({ startLoading: options?.startLoading ?? true }),
           method: "POST",
         }),
       getTtsBundleRecommendation: () =>

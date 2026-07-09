@@ -407,7 +407,7 @@ def _launch_chat(
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"
         api_config = state.config_manager.config.api_config
-        env["SHINSEKAI_MEMORY_AUTO_ENABLED"] = "1" if bool(getattr(api_config, "memory_auto_enabled", True)) else "0"
+        env["SHINSEKAI_MEMORY_AUTO_ENABLED"] = "1" if bool(getattr(api_config, "memory_auto_enabled", False)) else "0"
         env["SHINSEKAI_MEMORY_EXTRACT_INTERVAL_TURNS"] = str(
             max(1, int(getattr(api_config, "memory_extract_interval_turns", 5) or 5))
         )

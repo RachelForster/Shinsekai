@@ -649,7 +649,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     _delete_character_memory(str(body.get("name") or ""), str(body.get("memoryId") or ""))
                 )
             elif method == "POST" and path == "/api/memory/status":
-                self._send_json(_get_mem0_status())
+                self._send_json(_get_mem0_status(start_loading=bool(body.get("startLoading", True))))
             elif method == "POST" and path == "/api/memory/list":
                 self._send_json(_list_character_memories(str(body.get("name") or body.get("characterName") or "")))
             elif method == "POST" and path == "/api/memory/search":

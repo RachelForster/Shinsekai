@@ -15,7 +15,7 @@ def _check_mem0_before_call() -> dict[str, Any] | None:
     return runtime_dependency_error_from_module("mem0")
 
 
-def _get_mem0_status() -> dict[str, Any]:
+def _get_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     """Return mem0 availability status for frontend polling."""
     import importlib.util as _importlib_util
 
@@ -29,7 +29,7 @@ def _get_mem0_status() -> dict[str, Any]:
 
     from ai.memory.runtime import check_mem0_status
 
-    return check_mem0_status()
+    return check_mem0_status(start_loading=start_loading)
 
 
 def _raise_memory_error(result: dict[str, Any]) -> None:

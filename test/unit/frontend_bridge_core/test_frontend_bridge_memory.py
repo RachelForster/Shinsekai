@@ -1,6 +1,14 @@
-def test_check_mem0_before_call_returns_none_when_mem0_importable():
+def test_check_mem0_before_call_returns_none_when_mem0_importable(monkeypatch):
+    import importlib
+
     from frontend_bridge_core.memory import _check_mem0_before_call
 
+    def _fake_find_spec(name):
+        if name == "mem0":
+            return object()
+        return importlib.util.find_spec(name)
+
+    monkeypatch.setattr(importlib.util, "find_spec", _fake_find_spec)
     result = _check_mem0_before_call()
     assert result is None, f"expected None when mem0 is importable, got {result}"
 
@@ -32,6 +40,32 @@ def test_get_mem0_status_returns_valid_status():
     assert "status" in result
     valid = {"ready", "loading", "not_started", "error", "missing_dependency"}
     assert result["status"] in valid, f"unexpected status: {result['status']}"
+
+
+def test_get_mem0_status_can_peek_without_starting_loading(monkeypatch):
+    import importlib
+
+    from frontend_bridge_core.memory import _get_mem0_status
+
+    def _fake_find_spec(name):
+        if name == "mem0":
+            return object()
+        return importlib.util.find_spec(name)
+
+    monkeypatch.setattr(importlib.util, "find_spec", _fake_find_spec)
+    captured = {}
+
+    def _fake_check_mem0_status(*, start_loading=True):
+        captured["start_loading"] = start_loading
+        return {"status": "not_started", "modelCached": False}
+
+    monkeypatch.setattr("ai.memory.runtime.check_mem0_status", _fake_check_mem0_status)
+
+    result = _get_mem0_status(start_loading=False)
+
+    assert result["status"] == "not_started"
+    assert result["modelCached"] is False
+    assert captured["start_loading"] is False
 
 
 def test_get_mem0_status_missing_dependency_when_not_importable(monkeypatch):

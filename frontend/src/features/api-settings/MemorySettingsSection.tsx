@@ -37,6 +37,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
   const [status, setStatus] = useState<Mem0Status | null>(null);
   const [task, setTask] = useState<TaskSnapshot | null>(null);
   const [checking, setChecking] = useState(false);
+  const [enableChecking, setEnableChecking] = useState(false);
   const pollTokenRef = useRef(0);
 
   const patch = (changes: Partial<ApiConfig>) => onChange({ ...draft, ...changes });
@@ -46,7 +47,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
     pollTokenRef.current = token;
     setChecking(true);
     try {
-      let next = await getMemoryStatus();
+      let next = await getMemoryStatus({ startLoading: true });
       while (pollTokenRef.current === token) {
         setStatus(next);
         setTask(next.task ?? null);
@@ -54,7 +55,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, next.modelCached ? 2000 : 3000));
-        next = await getMemoryStatus();
+        next = await getMemoryStatus({ startLoading: true });
       }
       if (next.status === "ready") {
         showToast({ kind: "success", title: t("api.memory.ready") });
@@ -78,6 +79,39 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
     }
   };
 
+  const handleEnabledChange = async (enabled: boolean) => {
+    if (!enabled) {
+      patch({ memory_auto_enabled: false });
+      return;
+    }
+    setEnableChecking(true);
+    try {
+      const next = await getMemoryStatus({ startLoading: false });
+      setStatus(next);
+      setTask(next.task ?? null);
+      if (next.status === "ready" || next.modelCached) {
+        patch({ memory_auto_enabled: true });
+        showToast({ kind: "success", title: t("api.memory.enableReady") });
+        return;
+      }
+      patch({ memory_auto_enabled: false });
+      showToast({
+        kind: "error",
+        message: next.message || next.task?.errorUserMessage || t("api.memory.modelMissingKeepOff"),
+        title: t("api.memory.title"),
+      });
+    } catch (error) {
+      patch({ memory_auto_enabled: false });
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("api.memory.error"),
+        title: t("api.memory.title"),
+      });
+    } finally {
+      setEnableChecking(false);
+    }
+  };
+
   return (
     <section className="section memory-settings page-section-anchor" id={id}>
       <div className="section__header">
@@ -97,9 +131,9 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
         <span className="field-row__control">
           <Switch
             checked={draft.memory_auto_enabled}
-            disabled={disabled}
+            disabled={disabled || enableChecking}
             id="memory-auto-enabled"
-            onChange={(event) => patch({ memory_auto_enabled: event.currentTarget.checked })}
+            onChange={(event) => void handleEnabledChange(event.currentTarget.checked)}
           />
         </span>
       </label>

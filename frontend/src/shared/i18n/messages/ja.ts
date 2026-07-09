@@ -1,6 +1,8 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "api.memory.enableReady": "自動長期記憶を有効にしました。",
+  "api.memory.modelMissingKeepOff": "埋め込みモデルが未ダウンロードのため、長期記憶はオフのままです。",
   "api.memory.checking": "確認中",
   "api.memory.description": "チャット時の長期記憶検索、周期抽出、埋め込みモデル準備を制御します。",
   "api.memory.downloadModel": "モデルを確認/ダウンロード",

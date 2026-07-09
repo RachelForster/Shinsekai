@@ -203,12 +203,12 @@ def ensure_mem0() -> Any:
     raise ToolNotReady(_loading_status_message())
 
 
-def check_mem0_status() -> dict[str, Any]:
+def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     """Return the current mem0 availability and model loading status."""
     global _mem0, _mem0_loading, _mem0_load_error
     if _mem0 is not None:
         task = current_mem0_task()
-        return {"status": "ready", **({"task": task} if task else {})}
+        return {"status": "ready", "modelCached": True, **({"task": task} if task else {})}
     if _mem0_loading:
         task = current_mem0_task()
         return {
@@ -233,11 +233,19 @@ def check_mem0_status() -> dict[str, Any]:
             result = {"status": "error", "message": str(_mem0_load_error), **({"task": task} if task else {})}
         # Restart loading on status check so the next poll picks up a
         # "loading" state and carries through to ready (or back to error).
-        start_mem0_loading()
+        if start_loading:
+            start_mem0_loading()
         return result
     try:
         import mem0  # noqa: F401
 
+        if not start_loading:
+            task = current_mem0_task()
+            return {
+                "status": "not_started",
+                "modelCached": is_embedding_model_cached(),
+                **({"task": task} if task else {}),
+            }
         start_mem0_loading()
         task = current_mem0_task()
         return {

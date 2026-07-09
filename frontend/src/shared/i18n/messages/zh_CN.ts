@@ -1,6 +1,8 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "api.memory.enableReady": "自动长期记忆已启用。",
+  "api.memory.modelMissingKeepOff": "embedding 模型尚未下载，长期记忆已保持关闭。",
   "api.memory.checking": "正在检查",
   "api.memory.description": "控制聊天时的长期记忆检索、周期抽取和 embedding 模型准备。",
   "api.memory.downloadModel": "下载/检查模型",

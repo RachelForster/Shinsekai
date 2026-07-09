@@ -1042,7 +1042,7 @@ export interface ShinsekaiPlatform {
     }) => Promise<LlmConnectionTestResult>;
     get: () => Promise<AppConfig>;
     detectNetworkProxy: () => Promise<NetworkProxyDetectionResult>;
-    getMemoryStatus: () => Promise<Mem0Status>;
+    getMemoryStatus: (options?: { startLoading?: boolean }) => Promise<Mem0Status>;
     getTtsBundleRecommendation: () => Promise<TtsBundleRecommendation>;
     saveApi: (config: ApiConfig) => Promise<ApiConfig>;
     saveSystem: (config: SystemConfig) => Promise<SystemConfig>;
