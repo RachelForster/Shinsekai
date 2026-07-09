@@ -113,6 +113,11 @@ class ApiConfig(BaseModel):
     max_tool_result_chars: DefaultIfNone[int] = Field(default=6000, description="写入历史的单次工具结果最大字符数")
     max_active_tool_groups: DefaultIfNone[int] = Field(default=3, description="同时启用的工具组数量上限")
 
+    memory_auto_enabled: DefaultIfNone[bool] = Field(default=True, description="Automatic long-term memory extraction enabled")
+    memory_extract_interval_turns: DefaultIfNone[int] = Field(default=5, ge=1, le=50, description="Turns between automatic long-term memory extraction")
+    memory_search_limit: DefaultIfNone[int] = Field(default=5, ge=1, le=20, description="Long-term memory search result limit per turn")
+    memory_recent_buffer_messages: DefaultIfNone[int] = Field(default=16, ge=2, le=64, description="Recent messages used for automatic memory extraction")
+
     hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
 
     llm_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(

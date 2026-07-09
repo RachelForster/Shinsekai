@@ -24,7 +24,8 @@ import type { ApiConfig, SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import { resumeLastChat } from "../../entities/chat/repository";
+import { chatQueryKey, getChatSnapshot, resumeLastChat } from "../../entities/chat/repository";
+import { useChatRuntimeClosing } from "../../entities/chat/runtimeState";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
 import {
   AsyncButton,
@@ -40,6 +41,7 @@ import { AdapterExtraSection } from "./AdapterExtraSection";
 import { ApiLanguageSection } from "./ApiLanguageSection";
 import { AsrSettingsSection } from "./AsrSettingsSection";
 import { LlmConnectionSection } from "./LlmConnectionSection";
+import { MemorySettingsSection } from "./MemorySettingsSection";
 import { ResourceLinksSection } from "./ResourceLinksSection";
 import { T2iSetupSection } from "./T2iSetupSection";
 import { TtsBundleSection } from "./TtsBundleSection";
@@ -110,6 +112,11 @@ export function ApiSettingsPage() {
     queryKey: ttsBundleRecommendationQueryKey,
     staleTime: 300_000,
   });
+  const runtimeSnapshotQuery = useQuery({
+    queryFn: getChatSnapshot,
+    queryKey: [...chatQueryKey, "snapshot", "launch-guard"],
+    refetchInterval: 1200,
+  });
   const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<ApiConfig | null>(null);
   const [systemDraft, setSystemDraft] = useState<SystemConfig | null>(null);
@@ -125,6 +132,7 @@ export function ApiSettingsPage() {
   const [ttsBundleDialogOpen, setTtsBundleDialogOpen] = useState(false);
   const [ttsBundleError, setTtsBundleError] = useState<string | null>(null);
   const [ttsBundleTask, setTtsBundleTask] = useState<TaskSnapshot<TtsBundleDownloadResult> | null>(null);
+  const localRuntimeClosing = useChatRuntimeClosing();
   const adapterCatalog = data?.adapter_catalog;
   const apiSchema = useMemo(
     () => apiSchemaWithAdapterOptions(adapterCatalog, draft),
@@ -197,8 +205,17 @@ export function ApiSettingsPage() {
     },
   });
 
+  const runtimeLaunchDisabled =
+    localRuntimeClosing ||
+    Boolean(runtimeSnapshotQuery.data?.chatRuntimeClosing || runtimeSnapshotQuery.data?.chatProcessRunning);
+
   const resumeMutation = useMutation({
-    mutationFn: resumeLastChat,
+    mutationFn: async () => {
+      if (runtimeLaunchDisabled) {
+        throw new Error(t("launch.runtimeBusy"));
+      }
+      return resumeLastChat();
+    },
     onError(error) {
       showToast({
         kind: "error",
@@ -207,6 +224,7 @@ export function ApiSettingsPage() {
       });
     },
     onSuccess(snapshot) {
+      queryClient.setQueryData([...chatQueryKey, "snapshot", "launch-guard"], snapshot);
       showToast({
         kind: "success",
         message: snapshot.statusMessage || snapshot.dialogText,
@@ -549,6 +567,7 @@ export function ApiSettingsPage() {
   const apiSectionNavItems = [
     { id: "api-language", label: t("api.language.title") },
     { id: "api-llm", label: t("api.llm.connectionTitle") },
+    { id: "api-memory", label: t("api.memory.title") },
     { id: "api-tts", label: t("api.tts.bundleTitle") },
     { id: "api-t2i", label: t("api.t2i.title") },
     { id: "api-asr", label: t("system.asr.title") },
@@ -640,6 +659,7 @@ export function ApiSettingsPage() {
             {t("common.save")}
           </AsyncButton>
           <AsyncButton
+            disabled={runtimeLaunchDisabled}
             icon={<RotateCcw aria-hidden className="button__icon" />}
             loading={resumeMutation.isPending}
             onClick={() => resumeMutation.mutate()}
@@ -685,6 +705,12 @@ export function ApiSettingsPage() {
         groups={apiSchema.filter((g) => g.id === "llm")}
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
         value={draft}
+      />
+      <MemorySettingsSection
+        disabled={saveMutation.isPending}
+        draft={draft}
+        id="api-memory"
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
       />
       <TtsBundleSection
         canCancelDownload={canCancelTtsBundleDownload}

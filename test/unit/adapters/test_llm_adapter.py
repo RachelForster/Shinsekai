@@ -135,6 +135,42 @@ class TestClaudeAdapter:
         assert adapter.client.api_key == "sk-ant"
         assert adapter.client.base_url == "https://api.anthropic.com"
 
+    def test_clean_messages_merges_all_system_messages_for_claude(self, monkeypatch):
+        fake_anthropic = ModuleType("anthropic")
+
+        class _Anthropic:
+            def __init__(self, api_key=None, base_url=None):
+                self.api_key = api_key
+                self.base_url = base_url
+
+        fake_anthropic.Anthropic = _Anthropic
+        monkeypatch.setitem(sys.modules, "anthropic", fake_anthropic)
+
+        adapter = ClaudeAdapter(
+            api_key="sk-ant",
+            base_url="https://api.anthropic.com/v1",
+            model="claude-3-5-sonnet-20240620",
+        )
+        adapter.set_user_template("base template")
+
+        system_msg, cleaned_msgs = adapter._clean_messages(
+            [
+                {"role": "system", "content": "character template"},
+                {"role": "user", "content": "hello"},
+                {
+                    "role": "system",
+                    "content": "[Shinsekai long-term memory context]\n- likes tea",
+                },
+            ]
+        )
+
+        assert system_msg == (
+            "base template\n\n"
+            "character template\n\n"
+            "[Shinsekai long-term memory context]\n- likes tea"
+        )
+        assert cleaned_msgs == [{"role": "user", "content": "hello"}]
+
 
 class TestMockLLMAdapter:
     def test_returns_configured_response(self, mock_llm_adapter):

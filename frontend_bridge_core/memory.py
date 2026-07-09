@@ -42,9 +42,13 @@ def _list_character_memories(name: str) -> dict[str, Any]:
     if dep_error is not None:
         return dep_error
 
+    from sdk.tool_registry import ToolNotReady
     from ai.memory.operations import memory_list
 
-    return memory_list(name)
+    try:
+        return memory_list(name)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
 
 
 def _memory_tool_search(query: str, character_name: str, limit: int = 10) -> dict[str, Any]:
@@ -94,9 +98,13 @@ def _add_character_memory(name: str, content: str) -> dict[str, Any]:
     if dep_error is not None:
         return dep_error
 
+    from sdk.tool_registry import ToolNotReady
     from ai.memory.operations import memory_remember_and_list
 
-    result = memory_remember_and_list(content, character_name=name)
+    try:
+        result = memory_remember_and_list(content, character_name=name)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
     _raise_memory_error(result)
     return result
 
@@ -106,8 +114,12 @@ def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
     if dep_error is not None:
         return dep_error
 
+    from sdk.tool_registry import ToolNotReady
     from ai.memory.operations import memory_forget_and_list
 
-    result = memory_forget_and_list(memory_id, character_name=name)
+    try:
+        result = memory_forget_and_list(memory_id, character_name=name)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
     _raise_memory_error(result)
     return result

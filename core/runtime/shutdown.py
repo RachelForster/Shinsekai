@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from sdk.hooks import iter_shutdown_hooks
+
 
 def shutdown_chat_runtime(
     *,
@@ -26,6 +28,7 @@ def shutdown_chat_runtime(
         steps.append(("emit_session_closed", emit_session_closed))
     if workflow is not None and hasattr(workflow, "stop"):
         steps.append(("workflow_stop", workflow.stop))
+    steps.extend(iter_shutdown_hooks())
     if plugin_shutdown is not None:
         steps.append(("plugin_shutdown", plugin_shutdown))
     if tts_shutdown is not None:

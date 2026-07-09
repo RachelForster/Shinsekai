@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   downloadTtsBundle: vi.fn(),
   fetchLlmModels: vi.fn(),
   getAppConfig: vi.fn(),
+  getChatSnapshot: vi.fn(),
   getTtsBundleRecommendation: vi.fn(),
   resumeLastChat: vi.fn(),
   saveApiConfig: vi.fn(),
@@ -36,6 +37,8 @@ vi.mock("../../../entities/config/repository", () => ({
 }));
 
 vi.mock("../../../entities/chat/repository", () => ({
+  chatQueryKey: ["chat"],
+  getChatSnapshot: () => mocks.getChatSnapshot(),
   resumeLastChat: () => mocks.resumeLastChat(),
 }));
 
@@ -96,6 +99,13 @@ describe("ApiSettingsPage", () => {
       platform: "linux",
     });
     mocks.fetchLlmModels.mockResolvedValue([]);
+    mocks.getChatSnapshot.mockResolvedValue({
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    });
     mocks.resumeLastChat.mockResolvedValue({ sessionId: "session-1" });
     mocks.saveApiConfig.mockResolvedValue(sampleConfig.api_config);
     mocks.saveSystemConfig.mockResolvedValue(sampleConfig.system_config);

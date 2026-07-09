@@ -52,6 +52,7 @@ describe("entity repositories", () => {
         fetchLlmModels: vi.fn().mockResolvedValue([{ id: "deepseek-chat", tags: ["chat"] }]),
         testLlmConnection: vi.fn().mockResolvedValue({ message: "ok" }),
         get: vi.fn().mockResolvedValue(sampleConfig),
+        getMemoryStatus: vi.fn().mockResolvedValue({ status: "ready" }),
         getTtsBundleRecommendation: vi.fn().mockResolvedValue({ gpus: [], kind: "genie", platform: "linux" }),
         saveApi: vi.fn().mockResolvedValue(apiConfig),
         saveSystem: vi.fn().mockResolvedValue(systemConfig),
@@ -86,6 +87,7 @@ describe("entity repositories", () => {
     await config.downloadTtsBundle({ kind: "genie" }, taskOptions);
     await config.cancelTtsBundleDownload("task-1");
     await config.detectNetworkProxy();
+    await config.getMemoryStatus();
     await config.getTtsBundleRecommendation();
     await config.saveApiConfig(apiConfig);
     await config.saveSystemConfig(systemConfig);

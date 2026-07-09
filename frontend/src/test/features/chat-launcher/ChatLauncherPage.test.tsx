@@ -10,6 +10,7 @@ import { ToastProvider } from "../../../shared/ui";
 
 const mocks = {
   getAppConfig: vi.fn(),
+  getChatSnapshot: vi.fn(),
   getTemplateSession: vi.fn(),
   launchChat: vi.fn(),
   listBackgrounds: vi.fn(),
@@ -44,6 +45,9 @@ vi.mock("../../../entities/config/repository", () => ({
   getAppConfig: () => mocks.getAppConfig(),
 }));
 vi.mock("../../../entities/chat/repository", () => ({
+  chatQueryKey: ["chat"],
+  getChatSnapshot: () => mocks.getChatSnapshot(),
+  installMissingRuntimeDependency: (input: unknown) => Promise.resolve(input),
   launchChat: (payload: unknown) => mocks.launchChat(payload),
 }));
 vi.mock("../../../shared/desktop/desktopApi", () => ({
@@ -90,6 +94,13 @@ describe("ChatLauncherPage", () => {
     mocks.listTemplates.mockResolvedValue([]);
     mocks.getAppConfig.mockResolvedValue({
       system_config: { voice_language: "ja" },
+    });
+    mocks.getChatSnapshot.mockResolvedValue({
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
     });
     mocks.getTemplateSession.mockResolvedValue(null);
     mocks.saveTemplateSession.mockImplementation(async (session: TemplateLaunchSession) => session);
@@ -301,5 +312,33 @@ describe("ChatLauncherPage", () => {
 
     await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
     expect(mocks.launchChat).toHaveBeenCalledWith(expect.objectContaining({ resetHistory: true }));
+  });
+
+  it("disables launch actions while an existing chat process is still running", async () => {
+    mocks.getChatSnapshot.mockResolvedValue({
+      chatProcessRunning: true,
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    });
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-busy",
+        name: "Busy Template",
+        path: "D:/templates/busy.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+
+    renderPage();
+
+    await expectTemplateSelectToShow("Busy Template");
+    expect(await screen.findByRole("button", { name: "Launch" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Quick restart" })).toBeDisabled();
   });
 });

@@ -73,6 +73,10 @@ export interface ApiConfig {
   history_recent_messages: number;
   max_tool_result_chars: number;
   max_active_tool_groups: number;
+  memory_auto_enabled: boolean;
+  memory_extract_interval_turns: number;
+  memory_search_limit: number;
+  memory_recent_buffer_messages: number;
   hugging_face_access_token: string;
   llm_extra_configs: Record<string, Record<string, unknown>>;
   tts_extra_configs: Record<string, Record<string, unknown>>;
@@ -766,6 +770,8 @@ export interface ChatSnapshot {
   characterName?: string;
   conversationTree?: ChatConversationTree;
   cgPath?: string;
+  chatProcessRunning?: boolean;
+  chatRuntimeClosing?: boolean;
   dialogHtml?: string;
   dialogText: string;
   /** 后端已折叠进该 snapshot 的最新事件 seq，用于重连恢复幂等处理。 */
@@ -1036,6 +1042,7 @@ export interface ShinsekaiPlatform {
     }) => Promise<LlmConnectionTestResult>;
     get: () => Promise<AppConfig>;
     detectNetworkProxy: () => Promise<NetworkProxyDetectionResult>;
+    getMemoryStatus: () => Promise<Mem0Status>;
     getTtsBundleRecommendation: () => Promise<TtsBundleRecommendation>;
     saveApi: (config: ApiConfig) => Promise<ApiConfig>;
     saveSystem: (config: SystemConfig) => Promise<SystemConfig>;

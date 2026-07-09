@@ -1,6 +1,25 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "api.memory.checking": "確認中",
+  "api.memory.description": "チャット時の長期記憶検索、周期抽出、埋め込みモデル準備を制御します。",
+  "api.memory.downloadModel": "モデルを確認/ダウンロード",
+  "api.memory.downloading": "埋め込みモデルをダウンロード中…",
+  "api.memory.enabled": "自動長期記憶を有効にする",
+  "api.memory.error": "記憶システムを利用できません。",
+  "api.memory.extractInterval": "N ターンごとに抽出",
+  "api.memory.extractIntervalHelp": "指定したユーザーターン数ごとに、最近の会話を要約して記憶キューへ保存します。",
+  "api.memory.loadingCached": "キャッシュ済みモデルを読み込み中…",
+  "api.memory.missingDependency": "mem0ai 依存関係が不足しています。",
+  "api.memory.modelStatus": "モデル状態",
+  "api.memory.ready": "長期記憶は準備完了です",
+  "api.memory.readyCached": "長期記憶は準備完了です。モデルはキャッシュ済みです",
+  "api.memory.recentBuffer": "抽出ウィンドウ",
+  "api.memory.recentBufferHelp": "自動抽出では、この件数分の最近のメッセージだけを読みます。",
+  "api.memory.searchLimit": "毎ターン検索 Top K",
+  "api.memory.searchLimitHelp": "ユーザー発話前に注入する関連記憶の最大件数です。",
+  "api.memory.statusUnknown": "未確認",
+  "api.memory.title": "長期記憶",
   "runtimeDeps.installConfirm":
     "main.py は Python モジュール不足で終了しました:\n{module}\n\nパッケージ {package} を今すぐインストールしますか?",
   "runtimeDeps.installFailed": "依存関係のインストールに失敗しました",
@@ -559,6 +578,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "launch.history": "履歴",
   "launch.historyHelp": "複数キャラクターはこの選択順で起動 payload に入ります。",
   "launch.historyPlaceholder": "./data/chat_history/...",
+  "launch.runtimeBusy": "前のチャットを終了しています。少し待ってから再度開始してください。",
   "launch.start": "開始",
   "launch.template": "テンプレート",
   "launch.title": "チャット開始",

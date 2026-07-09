@@ -84,12 +84,18 @@ describe("showChatSurface", () => {
     expect(window.location.hash).toBe("");
   });
 
-  it("closes the live runtime before leaving the browser chat surface", async () => {
+  it("leaves the browser chat surface before the live runtime finishes closing", async () => {
     desktopMocks.isTauriDesktop.mockReturnValue(false);
-    const closeRuntime = vi.fn().mockResolvedValue(undefined);
+    let resolveClose: () => void = () => {};
+    const closeRuntime = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveClose = resolve;
+        }),
+    );
     const navigate = vi.fn();
 
-    await closeChatSurface({
+    const closePromise = closeChatSurface({
       closeRuntime,
       navigate,
       snapshot: {
@@ -101,6 +107,8 @@ describe("showChatSurface", () => {
 
     expect(closeRuntime).toHaveBeenCalledTimes(1);
     expect(navigate).toHaveBeenCalledWith("/settings/launch");
+    resolveClose();
+    await closePromise;
   });
 
   it("does not close the runtime when the chat surface is already closed or native", async () => {

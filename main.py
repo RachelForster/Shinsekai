@@ -1,5 +1,6 @@
-import os
 import copy
+import json
+import os
 from contextlib import contextmanager
 from pathlib import Path
 import signal
@@ -113,7 +114,7 @@ from core.sprite.chat_ui_service import (
     restore_session_ui,
     wire_chat_ui_bridge,
 )
-from core.sprite.initial_sprite import display_initial_sprite
+from core.sprite.initial_sprite import display_initial_sprite, find_character_sprite_by_path
 from core.sprite.sprite_cli import parse_sprite_args
 logger.info(
     "Chat startup imports completed",
@@ -225,6 +226,40 @@ def _install_interrupt_handlers():
     return _restore
 
 
+def _parse_character_names(raw: str) -> list[str]:
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = [part.strip() for part in text.split(",")]
+    if not isinstance(parsed, list):
+        return []
+    return [str(item).strip() for item in parsed if str(item).strip()]
+
+
+def _memory_character_names(args, config: ConfigManager) -> list[str]:
+    names = _parse_character_names(getattr(args, "characters", ""))
+    if names:
+        return names
+    init_sprite_path = str(getattr(args, "init_sprite_path", "") or "")
+    if not init_sprite_path:
+        return []
+    try:
+        matched = find_character_sprite_by_path(config, init_sprite_path)
+    except OSError:
+        logger.warning(
+            "Failed to resolve memory character from initial sprite path",
+            extra={"event": "memory.character.resolve_failed", "sprite_path": init_sprite_path},
+            exc_info=True,
+        )
+        return []
+    if matched is not None:
+        return [matched[0]]
+    return []
+
+
 class _StreamWindowProxy:
     def __init__(self, ui_updates):
         self._ui_updates = ui_updates
@@ -264,7 +299,6 @@ def main():
 
     with _startup_phase("plugins.load"):
         plugin_manager = ensure_plugins_loaded(config)
-
     with _startup_phase("args.parse"):
         args = parse_sprite_args(tr_i18n)
     stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None
@@ -387,6 +421,14 @@ def main():
                 plugin_manager.hook_dispatcher if plugin_manager is not None else None
             ),
         )
+        if plugin_manager is not None:
+            from ai.memory.hooks import install_memory_hooks
+
+            install_memory_hooks(
+                plugin_manager.hook_dispatcher,
+                llm_adapter=llm_adapter,
+                character_names=_memory_character_names(args, config),
+            )
 
     if messages:
         llm_manager.set_messages(messages)
