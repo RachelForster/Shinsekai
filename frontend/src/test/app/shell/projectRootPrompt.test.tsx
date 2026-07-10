@@ -88,6 +88,38 @@ describe("ProjectRootPrompt", () => {
     });
   });
 
+  it("stays fail-closed when persisting the selected project root fails", async () => {
+    desktopMocks.selectDesktopProjectRoot.mockRejectedValueOnce(new Error("locator write failed"));
+
+    renderPrompt();
+
+    const dialog = await screen.findByRole("dialog", { name: "Choose project data location" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: /D:\\我的游戏\\Shinsekai/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use this location and restart" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("locator write failed");
+    expect(desktopMocks.restartDesktopApp).not.toHaveBeenCalled();
+    expect(within(dialog).getByRole("button", { name: "Use this location and restart" })).toBeEnabled();
+  });
+
+  it("keeps the gate closed and allows retrying when restart fails after selection", async () => {
+    desktopMocks.restartDesktopApp.mockRejectedValueOnce(new Error("restart unavailable"));
+
+    renderPrompt();
+
+    const dialog = await screen.findByRole("dialog", { name: "Choose project data location" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: /D:\\我的游戏\\Shinsekai/ }));
+    const applyButton = within(dialog).getByRole("button", { name: "Use this location and restart" });
+    fireEvent.click(applyButton);
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("restart unavailable");
+    expect(dialog).toBeInTheDocument();
+    expect(applyButton).toBeEnabled();
+
+    fireEvent.click(applyButton);
+    await waitFor(() => expect(desktopMocks.restartDesktopApp).toHaveBeenCalledTimes(2));
+  });
+
   it("does not mount runtime-dependent children while project-root selection is required", async () => {
     const runtimeChild = vi.fn();
     const RuntimeChild = () => {

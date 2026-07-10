@@ -11,6 +11,7 @@ TAURI_CONFIG = REPO_ROOT / "frontend" / "src-tauri" / "tauri.conf.json"
 INSTALLER_TEMPLATE = REPO_ROOT / "frontend" / "src-tauri" / "windows" / "installer.nsi"
 FRONTEND_LOCK = REPO_ROOT / "frontend" / "pnpm-lock.yaml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
+TAURI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "tauri-desktop.yml"
 UPSTREAM_BASELINE_SHA256 = (
     "ee84148e405adc4d736a46456dd8345a644751bd1f28a335dd7fd833a32d7c3e"
 )
@@ -72,15 +73,21 @@ def test_tauri_uses_current_user_custom_nsis_template() -> None:
     assert INSTALLER_TEMPLATE.is_file()
 
 
-def test_msi_path_is_captured_before_gui_or_passive_wix_uninstall() -> None:
+def test_msi_path_is_captured_and_required_before_wix_uninstall() -> None:
     template = _installer_text()
     page_reinstall = template.index("Function PageReinstall\n")
     matched_wix = template.index("StrCpy $WixMode 1", page_reinstall)
     inherit = template.index("Call InheritLegacyMsiInstallDir", matched_wix)
+    blocked_guard = template.index(
+        "${If} $LegacyMsiMigrationBlocked = 1", inherit
+    )
+    blocked_abort = template.index(
+        "Call AbortBlockedLegacyMsiMigration", blocked_guard
+    )
     leave_reinstall = template.index("Function PageLeaveReinstall\n", inherit)
     uninstall = template.index("ExecWait '$R1' $0", leave_reinstall)
 
-    assert matched_wix < inherit < leave_reinstall < uninstall
+    assert matched_wix < inherit < blocked_guard < blocked_abort < leave_reinstall < uninstall
     assert 'ReadRegStr $LegacyMsiCandidate HKLM "$R6" "InstallLocation"' in template
     assert (
         'ReadRegStr $LegacyMsiCandidate HKCU "${MANUPRODUCTKEY}" "InstallDir"'
@@ -90,18 +97,114 @@ def test_msi_path_is_captured_before_gui_or_passive_wix_uninstall() -> None:
     assert '${GetOptions} $CMDLINE "/UPDATE" $UpdateMode' in template
 
 
-def test_explicit_or_existing_nsis_location_blocks_msi_inheritance() -> None:
+def test_existing_nsis_bypasses_msi_while_explicit_target_only_blocks_inheritance() -> None:
     template = _installer_text()
     on_init = template[template.index("Function .onInit\n") : template.index("Section EarlyChecks")]
+    page_reinstall = template[
+        template.index("Function PageReinstall\n") : template.index(
+            "Function PageReinstallUpdateSelection\n"
+        )
+    ]
+    silent_migration = template[
+        template.index("Function AbortSilentLegacyWixMigration\n") : template.index(
+            COMPAT_END, template.index("Function AbortSilentLegacyWixMigration\n")
+        )
+    ]
 
     placeholder_guard = on_init.index('${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"')
     enable_inheritance = on_init.index("StrCpy $CanInheritLegacyMsiInstallDir 1")
+    save_platform_default = on_init.index(
+        'StrCpy $LegacyMigrationDefaultInstallDir "$INSTDIR"', placeholder_guard
+    )
     restore_nsis = on_init.index("Call RestorePreviousInstallLocation")
-    read_nsis = on_init.index('ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""')
-    disable_inheritance = on_init.index("StrCpy $CanInheritLegacyMsiInstallDir 0", read_nsis)
+    read_nsis = on_init.index('ReadRegStr $5 SHCTX "${MANUPRODUCTKEY}" ""')
+    mark_existing_nsis = on_init.index(
+        "StrCpy $HasAuthoritativeNsisInstallDir 1", read_nsis
+    )
+    authority_guard = on_init.index(
+        "${If} $HasAuthoritativeNsisInstallDir = 1", restore_nsis
+    )
+    disable_inheritance = on_init.index(
+        "StrCpy $CanInheritLegacyMsiInstallDir 0", authority_guard
+    )
+    restore_platform_default = on_init.index(
+        'StrCpy $INSTDIR "$LegacyMigrationDefaultInstallDir"', authority_guard
+    )
+    read_legacy_msi = on_init.index(
+        'ReadRegStr $LegacyMsiCandidate HKCU "${MANUPRODUCTKEY}" "InstallDir"',
+        restore_platform_default,
+    )
 
-    assert placeholder_guard < enable_inheritance < restore_nsis
-    assert restore_nsis < read_nsis < disable_inheritance
+    assert read_nsis < mark_existing_nsis < placeholder_guard
+    assert placeholder_guard < enable_inheritance < save_platform_default < restore_nsis
+    assert restore_nsis < authority_guard < disable_inheritance
+    assert authority_guard < restore_platform_default < read_legacy_msi
+    restore_function = template[
+        template.index("Function RestorePreviousInstallLocation\n") : template.index(
+            "FunctionEnd", template.index("Function RestorePreviousInstallLocation\n")
+        )
+    ]
+    assert "$LegacyMigrationDefaultInstallDir" not in restore_function
+    assert on_init.index("StrCpy $CanInheritLegacyMsiInstallDir 0") < placeholder_guard
+
+    page_authority_guard = page_reinstall.index(
+        "${If} $HasAuthoritativeNsisInstallDir = 1"
+    )
+    page_skip = page_reinstall.index("Goto wix_loop_done", page_authority_guard)
+    page_enumeration = page_reinstall.index("EnumRegKey $1 HKLM")
+    assert page_authority_guard < page_skip < page_enumeration
+
+    silent_authority_guard = silent_migration.index(
+        "${If} $HasAuthoritativeNsisInstallDir = 1"
+    )
+    silent_skip = silent_migration.index("Goto silent_wix_done", silent_authority_guard)
+    silent_enumeration = silent_migration.index("EnumRegKey $1 HKLM")
+    assert silent_authority_guard < silent_skip < silent_enumeration
+
+    inherit = template[
+        template.index("Function InheritLegacyMsiInstallDir\n") : template.index(
+            "Function AbortBlockedLegacyMsiMigration\n"
+        )
+    ]
+    assert "${If} $CanInheritLegacyMsiInstallDir != 1" in inherit
+
+
+def test_unavailable_or_unwritable_msi_root_fails_before_passive_uninstall() -> None:
+    template = _installer_text()
+    inherit = template[
+        template.index("Function InheritLegacyMsiInstallDir\n") : template.index(
+            "Function AbortBlockedLegacyMsiMigration\n"
+        )
+    ]
+    blocked = template[
+        template.index("Function AbortBlockedLegacyMsiMigration\n") : template.index(
+            "Function AbortSilentLegacyWixMigration\n"
+        )
+    ]
+    page_reinstall = template[
+        template.index("Function PageReinstall\n") : template.index(
+            "Function PageReinstallUpdateSelection\n"
+        )
+    ]
+    leave_reinstall = template[
+        template.index("Function PageLeaveReinstall\n") : template.index(
+            "; 5. Choose install directory page"
+        )
+    ]
+
+    assert "${Else}\n    StrCpy $LegacyMsiMigrationBlocked 1" in inherit
+    assert "${If} $PassiveMode = 1" in blocked
+    assert "MessageBox MB_OK|MB_ICONSTOP" in blocked
+    assert "SetErrorLevel 3" in blocked
+    assert "Quit" in blocked
+
+    inherit_call = page_reinstall.index("Call InheritLegacyMsiInstallDir")
+    blocked_check = page_reinstall.index("${If} $LegacyMsiMigrationBlocked = 1")
+    abort_call = page_reinstall.index("Call AbortBlockedLegacyMsiMigration")
+    passive_leave = page_reinstall.index("Call PageLeaveReinstall")
+    assert inherit_call < blocked_check < abort_call < passive_leave
+    assert "ExecWait '$R1' $0" not in page_reinstall
+    assert "ExecWait '$R1' $0" in leave_reinstall
 
 
 def test_true_silent_msi_transition_fails_closed_before_install_sections() -> None:
@@ -115,6 +218,12 @@ def test_true_silent_msi_transition_fails_closed_before_install_sections() -> No
 
     assert "${If} ${Silent}" in on_init
     assert "Call AbortSilentLegacyWixMigration" in on_init
+    authority_guard = fail_closed.index(
+        "${If} $HasAuthoritativeNsisInstallDir = 1"
+    )
+    authority_skip = fail_closed.index("Goto silent_wix_done", authority_guard)
+    msi_scan = fail_closed.index("EnumRegKey $1 HKLM")
+    assert authority_guard < authority_skip < msi_scan
     assert '"DisplayName"' in fail_closed
     assert '"Publisher"' in fail_closed
     assert '"UninstallString"' in fail_closed
@@ -154,3 +263,14 @@ def test_release_workflow_keeps_windows_assets_nsis_only() -> None:
     assert 'bundle/nsis/*.exe" "${base}-setup.exe"' in workflow
     assert 'bundle/msi/*.msi" "${base}.msi"' not in workflow
     assert "Delete stale Windows MSI release assets" in workflow
+
+
+def test_windows_ci_renders_custom_nsis_and_runs_project_root_tests() -> None:
+    workflow = TAURI_WORKFLOW.read_text(encoding="utf-8")
+
+    assert re.search(
+        r"platform: windows-x64\s+os: windows-latest\s+bundles: nsis",
+        workflow,
+    )
+    assert "cargo test --manifest-path frontend/src-tauri/Cargo.toml project_root" in workflow
+    assert "frontend/src-tauri/target/release/bundle/nsis/*.exe" in workflow

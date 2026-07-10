@@ -88,6 +88,9 @@ Var CanInheritLegacyMsiInstallDir
 Var LegacyMsiCandidate
 Var LegacyMsiCandidateValid
 Var LegacyMsiInstallDir
+Var LegacyMsiMigrationBlocked
+Var HasAuthoritativeNsisInstallDir
+Var LegacyMigrationDefaultInstallDir
 ; SHINSEKAI MSI->NSIS COMPAT END
 
 Name "${PRODUCTNAME}"
@@ -200,6 +203,15 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 Var ReinstallPageCheck
 Page custom PageReinstall PageLeaveReinstall
 Function PageReinstall
+  ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+  ; Tauri NSIS's existing unnamed install-location value is authoritative. Do
+  ; not enumerate stale MSI entries in that case: the normal NSIS maintenance
+  ; flow below owns the update decision. An explicit `/D=...` still scans and
+  ; removes a matching MSI, while InheritLegacyMsiInstallDir preserves `/D`.
+  ${If} $HasAuthoritativeNsisInstallDir = 1
+    Goto wix_loop_done
+  ${EndIf}
+  ; SHINSEKAI MSI->NSIS COMPAT END
   ; Uninstall previous WiX installation if exists.
   ;
   ; A WiX installer stores the installation info in registry
@@ -230,6 +242,13 @@ Function PageReinstall
     ; deliberately before PageLeaveReinstall invokes msiexec for interactive
     ; installs and Tauri's passive `/P` + `/UPDATE` updater flow.
     Call InheritLegacyMsiInstallDir
+    ${If} $LegacyMsiMigrationBlocked = 1
+      ; Never remove an MSI when its old root cannot be inherited safely. In
+      ; particular, a current-user NSIS installer cannot replace files in a
+      ; protected Program Files/custom-drive directory. The user can retry
+      ; after restoring access or rerun the installer with sufficient rights.
+      Call AbortBlockedLegacyMsiMigration
+    ${EndIf}
     ; SHINSEKAI MSI->NSIS COMPAT END
     Goto compare_version
   wix_loop_done:
@@ -500,6 +519,8 @@ Function .onInit
   StrCpy $LegacyMsiCandidate ""
   StrCpy $LegacyMsiCandidateValid 0
   StrCpy $LegacyMsiInstallDir ""
+  StrCpy $LegacyMsiMigrationBlocked 0
+  StrCpy $HasAuthoritativeNsisInstallDir 0
 
   ; SHINSEKAI MSI->NSIS COMPAT END
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -522,6 +543,15 @@ Function .onInit
   !endif
 
   !insertmacro SetContext
+  ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+  ; The unnamed value is authoritative only while the corresponding NSIS
+  ; executable still exists. A stale registry value must not hide a real MSI.
+  ReadRegStr $5 SHCTX "${MANUPRODUCTKEY}" ""
+  ${If} $5 != ""
+  ${AndIf} ${FileExists} "$5\${MAINBINARYNAME}.exe"
+    StrCpy $HasAuthoritativeNsisInstallDir 1
+  ${EndIf}
+  ; SHINSEKAI MSI->NSIS COMPAT END
 
   ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
     ; SHINSEKAI MSI->NSIS COMPAT BEGIN
@@ -547,15 +577,22 @@ Function .onInit
       StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
     !endif
 
+    ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+    ; RestorePreviousInstallLocation uses $4 internally, so retain the platform
+    ; default in a dedicated variable that the upstream helper cannot clobber.
+    StrCpy $LegacyMigrationDefaultInstallDir "$INSTDIR"
+    ; SHINSEKAI MSI->NSIS COMPAT END
     Call RestorePreviousInstallLocation
     ; SHINSEKAI MSI->NSIS COMPAT BEGIN
     ; The unnamed value is Tauri NSIS's own install-location contract and wins
     ; over every MSI source. Tauri WiX used the named `InstallDir` value at the
     ; same key, so retain it as a fallback until a matching MSI is confirmed.
-    ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
-    ${If} $4 != ""
+    ${If} $HasAuthoritativeNsisInstallDir = 1
       StrCpy $CanInheritLegacyMsiInstallDir 0
     ${Else}
+      ; Restore the platform default if RestorePreviousInstallLocation loaded a
+      ; stale unnamed value whose executable no longer exists.
+      StrCpy $INSTDIR "$LegacyMigrationDefaultInstallDir"
       ReadRegStr $LegacyMsiCandidate HKCU "${MANUPRODUCTKEY}" "InstallDir"
       Call ValidateLegacyMsiInstallDir
       ${If} $LegacyMsiCandidateValid = 1
@@ -1079,7 +1116,27 @@ Function InheritLegacyMsiInstallDir
 
   ${If} $LegacyMsiInstallDir != ""
     StrCpy $INSTDIR "$LegacyMsiInstallDir"
+  ${Else}
+    StrCpy $LegacyMsiMigrationBlocked 1
   ${EndIf}
+FunctionEnd
+
+; A matched MSI is only safe to uninstall after its exact or legacy fallback
+; directory has passed validation. Stop before PageLeaveReinstall can invoke
+; msiexec when that invariant is not met. Interactive users get a visible,
+; actionable error; passive updater runs still return a deterministic failure.
+Function AbortBlockedLegacyMsiMigration
+  ${If} $PassiveMode = 1
+    System::Call 'kernel32::AttachConsole(i -1) i .r0'
+    ${If} $0 <> 0
+      System::Call 'kernel32::GetStdHandle(i -12) p .r0'
+      FileWrite $0 "Shinsekai: the previous MSI install directory is unavailable or not writable; migration stopped before uninstalling it. Restore access or rerun with sufficient rights.$\r$\n"
+    ${EndIf}
+  ${Else}
+    MessageBox MB_OK|MB_ICONSTOP "The previous Shinsekai MSI install directory is unavailable or not writable.$\r$\n$\r$\nNothing was uninstalled. Restore access to the old directory, or rerun this installer with sufficient permissions."
+  ${EndIf}
+  SetErrorLevel 3
+  Quit
 FunctionEnd
 
 ; A true NSIS `/S` run skips PageReinstall entirely. Quietly invoking an
@@ -1092,6 +1149,13 @@ Function AbortSilentLegacyWixMigration
   Push $1
   Push $R0
   Push $R1
+
+  ; An existing NSIS install is authoritative even if a stale MSI ARP entry
+  ; remains. `/D=...` alone does not bypass this guard because a silent custom
+  ; page cannot safely remove the matching MSI and would create a double install.
+  ${If} $HasAuthoritativeNsisInstallDir = 1
+    Goto silent_wix_done
+  ${EndIf}
 
   StrCpy $0 0
   silent_wix_loop:

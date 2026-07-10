@@ -15,6 +15,9 @@ REPOSITORY = "RachelForster/Shinsekai"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
 DOWNLOAD_DIR_NAME = "Shinsekai"
+_ARCH_PREFERENCE_TERMS = frozenset(
+    {"x64", "amd64", "x86_64", "arm64", "aarch64", "x86", "i386", "i686"}
+)
 
 
 @dataclass(frozen=True)
@@ -70,17 +73,12 @@ def asset_preferences(
     if system_name == "windows":
         return [
             *(tuple((alias, "setup", ".exe")) for alias in arch_aliases),
-            *(tuple(("windows", alias, ".exe")) for alias in arch_aliases),
-            *(tuple(("win", alias, ".exe")) for alias in arch_aliases),
-            ("setup", ".exe"),
             # Historical releases may still contain MSI-only assets. Prefer a
             # matching MSI over an unrelated helper executable, but never over
             # a recognizable NSIS setup executable.
             *(tuple((alias, ".msi")) for alias in arch_aliases),
             *(tuple(("windows", alias, ".msi")) for alias in arch_aliases),
             *(tuple(("win", alias, ".msi")) for alias in arch_aliases),
-            (".msi",),
-            (".exe",),
         ]
     if system_name == "darwin":
         return [
@@ -88,8 +86,6 @@ def asset_preferences(
             *(tuple(("macos", alias, ".dmg")) for alias in arch_aliases),
             *(tuple(("darwin", alias, ".dmg")) for alias in arch_aliases),
             *(tuple((alias, ".app.tar.gz")) for alias in arch_aliases),
-            (".dmg",),
-            (".app.tar.gz",),
         ]
     if system_name == "linux":
         return [
@@ -99,18 +95,9 @@ def asset_preferences(
             *(tuple(("linux", alias, ".appimage")) for alias in arch_aliases),
             *(tuple(("linux", alias, ".deb")) for alias in arch_aliases),
             *(tuple(("linux", alias, ".rpm")) for alias in arch_aliases),
-            (".appimage",),
-            (".deb",),
-            (".rpm",),
         ]
-    return [
-        (arch,),
-        (".msi",),
-        (".exe",),
-        (".dmg",),
-        (".appimage",),
-        (".deb",),
-    ]
+    # An unknown host platform must never receive an arbitrary installer.
+    return []
 
 
 def release_asset_from_mapping(raw: Mapping[str, object]) -> ReleaseAsset | None:
@@ -165,16 +152,22 @@ def select_release_asset(
     for terms in asset_preferences(system, machine):
         for asset in asset_list:
             name = asset.name.lower()
-            # Treat extension-like preferences as suffixes. In particular,
-            # updater signatures such as `setup.exe.sig` are not installers.
-            if all(
-                name.endswith(term.lower())
-                if term.startswith(".")
-                else term.lower() in name
-                for term in terms
-            ):
+            if all(_asset_name_matches_term(name, term) for term in terms):
                 return asset
-    return asset_list[0] if asset_list else None
+    return None
+
+
+def _asset_name_matches_term(name: str, term: str) -> bool:
+    """Match extensions and architecture tokens without cross-architecture substrings."""
+
+    normalized = term.lower()
+    if normalized.startswith("."):
+        # In particular, updater signatures such as `setup.exe.sig` are not installers.
+        return name.endswith(normalized)
+    if normalized in _ARCH_PREFERENCE_TERMS:
+        trailing = r"(?![a-z0-9]|_64)" if normalized == "x86" else r"(?![a-z0-9])"
+        return re.search(rf"(?<![a-z0-9]){re.escape(normalized)}{trailing}", name) is not None
+    return normalized in name
 
 
 def fetch_latest_release_assets(timeout_sec: float = 12.0) -> list[ReleaseAsset]:

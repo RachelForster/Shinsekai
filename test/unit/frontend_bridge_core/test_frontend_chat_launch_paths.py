@@ -138,6 +138,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     assert message == "聊天进程已启动！PID: 12345"
     assert captured["cmd"][1] == str(chat._source_root() / "main.py")
     assert captured["cwd"] == str(project_root)
+    assert captured["env"]["SHINSEKAI_PROJECT_ROOT"] == str(project_root)
     assert captured["env"]["EASYAI_PROJECT_ROOT"] == str(project_root)
     assert captured["env"]["SHINSEKAI_APP_ROOT"] == str(app_root)
     assert captured["env"]["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] == "1"

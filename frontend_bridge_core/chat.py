@@ -420,6 +420,7 @@ def _launch_chat(
         if workflow_path:
             args.append(f"--workflow={workflow_path}")
         env = os.environ.copy()
+        env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"

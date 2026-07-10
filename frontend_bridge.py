@@ -119,30 +119,97 @@ def _configure_runtime_context(
         os.environ.setdefault("SHINSEKAI_APP_ROOT", resolved_app_root)
 
     if project_root:
-        root = Path(project_root).expanduser().resolve(strict=False)
-        root.mkdir(parents=True, exist_ok=True)
+        root = _prepare_project_root(project_root, "--project-root")
     else:
         root = None
         for env_name in ("SHINSEKAI_PROJECT_ROOT", "EASYAI_PROJECT_ROOT"):
             raw_project_root = os.environ.get(env_name, "").strip()
             if not raw_project_root:
                 continue
-            try:
-                candidate = Path(raw_project_root).expanduser().resolve(strict=False)
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if candidate.is_dir():
-                root = candidate
-                break
+            # An explicitly configured root is authoritative.  In particular,
+            # never fall through from a broken SHINSEKAI_PROJECT_ROOT to the
+            # legacy variable or cwd: doing so could make the bridge write a
+            # second, apparently empty project on another drive.
+            root = _prepare_project_root(raw_project_root, env_name)
+            break
         if root is None:
             root = Path.cwd().resolve(strict=False)
     resolved_project_root = str(root)
+    try:
+        os.chdir(root)
+    except OSError as exc:
+        raise RuntimeError(
+            f"project root is not accessible: {resolved_project_root}: {exc}"
+        ) from exc
     os.environ["SHINSEKAI_PROJECT_ROOT"] = resolved_project_root
     os.environ["EASYAI_PROJECT_ROOT"] = resolved_project_root
-    os.chdir(root)
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     return repo_root, resolved_frontend_dist, resolved_app_root
+
+
+def _prepare_project_root(raw_path: str, source: str) -> Path:
+    """Create and validate an authoritative project-root override."""
+
+    try:
+        configured = Path(raw_path).expanduser()
+        if source != "--project-root" and not configured.is_absolute():
+            raise ValueError("environment project roots must be absolute")
+        root = configured.resolve(strict=False)
+        root.mkdir(parents=True, exist_ok=True)
+        data_root = root / "data"
+        data_root.mkdir(parents=True, exist_ok=True)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuntimeError(
+            f"{source} project root cannot be created or accessed: {raw_path!r}: {exc}"
+        ) from exc
+
+    if not root.is_dir():
+        raise RuntimeError(f"{source} project root is not a directory: {root}")
+    if not data_root.is_dir():
+        raise RuntimeError(f"{source} project data path is not a directory: {data_root}")
+
+    # O_EXCL ensures cleanup can never remove somebody else's file if two
+    # bridge processes probe the same directory concurrently.
+    probe = data_root / (
+        f".shinsekai-write-test-{os.getpid()}-{secrets.token_hex(8)}"
+    )
+    descriptor: int | None = None
+    owned_probe = False
+    probe_errors: list[str] = []
+    try:
+        descriptor = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        owned_probe = True
+        payload = memoryview(b"ok")
+        while payload:
+            written = os.write(descriptor, payload)
+            if written <= 0:
+                raise OSError("write probe made no progress")
+            payload = payload[written:]
+    except OSError as exc:
+        probe_errors.append(f"write: {exc}")
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError as exc:
+                probe_errors.append(f"close: {exc}")
+        if owned_probe:
+            try:
+                probe.unlink()
+            except OSError as exc:
+                probe_errors.append(f"cleanup: {exc}")
+    if probe_errors:
+        raise RuntimeError(
+            f"{source} project root is not safely writable: {root}: {'; '.join(probe_errors)}"
+        )
+
+    try:
+        return root.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuntimeError(
+            f"{source} project root cannot be resolved after creation: {root}: {exc}"
+        ) from exc
 
 
 def _start_plugin_loader(state, logger) -> None:

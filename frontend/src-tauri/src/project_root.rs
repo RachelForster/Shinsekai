@@ -354,12 +354,13 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
     let mut blocking_locator = None;
     for candidate_locator in locator_read_paths {
         match read_locator_state(&candidate_locator) {
-            LocatorState::Available(path) => {
+            LocatorState::Available(mut path) => {
                 if candidate_locator != locator_path {
-                    // A locator stored under the former application identifier remains
-                    // authoritative. Migrating it is best-effort because failure must not
-                    // make an otherwise valid user choice unusable.
-                    let _ = persist_locator_automatically(&locator_path, &path);
+                    // Once a legacy locator is migrated, the primary locator is the
+                    // authority. Re-read it even when the write fails: another process
+                    // may have won the race with a different valid selection. Never run
+                    // from the legacy root while the primary locator says otherwise.
+                    path = migrate_legacy_locator(&locator_path, &path)?;
                 }
                 let candidate = CandidateRecord {
                     has_project_data: has_meaningful_project_data(&path),
@@ -401,12 +402,14 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
             ProjectRootCandidateSource::CurrentAppRoot
         },
         true,
+        true,
     );
     add_data_candidate(
         &mut data_candidates,
         &mut seen,
         &options.current_app_data_project_root,
         ProjectRootCandidateSource::CurrentAppData,
+        true,
         true,
     );
     for path in &options.legacy_app_data_project_roots {
@@ -416,6 +419,7 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
             path,
             ProjectRootCandidateSource::LegacyAppData,
             true,
+            true,
         );
     }
     for log_path in &options.restart_log_paths {
@@ -423,7 +427,7 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
             if data_candidates.len() >= MAX_RECOVERY_CANDIDATES {
                 break;
             }
-            add_data_candidate(&mut data_candidates, &mut seen, &path, source, false);
+            add_data_candidate(&mut data_candidates, &mut seen, &path, source, false, true);
         }
         if data_candidates.len() >= MAX_RECOVERY_CANDIDATES {
             break;
@@ -434,7 +438,7 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
         .iter()
         .take(MAX_RECOVERY_CANDIDATES.saturating_sub(data_candidates.len()))
     {
-        add_data_candidate(&mut data_candidates, &mut seen, path, *source, false);
+        add_data_candidate(&mut data_candidates, &mut seen, path, *source, false, true);
     }
 
     if let Some(blocking_locator) = blocking_locator {
@@ -491,7 +495,10 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
         ));
     }
 
-    if data_candidates.len() == 1 && data_candidates[0].trusted_for_automatic_selection {
+    if data_candidates.len() == 1
+        && data_candidates[0].selectable
+        && data_candidates[0].trusted_for_automatic_selection
+    {
         let selected = data_candidates[0].path.clone();
         persist_locator_automatically(&locator_path, &selected)?;
         return Ok(resolution(
@@ -677,23 +684,70 @@ fn add_data_candidate(
     path: &Path,
     source: ProjectRootCandidateSource,
     trusted_for_automatic_selection: bool,
+    retain_unavailable: bool,
 ) {
-    let Some(path) = validate_existing_writable_project_root(path) else {
+    if !path.is_absolute() {
+        return;
+    }
+
+    let Some(existing_path) = path
+        .is_dir()
+        .then(|| path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
+    else {
+        if retain_unavailable
+            && matches!(
+                source,
+                ProjectRootCandidateSource::WindowsRegistryInstallDir
+            )
+            && !path.exists()
+            && seen.insert(path_identity(path))
+        {
+            candidates.push(CandidateRecord {
+                path: path.to_path_buf(),
+                source,
+                has_project_data: false,
+                selectable: false,
+                trusted_for_automatic_selection,
+            });
+        }
         return;
     };
+
     let has_project_data = if trusted_for_automatic_selection {
-        has_meaningful_project_data(&path)
+        has_meaningful_project_data(&existing_path)
     } else {
-        has_strong_project_data(&path)
+        has_strong_project_data(&existing_path)
     };
-    if !has_project_data || !seen.insert(path_identity(&path)) {
+    if !has_project_data {
+        if retain_unavailable
+            && matches!(
+                source,
+                ProjectRootCandidateSource::WindowsRegistryInstallDir
+            )
+            && seen.insert(path_identity(&existing_path))
+        {
+            candidates.push(CandidateRecord {
+                path: existing_path,
+                source,
+                has_project_data: false,
+                selectable: false,
+                trusted_for_automatic_selection,
+            });
+        }
+        return;
+    }
+    if !seen.insert(path_identity(&existing_path)) {
+        return;
+    }
+    let selectable = validate_existing_writable_project_root(&existing_path).is_some();
+    if !selectable && !retain_unavailable {
         return;
     }
     candidates.push(CandidateRecord {
-        path,
+        path: existing_path,
         source,
         has_project_data: true,
-        selectable: true,
+        selectable,
         trusted_for_automatic_selection,
     });
 }
@@ -878,7 +932,11 @@ fn read_locator_state(locator_path: &Path) -> LocatorState {
     if !path.is_absolute() {
         return LocatorState::Malformed;
     }
-    validate_existing_project_root(&path)
+    // A persisted v1 locator describes an established project root. Unlike an
+    // explicit/new root, it is only usable when its data directory still exists
+    // and is writable. Treat a missing data directory as unavailable so an
+    // offline or partially removed root cannot silently look like a fresh root.
+    validate_existing_writable_project_root(&path)
         .map(LocatorState::Available)
         .unwrap_or(LocatorState::Unavailable(path))
 }
@@ -902,17 +960,28 @@ fn persist_selected_locator(locator_path: &Path, project_root: &Path) -> Result<
     persist_locator(locator_path, project_root, true)
 }
 
+fn migrate_legacy_locator(locator_path: &Path, legacy_root: &Path) -> Result<PathBuf, String> {
+    let migration_error = persist_locator_automatically(locator_path, legacy_root).err();
+    match read_locator_state(locator_path) {
+        LocatorState::Available(authoritative_root) => Ok(authoritative_root),
+        _ => {
+            let detail = migration_error
+                .map(|error| format!(" migration failed: {error}"))
+                .unwrap_or_default();
+            Err(format!(
+                "legacy project root locator could not be migrated to {}; refusing to run with an ambiguous project root.{detail}",
+                locator_path.display()
+            ))
+        }
+    }
+}
+
 fn persist_locator(
     locator_path: &Path,
     project_root: &Path,
     replace_unavailable: bool,
 ) -> Result<(), String> {
-    let project_root = validate_existing_project_root(project_root).ok_or_else(|| {
-        format!(
-            "cannot persist invalid or unwritable project root: {}",
-            project_root.display()
-        )
-    })?;
+    let project_root = prepare_project_root_for_persistence(project_root)?;
     let parent = locator_path.parent().ok_or_else(|| {
         format!(
             "project root locator has no parent directory: {}",
@@ -997,6 +1066,28 @@ fn persist_locator(
     })();
     let _ = fs::remove_file(&temp_path);
     write_result
+}
+
+fn prepare_project_root_for_persistence(project_root: &Path) -> Result<PathBuf, String> {
+    if !project_root.is_absolute() || !project_root.is_dir() {
+        return Err(format!(
+            "cannot persist an invalid project root: {}",
+            project_root.display()
+        ));
+    }
+    let data = project_root.join("data");
+    fs::create_dir_all(&data).map_err(|error| {
+        format!(
+            "failed to prepare project data directory {} before persisting its locator: {error}",
+            data.display()
+        )
+    })?;
+    validate_existing_writable_project_root(project_root).ok_or_else(|| {
+        format!(
+            "cannot persist a project root whose data directory is not writable: {}",
+            project_root.display()
+        )
+    })
 }
 
 fn locator_replacement_is_already_complete(
@@ -1344,6 +1435,62 @@ mod tests {
     }
 
     #[test]
+    fn legacy_locator_is_migrated_before_its_root_is_used() {
+        let root = temp_dir("legacy-locator-migration");
+        let selected = data_root(&root, "legacy-selected");
+        let mut options = options(&root);
+        let legacy_locator = root.join("legacy-config").join(PROJECT_ROOT_LOCATOR_FILE);
+        persist_locator_automatically(&legacy_locator, &selected).unwrap();
+        options.locator_read_paths.push(legacy_locator);
+        let primary_locator = options.locator_path.clone();
+
+        let resolved = resolve(options).unwrap();
+
+        assert_eq!(resolved.path, selected.canonicalize().unwrap());
+        assert_eq!(
+            read_valid_locator(&primary_locator).unwrap(),
+            selected.canonicalize().unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn legacy_locator_migration_adopts_a_different_primary_locator_that_won_the_race() {
+        let root = temp_dir("legacy-locator-race");
+        let legacy = data_root(&root, "legacy-selected");
+        let concurrent = data_root(&root, "concurrent-selected");
+        let primary_locator = root.join("config").join(PROJECT_ROOT_LOCATOR_FILE);
+        persist_locator_automatically(&primary_locator, &concurrent).unwrap();
+
+        let selected = migrate_legacy_locator(&primary_locator, &legacy).unwrap();
+
+        assert_eq!(selected, concurrent.canonicalize().unwrap());
+        assert_eq!(
+            read_valid_locator(&primary_locator).unwrap(),
+            concurrent.canonicalize().unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn legacy_locator_migration_fails_closed_when_primary_cannot_be_published() {
+        let root = temp_dir("legacy-locator-fail-closed");
+        let legacy = data_root(&root, "legacy-selected");
+        let primary_locator = root.join("config").join(PROJECT_ROOT_LOCATOR_FILE);
+        fs::create_dir_all(primary_locator.parent().unwrap()).unwrap();
+        fs::write(&primary_locator, b"{ malformed").unwrap();
+
+        let error = migrate_legacy_locator(&primary_locator, &legacy).unwrap_err();
+
+        assert!(error.contains("refusing to run with an ambiguous project root"));
+        assert!(matches!(
+            read_locator_state(&primary_locator),
+            LocatorState::Malformed
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn malformed_locator_is_preserved_until_explicit_selection() {
         let root = temp_dir("malformed-locator");
         let selected = data_root(&root, "legacy-data");
@@ -1506,6 +1653,57 @@ mod tests {
     }
 
     #[test]
+    fn locator_with_missing_data_directory_is_unavailable_not_a_fresh_root() {
+        let root = temp_dir("locator-missing-data");
+        let current = data_root(&root, "current-app");
+        let incomplete = root.join("incomplete-project");
+        fs::create_dir_all(&incomplete).unwrap();
+        let options = options(&root);
+        fs::create_dir_all(options.locator_path.parent().unwrap()).unwrap();
+        let locator = ProjectRootLocator {
+            version: PROJECT_ROOT_LOCATOR_VERSION,
+            project_root: display_path(&incomplete),
+        };
+        fs::write(
+            &options.locator_path,
+            serde_json::to_vec_pretty(&locator).unwrap(),
+        )
+        .unwrap();
+        let locator_path = options.locator_path.clone();
+        let original = fs::read(&locator_path).unwrap();
+
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert_eq!(resolved.path, current.canonicalize().unwrap());
+        assert!(status.requires_selection);
+        assert_eq!(fs::read(&locator_path).unwrap(), original);
+        assert!(status.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&incomplete)
+                && candidate.source == ProjectRootCandidateSource::PersistedLocator
+                && !candidate.selectable
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn persisting_a_new_root_prepares_its_data_directory() {
+        let root = temp_dir("persist-prepares-data");
+        let selected = root.join("new-project");
+        fs::create_dir_all(&selected).unwrap();
+        let locator = root.join("config").join(PROJECT_ROOT_LOCATOR_FILE);
+
+        persist_selected_locator(&locator, &selected).unwrap();
+
+        assert!(selected.join("data").is_dir());
+        assert_eq!(
+            read_valid_locator(&locator).unwrap(),
+            selected.canonicalize().unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn restart_log_parser_preserves_spaces_and_unicode() {
         let root = temp_dir("restart-log-unicode");
         let project = data_root(&root, "D 盘 用户数据");
@@ -1588,24 +1786,116 @@ mod tests {
     }
 
     #[test]
-    fn missing_log_candidates_are_ignored() {
+    fn missing_untrusted_log_candidates_do_not_block_a_fresh_root() {
         let root = temp_dir("missing-candidate");
+        let offline_project = root.join("offline-drive").join("user-data");
+        let offline_app = root.join("offline-drive").join("app");
         let log = root.join("restart.log");
         fs::write(
             &log,
-            "ts=1 component=desktop setup resolved source_root=/x project_root=/missing/user-data app_root=/missing/app frontend_dist=/x bridge_port=1",
+            format!(
+                "ts=1 component=desktop setup resolved source_root=/x project_root={} app_root={} frontend_dist=/x bridge_port=1",
+                offline_project.display(),
+                offline_app.display()
+            ),
         )
         .unwrap();
         let mut options = options(&root);
         options.restart_log_paths.push(log);
-
         let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
 
         assert_eq!(
             resolved.path,
             root.join("current-app").canonicalize().unwrap()
         );
-        assert!(!resolved.controller.status().conflict);
+        assert!(!status.requires_selection);
+        assert!(status
+            .candidates
+            .iter()
+            .all(|candidate| candidate.path != display_path(&offline_project)));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn offline_registry_hint_blocks_automatic_root_persistence() {
+        let root = temp_dir("offline-registry");
+        let offline = root.join("offline-drive").join("legacy-install");
+        let mut options = options(&root);
+        options.untrusted_candidate_roots.push((
+            offline.clone(),
+            ProjectRootCandidateSource::WindowsRegistryInstallDir,
+        ));
+        let locator_path = options.locator_path.clone();
+
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert!(status.requires_selection);
+        assert!(!locator_path.exists());
+        assert!(status.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&offline)
+                && candidate.source == ProjectRootCandidateSource::WindowsRegistryInstallDir
+                && !candidate.selectable
+        }));
+        assert!(resolved.controller.select(&display_path(&offline)).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwritable_registry_hint_with_strong_data_is_preserved_but_not_selectable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_dir("unwritable-registry");
+        let recovered = data_root(&root, "legacy-install");
+        let data = recovered.join("data");
+        let mut permissions = fs::metadata(&data).unwrap().permissions();
+        permissions.set_mode(0o555);
+        fs::set_permissions(&data, permissions).unwrap();
+        let mut options = options(&root);
+        options.untrusted_candidate_roots.push((
+            recovered.clone(),
+            ProjectRootCandidateSource::WindowsRegistryInstallDir,
+        ));
+        let locator_path = options.locator_path.clone();
+
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert!(status.requires_selection);
+        assert!(!locator_path.exists());
+        assert!(status.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&recovered.canonicalize().unwrap())
+                && candidate.source == ProjectRootCandidateSource::WindowsRegistryInstallDir
+                && candidate.has_project_data
+                && !candidate.selectable
+        }));
+        assert!(resolved
+            .controller
+            .select(&display_path(&recovered))
+            .is_err());
+
+        let mut permissions = fs::metadata(&data).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&data, permissions).unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn missing_legacy_app_data_path_does_not_block_a_fresh_root() {
+        let root = temp_dir("offline-legacy-data");
+        let offline = root.join("offline-drive").join("legacy-project");
+        let mut options = options(&root);
+        options.legacy_app_data_project_roots.push(offline.clone());
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert!(!status.requires_selection);
+        assert!(status.candidates.iter().all(|candidate| {
+            candidate.path != display_path(&offline)
+                || candidate.source != ProjectRootCandidateSource::LegacyAppData
+        }));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1649,7 +1939,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn unwritable_data_candidate_is_ignored() {
+    fn unwritable_data_candidate_is_preserved_but_not_selectable() {
         use std::os::unix::fs::PermissionsExt;
 
         let root = temp_dir("unwritable-candidate");
@@ -1662,13 +1952,54 @@ mod tests {
         options
             .legacy_app_data_project_roots
             .push(candidate.clone());
+        let locator_path = options.locator_path.clone();
 
         let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
 
         assert_eq!(
             resolved.path,
             root.join("current-app").canonicalize().unwrap()
         );
+        assert!(status.requires_selection);
+        assert!(!locator_path.exists());
+        assert!(status.candidates.iter().any(|record| {
+            record.path == display_path(&candidate.canonicalize().unwrap())
+                && record.has_project_data
+                && !record.selectable
+        }));
+        let mut permissions = fs::metadata(&data).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&data, permissions).unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwritable_current_app_data_blocks_automatic_fallback_persistence() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_dir("unwritable-current-app-data");
+        let candidate = data_root(&root, "current-app");
+        let data = candidate.join("data");
+        let mut permissions = fs::metadata(&data).unwrap().permissions();
+        permissions.set_mode(0o555);
+        fs::set_permissions(&data, permissions).unwrap();
+        let options = options(&root);
+        let locator_path = options.locator_path.clone();
+
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert!(status.requires_selection);
+        assert!(!locator_path.exists());
+        assert!(status.candidates.iter().any(|record| {
+            record.path == display_path(&candidate.canonicalize().unwrap())
+                && record.source == ProjectRootCandidateSource::CurrentAppRoot
+                && record.has_project_data
+                && !record.selectable
+        }));
+
         let mut permissions = fs::metadata(&data).unwrap().permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&data, permissions).unwrap();

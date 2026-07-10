@@ -147,7 +147,7 @@ jobs:
             bundles: deb
           - platform: windows-x64
             os: windows-latest
-            bundles: none
+            bundles: nsis
           - platform: windows-arm64
             os: windows-11-arm
             bundles: none
@@ -196,6 +196,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
+
+      - name: Test Windows project-root resolution
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml project_root
 
       - name: Restore embedded Python runtime cache
         id: embedded-python-runtime-cache
