@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from frontend_bridge_core.chat import _chat_runtime_mode, _chat_snapshot
+from frontend_bridge_core.chat import _chat_runtime_mode, _chat_runtime_status, _chat_snapshot
 from frontend_bridge_core.handler import BRIDGE_AUTH_HEADER, CHAT_RUNTIME_READY_TIMEOUT_SECONDS, FrontendBridgeHandler
 
 
@@ -96,6 +96,85 @@ class ChatRuntimeModeTests(unittest.TestCase):
         state = SimpleNamespace(config_manager=_ConfigManager())
 
         self.assertEqual(_chat_runtime_mode(state), "native")
+
+    def test_chat_runtime_status_reports_idle_without_building_snapshot(self):
+        state = SimpleNamespace(chat_runtime_closing=False)
+
+        with patch("frontend_bridge_core.chat._chat_process_running", return_value=False):
+            status = _chat_runtime_status(state)
+
+        self.assertEqual(
+            status,
+            {
+                "state": "idle",
+                "chatProcessRunning": False,
+                "chatRuntimeClosing": False,
+            },
+        )
+
+    def test_chat_runtime_status_reports_running(self):
+        state = SimpleNamespace(chat_runtime_closing=False)
+
+        with patch("frontend_bridge_core.chat._chat_process_running", return_value=True):
+            status = _chat_runtime_status(state)
+
+        self.assertEqual(status["state"], "running")
+        self.assertTrue(status["chatProcessRunning"])
+        self.assertFalse(status["chatRuntimeClosing"])
+
+    def test_chat_runtime_status_prioritizes_closing_over_running(self):
+        state = SimpleNamespace(chat_runtime_closing=True)
+
+        with patch("frontend_bridge_core.chat._chat_process_running", return_value=True):
+            status = _chat_runtime_status(state)
+
+        self.assertEqual(status["state"], "closing")
+        self.assertTrue(status["chatProcessRunning"])
+        self.assertTrue(status["chatRuntimeClosing"])
+
+    def test_chat_runtime_status_observes_close_that_starts_as_process_exits(self):
+        state = SimpleNamespace(chat_runtime_closing=False)
+
+        def process_exits_during_close():
+            state.chat_runtime_closing = True
+            return False
+
+        with patch(
+            "frontend_bridge_core.chat._chat_process_running",
+            side_effect=process_exits_during_close,
+        ):
+            status = _chat_runtime_status(state)
+
+        self.assertEqual(status["state"], "closing")
+        self.assertFalse(status["chatProcessRunning"])
+        self.assertTrue(status["chatRuntimeClosing"])
+
+    def test_runtime_status_route_does_not_build_chat_snapshot(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        handler.path = "/api/chat/runtime-status"
+        handler.server = SimpleNamespace(state=SimpleNamespace(chat_runtime_closing=False))
+        responses = []
+        handler._send_json = lambda payload, status=None: responses.append(payload)
+
+        with (
+            patch("frontend_bridge_core.chat._chat_process_running", return_value=False),
+            patch(
+                "frontend_bridge_core.handler._chat_snapshot",
+                side_effect=AssertionError("runtime status must not build a chat snapshot"),
+            ),
+        ):
+            handler.do_GET()
+
+        self.assertEqual(
+            responses,
+            [
+                {
+                    "state": "idle",
+                    "chatProcessRunning": False,
+                    "chatRuntimeClosing": False,
+                }
+            ],
+        )
 
     def test_chat_snapshot_includes_runtime_mode(self):
         state = SimpleNamespace(

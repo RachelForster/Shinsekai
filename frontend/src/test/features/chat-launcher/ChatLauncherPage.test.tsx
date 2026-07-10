@@ -16,7 +16,10 @@ const mocks = {
   listBackgrounds: vi.fn(),
   listCharacters: vi.fn(),
   listTemplates: vi.fn(),
+  refreshRuntimeStatus: vi.fn(),
   saveTemplateSession: vi.fn(),
+  updateRuntimeStatusFromSnapshot: vi.fn(),
+  useChatLaunchGuard: vi.fn(),
 };
 
 const desktopMocks = vi.hoisted(() => ({
@@ -49,6 +52,9 @@ vi.mock("../../../entities/chat/repository", () => ({
   getChatSnapshot: () => mocks.getChatSnapshot(),
   installMissingRuntimeDependency: (input: unknown) => Promise.resolve(input),
   launchChat: (payload: unknown) => mocks.launchChat(payload),
+}));
+vi.mock("../../../entities/chat/launchGuard", () => ({
+  useChatLaunchGuard: () => mocks.useChatLaunchGuard(),
 }));
 vi.mock("../../../shared/desktop/desktopApi", () => ({
   isDesktopBridgeConnectionError: desktopMocks.isDesktopBridgeConnectionError,
@@ -84,6 +90,11 @@ async function expectTemplateSelectToShow(templateName: string) {
 describe("ChatLauncherPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.useChatLaunchGuard.mockReturnValue({
+      refreshRuntimeStatus: mocks.refreshRuntimeStatus,
+      runtimeLaunchDisabled: false,
+      updateRuntimeStatusFromSnapshot: mocks.updateRuntimeStatusFromSnapshot,
+    });
     window.location.hash = "";
     desktopMocks.isDesktopBridgeConnectionError.mockReturnValue(false);
     desktopMocks.isTauriDesktop.mockReturnValue(false);
@@ -116,6 +127,7 @@ describe("ChatLauncherPage", () => {
   it("renders the page title", async () => {
     renderPage();
     expect(await screen.findByText("Launch chat")).toBeInTheDocument();
+    expect(mocks.getChatSnapshot).not.toHaveBeenCalled();
   });
 
   it("navigates to /chat after a successful browser launch", async () => {
@@ -139,8 +151,34 @@ describe("ChatLauncherPage", () => {
 
     await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
     expect(mocks.launchChat).toHaveBeenCalledWith(expect.objectContaining({ templateId: "tpl-browser" }));
+    expect(mocks.updateRuntimeStatusFromSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ dialogText: "Ready" }),
+    );
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/chat"));
     expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
+  });
+
+  it("refreshes runtime status after a launch failure", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-failure",
+        name: "Failure Template",
+        path: "D:/templates/failure.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.launchChat.mockRejectedValueOnce(new Error("runtime closing"));
+
+    renderPage();
+
+    await expectTemplateSelectToShow("Failure Template");
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    expect(await screen.findByText("runtime closing")).toBeInTheDocument();
+    expect(mocks.refreshRuntimeStatus).toHaveBeenCalledTimes(1);
   });
 
   it("opens the standalone desktop chat window after a successful desktop launch", async () => {
@@ -315,13 +353,10 @@ describe("ChatLauncherPage", () => {
   });
 
   it("disables launch actions while an existing chat process is still running", async () => {
-    mocks.getChatSnapshot.mockResolvedValue({
-      chatProcessRunning: true,
-      dialogText: "",
-      inputDraft: "",
-      options: [],
-      sprites: [],
-      status: "idle",
+    mocks.useChatLaunchGuard.mockReturnValue({
+      refreshRuntimeStatus: mocks.refreshRuntimeStatus,
+      runtimeLaunchDisabled: true,
+      updateRuntimeStatusFromSnapshot: mocks.updateRuntimeStatusFromSnapshot,
     });
     mocks.listTemplates.mockResolvedValue([
       {
@@ -340,5 +375,6 @@ describe("ChatLauncherPage", () => {
     await expectTemplateSelectToShow("Busy Template");
     expect(await screen.findByRole("button", { name: "Launch" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Quick restart" })).toBeDisabled();
+    expect(mocks.getChatSnapshot).not.toHaveBeenCalled();
   });
 });

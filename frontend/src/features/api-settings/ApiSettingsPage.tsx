@@ -24,8 +24,8 @@ import type { ApiConfig, AppConfig, SystemConfig } from "../../entities/config/t
 import { useAppState } from "../../shared/app-state/AppState";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import { chatQueryKey, getChatSnapshot, resumeLastChat } from "../../entities/chat/repository";
-import { useChatRuntimeClosing } from "../../entities/chat/runtimeState";
+import { useChatLaunchGuard } from "../../entities/chat/launchGuard";
+import { resumeLastChat } from "../../entities/chat/repository";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
 import {
   AsyncButton,
@@ -112,11 +112,7 @@ export function ApiSettingsPage() {
     queryKey: ttsBundleRecommendationQueryKey,
     staleTime: 300_000,
   });
-  const runtimeSnapshotQuery = useQuery({
-    queryFn: getChatSnapshot,
-    queryKey: [...chatQueryKey, "snapshot", "launch-guard"],
-    refetchInterval: 1200,
-  });
+  const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
   const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<ApiConfig | null>(null);
   const [systemDraft, setSystemDraft] = useState<SystemConfig | null>(null);
@@ -132,7 +128,6 @@ export function ApiSettingsPage() {
   const [ttsBundleDialogOpen, setTtsBundleDialogOpen] = useState(false);
   const [ttsBundleError, setTtsBundleError] = useState<string | null>(null);
   const [ttsBundleTask, setTtsBundleTask] = useState<TaskSnapshot<TtsBundleDownloadResult> | null>(null);
-  const localRuntimeClosing = useChatRuntimeClosing();
   const adapterCatalog = data?.adapter_catalog;
   const apiSchema = useMemo(
     () => apiSchemaWithAdapterOptions(adapterCatalog, draft),
@@ -205,10 +200,6 @@ export function ApiSettingsPage() {
     },
   });
 
-  const runtimeLaunchDisabled =
-    localRuntimeClosing ||
-    Boolean(runtimeSnapshotQuery.data?.chatRuntimeClosing || runtimeSnapshotQuery.data?.chatProcessRunning);
-
   const resumeMutation = useMutation({
     mutationFn: async () => {
       if (runtimeLaunchDisabled) {
@@ -217,6 +208,7 @@ export function ApiSettingsPage() {
       return resumeLastChat();
     },
     onError(error) {
+      void refreshRuntimeStatus();
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("api.resume.tip"),
@@ -224,7 +216,7 @@ export function ApiSettingsPage() {
       });
     },
     onSuccess(snapshot) {
-      queryClient.setQueryData([...chatQueryKey, "snapshot", "launch-guard"], snapshot);
+      void updateRuntimeStatusFromSnapshot(snapshot);
       showToast({
         kind: "success",
         message: snapshot.statusMessage || snapshot.dialogText,

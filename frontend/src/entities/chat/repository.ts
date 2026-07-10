@@ -4,6 +4,7 @@ import type {
   ChatCommandResult,
   ChatHistoryEntry,
   ChatLaunchPayload,
+  ChatRuntimeProcessState,
   ChatSnapshot,
   RuntimeDependencyInstallInput,
   RuntimeDependencyInstallResult,
@@ -15,10 +16,17 @@ import type { ChatStageEvent } from "../../shared/platform/types";
 import { beginChatRuntimeClosing } from "./runtimeState";
 
 export const chatQueryKey = ["chat"] as const;
+export const chatRuntimeStatusQueryKey = ["chat", "runtime-status"] as const;
 export const chatThemeQueryKey = ["chat", "themes"] as const;
+
+export { runtimeStatusFromSnapshot } from "../../shared/platform/chatRuntimeStatus";
 
 export function getChatSnapshot(): Promise<ChatSnapshot> {
   return getPlatform().chat.getSnapshot();
+}
+
+export function getChatRuntimeStatus(): Promise<ChatRuntimeProcessState> {
+  return getPlatform().chat.getRuntimeStatus();
 }
 
 export async function closeChat(): Promise<ChatSnapshot> {

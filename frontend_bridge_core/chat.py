@@ -116,6 +116,20 @@ def _chat_runtime_closing(state: BridgeState) -> bool:
         return bool(getattr(state, "chat_runtime_closing", False))
 
 
+def _chat_runtime_status(state: BridgeState) -> dict[str, Any]:
+    running = _chat_process_running()
+    # Read closing after the process state. If shutdown starts between the two
+    # reads and the process exits quickly, prefer the newer closing signal over
+    # an incorrect idle result that would re-enable launch controls too early.
+    closing = _chat_runtime_closing(state)
+    runtime_state = "closing" if closing else "running" if running else "idle"
+    return {
+        "state": runtime_state,
+        "chatProcessRunning": running,
+        "chatRuntimeClosing": closing,
+    }
+
+
 def _set_chat_runtime_closing(state: BridgeState, closing: bool) -> None:
     lock = getattr(state, "chat_runtime_lock", None)
     if lock is None:

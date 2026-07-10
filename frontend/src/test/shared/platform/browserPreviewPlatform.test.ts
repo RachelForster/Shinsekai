@@ -62,6 +62,40 @@ describe("browser preview platform chat themes", () => {
     vi.restoreAllMocks();
   });
 
+  it("tracks the lightweight runtime status across launch and close", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+
+    await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toEqual({
+      chatProcessRunning: false,
+      chatRuntimeClosing: false,
+      state: "idle",
+    });
+
+    const launched = await resolvePreview(
+      platform.chat.launch({
+        backgroundName: "榛樿鎴块棿",
+        characters: ["Nanami"],
+        historyPath: "/tmp/runtime-status.json",
+        templateId: "default",
+      }),
+    );
+    expect(launched).toMatchObject({ chatProcessRunning: true, chatRuntimeClosing: false });
+    await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toEqual({
+      chatProcessRunning: true,
+      chatRuntimeClosing: false,
+      state: "running",
+    });
+
+    const closed = await resolvePreview(platform.chat.close());
+    expect(closed).toMatchObject({ chatProcessRunning: false, chatRuntimeClosing: false });
+    await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toEqual({
+      chatProcessRunning: false,
+      chatRuntimeClosing: false,
+      state: "idle",
+    });
+  });
+
   it("switches active theme and serves matching manifests and legacy payloads", async () => {
     const platform = createBrowserPreviewPlatform();
 
@@ -640,6 +674,11 @@ describe("browser preview platform chat themes", () => {
     );
     const resumed = await resolvePreview(platform.chat.resumeLast());
     expect(resumed.statusMessage).toContain("/tmp/resume.json");
+    expect(resumed).toMatchObject({
+      chatProcessRunning: true,
+      chatRuntimeClosing: false,
+      sessionClosedReason: "",
+    });
 
     expect(events).toContain("snapshot");
     unsubscribeEvents();

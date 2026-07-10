@@ -705,6 +705,12 @@ export interface TtsBundleDownloadResult {
 
 export type ChatRuntimeStatus = "idle" | "listening" | "generating" | "streaming" | "speaking" | "paused" | "error";
 
+export interface ChatRuntimeProcessState {
+  chatProcessRunning: boolean;
+  chatRuntimeClosing: boolean;
+  state: "idle" | "running" | "closing";
+}
+
 export interface RuntimeDependencyError {
   kind?: "missing_dependency";
   logPath?: string;
@@ -997,6 +1003,7 @@ export interface ShinsekaiPlatform {
     close: () => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;
+    getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
     getSnapshot: () => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
     launch: (payload: ChatLaunchPayload) => Promise<ChatSnapshot>;
