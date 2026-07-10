@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "api.memory.cachedNotLoaded": "Embedding model cached; not loaded",
   "api.memory.checking": "Checking",
   "api.memory.description":
     "Controls long-term memory retrieval, periodic extraction, and embedding model preparation for chat.",
@@ -13,6 +14,9 @@ export const enMessages: Record<MessageKey, string> = {
   "api.memory.extractIntervalHelp": "After this many user turns, recent chat is summarized into the memory queue.",
   "api.memory.loadingCached": "Loading cached model...",
   "api.memory.missingDependency": "mem0ai dependency is missing.",
+  "api.memory.modelDownloadConfirmBody":
+    "The embedding model required for long-term memory has not been downloaded. Download and check it now? Long-term memory will be enabled automatically when the download finishes; choosing “No” will keep it off.",
+  "api.memory.modelDownloadConfirmTitle": "Download long-term memory model",
   "api.memory.modelMissingKeepOff": "The embedding model is not downloaded yet, so long-term memory stayed off.",
   "api.memory.modelStatus": "Model status",
   "api.memory.ready": "Long-term memory is ready",

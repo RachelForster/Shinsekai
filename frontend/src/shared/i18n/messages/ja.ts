@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "api.memory.cachedNotLoaded": "埋め込みモデルはキャッシュ済み（未読み込み）",
   "api.memory.enableReady": "自動長期記憶を有効にしました。",
   "api.memory.modelMissingKeepOff": "埋め込みモデルが未ダウンロードのため、長期記憶はオフのままです。",
   "api.memory.checking": "確認中",
@@ -13,6 +14,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.memory.extractIntervalHelp": "指定したユーザーターン数ごとに、最近の会話を要約して記憶キューへ保存します。",
   "api.memory.loadingCached": "キャッシュ済みモデルを読み込み中…",
   "api.memory.missingDependency": "mem0ai 依存関係が不足しています。",
+  "api.memory.modelDownloadConfirmBody":
+    "長期記憶に必要な埋め込みモデルがまだダウンロードされていません。今すぐダウンロードして確認しますか？完了後は長期記憶が自動的に有効になります。「いいえ」を選ぶとオフのままです。",
+  "api.memory.modelDownloadConfirmTitle": "長期記憶モデルをダウンロード",
   "api.memory.modelStatus": "モデル状態",
   "api.memory.ready": "長期記憶は準備完了です",
   "api.memory.readyCached": "長期記憶は準備完了です。モデルはキャッシュ済みです",

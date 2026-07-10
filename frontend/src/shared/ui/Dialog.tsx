@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 import "./Dialog.css";
-import { Button } from "./Button";
+import { Button, type ButtonProps } from "./Button";
 import { IconButton } from "./IconButton";
 
 interface DialogProps {
@@ -86,6 +86,7 @@ interface AlertDialogProps {
   cancelLabel?: string;
   closeLabel?: string;
   confirmLabel?: string;
+  confirmVariant?: ButtonProps["variant"];
   onCancel: () => void;
   onConfirm: () => void;
   open: boolean;
@@ -97,6 +98,7 @@ export function AlertDialog({
   cancelLabel = "Cancel",
   closeLabel,
   confirmLabel = "Confirm",
+  confirmVariant = "danger",
   onCancel,
   onConfirm,
   open,
@@ -108,7 +110,7 @@ export function AlertDialog({
       footer={
         <>
           <Button onClick={onCancel}>{cancelLabel}</Button>
-          <Button onClick={onConfirm} variant="danger">
+          <Button onClick={onConfirm} variant={confirmVariant}>
             {confirmLabel}
           </Button>
         </>

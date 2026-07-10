@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "api.memory.cachedNotLoaded": "embedding 模型已缓存，尚未加载",
   "api.memory.enableReady": "自动长期记忆已启用。",
   "api.memory.modelMissingKeepOff": "embedding 模型尚未下载，长期记忆已保持关闭。",
   "api.memory.checking": "正在检查",
@@ -13,6 +14,9 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "api.memory.extractIntervalHelp": "达到该用户轮数后，后台总结最近对话并写入记忆队列。",
   "api.memory.loadingCached": "正在加载已缓存模型…",
   "api.memory.missingDependency": "缺少 mem0ai 依赖。",
+  "api.memory.modelDownloadConfirmBody":
+    "长期记忆所需的 embedding 模型尚未下载。是否立即下载并检查模型？下载完成后将自动启用长期记忆；选择“否”将保持关闭。",
+  "api.memory.modelDownloadConfirmTitle": "下载长期记忆模型",
   "api.memory.modelStatus": "模型状态",
   "api.memory.ready": "长期记忆已就绪",
   "api.memory.readyCached": "长期记忆已就绪，模型已缓存",
