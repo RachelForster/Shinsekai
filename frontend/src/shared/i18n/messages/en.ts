@@ -903,7 +903,7 @@ export const enMessages: Record<MessageKey, string> = {
     "The model is stored in the shared Hugging Face cache. Downloaded does not mean loaded.",
   "system.asr.modelDownloadFailed": "The Whisper model check or download failed.",
   "system.asr.modelDownloadHint":
-    "Cache the model now instead of waiting for a silent download on the first voice-input launch.",
+    "Cache the model now instead of waiting for a silent download on the first voice-input launch. Custom model checks save the current speech-recognition settings first.",
   "system.asr.modelDownloadTitle": "Whisper model download",
   "system.asr.modelDownloading": "Downloading model…",
   "system.asr.modelLocalDescription": "This custom local model folder does not trigger a network download.",

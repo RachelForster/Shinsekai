@@ -27,6 +27,7 @@ interface AsrSettingsSectionProps {
   draft: ApiConfig;
   id?: string;
   onAsrExtraChange: (provider: string, key: string, value: unknown) => void;
+  onPersistSystemDraft: () => Promise<void>;
   onSystemPatch: (patch: Partial<SystemConfig>) => void;
   showWhisperFields: boolean;
   systemDraft: SystemConfig;
@@ -45,6 +46,7 @@ export function AsrSettingsSection({
   draft,
   id,
   onAsrExtraChange,
+  onPersistSystemDraft,
   onSystemPatch,
   showWhisperFields,
   systemDraft,
@@ -65,7 +67,9 @@ export function AsrSettingsSection({
   const whisperModel = configuredWhisperModel || (customWhisperModel ? "" : "small");
   const supportsWhisperDownload = activeAsrProvider === "faster_whisper" || activeAsrProvider === "realtime_stt";
   const modelBusy = modelDialogState === "checking" || modelDialogState === "downloading";
-  const modelAssetRef = { assetId: "asr.faster-whisper", variant: whisperModel } as const;
+  const modelAssetRef = customWhisperModel
+    ? ({ assetId: "asr.faster-whisper", configured: true } as const)
+    : ({ assetId: "asr.faster-whisper", variant: whisperModel } as const);
 
   useEffect(() => {
     modelOperationTokenRef.current += 1;
@@ -93,6 +97,12 @@ export function AsrSettingsSection({
     setModelDownloadTask(null);
     setModelDownloadError(null);
     try {
+      if (customWhisperModel) {
+        await onPersistSystemDraft();
+        if (modelOperationTokenRef.current !== token) {
+          return;
+        }
+      }
       const status = await getModelAssetStatus(modelAssetRef);
       if (modelOperationTokenRef.current !== token) {
         return;

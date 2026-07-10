@@ -131,6 +131,7 @@ describe("API settings sections", () => {
         disabled={false}
         draft={sampleConfig.api_config}
         onAsrExtraChange={() => {}}
+        onPersistSystemDraft={() => Promise.resolve()}
         onSystemPatch={onSystemPatch}
         showWhisperFields={false}
         systemDraft={sampleConfig.system_config}

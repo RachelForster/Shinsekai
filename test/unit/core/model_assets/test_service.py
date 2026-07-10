@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+import huggingface_hub
 import pytest
 
 from core.model_assets import service
@@ -74,6 +76,33 @@ def test_explicit_hub_cache_does_not_reuse_a_stale_snapshot_from_hf_home(tmp_pat
 
     assert status["cached"] is False
     assert "path" not in status
+
+
+def test_cache_metadata_cannot_select_snapshot_outside_cache_root(
+    tmp_path, monkeypatch
+):
+    cache_root = tmp_path / "hub"
+    cache_root.mkdir()
+    outside_snapshot = tmp_path / "outside-snapshot"
+    _write_complete_snapshot(outside_snapshot)
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache_root))
+    monkeypatch.setattr(
+        huggingface_hub,
+        "scan_cache_dir",
+        lambda _root: SimpleNamespace(
+            repos=[
+                SimpleNamespace(
+                    repo_id="owner/model",
+                    repo_type="model",
+                    revisions=[
+                        SimpleNamespace(refs={"main"}, snapshot_path=outside_snapshot)
+                    ],
+                )
+            ]
+        ),
+    )
+
+    assert service.find_cached_huggingface_snapshot(_spec()) is None
 
 
 def test_inspect_local_model_reports_existing_and_missing_directories(tmp_path):

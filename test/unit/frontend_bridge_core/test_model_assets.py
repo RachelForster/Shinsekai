@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,7 +36,6 @@ def _state(*, model_name: str = "small", token: str = "hf-token") -> BridgeState
         ("large", "Systran/faster-whisper-large-v3"),
         ("turbo", "mobiuslabsgmbh/faster-whisper-large-v3-turbo"),
         ("distil-large-v3.5", "distil-whisper/distil-large-v3.5-ct2"),
-        ("custom/model", "custom/model"),
     ],
 )
 def test_resolve_faster_whisper_asset_maps_model_names(variant, repo_id):
@@ -50,10 +50,61 @@ def test_resolve_faster_whisper_asset_maps_model_names(variant, repo_id):
 
 
 def test_resolve_faster_whisper_asset_uses_configured_default():
-    spec = model_assets._resolve_model_asset(_state(model_name="medium"), {"assetId": "asr.faster-whisper"})
+    spec = model_assets._resolve_model_asset(
+        _state(model_name="medium"),
+        {"assetId": "asr.faster-whisper", "configured": True},
+    )
 
     assert spec.variant == "medium"
     assert spec.repo_id == "Systran/faster-whisper-medium"
+
+
+def test_resolve_configured_custom_huggingface_repo(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    spec = model_assets._resolve_model_asset(
+        _state(model_name="custom/model"),
+        {"assetId": "asr.faster-whisper", "configured": True},
+    )
+
+    assert spec.source == "huggingface"
+    assert spec.variant == "custom/model"
+    assert spec.repo_id == "custom/model"
+
+
+@pytest.mark.parametrize("relative_path", ["whisper", "models/whisper"])
+def test_existing_relative_configured_local_models_remain_supported(
+    tmp_path, monkeypatch, relative_path
+):
+    monkeypatch.chdir(tmp_path)
+    model_dir = tmp_path.joinpath(*relative_path.split("/"))
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.bin").write_bytes(b"model")
+    (model_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+
+    status = model_assets._model_asset_status(
+        _state(model_name=relative_path),
+        {"assetId": "asr.faster-whisper", "configured": True},
+    )
+
+    assert status["source"] == "local"
+    assert status["cached"] is True
+    assert Path(str(status["path"])) == model_dir.resolve()
+
+
+def test_configured_alias_stays_remote_when_same_named_directory_exists(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "small").mkdir()
+
+    spec = model_assets._resolve_model_asset(
+        _state(model_name="small"),
+        {"assetId": "asr.faster-whisper", "configured": True},
+    )
+
+    assert spec.source == "huggingface"
+    assert spec.repo_id == "Systran/faster-whisper-small"
 
 
 def test_local_model_paths_are_never_downloadable(tmp_path):
@@ -63,13 +114,13 @@ def test_local_model_paths_are_never_downloadable(tmp_path):
     (existing / "model.bin").write_bytes(b"model")
     (existing / "tokenizer.json").write_text("{}", encoding="utf-8")
     present = model_assets._model_asset_status(
-        _state(),
-        {"assetId": "asr.faster-whisper", "variant": str(existing)},
+        _state(model_name=str(existing)),
+        {"assetId": "asr.faster-whisper", "configured": True},
     )
     missing_path = tmp_path / "missing"
     missing = model_assets._model_asset_status(
-        _state(),
-        {"assetId": "asr.faster-whisper", "variant": str(missing_path)},
+        _state(model_name=str(missing_path)),
+        {"assetId": "asr.faster-whisper", "configured": True},
     )
 
     assert present["source"] == "local"
@@ -86,8 +137,8 @@ def test_empty_local_model_directory_is_not_reported_ready(tmp_path):
     empty.mkdir()
 
     status = model_assets._model_asset_status(
-        _state(),
-        {"assetId": "asr.faster-whisper", "variant": str(empty)},
+        _state(model_name=str(empty)),
+        {"assetId": "asr.faster-whisper", "configured": True},
     )
 
     assert status["source"] == "local"
@@ -98,8 +149,8 @@ def test_empty_local_model_directory_is_not_reported_ready(tmp_path):
     (empty / "model.bin").write_bytes(b"model")
     (empty / "vocabulary.json").write_text("{}", encoding="utf-8")
     vocabulary_only = model_assets._model_asset_status(
-        _state(),
-        {"assetId": "asr.faster-whisper", "variant": str(empty)},
+        _state(model_name=str(empty)),
+        {"assetId": "asr.faster-whisper", "configured": True},
     )
     assert vocabulary_only["cached"] is False
 
@@ -150,4 +201,145 @@ def test_unknown_short_whisper_alias_is_rejected():
         model_assets._resolve_model_asset(
             _state(),
             {"assetId": "asr.faster-whisper", "variant": "unknown-model"},
+        )
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "../secret",
+        "/private/model",
+        r"C:\Windows\System32",
+        r"\\server\share\model",
+        "owner/../../secret",
+    ],
+)
+def test_request_local_paths_are_rejected_before_path_access(monkeypatch, variant):
+    def unexpected_path_access(*_args, **_kwargs):
+        raise AssertionError("request variant reached Path")
+
+    monkeypatch.setattr(model_assets, "Path", unexpected_path_access)
+
+    with pytest.raises(ValueError, match="must be saved"):
+        model_assets._resolve_model_asset(
+            _state(),
+            {"assetId": "asr.faster-whisper", "variant": variant},
+        )
+
+
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "../outside/model",
+        "./model/../outside",
+        "file:///tmp/model",
+        "bad\x00model",
+    ],
+)
+def test_universally_unsafe_configured_paths_are_rejected_before_path_access(
+    monkeypatch, model_name
+):
+    def unexpected_path_access(*_args, **_kwargs):
+        raise AssertionError("unsafe configured value reached Path")
+
+    monkeypatch.setattr(model_assets, "Path", unexpected_path_access)
+
+    with pytest.raises((PermissionError, ValueError)):
+        model_assets._resolve_model_asset(
+            _state(model_name=model_name),
+            {"assetId": "asr.faster-whisper", "configured": True},
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows path namespace rules")
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        r"\\server\share\model",
+        "//server/share/model",
+        r"\\?\C:\models\whisper",
+        r"\\.\PhysicalDrive0",
+        r"\??\C:\models\whisper",
+        r"\models\whisper",
+        "/models/whisper",
+        r"C:relative\model",
+        r"C:\models\whisper:stream",
+        "./NUL",
+        "NUL",
+        r".\CON",
+        r"C:\NUL",
+        r"C:\models\CON.txt",
+        r"C:\COM1 .txt",
+        "C:\\COM\u00b9",
+        r"C:\LPT9",
+    ],
+)
+def test_unsafe_windows_configured_paths_are_rejected_before_path_access(
+    monkeypatch, model_name
+):
+    def unexpected_path_access(*_args, **_kwargs):
+        raise AssertionError("unsafe configured value reached Path")
+
+    monkeypatch.setattr(model_assets, "Path", unexpected_path_access)
+
+    with pytest.raises((PermissionError, ValueError)):
+        model_assets._resolve_model_asset(
+            _state(model_name=model_name),
+            {"assetId": "asr.faster-whisper", "configured": True},
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permits these path components")
+def test_posix_specific_local_path_components_remain_supported(tmp_path):
+    model_dir = tmp_path / "NUL" / "model:version " / "with\\backslash" / "trailing."
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.bin").write_bytes(b"model")
+    (model_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+
+    status = model_assets._model_asset_status(
+        _state(model_name=str(model_dir)),
+        {"assetId": "asr.faster-whisper", "configured": True},
+    )
+
+    assert status["source"] == "local"
+    assert status["cached"] is True
+    assert Path(str(status["path"])) == model_dir.resolve()
+
+
+def test_configured_requests_reject_variant_override():
+    with pytest.raises(ValueError, match="must not include a variant"):
+        model_assets._resolve_model_asset(
+            _state(model_name="small"),
+            {"assetId": "asr.faster-whisper", "configured": True, "variant": "small"},
+        )
+
+
+def test_custom_huggingface_repo_request_must_use_configured_selector(monkeypatch):
+    def unexpected_path_access(*_args, **_kwargs):
+        raise AssertionError("request variant reached Path")
+
+    monkeypatch.setattr(model_assets, "Path", unexpected_path_access)
+
+    with pytest.raises(ValueError, match="must be saved"):
+        model_assets._resolve_model_asset(
+            _state(),
+            {"assetId": "asr.faster-whisper", "variant": "custom/model"},
+        )
+
+
+@pytest.mark.parametrize(
+    "repo_id",
+    [
+        "owner/../../secret",
+        "owner/model--bad",
+        "owner/model..bad",
+        "owner/-model",
+    ],
+)
+def test_malformed_huggingface_repo_ids_are_rejected(repo_id):
+    with pytest.raises(ValueError):
+        model_assets._resolve_model_asset(
+            _state(model_name=repo_id),
+            {"assetId": "asr.faster-whisper", "configured": True},
         )

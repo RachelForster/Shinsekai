@@ -88,24 +88,34 @@ def find_cached_huggingface_snapshot(spec: ModelAssetSpec) -> Path | None:
 
     if spec.source != "huggingface":
         return None
-    model_dir_name = f"models--{spec.repo_id.strip().replace('/', '--')}"
+    try:
+        from huggingface_hub import scan_cache_dir
+    except ImportError:
+        return None
+
     for root in _huggingface_cache_roots():
-        model_dir = root / model_dir_name
-        ref_path = model_dir / "refs" / "main"
-        if not ref_path.is_file():
-            continue
         try:
-            revision = ref_path.read_text(encoding="utf-8").strip()
-        except (OSError, UnicodeError):
+            cache_info = scan_cache_dir(root)
+        except Exception:
             continue
-        if not revision or any(separator in revision for separator in ("/", "\\")) or revision in {".", ".."}:
-            continue
-        snapshots_dir = (model_dir / "snapshots").resolve(strict=False)
-        snapshot = (snapshots_dir / revision).resolve(strict=False)
-        if snapshot.parent != snapshots_dir:
-            continue
-        if _snapshot_is_complete(snapshot, spec.required_file_groups):
-            return snapshot
+        resolved_root = root.resolve(strict=False)
+        for repo in cache_info.repos:
+            if repo.repo_type != "model" or repo.repo_id != spec.repo_id:
+                continue
+            for revision in repo.revisions:
+                if "main" not in revision.refs:
+                    continue
+                snapshot = Path(revision.snapshot_path).resolve(strict=False)
+                try:
+                    within_root = os.path.commonpath(
+                        [str(resolved_root), str(snapshot)]
+                    ) == str(resolved_root)
+                except ValueError:
+                    within_root = False
+                if within_root and _snapshot_is_complete(
+                    snapshot, spec.required_file_groups
+                ):
+                    return snapshot
     return None
 
 

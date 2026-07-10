@@ -902,7 +902,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "system.asr.modelDownloadDescription":
     "モデルは共通の Hugging Face キャッシュへ保存されます。ダウンロード完了は読み込み完了を意味しません。",
   "system.asr.modelDownloadFailed": "Whisper モデルの確認またはダウンロードに失敗しました。",
-  "system.asr.modelDownloadHint": "音声入力の初回起動時に待たないよう、モデルを事前にキャッシュします。",
+  "system.asr.modelDownloadHint":
+    "音声入力の初回起動時に待たないよう、モデルを事前にキャッシュします。カスタムモデルを確認する前に、現在の音声認識設定を保存します。",
   "system.asr.modelDownloadTitle": "Whisper モデルのダウンロード",
   "system.asr.modelDownloading": "モデルをダウンロード中…",
   "system.asr.modelLocalDescription":

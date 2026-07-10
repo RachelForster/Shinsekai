@@ -885,7 +885,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "system.asr.modelDownloadConfirmBody": "未找到 {model} 的完整缓存。现在从 Hugging Face 下载吗？",
   "system.asr.modelDownloadDescription": "模型会保存到统一的 Hugging Face 缓存；下载完成不代表模型已经加载。",
   "system.asr.modelDownloadFailed": "Whisper 模型检查或下载失败。",
-  "system.asr.modelDownloadHint": "提前缓存模型，避免第一次启动语音输入时静默等待下载。",
+  "system.asr.modelDownloadHint":
+    "提前缓存模型，避免第一次启动语音输入时静默等待下载；检查自定义模型前会先保存当前语音识别设置。",
   "system.asr.modelDownloadTitle": "Whisper 模型下载",
   "system.asr.modelDownloading": "正在下载模型…",
   "system.asr.modelLocalDescription": "使用自定义本地模型目录，不会发起网络下载。",

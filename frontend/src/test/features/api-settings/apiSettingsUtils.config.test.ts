@@ -38,6 +38,7 @@ describe("API settings utilities", () => {
     expect(normalizeAsrProvider("")).toBe("vosk");
     expect(resolveAsrWhisperPresetValue("large-v3")).toBe("large-v3");
     expect(resolveAsrWhisperPresetValue("custom-model")).toBe("__custom__");
+    expect(resolveAsrWhisperPresetValue("")).toBe("__custom__");
 
     const options = [{ label: "A", value: "a" }];
     expect(withCurrentOption(options, "a")).toBe(options);

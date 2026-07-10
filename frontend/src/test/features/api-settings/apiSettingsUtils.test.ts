@@ -82,6 +82,7 @@ describe("API settings utilities", () => {
   it("preserves custom ASR and model options for existing configs", () => {
     expect(resolveAsrWhisperPresetValue("large-v3")).toBe("large-v3");
     expect(resolveAsrWhisperPresetValue("custom-model")).toBe("__custom__");
+    expect(resolveAsrWhisperPresetValue("")).toBe("__custom__");
 
     expect(
       withCurrentOption(

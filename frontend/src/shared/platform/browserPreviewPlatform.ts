@@ -46,6 +46,22 @@ function delay<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => window.setTimeout(() => resolve(clone(value)), ms));
 }
 
+function looksLikeLocalModelReference(value: string) {
+  const normalized = value.replace(/\\/g, "/");
+  const slashCount = normalized.split("/").length - 1;
+  return (
+    value.startsWith(".") ||
+    value.startsWith("/") ||
+    value.startsWith("\\") ||
+    value.startsWith("~") ||
+    value.endsWith("/") ||
+    value.endsWith("\\") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    slashCount > 1
+  );
+}
+
 function previewTask<TResult>(
   taskId: string,
   patch: Partial<TaskSnapshot<TResult>>,
@@ -1321,7 +1337,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     },
     modelAssets: {
       async download(input, options) {
-        const variant = String(input.variant || "small");
+        const variant = String(
+          (input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small",
+        );
+        const local = Boolean(input.configured && looksLikeLocalModelReference(variant));
         const key = `${input.assetId}:${variant}`;
         const taskId = `preview-model-${Date.now()}`;
         previewTask(
@@ -1340,15 +1359,17 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         const result = {
           assetId: input.assetId,
           cached: true,
-          downloadable: true,
-          downloaded: true,
-          path: `preview-cache/${variant}`,
-          repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}`,
-          source: "huggingface" as const,
+          downloadable: !local,
+          downloaded: !local,
+          path: local ? variant : `preview-cache/${variant}`,
+          ...(local ? {} : { repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}` }),
+          source: local ? ("local" as const) : ("huggingface" as const),
           title: "Whisper ASR",
           variant,
         };
-        cachedModelAssets.add(key);
+        if (!local) {
+          cachedModelAssets.add(key);
+        }
         previewTask(
           taskId,
           {
@@ -1365,8 +1386,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return result;
       },
       status(input) {
-        const variant = String(input.variant || "small");
-        const local = /^[./\\]|^[A-Za-z]:[\\/]/.test(variant);
+        const variant = String(
+          (input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small",
+        );
+        const local = Boolean(input.configured && looksLikeLocalModelReference(variant));
         return delay({
           assetId: input.assetId,
           cached: local || cachedModelAssets.has(`${input.assetId}:${variant}`),

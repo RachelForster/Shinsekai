@@ -58,6 +58,7 @@ function renderSection(overrides: Partial<Parameters<typeof AsrSettingsSection>[
     disabled: false,
     draft: apiConfig(),
     onAsrExtraChange: vi.fn(),
+    onPersistSystemDraft: vi.fn().mockResolvedValue(undefined),
     onSystemPatch: vi.fn(),
     showWhisperFields: false,
     systemDraft: systemConfig(),
@@ -155,7 +156,7 @@ describe("AsrSettingsSection", () => {
       return cached;
     });
 
-    renderSection({
+    const { props } = renderSection({
       activeAsrProvider: "faster_whisper",
       showWhisperFields: true,
       systemDraft: systemConfig({ asr_provider: "faster_whisper" }),
@@ -171,6 +172,7 @@ describe("AsrSettingsSection", () => {
       assetId: "asr.faster-whisper",
       variant: "small",
     });
+    expect(props.onPersistSystemDraft).not.toHaveBeenCalled();
     expect(screen.getByText("Systran/faster-whisper-small")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Download model" }));
@@ -180,6 +182,76 @@ describe("AsrSettingsSection", () => {
       await screen.findByText("The model is cached. It will be loaded into memory only when voice input starts."),
     ).toBeInTheDocument();
     expect(screen.queryByText(/model is loaded/i)).not.toBeInTheDocument();
+  });
+
+  it("persists custom models before using the configured model asset reference", async () => {
+    const persistSystemDraft = vi.fn().mockResolvedValue(undefined);
+    const missing = {
+      assetId: "asr.faster-whisper",
+      cached: false,
+      downloadable: true,
+      repoId: "owner/custom-whisper",
+      source: "huggingface",
+      title: "Whisper ASR",
+      variant: "owner/custom-whisper",
+    } as const;
+    mocks.getModelAssetStatus.mockResolvedValue(missing);
+    mocks.downloadModelAsset.mockResolvedValue({
+      ...missing,
+      cached: true,
+      downloaded: true,
+      path: "C:/cache/custom-whisper",
+    });
+
+    renderSection({
+      activeAsrProvider: "faster_whisper",
+      customWhisperModel: true,
+      onPersistSystemDraft: persistSystemDraft,
+      showWhisperFields: true,
+      systemDraft: systemConfig({
+        asr_provider: "faster_whisper",
+        asr_whisper_model_size: "owner/custom-whisper",
+      }),
+      whisperPresetValue: "__custom__",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Download/check model" }));
+    await screen.findByRole("button", { name: "Download model" });
+
+    expect(persistSystemDraft).toHaveBeenCalledTimes(1);
+    expect(mocks.getModelAssetStatus).toHaveBeenCalledWith({
+      assetId: "asr.faster-whisper",
+      configured: true,
+    });
+    expect(persistSystemDraft.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.getModelAssetStatus.mock.invocationCallOrder[0],
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Download model" }));
+    await waitFor(() => expect(mocks.downloadModelAsset).toHaveBeenCalledTimes(1));
+    expect(mocks.downloadModelAsset).toHaveBeenCalledWith(
+      { assetId: "asr.faster-whisper", configured: true },
+      expect.any(Object),
+    );
+  });
+
+  it("does not inspect a custom model when persisting settings fails", async () => {
+    renderSection({
+      activeAsrProvider: "faster_whisper",
+      customWhisperModel: true,
+      onPersistSystemDraft: vi.fn().mockRejectedValue(new Error("Could not save ASR settings")),
+      showWhisperFields: true,
+      systemDraft: systemConfig({
+        asr_provider: "faster_whisper",
+        asr_whisper_model_size: "C:/models/whisper",
+      }),
+      whisperPresetValue: "__custom__",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Download/check model" }));
+
+    expect(await screen.findByText("Could not save ASR settings")).toBeInTheDocument();
+    expect(mocks.getModelAssetStatus).not.toHaveBeenCalled();
   });
 
   it("lets users close and reopen a long-running model download", async () => {

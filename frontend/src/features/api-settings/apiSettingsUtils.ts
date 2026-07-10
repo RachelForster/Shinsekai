@@ -131,7 +131,7 @@ export function normalizeTtsProvider(provider: string) {
 }
 
 export function resolveAsrWhisperPresetValue(model: string) {
-  const value = (model || "small").trim();
+  const value = String(model ?? "").trim();
   return (asrWhisperModelPresets as readonly string[]).includes(value) ? value : "__custom__";
 }
 

@@ -947,6 +947,8 @@ export interface TaskProgressOptions<TResult = unknown> {
 
 export interface ModelAssetRef {
   assetId: string;
+  /** Resolve the variant from persisted application config; mutually exclusive with variant. */
+  configured?: boolean;
   variant?: string;
 }
 
