@@ -44,7 +44,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   launchChat: (input: unknown) => mockLaunchChat(input),
 }));
 
-vi.mock("../../../entities/chat/launchGuard", () => ({
+vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
   useChatLaunchGuard: () => mockUseChatLaunchGuard(),
 }));
 

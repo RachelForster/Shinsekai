@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { useChatInitialization } from "../../../entities/chat/useChatInitialization";
+import { useChatInitialization } from "../../../features/chat-startup/useChatInitialization";
 import type { ChatSnapshot, TaskProgressOptions } from "../../../shared/platform/types";
 
 const snapshot: ChatSnapshot = {

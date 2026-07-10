@@ -53,7 +53,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   installMissingRuntimeDependency: (input: unknown) => Promise.resolve(input),
   launchChat: (payload: unknown) => mocks.launchChat(payload),
 }));
-vi.mock("../../../entities/chat/launchGuard", () => ({
+vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
   useChatLaunchGuard: () => mocks.useChatLaunchGuard(),
 }));
 vi.mock("../../../shared/desktop/desktopApi", () => ({

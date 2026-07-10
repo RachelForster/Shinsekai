@@ -48,7 +48,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   resumeLastChat: () => mocks.resumeLastChat(),
 }));
 
-vi.mock("../../../entities/chat/launchGuard", () => ({
+vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
   useChatLaunchGuard: () => mocks.useChatLaunchGuard(),
 }));
 

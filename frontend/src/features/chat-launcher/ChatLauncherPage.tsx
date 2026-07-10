@@ -6,10 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
-import { ChatInitializationDialog } from "../../entities/chat/ChatInitializationDialog";
-import { useChatLaunchGuard } from "../../entities/chat/launchGuard";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
-import { useChatInitialization } from "../../entities/chat/useChatInitialization";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
   getTemplateSession,
@@ -17,6 +14,9 @@ import {
   saveTemplateSession,
   templatesQueryKey,
 } from "../../entities/template/repository";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";

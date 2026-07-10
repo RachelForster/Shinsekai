@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ChatInitializationDialog } from "../../../entities/chat/ChatInitializationDialog";
+import { ChatInitializationDialog } from "../../../features/chat-startup/ChatInitializationDialog";
 import { I18nProvider } from "../../../shared/i18n";
 
 function renderDialog(props: Partial<Parameters<typeof ChatInitializationDialog>[0]> = {}) {

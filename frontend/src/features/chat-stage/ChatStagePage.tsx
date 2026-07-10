@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { closeChat } from "../../entities/chat/repository";
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
@@ -9,6 +8,7 @@ import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
 import { VOSK_MODEL_PATH } from "../api-settings/apiSettingsUtils";
+import { closeChatRuntime } from "../chat-startup/runtimeState";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
@@ -291,7 +291,7 @@ export function ChatStagePage() {
 
   const closeSurface = () => {
     void closeChatSurface({
-      closeRuntime: closeChat,
+      closeRuntime: closeChatRuntime,
       navigate,
       snapshot: state,
     });

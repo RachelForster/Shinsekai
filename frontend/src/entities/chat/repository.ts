@@ -13,7 +13,6 @@ import type {
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary } from "../../shared/theme/chatTheme";
 import type { ChatStageEvent } from "../../shared/platform/types";
-import { beginChatRuntimeClosing } from "./runtimeState";
 
 export const chatQueryKey = ["chat"] as const;
 export const chatRuntimeStatusQueryKey = ["chat", "runtime-status"] as const;
@@ -29,13 +28,8 @@ export function getChatRuntimeStatus(): Promise<ChatRuntimeProcessState> {
   return getPlatform().chat.getRuntimeStatus();
 }
 
-export async function closeChat(): Promise<ChatSnapshot> {
-  const releaseClosing = beginChatRuntimeClosing();
-  try {
-    return await getPlatform().chat.close();
-  } finally {
-    releaseClosing();
-  }
+export function closeChat(): Promise<ChatSnapshot> {
+  return getPlatform().chat.close();
 }
 
 export function getChatTheme(): Promise<ChatThemePayload> {

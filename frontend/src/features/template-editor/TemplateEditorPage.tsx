@@ -6,10 +6,10 @@ import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
-import { ChatInitializationDialog } from "../../entities/chat/ChatInitializationDialog";
-import { useChatLaunchGuard } from "../../entities/chat/launchGuard";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
-import { useChatInitialization } from "../../entities/chat/useChatInitialization";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import {
   generateTemplate,

@@ -21,10 +21,10 @@ import {
   ttsBundleRecommendationQueryKey,
 } from "../../entities/config/repository";
 import type { ApiConfig, AppConfig, SystemConfig } from "../../entities/config/types";
-import { ChatInitializationDialog } from "../../entities/chat/ChatInitializationDialog";
-import { useChatLaunchGuard } from "../../entities/chat/launchGuard";
 import { installMissingRuntimeDependency, resumeLastChat } from "../../entities/chat/repository";
-import { useChatInitialization } from "../../entities/chat/useChatInitialization";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { useAppState } from "../../shared/app-state/AppState";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
