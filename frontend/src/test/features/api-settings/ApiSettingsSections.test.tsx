@@ -1,18 +1,20 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdapterExtraForm } from "../../../features/api-settings/AdapterExtraForm";
 import { ApiLanguageSection } from "../../../features/api-settings/ApiLanguageSection";
 import { AsrSettingsSection } from "../../../features/api-settings/AsrSettingsSection";
 import { LlmConnectionSection } from "../../../features/api-settings/LlmConnectionSection";
+import { MemorySettingsSection } from "../../../features/api-settings/MemorySettingsSection";
 import { ResourceLinksSection } from "../../../features/api-settings/ResourceLinksSection";
 import { T2iSetupSection } from "../../../features/api-settings/T2iSetupSection";
 import { TtsBundleSection } from "../../../features/api-settings/TtsBundleSection";
 import { resourceLinks } from "../../../features/api-settings/apiSettingsUtils";
 import { I18nProvider } from "../../../shared/i18n";
 import { sampleConfig } from "../../../shared/platform/sampleData";
-import type { TaskSnapshot, TtsBundleDownloadResult } from "../../../shared/platform/types";
+import type { Mem0Status, TaskSnapshot, TtsBundleDownloadResult } from "../../../shared/platform/types";
+import { ToastProvider } from "../../../shared/ui";
 
 const filesMock = vi.hoisted(() => ({
   openExternal: vi.fn(),
@@ -22,8 +24,20 @@ vi.mock("../../../entities/files/repository", () => ({
   openExternal: filesMock.openExternal,
 }));
 
+const configRepositoryMock = vi.hoisted(() => ({
+  getMemoryStatus: vi.fn(),
+}));
+
+vi.mock("../../../entities/config/repository", () => ({
+  getMemoryStatus: configRepositoryMock.getMemoryStatus,
+}));
+
 function renderZh(children: ReactNode) {
-  return render(<I18nProvider language="zh_CN">{children}</I18nProvider>);
+  return render(
+    <I18nProvider language="zh_CN">
+      <ToastProvider>{children}</ToastProvider>
+    </I18nProvider>,
+  );
 }
 
 function runningTask(): TaskSnapshot<TtsBundleDownloadResult> {
@@ -43,6 +57,10 @@ function runningTask(): TaskSnapshot<TtsBundleDownloadResult> {
 }
 
 describe("API settings sections", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("renders adapter extra schemas with defaults and emits only the changed field", () => {
     const onChange = vi.fn();
     renderZh(
@@ -113,6 +131,7 @@ describe("API settings sections", () => {
         disabled={false}
         draft={sampleConfig.api_config}
         onAsrExtraChange={() => {}}
+        onPersistSystemDraft={() => Promise.resolve()}
         onSystemPatch={onSystemPatch}
         showWhisperFields={false}
         systemDraft={sampleConfig.system_config}
@@ -174,6 +193,112 @@ describe("API settings sections", () => {
     expect(screen.getByText("Text")).toBeInTheDocument();
     expect(screen.getByText("Vision")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Thinking/ })).toBeDisabled();
+  });
+
+  it("keeps memory disabled and does not download when the missing-model prompt is declined", async () => {
+    const onChange = vi.fn();
+    configRepositoryMock.getMemoryStatus.mockResolvedValueOnce({
+      modelCached: false,
+      status: "not_started",
+    });
+
+    renderZh(
+      <MemorySettingsSection
+        disabled={false}
+        draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    const dialog = await screen.findByRole("dialog", { name: "下载长期记忆模型" });
+    expect(screen.getByRole("checkbox", { name: "启用自动长期记忆" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下载/检查模型" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "否" }));
+
+    await waitFor(() => {
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledWith({ startLoading: false });
+      expect(screen.queryByRole("dialog", { name: "下载长期记忆模型" })).not.toBeInTheDocument();
+    });
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("checkbox", { name: "启用自动长期记忆" })).not.toBeChecked();
+  });
+
+  it("downloads a missing embedding model and enables memory after it becomes ready", async () => {
+    const onChange = vi.fn();
+    configRepositoryMock.getMemoryStatus
+      .mockResolvedValueOnce({
+        modelCached: false,
+        status: "not_started",
+      })
+      .mockResolvedValueOnce({
+        modelCached: true,
+        status: "ready",
+      });
+
+    renderZh(
+      <MemorySettingsSection
+        disabled={false}
+        draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    const dialog = await screen.findByRole("dialog", { name: "下载长期记忆模型" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "是" }));
+
+    await waitFor(() => {
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(1, { startLoading: false });
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(2, { startLoading: true });
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ memory_auto_enabled: true }));
+    });
+    expect(screen.queryByRole("dialog", { name: "下载长期记忆模型" })).not.toBeInTheDocument();
+    expect(screen.getByText("长期记忆已就绪，模型已缓存")).toBeInTheDocument();
+  });
+
+  it("loads a cached embedding model before enabling memory", async () => {
+    const onChange = vi.fn();
+    let resolveLoading!: (status: Mem0Status) => void;
+    const loadingResult = new Promise<Mem0Status>((resolve) => {
+      resolveLoading = resolve;
+    });
+    configRepositoryMock.getMemoryStatus
+      .mockResolvedValueOnce({
+        modelCached: true,
+        status: "not_started",
+      })
+      .mockReturnValueOnce(loadingResult);
+
+    renderZh(
+      <MemorySettingsSection
+        disabled={false}
+        draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    await waitFor(() => {
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(1, { startLoading: false });
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(2, { startLoading: true });
+    });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText("embedding 模型已缓存，尚未加载")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveLoading({ modelCached: true, status: "ready" });
+      await loadingResult;
+    });
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ memory_auto_enabled: true }));
+    });
+    expect(screen.getByText("长期记忆已就绪，模型已缓存")).toBeInTheDocument();
   });
 
   it("makes T2I setup optional and applies local ComfyUI defaults", () => {
@@ -260,7 +385,7 @@ describe("API settings sections", () => {
     fireEvent.click(screen.getByRole("button", { name: "取消下载" }));
     fireEvent.click(screen.getByRole("button", { name: "开始下载" }));
     fireEvent.click(screen.getByRole("combobox"));
-    fireEvent.click(screen.getByRole("option", { name: "50 系显卡 GPT-SoVITS v2pro" }));
+    fireEvent.click(screen.getAllByRole("option", { name: /GPT-SoVITS v2pro/ })[1]);
 
     expect(onCancelDownload).toHaveBeenCalledTimes(1);
     expect(onStartDownload).toHaveBeenCalledTimes(1);

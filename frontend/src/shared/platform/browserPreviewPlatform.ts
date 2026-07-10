@@ -46,6 +46,22 @@ function delay<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => window.setTimeout(() => resolve(clone(value)), ms));
 }
 
+function looksLikeLocalModelReference(value: string) {
+  const normalized = value.replace(/\\/g, "/");
+  const slashCount = normalized.split("/").length - 1;
+  return (
+    value.startsWith(".") ||
+    value.startsWith("/") ||
+    value.startsWith("\\") ||
+    value.startsWith("~") ||
+    value.endsWith("/") ||
+    value.endsWith("\\") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    slashCount > 1
+  );
+}
+
 function previewTask<TResult>(
   taskId: string,
   patch: Partial<TaskSnapshot<TResult>>,
@@ -354,6 +370,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   });
   let activeThemeId = DEFAULT_CHAT_THEME_ID;
   let templateSession: TemplateLaunchSession | null = null;
+  const cachedModelAssets = new Set<string>();
   const characterMemories = new Map<string, CharacterMemoryList>();
   const chatListeners = new Set<(snapshot: ChatSnapshot) => void>();
   const pendingChatTimeouts = new Set<number>();
@@ -1302,7 +1319,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           socks5_proxy_url: "",
           source: "browser-preview",
         }),
-      getMemoryStatus: () => delay({ status: "ready" as const }),
+      getMemoryStatus: () => delay({ modelCached: true, status: "ready" as const }),
       getTtsBundleRecommendation: () =>
         delay({
           gpus: [{ device: "NVIDIA GeForce RTX 4070", vendor: "NVIDIA", vram_gb: 12 }],
@@ -1316,6 +1333,74 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async saveSystem(systemConfig) {
         config.system_config = clone(systemConfig);
         return delay(config.system_config);
+      },
+    },
+    modelAssets: {
+      async download(input, options) {
+        const variant = String(
+          (input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small",
+        );
+        const local = Boolean(input.configured && looksLikeLocalModelReference(variant));
+        const key = `${input.assetId}:${variant}`;
+        const taskId = `preview-model-${Date.now()}`;
+        previewTask(
+          taskId,
+          {
+            kind: "model-download",
+            message: `正在下载 ${variant}。`,
+            phase: "download",
+            progress: 0.42,
+            status: "running",
+            title: "模型下载",
+          },
+          options,
+        );
+        await delay(null, 180);
+        const result = {
+          assetId: input.assetId,
+          cached: true,
+          downloadable: !local,
+          downloaded: !local,
+          path: local ? variant : `preview-cache/${variant}`,
+          ...(local ? {} : { repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}` }),
+          source: local ? ("local" as const) : ("huggingface" as const),
+          title: "Whisper ASR",
+          variant,
+        };
+        if (!local) {
+          cachedModelAssets.add(key);
+        }
+        previewTask(
+          taskId,
+          {
+            kind: "model-download",
+            message: `${variant} 已缓存。`,
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+            title: "模型下载",
+          },
+          options,
+        );
+        return result;
+      },
+      status(input) {
+        const variant = String(
+          (input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small",
+        );
+        const local = Boolean(input.configured && looksLikeLocalModelReference(variant));
+        return delay({
+          assetId: input.assetId,
+          cached: local || cachedModelAssets.has(`${input.assetId}:${variant}`),
+          downloadable: !local,
+          ...(local
+            ? { path: variant }
+            : { repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}` }),
+          source: local ? ("local" as const) : ("huggingface" as const),
+          title: "Whisper ASR",
+          variant,
+        });
       },
     },
     files: {

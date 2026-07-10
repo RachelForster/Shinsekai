@@ -43,6 +43,7 @@ const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 const BRIDGE_RESTART_STATE_EVENT: &str = "shinsekai:bridge-restart-state";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
+const SHOW_BACKEND_CONSOLE_ENV: &str = "SHINSEKAI_SHOW_BACKEND_CONSOLE";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -1731,6 +1732,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn runtime_backend_console_truthy_values_are_case_insensitive() {
+        for value in ["1", "true", "TRUE", "yes", "Yes", "on", "ON"] {
+            assert!(
+                is_truthy_env_value(value),
+                "expected {value:?} to be truthy"
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_backend_console_rejects_other_values() {
+        for value in ["", "0", "false", "off", "y", " true "] {
+            assert!(
+                !is_truthy_env_value(value),
+                "expected {value:?} to be falsey"
+            );
+        }
+    }
+
+    #[test]
     fn resolve_published_frontend_dist_uses_current_marker() {
         let root = temp_test_dir("published-dist");
         let raw_dist = root.join("frontend").join("dist");
@@ -2052,7 +2073,15 @@ fn spawn_bridge(
         .current_dir(&source_root);
 
     #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
+    {
+        if show_backend_console() {
+            const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+            command.creation_flags(CREATE_NEW_CONSOLE);
+        } else {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+    }
 
     let mut child = command.spawn().map_err(|error| {
         restart_debug_log(format!("spawn_bridge failed error={error}"));
@@ -2070,6 +2099,19 @@ fn spawn_bridge(
         port
     ));
     Ok(BridgeLaunch { child })
+}
+
+pub(crate) fn show_backend_console() -> bool {
+    env::var(SHOW_BACKEND_CONSOLE_ENV)
+        .map(|value| is_truthy_env_value(&value))
+        .unwrap_or(false)
+}
+
+fn is_truthy_env_value(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {

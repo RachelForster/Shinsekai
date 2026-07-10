@@ -10,6 +10,16 @@ from config.config_manager import ConfigManager
 
 from ai.memory.constants import EMBEDDING_DIMS, EMBEDDING_MODEL, VECTOR_COLLECTION
 
+_EMBEDDING_MODEL_CONFIG_FILES = (
+    "config.json",
+    "sentence_bert_config.json",
+    "config_sentence_transformers.json",
+)
+_EMBEDDING_MODEL_WEIGHT_FILES = (
+    "model.safetensors",
+    "pytorch_model.bin",
+)
+
 
 def build_mem0_config() -> dict[str, Any]:
     """Build the mem0 config from Shinsekai's local LLM settings."""
@@ -90,6 +100,7 @@ def is_embedding_model_cached() -> bool:
                 cache_roots.append(Path(raw))
         hf_home = Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface")
         cache_roots.extend([hf_home / "hub", hf_home])
+        cache_roots.extend([Path.cwd() / "data" / "cache" / "huggingface" / "hub"])
 
         seen: set[Path] = set()
         for root in cache_roots:
@@ -98,8 +109,21 @@ def is_embedding_model_cached() -> bool:
                 continue
             seen.add(model_dir)
             snapshots_dir = model_dir / "snapshots"
-            if snapshots_dir.is_dir() and any(snapshots_dir.iterdir()):
+            if _has_complete_embedding_snapshot(snapshots_dir):
                 return True
         return False
     except Exception:
         return False
+
+
+def _has_complete_embedding_snapshot(snapshots_dir: Path) -> bool:
+    if not snapshots_dir.is_dir():
+        return False
+    for snapshot in snapshots_dir.iterdir():
+        if not snapshot.is_dir():
+            continue
+        has_config = any((snapshot / name).exists() for name in _EMBEDDING_MODEL_CONFIG_FILES)
+        has_weights = any((snapshot / name).exists() for name in _EMBEDDING_MODEL_WEIGHT_FILES)
+        if has_config and has_weights:
+            return True
+    return False

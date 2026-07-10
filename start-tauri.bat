@@ -4,6 +4,13 @@ setlocal
 
 cd /d "%~dp0"
 
+set "SHINSEKAI_SHOW_BACKEND_CONSOLE="
+if /i "%~1"=="--backend-console" set "SHINSEKAI_SHOW_BACKEND_CONSOLE=1"
+if /i "%~1"=="/backend-console" set "SHINSEKAI_SHOW_BACKEND_CONSOLE=1"
+if /i "%~1"=="backend-console" set "SHINSEKAI_SHOW_BACKEND_CONSOLE=1"
+if /i "%~1"=="--help" goto :usage
+if /i "%~1"=="/?" goto :usage
+
 :: Check that the current path contains only ASCII characters.
 powershell -NoProfile -Command "if ('%cd%' -match '[^\x20-\x7E]') { exit 1 } else { exit 0 }" > nul 2>&1
 if %errorlevel% neq 0 (
@@ -65,5 +72,16 @@ if not exist "%EXE_PATH%" (
 
 echo.
 echo Opening %EXE_PATH%...
+if "%SHINSEKAI_SHOW_BACKEND_CONSOLE%"=="1" (
+    echo Backend console debug mode enabled.
+)
 start "" "%EXE_PATH%"
 endlocal
+exit /b 0
+
+:usage
+echo Usage: start-tauri.bat [--backend-console]
+echo.
+echo   --backend-console   Show the backend Python terminal window for debugging.
+endlocal
+exit /b 0

@@ -39,7 +39,10 @@ def test_embedding_model_cache_detection_uses_multilingual_model(monkeypatch, tm
         / "hub"
         / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
     )
-    (model_dir / "snapshots" / "abc123").mkdir(parents=True)
+    snapshot = model_dir / "snapshots" / "abc123"
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "model.safetensors").write_bytes(b"model")
     monkeypatch.setenv("HF_HOME", str(cache_home))
 
     assert memory_config.is_embedding_model_cached() is True
@@ -51,7 +54,10 @@ def test_embedding_model_cache_detection_uses_hub_cache_env(monkeypatch, tmp_pat
         hub_cache
         / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
     )
-    (model_dir / "snapshots" / "abc123").mkdir(parents=True)
+    snapshot = model_dir / "snapshots" / "abc123"
+    snapshot.mkdir(parents=True)
+    (snapshot / "config_sentence_transformers.json").write_text("{}", encoding="utf-8")
+    (snapshot / "pytorch_model.bin").write_bytes(b"model")
     monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
 
     assert memory_config.is_embedding_model_cached() is True
@@ -65,6 +71,25 @@ def test_embedding_model_cache_detection_ignores_incomplete_cache(monkeypatch, t
         / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
     )
     (model_dir / "refs").mkdir(parents=True)
+    monkeypatch.setenv("HF_HOME", str(empty_home))
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+
+    assert memory_config.is_embedding_model_cached() is False
+
+
+def test_embedding_model_cache_detection_ignores_onnx_only_cache(monkeypatch, tmp_path):
+    hub_cache = tmp_path / "hub-cache"
+    empty_home = tmp_path / "hf-home"
+    snapshot = (
+        hub_cache
+        / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
+        / "snapshots"
+        / "abc123"
+    )
+    (snapshot / "onnx").mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "onnx" / "model_qint8_avx512.onnx").write_bytes(b"model")
     monkeypatch.setenv("HF_HOME", str(empty_home))
     monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
     monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)

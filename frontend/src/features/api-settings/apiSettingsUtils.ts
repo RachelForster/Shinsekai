@@ -131,7 +131,7 @@ export function normalizeTtsProvider(provider: string) {
 }
 
 export function resolveAsrWhisperPresetValue(model: string) {
-  const value = (model || "small").trim();
+  const value = String(model ?? "").trim();
   return (asrWhisperModelPresets as readonly string[]).includes(value) ? value : "__custom__";
 }
 
@@ -376,7 +376,7 @@ export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePat
       llm_provider: provider,
       max_active_tool_groups: finiteNumber(config.max_active_tool_groups, 3),
       max_tool_result_chars: finiteNumber(config.max_tool_result_chars, 6000),
-      memory_auto_enabled: config.memory_auto_enabled ?? true,
+      memory_auto_enabled: config.memory_auto_enabled ?? false,
       memory_extract_interval_turns: clampInt(config.memory_extract_interval_turns, 5, 1, 50),
       memory_recent_buffer_messages: clampInt(config.memory_recent_buffer_messages, 16, 2, 64),
       memory_search_limit: clampInt(config.memory_search_limit, 5, 1, 20),

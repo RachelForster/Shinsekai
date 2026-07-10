@@ -377,6 +377,27 @@ describe("browser preview platform chat themes", () => {
     expect(bundle.provider).toBe("genie-tts");
     expect(taskUpdates).toEqual(expect.arrayContaining(["download", "extract", "completed"]));
     expect((await resolvePreview(platform.config.cancelTtsBundleDownload("task-1"))).status).toBe("cancelled");
+    const modelRef = { assetId: "asr.faster-whisper", variant: "small" };
+    expect((await resolvePreview(platform.modelAssets.status(modelRef))).cached).toBe(false);
+    const downloadedModel = await resolvePreview(platform.modelAssets.download(modelRef, options), 1_000);
+    expect(downloadedModel).toMatchObject({ cached: true, downloaded: true, variant: "small" });
+    expect((await resolvePreview(platform.modelAssets.status(modelRef))).cached).toBe(true);
+    await resolvePreview(platform.config.saveSystem({ ...system, asr_whisper_model_size: "owner/custom-whisper" }));
+    expect(
+      await resolvePreview(platform.modelAssets.status({ assetId: "asr.faster-whisper", configured: true })),
+    ).toMatchObject({ repoId: "owner/custom-whisper", variant: "owner/custom-whisper" });
+    for (const localModel of ["~/models/whisper", "models/whisper/local", String.raw`models\whisper`, "models/"]) {
+      await resolvePreview(platform.config.saveSystem({ ...system, asr_whisper_model_size: localModel }));
+      expect(
+        await resolvePreview(platform.modelAssets.status({ assetId: "asr.faster-whisper", configured: true })),
+      ).toMatchObject({
+        cached: true,
+        downloadable: false,
+        path: localModel,
+        source: "local",
+        variant: localModel,
+      });
+    }
     await expect(
       platform.config.fetchLlmModels({
         apiKey: "sk-test",

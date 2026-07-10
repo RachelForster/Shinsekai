@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   fetchLlmModels: vi.fn(),
   getAppConfig: vi.fn(),
   getChatSnapshot: vi.fn(),
+  getModelAssetStatus: vi.fn(),
   getTtsBundleRecommendation: vi.fn(),
   resumeLastChat: vi.fn(),
   saveApiConfig: vi.fn(),
@@ -42,11 +43,16 @@ vi.mock("../../../entities/chat/repository", () => ({
   resumeLastChat: () => mocks.resumeLastChat(),
 }));
 
+vi.mock("../../../entities/model-assets/repository", () => ({
+  downloadModelAsset: vi.fn(),
+  getModelAssetStatus: (...args: unknown[]) => mocks.getModelAssetStatus(...args),
+}));
+
 vi.mock("../../../shared/desktop/chatWindow", () => ({
   showChatSurface: (...args: unknown[]) => mocks.showChatSurface(...args),
 }));
 
-function renderPage(children: ReactNode = <ApiSettingsPage />) {
+function renderPage(children: ReactNode = <ApiSettingsPage />, language: "en" | "ja" | "zh_CN" = "zh_CN") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -55,7 +61,7 @@ function renderPage(children: ReactNode = <ApiSettingsPage />) {
       <ToastProvider>
         <FileBrowserProvider browse={vi.fn()}>
           <AppStateProvider>
-            <I18nProvider language="zh_CN">{children}</I18nProvider>
+            <I18nProvider language={language}>{children}</I18nProvider>
           </AppStateProvider>
         </FileBrowserProvider>
       </ToastProvider>
@@ -105,6 +111,15 @@ describe("ApiSettingsPage", () => {
       options: [],
       sprites: [],
       status: "idle",
+    });
+    mocks.getModelAssetStatus.mockResolvedValue({
+      assetId: "asr.faster-whisper",
+      cached: false,
+      downloadable: true,
+      repoId: "owner/custom-whisper",
+      source: "huggingface",
+      title: "Whisper ASR",
+      variant: "owner/custom-whisper",
     });
     mocks.resumeLastChat.mockResolvedValue({ sessionId: "session-1" });
     mocks.saveApiConfig.mockResolvedValue(sampleConfig.api_config);
@@ -187,6 +202,58 @@ describe("ApiSettingsPage", () => {
     await waitFor(() =>
       expect(mocks.showChatSurface).toHaveBeenCalledWith({
         snapshot: expect.objectContaining({ statusMessage: "已恢复" }),
+      }),
+    );
+  });
+
+  it("keeps a selected custom Whisper model visible and cached across later language saves", async () => {
+    const config = {
+      ...validAppConfig(),
+      system_config: {
+        ...sampleConfig.system_config,
+        asr_provider: "faster_whisper",
+        asr_whisper_model_size: "small",
+      },
+    };
+    mocks.getAppConfig.mockResolvedValue(config);
+    mocks.saveSystemConfig.mockImplementation(async (system) => system);
+
+    renderPage(<ApiSettingsPage />, "en");
+
+    await screen.findByRole("heading", { name: "API Configuration" });
+    const whisperField = screen.getByText("Whisper model").closest("label");
+    expect(whisperField).not.toBeNull();
+    fireEvent.click(within(whisperField!).getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "Custom (local path or Hugging Face id)" }));
+
+    const customInput = await screen.findByPlaceholderText("Local folder or full model id");
+    fireEvent.change(customInput, { target: { value: "owner/custom-whisper" } });
+    const asrSection = whisperField!.closest("details");
+    expect(asrSection).not.toBeNull();
+    fireEvent.click(within(asrSection!).getByRole("button", { name: "Download/check model" }));
+
+    await waitFor(() =>
+      expect(mocks.saveSystemConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ asr_whisper_model_size: "owner/custom-whisper" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(mocks.getModelAssetStatus).toHaveBeenCalledWith({
+        assetId: "asr.faster-whisper",
+        configured: true,
+      }),
+    );
+
+    const languageField = screen.getByText("Interface language", { selector: ".field-row__label" }).closest("label");
+    expect(languageField).not.toBeNull();
+    fireEvent.click(within(languageField!).getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "Japanese" }));
+
+    await waitFor(() => expect(mocks.saveSystemConfig).toHaveBeenCalledTimes(2));
+    expect(mocks.saveSystemConfig.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        asr_whisper_model_size: "owner/custom-whisper",
+        ui_language: "ja",
       }),
     );
   });

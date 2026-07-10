@@ -87,6 +87,13 @@ from frontend_bridge_core.memory import (
     _memory_tool_remember,
     _memory_tool_search,
 )
+from frontend_bridge_core.model_assets import (
+    _download_model_asset,
+    _find_running_model_asset_task,
+    _model_asset_enqueue_guard,
+    _model_asset_status,
+    _resolve_model_asset,
+)
 from frontend_bridge_core.config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
 from frontend_bridge_core.logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
 from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
@@ -629,6 +636,26 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     message="TTS 整合包下载已排队。",
                     worker=lambda task_id: _download_tts_bundle(self.state, task_id, body),
                 )
+            elif method == "POST" and path == "/api/model-assets/status":
+                self._send_json(_model_asset_status(self.state, body))
+            elif method == "POST" and path == "/api/model-assets/download":
+                spec = _resolve_model_asset(self.state, body)
+                with _model_asset_enqueue_guard():
+                    existing = _find_running_model_asset_task(self.state, spec.task_key)
+                    if existing is not None:
+                        self._send_json(existing, HTTPStatus.ACCEPTED)
+                    else:
+                        self._enqueue_background_task(
+                            kind="model-download",
+                            title=spec.title,
+                            message=f"{spec.title} download queued.",
+                            task_updates={
+                                "assetId": spec.asset_id,
+                                "assetKey": spec.task_key,
+                                "variant": spec.variant,
+                            },
+                            worker=lambda task_id: _download_model_asset(self.state, task_id, spec),
+                        )
             elif method == "POST" and path.startswith("/api/tasks/") and path.endswith("/cancel"):
                 task_id = unquote(path[len("/api/tasks/") : -len("/cancel")])
                 self._send_json(_request_task_cancel(self.state, task_id))
@@ -649,7 +676,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     _delete_character_memory(str(body.get("name") or ""), str(body.get("memoryId") or ""))
                 )
             elif method == "POST" and path == "/api/memory/status":
-                self._send_json(_get_mem0_status())
+                self._send_json(_get_mem0_status(start_loading=bool(body.get("startLoading", True))))
             elif method == "POST" and path == "/api/memory/list":
                 self._send_json(_list_character_memories(str(body.get("name") or body.get("characterName") or "")))
             elif method == "POST" and path == "/api/memory/search":

@@ -21,6 +21,7 @@ async function loadRepositories(platform: Partial<ShinsekaiPlatform>) {
     effect: await import("../../../entities/effect/repository"),
     files: await import("../../../entities/files/repository"),
     logs: await import("../../../entities/logs/repository"),
+    modelAssets: await import("../../../entities/model-assets/repository"),
     musicCover: await import("../../../entities/music-cover/repository"),
     plugin: await import("../../../entities/plugin/repository"),
     template: await import("../../../entities/template/repository"),
@@ -153,6 +154,32 @@ describe("entity repositories", () => {
       name: "新模板",
       scenario: "scene",
     });
+  });
+
+  it("delegates generic model asset checks and downloads", async () => {
+    const ref = { assetId: "asr.faster-whisper", variant: "small" };
+    const status = {
+      ...ref,
+      cached: false,
+      downloadable: true,
+      repoId: "Systran/faster-whisper-small",
+      source: "huggingface" as const,
+      title: "Whisper ASR",
+    };
+    const result = { ...status, cached: true, downloaded: true, path: "/cache/small" };
+    const options = { onTaskUpdate: vi.fn() };
+    const platform = {
+      modelAssets: {
+        download: vi.fn().mockResolvedValue(result),
+        status: vi.fn().mockResolvedValue(status),
+      },
+    };
+    const { modelAssets } = await loadRepositories(platform);
+
+    await expect(modelAssets.getModelAssetStatus(ref)).resolves.toEqual(status);
+    await expect(modelAssets.downloadModelAsset(ref, options)).resolves.toEqual(result);
+    expect(platform.modelAssets.status).toHaveBeenCalledWith(ref);
+    expect(platform.modelAssets.download).toHaveBeenCalledWith(ref, options);
   });
 
   it("chunks and caches thumbnail batch requests", async () => {

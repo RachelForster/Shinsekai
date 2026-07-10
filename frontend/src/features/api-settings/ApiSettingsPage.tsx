@@ -20,7 +20,7 @@ import {
   testLlmConnection,
   ttsBundleRecommendationQueryKey,
 } from "../../entities/config/repository";
-import type { ApiConfig, SystemConfig } from "../../entities/config/types";
+import type { ApiConfig, AppConfig, SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
@@ -449,6 +449,14 @@ export function ApiSettingsPage() {
     setSystemDraft({ ...systemDraft, ...patch });
   };
 
+  const persistSystemDraftForModel = async () => {
+    const saved = await saveSystemConfig(normalizeSystemAsrForSave(systemDraft));
+    queryClient.setQueryData<AppConfig>(configQueryKey, (current) =>
+      current ? { ...current, system_config: saved } : current,
+    );
+    setSystemDraft(saved);
+  };
+
   const handleLanguageChange = (language: UiLanguage) => {
     setSystemDraft({ ...systemDraft, ui_language: language });
     languageMutation.mutate(language);
@@ -763,6 +771,7 @@ export function ApiSettingsPage() {
         draft={draft}
         id="api-asr"
         onAsrExtraChange={updateAsrExtra}
+        onPersistSystemDraft={persistSystemDraftForModel}
         onSystemPatch={updateSystemDraft}
         showWhisperFields={showWhisperFields}
         systemDraft={systemDraft}

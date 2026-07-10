@@ -38,6 +38,7 @@ describe("API settings utilities", () => {
     expect(normalizeAsrProvider("")).toBe("vosk");
     expect(resolveAsrWhisperPresetValue("large-v3")).toBe("large-v3");
     expect(resolveAsrWhisperPresetValue("custom-model")).toBe("__custom__");
+    expect(resolveAsrWhisperPresetValue("")).toBe("__custom__");
 
     const options = [{ label: "A", value: "a" }];
     expect(withCurrentOption(options, "a")).toBe(options);
@@ -160,6 +161,12 @@ describe("API settings utilities", () => {
     expect(normalized.llm_api_key).toEqual({});
     expect(normalized.llm_model).toEqual({});
     expect(normalized.llm_base_url).toBeTruthy();
+    expect(
+      normalizeApiConfigForUi({
+        ...sampleConfig.api_config,
+        memory_auto_enabled: undefined as unknown as boolean,
+      }).memory_auto_enabled,
+    ).toBe(false);
 
     expect(syncCompactRatioDraft({ ...sampleConfig.api_config, compact_target_ratio: 0.9 }).compact_target_ratio).toBe(
       0.35,

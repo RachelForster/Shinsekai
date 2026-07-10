@@ -1,17 +1,23 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "api.memory.cachedNotLoaded": "Embedding model cached; not loaded",
   "api.memory.checking": "Checking",
   "api.memory.description":
     "Controls long-term memory retrieval, periodic extraction, and embedding model preparation for chat.",
   "api.memory.downloadModel": "Download/check model",
   "api.memory.downloading": "Downloading embedding model...",
   "api.memory.enabled": "Enable automatic long-term memory",
+  "api.memory.enableReady": "Automatic long-term memory enabled.",
   "api.memory.error": "Memory system is unavailable.",
   "api.memory.extractInterval": "Extract every N turns",
   "api.memory.extractIntervalHelp": "After this many user turns, recent chat is summarized into the memory queue.",
   "api.memory.loadingCached": "Loading cached model...",
   "api.memory.missingDependency": "mem0ai dependency is missing.",
+  "api.memory.modelDownloadConfirmBody":
+    "The embedding model required for long-term memory has not been downloaded. Download and check it now? Long-term memory will be enabled automatically when the download finishes; choosing “No” will keep it off.",
+  "api.memory.modelDownloadConfirmTitle": "Download long-term memory model",
+  "api.memory.modelMissingKeepOff": "The embedding model is not downloaded yet, so long-term memory stayed off.",
   "api.memory.modelStatus": "Model status",
   "api.memory.ready": "Long-term memory is ready",
   "api.memory.readyCached": "Long-term memory is ready; model cached",
@@ -888,6 +894,26 @@ export const enMessages: Record<MessageKey, string> = {
   "system.asr.language": "Recognition language",
   "system.asr.modelCustom": "Custom (local path or Hugging Face id)",
   "system.asr.modelCustomPlaceholder": "Local folder or full model id",
+  "system.asr.modelCached": "The model is cached. It will be loaded into memory only when voice input starts.",
+  "system.asr.modelChecking": "Checking model…",
+  "system.asr.modelDownload": "Download/check model",
+  "system.asr.modelDownloadConfirm": "Download model",
+  "system.asr.modelDownloadConfirmBody": "No complete cache was found for {model}. Download it from Hugging Face now?",
+  "system.asr.modelDownloadDescription":
+    "The model is stored in the shared Hugging Face cache. Downloaded does not mean loaded.",
+  "system.asr.modelDownloadFailed": "The Whisper model check or download failed.",
+  "system.asr.modelDownloadHint":
+    "Cache the model now instead of waiting for a silent download on the first voice-input launch. Custom model checks save the current speech-recognition settings first.",
+  "system.asr.modelDownloadTitle": "Whisper model download",
+  "system.asr.modelDownloading": "Downloading model…",
+  "system.asr.modelLocalDescription": "This custom local model folder does not trigger a network download.",
+  "system.asr.modelLocalMissing": "The local model folder is missing or incomplete. Check the custom path.",
+  "system.asr.modelLocalReady":
+    "The local model folder is valid and needs no download. It will load when voice input starts.",
+  "system.asr.modelMissing": "The model is not cached yet and must be downloaded before offline loading.",
+  "system.asr.modelName": "Model",
+  "system.asr.modelRepository": "Hugging Face repository",
+  "system.asr.modelViewProgress": "View model download progress",
   "system.asr.provider": "Engine",
   "system.asr.title": "Voice input (ASR)",
   "system.asr.voskHint": "Download a Vosk model, extract it, and paste the folder path into the Vosk model path field.",
