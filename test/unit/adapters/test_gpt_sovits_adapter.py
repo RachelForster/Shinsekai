@@ -41,6 +41,41 @@ def test_server_adapter_reports_readiness_timeout(monkeypatch, adapter_class):
         adapter.wait_until_ready(timeout_seconds=0, poll_interval_seconds=0.01)
 
 
+@pytest.mark.parametrize("adapter_class", [GPTSoVitsAdapter, IndexTTSAdapter])
+def test_server_adapter_allows_ten_minutes_for_cold_start(adapter_class):
+    assert adapter_class.STARTUP_TIMEOUT_SECONDS == 600.0
+
+
+@pytest.mark.parametrize(
+    ("adapter_class", "url_kwarg"),
+    [(GPTSoVitsAdapter, "tts_server_url"), (IndexTTSAdapter, "index_server_url")],
+)
+def test_local_server_adapter_disables_environment_proxies(monkeypatch, adapter_class, url_kwarg):
+    monkeypatch.setattr(adapter_class, "_start_server_process", lambda self: None)
+
+    adapter = adapter_class(**{url_kwarg: "http://127.0.0.1:9880/"})
+
+    try:
+        assert adapter._session.trust_env is False
+    finally:
+        adapter.stop_server()
+
+
+@pytest.mark.parametrize(
+    ("adapter_class", "url_kwarg"),
+    [(GPTSoVitsAdapter, "tts_server_url"), (IndexTTSAdapter, "index_server_url")],
+)
+def test_remote_server_adapter_keeps_environment_proxy_support(monkeypatch, adapter_class, url_kwarg):
+    monkeypatch.setattr(adapter_class, "_start_server_process", lambda self: None)
+
+    adapter = adapter_class(**{url_kwarg: "https://tts.example.com/"})
+
+    try:
+        assert adapter._session.trust_env is True
+    finally:
+        adapter.stop_server()
+
+
 def test_remote_gpt_sovits_url_does_not_auto_start_local_process(monkeypatch):
     popen_calls = []
 
@@ -53,6 +88,26 @@ def test_remote_gpt_sovits_url_does_not_auto_start_local_process(monkeypatch):
     GPTSoVitsAdapter(
         tts_server_url="https://example.trycloudflare.com/",
         gpt_sovits_work_path="/tmp/not-a-gpt-sovits-bundle",
+    )
+
+    assert popen_calls == []
+
+
+def test_remote_index_tts_url_does_not_auto_start_local_process(monkeypatch):
+    popen_calls = []
+
+    def raise_connection_error(*args, **kwargs):
+        raise requests.ConnectionError("offline")
+
+    monkeypatch.setattr("tts.tts_adapter.requests.Session.get", raise_connection_error)
+    monkeypatch.setattr(
+        "tts.tts_adapter.subprocess.Popen",
+        lambda *args, **kwargs: popen_calls.append((args, kwargs)),
+    )
+
+    IndexTTSAdapter(
+        index_server_url="https://tts.example.com/",
+        index_server_work_path="/tmp/not-an-index-tts-bundle",
     )
 
     assert popen_calls == []
