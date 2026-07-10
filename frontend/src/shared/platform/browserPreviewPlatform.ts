@@ -354,6 +354,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   });
   let activeThemeId = DEFAULT_CHAT_THEME_ID;
   let templateSession: TemplateLaunchSession | null = null;
+  const cachedModelAssets = new Set<string>();
   const characterMemories = new Map<string, CharacterMemoryList>();
   const chatListeners = new Set<(snapshot: ChatSnapshot) => void>();
   const pendingChatTimeouts = new Set<number>();
@@ -1316,6 +1317,67 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async saveSystem(systemConfig) {
         config.system_config = clone(systemConfig);
         return delay(config.system_config);
+      },
+    },
+    modelAssets: {
+      async download(input, options) {
+        const variant = String(input.variant || "small");
+        const key = `${input.assetId}:${variant}`;
+        const taskId = `preview-model-${Date.now()}`;
+        previewTask(
+          taskId,
+          {
+            kind: "model-download",
+            message: `正在下载 ${variant}。`,
+            phase: "download",
+            progress: 0.42,
+            status: "running",
+            title: "模型下载",
+          },
+          options,
+        );
+        await delay(null, 180);
+        const result = {
+          assetId: input.assetId,
+          cached: true,
+          downloadable: true,
+          downloaded: true,
+          path: `preview-cache/${variant}`,
+          repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}`,
+          source: "huggingface" as const,
+          title: "Whisper ASR",
+          variant,
+        };
+        cachedModelAssets.add(key);
+        previewTask(
+          taskId,
+          {
+            kind: "model-download",
+            message: `${variant} 已缓存。`,
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+            title: "模型下载",
+          },
+          options,
+        );
+        return result;
+      },
+      status(input) {
+        const variant = String(input.variant || "small");
+        const local = /^[./\\]|^[A-Za-z]:[\\/]/.test(variant);
+        return delay({
+          assetId: input.assetId,
+          cached: local || cachedModelAssets.has(`${input.assetId}:${variant}`),
+          downloadable: !local,
+          ...(local
+            ? { path: variant }
+            : { repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}` }),
+          source: local ? ("local" as const) : ("huggingface" as const),
+          title: "Whisper ASR",
+          variant,
+        });
       },
     },
     files: {

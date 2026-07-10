@@ -945,6 +945,24 @@ export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
 }
 
+export interface ModelAssetRef {
+  assetId: string;
+  variant?: string;
+}
+
+export interface ModelAssetStatus extends ModelAssetRef {
+  cached: boolean;
+  downloadable: boolean;
+  path?: string;
+  repoId?: string;
+  source: "huggingface" | "local";
+  title: string;
+}
+
+export interface ModelAssetDownloadResult extends ModelAssetStatus {
+  downloaded: boolean;
+}
+
 export interface ShinsekaiPlatform {
   backgrounds: {
     delete: (name: string) => Promise<void>;
@@ -1046,6 +1064,13 @@ export interface ShinsekaiPlatform {
     getTtsBundleRecommendation: () => Promise<TtsBundleRecommendation>;
     saveApi: (config: ApiConfig) => Promise<ApiConfig>;
     saveSystem: (config: SystemConfig) => Promise<SystemConfig>;
+  };
+  modelAssets: {
+    download: (
+      input: ModelAssetRef,
+      options?: TaskProgressOptions<ModelAssetDownloadResult>,
+    ) => Promise<ModelAssetDownloadResult>;
+    status: (input: ModelAssetRef) => Promise<ModelAssetStatus>;
   };
   files: {
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;

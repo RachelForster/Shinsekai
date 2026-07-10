@@ -5,7 +5,7 @@ import { getMemoryStatus } from "../../entities/config/repository";
 import type { ApiConfig } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
 import type { Mem0Status, TaskSnapshot } from "../../shared/platform/types";
-import { AlertDialog, AsyncButton, NumberInput, Switch, TaskProgress, useToast } from "../../shared/ui";
+import { AsyncButton, ModelDownloadDialog, NumberInput, Switch, TaskProgress, useToast } from "../../shared/ui";
 import { clampInt } from "./apiSettingsUtils";
 
 interface MemorySettingsSectionProps {
@@ -254,15 +254,15 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
           {task ? <TaskProgress logLimit={0} task={task} /> : null}
         </span>
       </div>
-      <AlertDialog
-        body={t("api.memory.modelDownloadConfirmBody")}
+      <ModelDownloadDialog
         cancelLabel={t("common.no")}
         closeLabel={t("common.close")}
         confirmLabel={t("common.yes")}
-        confirmVariant="primary"
-        onCancel={cancelModelDownload}
+        description={t("api.memory.modelDownloadConfirmBody")}
+        onClose={cancelModelDownload}
         onConfirm={() => void confirmModelDownload()}
         open={modelDownloadPromptOpen}
+        state="confirm"
         title={t("api.memory.modelDownloadConfirmTitle")}
       />
     </section>

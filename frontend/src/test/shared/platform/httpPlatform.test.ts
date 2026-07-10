@@ -178,6 +178,51 @@ describe("http platform", () => {
     );
   });
 
+  it("checks and downloads model assets through generic bridge endpoints", async () => {
+    const ref = { assetId: "asr.faster-whisper", variant: "small" };
+    const status = {
+      ...ref,
+      cached: false,
+      downloadable: true,
+      repoId: "Systran/faster-whisper-small",
+      source: "huggingface",
+      title: "Whisper ASR",
+    };
+    const result = { ...status, cached: true, downloaded: true, path: "C:/cache/whisper-small" };
+    const task = {
+      createdAt: 1,
+      id: "model-task",
+      kind: "model-download",
+      logs: [],
+      message: "done",
+      phase: "completed",
+      progress: 1,
+      result,
+      status: "succeeded",
+      title: "Whisper model download",
+      updatedAt: 2,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) =>
+      mockJsonResponse(String(input).endsWith("/api/model-assets/status") ? status : task),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const onTaskUpdate = vi.fn();
+
+    await expect(platform.modelAssets.status(ref)).resolves.toEqual(status);
+    await expect(platform.modelAssets.download(ref, { onTaskUpdate })).resolves.toEqual(result);
+    expect(onTaskUpdate).toHaveBeenCalledWith(task);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/model-assets/status",
+      expect.objectContaining({ body: JSON.stringify(ref), method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/model-assets/download",
+      expect.objectContaining({ body: JSON.stringify(ref), method: "POST" }),
+    );
+  });
+
   it("reads TTS bundle recommendation through the bridge", async () => {
     const recommendation = {
       gpus: [{ device: "GeForce RTX 5090", vendor: "NVIDIA", vram_gb: 32 }],

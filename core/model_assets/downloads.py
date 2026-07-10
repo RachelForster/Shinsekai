@@ -22,6 +22,7 @@ def preload_huggingface_snapshot(
     download_message: str,
     cached_message: str,
     load_message: str,
+    post_download_phase: str = "reload",
     **snapshot_kwargs: Any,
 ) -> str | None:
     """Download a HuggingFace repository snapshot and report task progress.
@@ -222,7 +223,7 @@ def preload_huggingface_snapshot(
         **snapshot_kwargs,
     )
     update_task(
-        phase="reload",
+        phase=post_download_phase,
         message=load_message,
         progress=HUGGINGFACE_LOAD_PROGRESS,
     )

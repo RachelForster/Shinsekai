@@ -36,6 +36,8 @@ import type {
   LlmConnectionTestResult,
   McpConfig,
   McpToolPreview,
+  ModelAssetDownloadResult,
+  ModelAssetStatus,
   MusicCoverRunResult,
   MusicCoverSearchResult,
   NetworkProxyDetectionResult,
@@ -919,6 +921,20 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       saveSystem: (config: SystemConfig) =>
         requestJson<SystemConfig>(apiBase, "/api/config/system", {
           body: JSON.stringify(config),
+          method: "POST",
+        }),
+    },
+    modelAssets: {
+      async download(input, options) {
+        const task = await requestJson<TaskSnapshot<ModelAssetDownloadResult>>(apiBase, "/api/model-assets/download", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task, options);
+      },
+      status: (input) =>
+        requestJson<ModelAssetStatus>(apiBase, "/api/model-assets/status", {
+          body: JSON.stringify(input),
           method: "POST",
         }),
     },

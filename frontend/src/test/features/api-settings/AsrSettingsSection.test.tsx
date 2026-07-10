@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AsrSettingsSection } from "../../../features/api-settings/AsrSettingsSection";
 import { VOSK_MODEL_PATH } from "../../../features/api-settings/apiSettingsUtils";
@@ -7,11 +7,18 @@ import type { ApiConfig, SystemConfig } from "../../../entities/config/types";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
 const mocks = {
+  downloadModelAsset: vi.fn(),
+  getModelAssetStatus: vi.fn(),
   openExternal: vi.fn(),
 };
 
 vi.mock("../../../entities/files/repository", () => ({
   openExternal: (url: string) => mocks.openExternal(url),
+}));
+
+vi.mock("../../../entities/model-assets/repository", () => ({
+  downloadModelAsset: (input: unknown, options: unknown) => mocks.downloadModelAsset(input, options),
+  getModelAssetStatus: (input: unknown) => mocks.getModelAssetStatus(input),
 }));
 
 function apiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
@@ -69,6 +76,10 @@ function renderSection(overrides: Partial<Parameters<typeof AsrSettingsSection>[
 }
 
 describe("AsrSettingsSection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("renders Vosk model controls and opens official model resources", () => {
     const { props } = renderSection();
 
@@ -108,5 +119,128 @@ describe("AsrSettingsSection", () => {
     fireEvent.click(combos[4]);
     fireEvent.click(screen.getByRole("option", { name: "float16" }));
     expect(props.onSystemPatch).toHaveBeenCalledWith({ asr_whisper_compute_type: "float16" });
+  });
+
+  it("checks a missing Whisper model, confirms download, and reports cached without claiming it is loaded", async () => {
+    const missing = {
+      assetId: "asr.faster-whisper",
+      cached: false,
+      downloadable: true,
+      repoId: "Systran/faster-whisper-small",
+      source: "huggingface",
+      title: "Whisper ASR",
+      variant: "small",
+    } as const;
+    const cached = {
+      ...missing,
+      cached: true,
+      downloaded: true,
+      path: "C:/cache/models--Systran--faster-whisper-small/snapshots/abc",
+    } as const;
+    mocks.getModelAssetStatus.mockResolvedValue(missing);
+    mocks.downloadModelAsset.mockImplementation(async (_input, options) => {
+      options?.onTaskUpdate?.({
+        createdAt: 1,
+        id: "whisper-download",
+        kind: "model-download",
+        logs: [],
+        message: "Downloading Whisper",
+        phase: "download",
+        progress: 0.5,
+        result: null,
+        status: "running",
+        title: "Whisper model",
+        updatedAt: 2,
+      });
+      return cached;
+    });
+
+    renderSection({
+      activeAsrProvider: "faster_whisper",
+      showWhisperFields: true,
+      systemDraft: systemConfig({ asr_provider: "faster_whisper" }),
+      whisperPresetValue: "small",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Download/check model" }));
+
+    expect(
+      await screen.findByText("The model is not cached yet and must be downloaded before offline loading."),
+    ).toBeInTheDocument();
+    expect(mocks.getModelAssetStatus).toHaveBeenCalledWith({
+      assetId: "asr.faster-whisper",
+      variant: "small",
+    });
+    expect(screen.getByText("Systran/faster-whisper-small")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Download model" }));
+
+    await waitFor(() => expect(mocks.downloadModelAsset).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText("The model is cached. It will be loaded into memory only when voice input starts."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/model is loaded/i)).not.toBeInTheDocument();
+  });
+
+  it("lets users close and reopen a long-running model download", async () => {
+    const missing = {
+      assetId: "asr.faster-whisper",
+      cached: false,
+      downloadable: true,
+      repoId: "Systran/faster-whisper-small",
+      source: "huggingface",
+      title: "Whisper ASR",
+      variant: "small",
+    } as const;
+    const cached = {
+      ...missing,
+      cached: true,
+      downloaded: true,
+      path: "C:/cache/whisper-small",
+    } as const;
+    let resolveDownload: ((value: typeof cached) => void) | undefined;
+    mocks.getModelAssetStatus.mockResolvedValue(missing);
+    mocks.downloadModelAsset.mockImplementation(
+      (_input, options) =>
+        new Promise((resolve) => {
+          resolveDownload = resolve;
+          options?.onTaskUpdate?.({
+            createdAt: 1,
+            id: "whisper-download",
+            kind: "model-download",
+            logs: [],
+            message: "10 MB / 20 MB",
+            phase: "download",
+            progress: 0.5,
+            result: null,
+            status: "running",
+            title: "Whisper model",
+            updatedAt: 2,
+          });
+        }),
+    );
+
+    renderSection({
+      activeAsrProvider: "faster_whisper",
+      showWhisperFields: true,
+      systemDraft: systemConfig({ asr_provider: "faster_whisper" }),
+      whisperPresetValue: "small",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Download/check model" }));
+    await screen.findByRole("button", { name: "Download model" });
+    fireEvent.click(screen.getByRole("button", { name: "Download model" }));
+    expect(await screen.findByText("10 MB / 20 MB")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    const reopenButton = screen.getByRole("button", { name: "View model download progress" });
+    expect(reopenButton).toBeEnabled();
+    fireEvent.click(reopenButton);
+    expect(await screen.findByText("10 MB / 20 MB")).toBeInTheDocument();
+
+    resolveDownload?.(cached);
+    expect(
+      await screen.findByText("The model is cached. It will be loaded into memory only when voice input starts."),
+    ).toBeInTheDocument();
   });
 });

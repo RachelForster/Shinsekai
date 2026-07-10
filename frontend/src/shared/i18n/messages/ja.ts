@@ -893,6 +893,28 @@ export const jaMessages: Record<MessageKey, string> = {
   "system.asr.language": "認識言語",
   "system.asr.modelCustom": "カスタム（ローカルパスまたは HF 名）",
   "system.asr.modelCustomPlaceholder": "ローカルフォルダまたはモデル ID",
+  "system.asr.modelCached": "モデルはキャッシュ済みです。音声入力の開始時にメモリへ読み込みます。",
+  "system.asr.modelChecking": "モデルを確認中…",
+  "system.asr.modelDownload": "モデルをダウンロード／確認",
+  "system.asr.modelDownloadConfirm": "モデルをダウンロード",
+  "system.asr.modelDownloadConfirmBody":
+    "{model} の完全なキャッシュがありません。Hugging Face からダウンロードしますか？",
+  "system.asr.modelDownloadDescription":
+    "モデルは共通の Hugging Face キャッシュへ保存されます。ダウンロード完了は読み込み完了を意味しません。",
+  "system.asr.modelDownloadFailed": "Whisper モデルの確認またはダウンロードに失敗しました。",
+  "system.asr.modelDownloadHint": "音声入力の初回起動時に待たないよう、モデルを事前にキャッシュします。",
+  "system.asr.modelDownloadTitle": "Whisper モデルのダウンロード",
+  "system.asr.modelDownloading": "モデルをダウンロード中…",
+  "system.asr.modelLocalDescription":
+    "カスタムのローカルモデルフォルダを使用し、ネットワークダウンロードは行いません。",
+  "system.asr.modelLocalMissing":
+    "ローカルモデルフォルダが存在しないか、必要なファイルが不足しています。カスタムパスを確認してください。",
+  "system.asr.modelLocalReady":
+    "ローカルモデルフォルダは有効で、ダウンロードは不要です。音声入力の開始時に読み込みます。",
+  "system.asr.modelMissing": "モデルは未キャッシュです。オフラインで読み込む前にダウンロードが必要です。",
+  "system.asr.modelName": "モデル",
+  "system.asr.modelRepository": "Hugging Face リポジトリ",
+  "system.asr.modelViewProgress": "モデルのダウンロード進捗を表示",
   "system.asr.provider": "認識エンジン",
   "system.asr.title": "音声入力（ASR）",
   "system.asr.voskHint": "Vosk モデルをダウンロードして解凍し、フォルダパスを Vosk model path に入力してください。",
