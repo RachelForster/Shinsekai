@@ -11,6 +11,7 @@ import {
   sampleTemplates,
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
+import { runtimeStatusFromSnapshot } from "./chatRuntimeStatus";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../theme/chatTheme";
 import type {
@@ -650,6 +651,8 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         clearScheduledChatUpdates();
         chat = {
           ...chat,
+          chatProcessRunning: false,
+          chatRuntimeClosing: false,
           notificationText: "聊天会话已结束。",
           options: [],
           sessionClosedReason: "聊天会话已结束。",
@@ -917,6 +920,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return clone(chat);
       },
       getHistory: () => delay(cloneHistoryEntries(chat.historyEntries)),
+      getRuntimeStatus: () => delay(runtimeStatusFromSnapshot(chat)),
       getSnapshot: () => delay(chat),
       getTheme: () =>
         delay(
@@ -932,11 +936,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
           characterName: character?.name,
+          chatProcessRunning: true,
+          chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
           sprites: character?.sprites[0]
             ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
             : [],
+          sessionClosedReason: "",
           status: "idle",
           statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
         };
@@ -951,11 +958,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...chat,
           backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
           characterName: character?.name ?? chat.characterName,
+          chatProcessRunning: true,
+          chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
           sprites: character?.sprites[0]
             ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
             : chat.sprites,
+          sessionClosedReason: "",
           status: "idle",
           statusMessage: `已恢复上次启动：${historyPath}`,
         };

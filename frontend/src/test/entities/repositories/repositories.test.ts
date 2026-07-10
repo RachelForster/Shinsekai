@@ -368,6 +368,11 @@ describe("entity repositories", () => {
         close: vi.fn().mockResolvedValue(sampleChatSnapshot),
         command: vi.fn().mockResolvedValue(sampleChatSnapshot),
         getHistory: vi.fn().mockResolvedValue(sampleChatSnapshot.historyEntries ?? []),
+        getRuntimeStatus: vi.fn().mockResolvedValue({
+          chatProcessRunning: false,
+          chatRuntimeClosing: false,
+          state: "idle",
+        }),
         getSnapshot: vi.fn().mockResolvedValue(sampleChatSnapshot),
         getTheme: vi.fn().mockResolvedValue(sampleChatTheme),
         launch: vi.fn().mockResolvedValue(sampleChatSnapshot),
@@ -491,6 +496,7 @@ describe("entity repositories", () => {
     const themeArchive = new File(["theme"], "theme.zip", { type: "application/zip" });
 
     await chat.getChatSnapshot();
+    await chat.getChatRuntimeStatus();
     await chat.closeChat();
     await chat.getChatTheme();
     await chat.launchChat(sampleLastLaunch);
@@ -506,6 +512,7 @@ describe("entity repositories", () => {
     await chat.uploadChatTheme(themeArchive);
     await chat.deleteChatTheme("uploaded");
     expect(chat.subscribeChatEvents(listener)).toBe(unsubscribe);
+    expect(platform.chat.getRuntimeStatus).toHaveBeenCalledTimes(1);
     await effects.listEffects();
     await effects.saveEffect(effect, "Old Effect");
     await effects.saveEffectAudioTags({ audioTags: "spark", name: "Spark" });

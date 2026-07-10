@@ -642,6 +642,26 @@ describe("http platform", () => {
     );
   });
 
+  it("reads lightweight chat runtime status through the bridge", async () => {
+    const runtimeStatus = {
+      chatProcessRunning: true,
+      chatRuntimeClosing: false,
+      state: "running",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(runtimeStatus));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+
+    await expect(platform.chat.getRuntimeStatus()).resolves.toEqual(runtimeStatus);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/runtime-status",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
+    );
+  });
+
   it("returns launch snapshots from the bridge", async () => {
     const snapshot = {
       backgroundPath: "/assets/bg.png",

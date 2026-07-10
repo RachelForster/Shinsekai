@@ -48,6 +48,7 @@ from frontend_bridge_core.chat import (
     _chat_process_running,
     _chat_runtime_closing,
     _chat_runtime_mode,
+    _chat_runtime_status,
     _chat_snapshot,
     _chat_theme_payload,
     _handle_chat_command,
@@ -468,6 +469,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path.startswith("/api/tasks/"):
                 task_id = unquote(path.rsplit("/", 1)[-1])
                 self._send_json(_get_task(self.state, task_id))
+            elif path == "/api/chat/runtime-status":
+                self._send_json(_chat_runtime_status(self.state))
             elif path == "/api/chat/snapshot":
                 self._send_json(_chat_snapshot(self.state))
             elif path == "/api/chat/history":

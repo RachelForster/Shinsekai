@@ -16,6 +16,7 @@ import type {
   ChatCommandResult,
   ChatHistoryEntry,
   ChatLaunchPayload,
+  ChatRuntimeProcessState,
   ChatSnapshot,
   ChatUpstreamCommand,
   BatchToolResult,
@@ -535,6 +536,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return result;
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
+      getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
       getSnapshot: () => requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot"),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
       launch: (payload: ChatLaunchPayload) =>

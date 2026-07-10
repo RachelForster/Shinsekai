@@ -17,11 +17,14 @@ const mocks = vi.hoisted(() => ({
   getChatSnapshot: vi.fn(),
   getModelAssetStatus: vi.fn(),
   getTtsBundleRecommendation: vi.fn(),
+  refreshRuntimeStatus: vi.fn(),
   resumeLastChat: vi.fn(),
   saveApiConfig: vi.fn(),
   saveSystemConfig: vi.fn(),
   showChatSurface: vi.fn(),
   testLlmConnection: vi.fn(),
+  updateRuntimeStatusFromSnapshot: vi.fn(),
+  useChatLaunchGuard: vi.fn(),
 }));
 
 vi.mock("../../../entities/config/repository", () => ({
@@ -41,6 +44,10 @@ vi.mock("../../../entities/chat/repository", () => ({
   chatQueryKey: ["chat"],
   getChatSnapshot: () => mocks.getChatSnapshot(),
   resumeLastChat: () => mocks.resumeLastChat(),
+}));
+
+vi.mock("../../../entities/chat/launchGuard", () => ({
+  useChatLaunchGuard: () => mocks.useChatLaunchGuard(),
 }));
 
 vi.mock("../../../entities/model-assets/repository", () => ({
@@ -99,6 +106,11 @@ function validAppConfig() {
 describe("ApiSettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.useChatLaunchGuard.mockReturnValue({
+      refreshRuntimeStatus: mocks.refreshRuntimeStatus,
+      runtimeLaunchDisabled: false,
+      updateRuntimeStatusFromSnapshot: mocks.updateRuntimeStatusFromSnapshot,
+    });
     mocks.getTtsBundleRecommendation.mockResolvedValue({
       gpus: [],
       kind: "genie",
@@ -204,6 +216,10 @@ describe("ApiSettingsPage", () => {
         snapshot: expect.objectContaining({ statusMessage: "已恢复" }),
       }),
     );
+    expect(mocks.updateRuntimeStatusFromSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ statusMessage: "已恢复" }),
+    );
+    expect(mocks.getChatSnapshot).not.toHaveBeenCalled();
   });
 
   it("keeps a selected custom Whisper model visible and cached across later language saves", async () => {
@@ -291,6 +307,7 @@ describe("ApiSettingsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "加载上次聊天并启动" }));
     expect(await screen.findByText("resume boom")).toBeInTheDocument();
+    expect(mocks.refreshRuntimeStatus).toHaveBeenCalledTimes(1);
 
     fireEvent.change(screen.getByLabelText("LLM API Key"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "获取可用模型" }));

@@ -6,13 +6,8 @@ import { useNavigate } from "react-router-dom";
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
-import {
-  chatQueryKey,
-  getChatSnapshot,
-  installMissingRuntimeDependency,
-  launchChat,
-} from "../../entities/chat/repository";
-import { useChatRuntimeClosing } from "../../entities/chat/runtimeState";
+import { useChatLaunchGuard } from "../../entities/chat/launchGuard";
+import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
   getTemplateSession,
@@ -52,11 +47,7 @@ export function ChatLauncherPage() {
     queryKey: [...templatesQueryKey, "session"],
   });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
-  const runtimeSnapshotQuery = useQuery({
-    queryFn: getChatSnapshot,
-    queryKey: [...chatQueryKey, "snapshot", "launch-guard"],
-    refetchInterval: 1200,
-  });
+  const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
   const characters = charactersQuery.data ?? [];
   const backgrounds = backgroundsQuery.data ?? [];
   const effects = Array.isArray(effectsQuery.data) ? effectsQuery.data : [];
@@ -73,7 +64,6 @@ export function ChatLauncherPage() {
   const [useCg, setUseCg] = useState(false);
   const [quickRestartOpen, setQuickRestartOpen] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
-  const localRuntimeClosing = useChatRuntimeClosing();
 
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? templates[0];
   const activeTemplateId = selectedTemplate?.id ?? "";
@@ -196,6 +186,7 @@ export function ChatLauncherPage() {
       return launchChat(payload);
     },
     onError(error) {
+      void refreshRuntimeStatus();
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : "",
@@ -203,7 +194,7 @@ export function ChatLauncherPage() {
       });
     },
     onSuccess(snapshot) {
-      queryClient.setQueryData([...chatQueryKey, "snapshot", "launch-guard"], snapshot);
+      void updateRuntimeStatusFromSnapshot(snapshot);
       if (snapshot.runtimeDependencyError) {
         void handleRuntimeDependencyError(snapshot);
         return;
@@ -217,9 +208,6 @@ export function ChatLauncherPage() {
     },
   });
 
-  const runtimeLaunchDisabled =
-    localRuntimeClosing ||
-    Boolean(runtimeSnapshotQuery.data?.chatRuntimeClosing || runtimeSnapshotQuery.data?.chatProcessRunning);
   const ready = Boolean(activeTemplateId && backgroundName);
   const submitLaunch = (resetHistory: boolean) => {
     if (runtimeLaunchDisabled) {
