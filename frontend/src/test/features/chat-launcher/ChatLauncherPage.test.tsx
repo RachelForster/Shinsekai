@@ -158,6 +158,45 @@ describe("ChatLauncherPage", () => {
     expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
   });
 
+  it("keeps the initialization progress open until the chat is ready", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-slow",
+        name: "Slow Template",
+        path: "D:/templates/slow.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    let resolveLaunch!: (snapshot: object) => void;
+    mocks.launchChat.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveLaunch = resolve;
+      }),
+    );
+
+    renderPage();
+
+    await expectTemplateSelectToShow("Slow Template");
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    expect(await screen.findByRole("dialog", { name: "Preparing chat" })).toBeInTheDocument();
+    expect(document.querySelector('img[src="/chat-init-catgirl.gif"]')).toBeInTheDocument();
+    expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
+    resolveLaunch({
+      dialogText: "Ready",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    });
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Preparing chat" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/chat"));
+  });
+
   it("refreshes runtime status after a launch failure", async () => {
     mocks.listTemplates.mockResolvedValue([
       {
@@ -177,7 +216,7 @@ describe("ChatLauncherPage", () => {
     await expectTemplateSelectToShow("Failure Template");
     fireEvent.click(screen.getByRole("button", { name: "Launch" }));
 
-    expect(await screen.findByText("runtime closing")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Preparing chat" })).toHaveTextContent("runtime closing");
     expect(mocks.refreshRuntimeStatus).toHaveBeenCalledTimes(1);
   });
 

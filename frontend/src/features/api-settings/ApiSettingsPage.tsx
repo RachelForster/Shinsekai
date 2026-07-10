@@ -21,11 +21,13 @@ import {
   ttsBundleRecommendationQueryKey,
 } from "../../entities/config/repository";
 import type { ApiConfig, AppConfig, SystemConfig } from "../../entities/config/types";
+import { ChatInitializationDialog } from "../../entities/chat/ChatInitializationDialog";
+import { useChatLaunchGuard } from "../../entities/chat/launchGuard";
+import { installMissingRuntimeDependency, resumeLastChat } from "../../entities/chat/repository";
+import { useChatInitialization } from "../../entities/chat/useChatInitialization";
 import { useAppState } from "../../shared/app-state/AppState";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import { useChatLaunchGuard } from "../../entities/chat/launchGuard";
-import { resumeLastChat } from "../../entities/chat/repository";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
 import {
   AsyncButton,
@@ -113,6 +115,14 @@ export function ApiSettingsPage() {
     staleTime: 300_000,
   });
   const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const {
+    closeInitialization,
+    initializationError,
+    initializationOpen,
+    initializationPending,
+    initializationTask,
+    runChatInitialization,
+  } = useChatInitialization();
   const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<ApiConfig | null>(null);
   const [systemDraft, setSystemDraft] = useState<SystemConfig | null>(null);
@@ -205,7 +215,7 @@ export function ApiSettingsPage() {
       if (runtimeLaunchDisabled) {
         throw new Error(t("launch.runtimeBusy"));
       }
-      return resumeLastChat();
+      return runChatInitialization((options) => resumeLastChat(options));
     },
     onError(error) {
       void refreshRuntimeStatus();
@@ -217,6 +227,35 @@ export function ApiSettingsPage() {
     },
     onSuccess(snapshot) {
       void updateRuntimeStatusFromSnapshot(snapshot);
+      if (snapshot.runtimeDependencyError) {
+        const dependencyError = snapshot.runtimeDependencyError;
+        const shouldInstall = window.confirm(
+          t("runtimeDeps.installConfirm", {
+            module: dependencyError.moduleName,
+            package: dependencyError.packageName,
+          }),
+        );
+        if (!shouldInstall) {
+          showToast({ kind: "error", message: snapshot.dialogText, title: t("api.resume.title") });
+          return;
+        }
+        void installMissingRuntimeDependency({ moduleName: dependencyError.moduleName })
+          .then((result) => {
+            showToast({
+              kind: "success",
+              message: result.message || t("runtimeDeps.installSucceeded"),
+              title: t("runtimeDeps.installTitle"),
+            });
+          })
+          .catch((error: unknown) => {
+            showToast({
+              kind: "error",
+              message: error instanceof Error ? error.message : t("runtimeDeps.installFailed"),
+              title: t("runtimeDeps.installFailed"),
+            });
+          });
+        return;
+      }
       showToast({
         kind: "success",
         message: snapshot.statusMessage || snapshot.dialogText,
@@ -659,7 +698,7 @@ export function ApiSettingsPage() {
             {t("common.save")}
           </AsyncButton>
           <AsyncButton
-            disabled={runtimeLaunchDisabled}
+            disabled={runtimeLaunchDisabled || initializationPending}
             icon={<RotateCcw aria-hidden className="button__icon" />}
             loading={resumeMutation.isPending}
             onClick={() => resumeMutation.mutate()}
@@ -804,6 +843,13 @@ export function ApiSettingsPage() {
           {llmConnectionDialog?.message ?? ""}
         </div>
       </Dialog>
+      <ChatInitializationDialog
+        error={initializationError}
+        onClose={closeInitialization}
+        open={initializationOpen}
+        pending={initializationPending}
+        task={initializationTask}
+      />
     </div>
   );
 }

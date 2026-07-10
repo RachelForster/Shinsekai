@@ -499,9 +499,9 @@ describe("entity repositories", () => {
     await chat.getChatRuntimeStatus();
     await chat.closeChat();
     await chat.getChatTheme();
-    await chat.launchChat(sampleLastLaunch);
+    await chat.launchChat(sampleLastLaunch, taskOptions);
     await chat.installMissingRuntimeDependency({ moduleName: "mem0" }, taskOptions);
-    await chat.resumeLastChat();
+    await chat.resumeLastChat(taskOptions);
     await chat.sendChatCommand({ payload: "hi", type: "send-message" });
     await chat.getChatHistory();
     expect(chat.subscribeChat(listener)).toBe(unsubscribe);
@@ -582,7 +582,8 @@ describe("entity repositories", () => {
     await musicCover.runMusicCover({ pickIndex: 0, query: "song", skipRvc: false, source: "youtube" }, taskOptions);
 
     expect(platform.chat.close).toHaveBeenCalledTimes(1);
-    expect(platform.chat.launch).toHaveBeenCalledWith(sampleLastLaunch);
+    expect(platform.chat.launch).toHaveBeenCalledWith(sampleLastLaunch, taskOptions);
+    expect(platform.chat.resumeLast).toHaveBeenCalledWith(taskOptions);
     expect(platform.runtime.installMissingDependency).toHaveBeenCalledWith({ moduleName: "mem0" }, taskOptions);
     expect(platform.chat.uploadTheme).toHaveBeenCalledWith(themeArchive);
     expect(platform.effects.uploadAudio).toHaveBeenCalledWith({

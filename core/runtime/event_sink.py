@@ -75,6 +75,63 @@ def _clear_transient_notification_state(next_snapshot: Dict[str, Any]) -> None:
         next_snapshot["sessionClosedReason"] = ""
 
 
+_CHAT_INIT_TASK_TEXT_FIELDS = (
+    "error",
+    "errorCode",
+    "errorDetail",
+    "errorUserMessage",
+    "id",
+    "kind",
+    "message",
+    "notice",
+    "noticeKind",
+    "phase",
+    "title",
+)
+
+
+def _fold_chat_init_task(
+    current: Any,
+    raw_task: Any,
+    *,
+    event_type: str,
+) -> Dict[str, Any]:
+    task = dict(current) if isinstance(current, dict) else {}
+    payload = raw_task if isinstance(raw_task, dict) else {}
+
+    for field in _CHAT_INIT_TASK_TEXT_FIELDS:
+        if field in payload:
+            task[field] = str(payload.get(field) or "")[:4000]
+    for field in ("createdAt", "httpStatus", "updatedAt"):
+        value = payload.get(field)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            task[field] = value
+
+    if "progress" in payload:
+        progress = payload.get("progress")
+        if progress is None:
+            task["progress"] = None
+        elif isinstance(progress, (int, float)) and not isinstance(progress, bool):
+            task["progress"] = max(0.0, min(1.0, float(progress)))
+
+    raw_logs = payload.get("logs")
+    if isinstance(raw_logs, list):
+        task["logs"] = [str(line)[:4000] for line in raw_logs[-120:] if str(line).strip()]
+    if "cancelRequested" in payload:
+        task["cancelRequested"] = bool(payload.get("cancelRequested"))
+
+    status_by_event = {
+        "chat.init.progress": "running",
+        "chat.init.completed": "succeeded",
+        "chat.init.failed": "failed",
+        "chat.init.cancelled": "cancelled",
+    }
+    task["status"] = status_by_event[event_type]
+    if event_type == "chat.init.completed":
+        task["progress"] = 1.0
+    return task
+
+
 def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) -> Dict[str, Any]:
     """Fold one chat stage event into a ChatSnapshot-like dict."""
     event_type = str(event.get("type") or "").strip()
@@ -104,6 +161,19 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["eventSeq"] = max(int(next_snapshot.get("eventSeq") or 0), int(event.get("seq") or 0))
     except (TypeError, ValueError):
         pass
+
+    if event_type in {
+        "chat.init.progress",
+        "chat.init.completed",
+        "chat.init.failed",
+        "chat.init.cancelled",
+    }:
+        next_snapshot["initTask"] = _fold_chat_init_task(
+            next_snapshot.get("initTask"),
+            event.get("task"),
+            event_type=event_type,
+        )
+        return next_snapshot
 
     if event_type == "dialog.end":
         _clear_transient_notification_state(next_snapshot)

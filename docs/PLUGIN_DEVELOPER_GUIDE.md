@@ -61,6 +61,7 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_before_compact_hook`  | Lifecycle hook before LLM history compaction summary       |
 | `register_message_added_hook`   | Lifecycle hook after a message is appended to history      |
 | `register_before_chat_hook`     | Lifecycle hook before an adapter chat request is sent      |
+| `register_init_chat_hook`       | One-time, progress-aware work while a chat runtime starts  |
 | `register_compact_hook`         | *Legacy* pre-compaction hook receiving the raw message list; prefer `register_before_compact_hook` |
 
 **Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`,
@@ -79,6 +80,7 @@ provider name again overwrites the earlier one, including built-ins.
 Lifecycle hooks are registered through `PluginCapabilityRegistry` during `initialize`.
 
 ```python
+from sdk.chat_init import InitChatContext
 from sdk.hooks import BeforeChatContext, BeforeCompactContext, MessageAddedContext
 from sdk.register import PluginCapabilityRegistry
 
@@ -93,15 +95,34 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
     def before_chat(context: BeforeChatContext) -> None:
         context.messages.append({"role": "system", "content": "Temporary plugin context."})
 
+    def init_chat(context: InitChatContext) -> None:
+        context.report(0.0, "Preparing the plugin model.", phase="plugin-model")
+        # Perform blocking startup work here instead of in PluginBase.initialize().
+        load_plugin_model(lambda fraction: context.report(fraction, "Loading plugin model."))
+        context.report(1.0, "Plugin model is ready.", phase="plugin-model")
+
     register.register_before_compact_hook(before_compact)
     register.register_message_added_hook(message_added)
     register.register_before_chat_hook(before_chat)
+    register.register_init_chat_hook(
+        init_chat,
+        label="plugin-model",
+        weight=2.0,
+        critical=False,
+    )
 ```
 
 `before_compact` and `message_added` are observation hooks. They receive snapshots of
 the host state; mutating the context does not modify the live conversation history.
 `before_chat` may modify the request-local `messages`, `tools`, and `generation_kwargs`;
 those changes are sent to the adapter but are not written back to `LLMManager.messages`.
+
+`init_chat` runs once per chat runtime process, after plugin registration and before the
+chat becomes interactive. Move model loading, service startup, cache checks, and other
+chat-specific blocking work here rather than doing them in `PluginBase.initialize()`.
+Progress passed to `context.report()` is local to the hook (`0.0..1.0`); the host maps it
+into the hook's weighted share of total startup progress. Call
+`context.raise_if_cancelled()` inside long loops or download callbacks.
 
 Context fields:
 
@@ -110,9 +131,13 @@ Context fields:
 | `BeforeCompactContext` | `messages`, `older_messages`, `recent_messages` |
 | `MessageAddedContext` | `role: str`, `message: dict`, `messages: list` |
 | `BeforeChatContext` | `messages: list`, `tools: list \| None`, `generation_kwargs: dict`, `stream: bool` |
+| `InitChatContext` | `session_id`, `character_names`, `tts_provider`, `voice_language`, `memory_enabled`, `runtime_mode`, `headless`, `host`, `metadata`, `cancellation` plus `report()`, `phase_started()`, `phase_completed()`, `raise_if_cancelled()` |
 
 Hook exceptions are caught and logged (warning); they never interrupt other hooks or the
-host.
+host. `init_chat` is the exception: it has explicit startup semantics. Hooks are
+non-critical by default, so a failure is logged and later startup hooks continue. Pass
+`critical=True` only when chat cannot function without the hook; that failure aborts
+startup. Cancellation always stops the remaining initialization hooks.
 
 ---
 
@@ -1189,6 +1214,7 @@ downloaded, ignored, or user-local plugin directory.
 | Messages / handler ABCs      | `sdk/messages.py` / `sdk/handlers.py`                        |
 | Tool registry                | `sdk/tool_registry.py`                                       |
 | Hooks                        | `sdk/hooks.py`                                               |
+| Chat initialization service  | `sdk/chat_init.py`                                           |
 | DAG                          | `sdk/graph.py`                                               |
 | Logging facade               | `sdk/logging/`                                               |
 | Exceptions                   | `sdk/exception/`                                             |

@@ -399,6 +399,37 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertIsNotNone(snapshot)
         self.assertEqual(snapshot["sessionId"], session["sessionId"])
 
+    def test_chat_stream_folds_chat_init_progress_and_terminal_events(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        session = service.create_session()
+
+        asyncio.run(
+            service._publish_event(
+                session["sessionId"],
+                {
+                    "type": "chat.init.progress",
+                    "task": {"phase": "memory", "progress": 0.6, "message": "Loading memory"},
+                },
+            )
+        )
+        running = service.get_snapshot(session["sessionId"])["initTask"]
+        self.assertEqual(running["status"], "running")
+        self.assertEqual(running["phase"], "memory")
+        self.assertEqual(running["progress"], 0.6)
+
+        asyncio.run(
+            service._publish_event(
+                session["sessionId"],
+                {
+                    "type": "chat.init.completed",
+                    "task": {"phase": "completed", "message": "Ready"},
+                },
+            )
+        )
+        completed = service.get_snapshot(session["sessionId"])["initTask"]
+        self.assertEqual(completed["status"], "succeeded")
+        self.assertEqual(completed["progress"], 1.0)
+
     def test_chat_stream_close_session_broadcasts_closed_event_and_updates_snapshot(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
         session = service.create_session()

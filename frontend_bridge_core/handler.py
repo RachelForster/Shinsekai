@@ -64,6 +64,7 @@ from frontend_bridge_core.chat_themes import (
     list_chat_themes,
     set_active_chat_theme,
 )
+from frontend_bridge_core.chat_init import start_chat_init
 from frontend_bridge_core.characters import (
     _as_character_config,
     _delete_all_character_sprites,
@@ -994,6 +995,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(self._launch_chat(body))
             elif method == "POST" and path == "/api/chat/resume-last":
                 self._send_json(self._resume_last_chat())
+            elif method == "POST" and path == "/api/chat/init":
+                self._send_json(self._start_chat_init(body), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/chat/close":
                 self._send_json(_close_chat(self.state))
             elif method == "POST" and path == "/api/chat/command":
@@ -1049,7 +1052,33 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.config_manager.reload()
         return [_jsonify(item) for item in imported]
 
-    def _launch_chat(self, body: dict[str, Any]) -> dict[str, Any]:
+    def _start_chat_init(self, body: dict[str, Any]) -> dict[str, Any]:
+        mode = str(body.get("mode") or "").strip().lower()
+        if mode == "launch":
+            payload = body.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError("payload must be an object when mode is 'launch'")
+
+            def launch_request(stream_info: dict[str, str]) -> dict[str, Any]:
+                return self._launch_chat(payload, init_stream_info=stream_info)
+
+            launch = launch_request
+        elif mode == "resume-last":
+
+            def resume_request(stream_info: dict[str, str]) -> dict[str, Any]:
+                return self._resume_last_chat(init_stream_info=stream_info)
+
+            launch = resume_request
+        else:
+            raise ValueError("mode must be 'launch' or 'resume-last'")
+        return start_chat_init(self.state, mode=mode, launch=launch)
+
+    def _launch_chat(
+        self,
+        body: dict[str, Any],
+        *,
+        init_stream_info: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         if _chat_runtime_closing(self.state):
             raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
         template_id = str(body.get("templateId") or "")
@@ -1113,7 +1142,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_snapshot(self.state, "idle", "")
         use_react_runtime = _chat_runtime_mode(self.state) == "react"
-        stream_info = (
+        stream_info = init_stream_info or (
             self.state.chat_stream.create_session(initial_snapshot)
             if use_react_runtime and self.state.chat_stream is not None
             else {}
@@ -1138,7 +1167,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             system_template=system_template,
             use_cg=bool(body.get("useCg")),
             user_scenario=user_scenario,
-            stream_endpoint=str(stream_info.get("producerEndpoint") or ""),
+            stream_endpoint=str(stream_info.get("producerEndpoint") or "") if use_react_runtime else "",
+            init_stream_endpoint=str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else "",
             workflow_path=str(body.get("workflowPath") or ""),
         )
         dependency_error = runtime_dependency_error_from_text(message)
@@ -1161,9 +1191,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.chat_session = {
             **self.state.chat_session,
             **session_base,
-            "sessionId": str(stream_info.get("sessionId") or ""),
+            "sessionId": str(stream_info.get("sessionId") or "") if use_react_runtime else "",
         }
-        if stream_info.get("sessionId") and self.state.chat_stream is not None:
+        if use_react_runtime and stream_info.get("sessionId") and self.state.chat_stream is not None:
             self.state.chat_stream.update_session_snapshot(
                 str(stream_info["sessionId"]),
                 {
@@ -1178,9 +1208,21 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
-        return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
+        return _chat_snapshot(
+            self.state,
+            "idle",
+            "",
+            extra={
+                "statusMessage": message,
+                **({"_chatInitStreamAttached": True} if init_stream_info else {}),
+            },
+        )
 
-    def _resume_last_chat(self) -> dict[str, Any]:
+    def _resume_last_chat(
+        self,
+        *,
+        init_stream_info: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         if _chat_runtime_closing(self.state):
             raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
         session = _load_template_session_payload(self.state) or {}
@@ -1234,7 +1276,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_snapshot(self.state, "idle", "")
         use_react_runtime = _chat_runtime_mode(self.state) == "react"
-        stream_info = (
+        stream_info = init_stream_info or (
             self.state.chat_stream.create_session(initial_snapshot)
             if use_react_runtime and self.state.chat_stream is not None
             else {}
@@ -1249,7 +1291,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             system_template=system_template,
             use_cg=bool(session.get("useCg", False)),
             user_scenario=scenario,
-            stream_endpoint=str(stream_info.get("producerEndpoint") or ""),
+            stream_endpoint=str(stream_info.get("producerEndpoint") or "") if use_react_runtime else "",
+            init_stream_endpoint=str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else "",
             workflow_path=str(session.get("workflowPath") or ""),
         )
         dependency_error = runtime_dependency_error_from_text(message)
@@ -1272,9 +1315,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.chat_session = {
             **self.state.chat_session,
             **session_base,
-            "sessionId": str(stream_info.get("sessionId") or ""),
+            "sessionId": str(stream_info.get("sessionId") or "") if use_react_runtime else "",
         }
-        if stream_info.get("sessionId") and self.state.chat_stream is not None:
+        if use_react_runtime and stream_info.get("sessionId") and self.state.chat_stream is not None:
             self.state.chat_stream.update_session_snapshot(
                 str(stream_info["sessionId"]),
                 {
@@ -1289,7 +1332,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
-        return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
+        return _chat_snapshot(
+            self.state,
+            "idle",
+            "",
+            extra={
+                "statusMessage": message,
+                **({"_chatInitStreamAttached": True} if init_stream_info else {}),
+            },
+        )
 
     def _resolve_project_path(self, raw_path: str) -> Path:
         raw = str(raw_path or "").strip()

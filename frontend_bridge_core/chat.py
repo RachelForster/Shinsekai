@@ -364,6 +364,7 @@ def _launch_chat(
     use_cg: bool,
     user_scenario: str,
     stream_endpoint: str = "",
+    init_stream_endpoint: str = "",
     workflow_path: str = "",
 ) -> str:
     global _main_chat_process
@@ -414,6 +415,8 @@ def _launch_chat(
             args.append(f"--characters={json.dumps(character_names, ensure_ascii=False)}")
         if stream_endpoint:
             args.append(f"--stream-endpoint={stream_endpoint}")
+        if init_stream_endpoint:
+            args.append(f"--init-stream-endpoint={init_stream_endpoint}")
         if workflow_path:
             args.append(f"--workflow={workflow_path}")
         env = os.environ.copy()

@@ -282,7 +282,7 @@ describe("TemplateEditorPage", () => {
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
 
-    expect(await screen.findByText("runtime closing")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Preparing chat" })).toHaveTextContent("runtime closing");
     expect(mockRefreshRuntimeStatus).toHaveBeenCalledTimes(1);
   });
 

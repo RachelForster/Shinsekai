@@ -67,6 +67,15 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         ...event.snapshot,
         eventSeq: Math.max(snapshotEventSeq(event.snapshot), event.seq),
       });
+    case "chat.init.progress":
+    case "chat.init.completed":
+    case "chat.init.failed":
+    case "chat.init.cancelled":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        initTask: { ...event.task },
+      });
     case "dialog.end":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),

@@ -3,7 +3,42 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from tts.tts_adapter import GPTSoVitsAdapter, KaggleGPTSoVitsAdapter
+from tts.tts_adapter import GPTSoVitsAdapter, IndexTTSAdapter, KaggleGPTSoVitsAdapter
+
+
+@pytest.mark.parametrize(
+    ("adapter_class", "url_attr"),
+    [(GPTSoVitsAdapter, "tts_server_url"), (IndexTTSAdapter, "index_server_url")],
+)
+def test_server_adapter_waits_until_health_probe_succeeds(monkeypatch, adapter_class, url_attr):
+    adapter = object.__new__(adapter_class)
+    setattr(adapter, url_attr, "http://127.0.0.1:9880/")
+    adapter._server_process = None
+    checks = iter([False, False, True])
+    monkeypatch.setattr(adapter, "_server_is_reachable", lambda: next(checks))
+    monkeypatch.setattr("tts.tts_adapter.time.sleep", lambda _seconds: None)
+
+    adapter.wait_until_ready(timeout_seconds=1, poll_interval_seconds=0.01)
+
+
+@pytest.mark.parametrize("adapter_class", [GPTSoVitsAdapter, IndexTTSAdapter])
+def test_server_adapter_reports_child_exit_before_ready(monkeypatch, adapter_class):
+    adapter = object.__new__(adapter_class)
+    adapter._server_process = SimpleNamespace(poll=lambda: 17)
+    monkeypatch.setattr(adapter, "_server_is_reachable", lambda: False)
+
+    with pytest.raises(RuntimeError, match=r"exited before becoming ready \(code 17\)"):
+        adapter.wait_until_ready(timeout_seconds=1, poll_interval_seconds=0.01)
+
+
+@pytest.mark.parametrize("adapter_class", [GPTSoVitsAdapter, IndexTTSAdapter])
+def test_server_adapter_reports_readiness_timeout(monkeypatch, adapter_class):
+    adapter = object.__new__(adapter_class)
+    adapter._server_process = None
+    monkeypatch.setattr(adapter, "_server_is_reachable", lambda: False)
+
+    with pytest.raises(TimeoutError, match="did not become ready within 0 seconds"):
+        adapter.wait_until_ready(timeout_seconds=0, poll_interval_seconds=0.01)
 
 
 def test_remote_gpt_sovits_url_does_not_auto_start_local_process(monkeypatch):

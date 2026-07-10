@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import urllib.error
 
 from ai.memory import operations
@@ -218,6 +219,29 @@ def test_memory_service_loading_starts_ready_monitor(monkeypatch):
 
     assert operations.memory_search("tea", character_name="Alice") == {"status": "loading", "message": "loading"}
     assert started == [True]
+
+
+def test_memory_service_status_controls_loading_without_background_monitor(monkeypatch):
+    captured = {}
+    started = []
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return _FakeHttpResponse({"status": "loading", "message": "loading"})
+
+    monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_URL", "http://127.0.0.1:8787/api/memory")
+    monkeypatch.setattr(operations.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(operations, "_start_memory_service_ready_monitor", lambda: started.append(True))
+
+    result = operations.memory_service_status(start_loading=False, monitor_ready=False)
+
+    assert result == {"status": "loading", "message": "loading"}
+    assert captured == {
+        "url": "http://127.0.0.1:8787/api/memory/status",
+        "body": {"startLoading": False},
+    }
+    assert started == []
 
 
 def test_memory_service_owner_skips_proxy(monkeypatch):

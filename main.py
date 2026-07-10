@@ -40,7 +40,9 @@ def _early_cli_option(name: str) -> str:
 
 
 _EARLY_STREAM_ENDPOINT = _early_cli_option("--stream-endpoint")
+_EARLY_INIT_STREAM_ENDPOINT = _early_cli_option("--init-stream-endpoint")
 _EARLY_STREAM_SINK = None
+_EARLY_INIT_STREAM_SINK = None
 if _EARLY_STREAM_ENDPOINT:
     try:
         from core.runtime.event_sink import WSClientSink
@@ -49,6 +51,19 @@ if _EARLY_STREAM_ENDPOINT:
         _EARLY_STREAM_SINK.emit({"type": "status.change", "status": "idle"})
     except Exception:
         _EARLY_STREAM_SINK = None
+if _EARLY_INIT_STREAM_ENDPOINT:
+    try:
+        from core.runtime.event_sink import WSClientSink
+
+        _EARLY_INIT_STREAM_SINK = WSClientSink(_EARLY_INIT_STREAM_ENDPOINT)
+    except Exception:
+        _EARLY_INIT_STREAM_SINK = None
+
+from sdk.chat_init import ChatInitService, InitChatCancelled, InitChatContext
+
+_CHAT_INIT_SINK = _EARLY_INIT_STREAM_SINK or _EARLY_STREAM_SINK
+_CHAT_INIT_SERVICE = ChatInitService(_CHAT_INIT_SINK.emit if _CHAT_INIT_SINK is not None else None)
+_CHAT_INIT_SERVICE.start()
 
 if getattr(sys, "frozen", False):
     from core.bootstrap.frozen_log import init_frozen_stdio
@@ -132,6 +147,26 @@ except ImportError as e:
 voice_lang = "ja"
 cc = OpenCC("t2s")
 
+_CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
+    "config.load": (0.02, 0.06, "Loading configuration."),
+    "i18n.import": (0.06, 0.08, "Loading language support."),
+    "i18n.init": (0.08, 0.1, "Preparing translations."),
+    "plugins.import": (0.1, 0.13, "Loading plugin runtime."),
+    "plugins.load": (0.13, 0.22, "Initializing plugins."),
+    "args.parse": (0.22, 0.24, "Reading chat settings."),
+    "stream.sink.init": (0.24, 0.26, "Connecting initialization progress."),
+    "t2i.init": (0.26, 0.32, "Preparing image generation."),
+    "tts.init": (0.32, 0.46, "Starting the voice service."),
+    "template.load": (0.46, 0.54, "Loading the chat template and history."),
+    "llm.init": (0.54, 0.68, "Preparing the language model."),
+    "chat.init_hooks": (0.68, 0.82, "Running chat initialization hooks."),
+    "pygame.mixer.init": (0.82, 0.84, "Preparing audio playback."),
+    "workflow.build": (0.84, 0.9, "Building the chat workflow."),
+    "stream.runtime.setup": (0.9, 0.93, "Connecting the chat interface."),
+    "workflow.start": (0.93, 0.96, "Starting the chat workflow."),
+    "stream.initial_ui": (0.96, 0.99, "Restoring the chat scene."),
+}
+
 
 def _shutdown_plugins() -> None:
     try:
@@ -171,13 +206,22 @@ def _save_chat_history_and_delete_tmp(history_arg: str, messages: list) -> bool:
 @contextmanager
 def _startup_phase(step: str):
     started = time.perf_counter()
+    phase_start, phase_end, phase_message = _CHAT_INIT_PHASES.get(
+        step,
+        (_CHAT_INIT_SERVICE.snapshot().get("progress") or 0.0, None, f"Preparing {step}."),
+    )
+    _CHAT_INIT_SERVICE.phase_started(step, phase_message, progress=float(phase_start))
     logger.info(
         "Chat startup step started",
         extra={"event": "chat.startup.step.started", "step": step},
     )
     try:
         yield
+    except InitChatCancelled:
+        _CHAT_INIT_SERVICE.cancelled()
+        raise
     except Exception as exc:
+        _CHAT_INIT_SERVICE.failed(exc, message=f"Failed while {phase_message.rstrip('.').lower()}.")
         logger.exception(
             "Chat startup step failed",
             extra={
@@ -189,6 +233,11 @@ def _startup_phase(step: str):
         )
         raise
     else:
+        _CHAT_INIT_SERVICE.phase_completed(
+            step,
+            phase_message,
+            progress=float(phase_end) if phase_end is not None else None,
+        )
         logger.info(
             "Chat startup step completed",
             extra={
@@ -197,6 +246,24 @@ def _startup_phase(step: str):
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             },
         )
+
+
+def _finish_chat_initialization() -> None:
+    _CHAT_INIT_SERVICE.completed()
+    if _EARLY_INIT_STREAM_SINK is not None:
+        try:
+            _EARLY_INIT_STREAM_SINK.close()
+        except Exception:
+            logger.debug("failed to close initialization progress sink", exc_info=True)
+
+
+def _fail_chat_initialization(exc: BaseException) -> None:
+    _CHAT_INIT_SERVICE.failed(exc)
+    if _EARLY_INIT_STREAM_SINK is not None:
+        try:
+            _EARLY_INIT_STREAM_SINK.close()
+        except Exception:
+            logger.debug("failed to close initialization progress sink", exc_info=True)
 
 
 def _install_interrupt_handlers():
@@ -312,29 +379,35 @@ def main():
     # T2I manager
     t2i_manager = None
     if args.t2i:
-        raw = (args.t2i or "").strip()
-        adapter_pick = (
-            (config.config.api_config.t2i_provider or "comfyui").strip()
-            if raw.lower() == "comfyui"
-            else raw
-        )
-        try:
-            t2i_adapter = T2IAdapterFactory.create_adapter(
-                adapter_name=adapter_pick,
-                **config.merged_t2i_factory_kwargs(
-                    adapter_pick,
-                    {
-                        "work_path": config.config.api_config.t2i_work_path,
-                        "api_url": config.config.api_config.t2i_api_url,
-                        "workflow_path": config.config.api_config.t2i_default_workflow_path,
-                        "prompt_node_id": config.config.api_config.t2i_prompt_node_id,
-                        "output_node_id": config.config.api_config.t2i_output_node_id,
-                    },
-                ),
+        with _startup_phase("t2i.init"):
+            raw = (args.t2i or "").strip()
+            adapter_pick = (
+                (config.config.api_config.t2i_provider or "comfyui").strip()
+                if raw.lower() == "comfyui"
+                else raw
             )
-            t2i_manager = T2IManager(t2i_adapter)
-        except Exception:
-            logger.exception("T2I initialization failed", extra={"event": "t2i.init.failed"})
+            try:
+                t2i_adapter = T2IAdapterFactory.create_adapter(
+                    adapter_name=adapter_pick,
+                    **config.merged_t2i_factory_kwargs(
+                        adapter_pick,
+                        {
+                            "work_path": config.config.api_config.t2i_work_path,
+                            "api_url": config.config.api_config.t2i_api_url,
+                            "workflow_path": config.config.api_config.t2i_default_workflow_path,
+                            "prompt_node_id": config.config.api_config.t2i_prompt_node_id,
+                            "output_node_id": config.config.api_config.t2i_output_node_id,
+                        },
+                    ),
+                )
+                t2i_manager = T2IManager(t2i_adapter)
+            except Exception:
+                _CHAT_INIT_SERVICE.report(
+                    phase="t2i.init",
+                    message="Image generation is unavailable; continuing without it.",
+                    log="Image generation initialization failed and was skipped.",
+                )
+                logger.exception("T2I initialization failed", extra={"event": "t2i.init.failed"})
 
     # TTS
     gsv_url, gsv_api_path, config_tts_provider = config.get_gpt_sovits_config()
@@ -345,6 +418,7 @@ def main():
             try:
                 adapter = TTSAdapterFactory.create_adapter(
                     adapter_name=adapter_name,
+                    wait_until_ready=True,
                     **config.merged_tts_factory_kwargs(
                         adapter_name,
                         {
@@ -358,6 +432,11 @@ def main():
                 _voice_lang = str(config.config.system_config.voice_language or "ja").strip() or "ja"
                 tts_manager.set_language(_voice_lang)
             except Exception:
+                _CHAT_INIT_SERVICE.report(
+                    phase="tts.init",
+                    message="Voice service is unavailable; continuing with text chat.",
+                    log="Voice service initialization failed and was skipped.",
+                )
                 logger.exception("TTS initialization failed", extra={"event": "tts.init.failed"})
 
     print(tr_i18n("main.print_load_template", a=args))
@@ -386,6 +465,7 @@ def main():
         },
     )
     if not llm_provider:
+        _CHAT_INIT_SERVICE.failed("No language model provider is configured.")
         print(tr_i18n("main.err_select_llm"))
         return
     with _startup_phase("llm.init"):
@@ -429,6 +509,21 @@ def main():
                 llm_adapter=llm_adapter,
                 character_names=_memory_character_names(args, config),
             )
+
+    with _startup_phase("chat.init_hooks"):
+        if plugin_manager is not None:
+            init_context = InitChatContext(
+                service=_CHAT_INIT_SERVICE,
+                character_names=tuple(_memory_character_names(args, config)),
+                tts_provider=str(adapter_name or ""),
+                voice_language=str(config.config.system_config.voice_language or "ja"),
+                memory_enabled=str(os.environ.get("SHINSEKAI_MEMORY_AUTO_ENABLED") or "1").strip().lower()
+                not in {"0", "false", "no", "off"},
+                runtime_mode="react" if args.stream_endpoint else "headless" if args.headless else "native",
+                headless=bool(args.headless),
+                metadata={"workflowPath": str(args.workflow or "")},
+            ).scaled(0.68, 0.82)
+            plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)
 
     if messages:
         llm_manager.set_messages(messages)
@@ -944,6 +1039,8 @@ def main():
                     ui_updates=ui_updates,
                 )
 
+        _finish_chat_initialization()
+
         if args.room_id:
             print(tr_i18n("main.print_bili_start", id=args.room_id))
             if user_input_queue is not None:
@@ -1006,6 +1103,7 @@ def main():
             )
         )
         workflow.start()
+        _finish_chat_initialization()
         print(f"Workflow started: {args.workflow or 'default'}")
         try:
             restore_interrupt_handlers = _install_interrupt_handlers()
@@ -1177,6 +1275,7 @@ def main():
     )
 
     window.show()
+    _finish_chat_initialization()
 
     app.exec()
 
@@ -1184,7 +1283,9 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (KeyboardInterrupt, SystemExit):
+    except (KeyboardInterrupt, SystemExit, InitChatCancelled):
+        _CHAT_INIT_SERVICE.cancelled()
         raise
     except BaseException as exc:
+        _fail_chat_initialization(exc)
         handle_main_exception(exc, app_name="Shinsekai Chat", logger=logger)

@@ -4,6 +4,91 @@ from core.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_sn
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_chat_init_progress_is_folded_into_snapshot_and_sanitized(self):
+        snapshot = make_empty_chat_snapshot()
+
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 1,
+                "ts": 1,
+                "type": "chat.init.progress",
+                "task": {
+                    "message": "Loading memory",
+                    "phase": "memory",
+                    "progress": 1.5,
+                    "status": "succeeded",
+                    "logs": ["first", "second"],
+                    "result": {"must": "not be folded"},
+                },
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(
+            next_snapshot["initTask"],
+            {
+                "message": "Loading memory",
+                "phase": "memory",
+                "progress": 1.0,
+                "status": "running",
+                "logs": ["first", "second"],
+            },
+        )
+
+    def test_chat_init_terminal_events_override_status_and_preserve_progress_fields(self):
+        progress_snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "seq": 1,
+                "ts": 1,
+                "type": "chat.init.progress",
+                "task": {"message": "Starting TTS", "phase": "tts", "progress": 0.4},
+                "v": 1,
+            },
+        )
+
+        completed_snapshot = fold_event_into_snapshot(
+            progress_snapshot,
+            {
+                "seq": 2,
+                "ts": 2,
+                "type": "chat.init.completed",
+                "task": {"message": "Ready", "phase": "completed"},
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(completed_snapshot["initTask"]["status"], "succeeded")
+        self.assertEqual(completed_snapshot["initTask"]["progress"], 1.0)
+        self.assertEqual(completed_snapshot["initTask"]["message"], "Ready")
+
+        failed_snapshot = fold_event_into_snapshot(
+            progress_snapshot,
+            {
+                "seq": 2,
+                "ts": 2,
+                "type": "chat.init.failed",
+                "task": {"error": "TTS failed", "message": "Could not start TTS"},
+                "v": 1,
+            },
+        )
+        self.assertEqual(failed_snapshot["initTask"]["status"], "failed")
+        self.assertEqual(failed_snapshot["initTask"]["error"], "TTS failed")
+        self.assertEqual(failed_snapshot["initTask"]["phase"], "tts")
+
+        cancelled_snapshot = fold_event_into_snapshot(
+            progress_snapshot,
+            {
+                "seq": 2,
+                "ts": 2,
+                "type": "chat.init.cancelled",
+                "task": {"message": "Cancelled"},
+                "v": 1,
+            },
+        )
+        self.assertEqual(cancelled_snapshot["initTask"]["status"], "cancelled")
+
     def test_system_dialog_end_clears_stale_character_name(self):
         snapshot = make_empty_chat_snapshot()
         snapshot["characterName"] = "Nanami"

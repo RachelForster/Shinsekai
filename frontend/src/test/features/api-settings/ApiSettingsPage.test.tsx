@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getChatSnapshot: vi.fn(),
   getModelAssetStatus: vi.fn(),
   getTtsBundleRecommendation: vi.fn(),
+  installMissingRuntimeDependency: vi.fn(),
   refreshRuntimeStatus: vi.fn(),
   resumeLastChat: vi.fn(),
   saveApiConfig: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock("../../../entities/config/repository", () => ({
 vi.mock("../../../entities/chat/repository", () => ({
   chatQueryKey: ["chat"],
   getChatSnapshot: () => mocks.getChatSnapshot(),
+  installMissingRuntimeDependency: (...args: unknown[]) => mocks.installMissingRuntimeDependency(...args),
   resumeLastChat: () => mocks.resumeLastChat(),
 }));
 
@@ -133,6 +135,7 @@ describe("ApiSettingsPage", () => {
       title: "Whisper ASR",
       variant: "owner/custom-whisper",
     });
+    mocks.installMissingRuntimeDependency.mockResolvedValue({ message: "installed" });
     mocks.resumeLastChat.mockResolvedValue({ sessionId: "session-1" });
     mocks.saveApiConfig.mockResolvedValue(sampleConfig.api_config);
     mocks.saveSystemConfig.mockResolvedValue(sampleConfig.system_config);
@@ -222,6 +225,34 @@ describe("ApiSettingsPage", () => {
     expect(mocks.getChatSnapshot).not.toHaveBeenCalled();
   });
 
+  it("does not open chat when resume reports a missing runtime dependency", async () => {
+    mocks.getAppConfig.mockResolvedValue(validAppConfig());
+    mocks.resumeLastChat.mockResolvedValue({
+      dialogText: "Missing dependency: opencc",
+      inputDraft: "",
+      options: [],
+      runtimeDependencyError: {
+        moduleName: "opencc",
+        packageName: "opencc-python-reimplemented",
+      },
+      sprites: [],
+      status: "error",
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByRole("button", { name: "加载上次聊天并启动" }));
+
+    await waitFor(() => expect(mocks.resumeLastChat).toHaveBeenCalledTimes(1));
+    expect(mocks.updateRuntimeStatusFromSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ runtimeDependencyError: expect.objectContaining({ moduleName: "opencc" }) }),
+    );
+    expect(mocks.showChatSurface).not.toHaveBeenCalled();
+    expect(mocks.installMissingRuntimeDependency).not.toHaveBeenCalled();
+  });
+
   it("keeps a selected custom Whisper model visible and cached across later language saves", async () => {
     const config = {
       ...validAppConfig(),
@@ -306,8 +337,10 @@ describe("ApiSettingsPage", () => {
     expect(await screen.findByText("language boom")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "加载上次聊天并启动" }));
-    expect(await screen.findByText("resume boom")).toBeInTheDocument();
+    const initializationDialog = await screen.findByRole("dialog", { name: "正在准备聊天" });
+    expect(initializationDialog).toHaveTextContent("resume boom");
     expect(mocks.refreshRuntimeStatus).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(initializationDialog).getAllByRole("button", { name: "关闭" }).at(-1)!);
 
     fireEvent.change(screen.getByLabelText("LLM API Key"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "获取可用模型" }));

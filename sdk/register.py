@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Type
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
+from sdk.chat_init import InitChatContext
 from sdk.hooks import (
     BeforeChatContext,
     BeforeCompactContext,
@@ -312,6 +313,28 @@ class PluginCapabilityRegistry:
         hook: Callable[[BeforeChatContext], None],
     ) -> None:
         self._hook_dispatcher.register_before_chat(hook)
+
+    def register_init_chat_hook(
+        self,
+        hook: Callable[[InitChatContext], None],
+        *,
+        label: str = "",
+        weight: float = 1.0,
+        critical: bool = False,
+    ) -> None:
+        """Register one-time work performed while a chat runtime starts.
+
+        ``weight`` controls the hook's share of the dispatcher progress range.
+        Non-critical hook failures are logged and skipped; ``critical=True``
+        aborts chat initialization.
+        """
+
+        self._hook_dispatcher.register_init_chat(
+            hook,
+            label=label,
+            weight=weight,
+            critical=critical,
+        )
 
     @property
     def llm_adapters(self) -> dict[str, Type[LLMAdapter]]:

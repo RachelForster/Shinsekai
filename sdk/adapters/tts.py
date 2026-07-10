@@ -18,6 +18,16 @@ class TTSAdapter(ABC):
         """Metadata for adapter-specific options; empty ``{}`` means none."""
         return {}
 
+    def wait_until_ready(self, timeout_seconds: float | None = None) -> None:
+        """Wait until the adapter can accept requests.
+
+        In-process and remote adapters are ready after construction by default.
+        Adapters that start a local service should override this method and
+        raise when the service cannot become ready within the timeout.
+        """
+
+        return None
+
     @abstractmethod
     def generate_speech(self, text, file_path=None, **kwargs):
         pass

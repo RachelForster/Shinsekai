@@ -42,8 +42,11 @@ export function getChatTheme(): Promise<ChatThemePayload> {
   return getPlatform().chat.getTheme();
 }
 
-export function launchChat(payload: ChatLaunchPayload): Promise<ChatSnapshot> {
-  return getPlatform().chat.launch(payload);
+export function launchChat(
+  payload: ChatLaunchPayload,
+  options?: TaskProgressOptions<ChatSnapshot>,
+): Promise<ChatSnapshot> {
+  return getPlatform().chat.launch(payload, options);
 }
 
 export function installMissingRuntimeDependency(
@@ -53,8 +56,8 @@ export function installMissingRuntimeDependency(
   return getPlatform().runtime.installMissingDependency(input, options);
 }
 
-export function resumeLastChat(): Promise<ChatSnapshot> {
-  return getPlatform().chat.resumeLast();
+export function resumeLastChat(options?: TaskProgressOptions<ChatSnapshot>): Promise<ChatSnapshot> {
+  return getPlatform().chat.resumeLast(options);
 }
 
 export function sendChatCommand(command: ChatCommand): Promise<ChatCommandResult> {
