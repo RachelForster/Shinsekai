@@ -14,10 +14,59 @@ def _asset(name: str) -> ReleaseAsset:
     return ReleaseAsset(name=name, browser_download_url=f"https://example.test/{name}")
 
 
-def test_selects_windows_msi_before_setup_exe() -> None:
+def test_selects_windows_setup_exe_before_legacy_msi() -> None:
     asset = select_release_asset(
         [
             _asset("Shinsekai_0.1.0_x64-setup.exe"),
+            _asset("Shinsekai_0.1.0_x64_en-US.msi"),
+        ],
+        system="Windows",
+        machine="AMD64",
+    )
+
+    assert asset is not None
+    assert asset.name == "Shinsekai_0.1.0_x64-setup.exe"
+
+
+def test_windows_installer_does_not_select_updater_signature() -> None:
+    asset = select_release_asset(
+        [
+            _asset("Shinsekai_0.1.0_x64-setup.exe.sig"),
+            _asset("Shinsekai_0.1.0_x64-setup.exe"),
+        ],
+        system="Windows",
+        machine="AMD64",
+    )
+
+    assert asset is not None
+    assert asset.name == "Shinsekai_0.1.0_x64-setup.exe"
+
+
+def test_windows_does_not_fall_back_to_updater_signature() -> None:
+    asset = select_release_asset(
+        [_asset("Shinsekai_0.1.0_x64-setup.exe.sig")],
+        system="Windows",
+        machine="AMD64",
+    )
+
+    assert asset is None
+
+
+def test_windows_falls_back_to_legacy_msi_when_no_nsis_asset_exists() -> None:
+    asset = select_release_asset(
+        [_asset("Shinsekai_0.1.0_x64_en-US.msi")],
+        system="Windows",
+        machine="AMD64",
+    )
+
+    assert asset is not None
+    assert asset.name == "Shinsekai_0.1.0_x64_en-US.msi"
+
+
+def test_windows_legacy_msi_wins_over_unrelated_helper_executable() -> None:
+    asset = select_release_asset(
+        [
+            _asset("Shinsekai-migration-helper.exe"),
             _asset("Shinsekai_0.1.0_x64_en-US.msi"),
         ],
         system="Windows",

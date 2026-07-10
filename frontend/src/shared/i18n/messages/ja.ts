@@ -35,6 +35,23 @@ export const jaMessages: Record<MessageKey, string> = {
   "app.preview": "設定",
   "app.shellMeta": "AI RPG Tools",
   "app.title": "新世界プログラム",
+  "app.projectRoot.body":
+    "Shinsekai は使用すべきプロジェクトデータのフォルダーを安全に判断できませんでした。データの分散や上書きを防ぐため、今後使用する場所を一つ選んでください。",
+  "app.projectRoot.blocked":
+    "このプロジェクトルート記録は、現在のバージョンでは認識できないバージョンで作成されています。記録を変更する前に Shinsekai を更新してください。現在のバージョンはこの記録を上書きしません。",
+  "app.projectRoot.choose": "プロジェクトデータの場所",
+  "app.projectRoot.current": "今回の起動で使用中",
+  "app.projectRoot.dataDetected": "既存のプロジェクトデータを検出",
+  "app.projectRoot.error": "プロジェクトデータの場所を保存できませんでした：{message}",
+  "app.projectRoot.exit": "アプリを終了",
+  "app.projectRoot.notice":
+    "プロジェクトデータファイルの移動、統合、上書き、削除は行いません。選択を保存するとアプリケーションが再起動します。",
+  "app.projectRoot.restarting": "保存して再起動しています...",
+  "app.projectRoot.retry": "再試行",
+  "app.projectRoot.select": "この場所を使用して再起動",
+  "app.projectRoot.statusError": "プロジェクトデータの場所を確認できませんでした：{message}",
+  "app.projectRoot.title": "プロジェクトデータの場所を選択",
+  "app.projectRoot.unavailable": "現在利用できません",
   "api.description":
     "大規模言語モデル、TTS、音声入力、ComfyUI を設定します。API 関連は api.yaml、マイク認識は system_config.yaml に保存します。",
   "api.error.saveFallback": "設定項目を確認してください。",

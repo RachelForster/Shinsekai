@@ -69,14 +69,17 @@ def asset_preferences(
     arch_aliases = _arch_aliases(arch)
     if system_name == "windows":
         return [
-            *(tuple((alias, ".msi")) for alias in arch_aliases),
-            *(tuple(("windows", alias, ".msi")) for alias in arch_aliases),
-            *(tuple(("win", alias, ".msi")) for alias in arch_aliases),
             *(tuple((alias, "setup", ".exe")) for alias in arch_aliases),
             *(tuple(("windows", alias, ".exe")) for alias in arch_aliases),
             *(tuple(("win", alias, ".exe")) for alias in arch_aliases),
-            (".msi",),
             ("setup", ".exe"),
+            # Historical releases may still contain MSI-only assets. Prefer a
+            # matching MSI over an unrelated helper executable, but never over
+            # a recognizable NSIS setup executable.
+            *(tuple((alias, ".msi")) for alias in arch_aliases),
+            *(tuple(("windows", alias, ".msi")) for alias in arch_aliases),
+            *(tuple(("win", alias, ".msi")) for alias in arch_aliases),
+            (".msi",),
             (".exe",),
         ]
     if system_name == "darwin":
@@ -156,11 +159,20 @@ def select_release_asset(
     system: str | None = None,
     machine: str | None = None,
 ) -> ReleaseAsset | None:
-    asset_list = list(assets)
+    asset_list = [
+        asset for asset in assets if not asset.name.lower().endswith(".sig")
+    ]
     for terms in asset_preferences(system, machine):
         for asset in asset_list:
             name = asset.name.lower()
-            if all(term.lower() in name for term in terms):
+            # Treat extension-like preferences as suffixes. In particular,
+            # updater signatures such as `setup.exe.sig` are not installers.
+            if all(
+                name.endswith(term.lower())
+                if term.startswith(".")
+                else term.lower() in name
+                for term in terms
+            ):
                 return asset
     return asset_list[0] if asset_list else None
 

@@ -14,8 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# ui/chat_ui/theme_chrome.py -> 项目根
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+from core.paths import project_root as runtime_project_root
 
 _cached_key: tuple[str, str, float] | None = None
 _cached_theme: ChatChromeTheme | None = None
@@ -68,7 +67,8 @@ class ChatChromeTheme:
 
 
 def project_root() -> Path:
-    return _PROJECT_ROOT
+    """Return the active writable project root (kept as a public compatibility API)."""
+    return runtime_project_root()
 
 
 _FORBIDDEN_DECL = re.compile(
@@ -157,13 +157,14 @@ def _suffix(chrome_extra: str) -> str:
 
 def resolve_theme_path(system_chat_ui_theme_path: str) -> Path:
     """``system_config.chat_ui_theme_path`` 为空时用 ``data/chat_ui_theme.json``。"""
+    root = project_root()
     raw = (system_chat_ui_theme_path or "").strip()
     if raw:
         p = Path(raw)
         if not p.is_absolute():
-            p = _PROJECT_ROOT / p
+            p = root / p
         return p
-    return _PROJECT_ROOT / "data" / "chat_ui_theme.json"
+    return root / "data" / "chat_ui_theme.json"
 
 
 def _pick_extra(blob: dict[str, Any] | None, key: str) -> str:

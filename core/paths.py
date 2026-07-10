@@ -17,7 +17,10 @@ def source_root() -> Path:
 
 
 def project_root() -> Path:
-    raw = os.environ.get("EASYAI_PROJECT_ROOT", "").strip()
+    raw = (
+        os.environ.get("SHINSEKAI_PROJECT_ROOT", "").strip()
+        or os.environ.get("EASYAI_PROJECT_ROOT", "").strip()
+    )
     if raw:
         return _resolve(Path(raw))
     return _resolve(Path.cwd())

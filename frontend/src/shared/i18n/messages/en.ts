@@ -31,6 +31,23 @@ export const enMessages: Record<MessageKey, string> = {
   "app.preview": "Settings",
   "app.shellMeta": "AI RPG Tools",
   "app.title": "Shinsekai",
+  "app.projectRoot.body":
+    "Shinsekai could not safely determine which project data folder to use. Choose the single location to use from now on so the app does not split or overwrite your data.",
+  "app.projectRoot.blocked":
+    "This project-root record was created by an unsupported version. Update Shinsekai before changing it; this version will not overwrite the record.",
+  "app.projectRoot.choose": "Project data location",
+  "app.projectRoot.current": "Used for this launch",
+  "app.projectRoot.dataDetected": "Existing project data detected",
+  "app.projectRoot.error": "Could not save the project data location: {message}",
+  "app.projectRoot.exit": "Exit application",
+  "app.projectRoot.notice":
+    "No project data files will be moved, merged, overwritten, or deleted. The application will restart after saving your choice.",
+  "app.projectRoot.restarting": "Saving and restarting...",
+  "app.projectRoot.retry": "Try again",
+  "app.projectRoot.select": "Use this location and restart",
+  "app.projectRoot.statusError": "Could not verify the project data location: {message}",
+  "app.projectRoot.title": "Choose project data location",
+  "app.projectRoot.unavailable": "Currently unavailable",
   "api.description":
     "Configure LLM, TTS, voice input, and ComfyUI. API settings are written to api.yaml; microphone recognition settings are written to system_config.yaml.",
   "api.error.saveFallback": "Check the configuration fields.",

@@ -1,9 +1,23 @@
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+
+def _default_project_root_dir() -> str:
+    raw = (
+        os.environ.get("SHINSEKAI_PROJECT_ROOT", "").strip()
+        or os.environ.get("EASYAI_PROJECT_ROOT", "").strip()
+    )
+    try:
+        candidate = Path(raw).expanduser() if raw else Path.cwd()
+        return str(candidate.resolve(strict=False))
+    except (OSError, RuntimeError, ValueError):
+        return raw or "."
 
 
 @dataclass
@@ -30,6 +44,8 @@ class BridgeState:
     plugin_load_error: str = ""
     plugin_load_started_at: float = 0.0
     plugin_load_completed_at: float = 0.0
+    # Keep this field last so positional construction by older integrations remains compatible.
+    project_root_dir: str = field(default_factory=_default_project_root_dir)
 
 
 def _jsonify(value: Any) -> Any:

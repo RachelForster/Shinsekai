@@ -1,7 +1,35 @@
 use super::*;
+use std::ffi::OsString;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static PYTORCH_WHEEL_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+struct EnvRestore {
+    name: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvRestore {
+    fn capture(name: &'static str) -> Self {
+        Self {
+            name,
+            previous: env::var_os(name),
+        }
+    }
+}
+
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        if let Some(value) = self.previous.take() {
+            env::set_var(self.name, value);
+        } else {
+            env::remove_var(self.name);
+        }
+    }
+}
 
 #[test]
 fn configure_pip_install_command_adds_selected_index_url_argument() {
@@ -243,6 +271,8 @@ fn pytorch_wheel_index_url_matches_cuda_driver_version() {
 
 #[test]
 fn pytorch_wheel_base_url_follows_runtime_pip_region() {
+    let _guard = PYTORCH_WHEEL_ENV_LOCK.lock().unwrap();
+    let _restore = EnvRestore::capture("SHINSEKAI_PYTORCH_WHEEL_BASE");
     env::remove_var("SHINSEKAI_PYTORCH_WHEEL_BASE");
 
     assert_eq!(
@@ -257,6 +287,8 @@ fn pytorch_wheel_base_url_follows_runtime_pip_region() {
 
 #[test]
 fn pytorch_wheel_base_url_can_be_overridden() {
+    let _guard = PYTORCH_WHEEL_ENV_LOCK.lock().unwrap();
+    let _restore = EnvRestore::capture("SHINSEKAI_PYTORCH_WHEEL_BASE");
     env::set_var(
         "SHINSEKAI_PYTORCH_WHEEL_BASE",
         "https://example.invalid/pytorch-wheels/",
@@ -266,8 +298,6 @@ fn pytorch_wheel_base_url_can_be_overridden() {
         pytorch_wheel_base_url(&["https://pypi.org/simple/".to_string()]),
         "https://example.invalid/pytorch-wheels"
     );
-
-    env::remove_var("SHINSEKAI_PYTORCH_WHEEL_BASE");
 }
 
 #[test]

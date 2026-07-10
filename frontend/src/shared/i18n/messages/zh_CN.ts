@@ -34,6 +34,22 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "app.preview": "设置",
   "app.shellMeta": "AI RPG Tools",
   "app.title": "新世界程序",
+  "app.projectRoot.body":
+    "Shinsekai 无法安全判断应使用哪个项目数据目录。请选择今后唯一使用的位置，避免数据被分散或覆盖。",
+  "app.projectRoot.blocked":
+    "该项目根定位记录由当前版本无法识别的版本创建。请先更新 Shinsekai；当前版本不会覆盖此记录。",
+  "app.projectRoot.choose": "项目数据位置",
+  "app.projectRoot.current": "本次启动正在使用",
+  "app.projectRoot.dataDetected": "检测到现有项目数据",
+  "app.projectRoot.error": "无法保存项目数据位置：{message}",
+  "app.projectRoot.exit": "退出应用",
+  "app.projectRoot.notice": "不会移动、合并、覆盖或删除任何项目数据文件。保存选择后应用将自动重启。",
+  "app.projectRoot.restarting": "正在保存并重启...",
+  "app.projectRoot.retry": "重试",
+  "app.projectRoot.select": "使用此位置并重启",
+  "app.projectRoot.statusError": "无法确认项目数据位置：{message}",
+  "app.projectRoot.title": "选择项目数据位置",
+  "app.projectRoot.unavailable": "当前不可用",
   "api.description":
     "配置大语言模型、TTS、语音输入与 ComfyUI；API 相关写入 api.yaml，麦克风识别选项写入 system_config.yaml。",
   "api.error.saveFallback": "请检查配置字段。",

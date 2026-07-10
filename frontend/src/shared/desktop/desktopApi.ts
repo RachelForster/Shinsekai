@@ -89,6 +89,21 @@ export interface DesktopUpdateProgress {
   contentLength?: number | null;
 }
 
+export interface DesktopProjectRootCandidate {
+  path: string;
+  source: string;
+  hasProjectData: boolean;
+  selectable: boolean;
+}
+
+export interface DesktopProjectRootStatus {
+  currentPath: string;
+  locatorPath: string;
+  conflict: boolean;
+  requiresSelection: boolean;
+  candidates: DesktopProjectRootCandidate[];
+}
+
 export type DesktopEventUnlisten = () => void;
 
 declare global {
@@ -171,6 +186,14 @@ export function browseDesktopFiles(options?: { path?: string; showHidden?: boole
 
 export function checkDesktopUpdate() {
   return invokeDesktop<DesktopUpdate | null>("desktop_update_check");
+}
+
+export function getDesktopProjectRootStatus() {
+  return invokeDesktop<DesktopProjectRootStatus>("desktop_project_root_status");
+}
+
+export function selectDesktopProjectRoot(path: string) {
+  return invokeDesktop<DesktopProjectRootStatus>("desktop_project_root_select", { path });
 }
 
 export async function installDesktopUpdate() {

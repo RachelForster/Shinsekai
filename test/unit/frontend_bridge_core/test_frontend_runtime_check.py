@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import textwrap
@@ -15,6 +16,62 @@ def _repo_root() -> Path:
         ):
             return parent
     raise AssertionError("Could not locate repository root")
+
+
+def test_runtime_context_keeps_app_and_project_roots_separate(tmp_path, monkeypatch):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch cwd"
+    app_root = tmp_path / "Program Files" / "Shinsekai 应用"
+    project_root = tmp_path / "User Data" / "项目 データ"
+    launch_dir.mkdir()
+    app_root.mkdir(parents=True)
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_SOURCE_ROOT", "before-test")
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", "before-test")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", "before-test")
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", "before-test")
+
+    _repo, _dist, resolved_app_root = _configure_runtime_context(
+        str(project_root),
+        None,
+        str(app_root),
+    )
+    resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
+
+    assert Path(resolved_app_root) == app_root.resolve()
+    assert Path(resolved_project_root) == project_root.resolve()
+    assert Path.cwd() == project_root.resolve()
+    assert Path(os.environ["EASYAI_PROJECT_ROOT"]) == project_root.resolve()
+    assert Path(os.environ["SHINSEKAI_PROJECT_ROOT"]) == project_root.resolve()
+    assert Path(os.environ["SHINSEKAI_APP_ROOT"]) == app_root.resolve()
+
+
+def test_runtime_context_prefers_public_project_root_override_for_legacy_launches(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "legacy launch"
+    project_root = tmp_path / "D drive data" / "用户数据"
+    easyai_root = tmp_path / "stale EASYAI root"
+    launch_dir.mkdir()
+    project_root.mkdir(parents=True)
+    easyai_root.mkdir()
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(easyai_root))
+
+    _repo, _dist, _app_root = _configure_runtime_context(
+        None,
+        None,
+        None,
+    )
+    resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
+
+    assert Path(resolved_project_root) == project_root.resolve()
+    assert Path.cwd() == project_root.resolve()
+    assert Path(os.environ["EASYAI_PROJECT_ROOT"]) == project_root.resolve()
 
 
 def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):

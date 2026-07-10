@@ -10,12 +10,18 @@ import time
 _PROCESS_STARTED_AT = time.perf_counter()
 
 # Frozen standalone keeps the old release-root data behavior. Desktop bridge
-# launches can provide EASYAI_PROJECT_ROOT to keep chat data under app data.
+# launches can provide SHINSEKAI_PROJECT_ROOT (or legacy EASYAI_PROJECT_ROOT)
+# to keep chat data independent from the application install directory.
 if getattr(sys, "frozen", False):
     try:
         _rel = Path(sys.executable).resolve().parent.parent
-        _data_root = Path(os.environ.get("EASYAI_PROJECT_ROOT") or _rel).expanduser().resolve(strict=False)
+        _data_root = Path(
+            os.environ.get("SHINSEKAI_PROJECT_ROOT")
+            or os.environ.get("EASYAI_PROJECT_ROOT")
+            or _rel
+        ).expanduser().resolve(strict=False)
         _data_root.mkdir(parents=True, exist_ok=True)
+        os.environ["SHINSEKAI_PROJECT_ROOT"] = str(_data_root)
         os.environ["EASYAI_PROJECT_ROOT"] = str(_data_root)
         os.environ.setdefault("SHINSEKAI_APP_ROOT", str(_rel))
         os.chdir(_data_root)

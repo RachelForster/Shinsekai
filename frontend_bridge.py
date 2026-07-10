@@ -119,10 +119,27 @@ def _configure_runtime_context(
         os.environ.setdefault("SHINSEKAI_APP_ROOT", resolved_app_root)
 
     if project_root:
-        root = Path(project_root).expanduser().resolve()
+        root = Path(project_root).expanduser().resolve(strict=False)
         root.mkdir(parents=True, exist_ok=True)
-        os.environ["EASYAI_PROJECT_ROOT"] = str(root)
-        os.chdir(root)
+    else:
+        root = None
+        for env_name in ("SHINSEKAI_PROJECT_ROOT", "EASYAI_PROJECT_ROOT"):
+            raw_project_root = os.environ.get(env_name, "").strip()
+            if not raw_project_root:
+                continue
+            try:
+                candidate = Path(raw_project_root).expanduser().resolve(strict=False)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if candidate.is_dir():
+                root = candidate
+                break
+        if root is None:
+            root = Path.cwd().resolve(strict=False)
+    resolved_project_root = str(root)
+    os.environ["SHINSEKAI_PROJECT_ROOT"] = resolved_project_root
+    os.environ["EASYAI_PROJECT_ROOT"] = resolved_project_root
+    os.chdir(root)
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     return repo_root, resolved_frontend_dist, resolved_app_root
@@ -176,9 +193,10 @@ def run(
         frontend_dist,
         app_root,
     )
+    resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
     from sdk.logging import configure_logging, get_logger
 
-    configure_logging("frontend-bridge", project_root=Path.cwd())
+    configure_logging("frontend-bridge", project_root=Path(resolved_project_root))
     logger = get_logger(__name__)
     from config.mirror_env import apply_mirror_environment_from_system_config
     from config.network_proxy import apply_network_proxy_environment_from_system_config
@@ -213,6 +231,7 @@ def run(
         template_generator=TemplateGenerator(),
         frontend_dist_dir=resolved_frontend_dist,
         app_root_dir=resolved_app_root,
+        project_root_dir=resolved_project_root,
         auth_token=bridge_auth_token,
     )
     _set_bridge_state(state)
@@ -330,9 +349,10 @@ def check_runtime(
         frontend_dist,
         app_root,
     )
+    resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
     from sdk.logging import configure_logging
 
-    configure_logging("frontend-bridge", project_root=Path.cwd())
+    configure_logging("frontend-bridge", project_root=Path(resolved_project_root))
     from config.mirror_env import apply_mirror_environment_from_system_config
     from config.network_proxy import apply_network_proxy_environment_from_system_config
 
