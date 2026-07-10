@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from typing import Any, Callable
@@ -44,6 +45,7 @@ def preload_huggingface_snapshot(
     progress_logs: list[str] = []
     last_progress_update = 0.0
     last_progress_value: float | None = None
+    byte_progress_seen = False
 
     def format_bytes(value: float) -> str:
         size = float(max(0.0, value))
@@ -61,11 +63,27 @@ def preload_huggingface_snapshot(
             del progress_logs[:-HUGGINGFACE_PROGRESS_LOG_LIMIT]
         return list(progress_logs)
 
-    def update_byte_progress(current: float, total: float, *, force: bool = False) -> None:
+    def mark_byte_progress() -> None:
+        nonlocal byte_progress_seen, last_progress_update, last_progress_value
+        with progress_lock:
+            if byte_progress_seen:
+                return
+            byte_progress_seen = True
+            # A byte bar is more precise than the legacy file-count fallback.
+            # Reset throttling if a newer Hugging Face version exposes it after
+            # the outer file bar has already emitted an update.
+            last_progress_update = 0.0
+            last_progress_value = None
+
+    def update_download_progress(
+        current: float,
+        total: float,
+        *,
+        source: str,
+        force: bool = False,
+    ) -> None:
         nonlocal last_progress_update, last_progress_value
         if total <= 0:
-            print(f"[snapshot-progress] update_byte_progress SKIP total<=0  "
-                  f"current={current}  total={total}")
             return
         current = min(max(0.0, current), total)
         ratio = min(1.0, max(0.0, current / total))
@@ -74,6 +92,8 @@ def preload_huggingface_snapshot(
         )
         now = time.monotonic()
         with progress_lock:
+            if source == "files" and byte_progress_seen:
+                return
             should_update = (
                 force
                 or last_progress_value is None
@@ -82,16 +102,14 @@ def preload_huggingface_snapshot(
                 or now - last_progress_update >= HUGGINGFACE_PROGRESS_UPDATE_INTERVAL_SEC
             )
             if not should_update:
-                print(f"[snapshot-progress] update_byte_progress THROTTLED  "
-                      f"current={current:.0f}  total={total:.0f}  progress={progress:.4f}  "
-                      f"last={last_progress_value:.4f}  delta={progress - last_progress_value:.6f}  "
-                      f"force={force}")
                 return
             last_progress_value = progress
             last_progress_update = now
-            message = f"{download_message} ({format_bytes(current)} / {format_bytes(total)})."
-            print(f"[snapshot-progress] update_byte_progress FIRE  progress={progress:.4f}  "
-                  f"current={current:.0f}  total={total:.0f}  ratio={ratio:.4f}  force={force}")
+            if source == "bytes":
+                detail = f"{format_bytes(current)} / {format_bytes(total)}"
+            else:
+                detail = f"{int(current)} / {int(total)} files"
+            message = f"{download_message} ({detail})."
             update_task(
                 phase="download",
                 message=message,
@@ -104,50 +122,93 @@ def preload_huggingface_snapshot(
             self._shinsekai_desc = kwargs.get("desc")
             self._shinsekai_unit = kwargs.get("unit")
             self._shinsekai_name = kwargs.get("name")
+            self._shinsekai_total = kwargs.get("total")
+            self._shinsekai_counter_lock = threading.RLock()
+            source = self._progress_source()
+            if source == "bytes":
+                mark_byte_progress()
+            output = kwargs.get("file")
+            if output is None:
+                output = sys.stderr
+            if source is not None and not callable(getattr(output, "write", None)):
+                # pythonw has no stderr stream. Keep tqdm disabled and use our
+                # own counters instead of letting its constructor write to None.
+                kwargs["disable"] = True
             super().__init__(*args, **kwargs)
-            if self._is_byte_progress():
-                # Force disable=False so that super().update() always increments
-                # self.n and super().refresh() is never a no-op.  The huggingface_hub
-                # v1.x snapshot_download creates bytes_progress with total=0 and may
-                # leave disable=None/True depending on the logger effective level;
-                # when disabled, update() returns without touching self.n and our
-                # frontend progress stays stuck at HUGGINGFACE_DOWNLOAD_PROGRESS_START
-                # (2 %) forever.
-                self.disable = False
-                print(f"[snapshot-progress] __init__  n={self.n}  total={self.total}  "
-                      f"disable_was={getattr(self, 'disable', None)}  "
-                      f"unit={self._shinsekai_unit}  name={self._shinsekai_name}  "
-                      f"desc={self._shinsekai_desc}")
-                update_byte_progress(float(self.n), float(self.total or 0), force=True)
+            self._report_progress(force=True)
 
-        def _is_byte_progress(self) -> bool:
+        def _progress_source(self) -> str | None:
             unit = str(self._shinsekai_unit or getattr(self, "unit", "") or "").lower()
             name = str(self._shinsekai_name or "").lower()
             desc = str(self._shinsekai_desc or getattr(self, "desc", "") or "").lower()
-            return (
+            total = self._shinsekai_total or getattr(self, "total", None)
+            if (
                 unit in {"b", "ib", "byte", "bytes"}
                 or name == "huggingface_hub.snapshot_download"
-                or (desc.startswith("download") and isinstance(getattr(self, "total", None), (int, float)))
+                or (desc.startswith("download") and isinstance(total, (int, float)))
+            ):
+                return "bytes"
+            # huggingface_hub < 1.0 only applies snapshot_download's custom
+            # tqdm class to the outer "Fetching N files" bar. Individual byte
+            # bars still render in the terminal but are not observable here.
+            if desc.startswith("fetching ") and "file" in desc and isinstance(total, (int, float)):
+                return "files"
+            return None
+
+        def _report_progress(self, *, force: bool = False) -> None:
+            source = self._progress_source()
+            if source is None:
+                return
+            update_download_progress(
+                float(getattr(self, "n", 0) or 0),
+                float(getattr(self, "total", 0) or 0),
+                source=source,
+                force=force,
             )
 
         def refresh(self, *args: Any, **kwargs: Any) -> bool | None:
-            result = super().refresh(*args, **kwargs)
-            if self._is_byte_progress():
-                update_byte_progress(float(self.n), float(self.total or 0), force=True)
-            return result
+            with self._shinsekai_counter_lock:
+                result = super().refresh(*args, **kwargs)
+                self._report_progress(force=True)
+                return result
 
-        def update(self, n: int = 1) -> bool | None:
-            previous = float(getattr(self, "n", 0) or 0)
-            result = super().update(n)
-            if self._is_byte_progress():
+        def __iter__(self):
+            if self._progress_source() != "files":
+                yield from super().__iter__()
+                return
+
+            # tqdm's optimized iterator never calls update() when disabled and
+            # can defer it until close() for short downloads. Drive the small
+            # legacy snapshot file bar explicitly so every completed file is
+            # observable in desktop/non-TTY mode as well.
+            try:
+                for item in self.iterable:
+                    yield item
+                    self.update(1)
+            finally:
+                self.close()
+
+        def update(self, n: float = 1) -> bool | None:
+            source = self._progress_source()
+            if source is None:
+                return super().update(n)
+            with self._shinsekai_counter_lock:
+                previous = float(getattr(self, "n", 0) or 0)
+                result = super().update(n)
                 current = float(getattr(self, "n", 0) or 0)
                 if n and current <= previous:
+                    # Disabled tqdm instances intentionally skip their own
+                    # counter. Keep an internal count so desktop/pythonw mode
+                    # still reports progress without forcing a partially
+                    # initialized bar on.
                     current = previous + float(n)
                     self.n = current
-                print(f"[snapshot-progress] update  n_delta={n}  previous={previous}  "
-                      f"current={current}  total={self.total}  disable={self.disable}")
-                update_byte_progress(current, float(self.total or 0))
-            return result
+                update_download_progress(
+                    current,
+                    float(getattr(self, "total", 0) or 0),
+                    source=source,
+                )
+                return result
 
     update_task(
         phase="download",
