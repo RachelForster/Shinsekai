@@ -115,6 +115,25 @@ def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):
     }
 
 
+def test_check_mem0_status_exposes_cache_state_while_loading(monkeypatch):
+    from ai.memory import runtime
+
+    task = {"id": "mem0-embedding-model", "status": "running"}
+    monkeypatch.setattr(runtime, "_mem0", None)
+    monkeypatch.setattr(runtime, "_mem0_loading", True)
+    monkeypatch.setattr(runtime, "_mem0_load_error", None)
+    monkeypatch.setattr(runtime, "current_mem0_task", lambda: task)
+
+    for cached in (False, True):
+        monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda cached=cached: cached)
+
+        assert runtime.check_mem0_status() == {
+            "status": "loading",
+            "modelCached": cached,
+            "task": task,
+        }
+
+
 def test_preload_embedding_model_limits_huggingface_snapshot(monkeypatch):
     from ai.memory import runtime
 
