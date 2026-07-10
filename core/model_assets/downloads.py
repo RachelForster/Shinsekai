@@ -125,6 +125,7 @@ def preload_huggingface_snapshot(
             self._shinsekai_name = kwargs.get("name")
             self._shinsekai_total = kwargs.get("total")
             self._shinsekai_counter_lock = threading.RLock()
+            self._shinsekai_progress_source = self._detect_progress_source()
             source = self._progress_source()
             if source == "bytes":
                 mark_byte_progress()
@@ -136,9 +137,15 @@ def preload_huggingface_snapshot(
                 # own counters instead of letting its constructor write to None.
                 kwargs["disable"] = True
             super().__init__(*args, **kwargs)
+            # tqdm normalizes positional/default metadata during construction.
+            # Confirm the source once more, then keep it stable for the hot
+            # refresh/update/iteration paths.
+            self._shinsekai_progress_source = self._detect_progress_source()
+            if self._shinsekai_progress_source == "bytes":
+                mark_byte_progress()
             self._report_progress(force=True)
 
-        def _progress_source(self) -> str | None:
+        def _detect_progress_source(self) -> str | None:
             unit = str(self._shinsekai_unit or getattr(self, "unit", "") or "").lower()
             name = str(self._shinsekai_name or "").lower()
             desc = str(self._shinsekai_desc or getattr(self, "desc", "") or "").lower()
@@ -155,6 +162,9 @@ def preload_huggingface_snapshot(
             if desc.startswith("fetching ") and "file" in desc and isinstance(total, (int, float)):
                 return "files"
             return None
+
+        def _progress_source(self) -> str | None:
+            return self._shinsekai_progress_source
 
         def _report_progress(self, *, force: bool = False) -> None:
             source = self._progress_source()

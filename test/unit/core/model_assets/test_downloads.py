@@ -196,6 +196,53 @@ def test_preload_huggingface_snapshot_falls_back_to_legacy_fetching_file_progres
     assert any("4 / 4 files" in update.get("message", "") for update in updates)
 
 
+def test_preload_huggingface_snapshot_caches_progress_source_after_init(monkeypatch):
+    updates: list[dict] = []
+
+    class DescriptionProbe:
+        def __init__(self):
+            self.calls = 0
+
+        def __str__(self):
+            self.calls += 1
+            return "Fetching 2 files"
+
+    def fake_snapshot_download(repo_id, *, tqdm_class, **kwargs):
+        assert repo_id == "owner/model"
+        description = DescriptionProbe()
+        bar = tqdm_class(range(2), desc=description, total=2, disable=True)
+        calls_after_init = description.calls
+
+        bar.refresh()
+        assert list(bar) == [0, 1]
+        assert description.calls == calls_after_init
+        return "cached-model"
+
+    _install_fake_huggingface(monkeypatch, fake_snapshot_download)
+
+    assert _preload_with_updates(updates) == "cached-model"
+    assert any("2 / 2 files" in update.get("message", "") for update in updates)
+
+
+def test_preload_huggingface_snapshot_detects_positional_progress_metadata(monkeypatch):
+    updates: list[dict] = []
+
+    class PositionalTqdm(_PartialInitTqdm):
+        def __init__(self, iterable=None, desc=None, total=None, *args, **kwargs):
+            super().__init__(iterable, *args, total=total, **kwargs)
+            self.desc = desc
+
+    def fake_snapshot_download(repo_id, *, tqdm_class, **kwargs):
+        assert repo_id == "owner/model"
+        assert list(tqdm_class(range(2), "Fetching 2 files", 2)) == [0, 1]
+        return "cached-model"
+
+    _install_fake_huggingface(monkeypatch, fake_snapshot_download, PositionalTqdm)
+
+    assert _preload_with_updates(updates) == "cached-model"
+    assert any("2 / 2 files" in update.get("message", "") for update in updates)
+
+
 def test_preload_huggingface_snapshot_prefers_byte_progress_over_file_progress(monkeypatch):
     updates: list[dict] = []
 

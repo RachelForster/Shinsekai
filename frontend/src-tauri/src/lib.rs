@@ -1732,6 +1732,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn runtime_backend_console_truthy_values_are_case_insensitive() {
+        for value in ["1", "true", "TRUE", "yes", "Yes", "on", "ON"] {
+            assert!(
+                is_truthy_env_value(value),
+                "expected {value:?} to be truthy"
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_backend_console_rejects_other_values() {
+        for value in ["", "0", "false", "off", "y", " true "] {
+            assert!(
+                !is_truthy_env_value(value),
+                "expected {value:?} to be falsey"
+            );
+        }
+    }
+
+    #[test]
     fn resolve_published_frontend_dist_uses_current_marker() {
         let root = temp_test_dir("published-dist");
         let raw_dist = root.join("frontend").join("dist");
@@ -2081,12 +2101,15 @@ fn spawn_bridge(
     Ok(BridgeLaunch { child })
 }
 
-fn show_backend_console() -> bool {
+pub(crate) fn show_backend_console() -> bool {
+    env::var(SHOW_BACKEND_CONSOLE_ENV)
+        .map(|value| is_truthy_env_value(&value))
+        .unwrap_or(false)
+}
+
+fn is_truthy_env_value(value: &str) -> bool {
     matches!(
-        env::var(SHOW_BACKEND_CONSOLE_ENV)
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str(),
+        value.to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on"
     )
 }
