@@ -68,6 +68,10 @@ export function uploadCharacterSprites(input: { emotionTags: string; name: strin
   return getPlatform().characters.uploadSprites(input);
 }
 
+export function autoLabelCharacterSprites(name: string) {
+  return getPlatform().characters.autoLabelSprites(name);
+}
+
 export function saveCharacterEmotionTags(name: string, emotionTags: string) {
   return getPlatform().characters.saveEmotionTags(name, emotionTags);
 }

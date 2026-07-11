@@ -4,6 +4,7 @@ import { Download, ExternalLink, Languages, Plus, Save, Trash2, Upload } from "l
 
 import {
   backgroundsQueryKey,
+  autoLabelBackgroundImages,
   deleteAllBackgroundBgm,
   deleteAllBackgroundImages,
   deleteBackground,
@@ -38,6 +39,7 @@ import {
 import { BackgroundMusicSection } from "./BackgroundMusicSection";
 import { BackgroundSpriteGallery } from "./BackgroundSpriteGallery";
 import { BackgroundTagsDialog } from "./BackgroundTagsDialog";
+import { useMoondreamAvailability } from "../media-auto-label/useMoondreamAvailability";
 import {
   backgroundDeleteDialogCopy,
   createBackground,
@@ -53,6 +55,7 @@ export function BackgroundManagerPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
+  const moondreamAvailable = useMoondreamAvailability();
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const data = backgroundsQuery.data ?? [];
   const isLoading = backgroundsQuery.isLoading;
@@ -248,6 +251,30 @@ export function BackgroundManagerPage() {
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       setDraft((current) => ({ ...current, bg_tags: background.bg_tags }));
       showToast({ kind: "success", title: t("background.action.saveImageTags") });
+    },
+  });
+
+  const autoLabelMutation = useMutation({
+    mutationFn: () => autoLabelBackgroundImages(currentBackgroundName),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("mediaAutoLabel.error"),
+        title: t("mediaAutoLabel.action"),
+      });
+    },
+    onSuccess(result) {
+      queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
+      setDraft((current) => ({ ...current, bg_tags: result.tags }));
+      showToast({
+        kind: result.failedCount ? "info" : "success",
+        message: t("mediaAutoLabel.complete", {
+          annotated: result.annotatedCount,
+          failed: result.failedCount,
+          skipped: result.skippedCount,
+        }),
+        title: t("mediaAutoLabel.action"),
+      });
     },
   });
 
@@ -771,6 +798,11 @@ export function BackgroundManagerPage() {
 
         {/* Sprite gallery */}
         <BackgroundSpriteGallery
+          autoLabelAvailable={moondreamAvailable}
+          autoLabelDisabled={
+            !isSavedBackground || !currentDraft.sprites.length || !imageRowTags.some((tag) => !tag.trim())
+          }
+          autoLabelPending={autoLabelMutation.isPending}
           currentBackgroundName={currentBackgroundName}
           deletePending={imageDeleteMutation.isPending}
           id="background-images"
@@ -782,6 +814,7 @@ export function BackgroundManagerPage() {
             }
             setPendingDelete({ count: currentDraft.sprites.length, kind: "all-images", name: currentBackgroundName });
           }}
+          onAutoLabel={() => autoLabelMutation.mutate()}
           onDeleteImage={handleImageDelete}
           onOpenBulkTags={openBulkImageTagsDialog}
           onSaveImageTags={() => {

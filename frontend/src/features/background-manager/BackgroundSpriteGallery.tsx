@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, Save, Tags, Trash2, Upload } from "lucide-react";
+import { Image as ImageIcon, Save, Sparkles, Tags, Trash2, Upload } from "lucide-react";
 
 import type { Background } from "../../entities/config/types";
 import { fileThumbnailBatch, fileThumbnailUrl, fileUrl } from "../../entities/files/repository";
@@ -16,11 +16,15 @@ import {
 } from "../../shared/ui";
 
 interface BackgroundSpriteGalleryProps {
+  autoLabelAvailable?: boolean;
+  autoLabelDisabled?: boolean;
+  autoLabelPending?: boolean;
   currentBackgroundName: string;
   deletePending: boolean;
   id?: string;
   imageRowTags: string[];
   onClearImages: () => void;
+  onAutoLabel?: () => void;
   onDeleteImage: (index: number) => void;
   onOpenBulkTags: () => void;
   onSaveImageTags: () => void;
@@ -45,11 +49,15 @@ function visibleImageCountForSelection(total: number, selectedIndex: number) {
 }
 
 export function BackgroundSpriteGallery({
+  autoLabelAvailable = false,
+  autoLabelDisabled = true,
+  autoLabelPending = false,
   currentBackgroundName,
   deletePending,
   id,
   imageRowTags,
   onClearImages,
+  onAutoLabel,
   onDeleteImage,
   onOpenBulkTags,
   onSaveImageTags,
@@ -158,6 +166,17 @@ export function BackgroundSpriteGallery({
       <div className="section__header">
         <h2 className="section__title">{t("background.section.images")}</h2>
         <div className="page__actions">
+          {autoLabelAvailable ? (
+            <AsyncButton
+              disabled={autoLabelDisabled}
+              icon={<Sparkles aria-hidden className="button__icon" />}
+              loading={autoLabelPending}
+              onClick={onAutoLabel}
+              variant="ghost"
+            >
+              {t("mediaAutoLabel.action")}
+            </AsyncButton>
+          ) : null}
           <AsyncButton
             disabled={!currentBackgroundName}
             icon={<Upload aria-hidden className="button__icon" />}

@@ -273,6 +273,7 @@ describe("entity repositories", () => {
     const background = sampleConfig.background_list[0];
     const platform = {
       backgrounds: {
+        autoLabelImages: vi.fn().mockResolvedValue({}),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllBgm: vi.fn().mockResolvedValue(background),
         deleteAllImages: vi.fn().mockResolvedValue(background),
@@ -289,6 +290,7 @@ describe("entity repositories", () => {
         uploadImages: vi.fn().mockResolvedValue(background),
       },
       characters: {
+        autoLabelSprites: vi.fn().mockResolvedValue({}),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllSprites: vi.fn().mockResolvedValue(character),
         deleteMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
@@ -346,6 +348,7 @@ describe("entity repositories", () => {
     await backgrounds.translateBackgroundFields({ bgTags: "day", bgmTags: "music", name: "Room" });
     await backgrounds.uploadBackgroundImages({ bgTags: "day", name: "Room", paths: ["/tmp/a.png"] });
     await backgrounds.uploadBackgroundBgm({ bgmTags: "music", name: "Room", paths: ["/tmp/a.mp3"] });
+    await backgrounds.autoLabelBackgroundImages("Room");
     await characters.saveCharacter(character, "Old Nanami");
     await characters.generateCharacterSetting({ name: "Nanami", setting: "kind" });
     await characters.translateCharacterFields({ characterSetting: "kind", emotionTags: "happy", name: "Nanami" });
@@ -364,8 +367,10 @@ describe("entity repositories", () => {
     await characters.uploadSpriteVoice({ name: "Nanami", spriteIndex: 0, voicePath: "/tmp/a.wav", voiceText: "hello" });
     await characters.saveSpriteVoiceText("Nanami", 0, "hello");
     await characters.deleteSpriteVoice("Nanami", 0);
+    await characters.autoLabelCharacterSprites("Nanami");
 
     expect(platform.backgrounds.save).toHaveBeenCalledWith(background, "Old Room");
+    expect(platform.backgrounds.autoLabelImages).toHaveBeenCalledWith("Room");
     expect(platform.backgrounds.deleteImage).toHaveBeenCalledWith("Room", 1);
     expect(platform.backgrounds.uploadImages).toHaveBeenCalledWith({
       bgTags: "day",
@@ -373,6 +378,7 @@ describe("entity repositories", () => {
       paths: ["/tmp/a.png"],
     });
     expect(platform.characters.save).toHaveBeenCalledWith(character, "Old Nanami");
+    expect(platform.characters.autoLabelSprites).toHaveBeenCalledWith("Nanami");
     expect(platform.characters.remember).toHaveBeenCalledWith("Nanami", "likes tea");
     expect(platform.characters.previewMemoryImport).toHaveBeenCalledWith("Nanami", [historyFile]);
     expect(platform.characters.importMemories).toHaveBeenCalledWith("Nanami", [historyFile], undefined);

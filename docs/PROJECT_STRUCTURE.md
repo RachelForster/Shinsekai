@@ -42,6 +42,7 @@ Shinsekai/
     tts/
     asr/
     t2i/
+    vision/
     tools/
 
   core/
@@ -160,6 +161,7 @@ ai/llm/       LLM adapter、manager、prompt 和消息处理
 ai/tts/       TTS adapter、manager
 ai/asr/       ASR adapter、manager
 ai/t2i/       文生图 adapter、manager
+ai/vision/    图片理解 adapter、manager 和 provider 实现
 ai/memory/    长期记忆、mem0 runtime、embedding/vector 配置
 ai/tools/     把 AI 能力包装成 LLM tool 的薄层
 ```
@@ -331,6 +333,7 @@ test/unit/sdk/
 - 新的 runtime 检测和依赖安装逻辑：放 `core/runtime/`。
 - 新的长期记忆业务逻辑：放 `ai/memory/`。
 - 新的 LLM tool 包装：放 `ai/tools/`，或在迁移前暂放 `llm/tools/`。
+- 新的图片理解 adapter 和 provider 调度：放 `ai/vision/`；图片文件处理与业务编排仍放 `core/media/`。
 - 新的插件安装/更新/registry 逻辑：放 `plugin_system/`。
 - 新的 HTTP API：入口放 `frontend_bridge_core/`，实现放对应领域目录。
 - 新的本地配置读写：放 `config/`。

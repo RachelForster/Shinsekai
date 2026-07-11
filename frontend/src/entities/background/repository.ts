@@ -56,6 +56,10 @@ export function uploadBackgroundImages(input: { bgTags: string; name: string; pa
   return getPlatform().backgrounds.uploadImages(input);
 }
 
+export function autoLabelBackgroundImages(name: string) {
+  return getPlatform().backgrounds.autoLabelImages(name);
+}
+
 export function uploadBackgroundBgm(input: { bgmTags: string; name: string; paths: string[] }) {
   return getPlatform().backgrounds.uploadBgm(input);
 }

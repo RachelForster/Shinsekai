@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
   charactersQueryKey,
+  autoLabelCharacterSprites,
   deleteCharacter,
   deleteAllCharacterSprites,
   deleteCharacterSprite,
@@ -37,6 +38,7 @@ import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
+import { useMoondreamAvailability } from "../media-auto-label/useMoondreamAvailability";
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
 import {
   SPRITE_SCALE_STEP,
@@ -69,6 +71,7 @@ export function CharacterEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
+  const moondreamAvailable = useMoondreamAvailability();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const data = charactersQuery.data ?? [];
@@ -412,6 +415,30 @@ export function CharacterEditorPage() {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
       setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags }));
       showToast({ kind: "success", title: t("character.sprite.saveTags") });
+    },
+  });
+
+  const autoLabelMutation = useMutation({
+    mutationFn: () => autoLabelCharacterSprites(currentCharacterName),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("mediaAutoLabel.error"),
+        title: t("mediaAutoLabel.action"),
+      });
+    },
+    onSuccess(result) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, emotion_tags: result.tags }));
+      showToast({
+        kind: result.failedCount ? "info" : "success",
+        message: t("mediaAutoLabel.complete", {
+          annotated: result.annotatedCount,
+          failed: result.failedCount,
+          skipped: result.skippedCount,
+        }),
+        title: t("mediaAutoLabel.action"),
+      });
     },
   });
 
@@ -917,10 +944,14 @@ export function CharacterEditorPage() {
         />
 
         <CharacterSpritesSection
+          autoLabelAvailable={moondreamAvailable}
+          autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
+          autoLabelPending={autoLabelMutation.isPending}
           draft={draft}
           emotionTagsPending={emotionTagsMutation.isPending}
           id="character-sprites"
           onClearSprites={requestClearSprites}
+          onAutoLabel={() => autoLabelMutation.mutate()}
           onOpenBulkTags={openBulkSpriteTagsDialog}
           onPendingSpritePathsChange={setPendingSpritePaths}
           onPendingVoicePathChange={updatePendingVoicePath}
