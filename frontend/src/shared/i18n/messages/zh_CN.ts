@@ -44,6 +44,10 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "app.projectRoot.error": "无法保存项目数据位置：{message}",
   "app.projectRoot.exit": "退出应用",
   "app.projectRoot.notice": "不会移动、合并、覆盖或删除任何项目数据文件。保存选择后应用将自动重启。",
+  "app.projectRoot.reconnectNotice":
+    "请重新连接不可用的磁盘后再次扫描。没有可识别项目数据或写入权限的位置仍不可选择，且不会改动任何项目数据文件。",
+  "app.projectRoot.rescan": "重新扫描",
+  "app.projectRoot.rescanning": "正在扫描...",
   "app.projectRoot.restarting": "正在保存并重启...",
   "app.projectRoot.retry": "重试",
   "app.projectRoot.select": "使用此位置并重启",

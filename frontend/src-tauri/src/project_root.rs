@@ -90,6 +90,8 @@ pub(crate) enum ProjectRootCandidateSource {
     RestartLogAppRoot,
     #[cfg_attr(not(windows), allow(dead_code))]
     WindowsRegistryInstallDir,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    WindowsInstallerAppRootHint,
     DevelopmentSource,
 }
 
@@ -119,6 +121,7 @@ struct CandidateRecord {
     has_project_data: bool,
     selectable: bool,
     trusted_for_automatic_selection: bool,
+    allow_empty_project_data: bool,
 }
 
 pub(crate) struct ProjectRootController {
@@ -130,10 +133,18 @@ pub(crate) struct ProjectRootController {
 
 impl ProjectRootController {
     pub(crate) fn status(&self) -> ProjectRootStatus {
-        self.status
+        let mut status = self
+            .status
             .lock()
-            .map(|status| status.clone())
-            .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if self.selection_allowed && status.requires_selection {
+            status.candidates = self
+                .candidates
+                .iter()
+                .map(current_candidate_snapshot)
+                .collect();
+        }
+        status.clone()
     }
 
     pub(crate) fn select(&self, requested: &str) -> Result<ProjectRootStatus, String> {
@@ -154,23 +165,32 @@ impl ProjectRootController {
         let selected = self
             .candidates
             .iter()
-            .find(|candidate| {
-                candidate.selectable && path_identity(&candidate.path) == path_identity(&normalized)
-            })
+            .find(|candidate| path_identity(&candidate.path) == path_identity(&normalized))
             .ok_or_else(|| {
                 "project root selection was not one of the candidates returned by the resolver"
                     .to_string()
             })?;
+        if !current_candidate_snapshot(selected).selectable {
+            return Err(format!(
+                "project root selection is not currently available or does not contain recognized project data: {}",
+                requested_path.display()
+            ));
+        }
 
-        persist_selected_locator(&self.locator_path, &selected.path)?;
+        persist_selected_locator(&self.locator_path, &normalized)?;
 
         let mut status = self
             .status
             .lock()
             .map_err(|_| "project root status lock is poisoned".to_string())?;
-        status.current_path = display_path(&selected.path);
+        status.current_path = display_path(&normalized);
         status.conflict = false;
         status.requires_selection = false;
+        status.candidates = self
+            .candidates
+            .iter()
+            .map(current_candidate_snapshot)
+            .collect();
         Ok(status.clone())
     }
 }
@@ -235,27 +255,41 @@ pub(crate) fn windows_legacy_install_dir_hints() -> Vec<(PathBuf, ProjectRootCan
 
 #[cfg(windows)]
 pub(crate) fn windows_legacy_install_dir_hints() -> Vec<(PathBuf, ProjectRootCandidateSource)> {
-    // Tauri WiX 2.0/2.1 used Cargo's first author as manufacturer and stored
-    // its named InstallDir at this per-user product key. Registry content is
-    // only a hint: the resolver requires strong data markers and explicit UI
-    // confirmation before it can become authoritative.
-    const LEGACY_PRODUCT_KEYS: &[&str] = &["Software\\Shinsekai Contributors\\Shinsekai"];
-    LEGACY_PRODUCT_KEYS
+    // NSIS records the matched MSI app root before removing it. It is not a
+    // blocker when it disappears normally or contains no project data. The two
+    // historical InstallDir spellings retain their older offline-recovery
+    // semantics. Every registry path remains untrusted and requires strong data
+    // markers plus explicit UI confirmation before it can become authoritative.
+    const LEGACY_ROOT_VALUES: &[(&str, &str, ProjectRootCandidateSource)] = &[
+        (
+            "Software\\studio.shinsekai\\Migration",
+            "LegacyMsiAppRoot",
+            ProjectRootCandidateSource::WindowsInstallerAppRootHint,
+        ),
+        (
+            "Software\\shinsekai\\Shinsekai",
+            "InstallDir",
+            ProjectRootCandidateSource::WindowsRegistryInstallDir,
+        ),
+        (
+            "Software\\Shinsekai Contributors\\Shinsekai",
+            "InstallDir",
+            ProjectRootCandidateSource::WindowsRegistryInstallDir,
+        ),
+    ];
+    LEGACY_ROOT_VALUES
         .iter()
-        .filter_map(|key| read_current_user_registry_string(key, "InstallDir"))
-        .filter(|value| {
-            !value.is_empty()
-                && !value
+        .filter_map(|&(key, value, source)| {
+            read_current_user_registry_string(key, value).map(|path| (path, source))
+        })
+        .filter(|(path, _)| {
+            !path.is_empty()
+                && !path
                     .to_string_lossy()
                     .chars()
                     .any(|character| matches!(character, '\0' | '\r' | '\n'))
         })
-        .map(|value| {
-            (
-                PathBuf::from(value),
-                ProjectRootCandidateSource::WindowsRegistryInstallDir,
-            )
-        })
+        .map(|(path, source)| (PathBuf::from(path), source))
         .collect()
 }
 
@@ -315,6 +349,7 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
             source,
             selectable: true,
             trusted_for_automatic_selection: false,
+            allow_empty_project_data: true,
         };
         return Ok(resolution(
             path,
@@ -338,6 +373,7 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
             source: ProjectRootCandidateSource::DevelopmentSource,
             selectable: true,
             trusted_for_automatic_selection: true,
+            allow_empty_project_data: true,
         };
         return Ok(resolution(
             path,
@@ -368,6 +404,7 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
                     source: ProjectRootCandidateSource::PersistedLocator,
                     selectable: true,
                     trusted_for_automatic_selection: true,
+                    allow_empty_project_data: true,
                 };
                 return Ok(resolution(path, locator_path, vec![candidate], true, false));
             }
@@ -463,6 +500,7 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
                         has_project_data: false,
                         selectable: false,
                         trusted_for_automatic_selection: false,
+                        allow_empty_project_data: true,
                     });
                 }
                 true
@@ -476,6 +514,7 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
                             has_project_data: false,
                             selectable: false,
                             trusted_for_automatic_selection: false,
+                            allow_empty_project_data: true,
                         });
                     }
                 }
@@ -523,6 +562,23 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
             &current_path,
             current_source,
         );
+        // A recovery record that resolves to the prepared current root is not
+        // an ambiguity. This commonly happens after the old MSI app directory
+        // disappears while the last logged project root already points at the
+        // current per-user location.
+        if data_candidates.len() == 1
+            && data_candidates[0].selectable
+            && data_candidates[0].trusted_for_automatic_selection
+        {
+            persist_locator_automatically(&locator_path, &current_path)?;
+            return Ok(resolution(
+                current_path,
+                locator_path,
+                data_candidates,
+                true,
+                false,
+            ));
+        }
         return Ok(resolution(
             current_path,
             locator_path,
@@ -538,6 +594,7 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
         has_project_data: false,
         selectable: true,
         trusted_for_automatic_selection: true,
+        allow_empty_project_data: true,
     };
     persist_locator_automatically(&locator_path, &current_path)?;
     Ok(resolution(
@@ -564,20 +621,23 @@ fn put_current_candidate_first(
                 has_project_data: has_meaningful_project_data(current_path),
                 selectable: true,
                 trusted_for_automatic_selection: true,
+                allow_empty_project_data: true,
             },
         );
     } else if let Some(index) = candidates
         .iter()
-        .position(|candidate| candidate.path == current_path)
+        .position(|candidate| path_identity(&candidate.path) == path_identity(current_path))
     {
         candidates.swap(0, index);
         candidates[0].selectable = true;
         candidates[0].trusted_for_automatic_selection = true;
+        candidates[0].allow_empty_project_data = true;
         if matches!(
             candidates[0].source,
             ProjectRootCandidateSource::RestartLogProjectRoot
                 | ProjectRootCandidateSource::RestartLogAppRoot
                 | ProjectRootCandidateSource::WindowsRegistryInstallDir
+                | ProjectRootCandidateSource::WindowsInstallerAppRootHint
         ) {
             candidates[0].source = current_source;
         }
@@ -614,6 +674,31 @@ fn resolution(
             selection_allowed,
             status: Mutex::new(status),
         },
+    }
+}
+
+fn current_candidate_snapshot(candidate: &CandidateRecord) -> ProjectRootCandidate {
+    // Keep the UI's enabled state and the final selection check on the same
+    // live filesystem view. Untrusted recovery hints need strong data markers;
+    // prepared current roots and persisted locators may legitimately be empty.
+    let has_project_data = if matches!(
+        candidate.source,
+        ProjectRootCandidateSource::RestartLogProjectRoot
+            | ProjectRootCandidateSource::RestartLogAppRoot
+            | ProjectRootCandidateSource::WindowsRegistryInstallDir
+            | ProjectRootCandidateSource::WindowsInstallerAppRootHint
+    ) {
+        has_strong_project_data(&candidate.path)
+    } else {
+        has_meaningful_project_data(&candidate.path)
+    };
+    let writable_project_root = validate_existing_writable_project_root(&candidate.path).is_some();
+    ProjectRootCandidate {
+        path: display_path(&candidate.path),
+        source: candidate.source,
+        has_project_data,
+        selectable: writable_project_root
+            && (candidate.allow_empty_project_data || has_project_data),
     }
 }
 
@@ -697,7 +782,8 @@ fn add_data_candidate(
         if retain_unavailable
             && matches!(
                 source,
-                ProjectRootCandidateSource::WindowsRegistryInstallDir
+                ProjectRootCandidateSource::RestartLogProjectRoot
+                    | ProjectRootCandidateSource::WindowsRegistryInstallDir
             )
             && !path.exists()
             && seen.insert(path_identity(path))
@@ -708,6 +794,7 @@ fn add_data_candidate(
                 has_project_data: false,
                 selectable: false,
                 trusted_for_automatic_selection,
+                allow_empty_project_data: false,
             });
         }
         return;
@@ -722,7 +809,8 @@ fn add_data_candidate(
         if retain_unavailable
             && matches!(
                 source,
-                ProjectRootCandidateSource::WindowsRegistryInstallDir
+                ProjectRootCandidateSource::RestartLogProjectRoot
+                    | ProjectRootCandidateSource::WindowsRegistryInstallDir
             )
             && seen.insert(path_identity(&existing_path))
         {
@@ -732,6 +820,7 @@ fn add_data_candidate(
                 has_project_data: false,
                 selectable: false,
                 trusted_for_automatic_selection,
+                allow_empty_project_data: false,
             });
         }
         return;
@@ -749,6 +838,7 @@ fn add_data_candidate(
         has_project_data: true,
         selectable,
         trusted_for_automatic_selection,
+        allow_empty_project_data: false,
     });
 }
 
@@ -1246,11 +1336,14 @@ fn restart_log_candidates(log_path: &Path) -> Vec<(PathBuf, ProjectRootCandidate
         if candidates.len() >= MAX_RESTART_LOG_CANDIDATES {
             break;
         }
-        if !line.contains("setup resolved ") {
+        let Some((_, desktop_event)) = line.split_once(" component=desktop ") else {
             continue;
-        }
+        };
+        let Some(resolved_fields) = desktop_event.strip_prefix("setup resolved ") else {
+            continue;
+        };
         if let Some(project_root) = setup_log_field(
-            line,
+            resolved_fields,
             "project_root",
             &["app_root", "frontend_dist", "bridge_port", "url"],
         ) {
@@ -1259,9 +1352,11 @@ fn restart_log_candidates(log_path: &Path) -> Vec<(PathBuf, ProjectRootCandidate
                 ProjectRootCandidateSource::RestartLogProjectRoot,
             ));
         }
-        if let Some(app_root) =
-            setup_log_field(line, "app_root", &["frontend_dist", "bridge_port", "url"])
-        {
+        if let Some(app_root) = setup_log_field(
+            resolved_fields,
+            "app_root",
+            &["frontend_dist", "bridge_port", "url"],
+        ) {
             candidates.push((
                 PathBuf::from(app_root),
                 ProjectRootCandidateSource::RestartLogAppRoot,
@@ -1735,6 +1830,31 @@ mod tests {
     }
 
     #[test]
+    fn restart_log_parser_ignores_unresolved_setup_entries() {
+        let root = temp_dir("restart-log-pending");
+        let recovered = data_root(&root, "old D drive");
+        let log = root.join("shinsekai-restart-debug.log");
+        let mut contents = format!(
+            "ts=1 component=desktop setup resolved source_root=/source project_root={} app_root={} frontend_dist=/dist bridge_port=8787\n",
+            recovered.display(),
+            recovered.display()
+        );
+        for index in 0..(MAX_RESTART_LOG_CANDIDATES + 8) {
+            contents.push_str(&format!(
+                "ts={} component=desktop setup awaiting project-root selection source_root=/source project_root=/new-c-root component=desktop setup resolved source_root=/fake project_root=/fake app_root=/new-c-root frontend_dist=/dist bridge_port=8787\n",
+                index + 2
+            ));
+        }
+        fs::write(&log, contents).unwrap();
+
+        let candidates = restart_log_candidates(&log);
+
+        assert_eq!(candidates.len(), 2);
+        assert!(candidates.iter().all(|(path, _)| path == &recovered));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn restart_log_candidate_always_requires_explicit_selection() {
         let root = temp_dir("untrusted-log");
         let recovered = data_root(&root, "old D drive");
@@ -1786,7 +1906,64 @@ mod tests {
     }
 
     #[test]
-    fn missing_untrusted_log_candidates_do_not_block_a_fresh_root() {
+    fn installer_app_root_hints_without_project_data_do_not_block_a_fresh_root() {
+        let root = temp_dir("installer-app-root-no-data");
+        let removed_program_files = root.join("removed-program-files-install");
+        let empty_program_files = root.join("empty-program-files-install");
+        fs::create_dir_all(empty_program_files.join("data")).unwrap();
+        let mut options = options(&root);
+        options.untrusted_candidate_roots.extend([
+            (
+                removed_program_files.clone(),
+                ProjectRootCandidateSource::WindowsInstallerAppRootHint,
+            ),
+            (
+                empty_program_files.clone(),
+                ProjectRootCandidateSource::WindowsInstallerAppRootHint,
+            ),
+        ]);
+        let locator_path = options.locator_path.clone();
+        let current_path = options.app_root.clone();
+
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert_eq!(resolved.path, current_path.canonicalize().unwrap());
+        assert!(!status.requires_selection);
+        assert!(locator_path.exists());
+        assert!(status.candidates.iter().all(|candidate| {
+            candidate.source != ProjectRootCandidateSource::WindowsInstallerAppRootHint
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn installer_app_root_hint_with_strong_data_requires_explicit_selection() {
+        let root = temp_dir("installer-app-root-with-data");
+        let recovered = data_root(&root, "legacy-msi-app");
+        let mut options = options(&root);
+        options.untrusted_candidate_roots.push((
+            recovered.clone(),
+            ProjectRootCandidateSource::WindowsInstallerAppRootHint,
+        ));
+        let locator_path = options.locator_path.clone();
+
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert!(status.requires_selection);
+        assert!(!locator_path.exists());
+        assert!(status.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&recovered.canonicalize().unwrap())
+                && candidate.source == ProjectRootCandidateSource::WindowsInstallerAppRootHint
+                && candidate.has_project_data
+                && candidate.selectable
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn missing_restart_project_root_blocks_automatic_root_persistence() {
         let root = temp_dir("missing-candidate");
         let offline_project = root.join("offline-drive").join("user-data");
         let offline_app = root.join("offline-drive").join("app");
@@ -1802,6 +1979,7 @@ mod tests {
         .unwrap();
         let mut options = options(&root);
         options.restart_log_paths.push(log);
+        let locator_path = options.locator_path.clone();
         let resolved = resolve(options).unwrap();
         let status = resolved.controller.status();
 
@@ -1809,11 +1987,232 @@ mod tests {
             resolved.path,
             root.join("current-app").canonicalize().unwrap()
         );
-        assert!(!status.requires_selection);
+        assert!(status.requires_selection);
+        assert!(!locator_path.exists());
+        assert!(status.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&offline_project)
+                && candidate.source == ProjectRootCandidateSource::RestartLogProjectRoot
+                && !candidate.has_project_data
+                && !candidate.selectable
+        }));
         assert!(status
             .candidates
             .iter()
-            .all(|candidate| candidate.path != display_path(&offline_project)));
+            .all(|candidate| candidate.path != display_path(&offline_app)));
+        assert!(status.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&resolved.path) && candidate.selectable
+        }));
+        assert!(resolved
+            .controller
+            .select(&display_path(&offline_project))
+            .is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn missing_restart_app_root_alone_does_not_block_a_fresh_root() {
+        let root = temp_dir("missing-restart-app-root");
+        let offline_app = root.join("removed-program-files-install");
+        let log = root.join("restart.log");
+        let mut options = options(&root);
+        fs::write(
+            &log,
+            format!(
+                "ts=1 component=desktop setup resolved source_root=/x project_root={} app_root={} frontend_dist=/x bridge_port=1",
+                options.app_root.display(),
+                offline_app.display()
+            ),
+        )
+        .unwrap();
+        options.restart_log_paths.push(log);
+        let locator_path = options.locator_path.clone();
+        let current_path = options.app_root.clone();
+
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert_eq!(resolved.path, current_path.canonicalize().unwrap());
+        assert!(!status.requires_selection);
+        assert!(locator_path.exists());
+        assert!(status
+            .candidates
+            .iter()
+            .all(|candidate| candidate.path != display_path(&offline_app)));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn empty_restart_project_root_at_startup_still_blocks_automatic_persistence() {
+        let root = temp_dir("empty-restart-project-root");
+        let recovered = root.join("mounted-drive").join("user-data");
+        fs::create_dir_all(recovered.join("data")).unwrap();
+        let log = root.join("restart.log");
+        let mut options = options(&root);
+        fs::write(
+            &log,
+            format!(
+                "ts=1 component=desktop setup resolved source_root=/x project_root={} app_root={} frontend_dist=/x bridge_port=1",
+                recovered.display(),
+                options.app_root.display()
+            ),
+        )
+        .unwrap();
+        options.restart_log_paths.push(log);
+        let locator_path = options.locator_path.clone();
+
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert!(status.requires_selection);
+        assert!(!locator_path.exists());
+        assert!(status.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&recovered.canonicalize().unwrap())
+                && candidate.source == ProjectRootCandidateSource::RestartLogProjectRoot
+                && !candidate.has_project_data
+                && !candidate.selectable
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn offline_log_candidate_becomes_selectable_after_the_drive_returns() {
+        let root = temp_dir("offline-log-rescan");
+        let offline_parent = root.join("offline-drive");
+        let offline_project = offline_parent.join("user-data");
+        let log = root.join("restart.log");
+        let mut options = options(&root);
+        fs::write(
+            &log,
+            format!(
+                "ts=1 component=desktop setup resolved source_root=/x project_root={} app_root={} frontend_dist=/x bridge_port=1",
+                offline_project.display(),
+                options.app_root.display()
+            ),
+        )
+        .unwrap();
+        options.restart_log_paths.push(log);
+        let locator_path = options.locator_path.clone();
+        let resolved = resolve(options).unwrap();
+
+        let initial = resolved.controller.status();
+        assert!(initial.requires_selection);
+        assert!(initial.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&offline_project) && !candidate.selectable
+        }));
+        assert!(!locator_path.exists());
+
+        assert_eq!(data_root(&offline_parent, "user-data"), offline_project);
+        let rescanned = resolved.controller.status();
+        assert!(rescanned.requires_selection);
+        assert!(rescanned.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&offline_project)
+                && candidate.has_project_data
+                && candidate.selectable
+        }));
+
+        // The drive can disappear after the UI's scan but before submit.
+        // Selection must revalidate live state and must not publish a locator.
+        fs::remove_dir_all(&offline_parent).unwrap();
+        assert!(resolved
+            .controller
+            .select(&display_path(&offline_project))
+            .is_err());
+        assert!(!locator_path.exists());
+
+        assert_eq!(data_root(&offline_parent, "user-data"), offline_project);
+        assert!(resolved
+            .controller
+            .status()
+            .candidates
+            .iter()
+            .any(|candidate| {
+                candidate.path == display_path(&offline_project)
+                    && candidate.has_project_data
+                    && candidate.selectable
+            }));
+
+        let selected = resolved
+            .controller
+            .select(&display_path(&offline_project))
+            .unwrap();
+        assert!(!selected.requires_selection);
+        assert_eq!(
+            read_valid_locator(&locator_path).unwrap(),
+            offline_project.canonicalize().unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn returned_log_path_without_strong_project_data_stays_unselectable() {
+        let root = temp_dir("offline-log-empty-return");
+        let offline_project = root.join("offline-drive").join("user-data");
+        let log = root.join("restart.log");
+        let mut options = options(&root);
+        fs::write(
+            &log,
+            format!(
+                "ts=1 component=desktop setup resolved source_root=/x project_root={} app_root={} frontend_dist=/x bridge_port=1",
+                offline_project.display(),
+                options.app_root.display()
+            ),
+        )
+        .unwrap();
+        options.restart_log_paths.push(log);
+        let locator_path = options.locator_path.clone();
+        let resolved = resolve(options).unwrap();
+
+        fs::create_dir_all(offline_project.join("data")).unwrap();
+        let rescanned = resolved.controller.status();
+
+        assert!(rescanned.requires_selection);
+        assert!(!locator_path.exists());
+        assert!(rescanned.candidates.iter().any(|candidate| {
+            candidate.path == display_path(&offline_project)
+                && !candidate.has_project_data
+                && !candidate.selectable
+        }));
+        assert!(resolved
+            .controller
+            .select(&display_path(&offline_project))
+            .is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn explicit_fallback_selection_prevents_stale_logs_from_blocking_again() {
+        let root = temp_dir("offline-log-fallback");
+        let offline_project = root.join("offline-drive").join("user-data");
+        let log = root.join("restart.log");
+        let mut resolve_options = options(&root);
+        fs::write(
+            &log,
+            format!(
+                "ts=1 component=desktop setup resolved source_root=/x project_root={} app_root={} frontend_dist=/x bridge_port=1",
+                offline_project.display(),
+                resolve_options.app_root.display()
+            ),
+        )
+        .unwrap();
+        resolve_options.restart_log_paths.push(log.clone());
+        let current_path = resolve_options.app_root.clone();
+        let locator_path = resolve_options.locator_path.clone();
+        let resolved = resolve(resolve_options).unwrap();
+
+        resolved
+            .controller
+            .select(&display_path(&current_path))
+            .unwrap();
+        assert_eq!(
+            read_valid_locator(&locator_path).unwrap(),
+            current_path.canonicalize().unwrap()
+        );
+
+        let mut next_options = options(&root);
+        next_options.restart_log_paths.push(log);
+        let next = resolve(next_options).unwrap();
+        assert_eq!(next.path, current_path.canonicalize().unwrap());
+        assert!(!next.controller.status().requires_selection);
         let _ = fs::remove_dir_all(root);
     }
 

@@ -42,6 +42,10 @@ export const enMessages: Record<MessageKey, string> = {
   "app.projectRoot.exit": "Exit application",
   "app.projectRoot.notice":
     "No project data files will be moved, merged, overwritten, or deleted. The application will restart after saving your choice.",
+  "app.projectRoot.reconnectNotice":
+    "Reconnect unavailable drives and scan again. Locations without recognized project data or write access remain disabled. No project data files will be changed.",
+  "app.projectRoot.rescan": "Scan again",
+  "app.projectRoot.rescanning": "Scanning...",
   "app.projectRoot.restarting": "Saving and restarting...",
   "app.projectRoot.retry": "Try again",
   "app.projectRoot.select": "Use this location and restart",

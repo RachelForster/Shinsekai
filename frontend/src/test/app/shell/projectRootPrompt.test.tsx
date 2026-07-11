@@ -178,6 +178,83 @@ describe("ProjectRootPrompt", () => {
     expect(within(dialog).getByText("Currently unavailable")).toBeInTheDocument();
   });
 
+  it("rescans an offline log candidate and enables it only after it becomes available", async () => {
+    const offlineStatus = {
+      ...conflictStatus,
+      candidates: [
+        conflictStatus.candidates[0],
+        {
+          hasProjectData: false,
+          path: "D:\\detached drive\\Shinsekai",
+          selectable: false,
+          source: "restartLogProjectRoot",
+        },
+      ],
+    };
+    const onlineStatus = {
+      ...offlineStatus,
+      candidates: [
+        offlineStatus.candidates[0],
+        {
+          ...offlineStatus.candidates[1],
+          hasProjectData: true,
+          selectable: true,
+        },
+      ],
+    };
+    desktopMocks.getDesktopProjectRootStatus.mockResolvedValueOnce(offlineStatus).mockResolvedValueOnce(onlineStatus);
+
+    renderPrompt();
+
+    const dialog = await screen.findByRole("dialog", { name: "Choose project data location" });
+    const offline = within(dialog).getByRole("radio", { name: /D:\\detached drive\\Shinsekai/ });
+    expect(offline).toBeDisabled();
+
+    const rescan = within(dialog).getByRole("button", { name: "Scan again" });
+    fireEvent.click(rescan);
+    await waitFor(() => expect(desktopMocks.getDesktopProjectRootStatus).toHaveBeenCalledTimes(2));
+
+    const recovered = within(dialog).getByRole("radio", { name: /D:\\detached drive\\Shinsekai/ });
+    await waitFor(() => expect(recovered).toBeEnabled());
+    fireEvent.click(recovered);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use this location and restart" }));
+
+    await waitFor(() => {
+      expect(desktopMocks.selectDesktopProjectRoot).toHaveBeenCalledWith("D:\\detached drive\\Shinsekai");
+      expect(desktopMocks.restartDesktopApp).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("clears a stale selection when a rescan makes that candidate unavailable", async () => {
+    const unavailableStatus = {
+      ...conflictStatus,
+      candidates: conflictStatus.candidates.map((candidate) =>
+        candidate.source === "restartLogProjectRoot"
+          ? { ...candidate, hasProjectData: false, selectable: false }
+          : candidate,
+      ),
+    };
+    desktopMocks.getDesktopProjectRootStatus
+      .mockResolvedValueOnce(conflictStatus)
+      .mockResolvedValueOnce(unavailableStatus);
+
+    renderPrompt();
+
+    const dialog = await screen.findByRole("dialog", { name: "Choose project data location" });
+    const recovered = within(dialog).getByRole("radio", { name: /D:\\我的游戏\\Shinsekai/ });
+    fireEvent.click(recovered);
+    const apply = within(dialog).getByRole("button", { name: "Use this location and restart" });
+    expect(apply).toBeEnabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Scan again" }));
+    await waitFor(() => expect(desktopMocks.getDesktopProjectRootStatus).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apply).toBeDisabled());
+    expect(recovered).not.toBeChecked();
+
+    fireEvent.click(apply);
+    expect(desktopMocks.selectDesktopProjectRoot).not.toHaveBeenCalled();
+  });
+
   it("fails closed and allows retrying when migration status cannot be read", async () => {
     const onResolved = vi.fn();
     desktopMocks.getDesktopProjectRootStatus

@@ -5,9 +5,10 @@
 ; Baseline SHA-256: ee84148e405adc4d736a46456dd8345a644751bd1f28a335dd7fd833a32d7c3e
 ;
 ; Project-only changes are enclosed by `SHINSEKAI MSI->NSIS COMPAT` markers.
-; They preserve a safe, writable legacy WiX/MSI install directory before the
-; upstream reinstall page removes the MSI. Keep the rest of this file in sync
-; with the pinned upstream template when upgrading @tauri-apps/cli.
+; They preserve a legacy WiX/MSI app-root recovery hint before the upstream
+; reinstall page removes the MSI, while keeping the current-user NSIS itself in
+; LocalAppData. Rust only offers that hint when strong project data remains.
+; Keep the rest of this file in sync with the pinned upstream template.
 
 Unicode true
 ManifestDPIAware true
@@ -81,16 +82,19 @@ Var NoShortcutMode
 Var WixMode
 Var OldMainBinaryName
 ; SHINSEKAI MSI->NSIS COMPAT BEGIN
-; `/D` and an existing NSIS location always take precedence. These variables
-; only carry a validated MSI candidate until PageReinstall confirms a matching
-; WiX installation.
-Var CanInheritLegacyMsiInstallDir
+; An existing NSIS location is authoritative, and `/D` is respected for normal
+; NSIS installs. Explicit targets are rejected only during an MSI transition.
+; A matching MSI path is retained solely as an untrusted app-root recovery hint
+; and must never replace the current-user NSIS install directory.
 Var LegacyMsiCandidate
 Var LegacyMsiCandidateValid
-Var LegacyMsiInstallDir
-Var LegacyMsiMigrationBlocked
+Var LegacyMsiProductCode
+Var LegacyMsiProductCodeValid
+Var LegacyMsiRebootRequired
 Var HasAuthoritativeNsisInstallDir
+Var HasExplicitNsisInstallDir
 Var LegacyMigrationDefaultInstallDir
+!define LEGACY_MIGRATION_KEY "Software\${BUNDLEID}\Migration"
 ; SHINSEKAI MSI->NSIS COMPAT END
 
 Name "${PRODUCTNAME}"
@@ -206,8 +210,9 @@ Function PageReinstall
   ; SHINSEKAI MSI->NSIS COMPAT BEGIN
   ; Tauri NSIS's existing unnamed install-location value is authoritative. Do
   ; not enumerate stale MSI entries in that case: the normal NSIS maintenance
-  ; flow below owns the update decision. An explicit `/D=...` still scans and
-  ; removes a matching MSI, while InheritLegacyMsiInstallDir preserves `/D`.
+  ; flow below owns the update decision. MSI transitions reject explicit `/D`
+  ; targets before uninstalling; the current-user NSIS must first migrate to
+  ; LocalAppData so reboot-time MSI deletion cannot target replacement files.
   ${If} $HasAuthoritativeNsisInstallDir = 1
     Goto wix_loop_done
   ${EndIf}
@@ -230,7 +235,23 @@ Function PageReinstall
     IntOp $0 $0 + 1
     ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "DisplayName"
     ReadRegStr $R1 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "Publisher"
+    ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+    ; Historical v2.0/v2.1 MSI assets used the publisher derived from the
+    ; bundle identifier (`shinsekai`). Keep that identity alongside an
+    ; explicitly configured current publisher and require a real MSI ARP entry.
+    StrCmp "$R0" "${PRODUCTNAME}" 0 wix_loop
+    StrCmp "$R1" "${MANUFACTURER}" wix_publisher_match
+    StrCmp "$R1" "shinsekai" wix_publisher_match wix_loop
+    wix_publisher_match:
+    ReadRegDWORD $R2 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "WindowsInstaller"
+    StrCmp $R2 1 wix_identity_match wix_loop
+    wix_identity_match:
+    Goto wix_upstream_identity_matched
+    ; SHINSEKAI MSI->NSIS COMPAT END
     StrCmp "$R0$R1" "${PRODUCTNAME}${MANUFACTURER}" 0 wix_loop
+    ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+    wix_upstream_identity_matched:
+    ; SHINSEKAI MSI->NSIS COMPAT END
     ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "UninstallString"
     ${StrCase} $R1 $R0 "L"
     ${StrLoc} $R0 $R1 "msiexec" ">"
@@ -238,17 +259,20 @@ Function PageReinstall
     StrCpy $WixMode 1
     StrCpy $R6 "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1"
     ; SHINSEKAI MSI->NSIS COMPAT BEGIN
-    ; Capture/apply the old directory while its ARP entry still exists. This is
-    ; deliberately before PageLeaveReinstall invokes msiexec for interactive
-    ; installs and Tauri's passive `/P` + `/UPDATE` updater flow.
-    Call InheritLegacyMsiInstallDir
-    ${If} $LegacyMsiMigrationBlocked = 1
-      ; Never remove an MSI when its old root cannot be inherited safely. In
-      ; particular, a current-user NSIS installer cannot replace files in a
-      ; protected Program Files/custom-drive directory. The user can retry
-      ; after restoring access or rerun the installer with sufficient rights.
-      Call AbortBlockedLegacyMsiMigration
+    ; Capture the old application root before msiexec removes its ARP/HKCU
+    ; values. Rust treats this as an untrusted project-root candidate requiring
+    ; strong project-data markers and explicit user confirmation. Missing or
+    ; data-free app roots are ignored. `$INSTDIR` remains the LocalAppData NSIS
+    ; destination during an MSI transition.
+    StrCpy $LegacyMsiProductCode "$1"
+    Call ValidateLegacyMsiProductCode
+    ${If} $LegacyMsiProductCodeValid != 1
+      Call AbortLegacyMsiMigration
     ${EndIf}
+    ${If} $HasExplicitNsisInstallDir = 1
+      Call AbortExplicitLegacyMsiTarget
+    ${EndIf}
+    Call PersistLegacyMsiAppRootHint
     ; SHINSEKAI MSI->NSIS COMPAT END
     Goto compare_version
   wix_loop_done:
@@ -388,8 +412,26 @@ Function PageLeaveReinstall
     ClearErrors
 
     ${If} $WixMode = 1
+      ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+      StrCpy $LegacyMsiRebootRequired 0
+      ; Never execute an arbitrary ARP command. The matched ARP key is a
+      ; validated MSI product code, so invoke the system Windows Installer
+      ; directly. `/P` updater runs use passive UI and let msiexec request the
+      ; elevation required by the historical per-machine package.
+      Goto shinsekai_wix_uninstall
+      ; SHINSEKAI MSI->NSIS COMPAT END
       ReadRegStr $R1 HKLM "$R6" "UninstallString"
       ExecWait '$R1' $0
+      ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+      Goto shinsekai_wix_uninstall_done
+      shinsekai_wix_uninstall:
+        ${If} $PassiveMode = 1
+          ExecWait '"$SYSDIR\msiexec.exe" /X$LegacyMsiProductCode /passive /norestart' $0
+        ${Else}
+          ExecWait '"$SYSDIR\msiexec.exe" /X$LegacyMsiProductCode /norestart' $0
+        ${EndIf}
+      shinsekai_wix_uninstall_done:
+      ; SHINSEKAI MSI->NSIS COMPAT END
     ${Else}
       ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
       ReadRegStr $R1 SHCTX "${UNINSTKEY}" "UninstallString"
@@ -403,6 +445,62 @@ Function PageLeaveReinstall
 
     ${IfThen} ${Errors} ${|} StrCpy $0 2 ${|} ; ExecWait failed, set fake exit code
 
+    ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+    ${If} $WixMode = 1
+      ; Windows Installer 3010 means success with a reboot required.
+      ${If} $0 = 3010
+        SetRebootFlag true
+        StrCpy $LegacyMsiRebootRequired 1
+        StrCpy $0 0
+      ${EndIf}
+
+      ; Exit code alone is insufficient: verify that the exact matched product
+      ; is no longer registered with Windows Installer and that its installed
+      ; executable was removed or scheduled for reboot-time deletion.
+      ${If} $0 = 0
+        ClearErrors
+        System::Call 'msi::MsiQueryProductStateW(w "$LegacyMsiProductCode") i .r1'
+        ${If} ${Errors}
+          StrCpy $0 2
+        ${ElseIf} $1 != -1
+          StrCpy $0 2
+        ${EndIf}
+        ReadRegStr $R1 HKLM "$R6" "DisplayName"
+        ${If} $R1 != ""
+          StrCpy $0 2
+        ${EndIf}
+
+        ; Exit 3010 may leave a locked executable pending deletion at reboot.
+        ; Product-state and exact ARP removal still prove the MSI is gone, and
+        ; the current-user NSIS installs into a different LocalAppData path.
+        ${If} $LegacyMsiRebootRequired != 1
+        ${AndIf} ${FileExists} "$LegacyMsiCandidate\${MAINBINARYNAME}.exe"
+          StrCpy $0 2
+        ${EndIf}
+      ${EndIf}
+
+      ; `Abort` is a page-navigation primitive and is not a reliable process
+      ; stop when PageLeaveReinstall is called directly by passive mode.
+      ${If} $PassiveMode = 1
+      ${AndIf} $0 != 0
+        System::Call 'kernel32::AttachConsole(i -1) i .r1'
+        ${If} $1 <> 0
+          System::Call 'kernel32::GetStdHandle(i -12) p .r1'
+          FileWrite $1 "Shinsekai: the previous MSI could not be removed; migration stopped before installing the current-user NSIS.$\r$\n"
+        ${EndIf}
+        SetErrorLevel $0
+        Quit
+      ${EndIf}
+
+      ; The upstream check below inspects `$INSTDIR`, which is correct for an
+      ; NSIS-to-NSIS update but no longer related to the removed MSI. A stale or
+      ; explicitly targeted NSIS executable must not turn a successful MSI
+      ; removal into a false failure.
+      ${If} $0 = 0
+        Goto reinst_done
+      ${EndIf}
+    ${EndIf}
+    ; SHINSEKAI MSI->NSIS COMPAT END
     ${If} $0 <> 0
     ${OrIf} ${FileExists} "$INSTDIR\${MAINBINARYNAME}.exe"
       ; User cancelled wix uninstaller? return to select un/reinstall page
@@ -515,12 +613,13 @@ FunctionEnd
 
 Function .onInit
   ; SHINSEKAI MSI->NSIS COMPAT BEGIN
-  StrCpy $CanInheritLegacyMsiInstallDir 0
   StrCpy $LegacyMsiCandidate ""
   StrCpy $LegacyMsiCandidateValid 0
-  StrCpy $LegacyMsiInstallDir ""
-  StrCpy $LegacyMsiMigrationBlocked 0
+  StrCpy $LegacyMsiProductCode ""
+  StrCpy $LegacyMsiProductCodeValid 0
+  StrCpy $LegacyMsiRebootRequired 0
   StrCpy $HasAuthoritativeNsisInstallDir 0
+  StrCpy $HasExplicitNsisInstallDir 0
 
   ; SHINSEKAI MSI->NSIS COMPAT END
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -544,6 +643,9 @@ Function .onInit
 
   !insertmacro SetContext
   ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+  ${If} $INSTDIR != "${PLACEHOLDER_INSTALL_DIR}"
+    StrCpy $HasExplicitNsisInstallDir 1
+  ${EndIf}
   ; The unnamed value is authoritative only while the corresponding NSIS
   ; executable still exists. A stale registry value must not hide a real MSI.
   ReadRegStr $5 SHCTX "${MANUPRODUCTKEY}" ""
@@ -554,12 +656,6 @@ Function .onInit
   ; SHINSEKAI MSI->NSIS COMPAT END
 
   ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
-    ; SHINSEKAI MSI->NSIS COMPAT BEGIN
-    ; PLACEHOLDER means NSIS did not receive an explicit `/D=...`. Only this
-    ; branch is allowed to consider a legacy MSI location.
-    StrCpy $CanInheritLegacyMsiInstallDir 1
-
-    ; SHINSEKAI MSI->NSIS COMPAT END
     ; Set default install location
     !if "${INSTALLMODE}" == "perMachine"
       ${If} ${RunningX64}
@@ -585,19 +681,10 @@ Function .onInit
     Call RestorePreviousInstallLocation
     ; SHINSEKAI MSI->NSIS COMPAT BEGIN
     ; The unnamed value is Tauri NSIS's own install-location contract and wins
-    ; over every MSI source. Tauri WiX used the named `InstallDir` value at the
-    ; same key, so retain it as a fallback until a matching MSI is confirmed.
-    ${If} $HasAuthoritativeNsisInstallDir = 1
-      StrCpy $CanInheritLegacyMsiInstallDir 0
-    ${Else}
-      ; Restore the platform default if RestorePreviousInstallLocation loaded a
-      ; stale unnamed value whose executable no longer exists.
+    ; over every MSI source. If the value is stale, restore LocalAppData. A
+    ; historical MSI root is deliberately never inherited as `$INSTDIR`.
+    ${If} $HasAuthoritativeNsisInstallDir != 1
       StrCpy $INSTDIR "$LegacyMigrationDefaultInstallDir"
-      ReadRegStr $LegacyMsiCandidate HKCU "${MANUPRODUCTKEY}" "InstallDir"
-      Call ValidateLegacyMsiInstallDir
-      ${If} $LegacyMsiCandidateValid = 1
-        StrCpy $LegacyMsiInstallDir "$LegacyMsiCandidate"
-      ${EndIf}
     ${EndIf}
 
     ; SHINSEKAI MSI->NSIS COMPAT END
@@ -971,6 +1058,12 @@ Section Uninstall
     DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
     DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
     DeleteRegKey /ifempty HKCU "${MANUKEY}"
+    ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+    ; An explicit delete-app-data uninstall also consumes the one-time legacy
+    ; MSI app-root recovery hint.
+    DeleteRegKey HKCU "${LEGACY_MIGRATION_KEY}"
+    DeleteRegKey /ifempty HKCU "Software\${BUNDLEID}"
+    ; SHINSEKAI MSI->NSIS COMPAT END
 
     SetShellVarContext current
     RmDir /r "$APPDATA\${BUNDLEID}"
@@ -995,145 +1088,178 @@ Function RestorePreviousInstallLocation
 FunctionEnd
 
 ; SHINSEKAI MSI->NSIS COMPAT BEGIN
-; Validate a candidate without trusting registry content. Accepted paths must:
-; - be a canonical drive-absolute path (UNC/device/relative paths are rejected),
-; - live on a local writable drive (fixed/removable/RAM; not remote/CD-ROM),
-; - already exist, and
-; - contain the historical Shinsekai main binary, and
-; - allow atomic creation, writing and removal of a process-unique probe file.
-;
-; Input/output: $LegacyMsiCandidate; result: $LegacyMsiCandidateValid (0/1).
-Function ValidateLegacyMsiInstallDir
+; Validate the matched MSI product code before using it as a command argument.
+; Only the canonical `{8-4-4-4-12}` hexadecimal representation is accepted.
+Function ValidateLegacyMsiProductCode
   Push $0
   Push $1
   Push $2
   Push $3
-  Push $4
-  Push $5
 
-  StrCpy $LegacyMsiCandidateValid 0
-  StrCpy $0 "$LegacyMsiCandidate"
-  StrCmp $0 "" legacy_msi_validate_done
+  StrCpy $LegacyMsiProductCodeValid 0
+  StrLen $0 "$LegacyMsiProductCode"
+  ${If} $0 != 38
+    Goto legacy_msi_product_code_done
+  ${EndIf}
 
-  ; ARP values may have one matching pair of surrounding quotes.
-  StrCpy $1 "$0" 1
-  StrCmp $1 "$\"" 0 legacy_msi_validate_unquoted
-    StrLen $2 "$0"
-    ${If} $2 <= 2
-      Goto legacy_msi_validate_done
+  StrCpy $1 0
+  legacy_msi_product_code_loop:
+    StrCpy $2 "$LegacyMsiProductCode" 1 $1
+    ${If} $1 = 0
+      StrCmp $2 "{" 0 legacy_msi_product_code_done
+    ${ElseIf} $1 = 37
+      StrCmp $2 "}" 0 legacy_msi_product_code_done
+    ${ElseIf} $1 = 9
+    ${OrIf} $1 = 14
+    ${OrIf} $1 = 19
+    ${OrIf} $1 = 24
+      StrCmp $2 "-" 0 legacy_msi_product_code_done
+    ${Else}
+      ${StrLoc} $3 "0123456789abcdefABCDEF" "$2" ">"
+      StrCmp $3 "" legacy_msi_product_code_done
     ${EndIf}
-    IntOp $3 $2 - 1
-    StrCpy $1 "$0" 1 $3
-    StrCmp $1 "$\"" 0 legacy_msi_validate_done
-    IntOp $2 $2 - 2
-    StrCpy $0 "$0" $2 1
+    IntOp $1 $1 + 1
+    ${If} $1 < 38
+      Goto legacy_msi_product_code_loop
+    ${EndIf}
 
-  legacy_msi_validate_unquoted:
-  ; Require `X:\...` before canonicalizing. This rejects UNC, device paths and
-  ; drive-relative values such as `X:folder`.
-  StrCpy $1 "$0" 1 1
-  StrCmp $1 ":" 0 legacy_msi_validate_done
-  StrCpy $1 "$0" 1 2
-  StrCmp $1 "\" 0 legacy_msi_validate_done
-  StrCpy $1 "$0" 1
-  StrCmp $1 "\" legacy_msi_validate_done
+  StrCpy $LegacyMsiProductCodeValid 1
 
-  GetFullPathName $0 "$0"
-  StrLen $1 "$0"
-  ${If} $1 <= 3
-    ; Never install directly into a drive root even when it is writable.
-    Goto legacy_msi_validate_done
-  ${EndIf}
-
-  StrCpy $1 "$0" 3
-  System::Call 'kernel32::GetDriveTypeW(w r1) i .r2'
-  ${If} $2 = 0
-  ${OrIf} $2 = 1
-  ${OrIf} $2 = 4
-  ${OrIf} $2 = 5
-    Goto legacy_msi_validate_done
-  ${EndIf}
-
-  IfFileExists "$0\." 0 legacy_msi_validate_done
-  IfFileExists "$0\${MAINBINARYNAME}.exe" 0 legacy_msi_validate_done
-
-  System::Call 'kernel32::GetCurrentProcessId() i .r2'
-  System::Call 'kernel32::GetTickCount() i .r3'
-  StrCpy $4 "$0\.shinsekai-nsis-write-probe-$2-$3.tmp"
-
-  ; CREATE_NEW (1) is atomic and refuses to touch a pre-existing path, so even
-  ; a malicious/colliding registry value cannot make the probe truncate data.
-  System::Call 'kernel32::CreateFileW(w r4, i 0x40000000, i 0, p 0, i 1, i 0x00000100, p 0) p .r5'
-  IntCmp $5 -1 legacy_msi_validate_done 0 0
-  System::Call 'kernel32::WriteFile(p r5, w "S", i 2, *i .r1, p 0) i .r2'
-  ${If} $2 = 0
-  ${OrIf} $1 != 2
-    Goto legacy_msi_validate_probe_cleanup
-  ${EndIf}
-
-  System::Call 'kernel32::CloseHandle(p r5) i .r2'
-  ${If} $2 = 0
-    Goto legacy_msi_validate_probe_cleanup
-  ${EndIf}
-  StrCpy $5 -1
-  ClearErrors
-  Delete "$4"
-  IfErrors legacy_msi_validate_done
-
-  StrCpy $LegacyMsiCandidate "$0"
-  StrCpy $LegacyMsiCandidateValid 1
-  Goto legacy_msi_validate_done
-
-  legacy_msi_validate_probe_cleanup:
-    System::Call 'kernel32::CloseHandle(p r5) i .r1'
-    StrCpy $5 -1
-    ClearErrors
-    Delete "$4"
-    Goto legacy_msi_validate_done
-
-  legacy_msi_validate_done:
-  Pop $5
-  Pop $4
+  legacy_msi_product_code_done:
   Pop $3
   Pop $2
   Pop $1
   Pop $0
 FunctionEnd
 
-; Called only after upstream's DisplayName/Publisher/msiexec checks identify a
-; WiX installation. A validated matching ARP InstallLocation takes precedence
-; over the HKCU named-value fallback because it belongs to the exact MSI entry.
-Function InheritLegacyMsiInstallDir
-  ${If} $CanInheritLegacyMsiInstallDir != 1
-    Return
+; Validate an app-root hint without trusting registry content. This is an
+; identity/readability check, not an installation-permission check: the old
+; per-machine root is expected to be under protected Program Files and must
+; never become the current-user NSIS `$INSTDIR`.
+;
+; Input/output: $LegacyMsiCandidate; result: $LegacyMsiCandidateValid (0/1).
+Function ValidateLegacyMsiAppRoot
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+
+  StrCpy $LegacyMsiCandidateValid 0
+  StrCpy $0 "$LegacyMsiCandidate"
+  StrCmp $0 "" legacy_msi_app_root_done
+
+  ; ARP values may have one matching pair of surrounding quotes.
+  StrCpy $1 "$0" 1
+  StrCmp $1 "$\"" 0 legacy_msi_app_root_unquoted
+    StrLen $2 "$0"
+    ${If} $2 <= 2
+      Goto legacy_msi_app_root_done
+    ${EndIf}
+    IntOp $3 $2 - 1
+    StrCpy $1 "$0" 1 $3
+    StrCmp $1 "$\"" 0 legacy_msi_app_root_done
+    IntOp $2 $2 - 2
+    StrCpy $0 "$0" $2 1
+
+  legacy_msi_app_root_unquoted:
+  ; Require `X:\...` before canonicalizing. This rejects UNC, device paths and
+  ; drive-relative values such as `X:folder`.
+  StrCpy $1 "$0" 1 1
+  StrCmp $1 ":" 0 legacy_msi_app_root_done
+  StrCpy $1 "$0" 1 2
+  StrCmp $1 "\" 0 legacy_msi_app_root_done
+  StrCpy $1 "$0" 1
+  StrCmp $1 "\" legacy_msi_app_root_done
+
+  GetFullPathName $0 "$0"
+  StrLen $1 "$0"
+  ${If} $1 <= 3
+    Goto legacy_msi_app_root_done
+  ${EndIf}
+  StrCpy $1 "$0" 3
+  System::Call 'kernel32::GetDriveTypeW(w r1) i .r2'
+  ${If} $2 = 0
+  ${OrIf} $2 = 1
+  ${OrIf} $2 = 4
+  ${OrIf} $2 = 5
+    Goto legacy_msi_app_root_done
   ${EndIf}
 
-  ReadRegStr $LegacyMsiCandidate HKLM "$R6" "InstallLocation"
-  Call ValidateLegacyMsiInstallDir
-  ${If} $LegacyMsiCandidateValid = 1
-    StrCpy $LegacyMsiInstallDir "$LegacyMsiCandidate"
-  ${EndIf}
+  IfFileExists "$0\." 0 legacy_msi_app_root_done
+  IfFileExists "$0\${MAINBINARYNAME}.exe" 0 legacy_msi_app_root_done
 
-  ${If} $LegacyMsiInstallDir != ""
-    StrCpy $INSTDIR "$LegacyMsiInstallDir"
-  ${Else}
-    StrCpy $LegacyMsiMigrationBlocked 1
-  ${EndIf}
+  StrCpy $LegacyMsiCandidate "$0"
+  StrCpy $LegacyMsiCandidateValid 1
+
+  legacy_msi_app_root_done:
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
 FunctionEnd
 
-; A matched MSI is only safe to uninstall after its exact or legacy fallback
-; directory has passed validation. Stop before PageLeaveReinstall can invoke
-; msiexec when that invariant is not met. Interactive users get a visible,
-; actionable error; passive updater runs still return a deterministic failure.
-Function AbortBlockedLegacyMsiMigration
+; Called only after DisplayName, Publisher, WindowsInstaller and msiexec checks
+; identify a matching MSI. Exact ARP InstallLocation wins, followed by both
+; real historical and compatibility HKCU product keys. Persisting before
+; msiexec is mandatory because WiX removes its owned InstallDir value. This is
+; an app-root candidate, not proof that project data exists there.
+Function PersistLegacyMsiAppRootHint
+  StrCpy $LegacyMsiCandidate ""
+  ReadRegStr $LegacyMsiCandidate HKLM "$R6" "InstallLocation"
+  Call ValidateLegacyMsiAppRoot
+  ${If} $LegacyMsiCandidateValid = 1
+    Goto legacy_msi_app_root_ready
+  ${EndIf}
+
+  ReadRegStr $LegacyMsiCandidate HKCU "Software\shinsekai\Shinsekai" "InstallDir"
+  Call ValidateLegacyMsiAppRoot
+  ${If} $LegacyMsiCandidateValid = 1
+    Goto legacy_msi_app_root_ready
+  ${EndIf}
+
+  ReadRegStr $LegacyMsiCandidate HKCU "Software\Shinsekai Contributors\Shinsekai" "InstallDir"
+  Call ValidateLegacyMsiAppRoot
+  ${If} $LegacyMsiCandidateValid != 1
+    Call AbortLegacyMsiMigration
+  ${EndIf}
+
+  legacy_msi_app_root_ready:
+  ClearErrors
+  WriteRegStr HKCU "${LEGACY_MIGRATION_KEY}" "LegacyMsiAppRoot" "$LegacyMsiCandidate"
+  IfErrors 0 legacy_msi_app_root_persisted
+    Call AbortLegacyMsiMigration
+  legacy_msi_app_root_persisted:
+FunctionEnd
+
+; An explicit NSIS `/D` target could alias the old MSI path. If Windows
+; Installer returns 3010, its reboot-time delete could then remove newly
+; installed files, even across installer restarts. Require the safe LocalAppData
+; transition first rather than trying to compare paths or junction aliases.
+Function AbortExplicitLegacyMsiTarget
   ${If} $PassiveMode = 1
     System::Call 'kernel32::AttachConsole(i -1) i .r0'
     ${If} $0 <> 0
       System::Call 'kernel32::GetStdHandle(i -12) p .r0'
-      FileWrite $0 "Shinsekai: the previous MSI install directory is unavailable or not writable; migration stopped before uninstalling it. Restore access or rerun with sufficient rights.$\r$\n"
+      FileWrite $0 "Shinsekai: MSI-to-NSIS migration cannot use an explicit /D target; rerun without /D.$\r$\n"
     ${EndIf}
   ${Else}
-    MessageBox MB_OK|MB_ICONSTOP "The previous Shinsekai MSI install directory is unavailable or not writable.$\r$\n$\r$\nNothing was uninstalled. Restore access to the old directory, or rerun this installer with sufficient permissions."
+    MessageBox MB_OK|MB_ICONSTOP "MSI-to-NSIS migration cannot use an explicit installation target.$\r$\n$\r$\nNothing was uninstalled. Rerun this installer without /D so it can safely install in LocalAppData."
+  ${EndIf}
+  SetErrorLevel 3
+  Quit
+FunctionEnd
+
+; Stop before PageLeaveReinstall invokes msiexec if identity validation or hint
+; persistence failed. The old MSI remains untouched and no NSIS files install.
+Function AbortLegacyMsiMigration
+  ${If} $PassiveMode = 1
+    System::Call 'kernel32::AttachConsole(i -1) i .r0'
+    ${If} $0 <> 0
+      System::Call 'kernel32::GetStdHandle(i -12) p .r0'
+      FileWrite $0 "Shinsekai: the previous MSI install could not be validated or its app-root hint could not be saved; migration stopped before uninstalling it.$\r$\n"
+    ${EndIf}
+  ${Else}
+    MessageBox MB_OK|MB_ICONSTOP "The previous Shinsekai MSI install could not be validated, or its app-root recovery hint could not be saved.$\r$\n$\r$\nNothing was uninstalled. Restore access to the old installation and try again."
   ${EndIf}
   SetErrorLevel 3
   Quit
@@ -1164,7 +1290,13 @@ Function AbortSilentLegacyWixMigration
     IntOp $0 $0 + 1
     ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "DisplayName"
     ReadRegStr $R1 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "Publisher"
-    StrCmp "$R0$R1" "${PRODUCTNAME}${MANUFACTURER}" 0 silent_wix_loop
+    StrCmp "$R0" "${PRODUCTNAME}" 0 silent_wix_loop
+    StrCmp "$R1" "${MANUFACTURER}" silent_wix_publisher_match
+    StrCmp "$R1" "shinsekai" silent_wix_publisher_match silent_wix_loop
+    silent_wix_publisher_match:
+    ReadRegDWORD $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "WindowsInstaller"
+    StrCmp $R0 1 silent_wix_identity_match silent_wix_loop
+    silent_wix_identity_match:
     ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "UninstallString"
     ${StrCase} $R1 $R0 "L"
     ${StrLoc} $R0 $R1 "msiexec" ">"
@@ -1190,6 +1322,13 @@ Function Skip
 FunctionEnd
 
 Function SkipIfPassive
+  ; SHINSEKAI MSI->NSIS COMPAT BEGIN
+  ; Once a matching MSI is removed, keep the first NSIS install fixed to its
+  ; preselected LocalAppData destination. Skipping the later directory/start
+  ; menu/finish pages prevents an interactive user from selecting a pathname
+  ; that Windows Installer may have scheduled for reboot-time deletion.
+  ${IfThen} $WixMode = 1 ${|} Abort ${|}
+  ; SHINSEKAI MSI->NSIS COMPAT END
   ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
 FunctionEnd
 Function un.SkipIfPassive

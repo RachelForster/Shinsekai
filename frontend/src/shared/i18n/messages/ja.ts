@@ -46,6 +46,10 @@ export const jaMessages: Record<MessageKey, string> = {
   "app.projectRoot.exit": "アプリを終了",
   "app.projectRoot.notice":
     "プロジェクトデータファイルの移動、統合、上書き、削除は行いません。選択を保存するとアプリケーションが再起動します。",
+  "app.projectRoot.reconnectNotice":
+    "利用できないドライブを再接続して、もう一度スキャンしてください。認識可能なプロジェクトデータまたは書き込み権限がない場所は選択できません。プロジェクトデータファイルは変更されません。",
+  "app.projectRoot.rescan": "もう一度スキャン",
+  "app.projectRoot.rescanning": "スキャン中...",
   "app.projectRoot.restarting": "保存して再起動しています...",
   "app.projectRoot.retry": "再試行",
   "app.projectRoot.select": "この場所を使用して再起動",

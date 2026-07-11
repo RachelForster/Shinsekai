@@ -446,7 +446,8 @@ pub fn run() {
             let bridge_auth_token = generate_bridge_auth_token()?;
             let url = app_window_url(bridge_port, &bridge_auth_token);
             restart_debug_log(format!(
-                "setup resolved source_root={} project_root={} app_root={} frontend_dist={} bridge_port={} url={}",
+                "{} source_root={} project_root={} app_root={} frontend_dist={} bridge_port={} url={}",
+                project_root_setup_log_event(project_root_requires_selection),
                 source_root.display(),
                 project_root.display(),
                 app_root.display(),
@@ -493,6 +494,14 @@ pub fn run() {
 
 fn should_bootstrap_runtime(project_root_requires_selection: bool) -> bool {
     !project_root_requires_selection
+}
+
+fn project_root_setup_log_event(project_root_requires_selection: bool) -> &'static str {
+    if project_root_requires_selection {
+        "setup awaiting project-root selection"
+    } else {
+        "setup resolved"
+    }
 }
 
 fn restart_debug_log_path() -> PathBuf {
@@ -1859,6 +1868,15 @@ mod tests {
     fn project_root_conflict_defers_runtime_bootstrap() {
         assert!(!should_bootstrap_runtime(true));
         assert!(should_bootstrap_runtime(false));
+    }
+
+    #[test]
+    fn unresolved_project_root_is_not_logged_as_a_recovery_source() {
+        assert_eq!(
+            project_root_setup_log_event(true),
+            "setup awaiting project-root selection"
+        );
+        assert_eq!(project_root_setup_log_event(false), "setup resolved");
     }
 
     #[test]

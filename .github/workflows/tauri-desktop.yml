@@ -241,6 +241,12 @@ jobs:
             pnpm tauri build --ci --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
           fi
 
+      - name: Test real MSI-to-NSIS migration
+        if: matrix.platform == 'windows-x64'
+        shell: pwsh
+        timeout-minutes: 30
+        run: ./frontend/scripts/test-msi-nsis-migration.ps1
+
       - name: Test Windows project-root resolution
         if: runner.os == 'Windows'
         run: cargo test --manifest-path frontend/src-tauri/Cargo.toml --release --lib project_root

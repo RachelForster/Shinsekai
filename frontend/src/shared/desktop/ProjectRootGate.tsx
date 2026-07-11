@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { FolderCheck } from "lucide-react";
+import { FolderCheck, RefreshCw } from "lucide-react";
 
 import {
   closeDesktopWindow,
@@ -29,6 +29,7 @@ export function ProjectRootPrompt({ onResolved }: { onResolved?: () => void }) {
   const [status, setStatus] = useState<DesktopProjectRootStatus | null>(null);
   const [selectedPath, setSelectedPath] = useState("");
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
   const [statusError, setStatusError] = useState("");
   const [statusAttempt, setStatusAttempt] = useState(0);
@@ -41,10 +42,16 @@ export function ProjectRootPrompt({ onResolved }: { onResolved?: () => void }) {
 
     let cancelled = false;
     setStatusError("");
+    setScanning(true);
     void getDesktopProjectRootStatus()
       .then((nextStatus) => {
         if (!cancelled) {
           setStatus(nextStatus);
+          setSelectedPath((currentPath) =>
+            nextStatus.candidates.some((candidate) => candidate.path === currentPath && candidate.selectable)
+              ? currentPath
+              : "",
+          );
           if (!nextStatus.requiresSelection) {
             onResolved?.();
           }
@@ -54,6 +61,11 @@ export function ProjectRootPrompt({ onResolved }: { onResolved?: () => void }) {
         console.warn("[project-root] unable to read migration status", statusError);
         if (!cancelled) {
           setStatusError(desktopRestartErrorMessage(statusError));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setScanning(false);
         }
       });
 
@@ -90,15 +102,19 @@ export function ProjectRootPrompt({ onResolved }: { onResolved?: () => void }) {
   }
 
   const hasSelectableCandidate = status.candidates.some((candidate) => candidate.selectable);
+  const hasUnavailableCandidate = status.candidates.some((candidate) => !candidate.selectable);
+  const selectedCandidate = status.candidates.find(
+    (candidate) => candidate.path === selectedPath && candidate.selectable,
+  );
 
   const applySelection = async () => {
-    if (!selectedPath || saving) {
+    if (!selectedCandidate || saving || scanning) {
       return;
     }
     setSaving(true);
     setError("");
     try {
-      await selectDesktopProjectRoot(selectedPath);
+      await selectDesktopProjectRoot(selectedCandidate.path);
       await restartDesktopApp();
     } catch (selectionError) {
       setError(
@@ -120,7 +136,15 @@ export function ProjectRootPrompt({ onResolved }: { onResolved?: () => void }) {
             {t("app.projectRoot.exit")}
           </Button>
           <Button
-            disabled={!selectedPath}
+            disabled={saving}
+            icon={<RefreshCw aria-hidden className="button__icon" />}
+            loading={scanning}
+            onClick={() => setStatusAttempt((attempt) => attempt + 1)}
+          >
+            {scanning ? t("app.projectRoot.rescanning") : t("app.projectRoot.rescan")}
+          </Button>
+          <Button
+            disabled={!selectedCandidate || scanning}
             icon={<FolderCheck aria-hidden className="button__icon" />}
             loading={saving}
             onClick={() => void applySelection()}
@@ -151,7 +175,7 @@ export function ProjectRootPrompt({ onResolved }: { onResolved?: () => void }) {
             >
               <input
                 checked={selectedPath === candidate.path}
-                disabled={saving || !candidate.selectable}
+                disabled={saving || scanning || !candidate.selectable}
                 name="project-root"
                 onChange={() => setSelectedPath(candidate.path)}
                 type="radio"
@@ -168,7 +192,9 @@ export function ProjectRootPrompt({ onResolved }: { onResolved?: () => void }) {
             </label>
           ))}
         </fieldset>
-        <p className="project-root-prompt__notice">{t("app.projectRoot.notice")}</p>
+        <p className="project-root-prompt__notice">
+          {t(hasUnavailableCandidate ? "app.projectRoot.reconnectNotice" : "app.projectRoot.notice")}
+        </p>
         {!hasSelectableCandidate ? (
           <p className="field-row__help" role="alert">
             {t("app.projectRoot.blocked")}
