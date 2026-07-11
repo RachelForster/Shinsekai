@@ -173,6 +173,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: frontend/src-tauri -> target
+          # Share release dependencies with the release workflow while keeping
+          # rust-cache's OS, architecture, toolchain, and manifest isolation.
+          shared-key: build
 
       - name: Install Linux Tauri dependencies
         if: runner.os == 'Linux'
@@ -188,23 +191,9 @@ jobs:
             sudo apt-get install -y -qq libfuse2
           fi
 
-      - name: Install Windows installer dependencies
-        if: runner.os == 'Windows' && matrix.bundles != 'none'
-        shell: pwsh
-        run: choco install nsis --no-progress -y
-
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-
-      - name: Build frontend for Windows Tauri tests
-        if: runner.os == 'Windows'
-        working-directory: frontend
-        run: pnpm build
-
-      - name: Test Windows project-root resolution
-        if: runner.os == 'Windows'
-        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml project_root
 
       - name: Restore embedded Python runtime cache
         id: embedded-python-runtime-cache
@@ -251,6 +240,10 @@ jobs:
           else
             pnpm tauri build --ci --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
           fi
+
+      - name: Test Windows project-root resolution
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml --release --lib project_root
 
       - name: Dump Linux AppImage diagnostics
         if: failure() && runner.os == 'Linux'

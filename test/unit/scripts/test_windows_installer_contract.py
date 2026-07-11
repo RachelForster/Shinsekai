@@ -268,6 +268,7 @@ def test_release_workflow_keeps_windows_assets_nsis_only() -> None:
 def test_windows_ci_renders_custom_nsis_and_runs_project_root_tests() -> None:
     workflow = TAURI_WORKFLOW.read_text(encoding="utf-8")
     build_job = workflow[workflow.index("\n  build:\n") :]
+    release_workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     tauri_config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
 
     assert tauri_config["build"]["frontendDist"] == "../dist"
@@ -275,17 +276,20 @@ def test_windows_ci_renders_custom_nsis_and_runs_project_root_tests() -> None:
         r"platform: windows-x64\s+os: windows-latest\s+bundles: nsis",
         build_job,
     )
-    install_dependencies = build_job.index("- name: Install frontend dependencies")
-    build_frontend = build_job.index("- name: Build frontend for Windows Tauri tests")
+    build_tauri = build_job.index("- name: Build Tauri bundle")
     test_project_root = build_job.index("- name: Test Windows project-root resolution")
-    assert install_dependencies < build_frontend < test_project_root
+    verify_runtime = build_job.index("- name: Verify packaged embedded Python runtime")
+    assert build_tauri < test_project_root < verify_runtime
 
-    frontend_step = build_job[build_frontend:test_project_root]
-    assert "if: runner.os == 'Windows'" in frontend_step
-    assert "working-directory: frontend" in frontend_step
-    assert "run: pnpm build" in frontend_step
+    project_root_step = build_job[test_project_root:verify_runtime]
+    assert "if: runner.os == 'Windows'" in project_root_step
     assert (
-        "cargo test --manifest-path frontend/src-tauri/Cargo.toml project_root"
-        in build_job[test_project_root:]
+        "cargo test --manifest-path frontend/src-tauri/Cargo.toml --release --lib project_root"
+        in project_root_step
     )
+    assert "Build frontend for Windows Tauri tests" not in build_job
+    assert "shared-key: build" in build_job
+    assert "shared-key: build" in release_workflow
+    assert "choco install nsis" not in workflow
+    assert "choco install nsis" not in release_workflow
     assert "frontend/src-tauri/target/release/bundle/nsis/*.exe" in build_job
