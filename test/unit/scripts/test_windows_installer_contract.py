@@ -348,15 +348,55 @@ def test_windows_ci_renders_custom_nsis_and_runs_project_root_tests() -> None:
         build_job,
     )
     build_tauri = build_job.index("- name: Build Tauri bundle")
+    restore_legacy_msi = build_job.index("- name: Restore legacy MSI fixture cache")
     migration_test = build_job.index("- name: Test real MSI-to-NSIS migration")
+    save_legacy_msi = build_job.index("- name: Save verified legacy MSI fixture cache")
     test_project_root = build_job.index("- name: Test Windows project-root resolution")
     verify_runtime = build_job.index("- name: Verify packaged embedded Python runtime")
-    assert build_tauri < migration_test < test_project_root < verify_runtime
+    assert (
+        build_tauri
+        < restore_legacy_msi
+        < migration_test
+        < save_legacy_msi
+        < test_project_root
+        < verify_runtime
+    )
 
-    migration_step = build_job[migration_test:test_project_root]
+    legacy_msi_path = ".cache/legacy-installers/Shinsekai-2.1.0_windows-x64.msi"
+    legacy_msi_cache_prefix = (
+        "legacy-msi-windows-x64-v2.1.0-sha256-"
+        "c896cc45f718a41f9e2183d624e8af60c998718a3842ed2686f745f93b6cdce9-v2-"
+    )
+    legacy_msi_cache_key = (
+        legacy_msi_cache_prefix
+        + "${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    legacy_msi_cache = build_job[restore_legacy_msi:migration_test]
+    assert "if: matrix.platform == 'windows-x64'" in legacy_msi_cache
+    assert "uses: actions/cache/restore@v4" in legacy_msi_cache
+    assert "continue-on-error: true" in legacy_msi_cache
+    assert legacy_msi_path in legacy_msi_cache
+    assert f"key: {legacy_msi_cache_key}" in legacy_msi_cache
+    assert f"restore-keys: |\n            {legacy_msi_cache_prefix}" in legacy_msi_cache
+
+    migration_step = build_job[migration_test:save_legacy_msi]
     assert "if: matrix.platform == 'windows-x64'" in migration_step
+    assert "id: msi-migration-test" in migration_step
     assert "shell: pwsh" in migration_step
     assert "./frontend/scripts/test-msi-nsis-migration.ps1" in migration_step
+    assert (
+        "-LegacyMsiPath '.cache/legacy-installers/"
+        "Shinsekai-2.1.0_windows-x64.msi'"
+        in migration_step
+    )
+
+    save_cache_step = build_job[save_legacy_msi:test_project_root]
+    assert "if: success()" in save_cache_step
+    assert "steps.msi-migration-test.outputs.legacy-msi-updated == 'true'" in save_cache_step
+    assert "uses: actions/cache/save@v4" in save_cache_step
+    assert "continue-on-error: true" in save_cache_step
+    assert legacy_msi_path in save_cache_step
+    assert f"key: {legacy_msi_cache_key}" in save_cache_step
     assert MSI_MIGRATION_TEST.is_file()
     migration_script = MSI_MIGRATION_TEST.read_text(encoding="utf-8")
     assert (
@@ -371,6 +411,27 @@ def test_windows_ci_renders_custom_nsis_and_runs_project_root_tests() -> None:
     assert '@("/P", "/UPDATE", "/NS")' in migration_script
     assert "Registry64" in migration_script
     assert "ExpectedNsisInstallDir" in migration_script
+    assert '[string]$LegacyMsiPath = ""' in migration_script
+    assert "[int]$MaxAttempts = 5" in migration_script
+    assert "[int]$TotalTimeoutSeconds = 360" in migration_script
+    assert "$httpClient.Timeout = [TimeSpan]::FromSeconds" in migration_script
+    assert "$httpClient.GetByteArrayAsync($Uri).GetAwaiter().GetResult()" in migration_script
+    assert "[IO.File]::WriteAllBytes($partialPath, $downloadBytes)" in migration_script
+    assert '"legacy-msi-updated="' in migration_script
+    assert '"$DestinationPath.partial.$PID"' in migration_script
+    partial_hash = migration_script.index(
+        "Get-FileHash -LiteralPath $partialPath -Algorithm SHA256"
+    )
+    verified_move = migration_script.index(
+        "Move-Item -LiteralPath $partialPath -Destination $DestinationPath"
+    )
+    final_hash = migration_script.index(
+        "Get-FileHash -LiteralPath $LegacyMsiPath -Algorithm SHA256"
+    )
+    msi_install = migration_script.index("Invoke-CheckedProcess -FilePath $msiexec")
+    assert partial_hash < verified_move < final_hash < msi_install
+    assert "Invoke-WebRequest" not in migration_script
+    assert "MaximumRetryCount" not in migration_script
 
     project_root_step = build_job[test_project_root:verify_runtime]
     assert "if: runner.os == 'Windows'" in project_root_step

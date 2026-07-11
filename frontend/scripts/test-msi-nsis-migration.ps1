@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-  [string]$NsisInstallerPath = ""
+  [string]$NsisInstallerPath = "",
+  [string]$LegacyMsiPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -20,6 +21,12 @@ $LegacyRegistryParentPath = "Registry::HKEY_CURRENT_USER\Software\shinsekai"
 
 $RepositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $FrontendRoot = Join-Path $RepositoryRoot "frontend"
+if ([string]::IsNullOrWhiteSpace($LegacyMsiPath)) {
+  $LegacyMsiPath = Join-Path $RepositoryRoot ".cache\legacy-installers\Shinsekai-2.1.0_windows-x64.msi"
+} elseif (-not [IO.Path]::IsPathRooted($LegacyMsiPath)) {
+  $LegacyMsiPath = Join-Path $RepositoryRoot $LegacyMsiPath
+}
+$LegacyMsiPath = [IO.Path]::GetFullPath($LegacyMsiPath)
 $CurrentVersion = (Get-Content -LiteralPath (Join-Path $FrontendRoot "package.json") -Raw | ConvertFrom-Json).version
 $ProgramFiles64 = [Environment]::GetFolderPath("ProgramFiles")
 $LocalAppData = [Environment]::GetFolderPath("LocalApplicationData")
@@ -31,7 +38,6 @@ $RunnerTemp = if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
   $env:RUNNER_TEMP
 }
 $TestRoot = Join-Path $RunnerTemp ("shinsekai-msi-nsis-migration-" + [Guid]::NewGuid().ToString("N"))
-$LegacyMsiPath = Join-Path $TestRoot "Shinsekai-2.1.0_windows-x64.msi"
 $MsiInstallLog = Join-Path $TestRoot "msi-install.log"
 $MsiCleanupLog = Join-Path $TestRoot "msi-cleanup.log"
 $SeedToken = "shinsekai-msi-migration-" + [Guid]::NewGuid().ToString("N")
@@ -56,6 +62,86 @@ function Assert-Condition {
   if (-not $Condition) {
     throw "Assertion failed: $Message"
   }
+}
+
+function Ensure-LegacyMsiFixture {
+  param(
+    [Parameter(Mandatory)][string]$Uri,
+    [Parameter(Mandatory)][string]$DestinationPath,
+    [Parameter(Mandatory)][string]$ExpectedSha256,
+    [ValidateRange(1, 10)][int]$MaxAttempts = 5,
+    [ValidateRange(60, 900)][int]$TotalTimeoutSeconds = 360
+  )
+
+  $destinationDirectory = Split-Path -Parent $DestinationPath
+  New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+
+  if (Test-Path -LiteralPath $DestinationPath -PathType Leaf) {
+    $cachedHash = (Get-FileHash -LiteralPath $DestinationPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($cachedHash -ceq $ExpectedSha256) {
+      Write-Step "Using the verified cached v2.1.0 x64 MSI"
+      return $false
+    }
+
+    Write-Warning "Ignoring legacy MSI cache with SHA-256 $cachedHash; expected $ExpectedSha256"
+    Remove-Item -LiteralPath $DestinationPath -Force
+  }
+
+  $lastFailure = "total download time budget was exhausted"
+  $partialPath = "$DestinationPath.partial.$PID"
+  $downloadClock = [Diagnostics.Stopwatch]::StartNew()
+  try {
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt += 1) {
+      if (Test-Path -LiteralPath $partialPath) {
+        Remove-Item -LiteralPath $partialPath -Force
+      }
+      $remainingSeconds = $TotalTimeoutSeconds - [int][Math]::Ceiling($downloadClock.Elapsed.TotalSeconds)
+      if ($remainingSeconds -le 0) {
+        break
+      }
+      $requestTimeoutSeconds = [int][Math]::Min(60, $remainingSeconds)
+
+      Write-Step "Downloading the pinned v2.1.0 x64 MSI (attempt $attempt/$MaxAttempts)"
+      try {
+        $httpClient = [Net.Http.HttpClient]::new()
+        try {
+          $httpClient.Timeout = [TimeSpan]::FromSeconds($requestTimeoutSeconds)
+          $downloadBytes = $httpClient.GetByteArrayAsync($Uri).GetAwaiter().GetResult()
+          [IO.File]::WriteAllBytes($partialPath, $downloadBytes)
+          $downloadBytes = $null
+        } finally {
+          $httpClient.Dispose()
+        }
+
+        $downloadHash = (Get-FileHash -LiteralPath $partialPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($downloadHash -cne $ExpectedSha256) {
+          throw "legacy MSI SHA-256 mismatch: expected $ExpectedSha256, got $downloadHash"
+        }
+
+        Move-Item -LiteralPath $partialPath -Destination $DestinationPath -Force
+        Write-Step "Cached the verified v2.1.0 x64 MSI"
+        return $true
+      } catch {
+        $lastFailure = $_.Exception.Message
+        if (Test-Path -LiteralPath $partialPath) {
+          Remove-Item -LiteralPath $partialPath -Force
+        }
+        $remainingSeconds = $TotalTimeoutSeconds - [int][Math]::Ceiling($downloadClock.Elapsed.TotalSeconds)
+        if ($attempt -lt $MaxAttempts -and $remainingSeconds -gt 0) {
+          $retryDelaySeconds = [int][Math]::Min([Math]::Pow(2, $attempt), $remainingSeconds)
+          Write-Warning "Legacy MSI download attempt $attempt failed: $lastFailure. Retrying in $retryDelaySeconds second(s)."
+          Start-Sleep -Seconds $retryDelaySeconds
+        }
+      }
+    }
+  } finally {
+    $downloadClock.Stop()
+    if (Test-Path -LiteralPath $partialPath) {
+      Remove-Item -LiteralPath $partialPath -Force
+    }
+  }
+
+  throw "Unable to download and verify the legacy MSI after $MaxAttempts attempts within a $TotalTimeoutSeconds-second retry budget. Last failure: $lastFailure"
 }
 
 function Test-StringEqual {
@@ -337,8 +423,15 @@ try {
   $CleanupAuthorized = $true
 
   New-Item -ItemType Directory -Path $TestRoot | Out-Null
-  Write-Step "Downloading the pinned v2.1.0 x64 MSI"
-  Invoke-WebRequest -Uri $LegacyMsiUrl -OutFile $LegacyMsiPath -MaximumRetryCount 3 -RetryIntervalSec 2 -TimeoutSec 60
+  $legacyMsiUpdated = Ensure-LegacyMsiFixture `
+    -Uri $LegacyMsiUrl `
+    -DestinationPath $LegacyMsiPath `
+    -ExpectedSha256 $LegacyMsiSha256
+  if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
+    Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value (
+      "legacy-msi-updated=" + $legacyMsiUpdated.ToString().ToLowerInvariant()
+    )
+  }
   $actualHash = (Get-FileHash -LiteralPath $LegacyMsiPath -Algorithm SHA256).Hash.ToLowerInvariant()
   Assert-Condition ($actualHash -ceq $LegacyMsiSha256) "legacy MSI SHA-256 mismatch: expected $LegacyMsiSha256, got $actualHash"
 
