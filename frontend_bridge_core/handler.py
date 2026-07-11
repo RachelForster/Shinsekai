@@ -88,6 +88,8 @@ from frontend_bridge_core.memory import (
     _memory_tool_forget,
     _memory_tool_remember,
     _memory_tool_search,
+    _preview_character_memory_import,
+    _run_character_memory_import,
 )
 from frontend_bridge_core.model_assets import (
     _download_model_asset,
@@ -570,6 +572,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self._require_authorized_write(path)
             is_upload = method == "POST" and path in {
                 "/api/characters/import-upload",
+                "/api/characters/memories/import-preview-upload",
+                "/api/characters/memories/import-upload",
                 "/api/backgrounds/import-upload",
                 "/api/logs/import-upload",
                 "/api/chat/themes/upload",
@@ -679,6 +683,48 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(
                     _delete_character_memory(str(body.get("name") or ""), str(body.get("memoryId") or ""))
                 )
+            elif method == "POST" and path == "/api/characters/memories/import-preview-upload":
+                temp_dir, paths = self._read_upload_files()
+                try:
+                    query = parse_qs(urlparse(self.path).query)
+                    name = str((query.get("name") or [""])[0])
+                    self._send_json(
+                        _preview_character_memory_import(
+                            self.state,
+                            name,
+                            paths,
+                            source_root=temp_dir,
+                        )
+                    )
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            elif method == "POST" and path == "/api/characters/memories/import-upload":
+                temp_dir, paths = self._read_upload_files()
+                query = parse_qs(urlparse(self.path).query)
+                name = str((query.get("name") or [""])[0]).strip()
+
+                def run_uploaded_memory_import(task_id: str) -> dict[str, Any]:
+                    try:
+                        return _run_character_memory_import(
+                            self.state,
+                            task_id,
+                            name,
+                            paths,
+                            source_root=temp_dir,
+                        )
+                    finally:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+
+                try:
+                    self._enqueue_background_task(
+                        kind="memory-import",
+                        title=f"导入 {name or '角色'} 的长期记忆",
+                        message="长期记忆导入任务已排队。",
+                        worker=run_uploaded_memory_import,
+                    )
+                except Exception:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    raise
             elif method == "POST" and path == "/api/memory/status":
                 self._send_json(_get_mem0_status(start_loading=bool(body.get("startLoading", True))))
             elif method == "POST" and path == "/api/memory/list":

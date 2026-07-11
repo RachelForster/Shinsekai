@@ -497,6 +497,130 @@ describe("http platform", () => {
     });
   });
 
+  it("previews and imports uploaded character memory files with task polling", async () => {
+    vi.useFakeTimers();
+    const preview = {
+      chunkCount: 2,
+      dialogueCharacters: 8_000,
+      dialogueLineCount: 80,
+      estimatedInputTokens: 2_800,
+      estimatedOutputTokens: 700,
+      estimatedTotalTokens: 3_500,
+      fileCount: 1,
+      files: [],
+      sourceTokens: 2_000,
+      warnings: [],
+    };
+    const result = {
+      chunkCount: 2,
+      duplicateCount: 1,
+      estimatedTotalTokens: 3_500,
+      extractedCount: 4,
+      fileCount: 1,
+      savedCount: 3,
+    };
+    const runningTask = {
+      createdAt: 1,
+      id: "memory-import-1",
+      kind: "character-memory-import",
+      logs: [],
+      message: "Extracting",
+      phase: "extracting",
+      progress: 0.5,
+      result: null,
+      status: "running",
+      title: "Import memories",
+      updatedAt: 1,
+    };
+    const completedTask = {
+      ...runningTask,
+      phase: "completed",
+      progress: 1,
+      result,
+      status: "succeeded",
+      updatedAt: 2,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse(preview))
+      .mockResolvedValueOnce(await mockJsonResponse(runningTask))
+      .mockResolvedValueOnce(await mockJsonResponse(completedTask));
+    const onTaskUpdate = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["User: hello"], "history.json", { type: "application/json" });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.characters.previewMemoryImport("Nanami", [file])).resolves.toEqual(preview);
+    const resultPromise = platform.characters.importMemories("Nanami", [file], {
+      onTaskUpdate,
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(resultPromise).resolves.toEqual(result);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/characters/memories/import-preview-upload?name=Nanami",
+      "http://127.0.0.1:8787/api/characters/memories/import-upload?name=Nanami",
+      "http://127.0.0.1:8787/api/tasks/memory-import-1",
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+    expect(fetchMock.mock.calls[1][1]?.body).toBeInstanceOf(FormData);
+    expect(onTaskUpdate).toHaveBeenNthCalledWith(1, runningTask);
+    expect(onTaskUpdate).toHaveBeenNthCalledWith(2, completedTask);
+  });
+
+  it("uses multipart memory import endpoints for browser files", async () => {
+    const preview = {
+      chunkCount: 1,
+      dialogueCharacters: 20,
+      dialogueLineCount: 2,
+      estimatedInputTokens: 10,
+      estimatedOutputTokens: 5,
+      estimatedTotalTokens: 15,
+      fileCount: 1,
+      files: [],
+      sourceTokens: 5,
+      warnings: [],
+    };
+    const result = {
+      chunkCount: 1,
+      duplicateCount: 0,
+      estimatedTotalTokens: 15,
+      extractedCount: 1,
+      fileCount: 1,
+      savedCount: 1,
+    };
+    const completedTask = {
+      createdAt: 1,
+      id: "memory-import-upload-1",
+      kind: "character-memory-import",
+      logs: [],
+      message: "Done",
+      phase: "completed",
+      progress: 1,
+      result,
+      status: "succeeded",
+      title: "Import memories",
+      updatedAt: 2,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse(preview))
+      .mockResolvedValueOnce(await mockJsonResponse(completedTask));
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["User: hello\nMika: hi"], "history.txt", { type: "text/plain" });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.characters.previewMemoryImport("Mika A", [file]);
+    await expect(platform.characters.importMemories("Mika A", [file])).resolves.toEqual(result);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/characters/memories/import-preview-upload?name=Mika%20A",
+      "http://127.0.0.1:8787/api/characters/memories/import-upload?name=Mika%20A",
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+    expect(fetchMock.mock.calls[1][1]?.body).toBeInstanceOf(FormData);
+  });
+
   it("calls sprite voice endpoints and resolves media URLs", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       mockJsonResponse(sampleConfig.characters[0]),

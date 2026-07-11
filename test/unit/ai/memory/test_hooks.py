@@ -122,6 +122,34 @@ def test_periodic_extraction_enqueues_and_flushes_memories(tmp_path):
     assert len(hooks.queue) == 0
 
 
+def test_periodic_extraction_normalizes_assistant_dialog_json_before_prompting(tmp_path):
+    adapter = MockLLMAdapter(responses=["[]"])
+    hooks = MemoryAutoHooks(
+        llm_adapter=adapter,
+        character_names=["Mika"],
+        queue=MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=lambda *_args: {"ok": True}),
+        extract_interval_turns=1,
+    )
+
+    hooks.message_added(MessageAddedContext(role="user", message={"role": "user", "content": "记住雨天"}, messages=[]))
+    hooks.message_added(
+        MessageAddedContext(
+            role="assistant",
+            message={
+                "role": "assistant",
+                "content": '{"dialog":[{"character_name":"Mika","speech":"我会记住。"}]}',
+            },
+            messages=[],
+        )
+    )
+    hooks.wait_for_idle()
+
+    prompt = adapter.call_history[0]["messages"][-1]["content"]
+    assert "user: 记住雨天" in prompt
+    assert "Mika: 我会记住。" in prompt
+    assert '"dialog"' not in prompt
+
+
 def test_periodic_extraction_skips_assistant_tool_call_messages(tmp_path):
     saved = []
     adapter = MockLLMAdapter(responses=['[{"character_name":"Mika","memory":"should not save"}]'])

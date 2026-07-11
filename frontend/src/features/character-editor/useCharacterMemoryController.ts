@@ -297,6 +297,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     dependencyDialogOpen: memoryDepOpen,
     dependencyTask: memoryDepTask,
     error: searchMutation.error ?? query.error,
+    ensureReady,
     installDependency,
     isChecking: mem0Checking,
     isError: query.isError || searchMutation.isError || !!depError,

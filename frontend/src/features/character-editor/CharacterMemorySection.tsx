@@ -1,4 +1,4 @@
-import { Brain, ChevronLeft, ChevronRight, Download, RefreshCw, Search, X } from "lucide-react";
+import { Brain, ChevronLeft, ChevronRight, Download, RefreshCw, Search, Upload, X } from "lucide-react";
 
 import { useI18n } from "../../shared/i18n";
 import type { CharacterMemoryList } from "../../shared/platform/types";
@@ -18,6 +18,7 @@ interface CharacterMemorySectionProps {
   isFetched: boolean;
   isLoading: boolean;
   memoryInput: string;
+  memoryImportPending: boolean;
   memoryName: string;
   memoryPage: number;
   memoryTotalPages: number;
@@ -26,6 +27,7 @@ interface CharacterMemorySectionProps {
   onClearSearch: () => void;
   onDeleteMemory: (memory: { id: string; memory: string }) => void;
   onInstallDep: () => void;
+  onImportMemories: () => void;
   onMemoryInputChange: (value: string) => void;
   onMemoryPageChange: (updater: (page: number) => number) => void;
   onRefresh: () => void;
@@ -49,6 +51,7 @@ export function CharacterMemorySection({
   isFetching,
   isLoading,
   memoryInput,
+  memoryImportPending,
   memoryName,
   memoryPage,
   memoryTotalPages,
@@ -57,6 +60,7 @@ export function CharacterMemorySection({
   onClearSearch,
   onDeleteMemory,
   onInstallDep,
+  onImportMemories,
   onMemoryInputChange,
   onMemoryPageChange,
   onRefresh,
@@ -74,6 +78,15 @@ export function CharacterMemorySection({
         <h2 className="section__title">{t("character.memory.section")}</h2>
         <div className="page__actions">
           <span className="entity-list__meta">{data ? t("character.memory.count", { count: data.count }) : ""}</span>
+          <AsyncButton
+            disabled={!memoryName || Boolean(depError) || depInstalling || isChecking}
+            icon={<Upload aria-hidden className="button__icon" />}
+            loading={memoryImportPending}
+            onClick={onImportMemories}
+            variant="ghost"
+          >
+            {t("character.memory.import")}
+          </AsyncButton>
           <Button
             disabled={!memoryName || isFetching || depInstalling || isChecking}
             icon={<RefreshCw aria-hidden className="button__icon" />}

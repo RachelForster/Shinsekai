@@ -31,6 +31,7 @@ import type { SpriteVoiceType } from "../../shared/platform/types";
 import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemoryDialogs } from "./CharacterMemoryDialogs";
+import { CharacterMemoryImportDialogs } from "./CharacterMemoryImportDialogs";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
@@ -46,6 +47,7 @@ import {
   type CharacterResourceDeleteTarget,
 } from "./characterEditorUtils";
 import { useCharacterMemoryController } from "./useCharacterMemoryController";
+import { useCharacterMemoryImportController } from "./useCharacterMemoryImportController";
 import "./CharacterEditorPage.css";
 
 export function mergeSprites(serverSprites: Sprite[], current: Character) {
@@ -87,6 +89,11 @@ export function CharacterEditorPage() {
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const memoryName = draft.name.trim();
   const memoryController = useCharacterMemoryController({ memoryName });
+  const memoryImportController = useCharacterMemoryImportController({
+    ensureReady: memoryController.ensureReady,
+    memoryName,
+    onRefresh: memoryController.refresh,
+  });
   const currentCharacterName = isCreating ? "" : selectedName;
   const isSavedCharacter = Boolean(
     currentCharacterName && data.some((character) => character.name === currentCharacterName),
@@ -959,6 +966,7 @@ export function CharacterEditorPage() {
           isFetching={memoryController.isFetching}
           isLoading={memoryController.isLoading}
           memoryInput={memoryController.memoryInput}
+          memoryImportPending={memoryImportController.previewPending || memoryImportController.importPending}
           memoryName={memoryName}
           memoryPage={memoryController.memoryPage}
           memoryTotalPages={memoryController.memoryTotalPages}
@@ -967,6 +975,7 @@ export function CharacterEditorPage() {
           onClearSearch={memoryController.clearSearch}
           onDeleteMemory={requestMemoryDelete}
           onInstallDep={() => void memoryController.installDependency()}
+          onImportMemories={() => void memoryImportController.openPicker()}
           onMemoryInputChange={memoryController.setMemoryInput}
           onMemoryPageChange={memoryController.setMemoryPage}
           onRefresh={() => void memoryController.refresh()}
@@ -1015,6 +1024,20 @@ export function CharacterEditorPage() {
         loadingTask={memoryController.loadingTask}
         onCloseDependency={memoryController.closeDependencyDialog}
         onCloseLoading={memoryController.closeLoadingDialog}
+      />
+      <CharacterMemoryImportDialogs
+        importPending={memoryImportController.importPending}
+        onClosePicker={memoryImportController.closePicker}
+        onClosePreview={memoryImportController.closePreview}
+        onCloseTask={memoryImportController.closeTask}
+        onConfirm={() => void memoryImportController.confirmImport()}
+        onSelect={(items) => void memoryImportController.previewItems(items)}
+        pickerOpen={memoryImportController.pickerOpen}
+        preview={memoryImportController.preview}
+        previewOpen={memoryImportController.previewOpen}
+        result={memoryImportController.result}
+        task={memoryImportController.task}
+        taskOpen={memoryImportController.taskOpen}
       />
     </div>
   );
