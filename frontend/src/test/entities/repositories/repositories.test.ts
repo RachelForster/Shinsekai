@@ -298,8 +298,28 @@ describe("entity repositories", () => {
         generateSetting: vi.fn().mockResolvedValue({ characterSetting: "kind", message: "ok" }),
         getMem0Status: vi.fn().mockResolvedValue({ status: "ready" }),
         import: vi.fn().mockResolvedValue([character]),
+        importMemories: vi.fn().mockResolvedValue({
+          chunkCount: 1,
+          duplicateCount: 0,
+          estimatedTotalTokens: 100,
+          extractedCount: 1,
+          fileCount: 1,
+          savedCount: 1,
+        }),
         list: vi.fn().mockResolvedValue([character]),
         listMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
+        previewMemoryImport: vi.fn().mockResolvedValue({
+          chunkCount: 1,
+          dialogueCharacters: 100,
+          dialogueLineCount: 2,
+          estimatedInputTokens: 80,
+          estimatedOutputTokens: 20,
+          estimatedTotalTokens: 100,
+          fileCount: 1,
+          files: [],
+          sourceTokens: 25,
+          warnings: [],
+        }),
         remember: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 1, memories: [] }),
         searchMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 1, memories: [] }),
         save: vi.fn().mockResolvedValue(character),
@@ -333,6 +353,8 @@ describe("entity repositories", () => {
     await characters.searchCharacterMemories({ name: "Nanami", query: "tea" });
     await characters.rememberCharacterMemory("Nanami", "likes tea");
     await characters.deleteCharacterMemory("Nanami", "memory-1");
+    await characters.previewCharacterMemoryImport("Nanami", ["/tmp/history.json"]);
+    await characters.importCharacterMemories("Nanami", ["/tmp/history.json"]);
     await characters.uploadCharacterSprites({ emotionTags: "happy", name: "Nanami", paths: ["/tmp/a.png"] });
     await characters.saveCharacterEmotionTags("Nanami", "happy");
     await characters.deleteCharacterSprite("Nanami", 0);
@@ -351,6 +373,8 @@ describe("entity repositories", () => {
     });
     expect(platform.characters.save).toHaveBeenCalledWith(character, "Old Nanami");
     expect(platform.characters.remember).toHaveBeenCalledWith("Nanami", "likes tea");
+    expect(platform.characters.previewMemoryImport).toHaveBeenCalledWith("Nanami", ["/tmp/history.json"]);
+    expect(platform.characters.importMemories).toHaveBeenCalledWith("Nanami", ["/tmp/history.json"], undefined);
     expect(platform.characters.uploadSpriteVoice).toHaveBeenCalledWith({
       name: "Nanami",
       spriteIndex: 0,

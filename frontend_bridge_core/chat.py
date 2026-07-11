@@ -35,7 +35,7 @@ from core.sprite.chat_branch_storage import (
     chat_history_session_dir,
     remove_chat_history_storage,
 )
-from llm.history_manager import parse_assistant_dialog_content
+from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
 from llm.tools.chat_ui_tools import sanitize_user_display_name
 
 from .state import BridgeState
@@ -752,29 +752,11 @@ def _chat_snapshot(
 
 
 def _plain_history_text(raw: Any) -> str:
-    if not isinstance(raw, list):
-        return ""
-    rows: list[str] = []
-    for item in raw:
-        if isinstance(item, dict):
-            role = str(item.get("role") or "")
-            content = str(item.get("content") or "")
-            if content:
-                rows.append(f"{role}: {content}" if role else content)
-        else:
-            text = re.sub(r"<[^>]+>", "", str(item)).strip()
-            if text:
-                rows.append(text)
-    return "\n".join(rows)
+    return history_payload_to_plain_text(raw)
 
 
 def _plain_history_text_from_entries(entries: list[dict[str, Any]]) -> str:
-    rows: list[str] = []
-    for item in entries:
-        text = str(item.get("text") or "").strip()
-        if text:
-            rows.append(text)
-    return "\n".join(rows)
+    return history_payload_to_plain_text(entries)
 
 
 def _read_history_file(path: Path) -> Any:

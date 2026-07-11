@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import os
@@ -171,7 +172,12 @@ def memory_list(character_name: str | None = None, *, limit: int = 200) -> dict[
         return service_result
     mem = ensure_mem0()
     with _mem0_operation_lock:
-        raw = mem.get_all(filters={"user_id": agent_id}, limit=limit)
+        # mem0 renamed ``limit`` to ``top_k`` while retaining ``**kwargs``.
+        # With a new mem0 release the old name is therefore silently ignored
+        # and the query falls back to its default of 20 rows.
+        parameters = inspect.signature(mem.get_all).parameters
+        pagination = {"top_k": limit} if "top_k" in parameters else {"limit": limit}
+        raw = mem.get_all(filters={"user_id": agent_id}, **pagination)
     rows = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
     memories = [_memory_row(row) for row in rows]
     return {"agentId": agent_id, "count": len(memories), "memories": memories}

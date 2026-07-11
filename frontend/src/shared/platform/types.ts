@@ -639,6 +639,38 @@ export interface CharacterMemoryList {
   memories: CharacterMemory[];
 }
 
+export interface CharacterMemoryImportFilePreview {
+  chunkCount: number;
+  dialogueCharacters: number;
+  dialogueLineCount: number;
+  kind: string;
+  name: string;
+  sourceTokens: number;
+}
+
+export interface CharacterMemoryImportPreview {
+  chunkCount: number;
+  dialogueCharacters: number;
+  dialogueLineCount: number;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  estimatedTotalTokens: number;
+  fileCount: number;
+  files: CharacterMemoryImportFilePreview[];
+  sourceTokens: number;
+  warnings: string[];
+}
+
+export interface CharacterMemoryImportResult {
+  chunkCount: number;
+  duplicateCount: number;
+  estimatedTotalTokens: number;
+  extractedCount: number;
+  fileCount: number;
+  memories?: string[];
+  savedCount: number;
+}
+
 export interface CharacterMemorySearchInput {
   limit?: number;
   name: string;
@@ -1035,7 +1067,13 @@ export interface ShinsekaiPlatform {
     import: (items: File[] | string[]) => Promise<Character[]>;
     list: () => Promise<Character[]>;
     getMem0Status: () => Promise<Mem0Status>;
+    importMemories: (
+      name: string,
+      items: File[] | string[],
+      options?: TaskProgressOptions<CharacterMemoryImportResult>,
+    ) => Promise<CharacterMemoryImportResult>;
     listMemories: (name: string) => Promise<CharacterMemoryList>;
+    previewMemoryImport: (name: string, items: File[] | string[]) => Promise<CharacterMemoryImportPreview>;
     remember: (name: string, content: string) => Promise<CharacterMemoryList>;
     searchMemories: (input: CharacterMemorySearchInput) => Promise<CharacterMemoryList>;
     save: (character: Character, originalName?: string) => Promise<Character>;

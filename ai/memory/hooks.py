@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -10,8 +9,11 @@ import threading
 import time
 from typing import Any
 
+from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS
+from ai.memory.extraction import MemoryExtractor
 from ai.memory.operations import memory_search, memory_service_status
 from ai.memory.queue import MemoryWriteQueue
+from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
 from sdk.chat_init import InitChatContext
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
 
@@ -56,51 +58,6 @@ def _strip_local_time_prefix(text: str) -> str:
     return re.sub(r"^\[[^\]\n]*(?:本地时间|Local time)[^\]\n]*\]\s*", "", text).strip()
 
 
-def _extract_response_text(response: Any) -> str:
-    if response is None:
-        return ""
-    try:
-        if hasattr(response, "choices") and response.choices:
-            message = response.choices[0].message
-            return str(getattr(message, "content", "") or "")
-        if hasattr(response, "content"):
-            content = response.content
-            if isinstance(content, list) and content:
-                return str(getattr(content[0], "text", "") or content[0])
-            return str(content or "")
-        if hasattr(response, "text"):
-            return str(response.text or "")
-    except Exception:
-        logger.exception("failed to extract memory summary response")
-    return str(response)
-
-
-def _parse_json_payload(text: str) -> Any:
-    raw = _clean_text(text, max_chars=20000)
-    if raw.startswith("```"):
-        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
-        raw = re.sub(r"\s*```$", "", raw)
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        pass
-    start = raw.find("[")
-    end = raw.rfind("]")
-    if start >= 0 and end > start:
-        try:
-            return json.loads(raw[start : end + 1])
-        except json.JSONDecodeError:
-            pass
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start >= 0 and end > start:
-        try:
-            return json.loads(raw[start : end + 1])
-        except json.JSONDecodeError:
-            pass
-    return None
-
-
 def _memory_rows(result: dict[str, Any]) -> list[str]:
     rows = result.get("memories") or result.get("results") or []
     if not isinstance(rows, list):
@@ -117,12 +74,7 @@ def _memory_rows(result: dict[str, Any]) -> list[str]:
 
 
 def _dialog_speaker_names(content: Any) -> list[str]:
-    parsed = _parse_json_payload(_clean_text(content, max_chars=20000))
-    if not isinstance(parsed, dict):
-        return []
-    dialog = parsed.get("dialog")
-    if not isinstance(dialog, list):
-        return []
+    dialog = parse_assistant_dialog_content(content)
     names: list[str] = []
     for item in dialog:
         if not isinstance(item, dict):
@@ -147,6 +99,7 @@ class MemoryAutoHooks:
         extract_interval_turns: int = DEFAULT_EXTRACT_INTERVAL_TURNS,
         search_limit: int = DEFAULT_SEARCH_LIMIT,
         recent_buffer_messages: int = DEFAULT_RECENT_BUFFER_MESSAGES,
+        extraction_chunk_tokens: int = DEFAULT_DIALOGUE_CHUNK_TOKENS,
         memory_status_func=memory_service_status,
         init_poll_interval_seconds: float = DEFAULT_INIT_POLL_INTERVAL_SECONDS,
         init_timeout_seconds: float = DEFAULT_INIT_TIMEOUT_SECONDS,
@@ -161,6 +114,7 @@ class MemoryAutoHooks:
         self.extract_interval_turns = max(1, int(extract_interval_turns))
         self.search_limit = max(1, int(search_limit))
         self.recent_buffer_messages = max(2, int(recent_buffer_messages))
+        self.extraction_chunk_tokens = max(256, int(extraction_chunk_tokens))
         self.memory_status_func = memory_status_func
         self.init_poll_interval_seconds = max(0.01, float(init_poll_interval_seconds))
         self.init_timeout_seconds = max(0.01, float(init_timeout_seconds))
@@ -173,6 +127,7 @@ class MemoryAutoHooks:
         self._last_extract_turn = 0
         self._last_injected_user = ""
         self._workers: list[threading.Thread] = []
+        self._extractor = MemoryExtractor(llm_adapter)
 
     @property
     def primary_character_name(self) -> str:
@@ -304,7 +259,11 @@ class MemoryAutoHooks:
         message = context.message or {}
         if role == "assistant" and message.get("tool_calls"):
             return
-        content = _clean_text(message.get("content"), max_chars=4000)
+        raw_content = message.get("content")
+        content = _clean_text(
+            history_payload_to_plain_text([message], user_display_name="user"),
+            max_chars=20000,
+        )
         if not content:
             return
         should_extract = False
@@ -313,7 +272,7 @@ class MemoryAutoHooks:
                 self._user_turns += 1
                 self._last_injected_user = ""
             elif role == "assistant":
-                speaker_names = _dialog_speaker_names(content)
+                speaker_names = _dialog_speaker_names(raw_content)
                 if speaker_names:
                     self._active_character_name = speaker_names[-1]
             self._buffer.append({"role": role, "content": content})
@@ -379,46 +338,19 @@ class MemoryAutoHooks:
             return list(self._buffer), self._user_turns
 
     def _extract_memories(self, messages: list[dict[str, str]]) -> list[dict[str, Any]]:
-        prompt = self._build_extraction_prompt(messages)
-        response = self.llm_adapter.chat(
-            [
-                {
-                    "role": "system",
-                    "content": (
-                        "You extract durable long-term memories from roleplay chat. "
-                        "Return only JSON. Do not include prose."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            stream=False,
-            response_format={"type": "text"},
+        dialogue = "\n".join(
+            _clean_text(item.get("content"), max_chars=20000)
+            for item in messages
+            if _clean_text(item.get("content"), max_chars=20000)
         )
-        parsed = _parse_json_payload(_extract_response_text(response))
-        if isinstance(parsed, dict):
-            parsed = parsed.get("memories") or parsed.get("items") or []
-        if not isinstance(parsed, list):
+        if not dialogue:
             return []
-        out: list[dict[str, Any]] = []
-        for row in parsed:
-            if not isinstance(row, dict):
-                continue
-            memory = _clean_text(row.get("memory") or row.get("content"), max_chars=800)
-            if not memory:
-                continue
-            try:
-                confidence = float(row.get("confidence", 1.0))
-            except (TypeError, ValueError):
-                confidence = 1.0
-            out.append(
-                {
-                    "character_name": _clean_text(row.get("character_name") or row.get("characterName"))
-                    or self.primary_character_name,
-                    "memory": memory,
-                    "confidence": max(0.0, min(1.0, confidence)),
-                }
-            )
-        return out[:8]
+        extracted, _duplicates, _chunk_count = self._extractor.extract_dialogue(
+            dialogue,
+            default_character_name=self.primary_character_name,
+            max_chunk_tokens=self.extraction_chunk_tokens,
+        )
+        return extracted
 
     def _latest_user_text_for_fresh_turn(self, messages: list[dict[str, Any]]) -> str:
         for message in reversed(messages):
@@ -437,18 +369,6 @@ class MemoryAutoHooks:
             "Relevant long-term memories for this turn. Use them only as background; "
             "do not mention the retrieval process unless the user asks.\n"
             f"{body}"
-        )
-
-    def _build_extraction_prompt(self, messages: list[dict[str, str]]) -> str:
-        rows = "\n".join(f"{item['role']}: {item['content']}" for item in messages)
-        return (
-            "Extract stable, useful long-term memories from the chat below.\n"
-            "Keep only durable facts, preferences, relationships, promises, goals, or character-relevant state.\n"
-            "Ignore temporary emotions, filler, one-off phrasing, and duplicates.\n"
-            f"Default character_name is {self.primary_character_name!r}.\n"
-            "Return JSON array only, each item like:\n"
-            '[{"character_name":"Name","memory":"fact to save","confidence":0.85}]\n\n'
-            f"Chat:\n{rows}"
         )
 
     def _live_workers(self) -> list[threading.Thread]:

@@ -24,6 +24,8 @@ import type {
   BackgroundTranslateResult,
   Character,
   CharacterMemory,
+  CharacterMemoryImportPreview,
+  CharacterMemoryImportResult,
   CharacterMemoryList,
   CharacterSettingResult,
   Mem0Status,
@@ -825,12 +827,38 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: "{}",
           method: "POST",
         }),
+      importMemories: async (name, items, options) => {
+        const task = isFileList(items)
+          ? await uploadFiles<TaskSnapshot<CharacterMemoryImportResult>>(
+              apiBase,
+              `/api/characters/memories/import-upload?name=${encodeURIComponent(name)}`,
+              items,
+            )
+          : await requestJson<TaskSnapshot<CharacterMemoryImportResult>>(apiBase, "/api/characters/memories/import", {
+              body: JSON.stringify({ name, paths: items }),
+              method: "POST",
+            });
+        return waitForTask(apiBase, task, options);
+      },
       list: () => requestJson<Character[]>(apiBase, "/api/characters"),
       listMemories: (name) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/list", {
           body: JSON.stringify({ name }),
           method: "POST",
         }),
+      previewMemoryImport: (name, items) => {
+        if (isFileList(items)) {
+          return uploadFiles<CharacterMemoryImportPreview>(
+            apiBase,
+            `/api/characters/memories/import-preview-upload?name=${encodeURIComponent(name)}`,
+            items,
+          );
+        }
+        return requestJson<CharacterMemoryImportPreview>(apiBase, "/api/characters/memories/import-preview", {
+          body: JSON.stringify({ name, paths: items }),
+          method: "POST",
+        });
+      },
       searchMemories: async ({ limit = 200, name, query }) => {
         const result = await requestJson<unknown>(apiBase, "/api/memory/search", {
           body: JSON.stringify({ characterName: name, limit, query }),

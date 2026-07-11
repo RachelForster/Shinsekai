@@ -18,6 +18,8 @@ import type {
   BatchToolResult,
   Background,
   Character,
+  CharacterMemoryImportPreview,
+  CharacterMemoryImportResult,
   CharacterMemoryList,
   ChatConversationBranch,
   ChatHistoryEntry,
@@ -45,6 +47,51 @@ function clone<T>(value: T): T {
 
 function delay<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => window.setTimeout(() => resolve(clone(value)), ms));
+}
+
+async function previewMemoryImport(items: File[] | string[]): Promise<CharacterMemoryImportPreview> {
+  const files = await Promise.all(
+    items.map(async (item) => {
+      const name = item instanceof File ? item.name : item.split(/[\\/]/).pop() || item;
+      let content = "";
+      if (item instanceof File) {
+        try {
+          content = await item.text();
+        } catch {
+          content = "";
+        }
+      }
+      const dialogueCharacters = content.length || 3_600;
+      const dialogueLineCount = content ? Math.max(1, content.split(/\r?\n/).filter((line) => line.trim()).length) : 40;
+      const sourceTokens = Math.max(1, Math.ceil(dialogueCharacters / 4));
+      return {
+        chunkCount: Math.max(1, Math.ceil(sourceTokens / 2_500)),
+        dialogueCharacters,
+        dialogueLineCount,
+        kind: name.toLowerCase().endsWith(".json") ? "json" : "txt",
+        name,
+        sourceTokens,
+      };
+    }),
+  );
+  const sourceTokens = files.reduce((sum, file) => sum + file.sourceTokens, 0);
+  const chunkCount = files.reduce((sum, file) => sum + file.chunkCount, 0);
+  const estimatedInputTokens = sourceTokens + chunkCount * 600;
+  const estimatedOutputTokens = chunkCount * 350;
+  return {
+    chunkCount,
+    dialogueCharacters: files.reduce((sum, file) => sum + file.dialogueCharacters, 0),
+    dialogueLineCount: files.reduce((sum, file) => sum + file.dialogueLineCount, 0),
+    estimatedInputTokens,
+    estimatedOutputTokens,
+    estimatedTotalTokens: estimatedInputTokens + estimatedOutputTokens,
+    fileCount: files.length,
+    files,
+    sourceTokens,
+    warnings: files.some((file) => file.kind === "json")
+      ? ["JSON history will be converted to plain dialogue before extraction."]
+      : [],
+  };
 }
 
 function looksLikeLocalModelReference(value: string) {
@@ -1220,6 +1267,68 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(imported);
       },
       getMem0Status: () => delay({ status: "ready" as const }),
+      async importMemories(name, items, options) {
+        const preview = await previewMemoryImport(items);
+        const taskId = `memory-import-${Date.now()}`;
+        previewTask<CharacterMemoryImportResult>(
+          taskId,
+          {
+            kind: "character-memory-import",
+            message: "Preparing dialogue chunks",
+            phase: "preparing",
+            title: "Import long-term memories",
+          },
+          options,
+        );
+        await delay(undefined, 80);
+        previewTask<CharacterMemoryImportResult>(
+          taskId,
+          {
+            kind: "character-memory-import",
+            message: "Extracting long-term memories",
+            phase: "extracting",
+            progress: 0.55,
+            status: "running",
+            title: "Import long-term memories",
+          },
+          options,
+        );
+        await delay(undefined, 120);
+        const memories = items.map((item, index) => {
+          const filename = item instanceof File ? item.name : item.split(/[\\/]/).pop() || item;
+          return `Imported memory ${index + 1} from ${filename}`;
+        });
+        const agentId = name || "user";
+        const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
+        const nextMemories = [
+          ...current.memories,
+          ...memories.map((memory, index) => ({ id: `${agentId}-import-${Date.now()}-${index}`, memory })),
+        ];
+        characterMemories.set(agentId, { agentId, count: nextMemories.length, memories: nextMemories });
+        const result: CharacterMemoryImportResult = {
+          chunkCount: preview.chunkCount,
+          duplicateCount: 0,
+          estimatedTotalTokens: preview.estimatedTotalTokens,
+          extractedCount: memories.length,
+          fileCount: preview.fileCount,
+          memories,
+          savedCount: memories.length,
+        };
+        previewTask(
+          taskId,
+          {
+            kind: "character-memory-import",
+            message: "Memory import complete",
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+            title: "Import long-term memories",
+          },
+          options,
+        );
+        return clone(result);
+      },
       list: () => delay(config.characters),
       async listMemories(name) {
         const agentId = name || "user";
@@ -1231,6 +1340,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         characterMemories.set(agentId, existing);
         return delay(existing);
       },
+      previewMemoryImport: (_name, items) => previewMemoryImport(items),
       async searchMemories({ limit = 200, name, query }) {
         const agentId = name || "user";
         const existing = await this.listMemories(agentId);

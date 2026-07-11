@@ -20,6 +20,16 @@ class _FakeMemory:
         }
 
 
+class _TopKFakeMemory:
+    def __init__(self):
+        self.requested_top_k = None
+
+    def get_all(self, *, filters, top_k=20, **kwargs):
+        assert filters == {"user_id": "Alice"}
+        self.requested_top_k = top_k
+        return {"results": [{"id": str(index), "memory": f"memory-{index}"} for index in range(top_k)]}
+
+
 class _RecordingLock:
     def __init__(self):
         self.active = False
@@ -71,6 +81,17 @@ def test_memory_list_normalizes_rows(monkeypatch):
             {"id": "", "memory": "loose row"},
         ],
     }
+
+
+def test_memory_list_uses_top_k_with_new_mem0_versions(monkeypatch):
+    memory = _TopKFakeMemory()
+    monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: memory)
+
+    result = operations.memory_list("Alice", limit=200)
+
+    assert memory.requested_top_k == 200
+    assert result["count"] == 200
 
 
 def test_local_memory_operations_are_serialized(monkeypatch):

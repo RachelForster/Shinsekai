@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import Any, Sequence
 
 
 def _check_mem0_before_call() -> dict[str, Any] | None:
@@ -123,3 +124,57 @@ def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
         return {"status": "loading", "message": exc.message}
     _raise_memory_error(result)
     return result
+
+
+def _preview_character_memory_import(
+    state: Any,
+    name: str,
+    paths: Sequence[str | Path],
+) -> dict[str, Any]:
+    """Thin bridge wrapper around the memory import preview service."""
+
+    from ai.memory.extraction import configured_memory_chunk_tokens
+    from ai.memory.imports import preview_memory_import
+
+    return preview_memory_import(
+        paths,
+        character_name=name,
+        max_chunk_tokens=configured_memory_chunk_tokens(state.config_manager),
+    )
+
+
+def _run_character_memory_import(
+    state: Any,
+    task_id: str,
+    name: str,
+    paths: Sequence[str | Path],
+) -> dict[str, Any]:
+    """Run extraction in a handler-owned background task."""
+
+    from ai.memory.extraction import create_configured_memory_adapter, configured_memory_chunk_tokens
+    from ai.memory.imports import execute_memory_import
+    from frontend_bridge_core.tasks import (
+        TaskCancelled,
+        _append_task_log,
+        _is_task_cancel_requested,
+        _update_task,
+    )
+
+    def report(phase: str, progress: float, message: str, log: str | None) -> None:
+        _update_task(state, task_id, phase=phase, progress=progress, message=message)
+        if log:
+            _append_task_log(state, task_id, log)
+
+    def raise_if_cancelled() -> None:
+        if _is_task_cancel_requested(state, task_id):
+            raise TaskCancelled()
+
+    adapter = create_configured_memory_adapter(state.config_manager)
+    return execute_memory_import(
+        paths,
+        character_name=name,
+        llm_adapter=adapter,
+        max_chunk_tokens=configured_memory_chunk_tokens(state.config_manager),
+        progress_callback=report,
+        cancel_callback=raise_if_cancelled,
+    )

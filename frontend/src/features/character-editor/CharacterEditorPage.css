@@ -315,6 +315,108 @@
   margin: calc(var(--space-2) * -1) 0 var(--space-3);
 }
 
+/* Memory file import */
+
+.memory-import-preview-dialog {
+  width: min(720px, 100%);
+}
+
+.memory-import-preview,
+.memory-import-task {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.memory-import-preview__lead,
+.memory-import-task__result {
+  margin: 0;
+  color: var(--color-text-primary);
+  line-height: 1.6;
+}
+
+.memory-import-preview__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: var(--color-border);
+}
+
+.memory-import-preview__metrics > div {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-raised);
+}
+
+.memory-import-preview__metrics dt {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.memory-import-preview__metrics dd {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.memory-import-preview__metric--total dd {
+  color: var(--color-accent);
+}
+
+.memory-import-preview__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-warning-border, var(--color-border));
+  background: var(--color-warning-surface, var(--color-surface-raised));
+  color: var(--color-text-primary);
+  line-height: 1.6;
+}
+
+.memory-import-preview__notice svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: var(--color-warning, var(--color-accent));
+}
+
+.memory-import-preview__warnings {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--color-text-muted);
+}
+
+.memory-import-preview__files {
+  display: grid;
+  gap: var(--space-1);
+  max-height: 180px;
+  overflow: auto;
+}
+
+.memory-import-preview__file {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.memory-import-preview__file strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-import-preview__file span {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 860px) {
@@ -343,6 +445,15 @@
   .memory-search-row,
   .memory-add-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .memory-import-preview__metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .memory-import-preview__file {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .memory-pagination {

@@ -372,8 +372,21 @@ describe("browser preview platform chat themes", () => {
     expect(memories.count).toBe(1);
     const remembered = await resolvePreview(platform.characters.remember("Mika", "likes tea"));
     expect(remembered.memories.some((memory) => memory.memory === "likes tea")).toBe(true);
+    const memoryImportPreview = await resolvePreview(
+      platform.characters.previewMemoryImport("Mika", [new File(["User: hello\nMika: hi"], "history.json")]),
+    );
+    expect(memoryImportPreview.estimatedTotalTokens).toBeGreaterThan(0);
+    expect(memoryImportPreview.files[0].kind).toBe("json");
+    const memoryImportPhases: string[] = [];
+    const memoryImport = await resolvePreview(
+      platform.characters.importMemories("Mika", ["/tmp/history.json"], {
+        onTaskUpdate: (task) => memoryImportPhases.push(task.phase),
+      }),
+    );
+    expect(memoryImport.savedCount).toBe(1);
+    expect(memoryImportPhases).toEqual(["preparing", "extracting", "completed"]);
     const afterMemoryDelete = await resolvePreview(platform.characters.deleteMemory("Mika", remembered.memories[0].id));
-    expect(afterMemoryDelete.count).toBe(1);
+    expect(afterMemoryDelete.count).toBe(2);
 
     const generated = await resolvePreview(platform.characters.generateSetting({ name: "Mika", setting: "" }));
     expect(generated.characterSetting).toContain("Mika");
