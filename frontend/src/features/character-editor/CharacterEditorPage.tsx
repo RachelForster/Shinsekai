@@ -25,7 +25,7 @@ import {
 } from "../../entities/character/repository";
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
-import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
+import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type { SpriteVoiceType } from "../../shared/platform/types";
@@ -443,7 +443,8 @@ export function CharacterEditorPage() {
   });
 
   const spriteDeleteMutation = useMutation({
-    mutationFn: ({ index, name }: { index: number; name: string }) => deleteCharacterSprite(name, index),
+    mutationFn: ({ index, name }: { draft: Character; index: number; name: string }) =>
+      deleteCharacterSprite(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -451,11 +452,24 @@ export function CharacterEditorPage() {
         title: t("common.remove"),
       });
     },
-    onSuccess(character) {
-      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+    onSuccess(character, variables) {
+      const emotionTags = removeTagRows(
+        variables.draft.emotion_tags,
+        variables.draft.sprites.length,
+        [variables.index],
+        "立绘",
+      );
+      const nextCharacter = {
+        ...character,
+        emotion_tags: emotionTags,
+        sprites: mergeSprites(character.sprites, variables.draft),
+      };
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+        current.map((item) => (item.name === nextCharacter.name ? nextCharacter : item)),
+      );
       setDraft((current) => ({
         ...current,
-        emotion_tags: character.emotion_tags,
+        emotion_tags: removeTagRows(current.emotion_tags, current.sprites.length, [variables.index], "立绘"),
         sprites: mergeSprites(character.sprites, current),
       }));
       showToast({ kind: "success", title: t("common.remove") });
@@ -643,7 +657,7 @@ export function CharacterEditorPage() {
       return;
     }
     if (target.kind === "sprite") {
-      spriteDeleteMutation.mutate({ index: target.index, name: target.characterName });
+      spriteDeleteMutation.mutate({ draft: structuredClone(draft), index: target.index, name: target.characterName });
       return;
     }
     if (target.kind === "all-sprites") {

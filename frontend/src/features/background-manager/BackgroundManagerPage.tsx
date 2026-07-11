@@ -22,7 +22,7 @@ import {
 } from "../../entities/background/repository";
 import type { Background } from "../../entities/config/types";
 import { openExternal } from "../../entities/files/repository";
-import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
+import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
 import {
   AlertDialog,
@@ -312,7 +312,8 @@ export function BackgroundManagerPage() {
   });
 
   const imageDeleteMutation = useMutation({
-    mutationFn: ({ index, name }: { index: number; name: string }) => deleteBackgroundImage(name, index),
+    mutationFn: ({ index, name }: { index: number; itemCount: number; name: string; tagBlock: string }) =>
+      deleteBackgroundImage(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -320,9 +321,17 @@ export function BackgroundManagerPage() {
         title: t("common.remove"),
       });
     },
-    onSuccess(background) {
-      queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
-      setDraft((current) => ({ ...current, bg_tags: background.bg_tags, sprites: background.sprites }));
+    onSuccess(background, variables) {
+      const bgTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], "场景");
+      const nextBackground = { ...background, bg_tags: bgTags };
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        current.map((item) => (item.name === nextBackground.name ? nextBackground : item)),
+      );
+      setDraft((current) => ({
+        ...current,
+        bg_tags: removeTagRows(current.bg_tags, current.sprites.length, [variables.index], "场景"),
+        sprites: background.sprites,
+      }));
       showToast({ kind: "success", title: t("common.remove") });
     },
   });
@@ -344,7 +353,8 @@ export function BackgroundManagerPage() {
   });
 
   const bgmDeleteMutation = useMutation({
-    mutationFn: ({ index, name }: { index: number; name: string }) => deleteBackgroundBgm(name, index),
+    mutationFn: ({ index, name }: { index: number; itemCount: number; name: string; tagBlock: string }) =>
+      deleteBackgroundBgm(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -352,16 +362,24 @@ export function BackgroundManagerPage() {
         title: t("common.remove"),
       });
     },
-    onSuccess(background) {
-      queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
-      setDraft((current) => ({ ...current, bgm_list: background.bgm_list, bgm_tags: background.bgm_tags }));
+    onSuccess(background, variables) {
+      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], "音乐");
+      const nextBackground = { ...background, bgm_tags: bgmTags };
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        current.map((item) => (item.name === nextBackground.name ? nextBackground : item)),
+      );
+      setDraft((current) => ({
+        ...current,
+        bgm_list: background.bgm_list,
+        bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, [variables.index], "音乐"),
+      }));
       setSelectedBgmIndexes([]);
       showToast({ kind: "success", title: t("common.remove") });
     },
   });
 
   const bgmBatchDeleteMutation = useMutation({
-    mutationFn: async ({ indexes, name }: { indexes: number[]; name: string }) => {
+    mutationFn: async ({ indexes, name }: { indexes: number[]; itemCount: number; name: string; tagBlock: string }) => {
       let background: Background | null = null;
       for (const index of [...indexes].sort((a, b) => b - a)) {
         background = await deleteBackgroundBgm(name, index);
@@ -378,9 +396,17 @@ export function BackgroundManagerPage() {
         title: t("background.asset.deleteSelectedBgm"),
       });
     },
-    onSuccess(background) {
-      queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
-      setDraft((current) => ({ ...current, bgm_list: background.bgm_list, bgm_tags: background.bgm_tags }));
+    onSuccess(background, variables) {
+      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, variables.indexes, "音乐");
+      const nextBackground = { ...background, bgm_tags: bgmTags };
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        current.map((item) => (item.name === nextBackground.name ? nextBackground : item)),
+      );
+      setDraft((current) => ({
+        ...current,
+        bgm_list: background.bgm_list,
+        bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, variables.indexes, "音乐"),
+      }));
       setSelectedBgmIndexes([]);
       showToast({ kind: "success", title: t("background.asset.deleteSelectedBgm") });
     },
@@ -541,9 +567,24 @@ export function BackgroundManagerPage() {
       deleteAllBgm: bgmDeleteAllMutation.mutate,
       deleteAllImages: imageDeleteAllMutation.mutate,
       deleteBackground: deleteMutation.mutate,
-      deleteBgm: bgmDeleteMutation.mutate,
-      deleteImage: imageDeleteMutation.mutate,
-      deleteSelectedBgm: bgmBatchDeleteMutation.mutate,
+      deleteBgm: (input) =>
+        bgmDeleteMutation.mutate({
+          ...input,
+          itemCount: currentDraft.bgm_list.length,
+          tagBlock: currentDraft.bgm_tags,
+        }),
+      deleteImage: (input) =>
+        imageDeleteMutation.mutate({
+          ...input,
+          itemCount: currentDraft.sprites.length,
+          tagBlock: currentDraft.bg_tags,
+        }),
+      deleteSelectedBgm: (input) =>
+        bgmBatchDeleteMutation.mutate({
+          ...input,
+          itemCount: currentDraft.bgm_list.length,
+          tagBlock: currentDraft.bgm_tags,
+        }),
     });
   };
 

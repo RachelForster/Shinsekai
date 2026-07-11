@@ -393,6 +393,28 @@ describe("BackgroundManagerPage", () => {
     expect(screen.getByLabelText("Name")).toHaveValue("School");
   });
 
+  it("preserves unsaved image tags when another image is deleted", async () => {
+    mockListBackgrounds.mockResolvedValue([
+      {
+        ...structuredClone(background),
+        bg_tags: "Scene 1: classroom\nScene 2: hall\n",
+        sprites: [{ path: "D:/backgrounds/school/classroom.png" }, { path: "D:/backgrounds/school/hall.png" }],
+      },
+    ]);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("School"));
+    fireEvent.click(screen.getByTitle("hall.png"));
+    fireEvent.change(screen.getByLabelText("Tag"), { target: { value: "unsaved hall edit" } });
+    fireEvent.click(screen.getByTitle("classroom.png"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(mockDeleteBackgroundImage).toHaveBeenCalledWith("School", 0));
+    await waitFor(() => expect(screen.getByLabelText("Tag")).toHaveValue("unsaved hall edit"));
+  });
+
   it("confirms image, bgm, and background deletion actions", async () => {
     mockListBackgrounds.mockResolvedValue([
       {
