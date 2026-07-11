@@ -7,10 +7,12 @@ import logging
 import os
 import re
 import threading
+import time
 from typing import Any
 
-from ai.memory.operations import memory_search
+from ai.memory.operations import memory_search, memory_service_status
 from ai.memory.queue import MemoryWriteQueue
+from sdk.chat_init import InitChatContext
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
 
 logger = logging.getLogger(__name__)
@@ -18,6 +20,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_EXTRACT_INTERVAL_TURNS = 5
 DEFAULT_SEARCH_LIMIT = 5
 DEFAULT_RECENT_BUFFER_MESSAGES = 16
+DEFAULT_INIT_POLL_INTERVAL_SECONDS = 0.45
+DEFAULT_INIT_TIMEOUT_SECONDS = 600.0
 _INJECTION_MARKER = "[Shinsekai long-term memory context]"
 _SYSTEM_CHARACTER_NAMES = {"cot", "narr", "choice", "stat", "scene", "bgm", "cg"}
 
@@ -143,6 +147,11 @@ class MemoryAutoHooks:
         extract_interval_turns: int = DEFAULT_EXTRACT_INTERVAL_TURNS,
         search_limit: int = DEFAULT_SEARCH_LIMIT,
         recent_buffer_messages: int = DEFAULT_RECENT_BUFFER_MESSAGES,
+        memory_status_func=memory_service_status,
+        init_poll_interval_seconds: float = DEFAULT_INIT_POLL_INTERVAL_SECONDS,
+        init_timeout_seconds: float = DEFAULT_INIT_TIMEOUT_SECONDS,
+        sleep_func=time.sleep,
+        monotonic_func=time.monotonic,
     ) -> None:
         self.llm_adapter = llm_adapter
         self.character_names = [name.strip() for name in (character_names or []) if str(name or "").strip()]
@@ -152,6 +161,11 @@ class MemoryAutoHooks:
         self.extract_interval_turns = max(1, int(extract_interval_turns))
         self.search_limit = max(1, int(search_limit))
         self.recent_buffer_messages = max(2, int(recent_buffer_messages))
+        self.memory_status_func = memory_status_func
+        self.init_poll_interval_seconds = max(0.01, float(init_poll_interval_seconds))
+        self.init_timeout_seconds = max(0.01, float(init_timeout_seconds))
+        self._sleep = sleep_func
+        self._monotonic = monotonic_func
         self._lock = threading.RLock()
         self._summary_lock = threading.Lock()
         self._buffer: list[dict[str, str]] = []
@@ -166,8 +180,91 @@ class MemoryAutoHooks:
             return self._active_character_name or (self.character_names[0] if self.character_names else "user")
 
     def register(self, dispatcher: PluginHookDispatcher) -> None:
+        dispatcher.register_init_chat(
+            self.init_chat,
+            label="memory",
+            weight=3.0,
+            critical=False,
+        )
         dispatcher.register_before_chat(self.before_chat, label="memory_auto_before_chat")
         dispatcher.register_message_added(self.message_added, label="memory_auto_message_added")
+
+    def init_chat(self, context: InitChatContext) -> None:
+        """Warm the bridge-owned memory service and forward its task progress.
+
+        The chat child must not instantiate mem0 itself. Its bridge URL is
+        configured through ``SHINSEKAI_MEMORY_SERVICE_URL``; when no service is
+        available we keep chat usable without silently installing anything.
+        """
+
+        if not context.memory_enabled:
+            context.report(1.0, "Long-term memory is disabled.", phase="memory")
+            return
+
+        deadline = self._monotonic() + self.init_timeout_seconds
+        start_loading = True
+        forwarded_log_count = 0
+        while True:
+            context.raise_if_cancelled()
+            result = self.memory_status_func(
+                start_loading=start_loading,
+                monitor_ready=False,
+            )
+            start_loading = False
+            if result is None:
+                context.report(
+                    1.0,
+                    "Long-term memory service is unavailable; continuing without memory.",
+                    phase="memory",
+                    log="Memory warm-up skipped because no bridge memory service is configured.",
+                )
+                return
+            if not isinstance(result, dict):
+                raise RuntimeError("memory service returned an invalid status response")
+
+            task = result.get("task")
+            if isinstance(task, dict):
+                task_logs = [str(line) for line in (task.get("logs") or []) if str(line).strip()]
+                if forwarded_log_count > len(task_logs):
+                    forwarded_log_count = 0
+                new_logs = task_logs[forwarded_log_count:]
+                forwarded_log_count = len(task_logs)
+                raw_progress = task.get("progress")
+                try:
+                    progress = None if raw_progress is None else float(raw_progress)
+                except (TypeError, ValueError):
+                    progress = None
+                context.report(
+                    progress,
+                    str(task.get("message") or result.get("message") or "Loading long-term memory."),
+                    phase=f"memory.{str(task.get('phase') or 'loading')}",
+                    logs=new_logs,
+                )
+
+            status = str(result.get("status") or "").strip().lower()
+            if status == "ready":
+                context.report(1.0, "Long-term memory is ready.", phase="memory")
+                return
+            if status in {"loading", "not_started"}:
+                if self._monotonic() >= deadline:
+                    raise TimeoutError("long-term memory initialization timed out")
+                self._sleep(self.init_poll_interval_seconds)
+                continue
+            if status == "missing_dependency":
+                module_name = str(result.get("moduleName") or "mem0")
+                raise RuntimeError(
+                    f"Long-term memory dependency is unavailable: {module_name}. "
+                    "Chat will continue without memory."
+                )
+            error = str(
+                result.get("errorUserMessage")
+                or result.get("message")
+                or result.get("error")
+                or ""
+            ).strip()
+            if status == "error" or error:
+                raise RuntimeError(error or "long-term memory initialization failed")
+            raise RuntimeError(f"unexpected memory service status: {status or 'unknown'}")
 
     def before_chat(self, context: BeforeChatContext) -> None:
         user_text = self._latest_user_text_for_fresh_turn(context.messages)

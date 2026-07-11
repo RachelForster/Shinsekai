@@ -279,6 +279,57 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(snapshot["runtimeMode"], "native")
         self.assertFalse(snapshot.get("sessionId"))
 
+    def test_native_async_init_uses_hidden_init_stream_without_exposing_session(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        chat_stream = _ChatStreamStub()
+        config_manager = _ConfigManager()
+        config_manager.config.system_config.chat_ui_runtime_mode = "native"
+        init_stream_info = chat_stream.create_session({})
+        chat_stream.create_session_calls.clear()
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
+            root = Path(tmp_dir)
+            history_dir = root / "history"
+            history_dir.mkdir()
+            template_dir = root / "templates"
+            template_dir.mkdir()
+            handler.server = SimpleNamespace(
+                state=SimpleNamespace(
+                    chat_session={},
+                    chat_stream=chat_stream,
+                    config_manager=config_manager,
+                    history_dir=str(history_dir),
+                    template_dir_path=str(template_dir),
+                )
+            )
+            body = {
+                "scenario": "scene",
+                "system": "system",
+                "templateId": "native-init-template",
+                "templateName": "Native Init Template",
+            }
+
+            with patch("frontend_bridge_core.handler._chat_process_running", return_value=False), patch(
+                "frontend_bridge_core.handler._launch_chat",
+                return_value="chat process started; PID: 12345",
+            ) as launch_chat, patch(
+                "frontend_bridge_core.handler._repair_template_parts_from_session_if_needed",
+                side_effect=lambda _state, scenario, system: (scenario, system),
+            ):
+                snapshot = handler._launch_chat(body, init_stream_info=init_stream_info)
+
+        self.assertEqual(chat_stream.create_session_calls, [])
+        self.assertEqual(launch_chat.call_args.kwargs["stream_endpoint"], "")
+        self.assertEqual(
+            launch_chat.call_args.kwargs["init_stream_endpoint"],
+            init_stream_info["producerEndpoint"],
+        )
+        self.assertEqual(chat_stream.wait_calls, [])
+        self.assertEqual(snapshot["runtimeMode"], "native")
+        self.assertTrue(snapshot["_chatInitStreamAttached"])
+        self.assertFalse(snapshot.get("sessionId"))
+        self.assertFalse(handler.server.state.chat_session.get("sessionId"))
+
     def test_resume_last_chat_creates_stream_session_in_react_mode(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         chat_stream = _ChatStreamStub()

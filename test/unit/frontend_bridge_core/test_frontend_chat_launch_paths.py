@@ -183,10 +183,12 @@ def test_launch_chat_passes_stream_endpoint(tmp_path, monkeypatch):
         use_cg=False,
         user_scenario="scenario",
         stream_endpoint="ws://127.0.0.1:8788/ws?sessionId=test&role=producer",
+        init_stream_endpoint="ws://127.0.0.1:8788/ws?sessionId=init&role=producer",
     )
 
     assert message == "聊天进程已启动！PID: 12345"
     assert "--stream-endpoint=ws://127.0.0.1:8788/ws?sessionId=test&role=producer" in captured["cmd"]
+    assert "--init-stream-endpoint=ws://127.0.0.1:8788/ws?sessionId=init&role=producer" in captured["cmd"]
 
 
 def test_launch_chat_passes_memory_service_env(tmp_path, monkeypatch):

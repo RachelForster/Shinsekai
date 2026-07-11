@@ -63,7 +63,12 @@ def _memory_service_timeout_sec() -> float:
     return timeout
 
 
-def _memory_service_request(endpoint: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+def _memory_service_request(
+    endpoint: str,
+    payload: dict[str, Any],
+    *,
+    monitor_ready: bool = True,
+) -> dict[str, Any] | None:
     base_url = _memory_service_url()
     if not base_url:
         return None
@@ -100,9 +105,28 @@ def _memory_service_request(endpoint: str, payload: dict[str, Any]) -> dict[str,
         preview = raw[:200].decode("utf-8", errors="replace")
         return {"error": f"memory service returned invalid JSON: {exc}; body={preview!r}"}
     result = data if isinstance(data, dict) else {"result": data}
-    if result.get("status") == "loading":
+    if monitor_ready and result.get("status") == "loading":
         _start_memory_service_ready_monitor()
     return result
+
+
+def memory_service_status(
+    *,
+    start_loading: bool,
+    monitor_ready: bool = True,
+) -> dict[str, Any] | None:
+    """Return bridge-owned memory status without loading mem0 in this process.
+
+    Chat initialization sets ``monitor_ready=False`` because it performs its
+    own foreground polling and must send ``startLoading=True`` only once.
+    Existing operation calls retain the background ready monitor behavior.
+    """
+
+    return _memory_service_request(
+        "status",
+        {"startLoading": bool(start_loading)},
+        monitor_ready=monitor_ready,
+    )
 
 
 def _start_memory_service_ready_monitor() -> None:

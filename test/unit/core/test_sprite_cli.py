@@ -15,12 +15,15 @@ class SpriteCliTests(unittest.TestCase):
             [
                 "--stream-endpoint",
                 "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer",
+                "--init-stream-endpoint",
+                "ws://127.0.0.1:8788/ws?sessionId=init&role=producer",
                 "--mirror-stream-endpoint",
                 "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer",
             ]
         )
 
         self.assertEqual(args.stream_endpoint, "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer")
+        self.assertEqual(args.init_stream_endpoint, "ws://127.0.0.1:8788/ws?sessionId=init&role=producer")
         self.assertEqual(args.mirror_stream_endpoint, "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer")
 
 

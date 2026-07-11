@@ -17,7 +17,14 @@ logger = logging.getLogger(__name__)
 _HTTP_PROXY_ENV_NAMES = ("HTTP_PROXY", "http_proxy")
 _HTTPS_PROXY_ENV_NAMES = ("HTTPS_PROXY", "https_proxy")
 _SOCKS_PROXY_ENV_NAMES = ("ALL_PROXY", "all_proxy", "SOCKS_PROXY", "socks_proxy")
-_MANAGED_PROXY_ENV_NAMES = _HTTP_PROXY_ENV_NAMES + _HTTPS_PROXY_ENV_NAMES + _SOCKS_PROXY_ENV_NAMES
+_NO_PROXY_ENV_NAMES = ("NO_PROXY", "no_proxy")
+_LOCAL_PROXY_BYPASS_HOSTS = ("localhost", "127.0.0.1", "::1")
+_MANAGED_PROXY_ENV_NAMES = (
+    _HTTP_PROXY_ENV_NAMES
+    + _HTTPS_PROXY_ENV_NAMES
+    + _SOCKS_PROXY_ENV_NAMES
+    + _NO_PROXY_ENV_NAMES
+)
 _ORIGINAL_PROXY_ENV = {name: os.environ.get(name) for name in _MANAGED_PROXY_ENV_NAMES}
 
 
@@ -79,6 +86,7 @@ def apply_network_proxy_environment(config: Any) -> NetworkProxyValues:
     _set_proxy_env(_HTTP_PROXY_ENV_NAMES, values.http)
     _set_proxy_env(_HTTPS_PROXY_ENV_NAMES, values.https)
     _set_proxy_env(_SOCKS_PROXY_ENV_NAMES, values.socks5)
+    _set_local_proxy_bypass(enabled=bool(values.http or values.https or values.socks5))
     logger.info(
         "Network proxy environment applied",
         extra={
@@ -142,12 +150,19 @@ def detect_network_proxy_configuration() -> NetworkProxyDetection:
 
 
 def _set_proxy_env(names: tuple[str, ...], value: str) -> None:
-    if os.name == "nt" and value:
+    if _uses_case_insensitive_environment() and value:
         os.environ[names[0]] = value
         return
 
-    if os.name == "nt" and not value:
-        restore = next(((name, _ORIGINAL_PROXY_ENV.get(name)) for name in names if _ORIGINAL_PROXY_ENV.get(name)), None)
+    if _uses_case_insensitive_environment() and not value:
+        restore = next(
+            (
+                (name, _ORIGINAL_PROXY_ENV.get(name))
+                for name in names
+                if _ORIGINAL_PROXY_ENV.get(name) is not None
+            ),
+            None,
+        )
         for name in names:
             os.environ.pop(name, None)
         if restore is not None:
@@ -163,6 +178,37 @@ def _set_proxy_env(names: tuple[str, ...], value: str) -> None:
             os.environ.pop(name, None)
         else:
             os.environ[name] = original
+
+
+def _uses_case_insensitive_environment() -> bool:
+    return os.name == "nt"
+
+
+def _set_local_proxy_bypass(*, enabled: bool) -> None:
+    if not enabled:
+        _set_proxy_env(_NO_PROXY_ENV_NAMES, "")
+        return
+
+    configured_values = [
+        *(_ORIGINAL_PROXY_ENV.get(name) for name in _NO_PROXY_ENV_NAMES),
+        *(os.environ.get(name) for name in _NO_PROXY_ENV_NAMES),
+    ]
+    merged = _merge_no_proxy_values(*configured_values, *_LOCAL_PROXY_BYPASS_HOSTS)
+    _set_proxy_env(_NO_PROXY_ENV_NAMES, merged)
+
+
+def _merge_no_proxy_values(*values: str | None) -> str:
+    entries: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for raw_entry in str(value or "").split(","):
+            entry = raw_entry.strip()
+            key = entry.casefold()
+            if not entry or key in seen:
+                continue
+            seen.add(key)
+            entries.append(entry)
+    return ",".join(entries)
 
 
 def _redact_proxy(value: str) -> str:

@@ -928,7 +928,47 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests[DEFAULT_CHAT_THEME_ID],
           ),
         ),
-      async launch(payload) {
+      async launch(payload, options) {
+        const taskId = `preview-chat-init-${Date.now()}`;
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Preparing chat runtime",
+            phase: "preparing",
+            progress: 0.08,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Starting voice services",
+            phase: "tts",
+            progress: 0.46,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Loading chat memory",
+            phase: "memory",
+            progress: 0.76,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
         const character = config.characters.find((item) => payload.characters.includes(item.name));
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
         const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
@@ -948,9 +988,49 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
         };
         emitChat();
-        return delay(chat);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Chat is ready",
+            phase: "completed",
+            progress: 1,
+            result: clone(chat),
+            status: "succeeded",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        return clone(chat);
       },
-      async resumeLast() {
+      async resumeLast(options) {
+        const taskId = `preview-chat-init-${Date.now()}`;
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Preparing the previous chat",
+            phase: "preparing",
+            progress: 0.12,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Restoring chat services",
+            phase: "runtime",
+            progress: 0.68,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
         const character = config.characters.find((item) => templateSession?.selectedCharacters?.includes(item.name));
         const background = config.background_list.find((item) => item.name === templateSession?.background);
         const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
@@ -970,7 +1050,20 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           statusMessage: `已恢复上次启动：${historyPath}`,
         };
         emitChat();
-        return delay(chat);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Chat is ready",
+            phase: "completed",
+            progress: 1,
+            result: clone(chat),
+            status: "succeeded",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        return clone(chat);
       },
       subscribe(listener) {
         chatListeners.add(listener);

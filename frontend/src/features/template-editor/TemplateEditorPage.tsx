@@ -6,8 +6,10 @@ import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
-import { useChatLaunchGuard } from "../../entities/chat/launchGuard";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import {
   generateTemplate,
@@ -66,6 +68,14 @@ export function TemplateEditorPage() {
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
   const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const {
+    closeInitialization,
+    initializationError,
+    initializationOpen,
+    initializationPending,
+    initializationTask,
+    runChatInitialization,
+  } = useChatInitialization();
   const templates = templatesQuery.data ?? [];
   const isLoading = templatesQuery.isLoading;
   const launchSession = sessionQuery.data;
@@ -481,30 +491,33 @@ export function TemplateEditorPage() {
       if (runtimeLaunchDisabled) {
         throw new Error(t("launch.runtimeBusy"));
       }
-      const template = buildTemplateSummary(draft);
-      const session: TemplateLaunchSession = buildTemplateLaunchSession({
-        backgroundName: selectedBackground,
-        draft,
-        effectNames: selectedEffects,
-        options: templateOptionsState,
-        runtime: runtimeOptionsState,
-        selectedCharacters,
-        selectedTemplateId: selectedId,
-      });
-      await saveTemplateSession(session);
-      queryClient.setQueryData([...templatesQueryKey, "session"], session);
-      const snapshot = await launchChat(
-        buildChatLaunchPayload({
+      return runChatInitialization(async (progressOptions) => {
+        const template = buildTemplateSummary(draft);
+        const session: TemplateLaunchSession = buildTemplateLaunchSession({
           backgroundName: selectedBackground,
+          draft,
           effectNames: selectedEffects,
-          resetHistory,
+          options: templateOptionsState,
           runtime: runtimeOptionsState,
           selectedCharacters,
-          template,
-          useCg,
-        }),
-      );
-      return { snapshot, template };
+          selectedTemplateId: selectedId,
+        });
+        await saveTemplateSession(session);
+        queryClient.setQueryData([...templatesQueryKey, "session"], session);
+        const snapshot = await launchChat(
+          buildChatLaunchPayload({
+            backgroundName: selectedBackground,
+            effectNames: selectedEffects,
+            resetHistory,
+            runtime: runtimeOptionsState,
+            selectedCharacters,
+            template,
+            useCg,
+          }),
+          progressOptions,
+        );
+        return { snapshot, template };
+      });
     },
     onError(error) {
       void refreshRuntimeStatus();
@@ -862,7 +875,7 @@ export function TemplateEditorPage() {
 
       <footer className="template-page__footer">
         <AsyncButton
-          disabled={runtimeLaunchDisabled}
+          disabled={runtimeLaunchDisabled || initializationPending}
           icon={<Play aria-hidden className="button__icon" />}
           loading={launchMutation.isPending}
           onClick={() => launchMutation.mutate({ resetHistory: false })}
@@ -871,7 +884,7 @@ export function TemplateEditorPage() {
           {t("template.action.launch")}
         </AsyncButton>
         <Button
-          disabled={runtimeLaunchDisabled}
+          disabled={runtimeLaunchDisabled || initializationPending}
           icon={<RotateCw aria-hidden className="button__icon" />}
           onClick={() => setQuickRestartOpen(true)}
           variant="ghost"
@@ -892,6 +905,13 @@ export function TemplateEditorPage() {
         }}
         open={quickRestartOpen}
         title={t("template.quickRestart.title")}
+      />
+      <ChatInitializationDialog
+        error={initializationError}
+        onClose={closeInitialization}
+        open={initializationOpen}
+        pending={initializationPending}
+        task={initializationTask}
       />
     </div>
   );

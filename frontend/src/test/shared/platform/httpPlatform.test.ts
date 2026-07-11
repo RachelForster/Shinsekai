@@ -663,6 +663,7 @@ describe("http platform", () => {
   });
 
   it("returns launch snapshots from the bridge", async () => {
+    vi.useFakeTimers();
     const snapshot = {
       backgroundPath: "/assets/bg.png",
       characterName: "Nanami",
@@ -674,31 +675,69 @@ describe("http platform", () => {
       status: "idle",
       statusMessage: "聊天进程已启动！PID: 123",
     };
-    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    const runningTask = {
+      createdAt: 1,
+      id: "chat-init-1",
+      kind: "chat-initialization",
+      logs: [],
+      message: "Starting voice service",
+      phase: "tts",
+      progress: 0.4,
+      result: null,
+      status: "running",
+      title: "Initialize chat",
+      updatedAt: 2,
+    };
+    const completedTask = {
+      ...runningTask,
+      message: "Chat is ready",
+      phase: "completed",
+      progress: 1,
+      result: snapshot,
+      status: "succeeded",
+      updatedAt: 3,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse(runningTask))
+      .mockResolvedValueOnce(await mockJsonResponse(completedTask));
+    const onTaskUpdate = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
-    const result = await platform.chat.launch({
-      backgroundName: "默认房间",
-      characters: ["Nanami"],
-      historyPath: "",
-      templateId: "default",
-    });
+    const resultPromise = platform.chat.launch(
+      {
+        backgroundName: "默认房间",
+        characters: ["Nanami"],
+        historyPath: "",
+        templateId: "default",
+      },
+      { onTaskUpdate },
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    const result = await resultPromise;
 
     expect(result.dialogText).toBe("");
     expect(result.statusMessage).toContain("聊天进程已启动");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/chat/launch",
+    expect(onTaskUpdate).toHaveBeenNthCalledWith(1, runningTask);
+    expect(onTaskUpdate).toHaveBeenNthCalledWith(2, completedTask);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/api/chat/init",
       expect.objectContaining({
         body: JSON.stringify({
-          backgroundName: "默认房间",
-          characters: ["Nanami"],
-          historyPath: "",
-          templateId: "default",
+          mode: "launch",
+          payload: {
+            backgroundName: "默认房间",
+            characters: ["Nanami"],
+            historyPath: "",
+            templateId: "default",
+          },
         }),
         method: "POST",
       }),
     );
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://127.0.0.1:8787/api/tasks/chat-init-1", expect.any(Object));
   });
 
   it("passes inline template launch fields through the bridge", async () => {
@@ -713,7 +752,21 @@ describe("http platform", () => {
       status: "idle",
       statusMessage: "聊天进程已启动！PID: 123",
     };
-    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({
+        createdAt: 1,
+        id: "chat-init-inline",
+        kind: "chat-initialization",
+        logs: [],
+        message: "ready",
+        phase: "completed",
+        progress: 1,
+        result: snapshot,
+        status: "succeeded",
+        title: "Initialize chat",
+        updatedAt: 2,
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
@@ -731,19 +784,22 @@ describe("http platform", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/chat/launch",
+      "http://127.0.0.1:8787/api/chat/init",
       expect.objectContaining({
         body: JSON.stringify({
-          backgroundName: "透明场景",
-          characters: ["Nanami"],
-          historyPath: "",
-          initSpritePath: "data/sprite/nanami/default.png",
-          roomId: "12345",
-          scenario: "用户情景",
-          system: "系统模板",
-          templateId: "",
-          templateName: "session-only",
-          useCg: false,
+          mode: "launch",
+          payload: {
+            backgroundName: "透明场景",
+            characters: ["Nanami"],
+            historyPath: "",
+            initSpritePath: "data/sprite/nanami/default.png",
+            roomId: "12345",
+            scenario: "用户情景",
+            system: "系统模板",
+            templateId: "",
+            templateName: "session-only",
+            useCg: false,
+          },
         }),
         method: "POST",
       }),
@@ -806,7 +862,21 @@ describe("http platform", () => {
       status: "idle",
       statusMessage: "聊天进程已启动！PID: 456",
     };
-    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({
+        createdAt: 1,
+        id: "chat-init-resume",
+        kind: "chat-initialization",
+        logs: [],
+        message: "ready",
+        phase: "completed",
+        progress: 1,
+        result: snapshot,
+        status: "succeeded",
+        title: "Initialize chat",
+        updatedAt: 2,
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
@@ -815,9 +885,9 @@ describe("http platform", () => {
     expect(result.dialogText).toBe("");
     expect(result.statusMessage).toContain("聊天进程已启动");
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/chat/resume-last",
+      "http://127.0.0.1:8787/api/chat/init",
       expect.objectContaining({
-        body: JSON.stringify({}),
+        body: JSON.stringify({ mode: "resume-last" }),
         method: "POST",
       }),
     );

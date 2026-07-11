@@ -32,6 +32,33 @@ describe("chatStageReducer", () => {
     expect(state.status).toBe("idle");
   });
 
+  it("retains chat initialization task events for reconnect diagnostics", () => {
+    const state = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        task: {
+          createdAt: 1,
+          id: "child-init",
+          kind: "chat-initialization",
+          logs: [],
+          message: "Starting voice service.",
+          phase: "tts.init",
+          progress: 0.42,
+          result: null,
+          status: "running",
+          title: "Starting chat",
+          updatedAt: 2,
+        },
+        ts: 2,
+        type: "chat.init.progress",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(state.initTask).toMatchObject({ phase: "tts.init", progress: 0.42, status: "running" });
+  });
+
   it("projects stage events into layer visibility state", () => {
     const spriteState = chatStageReducer(emptyChatState, {
       event: {

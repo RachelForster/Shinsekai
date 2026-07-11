@@ -786,6 +786,7 @@ export interface ChatSnapshot {
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
   inputDraft: string;
+  initTask?: TaskSnapshot;
   numericInfo?: string;
   notificationText?: string;
   options: string[];
@@ -853,6 +854,10 @@ interface ChatEventBase {
 
 export type ChatStageEvent =
   | (ChatEventBase & { type: "snapshot"; snapshot: ChatSnapshot })
+  | (ChatEventBase & {
+      type: "chat.init.progress" | "chat.init.completed" | "chat.init.failed" | "chat.init.cancelled";
+      task: TaskSnapshot;
+    })
   | (ChatEventBase & { type: "transport.state"; state: ChatTransportState; transport: ChatTransportMode })
   | (ChatEventBase & {
       type: "cmd.ack";
@@ -1006,8 +1011,8 @@ export interface ShinsekaiPlatform {
     getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
     getSnapshot: () => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
-    launch: (payload: ChatLaunchPayload) => Promise<ChatSnapshot>;
-    resumeLast: () => Promise<ChatSnapshot>;
+    launch: (payload: ChatLaunchPayload, options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
+    resumeLast: (options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
     subscribe: (listener: (snapshot: ChatSnapshot) => void) => () => void;
     // --- 主题 mod 系统 ---
     listThemes: () => Promise<ChatThemeSummary[]>;

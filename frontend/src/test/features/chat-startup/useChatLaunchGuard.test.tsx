@@ -3,17 +3,23 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useChatLaunchGuard } from "../../../entities/chat/launchGuard";
 import { chatRuntimeStatusQueryKey } from "../../../entities/chat/repository";
-import { beginChatRuntimeClosing } from "../../../entities/chat/runtimeState";
+import { closeChatRuntime } from "../../../features/chat-startup/runtimeState";
+import { useChatLaunchGuard } from "../../../features/chat-startup/useChatLaunchGuard";
+import type { ChatSnapshot } from "../../../shared/platform/types";
 
 const mocks = vi.hoisted(() => ({
+  closeChat: vi.fn(),
   getChatRuntimeStatus: vi.fn(),
 }));
 
 vi.mock("../../../entities/chat/repository", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../entities/chat/repository")>();
-  return { ...actual, getChatRuntimeStatus: mocks.getChatRuntimeStatus };
+  return {
+    ...actual,
+    closeChat: mocks.closeChat,
+    getChatRuntimeStatus: mocks.getChatRuntimeStatus,
+  };
 });
 
 function createWrapper() {
@@ -30,6 +36,7 @@ function createWrapper() {
 
 describe("useChatLaunchGuard", () => {
   beforeEach(() => {
+    mocks.closeChat.mockReset();
     mocks.getChatRuntimeStatus.mockReset();
     mocks.getChatRuntimeStatus.mockResolvedValue({
       chatProcessRunning: false,
@@ -187,18 +194,58 @@ describe("useChatLaunchGuard", () => {
     await waitFor(() => expect(result.current.runtimeLaunchDisabled).toBe(true));
   });
 
-  it("also disables launching during a local close request", async () => {
+  it("disables launching while the feature-level close operation is running", async () => {
+    let resolveClose: (snapshot: ChatSnapshot) => void = () => undefined;
+    mocks.closeChat.mockReturnValue(
+      new Promise<ChatSnapshot>((resolve) => {
+        resolveClose = resolve;
+      }),
+    );
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useChatLaunchGuard(), { wrapper: Wrapper });
     await waitFor(() => expect(mocks.getChatRuntimeStatus).toHaveBeenCalledTimes(1));
 
-    let releaseClosing: () => void = () => undefined;
+    let closePromise!: Promise<ChatSnapshot>;
     act(() => {
-      releaseClosing = beginChatRuntimeClosing();
+      closePromise = closeChatRuntime();
     });
     expect(result.current.runtimeLaunchDisabled).toBe(true);
 
-    act(() => releaseClosing());
+    const closedSnapshot: ChatSnapshot = {
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    };
+    await act(async () => {
+      resolveClose(closedSnapshot);
+      await expect(closePromise).resolves.toBe(closedSnapshot);
+    });
+    expect(result.current.runtimeLaunchDisabled).toBe(false);
+  });
+
+  it("releases the local closing state when the close operation fails", async () => {
+    let rejectClose: (error: Error) => void = () => undefined;
+    mocks.closeChat.mockReturnValue(
+      new Promise<ChatSnapshot>((_resolve, reject) => {
+        rejectClose = reject;
+      }),
+    );
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useChatLaunchGuard(), { wrapper: Wrapper });
+    await waitFor(() => expect(mocks.getChatRuntimeStatus).toHaveBeenCalledTimes(1));
+
+    let closePromise!: Promise<ChatSnapshot>;
+    act(() => {
+      closePromise = closeChatRuntime();
+    });
+    expect(result.current.runtimeLaunchDisabled).toBe(true);
+
+    await act(async () => {
+      rejectClose(new Error("close failed"));
+      await expect(closePromise).rejects.toThrow("close failed");
+    });
     expect(result.current.runtimeLaunchDisabled).toBe(false);
   });
 });

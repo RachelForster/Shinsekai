@@ -26,7 +26,7 @@ class TTSAdapterFactory:
     }
 
     @staticmethod
-    def create_adapter(adapter_name: str, **kwargs) -> TTSAdapter:
+    def create_adapter(adapter_name: str, *, wait_until_ready: bool = False, **kwargs) -> TTSAdapter:
         """
         Creates and returns a TTSAdapter instance based on the given name.
         
@@ -47,7 +47,16 @@ class TTSAdapterFactory:
         
         try:
             # Instantiate the correct adapter class with the provided kwargs
-            return adapter_class(**kwargs)
+            adapter = adapter_class(**kwargs)
+            if wait_until_ready:
+                try:
+                    adapter.wait_until_ready()
+                except BaseException:
+                    stop_server = getattr(adapter, "stop_server", None)
+                    if callable(stop_server):
+                        stop_server()
+                    raise
+            return adapter
         except TypeError as e:
             print(f"Error creating adapter '{adapter_name}'. Check the required arguments.")
             raise e

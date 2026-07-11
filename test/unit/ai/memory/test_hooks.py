@@ -3,6 +3,7 @@ from __future__ import annotations
 from ai.memory.hooks import MemoryAutoHooks, install_memory_hooks
 from ai.memory.queue import MemoryWriteQueue
 from core.runtime.shutdown import shutdown_chat_runtime
+from sdk.chat_init import ChatInitService, InitChatContext
 from sdk.hooks import BeforeChatContext, MessageAddedContext
 from sdk.hooks import PluginHookDispatcher, clear_shutdown_hooks
 from test.mocks import MockLLMAdapter
@@ -275,3 +276,108 @@ def test_install_memory_hooks_registers_shutdown_flush(tmp_path):
         assert len(queue) == 0
     finally:
         clear_shutdown_hooks()
+
+
+def test_memory_init_hook_starts_bridge_loading_once_and_forwards_progress(tmp_path):
+    calls = []
+    responses = iter(
+        [
+            {
+                "status": "loading",
+                "task": {
+                    "phase": "download",
+                    "progress": 0.25,
+                    "message": "Downloading embedding model",
+                    "logs": ["download started"],
+                },
+            },
+            {
+                "status": "loading",
+                "task": {
+                    "phase": "reload",
+                    "progress": 0.8,
+                    "message": "Loading cached model",
+                    "logs": ["download started", "model cached"],
+                },
+            },
+            {"status": "ready", "task": {"phase": "completed", "progress": 1.0}},
+        ]
+    )
+
+    def status(**kwargs):
+        calls.append(kwargs)
+        return next(responses)
+
+    hooks = MemoryAutoHooks(
+        llm_adapter=MockLLMAdapter(),
+        queue=MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=lambda *_args: {"ok": True}),
+        memory_status_func=status,
+        sleep_func=lambda _seconds: None,
+        monotonic_func=lambda: 0.0,
+    )
+    dispatcher = PluginHookDispatcher()
+    hooks.register(dispatcher)
+    events = []
+
+    failures = dispatcher.dispatch_init_chat(
+        InitChatContext(service=ChatInitService(events.append), memory_enabled=True)
+    )
+
+    assert failures == ()
+    assert calls == [
+        {"start_loading": True, "monitor_ready": False},
+        {"start_loading": False, "monitor_ready": False},
+        {"start_loading": False, "monitor_ready": False},
+    ]
+    assert any(event["task"]["message"] == "Downloading embedding model" for event in events)
+    assert any(event["task"]["phase"] == "memory.reload" for event in events)
+    assert events[-1]["task"]["progress"] == 1.0
+    assert events[-1]["task"]["logs"] == ["download started", "model cached"]
+
+
+def test_memory_init_missing_dependency_is_nonfatal_and_does_not_install(tmp_path):
+    status_calls = []
+    continued = []
+
+    def missing_status(**kwargs):
+        status_calls.append(kwargs)
+        return {
+            "status": "missing_dependency",
+            "moduleName": "mem0",
+            "packageName": "mem0ai",
+        }
+
+    hooks = MemoryAutoHooks(
+        llm_adapter=MockLLMAdapter(),
+        queue=MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=lambda *_args: {"ok": True}),
+        memory_status_func=missing_status,
+        sleep_func=lambda _seconds: None,
+    )
+    dispatcher = PluginHookDispatcher()
+    hooks.register(dispatcher)
+    dispatcher.register_init_chat(lambda _context: continued.append(True), label="after-memory")
+
+    failures = dispatcher.dispatch_init_chat(InitChatContext(service=ChatInitService(), memory_enabled=True))
+
+    assert status_calls == [{"start_loading": True, "monitor_ready": False}]
+    assert continued == [True]
+    assert [failure.label for failure in failures] == ["memory"]
+    assert "dependency" in str(failures[0].error).lower()
+
+
+def test_memory_init_hook_skips_service_when_memory_is_disabled(tmp_path):
+    hooks = MemoryAutoHooks(
+        llm_adapter=MockLLMAdapter(),
+        queue=MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=lambda *_args: {"ok": True}),
+        memory_status_func=lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("disabled memory must not call the service")
+        ),
+    )
+    dispatcher = PluginHookDispatcher()
+    hooks.register(dispatcher)
+    service = ChatInitService()
+
+    assert dispatcher.dispatch_init_chat(
+        InitChatContext(service=service, memory_enabled=False)
+    ) == ()
+    assert service.snapshot()["progress"] == 1.0

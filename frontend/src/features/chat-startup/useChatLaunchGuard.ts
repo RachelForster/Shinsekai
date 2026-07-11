@@ -2,7 +2,11 @@ import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { ChatRuntimeProcessState, ChatSnapshot } from "../../shared/platform/types";
-import { chatRuntimeStatusQueryKey, getChatRuntimeStatus, runtimeStatusFromSnapshot } from "./repository";
+import {
+  chatRuntimeStatusQueryKey,
+  getChatRuntimeStatus,
+  runtimeStatusFromSnapshot,
+} from "../../entities/chat/repository";
 import { useChatRuntimeClosing } from "./runtimeState";
 
 const RUNTIME_STATUS_POLL_INTERVAL_MS = 1200;

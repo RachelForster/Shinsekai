@@ -6,7 +6,6 @@ import { useNavigate } from "react-router-dom";
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
-import { useChatLaunchGuard } from "../../entities/chat/launchGuard";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
@@ -15,6 +14,9 @@ import {
   saveTemplateSession,
   templatesQueryKey,
 } from "../../entities/template/repository";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
@@ -48,6 +50,14 @@ export function ChatLauncherPage() {
   });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const {
+    closeInitialization,
+    initializationError,
+    initializationOpen,
+    initializationPending,
+    initializationTask,
+    runChatInitialization,
+  } = useChatInitialization();
   const characters = charactersQuery.data ?? [];
   const backgrounds = backgroundsQuery.data ?? [];
   const effects = Array.isArray(effectsQuery.data) ? effectsQuery.data : [];
@@ -180,10 +190,12 @@ export function ChatLauncherPage() {
 
   const launchMutation = useMutation({
     mutationFn: async (payload: ChatLaunchPayload) => {
-      const session = buildSession();
-      await saveTemplateSession(session);
-      queryClient.setQueryData([...templatesQueryKey, "session"], session);
-      return launchChat(payload);
+      return runChatInitialization(async (options) => {
+        const session = buildSession();
+        await saveTemplateSession(session);
+        queryClient.setQueryData([...templatesQueryKey, "session"], session);
+        return launchChat(payload, options);
+      });
     },
     onError(error) {
       void refreshRuntimeStatus();
@@ -241,7 +253,7 @@ export function ChatLauncherPage() {
         </div>
         <div className="page__actions">
           <AsyncButton
-            disabled={runtimeLaunchDisabled}
+            disabled={runtimeLaunchDisabled || initializationPending}
             icon={<Play aria-hidden className="button__icon" />}
             loading={launchMutation.isPending}
             onClick={() => submitLaunch(false)}
@@ -250,7 +262,7 @@ export function ChatLauncherPage() {
             {t("launch.start")}
           </AsyncButton>
           <Button
-            disabled={runtimeLaunchDisabled}
+            disabled={runtimeLaunchDisabled || initializationPending}
             icon={<RotateCw aria-hidden className="button__icon" />}
             onClick={() => {
               if (launchMutation.isPending) {
@@ -404,6 +416,13 @@ export function ChatLauncherPage() {
         }}
         open={quickRestartOpen}
         title={t("template.quickRestart.title")}
+      />
+      <ChatInitializationDialog
+        error={initializationError}
+        onClose={closeInitialization}
+        open={initializationOpen}
+        pending={initializationPending}
+        task={initializationTask}
       />
     </div>
   );

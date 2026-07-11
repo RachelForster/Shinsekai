@@ -65,6 +65,7 @@ describe("browser preview platform chat themes", () => {
   it("tracks the lightweight runtime status across launch and close", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();
+    const initializationPhases: string[] = [];
 
     await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toEqual({
       chatProcessRunning: false,
@@ -73,14 +74,18 @@ describe("browser preview platform chat themes", () => {
     });
 
     const launched = await resolvePreview(
-      platform.chat.launch({
-        backgroundName: "榛樿鎴块棿",
-        characters: ["Nanami"],
-        historyPath: "/tmp/runtime-status.json",
-        templateId: "default",
-      }),
+      platform.chat.launch(
+        {
+          backgroundName: "榛樿鎴块棿",
+          characters: ["Nanami"],
+          historyPath: "/tmp/runtime-status.json",
+          templateId: "default",
+        },
+        { onTaskUpdate: (task) => initializationPhases.push(task.phase) },
+      ),
     );
     expect(launched).toMatchObject({ chatProcessRunning: true, chatRuntimeClosing: false });
+    expect(initializationPhases).toEqual(["preparing", "tts", "memory", "completed"]);
     await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toEqual({
       chatProcessRunning: true,
       chatRuntimeClosing: false,

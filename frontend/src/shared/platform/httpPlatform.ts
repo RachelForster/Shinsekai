@@ -539,16 +539,20 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
       getSnapshot: () => requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot"),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
-      launch: (payload: ChatLaunchPayload) =>
-        requestJson<ChatSnapshot>(apiBase, "/api/chat/launch", {
-          body: JSON.stringify(payload),
+      async launch(payload: ChatLaunchPayload, options) {
+        const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
+          body: JSON.stringify({ mode: "launch", payload }),
           method: "POST",
-        }),
-      resumeLast: () =>
-        requestJson<ChatSnapshot>(apiBase, "/api/chat/resume-last", {
-          body: JSON.stringify({}),
+        });
+        return waitForTask(apiBase, task, options);
+      },
+      async resumeLast(options) {
+        const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
+          body: JSON.stringify({ mode: "resume-last" }),
           method: "POST",
-        }),
+        });
+        return waitForTask(apiBase, task, options);
+      },
       subscribe(listener) {
         let stopped = false;
         let timeoutId = 0;
