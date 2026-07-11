@@ -267,10 +267,25 @@ def test_release_workflow_keeps_windows_assets_nsis_only() -> None:
 
 def test_windows_ci_renders_custom_nsis_and_runs_project_root_tests() -> None:
     workflow = TAURI_WORKFLOW.read_text(encoding="utf-8")
+    build_job = workflow[workflow.index("\n  build:\n") :]
+    tauri_config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
 
+    assert tauri_config["build"]["frontendDist"] == "../dist"
     assert re.search(
         r"platform: windows-x64\s+os: windows-latest\s+bundles: nsis",
-        workflow,
+        build_job,
     )
-    assert "cargo test --manifest-path frontend/src-tauri/Cargo.toml project_root" in workflow
-    assert "frontend/src-tauri/target/release/bundle/nsis/*.exe" in workflow
+    install_dependencies = build_job.index("- name: Install frontend dependencies")
+    build_frontend = build_job.index("- name: Build frontend for Windows Tauri tests")
+    test_project_root = build_job.index("- name: Test Windows project-root resolution")
+    assert install_dependencies < build_frontend < test_project_root
+
+    frontend_step = build_job[build_frontend:test_project_root]
+    assert "if: runner.os == 'Windows'" in frontend_step
+    assert "working-directory: frontend" in frontend_step
+    assert "run: pnpm build" in frontend_step
+    assert (
+        "cargo test --manifest-path frontend/src-tauri/Cargo.toml project_root"
+        in build_job[test_project_root:]
+    )
+    assert "frontend/src-tauri/target/release/bundle/nsis/*.exe" in build_job

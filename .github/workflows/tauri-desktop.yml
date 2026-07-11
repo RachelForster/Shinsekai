@@ -197,6 +197,11 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Build frontend for Windows Tauri tests
+        if: runner.os == 'Windows'
+        working-directory: frontend
+        run: pnpm build
+
       - name: Test Windows project-root resolution
         if: runner.os == 'Windows'
         run: cargo test --manifest-path frontend/src-tauri/Cargo.toml project_root
