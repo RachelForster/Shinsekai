@@ -317,6 +317,19 @@
 
 /* Memory file import */
 
+.memory-import-file-picker {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.memory-import-file-picker input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .memory-import-preview-dialog {
   width: min(720px, 100%);
 }

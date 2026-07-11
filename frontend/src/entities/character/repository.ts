@@ -52,13 +52,13 @@ export function deleteCharacterMemory(name: string, memoryId: string) {
   return getPlatform().characters.deleteMemory(name, memoryId);
 }
 
-export function previewCharacterMemoryImport(name: string, items: File[] | string[]) {
+export function previewCharacterMemoryImport(name: string, items: File[]) {
   return getPlatform().characters.previewMemoryImport(name, items);
 }
 
 export function importCharacterMemories(
   name: string,
-  items: File[] | string[],
+  items: File[],
   options?: TaskProgressOptions<CharacterMemoryImportResult>,
 ) {
   return getPlatform().characters.importMemories(name, items, options);

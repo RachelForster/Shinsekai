@@ -6,7 +6,7 @@ import type {
   CharacterMemoryImportResult,
   TaskSnapshot,
 } from "../../shared/platform/types";
-import { AsyncButton, Button, Dialog, PathPickerDialog, TaskProgress } from "../../shared/ui";
+import { AsyncButton, Button, Dialog, TaskProgress } from "../../shared/ui";
 
 interface CharacterMemoryImportDialogsProps {
   importPending: boolean;
@@ -14,7 +14,7 @@ interface CharacterMemoryImportDialogsProps {
   onClosePreview: () => void;
   onCloseTask: () => void;
   onConfirm: () => void;
-  onSelect: (items: string[]) => void;
+  onSelect: (items: File[]) => void;
   pickerOpen: boolean;
   preview: CharacterMemoryImportPreview | null;
   previewOpen: boolean;
@@ -43,15 +43,32 @@ export function CharacterMemoryImportDialogs({
 
   return (
     <>
-      <PathPickerDialog
-        acceptedExtensions={[".txt", ".json"]}
-        multiple
+      <Dialog
+        closeLabel={t("common.close")}
+        footer={<Button onClick={onClosePicker}>{t("common.cancel")}</Button>}
         onClose={onClosePicker}
-        onSelect={(path) => onSelect([path])}
-        onSelectMany={onSelect}
         open={pickerOpen}
         title={t("character.memory.importPickerTitle")}
-      />
+      >
+        <Button className="memory-import-file-picker" variant="primary">
+          {t("character.memory.importPickerTitle")}
+          <input
+            accept=".txt,.json,application/json,text/plain"
+            aria-label={t("character.memory.importPickerTitle")}
+            multiple
+            onChange={(event) => {
+              const files = Array.from(event.currentTarget.files ?? []);
+              event.currentTarget.value = "";
+              if (!files.length) {
+                return;
+              }
+              onClosePicker();
+              onSelect(files);
+            }}
+            type="file"
+          />
+        </Button>
+      </Dialog>
 
       <Dialog
         className="memory-import-preview-dialog"

@@ -49,17 +49,15 @@ function delay<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => window.setTimeout(() => resolve(clone(value)), ms));
 }
 
-async function previewMemoryImport(items: File[] | string[]): Promise<CharacterMemoryImportPreview> {
+async function previewMemoryImport(items: File[]): Promise<CharacterMemoryImportPreview> {
   const files = await Promise.all(
     items.map(async (item) => {
-      const name = item instanceof File ? item.name : item.split(/[\\/]/).pop() || item;
+      const name = item.name;
       let content = "";
-      if (item instanceof File) {
-        try {
-          content = await item.text();
-        } catch {
-          content = "";
-        }
+      try {
+        content = await item.text();
+      } catch {
+        content = "";
       }
       const dialogueCharacters = content.length || 3_600;
       const dialogueLineCount = content ? Math.max(1, content.split(/\r?\n/).filter((line) => line.trim()).length) : 40;
@@ -1295,8 +1293,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         );
         await delay(undefined, 120);
         const memories = items.map((item, index) => {
-          const filename = item instanceof File ? item.name : item.split(/[\\/]/).pop() || item;
-          return `Imported memory ${index + 1} from ${filename}`;
+          return `Imported memory ${index + 1} from ${item.name}`;
         });
         const agentId = name || "user";
         const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };

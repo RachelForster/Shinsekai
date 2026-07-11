@@ -130,6 +130,8 @@ def _preview_character_memory_import(
     state: Any,
     name: str,
     paths: Sequence[str | Path],
+    *,
+    source_root: str | Path,
 ) -> dict[str, Any]:
     """Thin bridge wrapper around the memory import preview service."""
 
@@ -139,6 +141,7 @@ def _preview_character_memory_import(
     return preview_memory_import(
         paths,
         character_name=name,
+        source_root=source_root,
         max_chunk_tokens=configured_memory_chunk_tokens(state.config_manager),
     )
 
@@ -148,6 +151,8 @@ def _run_character_memory_import(
     task_id: str,
     name: str,
     paths: Sequence[str | Path],
+    *,
+    source_root: str | Path,
 ) -> dict[str, Any]:
     """Run extraction in a handler-owned background task."""
 
@@ -173,6 +178,7 @@ def _run_character_memory_import(
     return execute_memory_import(
         paths,
         character_name=name,
+        source_root=source_root,
         llm_adapter=adapter,
         max_chunk_tokens=configured_memory_chunk_tokens(state.config_manager),
         progress_callback=report,

@@ -109,16 +109,29 @@ def _source_turns(path: Path, text: str) -> tuple[str, ...]:
     return tuple(history_payload_to_turns(payload))
 
 
-def _normalized_paths(paths: Sequence[str | Path]) -> list[Path]:
+def _normalized_paths(
+    paths: Sequence[str | Path],
+    *,
+    source_root: str | Path,
+) -> list[Path]:
     if not paths:
         raise ValueError("请至少选择一个 TXT 或 JSON 文件。")
     if len(paths) > MAX_IMPORT_FILES:
         raise ValueError(f"一次最多导入 {MAX_IMPORT_FILES} 个文件。")
 
+    root = Path(source_root).expanduser().resolve(strict=True)
+    if not root.is_dir():
+        raise NotADirectoryError(root.as_posix())
+
     normalized: list[Path] = []
     total_bytes = 0
     for raw_path in paths:
-        path = Path(raw_path).expanduser().resolve()
+        candidate = Path(raw_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        path = candidate.resolve(strict=True)
+        if not path.is_relative_to(root):
+            raise ValueError(f"文件路径不允许：{path.name}")
         if path.suffix.lower() not in SUPPORTED_IMPORT_SUFFIXES:
             raise ValueError(f"不支持的文件类型：{path.name}（仅支持 .txt 和 .json）")
         if not path.is_file():
@@ -137,6 +150,7 @@ def prepare_memory_import(
     paths: Sequence[str | Path],
     *,
     character_name: str,
+    source_root: str | Path,
     max_chunk_tokens: int = DEFAULT_DIALOGUE_CHUNK_TOKENS,
 ) -> PreparedMemoryImport:
     target_name = str(character_name or "").strip()
@@ -145,7 +159,7 @@ def prepare_memory_import(
 
     sources: list[PreparedMemorySource] = []
     estimated_input_tokens = 0
-    for path in _normalized_paths(paths):
+    for path in _normalized_paths(paths, source_root=source_root):
         text = _read_supported_text(path)
         turns = _source_turns(path, text)
         if not turns:
@@ -178,11 +192,13 @@ def preview_memory_import(
     paths: Sequence[str | Path],
     *,
     character_name: str,
+    source_root: str | Path,
     max_chunk_tokens: int = DEFAULT_DIALOGUE_CHUNK_TOKENS,
 ) -> dict[str, Any]:
     return prepare_memory_import(
         paths,
         character_name=character_name,
+        source_root=source_root,
         max_chunk_tokens=max_chunk_tokens,
     ).preview_payload()
 
@@ -213,6 +229,7 @@ def execute_memory_import(
     paths: Sequence[str | Path],
     *,
     character_name: str,
+    source_root: str | Path,
     llm_adapter: Any,
     max_chunk_tokens: int = DEFAULT_DIALOGUE_CHUNK_TOKENS,
     remember_func: Callable[[str, str | None], dict[str, Any]] = memory_remember,
@@ -223,6 +240,7 @@ def execute_memory_import(
     prepared = prepare_memory_import(
         paths,
         character_name=character_name,
+        source_root=source_root,
         max_chunk_tokens=max_chunk_tokens,
     )
     chunks = prepared.chunks

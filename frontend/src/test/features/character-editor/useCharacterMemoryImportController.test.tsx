@@ -71,12 +71,13 @@ describe("useCharacterMemoryImportController", () => {
     });
     expect(result.current.pickerOpen).toBe(true);
     expect(ensureReady).not.toHaveBeenCalled();
+    const historyFile = new File(["User: hello"], "history.json");
 
     await act(async () => {
-      await result.current.previewItems(["C:/history.json"]);
+      await result.current.previewItems([historyFile]);
     });
 
-    expect(mockPreviewCharacterMemoryImport).toHaveBeenCalledWith("Mika", ["C:/history.json"]);
+    expect(mockPreviewCharacterMemoryImport).toHaveBeenCalledWith("Mika", [historyFile]);
     expect(result.current.preview).toEqual(preview);
     expect(result.current.previewOpen).toBe(true);
     expect(mockImportCharacterMemories).not.toHaveBeenCalled();
@@ -87,7 +88,7 @@ describe("useCharacterMemoryImportController", () => {
 
     expect(mockImportCharacterMemories).toHaveBeenCalledWith(
       "Mika",
-      ["C:/history.json"],
+      [historyFile],
       expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
     );
     expect(ensureReady).toHaveBeenCalledTimes(1);
@@ -109,9 +110,10 @@ describe("useCharacterMemoryImportController", () => {
 
     expect(result.current.pickerOpen).toBe(true);
     expect(ensureReady).not.toHaveBeenCalled();
+    const historyFile = new File(["User: hello"], "history.json");
 
     await act(async () => {
-      await result.current.previewItems(["C:/history.json"]);
+      await result.current.previewItems([historyFile]);
     });
     expect(result.current.previewOpen).toBe(true);
 
@@ -122,7 +124,7 @@ describe("useCharacterMemoryImportController", () => {
     expect(ensureReady).toHaveBeenCalledTimes(1);
     expect(result.current.previewOpen).toBe(true);
     expect(result.current.importPending).toBe(false);
-    expect(mockPreviewCharacterMemoryImport).toHaveBeenCalledWith("Mika", ["C:/history.json"]);
+    expect(mockPreviewCharacterMemoryImport).toHaveBeenCalledWith("Mika", [historyFile]);
     expect(mockImportCharacterMemories).not.toHaveBeenCalled();
   });
 });

@@ -30,7 +30,11 @@ def test_preview_mixed_txt_and_json_uses_plain_dialogue_and_estimates_requests(t
         encoding="utf-8",
     )
 
-    preview = preview_memory_import([text_path, json_path], character_name="Mika")
+    preview = preview_memory_import(
+        [text_path, json_path],
+        character_name="Mika",
+        source_root=tmp_path,
+    )
 
     assert preview["fileCount"] == 2
     assert preview["dialogueLineCount"] == 4
@@ -63,6 +67,7 @@ def test_execute_import_extracts_all_chunks_then_deduplicates_and_saves_to_selec
     result = execute_memory_import(
         [first, second],
         character_name="Mika",
+        source_root=tmp_path,
         llm_adapter=adapter,
         remember_func=lambda memory, character_name=None: saved.append((character_name, memory)) or {"ok": True},
         progress_callback=lambda phase, value, message, log: progress.append((phase, value, message, log)),
@@ -88,6 +93,7 @@ def test_execute_import_counts_duplicate_already_in_memory_store(tmp_path):
     result = execute_memory_import(
         [source],
         character_name="Mika",
+        source_root=tmp_path,
         llm_adapter=adapter,
         remember_func=lambda _memory, _character_name=None: {
             "ok": True,
@@ -111,9 +117,37 @@ def test_preview_rejects_invalid_json_and_unsupported_files(tmp_path):
     unsupported.write_text("hello", encoding="utf-8")
 
     with pytest.raises(ValueError, match="JSON 历史消息格式无效"):
-        preview_memory_import([invalid], character_name="Mika")
+        preview_memory_import([invalid], character_name="Mika", source_root=tmp_path)
     with pytest.raises(ValueError, match="不支持的文件类型"):
-        preview_memory_import([unsupported], character_name="Mika")
+        preview_memory_import([unsupported], character_name="Mika", source_root=tmp_path)
+
+
+def test_preview_rejects_file_outside_server_managed_source_root(tmp_path):
+    upload_root = tmp_path / "upload"
+    upload_root.mkdir()
+    outside = tmp_path / "private.json"
+    outside.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="文件路径不允许"):
+        preview_memory_import(
+            [outside],
+            character_name="Mika",
+            source_root=upload_root,
+        )
+
+
+def test_preview_accepts_relative_file_inside_server_managed_source_root(tmp_path):
+    source = tmp_path / "history.txt"
+    source.write_text("User: likes tea", encoding="utf-8")
+
+    preview = preview_memory_import(
+        [source.name],
+        character_name="Mika",
+        source_root=tmp_path,
+    )
+
+    assert preview["fileCount"] == 1
+    assert preview["files"][0]["name"] == "history.txt"
 
 
 def test_preview_accepts_active_branch_export(tmp_path):
@@ -132,7 +166,7 @@ def test_preview_accepts_active_branch_export(tmp_path):
         encoding="utf-8",
     )
 
-    preview = preview_memory_import([path], character_name="Mika")
+    preview = preview_memory_import([path], character_name="Mika", source_root=tmp_path)
 
     assert preview["dialogueLineCount"] == 2
     assert preview["files"][0]["dialogueCharacters"] == len("你: branch\nMika: selected")

@@ -353,8 +353,9 @@ describe("entity repositories", () => {
     await characters.searchCharacterMemories({ name: "Nanami", query: "tea" });
     await characters.rememberCharacterMemory("Nanami", "likes tea");
     await characters.deleteCharacterMemory("Nanami", "memory-1");
-    await characters.previewCharacterMemoryImport("Nanami", ["/tmp/history.json"]);
-    await characters.importCharacterMemories("Nanami", ["/tmp/history.json"]);
+    const historyFile = new File(["User: hello"], "history.json");
+    await characters.previewCharacterMemoryImport("Nanami", [historyFile]);
+    await characters.importCharacterMemories("Nanami", [historyFile]);
     await characters.uploadCharacterSprites({ emotionTags: "happy", name: "Nanami", paths: ["/tmp/a.png"] });
     await characters.saveCharacterEmotionTags("Nanami", "happy");
     await characters.deleteCharacterSprite("Nanami", 0);
@@ -373,8 +374,8 @@ describe("entity repositories", () => {
     });
     expect(platform.characters.save).toHaveBeenCalledWith(character, "Old Nanami");
     expect(platform.characters.remember).toHaveBeenCalledWith("Nanami", "likes tea");
-    expect(platform.characters.previewMemoryImport).toHaveBeenCalledWith("Nanami", ["/tmp/history.json"]);
-    expect(platform.characters.importMemories).toHaveBeenCalledWith("Nanami", ["/tmp/history.json"], undefined);
+    expect(platform.characters.previewMemoryImport).toHaveBeenCalledWith("Nanami", [historyFile]);
+    expect(platform.characters.importMemories).toHaveBeenCalledWith("Nanami", [historyFile], undefined);
     expect(platform.characters.uploadSpriteVoice).toHaveBeenCalledWith({
       name: "Nanami",
       spriteIndex: 0,

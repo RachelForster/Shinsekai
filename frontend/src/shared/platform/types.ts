@@ -1069,11 +1069,11 @@ export interface ShinsekaiPlatform {
     getMem0Status: () => Promise<Mem0Status>;
     importMemories: (
       name: string,
-      items: File[] | string[],
+      items: File[],
       options?: TaskProgressOptions<CharacterMemoryImportResult>,
     ) => Promise<CharacterMemoryImportResult>;
     listMemories: (name: string) => Promise<CharacterMemoryList>;
-    previewMemoryImport: (name: string, items: File[] | string[]) => Promise<CharacterMemoryImportPreview>;
+    previewMemoryImport: (name: string, items: File[]) => Promise<CharacterMemoryImportPreview>;
     remember: (name: string, content: string) => Promise<CharacterMemoryList>;
     searchMemories: (input: CharacterMemorySearchInput) => Promise<CharacterMemoryList>;
     save: (character: Character, originalName?: string) => Promise<Character>;

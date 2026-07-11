@@ -22,7 +22,7 @@ export function useCharacterMemoryImportController({
 }: UseCharacterMemoryImportControllerOptions) {
   const { t } = useI18n();
   const { showToast } = useToast();
-  const [items, setItems] = useState<File[] | string[] | null>(null);
+  const [items, setItems] = useState<File[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [preview, setPreview] = useState<CharacterMemoryImportPreview | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -51,7 +51,7 @@ export function useCharacterMemoryImportController({
     setPickerOpen(true);
   };
 
-  const previewItems = async (nextItems: File[] | string[]) => {
+  const previewItems = async (nextItems: File[]) => {
     if (!memoryName || !nextItems.length || previewPending || importPending) {
       return;
     }

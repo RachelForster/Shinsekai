@@ -378,8 +378,9 @@ describe("browser preview platform chat themes", () => {
     expect(memoryImportPreview.estimatedTotalTokens).toBeGreaterThan(0);
     expect(memoryImportPreview.files[0].kind).toBe("json");
     const memoryImportPhases: string[] = [];
+    const importedHistory = new File(["User: hello\nMika: hi"], "history.json");
     const memoryImport = await resolvePreview(
-      platform.characters.importMemories("Mika", ["/tmp/history.json"], {
+      platform.characters.importMemories("Mika", [importedHistory], {
         onTaskUpdate: (task) => memoryImportPhases.push(task.phase),
       }),
     );

@@ -497,7 +497,7 @@ describe("http platform", () => {
     });
   });
 
-  it("previews and imports character memories from paths with task polling", async () => {
+  it("previews and imports uploaded character memory files with task polling", async () => {
     vi.useFakeTimers();
     const preview = {
       chunkCount: 2,
@@ -547,28 +547,23 @@ describe("http platform", () => {
       .mockResolvedValueOnce(await mockJsonResponse(completedTask));
     const onTaskUpdate = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["User: hello"], "history.json", { type: "application/json" });
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
-    await expect(platform.characters.previewMemoryImport("Nanami", ["C:/chat/history.json"])).resolves.toEqual(preview);
-    const resultPromise = platform.characters.importMemories("Nanami", ["C:/chat/history.json"], {
+    await expect(platform.characters.previewMemoryImport("Nanami", [file])).resolves.toEqual(preview);
+    const resultPromise = platform.characters.importMemories("Nanami", [file], {
       onTaskUpdate,
     });
     await vi.advanceTimersByTimeAsync(500);
     await expect(resultPromise).resolves.toEqual(result);
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "http://127.0.0.1:8787/api/characters/memories/import-preview",
-      "http://127.0.0.1:8787/api/characters/memories/import",
+      "http://127.0.0.1:8787/api/characters/memories/import-preview-upload?name=Nanami",
+      "http://127.0.0.1:8787/api/characters/memories/import-upload?name=Nanami",
       "http://127.0.0.1:8787/api/tasks/memory-import-1",
     ]);
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
-      name: "Nanami",
-      paths: ["C:/chat/history.json"],
-    });
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
-      name: "Nanami",
-      paths: ["C:/chat/history.json"],
-    });
+    expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+    expect(fetchMock.mock.calls[1][1]?.body).toBeInstanceOf(FormData);
     expect(onTaskUpdate).toHaveBeenNthCalledWith(1, runningTask);
     expect(onTaskUpdate).toHaveBeenNthCalledWith(2, completedTask);
   });

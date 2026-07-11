@@ -683,41 +683,21 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(
                     _delete_character_memory(str(body.get("name") or ""), str(body.get("memoryId") or ""))
                 )
-            elif method == "POST" and path == "/api/characters/memories/import-preview":
-                paths = body.get("paths") or []
-                if not isinstance(paths, list):
-                    raise ValueError("paths must be a list")
-                self._send_json(
-                    _preview_character_memory_import(
-                        self.state,
-                        str(body.get("name") or ""),
-                        [str(item) for item in paths],
-                    )
-                )
             elif method == "POST" and path == "/api/characters/memories/import-preview-upload":
                 temp_dir, paths = self._read_upload_files()
                 try:
                     query = parse_qs(urlparse(self.path).query)
                     name = str((query.get("name") or [""])[0])
-                    self._send_json(_preview_character_memory_import(self.state, name, paths))
+                    self._send_json(
+                        _preview_character_memory_import(
+                            self.state,
+                            name,
+                            paths,
+                            source_root=temp_dir,
+                        )
+                    )
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
-            elif method == "POST" and path == "/api/characters/memories/import":
-                paths = body.get("paths") or []
-                if not isinstance(paths, list):
-                    raise ValueError("paths must be a list")
-                name = str(body.get("name") or "").strip()
-                self._enqueue_background_task(
-                    kind="memory-import",
-                    title=f"导入 {name or '角色'} 的长期记忆",
-                    message="长期记忆导入任务已排队。",
-                    worker=lambda task_id: _run_character_memory_import(
-                        self.state,
-                        task_id,
-                        name,
-                        [str(item) for item in paths],
-                    ),
-                )
             elif method == "POST" and path == "/api/characters/memories/import-upload":
                 temp_dir, paths = self._read_upload_files()
                 query = parse_qs(urlparse(self.path).query)
@@ -725,7 +705,13 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
 
                 def run_uploaded_memory_import(task_id: str) -> dict[str, Any]:
                     try:
-                        return _run_character_memory_import(self.state, task_id, name, paths)
+                        return _run_character_memory_import(
+                            self.state,
+                            task_id,
+                            name,
+                            paths,
+                            source_root=temp_dir,
+                        )
                     finally:
                         shutil.rmtree(temp_dir, ignore_errors=True)
 
