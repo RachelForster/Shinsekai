@@ -72,8 +72,36 @@ def test_execute_import_extracts_all_chunks_then_deduplicates_and_saves_to_selec
     assert saved == [("Mika", "User likes tea")]
     assert result["savedCount"] == 1
     assert result["duplicateCount"] == 1
+    assert result["extractionDuplicateCount"] == 1
+    assert result["storedDuplicateCount"] == 0
     assert result["memories"] == ["User likes tea"]
     assert {row[0] for row in progress} >= {"parse", "extract", "write"}
+
+
+def test_execute_import_counts_duplicate_already_in_memory_store(tmp_path):
+    source = tmp_path / "history.txt"
+    source.write_text("user: likes tea", encoding="utf-8")
+    adapter = MockLLMAdapter(
+        responses=['[{"character_name":"Mika","memory":"User likes tea","confidence":0.9}]']
+    )
+
+    result = execute_memory_import(
+        [source],
+        character_name="Mika",
+        llm_adapter=adapter,
+        remember_func=lambda _memory, _character_name=None: {
+            "ok": True,
+            "duplicate": True,
+            "duplicate_type": "semantic",
+            "similarity": 0.97,
+        },
+    )
+
+    assert result["extractedCount"] == 1
+    assert result["savedCount"] == 0
+    assert result["duplicateCount"] == 1
+    assert result["extractionDuplicateCount"] == 0
+    assert result["storedDuplicateCount"] == 1
 
 
 def test_preview_rejects_invalid_json_and_unsupported_files(tmp_path):

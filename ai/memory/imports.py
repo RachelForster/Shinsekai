@@ -249,6 +249,7 @@ def execute_memory_import(
 
     unique, duplicate_count = deduplicate_memories(extracted)
     saved_count = 0
+    stored_duplicate_count = 0
     for index, item in enumerate(unique, start=1):
         if cancel_callback is not None:
             cancel_callback()
@@ -261,6 +262,9 @@ def execute_memory_import(
         )
         result = remember_func(item["memory"], prepared.character_name)
         _raise_for_remember_failure(result, item["memory"])
+        if isinstance(result, dict) and result.get("duplicate") is True:
+            stored_duplicate_count += 1
+            continue
         saved_count += 1
 
     _report(progress_callback, "write", 0.99, "长期记忆导入即将完成。")
@@ -269,7 +273,9 @@ def execute_memory_import(
         "chunkCount": len(chunks),
         "extractedCount": len(unique),
         "savedCount": saved_count,
-        "duplicateCount": duplicate_count,
+        "duplicateCount": duplicate_count + stored_duplicate_count,
+        "extractionDuplicateCount": duplicate_count,
+        "storedDuplicateCount": stored_duplicate_count,
         "estimatedTotalTokens": prepared.estimated_total_tokens,
         "memories": [item["memory"] for item in unique],
     }
