@@ -1,6 +1,7 @@
 import "./TaskProgress.css";
 
 interface TaskProgressSnapshot {
+  completedItems?: number;
   dependencyInstallStatus?: string;
   errorUserMessage?: string;
   fallbackAllowed?: boolean;
@@ -17,6 +18,7 @@ interface TaskProgressSnapshot {
   phase: string;
   progress?: number | null;
   status: string;
+  totalItems?: number;
 }
 
 interface TaskProgressProps {
@@ -32,6 +34,7 @@ function taskPercent(progress: number | null | undefined) {
 }
 
 const phaseLabels: Record<string, string> = {
+  annotating: "标注图片",
   cancelled: "已取消",
   completed: "完成",
   crop: "裁剪",
@@ -41,6 +44,7 @@ const phaseLabels: Record<string, string> = {
   generate: "生成",
   install: "安装",
   installingDeps: "安装依赖",
+  "loading-model": "加载模型",
   manifest: "登记插件",
   merge: "合并文件",
   pipeline: "执行流程",
@@ -108,6 +112,10 @@ export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
   }
 
   const percent = taskPercent(task.progress);
+  const itemProgress =
+    typeof task.completedItems === "number" && typeof task.totalItems === "number"
+      ? `${task.completedItems}/${task.totalItems}`
+      : "";
   const logs = logLimit > 0 ? (task.logs ?? []).slice(-logLimit) : [];
   const notice = task.notice || (task.status === "failed" ? task.errorUserMessage : "");
   const noticeKind = task.noticeKind || (task.status === "failed" ? "error" : "info");
@@ -130,7 +138,7 @@ export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
     <div className="task-progress" role="status" aria-live="polite">
       <div className="task-progress__meta">
         <strong>{phaseLabels[task.phase] ?? task.phase}</strong>
-        <span>{percent == null ? task.status : `${percent}%`}</span>
+        <span>{[itemProgress, percent == null ? task.status : `${percent}%`].filter(Boolean).join(" · ")}</span>
       </div>
       {percent == null ? null : (
         <div className="task-progress__track" aria-hidden>

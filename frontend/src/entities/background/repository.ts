@@ -1,5 +1,5 @@
 import { getPlatform } from "../../shared/platform/platform";
-import type { BackgroundTranslateInput } from "../../shared/platform/types";
+import type { BackgroundTranslateInput, ImageAutoLabelResult, TaskProgressOptions } from "../../shared/platform/types";
 import type { Background } from "../config/types";
 
 export const backgroundsQueryKey = ["backgrounds"] as const;
@@ -56,8 +56,8 @@ export function uploadBackgroundImages(input: { bgTags: string; name: string; pa
   return getPlatform().backgrounds.uploadImages(input);
 }
 
-export function autoLabelBackgroundImages(name: string) {
-  return getPlatform().backgrounds.autoLabelImages(name);
+export function autoLabelBackgroundImages(name: string, options?: TaskProgressOptions<ImageAutoLabelResult>) {
+  return getPlatform().backgrounds.autoLabelImages(name, options);
 }
 
 export function uploadBackgroundBgm(input: { bgmTags: string; name: string; paths: string[] }) {

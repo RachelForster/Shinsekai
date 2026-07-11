@@ -370,7 +370,7 @@ describe("entity repositories", () => {
     await characters.autoLabelCharacterSprites("Nanami");
 
     expect(platform.backgrounds.save).toHaveBeenCalledWith(background, "Old Room");
-    expect(platform.backgrounds.autoLabelImages).toHaveBeenCalledWith("Room");
+    expect(platform.backgrounds.autoLabelImages).toHaveBeenCalledWith("Room", undefined);
     expect(platform.backgrounds.deleteImage).toHaveBeenCalledWith("Room", 1);
     expect(platform.backgrounds.uploadImages).toHaveBeenCalledWith({
       bgTags: "day",
@@ -378,7 +378,7 @@ describe("entity repositories", () => {
       paths: ["/tmp/a.png"],
     });
     expect(platform.characters.save).toHaveBeenCalledWith(character, "Old Nanami");
-    expect(platform.characters.autoLabelSprites).toHaveBeenCalledWith("Nanami");
+    expect(platform.characters.autoLabelSprites).toHaveBeenCalledWith("Nanami", undefined);
     expect(platform.characters.remember).toHaveBeenCalledWith("Nanami", "likes tea");
     expect(platform.characters.previewMemoryImport).toHaveBeenCalledWith("Nanami", [historyFile]);
     expect(platform.characters.importMemories).toHaveBeenCalledWith("Nanami", [historyFile], undefined);

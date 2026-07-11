@@ -9,7 +9,7 @@ from ai.vision import VisionManager
 from core.media.asset_tags import normalize_generated_tags, numbered_tags, tag_contents
 
 
-ProgressCallback = Callable[[int, int, str], None]
+ProgressCallback = Callable[[int, int, str, str], None]
 CancelCallback = Callable[[], bool]
 InferCallback = Callable[[bytes, str], str]
 
@@ -71,10 +71,26 @@ def annotate_unlabelled_images(
     for completed, index in enumerate(missing_indexes):
         if is_cancelled and is_cancelled():
             raise AnnotationCancelled("图片自动标注已取消")
-        if runner is None:
-            runner = VisionManager("moondream").describe
         try:
             image_path = _safe_asset_file(_sprite_path(sprites[index]), project_root)
+            first_inference = runner is None or completed == 0
+            if runner is None:
+                runner = VisionManager("moondream").describe
+            if on_progress:
+                if first_inference:
+                    on_progress(
+                        completed,
+                        len(missing_indexes),
+                        f"正在加载 Moondream 模型并准备标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
+                        "loading-model",
+                    )
+                else:
+                    on_progress(
+                        completed,
+                        len(missing_indexes),
+                        f"正在标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
+                        "annotating",
+                    )
             generated = normalize_generated_tags(runner(image_path.read_bytes(), prompt))
             if not generated:
                 raise ValueError("Moondream 未返回标签")
@@ -85,7 +101,7 @@ def annotate_unlabelled_images(
             failures.append({"index": index, "message": str(exc)})
             message = f"跳过 {prefix} {index + 1}：{exc}"
         if on_progress:
-            on_progress(completed + 1, len(missing_indexes), message)
+            on_progress(completed + 1, len(missing_indexes), message, "annotating")
 
     return {
         "annotatedCount": annotated,

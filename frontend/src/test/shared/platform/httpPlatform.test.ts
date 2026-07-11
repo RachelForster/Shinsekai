@@ -1889,9 +1889,10 @@ describe("http platform", () => {
         await mockJsonResponse({ ...task, phase: "completed", progress: 1, result, status: "succeeded" }),
       );
     vi.stubGlobal("fetch", fetchMock);
+    const updates = vi.fn();
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
-    await expect(platform.characters.autoLabelSprites("Nanami")).resolves.toEqual(result);
+    await expect(platform.characters.autoLabelSprites("Nanami", { onTaskUpdate: updates })).resolves.toEqual(result);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1899,6 +1900,7 @@ describe("http platform", () => {
       expect.objectContaining({ body: JSON.stringify({ name: "Nanami" }), method: "POST" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(2, "http://127.0.0.1:8787/api/tasks/task-label", expect.any(Object));
+    expect(updates).toHaveBeenCalledTimes(2);
   });
 
   it("uninstalls plugins through the bridge", async () => {

@@ -28,7 +28,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import type { SpriteVoiceType } from "../../shared/platform/types";
+import type { ImageAutoLabelResult, SpriteVoiceType, TaskSnapshot } from "../../shared/platform/types";
 import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemoryDialogs } from "./CharacterMemoryDialogs";
@@ -38,6 +38,7 @@ import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
+import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
 import { useMoondreamAvailability } from "../media-auto-label/useMoondreamAvailability";
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
 import {
@@ -87,6 +88,8 @@ export function CharacterEditorPage() {
   const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
   const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
+  const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
+  const [autoLabelTask, setAutoLabelTask] = useState<TaskSnapshot<ImageAutoLabelResult> | null>(null);
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
   const colorInputRef = useRef<HTMLInputElement | null>(null);
@@ -419,7 +422,10 @@ export function CharacterEditorPage() {
   });
 
   const autoLabelMutation = useMutation({
-    mutationFn: () => autoLabelCharacterSprites(currentCharacterName),
+    mutationFn: () =>
+      autoLabelCharacterSprites(currentCharacterName, {
+        onTaskUpdate: setAutoLabelTask,
+      }),
     onError(error) {
       showToast({
         kind: "error",
@@ -965,7 +971,11 @@ export function CharacterEditorPage() {
           emotionTagsPending={emotionTagsMutation.isPending}
           id="character-sprites"
           onClearSprites={requestClearSprites}
-          onAutoLabel={() => autoLabelMutation.mutate()}
+          onAutoLabel={() => {
+            setAutoLabelTask(null);
+            setAutoLabelDialogOpen(true);
+            autoLabelMutation.mutate();
+          }}
           onOpenBulkTags={openBulkSpriteTagsDialog}
           onPendingSpritePathsChange={setPendingSpritePaths}
           onPendingVoicePathChange={updatePendingVoicePath}
@@ -1083,6 +1093,13 @@ export function CharacterEditorPage() {
         result={memoryImportController.result}
         task={memoryImportController.task}
         taskOpen={memoryImportController.taskOpen}
+      />
+      <MediaAutoLabelProgressDialog
+        onClose={() => setAutoLabelDialogOpen(false)}
+        open={autoLabelDialogOpen}
+        pending={autoLabelMutation.isPending}
+        result={autoLabelMutation.data ?? null}
+        task={autoLabelTask}
       />
     </div>
   );

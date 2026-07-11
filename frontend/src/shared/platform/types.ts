@@ -956,6 +956,7 @@ export interface FileBrowserSnapshot {
 
 export interface TaskSnapshot<TResult = unknown> {
   cancelRequested?: boolean;
+  completedItems?: number;
   createdAt: number;
   dependencyInstallStatus?: string;
   error?: string;
@@ -981,6 +982,7 @@ export interface TaskSnapshot<TResult = unknown> {
   result?: TResult | null;
   status: TaskStatus;
   title: string;
+  totalItems?: number;
   updatedAt: number;
 }
 

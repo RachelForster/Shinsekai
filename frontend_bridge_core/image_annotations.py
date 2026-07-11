@@ -17,15 +17,20 @@ from frontend_bridge_core.tasks import (
 )
 
 
-def _task_callbacks(state: BridgeState, task_id: str) -> tuple[Callable[[int, int, str], None], Callable[[], bool]]:
-    def on_progress(completed: int, total: int, message: str) -> None:
+def _task_callbacks(
+    state: BridgeState,
+    task_id: str,
+) -> tuple[Callable[[int, int, str, str], None], Callable[[], bool]]:
+    def on_progress(completed: int, total: int, message: str, phase: str) -> None:
         _append_task_log(state, task_id, message)
         _update_task(
             state,
             task_id,
+            completedItems=completed,
             message=message,
-            phase="annotating",
+            phase=phase,
             progress=(completed / total) if total else 1,
+            totalItems=total,
         )
 
     return on_progress, lambda: _is_task_cancel_requested(state, task_id)
@@ -56,4 +61,3 @@ def run_character_sprite_auto_label(state: BridgeState, task_id: str, name: str)
 
 def run_background_image_auto_label(state: BridgeState, task_id: str, name: str) -> dict[str, Any]:
     return _run_annotation(state, task_id, name, auto_label_background_images)
-

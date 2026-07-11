@@ -24,6 +24,7 @@ import type { Background } from "../../entities/config/types";
 import { openExternal } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
+import type { ImageAutoLabelResult, TaskSnapshot } from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -39,6 +40,7 @@ import {
 import { BackgroundMusicSection } from "./BackgroundMusicSection";
 import { BackgroundSpriteGallery } from "./BackgroundSpriteGallery";
 import { BackgroundTagsDialog } from "./BackgroundTagsDialog";
+import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
 import { useMoondreamAvailability } from "../media-auto-label/useMoondreamAvailability";
 import {
   backgroundDeleteDialogCopy,
@@ -71,6 +73,8 @@ export function BackgroundManagerPage() {
   const [bulkImageTagsDraft, setBulkImageTagsDraft] = useState("");
   const [bulkBgmTagsOpen, setBulkBgmTagsOpen] = useState(false);
   const [bulkBgmTagsDraft, setBulkBgmTagsDraft] = useState("");
+  const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
+  const [autoLabelTask, setAutoLabelTask] = useState<TaskSnapshot<ImageAutoLabelResult> | null>(null);
   const [bgmSort, setBgmSort] = useState<{ direction: BgmSortDirection; key: BgmSortKey }>({
     direction: "asc",
     key: "index",
@@ -255,7 +259,10 @@ export function BackgroundManagerPage() {
   });
 
   const autoLabelMutation = useMutation({
-    mutationFn: () => autoLabelBackgroundImages(currentBackgroundName),
+    mutationFn: () =>
+      autoLabelBackgroundImages(currentBackgroundName, {
+        onTaskUpdate: setAutoLabelTask,
+      }),
     onError(error) {
       showToast({
         kind: "error",
@@ -855,7 +862,11 @@ export function BackgroundManagerPage() {
             }
             setPendingDelete({ count: currentDraft.sprites.length, kind: "all-images", name: currentBackgroundName });
           }}
-          onAutoLabel={() => autoLabelMutation.mutate()}
+          onAutoLabel={() => {
+            setAutoLabelTask(null);
+            setAutoLabelDialogOpen(true);
+            autoLabelMutation.mutate();
+          }}
           onDeleteImage={handleImageDelete}
           onOpenBulkTags={openBulkImageTagsDialog}
           onSaveImageTags={() => {
@@ -951,6 +962,13 @@ export function BackgroundManagerPage() {
         onConfirm={confirmPendingDelete}
         open={Boolean(pendingDelete)}
         title={pendingDeleteCopy?.title ?? t("common.delete")}
+      />
+      <MediaAutoLabelProgressDialog
+        onClose={() => setAutoLabelDialogOpen(false)}
+        open={autoLabelDialogOpen}
+        pending={autoLabelMutation.isPending}
+        result={autoLabelMutation.data ?? null}
+        task={autoLabelTask}
       />
     </div>
   );

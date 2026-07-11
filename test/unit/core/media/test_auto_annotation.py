@@ -46,12 +46,14 @@ def test_character_auto_label_only_fills_blank_tags(tmp_path: Path):
     )
     config = FakeConfigManager(character=character)
     calls: list[str] = []
+    progress: list[tuple[int, int, str, str]] = []
 
     result = auto_label_character_sprites(
         config,
         "Nanami",
         project_root=tmp_path,
         infer=lambda _image, prompt: calls.append(prompt) or "Tags: smiling, front-facing pose",
+        on_progress=lambda completed, total, message, phase: progress.append((completed, total, message, phase)),
     )
 
     assert result["annotatedCount"] == 1
@@ -61,6 +63,10 @@ def test_character_auto_label_only_fills_blank_tags(tmp_path: Path):
     assert len(calls) == 1
     assert "concise English tags" in calls[0]
     assert "comma-separated" in calls[0]
+    assert progress[0][:2] == (0, 1)
+    assert progress[0][3] == "loading-model"
+    assert "1/1" in progress[0][2]
+    assert progress[-1][:2] == (1, 1)
 
 
 def test_background_auto_label_reports_invalid_asset_without_overwriting(tmp_path: Path):
