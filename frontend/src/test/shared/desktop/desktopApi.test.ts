@@ -17,6 +17,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import {
   browseDesktopFiles,
   checkDesktopUpdate,
+  getDesktopProjectRootStatus,
   getDesktopRuntimeState,
   installDesktopRuntimeProfile,
   installDesktopUpdate,
@@ -27,6 +28,7 @@ import {
   onDesktopUpdateProgress,
   repairDesktopRuntime,
   reloadDesktopFrontend,
+  selectDesktopProjectRoot,
   startDesktopWindowDrag,
   toggleMaximizeDesktopWindow,
   closeDesktopWindow,
@@ -86,6 +88,24 @@ describe("desktop API environment detection", () => {
       version: "1.0.1",
     });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_update_check", undefined);
+  });
+
+  it("reads and explicitly selects a desktop project root", async () => {
+    mockInvoke.mockResolvedValue({
+      candidates: [],
+      conflict: false,
+      currentPath: "D:\\Shinsekai",
+      locatorPath: "C:\\Users\\test\\project-root.json",
+      requiresSelection: false,
+    });
+
+    await getDesktopProjectRootStatus();
+    await selectDesktopProjectRoot("D:\\项目 数据\\Shinsekai");
+
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_project_root_status", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_project_root_select", {
+      path: "D:\\项目 数据\\Shinsekai",
+    });
   });
 
   it("invokes desktop runtime state and dependency commands", async () => {

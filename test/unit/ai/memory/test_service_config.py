@@ -10,6 +10,15 @@ class _FakeConfigManager:
         return ("ChatGPT", "gpt-4o-mini", "", "test-key")
 
 
+def _isolate_embedding_cache_roots(monkeypatch, tmp_path: Path) -> None:
+    """Keep cache-detection tests independent from developer machine state."""
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "empty-hf-home"))
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+
+
 def test_mem0_uses_local_multilingual_embedding(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(memory_config, "ConfigManager", _FakeConfigManager)
@@ -33,6 +42,7 @@ def test_mem0_uses_local_multilingual_embedding(monkeypatch, tmp_path):
 
 
 def test_embedding_model_cache_detection_uses_multilingual_model(monkeypatch, tmp_path):
+    _isolate_embedding_cache_roots(monkeypatch, tmp_path)
     cache_home = tmp_path / "hf"
     model_dir = (
         cache_home
@@ -49,6 +59,7 @@ def test_embedding_model_cache_detection_uses_multilingual_model(monkeypatch, tm
 
 
 def test_embedding_model_cache_detection_uses_hub_cache_env(monkeypatch, tmp_path):
+    _isolate_embedding_cache_roots(monkeypatch, tmp_path)
     hub_cache = tmp_path / "hub-cache"
     model_dir = (
         hub_cache
@@ -64,23 +75,21 @@ def test_embedding_model_cache_detection_uses_hub_cache_env(monkeypatch, tmp_pat
 
 
 def test_embedding_model_cache_detection_ignores_incomplete_cache(monkeypatch, tmp_path):
+    _isolate_embedding_cache_roots(monkeypatch, tmp_path)
     hub_cache = tmp_path / "hub-cache"
-    empty_home = tmp_path / "hf-home"
     model_dir = (
         hub_cache
         / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
     )
     (model_dir / "refs").mkdir(parents=True)
-    monkeypatch.setenv("HF_HOME", str(empty_home))
     monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
-    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
 
     assert memory_config.is_embedding_model_cached() is False
 
 
 def test_embedding_model_cache_detection_ignores_onnx_only_cache(monkeypatch, tmp_path):
+    _isolate_embedding_cache_roots(monkeypatch, tmp_path)
     hub_cache = tmp_path / "hub-cache"
-    empty_home = tmp_path / "hf-home"
     snapshot = (
         hub_cache
         / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
@@ -90,8 +99,6 @@ def test_embedding_model_cache_detection_ignores_onnx_only_cache(monkeypatch, tm
     (snapshot / "onnx").mkdir(parents=True)
     (snapshot / "config.json").write_text("{}", encoding="utf-8")
     (snapshot / "onnx" / "model_qint8_avx512.onnx").write_bytes(b"model")
-    monkeypatch.setenv("HF_HOME", str(empty_home))
     monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
-    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
 
     assert memory_config.is_embedding_model_cached() is False

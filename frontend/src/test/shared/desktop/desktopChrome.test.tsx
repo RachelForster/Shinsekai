@@ -6,11 +6,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const desktopApi = vi.hoisted(() => ({
   browseDesktopFiles: vi.fn(),
   closeDesktopWindow: vi.fn<() => Promise<void>>(),
+  desktopRestartErrorMessage: vi.fn((error: unknown) => (error instanceof Error ? error.message : String(error))),
+  getDesktopProjectRootStatus: vi.fn(),
   getDesktopRuntimeState: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn<() => Promise<void>>(),
   onDesktopRuntimeProgress: vi.fn(),
   repairDesktopRuntime: vi.fn(),
+  restartDesktopApp: vi.fn<() => Promise<void>>(),
+  selectDesktopProjectRoot: vi.fn(),
   startDesktopWindowDrag: vi.fn<() => Promise<void>>(),
   toggleMaximizeDesktopWindow: vi.fn<() => Promise<void>>(),
 }));
@@ -19,6 +23,42 @@ vi.mock("../../../shared/desktop/desktopApi", () => desktopApi);
 
 import { DesktopChrome } from "../../../shared/desktop/DesktopChrome";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
+
+const safeProjectRootStatus = {
+  candidates: [
+    {
+      hasProjectData: true,
+      path: "C:\\Users\\test\\Shinsekai",
+      selectable: true,
+      source: "persistedLocator",
+    },
+  ],
+  conflict: false,
+  currentPath: "C:\\Users\\test\\Shinsekai",
+  locatorPath: "C:\\Users\\test\\project-root.json",
+  requiresSelection: false,
+};
+
+const conflictingProjectRootStatus = {
+  candidates: [
+    {
+      hasProjectData: true,
+      path: "C:\\Users\\test\\Shinsekai",
+      selectable: true,
+      source: "currentAppData",
+    },
+    {
+      hasProjectData: true,
+      path: "D:\\旧数据\\Shinsekai",
+      selectable: true,
+      source: "restartLogProjectRoot",
+    },
+  ],
+  conflict: true,
+  currentPath: "C:\\Users\\test\\Shinsekai",
+  locatorPath: "C:\\Users\\test\\project-root.json",
+  requiresSelection: true,
+};
 
 function renderChrome(children: ReactNode, initialEntries = ["/settings/api"]) {
   return render(
@@ -41,6 +81,7 @@ describe("DesktopChrome", () => {
       }),
     );
     desktopApi.closeDesktopWindow.mockResolvedValue(undefined);
+    desktopApi.getDesktopProjectRootStatus.mockResolvedValue(safeProjectRootStatus);
     desktopApi.minimizeDesktopWindow.mockResolvedValue(undefined);
     desktopApi.onDesktopRuntimeProgress.mockResolvedValue(vi.fn());
     desktopApi.repairDesktopRuntime.mockResolvedValue({
@@ -99,26 +140,60 @@ describe("DesktopChrome", () => {
     renderChrome(<main>App content</main>);
 
     expect(await screen.findByText("Shinsekai")).toBeInTheDocument();
-    expect(screen.getByText("App content")).toBeInTheDocument();
+    expect(await screen.findByText("App content")).toBeInTheDocument();
     expect(desktopApi.getDesktopRuntimeState).toHaveBeenCalledTimes(1);
   });
 
-  it("bypasses desktop chrome for standalone chat routes", () => {
+  it("blocks the runtime gate and child providers until a project root is selected", async () => {
+    desktopApi.isTauriDesktop.mockReturnValue(true);
+    desktopApi.getDesktopProjectRootStatus.mockResolvedValue(conflictingProjectRootStatus);
+    const childRender = vi.fn();
+    const RuntimeChild = () => {
+      childRender();
+      return <main>Runtime-dependent content</main>;
+    };
+
+    renderChrome(<RuntimeChild />);
+
+    expect(await screen.findByRole("dialog", { name: "Choose project data location" })).toBeInTheDocument();
+    expect(desktopApi.getDesktopRuntimeState).not.toHaveBeenCalled();
+    expect(childRender).not.toHaveBeenCalled();
+    expect(screen.queryByText("Runtime-dependent content")).not.toBeInTheDocument();
+  });
+
+  it("bypasses desktop chrome for standalone chat routes", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
 
     renderChrome(<main>Chat stage</main>, ["/chat-stage"]);
 
-    expect(screen.getByText("Chat stage")).toBeInTheDocument();
+    expect(await screen.findByText("Chat stage")).toBeInTheDocument();
     expect(screen.queryByText("Shinsekai")).not.toBeInTheDocument();
     expect(desktopApi.getDesktopRuntimeState).not.toHaveBeenCalled();
   });
 
-  it("bypasses desktop chrome for the /chat route as well", () => {
+  it("still requires project-root selection before mounting a standalone chat route", async () => {
+    desktopApi.isTauriDesktop.mockReturnValue(true);
+    desktopApi.getDesktopProjectRootStatus.mockResolvedValue(conflictingProjectRootStatus);
+    const childRender = vi.fn();
+    const ChatChild = () => {
+      childRender();
+      return <main>Chat stage</main>;
+    };
+
+    renderChrome(<ChatChild />, ["/chat-stage"]);
+
+    expect(await screen.findByRole("dialog", { name: "Choose project data location" })).toBeInTheDocument();
+    expect(childRender).not.toHaveBeenCalled();
+    expect(screen.queryByText("Chat stage")).not.toBeInTheDocument();
+    expect(desktopApi.getDesktopRuntimeState).not.toHaveBeenCalled();
+  });
+
+  it("bypasses desktop chrome for the /chat route as well", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
 
     renderChrome(<main>Live chat</main>, ["/chat"]);
 
-    expect(screen.getByText("Live chat")).toBeInTheDocument();
+    expect(await screen.findByText("Live chat")).toBeInTheDocument();
     expect(screen.queryByText("Shinsekai")).not.toBeInTheDocument();
     expect(desktopApi.getDesktopRuntimeState).not.toHaveBeenCalled();
   });

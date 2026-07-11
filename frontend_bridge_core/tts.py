@@ -23,6 +23,7 @@ def _tts_bundle_recommendation() -> dict[str, Any]:
 
 
 def _download_tts_bundle(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    from .config import _state_project_root
     from ui.settings_ui.tts.tts_bundle_worker import (
         _DownloadInterrupted,
         _ExtractionInterrupted,
@@ -34,11 +35,11 @@ def _download_tts_bundle(state: BridgeState, task_id: str, payload: dict[str, An
         _rmtree,
     )
     from ui.settings_ui.tts.tts_bundle_manifest import bundle_manifest_for_key
-    from ui.settings_ui.tts.tts_env_probe import bundle_choice_for_kind, get_default_project_root
+    from ui.settings_ui.tts.tts_env_probe import bundle_choice_for_kind
 
     kind = str(payload.get("kind") or "genie").strip()
     choice = bundle_choice_for_kind(kind)
-    root = get_default_project_root().resolve()
+    root = _state_project_root(state)
     base = root / "data" / "tts_bundles"
     dl_dir = base / "downloads"
     out_dir = base / "installed" / choice.bundle_dir_key
