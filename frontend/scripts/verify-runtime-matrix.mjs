@@ -32,7 +32,7 @@ const windowsRequiredFiles = new Map([
 const expectedBundles = new Map([
   ["linux-x64", ["deb"]],
   ["linux-arm64", ["deb"]],
-  ["windows-x64", ["none"]],
+  ["windows-x64", ["nsis"]],
   ["windows-arm64", ["none"]],
   ["macos-arm64", ["dmg"]],
 ]);
