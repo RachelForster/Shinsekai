@@ -37,6 +37,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
   layers: ChatStageLayers;
   notificationText?: string;
   optimisticSubmission?: {
+    eventSeq: number;
     previous: {
       characterName?: string;
       dialogHtml?: string;
@@ -50,6 +51,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
       systemMessageText?: string;
     };
     source: "send-message" | "submit-option";
+    text: string;
   };
   sessionClosedReason?: string;
   sprites: ChatStageSprite[];
@@ -84,7 +86,6 @@ export type ChatStageAction =
   | { type: "event"; event: ChatStageEvent }
   | { type: "hydrate"; snapshot: ChatSnapshot }
   | { type: "submitUserMessage"; text: string; source?: "send-message" | "submit-option" }
-  | { type: "commitUserSubmission"; source: "send-message" | "submit-option" }
   | { type: "rollbackUserSubmission"; source: "send-message" | "submit-option" }
   | { type: "setHistoryEntries"; historyEntries: ChatHistoryEntry[] }
   | { type: "setDraft"; text: string }

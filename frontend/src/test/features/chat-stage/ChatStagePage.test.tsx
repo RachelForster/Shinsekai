@@ -267,6 +267,35 @@ describe("ChatStagePage", () => {
     expect(screen.getByText("hello from Aoi")).toBeInTheDocument();
   });
 
+  it("keeps the submitted user message when a stale stream snapshot arrives", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ eventSeq: 3 }));
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "stay visible" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByText("stay visible")).toBeInTheDocument();
+
+    act(() => {
+      listener?.({
+        seq: 3,
+        snapshot: snapshot({ characterName: "Mio", dialogText: "old reply", eventSeq: 3 }),
+        ts: Date.now(),
+        type: "snapshot",
+        v: 1,
+      });
+    });
+
+    expect(document.querySelector(".dialog-layer__name")).toHaveTextContent("Aoi");
+    expect(screen.getByText("stay visible")).toBeInTheDocument();
+    expect(screen.queryByText("old reply")).not.toBeInTheDocument();
+  });
+
   it("shows a selected option as the user message before the command response arrives", async () => {
     let resolveCommand!: (snapshot: ChatSnapshot) => void;
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));

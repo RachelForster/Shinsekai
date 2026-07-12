@@ -51,9 +51,6 @@ export function useChatStageCommands({
         if (command.type !== "copy-history" && !commandAlreadyApplied) {
           dispatch({ snapshot, type: "hydrate" });
         }
-        if (command.type === "send-message" || command.type === "submit-option") {
-          dispatch({ source: command.type, type: "commitUserSubmission" });
-        }
         if (command.type === "copy-history") {
           showToast({ kind: "success", title: t("chat.toast.historyCopied") });
         }

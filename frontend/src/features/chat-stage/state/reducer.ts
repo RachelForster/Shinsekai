@@ -1,19 +1,79 @@
 import { applyStageEvent } from "./events";
 import { clearTransientNotificationState, withResolvedLayers } from "./layers";
-import { hydrateFromSnapshot } from "./snapshot";
+import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
 import type { ChatStageAction, ChatStageState } from "./types";
+
+function preserveOptimisticPresentation(state: ChatStageState, next: ChatStageState): ChatStageState {
+  return withResolvedLayers({
+    ...next,
+    characterName: state.characterName,
+    dialogHtml: state.dialogHtml,
+    dialogText: state.dialogText,
+    inputDraft: state.inputDraft,
+    optimisticSubmission: state.optimisticSubmission,
+    options: [...state.options],
+    sessionClosedReason: state.sessionClosedReason,
+    status: state.status,
+    systemMessageText: state.systemMessageText,
+  });
+}
+
+function snapshotReplacesOptimisticPresentation(
+  state: ChatStageState,
+  snapshot: ChatStageState,
+  authoritativeEventSeq: number,
+): boolean {
+  const optimistic = state.optimisticSubmission;
+  if (!optimistic) {
+    return true;
+  }
+  if (snapshot.sessionClosedReason || snapshot.options.length > 0 || snapshot.systemMessageText?.trim()) {
+    return true;
+  }
+  if (authoritativeEventSeq <= optimistic.eventSeq) {
+    return false;
+  }
+  const dialogText = snapshot.dialogText.trim();
+  const speaker = snapshot.characterName?.trim();
+  const userName = state.userDisplayName.trim();
+  if (speaker && speaker !== userName) {
+    return true;
+  }
+  return Boolean(dialogText && dialogText !== optimistic.text);
+}
 
 export function chatStageReducer(state: ChatStageState, action: ChatStageAction): ChatStageState {
   switch (action.type) {
     case "event": {
       const next = applyStageEvent(state, action.event);
-      const authoritativeEvent =
-        (action.event.type === "snapshot" && next !== state) ||
-        (action.event.type !== "transport.state" && action.event.seq > state.eventSeq);
-      return authoritativeEvent ? { ...next, optimisticSubmission: undefined } : next;
+      if (!state.optimisticSubmission || next === state) {
+        return next;
+      }
+      if (action.event.type === "snapshot") {
+        const authoritativeEventSeq = snapshotEventSeq(action.event.snapshot);
+        if (authoritativeEventSeq <= state.eventSeq) {
+          return state;
+        }
+        return snapshotReplacesOptimisticPresentation(state, next, authoritativeEventSeq)
+          ? { ...next, optimisticSubmission: undefined }
+          : preserveOptimisticPresentation(state, next);
+      }
+      if (["dialog.end", "options.show", "session.closed"].includes(action.event.type)) {
+        return { ...next, optimisticSubmission: undefined };
+      }
+      return next;
     }
-    case "hydrate":
-      return hydrateFromSnapshot(state, action.snapshot);
+    case "hydrate": {
+      const next = hydrateFromSnapshot(state, action.snapshot);
+      if (!state.optimisticSubmission || next === state) {
+        return next;
+      }
+      // Hydration requests may have started before the user submitted. Keep the
+      // local presentation until the event stream publishes a newer response.
+      return action.snapshot.sessionClosedReason
+        ? { ...next, optimisticSubmission: undefined }
+        : preserveOptimisticPresentation(state, next);
+    }
     case "submitUserMessage":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
@@ -23,6 +83,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         error: undefined,
         inputDraft: "",
         optimisticSubmission: {
+          eventSeq: state.eventSeq,
           previous: {
             characterName: state.characterName,
             dialogHtml: state.dialogHtml,
@@ -36,6 +97,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
             systemMessageText: state.systemMessageText,
           },
           source: action.source ?? "send-message",
+          text: action.text,
         },
         options: [],
         sessionClosedReason: undefined,
@@ -54,10 +116,6 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         optimisticSubmission: undefined,
       });
     }
-    case "commitUserSubmission":
-      return state.optimisticSubmission?.source === action.source
-        ? { ...state, optimisticSubmission: undefined }
-        : state;
     case "setHistoryEntries":
       return withResolvedLayers({
         ...state,

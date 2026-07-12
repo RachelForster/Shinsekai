@@ -82,6 +82,84 @@ describe("chatStageReducer", () => {
     expect(lateRollback.optimisticSubmission).toBeUndefined();
   });
 
+  it("keeps an optimistic user message through unrelated runtime events and stale snapshots", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "old reply",
+        eventSeq: 3,
+        inputDraft: "hello",
+        sprites: [],
+        userDisplayName: "Aoi",
+      },
+      { source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    const withStatus = chatStageReducer(submitted, {
+      event: { seq: 4, status: "generating", ts: 4, type: "status.change", v: 1 },
+      type: "event",
+    });
+    const withHistory = chatStageReducer(withStatus, {
+      event: {
+        entries: [{ id: "user-1", role: "user", text: "Aoi: hello" }],
+        seq: 5,
+        ts: 5,
+        type: "history.replace",
+        v: 1,
+      },
+      type: "event",
+    });
+    const staleSnapshot = chatStageReducer(withHistory, {
+      event: {
+        seq: 5,
+        snapshot: {
+          characterName: "Mio",
+          dialogText: "old reply",
+          eventSeq: 3,
+          inputDraft: "",
+          options: [],
+          sessionId: "session-1",
+          sprites: [],
+          status: "idle",
+        },
+        ts: 5,
+        type: "snapshot",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(staleSnapshot.characterName).toBe("Aoi");
+    expect(staleSnapshot.dialogText).toBe("hello");
+    expect(staleSnapshot.status).toBe("generating");
+    expect(staleSnapshot.optimisticSubmission?.text).toBe("hello");
+    expect(staleSnapshot.historyEntries).toEqual([{ id: "user-1", role: "user", text: "Aoi: hello" }]);
+  });
+
+  it("keeps an optimistic user message when a late initial hydration resolves", () => {
+    const submitted = chatStageReducer(
+      { ...emptyChatState, eventSeq: 3, inputDraft: "hello", userDisplayName: "Aoi" },
+      { source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    const hydrated = chatStageReducer(submitted, {
+      snapshot: {
+        characterName: "Mio",
+        dialogText: "old reply",
+        eventSeq: 4,
+        inputDraft: "",
+        options: [],
+        sessionId: "session-1",
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+
+    expect(hydrated.characterName).toBe("Aoi");
+    expect(hydrated.dialogText).toBe("hello");
+    expect(hydrated.optimisticSubmission?.text).toBe("hello");
+  });
+
   it("hydrates runtime snapshots from platform events", () => {
     const state = chatStageReducer(emptyChatState, {
       snapshot: {
