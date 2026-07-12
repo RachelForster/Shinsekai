@@ -107,7 +107,7 @@ describe("browser preview platform chat themes", () => {
     await expect(platform.chat.getActiveThemeId()).resolves.toBe("windborne-adventure");
 
     const themes = await platform.chat.listThemes();
-    expect(themes.map((theme) => theme.id)).toEqual(["windborne-adventure"]);
+    expect(themes.map((theme) => theme.id)).toEqual(["windborne-adventure", "neon-night-city"]);
 
     const windborneManifest = await platform.chat.getThemeManifest("windborne-adventure");
     expect(windborneManifest.tokens.global?.themeColor).toBe("#f3cf57");
@@ -117,6 +117,13 @@ describe("browser preview platform chat themes", () => {
     const windborneTheme = await platform.chat.getTheme();
     expect(windborneTheme.themeColor).toBe("#f3cf57");
     expect(JSON.stringify(windborneTheme.raw)).toContain("rgba(0,0,0,0)");
+
+    const neonManifest = await platform.chat.getThemeManifest("neon-night-city");
+    expect(neonManifest.name.zh_CN).toBe("霓虹夜城");
+    expect(neonManifest.tokens.input?.maxWidthPx).toBe(700);
+    await platform.chat.setActiveThemeId("neon-night-city");
+    await expect(platform.chat.getActiveThemeId()).resolves.toBe("neon-night-city");
+    await expect(platform.chat.getTheme()).resolves.toMatchObject({ themeColor: "#00f5ff" });
   });
 
   it("adds uploaded preview themes as user themes and protects builtins from deletion", async () => {

@@ -34,7 +34,7 @@ from .state import BridgeState
 #: 用户可写主题目录（相对项目根 / cwd）。
 USER_THEMES_DIR = Path("data") / "chat_ui_themes"
 BUILTIN_THEMES_DIR = Path("assets") / "chat_ui_themes"
-BUILTIN_THEME_IDS = {DEFAULT_BUILTIN_CHAT_THEME_ID}
+BUILTIN_THEME_IDS = set(BUILTIN_THEME_MANIFESTS)
 RETIRED_BUILTIN_THEME_IDS = {"classic-dark", "light-paper"}
 
 #: manifest schema 版本，与前端 CHAT_THEME_SCHEMA 一致。

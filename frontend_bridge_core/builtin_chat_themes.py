@@ -1,8 +1,9 @@
-"""Tracked fallback manifest for the built-in chat UI theme.
+"""Tracked fallback manifests for the built-in chat UI themes.
 
-The packaged runtime also carries ``assets/chat_ui_themes/windborne-adventure``.
-This module keeps a minimal fallback available when that directory is absent,
-while preferring the bundled ``theme.json`` as the single full manifest source.
+The packaged runtime also carries the full manifests under
+``assets/chat_ui_themes``. This module keeps minimal fallbacks available when
+those directories are absent, while preferring each bundled ``theme.json`` as
+the single full manifest source.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from typing import Any, Dict
 
 
 DEFAULT_BUILTIN_CHAT_THEME_ID = "windborne-adventure"
+NEON_NIGHT_CITY_THEME_ID = "neon-night-city"
 
 
 _WINDBORNE_FALLBACK_MANIFEST: Dict[str, Any] = {
@@ -111,19 +113,87 @@ _WINDBORNE_FALLBACK_MANIFEST: Dict[str, Any] = {
 }
 
 
-def _load_bundled_manifest(theme_id: str) -> Dict[str, Any]:
+_NEON_NIGHT_CITY_FALLBACK_MANIFEST: Dict[str, Any] = {
+    "schema": 1,
+    "id": NEON_NIGHT_CITY_THEME_ID,
+    "name": {
+        "zh_CN": "霓虹夜城",
+        "en": "Neon Night City",
+        "ja": "ネオン・ナイトシティ",
+    },
+    "author": "Shinsekai",
+    "version": "1.0.0",
+    "description": {
+        "zh_CN": "青色与洋红霓虹组成的赛博朋克聊天主题。",
+        "en": "A cyberpunk chat theme built from cyan and magenta neon.",
+        "ja": "シアンとマゼンタのネオンで構成したサイバーパンクテーマ。",
+    },
+    "tokens": {
+        "global": {
+            "themeColor": "#00f5ff",
+            "fontFamily": "Rajdhani, Bahnschrift, Segoe UI, sans-serif",
+        },
+        "dialog": {
+            "background": "rgba(2,8,20,0.94)",
+            "borderColor": "rgba(0,245,255,0.72)",
+            "borderRadius": "6px",
+            "boxShadow": "0 0 24px rgba(0,245,255,0.2)",
+            "chrome": "panel",
+            "color": "#e9fbff",
+        },
+        "options": {
+            "background": "rgba(3,12,28,0.96)",
+            "borderColor": "rgba(0,245,255,0.74)",
+            "borderRadius": "4px",
+            "color": "#e9fbff",
+            "hover": {
+                "background": "rgba(255,45,163,0.9)",
+                "borderColor": "#ff9bd3",
+                "color": "#ffffff",
+            },
+            "placement": "center",
+            "widthMode": "fixed",
+            "widthPx": 700,
+        },
+        "input": {
+            "background": "rgba(2,8,20,0.96)",
+            "borderColor": "rgba(0,245,255,0.72)",
+            "borderRadius": "6px",
+            "color": "#e9fbff",
+            "maxWidthPx": 700,
+            "sendPlacement": "inside",
+        },
+        "name": {
+            "align": "left",
+            "color": "#ff63bb",
+            "decoration": "accent",
+            "fontFamily": "Cascadia Mono, JetBrains Mono, Consolas, monospace",
+            "textSizePx": 19,
+            "textWeight": 800,
+        },
+        "typewriter": {"cps": 42},
+    },
+}
+
+
+def _load_bundled_manifest(theme_id: str, fallback: Dict[str, Any]) -> Dict[str, Any]:
     manifest_path = Path(__file__).resolve().parents[1] / "assets" / "chat_ui_themes" / theme_id / "theme.json"
     try:
         with manifest_path.open(encoding="utf-8") as file:
             data = json.load(file)
     except (OSError, json.JSONDecodeError):
-        return dict(_WINDBORNE_FALLBACK_MANIFEST)
+        return dict(fallback)
     if not isinstance(data, dict):
-        return dict(_WINDBORNE_FALLBACK_MANIFEST)
+        return dict(fallback)
     data.pop("$schema", None)
     return data
 
 
 BUILTIN_THEME_MANIFESTS: Dict[str, Dict[str, Any]] = {
-    DEFAULT_BUILTIN_CHAT_THEME_ID: _load_bundled_manifest(DEFAULT_BUILTIN_CHAT_THEME_ID)
+    DEFAULT_BUILTIN_CHAT_THEME_ID: _load_bundled_manifest(
+        DEFAULT_BUILTIN_CHAT_THEME_ID, _WINDBORNE_FALLBACK_MANIFEST
+    ),
+    NEON_NIGHT_CITY_THEME_ID: _load_bundled_manifest(
+        NEON_NIGHT_CITY_THEME_ID, _NEON_NIGHT_CITY_FALLBACK_MANIFEST
+    ),
 }

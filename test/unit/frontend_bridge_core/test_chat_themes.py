@@ -35,8 +35,12 @@ class ChatThemeBridgeTests(unittest.TestCase):
             try:
                 themes = list_chat_themes(state)
                 theme_index = {item["id"]: item for item in themes}
-                self.assertEqual(list(theme_index), ["windborne-adventure"])
+                self.assertEqual(list(theme_index), ["neon-night-city", "windborne-adventure"])
+                self.assertEqual(theme_index["neon-night-city"]["source"], "builtin")
                 self.assertEqual(theme_index["windborne-adventure"]["source"], "builtin")
+                self.assertTrue(
+                    (Path(tempdir) / "data" / "chat_ui_themes" / "neon-night-city" / "theme.json").is_file()
+                )
                 self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "windborne-adventure" / "theme.json").is_file()
                 )
@@ -52,7 +56,10 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=Path(tempdir) / "missing"):
                     themes = list_chat_themes(state)
                 theme_index = {item["id"]: item for item in themes}
+                self.assertIn("neon-night-city", theme_index)
                 self.assertIn("windborne-adventure", theme_index)
+                neon_manifest = get_chat_theme_manifest(state, "neon-night-city")
+                self.assertEqual(neon_manifest["tokens"]["global"]["themeColor"], "#00f5ff")
                 manifest = get_chat_theme_manifest(state, "windborne-adventure")
                 self.assertEqual(manifest["tokens"]["global"]["themeColor"], "#f3cf57")
             finally:
@@ -80,6 +87,8 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 list_chat_themes(state)
                 with self.assertRaises(PermissionError):
                     delete_chat_theme(state, "windborne-adventure")
+                with self.assertRaises(PermissionError):
+                    delete_chat_theme(state, "neon-night-city")
             finally:
                 os.chdir(previous_cwd)
 
