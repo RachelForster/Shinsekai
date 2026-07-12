@@ -37,6 +37,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
   layers: ChatStageLayers;
   notificationText?: string;
   optimisticSubmission?: {
+    draftEditedAfterSubmission: boolean;
     eventSeq: number;
     previous: {
       characterName?: string;

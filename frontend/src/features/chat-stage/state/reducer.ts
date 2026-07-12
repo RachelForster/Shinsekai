@@ -89,6 +89,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         error: undefined,
         inputDraft: "",
         optimisticSubmission: {
+          draftEditedAfterSubmission: false,
           eventSeq: state.eventSeq,
           previous: {
             characterName: state.characterName,
@@ -117,9 +118,11 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       if (!optimistic || optimistic.source !== action.source) {
         return state;
       }
+      const inputDraft = optimistic.draftEditedAfterSubmission ? state.inputDraft : optimistic.previous.inputDraft;
       return withResolvedLayers({
         ...state,
         ...optimistic.previous,
+        inputDraft,
         options: [...optimistic.previous.options],
         optimisticSubmission: undefined,
       });
@@ -130,7 +133,13 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         historyEntries: action.historyEntries.map((entry) => ({ ...entry })),
       });
     case "setDraft":
-      return withResolvedLayers({ ...state, inputDraft: action.text });
+      return withResolvedLayers({
+        ...state,
+        inputDraft: action.text,
+        optimisticSubmission: state.optimisticSubmission
+          ? { ...state.optimisticSubmission, draftEditedAfterSubmission: true }
+          : undefined,
+      });
     case "setStatus":
       return withResolvedLayers({
         ...state,

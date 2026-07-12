@@ -47,6 +47,32 @@ describe("chatStageReducer", () => {
     expect(restored.optimisticSubmission).toBeUndefined();
   });
 
+  it("preserves a new draft when an earlier submission fails late", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "Previous reply",
+        inputDraft: "first message",
+        options: ["Left", "Right"],
+        userDisplayName: "Aoi",
+      },
+      { source: "send-message", text: "first message", type: "submitUserMessage" },
+    );
+    const withNextDraft = chatStageReducer(submitted, { text: "next message", type: "setDraft" });
+    const restored = chatStageReducer(withNextDraft, {
+      source: "send-message",
+      type: "rollbackUserSubmission",
+    });
+
+    expect(restored.characterName).toBe("Mio");
+    expect(restored.dialogText).toBe("Previous reply");
+    expect(restored.options).toEqual(["Left", "Right"]);
+    expect(restored.status).toBe("idle");
+    expect(restored.inputDraft).toBe("next message");
+    expect(restored.optimisticSubmission).toBeUndefined();
+  });
+
   it("does not roll back a submission after a newer authoritative event", () => {
     const submitted = chatStageReducer(
       {
@@ -745,6 +771,51 @@ describe("chatStageReducer", () => {
       type: "event",
     });
     expect(buildChatStageViewModel(afterStatus).notificationText).toBe("等待对话开始");
+  });
+
+  it("hydrates folded system messages and clears them after dialogue or session close", () => {
+    const hydrated = chatStageReducer(emptyChatState, {
+      snapshot: {
+        characterName: "",
+        dialogHtml: "<p>Waiting for chat</p>",
+        dialogText: "Waiting for chat",
+        eventSeq: 1,
+        inputDraft: "",
+        options: [],
+        sprites: [],
+        status: "idle",
+        systemMessageText: "Waiting for chat",
+      },
+      type: "hydrate",
+    });
+    const systemView = buildChatStageViewModel(hydrated);
+
+    expect(systemView.notificationText).toBe("Waiting for chat");
+    expect(systemView.layers.notification).toBe(true);
+    expect(systemView.layers.dialog).toBe(false);
+
+    const withDialogue = chatStageReducer(hydrated, {
+      event: {
+        color: "#fff",
+        fullHtml: "<p>Ready now</p>",
+        isSystem: false,
+        seq: 2,
+        speaker: "Mio",
+        ts: 2,
+        type: "dialog.end",
+        v: 1,
+      },
+      type: "event",
+    });
+    expect(withDialogue.systemMessageText).toBeUndefined();
+    expect(buildChatStageViewModel(withDialogue).layers.dialog).toBe(true);
+
+    const closed = chatStageReducer(hydrated, {
+      event: { reason: "Closed", seq: 2, ts: 2, type: "session.closed", v: 1 },
+      type: "event",
+    });
+    expect(closed.systemMessageText).toBeUndefined();
+    expect(buildChatStageViewModel(closed).notificationText).toBe("Closed");
   });
 
   it("keeps named system narrators in the dialog layer", () => {
