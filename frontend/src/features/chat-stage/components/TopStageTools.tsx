@@ -1,10 +1,8 @@
-import type { MouseEvent } from "react";
-import { Activity, GripHorizontal, Maximize2, Minus, X } from "lucide-react";
+import { Activity, Maximize2, Minus, X } from "lucide-react";
 
 import {
   closeDesktopWindow,
   minimizeDesktopWindow,
-  startDesktopWindowDrag,
   toggleMaximizeDesktopWindow,
 } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -44,15 +42,6 @@ export function TopStageTools({
     });
   };
 
-  const handleDragStart = (event: MouseEvent<HTMLElement>) => {
-    if (event.button !== 0) {
-      return;
-    }
-    void startDesktopWindowDrag().catch((error) => {
-      console.error("Desktop chat window drag failed", error);
-    });
-  };
-
   return (
     <div
       className="top-stage-tools"
@@ -76,15 +65,6 @@ export function TopStageTools({
       </IconButton>
       {standaloneDesktopWindow ? (
         <>
-          <button
-            aria-label={t("desktop.titlebar.drag")}
-            className="top-stage-tools__drag"
-            data-tauri-drag-region
-            onMouseDown={handleDragStart}
-            type="button"
-          >
-            <GripHorizontal aria-hidden className="top-stage-tools__drag-icon" />
-          </button>
           <IconButton
             className="top-stage-tools__button"
             label={t("desktop.titlebar.minimize")}

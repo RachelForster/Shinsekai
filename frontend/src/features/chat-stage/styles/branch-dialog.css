@@ -1,108 +1,23 @@
 .chat-branch-backdrop {
-  position: absolute;
-  inset: 0;
   z-index: 82;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--stage-safe-top) var(--stage-safe-x);
-  background:
-    var(--logs-page-background-image, none),
-    radial-gradient(circle at 74% 22%, color-mix(in oklch, var(--stage-accent) 18%, transparent), transparent 34%),
-    linear-gradient(180deg, rgba(7, 10, 14, 0.68), rgba(7, 10, 14, 0.84)),
-    var(--logs-page-background, rgba(8, 12, 18, 0.72));
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover, cover, cover, cover;
 }
 
 .chat-branch-dialog {
   --branch-accent: var(--logs-event-color, var(--chat-name-runtime-color, var(--stage-accent, #cfc7ff)));
   --branch-border: var(--logs-panel-border-color, rgba(255, 255, 255, 0.18));
-  --branch-chrome: var(--logs-toolbar-background, rgba(18, 24, 31, 0.88));
   --branch-muted: color-mix(in oklch, var(--branch-text) 62%, transparent);
   --branch-panel: var(--logs-panel-background, rgba(13, 18, 25, 0.9));
-  --branch-radius: var(--logs-panel-border-radius, 18px);
   --branch-text: var(--logs-panel-color, var(--logs-page-color, var(--chat-dialog-color, #fffaf0)));
   display: grid;
   width: min(720px, calc(100vw - 32px));
   max-height: min(76vh, 720px);
   grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  border: 1px solid var(--branch-border);
-  border-radius: var(--branch-radius);
-  color: var(--branch-text);
-  background:
-    var(--logs-panel-background-image, none),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.035)),
-    color-mix(in oklch, var(--branch-panel) 78%, transparent);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover, cover, cover;
-  box-shadow: var(--logs-panel-box-shadow, 0 28px 86px rgba(0, 0, 0, 0.56));
-  backdrop-filter: blur(18px) saturate(1.24);
   font-family: var(--font-chat);
-}
-
-.chat-branch-dialog__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 18px 22px 16px;
-  border-bottom: 1px solid var(--logs-toolbar-border-color, var(--branch-border));
-  background:
-    var(--logs-toolbar-background-image, none),
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--branch-chrome) 80%, white 12%),
-      color-mix(in oklch, var(--branch-chrome) 82%, transparent)
-    );
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover, cover;
-}
-
-.chat-branch-dialog__heading {
-  min-width: 0;
-}
-
-.chat-branch-dialog__eyebrow {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--branch-muted);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  line-height: 1;
-}
-
-.chat-branch-dialog__title {
-  margin: 0;
-  overflow: hidden;
-  color: var(--branch-accent);
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-branch-dialog__summary {
-  margin: 6px 0 0;
-  color: var(--branch-muted);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.35;
 }
 
 .chat-branch-dialog__body {
   min-height: 0;
   padding: 18px;
-  overflow: auto;
-  background:
-    radial-gradient(circle at 18% 0%, color-mix(in oklch, var(--branch-accent) 10%, transparent), transparent 34%),
-    color-mix(in oklch, var(--branch-panel) 58%, transparent);
 }
 
 .chat-branch-dialog__notice {

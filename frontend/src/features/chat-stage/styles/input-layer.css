@@ -4,7 +4,7 @@
   bottom: var(--stage-safe-bottom);
   z-index: 7;
   display: grid;
-  width: min(var(--chat-input-max-width), var(--chat-ui-runtime-width), calc(100vw - 32px));
+  width: var(--chat-input-resolved-width);
   min-height: var(--stage-input-height);
   grid-template-columns: var(--chat-input-grid-template-columns);
   align-items: stretch;

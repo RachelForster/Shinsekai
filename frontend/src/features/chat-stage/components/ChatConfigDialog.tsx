@@ -1,10 +1,10 @@
-import { useId, useRef, type ChangeEvent } from "react";
-import { Languages, X } from "lucide-react";
+import { useId, type ChangeEvent } from "react";
+import { Languages } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
 import type { ChatCommand } from "../../../shared/platform/types";
-import { IconButton, Select } from "../../../shared/ui";
+import { Select, Switch } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { ChatStageModal } from "./ChatStageModal";
 import {
@@ -167,7 +167,6 @@ export function ChatConfigDialog({
 }) {
   const { t } = useI18n();
   const titleId = useId();
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const dialogTextView = effectiveDialogText ?? dialogText;
   const nameTextView = effectiveNameText ?? nameText;
   const dialogBoldChecked = dialogText.boldOverride === true ? dialogText.bold : dialogTextView.bold;
@@ -255,29 +254,15 @@ export function ChatConfigDialog({
   return (
     <ChatStageModal
       backdropClassName="chat-config-backdrop"
+      closeLabel={t("common.close")}
       dialogClassName="chat-config-dialog"
       dialogId="chat-stage-dialog-config"
-      initialFocusRef={closeButtonRef}
       labelledBy={titleId}
       onClose={onClose}
       open={open}
+      title={t("chat.toolbar.config")}
     >
-      <header className="chat-config-dialog__header">
-        <div className="chat-config-dialog__heading">
-          <h2 className="chat-config-dialog__title" id={titleId}>
-            {t("chat.toolbar.config")}
-          </h2>
-        </div>
-        <IconButton
-          className="chat-config-dialog__close"
-          label={t("common.close")}
-          onClick={onClose}
-          ref={closeButtonRef}
-        >
-          <X aria-hidden className="icon-button__icon" />
-        </IconButton>
-      </header>
-      <div className="chat-config-dialog__body">
+      <div className="chat-stage-modal__body chat-config-dialog__body">
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionMenuAppearance")}</h3>
           <label className="chat-config-dialog__row">
@@ -291,16 +276,15 @@ export function ChatConfigDialog({
               value={configThemeColorView}
             />
           </label>
-          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
             <span className="chat-config-dialog__label">{t("chat.config.useMainThemeColor")}</span>
-            <input
+            <Switch
               aria-label={t("chat.config.useMainThemeColor")}
               checked={configUseMainThemeColor}
-              className="chat-config-dialog__checkbox"
+              className="chat-config-dialog__switch"
               onChange={(event) => onConfigUseMainThemeColorChange(event.target.checked)}
-              type="checkbox"
             />
-          </label>
+          </div>
         </section>
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionConversation")}</h3>
@@ -341,17 +325,16 @@ export function ChatConfigDialog({
             </span>
           </label>
           {longPressTalkVisible ? (
-            <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
               <span className="chat-config-dialog__label">{t("chat.config.longPressTalk")}</span>
-              <input
+              <Switch
                 aria-disabled={!longPressTalkAvailable && !longPressTalk}
                 aria-label={t("chat.config.longPressTalk")}
                 checked={longPressTalk && longPressTalkAvailable}
-                className="chat-config-dialog__checkbox"
+                className="chat-config-dialog__switch"
                 onChange={(event) => onLongPressTalkChange(event.target.checked)}
-                type="checkbox"
               />
-            </label>
+            </div>
           ) : null}
         </section>
 
@@ -399,16 +382,15 @@ export function ChatConfigDialog({
               value={nameTextView.color}
             />
           </label>
-          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
             <span className="chat-config-dialog__label">{t("chat.config.nameBold")}</span>
-            <input
+            <Switch
               aria-label={t("chat.config.nameBold")}
               checked={nameBoldChecked}
-              className="chat-config-dialog__checkbox"
+              className="chat-config-dialog__switch"
               onChange={(event) => onTextStyleChange("nameText", { bold: event.target.checked, boldOverride: true })}
-              type="checkbox"
             />
-          </label>
+          </div>
           <label className="chat-config-dialog__row">
             <span className="chat-config-dialog__label">{t("chat.config.dialogFontFamily")}</span>
             <input
@@ -481,16 +463,15 @@ export function ChatConfigDialog({
               value={dialogTextView.color}
             />
           </label>
-          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
             <span className="chat-config-dialog__label">{t("chat.config.dialogBold")}</span>
-            <input
+            <Switch
               aria-label={t("chat.config.dialogBold")}
               checked={dialogBoldChecked}
-              className="chat-config-dialog__checkbox"
+              className="chat-config-dialog__switch"
               onChange={(event) => onTextStyleChange("dialogText", { bold: event.target.checked, boldOverride: true })}
-              type="checkbox"
             />
-          </label>
+          </div>
         </section>
 
         <section className="chat-config-dialog__section">
@@ -577,16 +558,15 @@ export function ChatConfigDialog({
               </span>
             </span>
           </label>
-          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
             <span className="chat-config-dialog__label">{t("chat.config.dialogFillGradient")}</span>
-            <input
+            <Switch
               aria-label={t("chat.config.dialogFillGradient")}
               checked={dialogFill.gradient}
-              className="chat-config-dialog__checkbox"
+              className="chat-config-dialog__switch"
               onChange={(event) => onDialogFillChange({ gradient: event.target.checked })}
-              type="checkbox"
             />
-          </label>
+          </div>
           {dialogFill.gradient ? (
             <label className="chat-config-dialog__row">
               <span className="chat-config-dialog__label">{t("chat.config.dialogFillGradientMode")}</span>

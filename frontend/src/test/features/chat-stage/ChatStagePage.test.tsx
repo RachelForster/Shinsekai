@@ -618,7 +618,11 @@ describe("ChatStagePage", () => {
     await screen.findByText("Ready");
     fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
     const config = await screen.findByRole("dialog", { name: "Chat config" });
+    expect(config).toHaveClass("chat-stage-modal");
+    expect(config.querySelector(".chat-stage-modal__header")).not.toBeNull();
     const longPress = within(config).getByLabelText("Long press to talk");
+    expect(longPress.closest(".switch")).not.toBeNull();
+    expect(longPress.nextElementSibling).toHaveClass("switch__track");
     fireEvent.click(longPress);
     await waitFor(() => expect(longPress).toBeChecked());
     fireEvent.click(within(config).getByRole("button", { name: "Close" }));
@@ -1002,6 +1006,8 @@ describe("ChatStagePage", () => {
 
     await waitFor(() => expect(mocks.getChatHistory).toHaveBeenCalledTimes(1));
     const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    expect(dialog).toHaveClass("chat-stage-modal");
+    expect(dialog.querySelector(".chat-stage-modal__header")).not.toBeNull();
     expect(within(dialog).getByText("2 entries")).toBeInTheDocument();
     const nameplates = dialog.querySelectorAll(".chat-history__nameplate");
     expect(nameplates).toHaveLength(2);
@@ -1301,20 +1307,20 @@ describe("ChatStagePage", () => {
     expect(screen.getByRole("button", { name: "Minimize" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Maximize" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Drag window" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Close chat" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Minimize" }));
     fireEvent.click(screen.getByRole("button", { name: "Maximize" }));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    fireEvent.mouseDown(container.querySelector(".top-stage-tools__drag")!, { button: 0 });
 
     await waitFor(() => expect(desktopApiMocks.minimizeDesktopWindow).toHaveBeenCalledTimes(1));
     expect(desktopApiMocks.toggleMaximizeDesktopWindow).toHaveBeenCalledTimes(1);
     expect(desktopApiMocks.closeDesktopWindow).toHaveBeenCalledTimes(1);
-    expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1);
+    expect(desktopApiMocks.startDesktopWindowDrag).not.toHaveBeenCalled();
 
     fireEvent.mouseDown(container.querySelector(".sprite-layer__figure")!, { button: 0 });
-    await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1));
     expect(chatWindowMocks.closeChatSurface).not.toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@
     --stage-safe-x: 12px;
     --stage-safe-top: 12px;
     --chat-input-grid-template-columns: minmax(0, 1fr) 38px 46px;
+    --chat-input-resolved-width: min(var(--chat-input-max-width), calc(100vw - 24px));
     --chat-send-label-display: none;
     --chat-send-min-width: 46px;
     --chat-send-padding: 0;
@@ -64,7 +65,7 @@
   }
 
   .input-layer {
-    width: min(var(--chat-input-max-width), calc(100vw - 24px));
+    width: var(--chat-input-resolved-width);
     min-height: var(--stage-input-height);
     grid-template-columns: var(--chat-input-grid-template-columns);
     grid-template-rows: minmax(var(--chat-input-textarea-min-height), 1fr);

@@ -12,17 +12,25 @@
   z-index: 9;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   max-width: min(calc(100vw - 28px), 520px);
-  min-height: 36px;
-  padding: 5px;
-  border: var(--chat-toolbar-border, 1px solid var(--chat-toolbar-border-color));
-  border-color: var(--chat-toolbar-border-color);
-  border-radius: 6px;
-  background: var(--chat-sheen), var(--chat-toolbar-background);
+  min-height: 40px;
+  padding: 5px 6px;
+  border: var(
+    --chat-toolbar-border,
+    1px solid color-mix(in oklch, var(--chat-toolbar-border-color) 72%, rgba(255, 255, 255, 0.2))
+  );
+  border-radius: 999px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.09), transparent 48%),
+    color-mix(in oklch, var(--chat-toolbar-background) 88%, transparent);
   box-shadow:
-    0 10px 30px var(--stage-shadow),
+    0 14px 38px color-mix(in oklch, var(--stage-shadow) 76%, transparent),
+    0 2px 10px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
     var(--chat-toolbar-box-shadow, none);
+  backdrop-filter: blur(22px) saturate(1.22);
+  isolation: isolate;
   pointer-events: auto;
 }
 
@@ -33,7 +41,18 @@
   max-width: 210px;
   align-content: center;
   gap: 2px;
-  padding: 2px 8px 2px 18px;
+  margin-right: 2px;
+  padding: 2px 13px 2px 18px;
+}
+
+.top-stage-tools__status::after {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  bottom: 4px;
+  width: 1px;
+  background: color-mix(in oklch, var(--chat-toolbar-border-color) 66%, transparent);
+  content: "";
 }
 
 .top-stage-tools__transport,
@@ -65,6 +84,7 @@
 
 .top-stage-tools[data-transport-state="connected"] .top-stage-tools__transport::before {
   background: var(--stage-success);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--stage-success) 70%, transparent);
 }
 
 .top-stage-tools[data-transport-state="polling"] .top-stage-tools__transport::before,
@@ -80,28 +100,7 @@
   color: var(--chat-toolbar-color, #f7f1f0);
   font-size: 12px;
   font-weight: 650;
-}
-
-.top-stage-tools__drag {
-  display: inline-flex;
-  width: 38px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--stage-line);
-  border-radius: 6px;
-  color: var(--stage-muted);
-  background: var(--stage-glass-soft);
-  cursor: grab;
-}
-
-.top-stage-tools__drag:active {
-  cursor: grabbing;
-}
-
-.top-stage-tools__drag-icon {
-  width: 16px;
-  height: 16px;
+  letter-spacing: 0.01em;
 }
 
 .desktop-resize-handles {
@@ -194,7 +193,6 @@
 }
 
 .chat-stage .icon-button,
-.top-stage-tools__drag,
 .dialog-stage-controls .button {
   border-color: var(--stage-line);
   border-radius: 6px;
@@ -209,7 +207,6 @@
 }
 
 .chat-stage .icon-button:hover:not(:disabled),
-.top-stage-tools__drag:hover,
 .dialog-stage-controls .button:hover:not(:disabled) {
   border-color: var(--stage-line-strong);
   background: color-mix(in oklch, var(--stage-accent) 18%, rgba(255, 255, 255, 0.12));
@@ -217,7 +214,6 @@
 }
 
 .chat-stage .icon-button:active:not(:disabled),
-.top-stage-tools__drag:active,
 .dialog-stage-controls .button:active:not(:disabled) {
   transform: translateY(0);
 }
@@ -251,12 +247,27 @@
   height: 28px;
 }
 
-.top-stage-tools__button[data-active="true"] {
-  border-color: color-mix(in oklch, var(--stage-accent) 64%, white 12%);
-  color: #fff;
-  background: color-mix(in oklch, var(--stage-accent) 62%, rgba(20, 17, 14, 0.9));
+.chat-stage .top-stage-tools__button {
+  border-color: transparent;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.chat-stage .top-stage-tools__button:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--stage-line-strong) 68%, transparent);
+  background: color-mix(in oklch, var(--stage-accent) 16%, rgba(255, 255, 255, 0.1));
   box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--stage-accent) 24%, transparent),
+    0 5px 14px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.top-stage-tools__button[data-active="true"] {
+  border-color: color-mix(in oklch, var(--stage-accent) 48%, rgba(255, 255, 255, 0.28));
+  color: #fff;
+  background: color-mix(in oklch, var(--stage-accent) 54%, rgba(20, 17, 14, 0.76));
+  box-shadow:
+    0 4px 14px color-mix(in oklch, var(--stage-accent) 26%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
@@ -275,11 +286,17 @@
   display: inline-flex;
   max-width: 100%;
   min-width: 0;
-  padding: 4px;
+  padding: 5px 6px;
   border: var(--chat-dialog-actions-border);
-  border-radius: 6px;
-  background: var(--chat-sheen), var(--chat-dialog-actions-background);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  border-color: color-mix(in oklch, var(--chat-dialog-actions-border-color) 72%, rgba(255, 255, 255, 0.2));
+  border-radius: 999px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.09), transparent 48%),
+    color-mix(in oklch, var(--chat-dialog-actions-background) 88%, transparent);
+  box-shadow:
+    0 14px 38px color-mix(in oklch, var(--stage-shadow) 76%, transparent),
+    0 2px 10px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
   transform: translateY(0);
   transform-origin: bottom right;
   transition:
@@ -287,18 +304,20 @@
     transform 140ms ease,
     border-color 140ms ease,
     background 140ms ease;
-  backdrop-filter: blur(14px) saturate(1.06);
+  backdrop-filter: blur(22px) saturate(1.22);
+  isolation: isolate;
 }
 
 /* Recessed but always present & clickable when unlocked; full strength on hover/focus. */
 .dialog-stage-controls[data-locked="false"]:not(:hover):not(:focus-within) .dialog-stage-controls__surface {
-  opacity: 0.5;
+  opacity: 0.72;
 }
 
 .dialog-stage-controls[data-locked="true"] .dialog-stage-controls__surface {
-  border-color: var(--chat-toolbar-border-color);
+  border-color: color-mix(in oklch, var(--stage-accent) 34%, var(--chat-toolbar-border-color));
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.035)), var(--chat-toolbar-background);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.11), transparent 48%),
+    color-mix(in oklch, var(--chat-dialog-actions-background) 90%, var(--stage-accent) 10%);
 }
 
 .dialog-toolbar-layer[data-reveal="hover"] .dialog-stage-controls {
@@ -345,7 +364,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 5px;
+  gap: 4px;
 }
 
 .dialog-stage-controls__rail > [data-plugin-slot="chat-dialog-actions"] {
@@ -354,10 +373,22 @@
 
 .dialog-stage-controls__button.button {
   flex: 0 0 auto;
-  min-height: 28px;
+  min-height: 30px;
   min-width: 0;
-  padding: 0 8px;
+  padding: 0 10px;
+  border-color: transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
   gap: 5px;
+}
+
+.dialog-stage-controls__button.button:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--stage-line-strong) 68%, transparent);
+  background: color-mix(in oklch, var(--stage-accent) 16%, rgba(255, 255, 255, 0.1));
+  box-shadow:
+    0 5px 14px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .dialog-stage-controls__button .button__icon {
@@ -374,11 +405,11 @@
 }
 
 .dialog-stage-controls__button[data-active="true"] {
-  border-color: color-mix(in oklch, var(--stage-accent) 64%, white 12%);
+  border-color: color-mix(in oklch, var(--stage-accent) 48%, rgba(255, 255, 255, 0.28));
   color: #fff;
-  background: color-mix(in oklch, var(--stage-accent) 62%, rgba(20, 17, 14, 0.9));
+  background: color-mix(in oklch, var(--stage-accent) 54%, rgba(20, 17, 14, 0.76));
   box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--stage-accent) 22%, transparent),
+    0 4px 14px color-mix(in oklch, var(--stage-accent) 26%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.14);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }

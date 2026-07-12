@@ -10,6 +10,10 @@
   transform-origin: bottom center;
 }
 
+.dialog-stack:has(.options-layer) {
+  max-width: min(var(--chat-options-max-width), var(--chat-input-resolved-width));
+}
+
 .dialog-layer {
   position: relative;
   z-index: 1;
