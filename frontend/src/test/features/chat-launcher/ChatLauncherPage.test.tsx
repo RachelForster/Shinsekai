@@ -413,6 +413,15 @@ describe("ChatLauncherPage", () => {
     fireEvent.change(characterSelect);
 
     await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue(""));
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    expect(mocks.saveTemplateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ initSpritePath: "", selectedCharacters: ["Nanami"] }),
+    );
+    expect(mocks.launchChat).toHaveBeenCalledWith(
+      expect.objectContaining({ characters: ["Nanami"], initSpritePath: "" }),
+    );
   });
 
   it("requires quick restart confirmation before launching with resetHistory", async () => {

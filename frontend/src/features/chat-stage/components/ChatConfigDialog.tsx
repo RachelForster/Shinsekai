@@ -277,11 +277,13 @@ export function ChatConfigDialog({
             />
           </label>
           <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-            <span className="chat-config-dialog__label">{t("chat.config.useMainThemeColor")}</span>
+            <label className="chat-config-dialog__label" htmlFor="chat-config-use-main-theme-color">
+              {t("chat.config.useMainThemeColor")}
+            </label>
             <Switch
-              aria-label={t("chat.config.useMainThemeColor")}
               checked={configUseMainThemeColor}
               className="chat-config-dialog__switch"
+              id="chat-config-use-main-theme-color"
               onChange={(event) => onConfigUseMainThemeColorChange(event.target.checked)}
             />
           </div>
@@ -326,12 +328,14 @@ export function ChatConfigDialog({
           </label>
           {longPressTalkVisible ? (
             <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-              <span className="chat-config-dialog__label">{t("chat.config.longPressTalk")}</span>
+              <label className="chat-config-dialog__label" htmlFor="chat-config-long-press-talk">
+                {t("chat.config.longPressTalk")}
+              </label>
               <Switch
                 aria-disabled={!longPressTalkAvailable && !longPressTalk}
-                aria-label={t("chat.config.longPressTalk")}
                 checked={longPressTalk && longPressTalkAvailable}
                 className="chat-config-dialog__switch"
+                id="chat-config-long-press-talk"
                 onChange={(event) => onLongPressTalkChange(event.target.checked)}
               />
             </div>
@@ -383,11 +387,13 @@ export function ChatConfigDialog({
             />
           </label>
           <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-            <span className="chat-config-dialog__label">{t("chat.config.nameBold")}</span>
+            <label className="chat-config-dialog__label" htmlFor="chat-config-name-bold">
+              {t("chat.config.nameBold")}
+            </label>
             <Switch
-              aria-label={t("chat.config.nameBold")}
               checked={nameBoldChecked}
               className="chat-config-dialog__switch"
+              id="chat-config-name-bold"
               onChange={(event) => onTextStyleChange("nameText", { bold: event.target.checked, boldOverride: true })}
             />
           </div>
@@ -464,11 +470,13 @@ export function ChatConfigDialog({
             />
           </label>
           <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-            <span className="chat-config-dialog__label">{t("chat.config.dialogBold")}</span>
+            <label className="chat-config-dialog__label" htmlFor="chat-config-dialog-bold">
+              {t("chat.config.dialogBold")}
+            </label>
             <Switch
-              aria-label={t("chat.config.dialogBold")}
               checked={dialogBoldChecked}
               className="chat-config-dialog__switch"
+              id="chat-config-dialog-bold"
               onChange={(event) => onTextStyleChange("dialogText", { bold: event.target.checked, boldOverride: true })}
             />
           </div>
@@ -559,11 +567,13 @@ export function ChatConfigDialog({
             </span>
           </label>
           <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-            <span className="chat-config-dialog__label">{t("chat.config.dialogFillGradient")}</span>
+            <label className="chat-config-dialog__label" htmlFor="chat-config-dialog-fill-gradient">
+              {t("chat.config.dialogFillGradient")}
+            </label>
             <Switch
-              aria-label={t("chat.config.dialogFillGradient")}
               checked={dialogFill.gradient}
               className="chat-config-dialog__switch"
+              id="chat-config-dialog-fill-gradient"
               onChange={(event) => onDialogFillChange({ gradient: event.target.checked })}
             />
           </div>

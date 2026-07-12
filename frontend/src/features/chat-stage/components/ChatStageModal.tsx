@@ -161,7 +161,7 @@ export function ChatStageModal({
             <h2 className="chat-stage-modal__title" id={labelledBy}>
               {title}
             </h2>
-            {summary ? <p className="chat-stage-modal__summary">{summary}</p> : null}
+            {summary ? <div className="chat-stage-modal__summary">{summary}</div> : null}
           </div>
           <IconButton className="chat-stage-modal__close" label={closeLabel} onClick={onClose} ref={closeButtonRef}>
             <X aria-hidden className="icon-button__icon" />

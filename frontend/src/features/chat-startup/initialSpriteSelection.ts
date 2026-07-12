@@ -1,7 +1,7 @@
 import type { Character } from "../../shared/platform/types";
 
 function normalizedSpritePath(path: string) {
-  return path.trim().replaceAll("\\", "/").toLocaleLowerCase();
+  return path.trim().replaceAll("\\", "/").toLowerCase();
 }
 
 export function initialSpriteOwner(path: string, characters: Array<Pick<Character, "name" | "sprites">>) {
@@ -10,7 +10,9 @@ export function initialSpriteOwner(path: string, characters: Array<Pick<Characte
     return undefined;
   }
   return characters.find((character) =>
-    (character.sprites ?? []).some((sprite) => normalizedSpritePath(sprite.path) === normalizedPath),
+    (character?.sprites ?? []).some(
+      (sprite) => typeof sprite?.path === "string" && normalizedSpritePath(sprite.path) === normalizedPath,
+    ),
   )?.name;
 }
 

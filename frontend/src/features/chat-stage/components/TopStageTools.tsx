@@ -44,11 +44,14 @@ export function TopStageTools({
 
   return (
     <div
+      aria-label={t("chat.toolbar.tools")}
       className="top-stage-tools"
       data-chat-stage-hitbox="true"
       data-standalone-desktop={standaloneDesktopWindow ? "true" : "false"}
       data-transport-mode={transportMode}
       data-transport-state={transportState}
+      role="toolbar"
+      tabIndex={0}
     >
       <div className="top-stage-tools__status">
         <span className="top-stage-tools__transport">{transportText}</span>

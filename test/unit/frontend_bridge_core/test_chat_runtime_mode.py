@@ -100,6 +100,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
     def test_stream_initial_snapshot_drops_previous_session_sprites(self):
         previous = {
             "characterName": "七海千秋",
+            "dialogText": "keep dialog",
+            "inputDraft": "keep draft",
+            "options": ["keep option"],
             "sprites": [{"id": "江之岛盾子-0", "label": "江之岛盾子", "path": "junko.png"}],
             "status": "idle",
         }
@@ -108,6 +111,10 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(initial["sprites"], [])
         self.assertEqual(initial["characterName"], "七海千秋")
+        self.assertEqual(initial["dialogText"], "keep dialog")
+        self.assertEqual(initial["inputDraft"], "keep draft")
+        self.assertEqual(initial["options"], ["keep option"])
+        self.assertEqual(previous["sprites"], [{"id": "江之岛盾子-0", "label": "江之岛盾子", "path": "junko.png"}])
         self.assertEqual(previous["sprites"][0]["label"], "江之岛盾子")
 
     def test_chat_runtime_mode_defaults_to_native(self):
@@ -397,6 +404,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 snapshot = handler._resume_last_chat()
 
         self.assertEqual(len(chat_stream.create_session_calls), 1)
+        self.assertEqual(chat_stream.create_session_calls[0]["sprites"], [])
+        self.assertEqual(chat_stream.create_session_calls[0]["runtimeMode"], "react")
+        self.assertEqual(chat_stream.create_session_calls[0]["status"], "idle")
         self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["sessionId"], "session-1")
@@ -441,6 +451,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["sessionId"], "session-1")
+        self.assertEqual(chat_stream.create_session_calls[0]["sprites"], [])
+        self.assertEqual(chat_stream.create_session_calls[0]["runtimeMode"], "react")
+        self.assertEqual(chat_stream.create_session_calls[0]["status"], "idle")
         self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
         self.assertEqual(launch_chat.call_args.kwargs["workflow_path"], "test/e2e/live_bridge_runtime.yaml")
 

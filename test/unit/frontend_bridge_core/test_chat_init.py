@@ -13,11 +13,13 @@ class _ChatStreamStub:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._counter = 0
+        self.create_session_calls: list[dict[str, Any]] = []
         self.deleted_sessions: list[str] = []
         self.snapshots: dict[str, dict[str, Any]] = {}
 
     def create_session(self, snapshot: dict[str, Any]) -> dict[str, str]:
         with self._lock:
+            self.create_session_calls.append(dict(snapshot))
             self._counter += 1
             session_id = f"init-session-{self._counter}"
             self.snapshots[session_id] = {**snapshot, "sessionId": session_id}
@@ -69,19 +71,25 @@ def _wait_for_task(state: BridgeState, task_id: str, statuses: set[str], timeout
 
 
 def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
-    runtime = {"running": False, "closeReasons": []}
+    source_snapshot = {
+        "chatProcessRunning": False,
+        "dialogText": "preserved dialog",
+        "inputDraft": "preserved draft",
+        "options": ["preserved option"],
+        "sprites": [{"id": "stale", "label": "Stale", "path": "stale.png"}],
+        "status": "idle",
+    }
+    runtime = {"running": False, "closeReasons": [], "sourceSnapshot": source_snapshot}
 
     monkeypatch.setattr("frontend_bridge_core.chat_init._chat_process_running", lambda: runtime["running"])
     monkeypatch.setattr("frontend_bridge_core.chat_init._chat_runtime_mode", lambda _state: mode)
     monkeypatch.setattr(
         "frontend_bridge_core.chat_init._chat_snapshot",
         lambda _state, *_args, **_kwargs: {
+            **source_snapshot,
             "chatProcessRunning": runtime["running"],
-            "dialogText": "",
-            "inputDraft": "",
-            "options": [],
-            "sprites": [],
-            "status": "idle",
+            "options": list(source_snapshot["options"]),
+            "sprites": [dict(sprite) for sprite in source_snapshot["sprites"]],
         },
     )
 
@@ -134,6 +142,17 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
     release_completion.set()
     finished = _wait_for_task(state, first["id"], {"succeeded"})
 
+    assert state.chat_stream.create_session_calls == [
+        {
+            "chatProcessRunning": False,
+            "dialogText": "preserved dialog",
+            "inputDraft": "preserved draft",
+            "options": ["preserved option"],
+            "sprites": [],
+            "status": "idle",
+        }
+    ]
+    assert runtime["sourceSnapshot"]["sprites"] == [{"id": "stale", "label": "Stale", "path": "stale.png"}]
     assert len(launch_calls) == 1
     assert finished["progress"] == 1
     assert finished["result"]["chatProcessRunning"] is True

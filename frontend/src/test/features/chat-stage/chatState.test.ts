@@ -81,7 +81,23 @@ describe("chatStageReducer", () => {
   });
 
   it("projects stage events into layer visibility state", () => {
-    const spriteState = chatStageReducer(emptyChatState, {
+    const clearedState = chatStageReducer(
+      { ...emptyChatState, sprites: [{ id: "stale", label: "Stale", path: "asset://stale.png" }] },
+      {
+        snapshot: {
+          dialogText: "",
+          eventSeq: 0,
+          inputDraft: "",
+          options: [],
+          sprites: [],
+          status: "idle",
+        },
+        type: "hydrate",
+      },
+    );
+    expect(clearedState.sprites).toEqual([]);
+
+    const spriteState = chatStageReducer(clearedState, {
       event: {
         characterName: "Mio",
         scale: 1.1,

@@ -249,12 +249,17 @@ describe("ChatStagePage", () => {
 
     await screen.findByText("Ready");
     const input = screen.getByRole("textbox");
-    fireEvent.change(input, { target: { value: "hello from Aoi" } });
+    fireEvent.change(input, { target: { value: "  hello from Aoi  " } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(input).toHaveValue("");
     expect(screen.getByText("Aoi")).toBeInTheDocument();
     expect(screen.getByText("hello from Aoi")).toBeInTheDocument();
+    expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+      payload: "hello from Aoi",
+      type: "send-message",
+    });
 
     await act(async () => {
       resolveCommand(snapshot({ characterName: "Aoi", dialogText: "hello from Aoi", inputDraft: "" }));
@@ -284,6 +289,25 @@ describe("ChatStagePage", () => {
     await act(async () => {
       resolveCommand(snapshot({ characterName: "Aoi", dialogText: "Take the shortcut", options: [] }));
     });
+  });
+
+  it("keeps the selected option visible as the local message when its command fails", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
+    mocks.sendChatCommand.mockRejectedValueOnce(new Error("option offline"));
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Take the shortcut" }));
+
+    expect(screen.queryByRole("button", { name: "Take the shortcut" })).not.toBeInTheDocument();
+    expect(screen.getByText("Aoi")).toBeInTheDocument();
+    expect(screen.getByText("Take the shortcut")).toBeInTheDocument();
+    expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+      payload: "Take the shortcut",
+      type: "submit-option",
+    });
+    expect(await screen.findByText("option offline")).toBeInTheDocument();
+    expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("idle");
   });
 
   it("does not let a late send acknowledgement overwrite the character reply", async () => {
@@ -343,6 +367,9 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(input).toHaveValue("retry me"));
+    expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "retry me", type: "send-message" });
+    expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("idle");
     expect(await screen.findByText("offline")).toBeInTheDocument();
   });
 
@@ -490,6 +517,10 @@ describe("ChatStagePage", () => {
 
     const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
     const topControls = topTools.querySelector(".top-stage-tools__controls") as HTMLElement;
+    expect(topTools).toHaveAttribute("tabindex", "0");
+    expect(topTools).toHaveAttribute("aria-label", "Chat tools");
+    topTools.focus();
+    expect(topTools).toHaveFocus();
     expect(within(topControls).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
     expect(within(topTools).queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
   });
@@ -624,7 +655,7 @@ describe("ChatStagePage", () => {
     const longPress = within(config).getByLabelText("Long press to talk");
     expect(longPress.closest(".switch")).not.toBeNull();
     expect(longPress.nextElementSibling).toHaveClass("switch__track");
-    fireEvent.click(longPress);
+    fireEvent.click(within(config).getByText("Long press to talk"));
     await waitFor(() => expect(longPress).toBeChecked());
     fireEvent.click(within(config).getByRole("button", { name: "Close" }));
 
@@ -688,7 +719,7 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
     const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     const longPress = within(config).getByLabelText("Long press to talk");
-    fireEvent.click(longPress);
+    fireEvent.click(within(config).getByText("Long press to talk"));
 
     await screen.findByText(
       "Download and configure a Vosk speech model before enabling this. Go to System settings to download it. Current path: D:/models/vosk",
@@ -742,13 +773,16 @@ describe("ChatStagePage", () => {
 
     fireEvent.change(within(config).getByLabelText("Dialog fill color"), { target: { value: "#223344" } });
     fireEvent.change(within(config).getByRole("slider", { name: "Fill opacity" }), { target: { value: "0.7" } });
-    fireEvent.click(within(config).getByLabelText("Gradient fill"));
+    const gradientFill = within(config).getByLabelText("Gradient fill");
+    fireEvent.click(within(config).getByText("Gradient fill"));
+    expect(gradientFill).toBeChecked();
     chooseCustomSelectOption(config, "Gradient type", "Two-color gradient");
     fireEvent.change(within(config).getByLabelText("Second fill color"), { target: { value: "#556677" } });
 
     const useMainColor = within(config).getByLabelText("Use main app color");
     expect(useMainColor).toBeChecked();
-    fireEvent.click(useMainColor);
+    fireEvent.click(within(config).getByText("Use main app color"));
+    expect(useMainColor).not.toBeChecked();
     fireEvent.change(within(config).getByLabelText("Config menu color"), { target: { value: "#88cc44" } });
 
     const dialogScale = within(config).getByRole("slider", { name: "Dialog size" });
@@ -782,7 +816,7 @@ describe("ChatStagePage", () => {
     fireEvent.change(within(config).getByLabelText("Nameplate text color"), { target: { value: "#ffeeaa" } });
     const nameBold = within(config).getByLabelText("Bold nameplate text");
     expect(nameBold).toBeChecked();
-    fireEvent.click(nameBold);
+    fireEvent.click(within(config).getByText("Bold nameplate text"));
     expect(nameBold).not.toBeChecked();
     fireEvent.change(within(config).getByLabelText("Dialog font"), { target: { value: "Verdana" } });
     fireEvent.change(within(config).getByRole("slider", { name: "Dialog font size" }), { target: { value: "21" } });
@@ -791,7 +825,7 @@ describe("ChatStagePage", () => {
     fireEvent.change(within(config).getByLabelText("Dialog text color"), { target: { value: "#ddeeff" } });
     const dialogBold = within(config).getByLabelText("Bold dialog text");
     expect(dialogBold).not.toBeChecked();
-    fireEvent.click(dialogBold);
+    fireEvent.click(within(config).getByText("Bold dialog text"));
     expect(dialogBold).toBeChecked();
 
     await waitFor(() => {
@@ -1009,6 +1043,7 @@ describe("ChatStagePage", () => {
     const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
     expect(dialog).toHaveClass("chat-stage-modal");
     expect(dialog.querySelector(".chat-stage-modal__header")).not.toBeNull();
+    expect(dialog.querySelector(".chat-stage-modal__summary")?.tagName).toBe("DIV");
     expect(within(dialog).getByText("2 entries")).toBeInTheDocument();
     const nameplates = dialog.querySelectorAll(".chat-history__nameplate");
     expect(nameplates).toHaveLength(2);

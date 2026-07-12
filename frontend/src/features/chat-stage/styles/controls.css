@@ -40,6 +40,11 @@
   transform: translateX(-50%);
 }
 
+.top-stage-tools:focus-visible {
+  outline: 2px solid var(--chat-toolbar-color, #f7f1f0);
+  outline-offset: 3px;
+}
+
 .top-stage-tools__status {
   position: relative;
   display: grid;
