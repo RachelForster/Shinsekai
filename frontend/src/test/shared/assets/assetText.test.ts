@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { baseName, numberedTags, tagContents } from "../../../shared/assets/assetText";
+import { baseName, numberedTags, removeTagRows, tagContents } from "../../../shared/assets/assetText";
 
 describe("asset text helpers", () => {
   it("extracts file names from POSIX and Windows paths", () => {
@@ -23,5 +23,11 @@ describe("asset text helpers", () => {
   it("formats numbered tag blocks with the expected trailing newline", () => {
     expect(numberedTags("背景", ["校门", "教室"])).toBe("背景 1：校门\n背景 2：教室\n");
     expect(numberedTags("背景", [])).toBe("");
+  });
+
+  it("removes selected tag rows while preserving unsaved values", () => {
+    expect(removeTagRows("Scene 1: saved\nScene 2: unsaved edit\nScene 3: another edit\n", 3, [0, 2], "Scene")).toBe(
+      "Scene 1：unsaved edit\n",
+    );
   });
 });

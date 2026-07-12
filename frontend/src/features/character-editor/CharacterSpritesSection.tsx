@@ -1,5 +1,5 @@
 import type { WheelEventHandler } from "react";
-import { Image as ImageIcon, Tags, Trash2, Upload, Volume2 } from "lucide-react";
+import { Image as ImageIcon, Sparkles, Tags, Trash2, Upload, Volume2 } from "lucide-react";
 
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
@@ -25,10 +25,14 @@ import {
 } from "./characterEditorUtils";
 
 interface CharacterSpritesSectionProps {
+  autoLabelAvailable?: boolean;
+  autoLabelDisabled?: boolean;
+  autoLabelPending?: boolean;
   draft: Character;
   emotionTagsPending: boolean;
   id?: string;
   onClearSprites: () => void;
+  onAutoLabel?: () => void;
   onOpenBulkTags: () => void;
   onPendingSpritePathsChange: (paths: string[]) => void;
   onPendingVoicePathChange: (path: string) => void;
@@ -59,10 +63,14 @@ interface CharacterSpritesSectionProps {
 }
 
 export function CharacterSpritesSection({
+  autoLabelAvailable = false,
+  autoLabelDisabled = true,
+  autoLabelPending = false,
   draft,
   emotionTagsPending,
   id,
   onClearSprites,
+  onAutoLabel,
   onOpenBulkTags,
   onPendingSpritePathsChange,
   onPendingVoicePathChange,
@@ -105,6 +113,17 @@ export function CharacterSpritesSection({
       <div className="section__header">
         <h2 className="section__title">{t("character.section.sprites")}</h2>
         <div className="page__actions">
+          {autoLabelAvailable ? (
+            <AsyncButton
+              disabled={autoLabelDisabled}
+              icon={<Sparkles aria-hidden className="button__icon" />}
+              loading={autoLabelPending}
+              onClick={onAutoLabel}
+              variant="ghost"
+            >
+              {t("mediaAutoLabel.action")}
+            </AsyncButton>
+          ) : null}
           <AsyncButton
             icon={<Upload aria-hidden className="button__icon" />}
             loading={spriteUploadPending}

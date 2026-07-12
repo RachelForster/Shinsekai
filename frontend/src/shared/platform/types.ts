@@ -956,6 +956,7 @@ export interface FileBrowserSnapshot {
 
 export interface TaskSnapshot<TResult = unknown> {
   cancelRequested?: boolean;
+  completedItems?: number;
   createdAt: number;
   dependencyInstallStatus?: string;
   error?: string;
@@ -981,11 +982,28 @@ export interface TaskSnapshot<TResult = unknown> {
   result?: TResult | null;
   status: TaskStatus;
   title: string;
+  totalItems?: number;
   updatedAt: number;
 }
 
 export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
+}
+
+export interface ImageAutoLabelFailure {
+  index: number;
+  message: string;
+}
+
+export interface ImageAutoLabelResult {
+  annotatedCount: number;
+  failedCount: number;
+  failures: ImageAutoLabelFailure[];
+  name: string;
+  scope: "background" | "character";
+  skippedCount: number;
+  tags: string;
+  totalCount: number;
 }
 
 export interface ModelAssetRef {
@@ -1010,6 +1028,10 @@ export interface ModelAssetDownloadResult extends ModelAssetStatus {
 
 export interface ShinsekaiPlatform {
   backgrounds: {
+    autoLabelImages: (
+      name: string,
+      options?: TaskProgressOptions<ImageAutoLabelResult>,
+    ) => Promise<ImageAutoLabelResult>;
     delete: (name: string) => Promise<void>;
     deleteAllBgm: (name: string) => Promise<Background>;
     deleteAllImages: (name: string) => Promise<Background>;
@@ -1059,6 +1081,10 @@ export interface ShinsekaiPlatform {
     subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
   };
   characters: {
+    autoLabelSprites: (
+      name: string,
+      options?: TaskProgressOptions<ImageAutoLabelResult>,
+    ) => Promise<ImageAutoLabelResult>;
     delete: (name: string) => Promise<void>;
     deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
     deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;

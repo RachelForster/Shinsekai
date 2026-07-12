@@ -11,6 +11,7 @@ import {
   sampleTemplates,
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
+import { numberedTags, tagContents } from "../assets/assetText";
 import { runtimeStatusFromSnapshot } from "./chatRuntimeStatus";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../theme/chatTheme";
@@ -481,6 +482,31 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
 
   return {
     backgrounds: {
+      async autoLabelImages(name) {
+        const background = config.background_list.find((item) => item.name === name);
+        if (!background) {
+          throw new Error(`Background not found: ${name}`);
+        }
+        const tags = tagContents(background.bg_tags, background.sprites.length);
+        let annotatedCount = 0;
+        tags.forEach((tag, index) => {
+          if (!tag.trim()) {
+            tags[index] = "室内，柔和光线，安静氛围";
+            annotatedCount += 1;
+          }
+        });
+        background.bg_tags = numberedTags("场景", tags);
+        return delay({
+          annotatedCount,
+          failedCount: 0,
+          failures: [],
+          name,
+          scope: "background" as const,
+          skippedCount: background.sprites.length - annotatedCount,
+          tags: background.bg_tags,
+          totalCount: background.sprites.length,
+        });
+      },
       async delete(name) {
         config.background_list = config.background_list.filter((background) => background.name !== name);
       },
@@ -1191,6 +1217,31 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     characters: {
+      async autoLabelSprites(name) {
+        const character = config.characters.find((item) => item.name === name);
+        if (!character) {
+          throw new Error(`Character not found: ${name}`);
+        }
+        const tags = tagContents(character.emotion_tags, character.sprites.length);
+        let annotatedCount = 0;
+        tags.forEach((tag, index) => {
+          if (!tag.trim()) {
+            tags[index] = "微笑，正面站姿，角色立绘";
+            annotatedCount += 1;
+          }
+        });
+        character.emotion_tags = numberedTags("立绘", tags);
+        return delay({
+          annotatedCount,
+          failedCount: 0,
+          failures: [],
+          name,
+          scope: "character" as const,
+          skippedCount: character.sprites.length - annotatedCount,
+          tags: character.emotion_tags,
+          totalCount: character.sprites.length,
+        });
+      },
       async delete(name) {
         config.characters = config.characters.filter((character) => character.name !== name);
       },

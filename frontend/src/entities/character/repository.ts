@@ -1,6 +1,11 @@
 import { getPlatform } from "../../shared/platform/platform";
 import type { Character } from "../config/types";
-import type { SpriteVoiceType, TaskProgressOptions, CharacterMemoryImportResult } from "../../shared/platform/types";
+import type {
+  CharacterMemoryImportResult,
+  ImageAutoLabelResult,
+  SpriteVoiceType,
+  TaskProgressOptions,
+} from "../../shared/platform/types";
 
 export const charactersQueryKey = ["characters"] as const;
 
@@ -66,6 +71,10 @@ export function importCharacterMemories(
 
 export function uploadCharacterSprites(input: { emotionTags: string; name: string; paths: string[] }) {
   return getPlatform().characters.uploadSprites(input);
+}
+
+export function autoLabelCharacterSprites(name: string, options?: TaskProgressOptions<ImageAutoLabelResult>) {
+  return getPlatform().characters.autoLabelSprites(name, options);
 }
 
 export function saveCharacterEmotionTags(name: string, emotionTags: string) {

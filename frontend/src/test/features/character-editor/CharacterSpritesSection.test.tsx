@@ -96,6 +96,17 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterSpritesSect
 }
 
 describe("CharacterSpritesSection", () => {
+  it("only shows the Moondream action when the plugin is available", () => {
+    const onAutoLabel = vi.fn();
+    const first = renderSection();
+    expect(screen.queryByRole("button", { name: "Label untagged with Moondream" })).not.toBeInTheDocument();
+    first.unmount();
+
+    renderSection({ autoLabelAvailable: true, autoLabelDisabled: false, onAutoLabel });
+    fireEvent.click(screen.getByRole("button", { name: "Label untagged with Moondream" }));
+    expect(onAutoLabel).toHaveBeenCalledOnce();
+  });
+
   it("shows an empty state and disables batch tagging when there are no sprites", () => {
     renderSection({
       draft: { ...createCharacter(), sprites: [] },

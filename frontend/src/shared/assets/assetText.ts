@@ -17,3 +17,11 @@ export function tagContents(block: string, count: number) {
 export function numberedTags(prefix: string, tags: string[]) {
   return tags.map((tag, index) => `${prefix} ${index + 1}：${tag}`).join("\n") + (tags.length ? "\n" : "");
 }
+
+export function removeTagRows(block: string, count: number, indexes: number[], prefix: string) {
+  const removed = new Set(indexes.filter((index) => index >= 0 && index < count));
+  return numberedTags(
+    prefix,
+    tagContents(block, count).filter((_, index) => !removed.has(index)),
+  );
+}

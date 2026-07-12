@@ -1858,6 +1858,51 @@ describe("http platform", () => {
     expect(updates).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "completed" }));
   });
 
+  it("runs Moondream image auto-labeling as a background task", async () => {
+    const task = {
+      createdAt: 1,
+      id: "task-label",
+      kind: "moondream-character-auto-label",
+      logs: [],
+      message: "queued",
+      phase: "queued",
+      progress: 0,
+      result: null,
+      status: "queued",
+      title: "label",
+      updatedAt: 1,
+    };
+    const result = {
+      annotatedCount: 2,
+      failedCount: 0,
+      failures: [],
+      name: "Nanami",
+      scope: "character",
+      skippedCount: 1,
+      tags: "立绘 1：smile\n",
+      totalCount: 3,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse(task))
+      .mockResolvedValueOnce(
+        await mockJsonResponse({ ...task, phase: "completed", progress: 1, result, status: "succeeded" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const updates = vi.fn();
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.characters.autoLabelSprites("Nanami", { onTaskUpdate: updates })).resolves.toEqual(result);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/api/characters/sprites/auto-label",
+      expect.objectContaining({ body: JSON.stringify({ name: "Nanami" }), method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://127.0.0.1:8787/api/tasks/task-label", expect.any(Object));
+    expect(updates).toHaveBeenCalledTimes(2);
+  });
+
   it("uninstalls plugins through the bridge", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       mockJsonResponse({ message: "removed" }),

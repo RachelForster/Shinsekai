@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
   charactersQueryKey,
+  autoLabelCharacterSprites,
   deleteCharacter,
   deleteAllCharacterSprites,
   deleteCharacterSprite,
@@ -24,10 +25,10 @@ import {
 } from "../../entities/character/repository";
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
-import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
+import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import type { SpriteVoiceType } from "../../shared/platform/types";
+import type { ImageAutoLabelResult, SpriteVoiceType, TaskSnapshot } from "../../shared/platform/types";
 import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemoryDialogs } from "./CharacterMemoryDialogs";
@@ -37,6 +38,8 @@ import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
+import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
+import { useMoondreamAvailability } from "../media-auto-label/useMoondreamAvailability";
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
 import {
   SPRITE_SCALE_STEP,
@@ -69,6 +72,7 @@ export function CharacterEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
+  const moondreamAvailable = useMoondreamAvailability();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const data = charactersQuery.data ?? [];
@@ -84,6 +88,8 @@ export function CharacterEditorPage() {
   const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
   const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
+  const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
+  const [autoLabelTask, setAutoLabelTask] = useState<TaskSnapshot<ImageAutoLabelResult> | null>(null);
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
   const colorInputRef = useRef<HTMLInputElement | null>(null);
@@ -415,8 +421,36 @@ export function CharacterEditorPage() {
     },
   });
 
+  const autoLabelMutation = useMutation({
+    mutationFn: () =>
+      autoLabelCharacterSprites(currentCharacterName, {
+        onTaskUpdate: setAutoLabelTask,
+      }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("mediaAutoLabel.error"),
+        title: t("mediaAutoLabel.action"),
+      });
+    },
+    onSuccess(result) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, emotion_tags: result.tags }));
+      showToast({
+        kind: result.failedCount ? "info" : "success",
+        message: t("mediaAutoLabel.complete", {
+          annotated: result.annotatedCount,
+          failed: result.failedCount,
+          skipped: result.skippedCount,
+        }),
+        title: t("mediaAutoLabel.action"),
+      });
+    },
+  });
+
   const spriteDeleteMutation = useMutation({
-    mutationFn: ({ index, name }: { index: number; name: string }) => deleteCharacterSprite(name, index),
+    mutationFn: ({ index, name }: { draft: Character; index: number; name: string }) =>
+      deleteCharacterSprite(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -424,11 +458,24 @@ export function CharacterEditorPage() {
         title: t("common.remove"),
       });
     },
-    onSuccess(character) {
-      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+    onSuccess(character, variables) {
+      const emotionTags = removeTagRows(
+        variables.draft.emotion_tags,
+        variables.draft.sprites.length,
+        [variables.index],
+        "立绘",
+      );
+      const nextCharacter = {
+        ...character,
+        emotion_tags: emotionTags,
+        sprites: mergeSprites(character.sprites, variables.draft),
+      };
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+        current.map((item) => (item.name === nextCharacter.name ? nextCharacter : item)),
+      );
       setDraft((current) => ({
         ...current,
-        emotion_tags: character.emotion_tags,
+        emotion_tags: removeTagRows(current.emotion_tags, current.sprites.length, [variables.index], "立绘"),
         sprites: mergeSprites(character.sprites, current),
       }));
       showToast({ kind: "success", title: t("common.remove") });
@@ -616,7 +663,7 @@ export function CharacterEditorPage() {
       return;
     }
     if (target.kind === "sprite") {
-      spriteDeleteMutation.mutate({ index: target.index, name: target.characterName });
+      spriteDeleteMutation.mutate({ draft: structuredClone(draft), index: target.index, name: target.characterName });
       return;
     }
     if (target.kind === "all-sprites") {
@@ -917,10 +964,18 @@ export function CharacterEditorPage() {
         />
 
         <CharacterSpritesSection
+          autoLabelAvailable={moondreamAvailable}
+          autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
+          autoLabelPending={autoLabelMutation.isPending}
           draft={draft}
           emotionTagsPending={emotionTagsMutation.isPending}
           id="character-sprites"
           onClearSprites={requestClearSprites}
+          onAutoLabel={() => {
+            setAutoLabelTask(null);
+            setAutoLabelDialogOpen(true);
+            autoLabelMutation.mutate();
+          }}
           onOpenBulkTags={openBulkSpriteTagsDialog}
           onPendingSpritePathsChange={setPendingSpritePaths}
           onPendingVoicePathChange={updatePendingVoicePath}
@@ -1038,6 +1093,13 @@ export function CharacterEditorPage() {
         result={memoryImportController.result}
         task={memoryImportController.task}
         taskOpen={memoryImportController.taskOpen}
+      />
+      <MediaAutoLabelProgressDialog
+        onClose={() => setAutoLabelDialogOpen(false)}
+        open={autoLabelDialogOpen}
+        pending={autoLabelMutation.isPending}
+        result={autoLabelMutation.data ?? null}
+        task={autoLabelTask}
       />
     </div>
   );

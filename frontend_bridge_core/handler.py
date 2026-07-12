@@ -101,6 +101,10 @@ from frontend_bridge_core.model_assets import (
 from frontend_bridge_core.config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
 from frontend_bridge_core.logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
 from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
+from frontend_bridge_core.image_annotations import (
+    run_background_image_auto_label,
+    run_character_sprite_auto_label,
+)
 from frontend_bridge_core.mcp import (
     _mcp_config_response,
     _open_mcp_config_file,
@@ -750,6 +754,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_upload_sprite_voice(self.state, body))
             elif method == "POST" and path == "/api/characters/sprites/upload":
                 self._send_json(_upload_character_sprites(self.state, body))
+            elif method == "POST" and path == "/api/characters/sprites/auto-label":
+                name = str(body.get("name") or "").strip()
+                if not name:
+                    raise ValueError("角色名称不能为空")
+                self._enqueue_background_task(
+                    kind="moondream-character-auto-label",
+                    title=f"标注 {name} 的角色立绘",
+                    message="Moondream 图片标注任务已排队。",
+                    worker=lambda task_id: run_character_sprite_auto_label(self.state, task_id, name),
+                )
             elif method == "POST" and path == "/api/characters/emotion-tags":
                 self._send_json(_save_character_emotion_tags(self.state, body))
             elif method == "POST" and path == "/api/characters/sprites/delete":
@@ -809,6 +823,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_translate_background_fields(self.state, body))
             elif method == "POST" and path == "/api/backgrounds/images/upload":
                 self._send_json(_upload_background_images(self.state, body))
+            elif method == "POST" and path == "/api/backgrounds/images/auto-label":
+                name = str(body.get("name") or "").strip()
+                if not name:
+                    raise ValueError("背景名称不能为空")
+                self._enqueue_background_task(
+                    kind="moondream-background-auto-label",
+                    title=f"标注 {name} 的背景图片",
+                    message="Moondream 图片标注任务已排队。",
+                    worker=lambda task_id: run_background_image_auto_label(self.state, task_id, name),
+                )
             elif method == "POST" and path == "/api/backgrounds/bgm/upload":
                 self._send_json(_upload_background_bgm(self.state, body))
             elif method == "POST" and path == "/api/backgrounds/images/delete":

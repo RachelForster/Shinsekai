@@ -37,6 +37,7 @@ import type {
   LogSnapshot,
   LlmModelOption,
   LlmConnectionTestResult,
+  ImageAutoLabelResult,
   McpConfig,
   McpToolPreview,
   ModelAssetDownloadResult,
@@ -397,6 +398,14 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
     backgrounds: {
       delete: async (name) => {
         await requestJson(apiBase, `/api/backgrounds/${encodePath(name)}`, { method: "DELETE" });
+      },
+      autoLabelImages: async (name, options) => {
+        const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>(
+          apiBase,
+          "/api/backgrounds/images/auto-label",
+          { body: JSON.stringify({ name }), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
       },
       deleteAllBgm: (name) =>
         requestJson<Background>(apiBase, "/api/backgrounds/bgm/delete-all", {
@@ -777,6 +786,14 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      autoLabelSprites: async (name, options) => {
+        const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>(
+          apiBase,
+          "/api/characters/sprites/auto-label",
+          { body: JSON.stringify({ name }), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
       delete: async (name) => {
         await requestJson(apiBase, `/api/characters/${encodePath(name)}`, { method: "DELETE" });
       },
