@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from queue import Queue
 from types import SimpleNamespace
@@ -47,17 +48,31 @@ def test_find_character_sprite_by_path_matches_relative_and_absolute(tmp_path, m
     ) == ("七海千秋", 0)
 
 
-def test_find_character_sprite_by_path_normalizes_case_and_slashes(tmp_path, monkeypatch):
+def test_find_character_sprite_by_path_uses_host_case_semantics_and_normalizes_slashes(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     character = SimpleNamespace(
         name="Nanami",
         sprites=[SimpleNamespace(path="C:/Sprites/Nanami/Idle.PNG")],
     )
 
-    assert find_character_sprite_by_path(
+    matched = find_character_sprite_by_path(
         _config(characters=[character]),
         "c:\\sprites\\nanami\\idle.png",
-    ) == ("Nanami", 0)
+    )
+    expected = ("Nanami", 0) if os.path.normcase("A") == os.path.normcase("a") else None
+    assert matched == expected
+
+
+def test_find_character_sprite_by_path_preserves_case_distinct_files_on_sensitive_hosts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    characters = [
+        SimpleNamespace(name="Upper", sprites=[SimpleNamespace(path="sprites/Face.png")]),
+        SimpleNamespace(name="Lower", sprites=[SimpleNamespace(path="sprites/face.png")]),
+    ]
+
+    matched = find_character_sprite_by_path(_config(characters=characters), "sprites/face.png")
+    expected = ("Upper", 0) if os.path.normcase("A") == os.path.normcase("a") else ("Lower", 0)
+    assert matched == expected
 
 
 def test_display_initial_sprite_prefers_character_sprite_index(tmp_path, monkeypatch):
@@ -132,7 +147,13 @@ def test_initial_sprite_path_preserves_selected_or_custom_sprite(tmp_path, monke
     [
         ("", ["Nanami"], "C:/Sprites/Nanami/Idle.PNG"),
         ("c:\\sprites\\nanami\\idle.png", ["Nanami"], "c:\\sprites\\nanami\\idle.png"),
-        ("C:/SPRITES/JUNKO/IDLE.png", ["Nanami"], "C:/Sprites/Nanami/Idle.PNG"),
+        (
+            "C:/SPRITES/JUNKO/IDLE.png",
+            ["Nanami"],
+            "C:/Sprites/Nanami/Idle.PNG"
+            if os.path.normcase("A") == os.path.normcase("a")
+            else "C:/SPRITES/JUNKO/IDLE.png",
+        ),
         ("C:/Sprites/Junko/Idle.PNG", ["Junko"], "C:/Sprites/Junko/Idle.PNG"),
         ("D:/external/custom.png", ["Nanami"], "D:/external/custom.png"),
         ("C:/Sprites/Nanami/Idle.PNG", [], ""),

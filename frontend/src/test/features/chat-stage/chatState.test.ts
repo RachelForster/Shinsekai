@@ -24,6 +24,64 @@ describe("chatStageReducer", () => {
     expect(state.status).toBe("generating");
   });
 
+  it("rolls an optimistic option submission back to the previous presentation", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "Choose",
+        options: ["Left", "Right"],
+      },
+      { source: "submit-option", text: "Left", type: "submitUserMessage" },
+    );
+
+    const restored = chatStageReducer(submitted, {
+      source: "submit-option",
+      type: "rollbackUserSubmission",
+    });
+
+    expect(restored.characterName).toBe("Mio");
+    expect(restored.dialogText).toBe("Choose");
+    expect(restored.options).toEqual(["Left", "Right"]);
+    expect(restored.status).toBe("idle");
+    expect(restored.optimisticSubmission).toBeUndefined();
+  });
+
+  it("does not roll back a submission after a newer authoritative event", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        dialogText: "Choose",
+        eventSeq: 1,
+        options: ["Left", "Right"],
+      },
+      { source: "submit-option", text: "Left", type: "submitUserMessage" },
+    );
+    const replied = chatStageReducer(submitted, {
+      event: {
+        color: "#fff",
+        fullHtml: "<p>Accepted</p>",
+        isSystem: false,
+        seq: 2,
+        speaker: "Mio",
+        ts: 2,
+        type: "dialog.end",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    const lateRollback = chatStageReducer(replied, {
+      source: "submit-option",
+      type: "rollbackUserSubmission",
+    });
+
+    expect(lateRollback.characterName).toBe("Mio");
+    expect(lateRollback.dialogText).toBe("Accepted");
+    expect(lateRollback.options).toEqual([]);
+    expect(lateRollback.optimisticSubmission).toBeUndefined();
+  });
+
   it("hydrates runtime snapshots from platform events", () => {
     const state = chatStageReducer(emptyChatState, {
       snapshot: {

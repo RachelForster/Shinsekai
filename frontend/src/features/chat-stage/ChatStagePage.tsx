@@ -185,12 +185,12 @@ export function ChatStagePage() {
     if (!text) {
       return;
     }
-    dispatch({ text, type: "submitUserMessage" });
+    dispatch({ source: "send-message", text, type: "submitUserMessage" });
     void sendCommand({ payload: text, type: "send-message" });
   };
 
   const submitOption = (option: string) => {
-    dispatch({ text: option, type: "submitUserMessage" });
+    dispatch({ source: "submit-option", text: option, type: "submitUserMessage" });
     void sendCommand({ payload: option, type: "submit-option" });
   };
 

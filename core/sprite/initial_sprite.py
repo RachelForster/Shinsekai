@@ -30,8 +30,8 @@ def resolve_runtime_path(raw_path: str) -> Path:
 
 
 def _sprite_path_key(raw_path: str) -> str:
-    """Normalize path identity consistently across host platforms and locales."""
-    return os.path.normcase(str(resolve_runtime_path(raw_path))).replace("\\", "/").casefold()
+    """Normalize path identity using the host filesystem's case semantics."""
+    return os.path.normcase(str(resolve_runtime_path(raw_path))).replace("\\", "/")
 
 
 def find_character_sprite_by_path(

@@ -1,7 +1,7 @@
 import type { Character } from "../../shared/platform/types";
 
 function normalizedSpritePath(path: string) {
-  return path.trim().replaceAll("\\", "/").toLowerCase();
+  return path.trim().replaceAll("\\", "/");
 }
 
 export function initialSpriteOwner(path: string, characters: Array<Pick<Character, "name" | "sprites">>) {

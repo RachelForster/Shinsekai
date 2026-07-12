@@ -291,22 +291,21 @@ describe("ChatStagePage", () => {
     });
   });
 
-  it("keeps the selected option visible as the local message when its command fails", async () => {
+  it("restores the options when an optimistic option command fails", async () => {
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
     mocks.sendChatCommand.mockRejectedValueOnce(new Error("option offline"));
     renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "Take the shortcut" }));
 
-    expect(screen.queryByRole("button", { name: "Take the shortcut" })).not.toBeInTheDocument();
-    expect(screen.getByText("Aoi")).toBeInTheDocument();
-    expect(screen.getByText("Take the shortcut")).toBeInTheDocument();
     expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
     expect(mocks.sendChatCommand).toHaveBeenCalledWith({
       payload: "Take the shortcut",
       type: "submit-option",
     });
     expect(await screen.findByText("option offline")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Take the shortcut" })).toBeInTheDocument();
+    expect(screen.queryByText("Aoi")).not.toBeInTheDocument();
     expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("idle");
   });
 
@@ -367,6 +366,7 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(input).toHaveValue("retry me"));
+    expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
     expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "retry me", type: "send-message" });
     expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("idle");

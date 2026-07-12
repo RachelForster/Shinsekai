@@ -10,8 +10,8 @@ const characters = [
 describe("initial sprite selection", () => {
   it.each([
     {
-      expected: "c:\\sprites\\nanami\\idle.png",
-      path: " c:\\sprites\\nanami\\idle.png ",
+      expected: "C:\\Sprites\\Nanami\\Idle.PNG",
+      path: " C:\\Sprites\\Nanami\\Idle.PNG ",
       preserveUnknown: true,
       selectedCharacters: ["Nanami"],
     },
@@ -42,6 +42,30 @@ describe("initial sprite selection", () => {
     { expected: "", path: "   ", preserveUnknown: true, selectedCharacters: ["Nanami"] },
   ])("normalizes compatible paths without changing the retained value", (testCase) => {
     expect(compatibleInitialSpritePath({ characters, ...testCase })).toBe(testCase.expected);
+  });
+
+  it("keeps case-distinct sprite paths assigned to their exact owners", () => {
+    const caseDistinctCharacters = [
+      { name: "Upper", sprites: [{ path: "sprites/Hero.png" }] },
+      { name: "Lower", sprites: [{ path: "sprites/hero.png" }] },
+    ];
+
+    expect(initialSpriteOwner("sprites/Hero.png", caseDistinctCharacters)).toBe("Upper");
+    expect(initialSpriteOwner("sprites/hero.png", caseDistinctCharacters)).toBe("Lower");
+    expect(
+      compatibleInitialSpritePath({
+        characters: caseDistinctCharacters,
+        path: "sprites/hero.png",
+        selectedCharacters: ["Lower"],
+      }),
+    ).toBe("sprites/hero.png");
+    expect(
+      compatibleInitialSpritePath({
+        characters: caseDistinctCharacters,
+        path: "sprites/hero.png",
+        selectedCharacters: ["Upper"],
+      }),
+    ).toBe("");
   });
 
   it("handles empty and malformed character collections without matching an owner", () => {
