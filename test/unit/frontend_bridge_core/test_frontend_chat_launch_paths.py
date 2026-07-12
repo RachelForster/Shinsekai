@@ -69,9 +69,11 @@ class _DummyClosableProcess:
 
 
 class _ChatStreamForClose:
-    def __init__(self):
+    def __init__(self, process=None):
         self.closed = []
+        self.commands = []
         self.deleted = []
+        self.process = process
         self.snapshot = {
             "dialogText": "",
             "eventSeq": 3,
@@ -94,6 +96,12 @@ class _ChatStreamForClose:
         self.snapshot["notificationText"] = reason
         self.snapshot["sessionClosedReason"] = reason
         self.snapshot["status"] = "idle"
+
+    def send_command(self, session_id: str, command: dict):
+        self.commands.append((session_id, command))
+        if self.process is not None and command.get("type") == "close-session":
+            self.process.running = False
+        return True
 
     def delete_session(self, session_id: str):
         self.deleted.append(session_id)
@@ -303,9 +311,9 @@ def test_runtime_dependency_error_maps_opencc_package():
     }
 
 
-def test_close_chat_sends_sigint_and_marks_runtime_session_closed(monkeypatch):
+def test_close_chat_requests_graceful_runtime_shutdown_and_marks_session_closed(monkeypatch):
     process = _DummyClosableProcess()
-    chat_stream = _ChatStreamForClose()
+    chat_stream = _ChatStreamForClose(process)
     monkeypatch.setattr(chat, "_main_chat_process", process)
 
     state = SimpleNamespace(
@@ -316,7 +324,10 @@ def test_close_chat_sends_sigint_and_marks_runtime_session_closed(monkeypatch):
 
     snapshot = chat._close_chat(state)
 
-    assert process.signals == [signal.SIGINT]
+    assert process.signals == []
+    assert chat_stream.commands[0][0] == "session-1"
+    assert chat_stream.commands[0][1]["type"] == "close-session"
+    assert isinstance(chat_stream.commands[0][1]["cmdId"], str)
     assert chat_stream.closed == [("session-1", "聊天会话已结束。")]
     assert chat_stream.deleted == ["session-1"]
     assert state.chat_session["sessionId"] == ""

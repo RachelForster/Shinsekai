@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const desktopMocks = vi.hoisted(() => ({
-  closeDesktopWindow: vi.fn(),
+  destroyDesktopChatWindow: vi.fn(),
+  hideDesktopWindow: vi.fn(),
   isTauriDesktop: vi.fn(),
   openDesktopChatWindow: vi.fn(),
 }));
 
 vi.mock("../../../shared/desktop/desktopApi", () => ({
-  closeDesktopWindow: desktopMocks.closeDesktopWindow,
+  destroyDesktopChatWindow: desktopMocks.destroyDesktopChatWindow,
+  hideDesktopWindow: desktopMocks.hideDesktopWindow,
   isTauriDesktop: desktopMocks.isTauriDesktop,
   openDesktopChatWindow: desktopMocks.openDesktopChatWindow,
 }));
@@ -62,26 +64,39 @@ describe("showChatSurface", () => {
     expect(window.location.hash).toBe("");
   });
 
-  it("closes the React runtime before the dedicated desktop chat window", async () => {
+  it("hides the dedicated desktop chat window before closing the runtime, then destroys it", async () => {
     desktopMocks.isTauriDesktop.mockReturnValue(true);
     const order: string[] = [];
-    const closeRuntime = vi.fn().mockImplementation(async () => {
-      order.push("runtime");
+    let resolveClose: () => void = () => {};
+    const closeRuntime = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          order.push("runtime-started");
+          resolveClose = resolve;
+        }),
+    );
+    desktopMocks.hideDesktopWindow.mockImplementation(async () => {
+      order.push("window-hidden");
     });
-    desktopMocks.closeDesktopWindow.mockImplementation(async () => {
-      order.push("window");
+    desktopMocks.destroyDesktopChatWindow.mockImplementation(async () => {
+      order.push("window-destroyed");
     });
     const navigate = vi.fn();
 
-    await closeChatSurface({
+    const closePromise = closeChatSurface({
       closeRuntime,
       navigate,
       snapshot: { runtimeMode: "react", sessionId: "session-1", wsUrl: "ws://127.0.0.1:8788/ws" },
     });
 
-    expect(closeRuntime).toHaveBeenCalledTimes(1);
-    expect(desktopMocks.closeDesktopWindow).toHaveBeenCalledTimes(1);
-    expect(order).toEqual(["runtime", "window"]);
+    await vi.waitFor(() => expect(closeRuntime).toHaveBeenCalledTimes(1));
+    expect(desktopMocks.hideDesktopWindow).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["window-hidden", "runtime-started"]);
+    expect(desktopMocks.destroyDesktopChatWindow).not.toHaveBeenCalled();
+    resolveClose();
+    await closePromise;
+    expect(desktopMocks.destroyDesktopChatWindow).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["window-hidden", "runtime-started", "window-destroyed"]);
     expect(navigate).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("");
   });

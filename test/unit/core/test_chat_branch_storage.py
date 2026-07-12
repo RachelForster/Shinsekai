@@ -10,6 +10,7 @@ from core.sprite.chat_branch_storage import (
     chat_history_active_path,
     chat_history_branch_tree_path,
     load_branch_state,
+    reconcile_active_branch_state,
     remove_chat_history_storage,
     save_branch_state,
 )
@@ -18,6 +19,52 @@ from frontend_bridge_core.templates import _latest_history_json
 
 
 class ChatBranchStorageTests(unittest.TestCase):
+    def test_reconcile_prefers_recovered_active_history_over_stale_branch_payload(self):
+        branch_state = {
+            "active": "main",
+            "branches": {
+                "main": {
+                    "id": "main",
+                    "history": ["Mio: stale"],
+                    "messages": [{"role": "assistant", "content": "stale"}],
+                }
+            },
+        }
+        recovered_messages = [
+            {"role": "user", "content": "latest question"},
+            {"role": "assistant", "content": "latest answer"},
+        ]
+        recovered_history = ["Aoi: latest question", "Mio: latest answer"]
+
+        messages, history = reconcile_active_branch_state(
+            branch_state,
+            recovered_messages,
+            recovered_history,
+        )
+
+        self.assertEqual(messages, recovered_messages)
+        self.assertEqual(history, recovered_history)
+        self.assertEqual(branch_state["branches"]["main"]["messages"], recovered_messages)
+        self.assertEqual(branch_state["branches"]["main"]["history"], recovered_history)
+
+    def test_reconcile_uses_branch_payload_when_active_history_is_empty(self):
+        branch_messages = [{"role": "assistant", "content": "restored"}]
+        branch_history = ["Mio: restored"]
+        branch_state = {
+            "active": "branch-2",
+            "branches": {
+                "branch-2": {
+                    "id": "branch-2",
+                    "history": branch_history,
+                    "messages": branch_messages,
+                }
+            },
+        }
+
+        messages, history = reconcile_active_branch_state(branch_state, [], [])
+
+        self.assertEqual(messages, branch_messages)
+        self.assertEqual(history, branch_history)
     def test_non_existing_json_path_maps_to_session_folder(self):
         path = Path("data/chat_history/session.json")
 

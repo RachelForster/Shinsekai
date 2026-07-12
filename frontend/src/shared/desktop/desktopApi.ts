@@ -368,6 +368,14 @@ export function minimizeDesktopWindow() {
   return invokeDesktop<void>("desktop_window_minimize");
 }
 
+export function hideDesktopWindow() {
+  return invokeDesktop<void>("desktop_window_hide");
+}
+
+export function destroyDesktopChatWindow() {
+  return invokeDesktop<void>("desktop_chat_window_destroy");
+}
+
 export function toggleMaximizeDesktopWindow() {
   return invokeDesktop<void>("desktop_window_toggle_maximize");
 }

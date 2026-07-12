@@ -19,6 +19,8 @@ import {
   checkDesktopUpdate,
   getDesktopProjectRootStatus,
   getDesktopRuntimeState,
+  hideDesktopWindow,
+  destroyDesktopChatWindow,
   installDesktopRuntimeProfile,
   installDesktopUpdate,
   isTauriDesktop,
@@ -115,6 +117,8 @@ describe("desktop API environment detection", () => {
     await repairDesktopRuntime("install-runtime", "installRuntimeDeps");
     await installDesktopRuntimeProfile("local-ai");
     await browseDesktopFiles({ path: "/tmp", showHidden: true });
+    await hideDesktopWindow();
+    await destroyDesktopChatWindow();
     await minimizeDesktopWindow();
     await toggleMaximizeDesktopWindow();
     await startDesktopWindowDrag();
@@ -129,6 +133,8 @@ describe("desktop API environment detection", () => {
     });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_install_profile", { profile: "local-ai" });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", { path: "/tmp", showHidden: true });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_window_hide", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_chat_window_destroy", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_minimize", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_toggle_maximize", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_start_drag", undefined);
