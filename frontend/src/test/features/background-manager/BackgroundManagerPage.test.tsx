@@ -416,14 +416,22 @@ describe("BackgroundManagerPage", () => {
   });
 
   it("confirms image, bgm, and background deletion actions", async () => {
-    mockListBackgrounds.mockResolvedValue([
-      {
-        ...structuredClone(background),
-        bgm_list: ["D:/backgrounds/school/theme.mp3", "D:/backgrounds/school/rain.mp3"],
-        bgm_tags: "Music 1: calm\nMusic 2: rainy\n",
-        sprites: [{ path: "D:/backgrounds/school/classroom.png" }, { path: "D:/backgrounds/school/hall.png" }],
-      },
-    ]);
+    const backgroundWithAssets = {
+      ...structuredClone(background),
+      bgm_list: ["D:/backgrounds/school/theme.mp3", "D:/backgrounds/school/rain.mp3"],
+      bgm_tags: "Music 1: calm\nMusic 2: rainy\n",
+      sprites: [{ path: "D:/backgrounds/school/classroom.png" }, { path: "D:/backgrounds/school/hall.png" }],
+    };
+    mockListBackgrounds.mockResolvedValue([backgroundWithAssets]);
+    mockDeleteBackgroundImage.mockResolvedValue({
+      ...backgroundWithAssets,
+      sprites: [{ path: "D:/backgrounds/school/hall.png" }],
+    });
+    mockDeleteAllBackgroundImages.mockResolvedValue({
+      ...backgroundWithAssets,
+      bg_tags: "",
+      sprites: [],
+    });
     renderPage();
 
     await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("School"));
@@ -439,7 +447,7 @@ describe("BackgroundManagerPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(mockDeleteAllBackgroundImages).toHaveBeenCalledWith("School"));
 
-    fireEvent.click(screen.getByLabelText("Select 1"));
+    fireEvent.click(await screen.findByLabelText("Select 1"));
     fireEvent.click(screen.getByRole("button", { name: "Delete selected BGM" }));
     dialog = screen.getByRole("dialog", { name: "Delete selected BGM" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
