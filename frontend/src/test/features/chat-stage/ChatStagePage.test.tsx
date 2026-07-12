@@ -890,6 +890,8 @@ describe("ChatStagePage", () => {
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
       config: {
         auto: false,
+        autoHideInput: true,
+        autoHideTopTools: true,
         configThemeColor: "#88cc44",
         configUseMainThemeColor: false,
         dialogText: {
@@ -911,6 +913,7 @@ describe("ChatStagePage", () => {
         },
         dialogOpacity: 0.55,
         dialogScale: 1.05,
+        immersiveMode: false,
         longPressTalk: false,
         nameText: {
           bold: false,
@@ -930,6 +933,124 @@ describe("ChatStagePage", () => {
       },
       version: chatStageRuntimeConfigVersion,
     });
+  });
+
+  it("auto-hides top tools and input controls through independent immersive settings", async () => {
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = screen.getByRole("dialog", { name: "Chat appearance settings" });
+    const immersiveMode = within(config).getByLabelText("Immersive mode");
+    const autoHideTopTools = within(config).getByLabelText("Auto-hide top-right tools");
+    const autoHideInput = within(config).getByLabelText("Auto-hide input controls");
+    const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
+    const inputLayer = document.querySelector(".input-layer") as HTMLElement;
+
+    expect(immersiveMode).not.toBeChecked();
+    expect(autoHideTopTools).toBeChecked();
+    expect(autoHideInput).toBeChecked();
+    expect(autoHideTopTools).toBeDisabled();
+    expect(autoHideInput).toBeDisabled();
+    expect(topTools).toHaveAttribute("data-auto-hide", "false");
+    expect(inputLayer).toHaveAttribute("data-auto-hide", "false");
+
+    vi.useFakeTimers();
+    fireEvent.click(immersiveMode);
+
+    expect(autoHideTopTools).not.toBeDisabled();
+    expect(autoHideInput).not.toBeDisabled();
+    expect(topTools).toHaveAttribute("data-auto-hide", "true");
+    expect(inputLayer).toHaveAttribute("data-auto-hide", "true");
+
+    act(() => vi.advanceTimersByTime(600));
+    expect(topTools).toHaveAttribute("data-visible", "false");
+    expect(inputLayer).toHaveAttribute("data-visible", "false");
+    expect(getComputedStyle(topTools).pointerEvents).toBe("none");
+    expect(getComputedStyle(inputLayer).pointerEvents).toBe("none");
+
+    fireEvent.pointerEnter(topTools);
+    fireEvent.pointerEnter(inputLayer);
+    expect(topTools).toHaveAttribute("data-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+
+    fireEvent.pointerLeave(topTools);
+    act(() => vi.advanceTimersByTime(599));
+    expect(topTools).toHaveAttribute("data-visible", "true");
+    act(() => vi.advanceTimersByTime(1));
+    expect(topTools).toHaveAttribute("data-visible", "false");
+
+    const textInput = screen.getByPlaceholderText("Enter dialogue");
+    fireEvent.focus(textInput);
+    fireEvent.pointerLeave(inputLayer);
+    act(() => vi.advanceTimersByTime(600));
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+    fireEvent.blur(textInput);
+    act(() => vi.advanceTimersByTime(600));
+    expect(inputLayer).toHaveAttribute("data-visible", "false");
+
+    fireEvent.change(textInput, { target: { value: "pending" } });
+    act(() => vi.advanceTimersByTime(600));
+    expect(inputLayer).toHaveAttribute("data-force-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+
+    fireEvent.click(autoHideTopTools);
+    expect(topTools).toHaveAttribute("data-auto-hide", "false");
+    expect(topTools).toHaveAttribute("data-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-auto-hide", "true");
+  });
+
+  it("keeps an immersive pill input visible while its action panel or microphone is active", async () => {
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: new () => {
+        abort: () => void;
+        continuous: boolean;
+        interimResults: boolean;
+        lang: string;
+        onend: (() => void) | null;
+        onerror: (() => void) | null;
+        onresult: (() => void) | null;
+        start: () => void;
+        stop: () => void;
+      };
+    };
+    speechWindow.SpeechRecognition = class {
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      onend = null;
+      onerror = null;
+      onresult = null;
+      abort() {}
+      start() {}
+      stop() {}
+    };
+    themeContextMocks.optional = {
+      resolved: { typewriter: { cps: 32 } },
+      style: { "--chat-input-layout": "pill" } as CSSProperties,
+    };
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({ autoHideInput: true, immersiveMode: true }),
+    );
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    const inputLayer = document.querySelector(".input-layer") as HTMLElement;
+    fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
+    expect(inputLayer).toHaveAttribute("data-panel-open", "true");
+    expect(inputLayer).toHaveAttribute("data-force-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start microphone" }));
+    expect(inputLayer).toHaveAttribute("data-listening", "true");
+    expect(inputLayer).toHaveAttribute("data-force-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop microphone" }));
+    delete speechWindow.SpeechRecognition;
   });
 
   it("resolves theme text defaults for config controls", () => {

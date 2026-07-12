@@ -11,8 +11,10 @@ import {
   type BrowserSpeechRecognition,
 } from "../speechRecognition";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
+import { useAutoHideRegion } from "../hooks/useAutoHideRegion";
 
 export function InputLayer({
+  autoHide = false,
   asrPaused,
   disabled,
   hidden,
@@ -24,6 +26,7 @@ export function InputLayer({
   value,
 }: {
   asrPaused: boolean;
+  autoHide?: boolean;
   disabled: boolean;
   hidden: boolean;
   inputLayout?: "default" | "pill";
@@ -47,6 +50,8 @@ export function InputLayer({
   const pressToTalk = pillLayout && longPressTalkEnabled;
   const canSubmit = Boolean(value.trim()) && !disabled;
   const closePanel = useCallback(() => setPanelOpen(false), []);
+  const forceVisible = Boolean(value.trim()) || listening || panelOpen || holdTalkActive;
+  const autoHideRegion = useAutoHideRegion({ enabled: autoHide, forceVisible });
 
   useEffect(() => {
     valueRef.current = value;
@@ -187,10 +192,18 @@ export function InputLayer({
     <div
       ref={rootRef}
       className="input-layer"
+      data-auto-hide={autoHide ? "true" : "false"}
       data-chat-stage-hitbox="true"
+      data-force-visible={forceVisible ? "true" : "false"}
       data-layout={inputLayout}
       data-listening={listening ? "true" : "false"}
       data-panel-open={panelOpen ? "true" : "false"}
+      data-visible={autoHideRegion.visible ? "true" : "false"}
+      onBlurCapture={autoHideRegion.handleBlur}
+      onFocusCapture={autoHideRegion.handleFocus}
+      onPointerEnter={autoHideRegion.show}
+      onPointerLeave={autoHideRegion.scheduleHide}
+      style={autoHideRegion.visible ? undefined : { pointerEvents: "none" }}
     >
       {pillLayout ? (
         <IconButton

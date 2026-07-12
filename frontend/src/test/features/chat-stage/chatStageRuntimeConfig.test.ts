@@ -4,6 +4,7 @@ import {
   chatStageRuntimeConfigVersion,
   defaultChatStageRuntimeConfig,
   normalizeChatStageRuntimeConfig,
+  readChatStageRuntimeConfig,
 } from "../../../features/chat-stage/runtimeConfig";
 
 describe("chat stage runtime config", () => {
@@ -36,17 +37,31 @@ describe("chat stage runtime config", () => {
     expect(
       normalizeChatStageRuntimeConfig({
         config: {
+          autoHideInput: false,
+          autoHideTopTools: false,
           configThemeColor: "#123abc",
           configUseMainThemeColor: false,
           dialogScale: 1.1,
+          immersiveMode: true,
         },
         version: chatStageRuntimeConfigVersion,
       }),
     ).toEqual({
       ...defaultChatStageRuntimeConfig,
+      autoHideInput: false,
+      autoHideTopTools: false,
       configThemeColor: "#123abc",
       configUseMainThemeColor: false,
       dialogScale: 1.1,
+      immersiveMode: true,
     });
+  });
+
+  it("falls back safely when persisted JSON is malformed", () => {
+    window.localStorage.setItem("shinsekai-chat-stage-runtime-config", "{not-json");
+
+    expect(readChatStageRuntimeConfig()).toEqual(defaultChatStageRuntimeConfig);
+
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
   });
 });

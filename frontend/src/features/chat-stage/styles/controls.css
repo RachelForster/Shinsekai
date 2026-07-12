@@ -32,6 +32,22 @@
   backdrop-filter: blur(22px) saturate(1.22);
   isolation: isolate;
   pointer-events: auto;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.top-stage-tools[data-auto-hide="true"][data-visible="false"] {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+}
+
+.top-stage-tools[data-auto-hide="true"][data-visible="false"]::before {
+  position: absolute;
+  inset: -18px;
+  content: "";
+  pointer-events: auto;
 }
 
 .top-stage-tools[data-standalone-desktop="true"] {
@@ -477,4 +493,14 @@
 .dialog-stage-controls__button--danger:hover:not(:disabled) {
   border-color: var(--color-danger-border-strong, rgba(237, 122, 134, 0.65));
   color: var(--color-danger, #ed7a86);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .top-stage-tools[data-auto-hide="true"] {
+    transition-duration: 0.01ms;
+  }
+
+  .top-stage-tools[data-auto-hide="true"][data-visible="false"] {
+    transform: none;
+  }
 }

@@ -93,6 +93,8 @@ const dialogFillGradientDirectionOptions: Array<{
 ];
 
 export function ChatConfigDialog({
+  autoHideInput,
+  autoHideTopTools,
   configThemeColor,
   configUseMainThemeColor,
   dialogOpacity,
@@ -101,11 +103,14 @@ export function ChatConfigDialog({
   dialogText,
   effectiveDialogText,
   effectiveNameText,
+  immersiveMode,
   mainThemeColor,
   nameText,
   longPressTalk,
   longPressTalkAvailable,
   longPressTalkVisible = false,
+  onAutoHideInputChange,
+  onAutoHideTopToolsChange,
   onConfigThemeColorChange,
   onConfigUseMainThemeColorChange,
   onClose,
@@ -113,6 +118,7 @@ export function ChatConfigDialog({
   onDialogOpacityChange,
   onDialogFillChange,
   onDialogScaleChange,
+  onImmersiveModeChange,
   onLongPressTalkChange,
   onSpriteOffsetXChange,
   onSpriteOffsetYChange,
@@ -129,6 +135,8 @@ export function ChatConfigDialog({
   voiceLanguage,
   windowScale,
 }: {
+  autoHideInput: boolean;
+  autoHideTopTools: boolean;
   configThemeColor: string;
   configUseMainThemeColor: boolean;
   dialogOpacity: number;
@@ -137,11 +145,14 @@ export function ChatConfigDialog({
   dialogText: ChatStageTextStyleConfig;
   effectiveDialogText?: ChatStageTextStyleConfig;
   effectiveNameText?: ChatStageTextStyleConfig;
+  immersiveMode: boolean;
   mainThemeColor: string;
   nameText: ChatStageTextStyleConfig;
   longPressTalk: boolean;
   longPressTalkAvailable: boolean;
   longPressTalkVisible?: boolean;
+  onAutoHideInputChange: (value: boolean) => void;
+  onAutoHideTopToolsChange: (value: boolean) => void;
   onConfigThemeColorChange: (value: string) => void;
   onConfigUseMainThemeColorChange: (value: boolean) => void;
   onClose: () => void;
@@ -149,6 +160,7 @@ export function ChatConfigDialog({
   onDialogOpacityChange: (value: number) => void;
   onDialogFillChange: (patch: ChatStageDialogFillPatch) => void;
   onDialogScaleChange: (value: number) => void;
+  onImmersiveModeChange: (value: boolean) => void;
   onLongPressTalkChange: (value: boolean) => void;
   onSpriteOffsetXChange: (value: number) => void;
   onSpriteOffsetYChange: (value: number) => void;
@@ -287,6 +299,41 @@ export function ChatConfigDialog({
               onChange={(event) => onConfigUseMainThemeColorChange(event.target.checked)}
             />
           </div>
+        </section>
+        <section className="chat-config-dialog__section">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionImmersive")}</h3>
+          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <span className="chat-config-dialog__label">{t("chat.config.immersiveMode")}</span>
+            <input
+              aria-label={t("chat.config.immersiveMode")}
+              checked={immersiveMode}
+              className="chat-config-dialog__checkbox"
+              onChange={(event) => onImmersiveModeChange(event.target.checked)}
+              type="checkbox"
+            />
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <span className="chat-config-dialog__label">{t("chat.config.autoHideTopTools")}</span>
+            <input
+              aria-label={t("chat.config.autoHideTopTools")}
+              checked={autoHideTopTools}
+              className="chat-config-dialog__checkbox"
+              disabled={!immersiveMode}
+              onChange={(event) => onAutoHideTopToolsChange(event.target.checked)}
+              type="checkbox"
+            />
+          </label>
+          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <span className="chat-config-dialog__label">{t("chat.config.autoHideInput")}</span>
+            <input
+              aria-label={t("chat.config.autoHideInput")}
+              checked={autoHideInput}
+              className="chat-config-dialog__checkbox"
+              disabled={!immersiveMode}
+              onChange={(event) => onAutoHideInputChange(event.target.checked)}
+              type="checkbox"
+            />
+          </label>
         </section>
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionConversation")}</h3>
