@@ -166,20 +166,21 @@
 .input-layer__voice-stack {
   grid-column: 2;
   display: var(--chat-input-voice-stack-display);
-  width: 38px;
-  min-height: 58px;
-  grid-template-rows: repeat(2, minmax(0, 1fr));
+  width: var(--chat-input-voice-stack-width);
+  min-height: var(--chat-input-voice-stack-min-height);
+  grid-template-columns: var(--chat-input-voice-stack-template-columns);
+  grid-template-rows: var(--chat-input-voice-stack-template-rows);
   align-self: stretch;
   gap: 6px;
 }
 
 .input-layer__voice-button {
   width: 38px;
-  height: auto;
+  height: 38px;
   min-height: 0;
-  align-self: stretch;
+  align-self: center;
   border-color: rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
+  border-radius: 50%;
   color: var(--chat-input-color, #fffaf0);
   background: var(--chat-input-field-background);
 }
@@ -207,7 +208,7 @@
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 999px;
+  border-radius: 50%;
   color: var(--chat-input-color, #fff);
   background: transparent;
   box-shadow: none;

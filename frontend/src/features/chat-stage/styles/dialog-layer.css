@@ -1,7 +1,7 @@
 .dialog-stack {
   position: absolute;
   left: 50%;
-  bottom: max(16px, var(--chat-dialog-stack-bottom));
+  bottom: max(16px, var(--chat-dialog-stack-bottom), calc(var(--stage-control-stack-height) + 12px));
   z-index: 5;
   display: block;
   width: min(var(--chat-dialog-width), var(--chat-dialog-runtime-width));

@@ -107,7 +107,7 @@
     "send": {
       "background": "rgba(0,0,0,0)",
       "borderColor": "rgba(255,255,255,0)",
-      "borderRadius": "10px",
+      "borderRadius": "50%",
       "color": "#f3cf57"
     },
     "logs": {

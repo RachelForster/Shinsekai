@@ -105,7 +105,7 @@ _WINDBORNE_FALLBACK_MANIFEST: Dict[str, Any] = {
         "send": {
             "background": "rgba(0,0,0,0)",
             "borderColor": "rgba(255,255,255,0)",
-            "borderRadius": "10px",
+            "borderRadius": "50%",
             "color": "#f3cf57",
         },
         "typewriter": {"cps": 34},
@@ -140,11 +140,12 @@ _NEON_NIGHT_CITY_FALLBACK_MANIFEST: Dict[str, Any] = {
             "boxShadow": "0 0 24px rgba(0,245,255,0.2)",
             "chrome": "panel",
             "color": "#e9fbff",
+            "nameInputGapVh": 20,
         },
         "options": {
             "background": "rgba(3,12,28,0.96)",
             "borderColor": "rgba(0,245,255,0.74)",
-            "borderRadius": "4px",
+            "borderRadius": "999px",
             "color": "#e9fbff",
             "hover": {
                 "background": "rgba(255,45,163,0.9)",
@@ -158,8 +159,11 @@ _NEON_NIGHT_CITY_FALLBACK_MANIFEST: Dict[str, Any] = {
         "input": {
             "background": "rgba(2,8,20,0.96)",
             "borderColor": "rgba(0,245,255,0.72)",
-            "borderRadius": "6px",
+            "borderRadius": "999px",
             "color": "#e9fbff",
+            "fieldBackground": "transparent",
+            "fieldBorderRadius": "0px",
+            "layout": "pill",
             "maxWidthPx": 700,
             "sendPlacement": "inside",
         },

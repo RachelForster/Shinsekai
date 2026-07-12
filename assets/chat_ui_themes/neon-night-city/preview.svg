@@ -49,18 +49,27 @@
     <path d="M480 370L220 540M480 370L340 540M480 370L620 540M480 370L740 540" />
     <path d="M0 405H960M0 448H960M0 498H960" />
   </g>
-  <g transform="translate(86 326)">
-    <rect width="788" height="148" rx="6" fill="url(#panel)" stroke="#00f5ff" stroke-width="2" />
-    <rect x="1" y="1" width="786" height="146" rx="5" fill="none" stroke="#ff2da3" stroke-opacity="0.28" />
+  <g transform="translate(86 288)">
+    <rect width="788" height="140" rx="6" fill="url(#panel)" stroke="#00f5ff" stroke-width="2" />
+    <rect x="1" y="1" width="786" height="138" rx="5" fill="none" stroke="#ff2da3" stroke-opacity="0.28" />
     <path d="M0 24h92l16-16h112" fill="none" stroke="#00f5ff" stroke-width="2" filter="url(#cyanGlow)" />
-    <path d="M788 122h-92l-16 16H568" fill="none" stroke="#ff2da3" stroke-width="2" filter="url(#pinkGlow)" />
+    <path d="M788 114h-92l-16 16H568" fill="none" stroke="#ff2da3" stroke-width="2" filter="url(#pinkGlow)" />
     <rect x="26" y="-18" width="190" height="38" rx="3" fill="#12071d" stroke="#ff2da3" stroke-width="2" />
     <text x="44" y="8" fill="#ff63bb" font-family="Consolas, monospace" font-size="19" font-weight="700">// NIGHT RUNNER</text>
-    <text x="34" y="65" fill="#dffcff" font-family="Segoe UI, sans-serif" font-size="23" font-weight="600">The signal is clean. We move before sunrise.</text>
-    <text x="34" y="100" fill="#7fc8d0" font-family="Consolas, monospace" font-size="14">CHANNEL 07  ·  ENCRYPTED LINK ACTIVE</text>
-    <rect x="34" y="118" width="540" height="2" fill="#00f5ff" opacity="0.55" />
-    <rect x="600" y="102" width="154" height="28" rx="3" fill="#ff2da3" fill-opacity="0.12" stroke="#ff2da3" />
-    <text x="677" y="121" text-anchor="middle" fill="#ff8acb" font-family="Consolas, monospace" font-size="13" font-weight="700">SEND // ENTER</text>
+    <text x="34" y="62" fill="#dffcff" font-family="Segoe UI, sans-serif" font-size="23" font-weight="600">The signal is clean. We move before sunrise.</text>
+    <text x="34" y="96" fill="#7fc8d0" font-family="Consolas, monospace" font-size="14">CHANNEL 07  ·  ENCRYPTED LINK ACTIVE</text>
+    <rect x="34" y="114" width="540" height="2" fill="#00f5ff" opacity="0.55" />
+  </g>
+  <g transform="translate(180 458)">
+    <rect width="600" height="58" rx="29" fill="url(#panel)" stroke="#00f5ff" stroke-width="2" filter="url(#cyanGlow)" />
+    <rect x="2" y="2" width="596" height="54" rx="27" fill="none" stroke="#ff2da3" stroke-opacity="0.28" />
+    <circle cx="31" cy="29" r="20" fill="#00f5ff" fill-opacity="0.08" />
+    <path d="M31 17v17M24 27c0 10 14 10 14 0M31 38v5M25 43h12" fill="none" stroke="#8ffaff" stroke-linecap="round" stroke-width="2" />
+    <text x="64" y="35" fill="#8baeb7" font-family="Segoe UI, sans-serif" font-size="16">Transmit a message...</text>
+    <circle cx="521" cy="29" r="20" fill="#ff2da3" fill-opacity="0.14" />
+    <path d="M512 29h17M522 21l8 8-8 8" fill="none" stroke="#ff8acb" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" />
+    <circle cx="568" cy="29" r="20" fill="#00f5ff" fill-opacity="0.08" />
+    <path d="M568 21v16M560 29h16" stroke="#8ffaff" stroke-linecap="round" stroke-width="2.2" />
   </g>
   <text x="42" y="46" fill="#00f5ff" font-family="Consolas, monospace" font-size="18" font-weight="700" filter="url(#cyanGlow)">SHINSEKAI // NEON NIGHT CITY</text>
   <text x="42" y="70" fill="#6a95a2" font-family="Consolas, monospace" font-size="12">SYSTEM ONLINE · 02:47:16 · SECTOR 09</text>

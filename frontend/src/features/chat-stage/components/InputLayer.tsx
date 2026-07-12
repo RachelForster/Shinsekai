@@ -3,7 +3,7 @@ import { Ear, EarOff, Mic, MicOff, Plus, Send } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatCommand } from "../../../shared/platform/types";
-import { Button, IconButton, TextArea, TextInput, useToast } from "../../../shared/ui";
+import { Button, IconButton, TextInput, useToast } from "../../../shared/ui";
 import {
   appendTranscript,
   getSpeechRecognitionConstructor,
@@ -266,12 +266,13 @@ export function InputLayer({
             value={value}
           />
         ) : (
-          <TextArea
+          <TextInput
+            autoComplete="off"
             className="input-layer__input"
             disabled={disabled}
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 onSubmit();
               }

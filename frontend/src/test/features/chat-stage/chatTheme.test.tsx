@@ -369,8 +369,35 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-panel-display"]).toBe("grid");
     expect(resolved.style["--chat-input-send-display"]).toBe("none");
     expect(resolved.style["--chat-input-voice-stack-display"]).toBe("none");
+    expect(resolved.style["--chat-send-border-radius"]).toBe("50%");
     expect(resolved.style["--chat-dialog-toolbar-input-clearance"]).toBe("4px");
     expect(resolved.style["--chat-dialog-toolbar-layer-width"]).toContain("--chat-input-max-width");
+  });
+
+  it("preserves the legacy external send layout when a theme explicitly requests it", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "external-send",
+        name: { en: "External Send" },
+        tokens: {
+          input: { sendPlacement: "outside" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-input-field-display"]).toBe("contents");
+    expect(resolved.style["--chat-input-field-position"]).toBe("static");
+    expect(resolved.style["--chat-input-grid-template-columns"]).toBe("minmax(0, 1fr) 38px minmax(78px, auto)");
+    expect(resolved.style["--chat-input-textarea-padding-right"]).toBe("11px");
+    expect(resolved.style["--chat-input-voice-stack-template-columns"]).toBe("minmax(0, 1fr)");
+    expect(resolved.style["--chat-input-voice-stack-template-rows"]).toBe("repeat(2, minmax(0, 1fr))");
+    expect(resolved.style["--chat-input-voice-stack-width"]).toBe("38px");
+    expect(resolved.style["--chat-send-label-display"]).toBe("inline");
+    expect(resolved.style["--chat-send-position"]).toBe("static");
+    expect(resolved.style["--chat-send-transform"]).toBe("none");
+    expect(resolved.style["--chat-send-width"]).toBe("auto");
   });
 
   it("filters unsafe theme values while keeping safe tokens and numeric clamps", () => {

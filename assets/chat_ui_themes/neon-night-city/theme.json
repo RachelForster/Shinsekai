@@ -27,7 +27,7 @@
       "chrome": "panel",
       "color": "#e9fbff",
       "heightPx": 184,
-      "nameInputGapVh": 8,
+      "nameInputGapVh": 20,
       "offsetY": 0,
       "padding": 24,
       "textAlign": "left",
@@ -39,7 +39,7 @@
     "options": {
       "background": "linear-gradient(90deg, rgba(3,12,28,0.96), rgba(28,3,33,0.92))",
       "borderColor": "rgba(0,245,255,0.74)",
-      "borderRadius": "4px",
+      "borderRadius": "999px",
       "boxShadow": "0 0 18px rgba(0,245,255,0.16), inset 3px 0 0 rgba(255,45,163,0.8)",
       "color": "#e9fbff",
       "gap": 10,
@@ -68,12 +68,12 @@
     "input": {
       "background": "linear-gradient(135deg, rgba(2,8,20,0.96), rgba(20,3,28,0.94))",
       "borderColor": "rgba(0,245,255,0.72)",
-      "borderRadius": "6px",
+      "borderRadius": "999px",
       "boxShadow": "0 0 0 1px rgba(255,45,163,0.18), 0 0 22px rgba(0,245,255,0.18), 0 14px 38px rgba(0,0,0,0.48)",
       "color": "#e9fbff",
-      "fieldBackground": "rgba(0,5,14,0.74)",
-      "fieldBorderRadius": "3px",
-      "layout": "default",
+      "fieldBackground": "transparent",
+      "fieldBorderRadius": "0px",
+      "layout": "pill",
       "maxWidthPx": 700,
       "sendPlacement": "inside"
     },
@@ -89,7 +89,7 @@
     "send": {
       "background": "rgba(255,45,163,0.12)",
       "borderColor": "rgba(255,45,163,0.76)",
-      "borderRadius": "4px",
+      "borderRadius": "50%",
       "boxShadow": "0 0 14px rgba(255,45,163,0.28)",
       "color": "#ff63bb"
     },

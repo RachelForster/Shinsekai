@@ -534,6 +534,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--stage-input-height"] = "calc(var(--chat-input-button-size) + clamp(10px, 1.44svh, 14px))";
     style["--chat-input-border"] = "0 solid transparent";
     style["--chat-input-border-radius"] = "999px";
+    style["--chat-send-border-radius"] = "50%";
     style["--chat-input-field-background"] = "transparent";
     style["--chat-input-field-border-radius"] = "0px";
     style["--chat-input-field-display"] = "contents";
@@ -572,6 +573,33 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-send-top"] = "50%";
     style["--chat-send-transform"] = "translateY(-50%)";
     style["--chat-send-width"] = "36px";
+  }
+  if (input?.sendPlacement === "outside" && input?.layout !== "pill") {
+    style["--chat-input-field-display"] = "contents";
+    style["--chat-input-field-position"] = "static";
+    style["--chat-input-grid-template-columns"] = "minmax(0, 1fr) 38px minmax(78px, auto)";
+    style["--chat-input-textarea-padding-right"] = "11px";
+    style["--chat-input-voice-stack-min-height"] = "58px";
+    style["--chat-input-voice-stack-template-columns"] = "minmax(0, 1fr)";
+    style["--chat-input-voice-stack-template-rows"] = "repeat(2, minmax(0, 1fr))";
+    style["--chat-input-voice-stack-width"] = "38px";
+    style["--chat-send-active-transform"] = "translateY(0)";
+    style["--chat-send-border"] = "1px solid var(--chat-send-border-color, rgba(255, 255, 255, 0.55))";
+    style["--chat-send-box-shadow"] = "0 12px 28px rgba(0, 0, 0, 0.24)";
+    style["--chat-send-height"] = "auto";
+    style["--chat-send-hover-sheen"] = "linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.08))";
+    style["--chat-send-hover-transform"] = "translateY(-1px)";
+    style["--chat-send-icon-size"] = "16px";
+    style["--chat-send-label-display"] = "inline";
+    style["--chat-send-min-height"] = "auto";
+    style["--chat-send-min-width"] = "78px";
+    style["--chat-send-padding"] = "0 12px";
+    style["--chat-send-position"] = "static";
+    style["--chat-send-right"] = "auto";
+    style["--chat-send-sheen"] = "linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.04))";
+    style["--chat-send-top"] = "auto";
+    style["--chat-send-transform"] = "none";
+    style["--chat-send-width"] = "auto";
   }
 
   const toolbar = tokens.toolbar;

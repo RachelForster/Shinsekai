@@ -297,7 +297,7 @@
 .chat-stage .input-layer__quick-submit.icon-button,
 .chat-stage .input-layer__extra-toggle.icon-button {
   border-color: transparent;
-  border-radius: 999px;
+  border-radius: 50%;
   background: transparent;
   box-shadow: none;
 }

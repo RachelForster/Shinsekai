@@ -215,10 +215,11 @@ describe("ChatStagePage", () => {
     expect(fireEvent.contextMenu(screen.getByRole("button", { name: "Take the shortcut" }))).toBe(false);
   });
 
-  it("submits typed dialogue with Enter while preserving Shift+Enter for line breaks", async () => {
+  it("uses a single-line default input and submits typed dialogue with Enter", async () => {
     renderPage();
 
     const input = await screen.findByRole("textbox");
+    expect(input.tagName).toBe("INPUT");
     fireEvent.change(input, { target: { value: "  enter submit  " } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -228,14 +229,6 @@ describe("ChatStagePage", () => {
         type: "send-message",
       }),
     );
-
-    fireEvent.change(input, { target: { value: "draft line" } });
-    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
-
-    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({
-      payload: "draft line",
-      type: "send-message",
-    });
   });
 
   it("clears the draft and shows the user message before the command response arrives", async () => {

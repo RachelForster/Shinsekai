@@ -120,7 +120,11 @@ describe("browser preview platform chat themes", () => {
 
     const neonManifest = await platform.chat.getThemeManifest("neon-night-city");
     expect(neonManifest.name.zh_CN).toBe("霓虹夜城");
+    expect(neonManifest.tokens.dialog?.nameInputGapVh).toBe(20);
+    expect(neonManifest.tokens.input?.layout).toBe("pill");
     expect(neonManifest.tokens.input?.maxWidthPx).toBe(700);
+    expect(neonManifest.tokens.options?.widthPx).toBe(neonManifest.tokens.input?.maxWidthPx);
+    expect(neonManifest.tokens.send?.borderRadius).toBe("50%");
     await platform.chat.setActiveThemeId("neon-night-city");
     await expect(platform.chat.getActiveThemeId()).resolves.toBe("neon-night-city");
     await expect(platform.chat.getTheme()).resolves.toMatchObject({ themeColor: "#00f5ff" });

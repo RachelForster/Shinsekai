@@ -1,10 +1,10 @@
 @media (max-width: 860px) {
   .chat-stage {
     min-height: 560px;
-    --stage-input-height: 112px;
+    --stage-input-height: 60px;
     --stage-safe-x: 12px;
     --stage-safe-top: 12px;
-    --chat-input-grid-template-columns: minmax(0, 1fr) 38px 46px;
+    --chat-input-grid-template-columns: minmax(0, 1fr) 82px;
     --chat-input-resolved-width: min(var(--chat-input-max-width), calc(100vw - 24px));
     --chat-send-label-display: none;
     --chat-send-min-width: 46px;
@@ -16,7 +16,7 @@
   }
 
   .dialog-stack {
-    bottom: max(12px, var(--chat-dialog-stack-bottom));
+    bottom: max(12px, var(--chat-dialog-stack-bottom), calc(var(--stage-control-stack-height) + 10px));
     width: calc(100vw - 24px);
     max-width: calc(100vw - 24px);
   }
@@ -82,9 +82,9 @@
 
   .input-layer__voice-stack {
     grid-column: 2;
-    width: 38px;
-    min-width: 38px;
-    min-height: var(--chat-input-textarea-min-height);
+    width: var(--chat-input-voice-stack-width);
+    min-width: var(--chat-input-voice-stack-width);
+    min-height: var(--chat-input-voice-stack-min-height);
   }
 
   .input-layer .input-layer__send.button--primary {
