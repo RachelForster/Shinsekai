@@ -46,6 +46,7 @@ export function TopStageTools({
     <div
       className="top-stage-tools"
       data-chat-stage-hitbox="true"
+      data-standalone-desktop={standaloneDesktopWindow ? "true" : "false"}
       data-transport-mode={transportMode}
       data-transport-state={transportState}
     >

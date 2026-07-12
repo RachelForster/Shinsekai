@@ -426,9 +426,9 @@ describe("ChatStagePage", () => {
 
     expect(await screen.findByText("Snapshot")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
 
-    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     fireEvent.click(within(config).getAllByRole("combobox")[0]);
     fireEvent.click(screen.getByRole("option", { name: "English" }));
 
@@ -481,7 +481,7 @@ describe("ChatStagePage", () => {
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
     expect(within(actionBar).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
     expect(within(actionBar).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
-    expect(within(actionBar).getByRole("button", { name: "Chat config" })).toHaveTextContent("CONFIG");
+    expect(within(actionBar).getByRole("button", { name: "Chat appearance settings" })).toHaveTextContent("APPEARANCE");
     expect(within(dialog).queryByRole("slider")).not.toBeInTheDocument();
 
     fireEvent.click(lockButton);
@@ -617,8 +617,8 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
-    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     expect(config).toHaveClass("chat-stage-modal");
     expect(config.querySelector(".chat-stage-modal__header")).not.toBeNull();
     const longPress = within(config).getByLabelText("Long press to talk");
@@ -685,8 +685,8 @@ describe("ChatStagePage", () => {
 
     await screen.findByText("Ready");
     await waitFor(() => expect(mocks.browseFiles).toHaveBeenCalledWith({ path: "D:/models/vosk", showHidden: false }));
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
-    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     const longPress = within(config).getByLabelText("Long press to talk");
     fireEvent.click(longPress);
 
@@ -727,8 +727,8 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
-    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
 
     expect(within(config).queryByRole("button", { name: "Manage themes" })).not.toBeInTheDocument();
 
@@ -974,8 +974,8 @@ describe("ChatStagePage", () => {
     expect(sprites[0]?.style.getPropertyValue("--sprite-scale")).toBe("1.4");
     expect(sprites[1]?.style.getPropertyValue("--sprite-scale")).toBe("0.75");
 
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
-    const config = screen.getByRole("dialog", { name: "Chat config" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = screen.getByRole("dialog", { name: "Chat appearance settings" });
 
     expect(within(config).getByRole("slider", { name: "Text speed" })).toHaveValue("42");
     expect(within(config).getByRole("slider", { name: "Dialog opacity" })).toHaveValue("0.65");
@@ -1306,6 +1306,7 @@ describe("ChatStagePage", () => {
     await screen.findByText("Ready");
 
     const topControls = container.querySelector(".top-stage-tools__controls") as HTMLElement;
+    expect(topControls.closest(".top-stage-tools")).toHaveAttribute("data-standalone-desktop", "true");
     expect(within(topControls).getByRole("button", { name: "Minimize" })).toBeInTheDocument();
     expect(within(topControls).getByRole("button", { name: "Maximize" })).toBeInTheDocument();
     expect(within(topControls).getByRole("button", { name: "Close" })).toBeInTheDocument();

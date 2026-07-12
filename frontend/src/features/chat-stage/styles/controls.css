@@ -34,6 +34,12 @@
   pointer-events: auto;
 }
 
+.top-stage-tools[data-standalone-desktop="true"] {
+  right: auto;
+  left: calc(50% + var(--chat-sprite-runtime-offset-x, 0px));
+  transform: translateX(-50%);
+}
+
 .top-stage-tools__status {
   position: relative;
   display: grid;
