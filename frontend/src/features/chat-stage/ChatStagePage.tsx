@@ -189,6 +189,11 @@ export function ChatStagePage() {
     void sendCommand({ payload: text, type: "send-message" });
   };
 
+  const submitOption = (option: string) => {
+    dispatch({ text: option, type: "submitUserMessage" });
+    void sendCommand({ payload: option, type: "submit-option" });
+  };
+
   const updateRuntimeTextSpeed = (typewriterCps: number) => {
     setRuntimeConfig((current) => ({ ...current, typewriterCps }));
   };
@@ -361,11 +366,7 @@ export function ChatStagePage() {
         >
           {viewModel.layers.options ? (
             <>
-              <OptionsLayer
-                hidden={false}
-                onSelect={(option) => void sendCommand({ payload: option, type: "submit-option" })}
-                options={viewModel.options}
-              />
+              <OptionsLayer hidden={false} onSelect={submitOption} options={viewModel.options} />
               {!dialogToolbarDetached ? <div className="dialog-layer__toolbar">{dialogToolbar}</div> : null}
             </>
           ) : (

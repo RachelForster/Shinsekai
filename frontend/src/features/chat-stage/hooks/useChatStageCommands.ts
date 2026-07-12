@@ -47,7 +47,8 @@ export function useChatStageCommands({
       }
       try {
         const snapshot = await sendChatCommand(command);
-        if (command.type !== "copy-history") {
+        const commandAlreadyApplied = command.type === "send-message" || command.type === "submit-option";
+        if (command.type !== "copy-history" && !commandAlreadyApplied) {
           dispatch({ snapshot, type: "hydrate" });
         }
         if (command.type === "copy-history") {

@@ -189,7 +189,7 @@ describe("ChatStagePage", () => {
     vi.useRealTimers();
   });
 
-  it("sends option selections and typed dialogue through chat commands", async () => {
+  it("sends option selections through chat commands", async () => {
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
     renderPage();
 
@@ -201,16 +201,6 @@ describe("ChatStagePage", () => {
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
         payload: "Take the shortcut",
         type: "submit-option",
-      }),
-    );
-
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "  hello  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
-
-    await waitFor(() =>
-      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
-        payload: "hello",
-        type: "send-message",
       }),
     );
   });
@@ -269,6 +259,78 @@ describe("ChatStagePage", () => {
     await act(async () => {
       resolveCommand(snapshot({ characterName: "Aoi", dialogText: "hello from Aoi", inputDraft: "" }));
     });
+  });
+
+  it("shows a selected option as the user message before the command response arrives", async () => {
+    let resolveCommand!: (snapshot: ChatSnapshot) => void;
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
+    mocks.sendChatCommand.mockReturnValueOnce(
+      new Promise<ChatSnapshot>((resolve) => {
+        resolveCommand = resolve;
+      }),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Take the shortcut" }));
+
+    expect(screen.queryByRole("button", { name: "Take the shortcut" })).not.toBeInTheDocument();
+    expect(screen.getByText("Aoi")).toBeInTheDocument();
+    expect(screen.getByText("Take the shortcut")).toBeInTheDocument();
+    expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+      payload: "Take the shortcut",
+      type: "submit-option",
+    });
+
+    await act(async () => {
+      resolveCommand(snapshot({ characterName: "Aoi", dialogText: "Take the shortcut", options: [] }));
+    });
+  });
+
+  it("does not let a late send acknowledgement overwrite the character reply", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    let resolveCommand!: (snapshot: ChatSnapshot) => void;
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ eventSeq: 3 }));
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    mocks.sendChatCommand.mockReturnValueOnce(
+      new Promise<ChatSnapshot>((resolve) => {
+        resolveCommand = resolve;
+      }),
+    );
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByText("Aoi")).toBeInTheDocument();
+
+    act(() => {
+      listener?.({
+        color: "#fff",
+        fullHtml: "<p>assistant reply</p>",
+        isSystem: false,
+        seq: 4,
+        speaker: "Mio",
+        ts: Date.now(),
+        type: "dialog.end",
+        v: 1,
+      });
+    });
+    fireEvent.click(document.querySelector(".dialog-layer__text") as HTMLElement);
+    expect(document.querySelector(".dialog-layer__name")).toHaveTextContent("Mio");
+    expect(screen.getByText("assistant reply")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveCommand(
+        snapshot({ characterName: "Aoi", dialogText: "hello", eventSeq: 4, inputDraft: "", status: "generating" }),
+      );
+    });
+
+    expect(document.querySelector(".dialog-layer__name")).toHaveTextContent("Mio");
+    expect(screen.getByText("assistant reply")).toBeInTheDocument();
+    expect(screen.queryByText("hello")).not.toBeInTheDocument();
   });
 
   it("restores the submitted draft when sending fails", async () => {
