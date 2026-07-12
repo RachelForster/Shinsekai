@@ -10,6 +10,7 @@ from .chat import (
     _chat_runtime_closing,
     _chat_runtime_mode,
     _chat_snapshot,
+    _chat_stream_initial_snapshot,
     _close_chat,
 )
 from .state import BridgeState
@@ -120,7 +121,7 @@ def _run_chat_init(
     if chat_stream is None:
         raise RuntimeError("chat stream service is unavailable")
 
-    stream_info = chat_stream.create_session(_chat_snapshot(state, "idle", ""))
+    stream_info = chat_stream.create_session(_chat_stream_initial_snapshot(_chat_snapshot(state, "idle", "")))
     session_id = str(stream_info.get("sessionId") or "").strip()
     if not session_id:
         raise RuntimeError("failed to create chat initialization session")

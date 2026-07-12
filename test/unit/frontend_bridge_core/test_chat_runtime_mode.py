@@ -4,7 +4,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from frontend_bridge_core.chat import _chat_runtime_mode, _chat_runtime_status, _chat_snapshot
+from frontend_bridge_core.chat import (
+    _chat_runtime_mode,
+    _chat_runtime_status,
+    _chat_snapshot,
+    _chat_stream_initial_snapshot,
+)
 from frontend_bridge_core.handler import BRIDGE_AUTH_HEADER, CHAT_RUNTIME_READY_TIMEOUT_SECONDS, FrontendBridgeHandler
 
 
@@ -92,6 +97,19 @@ class _ChatStreamStub:
 
 
 class ChatRuntimeModeTests(unittest.TestCase):
+    def test_stream_initial_snapshot_drops_previous_session_sprites(self):
+        previous = {
+            "characterName": "七海千秋",
+            "sprites": [{"id": "江之岛盾子-0", "label": "江之岛盾子", "path": "junko.png"}],
+            "status": "idle",
+        }
+
+        initial = _chat_stream_initial_snapshot(previous)
+
+        self.assertEqual(initial["sprites"], [])
+        self.assertEqual(initial["characterName"], "七海千秋")
+        self.assertEqual(previous["sprites"][0]["label"], "江之岛盾子")
+
     def test_chat_runtime_mode_defaults_to_native(self):
         state = SimpleNamespace(config_manager=_ConfigManager())
 

@@ -362,6 +362,59 @@ describe("ChatLauncherPage", () => {
     );
   });
 
+  it("clears a restored initial sprite when the selected character changes", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-session",
+        name: "Session Template",
+        path: "D:/templates/session.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.listCharacters.mockResolvedValue([
+      { name: "Nanami", sprites: [{ path: "D:/sprites/nanami.png" }] },
+      { name: "Junko", sprites: [{ path: "D:/sprites/junko.png" }] },
+    ]);
+    mocks.getTemplateSession.mockResolvedValue({
+      background: "透明场景",
+      effectNames: [],
+      filenameStub: "Session Template",
+      historyPath: "",
+      initSpritePath: "D:/sprites/junko.png",
+      maxDialogItems: 0,
+      maxSpeechChars: 0,
+      roomId: "",
+      scenario: "",
+      selectedCharacters: ["Junko"],
+      system: "",
+      templateFileDropdown: "tpl-session",
+      useCg: false,
+      useChoice: true,
+      useCot: false,
+      useEffect: true,
+      useNarration: true,
+      useStat: true,
+      useTranslation: true,
+      voiceLanguage: "ja",
+    } satisfies TemplateLaunchSession);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/junko.png"));
+    const characterSelect = Array.from(document.querySelectorAll<HTMLSelectElement>("select[multiple]")).find(
+      (select) => Array.from(select.options).some((option) => option.value === "Junko"),
+    )!;
+    for (const option of Array.from(characterSelect.options)) {
+      option.selected = option.value === "Nanami";
+    }
+    fireEvent.change(characterSelect);
+
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue(""));
+  });
+
   it("requires quick restart confirmation before launching with resetHistory", async () => {
     mocks.listTemplates.mockResolvedValue([
       {

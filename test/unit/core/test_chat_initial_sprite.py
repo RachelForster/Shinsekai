@@ -6,6 +6,7 @@ from core.sprite import chat_ui_service
 from core.sprite.initial_sprite import (
     display_initial_sprite,
     find_character_sprite_by_path,
+    initial_sprite_path_for_characters,
 )
 
 
@@ -65,6 +66,50 @@ def test_display_initial_sprite_prefers_character_sprite_index(tmp_path, monkeyp
     )
 
     assert calls == [("config", "七海千秋", 0)]
+
+
+def test_initial_sprite_path_rejects_sprite_owned_by_unselected_character(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    nanami = SimpleNamespace(
+        name="七海千秋",
+        sprites=[SimpleNamespace(path="data/sprite/nanami/idle.webp")],
+    )
+    junko = SimpleNamespace(
+        name="江之岛盾子",
+        sprites=[SimpleNamespace(path="data/sprite/junko/idle.webp")],
+    )
+    config = _config(characters=[nanami, junko])
+    config.get_character_by_name = lambda name: next(
+        (character for character in config.config.characters if character.name == name),
+        None,
+    )
+
+    assert initial_sprite_path_for_characters(
+        config,
+        "data/sprite/junko/idle.webp",
+        ["七海千秋"],
+    ) == "data/sprite/nanami/idle.webp"
+
+
+def test_initial_sprite_path_preserves_selected_or_custom_sprite(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    nanami = SimpleNamespace(
+        name="七海千秋",
+        sprites=[SimpleNamespace(path="data/sprite/nanami/idle.webp")],
+    )
+    config = _config(characters=[nanami])
+    config.get_character_by_name = lambda name: nanami if name == nanami.name else None
+
+    assert initial_sprite_path_for_characters(
+        config,
+        "data/sprite/nanami/idle.webp",
+        ["七海千秋"],
+    ) == "data/sprite/nanami/idle.webp"
+    assert initial_sprite_path_for_characters(
+        config,
+        "D:/custom/portrait.png",
+        ["七海千秋"],
+    ) == "D:/custom/portrait.png"
 
 
 def test_restore_session_ui_applies_background_without_messages():

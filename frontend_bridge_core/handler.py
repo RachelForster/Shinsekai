@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
 from core.sprite.chat_branch_storage import remove_chat_history_storage
+from core.sprite.initial_sprite import initial_sprite_path_for_characters
 
 from frontend_bridge_core.backgrounds import (
     _delete_all_background_bgm,
@@ -50,11 +51,11 @@ from frontend_bridge_core.chat import (
     _chat_runtime_mode,
     _chat_runtime_status,
     _chat_snapshot,
+    _chat_stream_initial_snapshot,
     _chat_theme_payload,
     _handle_chat_command,
     _launch_chat,
     _sanitize_user_display_name,
-    _sprite_path,
 )
 from frontend_bridge_core.chat_themes import (
     delete_chat_theme,
@@ -1171,12 +1172,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         first_character = ""
         if isinstance(characters, list) and characters:
             first_character = str(characters[0])
-        init_sprite_path = ""
-        character = self.state.config_manager.get_character_by_name(first_character)
-        if character and character.sprites:
-            sprite = character.sprites[0]
-            init_sprite_path = _sprite_path(sprite)
-        init_sprite_path = str(body.get("initSpritePath") or init_sprite_path)
+        init_sprite_path = initial_sprite_path_for_characters(
+            self.state.config_manager,
+            str(body.get("initSpritePath") or ""),
+            characters if isinstance(characters, list) else [],
+        )
         room_id = str(body.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
         history_path = _chat_history_path(self.state, body, row)
         default_history_path = _chat_history_path(
@@ -1210,7 +1210,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state.chat_session = {**self.state.chat_session, **session_base}
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
-        initial_snapshot = _chat_snapshot(self.state, "idle", "")
+        initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
         use_react_runtime = _chat_runtime_mode(self.state) == "react"
         stream_info = init_stream_info or (
             self.state.chat_stream.create_session(initial_snapshot)
@@ -1322,11 +1322,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if isinstance(selected_characters, list) and selected_characters
             else ""
         )
-        init_sprite_path = str(session.get("initSpritePath") or "")
-        if not init_sprite_path and first_character:
-            character = self.state.config_manager.get_character_by_name(first_character)
-            if character and character.sprites:
-                init_sprite_path = _sprite_path(character.sprites[0])
+        init_sprite_path = initial_sprite_path_for_characters(
+            self.state.config_manager,
+            str(session.get("initSpritePath") or ""),
+            selected_characters if isinstance(selected_characters, list) else [],
+        )
         room_id = str(session.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
         selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
         user_display_name = _sanitize_user_display_name(session.get("userDisplayName"))
@@ -1344,7 +1344,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state.chat_session = {**self.state.chat_session, **session_base}
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
-        initial_snapshot = _chat_snapshot(self.state, "idle", "")
+        initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
         use_react_runtime = _chat_runtime_mode(self.state) == "react"
         stream_info = init_stream_info or (
             self.state.chat_stream.create_session(initial_snapshot)

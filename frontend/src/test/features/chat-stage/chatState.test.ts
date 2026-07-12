@@ -3,6 +3,27 @@ import { describe, expect, it } from "vitest";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
 
 describe("chatStageReducer", () => {
+  it("optimistically commits a user message and clears the input draft atomically", () => {
+    const state = chatStageReducer(
+      {
+        ...emptyChatState,
+        dialogHtml: "<p>old reply</p>",
+        dialogText: "old reply",
+        inputDraft: "hello",
+        options: ["old option"],
+        userDisplayName: "Aoi",
+      },
+      { text: "hello", type: "submitUserMessage" },
+    );
+
+    expect(state.characterName).toBe("Aoi");
+    expect(state.dialogHtml).toBeUndefined();
+    expect(state.dialogText).toBe("hello");
+    expect(state.inputDraft).toBe("");
+    expect(state.options).toEqual([]);
+    expect(state.status).toBe("generating");
+  });
+
   it("hydrates runtime snapshots from platform events", () => {
     const state = chatStageReducer(emptyChatState, {
       snapshot: {
@@ -332,6 +353,7 @@ describe("chatStageReducer", () => {
     });
     expect(withOptions.options).toEqual(["继续"]);
     expect(withOptions.layers.options).toBe(true);
+    expect(withOptions.layers.dialog).toBe(false);
 
     const firstLine = chatStageReducer(withOptions, {
       event: {

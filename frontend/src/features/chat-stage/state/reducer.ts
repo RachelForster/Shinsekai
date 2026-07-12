@@ -1,5 +1,5 @@
 import { applyStageEvent } from "./events";
-import { withResolvedLayers } from "./layers";
+import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot } from "./snapshot";
 import type { ChatStageAction, ChatStageState } from "./types";
 
@@ -9,6 +9,18 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       return applyStageEvent(state, action.event);
     case "hydrate":
       return hydrateFromSnapshot(state, action.snapshot);
+    case "submitUserMessage":
+      return withResolvedLayers({
+        ...clearTransientNotificationState(state),
+        characterName: state.userDisplayName,
+        dialogHtml: undefined,
+        dialogText: action.text,
+        error: undefined,
+        inputDraft: "",
+        options: [],
+        sessionClosedReason: undefined,
+        status: "generating",
+      });
     case "setHistoryEntries":
       return withResolvedLayers({
         ...state,

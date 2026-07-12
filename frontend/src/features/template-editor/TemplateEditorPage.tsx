@@ -9,6 +9,7 @@ import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import {
@@ -262,6 +263,13 @@ export function TemplateEditorPage() {
     suppressNextAutoGenerateRef.current = true;
     setVoiceLanguage(nextLanguage);
   }, [appConfig, launchSession, sessionRestored, voiceLanguage]);
+
+  useEffect(() => {
+    if (!sessionRestored) {
+      return;
+    }
+    setInitSpritePath((current) => compatibleInitialSpritePath({ characters, path: current, selectedCharacters }));
+  }, [characters, selectedCharacters, sessionRestored]);
 
   const updateDraft = (patch: Partial<TemplateSummary>) => {
     setDraft((current) => {
@@ -545,9 +553,21 @@ export function TemplateEditorPage() {
     },
   });
 
+  const updateSelectedCharacters = (next: string[]) => {
+    setSelectedCharacters(next);
+    setInitSpritePath((path) =>
+      compatibleInitialSpritePath({
+        characters,
+        path,
+        preserveUnknown: false,
+        selectedCharacters: next,
+      }),
+    );
+  };
+
   const toggleCharacter = (name: string, checked: boolean) => {
-    setSelectedCharacters((current) =>
-      checked ? [...new Set([...current, name])] : current.filter((item) => item !== name),
+    updateSelectedCharacters(
+      checked ? [...new Set([...selectedCharacters, name])] : selectedCharacters.filter((item) => item !== name),
     );
   };
 
@@ -686,7 +706,10 @@ export function TemplateEditorPage() {
                 <Button
                   disabled={!characters.length}
                   icon={<Users aria-hidden className="button__icon" />}
-                  onClick={() => setSelectedCharacters(characters.map((character) => character.name))}
+                  onClick={() => {
+                    const next = characters.map((character) => character.name);
+                    updateSelectedCharacters(next);
+                  }}
                   variant="ghost"
                 >
                   {t("template.action.selectAllCharacters")}

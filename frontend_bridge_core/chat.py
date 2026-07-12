@@ -751,6 +751,17 @@ def _chat_snapshot(
     }
 
 
+def _chat_stream_initial_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Create a stream snapshot without carrying sprites from a previous session.
+
+    The runtime producer is authoritative for the initial or history-restored
+    sprite and will publish it before chat initialization completes.
+    """
+    initial = dict(snapshot)
+    initial["sprites"] = []
+    return initial
+
+
 def _plain_history_text(raw: Any) -> str:
     return history_payload_to_plain_text(raw)
 

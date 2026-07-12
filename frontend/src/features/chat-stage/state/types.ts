@@ -68,6 +68,7 @@ export interface ChatStageViewModel {
 export type ChatStageAction =
   | { type: "event"; event: ChatStageEvent }
   | { type: "hydrate"; snapshot: ChatSnapshot }
+  | { type: "submitUserMessage"; text: string }
   | { type: "setHistoryEntries"; historyEntries: ChatHistoryEntry[] }
   | { type: "setDraft"; text: string }
   | { type: "setStatus"; status: ChatRuntimeStatus }

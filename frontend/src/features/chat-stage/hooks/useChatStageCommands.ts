@@ -66,6 +66,9 @@ export function useChatStageCommands({
         }
       } catch (error) {
         dispatch({ status: "idle", type: "setStatus" });
+        if (command.type === "send-message" && typeof command.payload === "string") {
+          dispatch({ text: command.payload, type: "setDraft" });
+        }
         showToast({
           kind: "error",
           message: error instanceof Error ? error.message : t("chat.error.commandFallback"),

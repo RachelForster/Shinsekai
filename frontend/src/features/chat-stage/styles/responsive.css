@@ -11,17 +11,7 @@
   }
 
   .sprite-layer {
-    bottom: calc(var(--stage-control-stack-height) + 64px);
     gap: 8px;
-  }
-
-  .sprite-layer__figure {
-    height: min(62vh, 620px);
-    max-width: 66vw;
-  }
-
-  .sprite-layer[data-count="1"] .sprite-layer__figure {
-    max-width: 78vw;
   }
 
   .dialog-stack {
@@ -44,17 +34,6 @@
     max-height: 24vh;
     font-size: 15px;
     line-height: 1.68;
-  }
-
-  .options-layer {
-    top: auto;
-    right: var(--chat-options-mobile-right);
-    bottom: calc(var(--stage-control-stack-height) + 196px);
-    left: var(--chat-options-mobile-left);
-    width: var(--chat-options-mobile-width);
-    min-width: var(--chat-options-mobile-min-width);
-    max-width: var(--chat-options-mobile-max-width);
-    transform: var(--chat-options-mobile-transform);
   }
 
   .dialog-stage-controls {

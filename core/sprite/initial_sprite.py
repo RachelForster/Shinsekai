@@ -36,6 +36,27 @@ def find_character_sprite_by_path(
     return None
 
 
+def initial_sprite_path_for_characters(
+    config: Any,
+    raw_path: str,
+    character_names: list[str] | None,
+) -> str:
+    selected_names = [str(name).strip() for name in (character_names or []) if str(name).strip()]
+    default_path = ""
+    if selected_names:
+        character = config.get_character_by_name(selected_names[0])
+        if character and character.sprites:
+            default_path = sprite_entry_path(character.sprites[0])
+
+    requested_path = str(raw_path or "").strip()
+    if not requested_path:
+        return default_path
+    matched = find_character_sprite_by_path(config, requested_path)
+    if matched is not None and selected_names and matched[0] not in selected_names:
+        return default_path
+    return requested_path
+
+
 def display_initial_sprite(
     raw_path: str,
     *,

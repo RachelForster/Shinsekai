@@ -33,6 +33,7 @@ import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
 import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
+import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
 import { useVoskModelAvailability } from "./hooks/useVoskModelAvailability";
@@ -45,11 +46,6 @@ import {
   writeChatStageRuntimeConfig,
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
-
-function isStartOptionLabel(option: string) {
-  const normalized = option.trim().toLocaleLowerCase();
-  return normalized === "start" || normalized === "开始" || normalized === "開始" || normalized === "スタート";
-}
 
 export function ChatStagePage() {
   const location = useLocation();
@@ -95,6 +91,7 @@ export function ChatStagePage() {
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
+  const handleSpriteDragStart = useDesktopWindowDrag(standaloneDesktopWindow);
   const transparentBackground = !viewModel.backgroundPath;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
@@ -111,9 +108,6 @@ export function ChatStagePage() {
   const longPressTalkEnabled = longPressTalkVisible && runtimeConfig.longPressTalk && voskModelState.available;
   const forkHistoryEnabled = state.experimentalFeatures?.forkHistory === true;
   const conversationTreeEnabled = state.experimentalFeatures?.conversationTree === true;
-  const hideNameWhenStartOption = themeStyle["--chat-name-hide-when-start-option"] === "true";
-  const nameHiddenForStartOption =
-    hideNameWhenStartOption && viewModel.layers.options && viewModel.options.some(isStartOptionLabel);
   const dialogTextDirection = effectiveDialogText.direction ?? "ltr";
   const typewriterCps = runtimeConfig.typewriterCps ?? theme?.resolved?.typewriter.cps ?? DEFAULT_TYPEWRITER_CPS;
   const { historyLoading, refreshHistory, sendCommand } = useChatStageCommands({
@@ -191,7 +185,7 @@ export function ChatStagePage() {
     if (!text) {
       return;
     }
-    dispatch({ status: "generating", type: "setStatus" });
+    dispatch({ text, type: "submitUserMessage" });
     void sendCommand({ payload: text, type: "send-message" });
   };
 
@@ -297,13 +291,14 @@ export function ChatStagePage() {
     });
   };
 
+  const dialogSurfaceVisible = viewModel.layers.dialog || viewModel.layers.options;
   const dialogToolbar = (
     <DialogStageControls
       asrPaused={viewModel.status === "paused"}
       auto={runtimeConfig.auto}
       closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
       configOpen={toolbarConfigOpen}
-      hidden={!viewModel.layers.dialog}
+      hidden={!dialogSurfaceVisible}
       hideCloseButton={standaloneDesktopWindow}
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
@@ -351,6 +346,7 @@ export function ChatStagePage() {
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}
+          onDragStart={standaloneDesktopWindow ? handleSpriteDragStart : undefined}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
           sprites={viewModel.sprites}
@@ -359,41 +355,47 @@ export function ChatStagePage() {
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
         <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />
         <div
-          aria-hidden={!viewModel.layers.dialog}
-          className={layerClassName("dialog-stack", !viewModel.layers.dialog)}
-          hidden={!viewModel.layers.dialog}
+          aria-hidden={!dialogSurfaceVisible}
+          className={layerClassName("dialog-stack", !dialogSurfaceVisible)}
+          hidden={!dialogSurfaceVisible}
         >
-          <DialogLayer
-            canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
-            characterName={nameHiddenForStartOption ? undefined : viewModel.dialogCharacterName}
-            hidden={!viewModel.layers.dialog}
-            htmlNodes={displayedDialog.nodes}
-            onAdvance={advanceDialog}
-            onSkip={typingDialog ? advanceDialog : undefined}
-            text={typingDialog ? displayedDialog.text : viewModel.dialogText}
-            textDirection={dialogTextDirection}
-            toolbar={dialogToolbarDetached ? undefined : dialogToolbar}
-            typing={typingDialog}
-          />
+          {viewModel.layers.options ? (
+            <>
+              <OptionsLayer
+                hidden={false}
+                onSelect={(option) => void sendCommand({ payload: option, type: "submit-option" })}
+                options={viewModel.options}
+              />
+              {!dialogToolbarDetached ? <div className="dialog-layer__toolbar">{dialogToolbar}</div> : null}
+            </>
+          ) : (
+            <DialogLayer
+              canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
+              characterName={viewModel.dialogCharacterName}
+              hidden={!viewModel.layers.dialog}
+              htmlNodes={displayedDialog.nodes}
+              onAdvance={advanceDialog}
+              onSkip={typingDialog ? advanceDialog : undefined}
+              text={typingDialog ? displayedDialog.text : viewModel.dialogText}
+              textDirection={dialogTextDirection}
+              toolbar={dialogToolbarDetached ? undefined : dialogToolbar}
+              typing={typingDialog}
+            />
+          )}
         </div>
         {dialogToolbarDetached ? (
           <div
-            aria-hidden={!viewModel.layers.dialog}
-            className={layerClassName("dialog-toolbar-layer", !viewModel.layers.dialog)}
+            aria-hidden={!dialogSurfaceVisible}
+            className={layerClassName("dialog-toolbar-layer", !dialogSurfaceVisible)}
             data-chat-stage-hitbox="true"
             data-locked={dialogControlsLocked ? "true" : "false"}
             data-placement={dialogToolbarPlacement}
             data-reveal={dialogToolbarReveal}
-            hidden={!viewModel.layers.dialog}
+            hidden={!dialogSurfaceVisible}
           >
             {dialogToolbar}
           </div>
         ) : null}
-        <OptionsLayer
-          hidden={!viewModel.layers.options}
-          onSelect={(option) => void sendCommand({ payload: option, type: "submit-option" })}
-          options={viewModel.options}
-        />
         <InputLayer
           asrPaused={viewModel.status === "paused"}
           disabled={viewModel.inputDisabled}

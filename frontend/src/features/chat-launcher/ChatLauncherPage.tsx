@@ -16,6 +16,7 @@ import {
 } from "../../entities/template/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
@@ -132,6 +133,25 @@ export function ChatLauncherPage() {
     setInitSpritePath(launchSession.initSpritePath || "");
     setUseCg(launchSession.useCg ?? false);
   }, [launchSession, sessionFetched, sessionRestored, templates]);
+
+  useEffect(() => {
+    if (!sessionRestored) {
+      return;
+    }
+    setInitSpritePath((current) => compatibleInitialSpritePath({ characters, path: current, selectedCharacters }));
+  }, [characters, selectedCharacters, sessionRestored]);
+
+  const updateSelectedCharacters = (nextCharacters: string[]) => {
+    setSelectedCharacters(nextCharacters);
+    setInitSpritePath((current) =>
+      compatibleInitialSpritePath({
+        characters,
+        path: current,
+        preserveUnknown: false,
+        selectedCharacters: nextCharacters,
+      }),
+    );
+  };
 
   const buildSession = (): TemplateLaunchSession => ({
     background: backgroundName,
@@ -333,7 +353,7 @@ export function ChatLauncherPage() {
                 <Select
                   multiple
                   onChange={(event) =>
-                    setSelectedCharacters(Array.from(event.currentTarget.selectedOptions).map((item) => item.value))
+                    updateSelectedCharacters(Array.from(event.currentTarget.selectedOptions).map((item) => item.value))
                   }
                   value={selectedCharacters}
                 >

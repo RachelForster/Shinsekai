@@ -114,7 +114,7 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     historyPath: "D:/history/session.json",
     inputDraft: "",
     numericInfo: "idle / 2",
-    options: ["Take the shortcut"],
+    options: [],
     sprites: [{ id: "mio", label: "Mio", path: "asset://mio.png" }],
     status: "idle",
     userDisplayName: "Aoi",
@@ -190,9 +190,13 @@ describe("ChatStagePage", () => {
   });
 
   it("sends option selections and typed dialogue through chat commands", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Take the shortcut" }));
+    const option = await screen.findByRole("button", { name: "Take the shortcut" });
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+    expect(option.closest(".dialog-stack")).not.toBeNull();
+    fireEvent.click(option);
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
         payload: "Take the shortcut",
@@ -212,9 +216,10 @@ describe("ChatStagePage", () => {
   });
 
   it("suppresses context menus inside the chat stage", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
     renderPage();
 
-    await screen.findByText("Ready");
+    await screen.findByRole("button", { name: "Take the shortcut" });
     const stage = document.querySelector(".chat-stage") as HTMLElement;
     expect(fireEvent.contextMenu(stage)).toBe(false);
     expect(fireEvent.contextMenu(screen.getByRole("button", { name: "Take the shortcut" }))).toBe(false);
@@ -241,6 +246,42 @@ describe("ChatStagePage", () => {
       payload: "draft line",
       type: "send-message",
     });
+  });
+
+  it("clears the draft and shows the user message before the command response arrives", async () => {
+    let resolveCommand!: (snapshot: ChatSnapshot) => void;
+    mocks.sendChatCommand.mockReturnValueOnce(
+      new Promise<ChatSnapshot>((resolve) => {
+        resolveCommand = resolve;
+      }),
+    );
+    renderPage();
+
+    await screen.findByText("Ready");
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "hello from Aoi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(input).toHaveValue("");
+    expect(screen.getByText("Aoi")).toBeInTheDocument();
+    expect(screen.getByText("hello from Aoi")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveCommand(snapshot({ characterName: "Aoi", dialogText: "hello from Aoi", inputDraft: "" }));
+    });
+  });
+
+  it("restores the submitted draft when sending fails", async () => {
+    mocks.sendChatCommand.mockRejectedValueOnce(new Error("offline"));
+    renderPage();
+
+    await screen.findByText("Ready");
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "retry me" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(input).toHaveValue("retry me"));
+    expect(await screen.findByText("offline")).toBeInTheDocument();
   });
 
   it("enables click-through transparent desktop space and custom resize handles", async () => {
@@ -474,7 +515,7 @@ describe("ChatStagePage", () => {
     expect(within(dialog).getByRole("button", { name: "Revert to previous turn" })).toBeInTheDocument();
   });
 
-  it("uses opt-in theme placement for the detached dialog toolbar and hides the nameplate on start options", async () => {
+  it("uses opt-in theme placement for the detached dialog toolbar with start options", async () => {
     themeContextMocks.optional = {
       resolved: { typewriter: { cps: 40 } },
       style: {
@@ -492,10 +533,9 @@ describe("ChatStagePage", () => {
 
     renderPage();
 
-    await screen.findByText("Ready");
-    const dialog = document.querySelector(".dialog-layer") as HTMLElement;
-    expect(dialog.querySelector(".dialog-layer__name")).toBeNull();
-    expect(within(dialog).queryByRole("toolbar", { name: "Chat stage actions" })).not.toBeInTheDocument();
+    await screen.findByRole("button", { name: "开始" });
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+    expect(document.querySelector(".dialog-layer")).toBeNull();
 
     const toolbarLayer = document.querySelector(".dialog-toolbar-layer") as HTMLElement;
     expect(toolbarLayer).not.toBeNull();
@@ -1210,6 +1250,9 @@ describe("ChatStagePage", () => {
     expect(desktopApiMocks.toggleMaximizeDesktopWindow).toHaveBeenCalledTimes(1);
     expect(desktopApiMocks.closeDesktopWindow).toHaveBeenCalledTimes(1);
     expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1);
+
+    fireEvent.mouseDown(container.querySelector(".sprite-layer__figure")!, { button: 0 });
+    await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(2));
     expect(chatWindowMocks.closeChatSurface).not.toHaveBeenCalled();
   });
 });
