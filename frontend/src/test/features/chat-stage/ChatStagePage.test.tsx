@@ -489,7 +489,8 @@ describe("ChatStagePage", () => {
     expect(within(actionBar).getByRole("button", { name: "Unlock chat actions" })).toHaveTextContent("UNLOCK");
 
     const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
-    expect(within(topTools).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
+    const topControls = topTools.querySelector(".top-stage-tools__controls") as HTMLElement;
+    expect(within(topControls).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
     expect(within(topTools).queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
   });
 
@@ -1304,9 +1305,10 @@ describe("ChatStagePage", () => {
     const { container } = renderPage(["/chat-stage"]);
     await screen.findByText("Ready");
 
-    expect(screen.getByRole("button", { name: "Minimize" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Maximize" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    const topControls = container.querySelector(".top-stage-tools__controls") as HTMLElement;
+    expect(within(topControls).getByRole("button", { name: "Minimize" })).toBeInTheDocument();
+    expect(within(topControls).getByRole("button", { name: "Maximize" })).toBeInTheDocument();
+    expect(within(topControls).getByRole("button", { name: "Close" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Drag window" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Close chat" })).not.toBeInTheDocument();
 

@@ -53,41 +53,43 @@ export function TopStageTools({
         <span className="top-stage-tools__transport">{transportText}</span>
         <span className="top-stage-tools__state">{status}</span>
       </div>
-      <IconButton
-        aria-pressed={tokenUsageOpen}
-        className="top-stage-tools__button"
-        data-active={tokenUsageOpen ? "true" : "false"}
-        disabled={!tokenUsageAvailable}
-        label={t("chat.toolbar.tokens")}
-        onClick={() => onTokenUsageOpenChange(!tokenUsageOpen)}
-      >
-        <Activity aria-hidden className="icon-button__icon" />
-      </IconButton>
-      {standaloneDesktopWindow ? (
-        <>
-          <IconButton
-            className="top-stage-tools__button"
-            label={t("desktop.titlebar.minimize")}
-            onClick={() => runWindowAction(minimizeDesktopWindow)}
-          >
-            <Minus aria-hidden className="icon-button__icon" />
-          </IconButton>
-          <IconButton
-            className="top-stage-tools__button"
-            label={t("desktop.titlebar.maximize")}
-            onClick={() => runWindowAction(toggleMaximizeDesktopWindow)}
-          >
-            <Maximize2 aria-hidden className="icon-button__icon" />
-          </IconButton>
-          <IconButton
-            className="top-stage-tools__button"
-            label={t("desktop.titlebar.close")}
-            onClick={() => runWindowAction(closeDesktopWindow)}
-          >
-            <X aria-hidden className="icon-button__icon" />
-          </IconButton>
-        </>
-      ) : null}
+      <div className="top-stage-tools__controls">
+        <IconButton
+          aria-pressed={tokenUsageOpen}
+          className="top-stage-tools__button"
+          data-active={tokenUsageOpen ? "true" : "false"}
+          disabled={!tokenUsageAvailable}
+          label={t("chat.toolbar.tokens")}
+          onClick={() => onTokenUsageOpenChange(!tokenUsageOpen)}
+        >
+          <Activity aria-hidden className="icon-button__icon" />
+        </IconButton>
+        {standaloneDesktopWindow ? (
+          <>
+            <IconButton
+              className="top-stage-tools__button"
+              label={t("desktop.titlebar.minimize")}
+              onClick={() => runWindowAction(minimizeDesktopWindow)}
+            >
+              <Minus aria-hidden className="icon-button__icon" />
+            </IconButton>
+            <IconButton
+              className="top-stage-tools__button"
+              label={t("desktop.titlebar.maximize")}
+              onClick={() => runWindowAction(toggleMaximizeDesktopWindow)}
+            >
+              <Maximize2 aria-hidden className="icon-button__icon" />
+            </IconButton>
+            <IconButton
+              className="top-stage-tools__button"
+              label={t("desktop.titlebar.close")}
+              onClick={() => runWindowAction(closeDesktopWindow)}
+            >
+              <X aria-hidden className="icon-button__icon" />
+            </IconButton>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

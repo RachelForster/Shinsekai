@@ -41,8 +41,11 @@
   max-width: 210px;
   align-content: center;
   gap: 2px;
-  margin-right: 2px;
-  padding: 2px 13px 2px 18px;
+  margin-right: 0;
+  padding: 2px 8px 2px 18px;
+  transition:
+    margin-right 180ms ease,
+    padding-right 180ms ease;
 }
 
 .top-stage-tools__status::after {
@@ -53,6 +56,47 @@
   width: 1px;
   background: color-mix(in oklch, var(--chat-toolbar-border-color) 66%, transparent);
   content: "";
+  opacity: 0;
+  transform: scaleY(0.55);
+  transition:
+    opacity 140ms ease,
+    transform 180ms ease;
+}
+
+.top-stage-tools__controls {
+  display: flex;
+  max-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(8px);
+  transition:
+    max-width 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms ease,
+    transform 180ms ease,
+    visibility 0s linear 180ms;
+  visibility: hidden;
+}
+
+.top-stage-tools:is(:hover, :focus-within) .top-stage-tools__status {
+  margin-right: 2px;
+  padding-right: 13px;
+}
+
+.top-stage-tools:is(:hover, :focus-within) .top-stage-tools__status::after {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.top-stage-tools:is(:hover, :focus-within) .top-stage-tools__controls {
+  max-width: 136px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+  transition-delay: 0s;
+  visibility: visible;
 }
 
 .top-stage-tools__transport,
@@ -243,6 +287,7 @@
 }
 
 .top-stage-tools__button {
+  flex: 0 0 28px;
   width: 28px;
   height: 28px;
 }
