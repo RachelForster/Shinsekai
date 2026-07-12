@@ -1,6 +1,7 @@
 import { applyStageEvent } from "./events";
 import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
+import { normalizedUserDisplayName } from "./text";
 import type { ChatStageAction, ChatStageState } from "./types";
 
 function preserveOptimisticPresentation(state: ChatStageState, next: ChatStageState): ChatStageState {
@@ -14,6 +15,7 @@ function preserveOptimisticPresentation(state: ChatStageState, next: ChatStageSt
     options: [...state.options],
     sessionClosedReason: state.sessionClosedReason,
     status: state.status,
+    statusMessage: state.statusMessage,
     systemMessageText: state.systemMessageText,
   });
 }
@@ -27,19 +29,23 @@ function snapshotReplacesOptimisticPresentation(
   if (!optimistic) {
     return true;
   }
-  if (snapshot.sessionClosedReason || snapshot.options.length > 0 || snapshot.systemMessageText?.trim()) {
+  if (snapshot.sessionClosedReason || snapshot.options.length > 0) {
     return true;
   }
   if (authoritativeEventSeq <= optimistic.eventSeq) {
     return false;
   }
   const dialogText = snapshot.dialogText.trim();
+  const dialogHtml = snapshot.dialogHtml?.trim();
   const speaker = snapshot.characterName?.trim();
-  const userName = state.userDisplayName.trim();
-  if (speaker && speaker !== userName) {
-    return true;
+  const statusMessage = snapshot.statusMessage?.trim();
+  const userName = normalizedUserDisplayName(state.userDisplayName);
+  const hasDialogContent = Boolean(dialogHtml || dialogText);
+  const isCommandFeedback = Boolean(statusMessage && !dialogHtml && statusMessage === dialogText);
+  if (!hasDialogContent || isCommandFeedback) {
+    return false;
   }
-  return Boolean(dialogText && dialogText !== optimistic.text);
+  return Boolean(speaker && speaker !== userName);
 }
 
 export function chatStageReducer(state: ChatStageState, action: ChatStageAction): ChatStageState {
@@ -77,7 +83,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
     case "submitUserMessage":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
-        characterName: state.userDisplayName,
+        characterName: normalizedUserDisplayName(state.userDisplayName),
         dialogHtml: undefined,
         dialogText: action.text,
         error: undefined,
@@ -94,6 +100,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
             options: [...state.options],
             sessionClosedReason: state.sessionClosedReason,
             status: state.status,
+            statusMessage: state.statusMessage,
             systemMessageText: state.systemMessageText,
           },
           source: action.source ?? "send-message",
@@ -102,6 +109,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         options: [],
         sessionClosedReason: undefined,
         status: "generating",
+        statusMessage: undefined,
         systemMessageText: undefined,
       });
     case "rollbackUserSubmission": {

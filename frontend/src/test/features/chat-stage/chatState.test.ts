@@ -136,6 +136,70 @@ describe("chatStageReducer", () => {
     expect(staleSnapshot.historyEntries).toEqual([{ id: "user-1", role: "user", text: "Aoi: hello" }]);
   });
 
+  it.each(["send-message", "submit-option"] as const)(
+    "keeps the first %s submission through a newer startup feedback snapshot",
+    (source) => {
+      const submitted = chatStageReducer(
+        {
+          ...emptyChatState,
+          characterName: "",
+          dialogText: "Chat started",
+          eventSeq: 1,
+          options: source === "submit-option" ? ["Take the shortcut"] : [],
+          statusMessage: "Chat started",
+          userDisplayName: "Aoi",
+        },
+        { source, text: source === "submit-option" ? "Take the shortcut" : "hello", type: "submitUserMessage" },
+      );
+      const startupSnapshot = chatStageReducer(submitted, {
+        event: {
+          seq: 2,
+          snapshot: {
+            characterName: "Mio",
+            dialogText: "Chat started",
+            eventSeq: 2,
+            inputDraft: "",
+            options: [],
+            sprites: [],
+            status: "generating",
+            statusMessage: "Chat started",
+            userDisplayName: "Aoi",
+          },
+          ts: 2,
+          type: "snapshot",
+          v: 1,
+        },
+        type: "event",
+      });
+      const viewModel = buildChatStageViewModel(startupSnapshot);
+
+      expect(startupSnapshot.optimisticSubmission?.source).toBe(source);
+      expect(viewModel.dialogCharacterName).toBe("Aoi");
+      expect(viewModel.dialogText).toBe(source === "submit-option" ? "Take the shortcut" : "hello");
+      expect(viewModel.layers.dialog).toBe(true);
+      expect(viewModel.layers.notification).toBe(false);
+    },
+  );
+
+  it("uses the default user name and removes startup feedback from a first submission", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        dialogText: "Chat started",
+        statusMessage: "Chat started",
+        userDisplayName: "",
+      },
+      { source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    const viewModel = buildChatStageViewModel(submitted);
+
+    expect(submitted.characterName).toBe(viewModel.userDisplayName);
+    expect(submitted.statusMessage).toBeUndefined();
+    expect(viewModel.dialogText).toBe("hello");
+    expect(viewModel.layers.dialog).toBe(true);
+    expect(viewModel.layers.notification).toBe(false);
+  });
+
   it("keeps an optimistic user message when a late initial hydration resolves", () => {
     const submitted = chatStageReducer(
       { ...emptyChatState, eventSeq: 3, inputDraft: "hello", userDisplayName: "Aoi" },
