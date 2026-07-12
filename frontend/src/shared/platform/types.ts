@@ -829,6 +829,7 @@ export interface ChatSnapshot {
   sprites: ChatSprite[];
   status: ChatRuntimeStatus;
   statusMessage?: string;
+  systemMessageText?: string;
   userDisplayName?: string;
   voiceLanguage?: string;
   wsUrl?: string;

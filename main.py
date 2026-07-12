@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import signal
 import sys
+import threading
 import time
 
 _PROCESS_STARTED_AT = time.perf_counter()
@@ -106,6 +107,7 @@ from core.paths import resource_path
 from core.sprite.chat_branch_storage import (
     chat_history_active_path,
     load_branch_state,
+    reconcile_active_branch_state,
     remove_chat_history_storage,
     save_branch_state,
 )
@@ -675,14 +677,10 @@ def main():
             restored = load_branch_state(args.history) if args.history else None
             if restored is None:
                 return _default_branch_state()
-            active_branch = restored.get("branches", {}).get(restored.get("active"))  # type: ignore[union-attr]
-            if isinstance(active_branch, dict):
-                if isinstance(active_branch.get("history"), list):
-                    chat_history[:] = list(active_branch.get("history") or [])
-                if isinstance(active_branch.get("messages"), list):
-                    restored_messages = copy.deepcopy(active_branch.get("messages") or [])
-                    messages[:] = restored_messages
-                    llm_manager.set_messages(restored_messages)
+            restored_messages, restored_history = reconcile_active_branch_state(restored, messages, chat_history)
+            messages[:] = restored_messages
+            chat_history[:] = restored_history
+            llm_manager.set_messages(restored_messages)
             return restored
 
         branch_state: dict[str, object] = _load_initial_branch_state()
@@ -870,6 +868,10 @@ def main():
                 ack_sent = True
 
             try:
+                if command_type == "close-session":
+                    emit_ack(ok=True)
+                    shutdown_requested.set()
+                    return
                 if command_type == "send-message":
                     submit_runtime_text(str(payload or ""), notify_key=None)
                     emit_ack(ok=True)
@@ -988,6 +990,7 @@ def main():
                 ui_updates.post_notification(str(exc))
                 emit_ack(ok=False, error=str(exc))
 
+        shutdown_requested = threading.Event()
         stream_sink.set_command_handler(handle_stream_command)
 
         with _startup_phase("workflow.start"):
@@ -1065,8 +1068,8 @@ def main():
         )
         try:
             restore_interrupt_handlers = _install_interrupt_handlers()
-            while True:
-                time.sleep(1)
+            while not shutdown_requested.wait(1):
+                pass
         except KeyboardInterrupt:
             pass
         finally:

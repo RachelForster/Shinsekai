@@ -387,6 +387,8 @@ pub fn run() {
             desktop_app_restart,
             desktop_bridge_restart,
             desktop_frontend_reload,
+            desktop_window_hide,
+            desktop_chat_window_destroy,
             desktop_window_minimize,
             desktop_window_toggle_maximize,
             desktop_window_start_drag,
@@ -1225,6 +1227,19 @@ Start-Process -FilePath $exe -ArgumentList $argv
             Err(error.to_string())
         }
     }
+}
+
+#[tauri::command]
+fn desktop_window_hide(window: WebviewWindow) -> Result<(), String> {
+    window.hide().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_chat_window_destroy(window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "chat" {
+        return Err("desktop_chat_window_destroy is only available to the chat window".to_string());
+    }
+    window.destroy().map_err(|error| error.to_string())
 }
 
 #[tauri::command]

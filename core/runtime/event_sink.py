@@ -64,6 +64,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "options": [],
         "sprites": [],
         "status": "idle",
+        "systemMessageText": "",
         "userDisplayName": "你",
     }
 
@@ -180,10 +181,15 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         full_html = str(event.get("fullHtml") or "")
         next_snapshot["dialogHtml"] = full_html
         next_snapshot["dialogText"] = _plain_text(full_html)
-        if bool(event.get("isSystem")):
+        is_speakerless_system = bool(event.get("isSystem")) and not str(event.get("speaker") or "").strip()
+        if is_speakerless_system:
             next_snapshot["characterName"] = ""
+            next_snapshot["systemMessageText"] = _plain_text(full_html)
         else:
-            next_snapshot["characterName"] = str(event.get("speaker") or "")
+            next_snapshot["characterName"] = (
+                "" if bool(event.get("isSystem")) else str(event.get("speaker") or "")
+            )
+            next_snapshot["systemMessageText"] = ""
         if str(event.get("speaker") or "").strip() or not bool(event.get("isSystem")):
             next_snapshot["options"] = []
         return next_snapshot
@@ -328,6 +334,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["options"] = []
         next_snapshot["sessionClosedReason"] = str(event.get("reason") or "")
         next_snapshot["status"] = "idle"
+        next_snapshot["systemMessageText"] = ""
         return next_snapshot
 
     return next_snapshot

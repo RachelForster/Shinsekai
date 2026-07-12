@@ -121,19 +121,25 @@ export function ChatStagePage() {
   const autoAdvanceDialog = useCallback(() => {
     void sendCommand({ type: "dialog-advance" });
   }, [sendCommand]);
-  const { dialogTotalCharacters, displayedDialog, queueAnimatedDialog, showFullDialog, typingDialog } =
-    useDialogTypewriter({
-      auto: runtimeConfig.auto,
-      characterName: viewModel.dialogCharacterName,
-      dialogVisible: viewModel.layers.dialog,
-      html: viewModel.dialogHtml,
-      onAutoAdvance: autoAdvanceDialog,
-      optionsVisible: viewModel.layers.options,
-      status: viewModel.status,
-      text: viewModel.dialogText,
-      textDirection: dialogTextDirection,
-      typewriterCps,
-    });
+  const {
+    dialogTotalCharacters,
+    displayedDialog,
+    queueAnimatedDialog,
+    showDialogImmediately,
+    showFullDialog,
+    typingDialog,
+  } = useDialogTypewriter({
+    auto: runtimeConfig.auto,
+    characterName: viewModel.dialogCharacterName,
+    dialogVisible: viewModel.layers.dialog,
+    html: viewModel.dialogHtml,
+    onAutoAdvance: autoAdvanceDialog,
+    optionsVisible: viewModel.layers.options,
+    status: viewModel.status,
+    text: viewModel.dialogText,
+    textDirection: dialogTextDirection,
+    typewriterCps,
+  });
   const {
     handleStageContextMenu,
     handleStageFocus,
@@ -185,12 +191,14 @@ export function ChatStagePage() {
     if (!text) {
       return;
     }
-    dispatch({ text, type: "submitUserMessage" });
+    showDialogImmediately();
+    dispatch({ source: "send-message", text, type: "submitUserMessage" });
     void sendCommand({ payload: text, type: "send-message" });
   };
 
   const submitOption = (option: string) => {
-    dispatch({ text: option, type: "submitUserMessage" });
+    showDialogImmediately();
+    dispatch({ source: "submit-option", text: option, type: "submitUserMessage" });
     void sendCommand({ payload: option, type: "submit-option" });
   };
 
@@ -289,7 +297,7 @@ export function ChatStagePage() {
   };
 
   const closeSurface = () => {
-    void closeChatSurface({
+    return closeChatSurface({
       closeRuntime: closeChatRuntime,
       navigate,
       snapshot: state,
@@ -335,6 +343,7 @@ export function ChatStagePage() {
         <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow} />
         <TopStageTools
           hidden={!viewModel.layers.toolbar}
+          onCloseDesktopWindow={closeSurface}
           onTokenUsageOpenChange={setTokenUsageOpen}
           standaloneDesktopWindow={standaloneDesktopWindow}
           status={viewModel.statusText}

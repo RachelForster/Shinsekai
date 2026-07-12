@@ -264,6 +264,36 @@ describe("ChatStagePage", () => {
     await act(async () => {
       resolveCommand(snapshot({ characterName: "Aoi", dialogText: "hello from Aoi", inputDraft: "" }));
     });
+    expect(screen.getByText("hello from Aoi")).toBeInTheDocument();
+  });
+
+  it("keeps the submitted user message when a stale stream snapshot arrives", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ eventSeq: 3 }));
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "stay visible" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByText("stay visible")).toBeInTheDocument();
+
+    act(() => {
+      listener?.({
+        seq: 3,
+        snapshot: snapshot({ characterName: "Mio", dialogText: "old reply", eventSeq: 3 }),
+        ts: Date.now(),
+        type: "snapshot",
+        v: 1,
+      });
+    });
+
+    expect(document.querySelector(".dialog-layer__name")).toHaveTextContent("Aoi");
+    expect(screen.getByText("stay visible")).toBeInTheDocument();
+    expect(screen.queryByText("old reply")).not.toBeInTheDocument();
   });
 
   it("shows a selected option as the user message before the command response arrives", async () => {
@@ -291,22 +321,21 @@ describe("ChatStagePage", () => {
     });
   });
 
-  it("keeps the selected option visible as the local message when its command fails", async () => {
+  it("restores the options when an optimistic option command fails", async () => {
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
     mocks.sendChatCommand.mockRejectedValueOnce(new Error("option offline"));
     renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "Take the shortcut" }));
 
-    expect(screen.queryByRole("button", { name: "Take the shortcut" })).not.toBeInTheDocument();
-    expect(screen.getByText("Aoi")).toBeInTheDocument();
-    expect(screen.getByText("Take the shortcut")).toBeInTheDocument();
     expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
     expect(mocks.sendChatCommand).toHaveBeenCalledWith({
       payload: "Take the shortcut",
       type: "submit-option",
     });
     expect(await screen.findByText("option offline")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Take the shortcut" })).toBeInTheDocument();
+    expect(screen.queryByText("Aoi")).not.toBeInTheDocument();
     expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("idle");
   });
 
@@ -367,6 +396,7 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(input).toHaveValue("retry me"));
+    expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
     expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "retry me", type: "send-message" });
     expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("idle");
@@ -1354,11 +1384,12 @@ describe("ChatStagePage", () => {
 
     await waitFor(() => expect(desktopApiMocks.minimizeDesktopWindow).toHaveBeenCalledTimes(1));
     expect(desktopApiMocks.toggleMaximizeDesktopWindow).toHaveBeenCalledTimes(1);
-    expect(desktopApiMocks.closeDesktopWindow).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1));
+    expect(desktopApiMocks.closeDesktopWindow).not.toHaveBeenCalled();
     expect(desktopApiMocks.startDesktopWindowDrag).not.toHaveBeenCalled();
 
     fireEvent.mouseDown(container.querySelector(".sprite-layer__figure")!, { button: 0 });
     await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1));
-    expect(chatWindowMocks.closeChatSurface).not.toHaveBeenCalled();
+    expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1);
   });
 });

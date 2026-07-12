@@ -110,6 +110,27 @@ class EventSinkSnapshotTests(unittest.TestCase):
         self.assertEqual(next_snapshot["dialogText"], "旁白：新的系统消息")
         self.assertEqual(next_snapshot.get("characterName"), "")
 
+    def test_speakerless_system_dialog_survives_status_updates_for_reconnect(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "seq": 1,
+                "ts": 1,
+                "type": "dialog.end",
+                "speaker": "",
+                "color": "#84C2D5",
+                "isSystem": True,
+                "fullHtml": "<p>Waiting for chat</p>",
+                "v": 1,
+            },
+        )
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {"seq": 2, "ts": 2, "type": "status.change", "status": "idle", "v": 1},
+        )
+
+        self.assertEqual(next_snapshot.get("systemMessageText"), "Waiting for chat")
+
     def test_session_closed_clears_busy_overlay_fields_in_snapshot(self):
         snapshot = make_empty_chat_snapshot()
         snapshot["busyText"] = "Loading"

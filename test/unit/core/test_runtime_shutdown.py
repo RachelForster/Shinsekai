@@ -36,10 +36,10 @@ class RuntimeShutdownTests(unittest.TestCase):
             [
                 "emit_session_closed",
                 "workflow_stop",
+                "save_history",
                 "memory_shutdown",
                 "plugin_shutdown",
                 "tts_shutdown",
-                "save_history",
                 "save_background",
                 "close_stream_sink",
             ],
@@ -71,10 +71,10 @@ class RuntimeShutdownTests(unittest.TestCase):
             [
                 "emit_session_closed",
                 "workflow_stop",
+                "save_history",
                 "memory_shutdown",
                 "plugin_shutdown",
                 "tts_shutdown",
-                "save_history",
                 "save_background",
                 "close_stream_sink",
             ],

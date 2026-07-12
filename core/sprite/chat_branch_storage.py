@@ -134,6 +134,38 @@ def load_branch_state(path: str | Path) -> dict[str, Any] | None:
         return None
 
 
+def reconcile_active_branch_state(
+    branch_state: dict[str, Any],
+    loaded_messages: list[Any],
+    loaded_history: list[Any],
+) -> tuple[list[Any], list[Any]]:
+    """Reconcile branch metadata with the crash-recoverable active history.
+
+    ``active.json`` and its incremental ``.tmp`` file are loaded before the
+    branch tree. When they contain data, they are newer and must not be
+    overwritten by a stale ``branches.json`` left behind by an interrupted
+    shutdown.
+    """
+
+    branches = branch_state.get("branches")
+    if not isinstance(branches, dict):
+        return copy.deepcopy(loaded_messages), copy.deepcopy(loaded_history)
+    active_id = str(branch_state.get("active") or "").strip()
+    active_branch = branches.get(active_id)
+    if not isinstance(active_branch, dict):
+        return copy.deepcopy(loaded_messages), copy.deepcopy(loaded_history)
+
+    if loaded_messages or loaded_history:
+        active_branch["messages"] = copy.deepcopy(loaded_messages)
+        active_branch["history"] = copy.deepcopy(loaded_history)
+        return copy.deepcopy(loaded_messages), copy.deepcopy(loaded_history)
+
+    return (
+        _copy_jsonable_list(active_branch.get("messages")),
+        _copy_jsonable_list(active_branch.get("history")),
+    )
+
+
 def branch_state_payload(branch_state: dict[str, Any]) -> dict[str, Any]:
     branches = branch_state.get("branches") if isinstance(branch_state, dict) else {}
     if not isinstance(branches, dict):

@@ -1,10 +1,6 @@
 import { Activity, Maximize2, Minus, X } from "lucide-react";
 
-import {
-  closeDesktopWindow,
-  minimizeDesktopWindow,
-  toggleMaximizeDesktopWindow,
-} from "../../../shared/desktop/desktopApi";
+import { minimizeDesktopWindow, toggleMaximizeDesktopWindow } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
 import type { ChatTransportMode, ChatTransportState } from "../../../shared/platform/types";
 import { IconButton } from "../../../shared/ui";
@@ -12,6 +8,7 @@ import { transportStatusText } from "../chatStageUtils";
 
 export function TopStageTools({
   hidden,
+  onCloseDesktopWindow,
   onTokenUsageOpenChange,
   standaloneDesktopWindow,
   status,
@@ -21,6 +18,7 @@ export function TopStageTools({
   transportState,
 }: {
   hidden: boolean;
+  onCloseDesktopWindow: () => Promise<void>;
   onTokenUsageOpenChange: (open: boolean) => void;
   standaloneDesktopWindow: boolean;
   status: string;
@@ -87,7 +85,7 @@ export function TopStageTools({
             <IconButton
               className="top-stage-tools__button"
               label={t("desktop.titlebar.close")}
-              onClick={() => runWindowAction(closeDesktopWindow)}
+              onClick={() => runWindowAction(onCloseDesktopWindow)}
             >
               <X aria-hidden className="icon-button__icon" />
             </IconButton>

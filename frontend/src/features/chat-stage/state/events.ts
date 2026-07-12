@@ -82,12 +82,13 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         eventSeq: Math.max(state.eventSeq, event.seq),
         error: undefined,
         ...(event.isSystem && !event.speaker.trim()
-          ? { notificationText: htmlToText(event.fullHtml) }
+          ? { systemMessageText: htmlToText(event.fullHtml) }
           : {
               characterName: event.speaker,
               dialogHtml: event.fullHtml,
               dialogText: htmlToText(event.fullHtml),
               options: [],
+              systemMessageText: undefined,
             }),
       });
     case "user.display_name.change":
@@ -227,6 +228,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         options: [],
         sessionClosedReason: event.reason,
         status: "idle",
+        systemMessageText: undefined,
       });
     default:
       return state;

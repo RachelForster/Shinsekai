@@ -66,9 +66,10 @@ export function useChatStageCommands({
           showToast({ kind: "success", title: t("chat.toast.historyCleared") });
         }
       } catch (error) {
-        dispatch({ status: "idle", type: "setStatus" });
-        if (command.type === "send-message" && typeof command.payload === "string") {
-          dispatch({ text: command.payload, type: "setDraft" });
+        if (command.type === "send-message" || command.type === "submit-option") {
+          dispatch({ source: command.type, type: "rollbackUserSubmission" });
+        } else {
+          dispatch({ status: "idle", type: "setStatus" });
         }
         showToast({
           kind: "error",

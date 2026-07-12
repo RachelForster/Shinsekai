@@ -1,6 +1,7 @@
 from frontend_bridge_core.templates import (
     MARK_SCENARIO,
     MARK_SYSTEM,
+    _compose_runtime_template,
     _compose_stored_template,
     _has_untranslated_template_keys,
     _history_id_from_scenario,
@@ -30,6 +31,28 @@ def test_history_id_uses_effective_scenario_and_selected_characters():
     assert scenario_id != _history_id_from_scenario("another scenario", ["Alice", "Bob"])
     assert _history_id_from_scenario("") == _history_id_from_scenario(
         "你扮演一个RPG系统。",
+    )
+
+
+def test_runtime_template_places_json_reminder_after_user_scenario(monkeypatch):
+    monkeypatch.setattr(
+        "frontend_bridge_core.templates.json_format_reminder",
+        lambda: "必须以规定的 JSON 格式回复。",
+    )
+
+    assert _compose_runtime_template("system rules", "user scenario") == (
+        "system rules\nuser scenario\n必须以规定的 JSON 格式回复。\n"
+    )
+
+
+def test_runtime_template_places_json_reminder_after_default_scenario(monkeypatch):
+    monkeypatch.setattr(
+        "frontend_bridge_core.templates.json_format_reminder",
+        lambda: "必须以规定的 JSON 格式回复。",
+    )
+
+    assert _compose_runtime_template("system rules", "") == (
+        "system rules\n你扮演一个RPG系统。\n必须以规定的 JSON 格式回复。\n"
     )
 
 

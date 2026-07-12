@@ -21,8 +21,8 @@ def test_shutdown_bridge_runtime_stops_active_chat_and_stream(monkeypatch):
     stream = _ChatStreamStub()
     state = SimpleNamespace(chat_stream=stream)
 
-    def fake_shutdown_active_chat_process(*, wait_timeout):
-        calls.append(wait_timeout)
+    def fake_shutdown_active_chat_process(*, wait_timeout, wait_before_signal=0.0):
+        calls.append((wait_timeout, wait_before_signal))
 
     monkeypatch.setattr(chat, "shutdown_active_chat_process", fake_shutdown_active_chat_process)
     frontend_bridge._set_bridge_state(state)
@@ -31,7 +31,7 @@ def test_shutdown_bridge_runtime_stops_active_chat_and_stream(monkeypatch):
     finally:
         frontend_bridge._set_bridge_state(None)
 
-    assert calls == [1.5]
+    assert calls == [(1.5, 0.0)]
     assert stream.stopped is True
 
 
