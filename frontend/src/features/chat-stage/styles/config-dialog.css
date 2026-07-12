@@ -1,12 +1,5 @@
 .chat-config-backdrop {
-  position: absolute;
-  inset: 0;
   z-index: 76;
-  display: grid;
-  place-items: center;
-  padding: var(--stage-safe-top) var(--stage-safe-x);
-  background: rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(8px) saturate(1.04);
 }
 
 .chat-config-dialog {
@@ -15,58 +8,6 @@
   width: min(720px, calc(100vw - 32px));
   max-height: min(78vh, 760px);
   grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  border: var(--chat-dialog-border, 1px solid var(--chat-dialog-border-color));
-  border-radius: var(--chat-dialog-border-radius);
-  color: var(--chat-dialog-color);
-  background: var(--chat-sheen), var(--chat-dialog-background-image, none), var(--chat-dialog-background);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: auto, cover, auto;
-  box-shadow: var(--chat-dialog-box-shadow);
-}
-
-.chat-config-dialog__header {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 13px 14px;
-  border-bottom: 1px solid var(--chat-toolbar-border-color);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--chat-config-accent-local) 12%, rgba(255, 255, 255, 0.06)),
-      transparent
-    ),
-    var(--chat-toolbar-background);
-}
-
-.chat-config-dialog__heading {
-  min-width: 0;
-}
-
-.chat-config-dialog__section-title {
-  margin: 0;
-  color: var(--chat-config-accent-local);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.chat-config-dialog__title {
-  margin: 0;
-  overflow: hidden;
-  color: var(--chat-config-accent-local);
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-config-dialog__close {
-  flex: 0 0 auto;
 }
 
 .chat-config-dialog__body {
@@ -74,19 +15,17 @@
   min-height: 0;
   gap: 12px;
   padding: 14px;
-  overflow: auto;
-  background: color-mix(in oklch, var(--chat-dialog-background) 72%, transparent);
-  scrollbar-gutter: stable;
 }
 
 .chat-config-dialog__section {
   display: grid;
   min-width: 0;
   gap: 9px;
-  padding: 10px;
-  border: 1px solid color-mix(in oklch, var(--chat-config-accent-local) 22%, var(--chat-dialog-actions-border-color));
-  border-radius: 6px;
-  background: var(--chat-dialog-actions-background);
+  padding: 12px;
+  border: 0;
+  border-radius: 16px;
+  background: color-mix(in oklch, var(--chat-dialog-actions-background) 68%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
 .chat-config-dialog__section-title {
@@ -203,8 +142,7 @@
 }
 
 .chat-config-dialog__text-input:focus,
-.chat-config-dialog__color-input:focus-visible,
-.chat-config-dialog__checkbox:focus-visible {
+.chat-config-dialog__color-input:focus-visible {
   outline: 0;
   border-color: var(--chat-config-accent-local);
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--chat-config-accent-local) 34%, transparent);
@@ -229,11 +167,22 @@
   align-items: center;
 }
 
-.chat-config-dialog__checkbox {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  accent-color: var(--chat-config-accent-local);
+.chat-config-dialog__switch {
+  justify-self: start;
+}
+
+.chat-config-dialog__switch .switch__track {
+  border-color: color-mix(in oklch, var(--chat-config-accent-local) 22%, rgba(255, 255, 255, 0.16));
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chat-config-dialog__switch .switch__input:checked + .switch__track {
+  border-color: color-mix(in oklch, var(--chat-config-accent-local) 62%, rgba(255, 255, 255, 0.24));
+  background: color-mix(in oklch, var(--chat-config-accent-local) 48%, rgba(20, 17, 14, 0.72));
+}
+
+.chat-config-dialog__switch .switch__input:checked + .switch__track .switch__thumb {
+  background: #fff;
 }
 
 .chat-config-dialog__sprite-list {

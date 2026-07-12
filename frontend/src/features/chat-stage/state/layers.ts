@@ -23,6 +23,7 @@ export function clearTransientNotificationState(state: ChatStageState) {
 }
 
 export function withResolvedLayers(state: ChatStageState): ChatStageState {
+  const optionsVisible = state.options.length > 0;
   return {
     ...state,
     layers: {
@@ -30,10 +31,10 @@ export function withResolvedLayers(state: ChatStageState): ChatStageState {
       background: true,
       busy: Boolean(state.busyText),
       cg: Boolean(state.cgPath),
-      dialog: Boolean(state.error || state.dialogHtml || state.dialogText || state.characterName),
+      dialog: !optionsVisible && Boolean(state.error || state.dialogHtml || state.dialogText || state.characterName),
       input: !state.sessionClosedReason,
       notification: Boolean(state.notificationText),
-      options: state.options.length > 0,
+      options: optionsVisible,
       sprites: !state.cgPath && state.sprites.length > 0,
       toolbar: true,
     },

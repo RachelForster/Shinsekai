@@ -47,7 +47,8 @@ export function useChatStageCommands({
       }
       try {
         const snapshot = await sendChatCommand(command);
-        if (command.type !== "copy-history") {
+        const commandAlreadyApplied = command.type === "send-message" || command.type === "submit-option";
+        if (command.type !== "copy-history" && !commandAlreadyApplied) {
           dispatch({ snapshot, type: "hydrate" });
         }
         if (command.type === "copy-history") {
@@ -66,6 +67,9 @@ export function useChatStageCommands({
         }
       } catch (error) {
         dispatch({ status: "idle", type: "setStatus" });
+        if (command.type === "send-message" && typeof command.payload === "string") {
+          dispatch({ text: command.payload, type: "setDraft" });
+        }
         showToast({
           kind: "error",
           message: error instanceof Error ? error.message : t("chat.error.commandFallback"),

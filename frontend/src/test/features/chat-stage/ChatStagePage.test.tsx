@@ -114,7 +114,7 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     historyPath: "D:/history/session.json",
     inputDraft: "",
     numericInfo: "idle / 2",
-    options: ["Take the shortcut"],
+    options: [],
     sprites: [{ id: "mio", label: "Mio", path: "asset://mio.png" }],
     status: "idle",
     userDisplayName: "Aoi",
@@ -189,32 +189,27 @@ describe("ChatStagePage", () => {
     vi.useRealTimers();
   });
 
-  it("sends option selections and typed dialogue through chat commands", async () => {
+  it("sends option selections through chat commands", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Take the shortcut" }));
+    const option = await screen.findByRole("button", { name: "Take the shortcut" });
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+    expect(option.closest(".dialog-stack")).not.toBeNull();
+    fireEvent.click(option);
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
         payload: "Take the shortcut",
         type: "submit-option",
       }),
     );
-
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "  hello  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
-
-    await waitFor(() =>
-      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
-        payload: "hello",
-        type: "send-message",
-      }),
-    );
   });
 
   it("suppresses context menus inside the chat stage", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
     renderPage();
 
-    await screen.findByText("Ready");
+    await screen.findByRole("button", { name: "Take the shortcut" });
     const stage = document.querySelector(".chat-stage") as HTMLElement;
     expect(fireEvent.contextMenu(stage)).toBe(false);
     expect(fireEvent.contextMenu(screen.getByRole("button", { name: "Take the shortcut" }))).toBe(false);
@@ -241,6 +236,141 @@ describe("ChatStagePage", () => {
       payload: "draft line",
       type: "send-message",
     });
+  });
+
+  it("clears the draft and shows the user message before the command response arrives", async () => {
+    let resolveCommand!: (snapshot: ChatSnapshot) => void;
+    mocks.sendChatCommand.mockReturnValueOnce(
+      new Promise<ChatSnapshot>((resolve) => {
+        resolveCommand = resolve;
+      }),
+    );
+    renderPage();
+
+    await screen.findByText("Ready");
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "  hello from Aoi  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(input).toHaveValue("");
+    expect(screen.getByText("Aoi")).toBeInTheDocument();
+    expect(screen.getByText("hello from Aoi")).toBeInTheDocument();
+    expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+      payload: "hello from Aoi",
+      type: "send-message",
+    });
+
+    await act(async () => {
+      resolveCommand(snapshot({ characterName: "Aoi", dialogText: "hello from Aoi", inputDraft: "" }));
+    });
+  });
+
+  it("shows a selected option as the user message before the command response arrives", async () => {
+    let resolveCommand!: (snapshot: ChatSnapshot) => void;
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
+    mocks.sendChatCommand.mockReturnValueOnce(
+      new Promise<ChatSnapshot>((resolve) => {
+        resolveCommand = resolve;
+      }),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Take the shortcut" }));
+
+    expect(screen.queryByRole("button", { name: "Take the shortcut" })).not.toBeInTheDocument();
+    expect(screen.getByText("Aoi")).toBeInTheDocument();
+    expect(screen.getByText("Take the shortcut")).toBeInTheDocument();
+    expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+      payload: "Take the shortcut",
+      type: "submit-option",
+    });
+
+    await act(async () => {
+      resolveCommand(snapshot({ characterName: "Aoi", dialogText: "Take the shortcut", options: [] }));
+    });
+  });
+
+  it("keeps the selected option visible as the local message when its command fails", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
+    mocks.sendChatCommand.mockRejectedValueOnce(new Error("option offline"));
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Take the shortcut" }));
+
+    expect(screen.queryByRole("button", { name: "Take the shortcut" })).not.toBeInTheDocument();
+    expect(screen.getByText("Aoi")).toBeInTheDocument();
+    expect(screen.getByText("Take the shortcut")).toBeInTheDocument();
+    expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+      payload: "Take the shortcut",
+      type: "submit-option",
+    });
+    expect(await screen.findByText("option offline")).toBeInTheDocument();
+    expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("idle");
+  });
+
+  it("does not let a late send acknowledgement overwrite the character reply", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    let resolveCommand!: (snapshot: ChatSnapshot) => void;
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ eventSeq: 3 }));
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    mocks.sendChatCommand.mockReturnValueOnce(
+      new Promise<ChatSnapshot>((resolve) => {
+        resolveCommand = resolve;
+      }),
+    );
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByText("Aoi")).toBeInTheDocument();
+
+    act(() => {
+      listener?.({
+        color: "#fff",
+        fullHtml: "<p>assistant reply</p>",
+        isSystem: false,
+        seq: 4,
+        speaker: "Mio",
+        ts: Date.now(),
+        type: "dialog.end",
+        v: 1,
+      });
+    });
+    fireEvent.click(document.querySelector(".dialog-layer__text") as HTMLElement);
+    expect(document.querySelector(".dialog-layer__name")).toHaveTextContent("Mio");
+    expect(screen.getByText("assistant reply")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveCommand(
+        snapshot({ characterName: "Aoi", dialogText: "hello", eventSeq: 4, inputDraft: "", status: "generating" }),
+      );
+    });
+
+    expect(document.querySelector(".dialog-layer__name")).toHaveTextContent("Mio");
+    expect(screen.getByText("assistant reply")).toBeInTheDocument();
+    expect(screen.queryByText("hello")).not.toBeInTheDocument();
+  });
+
+  it("restores the submitted draft when sending fails", async () => {
+    mocks.sendChatCommand.mockRejectedValueOnce(new Error("offline"));
+    renderPage();
+
+    await screen.findByText("Ready");
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "retry me" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(input).toHaveValue("retry me"));
+    expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "retry me", type: "send-message" });
+    expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("idle");
+    expect(await screen.findByText("offline")).toBeInTheDocument();
   });
 
   it("enables click-through transparent desktop space and custom resize handles", async () => {
@@ -323,9 +453,9 @@ describe("ChatStagePage", () => {
 
     expect(await screen.findByText("Snapshot")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
 
-    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     fireEvent.click(within(config).getAllByRole("combobox")[0]);
     fireEvent.click(screen.getByRole("option", { name: "English" }));
 
@@ -378,7 +508,7 @@ describe("ChatStagePage", () => {
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
     expect(within(actionBar).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
     expect(within(actionBar).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
-    expect(within(actionBar).getByRole("button", { name: "Chat config" })).toHaveTextContent("CONFIG");
+    expect(within(actionBar).getByRole("button", { name: "Chat appearance settings" })).toHaveTextContent("APPEARANCE");
     expect(within(dialog).queryByRole("slider")).not.toBeInTheDocument();
 
     fireEvent.click(lockButton);
@@ -386,7 +516,12 @@ describe("ChatStagePage", () => {
     expect(within(actionBar).getByRole("button", { name: "Unlock chat actions" })).toHaveTextContent("UNLOCK");
 
     const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
-    expect(within(topTools).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
+    const topControls = topTools.querySelector(".top-stage-tools__controls") as HTMLElement;
+    expect(topTools).toHaveAttribute("tabindex", "0");
+    expect(topTools).toHaveAttribute("aria-label", "Chat tools");
+    topTools.focus();
+    expect(topTools).toHaveFocus();
+    expect(within(topControls).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
     expect(within(topTools).queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
   });
 
@@ -474,7 +609,7 @@ describe("ChatStagePage", () => {
     expect(within(dialog).getByRole("button", { name: "Revert to previous turn" })).toBeInTheDocument();
   });
 
-  it("uses opt-in theme placement for the detached dialog toolbar and hides the nameplate on start options", async () => {
+  it("uses opt-in theme placement for the detached dialog toolbar with start options", async () => {
     themeContextMocks.optional = {
       resolved: { typewriter: { cps: 40 } },
       style: {
@@ -492,10 +627,9 @@ describe("ChatStagePage", () => {
 
     renderPage();
 
-    await screen.findByText("Ready");
-    const dialog = document.querySelector(".dialog-layer") as HTMLElement;
-    expect(dialog.querySelector(".dialog-layer__name")).toBeNull();
-    expect(within(dialog).queryByRole("toolbar", { name: "Chat stage actions" })).not.toBeInTheDocument();
+    await screen.findByRole("button", { name: "开始" });
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+    expect(document.querySelector(".dialog-layer")).toBeNull();
 
     const toolbarLayer = document.querySelector(".dialog-toolbar-layer") as HTMLElement;
     expect(toolbarLayer).not.toBeNull();
@@ -514,10 +648,14 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
-    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
+    expect(config).toHaveClass("chat-stage-modal");
+    expect(config.querySelector(".chat-stage-modal__header")).not.toBeNull();
     const longPress = within(config).getByLabelText("Long press to talk");
-    fireEvent.click(longPress);
+    expect(longPress.closest(".switch")).not.toBeNull();
+    expect(longPress.nextElementSibling).toHaveClass("switch__track");
+    fireEvent.click(within(config).getByText("Long press to talk"));
     await waitFor(() => expect(longPress).toBeChecked());
     fireEvent.click(within(config).getByRole("button", { name: "Close" }));
 
@@ -578,10 +716,10 @@ describe("ChatStagePage", () => {
 
     await screen.findByText("Ready");
     await waitFor(() => expect(mocks.browseFiles).toHaveBeenCalledWith({ path: "D:/models/vosk", showHidden: false }));
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
-    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     const longPress = within(config).getByLabelText("Long press to talk");
-    fireEvent.click(longPress);
+    fireEvent.click(within(config).getByText("Long press to talk"));
 
     await screen.findByText(
       "Download and configure a Vosk speech model before enabling this. Go to System settings to download it. Current path: D:/models/vosk",
@@ -620,8 +758,8 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
-    const config = await screen.findByRole("dialog", { name: "Chat config" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
 
     expect(within(config).queryByRole("button", { name: "Manage themes" })).not.toBeInTheDocument();
 
@@ -635,13 +773,16 @@ describe("ChatStagePage", () => {
 
     fireEvent.change(within(config).getByLabelText("Dialog fill color"), { target: { value: "#223344" } });
     fireEvent.change(within(config).getByRole("slider", { name: "Fill opacity" }), { target: { value: "0.7" } });
-    fireEvent.click(within(config).getByLabelText("Gradient fill"));
+    const gradientFill = within(config).getByLabelText("Gradient fill");
+    fireEvent.click(within(config).getByText("Gradient fill"));
+    expect(gradientFill).toBeChecked();
     chooseCustomSelectOption(config, "Gradient type", "Two-color gradient");
     fireEvent.change(within(config).getByLabelText("Second fill color"), { target: { value: "#556677" } });
 
     const useMainColor = within(config).getByLabelText("Use main app color");
     expect(useMainColor).toBeChecked();
-    fireEvent.click(useMainColor);
+    fireEvent.click(within(config).getByText("Use main app color"));
+    expect(useMainColor).not.toBeChecked();
     fireEvent.change(within(config).getByLabelText("Config menu color"), { target: { value: "#88cc44" } });
 
     const dialogScale = within(config).getByRole("slider", { name: "Dialog size" });
@@ -675,7 +816,7 @@ describe("ChatStagePage", () => {
     fireEvent.change(within(config).getByLabelText("Nameplate text color"), { target: { value: "#ffeeaa" } });
     const nameBold = within(config).getByLabelText("Bold nameplate text");
     expect(nameBold).toBeChecked();
-    fireEvent.click(nameBold);
+    fireEvent.click(within(config).getByText("Bold nameplate text"));
     expect(nameBold).not.toBeChecked();
     fireEvent.change(within(config).getByLabelText("Dialog font"), { target: { value: "Verdana" } });
     fireEvent.change(within(config).getByRole("slider", { name: "Dialog font size" }), { target: { value: "21" } });
@@ -684,7 +825,7 @@ describe("ChatStagePage", () => {
     fireEvent.change(within(config).getByLabelText("Dialog text color"), { target: { value: "#ddeeff" } });
     const dialogBold = within(config).getByLabelText("Bold dialog text");
     expect(dialogBold).not.toBeChecked();
-    fireEvent.click(dialogBold);
+    fireEvent.click(within(config).getByText("Bold dialog text"));
     expect(dialogBold).toBeChecked();
 
     await waitFor(() => {
@@ -867,8 +1008,8 @@ describe("ChatStagePage", () => {
     expect(sprites[0]?.style.getPropertyValue("--sprite-scale")).toBe("1.4");
     expect(sprites[1]?.style.getPropertyValue("--sprite-scale")).toBe("0.75");
 
-    fireEvent.click(screen.getByRole("button", { name: "Chat config" }));
-    const config = screen.getByRole("dialog", { name: "Chat config" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = screen.getByRole("dialog", { name: "Chat appearance settings" });
 
     expect(within(config).getByRole("slider", { name: "Text speed" })).toHaveValue("42");
     expect(within(config).getByRole("slider", { name: "Dialog opacity" })).toHaveValue("0.65");
@@ -900,6 +1041,9 @@ describe("ChatStagePage", () => {
 
     await waitFor(() => expect(mocks.getChatHistory).toHaveBeenCalledTimes(1));
     const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    expect(dialog).toHaveClass("chat-stage-modal");
+    expect(dialog.querySelector(".chat-stage-modal__header")).not.toBeNull();
+    expect(dialog.querySelector(".chat-stage-modal__summary")?.tagName).toBe("DIV");
     expect(within(dialog).getByText("2 entries")).toBeInTheDocument();
     const nameplates = dialog.querySelectorAll(".chat-history__nameplate");
     expect(nameplates).toHaveLength(2);
@@ -1196,20 +1340,25 @@ describe("ChatStagePage", () => {
     const { container } = renderPage(["/chat-stage"]);
     await screen.findByText("Ready");
 
-    expect(screen.getByRole("button", { name: "Minimize" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Maximize" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    const topControls = container.querySelector(".top-stage-tools__controls") as HTMLElement;
+    expect(topControls.closest(".top-stage-tools")).toHaveAttribute("data-standalone-desktop", "true");
+    expect(within(topControls).getByRole("button", { name: "Minimize" })).toBeInTheDocument();
+    expect(within(topControls).getByRole("button", { name: "Maximize" })).toBeInTheDocument();
+    expect(within(topControls).getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Drag window" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Close chat" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Minimize" }));
     fireEvent.click(screen.getByRole("button", { name: "Maximize" }));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    fireEvent.mouseDown(container.querySelector(".top-stage-tools__drag")!, { button: 0 });
 
     await waitFor(() => expect(desktopApiMocks.minimizeDesktopWindow).toHaveBeenCalledTimes(1));
     expect(desktopApiMocks.toggleMaximizeDesktopWindow).toHaveBeenCalledTimes(1);
     expect(desktopApiMocks.closeDesktopWindow).toHaveBeenCalledTimes(1);
-    expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1);
+    expect(desktopApiMocks.startDesktopWindowDrag).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(container.querySelector(".sprite-layer__figure")!, { button: 0 });
+    await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1));
     expect(chatWindowMocks.closeChatSurface).not.toHaveBeenCalled();
   });
 });

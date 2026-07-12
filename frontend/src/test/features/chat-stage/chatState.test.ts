@@ -3,6 +3,27 @@ import { describe, expect, it } from "vitest";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
 
 describe("chatStageReducer", () => {
+  it("optimistically commits a user message and clears the input draft atomically", () => {
+    const state = chatStageReducer(
+      {
+        ...emptyChatState,
+        dialogHtml: "<p>old reply</p>",
+        dialogText: "old reply",
+        inputDraft: "hello",
+        options: ["old option"],
+        userDisplayName: "Aoi",
+      },
+      { text: "hello", type: "submitUserMessage" },
+    );
+
+    expect(state.characterName).toBe("Aoi");
+    expect(state.dialogHtml).toBeUndefined();
+    expect(state.dialogText).toBe("hello");
+    expect(state.inputDraft).toBe("");
+    expect(state.options).toEqual([]);
+    expect(state.status).toBe("generating");
+  });
+
   it("hydrates runtime snapshots from platform events", () => {
     const state = chatStageReducer(emptyChatState, {
       snapshot: {
@@ -60,7 +81,23 @@ describe("chatStageReducer", () => {
   });
 
   it("projects stage events into layer visibility state", () => {
-    const spriteState = chatStageReducer(emptyChatState, {
+    const clearedState = chatStageReducer(
+      { ...emptyChatState, sprites: [{ id: "stale", label: "Stale", path: "asset://stale.png" }] },
+      {
+        snapshot: {
+          dialogText: "",
+          eventSeq: 0,
+          inputDraft: "",
+          options: [],
+          sprites: [],
+          status: "idle",
+        },
+        type: "hydrate",
+      },
+    );
+    expect(clearedState.sprites).toEqual([]);
+
+    const spriteState = chatStageReducer(clearedState, {
       event: {
         characterName: "Mio",
         scale: 1.1,
@@ -332,6 +369,7 @@ describe("chatStageReducer", () => {
     });
     expect(withOptions.options).toEqual(["继续"]);
     expect(withOptions.layers.options).toBe(true);
+    expect(withOptions.layers.dialog).toBe(false);
 
     const firstLine = chatStageReducer(withOptions, {
       event: {

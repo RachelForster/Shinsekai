@@ -1,4 +1,4 @@
-import { createElement, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { createElement, type CSSProperties, type MouseEvent, type MouseEventHandler, type ReactNode } from "react";
 
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -49,11 +49,13 @@ export function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
 
 export function SpriteLayer({
   hidden,
+  onDragStart,
   runtimeScaleForSprite,
   speaker,
   sprites,
 }: {
   hidden: boolean;
+  onDragStart?: MouseEventHandler<HTMLElement>;
   runtimeScaleForSprite: (sprite: ChatStageSprite, index: number) => number;
   speaker?: string;
   sprites: ChatStageSprite[];
@@ -73,10 +75,13 @@ export function SpriteLayer({
         return (
           <figure
             className="sprite-layer__figure"
+            data-chat-stage-hitbox={onDragStart ? "true" : undefined}
             data-dim={hasSpeakingSprite && !speaking ? "true" : "false"}
+            data-draggable={onDragStart ? "true" : "false"}
             data-slot={sprite.slot ?? index}
             data-speaking={speaking ? "true" : "false"}
             key={sprite.id}
+            onMouseDown={onDragStart}
             style={
               {
                 "--sprite-count": sprites.length,

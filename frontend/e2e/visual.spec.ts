@@ -39,10 +39,10 @@ test("chat stage config dialog visual regression", async ({ page }) => {
   await page.goto("/#/chat");
   await expectChatStageReady(page);
 
-  const configButton = page.getByRole("button", { name: "聊天配置" });
+  const configButton = page.getByRole("button", { name: "聊天界面设置" });
   await expect(configButton).toBeVisible();
   await configButton.evaluate((button) => (button as HTMLButtonElement).click());
-  const configDialog = page.getByRole("dialog", { name: "聊天配置" });
+  const configDialog = page.getByRole("dialog", { name: "聊天界面设置" });
   await expect(configDialog).toBeVisible();
   await expect(configDialog.getByRole("heading", { name: "字体" })).toBeVisible();
   await expect(page).toHaveScreenshot("chat-stage-config.png", { fullPage: true });

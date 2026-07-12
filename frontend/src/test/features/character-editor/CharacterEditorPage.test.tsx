@@ -436,7 +436,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     await screen.findByDisplayValue("Mika");
-    expect(screen.getByRole("radio", { name: "Reference voice" })).toBeChecked();
+    expect(await screen.findByRole("radio", { name: "Reference voice" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 

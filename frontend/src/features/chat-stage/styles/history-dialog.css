@@ -1,27 +1,13 @@
 .chat-history-backdrop {
-  position: absolute;
-  inset: 0;
   z-index: 80;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--stage-safe-top) var(--stage-safe-x);
-  background: var(--logs-page-background-image, none), var(--logs-page-background, rgba(8, 12, 18, 0.78));
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover, cover;
-  backdrop-filter: blur(10px) saturate(1.12);
 }
 
 .chat-history-dialog {
   --history-accent: var(--logs-event-color, var(--chat-name-runtime-color, var(--stage-accent, #cfc7ff)));
   --history-assistant-accent: var(--chat-name-runtime-color, var(--history-accent));
   --history-border: var(--logs-panel-border-color, rgba(255, 255, 255, 0.18));
-  --history-chrome: var(--logs-toolbar-background, rgba(18, 24, 31, 0.9));
-  --history-chrome-border: var(--logs-toolbar-border-color, var(--history-border));
   --history-muted: color-mix(in oklch, var(--history-text) 62%, transparent);
   --history-panel: var(--logs-panel-background, rgba(13, 18, 25, 0.94));
-  --history-radius: var(--logs-panel-border-radius, 18px);
   --history-surface: var(--logs-detail-background, rgba(255, 255, 255, 0.07));
   --history-text: var(--logs-panel-color, var(--logs-page-color, var(--chat-dialog-color, #fffaf0)));
   --history-user-accent: var(--logs-level-debug-color, #9edbff);
@@ -29,95 +15,12 @@
   width: min(880px, calc(100vw - 32px));
   max-height: min(82vh, 820px);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  overflow: hidden;
-  border: 1px solid var(--history-border);
-  border-radius: var(--history-radius);
-  color: var(--history-text);
-  background: var(--logs-panel-background-image, none), color-mix(in oklch, var(--history-panel) 76%, transparent);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover, cover;
-  box-shadow: var(--logs-panel-box-shadow, 0 28px 86px rgba(0, 0, 0, 0.56));
-  backdrop-filter: blur(24px) saturate(1.18);
   font-family: var(--font-chat);
-}
-
-.chat-history-dialog__header,
-.chat-history-dialog__footer {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--logs-toolbar-background-image, none), color-mix(in oklch, var(--history-chrome) 80%, transparent);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover, cover;
-  backdrop-filter: blur(18px) saturate(1.12);
-}
-
-.chat-history-dialog__header {
-  justify-content: space-between;
-  padding: 18px 22px 16px;
-  border-bottom: 1px solid var(--history-chrome-border);
-}
-
-.chat-history-dialog__heading {
-  min-width: 0;
-}
-
-.chat-history-dialog__eyebrow {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--history-muted);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  line-height: 1;
-}
-
-.chat-history-dialog__title {
-  margin: 0;
-  overflow: hidden;
-  color: var(--history-accent);
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-history-dialog__summary {
-  margin: 6px 0 0;
-  color: var(--history-muted);
-  font-size: 14px;
-  font-weight: 650;
-  line-height: 1.35;
-}
-
-.chat-history-dialog__close {
-  flex: 0 0 auto;
 }
 
 .chat-history-dialog__body {
   min-height: 0;
   padding: 18px;
-  overflow: auto;
-  background: color-mix(in oklch, var(--history-panel) 58%, transparent);
-  scrollbar-gutter: stable;
-}
-
-.chat-history-dialog__body::-webkit-scrollbar {
-  width: 10px;
-}
-
-.chat-history-dialog__body::-webkit-scrollbar-track {
-  background: color-mix(in oklch, var(--history-panel) 70%, transparent);
-}
-
-.chat-history-dialog__body::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--history-accent) 36%, rgba(255, 255, 255, 0.18));
-  background-clip: padding-box;
 }
 
 .chat-history__filters {
@@ -154,12 +57,6 @@
   font-size: 13px;
   font-weight: 750;
   white-space: nowrap;
-}
-
-.chat-history-dialog__footer {
-  justify-content: flex-end;
-  padding: 14px 18px;
-  border-top: 1px solid var(--history-chrome-border);
 }
 
 .chat-history-dialog .button,
@@ -429,16 +326,8 @@
     max-height: min(86vh, 760px);
   }
 
-  .chat-history-dialog__header {
-    padding: 15px 16px 13px;
-  }
-
   .chat-history-dialog__body {
     padding: 14px;
-  }
-
-  .chat-history-dialog__footer {
-    padding: 12px 14px;
   }
 
   .chat-history__list {

@@ -4,7 +4,7 @@
   bottom: var(--stage-safe-bottom);
   z-index: 7;
   display: grid;
-  width: min(var(--chat-input-max-width), var(--chat-ui-runtime-width), calc(100vw - 32px));
+  width: var(--chat-input-resolved-width);
   min-height: var(--stage-input-height);
   grid-template-columns: var(--chat-input-grid-template-columns);
   align-items: stretch;
@@ -21,6 +21,17 @@
   transform: translateX(-50%) scale(var(--chat-ui-window-scale));
   transform-origin: bottom center;
   backdrop-filter: blur(14px) saturate(1.05);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.input-layer:focus-within {
+  border-color: color-mix(in oklch, var(--stage-accent) 68%, rgba(255, 255, 255, 0.32));
+  box-shadow:
+    0 0 0 3px color-mix(in oklch, var(--stage-accent) 26%, transparent),
+    0 16px 44px var(--stage-shadow-heavy),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .input-layer[data-layout="pill"] {
@@ -83,6 +94,7 @@
 }
 
 .input-layer__input:focus {
+  outline: none;
   border-color: var(--stage-accent);
   box-shadow:
     0 0 0 3px color-mix(in oklch, var(--stage-accent) 32%, transparent),
