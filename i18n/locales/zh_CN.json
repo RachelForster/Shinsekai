@@ -701,6 +701,7 @@
     "tools_item": "- **{name}**：{description}",
     "tools_param_summary": "（参数：{summary}；带 * 者为必填）",
     "closing": "\n请开始对话, 开始时介绍下用户所处的情境和背景, {extra} 以及在做什么事情: \n",
+    "closing_json_reminder": "必须以规定的 JSON 格式回复。\n",
     "closing_extra_bgm": "设置初始的场景和bgm, "
   }
 }

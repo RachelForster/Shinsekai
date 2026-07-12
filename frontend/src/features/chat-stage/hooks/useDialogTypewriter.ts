@@ -62,6 +62,11 @@ export function useDialogTypewriter({
     setVisibleDialogCharacters(0);
   }, []);
 
+  const showDialogImmediately = useCallback(() => {
+    pendingAnimatedDialogKeyRef.current = null;
+    setVisibleDialogCharacters(Number.MAX_SAFE_INTEGER);
+  }, []);
+
   const showFullDialog = useCallback(() => {
     setVisibleDialogCharacters(dialogTotalCharacters);
   }, [dialogTotalCharacters]);
@@ -105,6 +110,7 @@ export function useDialogTypewriter({
     dialogTotalCharacters,
     displayedDialog,
     queueAnimatedDialog,
+    showDialogImmediately,
     showFullDialog,
     typingDialog,
   };

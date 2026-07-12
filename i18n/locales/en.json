@@ -704,6 +704,7 @@
     "tools_item": "- **{name}**: {description}",
     "tools_param_summary": " (parameters: {summary}; * = required)",
     "closing": "\nBegin the scene: describe the situation and what the user is doing; {extra}then continue:\n",
+    "closing_json_reminder": "You must reply using the required JSON format.\n",
     "closing_extra_bgm": "set initial scene and BGM, "
   }
 }

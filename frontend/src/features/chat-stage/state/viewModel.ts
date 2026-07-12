@@ -15,10 +15,12 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
   );
   const tokenUsageText = normalizeTokenUsageText(state.numericInfo, state.status);
   const systemPromptText = systemPromptTextFromState(state, dialog.dialogText);
+  const systemMessageText = state.systemMessageText?.trim();
   const layers = {
     ...state.layers,
-    dialog: state.layers.dialog && !systemPromptText && Boolean(dialog.dialogHtml || dialog.dialogText),
-    notification: Boolean(state.notificationText || systemPromptText),
+    dialog:
+      state.layers.dialog && !systemMessageText && !systemPromptText && Boolean(dialog.dialogHtml || dialog.dialogText),
+    notification: Boolean(state.notificationText || systemMessageText || systemPromptText),
   };
   return {
     backgroundPath: state.backgroundPath,
@@ -30,7 +32,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     inputDisabled: !state.layers.input || state.status === "generating" || state.status === "streaming",
     inputDraft: state.inputDraft,
     layers,
-    notificationText: state.notificationText || systemPromptText,
+    notificationText: state.notificationText || systemMessageText || systemPromptText,
     options: state.options,
     sprites: state.sprites,
     status: state.status,

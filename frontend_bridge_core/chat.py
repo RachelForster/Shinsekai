@@ -43,6 +43,7 @@ from .runtime_dependencies import runtime_dependency_error_from_text
 from .security import reject_control_chars, safe_project_path
 from .templates import (
     TEMP_SPLIT_META,
+    _compose_runtime_template,
     _effective_user_scenario,
     _history_id_from_scenario,
     _scenario_from_template_like,
@@ -377,9 +378,7 @@ def _launch_chat(
 
         # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
         effective_user_scenario = _effective_user_scenario(user_scenario)
-        template = system_template.rstrip()
-        if effective_user_scenario:
-            template = template + "\n" + effective_user_scenario + "\n"
+        template = _compose_runtime_template(system_template, effective_user_scenario)
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
         (template_dir / TEMP_SPLIT_META).write_text(
@@ -475,10 +474,10 @@ def _close_chat(
 ) -> dict[str, Any]:
     global _main_chat_process
 
+    session_id = str(state.chat_session.get("sessionId") or "").strip()
+    chat_stream = getattr(state, "chat_stream", None)
     _set_chat_runtime_closing(state, True)
     try:
-        session_id = str(state.chat_session.get("sessionId") or "").strip()
-        chat_stream = getattr(state, "chat_stream", None)
         if session_id and chat_stream is not None:
             snapshot = chat_stream.get_snapshot(session_id)
             if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
@@ -487,7 +486,15 @@ def _close_chat(
         shutdown_active_chat_process(wait_timeout=wait_timeout)
     finally:
         _set_chat_runtime_closing(state, False)
-    return _chat_snapshot(state, "idle", "")
+    closed_snapshot = _chat_snapshot(state, "idle", "")
+    if session_id:
+        if chat_stream is not None:
+            delete_session = getattr(chat_stream, "delete_session", None)
+            if callable(delete_session):
+                delete_session(session_id)
+        if str(state.chat_session.get("sessionId") or "").strip() == session_id:
+            state.chat_session = {**state.chat_session, "sessionId": ""}
+    return closed_snapshot
 
 
 def _resolve_project_file(raw_path: str | Path) -> Path:

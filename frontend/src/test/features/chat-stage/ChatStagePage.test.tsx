@@ -264,6 +264,7 @@ describe("ChatStagePage", () => {
     await act(async () => {
       resolveCommand(snapshot({ characterName: "Aoi", dialogText: "hello from Aoi", inputDraft: "" }));
     });
+    expect(screen.getByText("hello from Aoi")).toBeInTheDocument();
   });
 
   it("shows a selected option as the user message before the command response arrives", async () => {
@@ -1354,11 +1355,12 @@ describe("ChatStagePage", () => {
 
     await waitFor(() => expect(desktopApiMocks.minimizeDesktopWindow).toHaveBeenCalledTimes(1));
     expect(desktopApiMocks.toggleMaximizeDesktopWindow).toHaveBeenCalledTimes(1);
-    expect(desktopApiMocks.closeDesktopWindow).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1));
+    expect(desktopApiMocks.closeDesktopWindow).not.toHaveBeenCalled();
     expect(desktopApiMocks.startDesktopWindowDrag).not.toHaveBeenCalled();
 
     fireEvent.mouseDown(container.querySelector(".sprite-layer__figure")!, { button: 0 });
     await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1));
-    expect(chatWindowMocks.closeChatSurface).not.toHaveBeenCalled();
+    expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1);
   });
 });

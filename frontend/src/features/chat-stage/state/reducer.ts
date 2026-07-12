@@ -33,12 +33,14 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
             options: [...state.options],
             sessionClosedReason: state.sessionClosedReason,
             status: state.status,
+            systemMessageText: state.systemMessageText,
           },
           source: action.source ?? "send-message",
         },
         options: [],
         sessionClosedReason: undefined,
         status: "generating",
+        systemMessageText: undefined,
       });
     case "rollbackUserSubmission": {
       const optimistic = state.optimisticSubmission;

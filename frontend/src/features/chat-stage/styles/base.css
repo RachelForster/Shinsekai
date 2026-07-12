@@ -47,7 +47,7 @@
   --chat-dialog-body-height: auto;
   --chat-dialog-body-min-height: 64px;
   --chat-dialog-body-overflow: auto;
-  --chat-dialog-body-scrollbar-gutter: stable;
+  --chat-dialog-body-scrollbar-gutter: auto;
   --chat-dialog-border: 1px solid var(--chat-dialog-border-color);
   --chat-dialog-color: #f7f1f0;
   --chat-dialog-height: auto;

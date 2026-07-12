@@ -432,7 +432,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-dialog-backdrop-filter"] = "none";
     style["--chat-dialog-actions-border"] = "0 solid transparent";
     style["--chat-dialog-body-max-height"] = "none";
-    style["--chat-dialog-body-overflow"] = "visible";
+    style["--chat-dialog-body-overflow"] = "auto";
     style["--chat-dialog-body-scrollbar-gutter"] = "auto";
     style["--chat-dialog-border"] = "0 solid transparent";
     style["--chat-dialog-min-height"] = "0px";

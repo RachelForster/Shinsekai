@@ -47,6 +47,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
       options: string[];
       sessionClosedReason?: string;
       status: ChatRuntimeStatus;
+      systemMessageText?: string;
     };
     source: "send-message" | "submit-option";
   };

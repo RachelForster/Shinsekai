@@ -71,6 +71,7 @@ class _DummyClosableProcess:
 class _ChatStreamForClose:
     def __init__(self):
         self.closed = []
+        self.deleted = []
         self.snapshot = {
             "dialogText": "",
             "eventSeq": 3,
@@ -93,6 +94,9 @@ class _ChatStreamForClose:
         self.snapshot["notificationText"] = reason
         self.snapshot["sessionClosedReason"] = reason
         self.snapshot["status"] = "idle"
+
+    def delete_session(self, session_id: str):
+        self.deleted.append(session_id)
 
 
 def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch):
@@ -314,6 +318,8 @@ def test_close_chat_sends_sigint_and_marks_runtime_session_closed(monkeypatch):
 
     assert process.signals == [signal.SIGINT]
     assert chat_stream.closed == [("session-1", "聊天会话已结束。")]
+    assert chat_stream.deleted == ["session-1"]
+    assert state.chat_session["sessionId"] == ""
     assert snapshot["sessionClosedReason"] == "聊天会话已结束。"
     assert snapshot["runtimeMode"] == "react"
 

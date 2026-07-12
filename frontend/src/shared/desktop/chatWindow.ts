@@ -61,17 +61,18 @@ function shouldCloseReactChatRuntime(
 }
 
 export async function closeChatSurface(options: CloseChatSurfaceOptions = {}) {
-  if (isTauriDesktop()) {
-    await closeDesktopWindow();
-    return;
-  }
-
   const closeRuntimePromise =
     options.closeRuntime && shouldCloseReactChatRuntime(options.snapshot)
       ? options.closeRuntime().catch(() => {
           // Ignore runtime close failures here and still allow the user to leave the chat surface.
         })
       : undefined;
+
+  if (isTauriDesktop()) {
+    await closeRuntimePromise;
+    await closeDesktopWindow();
+    return;
+  }
 
   const path = options.webPath ?? "/settings/launch";
   if (options.navigate) {

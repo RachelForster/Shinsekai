@@ -591,6 +591,18 @@ describe("chatStageReducer", () => {
 
     expect(viewModel.layers.dialog).toBe(false);
     expect(viewModel.notificationText).toBe("等待对话开始");
+
+    const afterStatus = chatStageReducer(state, {
+      event: {
+        seq: 2,
+        status: "idle",
+        ts: 2,
+        type: "status.change",
+        v: 1,
+      },
+      type: "event",
+    });
+    expect(buildChatStageViewModel(afterStatus).notificationText).toBe("等待对话开始");
   });
 
   it("keeps named system narrators in the dialog layer", () => {

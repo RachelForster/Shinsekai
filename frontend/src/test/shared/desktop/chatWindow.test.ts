@@ -62,14 +62,26 @@ describe("showChatSurface", () => {
     expect(window.location.hash).toBe("");
   });
 
-  it("closes the dedicated desktop chat window in Tauri", async () => {
+  it("closes the React runtime before the dedicated desktop chat window", async () => {
     desktopMocks.isTauriDesktop.mockReturnValue(true);
-    desktopMocks.closeDesktopWindow.mockResolvedValue(undefined);
+    const order: string[] = [];
+    const closeRuntime = vi.fn().mockImplementation(async () => {
+      order.push("runtime");
+    });
+    desktopMocks.closeDesktopWindow.mockImplementation(async () => {
+      order.push("window");
+    });
     const navigate = vi.fn();
 
-    await closeChatSurface({ navigate });
+    await closeChatSurface({
+      closeRuntime,
+      navigate,
+      snapshot: { runtimeMode: "react", sessionId: "session-1", wsUrl: "ws://127.0.0.1:8788/ws" },
+    });
 
+    expect(closeRuntime).toHaveBeenCalledTimes(1);
     expect(desktopMocks.closeDesktopWindow).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["runtime", "window"]);
     expect(navigate).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("");
   });
