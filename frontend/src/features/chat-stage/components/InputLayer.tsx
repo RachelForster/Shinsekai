@@ -51,7 +51,7 @@ export function InputLayer({
   const canSubmit = Boolean(value.trim()) && !disabled;
   const closePanel = useCallback(() => setPanelOpen(false), []);
   const forceVisible = Boolean(value.trim()) || listening || panelOpen || holdTalkActive;
-  const autoHideRegion = useAutoHideRegion({ enabled: autoHide, forceVisible });
+  const autoHideRegion = useAutoHideRegion({ active: !hidden, enabled: autoHide, forceVisible });
 
   useEffect(() => {
     valueRef.current = value;

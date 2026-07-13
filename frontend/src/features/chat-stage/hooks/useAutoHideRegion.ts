@@ -2,7 +2,15 @@ import { useCallback, useEffect, useRef, useState, type FocusEvent } from "react
 
 export const autoHideDelayMs = 600;
 
-export function useAutoHideRegion({ enabled, forceVisible = false }: { enabled: boolean; forceVisible?: boolean }) {
+export function useAutoHideRegion({
+  active = true,
+  enabled,
+  forceVisible = false,
+}: {
+  active?: boolean;
+  enabled: boolean;
+  forceVisible?: boolean;
+}) {
   const [visible, setVisible] = useState(true);
   const focusWithinRef = useRef(false);
   const hideTimerRef = useRef<number | null>(null);
@@ -21,7 +29,7 @@ export function useAutoHideRegion({ enabled, forceVisible = false }: { enabled: 
 
   const scheduleHide = useCallback(() => {
     clearHideTimer();
-    if (!enabled || forceVisible || focusWithinRef.current) {
+    if (!active || !enabled || forceVisible || focusWithinRef.current) {
       setVisible(true);
       return;
     }
@@ -29,7 +37,7 @@ export function useAutoHideRegion({ enabled, forceVisible = false }: { enabled: 
       hideTimerRef.current = null;
       setVisible(false);
     }, autoHideDelayMs);
-  }, [clearHideTimer, enabled, forceVisible]);
+  }, [active, clearHideTimer, enabled, forceVisible]);
 
   const handleBlur = useCallback(
     (event: FocusEvent<HTMLElement>) => {
@@ -47,19 +55,23 @@ export function useAutoHideRegion({ enabled, forceVisible = false }: { enabled: 
   }, [show]);
 
   useEffect(() => {
-    if (!enabled || forceVisible) {
+    if (!active) {
+      clearHideTimer();
+      focusWithinRef.current = false;
+      setVisible(true);
+    } else if (!enabled || forceVisible) {
       show();
     } else {
       scheduleHide();
     }
     return clearHideTimer;
-  }, [clearHideTimer, enabled, forceVisible, scheduleHide, show]);
+  }, [active, clearHideTimer, enabled, forceVisible, scheduleHide, show]);
 
   return {
     handleBlur,
     handleFocus,
     scheduleHide,
     show,
-    visible: !enabled || forceVisible || visible,
+    visible: !active || !enabled || forceVisible || visible,
   };
 }

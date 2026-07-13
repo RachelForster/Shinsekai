@@ -1053,6 +1053,49 @@ describe("ChatStagePage", () => {
     delete speechWindow.SpeechRecognition;
   });
 
+  it("resets immersive input focus when a closed session restores the input layer", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({ autoHideInput: true, immersiveMode: true }),
+    );
+
+    renderPage();
+    const input = await screen.findByPlaceholderText("Enter dialogue");
+    fireEvent.focus(input);
+
+    act(() => {
+      listener?.({
+        reason: "Session closed",
+        seq: 1,
+        ts: Date.now(),
+        type: "session.closed",
+        v: 1,
+      });
+    });
+    expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
+
+    vi.useFakeTimers();
+    act(() => {
+      listener?.({
+        seq: 2,
+        snapshot: snapshot({ eventSeq: 2, notificationText: "", sessionClosedReason: "" }),
+        ts: Date.now(),
+        type: "snapshot",
+        v: 1,
+      });
+    });
+
+    const restoredInput = screen.getByPlaceholderText("Enter dialogue");
+    const restoredLayer = restoredInput.closest(".input-layer") as HTMLElement;
+    act(() => vi.advanceTimersByTime(600));
+    expect(restoredLayer).toHaveAttribute("data-visible", "false");
+  });
+
   it("resolves theme text defaults for config controls", () => {
     const dialogText = effectiveChatStageTextStyle(
       defaultChatStageRuntimeConfig.dialogText,
@@ -1512,5 +1555,23 @@ describe("ChatStagePage", () => {
     fireEvent.mouseDown(container.querySelector(".sprite-layer__figure")!, { button: 0 });
     await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1));
     expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an immersive standalone toolbar centered while hidden", async () => {
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({ autoHideTopTools: true, immersiveMode: true }),
+    );
+
+    const { container } = renderPage(["/chat-stage"]);
+    await screen.findByText("Ready");
+    vi.useFakeTimers();
+
+    const topTools = container.querySelector(".top-stage-tools") as HTMLElement;
+    fireEvent.pointerLeave(topTools);
+    act(() => vi.advanceTimersByTime(600));
+
+    expect(topTools).toHaveAttribute("data-visible", "false");
   });
 });

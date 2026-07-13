@@ -56,6 +56,10 @@
   transform: translateX(-50%);
 }
 
+.top-stage-tools[data-standalone-desktop="true"][data-auto-hide="true"][data-visible="false"] {
+  transform: translateX(-50%) translateY(-8px);
+}
+
 .top-stage-tools:focus-visible {
   outline: 2px solid var(--chat-toolbar-color, #f7f1f0);
   outline-offset: 3px;
@@ -502,5 +506,9 @@
 
   .top-stage-tools[data-auto-hide="true"][data-visible="false"] {
     transform: none;
+  }
+
+  .top-stage-tools[data-standalone-desktop="true"][data-auto-hide="true"][data-visible="false"] {
+    transform: translateX(-50%);
   }
 }
