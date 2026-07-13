@@ -302,38 +302,41 @@ export function ChatConfigDialog({
         </section>
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionImmersive")}</h3>
-          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-            <span className="chat-config-dialog__label">{t("chat.config.immersiveMode")}</span>
-            <input
-              aria-label={t("chat.config.immersiveMode")}
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <label className="chat-config-dialog__label" htmlFor="chat-config-immersive-mode">
+              {t("chat.config.immersiveMode")}
+            </label>
+            <Switch
               checked={immersiveMode}
-              className="chat-config-dialog__checkbox"
+              className="chat-config-dialog__switch"
+              id="chat-config-immersive-mode"
               onChange={(event) => onImmersiveModeChange(event.target.checked)}
-              type="checkbox"
             />
-          </label>
-          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-            <span className="chat-config-dialog__label">{t("chat.config.autoHideTopTools")}</span>
-            <input
-              aria-label={t("chat.config.autoHideTopTools")}
+          </div>
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <label className="chat-config-dialog__label" htmlFor="chat-config-auto-hide-top-tools">
+              {t("chat.config.autoHideTopTools")}
+            </label>
+            <Switch
               checked={autoHideTopTools}
-              className="chat-config-dialog__checkbox"
+              className="chat-config-dialog__switch"
               disabled={!immersiveMode}
+              id="chat-config-auto-hide-top-tools"
               onChange={(event) => onAutoHideTopToolsChange(event.target.checked)}
-              type="checkbox"
             />
-          </label>
-          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-            <span className="chat-config-dialog__label">{t("chat.config.autoHideInput")}</span>
-            <input
-              aria-label={t("chat.config.autoHideInput")}
+          </div>
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <label className="chat-config-dialog__label" htmlFor="chat-config-auto-hide-input">
+              {t("chat.config.autoHideInput")}
+            </label>
+            <Switch
               checked={autoHideInput}
-              className="chat-config-dialog__checkbox"
+              className="chat-config-dialog__switch"
               disabled={!immersiveMode}
+              id="chat-config-auto-hide-input"
               onChange={(event) => onAutoHideInputChange(event.target.checked)}
-              type="checkbox"
             />
-          </label>
+          </div>
         </section>
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionConversation")}</h3>

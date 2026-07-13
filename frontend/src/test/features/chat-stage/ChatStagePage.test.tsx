@@ -947,6 +947,9 @@ describe("ChatStagePage", () => {
     const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
     const inputLayer = document.querySelector(".input-layer") as HTMLElement;
 
+    expect(immersiveMode).toHaveClass("switch__input");
+    expect(autoHideTopTools).toHaveClass("switch__input");
+    expect(autoHideInput).toHaveClass("switch__input");
     expect(immersiveMode).not.toBeChecked();
     expect(autoHideTopTools).toBeChecked();
     expect(autoHideInput).toBeChecked();
