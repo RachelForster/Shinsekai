@@ -451,8 +451,8 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   if (typeof dialog?.offsetY === "number") {
     style["--chat-dialog-offset-y"] = `${clampNumber(dialog.offsetY, 0, -240, 240)}px`;
   }
-  if (dialog?.textAlign === "center") {
-    style["--chat-dialog-text-align"] = "center";
+  if (dialog?.textAlign === "left" || dialog?.textAlign === "center") {
+    style["--chat-dialog-text-theme-align"] = dialog.textAlign;
   }
   if (isSafeCssValue(dialog?.color)) {
     style["--chat-dialog-text-theme-color"] = dialog.color.trim();
@@ -518,23 +518,18 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
 
   const input = tokens.input;
-  applyVisualBlock(style, "input", input, assetUrl);
-  if (isSafeCssValue(input?.fieldBackground)) {
-    style["--chat-input-field-background"] = input.fieldBackground;
-  }
-  if (isSafeCssValue(input?.fieldBorderRadius)) {
-    style["--chat-input-field-border-radius"] = input.fieldBorderRadius;
-  }
-  if (typeof input?.maxWidthPx === "number") {
-    style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
-  }
   if (input?.layout === "pill") {
     style["--chat-input-layout"] = "pill";
     style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
     style["--stage-input-height"] = "calc(var(--chat-input-button-size) + clamp(10px, 1.44svh, 14px))";
-    style["--chat-input-border"] = "0 solid transparent";
+    style["--chat-input-border-color"] = "transparent";
     style["--chat-input-border-radius"] = "999px";
+    style["--chat-send-background"] = "transparent";
+    style["--chat-send-border-color"] = "transparent";
     style["--chat-send-border-radius"] = "50%";
+    style["--chat-send-box-shadow"] = "none";
+    style["--chat-send-color"] = "var(--chat-input-color, #fff)";
+    style["--chat-send-sheen"] = "none";
     style["--chat-input-field-background"] = "transparent";
     style["--chat-input-field-border-radius"] = "0px";
     style["--chat-input-field-display"] = "contents";
@@ -551,13 +546,14 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-input-textarea-padding-right"] = "0px";
     style["--chat-input-voice-stack-display"] = "none";
   }
+  // Pill owns its submit surface; sendPlacement only selects a variant of the default layout.
   if (input?.sendPlacement === "inside" && input?.layout !== "pill") {
     style["--chat-input-grid-template-columns"] = "minmax(0, 1fr) 38px";
     style["--chat-input-field-display"] = "block";
     style["--chat-input-field-position"] = "relative";
     style["--chat-input-textarea-padding-right"] = "56px";
     style["--chat-send-active-transform"] = "translateY(-50%)";
-    style["--chat-send-border"] = "0 solid transparent";
+    style["--chat-send-border-color"] = "transparent";
     style["--chat-send-box-shadow"] = "none";
     style["--chat-send-height"] = "36px";
     style["--chat-send-hover-sheen"] = "none";
@@ -574,32 +570,16 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-send-transform"] = "translateY(-50%)";
     style["--chat-send-width"] = "36px";
   }
-  if (input?.sendPlacement === "outside" && input?.layout !== "pill") {
-    style["--chat-input-field-display"] = "contents";
-    style["--chat-input-field-position"] = "static";
-    style["--chat-input-grid-template-columns"] = "minmax(0, 1fr) 38px minmax(78px, auto)";
-    style["--chat-input-textarea-padding-right"] = "11px";
-    style["--chat-input-voice-stack-min-height"] = "58px";
-    style["--chat-input-voice-stack-template-columns"] = "minmax(0, 1fr)";
-    style["--chat-input-voice-stack-template-rows"] = "repeat(2, minmax(0, 1fr))";
-    style["--chat-input-voice-stack-width"] = "38px";
-    style["--chat-send-active-transform"] = "translateY(0)";
-    style["--chat-send-border"] = "1px solid var(--chat-send-border-color, rgba(255, 255, 255, 0.55))";
-    style["--chat-send-box-shadow"] = "0 12px 28px rgba(0, 0, 0, 0.24)";
-    style["--chat-send-height"] = "auto";
-    style["--chat-send-hover-sheen"] = "linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.08))";
-    style["--chat-send-hover-transform"] = "translateY(-1px)";
-    style["--chat-send-icon-size"] = "16px";
-    style["--chat-send-label-display"] = "inline";
-    style["--chat-send-min-height"] = "auto";
-    style["--chat-send-min-width"] = "78px";
-    style["--chat-send-padding"] = "0 12px";
-    style["--chat-send-position"] = "static";
-    style["--chat-send-right"] = "auto";
-    style["--chat-send-sheen"] = "linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.04))";
-    style["--chat-send-top"] = "auto";
-    style["--chat-send-transform"] = "none";
-    style["--chat-send-width"] = "auto";
+  // Layout presets provide defaults. Explicit visual tokens always win.
+  applyVisualBlock(style, "input", input, assetUrl);
+  if (isSafeCssValue(input?.fieldBackground)) {
+    style["--chat-input-field-background"] = input.fieldBackground;
+  }
+  if (isSafeCssValue(input?.fieldBorderRadius)) {
+    style["--chat-input-field-border-radius"] = input.fieldBorderRadius;
+  }
+  if (typeof input?.maxWidthPx === "number") {
+    style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
   }
 
   const toolbar = tokens.toolbar;

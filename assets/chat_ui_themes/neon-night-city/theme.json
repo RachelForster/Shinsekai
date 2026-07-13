@@ -71,11 +71,8 @@
       "borderRadius": "999px",
       "boxShadow": "0 0 0 1px rgba(255,45,163,0.18), 0 0 22px rgba(0,245,255,0.18), 0 14px 38px rgba(0,0,0,0.48)",
       "color": "#e9fbff",
-      "fieldBackground": "transparent",
-      "fieldBorderRadius": "0px",
       "layout": "pill",
-      "maxWidthPx": 700,
-      "sendPlacement": "inside"
+      "maxWidthPx": 700
     },
     "toolbar": {
       "background": "rgba(3,10,24,0.88)",

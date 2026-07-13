@@ -215,7 +215,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-options-name-clearance"]).toBe("5.6svh");
     expect(resolved.style["--chat-dialog-width"]).toBe("min(86vw, 980px)");
     expect(resolved.style["--chat-dialog-offset-y"]).toBe("-8px");
-    expect(resolved.style["--chat-dialog-text-align"]).toBe("center");
+    expect(resolved.style["--chat-dialog-text-theme-align"]).toBe("center");
     expect(resolved.style["--chat-dialog-text-shadow"]).toBe("0 2px 4px rgba(0,0,0,0.7)");
     expect(resolved.style["--chat-dialog-text-theme-font-size"]).toBe("34px");
     expect(resolved.style["--chat-dialog-text-theme-font-weight"]).toBe("800");
@@ -318,8 +318,12 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-dialog-toolbar-placement"]).toBeUndefined();
     expect(resolved.style["--chat-dialog-toolbar-input-clearance"]).toBeUndefined();
     expect(resolved.style["--chat-input-grid-template-columns"]).toBeUndefined();
+    expect(resolved.style["--chat-input-field-display"]).toBeUndefined();
+    expect(resolved.style["--chat-input-field-position"]).toBeUndefined();
     expect(resolved.style["--chat-input-layout"]).toBeUndefined();
     expect(resolved.style["--chat-input-max-width"]).toBeUndefined();
+    expect(resolved.style["--chat-send-position"]).toBeUndefined();
+    expect(resolved.style["--chat-send-border-radius"]).toBeUndefined();
     expect(resolved.style["--chat-option-min-height"]).toBe("52px");
     expect(resolved.style["--chat-options-bottom"]).toContain("--chat-dialog-toolbar-reserved-height");
   });
@@ -351,7 +355,7 @@ describe("chat theme runtime", () => {
         id: "pill-input",
         name: { en: "Pill Input" },
         tokens: {
-          input: { layout: "pill", maxWidthPx: 640, sendPlacement: "inside" },
+          input: { layout: "pill", maxWidthPx: 640 },
           toolbar: { placement: "input-top", reveal: "hover" },
         },
       },
@@ -369,35 +373,104 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-panel-display"]).toBe("grid");
     expect(resolved.style["--chat-input-send-display"]).toBe("none");
     expect(resolved.style["--chat-input-voice-stack-display"]).toBe("none");
+    expect(resolved.style["--chat-input-border-color"]).toBe("transparent");
+    expect(resolved.style["--chat-input-border-radius"]).toBe("999px");
+    expect(resolved.style["--chat-input-field-background"]).toBe("transparent");
+    expect(resolved.style["--chat-input-field-border-radius"]).toBe("0px");
+    expect(resolved.style["--chat-send-background"]).toBe("transparent");
+    expect(resolved.style["--chat-send-border-color"]).toBe("transparent");
     expect(resolved.style["--chat-send-border-radius"]).toBe("50%");
+    expect(resolved.style["--chat-send-box-shadow"]).toBe("none");
+    expect(resolved.style["--chat-send-color"]).toBe("var(--chat-input-color, #fff)");
     expect(resolved.style["--chat-dialog-toolbar-input-clearance"]).toBe("4px");
     expect(resolved.style["--chat-dialog-toolbar-layer-width"]).toContain("--chat-input-max-width");
   });
 
-  it("preserves the legacy external send layout when a theme explicitly requests it", () => {
+  it("uses the legacy CSS baseline when a theme explicitly requests external send placement", () => {
     const resolved = resolveChatTheme(
       {
         schema: 1,
         id: "external-send",
         name: { en: "External Send" },
         tokens: {
-          input: { sendPlacement: "outside" },
+          input: { layout: "default", sendPlacement: "outside" },
         },
       },
       (rel) => `asset://${rel}`,
     );
 
-    expect(resolved.style["--chat-input-field-display"]).toBe("contents");
-    expect(resolved.style["--chat-input-field-position"]).toBe("static");
-    expect(resolved.style["--chat-input-grid-template-columns"]).toBe("minmax(0, 1fr) 38px minmax(78px, auto)");
-    expect(resolved.style["--chat-input-textarea-padding-right"]).toBe("11px");
-    expect(resolved.style["--chat-input-voice-stack-template-columns"]).toBe("minmax(0, 1fr)");
-    expect(resolved.style["--chat-input-voice-stack-template-rows"]).toBe("repeat(2, minmax(0, 1fr))");
-    expect(resolved.style["--chat-input-voice-stack-width"]).toBe("38px");
-    expect(resolved.style["--chat-send-label-display"]).toBe("inline");
-    expect(resolved.style["--chat-send-position"]).toBe("static");
-    expect(resolved.style["--chat-send-transform"]).toBe("none");
-    expect(resolved.style["--chat-send-width"]).toBe("auto");
+    expect(resolved.style["--chat-input-layout"]).toBeUndefined();
+    expect(resolved.style["--chat-input-field-display"]).toBeUndefined();
+    expect(resolved.style["--chat-input-grid-template-columns"]).toBeUndefined();
+    expect(resolved.style["--chat-send-position"]).toBeUndefined();
+  });
+
+  it("maps the compact inside-send layout only when a theme explicitly requests it", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "inside-send",
+        name: { en: "Inside Send" },
+        tokens: {
+          input: { layout: "default", sendPlacement: "inside" },
+          send: { borderColor: "#123456" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-input-field-display"]).toBe("block");
+    expect(resolved.style["--chat-input-field-position"]).toBe("relative");
+    expect(resolved.style["--chat-input-grid-template-columns"]).toBe("minmax(0, 1fr) 38px");
+    expect(resolved.style["--chat-input-textarea-padding-right"]).toBe("56px");
+    expect(resolved.style["--chat-send-label-display"]).toBe("none");
+    expect(resolved.style["--chat-send-position"]).toBe("absolute");
+    expect(resolved.style["--chat-send-border-color"]).toBe("#123456");
+    expect(resolved.style["--chat-send-right"]).toBe("11px");
+    expect(resolved.style["--chat-send-top"]).toBe("50%");
+    expect(resolved.style["--chat-send-transform"]).toBe("translateY(-50%)");
+    expect(resolved.style["--chat-send-width"]).toBe("36px");
+  });
+
+  it("lets explicit visual tokens override pill layout defaults", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "custom-pill",
+        name: { en: "Custom Pill" },
+        tokens: {
+          input: {
+            borderColor: "#102030",
+            borderRadius: "18px",
+            boxShadow: "0 0 9px #123456",
+            fieldBackground: "rgba(7,8,9,0.7)",
+            fieldBorderRadius: "11px",
+            layout: "pill",
+          },
+          send: {
+            background: "#123456",
+            borderColor: "#abcdef",
+            borderRadius: "14px",
+            boxShadow: "0 0 7px #abcdef",
+            color: "#fedcba",
+          },
+          toolbar: { borderRadius: "17px" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-input-border-radius"]).toBe("18px");
+    expect(resolved.style["--chat-input-border-color"]).toBe("#102030");
+    expect(resolved.style["--chat-input-field-background"]).toBe("rgba(7,8,9,0.7)");
+    expect(resolved.style["--chat-input-field-border-radius"]).toBe("11px");
+    expect(resolved.style["--chat-input-box-shadow"]).toBe("0 0 9px #123456");
+    expect(resolved.style["--chat-send-background"]).toBe("#123456");
+    expect(resolved.style["--chat-send-border-color"]).toBe("#abcdef");
+    expect(resolved.style["--chat-send-border-radius"]).toBe("14px");
+    expect(resolved.style["--chat-send-box-shadow"]).toBe("0 0 7px #abcdef");
+    expect(resolved.style["--chat-send-color"]).toBe("#fedcba");
+    expect(resolved.style["--chat-toolbar-border-radius"]).toBe("17px");
   });
 
   it("filters unsafe theme values while keeping safe tokens and numeric clamps", () => {

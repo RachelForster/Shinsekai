@@ -89,7 +89,7 @@
   border: 0;
   padding: 0 clamp(2px, 0.4vw, 4px);
   color: var(--chat-input-color, #fff);
-  background: transparent;
+  background: var(--chat-input-field-background, transparent);
   box-shadow: none;
   font-weight: 650;
   line-height: var(--chat-input-textarea-min-height);
@@ -166,21 +166,20 @@
 .input-layer__voice-stack {
   grid-column: 2;
   display: var(--chat-input-voice-stack-display);
-  width: var(--chat-input-voice-stack-width);
-  min-height: var(--chat-input-voice-stack-min-height);
-  grid-template-columns: var(--chat-input-voice-stack-template-columns);
-  grid-template-rows: var(--chat-input-voice-stack-template-rows);
+  width: 38px;
+  min-height: 58px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   align-self: stretch;
   gap: 6px;
 }
 
 .input-layer__voice-button {
   width: 38px;
-  height: 38px;
+  height: auto;
   min-height: 0;
-  align-self: center;
+  align-self: stretch;
   border-color: rgba(255, 255, 255, 0.14);
-  border-radius: 50%;
+  border-radius: 6px;
   color: var(--chat-input-color, #fffaf0);
   background: var(--chat-input-field-background);
 }
