@@ -6,6 +6,7 @@ on:
       - "**"
     paths:
       - ".github/workflows/react-frontend.yml"
+      - "assets/chat_ui_themes/**"
       - "frontend/**"
       - "frontend_bridge.py"
       - "webui_react.py"
@@ -15,6 +16,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/react-frontend.yml"
+      - "assets/chat_ui_themes/**"
       - "frontend/**"
       - "frontend_bridge.py"
       - "webui_react.py"

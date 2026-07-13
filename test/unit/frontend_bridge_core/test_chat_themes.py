@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,7 +48,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
             finally:
                 os.chdir(previous_cwd)
 
-    def test_list_chat_themes_falls_back_to_tracked_builtin_manifests(self):
+    def test_missing_builtin_assets_do_not_create_python_manifest_fallbacks(self):
         state = self._make_state()
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
@@ -55,13 +56,36 @@ class ChatThemeBridgeTests(unittest.TestCase):
             try:
                 with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=Path(tempdir) / "missing"):
                     themes = list_chat_themes(state)
-                theme_index = {item["id"]: item for item in themes}
-                self.assertIn("neon-night-city", theme_index)
-                self.assertIn("windborne-adventure", theme_index)
-                neon_manifest = get_chat_theme_manifest(state, "neon-night-city")
-                self.assertEqual(neon_manifest["tokens"]["global"]["themeColor"], "#00f5ff")
-                manifest = get_chat_theme_manifest(state, "windborne-adventure")
-                self.assertEqual(manifest["tokens"]["global"]["themeColor"], "#f3cf57")
+                    self.assertEqual(themes, [])
+                    with self.assertRaises(FileNotFoundError):
+                        get_chat_theme_manifest(state, "windborne-adventure")
+                default_theme_dir = Path(tempdir) / "data" / "chat_ui_themes" / "windborne-adventure"
+                self.assertFalse(default_theme_dir.exists())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_missing_non_default_builtin_falls_back_to_default_manifest(self):
+        state = self._make_state()
+        project_root = Path(__file__).resolve().parents[3]
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            builtin_root = Path(tempdir) / "builtin"
+            shutil.copytree(
+                project_root / "assets" / "chat_ui_themes" / "windborne-adventure",
+                builtin_root / "windborne-adventure",
+            )
+            os.chdir(tempdir)
+            try:
+                with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=builtin_root):
+                    themes = list_chat_themes(state)
+                    self.assertEqual([theme["id"] for theme in themes], ["windborne-adventure"])
+
+                    manifest = get_chat_theme_manifest(state, "neon-night-city")
+                    self.assertEqual(manifest["id"], "windborne-adventure")
+                    self.assertEqual(manifest["tokens"]["global"]["themeColor"], "#f3cf57")
+
+                    with self.assertRaises(FileNotFoundError):
+                        set_active_chat_theme(state, {"id": "neon-night-city"})
             finally:
                 os.chdir(previous_cwd)
 
