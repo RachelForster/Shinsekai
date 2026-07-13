@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import os
@@ -11,7 +12,8 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from ai.memory.runtime import ensure_mem0, get_mem0
+from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
+from ai.memory.runtime import ensure_mem0
 
 logger = logging.getLogger(__name__)
 _MEMORY_SERVICE_URL_ENV = "SHINSEKAI_MEMORY_SERVICE_URL"
@@ -26,6 +28,7 @@ _MEMORY_SERVICE_READY_POLL_TIMEOUT_SEC = 300.0
 _service_monitor_lock = threading.Lock()
 _service_monitor_active = False
 _mem0_operation_lock = threading.RLock()
+_SEMANTIC_DEDUPLICATION_SEARCH_LIMIT = 5
 
 
 def _resolve_agent_id(character_name: str | None) -> str:
@@ -40,6 +43,14 @@ def _memory_row(row: Any) -> dict[str, str]:
             "memory": str(row.get("memory") or row.get("content") or ""),
         }
     return {"id": "", "memory": str(row)}
+
+
+def _search_mem0(mem: Any, query: str, *, filters: dict[str, str], limit: int) -> Any:
+    """Search across Mem0 releases that renamed ``limit`` to ``top_k``."""
+
+    parameters = inspect.signature(mem.search).parameters
+    pagination = {"top_k": limit} if "top_k" in parameters else {"limit": limit}
+    return mem.search(query, filters=filters, **pagination)
 
 
 def _memory_service_url() -> str:
@@ -63,7 +74,12 @@ def _memory_service_timeout_sec() -> float:
     return timeout
 
 
-def _memory_service_request(endpoint: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+def _memory_service_request(
+    endpoint: str,
+    payload: dict[str, Any],
+    *,
+    monitor_ready: bool = True,
+) -> dict[str, Any] | None:
     base_url = _memory_service_url()
     if not base_url:
         return None
@@ -100,9 +116,28 @@ def _memory_service_request(endpoint: str, payload: dict[str, Any]) -> dict[str,
         preview = raw[:200].decode("utf-8", errors="replace")
         return {"error": f"memory service returned invalid JSON: {exc}; body={preview!r}"}
     result = data if isinstance(data, dict) else {"result": data}
-    if result.get("status") == "loading":
+    if monitor_ready and result.get("status") == "loading":
         _start_memory_service_ready_monitor()
     return result
+
+
+def memory_service_status(
+    *,
+    start_loading: bool,
+    monitor_ready: bool = True,
+) -> dict[str, Any] | None:
+    """Return bridge-owned memory status without loading mem0 in this process.
+
+    Chat initialization sets ``monitor_ready=False`` because it performs its
+    own foreground polling and must send ``startLoading=True`` only once.
+    Existing operation calls retain the background ready monitor behavior.
+    """
+
+    return _memory_service_request(
+        "status",
+        {"startLoading": bool(start_loading)},
+        monitor_ready=monitor_ready,
+    )
 
 
 def _start_memory_service_ready_monitor() -> None:
@@ -145,9 +180,14 @@ def memory_list(character_name: str | None = None, *, limit: int = 200) -> dict[
     service_result = _memory_service_request("list", {"name": agent_id, "limit": limit})
     if service_result is not None:
         return service_result
-    mem = get_mem0()
+    mem = ensure_mem0()
     with _mem0_operation_lock:
-        raw = mem.get_all(filters={"user_id": agent_id}, limit=limit)
+        # mem0 renamed ``limit`` to ``top_k`` while retaining ``**kwargs``.
+        # With a new mem0 release the old name is therefore silently ignored
+        # and the query falls back to its default of 20 rows.
+        parameters = inspect.signature(mem.get_all).parameters
+        pagination = {"top_k": limit} if "top_k" in parameters else {"limit": limit}
+        raw = mem.get_all(filters={"user_id": agent_id}, **pagination)
     rows = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
     memories = [_memory_row(row) for row in rows]
     return {"agentId": agent_id, "count": len(memories), "memories": memories}
@@ -172,7 +212,7 @@ def memory_search(
     agent_id = _resolve_agent_id(character_name)
     try:
         with _mem0_operation_lock:
-            results = mem.search(q, filters={"user_id": agent_id}, limit=limit)
+            results = _search_mem0(mem, q, filters={"user_id": agent_id}, limit=limit)
         if isinstance(results, dict) and "results" in results:
             mems = results["results"]
         elif isinstance(results, list):
@@ -207,8 +247,30 @@ def memory_remember(
     agent_id = _resolve_agent_id(character_name)
     try:
         with _mem0_operation_lock:
+            candidates = _search_mem0(
+                mem,
+                text,
+                filters={"user_id": agent_id},
+                limit=_SEMANTIC_DEDUPLICATION_SEARCH_LIMIT,
+            )
+            duplicate = find_duplicate_memory(
+                text,
+                candidates,
+                threshold=semantic_deduplication_threshold(),
+            )
+            if duplicate is not None:
+                return {
+                    "ok": True,
+                    "duplicate": True,
+                    "duplicate_type": duplicate.match_type,
+                    "similarity": duplicate.similarity,
+                    "existing_memory_id": duplicate.memory_id,
+                    "existing_memory": duplicate.memory,
+                    "agent_id": agent_id,
+                    "content": text,
+                }
             mem.add(text, user_id=agent_id, infer=False)
-        return {"ok": True, "agent_id": agent_id, "content": text}
+        return {"ok": True, "duplicate": False, "agent_id": agent_id, "content": text}
     except Exception as e:
         logger.exception("memory_remember 失败")
         return {"error": str(e)}

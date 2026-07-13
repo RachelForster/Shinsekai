@@ -17,7 +17,10 @@ vi.mock("@tauri-apps/api/event", () => ({
 import {
   browseDesktopFiles,
   checkDesktopUpdate,
+  getDesktopProjectRootStatus,
   getDesktopRuntimeState,
+  hideDesktopWindow,
+  destroyDesktopChatWindow,
   installDesktopRuntimeProfile,
   installDesktopUpdate,
   isTauriDesktop,
@@ -27,6 +30,7 @@ import {
   onDesktopUpdateProgress,
   repairDesktopRuntime,
   reloadDesktopFrontend,
+  selectDesktopProjectRoot,
   startDesktopWindowDrag,
   toggleMaximizeDesktopWindow,
   closeDesktopWindow,
@@ -88,6 +92,24 @@ describe("desktop API environment detection", () => {
     expect(mockInvoke).toHaveBeenCalledWith("desktop_update_check", undefined);
   });
 
+  it("reads and explicitly selects a desktop project root", async () => {
+    mockInvoke.mockResolvedValue({
+      candidates: [],
+      conflict: false,
+      currentPath: "D:\\Shinsekai",
+      locatorPath: "C:\\Users\\test\\project-root.json",
+      requiresSelection: false,
+    });
+
+    await getDesktopProjectRootStatus();
+    await selectDesktopProjectRoot("D:\\项目 数据\\Shinsekai");
+
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_project_root_status", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_project_root_select", {
+      path: "D:\\项目 数据\\Shinsekai",
+    });
+  });
+
   it("invokes desktop runtime state and dependency commands", async () => {
     mockInvoke.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
 
@@ -95,6 +117,8 @@ describe("desktop API environment detection", () => {
     await repairDesktopRuntime("install-runtime", "installRuntimeDeps");
     await installDesktopRuntimeProfile("local-ai");
     await browseDesktopFiles({ path: "/tmp", showHidden: true });
+    await hideDesktopWindow();
+    await destroyDesktopChatWindow();
     await minimizeDesktopWindow();
     await toggleMaximizeDesktopWindow();
     await startDesktopWindowDrag();
@@ -109,6 +133,8 @@ describe("desktop API environment detection", () => {
     });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_runtime_install_profile", { profile: "local-ai" });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_files_browse", { path: "/tmp", showHidden: true });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_window_hide", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_chat_window_destroy", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_minimize", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_toggle_maximize", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_start_drag", undefined);

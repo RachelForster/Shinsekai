@@ -134,6 +134,40 @@ def test_template_generator_renders_added_field_aliases(monkeypatch) -> None:
     assert "camera (string, optional): Camera framing for this line. Aliases: shot, framing." in template
 
 
+def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+
+    monkeypatch.setattr(
+        "llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda name: character),
+    )
+    monkeypatch.setattr("llm.template_generator._format_llm_tools_block", lambda: "")
+
+    def fake_translation(key: str, **kwargs) -> str:
+        if key == "closing":
+            return "Begin the scene.\n"
+        if key == "closing_json_reminder":
+            return "MUST_USE_REQUIRED_JSON_FORMAT\n"
+        return f"{key}\n"
+
+    monkeypatch.setattr("llm.template_generator._T", fake_translation)
+
+    template, warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert warning == ""
+    assert template.endswith("Begin the scene.\nMUST_USE_REQUIRED_JSON_FORMAT\n")
+
+
 def test_template_generator_omits_scene_and_bgm_for_transparent_background(monkeypatch) -> None:
     character = SimpleNamespace(
         sprites=[object()],

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
+
+import pytest
 
 
 def _repo_root() -> Path:
@@ -15,6 +18,229 @@ def _repo_root() -> Path:
         ):
             return parent
     raise AssertionError("Could not locate repository root")
+
+
+def test_runtime_context_keeps_app_and_project_roots_separate(tmp_path, monkeypatch):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch cwd"
+    app_root = tmp_path / "Program Files" / "Shinsekai 应用"
+    project_root = tmp_path / "User Data" / "项目 データ"
+    launch_dir.mkdir()
+    app_root.mkdir(parents=True)
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_SOURCE_ROOT", "before-test")
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", "before-test")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", "before-test")
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", "before-test")
+
+    _repo, _dist, resolved_app_root = _configure_runtime_context(
+        str(project_root),
+        None,
+        str(app_root),
+    )
+    resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
+
+    assert Path(resolved_app_root) == app_root.resolve()
+    assert Path(resolved_project_root) == project_root.resolve()
+    assert Path.cwd() == project_root.resolve()
+    assert Path(os.environ["EASYAI_PROJECT_ROOT"]) == project_root.resolve()
+    assert Path(os.environ["SHINSEKAI_PROJECT_ROOT"]) == project_root.resolve()
+    assert Path(os.environ["SHINSEKAI_APP_ROOT"]) == app_root.resolve()
+
+
+def test_runtime_context_prefers_public_project_root_override_for_legacy_launches(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "legacy launch"
+    project_root = tmp_path / "D drive data" / "用户数据"
+    easyai_root = tmp_path / "stale EASYAI root"
+    launch_dir.mkdir()
+    project_root.mkdir(parents=True)
+    easyai_root.mkdir()
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(easyai_root))
+
+    _repo, _dist, _app_root = _configure_runtime_context(
+        None,
+        None,
+        None,
+    )
+    resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
+
+    assert Path(resolved_project_root) == project_root.resolve()
+    assert Path.cwd() == project_root.resolve()
+    assert Path(os.environ["EASYAI_PROJECT_ROOT"]) == project_root.resolve()
+    assert Path(os.environ["SHINSEKAI_PROJECT_ROOT"]) == project_root.resolve()
+
+
+def test_runtime_context_creates_authoritative_environment_project_root(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    project_root = tmp_path / "new parent" / "new project"
+    launch_dir.mkdir()
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(tmp_path / "legacy root"))
+
+    _configure_runtime_context(None, None, None)
+
+    assert project_root.is_dir()
+    assert (project_root / "data").is_dir()
+    assert Path.cwd() == project_root.resolve()
+    assert Path(os.environ["SHINSEKAI_PROJECT_ROOT"]) == project_root.resolve()
+    assert Path(os.environ["EASYAI_PROJECT_ROOT"]) == project_root.resolve()
+
+
+def test_runtime_context_rejects_environment_project_root_that_is_a_file(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    project_root = tmp_path / "project-root-file"
+    launch_dir.mkdir()
+    project_root.write_text("not a directory", encoding="utf-8")
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project_root))
+
+    with pytest.raises(RuntimeError, match="SHINSEKAI_PROJECT_ROOT project root"):
+        _configure_runtime_context(None, None, None)
+
+    assert Path.cwd() == launch_dir.resolve()
+    assert os.environ["SHINSEKAI_PROJECT_ROOT"] == str(project_root)
+
+
+def test_runtime_context_rejects_project_root_whose_data_path_is_a_file(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    project_root = tmp_path / "project"
+    launch_dir.mkdir()
+    project_root.mkdir()
+    (project_root / "data").write_text("not a directory", encoding="utf-8")
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project_root))
+
+    with pytest.raises(RuntimeError, match="SHINSEKAI_PROJECT_ROOT project root"):
+        _configure_runtime_context(None, None, None)
+
+    assert Path.cwd() == launch_dir.resolve()
+
+
+def test_runtime_context_fails_closed_when_environment_project_root_cannot_be_created(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    blocking_file = tmp_path / "not-a-parent"
+    project_root = blocking_file / "project"
+    launch_dir.mkdir()
+    blocking_file.write_text("not a directory", encoding="utf-8")
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project_root))
+
+    with pytest.raises(RuntimeError, match="SHINSEKAI_PROJECT_ROOT project root"):
+        _configure_runtime_context(None, None, None)
+
+    assert Path.cwd() == launch_dir.resolve()
+    assert os.environ["SHINSEKAI_PROJECT_ROOT"] == str(project_root)
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or getattr(os, "geteuid", lambda: 0)() == 0,
+    reason="POSIX permission-bit behavior requires a non-root process",
+)
+def test_runtime_context_fails_closed_when_project_data_is_not_writable(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    project_root = tmp_path / "project"
+    data_root = project_root / "data"
+    launch_dir.mkdir()
+    data_root.mkdir(parents=True)
+    data_root.chmod(0o555)
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project_root))
+
+    try:
+        with pytest.raises(RuntimeError, match="not safely writable"):
+            _configure_runtime_context(None, None, None)
+        assert Path.cwd() == launch_dir.resolve()
+    finally:
+        data_root.chmod(0o755)
+
+
+def test_runtime_context_does_not_fall_back_from_invalid_public_root(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    invalid_root = tmp_path / "invalid-root"
+    legacy_root = tmp_path / "legacy-root"
+    launch_dir.mkdir()
+    invalid_root.write_text("not a directory", encoding="utf-8")
+    legacy_root.mkdir()
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(invalid_root))
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(legacy_root))
+
+    with pytest.raises(RuntimeError, match="SHINSEKAI_PROJECT_ROOT project root"):
+        _configure_runtime_context(None, None, None)
+
+    assert Path.cwd() == launch_dir.resolve()
+    assert os.environ["SHINSEKAI_PROJECT_ROOT"] == str(invalid_root)
+    assert os.environ["EASYAI_PROJECT_ROOT"] == str(legacy_root)
+
+
+def test_runtime_context_rejects_relative_environment_project_root(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    launch_dir.mkdir()
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", "relative-project")
+
+    with pytest.raises(RuntimeError, match="must be absolute"):
+        _configure_runtime_context(None, None, None)
+
+    assert Path.cwd() == launch_dir.resolve()
+    assert os.environ["SHINSEKAI_PROJECT_ROOT"] == "relative-project"
+
+
+def test_runtime_context_rejects_invalid_legacy_root_when_public_root_is_unset(
+    tmp_path, monkeypatch
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    invalid_root = tmp_path / "legacy-root-file"
+    launch_dir.mkdir()
+    invalid_root.write_text("not a directory", encoding="utf-8")
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.delenv("SHINSEKAI_PROJECT_ROOT", raising=False)
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(invalid_root))
+
+    with pytest.raises(RuntimeError, match="EASYAI_PROJECT_ROOT project root"):
+        _configure_runtime_context(None, None, None)
+
+    assert Path.cwd() == launch_dir.resolve()
+    assert "SHINSEKAI_PROJECT_ROOT" not in os.environ
+    assert os.environ["EASYAI_PROJECT_ROOT"] == str(invalid_root)
 
 
 def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):

@@ -119,8 +119,10 @@ jobs:
         working-directory: frontend
         run: pnpm build
 
-      - name: Rust runtime tests
-        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml runtime
+      - name: Rust desktop runtime and project-root tests
+        run: |
+          cargo test --manifest-path frontend/src-tauri/Cargo.toml runtime
+          cargo test --manifest-path frontend/src-tauri/Cargo.toml project_root
 
       - name: Verify embedded Python runtime matrix
         working-directory: frontend
@@ -145,7 +147,7 @@ jobs:
             bundles: deb
           - platform: windows-x64
             os: windows-latest
-            bundles: none
+            bundles: nsis
           - platform: windows-arm64
             os: windows-11-arm
             bundles: none
@@ -171,6 +173,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: frontend/src-tauri -> target
+          # Share release dependencies with the release workflow while keeping
+          # rust-cache's OS, architecture, toolchain, and manifest isolation.
+          shared-key: build
 
       - name: Install Linux Tauri dependencies
         if: runner.os == 'Linux'
@@ -185,11 +190,6 @@ jobs:
           else
             sudo apt-get install -y -qq libfuse2
           fi
-
-      - name: Install Windows installer dependencies
-        if: runner.os == 'Windows' && matrix.bundles != 'none'
-        shell: pwsh
-        run: choco install nsis --no-progress -y
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -240,6 +240,36 @@ jobs:
           else
             pnpm tauri build --ci --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
           fi
+
+      - name: Restore legacy MSI fixture cache
+        if: matrix.platform == 'windows-x64'
+        id: legacy-msi-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/legacy-installers/Shinsekai-2.1.0_windows-x64.msi
+          key: legacy-msi-windows-x64-v2.1.0-sha256-c896cc45f718a41f9e2183d624e8af60c998718a3842ed2686f745f93b6cdce9-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            legacy-msi-windows-x64-v2.1.0-sha256-c896cc45f718a41f9e2183d624e8af60c998718a3842ed2686f745f93b6cdce9-v2-
+
+      - name: Test real MSI-to-NSIS migration
+        if: matrix.platform == 'windows-x64'
+        id: msi-migration-test
+        shell: pwsh
+        timeout-minutes: 30
+        run: ./frontend/scripts/test-msi-nsis-migration.ps1 -LegacyMsiPath '.cache/legacy-installers/Shinsekai-2.1.0_windows-x64.msi'
+
+      - name: Save verified legacy MSI fixture cache
+        if: success() && matrix.platform == 'windows-x64' && steps.msi-migration-test.outputs.legacy-msi-updated == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/legacy-installers/Shinsekai-2.1.0_windows-x64.msi
+          key: legacy-msi-windows-x64-v2.1.0-sha256-c896cc45f718a41f9e2183d624e8af60c998718a3842ed2686f745f93b6cdce9-v2-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Test Windows project-root resolution
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml --release --lib project_root
 
       - name: Dump Linux AppImage diagnostics
         if: failure() && runner.os == 'Linux'

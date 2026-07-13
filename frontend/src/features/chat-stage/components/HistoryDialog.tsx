@@ -1,8 +1,8 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { GitFork, RotateCcw, X } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { GitFork, RotateCcw } from "lucide-react";
 
 import type { ChatHistoryEntry } from "../../../shared/platform/types";
-import { Button, IconButton } from "../../../shared/ui";
+import { Button } from "../../../shared/ui";
 import { useI18n } from "../../../shared/i18n";
 import { ChatStageModal } from "./ChatStageModal";
 
@@ -125,7 +125,6 @@ export function HistoryDialog({
 }) {
   const { t } = useI18n();
   const titleId = useId();
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const [query, setQuery] = useState("");
   const [visibleLimit, setVisibleLimit] = useState(historyRenderBatchSize);
 
@@ -174,30 +173,16 @@ export function HistoryDialog({
   return (
     <ChatStageModal
       backdropClassName="chat-history-backdrop"
+      closeLabel={t("common.close")}
       dialogClassName="chat-history-dialog"
-      initialFocusRef={closeButtonRef}
+      eyebrow="LOG"
       labelledBy={titleId}
       onClose={onClose}
       open={open}
+      summary={t("chat.history.count", { count: visibleEntries.length })}
+      title={t("chat.history.title")}
     >
-      <header className="chat-history-dialog__header">
-        <div className="chat-history-dialog__heading">
-          <span className="chat-history-dialog__eyebrow">LOG</span>
-          <h2 className="chat-history-dialog__title" id={titleId}>
-            {t("chat.history.title")}
-          </h2>
-          <p className="chat-history-dialog__summary">{t("chat.history.count", { count: visibleEntries.length })}</p>
-        </div>
-        <IconButton
-          className="chat-history-dialog__close"
-          label={t("common.close")}
-          onClick={onClose}
-          ref={closeButtonRef}
-        >
-          <X aria-hidden className="icon-button__icon" />
-        </IconButton>
-      </header>
-      <div className="chat-history-dialog__body">
+      <div className="chat-stage-modal__body chat-history-dialog__body">
         <div className="chat-history__filters">
           <input
             aria-label={t("chat.history.search")}
@@ -278,7 +263,7 @@ export function HistoryDialog({
           </div>
         ) : null}
       </div>
-      <footer className="chat-history-dialog__footer">
+      <footer className="chat-stage-modal__footer chat-history-dialog__footer">
         <Button onClick={onRefresh}>{t("common.refresh")}</Button>
         <Button onClick={onClose}>{t("common.close")}</Button>
       </footer>

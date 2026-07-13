@@ -18,6 +18,7 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterMemorySecti
     isFetching: false,
     isLoading: false,
     memoryInput: "",
+    memoryImportPending: false,
     memoryName: "",
     memoryPage: 1,
     memoryTotalPages: 1,
@@ -26,6 +27,7 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterMemorySecti
     onClearSearch: vi.fn(),
     onDeleteMemory: vi.fn(),
     onInstallDep: vi.fn(),
+    onImportMemories: vi.fn(),
     onMemoryInputChange: vi.fn(),
     onMemoryPageChange: vi.fn(),
     onRefresh: vi.fn(),
@@ -50,6 +52,7 @@ describe("CharacterMemorySection", () => {
     renderSection({ memoryInput: "A remembered line" });
 
     expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Import from files" })).toBeDisabled();
     screen.getAllByRole("textbox").forEach((textbox) => expect(textbox).toBeDisabled());
     expect(screen.getByRole("button", { name: "Add memory" })).toBeDisabled();
   });
@@ -82,6 +85,9 @@ describe("CharacterMemorySection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add memory" }));
     expect(props.onAddMemory).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Import from files" }));
+    expect(props.onImportMemories).toHaveBeenCalledTimes(1);
   });
 
   it("submits memory search and pages through results", () => {

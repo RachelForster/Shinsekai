@@ -22,6 +22,7 @@ import {
   type DesktopRuntimeState,
 } from "./desktopApi";
 import { RuntimeProgressPanel } from "./RuntimeProgressPanel";
+import { ProjectRootGate } from "./ProjectRootGate";
 import { appendRuntimeProgressLog } from "./runtimeProgressLog";
 
 function DesktopTitleBar() {
@@ -296,14 +297,16 @@ export function DesktopChrome({ children }: { children: ReactNode }) {
   }
 
   if (standaloneChatRoute) {
-    return <>{children}</>;
+    return <ProjectRootGate>{children}</ProjectRootGate>;
   }
 
   return (
     <div className="desktop-frame">
       <DesktopTitleBar />
       <div className="desktop-frame__content">
-        <DesktopRuntimeGate>{children}</DesktopRuntimeGate>
+        <ProjectRootGate>
+          <DesktopRuntimeGate>{children}</DesktopRuntimeGate>
+        </ProjectRootGate>
       </div>
     </div>
   );

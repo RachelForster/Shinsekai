@@ -436,7 +436,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     await screen.findByDisplayValue("Mika");
-    expect(screen.getByRole("radio", { name: "Reference voice" })).toBeChecked();
+    expect(await screen.findByRole("radio", { name: "Reference voice" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
@@ -526,6 +526,28 @@ describe("CharacterEditorPage", () => {
     dialog = screen.getByRole("dialog", { name: "Delete all sprites" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(mockDeleteAllCharacterSprites).toHaveBeenCalledWith("Mika"));
+  });
+
+  it("preserves unsaved sprite tags when another sprite is deleted", async () => {
+    mockListCharacters.mockResolvedValue([
+      {
+        ...structuredClone(character),
+        emotion_tags: "Sprite 1: first\nSprite 2: second\n",
+        sprites: [{ path: "D:/sprites/mika/sprite-a.png" }, { path: "D:/sprites/mika/sprite-b.png" }],
+      },
+    ]);
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    fireEvent.click(screen.getByTitle("sprite-b.png"));
+    fireEvent.change(screen.getByLabelText("Sprite tag"), { target: { value: "unsaved second edit" } });
+    fireEvent.click(screen.getByTitle("sprite-a.png"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(mockDeleteCharacterSprite).toHaveBeenCalledWith("Mika", 0));
+    await waitFor(() => expect(screen.getByLabelText("Sprite tag")).toHaveValue("unsaved second edit"));
   });
 
   it("keeps sprite voice types aligned by path after deleting a sprite", async () => {

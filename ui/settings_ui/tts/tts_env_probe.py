@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import platform
 import re
 import shutil
@@ -210,12 +211,23 @@ def bundle_choice_for_kind(kind: str) -> TtsBundleChoice:
 
 
 def get_default_project_root() -> Path:
-    """与 ConfigManager 一致：在含 data/config 的仓库根上解析路径。"""
+    """Resolve the writable runtime project root while preserving legacy source launches."""
+    raw = (
+        os.environ.get("SHINSEKAI_PROJECT_ROOT", "").strip()
+        or os.environ.get("EASYAI_PROJECT_ROOT", "").strip()
+    )
+    if raw:
+        return Path(raw).expanduser().resolve(strict=False)
+
+    cwd = Path.cwd().resolve(strict=False)
+    if (cwd / "data" / "config").is_dir():
+        return cwd
+
     p = Path(__file__).resolve()
     for anc in p.parents:
         if (anc / "data" / "config").is_dir():
             return anc
-    return Path.cwd()
+    return cwd
 
 
 def get_gpu_list() -> list[dict[str, Any]]:

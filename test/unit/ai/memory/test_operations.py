@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import urllib.error
 
 from ai.memory import operations
@@ -17,6 +18,16 @@ class _FakeMemory:
                 "loose row",
             ]
         }
+
+
+class _TopKFakeMemory:
+    def __init__(self):
+        self.requested_top_k = None
+
+    def get_all(self, *, filters, top_k=20, **kwargs):
+        assert filters == {"user_id": "Alice"}
+        self.requested_top_k = top_k
+        return {"results": [{"id": str(index), "memory": f"memory-{index}"} for index in range(top_k)]}
 
 
 class _RecordingLock:
@@ -55,9 +66,32 @@ class _LockedFakeMemory:
         assert self.lock.active
 
 
+class _DedupeFakeMemory:
+    def __init__(self, search_result):
+        self.search_result = search_result
+        self.search_calls = []
+        self.add_calls = []
+
+    def search(self, query, *, filters, limit):
+        self.search_calls.append((query, filters, limit))
+        return self.search_result
+
+    def add(self, content, *, user_id, infer):
+        self.add_calls.append((content, user_id, infer))
+
+
+class _TopKSearchFakeMemory:
+    def __init__(self):
+        self.requested_top_k = None
+
+    def search(self, query, *, filters, top_k=20, **kwargs):
+        self.requested_top_k = top_k
+        return {"results": []}
+
+
 def test_memory_list_normalizes_rows(monkeypatch):
     monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
-    monkeypatch.setattr(operations, "get_mem0", lambda: _FakeMemory())
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: _FakeMemory())
 
     result = operations.memory_list("Alice")
 
@@ -72,12 +106,22 @@ def test_memory_list_normalizes_rows(monkeypatch):
     }
 
 
+def test_memory_list_uses_top_k_with_new_mem0_versions(monkeypatch):
+    memory = _TopKFakeMemory()
+    monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: memory)
+
+    result = operations.memory_list("Alice", limit=200)
+
+    assert memory.requested_top_k == 200
+    assert result["count"] == 200
+
+
 def test_local_memory_operations_are_serialized(monkeypatch):
     lock = _RecordingLock()
     memory = _LockedFakeMemory(lock)
     monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
     monkeypatch.setattr(operations, "_mem0_operation_lock", lock)
-    monkeypatch.setattr(operations, "get_mem0", lambda: memory)
     monkeypatch.setattr(operations, "ensure_mem0", lambda: memory)
 
     assert operations.memory_list("Alice")["count"] == 0
@@ -85,6 +129,70 @@ def test_local_memory_operations_are_serialized(monkeypatch):
     assert operations.memory_remember("tea", character_name="Alice")["ok"] is True
     assert operations.memory_forget("mem-1")["ok"] is True
     assert lock.enter_count == 4
+
+
+def test_memory_remember_skips_semantic_duplicate_for_same_character(monkeypatch):
+    memory = _DedupeFakeMemory(
+        {"results": [{"id": "existing-1", "memory": "Alice likes black tea", "score": 0.95}]}
+    )
+    monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: memory)
+
+    result = operations.memory_remember("Alice loves black tea", character_name="Alice")
+
+    assert result["ok"] is True
+    assert result["duplicate"] is True
+    assert result["duplicate_type"] == "semantic"
+    assert result["existing_memory_id"] == "existing-1"
+    assert memory.search_calls == [
+        (
+            "Alice loves black tea",
+            {"user_id": "Alice"},
+            operations._SEMANTIC_DEDUPLICATION_SEARCH_LIMIT,
+        )
+    ]
+    assert memory.add_calls == []
+
+
+def test_memory_remember_adds_when_existing_memory_is_below_threshold(monkeypatch):
+    memory = _DedupeFakeMemory(
+        {"results": [{"id": "existing-1", "memory": "Alice likes coffee", "score": 0.72}]}
+    )
+    monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: memory)
+
+    result = operations.memory_remember("Alice likes black tea", character_name="Alice")
+
+    assert result == {
+        "ok": True,
+        "duplicate": False,
+        "agent_id": "Alice",
+        "content": "Alice likes black tea",
+    }
+    assert memory.add_calls == [("Alice likes black tea", "Alice", False)]
+
+
+def test_memory_remember_detects_exact_duplicate_without_search_score(monkeypatch):
+    memory = _DedupeFakeMemory({"results": [{"id": "existing-1", "memory": "Alice likes tea"}]})
+    monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: memory)
+
+    result = operations.memory_remember("  Alice likes tea  ", character_name="Alice")
+
+    assert result["duplicate"] is True
+    assert result["duplicate_type"] == "exact"
+    assert memory.add_calls == []
+
+
+def test_memory_search_uses_top_k_with_new_mem0_versions(monkeypatch):
+    memory = _TopKSearchFakeMemory()
+    monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: memory)
+
+    result = operations.memory_search("tea", character_name="Alice", limit=200)
+
+    assert result["count"] == 0
+    assert memory.requested_top_k == 200
 
 
 def test_memory_remember_and_list_rejects_empty_content():
@@ -221,10 +329,33 @@ def test_memory_service_loading_starts_ready_monitor(monkeypatch):
     assert started == [True]
 
 
+def test_memory_service_status_controls_loading_without_background_monitor(monkeypatch):
+    captured = {}
+    started = []
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return _FakeHttpResponse({"status": "loading", "message": "loading"})
+
+    monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_URL", "http://127.0.0.1:8787/api/memory")
+    monkeypatch.setattr(operations.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(operations, "_start_memory_service_ready_monitor", lambda: started.append(True))
+
+    result = operations.memory_service_status(start_loading=False, monitor_ready=False)
+
+    assert result == {"status": "loading", "message": "loading"}
+    assert captured == {
+        "url": "http://127.0.0.1:8787/api/memory/status",
+        "body": {"startLoading": False},
+    }
+    assert started == []
+
+
 def test_memory_service_owner_skips_proxy(monkeypatch):
     monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_URL", "http://127.0.0.1:8787/api/memory")
     monkeypatch.setenv("SHINSEKAI_MEMORY_SERVICE_OWNER", "1")
-    monkeypatch.setattr(operations, "get_mem0", lambda: _FakeMemory())
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: _FakeMemory())
 
     result = operations.memory_list("Alice")
 

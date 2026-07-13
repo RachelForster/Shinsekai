@@ -1,4 +1,4 @@
-import { closeDesktopWindow, isTauriDesktop, openDesktopChatWindow } from "./desktopApi";
+import { destroyDesktopChatWindow, hideDesktopWindow, isTauriDesktop, openDesktopChatWindow } from "./desktopApi";
 import type { ChatSnapshot } from "../platform/types";
 
 interface ShowChatSurfaceOptions {
@@ -61,26 +61,31 @@ function shouldCloseReactChatRuntime(
 }
 
 export async function closeChatSurface(options: CloseChatSurfaceOptions = {}) {
+  const closeRuntime = () =>
+    options.closeRuntime && shouldCloseReactChatRuntime(options.snapshot)
+      ? options.closeRuntime().catch(() => {
+          // Ignore runtime close failures here and still allow the user to leave the chat surface.
+        })
+      : undefined;
+
   if (isTauriDesktop()) {
-    await closeDesktopWindow();
+    await hideDesktopWindow().catch(() => {
+      // Continue closing the runtime even if the shell could not hide the window.
+    });
+    await closeRuntime();
+    await destroyDesktopChatWindow().catch(() => {
+      // The runtime is already closed; a shell failure must not restart the close flow.
+    });
     return;
   }
 
-  if (options.closeRuntime && shouldCloseReactChatRuntime(options.snapshot)) {
-    try {
-      await options.closeRuntime();
-    } catch {
-      // Ignore runtime close failures here and still allow the user to leave the chat surface.
-    }
-  }
-
+  const closeRuntimePromise = closeRuntime();
   const path = options.webPath ?? "/settings/launch";
   if (options.navigate) {
     options.navigate(path);
-    return;
-  }
-
-  if (typeof window !== "undefined") {
+  } else if (typeof window !== "undefined") {
     window.location.hash = `#${path}`;
   }
+
+  await closeRuntimePromise;
 }

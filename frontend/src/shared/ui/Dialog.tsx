@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 import "./Dialog.css";
-import { Button } from "./Button";
+import { Button, type ButtonProps } from "./Button";
 import { IconButton } from "./IconButton";
 
 interface DialogProps {
@@ -12,6 +12,7 @@ interface DialogProps {
   children: ReactNode;
   className?: string;
   closeLabel?: string;
+  dismissible?: boolean;
   footer?: ReactNode;
   headerActions?: ReactNode;
   onClose: () => void;
@@ -24,6 +25,7 @@ export function Dialog({
   children,
   className = "",
   closeLabel = "Close",
+  dismissible = true,
   footer,
   headerActions,
   onClose,
@@ -32,22 +34,29 @@ export function Dialog({
 }: DialogProps) {
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) {
       return;
     }
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    window.setTimeout(() => {
+      if (dismissible) {
+        closeButtonRef.current?.focus();
+      } else {
+        dialogRef.current?.focus();
+      }
+    }, 0);
     return () => previous?.focus();
-  }, [open]);
+  }, [dismissible, open]);
 
   if (!open) {
     return null;
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") {
+    if (dismissible && event.key === "Escape") {
       event.stopPropagation();
       onClose();
     }
@@ -60,7 +69,9 @@ export function Dialog({
         aria-modal="true"
         className={["dialog", className].filter(Boolean).join(" ")}
         onKeyDown={onKeyDown}
+        ref={dialogRef}
         role="dialog"
+        tabIndex={dismissible ? undefined : -1}
       >
         <header className="dialog__header">
           <h2 className="dialog__title" id={titleId}>
@@ -68,9 +79,11 @@ export function Dialog({
           </h2>
           <div className="dialog__header-actions">
             {headerActions}
-            <IconButton label={closeLabel} onClick={onClose} ref={closeButtonRef}>
-              <X aria-hidden className="icon-button__icon" />
-            </IconButton>
+            {dismissible ? (
+              <IconButton label={closeLabel} onClick={onClose} ref={closeButtonRef}>
+                <X aria-hidden className="icon-button__icon" />
+              </IconButton>
+            ) : null}
           </div>
         </header>
         <div className={["dialog__body", bodyClassName].filter(Boolean).join(" ")}>{children}</div>
@@ -86,6 +99,7 @@ interface AlertDialogProps {
   cancelLabel?: string;
   closeLabel?: string;
   confirmLabel?: string;
+  confirmVariant?: ButtonProps["variant"];
   onCancel: () => void;
   onConfirm: () => void;
   open: boolean;
@@ -97,6 +111,7 @@ export function AlertDialog({
   cancelLabel = "Cancel",
   closeLabel,
   confirmLabel = "Confirm",
+  confirmVariant = "danger",
   onCancel,
   onConfirm,
   open,
@@ -108,7 +123,7 @@ export function AlertDialog({
       footer={
         <>
           <Button onClick={onCancel}>{cancelLabel}</Button>
-          <Button onClick={onConfirm} variant="danger">
+          <Button onClick={onConfirm} variant={confirmVariant}>
             {confirmLabel}
           </Button>
         </>

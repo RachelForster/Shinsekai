@@ -35,7 +35,7 @@ from core.sprite.chat_branch_storage import (
     chat_history_session_dir,
     remove_chat_history_storage,
 )
-from llm.history_manager import parse_assistant_dialog_content
+from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
 from llm.tools.chat_ui_tools import sanitize_user_display_name
 
 from .state import BridgeState
@@ -43,6 +43,7 @@ from .runtime_dependencies import runtime_dependency_error_from_text
 from .security import reject_control_chars, safe_project_path
 from .templates import (
     TEMP_SPLIT_META,
+    _compose_runtime_template,
     _effective_user_scenario,
     _history_id_from_scenario,
     _scenario_from_template_like,
@@ -106,6 +107,37 @@ def _hidden_subprocess_kwargs() -> dict[str, Any]:
 def _chat_process_running() -> bool:
     with _main_chat_process_lock:
         return _main_chat_process is not None and _main_chat_process.poll() is None
+
+
+def _chat_runtime_closing(state: BridgeState) -> bool:
+    lock = getattr(state, "chat_runtime_lock", None)
+    if lock is None:
+        return bool(getattr(state, "chat_runtime_closing", False))
+    with lock:
+        return bool(getattr(state, "chat_runtime_closing", False))
+
+
+def _chat_runtime_status(state: BridgeState) -> dict[str, Any]:
+    running = _chat_process_running()
+    # Read closing after the process state. If shutdown starts between the two
+    # reads and the process exits quickly, prefer the newer closing signal over
+    # an incorrect idle result that would re-enable launch controls too early.
+    closing = _chat_runtime_closing(state)
+    runtime_state = "closing" if closing else "running" if running else "idle"
+    return {
+        "state": runtime_state,
+        "chatProcessRunning": running,
+        "chatRuntimeClosing": closing,
+    }
+
+
+def _set_chat_runtime_closing(state: BridgeState, closing: bool) -> None:
+    lock = getattr(state, "chat_runtime_lock", None)
+    if lock is None:
+        state.chat_runtime_closing = closing
+        return
+    with lock:
+        state.chat_runtime_closing = closing
 
 
 def _chat_log_path() -> Path:
@@ -212,8 +244,9 @@ def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float)
         return
 
     deadline = time.monotonic() + max(wait_timeout, 0.15)
+    graceful_timeout = max(0.45, wait_timeout - 0.7)
     steps: list[tuple[int | str, float]] = [
-        (signal.SIGINT, 0.45),
+        (signal.SIGINT, graceful_timeout),
         (signal.SIGTERM, 0.35),
         ("kill", 0.35),
     ]
@@ -241,7 +274,7 @@ def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float)
             return
 
 
-def shutdown_active_chat_process(*, wait_timeout: float = 1.2) -> None:
+def shutdown_active_chat_process(*, wait_timeout: float = 1.2, wait_before_signal: float = 0.0) -> None:
     """Stop the active chat child without needing bridge request state.
 
     The bridge may be asked to exit from watchdog/signal paths where there is no
@@ -261,7 +294,14 @@ def shutdown_active_chat_process(*, wait_timeout: float = 1.2) -> None:
 
     if process is not None and process.poll() is None:
         try:
-            _stop_chat_process(process, wait_timeout=wait_timeout)
+            started = time.monotonic()
+            exited_gracefully = wait_before_signal > 0 and _wait_process_exit(
+                process,
+                min(wait_before_signal, wait_timeout),
+            )
+            if not exited_gracefully:
+                remaining = max(0.15, wait_timeout - (time.monotonic() - started))
+                _stop_chat_process(process, wait_timeout=remaining)
         finally:
             with _main_chat_process_lock:
                 if _main_chat_process is process:
@@ -333,6 +373,7 @@ def _launch_chat(
     use_cg: bool,
     user_scenario: str,
     stream_endpoint: str = "",
+    init_stream_endpoint: str = "",
     workflow_path: str = "",
 ) -> str:
     global _main_chat_process
@@ -345,9 +386,7 @@ def _launch_chat(
 
         # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
         effective_user_scenario = _effective_user_scenario(user_scenario)
-        template = system_template.rstrip()
-        if effective_user_scenario:
-            template = template + "\n" + effective_user_scenario + "\n"
+        template = _compose_runtime_template(system_template, effective_user_scenario)
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
         (template_dir / TEMP_SPLIT_META).write_text(
@@ -379,14 +418,30 @@ def _launch_chat(
             f"--room_id={room_id}",
             f"--tts={tts_slug}",
         ]
+        if character_names:
+            args.append(f"--characters={json.dumps(character_names, ensure_ascii=False)}")
         if stream_endpoint:
             args.append(f"--stream-endpoint={stream_endpoint}")
+        if init_stream_endpoint:
+            args.append(f"--init-stream-endpoint={init_stream_endpoint}")
         if workflow_path:
             args.append(f"--workflow={workflow_path}")
         env = os.environ.copy()
+        env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"
+        api_config = state.config_manager.config.api_config
+        env["SHINSEKAI_MEMORY_AUTO_ENABLED"] = "1" if bool(getattr(api_config, "memory_auto_enabled", False)) else "0"
+        env["SHINSEKAI_MEMORY_EXTRACT_INTERVAL_TURNS"] = str(
+            max(1, int(getattr(api_config, "memory_extract_interval_turns", 5) or 5))
+        )
+        env["SHINSEKAI_MEMORY_SEARCH_LIMIT"] = str(
+            max(1, int(getattr(api_config, "memory_search_limit", 5) or 5))
+        )
+        env["SHINSEKAI_MEMORY_RECENT_BUFFER_MESSAGES"] = str(
+            max(2, int(getattr(api_config, "memory_recent_buffer_messages", 16) or 16))
+        )
         chat_stream = getattr(state, "chat_stream", None)
         memory_service_base = str(getattr(chat_stream, "http_base", "") or "").strip()
         if memory_service_base:
@@ -423,20 +478,44 @@ def _close_chat(
     state: BridgeState,
     *,
     reason: str = "聊天会话已结束。",
-    wait_timeout: float = 1.2,
+    wait_timeout: float = 4.0,
 ) -> dict[str, Any]:
     global _main_chat_process
 
     session_id = str(state.chat_session.get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
-    if session_id and chat_stream is not None:
-        snapshot = chat_stream.get_snapshot(session_id)
-        if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
-            chat_stream.close_session(session_id, reason=reason)
-
-    shutdown_active_chat_process(wait_timeout=wait_timeout)
-
-    return _chat_snapshot(state, "idle", "")
+    _set_chat_runtime_closing(state, True)
+    try:
+        graceful_shutdown_requested = False
+        if session_id and chat_stream is not None:
+            try:
+                graceful_shutdown_requested = bool(
+                    chat_stream.send_command(
+                        session_id,
+                        {"cmdId": uuid.uuid4().hex, "type": "close-session"},
+                    )
+                )
+            except Exception:
+                graceful_shutdown_requested = False
+        shutdown_active_chat_process(
+            wait_timeout=wait_timeout,
+            wait_before_signal=max(0.0, wait_timeout - 0.7) if graceful_shutdown_requested else 0.0,
+        )
+        if session_id and chat_stream is not None:
+            snapshot = chat_stream.get_snapshot(session_id)
+            if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
+                chat_stream.close_session(session_id, reason=reason)
+    finally:
+        _set_chat_runtime_closing(state, False)
+    closed_snapshot = _chat_snapshot(state, "idle", "")
+    if session_id:
+        if chat_stream is not None:
+            delete_session = getattr(chat_stream, "delete_session", None)
+            if callable(delete_session):
+                delete_session(session_id)
+        if str(state.chat_session.get("sessionId") or "").strip() == session_id:
+            state.chat_session = {**state.chat_session, "sessionId": ""}
+    return closed_snapshot
 
 
 def _resolve_project_file(raw_path: str | Path) -> Path:
@@ -647,6 +726,10 @@ def _chat_snapshot(
     runtime_mode = _chat_runtime_mode(state)
     experimental_features = _chat_experimental_features(state)
     user_display_name = _chat_user_display_name(state)
+    runtime_state = {
+        "chatProcessRunning": _chat_process_running(),
+        "chatRuntimeClosing": _chat_runtime_closing(state),
+    }
     if session_id and chat_stream is not None:
         snapshot = chat_stream.get_snapshot(session_id)
         if snapshot is not None:
@@ -668,6 +751,7 @@ def _chat_snapshot(
             if status is not None:
                 next_snapshot["status"] = status
                 next_snapshot["numericInfo"] = status
+            next_snapshot.update(runtime_state)
             if extra:
                 next_snapshot.update(extra)
             return next_snapshot
@@ -690,34 +774,28 @@ def _chat_snapshot(
         "statusMessage": message,
         "userDisplayName": user_display_name,
         "voiceLanguage": voice_language,
+        **runtime_state,
         **(extra or {}),
     }
 
 
+def _chat_stream_initial_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Create a stream snapshot without carrying sprites from a previous session.
+
+    The runtime producer is authoritative for the initial or history-restored
+    sprite and will publish it before chat initialization completes.
+    """
+    initial = dict(snapshot)
+    initial["sprites"] = []
+    return initial
+
+
 def _plain_history_text(raw: Any) -> str:
-    if not isinstance(raw, list):
-        return ""
-    rows: list[str] = []
-    for item in raw:
-        if isinstance(item, dict):
-            role = str(item.get("role") or "")
-            content = str(item.get("content") or "")
-            if content:
-                rows.append(f"{role}: {content}" if role else content)
-        else:
-            text = re.sub(r"<[^>]+>", "", str(item)).strip()
-            if text:
-                rows.append(text)
-    return "\n".join(rows)
+    return history_payload_to_plain_text(raw)
 
 
 def _plain_history_text_from_entries(entries: list[dict[str, Any]]) -> str:
-    rows: list[str] = []
-    for item in entries:
-        text = str(item.get("text") or "").strip()
-        if text:
-            rows.append(text)
-    return "\n".join(rows)
+    return history_payload_to_plain_text(entries)
 
 
 def _read_history_file(path: Path) -> Any:

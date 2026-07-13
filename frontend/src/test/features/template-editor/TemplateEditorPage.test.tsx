@@ -12,6 +12,7 @@ import { ToastProvider } from "../../../shared/ui";
 const mockListBackgrounds = vi.fn();
 const mockListCharacters = vi.fn();
 const mockLaunchChat = vi.fn();
+const mockGetChatSnapshot = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
 const mockGetAppConfig = vi.fn();
 const mockSaveSystemConfig = vi.fn();
@@ -19,9 +20,12 @@ const mockGenerateTemplate = vi.fn();
 const mockGetTemplateSession = vi.fn();
 const mockListEffects = vi.fn();
 const mockListTemplates = vi.fn();
+const mockRefreshRuntimeStatus = vi.fn();
 const mockSaveTemplate = vi.fn();
 const mockSaveTemplateSession = vi.fn();
 const mockShowChatSurface = vi.fn();
+const mockUpdateRuntimeStatusFromSnapshot = vi.fn();
+const mockUseChatLaunchGuard = vi.fn();
 
 vi.mock("../../../entities/background/repository", () => ({
   backgroundsQueryKey: ["backgrounds"],
@@ -34,8 +38,14 @@ vi.mock("../../../entities/character/repository", () => ({
 }));
 
 vi.mock("../../../entities/chat/repository", () => ({
+  chatQueryKey: ["chat"],
+  getChatSnapshot: () => mockGetChatSnapshot(),
   installMissingRuntimeDependency: (input: unknown) => mockInstallMissingRuntimeDependency(input),
   launchChat: (input: unknown) => mockLaunchChat(input),
+}));
+
+vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
+  useChatLaunchGuard: () => mockUseChatLaunchGuard(),
 }));
 
 vi.mock("../../../entities/config/repository", () => ({
@@ -91,6 +101,11 @@ function renderPage() {
 describe("TemplateEditorPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseChatLaunchGuard.mockReturnValue({
+      refreshRuntimeStatus: mockRefreshRuntimeStatus,
+      runtimeLaunchDisabled: false,
+      updateRuntimeStatusFromSnapshot: mockUpdateRuntimeStatusFromSnapshot,
+    });
     mockListTemplates.mockResolvedValue([template]);
     mockGetTemplateSession.mockResolvedValue(null);
     mockGetAppConfig.mockResolvedValue(structuredClone(sampleConfig));
@@ -109,6 +124,13 @@ describe("TemplateEditorPage", () => {
       system: "Generated system",
     });
     mockLaunchChat.mockResolvedValue({ dialogText: "launched" });
+    mockGetChatSnapshot.mockResolvedValue({
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    });
     mockInstallMissingRuntimeDependency.mockResolvedValue({ message: "installed" });
     mockSaveTemplateSession.mockResolvedValue(undefined);
     mockSaveSystemConfig.mockResolvedValue(sampleConfig.system_config);
@@ -221,6 +243,10 @@ describe("TemplateEditorPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Quick restart" }));
 
     await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
+    expect(mockUpdateRuntimeStatusFromSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ dialogText: "launched" }),
+    );
+    expect(mockGetChatSnapshot).not.toHaveBeenCalled();
     expect(mockSaveTemplateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         background: "默认房间",
@@ -246,6 +272,33 @@ describe("TemplateEditorPage", () => {
         useCg: true,
       }),
     );
+  });
+
+  it("refreshes runtime status after a launch failure", async () => {
+    mockLaunchChat.mockRejectedValueOnce(new Error("runtime closing"));
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+
+    expect(await screen.findByRole("dialog", { name: "Preparing chat" })).toHaveTextContent("runtime closing");
+    expect(mockRefreshRuntimeStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables launch actions while an existing chat process is still running", async () => {
+    mockUseChatLaunchGuard.mockReturnValue({
+      refreshRuntimeStatus: mockRefreshRuntimeStatus,
+      runtimeLaunchDisabled: true,
+      updateRuntimeStatusFromSnapshot: mockUpdateRuntimeStatusFromSnapshot,
+    });
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Launch chat" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Quick restart" })).toBeDisabled();
+    expect(mockGetChatSnapshot).not.toHaveBeenCalled();
   });
 
   it("renders empty and query error states", async () => {

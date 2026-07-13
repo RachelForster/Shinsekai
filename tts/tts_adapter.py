@@ -16,14 +16,52 @@ from typing import Optional, Callable
 from urllib.parse import urlparse
 
 
+def _is_local_server_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return host in {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
+
+
+def _wait_for_http_service_ready(
+    probe: Callable[[], bool],
+    *,
+    service_name: str,
+    process,
+    timeout_seconds: float,
+    poll_interval_seconds: float,
+) -> None:
+    timeout = max(0.0, float(timeout_seconds))
+    interval = max(0.01, float(poll_interval_seconds))
+    deadline = time.monotonic() + timeout
+    while True:
+        if probe():
+            return
+
+        poll = getattr(process, "poll", None)
+        if callable(poll):
+            return_code = poll()
+            if return_code is not None:
+                raise RuntimeError(f"{service_name} server exited before becoming ready (code {return_code}).")
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"{service_name} server did not become ready within {timeout:g} seconds.")
+        time.sleep(min(interval, remaining))
+
+
 class GPTSoVitsAdapter(TTSAdapter):
     """
     Adapter for the GPT-SoVITS TTS service.
     It adapts the GPT-SoVITS API to the standard TTSAdapter interface.
     """
+    STARTUP_TIMEOUT_SECONDS = 600.0
+    STARTUP_POLL_INTERVAL_SECONDS = 0.5
+
     def __init__(self, tts_server_url="http://127.0.0.1:9880/", gpt_sovits_work_path = None):
         self.tts_server_url = tts_server_url.rstrip("/") + "/"
         self._session = requests.Session()
+        if self._is_local_server_url():
+            # Loopback services must not be routed through HTTP(S)_PROXY.
+            self._session.trust_env = False
         self.sovits_model_path = ''
         self.gpt_model_path = ''
         self.gpt_sovits_work_path = str(gpt_sovits_work_path or "").strip() or None
@@ -68,8 +106,25 @@ class GPTSoVitsAdapter(TTSAdapter):
             return False
 
     def _is_local_server_url(self) -> bool:
-        host = (urlparse(self.tts_server_url).hostname or "").lower()
-        return host in {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
+        return _is_local_server_url(self.tts_server_url)
+
+    def wait_until_ready(
+        self,
+        timeout_seconds: float | None = None,
+        *,
+        poll_interval_seconds: float | None = None,
+    ) -> None:
+        _wait_for_http_service_ready(
+            self._server_is_reachable,
+            service_name="GPT-SoVITS",
+            process=self._server_process,
+            timeout_seconds=self.STARTUP_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds,
+            poll_interval_seconds=(
+                self.STARTUP_POLL_INTERVAL_SECONDS
+                if poll_interval_seconds is None
+                else poll_interval_seconds
+            ),
+        )
 
     @staticmethod
     def _response_error_text(response, action: str) -> str:
@@ -403,6 +458,9 @@ class IndexTTSAdapter(TTSAdapter):
     Adapter for a hypothetical Index TTS service.
     This demonstrates how a new service can be integrated.
     """
+    STARTUP_TIMEOUT_SECONDS = 600.0
+    STARTUP_POLL_INTERVAL_SECONDS = 0.5
+
     def __init__(
         self,
         index_server_url="http://localhost:9880/",
@@ -413,6 +471,10 @@ class IndexTTSAdapter(TTSAdapter):
         self.index_server_url = (tts_server_url or index_server_url).rstrip("/") + "/"
         self.current_model = None
         self._server_process = None
+        self._session = requests.Session()
+        if _is_local_server_url(self.index_server_url):
+            # Loopback services must not be routed through HTTP(S)_PROXY.
+            self._session.trust_env = False
 
         self.gpt_sovits_work_path = str(index_server_work_path or gpt_sovits_work_path or "").strip() or None
 
@@ -420,6 +482,10 @@ class IndexTTSAdapter(TTSAdapter):
         self._start_server_process()
 
     def stop_server(self) -> None:
+        try:
+            self._session.close()
+        except Exception:
+            pass
         if self._server_process is not None:
             try:
                 self._server_process.terminate()
@@ -431,19 +497,46 @@ class IndexTTSAdapter(TTSAdapter):
                     pass
             self._server_process = None
 
+    def _server_is_reachable(self) -> bool:
+        try:
+            response = self._session.get(self.index_server_url, timeout=5)
+            return response.status_code < 500
+        except requests.RequestException:
+            return False
+
+    def _is_local_server_url(self) -> bool:
+        return _is_local_server_url(self.index_server_url)
+
+    def wait_until_ready(
+        self,
+        timeout_seconds: float | None = None,
+        *,
+        poll_interval_seconds: float | None = None,
+    ) -> None:
+        _wait_for_http_service_ready(
+            self._server_is_reachable,
+            service_name="IndexTTS",
+            process=self._server_process,
+            timeout_seconds=self.STARTUP_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds,
+            poll_interval_seconds=(
+                self.STARTUP_POLL_INTERVAL_SECONDS
+                if poll_interval_seconds is None
+                else poll_interval_seconds
+            ),
+        )
+
     def _start_server_process(self):
         """
         Starts the GPT-SoVITS server process if it's not running.
         This is now the adapter's responsibility.
         """
-        try:
-            # You might want to add a check here to see if the process is already running
-            response = requests.get(self.index_server_url, timeout=5)
-            if response.status_code == 200:
-                print("IndexTTS server is already running.")
-                return
-        except requests.RequestException:
-            print("IndexTTS server not found, attempting to start...")
+        if self._server_is_reachable():
+            print("IndexTTS server is already running.")
+            return
+        if not self._is_local_server_url():
+            print("Remote IndexTTS server is not reachable; skip local auto-start.")
+            return
+        print("IndexTTS server not found, attempting to start...")
 
         if not self.gpt_sovits_work_path:
             raise RuntimeError("Local IndexTTS server is not reachable; set the IndexTTS startup path.")
@@ -467,7 +560,7 @@ class IndexTTSAdapter(TTSAdapter):
                 "voice_name": kwargs.get("voice_name", "default"),
                 "language": kwargs.get("text_lang", "ja")
             }
-            response = requests.post(self.index_server_url + "generate", json=params)
+            response = self._session.post(self.index_server_url + "generate", json=params)
             response.raise_for_status()
 
             if not file_path:

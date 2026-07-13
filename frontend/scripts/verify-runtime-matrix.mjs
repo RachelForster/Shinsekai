@@ -32,7 +32,7 @@ const windowsRequiredFiles = new Map([
 const expectedBundles = new Map([
   ["linux-x64", ["deb"]],
   ["linux-arm64", ["deb"]],
-  ["windows-x64", ["none"]],
+  ["windows-x64", ["nsis"]],
   ["windows-arm64", ["none"]],
   ["macos-arm64", ["dmg"]],
 ]);
@@ -222,6 +222,14 @@ check(
     !releaseWorkflow.includes("RUSTC_WRAPPER=sccache"),
   "desktop and release workflows must rely on rust-cache target reuse instead of sccache",
 );
+check(
+  workflow.includes("shared-key: build") && releaseWorkflow.includes("shared-key: build"),
+  "desktop and release workflows must share the platform-isolated Rust build cache",
+);
+check(
+  !workflow.includes("choco install nsis") && !releaseWorkflow.includes("choco install nsis"),
+  "Tauri workflows must use tauri-bundler's pinned NSIS toolchain instead of installing an unused system copy",
+);
 check(!workflow.includes("needs: runtime-gate"), "desktop build matrix must run in parallel with runtime-gate");
 check(
   workflow.includes("pnpm prepare:runtime --target ${{ matrix.platform }} --verify --skip-wheels") &&
@@ -265,10 +273,6 @@ check(
     workflow.includes("pnpm verify:packaged-runtime --target ${{ matrix.platform }}") &&
     workflow.includes("if: matrix.bundles != 'none'"),
   "workflow must skip installer generation and artifact upload for no-bundle platforms",
-);
-check(
-  workflow.includes("if: runner.os == 'Windows' && matrix.bundles != 'none'"),
-  "workflow must skip Windows installer dependency installation for no-bundle Windows builds",
 );
 check(!workflow.includes("pnpm tauri build -v"), "workflow must not use verbose Tauri build logging in CI");
 check(

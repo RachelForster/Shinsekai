@@ -20,11 +20,14 @@ import {
   testLlmConnection,
   ttsBundleRecommendationQueryKey,
 } from "../../entities/config/repository";
-import type { ApiConfig, SystemConfig } from "../../entities/config/types";
+import type { ApiConfig, AppConfig, SystemConfig } from "../../entities/config/types";
+import { installMissingRuntimeDependency, resumeLastChat } from "../../entities/chat/repository";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { useAppState } from "../../shared/app-state/AppState";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import { resumeLastChat } from "../../entities/chat/repository";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
 import {
   AsyncButton,
@@ -40,6 +43,7 @@ import { AdapterExtraSection } from "./AdapterExtraSection";
 import { ApiLanguageSection } from "./ApiLanguageSection";
 import { AsrSettingsSection } from "./AsrSettingsSection";
 import { LlmConnectionSection } from "./LlmConnectionSection";
+import { MemorySettingsSection } from "./MemorySettingsSection";
 import { ResourceLinksSection } from "./ResourceLinksSection";
 import { T2iSetupSection } from "./T2iSetupSection";
 import { TtsBundleSection } from "./TtsBundleSection";
@@ -110,6 +114,15 @@ export function ApiSettingsPage() {
     queryKey: ttsBundleRecommendationQueryKey,
     staleTime: 300_000,
   });
+  const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const {
+    closeInitialization,
+    initializationError,
+    initializationOpen,
+    initializationPending,
+    initializationTask,
+    runChatInitialization,
+  } = useChatInitialization();
   const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<ApiConfig | null>(null);
   const [systemDraft, setSystemDraft] = useState<SystemConfig | null>(null);
@@ -198,8 +211,14 @@ export function ApiSettingsPage() {
   });
 
   const resumeMutation = useMutation({
-    mutationFn: resumeLastChat,
+    mutationFn: async () => {
+      if (runtimeLaunchDisabled) {
+        throw new Error(t("launch.runtimeBusy"));
+      }
+      return runChatInitialization((options) => resumeLastChat(options));
+    },
     onError(error) {
+      void refreshRuntimeStatus();
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("api.resume.tip"),
@@ -207,6 +226,36 @@ export function ApiSettingsPage() {
       });
     },
     onSuccess(snapshot) {
+      void updateRuntimeStatusFromSnapshot(snapshot);
+      if (snapshot.runtimeDependencyError) {
+        const dependencyError = snapshot.runtimeDependencyError;
+        const shouldInstall = window.confirm(
+          t("runtimeDeps.installConfirm", {
+            module: dependencyError.moduleName,
+            package: dependencyError.packageName,
+          }),
+        );
+        if (!shouldInstall) {
+          showToast({ kind: "error", message: snapshot.dialogText, title: t("api.resume.title") });
+          return;
+        }
+        void installMissingRuntimeDependency({ moduleName: dependencyError.moduleName })
+          .then((result) => {
+            showToast({
+              kind: "success",
+              message: result.message || t("runtimeDeps.installSucceeded"),
+              title: t("runtimeDeps.installTitle"),
+            });
+          })
+          .catch((error: unknown) => {
+            showToast({
+              kind: "error",
+              message: error instanceof Error ? error.message : t("runtimeDeps.installFailed"),
+              title: t("runtimeDeps.installFailed"),
+            });
+          });
+        return;
+      }
       showToast({
         kind: "success",
         message: snapshot.statusMessage || snapshot.dialogText,
@@ -431,6 +480,14 @@ export function ApiSettingsPage() {
     setSystemDraft({ ...systemDraft, ...patch });
   };
 
+  const persistSystemDraftForModel = async () => {
+    const saved = await saveSystemConfig(normalizeSystemAsrForSave(systemDraft));
+    queryClient.setQueryData<AppConfig>(configQueryKey, (current) =>
+      current ? { ...current, system_config: saved } : current,
+    );
+    setSystemDraft(saved);
+  };
+
   const handleLanguageChange = (language: UiLanguage) => {
     setSystemDraft({ ...systemDraft, ui_language: language });
     languageMutation.mutate(language);
@@ -549,6 +606,7 @@ export function ApiSettingsPage() {
   const apiSectionNavItems = [
     { id: "api-language", label: t("api.language.title") },
     { id: "api-llm", label: t("api.llm.connectionTitle") },
+    { id: "api-memory", label: t("api.memory.title") },
     { id: "api-tts", label: t("api.tts.bundleTitle") },
     { id: "api-t2i", label: t("api.t2i.title") },
     { id: "api-asr", label: t("system.asr.title") },
@@ -640,6 +698,7 @@ export function ApiSettingsPage() {
             {t("common.save")}
           </AsyncButton>
           <AsyncButton
+            disabled={runtimeLaunchDisabled || initializationPending}
             icon={<RotateCcw aria-hidden className="button__icon" />}
             loading={resumeMutation.isPending}
             onClick={() => resumeMutation.mutate()}
@@ -685,6 +744,12 @@ export function ApiSettingsPage() {
         groups={apiSchema.filter((g) => g.id === "llm")}
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
         value={draft}
+      />
+      <MemorySettingsSection
+        disabled={saveMutation.isPending}
+        draft={draft}
+        id="api-memory"
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
       />
       <TtsBundleSection
         canCancelDownload={canCancelTtsBundleDownload}
@@ -737,6 +802,7 @@ export function ApiSettingsPage() {
         draft={draft}
         id="api-asr"
         onAsrExtraChange={updateAsrExtra}
+        onPersistSystemDraft={persistSystemDraftForModel}
         onSystemPatch={updateSystemDraft}
         showWhisperFields={showWhisperFields}
         systemDraft={systemDraft}
@@ -777,6 +843,13 @@ export function ApiSettingsPage() {
           {llmConnectionDialog?.message ?? ""}
         </div>
       </Dialog>
+      <ChatInitializationDialog
+        error={initializationError}
+        onClose={closeInitialization}
+        open={initializationOpen}
+        pending={initializationPending}
+        task={initializationTask}
+      />
     </div>
   );
 }

@@ -3,10 +3,14 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pytest
+
+from sdk.chat_init import ChatInitService, InitChatContext
 from sdk.hooks import (
     BeforeChatContext,
     BeforeCompactContext,
     MessageAddedContext,
+    InitChatHookError,
     PluginHookDispatcher,
 )
 from sdk.manager import PluginManager
@@ -124,3 +128,66 @@ def test_plugin_manager_and_registry_share_hook_dispatcher(tmp_path: Path) -> No
     assert manager.capabilities is not None
     assert manager.capabilities.hook_dispatcher is manager.hook_dispatcher
     assert manager.hook_dispatcher.has_hooks("message_added")
+
+
+def test_init_chat_hooks_use_weighted_ranges_and_registration_order() -> None:
+    events: list[dict] = []
+    calls: list[str] = []
+    dispatcher = PluginHookDispatcher()
+
+    def first(context: InitChatContext) -> None:
+        calls.append("first")
+        context.report(0.5, "first halfway")
+
+    def second(context: InitChatContext) -> None:
+        calls.append("second")
+        context.report(0.5, "second halfway")
+
+    dispatcher.register_init_chat(first, label="first", weight=1)
+    dispatcher.register_init_chat(second, label="second", weight=3)
+    dispatcher.dispatch_init_chat(InitChatContext(service=ChatInitService(events.append)))
+
+    assert calls == ["first", "second"]
+    assert [event["task"]["progress"] for event in events] == pytest.approx(
+        [0.0, 0.125, 0.25, 0.25, 0.625, 1.0]
+    )
+
+
+def test_init_chat_noncritical_failure_continues_but_critical_failure_raises(caplog) -> None:
+    dispatcher = PluginHookDispatcher()
+    calls: list[str] = []
+
+    def optional(_context: InitChatContext) -> None:
+        calls.append("optional")
+        raise RuntimeError("optional failed")
+
+    dispatcher.register_init_chat(optional, label="optional")
+    dispatcher.register_init_chat(lambda _context: calls.append("after"), label="after")
+
+    with caplog.at_level(logging.WARNING):
+        failures = dispatcher.dispatch_init_chat(InitChatContext(service=ChatInitService()))
+
+    assert calls == ["optional", "after"]
+    assert len(failures) == 1
+    assert failures[0].label == "optional"
+    assert "optional failed" in caplog.text
+
+    critical_dispatcher = PluginHookDispatcher()
+    critical_dispatcher.register_init_chat(optional, label="required", critical=True)
+    critical_dispatcher.register_init_chat(lambda _context: calls.append("never"), label="never")
+
+    with pytest.raises(InitChatHookError, match="required"):
+        critical_dispatcher.dispatch_init_chat(InitChatContext(service=ChatInitService()))
+    assert "never" not in calls
+
+
+def test_registry_registers_init_chat_hook_and_validates_weight() -> None:
+    registry = PluginCapabilityRegistry()
+    registry.register_init_chat_hook(lambda _context: None, label="warmup", weight=2.5)
+
+    assert registry.hook_dispatcher.has_hooks("on_init_chat")
+    registry.hook_dispatcher.dispatch("on_init_chat", InitChatContext(service=ChatInitService()))
+
+    for invalid_weight in (0, -1, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="weight"):
+            registry.register_init_chat_hook(lambda _context: None, weight=invalid_weight)

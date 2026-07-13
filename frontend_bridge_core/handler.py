@@ -12,10 +12,11 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, unquote, urlparse, urlunparse
+from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
 from core.sprite.chat_branch_storage import remove_chat_history_storage
+from core.sprite.initial_sprite import initial_sprite_path_for_characters
 
 from frontend_bridge_core.backgrounds import (
     _delete_all_background_bgm,
@@ -46,13 +47,15 @@ from frontend_bridge_core.chat import (
     TRANSPARENT_BACKGROUND_NAME,
     _chat_history_path,
     _chat_process_running,
+    _chat_runtime_closing,
     _chat_runtime_mode,
+    _chat_runtime_status,
     _chat_snapshot,
+    _chat_stream_initial_snapshot,
     _chat_theme_payload,
     _handle_chat_command,
     _launch_chat,
     _sanitize_user_display_name,
-    _sprite_path,
 )
 from frontend_bridge_core.chat_themes import (
     delete_chat_theme,
@@ -62,6 +65,7 @@ from frontend_bridge_core.chat_themes import (
     list_chat_themes,
     set_active_chat_theme,
 )
+from frontend_bridge_core.chat_init import start_chat_init
 from frontend_bridge_core.characters import (
     _as_character_config,
     _delete_all_character_sprites,
@@ -85,10 +89,23 @@ from frontend_bridge_core.memory import (
     _memory_tool_forget,
     _memory_tool_remember,
     _memory_tool_search,
+    _preview_character_memory_import,
+    _run_character_memory_import,
+)
+from frontend_bridge_core.model_assets import (
+    _download_model_asset,
+    _find_running_model_asset_task,
+    _model_asset_enqueue_guard,
+    _model_asset_status,
+    _resolve_model_asset,
 )
 from frontend_bridge_core.config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
 from frontend_bridge_core.logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
 from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
+from frontend_bridge_core.image_annotations import (
+    run_background_image_auto_label,
+    run_character_sprite_auto_label,
+)
 from frontend_bridge_core.mcp import (
     _mcp_config_response,
     _open_mcp_config_file,
@@ -248,6 +265,17 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             return True
         supplied = self._auth_token_from_request()
         return bool(supplied) and hmac.compare_digest(supplied, required)
+
+    def _inject_bridge_token(self, detail: dict[str, Any]) -> dict[str, Any]:
+        token = str(getattr(self.state, "auth_token", "") or "").strip()
+        if not token:
+            return detail
+        for page in detail.get("pages") or []:
+            url = str(page.get("frontendUrl") or "")
+            if url.startswith("/api/") and BRIDGE_AUTH_QUERY not in url:
+                sep = "&" if "?" in url else "?"
+                page["frontendUrl"] = f"{url}{sep}{BRIDGE_AUTH_QUERY}={quote(token, safe='')}"
+        return detail
 
     def _require_authorized_write(self, path: str) -> None:
         if not self._request_origin_allowed():
@@ -427,7 +455,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(plugin_load_snapshot(self.state))
             elif path.startswith("/api/plugins/") and path.endswith("/ui"):
                 plugin_id = unquote(path[len("/api/plugins/") : -len("/ui")])
-                self._send_json(_plugin_ui_detail(plugin_id))
+                self._send_json(self._inject_bridge_token(_plugin_ui_detail(plugin_id)))
             elif path.startswith("/api/plugins/") and "/frontend/" in path:
                 rest = path[len("/api/plugins/") :]
                 plugin_part, _, frontend_tail = rest.partition("/frontend/")
@@ -449,6 +477,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path.startswith("/api/tasks/"):
                 task_id = unquote(path.rsplit("/", 1)[-1])
                 self._send_json(_get_task(self.state, task_id))
+            elif path == "/api/chat/runtime-status":
+                self._send_json(_chat_runtime_status(self.state))
             elif path == "/api/chat/snapshot":
                 self._send_json(_chat_snapshot(self.state))
             elif path == "/api/chat/history":
@@ -547,6 +577,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self._require_authorized_write(path)
             is_upload = method == "POST" and path in {
                 "/api/characters/import-upload",
+                "/api/characters/memories/import-preview-upload",
+                "/api/characters/memories/import-upload",
                 "/api/backgrounds/import-upload",
                 "/api/logs/import-upload",
                 "/api/chat/themes/upload",
@@ -617,6 +649,26 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     message="TTS 整合包下载已排队。",
                     worker=lambda task_id: _download_tts_bundle(self.state, task_id, body),
                 )
+            elif method == "POST" and path == "/api/model-assets/status":
+                self._send_json(_model_asset_status(self.state, body))
+            elif method == "POST" and path == "/api/model-assets/download":
+                spec = _resolve_model_asset(self.state, body)
+                with _model_asset_enqueue_guard():
+                    existing = _find_running_model_asset_task(self.state, spec.task_key)
+                    if existing is not None:
+                        self._send_json(existing, HTTPStatus.ACCEPTED)
+                    else:
+                        self._enqueue_background_task(
+                            kind="model-download",
+                            title=spec.title,
+                            message=f"{spec.title} download queued.",
+                            task_updates={
+                                "assetId": spec.asset_id,
+                                "assetKey": spec.task_key,
+                                "variant": spec.variant,
+                            },
+                            worker=lambda task_id: _download_model_asset(self.state, task_id, spec),
+                        )
             elif method == "POST" and path.startswith("/api/tasks/") and path.endswith("/cancel"):
                 task_id = unquote(path[len("/api/tasks/") : -len("/cancel")])
                 self._send_json(_request_task_cancel(self.state, task_id))
@@ -636,8 +688,50 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(
                     _delete_character_memory(str(body.get("name") or ""), str(body.get("memoryId") or ""))
                 )
+            elif method == "POST" and path == "/api/characters/memories/import-preview-upload":
+                temp_dir, paths = self._read_upload_files()
+                try:
+                    query = parse_qs(urlparse(self.path).query)
+                    name = str((query.get("name") or [""])[0])
+                    self._send_json(
+                        _preview_character_memory_import(
+                            self.state,
+                            name,
+                            paths,
+                            source_root=temp_dir,
+                        )
+                    )
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            elif method == "POST" and path == "/api/characters/memories/import-upload":
+                temp_dir, paths = self._read_upload_files()
+                query = parse_qs(urlparse(self.path).query)
+                name = str((query.get("name") or [""])[0]).strip()
+
+                def run_uploaded_memory_import(task_id: str) -> dict[str, Any]:
+                    try:
+                        return _run_character_memory_import(
+                            self.state,
+                            task_id,
+                            name,
+                            paths,
+                            source_root=temp_dir,
+                        )
+                    finally:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+
+                try:
+                    self._enqueue_background_task(
+                        kind="memory-import",
+                        title=f"导入 {name or '角色'} 的长期记忆",
+                        message="长期记忆导入任务已排队。",
+                        worker=run_uploaded_memory_import,
+                    )
+                except Exception:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    raise
             elif method == "POST" and path == "/api/memory/status":
-                self._send_json(_get_mem0_status())
+                self._send_json(_get_mem0_status(start_loading=bool(body.get("startLoading", True))))
             elif method == "POST" and path == "/api/memory/list":
                 self._send_json(_list_character_memories(str(body.get("name") or body.get("characterName") or "")))
             elif method == "POST" and path == "/api/memory/search":
@@ -661,6 +755,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_upload_sprite_voice(self.state, body))
             elif method == "POST" and path == "/api/characters/sprites/upload":
                 self._send_json(_upload_character_sprites(self.state, body))
+            elif method == "POST" and path == "/api/characters/sprites/auto-label":
+                name = str(body.get("name") or "").strip()
+                if not name:
+                    raise ValueError("角色名称不能为空")
+                self._enqueue_background_task(
+                    kind="moondream-character-auto-label",
+                    title=f"标注 {name} 的角色立绘",
+                    message="Moondream 图片标注任务已排队。",
+                    worker=lambda task_id: run_character_sprite_auto_label(self.state, task_id, name),
+                )
             elif method == "POST" and path == "/api/characters/emotion-tags":
                 self._send_json(_save_character_emotion_tags(self.state, body))
             elif method == "POST" and path == "/api/characters/sprites/delete":
@@ -720,6 +824,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_translate_background_fields(self.state, body))
             elif method == "POST" and path == "/api/backgrounds/images/upload":
                 self._send_json(_upload_background_images(self.state, body))
+            elif method == "POST" and path == "/api/backgrounds/images/auto-label":
+                name = str(body.get("name") or "").strip()
+                if not name:
+                    raise ValueError("背景名称不能为空")
+                self._enqueue_background_task(
+                    kind="moondream-background-auto-label",
+                    title=f"标注 {name} 的背景图片",
+                    message="Moondream 图片标注任务已排队。",
+                    worker=lambda task_id: run_background_image_auto_label(self.state, task_id, name),
+                )
             elif method == "POST" and path == "/api/backgrounds/bgm/upload":
                 self._send_json(_upload_background_bgm(self.state, body))
             elif method == "POST" and path == "/api/backgrounds/images/delete":
@@ -952,6 +1066,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(self._launch_chat(body))
             elif method == "POST" and path == "/api/chat/resume-last":
                 self._send_json(self._resume_last_chat())
+            elif method == "POST" and path == "/api/chat/init":
+                self._send_json(self._start_chat_init(body), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/chat/close":
                 self._send_json(_close_chat(self.state))
             elif method == "POST" and path == "/api/chat/command":
@@ -1007,7 +1123,35 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.config_manager.reload()
         return [_jsonify(item) for item in imported]
 
-    def _launch_chat(self, body: dict[str, Any]) -> dict[str, Any]:
+    def _start_chat_init(self, body: dict[str, Any]) -> dict[str, Any]:
+        mode = str(body.get("mode") or "").strip().lower()
+        if mode == "launch":
+            payload = body.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError("payload must be an object when mode is 'launch'")
+
+            def launch_request(stream_info: dict[str, str]) -> dict[str, Any]:
+                return self._launch_chat(payload, init_stream_info=stream_info)
+
+            launch = launch_request
+        elif mode == "resume-last":
+
+            def resume_request(stream_info: dict[str, str]) -> dict[str, Any]:
+                return self._resume_last_chat(init_stream_info=stream_info)
+
+            launch = resume_request
+        else:
+            raise ValueError("mode must be 'launch' or 'resume-last'")
+        return start_chat_init(self.state, mode=mode, launch=launch)
+
+    def _launch_chat(
+        self,
+        body: dict[str, Any],
+        *,
+        init_stream_info: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        if _chat_runtime_closing(self.state):
+            raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
         template_id = str(body.get("templateId") or "")
         rows = _list_templates(self.state)
         row = next((item for item in rows if item["id"] == template_id), None)
@@ -1028,12 +1172,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         first_character = ""
         if isinstance(characters, list) and characters:
             first_character = str(characters[0])
-        init_sprite_path = ""
-        character = self.state.config_manager.get_character_by_name(first_character)
-        if character and character.sprites:
-            sprite = character.sprites[0]
-            init_sprite_path = _sprite_path(sprite)
-        init_sprite_path = str(body.get("initSpritePath") or init_sprite_path)
+        init_sprite_path = initial_sprite_path_for_characters(
+            self.state.config_manager,
+            str(body.get("initSpritePath") or ""),
+            characters if isinstance(characters, list) else [],
+        )
         room_id = str(body.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
         history_path = _chat_history_path(self.state, body, row)
         default_history_path = _chat_history_path(
@@ -1067,9 +1210,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state.chat_session = {**self.state.chat_session, **session_base}
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
-        initial_snapshot = _chat_snapshot(self.state, "idle", "")
+        initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
         use_react_runtime = _chat_runtime_mode(self.state) == "react"
-        stream_info = (
+        stream_info = init_stream_info or (
             self.state.chat_stream.create_session(initial_snapshot)
             if use_react_runtime and self.state.chat_stream is not None
             else {}
@@ -1094,7 +1237,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             system_template=system_template,
             use_cg=bool(body.get("useCg")),
             user_scenario=user_scenario,
-            stream_endpoint=str(stream_info.get("producerEndpoint") or ""),
+            stream_endpoint=str(stream_info.get("producerEndpoint") or "") if use_react_runtime else "",
+            init_stream_endpoint=str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else "",
             workflow_path=str(body.get("workflowPath") or ""),
         )
         dependency_error = runtime_dependency_error_from_text(message)
@@ -1117,9 +1261,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.chat_session = {
             **self.state.chat_session,
             **session_base,
-            "sessionId": str(stream_info.get("sessionId") or ""),
+            "sessionId": str(stream_info.get("sessionId") or "") if use_react_runtime else "",
         }
-        if stream_info.get("sessionId") and self.state.chat_stream is not None:
+        if use_react_runtime and stream_info.get("sessionId") and self.state.chat_stream is not None:
             self.state.chat_stream.update_session_snapshot(
                 str(stream_info["sessionId"]),
                 {
@@ -1134,9 +1278,23 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
-        return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
+        return _chat_snapshot(
+            self.state,
+            "idle",
+            "",
+            extra={
+                "statusMessage": message,
+                **({"_chatInitStreamAttached": True} if init_stream_info else {}),
+            },
+        )
 
-    def _resume_last_chat(self) -> dict[str, Any]:
+    def _resume_last_chat(
+        self,
+        *,
+        init_stream_info: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        if _chat_runtime_closing(self.state):
+            raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
         session = _load_template_session_payload(self.state) or {}
         session_history_path = str(session.get("historyPath") or "").strip()
         history_path = (
@@ -1164,11 +1322,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if isinstance(selected_characters, list) and selected_characters
             else ""
         )
-        init_sprite_path = str(session.get("initSpritePath") or "")
-        if not init_sprite_path and first_character:
-            character = self.state.config_manager.get_character_by_name(first_character)
-            if character and character.sprites:
-                init_sprite_path = _sprite_path(character.sprites[0])
+        init_sprite_path = initial_sprite_path_for_characters(
+            self.state.config_manager,
+            str(session.get("initSpritePath") or ""),
+            selected_characters if isinstance(selected_characters, list) else [],
+        )
         room_id = str(session.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
         selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
         user_display_name = _sanitize_user_display_name(session.get("userDisplayName"))
@@ -1186,9 +1344,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state.chat_session = {**self.state.chat_session, **session_base}
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
-        initial_snapshot = _chat_snapshot(self.state, "idle", "")
+        initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
         use_react_runtime = _chat_runtime_mode(self.state) == "react"
-        stream_info = (
+        stream_info = init_stream_info or (
             self.state.chat_stream.create_session(initial_snapshot)
             if use_react_runtime and self.state.chat_stream is not None
             else {}
@@ -1203,7 +1361,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             system_template=system_template,
             use_cg=bool(session.get("useCg", False)),
             user_scenario=scenario,
-            stream_endpoint=str(stream_info.get("producerEndpoint") or ""),
+            stream_endpoint=str(stream_info.get("producerEndpoint") or "") if use_react_runtime else "",
+            init_stream_endpoint=str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else "",
             workflow_path=str(session.get("workflowPath") or ""),
         )
         dependency_error = runtime_dependency_error_from_text(message)
@@ -1226,9 +1385,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.chat_session = {
             **self.state.chat_session,
             **session_base,
-            "sessionId": str(stream_info.get("sessionId") or ""),
+            "sessionId": str(stream_info.get("sessionId") or "") if use_react_runtime else "",
         }
-        if stream_info.get("sessionId") and self.state.chat_stream is not None:
+        if use_react_runtime and stream_info.get("sessionId") and self.state.chat_stream is not None:
             self.state.chat_stream.update_session_snapshot(
                 str(stream_info["sessionId"]),
                 {
@@ -1243,7 +1402,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
-        return _chat_snapshot(self.state, "idle", "", extra={"statusMessage": message})
+        return _chat_snapshot(
+            self.state,
+            "idle",
+            "",
+            extra={
+                "statusMessage": message,
+                **({"_chatInitStreamAttached": True} if init_stream_info else {}),
+            },
+        )
 
     def _resolve_project_path(self, raw_path: str) -> Path:
         raw = str(raw_path or "").strip()

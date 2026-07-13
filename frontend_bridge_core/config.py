@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -57,6 +58,27 @@ class LlmModelDiscoveryConnectionError(RuntimeError):
     def __init__(self, url: str, detail: str) -> None:
         self.url = url
         super().__init__(detail.strip() or "connection failed")
+
+
+def _state_project_root(state: BridgeState) -> Path:
+    """Resolve the writable project/data root without falling back to the app install root."""
+    candidates = (
+        getattr(state, "project_root_dir", ""),
+        os.environ.get("SHINSEKAI_PROJECT_ROOT", ""),
+        os.environ.get("EASYAI_PROJECT_ROOT", ""),
+    )
+    for candidate in candidates:
+        raw = str(candidate or "").strip()
+        if not raw:
+            continue
+        try:
+            return Path(raw).expanduser().resolve(strict=False)
+        except (OSError, RuntimeError, ValueError):
+            continue
+    try:
+        return Path.cwd().resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return Path(".")
 
 
 def _adapter_schema(adapter_class: Any | None) -> dict[str, Any]:
@@ -152,7 +174,7 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     payload = _jsonify(state.config_manager.config)
     if not isinstance(payload, dict):
         return {}
-    project_root = state.app_root_dir or None
+    project_root = _state_project_root(state)
     try:
         from config.mirror_env import system_config_payload_with_resolved_mirrors
 
@@ -256,7 +278,7 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
         config.gpt_sovits_api_path = default_tts_work_path(
             config.tts_provider,
             config.gpt_sovits_api_path,
-            state.app_root_dir or None,
+            _state_project_root(state),
         )
     _validate_api_config_for_save(config)
     state.config_manager.config.api_config = config

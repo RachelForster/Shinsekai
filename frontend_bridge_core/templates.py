@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
+from llm.template_generator import json_format_reminder
 
 from .state import BridgeState
 from .security import safe_child_path, safe_filename
@@ -55,6 +56,15 @@ def _compose_for_llm(scenario: str, system: str) -> str:
 
 def _effective_user_scenario(user_scenario: str) -> str:
     return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
+
+
+def _compose_runtime_template(system_template: str, user_scenario: str) -> str:
+    parts = [
+        (system_template or "").rstrip(),
+        _effective_user_scenario(user_scenario),
+        json_format_reminder(),
+    ]
+    return "\n".join(part for part in parts if part) + "\n"
 
 
 def _normalize_hash_character_names(character_names: Any = None) -> list[str]:

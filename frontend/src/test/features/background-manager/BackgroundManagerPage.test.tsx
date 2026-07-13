@@ -393,15 +393,45 @@ describe("BackgroundManagerPage", () => {
     expect(screen.getByLabelText("Name")).toHaveValue("School");
   });
 
-  it("confirms image, bgm, and background deletion actions", async () => {
+  it("preserves unsaved image tags when another image is deleted", async () => {
     mockListBackgrounds.mockResolvedValue([
       {
         ...structuredClone(background),
-        bgm_list: ["D:/backgrounds/school/theme.mp3", "D:/backgrounds/school/rain.mp3"],
-        bgm_tags: "Music 1: calm\nMusic 2: rainy\n",
+        bg_tags: "Scene 1: classroom\nScene 2: hall\n",
         sprites: [{ path: "D:/backgrounds/school/classroom.png" }, { path: "D:/backgrounds/school/hall.png" }],
       },
     ]);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("School"));
+    fireEvent.click(screen.getByTitle("hall.png"));
+    fireEvent.change(screen.getByLabelText("Tag"), { target: { value: "unsaved hall edit" } });
+    fireEvent.click(screen.getByTitle("classroom.png"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(mockDeleteBackgroundImage).toHaveBeenCalledWith("School", 0));
+    await waitFor(() => expect(screen.getByLabelText("Tag")).toHaveValue("unsaved hall edit"));
+  });
+
+  it("confirms image, bgm, and background deletion actions", async () => {
+    const backgroundWithAssets = {
+      ...structuredClone(background),
+      bgm_list: ["D:/backgrounds/school/theme.mp3", "D:/backgrounds/school/rain.mp3"],
+      bgm_tags: "Music 1: calm\nMusic 2: rainy\n",
+      sprites: [{ path: "D:/backgrounds/school/classroom.png" }, { path: "D:/backgrounds/school/hall.png" }],
+    };
+    mockListBackgrounds.mockResolvedValue([backgroundWithAssets]);
+    mockDeleteBackgroundImage.mockResolvedValue({
+      ...backgroundWithAssets,
+      sprites: [{ path: "D:/backgrounds/school/hall.png" }],
+    });
+    mockDeleteAllBackgroundImages.mockResolvedValue({
+      ...backgroundWithAssets,
+      bg_tags: "",
+      sprites: [],
+    });
     renderPage();
 
     await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("School"));
@@ -417,7 +447,7 @@ describe("BackgroundManagerPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(mockDeleteAllBackgroundImages).toHaveBeenCalledWith("School"));
 
-    fireEvent.click(screen.getByLabelText("Select 1"));
+    fireEvent.click(await screen.findByLabelText("Select 1"));
     fireEvent.click(screen.getByRole("button", { name: "Delete selected BGM" }));
     dialog = screen.getByRole("dialog", { name: "Delete selected BGM" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));

@@ -4,6 +4,7 @@ import type {
   ChatCommandResult,
   ChatHistoryEntry,
   ChatLaunchPayload,
+  ChatRuntimeProcessState,
   ChatSnapshot,
   RuntimeDependencyInstallInput,
   RuntimeDependencyInstallResult,
@@ -14,10 +15,17 @@ import type { ChatThemeManifest, ChatThemeSummary } from "../../shared/theme/cha
 import type { ChatStageEvent } from "../../shared/platform/types";
 
 export const chatQueryKey = ["chat"] as const;
+export const chatRuntimeStatusQueryKey = ["chat", "runtime-status"] as const;
 export const chatThemeQueryKey = ["chat", "themes"] as const;
+
+export { runtimeStatusFromSnapshot } from "../../shared/platform/chatRuntimeStatus";
 
 export function getChatSnapshot(): Promise<ChatSnapshot> {
   return getPlatform().chat.getSnapshot();
+}
+
+export function getChatRuntimeStatus(): Promise<ChatRuntimeProcessState> {
+  return getPlatform().chat.getRuntimeStatus();
 }
 
 export function closeChat(): Promise<ChatSnapshot> {
@@ -28,8 +36,11 @@ export function getChatTheme(): Promise<ChatThemePayload> {
   return getPlatform().chat.getTheme();
 }
 
-export function launchChat(payload: ChatLaunchPayload): Promise<ChatSnapshot> {
-  return getPlatform().chat.launch(payload);
+export function launchChat(
+  payload: ChatLaunchPayload,
+  options?: TaskProgressOptions<ChatSnapshot>,
+): Promise<ChatSnapshot> {
+  return getPlatform().chat.launch(payload, options);
 }
 
 export function installMissingRuntimeDependency(
@@ -39,8 +50,8 @@ export function installMissingRuntimeDependency(
   return getPlatform().runtime.installMissingDependency(input, options);
 }
 
-export function resumeLastChat(): Promise<ChatSnapshot> {
-  return getPlatform().chat.resumeLast();
+export function resumeLastChat(options?: TaskProgressOptions<ChatSnapshot>): Promise<ChatSnapshot> {
+  return getPlatform().chat.resumeLast(options);
 }
 
 export function sendChatCommand(command: ChatCommand): Promise<ChatCommandResult> {

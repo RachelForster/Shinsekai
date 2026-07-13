@@ -6,88 +6,10 @@ import re
 import threading
 from PySide6.QtWidgets import QApplication
 
+from core.sprite.chat_history_text import _repair_json_string, parse_assistant_dialog_content
+
 # 模块级写锁，保证临时文件写入的线程安全
 _tmp_write_lock = threading.Lock()
-
-
-def _repair_json_string(t: str) -> str:
-    """Walk the text tracking JSON string boundaries.
-
-    Inside a string value all ASCII control characters (including
-    literal newlines) are escaped.  When a newline inside a string is
-    followed by JSON structural tokens (``{``, ``}``, ``]``) the
-    heuristic closes the string first — fixing LLM outputs that are
-    missing a final ``\"`` on long speech fields.
-    """
-    tail = t
-    result: list[str] = []
-    in_string = False
-    escaped = False
-    i = 0
-    while i < len(tail):
-        ch = tail[i]
-        i += 1
-        if escaped:
-            escaped = False
-            result.append(ch)
-            continue
-        if ch == "\\":
-            escaped = True
-            result.append(ch)
-            continue
-        if ch == '"':
-            in_string = not in_string
-            result.append(ch)
-            continue
-        if in_string and ord(ch) < 0x20:
-            if ord(ch) in (0x0A, 0x0D):
-                ahead = tail[i:].lstrip(" \t\r\n")
-                if ahead and ahead[0] in "]}{[":
-                    result.append('"')
-                    result.append(ch)
-                    in_string = False
-                    continue
-            result.append(f"\\u{ord(ch):04x}")
-            continue
-        result.append(ch)
-    if in_string:
-        result.append('"')
-    return "".join(result)
-
-
-def parse_assistant_dialog_content(content: Any) -> list:
-    """
-    将 assistant 消息的 content 解析为 dialog 列表。
-    支持纯 JSON，以及模型输出的 ```json ... ``` 围栏。
-    """
-    if content is None:
-        return []
-    t = str(content).strip()
-    if not t:
-        return []
-    if t.startswith("```"):
-        t = re.sub(r"^```[a-zA-Z0-9]*\s*", "", t)
-        t = re.sub(r"\s*```$", "", t, flags=re.DOTALL)
-    t = t.strip()
-    parsed = None
-    try:
-        parsed = json.loads(t)
-    except json.JSONDecodeError:
-        try:
-            parsed = json.loads(_repair_json_string(t))
-        except json.JSONDecodeError:
-            i, j = t.find("{"), t.rfind("}")
-            if i >= 0 and j > i:
-                try:
-                    parsed = json.loads(t[i : j + 1])
-                except json.JSONDecodeError:
-                    return []
-            else:
-                return []
-    if not isinstance(parsed, dict):
-        return []
-    dialog = parsed.get("dialog", [])
-    return dialog if isinstance(dialog, list) else []
 
 
 class HistoryManager:

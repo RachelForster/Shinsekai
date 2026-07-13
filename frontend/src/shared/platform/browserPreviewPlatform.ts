@@ -11,12 +11,16 @@ import {
   sampleTemplates,
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
+import { numberedTags, tagContents } from "../assets/assetText";
+import { runtimeStatusFromSnapshot } from "./chatRuntimeStatus";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../theme/chatTheme";
 import type {
   BatchToolResult,
   Background,
   Character,
+  CharacterMemoryImportPreview,
+  CharacterMemoryImportResult,
   CharacterMemoryList,
   ChatConversationBranch,
   ChatHistoryEntry,
@@ -44,6 +48,65 @@ function clone<T>(value: T): T {
 
 function delay<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => window.setTimeout(() => resolve(clone(value)), ms));
+}
+
+async function previewMemoryImport(items: File[]): Promise<CharacterMemoryImportPreview> {
+  const files = await Promise.all(
+    items.map(async (item) => {
+      const name = item.name;
+      let content = "";
+      try {
+        content = await item.text();
+      } catch {
+        content = "";
+      }
+      const dialogueCharacters = content.length || 3_600;
+      const dialogueLineCount = content ? Math.max(1, content.split(/\r?\n/).filter((line) => line.trim()).length) : 40;
+      const sourceTokens = Math.max(1, Math.ceil(dialogueCharacters / 4));
+      return {
+        chunkCount: Math.max(1, Math.ceil(sourceTokens / 2_500)),
+        dialogueCharacters,
+        dialogueLineCount,
+        kind: name.toLowerCase().endsWith(".json") ? "json" : "txt",
+        name,
+        sourceTokens,
+      };
+    }),
+  );
+  const sourceTokens = files.reduce((sum, file) => sum + file.sourceTokens, 0);
+  const chunkCount = files.reduce((sum, file) => sum + file.chunkCount, 0);
+  const estimatedInputTokens = sourceTokens + chunkCount * 600;
+  const estimatedOutputTokens = chunkCount * 350;
+  return {
+    chunkCount,
+    dialogueCharacters: files.reduce((sum, file) => sum + file.dialogueCharacters, 0),
+    dialogueLineCount: files.reduce((sum, file) => sum + file.dialogueLineCount, 0),
+    estimatedInputTokens,
+    estimatedOutputTokens,
+    estimatedTotalTokens: estimatedInputTokens + estimatedOutputTokens,
+    fileCount: files.length,
+    files,
+    sourceTokens,
+    warnings: files.some((file) => file.kind === "json")
+      ? ["JSON history will be converted to plain dialogue before extraction."]
+      : [],
+  };
+}
+
+function looksLikeLocalModelReference(value: string) {
+  const normalized = value.replace(/\\/g, "/");
+  const slashCount = normalized.split("/").length - 1;
+  return (
+    value.startsWith(".") ||
+    value.startsWith("/") ||
+    value.startsWith("\\") ||
+    value.startsWith("~") ||
+    value.endsWith("/") ||
+    value.endsWith("\\") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    slashCount > 1
+  );
 }
 
 function previewTask<TResult>(
@@ -354,6 +417,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   });
   let activeThemeId = DEFAULT_CHAT_THEME_ID;
   let templateSession: TemplateLaunchSession | null = null;
+  const cachedModelAssets = new Set<string>();
   const characterMemories = new Map<string, CharacterMemoryList>();
   const chatListeners = new Set<(snapshot: ChatSnapshot) => void>();
   const pendingChatTimeouts = new Set<number>();
@@ -418,6 +482,31 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
 
   return {
     backgrounds: {
+      async autoLabelImages(name) {
+        const background = config.background_list.find((item) => item.name === name);
+        if (!background) {
+          throw new Error(`Background not found: ${name}`);
+        }
+        const tags = tagContents(background.bg_tags, background.sprites.length);
+        let annotatedCount = 0;
+        tags.forEach((tag, index) => {
+          if (!tag.trim()) {
+            tags[index] = "室内，柔和光线，安静氛围";
+            annotatedCount += 1;
+          }
+        });
+        background.bg_tags = numberedTags("场景", tags);
+        return delay({
+          annotatedCount,
+          failedCount: 0,
+          failures: [],
+          name,
+          scope: "background" as const,
+          skippedCount: background.sprites.length - annotatedCount,
+          tags: background.bg_tags,
+          totalCount: background.sprites.length,
+        });
+      },
       async delete(name) {
         config.background_list = config.background_list.filter((background) => background.name !== name);
       },
@@ -633,6 +722,8 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         clearScheduledChatUpdates();
         chat = {
           ...chat,
+          chatProcessRunning: false,
+          chatRuntimeClosing: false,
           notificationText: "聊天会话已结束。",
           options: [],
           sessionClosedReason: "聊天会话已结束。",
@@ -900,6 +991,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return clone(chat);
       },
       getHistory: () => delay(cloneHistoryEntries(chat.historyEntries)),
+      getRuntimeStatus: () => delay(runtimeStatusFromSnapshot(chat)),
       getSnapshot: () => delay(chat),
       getTheme: () =>
         delay(
@@ -907,7 +999,47 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests[DEFAULT_CHAT_THEME_ID],
           ),
         ),
-      async launch(payload) {
+      async launch(payload, options) {
+        const taskId = `preview-chat-init-${Date.now()}`;
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Preparing chat runtime",
+            phase: "preparing",
+            progress: 0.08,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Starting voice services",
+            phase: "tts",
+            progress: 0.46,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Loading chat memory",
+            phase: "memory",
+            progress: 0.76,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
         const character = config.characters.find((item) => payload.characters.includes(item.name));
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
         const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
@@ -915,18 +1047,61 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
           characterName: character?.name,
+          chatProcessRunning: true,
+          chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
           sprites: character?.sprites[0]
             ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
             : [],
+          sessionClosedReason: "",
           status: "idle",
           statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
         };
         emitChat();
-        return delay(chat);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Chat is ready",
+            phase: "completed",
+            progress: 1,
+            result: clone(chat),
+            status: "succeeded",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        return clone(chat);
       },
-      async resumeLast() {
+      async resumeLast(options) {
+        const taskId = `preview-chat-init-${Date.now()}`;
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Preparing the previous chat",
+            phase: "preparing",
+            progress: 0.12,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Restoring chat services",
+            phase: "runtime",
+            progress: 0.68,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
         const character = config.characters.find((item) => templateSession?.selectedCharacters?.includes(item.name));
         const background = config.background_list.find((item) => item.name === templateSession?.background);
         const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
@@ -934,16 +1109,32 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...chat,
           backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
           characterName: character?.name ?? chat.characterName,
+          chatProcessRunning: true,
+          chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
           sprites: character?.sprites[0]
             ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
             : chat.sprites,
+          sessionClosedReason: "",
           status: "idle",
           statusMessage: `已恢复上次启动：${historyPath}`,
         };
         emitChat();
-        return delay(chat);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Chat is ready",
+            phase: "completed",
+            progress: 1,
+            result: clone(chat),
+            status: "succeeded",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        return clone(chat);
       },
       subscribe(listener) {
         chatListeners.add(listener);
@@ -1026,6 +1217,31 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     characters: {
+      async autoLabelSprites(name) {
+        const character = config.characters.find((item) => item.name === name);
+        if (!character) {
+          throw new Error(`Character not found: ${name}`);
+        }
+        const tags = tagContents(character.emotion_tags, character.sprites.length);
+        let annotatedCount = 0;
+        tags.forEach((tag, index) => {
+          if (!tag.trim()) {
+            tags[index] = "微笑，正面站姿，角色立绘";
+            annotatedCount += 1;
+          }
+        });
+        character.emotion_tags = numberedTags("立绘", tags);
+        return delay({
+          annotatedCount,
+          failedCount: 0,
+          failures: [],
+          name,
+          scope: "character" as const,
+          skippedCount: character.sprites.length - annotatedCount,
+          tags: character.emotion_tags,
+          totalCount: character.sprites.length,
+        });
+      },
       async delete(name) {
         config.characters = config.characters.filter((character) => character.name !== name);
       },
@@ -1100,6 +1316,67 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(imported);
       },
       getMem0Status: () => delay({ status: "ready" as const }),
+      async importMemories(name, items, options) {
+        const preview = await previewMemoryImport(items);
+        const taskId = `memory-import-${Date.now()}`;
+        previewTask<CharacterMemoryImportResult>(
+          taskId,
+          {
+            kind: "character-memory-import",
+            message: "Preparing dialogue chunks",
+            phase: "preparing",
+            title: "Import long-term memories",
+          },
+          options,
+        );
+        await delay(undefined, 80);
+        previewTask<CharacterMemoryImportResult>(
+          taskId,
+          {
+            kind: "character-memory-import",
+            message: "Extracting long-term memories",
+            phase: "extracting",
+            progress: 0.55,
+            status: "running",
+            title: "Import long-term memories",
+          },
+          options,
+        );
+        await delay(undefined, 120);
+        const memories = items.map((item, index) => {
+          return `Imported memory ${index + 1} from ${item.name}`;
+        });
+        const agentId = name || "user";
+        const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
+        const nextMemories = [
+          ...current.memories,
+          ...memories.map((memory, index) => ({ id: `${agentId}-import-${Date.now()}-${index}`, memory })),
+        ];
+        characterMemories.set(agentId, { agentId, count: nextMemories.length, memories: nextMemories });
+        const result: CharacterMemoryImportResult = {
+          chunkCount: preview.chunkCount,
+          duplicateCount: 0,
+          estimatedTotalTokens: preview.estimatedTotalTokens,
+          extractedCount: memories.length,
+          fileCount: preview.fileCount,
+          memories,
+          savedCount: memories.length,
+        };
+        previewTask(
+          taskId,
+          {
+            kind: "character-memory-import",
+            message: "Memory import complete",
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+            title: "Import long-term memories",
+          },
+          options,
+        );
+        return clone(result);
+      },
       list: () => delay(config.characters),
       async listMemories(name) {
         const agentId = name || "user";
@@ -1111,6 +1388,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         characterMemories.set(agentId, existing);
         return delay(existing);
       },
+      previewMemoryImport: (_name, items) => previewMemoryImport(items),
       async searchMemories({ limit = 200, name, query }) {
         const agentId = name || "user";
         const existing = await this.listMemories(agentId);
@@ -1302,6 +1580,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           socks5_proxy_url: "",
           source: "browser-preview",
         }),
+      getMemoryStatus: () => delay({ modelCached: true, status: "ready" as const }),
       getTtsBundleRecommendation: () =>
         delay({
           gpus: [{ device: "NVIDIA GeForce RTX 4070", vendor: "NVIDIA", vram_gb: 12 }],
@@ -1315,6 +1594,74 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async saveSystem(systemConfig) {
         config.system_config = clone(systemConfig);
         return delay(config.system_config);
+      },
+    },
+    modelAssets: {
+      async download(input, options) {
+        const variant = String(
+          (input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small",
+        );
+        const local = Boolean(input.configured && looksLikeLocalModelReference(variant));
+        const key = `${input.assetId}:${variant}`;
+        const taskId = `preview-model-${Date.now()}`;
+        previewTask(
+          taskId,
+          {
+            kind: "model-download",
+            message: `正在下载 ${variant}。`,
+            phase: "download",
+            progress: 0.42,
+            status: "running",
+            title: "模型下载",
+          },
+          options,
+        );
+        await delay(null, 180);
+        const result = {
+          assetId: input.assetId,
+          cached: true,
+          downloadable: !local,
+          downloaded: !local,
+          path: local ? variant : `preview-cache/${variant}`,
+          ...(local ? {} : { repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}` }),
+          source: local ? ("local" as const) : ("huggingface" as const),
+          title: "Whisper ASR",
+          variant,
+        };
+        if (!local) {
+          cachedModelAssets.add(key);
+        }
+        previewTask(
+          taskId,
+          {
+            kind: "model-download",
+            message: `${variant} 已缓存。`,
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+            title: "模型下载",
+          },
+          options,
+        );
+        return result;
+      },
+      status(input) {
+        const variant = String(
+          (input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small",
+        );
+        const local = Boolean(input.configured && looksLikeLocalModelReference(variant));
+        return delay({
+          assetId: input.assetId,
+          cached: local || cachedModelAssets.has(`${input.assetId}:${variant}`),
+          downloadable: !local,
+          ...(local
+            ? { path: variant }
+            : { repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}` }),
+          source: local ? ("local" as const) : ("huggingface" as const),
+          title: "Whisper ASR",
+          variant,
+        });
       },
     },
     files: {

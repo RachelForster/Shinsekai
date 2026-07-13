@@ -29,6 +29,7 @@ use std::os::unix::process::CommandExt;
 use std::os::windows::process::CommandExt;
 
 mod desktop_files;
+mod project_root;
 mod runtime;
 
 type DesktopResult<T> = Result<T, Box<dyn Error>>;
@@ -43,6 +44,7 @@ const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 const BRIDGE_RESTART_STATE_EVENT: &str = "shinsekai:bridge-restart-state";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
+const SHOW_BACKEND_CONSOLE_ENV: &str = "SHINSEKAI_SHOW_BACKEND_CONSOLE";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -204,6 +206,7 @@ struct DesktopRuntimeView {
 struct DesktopState {
     source_root: PathBuf,
     project_root: PathBuf,
+    project_root_controller: project_root::ProjectRootController,
     app_root: PathBuf,
     frontend_dist: PathBuf,
     bridge_port: u16,
@@ -230,6 +233,7 @@ impl DesktopState {
     fn new(
         source_root: PathBuf,
         project_root: PathBuf,
+        project_root_controller: project_root::ProjectRootController,
         app_root: PathBuf,
         frontend_dist: PathBuf,
         bridge_port: u16,
@@ -238,6 +242,7 @@ impl DesktopState {
         Self {
             source_root,
             project_root,
+            project_root_controller,
             app_root,
             frontend_dist,
             bridge_port,
@@ -375,11 +380,15 @@ pub fn run() {
             desktop_runtime_state,
             desktop_runtime_repair,
             desktop_runtime_install_profile,
+            desktop_project_root_status,
+            desktop_project_root_select,
             desktop_files_browse,
             desktop_restart_debug_log,
             desktop_app_restart,
             desktop_bridge_restart,
             desktop_frontend_reload,
+            desktop_window_hide,
+            desktop_chat_window_destroy,
             desktop_window_minimize,
             desktop_window_toggle_maximize,
             desktop_window_start_drag,
@@ -427,13 +436,20 @@ pub fn run() {
 
             let source_root = resolve_source_root(app)?;
             let app_root = resolve_app_root(app, &source_root)?;
-            let project_root = resolve_project_root(app, &app_root)?;
+            let project_root::ResolvedProjectRoot {
+                path: project_root,
+                controller: project_root_controller,
+            } = resolve_project_root(app, &source_root, &app_root)?;
+            let project_root_requires_selection = project_root_controller
+                .status()
+                .requires_selection;
             let frontend_dist = resolve_frontend_dist(&source_root)?;
             let bridge_port = choose_bridge_port()?;
             let bridge_auth_token = generate_bridge_auth_token()?;
             let url = app_window_url(bridge_port, &bridge_auth_token);
             restart_debug_log(format!(
-                "setup resolved source_root={} project_root={} app_root={} frontend_dist={} bridge_port={} url={}",
+                "{} source_root={} project_root={} app_root={} frontend_dist={} bridge_port={} url={}",
+                project_root_setup_log_event(project_root_requires_selection),
                 source_root.display(),
                 project_root.display(),
                 app_root.display(),
@@ -447,6 +463,7 @@ pub fn run() {
             app.manage(DesktopState::new(
                 source_root,
                 project_root,
+                project_root_controller,
                 app_root,
                 frontend_dist,
                 bridge_port,
@@ -462,13 +479,31 @@ pub fn run() {
                 .center()
                 .build()?;
 
-            let app_handle = app.handle().clone();
-            thread::spawn(move || bootstrap_runtime(app_handle));
-            restart_debug_log("setup complete; runtime bootstrap spawned");
+            if should_bootstrap_runtime(project_root_requires_selection) {
+                let app_handle = app.handle().clone();
+                thread::spawn(move || bootstrap_runtime(app_handle));
+                restart_debug_log("setup complete; runtime bootstrap spawned");
+            } else {
+                restart_debug_log(
+                    "setup complete; runtime bootstrap deferred for project-root selection",
+                );
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running Shinsekai desktop shell");
+}
+
+fn should_bootstrap_runtime(project_root_requires_selection: bool) -> bool {
+    !project_root_requires_selection
+}
+
+fn project_root_setup_log_event(project_root_requires_selection: bool) -> &'static str {
+    if project_root_requires_selection {
+        "setup awaiting project-root selection"
+    } else {
+        "setup resolved"
+    }
 }
 
 fn restart_debug_log_path() -> PathBuf {
@@ -482,11 +517,12 @@ fn restart_debug_log(message: impl AsRef<str>) {
         .duration_since(UNIX_EPOCH)
         .map(|duration| format!("{}.{:03}", duration.as_secs(), duration.subsec_millis()))
         .unwrap_or_else(|_| "time-error".to_string());
+    let message = sanitize_restart_debug_log_message(message.as_ref());
     let line = format!(
         "ts={} pid={} component=desktop {}\n",
         timestamp,
         std::process::id(),
-        message.as_ref()
+        message
     );
     eprint!("[restart-debug] {}", line);
     if let Ok(mut file) = OpenOptions::new()
@@ -496,6 +532,13 @@ fn restart_debug_log(message: impl AsRef<str>) {
     {
         let _ = file.write_all(line.as_bytes());
     }
+}
+
+fn sanitize_restart_debug_log_message(message: &str) -> String {
+    message
+        .replace('\0', "\\0")
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
 }
 
 fn bytes_to_hex(bytes: &[u8]) -> String {
@@ -518,6 +561,22 @@ fn generate_bridge_auth_token() -> DesktopResult<String> {
 #[tauri::command]
 fn desktop_runtime_state(state: State<'_, DesktopState>) -> DesktopRuntimeView {
     state.runtime_view()
+}
+
+#[tauri::command]
+fn desktop_project_root_status(state: State<'_, DesktopState>) -> project_root::ProjectRootStatus {
+    state.project_root_controller.status()
+}
+
+#[tauri::command]
+fn desktop_project_root_select(
+    state: State<'_, DesktopState>,
+    path: String,
+) -> Result<project_root::ProjectRootStatus, String> {
+    restart_debug_log(format!(
+        "desktop_project_root_select command received path={path}"
+    ));
+    state.project_root_controller.select(&path)
 }
 
 async fn run_runtime_blocking<T, F>(
@@ -1171,6 +1230,19 @@ Start-Process -FilePath $exe -ArgumentList $argv
 }
 
 #[tauri::command]
+fn desktop_window_hide(window: WebviewWindow) -> Result<(), String> {
+    window.hide().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_chat_window_destroy(window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "chat" {
+        return Err("desktop_chat_window_destroy is only available to the chat window".to_string());
+    }
+    window.destroy().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn desktop_window_minimize(window: WebviewWindow) -> Result<(), String> {
     window.minimize().map_err(|error| error.to_string())
 }
@@ -1731,6 +1803,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn runtime_backend_console_truthy_values_are_case_insensitive() {
+        for value in ["1", "true", "TRUE", "yes", "Yes", "on", "ON"] {
+            assert!(
+                is_truthy_env_value(value),
+                "expected {value:?} to be truthy"
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_backend_console_rejects_other_values() {
+        for value in ["", "0", "false", "off", "y", " true "] {
+            assert!(
+                !is_truthy_env_value(value),
+                "expected {value:?} to be falsey"
+            );
+        }
+    }
+
+    #[test]
     fn resolve_published_frontend_dist_uses_current_marker() {
         let root = temp_test_dir("published-dist");
         let raw_dist = root.join("frontend").join("dist");
@@ -1788,57 +1880,26 @@ mod tests {
     }
 
     #[test]
-    fn install_dir_project_root_migrates_app_data_when_install_data_is_empty() {
-        let root = temp_test_dir("install-project-root-migrate");
-        let app_root = root.join("Shinsekai");
-        let app_data_project = root.join("app-data").join("project");
-        let old_config = app_data_project.join("data").join("config");
-        fs::create_dir_all(&old_config).unwrap();
-        fs::create_dir_all(&app_root).unwrap();
-        fs::write(old_config.join("system_config.yaml"), "ok").unwrap();
-
-        let selected = install_dir_project_root(&app_root, &app_data_project)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(selected, app_root);
-        assert!(selected
-            .join("data")
-            .join("config")
-            .join("system_config.yaml")
-            .is_file());
-        let _ = fs::remove_dir_all(root);
+    fn project_root_conflict_defers_runtime_bootstrap() {
+        assert!(!should_bootstrap_runtime(true));
+        assert!(should_bootstrap_runtime(false));
     }
 
     #[test]
-    fn install_dir_project_root_keeps_existing_install_data() {
-        let root = temp_test_dir("install-project-root-existing-data");
-        let app_root = root.join("Shinsekai");
-        let app_data_project = root.join("app-data").join("project");
-        fs::create_dir_all(app_data_project.join("data").join("config")).unwrap();
-        fs::create_dir_all(app_root.join("data")).unwrap();
-        fs::write(
-            app_data_project
-                .join("data")
-                .join("config")
-                .join("old.yaml"),
-            "old",
-        )
-        .unwrap();
-        fs::write(app_root.join("data").join("existing.txt"), "existing").unwrap();
+    fn unresolved_project_root_is_not_logged_as_a_recovery_source() {
+        assert_eq!(
+            project_root_setup_log_event(true),
+            "setup awaiting project-root selection"
+        );
+        assert_eq!(project_root_setup_log_event(false), "setup resolved");
+    }
 
-        let selected = install_dir_project_root(&app_root, &app_data_project)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(selected, app_root);
-        assert!(selected.join("data").join("existing.txt").is_file());
-        assert!(!selected
-            .join("data")
-            .join("config")
-            .join("old.yaml")
-            .is_file());
-        let _ = fs::remove_dir_all(root);
+    #[test]
+    fn restart_debug_log_messages_cannot_inject_additional_lines() {
+        assert_eq!(
+            sanitize_restart_debug_log_message("safe\r\nsetup resolved injected\0"),
+            "safe\\r\\nsetup resolved injected\\0"
+        );
     }
 
     #[test]
@@ -2052,7 +2113,15 @@ fn spawn_bridge(
         .current_dir(&source_root);
 
     #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
+    {
+        if show_backend_console() {
+            const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+            command.creation_flags(CREATE_NEW_CONSOLE);
+        } else {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+    }
 
     let mut child = command.spawn().map_err(|error| {
         restart_debug_log(format!("spawn_bridge failed error={error}"));
@@ -2070,6 +2139,19 @@ fn spawn_bridge(
         port
     ));
     Ok(BridgeLaunch { child })
+}
+
+pub(crate) fn show_backend_console() -> bool {
+    env::var(SHOW_BACKEND_CONSOLE_ENV)
+        .map(|value| is_truthy_env_value(&value))
+        .unwrap_or(false)
+}
+
+fn is_truthy_env_value(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
@@ -2115,89 +2197,58 @@ fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
     Err("could not locate Shinsekai application resources; set SHINSEKAI_SOURCE_ROOT".into())
 }
 
-fn resolve_project_root(app: &tauri::App, app_root: &Path) -> DesktopResult<PathBuf> {
-    if let Some(root) = env_path("SHINSEKAI_PROJECT_ROOT") {
-        fs::create_dir_all(&root)?;
-        return Ok(root);
-    }
-
-    let app_data_project_root = app.path().app_data_dir()?.join("project");
-    if let Some(root) = install_dir_project_root(app_root, &app_data_project_root)? {
-        return Ok(root);
-    }
-
-    fs::create_dir_all(&app_data_project_root)?;
-    Ok(app_data_project_root)
-}
-
-fn install_dir_project_root(
+fn resolve_project_root(
+    app: &tauri::App,
+    source_root: &Path,
     app_root: &Path,
-    app_data_project_root: &Path,
-) -> DesktopResult<Option<PathBuf>> {
-    let data_root = app_root.join("data");
-    if fs::create_dir_all(&data_root).is_err() || !can_write_directory(&data_root) {
-        return Ok(None);
-    }
-    migrate_project_data_if_empty(app_data_project_root, app_root)?;
-    Ok(Some(app_root.to_path_buf()))
-}
+) -> DesktopResult<project_root::ResolvedProjectRoot> {
+    let app_config_dir = app.path().app_config_dir()?;
+    let app_data_dir = app.path().app_data_dir()?;
+    let config_dir = app.path().config_dir()?;
+    let data_dir = app.path().data_dir()?;
+    let locator_path = app_config_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE);
 
-fn can_write_directory(path: &Path) -> bool {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or_default();
-    let probe = path.join(format!(
-        ".shinsekai-write-test-{}-{nonce}",
-        std::process::id()
-    ));
-    let ok = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&probe)
-        .and_then(|mut file| file.write_all(b"ok"))
-        .is_ok();
-    let _ = fs::remove_file(probe);
-    ok
-}
+    let expanded_env = |name: &str| {
+        env::var_os(name)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .map(ExpandHome::expand_home)
+            .map(PathBuf::into_os_string)
+    };
+    let explicit_root = project_root::preferred_environment_root(
+        expanded_env("SHINSEKAI_PROJECT_ROOT"),
+        expanded_env("EASYAI_PROJECT_ROOT"),
+    );
 
-fn migrate_project_data_if_empty(
-    app_data_project_root: &Path,
-    install_project_root: &Path,
-) -> DesktopResult<()> {
-    let old_data = app_data_project_root.join("data");
-    let new_data = install_project_root.join("data");
-    if !old_data.is_dir() || !directory_is_empty(&new_data)? {
-        return Ok(());
+    let legacy_config_dir = config_dir.join(project_root::LEGACY_APP_IDENTIFIER);
+    let legacy_data_dir = data_dir.join(project_root::LEGACY_APP_IDENTIFIER);
+    let current_data_dir = data_dir.join(project_root::CURRENT_APP_IDENTIFIER);
+    let mut restart_log_paths = vec![env::temp_dir().join(RESTART_DEBUG_LOG_FILE)];
+    if let Some(custom_log) = env::var_os("SHINSEKAI_RESTART_LOG")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    {
+        restart_log_paths.insert(0, custom_log);
     }
-    copy_dir_missing(&old_data, &new_data)?;
-    Ok(())
-}
 
-fn directory_is_empty(path: &Path) -> DesktopResult<bool> {
-    if !path.is_dir() {
-        return Ok(true);
-    }
-    Ok(fs::read_dir(path)?.next().is_none())
-}
-
-fn copy_dir_missing(src: &Path, dst: &Path) -> DesktopResult<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if dst_path.exists() {
-            continue;
-        }
-        let file_type = entry.file_type()?;
-        if file_type.is_dir() {
-            copy_dir_missing(&src_path, &dst_path)?;
-        } else if file_type.is_file() {
-            fs::copy(&src_path, &dst_path)?;
-        }
-    }
-    Ok(())
+    let options = project_root::ProjectRootResolveOptions {
+        explicit_root,
+        source_root: source_root.to_path_buf(),
+        app_root: app_root.to_path_buf(),
+        current_app_data_project_root: app_data_dir.join("project"),
+        legacy_app_data_project_roots: vec![legacy_data_dir.join("project")],
+        locator_path,
+        locator_read_paths: vec![
+            app_data_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE),
+            current_data_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE),
+            legacy_config_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE),
+            legacy_data_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE),
+        ],
+        restart_log_paths,
+        untrusted_candidate_roots: project_root::windows_legacy_install_dir_hints(),
+        development_source: dev_project_root().as_deref() == Some(source_root),
+    };
+    project_root::resolve(options).map_err(Into::into)
 }
 
 fn resolve_app_root(app: &tauri::App, source_root: &Path) -> DesktopResult<PathBuf> {

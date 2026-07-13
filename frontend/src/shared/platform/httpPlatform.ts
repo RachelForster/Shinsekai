@@ -16,6 +16,7 @@ import type {
   ChatCommandResult,
   ChatHistoryEntry,
   ChatLaunchPayload,
+  ChatRuntimeProcessState,
   ChatSnapshot,
   ChatUpstreamCommand,
   BatchToolResult,
@@ -23,6 +24,8 @@ import type {
   BackgroundTranslateResult,
   Character,
   CharacterMemory,
+  CharacterMemoryImportPreview,
+  CharacterMemoryImportResult,
   CharacterMemoryList,
   CharacterSettingResult,
   Mem0Status,
@@ -34,8 +37,11 @@ import type {
   LogSnapshot,
   LlmModelOption,
   LlmConnectionTestResult,
+  ImageAutoLabelResult,
   McpConfig,
   McpToolPreview,
+  ModelAssetDownloadResult,
+  ModelAssetStatus,
   MusicCoverRunResult,
   MusicCoverSearchResult,
   NetworkProxyDetectionResult,
@@ -393,6 +399,14 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       delete: async (name) => {
         await requestJson(apiBase, `/api/backgrounds/${encodePath(name)}`, { method: "DELETE" });
       },
+      autoLabelImages: async (name, options) => {
+        const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>(
+          apiBase,
+          "/api/backgrounds/images/auto-label",
+          { body: JSON.stringify({ name }), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
       deleteAllBgm: (name) =>
         requestJson<Background>(apiBase, "/api/backgrounds/bgm/delete-all", {
           body: JSON.stringify({ name }),
@@ -533,18 +547,23 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return result;
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
+      getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
       getSnapshot: () => requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot"),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
-      launch: (payload: ChatLaunchPayload) =>
-        requestJson<ChatSnapshot>(apiBase, "/api/chat/launch", {
-          body: JSON.stringify(payload),
+      async launch(payload: ChatLaunchPayload, options) {
+        const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
+          body: JSON.stringify({ mode: "launch", payload }),
           method: "POST",
-        }),
-      resumeLast: () =>
-        requestJson<ChatSnapshot>(apiBase, "/api/chat/resume-last", {
-          body: JSON.stringify({}),
+        });
+        return waitForTask(apiBase, task, options);
+      },
+      async resumeLast(options) {
+        const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
+          body: JSON.stringify({ mode: "resume-last" }),
           method: "POST",
-        }),
+        });
+        return waitForTask(apiBase, task, options);
+      },
       subscribe(listener) {
         let stopped = false;
         let timeoutId = 0;
@@ -767,6 +786,14 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      autoLabelSprites: async (name, options) => {
+        const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>(
+          apiBase,
+          "/api/characters/sprites/auto-label",
+          { body: JSON.stringify({ name }), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
       delete: async (name) => {
         await requestJson(apiBase, `/api/characters/${encodePath(name)}`, { method: "DELETE" });
       },
@@ -817,12 +844,27 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: "{}",
           method: "POST",
         }),
+      importMemories: async (name, items, options) => {
+        const task = await uploadFiles<TaskSnapshot<CharacterMemoryImportResult>>(
+          apiBase,
+          `/api/characters/memories/import-upload?name=${encodeURIComponent(name)}`,
+          items,
+        );
+        return waitForTask(apiBase, task, options);
+      },
       list: () => requestJson<Character[]>(apiBase, "/api/characters"),
       listMemories: (name) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/list", {
           body: JSON.stringify({ name }),
           method: "POST",
         }),
+      previewMemoryImport: (name, items) => {
+        return uploadFiles<CharacterMemoryImportPreview>(
+          apiBase,
+          `/api/characters/memories/import-preview-upload?name=${encodeURIComponent(name)}`,
+          items,
+        );
+      },
       searchMemories: async ({ limit = 200, name, query }) => {
         const result = await requestJson<unknown>(apiBase, "/api/memory/search", {
           body: JSON.stringify({ characterName: name, limit, query }),
@@ -904,6 +946,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         }),
       get: () => requestJson<AppConfig>(apiBase, "/api/config"),
       detectNetworkProxy: () => requestJson<NetworkProxyDetectionResult>(apiBase, "/api/config/network-proxy/detect"),
+      getMemoryStatus: (options) =>
+        requestJson<Mem0Status>(apiBase, "/api/memory/status", {
+          body: JSON.stringify({ startLoading: options?.startLoading ?? true }),
+          method: "POST",
+        }),
       getTtsBundleRecommendation: () =>
         requestJson<TtsBundleRecommendation>(apiBase, "/api/config/tts-bundle/recommendation"),
       saveApi: (config: ApiConfig) =>
@@ -914,6 +961,20 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       saveSystem: (config: SystemConfig) =>
         requestJson<SystemConfig>(apiBase, "/api/config/system", {
           body: JSON.stringify(config),
+          method: "POST",
+        }),
+    },
+    modelAssets: {
+      async download(input, options) {
+        const task = await requestJson<TaskSnapshot<ModelAssetDownloadResult>>(apiBase, "/api/model-assets/download", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task, options);
+      },
+      status: (input) =>
+        requestJson<ModelAssetStatus>(apiBase, "/api/model-assets/status", {
+          body: JSON.stringify(input),
           method: "POST",
         }),
     },

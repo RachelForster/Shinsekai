@@ -29,6 +29,21 @@ _LOADING_FIRST_MSG = (
 )
 
 
+_EMBEDDING_MODEL_ALLOW_PATTERNS = [
+    "1_Pooling/config.json",
+    "config.json",
+    "config_sentence_transformers.json",
+    "model.safetensors",
+    "modules.json",
+    "sentence_bert_config.json",
+    "sentencepiece.bpe.model",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "unigram.json",
+]
+
+
 def _preload_embedding_model(*, cached: bool) -> None:
     preload_huggingface_snapshot(
         EMBEDDING_MODEL,
@@ -37,6 +52,7 @@ def _preload_embedding_model(*, cached: bool) -> None:
         download_message="Downloading mem0 embedding model",
         cached_message="Loading cached mem0 embedding model.",
         load_message="Loading mem0 embedding model.",
+        allow_patterns=_EMBEDDING_MODEL_ALLOW_PATTERNS,
     )
 
 
@@ -162,16 +178,31 @@ def start_mem0_loading() -> None:
     logger.info("mem0 后台加载线程已启动")
 
 
+_GET_MEM0_TIMEOUT_SEC = 600  # 10 minutes — covers worst-case first-time model download
+
+
 def get_mem0() -> Any:
-    """Return the mem0 instance, waiting for background initialization."""
+    """Return the mem0 instance, waiting for background initialization.
+
+    Blocks until mem0 is ready or a fatal error occurs, with a timeout
+    to prevent indefinite hangs if the download stalls.
+    Prefer :func:`ensure_mem0` for non-blocking callers.
+    """
     global _mem0, _mem0_load_error
     if _mem0 is not None:
         return _mem0
 
     start_mem0_loading()
 
+    waited = 0.0
     while _mem0 is None and _mem0_loading:
         time.sleep(0.5)
+        waited += 0.5
+        if waited >= _GET_MEM0_TIMEOUT_SEC:
+            raise TimeoutError(
+                f"mem0 加载超时（已等待 {int(waited)} 秒 / {_GET_MEM0_TIMEOUT_SEC} 秒上限）。"
+                "请检查网络连接和 HuggingFace 模型下载是否正常。"
+            )
 
     if _mem0 is None:
         if isinstance(_mem0_load_error, ModuleNotFoundError):
@@ -188,12 +219,12 @@ def ensure_mem0() -> Any:
     raise ToolNotReady(_loading_status_message())
 
 
-def check_mem0_status() -> dict[str, Any]:
+def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     """Return the current mem0 availability and model loading status."""
     global _mem0, _mem0_loading, _mem0_load_error
     if _mem0 is not None:
         task = current_mem0_task()
-        return {"status": "ready", **({"task": task} if task else {})}
+        return {"status": "ready", "modelCached": True, **({"task": task} if task else {})}
     if _mem0_loading:
         task = current_mem0_task()
         return {
@@ -211,12 +242,26 @@ def check_mem0_status() -> dict[str, Any]:
         }
     if _mem0_load_error is not None:
         task = current_mem0_task()
+        result: dict[str, Any]
         if task and task.get("errorUserMessage"):
-            return {"status": "error", "message": str(task["errorUserMessage"]), "task": task}
-        return {"status": "error", "message": str(_mem0_load_error), **({"task": task} if task else {})}
+            result = {"status": "error", "message": str(task["errorUserMessage"]), "task": task}
+        else:
+            result = {"status": "error", "message": str(_mem0_load_error), **({"task": task} if task else {})}
+        # Restart loading on status check so the next poll picks up a
+        # "loading" state and carries through to ready (or back to error).
+        if start_loading:
+            start_mem0_loading()
+        return result
     try:
         import mem0  # noqa: F401
 
+        if not start_loading:
+            task = current_mem0_task()
+            return {
+                "status": "not_started",
+                "modelCached": is_embedding_model_cached(),
+                **({"task": task} if task else {}),
+            }
         start_mem0_loading()
         task = current_mem0_task()
         return {

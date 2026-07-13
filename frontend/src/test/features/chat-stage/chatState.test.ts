@@ -3,6 +3,253 @@ import { describe, expect, it } from "vitest";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
 
 describe("chatStageReducer", () => {
+  it("optimistically commits a user message and clears the input draft atomically", () => {
+    const state = chatStageReducer(
+      {
+        ...emptyChatState,
+        dialogHtml: "<p>old reply</p>",
+        dialogText: "old reply",
+        inputDraft: "hello",
+        options: ["old option"],
+        userDisplayName: "Aoi",
+      },
+      { text: "hello", type: "submitUserMessage" },
+    );
+
+    expect(state.characterName).toBe("Aoi");
+    expect(state.dialogHtml).toBeUndefined();
+    expect(state.dialogText).toBe("hello");
+    expect(state.inputDraft).toBe("");
+    expect(state.options).toEqual([]);
+    expect(state.status).toBe("generating");
+  });
+
+  it("rolls an optimistic option submission back to the previous presentation", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "Choose",
+        options: ["Left", "Right"],
+      },
+      { source: "submit-option", text: "Left", type: "submitUserMessage" },
+    );
+
+    const restored = chatStageReducer(submitted, {
+      source: "submit-option",
+      type: "rollbackUserSubmission",
+    });
+
+    expect(restored.characterName).toBe("Mio");
+    expect(restored.dialogText).toBe("Choose");
+    expect(restored.options).toEqual(["Left", "Right"]);
+    expect(restored.status).toBe("idle");
+    expect(restored.optimisticSubmission).toBeUndefined();
+  });
+
+  it("preserves a new draft when an earlier submission fails late", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "Previous reply",
+        inputDraft: "first message",
+        options: ["Left", "Right"],
+        userDisplayName: "Aoi",
+      },
+      { source: "send-message", text: "first message", type: "submitUserMessage" },
+    );
+    const withNextDraft = chatStageReducer(submitted, { text: "next message", type: "setDraft" });
+    const restored = chatStageReducer(withNextDraft, {
+      source: "send-message",
+      type: "rollbackUserSubmission",
+    });
+
+    expect(restored.characterName).toBe("Mio");
+    expect(restored.dialogText).toBe("Previous reply");
+    expect(restored.options).toEqual(["Left", "Right"]);
+    expect(restored.status).toBe("idle");
+    expect(restored.inputDraft).toBe("next message");
+    expect(restored.optimisticSubmission).toBeUndefined();
+  });
+
+  it("does not roll back a submission after a newer authoritative event", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        dialogText: "Choose",
+        eventSeq: 1,
+        options: ["Left", "Right"],
+      },
+      { source: "submit-option", text: "Left", type: "submitUserMessage" },
+    );
+    const replied = chatStageReducer(submitted, {
+      event: {
+        color: "#fff",
+        fullHtml: "<p>Accepted</p>",
+        isSystem: false,
+        seq: 2,
+        speaker: "Mio",
+        ts: 2,
+        type: "dialog.end",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    const lateRollback = chatStageReducer(replied, {
+      source: "submit-option",
+      type: "rollbackUserSubmission",
+    });
+
+    expect(lateRollback.characterName).toBe("Mio");
+    expect(lateRollback.dialogText).toBe("Accepted");
+    expect(lateRollback.options).toEqual([]);
+    expect(lateRollback.optimisticSubmission).toBeUndefined();
+  });
+
+  it("keeps an optimistic user message through unrelated runtime events and stale snapshots", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "old reply",
+        eventSeq: 3,
+        inputDraft: "hello",
+        sprites: [],
+        userDisplayName: "Aoi",
+      },
+      { source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    const withStatus = chatStageReducer(submitted, {
+      event: { seq: 4, status: "generating", ts: 4, type: "status.change", v: 1 },
+      type: "event",
+    });
+    const withHistory = chatStageReducer(withStatus, {
+      event: {
+        entries: [{ id: "user-1", role: "user", text: "Aoi: hello" }],
+        seq: 5,
+        ts: 5,
+        type: "history.replace",
+        v: 1,
+      },
+      type: "event",
+    });
+    const staleSnapshot = chatStageReducer(withHistory, {
+      event: {
+        seq: 5,
+        snapshot: {
+          characterName: "Mio",
+          dialogText: "old reply",
+          eventSeq: 3,
+          inputDraft: "",
+          options: [],
+          sessionId: "session-1",
+          sprites: [],
+          status: "idle",
+        },
+        ts: 5,
+        type: "snapshot",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(staleSnapshot.characterName).toBe("Aoi");
+    expect(staleSnapshot.dialogText).toBe("hello");
+    expect(staleSnapshot.status).toBe("generating");
+    expect(staleSnapshot.optimisticSubmission?.text).toBe("hello");
+    expect(staleSnapshot.historyEntries).toEqual([{ id: "user-1", role: "user", text: "Aoi: hello" }]);
+  });
+
+  it.each(["send-message", "submit-option"] as const)(
+    "keeps the first %s submission through a newer startup feedback snapshot",
+    (source) => {
+      const submitted = chatStageReducer(
+        {
+          ...emptyChatState,
+          characterName: "",
+          dialogText: "Chat started",
+          eventSeq: 1,
+          options: source === "submit-option" ? ["Take the shortcut"] : [],
+          statusMessage: "Chat started",
+          userDisplayName: "Aoi",
+        },
+        { source, text: source === "submit-option" ? "Take the shortcut" : "hello", type: "submitUserMessage" },
+      );
+      const startupSnapshot = chatStageReducer(submitted, {
+        event: {
+          seq: 2,
+          snapshot: {
+            characterName: "Mio",
+            dialogText: "Chat started",
+            eventSeq: 2,
+            inputDraft: "",
+            options: [],
+            sprites: [],
+            status: "generating",
+            statusMessage: "Chat started",
+            userDisplayName: "Aoi",
+          },
+          ts: 2,
+          type: "snapshot",
+          v: 1,
+        },
+        type: "event",
+      });
+      const viewModel = buildChatStageViewModel(startupSnapshot);
+
+      expect(startupSnapshot.optimisticSubmission?.source).toBe(source);
+      expect(viewModel.dialogCharacterName).toBe("Aoi");
+      expect(viewModel.dialogText).toBe(source === "submit-option" ? "Take the shortcut" : "hello");
+      expect(viewModel.layers.dialog).toBe(true);
+      expect(viewModel.layers.notification).toBe(false);
+    },
+  );
+
+  it("uses the default user name and removes startup feedback from a first submission", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        dialogText: "Chat started",
+        statusMessage: "Chat started",
+        userDisplayName: "",
+      },
+      { source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    const viewModel = buildChatStageViewModel(submitted);
+
+    expect(submitted.characterName).toBe(viewModel.userDisplayName);
+    expect(submitted.statusMessage).toBeUndefined();
+    expect(viewModel.dialogText).toBe("hello");
+    expect(viewModel.layers.dialog).toBe(true);
+    expect(viewModel.layers.notification).toBe(false);
+  });
+
+  it("keeps an optimistic user message when a late initial hydration resolves", () => {
+    const submitted = chatStageReducer(
+      { ...emptyChatState, eventSeq: 3, inputDraft: "hello", userDisplayName: "Aoi" },
+      { source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    const hydrated = chatStageReducer(submitted, {
+      snapshot: {
+        characterName: "Mio",
+        dialogText: "old reply",
+        eventSeq: 4,
+        inputDraft: "",
+        options: [],
+        sessionId: "session-1",
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+
+    expect(hydrated.characterName).toBe("Aoi");
+    expect(hydrated.dialogText).toBe("hello");
+    expect(hydrated.optimisticSubmission?.text).toBe("hello");
+  });
+
   it("hydrates runtime snapshots from platform events", () => {
     const state = chatStageReducer(emptyChatState, {
       snapshot: {
@@ -32,8 +279,51 @@ describe("chatStageReducer", () => {
     expect(state.status).toBe("idle");
   });
 
+  it("retains chat initialization task events for reconnect diagnostics", () => {
+    const state = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        task: {
+          createdAt: 1,
+          id: "child-init",
+          kind: "chat-initialization",
+          logs: [],
+          message: "Starting voice service.",
+          phase: "tts.init",
+          progress: 0.42,
+          result: null,
+          status: "running",
+          title: "Starting chat",
+          updatedAt: 2,
+        },
+        ts: 2,
+        type: "chat.init.progress",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(state.initTask).toMatchObject({ phase: "tts.init", progress: 0.42, status: "running" });
+  });
+
   it("projects stage events into layer visibility state", () => {
-    const spriteState = chatStageReducer(emptyChatState, {
+    const clearedState = chatStageReducer(
+      { ...emptyChatState, sprites: [{ id: "stale", label: "Stale", path: "asset://stale.png" }] },
+      {
+        snapshot: {
+          dialogText: "",
+          eventSeq: 0,
+          inputDraft: "",
+          options: [],
+          sprites: [],
+          status: "idle",
+        },
+        type: "hydrate",
+      },
+    );
+    expect(clearedState.sprites).toEqual([]);
+
+    const spriteState = chatStageReducer(clearedState, {
       event: {
         characterName: "Mio",
         scale: 1.1,
@@ -305,6 +595,7 @@ describe("chatStageReducer", () => {
     });
     expect(withOptions.options).toEqual(["继续"]);
     expect(withOptions.layers.options).toBe(true);
+    expect(withOptions.layers.dialog).toBe(false);
 
     const firstLine = chatStageReducer(withOptions, {
       event: {
@@ -468,6 +759,63 @@ describe("chatStageReducer", () => {
 
     expect(viewModel.layers.dialog).toBe(false);
     expect(viewModel.notificationText).toBe("等待对话开始");
+
+    const afterStatus = chatStageReducer(state, {
+      event: {
+        seq: 2,
+        status: "idle",
+        ts: 2,
+        type: "status.change",
+        v: 1,
+      },
+      type: "event",
+    });
+    expect(buildChatStageViewModel(afterStatus).notificationText).toBe("等待对话开始");
+  });
+
+  it("hydrates folded system messages and clears them after dialogue or session close", () => {
+    const hydrated = chatStageReducer(emptyChatState, {
+      snapshot: {
+        characterName: "",
+        dialogHtml: "<p>Waiting for chat</p>",
+        dialogText: "Waiting for chat",
+        eventSeq: 1,
+        inputDraft: "",
+        options: [],
+        sprites: [],
+        status: "idle",
+        systemMessageText: "Waiting for chat",
+      },
+      type: "hydrate",
+    });
+    const systemView = buildChatStageViewModel(hydrated);
+
+    expect(systemView.notificationText).toBe("Waiting for chat");
+    expect(systemView.layers.notification).toBe(true);
+    expect(systemView.layers.dialog).toBe(false);
+
+    const withDialogue = chatStageReducer(hydrated, {
+      event: {
+        color: "#fff",
+        fullHtml: "<p>Ready now</p>",
+        isSystem: false,
+        seq: 2,
+        speaker: "Mio",
+        ts: 2,
+        type: "dialog.end",
+        v: 1,
+      },
+      type: "event",
+    });
+    expect(withDialogue.systemMessageText).toBeUndefined();
+    expect(buildChatStageViewModel(withDialogue).layers.dialog).toBe(true);
+
+    const closed = chatStageReducer(hydrated, {
+      event: { reason: "Closed", seq: 2, ts: 2, type: "session.closed", v: 1 },
+      type: "event",
+    });
+    expect(closed.systemMessageText).toBeUndefined();
+    expect(buildChatStageViewModel(closed).notificationText).toBe("Closed");
   });
 
   it("keeps named system narrators in the dialog layer", () => {

@@ -223,6 +223,9 @@ fn runtime_profile() -> String {
 fn bridge_launch_python(python: &Path) -> PathBuf {
     #[cfg(windows)]
     {
+        if crate::show_backend_console() {
+            return python.to_path_buf();
+        }
         pythonw_for_python(python).unwrap_or_else(|| python.to_path_buf())
     }
     #[cfg(not(windows))]

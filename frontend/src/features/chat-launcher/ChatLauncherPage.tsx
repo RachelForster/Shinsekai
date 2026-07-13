@@ -14,6 +14,10 @@ import {
   saveTemplateSession,
   templatesQueryKey,
 } from "../../entities/template/repository";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
@@ -46,6 +50,15 @@ export function ChatLauncherPage() {
     queryKey: [...templatesQueryKey, "session"],
   });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const {
+    closeInitialization,
+    initializationError,
+    initializationOpen,
+    initializationPending,
+    initializationTask,
+    runChatInitialization,
+  } = useChatInitialization();
   const characters = charactersQuery.data ?? [];
   const backgrounds = backgroundsQuery.data ?? [];
   const effects = Array.isArray(effectsQuery.data) ? effectsQuery.data : [];
@@ -121,6 +134,25 @@ export function ChatLauncherPage() {
     setUseCg(launchSession.useCg ?? false);
   }, [launchSession, sessionFetched, sessionRestored, templates]);
 
+  useEffect(() => {
+    if (!sessionRestored) {
+      return;
+    }
+    setInitSpritePath((current) => compatibleInitialSpritePath({ characters, path: current, selectedCharacters }));
+  }, [characters, selectedCharacters, sessionRestored]);
+
+  const updateSelectedCharacters = (nextCharacters: string[]) => {
+    setSelectedCharacters(nextCharacters);
+    setInitSpritePath((current) =>
+      compatibleInitialSpritePath({
+        characters,
+        path: current,
+        preserveUnknown: false,
+        selectedCharacters: nextCharacters,
+      }),
+    );
+  };
+
   const buildSession = (): TemplateLaunchSession => ({
     background: backgroundName,
     effectNames: selectedEffects,
@@ -178,12 +210,15 @@ export function ChatLauncherPage() {
 
   const launchMutation = useMutation({
     mutationFn: async (payload: ChatLaunchPayload) => {
-      const session = buildSession();
-      await saveTemplateSession(session);
-      queryClient.setQueryData([...templatesQueryKey, "session"], session);
-      return launchChat(payload);
+      return runChatInitialization(async (options) => {
+        const session = buildSession();
+        await saveTemplateSession(session);
+        queryClient.setQueryData([...templatesQueryKey, "session"], session);
+        return launchChat(payload, options);
+      });
     },
     onError(error) {
+      void refreshRuntimeStatus();
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : "",
@@ -191,6 +226,7 @@ export function ChatLauncherPage() {
       });
     },
     onSuccess(snapshot) {
+      void updateRuntimeStatusFromSnapshot(snapshot);
       if (snapshot.runtimeDependencyError) {
         void handleRuntimeDependencyError(snapshot);
         return;
@@ -206,6 +242,9 @@ export function ChatLauncherPage() {
 
   const ready = Boolean(activeTemplateId && backgroundName);
   const submitLaunch = (resetHistory: boolean) => {
+    if (runtimeLaunchDisabled) {
+      return;
+    }
     if (!ready || !selectedTemplate) {
       showToast({ kind: "error", message: t("launch.emptyBody"), title: t("launch.toast.failed") });
       return;
@@ -234,6 +273,7 @@ export function ChatLauncherPage() {
         </div>
         <div className="page__actions">
           <AsyncButton
+            disabled={runtimeLaunchDisabled || initializationPending}
             icon={<Play aria-hidden className="button__icon" />}
             loading={launchMutation.isPending}
             onClick={() => submitLaunch(false)}
@@ -242,6 +282,7 @@ export function ChatLauncherPage() {
             {t("launch.start")}
           </AsyncButton>
           <Button
+            disabled={runtimeLaunchDisabled || initializationPending}
             icon={<RotateCw aria-hidden className="button__icon" />}
             onClick={() => {
               if (launchMutation.isPending) {
@@ -312,7 +353,7 @@ export function ChatLauncherPage() {
                 <Select
                   multiple
                   onChange={(event) =>
-                    setSelectedCharacters(Array.from(event.currentTarget.selectedOptions).map((item) => item.value))
+                    updateSelectedCharacters(Array.from(event.currentTarget.selectedOptions).map((item) => item.value))
                   }
                   value={selectedCharacters}
                 >
@@ -395,6 +436,13 @@ export function ChatLauncherPage() {
         }}
         open={quickRestartOpen}
         title={t("template.quickRestart.title")}
+      />
+      <ChatInitializationDialog
+        error={initializationError}
+        onClose={closeInitialization}
+        open={initializationOpen}
+        pending={initializationPending}
+        task={initializationTask}
       />
     </div>
   );

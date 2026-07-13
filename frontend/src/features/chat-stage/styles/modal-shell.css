@@ -1,0 +1,162 @@
+.chat-stage-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--stage-safe-top) var(--stage-safe-x);
+  background:
+    radial-gradient(circle at 78% 16%, color-mix(in oklch, var(--stage-accent) 12%, transparent), transparent 34%),
+    linear-gradient(180deg, rgba(5, 8, 12, 0.4), rgba(5, 8, 12, 0.58));
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+
+.chat-stage-modal {
+  --chat-stage-modal-accent: var(--stage-accent);
+  --chat-stage-modal-color: var(--chat-dialog-color, #fffaf0);
+  --chat-stage-modal-surface: var(--chat-dialog-background, rgba(13, 18, 25, 0.9));
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  border-radius: 24px;
+  color: var(--chat-stage-modal-color);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.1), transparent 38%),
+    color-mix(in oklch, var(--chat-stage-modal-surface) 88%, transparent);
+  box-shadow:
+    0 34px 96px rgba(0, 0, 0, 0.48),
+    0 8px 26px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(28px) saturate(1.2);
+}
+
+.chat-config-dialog {
+  --chat-stage-modal-accent: var(--chat-config-accent-local);
+}
+
+.chat-history-dialog {
+  --chat-stage-modal-accent: var(--history-accent);
+  --chat-stage-modal-color: var(--history-text);
+  --chat-stage-modal-surface: var(--history-panel);
+}
+
+.chat-branch-dialog {
+  --chat-stage-modal-accent: var(--branch-accent);
+  --chat-stage-modal-color: var(--branch-text);
+  --chat-stage-modal-surface: var(--branch-panel);
+}
+
+.chat-stage-modal__header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--chat-stage-modal-accent) 10%, rgba(255, 255, 255, 0.045)),
+    transparent
+  );
+}
+
+.chat-stage-modal__heading {
+  min-width: 0;
+}
+
+.chat-stage-modal__eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: color-mix(in oklch, var(--chat-stage-modal-color) 54%, transparent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.chat-stage-modal__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--chat-stage-modal-accent);
+  font-size: 20px;
+  font-weight: 780;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-stage-modal__summary {
+  margin: 5px 0 0;
+  color: color-mix(in oklch, var(--chat-stage-modal-color) 58%, transparent);
+  font-size: 13px;
+  font-weight: 620;
+  line-height: 1.35;
+}
+
+.chat-stage .chat-stage-modal__close.icon-button {
+  flex: 0 0 auto;
+  border-color: transparent;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.chat-stage .chat-stage-modal__close.icon-button:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--chat-stage-modal-accent) 34%, transparent);
+  background: color-mix(in oklch, var(--chat-stage-modal-accent) 14%, rgba(255, 255, 255, 0.1));
+}
+
+.chat-stage-modal__body {
+  min-height: 0;
+  overflow: auto;
+  background: transparent;
+  scrollbar-gutter: stable;
+  scrollbar-color: color-mix(in oklch, var(--chat-stage-modal-accent) 38%, rgba(255, 255, 255, 0.16)) transparent;
+  scrollbar-width: thin;
+}
+
+.chat-stage-modal__body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.chat-stage-modal__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-stage-modal__body::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--chat-stage-modal-accent) 38%, rgba(255, 255, 255, 0.16));
+  background-clip: padding-box;
+}
+
+.chat-stage-modal__body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--chat-stage-modal-accent) 58%, rgba(255, 255, 255, 0.24));
+  background-clip: padding-box;
+}
+
+.chat-stage-modal__body::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.chat-stage-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px 18px;
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 640px) {
+  .chat-stage-modal__header {
+    padding: 15px 16px 13px;
+  }
+
+  .chat-stage-modal__footer {
+    padding: 12px 14px 14px;
+  }
+}

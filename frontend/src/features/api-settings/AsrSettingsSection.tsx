@@ -1,9 +1,12 @@
-import { ExternalLink } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Download, ExternalLink } from "lucide-react";
 
 import type { AdapterExtraFieldSchema, ApiConfig, SystemConfig } from "../../entities/config/types";
 import { openExternal } from "../../entities/files/repository";
+import { downloadModelAsset, getModelAssetStatus } from "../../entities/model-assets/repository";
 import { useI18n } from "../../shared/i18n";
-import { Button, FilePicker, Select, TextInput } from "../../shared/ui";
+import type { ModelAssetStatus, TaskSnapshot } from "../../shared/platform/types";
+import { Button, FilePicker, ModelDownloadDialog, Select, TextInput } from "../../shared/ui";
 import { AdapterExtraForm } from "./AdapterExtraForm";
 import {
   asrWhisperModelPresets,
@@ -24,6 +27,7 @@ interface AsrSettingsSectionProps {
   draft: ApiConfig;
   id?: string;
   onAsrExtraChange: (provider: string, key: string, value: unknown) => void;
+  onPersistSystemDraft: () => Promise<void>;
   onSystemPatch: (patch: Partial<SystemConfig>) => void;
   showWhisperFields: boolean;
   systemDraft: SystemConfig;
@@ -42,6 +46,7 @@ export function AsrSettingsSection({
   draft,
   id,
   onAsrExtraChange,
+  onPersistSystemDraft,
   onSystemPatch,
   showWhisperFields,
   systemDraft,
@@ -49,6 +54,121 @@ export function AsrSettingsSection({
   whisperPresetValue,
 }: AsrSettingsSectionProps) {
   const { t } = useI18n();
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [modelDialogState, setModelDialogState] = useState<
+    "checking" | "confirm" | "downloading" | "error" | "success"
+  >("confirm");
+  const [modelAssetStatus, setModelAssetStatus] = useState<ModelAssetStatus | null>(null);
+  const [modelDownloadTask, setModelDownloadTask] = useState<TaskSnapshot | null>(null);
+  const [modelDownloadError, setModelDownloadError] = useState<string | null>(null);
+  const [retryAction, setRetryAction] = useState<"check" | "download">("check");
+  const modelOperationTokenRef = useRef(0);
+  const configuredWhisperModel = String(systemDraft.asr_whisper_model_size || "").trim();
+  const whisperModel = configuredWhisperModel || (customWhisperModel ? "" : "small");
+  const supportsWhisperDownload = activeAsrProvider === "faster_whisper" || activeAsrProvider === "realtime_stt";
+  const modelBusy = modelDialogState === "checking" || modelDialogState === "downloading";
+  const modelAssetRef = customWhisperModel
+    ? ({ assetId: "asr.faster-whisper", configured: true } as const)
+    : ({ assetId: "asr.faster-whisper", variant: whisperModel } as const);
+
+  useEffect(() => {
+    modelOperationTokenRef.current += 1;
+    setModelDialogOpen(false);
+    setModelAssetStatus(null);
+    setModelDownloadTask(null);
+    setModelDownloadError(null);
+    setModelDialogState("confirm");
+  }, [activeAsrProvider, whisperModel]);
+
+  useEffect(
+    () => () => {
+      modelOperationTokenRef.current += 1;
+    },
+    [],
+  );
+
+  const checkWhisperModel = async () => {
+    const token = modelOperationTokenRef.current + 1;
+    modelOperationTokenRef.current = token;
+    setRetryAction("check");
+    setModelDialogOpen(true);
+    setModelDialogState("checking");
+    setModelAssetStatus(null);
+    setModelDownloadTask(null);
+    setModelDownloadError(null);
+    try {
+      if (customWhisperModel) {
+        await onPersistSystemDraft();
+        if (modelOperationTokenRef.current !== token) {
+          return;
+        }
+      }
+      const status = await getModelAssetStatus(modelAssetRef);
+      if (modelOperationTokenRef.current !== token) {
+        return;
+      }
+      setModelAssetStatus(status);
+      if (status.source === "local") {
+        if (status.cached) {
+          setModelDialogState("success");
+        } else {
+          setModelDownloadError(t("system.asr.modelLocalMissing"));
+          setModelDialogState("error");
+        }
+        return;
+      }
+      setModelDialogState(status.cached ? "success" : "confirm");
+    } catch (error) {
+      if (modelOperationTokenRef.current === token) {
+        setModelDownloadError(error instanceof Error ? error.message : t("system.asr.modelDownloadFailed"));
+        setModelDialogState("error");
+      }
+    }
+  };
+
+  const startWhisperModelDownload = async () => {
+    const token = modelOperationTokenRef.current + 1;
+    modelOperationTokenRef.current = token;
+    setRetryAction("download");
+    setModelDialogState("downloading");
+    setModelDownloadTask(null);
+    setModelDownloadError(null);
+    try {
+      const result = await downloadModelAsset(modelAssetRef, {
+        onTaskUpdate(task) {
+          if (modelOperationTokenRef.current === token) {
+            setModelDownloadTask(task);
+          }
+        },
+      });
+      if (modelOperationTokenRef.current !== token) {
+        return;
+      }
+      setModelAssetStatus(result);
+      setModelDialogState("success");
+    } catch (error) {
+      if (modelOperationTokenRef.current === token) {
+        setModelDownloadError(error instanceof Error ? error.message : t("system.asr.modelDownloadFailed"));
+        setModelDialogState("error");
+      }
+    }
+  };
+
+  const modelStatusMessage = (() => {
+    if (modelDialogState === "checking") {
+      return t("system.asr.modelChecking");
+    }
+    if (modelDialogState === "downloading") {
+      return t("system.asr.modelDownloading");
+    }
+    if (modelDialogState === "confirm") {
+      return t("system.asr.modelMissing");
+    }
+    if (modelDialogState === "success") {
+      return modelAssetStatus?.source === "local" ? t("system.asr.modelLocalReady") : t("system.asr.modelCached");
+    }
+    return undefined;
+  })();
 
   return (
     <details className="section schema-section page-section-anchor" id={id}>
@@ -190,6 +310,23 @@ export function AsrSettingsSection({
           </label>
         </div>
       ) : null}
+      {showWhisperFields && supportsWhisperDownload ? (
+        <div className="asr-model-download">
+          <Button
+            disabled={disabled || !whisperModel}
+            icon={<Download aria-hidden className="button__icon" />}
+            loading={modelBusy && modelDialogOpen}
+            onClick={() => (modelBusy ? setModelDialogOpen(true) : void checkWhisperModel())}
+          >
+            {modelBusy
+              ? modelDialogOpen
+                ? t(modelDialogState === "downloading" ? "system.asr.modelDownloading" : "system.asr.modelChecking")
+                : t("system.asr.modelViewProgress")
+              : t("system.asr.modelDownload")}
+          </Button>
+          <span className="field-row__help">{t("system.asr.modelDownloadHint")}</span>
+        </div>
+      ) : null}
       {activeAsrProvider !== "vosk" && hasAdapterSchema(activeAsrSchema) ? (
         <AdapterExtraForm
           disabled={disabled}
@@ -198,6 +335,34 @@ export function AsrSettingsSection({
           values={draft.asr_extra_configs?.[activeAsrProvider] ?? {}}
         />
       ) : null}
+      <ModelDownloadDialog
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={t("system.asr.modelDownloadConfirm")}
+        description={
+          modelDialogState === "confirm"
+            ? t("system.asr.modelDownloadConfirmBody", { model: whisperModel })
+            : modelAssetStatus?.source === "local"
+              ? t("system.asr.modelLocalDescription")
+              : t("system.asr.modelDownloadDescription")
+        }
+        details={[
+          { label: t("system.asr.modelName"), value: modelAssetStatus?.variant || whisperModel },
+          ...(modelAssetStatus?.repoId
+            ? [{ label: t("system.asr.modelRepository"), value: modelAssetStatus.repoId }]
+            : []),
+        ]}
+        error={modelDownloadError}
+        onClose={() => setModelDialogOpen(false)}
+        onConfirm={() => void startWhisperModelDownload()}
+        onRetry={() => void (retryAction === "download" ? startWhisperModelDownload() : checkWhisperModel())}
+        open={modelDialogOpen}
+        retryLabel={t("common.retry")}
+        state={modelDialogState}
+        statusMessage={modelStatusMessage}
+        task={modelDownloadTask}
+        title={t("system.asr.modelDownloadTitle")}
+      />
     </details>
   );
 }

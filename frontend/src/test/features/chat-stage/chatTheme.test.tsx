@@ -199,6 +199,8 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-dialog-border"]).toBe("0 solid transparent");
     expect(resolved.style["--chat-dialog-body-height"]).toBe("100%");
     expect(resolved.style["--chat-dialog-body-min-height"]).toBe("0px");
+    expect(resolved.style["--chat-dialog-body-overflow"]).toBe("auto");
+    expect(resolved.style["--chat-dialog-body-scrollbar-gutter"]).toBe("auto");
     expect(resolved.style["--chat-dialog-frame"]).toBe('url("asset://assets/dialog-border.svg") 28 fill / 28px round');
     expect(resolved.style["--chat-dialog-height"]).toBe("166px");
     expect(resolved.style["--chat-dialog-padding"]).toBe("40px");

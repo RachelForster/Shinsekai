@@ -116,15 +116,19 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
         void query.refetch();
         return false;
       }
-      if (status.status === "loading" || status.status === "not_started") {
+      if (status.status === "loading" || status.status === "not_started" || status.status === "error") {
         setMem0Task(status.task ?? null);
         setMem0LoadingMessage(
           status.modelCached ? t("character.memory.loadingModel") : t("character.memory.downloadingModel"),
         );
         setMem0LoadingOpen(true);
-        const pollMs = status.modelCached ? 2000 : 3000;
         let pollStatus = status;
-        while (pollStatus.status === "loading" || pollStatus.status === "not_started") {
+        while (
+          pollStatus.status === "loading" ||
+          pollStatus.status === "not_started" ||
+          pollStatus.status === "error"
+        ) {
+          const pollMs = pollStatus.task?.phase === "download" ? 1000 : pollStatus.modelCached ? 2000 : 3000;
           await new Promise((resolve) => setTimeout(resolve, pollMs));
           try {
             pollStatus = await getMem0Status();
@@ -137,14 +141,6 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
         setMem0LoadingOpen(false);
         if (pollStatus.status === "missing_dependency") {
           void query.refetch();
-          return false;
-        }
-        if (pollStatus.status === "error") {
-          showToast({
-            kind: "error",
-            message: pollStatus.task?.errorUserMessage || pollStatus.message || t("character.memory.error"),
-            title: t("common.operationFailed"),
-          });
           return false;
         }
       }
@@ -301,6 +297,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     dependencyDialogOpen: memoryDepOpen,
     dependencyTask: memoryDepTask,
     error: searchMutation.error ?? query.error,
+    ensureReady,
     installDependency,
     isChecking: mem0Checking,
     isError: query.isError || searchMutation.isError || !!depError,

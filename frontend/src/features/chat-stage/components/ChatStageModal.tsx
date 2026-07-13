@@ -1,4 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { X } from "lucide-react";
+
+import { IconButton } from "../../../shared/ui";
 
 const focusableSelector = [
   "a[href]",
@@ -23,23 +26,30 @@ function focusInitialElement(dialog: HTMLElement, initialFocusRef?: RefObject<HT
 export function ChatStageModal({
   backdropClassName,
   children,
+  closeLabel,
   dialogClassName,
   dialogId,
-  initialFocusRef,
+  eyebrow,
   labelledBy,
   onClose,
   open,
+  summary,
+  title,
 }: {
   backdropClassName: string;
   children: ReactNode;
+  closeLabel: string;
   dialogClassName: string;
   dialogId?: string;
-  initialFocusRef?: RefObject<HTMLElement | null>;
+  eyebrow?: ReactNode;
   labelledBy: string;
   onClose: () => void;
   open: boolean;
+  summary?: ReactNode;
+  title: ReactNode;
 }) {
   const backdropRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -50,11 +60,11 @@ export function ChatStageModal({
     window.setTimeout(() => {
       const dialog = dialogRef.current;
       if (dialog) {
-        focusInitialElement(dialog, initialFocusRef);
+        focusInitialElement(dialog, closeButtonRef);
       }
     }, 0);
     return () => previous?.focus();
-  }, [initialFocusRef, open]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -130,7 +140,7 @@ export function ChatStageModal({
   return (
     <div
       ref={backdropRef}
-      className={backdropClassName}
+      className={`chat-stage-modal-backdrop ${backdropClassName}`}
       data-chat-stage-hitbox="true"
       onMouseDown={handleBackdropMouseDown}
       role="presentation"
@@ -139,12 +149,24 @@ export function ChatStageModal({
         ref={dialogRef}
         aria-labelledby={labelledBy}
         aria-modal="true"
-        className={dialogClassName}
+        className={`chat-stage-modal ${dialogClassName}`}
         id={dialogId}
         onKeyDown={handleKeyDown}
         role="dialog"
         tabIndex={-1}
       >
+        <header className="chat-stage-modal__header">
+          <div className="chat-stage-modal__heading">
+            {eyebrow ? <span className="chat-stage-modal__eyebrow">{eyebrow}</span> : null}
+            <h2 className="chat-stage-modal__title" id={labelledBy}>
+              {title}
+            </h2>
+            {summary ? <div className="chat-stage-modal__summary">{summary}</div> : null}
+          </div>
+          <IconButton className="chat-stage-modal__close" label={closeLabel} onClick={onClose} ref={closeButtonRef}>
+            <X aria-hidden className="icon-button__icon" />
+          </IconButton>
+        </header>
         {children}
       </section>
     </div>

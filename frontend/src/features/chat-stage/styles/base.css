@@ -47,7 +47,7 @@
   --chat-dialog-body-height: auto;
   --chat-dialog-body-min-height: 64px;
   --chat-dialog-body-overflow: auto;
-  --chat-dialog-body-scrollbar-gutter: stable;
+  --chat-dialog-body-scrollbar-gutter: auto;
   --chat-dialog-border: 1px solid var(--chat-dialog-border-color);
   --chat-dialog-color: #f7f1f0;
   --chat-dialog-height: auto;
@@ -111,6 +111,7 @@
   --chat-input-grid-template-columns: minmax(0, 1fr) 38px minmax(78px, auto);
   --chat-input-layout: default;
   --chat-input-max-width: var(--chat-ui-runtime-width);
+  --chat-input-resolved-width: min(var(--chat-input-max-width), var(--chat-ui-runtime-width), calc(100vw - 32px));
   --chat-input-padding: 6px;
   --chat-input-panel-display: none;
   --chat-input-pill-control-display: none;
@@ -148,7 +149,7 @@
   --chat-options-transform: translate(-50%, -50%);
   --chat-options-width: clamp(300px, 54vw, 680px);
   --chat-options-min-width: 0px;
-  --chat-options-max-width: min(var(--chat-dialog-runtime-width), calc(100vw - 32px));
+  --chat-options-max-width: var(--chat-input-resolved-width);
   --chat-send-background: var(--stage-accent);
   --chat-send-active-transform: translateY(0);
   --chat-send-border: 1px solid var(--chat-send-border-color, rgba(255, 255, 255, 0.55));

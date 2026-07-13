@@ -71,7 +71,7 @@
 
 .sprite-layer {
   position: absolute;
-  inset: 0 0 calc(var(--stage-control-stack-height) + 72px);
+  inset: 0;
   z-index: 3;
   display: flex;
   align-items: flex-end;
@@ -85,12 +85,13 @@
   --sprite-offset-x: 0px;
   --sprite-offset-y: 0px;
   --sprite-scale: 1;
-  height: min(74vh, 760px);
-  max-width: min(38vw, 430px);
+  height: 90%;
+  max-width: 100%;
+  min-width: 0;
   margin: 0;
   transform: translate(
       calc(var(--chat-sprite-runtime-offset-x) + var(--sprite-offset-x)),
-      calc(10px + var(--chat-sprite-runtime-offset-y) + var(--sprite-offset-y))
+      calc(var(--chat-sprite-runtime-offset-y) + var(--sprite-offset-y))
     )
     scale(var(--sprite-scale));
   transform-origin: bottom center;
@@ -101,6 +102,12 @@
   animation: chat-stage-sprite-in 340ms ease-out;
 }
 
+.sprite-layer__figure[data-draggable="true"] {
+  cursor: move;
+  pointer-events: auto;
+  user-select: none;
+}
+
 .sprite-layer__figure[data-dim="true"] {
   filter: brightness(0.6) saturate(0.82);
 }
@@ -109,12 +116,15 @@
   filter: brightness(1.06) saturate(1.04);
 }
 
-.sprite-layer[data-count="1"] .sprite-layer__figure {
-  max-width: min(52vw, 520px);
-}
-
 .sprite-layer__image {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   object-position: bottom center;
+  user-select: none;
+  -webkit-user-drag: none;
   animation: chat-stage-sprite-slide 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }

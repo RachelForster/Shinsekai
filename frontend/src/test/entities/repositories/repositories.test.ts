@@ -21,6 +21,7 @@ async function loadRepositories(platform: Partial<ShinsekaiPlatform>) {
     effect: await import("../../../entities/effect/repository"),
     files: await import("../../../entities/files/repository"),
     logs: await import("../../../entities/logs/repository"),
+    modelAssets: await import("../../../entities/model-assets/repository"),
     musicCover: await import("../../../entities/music-cover/repository"),
     plugin: await import("../../../entities/plugin/repository"),
     template: await import("../../../entities/template/repository"),
@@ -52,6 +53,7 @@ describe("entity repositories", () => {
         fetchLlmModels: vi.fn().mockResolvedValue([{ id: "deepseek-chat", tags: ["chat"] }]),
         testLlmConnection: vi.fn().mockResolvedValue({ message: "ok" }),
         get: vi.fn().mockResolvedValue(sampleConfig),
+        getMemoryStatus: vi.fn().mockResolvedValue({ status: "ready" }),
         getTtsBundleRecommendation: vi.fn().mockResolvedValue({ gpus: [], kind: "genie", platform: "linux" }),
         saveApi: vi.fn().mockResolvedValue(apiConfig),
         saveSystem: vi.fn().mockResolvedValue(systemConfig),
@@ -86,6 +88,7 @@ describe("entity repositories", () => {
     await config.downloadTtsBundle({ kind: "genie" }, taskOptions);
     await config.cancelTtsBundleDownload("task-1");
     await config.detectNetworkProxy();
+    await config.getMemoryStatus();
     await config.getTtsBundleRecommendation();
     await config.saveApiConfig(apiConfig);
     await config.saveSystemConfig(systemConfig);
@@ -151,6 +154,32 @@ describe("entity repositories", () => {
       name: "新模板",
       scenario: "scene",
     });
+  });
+
+  it("delegates generic model asset checks and downloads", async () => {
+    const ref = { assetId: "asr.faster-whisper", variant: "small" };
+    const status = {
+      ...ref,
+      cached: false,
+      downloadable: true,
+      repoId: "Systran/faster-whisper-small",
+      source: "huggingface" as const,
+      title: "Whisper ASR",
+    };
+    const result = { ...status, cached: true, downloaded: true, path: "/cache/small" };
+    const options = { onTaskUpdate: vi.fn() };
+    const platform = {
+      modelAssets: {
+        download: vi.fn().mockResolvedValue(result),
+        status: vi.fn().mockResolvedValue(status),
+      },
+    };
+    const { modelAssets } = await loadRepositories(platform);
+
+    await expect(modelAssets.getModelAssetStatus(ref)).resolves.toEqual(status);
+    await expect(modelAssets.downloadModelAsset(ref, options)).resolves.toEqual(result);
+    expect(platform.modelAssets.status).toHaveBeenCalledWith(ref);
+    expect(platform.modelAssets.download).toHaveBeenCalledWith(ref, options);
   });
 
   it("chunks and caches thumbnail batch requests", async () => {
@@ -244,6 +273,7 @@ describe("entity repositories", () => {
     const background = sampleConfig.background_list[0];
     const platform = {
       backgrounds: {
+        autoLabelImages: vi.fn().mockResolvedValue({}),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllBgm: vi.fn().mockResolvedValue(background),
         deleteAllImages: vi.fn().mockResolvedValue(background),
@@ -260,6 +290,7 @@ describe("entity repositories", () => {
         uploadImages: vi.fn().mockResolvedValue(background),
       },
       characters: {
+        autoLabelSprites: vi.fn().mockResolvedValue({}),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllSprites: vi.fn().mockResolvedValue(character),
         deleteMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
@@ -269,8 +300,28 @@ describe("entity repositories", () => {
         generateSetting: vi.fn().mockResolvedValue({ characterSetting: "kind", message: "ok" }),
         getMem0Status: vi.fn().mockResolvedValue({ status: "ready" }),
         import: vi.fn().mockResolvedValue([character]),
+        importMemories: vi.fn().mockResolvedValue({
+          chunkCount: 1,
+          duplicateCount: 0,
+          estimatedTotalTokens: 100,
+          extractedCount: 1,
+          fileCount: 1,
+          savedCount: 1,
+        }),
         list: vi.fn().mockResolvedValue([character]),
         listMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
+        previewMemoryImport: vi.fn().mockResolvedValue({
+          chunkCount: 1,
+          dialogueCharacters: 100,
+          dialogueLineCount: 2,
+          estimatedInputTokens: 80,
+          estimatedOutputTokens: 20,
+          estimatedTotalTokens: 100,
+          fileCount: 1,
+          files: [],
+          sourceTokens: 25,
+          warnings: [],
+        }),
         remember: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 1, memories: [] }),
         searchMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 1, memories: [] }),
         save: vi.fn().mockResolvedValue(character),
@@ -297,6 +348,7 @@ describe("entity repositories", () => {
     await backgrounds.translateBackgroundFields({ bgTags: "day", bgmTags: "music", name: "Room" });
     await backgrounds.uploadBackgroundImages({ bgTags: "day", name: "Room", paths: ["/tmp/a.png"] });
     await backgrounds.uploadBackgroundBgm({ bgmTags: "music", name: "Room", paths: ["/tmp/a.mp3"] });
+    await backgrounds.autoLabelBackgroundImages("Room");
     await characters.saveCharacter(character, "Old Nanami");
     await characters.generateCharacterSetting({ name: "Nanami", setting: "kind" });
     await characters.translateCharacterFields({ characterSetting: "kind", emotionTags: "happy", name: "Nanami" });
@@ -304,6 +356,9 @@ describe("entity repositories", () => {
     await characters.searchCharacterMemories({ name: "Nanami", query: "tea" });
     await characters.rememberCharacterMemory("Nanami", "likes tea");
     await characters.deleteCharacterMemory("Nanami", "memory-1");
+    const historyFile = new File(["User: hello"], "history.json");
+    await characters.previewCharacterMemoryImport("Nanami", [historyFile]);
+    await characters.importCharacterMemories("Nanami", [historyFile]);
     await characters.uploadCharacterSprites({ emotionTags: "happy", name: "Nanami", paths: ["/tmp/a.png"] });
     await characters.saveCharacterEmotionTags("Nanami", "happy");
     await characters.deleteCharacterSprite("Nanami", 0);
@@ -312,8 +367,10 @@ describe("entity repositories", () => {
     await characters.uploadSpriteVoice({ name: "Nanami", spriteIndex: 0, voicePath: "/tmp/a.wav", voiceText: "hello" });
     await characters.saveSpriteVoiceText("Nanami", 0, "hello");
     await characters.deleteSpriteVoice("Nanami", 0);
+    await characters.autoLabelCharacterSprites("Nanami");
 
     expect(platform.backgrounds.save).toHaveBeenCalledWith(background, "Old Room");
+    expect(platform.backgrounds.autoLabelImages).toHaveBeenCalledWith("Room", undefined);
     expect(platform.backgrounds.deleteImage).toHaveBeenCalledWith("Room", 1);
     expect(platform.backgrounds.uploadImages).toHaveBeenCalledWith({
       bgTags: "day",
@@ -321,7 +378,10 @@ describe("entity repositories", () => {
       paths: ["/tmp/a.png"],
     });
     expect(platform.characters.save).toHaveBeenCalledWith(character, "Old Nanami");
+    expect(platform.characters.autoLabelSprites).toHaveBeenCalledWith("Nanami", undefined);
     expect(platform.characters.remember).toHaveBeenCalledWith("Nanami", "likes tea");
+    expect(platform.characters.previewMemoryImport).toHaveBeenCalledWith("Nanami", [historyFile]);
+    expect(platform.characters.importMemories).toHaveBeenCalledWith("Nanami", [historyFile], undefined);
     expect(platform.characters.uploadSpriteVoice).toHaveBeenCalledWith({
       name: "Nanami",
       spriteIndex: 0,
@@ -339,6 +399,11 @@ describe("entity repositories", () => {
         close: vi.fn().mockResolvedValue(sampleChatSnapshot),
         command: vi.fn().mockResolvedValue(sampleChatSnapshot),
         getHistory: vi.fn().mockResolvedValue(sampleChatSnapshot.historyEntries ?? []),
+        getRuntimeStatus: vi.fn().mockResolvedValue({
+          chatProcessRunning: false,
+          chatRuntimeClosing: false,
+          state: "idle",
+        }),
         getSnapshot: vi.fn().mockResolvedValue(sampleChatSnapshot),
         getTheme: vi.fn().mockResolvedValue(sampleChatTheme),
         launch: vi.fn().mockResolvedValue(sampleChatSnapshot),
@@ -462,11 +527,12 @@ describe("entity repositories", () => {
     const themeArchive = new File(["theme"], "theme.zip", { type: "application/zip" });
 
     await chat.getChatSnapshot();
+    await chat.getChatRuntimeStatus();
     await chat.closeChat();
     await chat.getChatTheme();
-    await chat.launchChat(sampleLastLaunch);
+    await chat.launchChat(sampleLastLaunch, taskOptions);
     await chat.installMissingRuntimeDependency({ moduleName: "mem0" }, taskOptions);
-    await chat.resumeLastChat();
+    await chat.resumeLastChat(taskOptions);
     await chat.sendChatCommand({ payload: "hi", type: "send-message" });
     await chat.getChatHistory();
     expect(chat.subscribeChat(listener)).toBe(unsubscribe);
@@ -477,6 +543,7 @@ describe("entity repositories", () => {
     await chat.uploadChatTheme(themeArchive);
     await chat.deleteChatTheme("uploaded");
     expect(chat.subscribeChatEvents(listener)).toBe(unsubscribe);
+    expect(platform.chat.getRuntimeStatus).toHaveBeenCalledTimes(1);
     await effects.listEffects();
     await effects.saveEffect(effect, "Old Effect");
     await effects.saveEffectAudioTags({ audioTags: "spark", name: "Spark" });
@@ -546,7 +613,8 @@ describe("entity repositories", () => {
     await musicCover.runMusicCover({ pickIndex: 0, query: "song", skipRvc: false, source: "youtube" }, taskOptions);
 
     expect(platform.chat.close).toHaveBeenCalledTimes(1);
-    expect(platform.chat.launch).toHaveBeenCalledWith(sampleLastLaunch);
+    expect(platform.chat.launch).toHaveBeenCalledWith(sampleLastLaunch, taskOptions);
+    expect(platform.chat.resumeLast).toHaveBeenCalledWith(taskOptions);
     expect(platform.runtime.installMissingDependency).toHaveBeenCalledWith({ moduleName: "mem0" }, taskOptions);
     expect(platform.chat.uploadTheme).toHaveBeenCalledWith(themeArchive);
     expect(platform.effects.uploadAudio).toHaveBeenCalledWith({

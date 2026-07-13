@@ -46,6 +46,11 @@ def _T(key: str, **kwargs) -> str:
     return tr_i18n(f"template_gen.{key}", **kwargs)
 
 
+def json_format_reminder() -> str:
+    """Return the localized reminder that must close every runtime system prompt."""
+    return _T("closing_json_reminder").strip()
+
+
 def _json_string_content(value: Any) -> str:
     return json.dumps(str(value), ensure_ascii=False)[1:-1]
 
@@ -510,4 +515,5 @@ class TemplateGenerator:
             template += f"- {item.text}\n"
         extra = _T("closing_extra_bgm") if (bg_name and not is_transparent_background(bg_name)) else ""
         template += _T("closing", extra=extra)
+        template += f"{json_format_reminder()}\n"
         return template, ""

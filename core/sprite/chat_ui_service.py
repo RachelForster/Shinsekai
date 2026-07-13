@@ -102,6 +102,10 @@ def wire_chat_ui_bridge(
         lambda lang: _on_voice_language_changed(window, tts_manager, lang)
     )
     def _on_chat_ui_close() -> None:
+        try:
+            window.hide()
+        except Exception:
+            pass
         # 如果最后一条消息是 assistant 带 tool_calls 但无 tool 回执，补上「用户中断」
         msgs = llm_manager.get_messages()
         if msgs:

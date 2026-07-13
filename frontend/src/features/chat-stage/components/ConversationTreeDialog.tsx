@@ -1,9 +1,9 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { Check, ChevronDown, ChevronRight, GitBranch, Pencil, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatConversationBranch, ChatConversationTree } from "../../../shared/platform/types";
-import { Button, IconButton } from "../../../shared/ui";
+import { Button } from "../../../shared/ui";
 import { ChatStageModal } from "./ChatStageModal";
 
 function fallbackBranches(tree?: ChatConversationTree): ChatConversationBranch[] {
@@ -66,7 +66,6 @@ export function ConversationTreeDialog({
 }) {
   const { t } = useI18n();
   const titleId = useId();
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -119,32 +118,16 @@ export function ConversationTreeDialog({
   return (
     <ChatStageModal
       backdropClassName="chat-branch-backdrop"
+      closeLabel={t("common.close")}
       dialogClassName="chat-branch-dialog"
-      initialFocusRef={closeButtonRef}
+      eyebrow={t("chat.branches.eyebrow")}
       labelledBy={titleId}
       onClose={onClose}
       open={open}
+      summary={t("chat.branches.count", { count: branches.length, visible: visibleBranches.length })}
+      title={t("chat.branches.title")}
     >
-      <header className="chat-branch-dialog__header">
-        <div className="chat-branch-dialog__heading">
-          <span className="chat-branch-dialog__eyebrow">{t("chat.branches.eyebrow")}</span>
-          <h2 className="chat-branch-dialog__title" id={titleId}>
-            {t("chat.branches.title")}
-          </h2>
-          <p className="chat-branch-dialog__summary">
-            {t("chat.branches.count", { count: branches.length, visible: visibleBranches.length })}
-          </p>
-        </div>
-        <IconButton
-          className="chat-branch-dialog__close"
-          label={t("common.close")}
-          onClick={onClose}
-          ref={closeButtonRef}
-        >
-          <X aria-hidden className="icon-button__icon" />
-        </IconButton>
-      </header>
-      <div className="chat-branch-dialog__body">
+      <div className="chat-stage-modal__body chat-branch-dialog__body">
         {largeTree ? <p className="chat-branch-dialog__notice">{t("chat.branches.largeTree")}</p> : null}
         <div className="chat-branch-tree" role="list">
           {visibleBranches.map(({ branch, childCount, collapsed, depth }) => {

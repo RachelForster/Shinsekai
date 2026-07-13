@@ -370,6 +370,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: frontend/src-tauri -> target
+          # Reuse the desktop CI release-dependency cache. rust-cache still
+          # isolates entries by OS, architecture, toolchain, and manifests.
+          shared-key: build
 
       - name: Install Linux Tauri dependencies
         if: runner.os == 'Linux'
@@ -384,11 +387,6 @@ jobs:
           else
             sudo apt-get install -y -qq libfuse2
           fi
-
-      - name: Install Windows installer dependencies
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: choco install nsis --no-progress -y
 
       - name: Install frontend dependencies
         working-directory: frontend

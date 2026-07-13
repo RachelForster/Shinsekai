@@ -62,6 +62,45 @@ describe("browser preview platform chat themes", () => {
     vi.restoreAllMocks();
   });
 
+  it("tracks the lightweight runtime status across launch and close", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const initializationPhases: string[] = [];
+
+    await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toEqual({
+      chatProcessRunning: false,
+      chatRuntimeClosing: false,
+      state: "idle",
+    });
+
+    const launched = await resolvePreview(
+      platform.chat.launch(
+        {
+          backgroundName: "榛樿鎴块棿",
+          characters: ["Nanami"],
+          historyPath: "/tmp/runtime-status.json",
+          templateId: "default",
+        },
+        { onTaskUpdate: (task) => initializationPhases.push(task.phase) },
+      ),
+    );
+    expect(launched).toMatchObject({ chatProcessRunning: true, chatRuntimeClosing: false });
+    expect(initializationPhases).toEqual(["preparing", "tts", "memory", "completed"]);
+    await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toEqual({
+      chatProcessRunning: true,
+      chatRuntimeClosing: false,
+      state: "running",
+    });
+
+    const closed = await resolvePreview(platform.chat.close());
+    expect(closed).toMatchObject({ chatProcessRunning: false, chatRuntimeClosing: false });
+    await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toEqual({
+      chatProcessRunning: false,
+      chatRuntimeClosing: false,
+      state: "idle",
+    });
+  });
+
   it("switches active theme and serves matching manifests and legacy payloads", async () => {
     const platform = createBrowserPreviewPlatform();
 
@@ -333,8 +372,22 @@ describe("browser preview platform chat themes", () => {
     expect(memories.count).toBe(1);
     const remembered = await resolvePreview(platform.characters.remember("Mika", "likes tea"));
     expect(remembered.memories.some((memory) => memory.memory === "likes tea")).toBe(true);
+    const memoryImportPreview = await resolvePreview(
+      platform.characters.previewMemoryImport("Mika", [new File(["User: hello\nMika: hi"], "history.json")]),
+    );
+    expect(memoryImportPreview.estimatedTotalTokens).toBeGreaterThan(0);
+    expect(memoryImportPreview.files[0].kind).toBe("json");
+    const memoryImportPhases: string[] = [];
+    const importedHistory = new File(["User: hello\nMika: hi"], "history.json");
+    const memoryImport = await resolvePreview(
+      platform.characters.importMemories("Mika", [importedHistory], {
+        onTaskUpdate: (task) => memoryImportPhases.push(task.phase),
+      }),
+    );
+    expect(memoryImport.savedCount).toBe(1);
+    expect(memoryImportPhases).toEqual(["preparing", "extracting", "completed"]);
     const afterMemoryDelete = await resolvePreview(platform.characters.deleteMemory("Mika", remembered.memories[0].id));
-    expect(afterMemoryDelete.count).toBe(1);
+    expect(afterMemoryDelete.count).toBe(2);
 
     const generated = await resolvePreview(platform.characters.generateSetting({ name: "Mika", setting: "" }));
     expect(generated.characterSetting).toContain("Mika");
@@ -377,6 +430,27 @@ describe("browser preview platform chat themes", () => {
     expect(bundle.provider).toBe("genie-tts");
     expect(taskUpdates).toEqual(expect.arrayContaining(["download", "extract", "completed"]));
     expect((await resolvePreview(platform.config.cancelTtsBundleDownload("task-1"))).status).toBe("cancelled");
+    const modelRef = { assetId: "asr.faster-whisper", variant: "small" };
+    expect((await resolvePreview(platform.modelAssets.status(modelRef))).cached).toBe(false);
+    const downloadedModel = await resolvePreview(platform.modelAssets.download(modelRef, options), 1_000);
+    expect(downloadedModel).toMatchObject({ cached: true, downloaded: true, variant: "small" });
+    expect((await resolvePreview(platform.modelAssets.status(modelRef))).cached).toBe(true);
+    await resolvePreview(platform.config.saveSystem({ ...system, asr_whisper_model_size: "owner/custom-whisper" }));
+    expect(
+      await resolvePreview(platform.modelAssets.status({ assetId: "asr.faster-whisper", configured: true })),
+    ).toMatchObject({ repoId: "owner/custom-whisper", variant: "owner/custom-whisper" });
+    for (const localModel of ["~/models/whisper", "models/whisper/local", String.raw`models\whisper`, "models/"]) {
+      await resolvePreview(platform.config.saveSystem({ ...system, asr_whisper_model_size: localModel }));
+      expect(
+        await resolvePreview(platform.modelAssets.status({ assetId: "asr.faster-whisper", configured: true })),
+      ).toMatchObject({
+        cached: true,
+        downloadable: false,
+        path: localModel,
+        source: "local",
+        variant: localModel,
+      });
+    }
     await expect(
       platform.config.fetchLlmModels({
         apiKey: "sk-test",
@@ -619,6 +693,11 @@ describe("browser preview platform chat themes", () => {
     );
     const resumed = await resolvePreview(platform.chat.resumeLast());
     expect(resumed.statusMessage).toContain("/tmp/resume.json");
+    expect(resumed).toMatchObject({
+      chatProcessRunning: true,
+      chatRuntimeClosing: false,
+      sessionClosedReason: "",
+    });
 
     expect(events).toContain("snapshot");
     unsubscribeEvents();

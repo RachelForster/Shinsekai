@@ -178,6 +178,51 @@ describe("http platform", () => {
     );
   });
 
+  it("checks and downloads model assets through generic bridge endpoints", async () => {
+    const ref = { assetId: "asr.faster-whisper", variant: "small" };
+    const status = {
+      ...ref,
+      cached: false,
+      downloadable: true,
+      repoId: "Systran/faster-whisper-small",
+      source: "huggingface",
+      title: "Whisper ASR",
+    };
+    const result = { ...status, cached: true, downloaded: true, path: "C:/cache/whisper-small" };
+    const task = {
+      createdAt: 1,
+      id: "model-task",
+      kind: "model-download",
+      logs: [],
+      message: "done",
+      phase: "completed",
+      progress: 1,
+      result,
+      status: "succeeded",
+      title: "Whisper model download",
+      updatedAt: 2,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) =>
+      mockJsonResponse(String(input).endsWith("/api/model-assets/status") ? status : task),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const onTaskUpdate = vi.fn();
+
+    await expect(platform.modelAssets.status(ref)).resolves.toEqual(status);
+    await expect(platform.modelAssets.download(ref, { onTaskUpdate })).resolves.toEqual(result);
+    expect(onTaskUpdate).toHaveBeenCalledWith(task);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/model-assets/status",
+      expect.objectContaining({ body: JSON.stringify(ref), method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/model-assets/download",
+      expect.objectContaining({ body: JSON.stringify(ref), method: "POST" }),
+    );
+  });
+
   it("reads TTS bundle recommendation through the bridge", async () => {
     const recommendation = {
       gpus: [{ device: "GeForce RTX 5090", vendor: "NVIDIA", vram_gb: 32 }],
@@ -452,6 +497,130 @@ describe("http platform", () => {
     });
   });
 
+  it("previews and imports uploaded character memory files with task polling", async () => {
+    vi.useFakeTimers();
+    const preview = {
+      chunkCount: 2,
+      dialogueCharacters: 8_000,
+      dialogueLineCount: 80,
+      estimatedInputTokens: 2_800,
+      estimatedOutputTokens: 700,
+      estimatedTotalTokens: 3_500,
+      fileCount: 1,
+      files: [],
+      sourceTokens: 2_000,
+      warnings: [],
+    };
+    const result = {
+      chunkCount: 2,
+      duplicateCount: 1,
+      estimatedTotalTokens: 3_500,
+      extractedCount: 4,
+      fileCount: 1,
+      savedCount: 3,
+    };
+    const runningTask = {
+      createdAt: 1,
+      id: "memory-import-1",
+      kind: "character-memory-import",
+      logs: [],
+      message: "Extracting",
+      phase: "extracting",
+      progress: 0.5,
+      result: null,
+      status: "running",
+      title: "Import memories",
+      updatedAt: 1,
+    };
+    const completedTask = {
+      ...runningTask,
+      phase: "completed",
+      progress: 1,
+      result,
+      status: "succeeded",
+      updatedAt: 2,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse(preview))
+      .mockResolvedValueOnce(await mockJsonResponse(runningTask))
+      .mockResolvedValueOnce(await mockJsonResponse(completedTask));
+    const onTaskUpdate = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["User: hello"], "history.json", { type: "application/json" });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.characters.previewMemoryImport("Nanami", [file])).resolves.toEqual(preview);
+    const resultPromise = platform.characters.importMemories("Nanami", [file], {
+      onTaskUpdate,
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(resultPromise).resolves.toEqual(result);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/characters/memories/import-preview-upload?name=Nanami",
+      "http://127.0.0.1:8787/api/characters/memories/import-upload?name=Nanami",
+      "http://127.0.0.1:8787/api/tasks/memory-import-1",
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+    expect(fetchMock.mock.calls[1][1]?.body).toBeInstanceOf(FormData);
+    expect(onTaskUpdate).toHaveBeenNthCalledWith(1, runningTask);
+    expect(onTaskUpdate).toHaveBeenNthCalledWith(2, completedTask);
+  });
+
+  it("uses multipart memory import endpoints for browser files", async () => {
+    const preview = {
+      chunkCount: 1,
+      dialogueCharacters: 20,
+      dialogueLineCount: 2,
+      estimatedInputTokens: 10,
+      estimatedOutputTokens: 5,
+      estimatedTotalTokens: 15,
+      fileCount: 1,
+      files: [],
+      sourceTokens: 5,
+      warnings: [],
+    };
+    const result = {
+      chunkCount: 1,
+      duplicateCount: 0,
+      estimatedTotalTokens: 15,
+      extractedCount: 1,
+      fileCount: 1,
+      savedCount: 1,
+    };
+    const completedTask = {
+      createdAt: 1,
+      id: "memory-import-upload-1",
+      kind: "character-memory-import",
+      logs: [],
+      message: "Done",
+      phase: "completed",
+      progress: 1,
+      result,
+      status: "succeeded",
+      title: "Import memories",
+      updatedAt: 2,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse(preview))
+      .mockResolvedValueOnce(await mockJsonResponse(completedTask));
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["User: hello\nMika: hi"], "history.txt", { type: "text/plain" });
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.characters.previewMemoryImport("Mika A", [file]);
+    await expect(platform.characters.importMemories("Mika A", [file])).resolves.toEqual(result);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/characters/memories/import-preview-upload?name=Mika%20A",
+      "http://127.0.0.1:8787/api/characters/memories/import-upload?name=Mika%20A",
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+    expect(fetchMock.mock.calls[1][1]?.body).toBeInstanceOf(FormData);
+  });
+
   it("calls sprite voice endpoints and resolves media URLs", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       mockJsonResponse(sampleConfig.characters[0]),
@@ -597,7 +766,28 @@ describe("http platform", () => {
     );
   });
 
+  it("reads lightweight chat runtime status through the bridge", async () => {
+    const runtimeStatus = {
+      chatProcessRunning: true,
+      chatRuntimeClosing: false,
+      state: "running",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(runtimeStatus));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+
+    await expect(platform.chat.getRuntimeStatus()).resolves.toEqual(runtimeStatus);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/runtime-status",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
+    );
+  });
+
   it("returns launch snapshots from the bridge", async () => {
+    vi.useFakeTimers();
     const snapshot = {
       backgroundPath: "/assets/bg.png",
       characterName: "Nanami",
@@ -609,31 +799,69 @@ describe("http platform", () => {
       status: "idle",
       statusMessage: "聊天进程已启动！PID: 123",
     };
-    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    const runningTask = {
+      createdAt: 1,
+      id: "chat-init-1",
+      kind: "chat-initialization",
+      logs: [],
+      message: "Starting voice service",
+      phase: "tts",
+      progress: 0.4,
+      result: null,
+      status: "running",
+      title: "Initialize chat",
+      updatedAt: 2,
+    };
+    const completedTask = {
+      ...runningTask,
+      message: "Chat is ready",
+      phase: "completed",
+      progress: 1,
+      result: snapshot,
+      status: "succeeded",
+      updatedAt: 3,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse(runningTask))
+      .mockResolvedValueOnce(await mockJsonResponse(completedTask));
+    const onTaskUpdate = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
-    const result = await platform.chat.launch({
-      backgroundName: "默认房间",
-      characters: ["Nanami"],
-      historyPath: "",
-      templateId: "default",
-    });
+    const resultPromise = platform.chat.launch(
+      {
+        backgroundName: "默认房间",
+        characters: ["Nanami"],
+        historyPath: "",
+        templateId: "default",
+      },
+      { onTaskUpdate },
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    const result = await resultPromise;
 
     expect(result.dialogText).toBe("");
     expect(result.statusMessage).toContain("聊天进程已启动");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/chat/launch",
+    expect(onTaskUpdate).toHaveBeenNthCalledWith(1, runningTask);
+    expect(onTaskUpdate).toHaveBeenNthCalledWith(2, completedTask);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/api/chat/init",
       expect.objectContaining({
         body: JSON.stringify({
-          backgroundName: "默认房间",
-          characters: ["Nanami"],
-          historyPath: "",
-          templateId: "default",
+          mode: "launch",
+          payload: {
+            backgroundName: "默认房间",
+            characters: ["Nanami"],
+            historyPath: "",
+            templateId: "default",
+          },
         }),
         method: "POST",
       }),
     );
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://127.0.0.1:8787/api/tasks/chat-init-1", expect.any(Object));
   });
 
   it("passes inline template launch fields through the bridge", async () => {
@@ -648,7 +876,21 @@ describe("http platform", () => {
       status: "idle",
       statusMessage: "聊天进程已启动！PID: 123",
     };
-    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({
+        createdAt: 1,
+        id: "chat-init-inline",
+        kind: "chat-initialization",
+        logs: [],
+        message: "ready",
+        phase: "completed",
+        progress: 1,
+        result: snapshot,
+        status: "succeeded",
+        title: "Initialize chat",
+        updatedAt: 2,
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
@@ -666,19 +908,22 @@ describe("http platform", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/chat/launch",
+      "http://127.0.0.1:8787/api/chat/init",
       expect.objectContaining({
         body: JSON.stringify({
-          backgroundName: "透明场景",
-          characters: ["Nanami"],
-          historyPath: "",
-          initSpritePath: "data/sprite/nanami/default.png",
-          roomId: "12345",
-          scenario: "用户情景",
-          system: "系统模板",
-          templateId: "",
-          templateName: "session-only",
-          useCg: false,
+          mode: "launch",
+          payload: {
+            backgroundName: "透明场景",
+            characters: ["Nanami"],
+            historyPath: "",
+            initSpritePath: "data/sprite/nanami/default.png",
+            roomId: "12345",
+            scenario: "用户情景",
+            system: "系统模板",
+            templateId: "",
+            templateName: "session-only",
+            useCg: false,
+          },
         }),
         method: "POST",
       }),
@@ -741,7 +986,21 @@ describe("http platform", () => {
       status: "idle",
       statusMessage: "聊天进程已启动！PID: 456",
     };
-    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({
+        createdAt: 1,
+        id: "chat-init-resume",
+        kind: "chat-initialization",
+        logs: [],
+        message: "ready",
+        phase: "completed",
+        progress: 1,
+        result: snapshot,
+        status: "succeeded",
+        title: "Initialize chat",
+        updatedAt: 2,
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
@@ -750,9 +1009,9 @@ describe("http platform", () => {
     expect(result.dialogText).toBe("");
     expect(result.statusMessage).toContain("聊天进程已启动");
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/chat/resume-last",
+      "http://127.0.0.1:8787/api/chat/init",
       expect.objectContaining({
-        body: JSON.stringify({}),
+        body: JSON.stringify({ mode: "resume-last" }),
         method: "POST",
       }),
     );
@@ -1597,6 +1856,51 @@ describe("http platform", () => {
     );
     expect(updates).toHaveBeenCalledTimes(2);
     expect(updates).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "completed" }));
+  });
+
+  it("runs Moondream image auto-labeling as a background task", async () => {
+    const task = {
+      createdAt: 1,
+      id: "task-label",
+      kind: "moondream-character-auto-label",
+      logs: [],
+      message: "queued",
+      phase: "queued",
+      progress: 0,
+      result: null,
+      status: "queued",
+      title: "label",
+      updatedAt: 1,
+    };
+    const result = {
+      annotatedCount: 2,
+      failedCount: 0,
+      failures: [],
+      name: "Nanami",
+      scope: "character",
+      skippedCount: 1,
+      tags: "立绘 1：smile\n",
+      totalCount: 3,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse(task))
+      .mockResolvedValueOnce(
+        await mockJsonResponse({ ...task, phase: "completed", progress: 1, result, status: "succeeded" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const updates = vi.fn();
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.characters.autoLabelSprites("Nanami", { onTaskUpdate: updates })).resolves.toEqual(result);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/api/characters/sprites/auto-label",
+      expect.objectContaining({ body: JSON.stringify({ name: "Nanami" }), method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://127.0.0.1:8787/api/tasks/task-label", expect.any(Object));
+    expect(updates).toHaveBeenCalledTimes(2);
   });
 
   it("uninstalls plugins through the bridge", async () => {

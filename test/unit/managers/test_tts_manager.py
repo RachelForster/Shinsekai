@@ -56,6 +56,58 @@ class TestTTSAdapterFactoryRegistry:
         finally:
             del TTSAdapterFactory._adapters["mock-tts"]
 
+    def test_factory_can_wait_for_adapter_readiness(self):
+        class ReadinessAdapter(MockTTSAdapter):
+            def __init__(self):
+                super().__init__()
+                self.ready_waited = False
+
+            def wait_until_ready(self, timeout_seconds=None):
+                self.ready_waited = True
+
+        TTSAdapterFactory._adapters["readiness-test"] = ReadinessAdapter
+        try:
+            adapter = TTSAdapterFactory.create_adapter("readiness-test", wait_until_ready=True)
+            assert adapter.ready_waited is True
+        finally:
+            del TTSAdapterFactory._adapters["readiness-test"]
+
+    def test_factory_stops_adapter_when_readiness_fails(self):
+        class FailingReadinessAdapter(MockTTSAdapter):
+            stopped = False
+
+            def wait_until_ready(self, timeout_seconds=None):
+                raise TimeoutError("not ready")
+
+            def stop_server(self):
+                type(self).stopped = True
+
+        TTSAdapterFactory._adapters["failing-readiness-test"] = FailingReadinessAdapter
+        try:
+            with pytest.raises(TimeoutError, match="not ready"):
+                TTSAdapterFactory.create_adapter("failing-readiness-test", wait_until_ready=True)
+            assert FailingReadinessAdapter.stopped is True
+        finally:
+            del TTSAdapterFactory._adapters["failing-readiness-test"]
+
+    def test_factory_stops_adapter_when_readiness_is_cancelled(self):
+        class CancelledReadinessAdapter(MockTTSAdapter):
+            stopped = False
+
+            def wait_until_ready(self, timeout_seconds=None):
+                raise KeyboardInterrupt()
+
+            def stop_server(self):
+                type(self).stopped = True
+
+        TTSAdapterFactory._adapters["cancelled-readiness-test"] = CancelledReadinessAdapter
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                TTSAdapterFactory.create_adapter("cancelled-readiness-test", wait_until_ready=True)
+            assert CancelledReadinessAdapter.stopped is True
+        finally:
+            del TTSAdapterFactory._adapters["cancelled-readiness-test"]
+
     def test_local_gpt_sovits_requires_startup_path_when_server_is_down(self, monkeypatch):
         monkeypatch.setattr(GPTSoVitsAdapter, "_server_is_reachable", lambda self: False)
         monkeypatch.setattr(GPTSoVitsAdapter, "_is_local_server_url", lambda self: True)
@@ -73,7 +125,7 @@ class TestTTSAdapterFactoryRegistry:
         def fake_get(*_args, **_kwargs):
             raise requests.RequestException("server down")
 
-        monkeypatch.setattr("tts.tts_adapter.requests.get", fake_get)
+        monkeypatch.setattr("tts.tts_adapter.requests.Session.get", fake_get)
 
         with pytest.raises(RuntimeError, match="IndexTTS startup path"):
             IndexTTSAdapter(tts_server_url="http://127.0.0.1:9880", gpt_sovits_work_path="")

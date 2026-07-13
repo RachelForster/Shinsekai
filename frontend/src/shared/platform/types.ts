@@ -73,6 +73,10 @@ export interface ApiConfig {
   history_recent_messages: number;
   max_tool_result_chars: number;
   max_active_tool_groups: number;
+  memory_auto_enabled: boolean;
+  memory_extract_interval_turns: number;
+  memory_search_limit: number;
+  memory_recent_buffer_messages: number;
   hugging_face_access_token: string;
   llm_extra_configs: Record<string, Record<string, unknown>>;
   tts_extra_configs: Record<string, Record<string, unknown>>;
@@ -635,6 +639,38 @@ export interface CharacterMemoryList {
   memories: CharacterMemory[];
 }
 
+export interface CharacterMemoryImportFilePreview {
+  chunkCount: number;
+  dialogueCharacters: number;
+  dialogueLineCount: number;
+  kind: string;
+  name: string;
+  sourceTokens: number;
+}
+
+export interface CharacterMemoryImportPreview {
+  chunkCount: number;
+  dialogueCharacters: number;
+  dialogueLineCount: number;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  estimatedTotalTokens: number;
+  fileCount: number;
+  files: CharacterMemoryImportFilePreview[];
+  sourceTokens: number;
+  warnings: string[];
+}
+
+export interface CharacterMemoryImportResult {
+  chunkCount: number;
+  duplicateCount: number;
+  estimatedTotalTokens: number;
+  extractedCount: number;
+  fileCount: number;
+  memories?: string[];
+  savedCount: number;
+}
+
 export interface CharacterMemorySearchInput {
   limit?: number;
   name: string;
@@ -701,6 +737,12 @@ export interface TtsBundleDownloadResult {
 
 export type ChatRuntimeStatus = "idle" | "listening" | "generating" | "streaming" | "speaking" | "paused" | "error";
 
+export interface ChatRuntimeProcessState {
+  chatProcessRunning: boolean;
+  chatRuntimeClosing: boolean;
+  state: "idle" | "running" | "closing";
+}
+
 export interface RuntimeDependencyError {
   kind?: "missing_dependency";
   logPath?: string;
@@ -766,6 +808,8 @@ export interface ChatSnapshot {
   characterName?: string;
   conversationTree?: ChatConversationTree;
   cgPath?: string;
+  chatProcessRunning?: boolean;
+  chatRuntimeClosing?: boolean;
   dialogHtml?: string;
   dialogText: string;
   /** 后端已折叠进该 snapshot 的最新事件 seq，用于重连恢复幂等处理。 */
@@ -774,6 +818,7 @@ export interface ChatSnapshot {
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
   inputDraft: string;
+  initTask?: TaskSnapshot;
   numericInfo?: string;
   notificationText?: string;
   options: string[];
@@ -784,6 +829,7 @@ export interface ChatSnapshot {
   sprites: ChatSprite[];
   status: ChatRuntimeStatus;
   statusMessage?: string;
+  systemMessageText?: string;
   userDisplayName?: string;
   voiceLanguage?: string;
   wsUrl?: string;
@@ -841,6 +887,10 @@ interface ChatEventBase {
 
 export type ChatStageEvent =
   | (ChatEventBase & { type: "snapshot"; snapshot: ChatSnapshot })
+  | (ChatEventBase & {
+      type: "chat.init.progress" | "chat.init.completed" | "chat.init.failed" | "chat.init.cancelled";
+      task: TaskSnapshot;
+    })
   | (ChatEventBase & { type: "transport.state"; state: ChatTransportState; transport: ChatTransportMode })
   | (ChatEventBase & {
       type: "cmd.ack";
@@ -907,6 +957,7 @@ export interface FileBrowserSnapshot {
 
 export interface TaskSnapshot<TResult = unknown> {
   cancelRequested?: boolean;
+  completedItems?: number;
   createdAt: number;
   dependencyInstallStatus?: string;
   error?: string;
@@ -932,6 +983,7 @@ export interface TaskSnapshot<TResult = unknown> {
   result?: TResult | null;
   status: TaskStatus;
   title: string;
+  totalItems?: number;
   updatedAt: number;
 }
 
@@ -939,8 +991,48 @@ export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
 }
 
+export interface ImageAutoLabelFailure {
+  index: number;
+  message: string;
+}
+
+export interface ImageAutoLabelResult {
+  annotatedCount: number;
+  failedCount: number;
+  failures: ImageAutoLabelFailure[];
+  name: string;
+  scope: "background" | "character";
+  skippedCount: number;
+  tags: string;
+  totalCount: number;
+}
+
+export interface ModelAssetRef {
+  assetId: string;
+  /** Resolve the variant from persisted application config; mutually exclusive with variant. */
+  configured?: boolean;
+  variant?: string;
+}
+
+export interface ModelAssetStatus extends ModelAssetRef {
+  cached: boolean;
+  downloadable: boolean;
+  path?: string;
+  repoId?: string;
+  source: "huggingface" | "local";
+  title: string;
+}
+
+export interface ModelAssetDownloadResult extends ModelAssetStatus {
+  downloaded: boolean;
+}
+
 export interface ShinsekaiPlatform {
   backgrounds: {
+    autoLabelImages: (
+      name: string,
+      options?: TaskProgressOptions<ImageAutoLabelResult>,
+    ) => Promise<ImageAutoLabelResult>;
     delete: (name: string) => Promise<void>;
     deleteAllBgm: (name: string) => Promise<Background>;
     deleteAllImages: (name: string) => Promise<Background>;
@@ -971,10 +1063,11 @@ export interface ShinsekaiPlatform {
     close: () => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;
+    getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
     getSnapshot: () => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
-    launch: (payload: ChatLaunchPayload) => Promise<ChatSnapshot>;
-    resumeLast: () => Promise<ChatSnapshot>;
+    launch: (payload: ChatLaunchPayload, options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
+    resumeLast: (options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
     subscribe: (listener: (snapshot: ChatSnapshot) => void) => () => void;
     // --- 主题 mod 系统 ---
     listThemes: () => Promise<ChatThemeSummary[]>;
@@ -989,6 +1082,10 @@ export interface ShinsekaiPlatform {
     subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
   };
   characters: {
+    autoLabelSprites: (
+      name: string,
+      options?: TaskProgressOptions<ImageAutoLabelResult>,
+    ) => Promise<ImageAutoLabelResult>;
     delete: (name: string) => Promise<void>;
     deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
     deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;
@@ -997,7 +1094,13 @@ export interface ShinsekaiPlatform {
     import: (items: File[] | string[]) => Promise<Character[]>;
     list: () => Promise<Character[]>;
     getMem0Status: () => Promise<Mem0Status>;
+    importMemories: (
+      name: string,
+      items: File[],
+      options?: TaskProgressOptions<CharacterMemoryImportResult>,
+    ) => Promise<CharacterMemoryImportResult>;
     listMemories: (name: string) => Promise<CharacterMemoryList>;
+    previewMemoryImport: (name: string, items: File[]) => Promise<CharacterMemoryImportPreview>;
     remember: (name: string, content: string) => Promise<CharacterMemoryList>;
     searchMemories: (input: CharacterMemorySearchInput) => Promise<CharacterMemoryList>;
     save: (character: Character, originalName?: string) => Promise<Character>;
@@ -1036,9 +1139,17 @@ export interface ShinsekaiPlatform {
     }) => Promise<LlmConnectionTestResult>;
     get: () => Promise<AppConfig>;
     detectNetworkProxy: () => Promise<NetworkProxyDetectionResult>;
+    getMemoryStatus: (options?: { startLoading?: boolean }) => Promise<Mem0Status>;
     getTtsBundleRecommendation: () => Promise<TtsBundleRecommendation>;
     saveApi: (config: ApiConfig) => Promise<ApiConfig>;
     saveSystem: (config: SystemConfig) => Promise<SystemConfig>;
+  };
+  modelAssets: {
+    download: (
+      input: ModelAssetRef,
+      options?: TaskProgressOptions<ModelAssetDownloadResult>,
+    ) => Promise<ModelAssetDownloadResult>;
+    status: (input: ModelAssetRef) => Promise<ModelAssetStatus>;
   };
   files: {
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;

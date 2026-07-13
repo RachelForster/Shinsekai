@@ -1,11 +1,15 @@
+import os
 from pathlib import Path
 from queue import Queue
 from types import SimpleNamespace
+
+import pytest
 
 from core.sprite import chat_ui_service
 from core.sprite.initial_sprite import (
     display_initial_sprite,
     find_character_sprite_by_path,
+    initial_sprite_path_for_characters,
 )
 
 
@@ -44,6 +48,33 @@ def test_find_character_sprite_by_path_matches_relative_and_absolute(tmp_path, m
     ) == ("七海千秋", 0)
 
 
+def test_find_character_sprite_by_path_uses_host_case_semantics_and_normalizes_slashes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    character = SimpleNamespace(
+        name="Nanami",
+        sprites=[SimpleNamespace(path="C:/Sprites/Nanami/Idle.PNG")],
+    )
+
+    matched = find_character_sprite_by_path(
+        _config(characters=[character]),
+        "c:\\sprites\\nanami\\idle.png",
+    )
+    expected = ("Nanami", 0) if os.path.normcase("A") == os.path.normcase("a") else None
+    assert matched == expected
+
+
+def test_find_character_sprite_by_path_preserves_case_distinct_files_on_sensitive_hosts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    characters = [
+        SimpleNamespace(name="Upper", sprites=[SimpleNamespace(path="sprites/Face.png")]),
+        SimpleNamespace(name="Lower", sprites=[SimpleNamespace(path="sprites/face.png")]),
+    ]
+
+    matched = find_character_sprite_by_path(_config(characters=characters), "sprites/face.png")
+    expected = ("Upper", 0) if os.path.normcase("A") == os.path.normcase("a") else ("Lower", 0)
+    assert matched == expected
+
+
 def test_display_initial_sprite_prefers_character_sprite_index(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     character = SimpleNamespace(
@@ -65,6 +96,97 @@ def test_display_initial_sprite_prefers_character_sprite_index(tmp_path, monkeyp
     )
 
     assert calls == [("config", "七海千秋", 0)]
+
+
+def test_initial_sprite_path_rejects_sprite_owned_by_unselected_character(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    nanami = SimpleNamespace(
+        name="七海千秋",
+        sprites=[SimpleNamespace(path="data/sprite/nanami/idle.webp")],
+    )
+    junko = SimpleNamespace(
+        name="江之岛盾子",
+        sprites=[SimpleNamespace(path="data/sprite/junko/idle.webp")],
+    )
+    config = _config(characters=[nanami, junko])
+    config.get_character_by_name = lambda name: next(
+        (character for character in config.config.characters if character.name == name),
+        None,
+    )
+
+    assert initial_sprite_path_for_characters(
+        config,
+        "data/sprite/junko/idle.webp",
+        ["七海千秋"],
+    ) == "data/sprite/nanami/idle.webp"
+
+
+def test_initial_sprite_path_preserves_selected_or_custom_sprite(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    nanami = SimpleNamespace(
+        name="七海千秋",
+        sprites=[SimpleNamespace(path="data/sprite/nanami/idle.webp")],
+    )
+    config = _config(characters=[nanami])
+    config.get_character_by_name = lambda name: nanami if name == nanami.name else None
+
+    assert initial_sprite_path_for_characters(
+        config,
+        "data/sprite/nanami/idle.webp",
+        ["七海千秋"],
+    ) == "data/sprite/nanami/idle.webp"
+    assert initial_sprite_path_for_characters(
+        config,
+        "D:/custom/portrait.png",
+        ["七海千秋"],
+    ) == "D:/custom/portrait.png"
+
+
+@pytest.mark.parametrize(
+    ("raw_path", "selected_names", "expected"),
+    [
+        ("", ["Nanami"], "C:/Sprites/Nanami/Idle.PNG"),
+        ("c:\\sprites\\nanami\\idle.png", ["Nanami"], "c:\\sprites\\nanami\\idle.png"),
+        (
+            "C:/SPRITES/JUNKO/IDLE.png",
+            ["Nanami"],
+            "C:/Sprites/Nanami/Idle.PNG"
+            if os.path.normcase("A") == os.path.normcase("a")
+            else "C:/SPRITES/JUNKO/IDLE.png",
+        ),
+        ("C:/Sprites/Junko/Idle.PNG", ["Junko"], "C:/Sprites/Junko/Idle.PNG"),
+        ("D:/external/custom.png", ["Nanami"], "D:/external/custom.png"),
+        ("C:/Sprites/Nanami/Idle.PNG", [], ""),
+        ("C:/Sprites/Nanami/Idle.PNG", [None, {}, " "], ""),
+    ],
+)
+def test_initial_sprite_path_uses_the_same_owner_compatibility_rules(
+    tmp_path,
+    monkeypatch,
+    raw_path,
+    selected_names,
+    expected,
+):
+    monkeypatch.chdir(tmp_path)
+    characters = [
+        SimpleNamespace(name="Nanami", sprites=[SimpleNamespace(path="C:/Sprites/Nanami/Idle.PNG")]),
+        SimpleNamespace(name="Junko", sprites=[SimpleNamespace(path="C:/Sprites/Junko/Idle.PNG")]),
+    ]
+    config = _config(characters=characters)
+    config.get_character_by_name = lambda name: next(
+        (character for character in characters if character.name == name),
+        None,
+    )
+
+    assert initial_sprite_path_for_characters(config, raw_path, selected_names) == expected
+
+
+def test_initial_sprite_path_preserves_unknown_path_without_characters(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = _config(characters=[])
+    config.get_character_by_name = lambda _name: None
+
+    assert initial_sprite_path_for_characters(config, "D:/external/custom.png", []) == "D:/external/custom.png"
 
 
 def test_restore_session_ui_applies_background_without_messages():

@@ -58,6 +58,18 @@ describe("BackgroundSpriteGallery", () => {
     filesRepositoryMock.fileThumbnailBatch.mockClear();
   });
 
+  it("only shows the Moondream action when the plugin is available", async () => {
+    const onAutoLabel = vi.fn();
+    const first = renderGallery();
+    expect(screen.queryByRole("button", { name: "Label untagged with Moondream" })).not.toBeInTheDocument();
+    first.unmount();
+
+    renderGallery({ autoLabelAvailable: true, autoLabelDisabled: false, onAutoLabel });
+    await waitFor(() => expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Label untagged with Moondream" }));
+    expect(onAutoLabel).toHaveBeenCalledOnce();
+  });
+
   it("shows empty image state and disables actions without a background context", () => {
     renderGallery({
       currentBackgroundName: "",

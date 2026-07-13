@@ -64,6 +64,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "options": [],
         "sprites": [],
         "status": "idle",
+        "systemMessageText": "",
         "userDisplayName": "你",
     }
 
@@ -73,6 +74,63 @@ def _clear_transient_notification_state(next_snapshot: Dict[str, Any]) -> None:
         next_snapshot["notificationText"] = ""
     if "sessionClosedReason" in next_snapshot:
         next_snapshot["sessionClosedReason"] = ""
+
+
+_CHAT_INIT_TASK_TEXT_FIELDS = (
+    "error",
+    "errorCode",
+    "errorDetail",
+    "errorUserMessage",
+    "id",
+    "kind",
+    "message",
+    "notice",
+    "noticeKind",
+    "phase",
+    "title",
+)
+
+
+def _fold_chat_init_task(
+    current: Any,
+    raw_task: Any,
+    *,
+    event_type: str,
+) -> Dict[str, Any]:
+    task = dict(current) if isinstance(current, dict) else {}
+    payload = raw_task if isinstance(raw_task, dict) else {}
+
+    for field in _CHAT_INIT_TASK_TEXT_FIELDS:
+        if field in payload:
+            task[field] = str(payload.get(field) or "")[:4000]
+    for field in ("createdAt", "httpStatus", "updatedAt"):
+        value = payload.get(field)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            task[field] = value
+
+    if "progress" in payload:
+        progress = payload.get("progress")
+        if progress is None:
+            task["progress"] = None
+        elif isinstance(progress, (int, float)) and not isinstance(progress, bool):
+            task["progress"] = max(0.0, min(1.0, float(progress)))
+
+    raw_logs = payload.get("logs")
+    if isinstance(raw_logs, list):
+        task["logs"] = [str(line)[:4000] for line in raw_logs[-120:] if str(line).strip()]
+    if "cancelRequested" in payload:
+        task["cancelRequested"] = bool(payload.get("cancelRequested"))
+
+    status_by_event = {
+        "chat.init.progress": "running",
+        "chat.init.completed": "succeeded",
+        "chat.init.failed": "failed",
+        "chat.init.cancelled": "cancelled",
+    }
+    task["status"] = status_by_event[event_type]
+    if event_type == "chat.init.completed":
+        task["progress"] = 1.0
+    return task
 
 
 def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) -> Dict[str, Any]:
@@ -105,15 +163,33 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     except (TypeError, ValueError):
         pass
 
+    if event_type in {
+        "chat.init.progress",
+        "chat.init.completed",
+        "chat.init.failed",
+        "chat.init.cancelled",
+    }:
+        next_snapshot["initTask"] = _fold_chat_init_task(
+            next_snapshot.get("initTask"),
+            event.get("task"),
+            event_type=event_type,
+        )
+        return next_snapshot
+
     if event_type == "dialog.end":
         _clear_transient_notification_state(next_snapshot)
         full_html = str(event.get("fullHtml") or "")
         next_snapshot["dialogHtml"] = full_html
         next_snapshot["dialogText"] = _plain_text(full_html)
-        if bool(event.get("isSystem")):
+        is_speakerless_system = bool(event.get("isSystem")) and not str(event.get("speaker") or "").strip()
+        if is_speakerless_system:
             next_snapshot["characterName"] = ""
+            next_snapshot["systemMessageText"] = _plain_text(full_html)
         else:
-            next_snapshot["characterName"] = str(event.get("speaker") or "")
+            next_snapshot["characterName"] = (
+                "" if bool(event.get("isSystem")) else str(event.get("speaker") or "")
+            )
+            next_snapshot["systemMessageText"] = ""
         if str(event.get("speaker") or "").strip() or not bool(event.get("isSystem")):
             next_snapshot["options"] = []
         return next_snapshot
@@ -258,6 +334,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["options"] = []
         next_snapshot["sessionClosedReason"] = str(event.get("reason") or "")
         next_snapshot["status"] = "idle"
+        next_snapshot["systemMessageText"] = ""
         return next_snapshot
 
     return next_snapshot
