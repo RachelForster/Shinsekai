@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import neonNightCityFrameDialogUrl from "../../../../../assets/chat_ui_themes/neon-night-city/frame-dialog.svg?url";
 import { createBrowserPreviewPlatform } from "../../../shared/platform/browserPreviewPlatform";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import type { TemplateLaunchSession } from "../../../shared/platform/types";
@@ -60,6 +61,15 @@ describe("browser preview platform chat themes", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("resolves bundled chat theme frame assets to Vite URLs", () => {
+    const platform = createBrowserPreviewPlatform();
+
+    expect(platform.files.fileUrl("data/chat_ui_themes/neon-night-city/frame-dialog.svg")).toBe(
+      neonNightCityFrameDialogUrl,
+    );
+    expect(platform.files.fileUrl("data/backgrounds/preview.png")).toBe("data/backgrounds/preview.png");
   });
 
   it("tracks the lightweight runtime status across launch and close", async () => {
@@ -123,6 +133,11 @@ describe("browser preview platform chat themes", () => {
     expect(neonManifest.tokens.dialog?.nameInputGapVh).toBe(20);
     expect(neonManifest.tokens.dialog?.offsetY).toBe(0);
     expect(neonManifest.tokens.dialog?.boxShadow).toContain("inset 0 1px 0");
+    expect(neonManifest.tokens.dialog?.frameImage).toBe("frame-dialog.svg");
+    expect(neonManifest.tokens.dialog?.frameSlice).toBe(28);
+    expect(neonManifest.tokens.input?.frameImage).toBeUndefined();
+    expect(neonManifest.tokens.options?.frameImage).toBeUndefined();
+    expect(neonManifest.tokens.toolbar?.frameImage).toBeUndefined();
     expect(neonManifest.tokens.input?.layout).toBe("pill");
     expect(neonManifest.tokens.input?.maxWidthPx).toBe(700);
     expect(neonManifest.tokens.input?.boxShadow).toContain("0 14px 38px");

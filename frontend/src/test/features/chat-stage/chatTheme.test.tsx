@@ -202,6 +202,10 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-dialog-body-overflow"]).toBe("auto");
     expect(resolved.style["--chat-dialog-body-scrollbar-gutter"]).toBe("auto");
     expect(resolved.style["--chat-dialog-frame"]).toBe('url("asset://assets/dialog-border.svg") 28 fill / 28px round');
+    expect(resolved.style["--chat-dialog-frame-image"]).toBe('url("asset://assets/dialog-border.svg")');
+    expect(resolved.style["--chat-dialog-frame-slice"]).toBe("28");
+    expect(resolved.style["--chat-dialog-frame-width"]).toBe("28px");
+    expect(resolved.style["--chat-dialog-frame-outset"]).toBe("0px");
     expect(resolved.style["--chat-dialog-height"]).toBe("166px");
     expect(resolved.style["--chat-dialog-padding"]).toBe("40px");
     expect(resolved.style["--chat-dialog-toolbar-gap"]).toBe("10px");
@@ -255,6 +259,10 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-name-background"]).toBe("rgba(28,22,48,0.92)");
     expect(resolved.style["--chat-name-background-image"]).toBe('url("asset://assets/name-plate.png")');
     expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name-border.svg") 16 fill / 16px round');
+    expect(resolved.style["--chat-name-frame-image"]).toBe('url("asset://assets/name-border.svg")');
+    expect(resolved.style["--chat-name-frame-slice"]).toBe("16");
+    expect(resolved.style["--chat-name-frame-width"]).toBe("16px");
+    expect(resolved.style["--chat-name-frame-outset"]).toBe("0px");
     expect(resolved.style["--chat-name-border-color"]).toBe("rgba(156,140,255,0.6)");
     expect(resolved.style["--chat-name-border-radius"]).toBe("6px");
     expect(resolved.style["--chat-name-box-shadow"]).toBe("0 12px 28px rgba(0,0,0,0.36)");
@@ -296,6 +304,48 @@ describe("chat theme runtime", () => {
     expect(resolved.fontFaces).toContain("@font-face");
     expect(resolved.fontFaces).toContain('font-family: "Mio Sans";');
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/mio.woff2")');
+  });
+
+  it("maps reusable frame geometry without leaking chat frames into logs", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "svg-frames",
+        name: { en: "SVG Frames" },
+        tokens: {
+          dialog: {
+            frameImage: "assets/dialog.svg",
+            frameOutsetPx: 6,
+            frameSlice: 40,
+            frameWidthPx: 12,
+          },
+          logs: {
+            panel: {
+              frameImage: "assets/logs.svg",
+              frameOutsetPx: 4,
+              frameSlice: 24,
+              frameWidthPx: 8,
+            },
+            toolbar: {
+              frameWidthPx: 0,
+            },
+          },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-dialog-frame-image"]).toBe('url("asset://assets/dialog.svg")');
+    expect(resolved.style["--chat-dialog-frame-slice"]).toBe("40");
+    expect(resolved.style["--chat-dialog-frame-width"]).toBe("12px");
+    expect(resolved.style["--chat-dialog-frame-outset"]).toBe("6px");
+    expect(resolved.style["--logs-panel-frame-image"]).toBe('url("asset://assets/logs.svg")');
+    expect(resolved.style["--logs-panel-frame-slice"]).toBe("24");
+    expect(resolved.style["--logs-panel-frame-width"]).toBe("8px");
+    expect(resolved.style["--logs-panel-frame-outset"]).toBe("4px");
+    expect(resolved.style["--logs-toolbar-frame-image"]).toBeUndefined();
+    expect(resolved.style["--logs-toolbar-frame-width"]).toBe("0px");
+    expect(resolved.style["--logs-viewer-frame-image"]).toBeUndefined();
   });
 
   it("does not apply optional theme layout fields when a theme omits them", () => {

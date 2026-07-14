@@ -28,7 +28,6 @@
   border: var(--chat-dialog-border);
   border-color: var(--chat-dialog-border-color);
   border-radius: var(--chat-dialog-border-radius);
-  border-image: var(--chat-dialog-frame);
   color: var(--chat-dialog-color);
   background:
     var(--chat-sheen), var(--chat-dialog-background-image, none),
@@ -40,6 +39,7 @@
   opacity: var(--chat-dialog-runtime-opacity);
   pointer-events: auto;
   backdrop-filter: var(--chat-dialog-backdrop-filter);
+  isolation: isolate;
   animation: chat-stage-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -82,6 +82,7 @@
   position: absolute;
   bottom: calc(100% - 1px);
   left: var(--chat-name-left);
+  z-index: 3;
   display: inline-flex;
   width: fit-content;
   min-width: 88px;
@@ -91,11 +92,10 @@
   justify-content: var(--chat-name-justify-content);
   margin: 0;
   padding: var(--chat-name-padding, 5px 18px 6px 18px);
-  overflow: hidden;
+  overflow: visible;
   border: var(--chat-name-border);
   border-bottom: var(--chat-name-border-bottom);
   border-radius: var(--chat-name-border-radius) var(--chat-name-border-radius) 0 0;
-  border-image: var(--chat-name-frame);
   color: var(--chat-name-runtime-color, var(--chat-name-color));
   background: var(--chat-name-sheen), var(--chat-name-background-image), var(--chat-name-background);
   background-position: center;
@@ -108,9 +108,15 @@
   line-height: 1.3;
   letter-spacing: 0.02em;
   text-shadow: var(--chat-name-text-shadow);
-  text-overflow: ellipsis;
   text-align: var(--chat-name-text-align);
   transform: var(--chat-name-transform);
+  white-space: nowrap;
+}
+
+.dialog-layer__name-content {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

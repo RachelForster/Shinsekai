@@ -271,7 +271,7 @@
   position: absolute;
   right: 0;
   bottom: calc(100% + 10px);
-  z-index: 2;
+  z-index: 3;
   display: var(--chat-input-panel-display);
   width: min(238px, calc(100vw - 32px));
   gap: 0;

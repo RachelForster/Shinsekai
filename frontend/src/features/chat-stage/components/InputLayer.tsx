@@ -3,7 +3,7 @@ import { Ear, EarOff, Mic, MicOff, Plus, Send } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatCommand } from "../../../shared/platform/types";
-import { Button, IconButton, TextArea, TextInput, useToast } from "../../../shared/ui";
+import { Button, IconButton, TextArea, TextInput, ThemeFrame, useToast } from "../../../shared/ui";
 import {
   appendTranscript,
   getSpeechRecognitionConstructor,
@@ -205,6 +205,7 @@ export function InputLayer({
       onPointerLeave={autoHideRegion.scheduleHide}
       style={autoHideRegion.visible ? undefined : { pointerEvents: "none" }}
     >
+      <ThemeFrame prefix="chat-input" />
       {pillLayout ? (
         <IconButton
           className="input-layer__press"

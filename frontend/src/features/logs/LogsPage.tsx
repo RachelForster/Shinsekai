@@ -12,7 +12,17 @@ import {
   readLog,
 } from "../../entities/logs/repository";
 import type { LogFileInfo, LogSnapshot, LogStructuredEntry } from "../../shared/platform/types";
-import { AsyncButton, Button, EmptyState, QueryErrorState, Select, Switch, TextInput, useToast } from "../../shared/ui";
+import {
+  AsyncButton,
+  Button,
+  EmptyState,
+  QueryErrorState,
+  Select,
+  Switch,
+  TextInput,
+  ThemeFrame,
+  useToast,
+} from "../../shared/ui";
 import "./LogsPage.css";
 
 type LogLevel = "debug" | "error" | "info" | "warn" | "default";
@@ -533,6 +543,7 @@ export function LogsPage() {
       </header>
 
       <section className="logs-toolbar" aria-label="日志搜索">
+        <ThemeFrame fallbackPrefix="logs-panel" prefix="logs-toolbar" />
         <div className="logs-toolbar__search">
           <Search aria-hidden className="logs-toolbar__icon" />
           <TextInput
@@ -586,6 +597,7 @@ export function LogsPage() {
 
       <div className="logs-layout">
         <aside className="logs-sidebar">
+          <ThemeFrame fallbackPrefix="logs-panel" prefix="logs-sidebar" />
           <div className="logs-source">
             <FileText aria-hidden className="logs-source__icon" />
             <div className="logs-source__text">
@@ -642,41 +654,44 @@ export function LogsPage() {
           </div>
         </aside>
 
-        <section className="logs-viewer" aria-label="日志内容">
-          {logsQuery.isLoading && !currentLog ? <EmptyState title="正在读取日志" /> : null}
-          {logsQuery.isError && !currentLog ? (
-            <QueryErrorState
-              body="可以导入本地日志文件继续查看。"
-              error={logsQuery.error}
-              onRetry={() => void logsQuery.refetch()}
-              retryLabel="重试"
-              title="无法读取默认日志"
-            />
-          ) : null}
-          {!logsQuery.isLoading && currentLog && visibleLines.length === 0 ? (
-            <EmptyState body="换一个筛选条件试试。" title="没有匹配的日志" />
-          ) : null}
-          {visibleLines.length ? (
-            <div className="logs-code" role="log">
-              {visibleLines.map((line) => (
-                <div
-                  className="logs-code__line"
-                  data-expanded={expandedLines.has(line.number)}
-                  data-level={line.level}
-                  key={line.number}
-                >
-                  <span className="logs-code__number">{line.number}</span>
-                  <LogLineBody
-                    expanded={expandedLines.has(line.number)}
-                    line={line}
-                    onToggle={() => toggleExpandedLine(line.number)}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {hiddenCount ? <p className="logs-hidden-count">还有 {hiddenCount} 行未显示。</p> : null}
-        </section>
+        <div className="logs-viewer-frame-host">
+          <ThemeFrame fallbackPrefix="logs-panel" prefix="logs-viewer" />
+          <section className="logs-viewer" aria-label="日志内容">
+            {logsQuery.isLoading && !currentLog ? <EmptyState title="正在读取日志" /> : null}
+            {logsQuery.isError && !currentLog ? (
+              <QueryErrorState
+                body="可以导入本地日志文件继续查看。"
+                error={logsQuery.error}
+                onRetry={() => void logsQuery.refetch()}
+                retryLabel="重试"
+                title="无法读取默认日志"
+              />
+            ) : null}
+            {!logsQuery.isLoading && currentLog && visibleLines.length === 0 ? (
+              <EmptyState body="换一个筛选条件试试。" title="没有匹配的日志" />
+            ) : null}
+            {visibleLines.length ? (
+              <div className="logs-code" role="log">
+                {visibleLines.map((line) => (
+                  <div
+                    className="logs-code__line"
+                    data-expanded={expandedLines.has(line.number)}
+                    data-level={line.level}
+                    key={line.number}
+                  >
+                    <span className="logs-code__number">{line.number}</span>
+                    <LogLineBody
+                      expanded={expandedLines.has(line.number)}
+                      line={line}
+                      onToggle={() => toggleExpandedLine(line.number)}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {hiddenCount ? <p className="logs-hidden-count">还有 {hiddenCount} 行未显示。</p> : null}
+          </section>
+        </div>
       </div>
     </div>
   );

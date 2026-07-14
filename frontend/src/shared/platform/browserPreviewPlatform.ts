@@ -42,6 +42,18 @@ import type {
   TemplateSummary,
 } from "./types";
 
+const bundledChatThemeAssets = import.meta.glob<string>(
+  "../../../../assets/chat_ui_themes/**/*.{gif,jpeg,jpg,mp3,ogg,otf,png,svg,ttf,wav,webp,woff,woff2}",
+  { eager: true, import: "default", query: "?url" },
+);
+const bundledChatThemeRoot = "../../../../assets/chat_ui_themes/";
+const builtinChatThemeAssetUrls: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(bundledChatThemeAssets).map(([path, url]) => [
+    `data/chat_ui_themes/${path.slice(bundledChatThemeRoot.length)}`,
+    url,
+  ]),
+);
+
 function clone<T>(value: T): T {
   return structuredClone(value);
 }
@@ -1669,7 +1681,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(previewFileBrowser(options?.path));
       },
       fileUrl(path) {
-        return path;
+        return builtinChatThemeAssetUrls[path] ?? path;
       },
       thumbnailBatch(paths, _options) {
         return delay(Object.fromEntries(paths.filter(Boolean).map((path) => [path, path])));

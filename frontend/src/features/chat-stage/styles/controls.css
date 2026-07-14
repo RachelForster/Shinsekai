@@ -367,6 +367,7 @@
 }
 
 .dialog-stage-controls__surface {
+  position: relative;
   display: inline-flex;
   max-width: 100%;
   min-width: 0;

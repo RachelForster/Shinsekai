@@ -67,6 +67,16 @@ def _safe_theme_id(theme_id: str) -> str:
     return safe_id
 
 
+def _theme_version(theme_dir: Path) -> str:
+    try:
+        data = json.loads((theme_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    return str(data.get("version") or "").strip()
+
+
 def _seed_builtin_themes() -> None:
     root = _themes_root()
     builtin_root = _builtin_themes_root()
@@ -74,9 +84,14 @@ def _seed_builtin_themes() -> None:
     for theme_id in BUILTIN_THEME_IDS:
         source = builtin_root / theme_id
         target = root / theme_id
-        if target.exists() or not source.is_dir():
+        if not source.is_dir():
             continue
-        shutil.copytree(source, target)
+        if not target.exists():
+            shutil.copytree(source, target)
+            continue
+        source_version = _theme_version(source)
+        if target.is_dir() and source_version and source_version != _theme_version(target):
+            shutil.copytree(source, target, dirs_exist_ok=True)
 
 
 def _read_manifest(theme_dir: Path) -> Optional[Dict[str, Any]]:

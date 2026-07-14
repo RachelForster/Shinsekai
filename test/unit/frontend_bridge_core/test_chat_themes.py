@@ -43,6 +43,15 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     (Path(tempdir) / "data" / "chat_ui_themes" / "neon-night-city" / "theme.json").is_file()
                 )
                 self.assertTrue(
+                    (
+                        Path(tempdir)
+                        / "data"
+                        / "chat_ui_themes"
+                        / "neon-night-city"
+                        / "frame-dialog.svg"
+                    ).is_file()
+                )
+                self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "windborne-adventure" / "theme.json").is_file()
                 )
             finally:
@@ -61,6 +70,27 @@ class ChatThemeBridgeTests(unittest.TestCase):
                         get_chat_theme_manifest(state, "windborne-adventure")
                 default_theme_dir = Path(tempdir) / "data" / "chat_ui_themes" / "windborne-adventure"
                 self.assertFalse(default_theme_dir.exists())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_list_chat_themes_refreshes_outdated_builtin_assets(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                target = Path(tempdir) / "data" / "chat_ui_themes" / "neon-night-city"
+                target.mkdir(parents=True)
+                (target / "theme.json").write_text(
+                    '{"schema":1,"id":"neon-night-city","name":{"en":"Old Neon"},"version":"1.0.0","tokens":{}}',
+                    encoding="utf-8",
+                )
+
+                themes = list_chat_themes(state)
+
+                theme_index = {item["id"]: item for item in themes}
+                self.assertEqual(theme_index["neon-night-city"]["version"], "1.3.0")
+                self.assertTrue((target / "frame-dialog.svg").is_file())
             finally:
                 os.chdir(previous_cwd)
 
@@ -153,7 +183,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
                           "background": "rgba(10,10,10,0.9)",
                           "chrome": "none",
                           "frameImage": "assets/dialog-frame.svg",
+                          "frameOutsetPx": -5,
                           "frameSlice": 500,
+                          "frameWidthPx": 200,
                           "heightPx": 999,
                           "padding": 100,
                           "textAlign": "center",
@@ -214,7 +246,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 self.assertEqual(manifest["id"], "custom-theme")
                 self.assertEqual(manifest["tokens"]["dialog"]["frameImage"], "assets/dialog-frame.svg")
                 self.assertEqual(manifest["tokens"]["dialog"]["chrome"], "none")
+                self.assertEqual(manifest["tokens"]["dialog"]["frameOutsetPx"], 0)
                 self.assertEqual(manifest["tokens"]["dialog"]["frameSlice"], 200)
+                self.assertEqual(manifest["tokens"]["dialog"]["frameWidthPx"], 96)
                 self.assertEqual(manifest["tokens"]["dialog"]["heightPx"], 260)
                 self.assertEqual(manifest["tokens"]["dialog"]["padding"], 72)
                 self.assertEqual(manifest["tokens"]["dialog"]["textAlign"], "center")

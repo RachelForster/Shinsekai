@@ -1,19 +1,15 @@
 .options-layer {
   position: relative;
   z-index: 1;
-  display: grid;
+  display: block;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  max-height: min(58vh, 680px);
-  gap: var(--chat-options-gap);
-  justify-items: stretch;
-  padding: var(--chat-dialog-padding);
-  overflow-y: auto;
+  padding: 0;
+  overflow: visible;
   border: var(--chat-dialog-border);
   border-color: var(--chat-dialog-border-color);
   border-radius: var(--chat-dialog-border-radius);
-  border-image: var(--chat-dialog-frame);
   color: var(--chat-options-color, var(--chat-option-color));
   background:
     var(--chat-sheen), var(--chat-dialog-background-image, none),
@@ -24,10 +20,31 @@
   box-shadow: var(--chat-dialog-box-shadow);
   opacity: var(--chat-dialog-runtime-opacity);
   backdrop-filter: var(--chat-dialog-backdrop-filter);
+  isolation: isolate;
   animation: chat-stage-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.options-layer__scroll {
+  display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: min(58vh, 680px);
+  gap: var(--chat-options-gap);
+  justify-items: stretch;
+  padding: var(--chat-dialog-padding);
+  overflow-y: auto;
+  border-radius: inherit;
+  overscroll-behavior: contain;
+}
+
+.options-layer__item {
+  position: relative;
+  min-width: 0;
+  transition: transform 120ms ease;
+}
+
 .options-layer__button {
+  width: 100%;
   justify-content: var(--chat-option-justify-content);
   min-height: var(--chat-option-min-height);
   padding: var(--chat-option-padding);
@@ -70,6 +87,10 @@
     0 12px 30px var(--stage-shadow),
     0 0 0 1px color-mix(in oklch, var(--stage-accent) 30%, transparent),
     0 0 18px -4px color-mix(in oklch, var(--stage-accent) 45%, transparent);
+  transform: none;
+}
+
+.options-layer__item:has(.options-layer__button:hover:not(:disabled)) {
   transform: translateY(-1px);
 }
 
@@ -113,5 +134,9 @@
   border-color: var(--chat-option-active-border-color, var(--chat-option-hover-border-color, var(--stage-line-strong)));
   color: var(--chat-option-active-color, var(--chat-option-hover-color, var(--chat-option-color)));
   background: var(--chat-option-active-background, var(--chat-option-hover-background));
+  transform: none;
+}
+
+.options-layer__item:has(.options-layer__button:active:not(:disabled)) {
   transform: translateY(0);
 }
