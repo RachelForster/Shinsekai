@@ -93,6 +93,8 @@ const dialogFillGradientDirectionOptions: Array<{
 ];
 
 export function ChatConfigDialog({
+  autoHideInput,
+  autoHideTopTools,
   configThemeColor,
   configUseMainThemeColor,
   dialogOpacity,
@@ -101,11 +103,14 @@ export function ChatConfigDialog({
   dialogText,
   effectiveDialogText,
   effectiveNameText,
+  immersiveMode,
   mainThemeColor,
   nameText,
   longPressTalk,
   longPressTalkAvailable,
   longPressTalkVisible = false,
+  onAutoHideInputChange,
+  onAutoHideTopToolsChange,
   onConfigThemeColorChange,
   onConfigUseMainThemeColorChange,
   onClose,
@@ -113,6 +118,7 @@ export function ChatConfigDialog({
   onDialogOpacityChange,
   onDialogFillChange,
   onDialogScaleChange,
+  onImmersiveModeChange,
   onLongPressTalkChange,
   onSpriteOffsetXChange,
   onSpriteOffsetYChange,
@@ -129,6 +135,8 @@ export function ChatConfigDialog({
   voiceLanguage,
   windowScale,
 }: {
+  autoHideInput: boolean;
+  autoHideTopTools: boolean;
   configThemeColor: string;
   configUseMainThemeColor: boolean;
   dialogOpacity: number;
@@ -137,11 +145,14 @@ export function ChatConfigDialog({
   dialogText: ChatStageTextStyleConfig;
   effectiveDialogText?: ChatStageTextStyleConfig;
   effectiveNameText?: ChatStageTextStyleConfig;
+  immersiveMode: boolean;
   mainThemeColor: string;
   nameText: ChatStageTextStyleConfig;
   longPressTalk: boolean;
   longPressTalkAvailable: boolean;
   longPressTalkVisible?: boolean;
+  onAutoHideInputChange: (value: boolean) => void;
+  onAutoHideTopToolsChange: (value: boolean) => void;
   onConfigThemeColorChange: (value: string) => void;
   onConfigUseMainThemeColorChange: (value: boolean) => void;
   onClose: () => void;
@@ -149,6 +160,7 @@ export function ChatConfigDialog({
   onDialogOpacityChange: (value: number) => void;
   onDialogFillChange: (patch: ChatStageDialogFillPatch) => void;
   onDialogScaleChange: (value: number) => void;
+  onImmersiveModeChange: (value: boolean) => void;
   onLongPressTalkChange: (value: boolean) => void;
   onSpriteOffsetXChange: (value: number) => void;
   onSpriteOffsetYChange: (value: number) => void;
@@ -285,6 +297,44 @@ export function ChatConfigDialog({
               className="chat-config-dialog__switch"
               id="chat-config-use-main-theme-color"
               onChange={(event) => onConfigUseMainThemeColorChange(event.target.checked)}
+            />
+          </div>
+        </section>
+        <section className="chat-config-dialog__section">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionImmersive")}</h3>
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <label className="chat-config-dialog__label" htmlFor="chat-config-immersive-mode">
+              {t("chat.config.immersiveMode")}
+            </label>
+            <Switch
+              checked={immersiveMode}
+              className="chat-config-dialog__switch"
+              id="chat-config-immersive-mode"
+              onChange={(event) => onImmersiveModeChange(event.target.checked)}
+            />
+          </div>
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <label className="chat-config-dialog__label" htmlFor="chat-config-auto-hide-top-tools">
+              {t("chat.config.autoHideTopTools")}
+            </label>
+            <Switch
+              checked={autoHideTopTools}
+              className="chat-config-dialog__switch"
+              disabled={!immersiveMode}
+              id="chat-config-auto-hide-top-tools"
+              onChange={(event) => onAutoHideTopToolsChange(event.target.checked)}
+            />
+          </div>
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <label className="chat-config-dialog__label" htmlFor="chat-config-auto-hide-input">
+              {t("chat.config.autoHideInput")}
+            </label>
+            <Switch
+              checked={autoHideInput}
+              className="chat-config-dialog__switch"
+              disabled={!immersiveMode}
+              id="chat-config-auto-hide-input"
+              onChange={(event) => onAutoHideInputChange(event.target.checked)}
             />
           </div>
         </section>

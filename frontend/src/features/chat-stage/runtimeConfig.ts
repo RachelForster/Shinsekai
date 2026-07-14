@@ -6,7 +6,7 @@ import { DEFAULT_THEME_COLOR, normalizeThemeColor } from "../../shared/theme/app
 
 export const clickThroughGuardIntervalMs = 32;
 const runtimeConfigStorageKey = "shinsekai-chat-stage-runtime-config";
-export const chatStageRuntimeConfigVersion = 2;
+export const chatStageRuntimeConfigVersion = 3;
 export const runtimeTextSpeedMin = 1;
 export const runtimeTextSpeedMax = 200;
 export const runtimeDialogOpacityMin = 0.35;
@@ -63,11 +63,14 @@ export interface ChatStageDialogFillConfig {
 
 export interface ChatStageRuntimeConfig {
   auto: boolean;
+  autoHideInput: boolean;
+  autoHideTopTools: boolean;
   configThemeColor: string;
   configUseMainThemeColor: boolean;
   dialogFill: ChatStageDialogFillConfig;
   dialogOpacity: number;
   dialogScale: number;
+  immersiveMode: boolean;
   longPressTalk: boolean;
   spriteScales: Record<string, number>;
   spriteOffsetX: number;
@@ -89,6 +92,8 @@ interface ChatStageRuntimeConfigStorageEnvelope {
 
 export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   auto: false,
+  autoHideInput: true,
+  autoHideTopTools: true,
   configThemeColor: DEFAULT_THEME_COLOR,
   configUseMainThemeColor: true,
   dialogText: {
@@ -109,6 +114,7 @@ export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   },
   dialogOpacity: 1,
   dialogScale: 1,
+  immersiveMode: false,
   longPressTalk: false,
   nameText: {
     bold: true,
@@ -258,6 +264,12 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
   const parsed = unwrapRuntimeConfigStoragePayload(value);
   return {
     auto: typeof parsed.auto === "boolean" ? parsed.auto : defaultChatStageRuntimeConfig.auto,
+    autoHideInput:
+      typeof parsed.autoHideInput === "boolean" ? parsed.autoHideInput : defaultChatStageRuntimeConfig.autoHideInput,
+    autoHideTopTools:
+      typeof parsed.autoHideTopTools === "boolean"
+        ? parsed.autoHideTopTools
+        : defaultChatStageRuntimeConfig.autoHideTopTools,
     configThemeColor: sanitizeRuntimeColor(parsed.configThemeColor, defaultChatStageRuntimeConfig.configThemeColor),
     configUseMainThemeColor:
       typeof parsed.configUseMainThemeColor === "boolean"
@@ -276,6 +288,8 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
       runtimeDialogScaleMin,
       runtimeDialogScaleMax,
     ),
+    immersiveMode:
+      typeof parsed.immersiveMode === "boolean" ? parsed.immersiveMode : defaultChatStageRuntimeConfig.immersiveMode,
     longPressTalk:
       typeof parsed.longPressTalk === "boolean" ? parsed.longPressTalk : defaultChatStageRuntimeConfig.longPressTalk,
     typewriterCps:

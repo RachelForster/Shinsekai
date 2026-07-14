@@ -206,6 +206,18 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, typewriterCps }));
   };
 
+  const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, immersiveMode }));
+  };
+
+  const updateRuntimeAutoHideTopTools = (autoHideTopTools: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, autoHideTopTools }));
+  };
+
+  const updateRuntimeAutoHideInput = (autoHideInput: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, autoHideInput }));
+  };
+
   const updateRuntimeDialogOpacity = (dialogOpacity: number) => {
     setRuntimeConfig((current) => ({ ...current, dialogOpacity }));
   };
@@ -342,6 +354,7 @@ export function ChatStagePage() {
       >
         <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow} />
         <TopStageTools
+          autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideTopTools}
           hidden={!viewModel.layers.toolbar}
           onCloseDesktopWindow={closeSurface}
           onTokenUsageOpenChange={setTokenUsageOpen}
@@ -408,6 +421,7 @@ export function ChatStagePage() {
         ) : null}
         <InputLayer
           asrPaused={viewModel.status === "paused"}
+          autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
           disabled={viewModel.inputDisabled}
           hidden={!viewModel.layers.input}
           inputLayout={inputLayout}
@@ -447,6 +461,8 @@ export function ChatStagePage() {
           />
         ) : null}
         <ChatConfigDialog
+          autoHideInput={runtimeConfig.autoHideInput}
+          autoHideTopTools={runtimeConfig.autoHideTopTools}
           configThemeColor={runtimeConfig.configThemeColor}
           configUseMainThemeColor={runtimeConfig.configUseMainThemeColor}
           dialogFill={runtimeConfig.dialogFill}
@@ -455,6 +471,7 @@ export function ChatStagePage() {
           dialogScale={runtimeConfig.dialogScale}
           effectiveDialogText={effectiveDialogText}
           effectiveNameText={effectiveNameText}
+          immersiveMode={runtimeConfig.immersiveMode}
           longPressTalk={runtimeConfig.longPressTalk}
           longPressTalkAvailable={voskModelState.available}
           longPressTalkVisible={longPressTalkVisible}
@@ -462,11 +479,14 @@ export function ChatStagePage() {
           nameText={runtimeConfig.nameText}
           onClose={() => setToolbarConfigOpen(false)}
           onCommand={sendCommand}
+          onAutoHideInputChange={updateRuntimeAutoHideInput}
+          onAutoHideTopToolsChange={updateRuntimeAutoHideTopTools}
           onConfigThemeColorChange={updateRuntimeConfigThemeColor}
           onConfigUseMainThemeColorChange={updateRuntimeConfigUseMainThemeColor}
           onDialogFillChange={updateRuntimeDialogFill}
           onDialogOpacityChange={updateRuntimeDialogOpacity}
           onDialogScaleChange={updateRuntimeDialogScale}
+          onImmersiveModeChange={updateRuntimeImmersiveMode}
           onLongPressTalkChange={updateRuntimeLongPressTalk}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}

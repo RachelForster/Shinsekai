@@ -5,8 +5,10 @@ import { useI18n } from "../../../shared/i18n";
 import type { ChatTransportMode, ChatTransportState } from "../../../shared/platform/types";
 import { IconButton } from "../../../shared/ui";
 import { transportStatusText } from "../chatStageUtils";
+import { useAutoHideRegion } from "../hooks/useAutoHideRegion";
 
 export function TopStageTools({
+  autoHide = false,
   hidden,
   onCloseDesktopWindow,
   onTokenUsageOpenChange,
@@ -17,6 +19,7 @@ export function TopStageTools({
   transportMode,
   transportState,
 }: {
+  autoHide?: boolean;
   hidden: boolean;
   onCloseDesktopWindow: () => Promise<void>;
   onTokenUsageOpenChange: (open: boolean) => void;
@@ -28,6 +31,7 @@ export function TopStageTools({
   transportState: ChatTransportState;
 }) {
   const { t } = useI18n();
+  const autoHideRegion = useAutoHideRegion({ enabled: autoHide, forceVisible: tokenUsageOpen });
 
   if (hidden) {
     return null;
@@ -44,11 +48,19 @@ export function TopStageTools({
     <div
       aria-label={t("chat.toolbar.tools")}
       className="top-stage-tools"
+      data-auto-hide={autoHide ? "true" : "false"}
       data-chat-stage-hitbox="true"
       data-standalone-desktop={standaloneDesktopWindow ? "true" : "false"}
+      data-force-visible={tokenUsageOpen ? "true" : "false"}
       data-transport-mode={transportMode}
       data-transport-state={transportState}
+      data-visible={autoHideRegion.visible ? "true" : "false"}
+      onBlurCapture={autoHideRegion.handleBlur}
+      onFocusCapture={autoHideRegion.handleFocus}
+      onPointerEnter={autoHideRegion.show}
+      onPointerLeave={autoHideRegion.scheduleHide}
       role="toolbar"
+      style={autoHideRegion.visible ? undefined : { pointerEvents: "none" }}
       tabIndex={0}
     >
       <div className="top-stage-tools__status">
