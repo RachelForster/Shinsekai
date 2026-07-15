@@ -111,3 +111,44 @@ class TestLlmResponseStreamParser:
         assert results[0].name == "TestChar"
         assert results[0].text == "Aliased text"
         assert results[0].asset_id == "5"
+
+    def test_dialog_wrapper_delivered_whole_is_unwrapped(self):
+        """Non-streaming responses deliver the whole ``{"dialog": [...]}`` wrapper
+        in one chunk; the utterances inside must still be parsed."""
+        parser = LlmResponseStreamParser()
+        chunk = (
+            '{"dialog": ['
+            '{"character_name": "A", "speech": "One", "sprite": "0"},'
+            '{"character_name": "B", "speech": "Two", "sprite": "1"}'
+            ']}'
+        )
+        results = list(parser.feed(chunk))
+        assert len(results) == 2
+        assert results[0].name == "A"
+        assert results[0].text == "One"
+        assert results[1].name == "B"
+        assert not parser.has_errors
+
+    def test_dialog_wrapper_streamed_char_by_char(self):
+        """Streaming the same wrapper one character at a time yields the same
+        messages (inner objects drain before the wrapper closes)."""
+        parser = LlmResponseStreamParser()
+        chunk = (
+            '{"dialog": ['
+            '{"character_name": "A", "speech": "One", "sprite": "0"},'
+            '{"character_name": "B", "speech": "Two", "sprite": "1"}'
+            ']}'
+        )
+        results = []
+        for char in chunk:
+            results += list(parser.feed(char))
+        assert [msg.name for msg in results] == ["A", "B"]
+        assert not parser.has_errors
+
+    def test_single_entry_dialog_wrapper(self):
+        parser = LlmResponseStreamParser()
+        results = list(
+            parser.feed('{"dialog": [{"character_name": "Solo", "speech": "Hi", "sprite": "0"}]}')
+        )
+        assert len(results) == 1
+        assert results[0].name == "Solo"
