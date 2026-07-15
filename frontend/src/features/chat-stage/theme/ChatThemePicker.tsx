@@ -74,36 +74,19 @@ function ThemeCard({
   );
 }
 
-export function ChatThemePicker({
-  className,
-  onActiveThemeChange,
-  onOpenChange,
-  onThemesChange,
-  open: controlledOpen,
-  trigger = "icon",
-}: {
-  className?: string;
+interface ChatThemeManagerProps {
   onActiveThemeChange?: (id: string | null) => void;
-  onOpenChange?: (open: boolean) => void;
   onThemesChange?: () => void;
-  open?: boolean;
-  trigger?: "button" | "icon";
-} = {}) {
+}
+
+export function ChatThemeManager({ onActiveThemeChange, onThemesChange }: ChatThemeManagerProps = {}) {
   const { language, t } = useI18n();
   const { showToast } = useToast();
   const theme = useOptionalChatTheme();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [internalOpen, setInternalOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<ChatThemeSummary | null>(null);
-  const open = controlledOpen ?? internalOpen;
-  const setOpen = (nextOpen: boolean) => {
-    if (controlledOpen === undefined) {
-      setInternalOpen(nextOpen);
-    }
-    onOpenChange?.(nextOpen);
-  };
   const activeId = theme?.activeId ?? null;
   const themes = theme?.themes ?? [];
   const displayName = (item: ChatThemeSummary) => chatThemeDisplayName(item, language);
@@ -200,54 +183,33 @@ export function ChatThemePicker({
 
   return (
     <>
-      {trigger === "button" ? (
-        <Button
-          className={className}
-          icon={<Palette aria-hidden className="button__icon" />}
-          onClick={() => setOpen(true)}
-        >
-          {t("chat.theme.open")}
-        </Button>
-      ) : (
-        <IconButton className={className} label={t("chat.theme.open")} onClick={() => setOpen(true)}>
-          <Palette aria-hidden className="icon-button__icon" />
-        </IconButton>
-      )}
-      <Dialog
-        bodyClassName="chat-theme-picker__dialog-body"
-        closeLabel={t("common.close")}
-        footer={
-          <div className="chat-theme-picker__footer">
-            <input
-              accept=".zip,application/zip"
-              className="chat-theme-picker__file-input"
-              onChange={(event) => handleUpload(event.target.files?.[0] ?? null)}
-              ref={fileInputRef}
-              type="file"
-            />
-            <Button
-              disabled={uploading}
-              icon={<Upload aria-hidden className="button__icon" />}
-              onClick={() => fileInputRef.current?.click()}
-              variant="primary"
-            >
-              {uploading ? t("chat.theme.uploading") : t("chat.theme.upload")}
-            </Button>
-            <Button
-              disabled={loading}
-              icon={<RefreshCw aria-hidden className="button__icon" />}
-              onClick={() => {
-                void refresh().then(() => onThemesChange?.());
-              }}
-            >
-              {t("common.refresh")}
-            </Button>
-          </div>
-        }
-        onClose={() => setOpen(false)}
-        open={open}
-        title={t("chat.theme.title")}
-      >
+      <div className="chat-theme-manager">
+        <div className="chat-theme-manager__toolbar">
+          <input
+            accept=".zip,application/zip"
+            className="chat-theme-picker__file-input"
+            onChange={(event) => handleUpload(event.target.files?.[0] ?? null)}
+            ref={fileInputRef}
+            type="file"
+          />
+          <Button
+            disabled={uploading}
+            icon={<Upload aria-hidden className="button__icon" />}
+            onClick={() => fileInputRef.current?.click()}
+            variant="primary"
+          >
+            {uploading ? t("chat.theme.uploading") : t("chat.theme.upload")}
+          </Button>
+          <Button
+            disabled={loading}
+            icon={<RefreshCw aria-hidden className="button__icon" />}
+            onClick={() => {
+              void refresh().then(() => onThemesChange?.());
+            }}
+          >
+            {t("common.refresh")}
+          </Button>
+        </div>
         <div className="chat-theme-picker__grid">
           {sortedThemes.map((theme) => (
             <ThemeCard
@@ -262,7 +224,7 @@ export function ChatThemePicker({
           ))}
         </div>
         {!sortedThemes.length ? <p className="chat-theme-picker__empty">{t("chat.theme.empty")}</p> : null}
-      </Dialog>
+      </div>
       <Dialog
         closeLabel={t("common.close")}
         footer={
@@ -278,6 +240,50 @@ export function ChatThemePicker({
         title={t("chat.theme.deleteConfirmTitle")}
       >
         {t("chat.theme.deleteConfirmBody", { name: deleteCandidate ? displayName(deleteCandidate) : "" })}
+      </Dialog>
+    </>
+  );
+}
+
+export function ChatThemePicker({
+  className,
+  onActiveThemeChange,
+  onOpenChange,
+  onThemesChange,
+  open: controlledOpen,
+}: ChatThemeManagerProps & {
+  className?: string;
+  onOpenChange?: (open: boolean) => void;
+  open?: boolean;
+} = {}) {
+  const { t } = useI18n();
+  const theme = useOptionalChatTheme();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (nextOpen: boolean) => {
+    if (controlledOpen === undefined) {
+      setInternalOpen(nextOpen);
+    }
+    onOpenChange?.(nextOpen);
+  };
+
+  if (!theme) {
+    return null;
+  }
+
+  return (
+    <>
+      <IconButton className={className} label={t("chat.theme.open")} onClick={() => setOpen(true)}>
+        <Palette aria-hidden className="icon-button__icon" />
+      </IconButton>
+      <Dialog
+        bodyClassName="chat-theme-picker__dialog-body"
+        closeLabel={t("common.close")}
+        onClose={() => setOpen(false)}
+        open={open}
+        title={t("chat.theme.title")}
+      >
+        <ChatThemeManager onActiveThemeChange={onActiveThemeChange} onThemesChange={onThemesChange} />
       </Dialog>
     </>
   );

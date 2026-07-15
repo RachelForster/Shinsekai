@@ -1,27 +1,18 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SystemSettingsPage } from "../../../features/system-settings/SystemSettingsPage";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import { AppStateProvider } from "../../../shared/app-state/AppState";
 import { FileBrowserProvider, ToastProvider } from "../../../shared/ui";
-import type { ChatThemeSummary } from "../../../shared/theme/chatTheme";
 
 const mockGetAppConfig = vi.fn();
 const mockDetectNetworkProxy = vi.fn();
 const mockListChatThemes = vi.fn();
 const mockSetActiveChatTheme = vi.fn();
 const browseFiles = vi.fn();
-const chatThemeContext = vi.hoisted(() => ({
-  activeId: "windborne-adventure" as string | null,
-  loading: false,
-  refresh: vi.fn(),
-  removeTheme: vi.fn(),
-  switchTheme: vi.fn(),
-  themes: [] as ChatThemeSummary[],
-  uploadTheme: vi.fn(),
-}));
 const desktopApi = vi.hoisted(() => ({
   browseDesktopFiles: vi.fn(),
   getDesktopRuntimeState: vi.fn(),
@@ -47,10 +38,6 @@ vi.mock("../../../entities/chat/repository", () => ({
 
 vi.mock("../../../shared/desktop/desktopApi", () => desktopApi);
 
-vi.mock("../../../features/chat-stage/theme/ChatThemeProvider", () => ({
-  useOptionalChatTheme: () => chatThemeContext,
-}));
-
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -61,7 +48,12 @@ function renderPage() {
         <FileBrowserProvider browse={browseFiles}>
           <AppStateProvider>
             <I18nProvider language="zh_CN">
-              <SystemSettingsPage />
+              <MemoryRouter initialEntries={["/settings/system"]}>
+                <Routes>
+                  <Route element={<SystemSettingsPage />} path="/settings/system" />
+                  <Route element={<h1>Theme management destination</h1>} path="/settings/system/chat-themes" />
+                </Routes>
+              </MemoryRouter>
             </I18nProvider>
           </AppStateProvider>
         </FileBrowserProvider>
@@ -111,22 +103,6 @@ function mockSystemConfig(systemOverrides: Record<string, unknown> = {}) {
 describe("SystemSettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    chatThemeContext.activeId = "windborne-adventure";
-    chatThemeContext.refresh.mockResolvedValue(undefined);
-    chatThemeContext.removeTheme.mockResolvedValue(undefined);
-    chatThemeContext.switchTheme.mockResolvedValue(undefined);
-    chatThemeContext.themes = [
-      {
-        id: "windborne-adventure",
-        name: { en: "Windborne Adventure", zh_CN: "风旅冒险" },
-        source: "builtin",
-      },
-    ];
-    chatThemeContext.uploadTheme.mockResolvedValue({
-      id: "uploaded-theme",
-      name: { zh_CN: "上传主题" },
-      source: "user",
-    });
     desktopApi.getDesktopRuntimeState.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
     desktopApi.installDesktopRuntimeProfile.mockResolvedValue({ bridgeUrl: "", candidates: [], status: "needsAction" });
     desktopApi.isDesktopBridgeConnectionError.mockReturnValue(false);
@@ -198,10 +174,7 @@ describe("SystemSettingsPage", () => {
     expect(document.getElementById("system-ui")).toHaveClass("page-section-anchor");
     expect(document.getElementById("system-chat-theme")).toHaveClass("page-section-anchor");
     expect(document.getElementById("system-network-proxy")).toHaveClass("page-section-anchor");
-    fireEvent.click(screen.getByRole("button", { name: "主题管理" }));
-    const themeManager = await screen.findByRole("dialog", { name: "聊天主题" });
-    expect(within(themeManager).getByText("风旅冒险")).toBeInTheDocument();
-    fireEvent.click(within(themeManager).getByRole("button", { name: "关闭" }));
+    expect(screen.getByRole("button", { name: "主题管理" })).toBeInTheDocument();
     fireEvent.click(themeSelect);
     expect(await screen.findByRole("option", { name: "风旅冒险 · 内置" })).toBeInTheDocument();
     const uiHeading = screen.getByRole("heading", { name: "界面" });
@@ -217,6 +190,15 @@ describe("SystemSettingsPage", () => {
     expect(screen.getByLabelText("HTTPS 代理")).toBeInTheDocument();
     expect(screen.getByLabelText("SOCKS5 代理")).toBeInTheDocument();
     expect(screen.queryByText("桌面运行环境")).not.toBeInTheDocument();
+  });
+
+  it("navigates to the standalone chat theme management page", async () => {
+    mockGetAppConfig.mockResolvedValue(mockSystemConfig());
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "主题管理" }));
+
+    expect(await screen.findByRole("heading", { name: "Theme management destination" })).toBeInTheDocument();
   });
 
   it("disables React Stage theme selection for the native chat UI", async () => {

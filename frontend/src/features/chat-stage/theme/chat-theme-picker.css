@@ -4,6 +4,20 @@
   min-width: min(88vw, 960px);
 }
 
+.chat-theme-manager {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.chat-theme-manager__toolbar {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .chat-theme-picker__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -98,14 +112,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-.chat-theme-picker__footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-  width: 100%;
 }
 
 .chat-theme-picker__file-input {

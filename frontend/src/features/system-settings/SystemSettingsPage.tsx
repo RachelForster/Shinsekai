@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Palette, RefreshCw, Save } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import {
   buildPayloadFromSchema,
@@ -17,9 +18,9 @@ import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { useI18n } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_CHAT_THEME_ID, chatThemeDisplayName } from "../../shared/theme/chatTheme";
-import { ChatThemePicker } from "../chat-stage/theme/ChatThemePicker";
 import {
   AsyncButton,
+  Button,
   EmptyState,
   PageSectionNav,
   QueryErrorState,
@@ -70,6 +71,7 @@ function networkProxySourceLabel(source: string) {
 }
 
 export function SystemSettingsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { language, t } = useI18n();
@@ -99,10 +101,6 @@ export function SystemSettingsPage() {
     ...(systemNetworkProxyGroup ? [{ id: "system-network-proxy", label: systemNetworkProxyGroup.title }] : []),
     ...systemRemainingGroups.map((group) => ({ id: `system-${group.id}`, label: group.title })),
   ];
-
-  const refreshThemeOptions = () => {
-    void queryClient.invalidateQueries({ queryKey: chatThemeQueryKey });
-  };
 
   useEffect(() => {
     if (data?.system_config) {
@@ -257,21 +255,12 @@ export function SystemSettingsPage() {
         <div className="section__header">
           <h2 className="section__title">{t("chat.theme.title")}</h2>
           <div className="section__actions">
-            <ChatThemePicker
-              onActiveThemeChange={(themeId) => {
-                setDraft((current) =>
-                  current
-                    ? {
-                        ...current,
-                        chat_ui_theme_id: themeId ?? fallbackThemeId,
-                      }
-                    : current,
-                );
-                void queryClient.invalidateQueries({ queryKey: configQueryKey });
-              }}
-              onThemesChange={refreshThemeOptions}
-              trigger="button"
-            />
+            <Button
+              icon={<Palette aria-hidden className="button__icon" />}
+              onClick={() => navigate("/settings/system/chat-themes")}
+            >
+              {t("chat.theme.open")}
+            </Button>
           </div>
         </div>
         <div className="field-row">
