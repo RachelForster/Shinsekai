@@ -16,7 +16,7 @@
   }
 
   .dialog-stack {
-    bottom: max(12px, var(--chat-dialog-stack-bottom));
+    bottom: max(12px, var(--chat-dialog-stack-bottom), calc(var(--stage-control-stack-height) + 10px));
     width: calc(100vw - 24px);
     max-width: calc(100vw - 24px);
   }

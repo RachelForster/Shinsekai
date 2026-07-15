@@ -34,6 +34,10 @@ def _valid_manifest() -> dict:
                 "background": "rgba(1,2,3,0.8)",
                 "backgroundImage": "assets/dialog.png",
                 "chrome": "panel",
+                "frameImage": "assets/dialog-frame.svg",
+                "frameOutsetPx": 5,
+                "frameSlice": 36,
+                "frameWidthPx": 14,
                 "heightPx": 120,
                 "nameInputGapVh": 20,
                 "offsetY": -10,
@@ -67,6 +71,12 @@ def _valid_manifest() -> dict:
             "logs": {
                 "badge": {"background": "#333333"},
                 "code": {"fontFamily": "monospace"},
+                "panel": {
+                    "frameImage": "assets/logs-frame.svg",
+                    "frameOutsetPx": 4,
+                    "frameSlice": 24,
+                    "frameWidthPx": 8,
+                },
                 "fileItem": {
                     "active": {"background": "#222222"},
                     "hover": {"background": "#111111"},
@@ -88,7 +98,7 @@ def _write_theme(root: Path, manifest: dict | None = None) -> Path:
     assets.mkdir(parents=True)
     data = manifest or _valid_manifest()
     (theme_dir / MANIFEST_NAME).write_text(json.dumps(data), encoding="utf-8")
-    for name in ("preview.png", "demo.woff2", "dialog.png", "type.wav"):
+    for name in ("preview.png", "demo.woff2", "dialog-frame.svg", "dialog.png", "logs-frame.svg", "type.wav"):
         (assets / name).write_bytes(b"asset")
     return theme_dir
 
@@ -103,9 +113,12 @@ def test_slugify_and_validate_manifest_normalizes_rich_theme() -> None:
     assert result.normalized["author"] == "Tester"
     assert result.normalized["preview"] == "assets/preview.png"
     assert result.normalized["tokens"]["dialog"]["chrome"] == "panel"
+    assert result.normalized["tokens"]["dialog"]["frameOutsetPx"] == 5
+    assert result.normalized["tokens"]["dialog"]["frameWidthPx"] == 14
     assert result.normalized["tokens"]["options"]["active"]["background"] == "rgba(40,40,40,0.9)"
     assert result.normalized["tokens"]["input"]["sendPlacement"] == "outside"
     assert result.normalized["tokens"]["logs"]["levels"]["warn"]["color"] == "#ffee88"
+    assert result.normalized["tokens"]["logs"]["panel"]["frameSlice"] == 24
     assert result.normalized["tokens"]["typewriter"]["sound"] == "assets/type.wav"
 
 
@@ -137,6 +150,39 @@ def test_validate_manifest_rejects_invalid_shapes(manifest) -> None:
 
     assert result.ok is False
     assert result.errors
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        {"send": {"frameOutsetPx": 2}},
+        {"options": {"hover": {"frameWidthPx": 8}}},
+        {"logs": {"line": {"frameWidthPx": 8}}},
+        {"logs": {"fileItem": {"active": {"frameOutsetPx": 2}}}},
+    ],
+)
+def test_validate_manifest_rejects_frames_on_components_without_frame_layers(tokens: dict) -> None:
+    manifest = _valid_manifest()
+    manifest["tokens"] = tokens
+
+    result = validate_manifest(manifest)
+
+    assert result.ok is False
+    assert any("不是规范允许的字段" in error for error in result.errors)
+
+
+def test_validate_manifest_keeps_schema_one_legacy_frames_on_unsupported_blocks_compatible() -> None:
+    manifest = _valid_manifest()
+    manifest["tokens"] = {
+        "send": {"frameImage": "assets/legacy.svg", "frameSlice": 24},
+        "logs": {"line": {"frameImage": "assets/legacy.svg", "frameSlice": 16}},
+    }
+
+    result = validate_manifest(manifest)
+
+    assert result.ok is True
+    assert result.normalized["tokens"]["send"]["frameImage"] == "assets/legacy.svg"
+    assert result.normalized["tokens"]["logs"]["line"]["frameSlice"] == 16
 
 
 def test_validate_theme_dir_warns_for_missing_assets_and_reports_bad_json(tmp_path: Path) -> None:

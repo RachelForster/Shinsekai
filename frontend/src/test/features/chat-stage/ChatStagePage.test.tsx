@@ -196,6 +196,9 @@ describe("ChatStagePage", () => {
     const option = await screen.findByRole("button", { name: "Take the shortcut" });
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     expect(option.closest(".dialog-stack")).not.toBeNull();
+    expect(document.querySelector('.options-layer > [data-theme-frame="chat-dialog"]')).not.toBeInTheDocument();
+    expect(document.querySelector('.options-layer__item > [data-theme-frame="chat-option"]')).toBeInTheDocument();
+    expect(option.closest(".options-layer__scroll")).not.toBeNull();
     fireEvent.click(option);
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
@@ -203,6 +206,19 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it("anchors decorative frames to the main chat surfaces", async () => {
+    renderPage();
+
+    await screen.findByText("Ready");
+    expect(document.querySelector('.dialog-layer > [data-theme-frame="chat-dialog"]')).toBeInTheDocument();
+    expect(document.querySelector('.dialog-layer__name > [data-theme-frame="chat-name"]')).toBeInTheDocument();
+    expect(document.querySelector('.input-layer > [data-theme-frame="chat-input"]')).toBeInTheDocument();
+    expect(document.querySelector('.top-stage-tools > [data-theme-frame="chat-toolbar"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('.dialog-stage-controls__surface > [data-theme-frame="chat-toolbar"]'),
+    ).toBeInTheDocument();
   });
 
   it("suppresses context menus inside the chat stage", async () => {
@@ -219,6 +235,7 @@ describe("ChatStagePage", () => {
     renderPage();
 
     const input = await screen.findByRole("textbox");
+    expect(input.tagName).toBe("TEXTAREA");
     fireEvent.change(input, { target: { value: "  enter submit  " } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -699,7 +716,15 @@ describe("ChatStagePage", () => {
   it("uses a single-line pill input and keeps the plus panel scoped to ASR actions", async () => {
     themeContextMocks.optional = {
       resolved: { typewriter: { cps: 40 } },
-      style: { "--chat-input-layout": "pill" } as CSSProperties,
+      style: {
+        "--chat-input-layout": "pill",
+        "--chat-send-background": "#123456",
+        "--chat-send-border-color": "#abcdef",
+        "--chat-send-border-radius": "14px",
+        "--chat-send-box-shadow": "0 0 7px #abcdef",
+        "--chat-send-color": "#fedcba",
+        "--chat-toolbar-border-radius": "17px",
+      } as CSSProperties,
     };
 
     renderPage();
@@ -707,6 +732,11 @@ describe("ChatStagePage", () => {
     await screen.findByText("Ready");
     const input = screen.getByRole("textbox");
     expect(input.tagName).toBe("INPUT");
+    const stage = document.querySelector(".chat-stage") as HTMLElement;
+    const quickSubmit = document.querySelector(".input-layer__quick-submit") as HTMLElement;
+    expect(stage.style.getPropertyValue("--chat-send-background")).toBe("#123456");
+    expect(stage.style.getPropertyValue("--chat-toolbar-border-radius")).toBe("17px");
+    expect(quickSubmit).toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: "  pill submit  " } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -896,6 +926,7 @@ describe("ChatStagePage", () => {
         configUseMainThemeColor: false,
         dialogText: {
           align: "right",
+          alignOverride: true,
           bold: true,
           boldOverride: true,
           color: "#ddeeff",

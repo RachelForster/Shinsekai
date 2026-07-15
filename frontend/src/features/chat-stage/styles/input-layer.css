@@ -89,7 +89,7 @@
   border: 0;
   padding: 0 clamp(2px, 0.4vw, 4px);
   color: var(--chat-input-color, #fff);
-  background: transparent;
+  background: var(--chat-input-field-background, transparent);
   box-shadow: none;
   font-weight: 650;
   line-height: var(--chat-input-textarea-min-height);
@@ -207,7 +207,7 @@
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 999px;
+  border-radius: 50%;
   color: var(--chat-input-color, #fff);
   background: transparent;
   box-shadow: none;
@@ -271,7 +271,7 @@
   position: absolute;
   right: 0;
   bottom: calc(100% + 10px);
-  z-index: 2;
+  z-index: 3;
   display: var(--chat-input-panel-display);
   width: min(238px, calc(100vw - 32px));
   gap: 0;

@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .builtin_chat_themes import BUILTIN_THEME_MANIFESTS, DEFAULT_BUILTIN_CHAT_THEME_ID
+from .builtin_chat_themes import BUILTIN_THEME_IDS, DEFAULT_BUILTIN_CHAT_THEME_ID
 from sdk.chat_ui_theme import (
     MANIFEST_NAME,
     locate_manifest_root,
@@ -34,7 +34,6 @@ from .state import BridgeState
 #: 用户可写主题目录（相对项目根 / cwd）。
 USER_THEMES_DIR = Path("data") / "chat_ui_themes"
 BUILTIN_THEMES_DIR = Path("assets") / "chat_ui_themes"
-BUILTIN_THEME_IDS = {DEFAULT_BUILTIN_CHAT_THEME_ID}
 RETIRED_BUILTIN_THEME_IDS = {"classic-dark", "light-paper"}
 
 #: manifest schema 版本，与前端 CHAT_THEME_SCHEMA 一致。
@@ -68,6 +67,16 @@ def _safe_theme_id(theme_id: str) -> str:
     return safe_id
 
 
+def _theme_version(theme_dir: Path) -> str:
+    try:
+        data = json.loads((theme_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    return str(data.get("version") or "").strip()
+
+
 def _seed_builtin_themes() -> None:
     root = _themes_root()
     builtin_root = _builtin_themes_root()
@@ -75,17 +84,14 @@ def _seed_builtin_themes() -> None:
     for theme_id in BUILTIN_THEME_IDS:
         source = builtin_root / theme_id
         target = root / theme_id
-        if target.exists():
+        if not source.is_dir():
             continue
-        if source.is_dir():
+        if not target.exists():
             shutil.copytree(source, target)
             continue
-        manifest = BUILTIN_THEME_MANIFESTS.get(theme_id)
-        if manifest:
-            target.mkdir(parents=True, exist_ok=True)
-            (target / MANIFEST_NAME).write_text(
-                json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+        source_version = _theme_version(source)
+        if target.is_dir() and source_version and source_version != _theme_version(target):
+            shutil.copytree(source, target, dirs_exist_ok=True)
 
 
 def _read_manifest(theme_dir: Path) -> Optional[Dict[str, Any]]:
@@ -155,8 +161,14 @@ def get_chat_theme_manifest(state: BridgeState, theme_id: str) -> Dict[str, Any]
     safe_id = _safe_theme_id(theme_id)
     if _is_retired_builtin_theme_id(safe_id):
         raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
-    theme_dir = _themes_root() / safe_id
-    manifest = _read_manifest(theme_dir)
+    root = _themes_root()
+    manifest = _read_manifest(root / safe_id)
+    if (
+        manifest is None
+        and safe_id != DEFAULT_BUILTIN_CHAT_THEME_ID
+        and _is_builtin_theme_id(safe_id)
+    ):
+        manifest = _read_manifest(root / DEFAULT_BUILTIN_CHAT_THEME_ID)
     if manifest is None:
         raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
     return manifest

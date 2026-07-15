@@ -3,7 +3,7 @@ import { createElement, type CSSProperties, type MouseEvent, type MouseEventHand
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
-import { Button } from "../../../shared/ui";
+import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
@@ -153,7 +153,13 @@ export function DialogLayer({
       hidden={hidden}
       onClick={handleDialogClick}
     >
-      {characterName ? <p className="dialog-layer__name">{characterName}</p> : null}
+      <ThemeFrame prefix="chat-dialog" />
+      {characterName ? (
+        <p className="dialog-layer__name">
+          <ThemeFrame prefix="chat-name" />
+          <span className="dialog-layer__name-content">{characterName}</span>
+        </p>
+      ) : null}
       {htmlNodes !== undefined ? (
         <div className="dialog-layer__body">
           <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
@@ -255,11 +261,16 @@ export function OptionsLayer({
       data-chat-stage-hitbox="true"
       hidden={hidden}
     >
-      {options.map((option) => (
-        <Button className="options-layer__button" key={option} onClick={() => onSelect(option)}>
-          {option}
-        </Button>
-      ))}
+      <div className="options-layer__scroll">
+        {options.map((option) => (
+          <div className="options-layer__item" key={option}>
+            <ThemeFrame prefix="chat-option" />
+            <Button className="options-layer__button" onClick={() => onSelect(option)}>
+              {option}
+            </Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,8 +1,11 @@
+import type { CSSProperties } from "react";
 import { describe, expect, it } from "vitest";
 
 import {
+  chatStageRuntimeStyle,
   chatStageRuntimeConfigVersion,
   defaultChatStageRuntimeConfig,
+  effectiveChatStageTextStyle,
   normalizeChatStageRuntimeConfig,
   readChatStageRuntimeConfig,
 } from "../../../features/chat-stage/runtimeConfig";
@@ -63,5 +66,34 @@ describe("chat stage runtime config", () => {
     expect(readChatStageRuntimeConfig()).toEqual(defaultChatStageRuntimeConfig);
 
     window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
+  });
+
+  it("uses theme alignment until the runtime config explicitly overrides it", () => {
+    const themeStyle = { "--chat-dialog-text-theme-align": "left" } as CSSProperties;
+    const runtimeStyle = chatStageRuntimeStyle(defaultChatStageRuntimeConfig, themeStyle) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(
+      effectiveChatStageTextStyle(
+        defaultChatStageRuntimeConfig.dialogText,
+        defaultChatStageRuntimeConfig.dialogText,
+        themeStyle,
+        "dialogText",
+      ).align,
+    ).toBe("left");
+    expect(runtimeStyle["--chat-dialog-text-align"]).toBe("var(--chat-dialog-text-theme-align, center)");
+
+    const overridden = {
+      ...defaultChatStageRuntimeConfig,
+      dialogText: {
+        ...defaultChatStageRuntimeConfig.dialogText,
+        align: "center" as const,
+        alignOverride: true,
+      },
+    };
+    const overriddenStyle = chatStageRuntimeStyle(overridden, themeStyle) as unknown as Record<string, unknown>;
+    expect(overriddenStyle["--chat-dialog-text-align"]).toBe("center");
   });
 });

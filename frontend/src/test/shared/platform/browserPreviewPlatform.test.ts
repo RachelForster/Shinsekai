@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import neonNightCityFrameDialogUrl from "../../../../../assets/chat_ui_themes/neon-night-city/frame-dialog.svg?url";
 import { createBrowserPreviewPlatform } from "../../../shared/platform/browserPreviewPlatform";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import type { TemplateLaunchSession } from "../../../shared/platform/types";
@@ -62,6 +63,15 @@ describe("browser preview platform chat themes", () => {
     vi.restoreAllMocks();
   });
 
+  it("resolves bundled chat theme frame assets to Vite URLs", () => {
+    const platform = createBrowserPreviewPlatform();
+
+    expect(platform.files.fileUrl("data/chat_ui_themes/neon-night-city/frame-dialog.svg")).toBe(
+      neonNightCityFrameDialogUrl,
+    );
+    expect(platform.files.fileUrl("data/backgrounds/preview.png")).toBe("data/backgrounds/preview.png");
+  });
+
   it("tracks the lightweight runtime status across launch and close", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();
@@ -107,7 +117,7 @@ describe("browser preview platform chat themes", () => {
     await expect(platform.chat.getActiveThemeId()).resolves.toBe("windborne-adventure");
 
     const themes = await platform.chat.listThemes();
-    expect(themes.map((theme) => theme.id)).toEqual(["windborne-adventure"]);
+    expect(themes.map((theme) => theme.id)).toEqual(["windborne-adventure", "neon-night-city"]);
 
     const windborneManifest = await platform.chat.getThemeManifest("windborne-adventure");
     expect(windborneManifest.tokens.global?.themeColor).toBe("#f3cf57");
@@ -117,6 +127,26 @@ describe("browser preview platform chat themes", () => {
     const windborneTheme = await platform.chat.getTheme();
     expect(windborneTheme.themeColor).toBe("#f3cf57");
     expect(JSON.stringify(windborneTheme.raw)).toContain("rgba(0,0,0,0)");
+
+    const neonManifest = await platform.chat.getThemeManifest("neon-night-city");
+    expect(neonManifest.name.zh_CN).toBe("霓虹夜城");
+    expect(neonManifest.tokens.dialog?.nameInputGapVh).toBe(20);
+    expect(neonManifest.tokens.dialog?.offsetY).toBe(0);
+    expect(neonManifest.tokens.dialog?.boxShadow).toContain("inset 0 1px 0");
+    expect(neonManifest.tokens.dialog?.frameImage).toBe("frame-dialog.svg");
+    expect(neonManifest.tokens.dialog?.frameSlice).toBe(28);
+    expect(neonManifest.tokens.input?.frameImage).toBeUndefined();
+    expect(neonManifest.tokens.options?.frameImage).toBeUndefined();
+    expect(neonManifest.tokens.toolbar?.frameImage).toBeUndefined();
+    expect(neonManifest.tokens.input?.layout).toBe("pill");
+    expect(neonManifest.tokens.input?.maxWidthPx).toBe(700);
+    expect(neonManifest.tokens.input?.boxShadow).toContain("0 14px 38px");
+    expect(neonManifest.tokens.options?.widthPx).toBe(neonManifest.tokens.input?.maxWidthPx);
+    expect(neonManifest.tokens.send?.borderRadius).toBe("50%");
+    expect(neonManifest.tokens.toolbar?.boxShadow).toContain("inset 0 0 0 1px");
+    await platform.chat.setActiveThemeId("neon-night-city");
+    await expect(platform.chat.getActiveThemeId()).resolves.toBe("neon-night-city");
+    await expect(platform.chat.getTheme()).resolves.toMatchObject({ themeColor: "#00f5ff" });
   });
 
   it("adds uploaded preview themes as user themes and protects builtins from deletion", async () => {

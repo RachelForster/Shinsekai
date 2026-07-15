@@ -393,7 +393,7 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(len(viewer.messages), 1)
         self.assertEqual(
             viewer.messages[0],
-            {"type": "cmd.ack", "cmdId": "cmd-1", "commandType": "resume-asr", "ok": True},
+            {"type": "cmd.ack", "cmdId": "cmd-1", "commandType": "resume-asr", "ok": True, "seq": 1},
         )
         snapshot = service.get_snapshot(session["sessionId"])
         self.assertIsNotNone(snapshot)
@@ -710,6 +710,45 @@ class ChatStreamCommandTests(unittest.TestCase):
                 if producer2 is not None:
                     _close_ws(producer2)
                 _close_ws(producer1)
+        finally:
+            service.stop()
+
+    def test_bridge_rebases_restarted_producer_events_after_newer_snapshot(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=_free_bridge_port())
+        service.start()
+        try:
+            session = service.create_session({"dialogText": "recovered", "eventSeq": 9})
+            producer = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="producer")
+            viewer = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="viewer")
+            try:
+                snapshot_event = _wait_for_event(viewer, lambda event: event.get("type") == "snapshot")
+                self.assertEqual(snapshot_event["seq"], 9)
+                self.assertEqual(snapshot_event["snapshot"]["eventSeq"], 9)
+
+                _send_json_frame(
+                    producer,
+                    {
+                        "v": 1,
+                        "seq": 1,
+                        "ts": int(time.time() * 1000),
+                        "type": "dialog.end",
+                        "speaker": "Nanami",
+                        "color": "#fff",
+                        "isSystem": False,
+                        "fullHtml": "<p>new reply</p>",
+                    },
+                )
+
+                dialog_event = _wait_for_event(viewer, lambda event: event.get("type") == "dialog.end")
+                self.assertEqual(dialog_event["seq"], 10)
+                self.assertEqual(dialog_event["fullHtml"], "<p>new reply</p>")
+                latest = service.get_snapshot(session["sessionId"])
+                self.assertIsNotNone(latest)
+                self.assertEqual(latest["eventSeq"], 10)
+                self.assertEqual(latest["dialogText"], "new reply")
+            finally:
+                _close_ws(producer)
+                _close_ws(viewer)
         finally:
             service.stop()
 

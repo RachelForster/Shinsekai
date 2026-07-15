@@ -259,7 +259,7 @@ export function ChatConfigDialog({
   const handleDialogTextAlignChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.target.value as ChatStageTextAlign;
     if (chatStageTextAlignments.includes(value)) {
-      onTextStyleChange("dialogText", { align: value });
+      onTextStyleChange("dialogText", { align: value, alignOverride: true });
     }
   };
 

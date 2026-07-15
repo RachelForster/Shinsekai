@@ -41,11 +41,18 @@ ALLOWED_VISUAL_PROPS = frozenset(
         "borderRadius",
         "boxShadow",
         "color",
+        # schema=1 historically accepted these on every visual block. Keep accepting
+        # them for installed-theme compatibility; unsupported UI blocks ignore them.
         "frameImage",
         "frameSlice",
         "padding",
     }
 )
+
+#: 仅具有独立边框层的低密度外壳允许的九宫格边框字段。
+FRAME_VISUAL_PROPS = frozenset({"frameOutsetPx", "frameWidthPx"})
+FRAME_TOKEN_BLOCKS = frozenset({"dialog", "options", "input", "toolbar", "name"})
+LOG_FRAME_VISUAL_BLOCKS = frozenset({"panel", "sidebar", "toolbar", "viewer"})
 
 #: 每个可写 token 块允许的额外字段（在可视化属性之外）。
 EXTRA_BLOCK_PROPS = {
@@ -131,6 +138,8 @@ NUMERIC_BOUNDS = {
     "gap": (0, 36),
     "cps": (1, 200),
     "frameSlice": (1, 200),
+    "frameWidthPx": (0, 96),
+    "frameOutsetPx": (0, 96),
     "minHeightPx": (36, 96),
     "minHeightVh": (3, 8),
     "minWidthVw": (12, 42),
@@ -192,14 +201,19 @@ def _is_safe_css_value(value: str) -> bool:
 
 
 def _validate_visual_block(
-    name: str, block: Any, errors: List[str], allowed_extra: frozenset
+    name: str,
+    block: Any,
+    errors: List[str],
+    allowed_extra: frozenset,
+    allow_frame: bool = False,
 ) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     if not isinstance(block, dict):
         errors.append(f"tokens.{name} 必须是对象")
         return out
+    allowed_visual_props = ALLOWED_VISUAL_PROPS | FRAME_VISUAL_PROPS if allow_frame else ALLOWED_VISUAL_PROPS
     for key, value in block.items():
-        if key in ALLOWED_VISUAL_PROPS:
+        if key in allowed_visual_props:
             if key in {"backgroundImage", "frameImage"}:
                 if isinstance(value, str) and _is_safe_asset_ref(value):
                     out[key] = value
@@ -207,8 +221,8 @@ def _validate_visual_block(
                     errors.append(f"tokens.{name}.{key} 必须是主题目录内相对路径")
             elif key == "padding":
                 out[key] = _clamp_numeric("padding", value, errors, f"tokens.{name}.padding")
-            elif key == "frameSlice":
-                out[key] = _clamp_numeric("frameSlice", value, errors, f"tokens.{name}.frameSlice")
+            elif key in {"frameSlice", "frameWidthPx", "frameOutsetPx"}:
+                out[key] = _clamp_numeric(key, value, errors, f"tokens.{name}.{key}")
             elif isinstance(value, str) and _is_safe_css_value(value):
                 out[key] = value
             else:
@@ -233,7 +247,13 @@ def _validate_logs_block(block: Any, errors: List[str]) -> Dict[str, Any]:
 
     for key in LOG_VISUAL_BLOCKS:
         if key in block:
-            out[key] = _validate_visual_block(f"logs.{key}", block[key], errors, frozenset())
+            out[key] = _validate_visual_block(
+                f"logs.{key}",
+                block[key],
+                errors,
+                frozenset(),
+                allow_frame=key in LOG_FRAME_VISUAL_BLOCKS,
+            )
 
     if "code" in block:
         code = _validate_visual_block("logs.code", block["code"], errors, frozenset({"fontFamily"}))
@@ -411,7 +431,13 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
         if block_name not in tokens:
             continue
         allowed_extra = EXTRA_BLOCK_PROPS.get(block_name, frozenset())
-        out = _validate_visual_block(block_name, tokens[block_name], errors, allowed_extra)
+        out = _validate_visual_block(
+            block_name,
+            tokens[block_name],
+            errors,
+            allowed_extra,
+            allow_frame=block_name in FRAME_TOKEN_BLOCKS,
+        )
         block = tokens[block_name] if isinstance(tokens[block_name], dict) else {}
         # 额外字段语义校验
         if block_name == "dialog":
