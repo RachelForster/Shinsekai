@@ -6,14 +6,17 @@ import type { ChatTransportMode, ChatTransportState } from "../../../shared/plat
 import { IconButton, ThemeFrame } from "../../../shared/ui";
 import { transportStatusText } from "../chatStageUtils";
 import { useAutoHideRegion } from "../hooks/useAutoHideRegion";
+import { ChatThemePicker } from "../theme/ChatThemePicker";
 
 export function TopStageTools({
   autoHide = false,
   hidden,
   onCloseDesktopWindow,
+  onThemePickerOpenChange,
   onTokenUsageOpenChange,
   standaloneDesktopWindow,
   status,
+  themePickerOpen,
   tokenUsageAvailable,
   tokenUsageOpen,
   transportMode,
@@ -22,9 +25,11 @@ export function TopStageTools({
   autoHide?: boolean;
   hidden: boolean;
   onCloseDesktopWindow: () => Promise<void>;
+  onThemePickerOpenChange: (open: boolean) => void;
   onTokenUsageOpenChange: (open: boolean) => void;
   standaloneDesktopWindow: boolean;
   status: string;
+  themePickerOpen: boolean;
   tokenUsageAvailable: boolean;
   tokenUsageOpen: boolean;
   transportMode: ChatTransportMode;
@@ -69,6 +74,11 @@ export function TopStageTools({
         <span className="top-stage-tools__state">{status}</span>
       </div>
       <div className="top-stage-tools__controls">
+        <ChatThemePicker
+          className="top-stage-tools__button"
+          onOpenChange={onThemePickerOpenChange}
+          open={themePickerOpen}
+        />
         <IconButton
           aria-pressed={tokenUsageOpen}
           className="top-stage-tools__button"

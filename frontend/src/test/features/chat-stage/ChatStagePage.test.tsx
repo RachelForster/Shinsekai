@@ -533,6 +533,26 @@ describe("ChatStagePage", () => {
     expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "false");
   });
 
+  it("opens theme management from the top toolbar and disables transparent-window click-through", async () => {
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    themeContextMocks.optional = { style: {} };
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ backgroundPath: "" }));
+
+    renderPage(["/chat-stage"]);
+
+    await screen.findByText("Ready");
+    const stage = document.querySelector(".chat-stage") as HTMLElement;
+    expect(stage).toHaveAttribute("data-click-through", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Manage themes" }));
+
+    const picker = await screen.findByRole("dialog", { name: "Chat themes" });
+    expect(stage).toHaveAttribute("data-click-through", "false");
+
+    fireEvent.click(within(picker).getByRole("button", { name: "Close" }));
+    expect(stage).toHaveAttribute("data-click-through", "true");
+  });
+
   it("renders core chat actions at the dialog bottom and supports locking the tray", async () => {
     renderPage();
 

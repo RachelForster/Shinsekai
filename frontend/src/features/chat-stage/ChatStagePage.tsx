@@ -58,6 +58,7 @@ export function ChatStagePage() {
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const mainThemeColor = useMainThemeColor();
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
   const voskModelState = useVoskModelAvailability();
@@ -95,7 +96,12 @@ export function ChatStagePage() {
   const transparentBackground = !viewModel.backgroundPath;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
-    toolbarConfigOpen || branchDialogOpen || historyDialogOpen || confirmClearHistory || confirmRevertUserIndex != null;
+    themePickerOpen ||
+    toolbarConfigOpen ||
+    branchDialogOpen ||
+    historyDialogOpen ||
+    confirmClearHistory ||
+    confirmRevertUserIndex != null;
   const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
   const dialogToolbarPlacement =
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
@@ -357,9 +363,11 @@ export function ChatStagePage() {
           autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideTopTools}
           hidden={!viewModel.layers.toolbar}
           onCloseDesktopWindow={closeSurface}
+          onThemePickerOpenChange={setThemePickerOpen}
           onTokenUsageOpenChange={setTokenUsageOpen}
           standaloneDesktopWindow={standaloneDesktopWindow}
           status={viewModel.statusText}
+          themePickerOpen={themePickerOpen}
           tokenUsageAvailable={Boolean(viewModel.tokenUsageText)}
           tokenUsageOpen={tokenUsageOpen}
           transportMode={viewModel.transportMode}

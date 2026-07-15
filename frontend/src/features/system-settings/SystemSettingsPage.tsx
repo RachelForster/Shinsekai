@@ -13,12 +13,15 @@ import { chatThemeQueryKey, listChatThemes, setActiveChatTheme } from "../../ent
 import { configQueryKey, detectNetworkProxy, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
 import { useAppState } from "../../shared/app-state/AppState";
+import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { useI18n } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_CHAT_THEME_ID, chatThemeDisplayName } from "../../shared/theme/chatTheme";
+import { ChatThemePicker } from "../chat-stage/theme/ChatThemePicker";
 import {
   AsyncButton,
   EmptyState,
+  PageSectionNav,
   QueryErrorState,
   SchemaDrivenForm,
   SchemaFieldGrid,
@@ -89,6 +92,17 @@ export function SystemSettingsPage() {
     (themeOptions.some((theme) => theme.id === draft?.chat_ui_theme_id) ? draft?.chat_ui_theme_id : fallbackThemeId) ??
     "";
   const reactStageThemeSelectable = draft?.chat_ui_runtime_mode === "react";
+  const systemSectionNavItems = [
+    ...(isTauriDesktop() ? [{ id: "system-runtime", label: t("system.runtime.title") }] : []),
+    ...systemGeneralGroups.map((group) => ({ id: `system-${group.id}`, label: group.title })),
+    { id: "system-chat-theme", label: t("chat.theme.title") },
+    ...(systemNetworkProxyGroup ? [{ id: "system-network-proxy", label: systemNetworkProxyGroup.title }] : []),
+    ...systemRemainingGroups.map((group) => ({ id: `system-${group.id}`, label: group.title })),
+  ];
+
+  const refreshThemeOptions = () => {
+    void queryClient.invalidateQueries({ queryKey: chatThemeQueryKey });
+  };
 
   useEffect(() => {
     if (data?.system_config) {
@@ -228,6 +242,7 @@ export function SystemSettingsPage() {
             {t("common.save")}
           </AsyncButton>
         </div>
+        <PageSectionNav ariaLabel={t("system.title")} items={systemSectionNavItems} />
       </header>
       <DesktopRuntimeSection />
       <SchemaDrivenForm
@@ -235,11 +250,29 @@ export function SystemSettingsPage() {
         errors={errors}
         groups={systemGeneralGroups}
         onChange={setDraft}
+        sectionIdPrefix="system-"
         value={draft}
       />
-      <section className="section system-chat-theme">
+      <section className="section system-chat-theme page-section-anchor" id="system-chat-theme">
         <div className="section__header">
           <h2 className="section__title">{t("chat.theme.title")}</h2>
+          <div className="section__actions">
+            <ChatThemePicker
+              onActiveThemeChange={(themeId) => {
+                setDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        chat_ui_theme_id: themeId ?? fallbackThemeId,
+                      }
+                    : current,
+                );
+                void queryClient.invalidateQueries({ queryKey: configQueryKey });
+              }}
+              onThemesChange={refreshThemeOptions}
+              trigger="button"
+            />
+          </div>
         </div>
         <div className="field-row">
           <span className="field-row__label">
@@ -286,7 +319,7 @@ export function SystemSettingsPage() {
         </div>
       </section>
       {systemNetworkProxyGroup ? (
-        <section className="section schema-section system-network-proxy">
+        <section className="section schema-section system-network-proxy page-section-anchor" id="system-network-proxy">
           <div className="section__header">
             <h2 className="section__title">{systemNetworkProxyGroup.title}</h2>
             <div className="section__actions">
@@ -314,6 +347,7 @@ export function SystemSettingsPage() {
         errors={errors}
         groups={systemRemainingGroups}
         onChange={setDraft}
+        sectionIdPrefix="system-"
         value={draft}
       />
     </div>

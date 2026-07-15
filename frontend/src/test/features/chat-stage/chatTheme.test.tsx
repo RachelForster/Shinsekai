@@ -646,6 +646,8 @@ describe("chat theme runtime", () => {
   });
 
   it("supports upload, switch, and delete flows through the theme picker", async () => {
+    const onActiveThemeChange = vi.fn();
+    const onThemesChange = vi.fn();
     const windborneManifest: ChatThemeManifest = {
       schema: 1,
       id: "windborne-adventure",
@@ -683,7 +685,7 @@ describe("chat theme runtime", () => {
     repoMocks.setActiveChatTheme.mockResolvedValue(undefined);
     repoMocks.deleteChatTheme.mockResolvedValue(undefined);
 
-    renderThemeTree(<ChatThemePicker />);
+    renderThemeTree(<ChatThemePicker onActiveThemeChange={onActiveThemeChange} onThemesChange={onThemesChange} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Manage themes" }));
     expect(await screen.findByRole("dialog", { name: "Chat themes" })).toBeInTheDocument();
@@ -694,6 +696,8 @@ describe("chat theme runtime", () => {
 
     await waitFor(() => expect(repoMocks.uploadChatTheme).toHaveBeenCalled());
     await waitFor(() => expect(repoMocks.setActiveChatTheme).toHaveBeenCalledWith("my-theme"));
+    expect(onThemesChange).toHaveBeenCalledTimes(1);
+    expect(onActiveThemeChange).toHaveBeenCalledWith("my-theme");
     await waitFor(() =>
       expect(document.documentElement.style.getPropertyValue("--logs-code-background")).toBe("rgba(5,30,25,0.9)"),
     );
@@ -709,6 +713,8 @@ describe("chat theme runtime", () => {
     fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(repoMocks.deleteChatTheme).toHaveBeenCalledWith("my-theme"));
+    expect(onThemesChange).toHaveBeenCalledTimes(2);
+    expect(onActiveThemeChange).toHaveBeenLastCalledWith(null);
     expect(await screen.findByText("Theme deleted")).toBeInTheDocument();
   });
 });
