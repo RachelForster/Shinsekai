@@ -217,6 +217,40 @@ class UIUpdateManagerTests(unittest.TestCase):
             ],
         )
 
+    def test_streaming_ui_update_manager_keeps_display_slot_when_expression_changes(self):
+        sink = _SinkStub()
+        manager = StreamingUIUpdateManager(sink)
+
+        class _Character:
+            sprite_scale = 1.0
+            sprites = [
+                {"path": "data/sprites/mio-neutral.png"},
+                {"path": "data/sprites/mio-happy.png"},
+            ]
+
+        with patch("core.runtime.ui_update_manager.get_character_by_name", return_value=_Character()):
+            manager.update_sprite("Mio", 0)
+            manager.update_sprite("Mio", 1)
+
+        self.assertEqual([event["slot"] for event in sink.events], [0, 0])
+        self.assertTrue(sink.events[1]["url"].endswith("mio-happy.png"))
+
+    def test_streaming_ui_update_manager_reuses_slots_with_character_lru(self):
+        sink = _SinkStub()
+        manager = StreamingUIUpdateManager(sink, max_sprite_slots=2)
+
+        manager.update_sprite_from_path("data/sprites/mio.png", character_name="Mio")
+        manager.update_sprite_from_path("data/sprites/ren.png", character_name="Ren")
+        manager.update_sprite_from_path("data/sprites/mio-2.png", character_name="Mio")
+        manager.update_sprite_from_path("data/sprites/aoi.png", character_name="Aoi")
+
+        self.assertEqual([event["slot"] for event in sink.events], [0, 1, 0, 1])
+        self.assertEqual(list(manager._sprite_lru.items()), [("Mio", 0), ("Aoi", 1)])
+
+        manager.remove_character_sprite("Mio")
+        manager.update_sprite_from_path("data/sprites/ren-2.png", character_name="Ren")
+        self.assertEqual(sink.events[-1]["slot"], 0)
+
     def test_streaming_ui_update_manager_emits_tts_play_and_skip_events(self):
         sink = _SinkStub()
         manager = StreamingUIUpdateManager(sink)

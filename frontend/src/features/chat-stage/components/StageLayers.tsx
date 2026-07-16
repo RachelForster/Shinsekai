@@ -7,6 +7,7 @@ import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
+import { chatStageSpriteAxisCenter, chatStageSpriteCharacterName } from "../state/sprites";
 
 function closestDialogInteractiveElement(target: EventTarget | null) {
   if (!(target instanceof Element)) {
@@ -61,8 +62,8 @@ export function SpriteLayer({
   sprites: ChatStageSprite[];
 }) {
   const activeSpeaker = speaker?.trim() ?? "";
-  const spriteName = (sprite: ChatStageSprite) => (sprite.characterName ?? sprite.label ?? "").trim();
-  const hasSpeakingSprite = activeSpeaker.length > 0 && sprites.some((sprite) => spriteName(sprite) === activeSpeaker);
+  const hasSpeakingSprite =
+    activeSpeaker.length > 0 && sprites.some((sprite) => chatStageSpriteCharacterName(sprite) === activeSpeaker);
   return (
     <div
       aria-hidden={hidden}
@@ -71,21 +72,21 @@ export function SpriteLayer({
       hidden={hidden}
     >
       {sprites.map((sprite, index) => {
-        const speaking = hasSpeakingSprite && spriteName(sprite) === activeSpeaker;
+        const speaking = hasSpeakingSprite && chatStageSpriteCharacterName(sprite) === activeSpeaker;
+        const axisCenter = chatStageSpriteAxisCenter(sprites, sprite, index);
         return (
           <figure
             className="sprite-layer__figure"
-            data-chat-stage-hitbox={onDragStart ? "true" : undefined}
+            data-axis-center={String(axisCenter)}
             data-dim={hasSpeakingSprite && !speaking ? "true" : "false"}
             data-draggable={onDragStart ? "true" : "false"}
             data-slot={sprite.slot ?? index}
             data-speaking={speaking ? "true" : "false"}
             key={sprite.id}
-            onMouseDown={onDragStart}
             style={
               {
-                "--sprite-count": sprites.length,
-                "--sprite-index": index,
+                "--sprite-axis-center": `${axisCenter}%`,
+                "--sprite-layer-order": index + 1,
                 "--sprite-offset-x": `${sprite.x ?? 0}px`,
                 "--sprite-offset-y": `${sprite.y ?? 0}px`,
                 "--sprite-scale": (sprite.scale ?? 1) * runtimeScaleForSprite(sprite, index),
@@ -95,7 +96,9 @@ export function SpriteLayer({
             <img
               alt={sprite.label}
               className="sprite-layer__image"
+              data-chat-stage-hitbox={onDragStart ? "true" : undefined}
               onError={hideBrokenStageAsset}
+              onMouseDown={onDragStart}
               src={stageAssetUrl(sprite.path)}
             />
           </figure>

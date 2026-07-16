@@ -1,6 +1,7 @@
 import type { ChatSnapshot } from "../../../shared/platform/types";
 import { emptyChatState } from "./initialState";
 import { withResolvedLayers } from "./layers";
+import { normalizeChatStageSprites } from "./sprites";
 import type { ChatStageState } from "./types";
 
 export function snapshotEventSeq(snapshot: ChatSnapshot) {
@@ -38,7 +39,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     asrTranscript: undefined,
     error: undefined,
     eventSeq: nextEventSeq,
-    sprites: snapshot.sprites.map((sprite) => ({ ...sprite })),
+    sprites: normalizeChatStageSprites(snapshot.sprites.map((sprite) => ({ ...sprite }))),
     ...transport,
   });
 }

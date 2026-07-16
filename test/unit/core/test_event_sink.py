@@ -4,6 +4,52 @@ from core.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_sn
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_sprite_show_replaces_the_previous_slot_occupant_and_preserves_axes(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "characterName": "Mio",
+                "scale": 1.0,
+                "seq": 1,
+                "slot": 0,
+                "ts": 1,
+                "type": "sprite.show",
+                "url": "asset://mio.png",
+                "v": 1,
+            },
+        )
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "characterName": "Ren",
+                "scale": 0.9,
+                "seq": 2,
+                "slot": 0,
+                "ts": 2,
+                "type": "sprite.show",
+                "url": "asset://ren.png",
+                "v": 1,
+                "x": 18,
+                "y": -12,
+            },
+        )
+
+        self.assertEqual(
+            next_snapshot["sprites"],
+            [
+                {
+                    "characterName": "Ren",
+                    "id": "Ren:0",
+                    "label": "Ren",
+                    "path": "asset://ren.png",
+                    "scale": 0.9,
+                    "slot": 0,
+                    "x": 18,
+                    "y": -12,
+                }
+            ],
+        )
+
     def test_chat_init_progress_is_folded_into_snapshot_and_sanitized(self):
         snapshot = make_empty_chat_snapshot()
 

@@ -22,8 +22,6 @@ export interface ChatStageLayers {
 
 export interface ChatStageSprite extends ChatSprite {
   characterName?: string;
-  scale?: number;
-  slot?: number;
 }
 
 export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {

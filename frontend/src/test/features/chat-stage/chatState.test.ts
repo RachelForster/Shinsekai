@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
+import { chatStageSpriteAxisCenter } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
   it("optimistically commits a user message and clears the input draft atomically", () => {
@@ -689,6 +690,59 @@ describe("chatStageReducer", () => {
     });
     expect(withoutSprite.sprites).toEqual([]);
     expect(withoutSprite.layers.sprites).toBe(false);
+  });
+
+  it("keeps expression changes in the same display slot and evicts slots by LRU", () => {
+    const showSprite = (
+      state: typeof emptyChatState,
+      seq: number,
+      characterName: string,
+      slot: number,
+      url = `asset://${characterName}-${seq}.png`,
+    ) =>
+      chatStageReducer(state, {
+        event: {
+          characterName,
+          scale: 1,
+          seq,
+          slot,
+          ts: seq,
+          type: "sprite.show",
+          url,
+          v: 1,
+        },
+        type: "event",
+      });
+
+    const mio = showSprite(emptyChatState, 1, "Mio", 2);
+    const mioExpression = showSprite(mio, 2, "Mio", 1, "asset://mio-happy.png");
+    expect(mioExpression.sprites).toHaveLength(1);
+    expect(mioExpression.sprites[0]).toEqual(
+      expect.objectContaining({
+        id: "Mio",
+        path: "asset://mio-happy.png",
+        slot: 0,
+      }),
+    );
+
+    const ren = showSprite(mioExpression, 3, "Ren", 0);
+    const nanami = showSprite(ren, 4, "Nanami", 0);
+    const refreshedMio = showSprite(nanami, 5, "Mio", 0);
+    const aoi = showSprite(refreshedMio, 6, "Aoi", 1);
+
+    expect(aoi.sprites.map((sprite) => sprite.characterName)).toEqual(["Nanami", "Mio", "Aoi"]);
+    expect(aoi.sprites.map((sprite) => sprite.slot)).toEqual([2, 0, 1]);
+  });
+
+  it("centers occupied sprite axes with the legacy Qt compensation", () => {
+    const left = { id: "Mio", label: "Mio", path: "mio.png", slot: 0 };
+    const middle = { id: "Ren", label: "Ren", path: "ren.png", slot: 1 };
+    const right = { id: "Aoi", label: "Aoi", path: "aoi.png", slot: 2 };
+
+    expect(chatStageSpriteAxisCenter([left], left, 0)).toBe(50);
+    expect(chatStageSpriteAxisCenter([left, middle], left, 0)).toBeCloseTo(100 / 3);
+    expect(chatStageSpriteAxisCenter([left, middle], middle, 1)).toBeCloseTo(200 / 3);
+    expect(chatStageSpriteAxisCenter([left, middle, right], right, 2)).toBeCloseTo(250 / 3);
   });
 
   it("ignores runtime status labels when building token usage text", () => {

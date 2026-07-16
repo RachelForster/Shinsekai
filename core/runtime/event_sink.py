@@ -209,18 +209,23 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         current = [
             item
             for item in current
-            if item.get("id") != sprite_id and item.get("label") != character_name and item.get("characterName") != character_name
+            if item.get("id") != sprite_id
+            and item.get("label") != character_name
+            and item.get("characterName") != character_name
+            and (slot is None or item.get("slot") != slot)
         ]
-        current.append(
-            {
-                "id": sprite_id,
-                "label": character_name,
-                "path": str(event.get("url") or ""),
-                "characterName": character_name,
-                "scale": event.get("scale"),
-                "slot": slot,
-            }
-        )
+        next_sprite = {
+            "id": sprite_id,
+            "label": character_name,
+            "path": str(event.get("url") or ""),
+            "characterName": character_name,
+            "scale": event.get("scale"),
+            "slot": slot,
+        }
+        for axis in ("x", "y"):
+            if event.get(axis) is not None:
+                next_sprite[axis] = event.get(axis)
+        current.append(next_sprite)
         current.sort(key=lambda item: (item.get("slot") if item.get("slot") is not None else 10**9, str(item.get("id") or "")))
         next_snapshot["sprites"] = current
         return next_snapshot

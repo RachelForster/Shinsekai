@@ -767,6 +767,8 @@ export interface ChatSprite {
   id: string;
   label: string;
   path: string;
+  scale?: number;
+  slot?: number;
   x?: number;
   y?: number;
 }

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const controlsCss: string = readFileSync("src/features/chat-stage/styles/controls.css", "utf8");
+const mediaLayersCss: string = readFileSync("src/features/chat-stage/styles/media-layers.css", "utf8");
 const themePickerCss: string = readFileSync("src/features/chat-stage/theme/chat-theme-picker.css", "utf8");
 
 describe("chat stage immersive styles", () => {
@@ -37,5 +38,18 @@ describe("chat stage immersive styles", () => {
       .filter(Boolean);
 
     expect(transforms).toEqual(["translateX(-50%) translateY(-8px)", "translateX(-50%)"]);
+  });
+
+  it("positions sprites on absolute axes so neighboring sprites can overlap without reflow", () => {
+    const layerBlock = mediaLayersCss.split(".sprite-layer {")[1]?.split("}")[0] ?? "";
+    const figureBlock = mediaLayersCss.split(".sprite-layer__figure {")[1]?.split("}")[0] ?? "";
+    const imageBlock = mediaLayersCss.split(".sprite-layer__image {")[2]?.split("}")[0] ?? "";
+
+    expect(layerBlock).not.toContain("display: flex");
+    expect(layerBlock).not.toContain("gap:");
+    expect(figureBlock).toContain("position: absolute;");
+    expect(figureBlock).toContain("inset: 0;");
+    expect(imageBlock).toContain("left: var(--sprite-axis-center);");
+    expect(imageBlock).toContain("translate: calc(-50%");
   });
 });

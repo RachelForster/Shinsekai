@@ -10,6 +10,7 @@ import traceback
 import html
 import re
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 
@@ -573,9 +574,31 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self,
         sink: "ChatEventSink",
         chat_history: Optional[MutableSequence[str]] = None,
+        max_sprite_slots: int = 3,
     ) -> None:
         super().__init__(chat_history=chat_history)
         self._sink = sink
+        try:
+            normalized_slot_count = int(max_sprite_slots)
+        except (TypeError, ValueError):
+            normalized_slot_count = 3
+        self.max_sprite_slots = max(1, normalized_slot_count)
+        self._sprite_lru: OrderedDict[str, int] = OrderedDict()
+
+    def _get_or_create_sprite_slot(self, character_name: str) -> int:
+        """Mirror the legacy Qt SpritePanel character-to-slot LRU."""
+        if character_name in self._sprite_lru:
+            slot = self._sprite_lru.pop(character_name)
+            self._sprite_lru[character_name] = slot
+            return slot
+
+        used_slots = set(self._sprite_lru.values())
+        if len(used_slots) < self.max_sprite_slots:
+            slot = next(index for index in range(self.max_sprite_slots) if index not in used_slots)
+        else:
+            _oldest_character, slot = self._sprite_lru.popitem(last=False)
+        self._sprite_lru[character_name] = slot
+        return slot
 
     def _media_url(self, raw_path: str) -> str:
         if hasattr(self._sink, "media_url"):
@@ -707,13 +730,14 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         except Exception as e:
             print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
             return
+        display_slot = self._get_or_create_sprite_slot(character_name)
         self._sink.emit(
             {
                 "type": "sprite.show",
                 "characterName": character_name,
                 "url": self._media_url(image_path),
                 "scale": scale,
-                "slot": int(sprite_id),
+                "slot": display_slot,
             }
         )
 
@@ -727,17 +751,20 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         path = str(image_path or "").strip()
         if not path:
             return False
+        resolved_character_name = character_name or Path(path).stem or "initial"
         self._sink.emit(
             {
                 "type": "sprite.show",
-                "characterName": character_name or Path(path).stem or "initial",
+                "characterName": resolved_character_name,
                 "url": self._media_url(path),
                 "scale": float(scale or 1.0),
+                "slot": self._get_or_create_sprite_slot(resolved_character_name),
             }
         )
         return True
 
     def remove_character_sprite(self, character_name: str) -> None:
+        self._sprite_lru.pop(character_name, None)
         self._sink.emit({"type": "sprite.remove", "characterName": character_name})
 
     def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> None:

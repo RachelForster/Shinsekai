@@ -1606,7 +1606,7 @@ describe("ChatStagePage", () => {
     expect(desktopApiMocks.closeDesktopWindow).not.toHaveBeenCalled();
     expect(desktopApiMocks.startDesktopWindowDrag).not.toHaveBeenCalled();
 
-    fireEvent.mouseDown(container.querySelector(".sprite-layer__figure")!, { button: 0 });
+    fireEvent.mouseDown(container.querySelector(".sprite-layer__image")!, { button: 0 });
     await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1));
     expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1);
   });
