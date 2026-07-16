@@ -10,7 +10,7 @@
   border-image-slice: var(--theme-frame-slice, 32);
   border-image-width: var(--theme-frame-width, 0px);
   border-image-outset: var(--theme-frame-outset, 0px);
-  border-image-repeat: round;
+  border-image-repeat: stretch;
   background: transparent;
   pointer-events: none;
   user-select: none;

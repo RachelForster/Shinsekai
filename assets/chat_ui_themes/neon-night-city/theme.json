@@ -7,7 +7,7 @@
     "ja": "ネオン・ナイトシティ"
   },
   "author": "Shinsekai",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": {
     "zh_CN": "高对比青色与洋红霓虹、半透明黑色面板和终端感字体组成的赛博朋克聊天主题。",
     "en": "A cyberpunk chat theme built from cyan and magenta neon, translucent black panels, and terminal-inspired typography.",
@@ -29,7 +29,7 @@
       "frameImage": "frame-dialog.svg",
       "frameOutsetPx": 2,
       "frameSlice": 28,
-      "frameWidthPx": 10,
+      "frameWidthPx": 28,
       "heightPx": 184,
       "nameInputGapVh": 20,
       "offsetY": 0,
@@ -106,7 +106,7 @@
       "frameImage": "frame-name.svg",
       "frameOutsetPx": 2,
       "frameSlice": 16,
-      "frameWidthPx": 12,
+      "frameWidthPx": 16,
       "hideWhenStartOption": true,
       "padding": 8,
       "textShadow": "0 0 10px rgba(255,45,163,0.72)",
@@ -127,7 +127,7 @@
         "frameImage": "frame-panel.svg",
         "frameOutsetPx": 2,
         "frameSlice": 24,
-        "frameWidthPx": 12
+        "frameWidthPx": 24
       },
       "toolbar": {
         "background": "rgba(10,4,24,0.94)",

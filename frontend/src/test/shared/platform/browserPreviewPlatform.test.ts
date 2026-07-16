@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import neonNightCityFrameDialogUrl from "../../../../../assets/chat_ui_themes/neon-night-city/frame-dialog.svg?url";
+import neonNightCityPreviewUrl from "../../../../../assets/chat_ui_themes/neon-night-city/preview.png?url";
+import windborneAdventurePreviewUrl from "../../../../../assets/chat_ui_themes/windborne-adventure/preview.png?url";
 import { createBrowserPreviewPlatform } from "../../../shared/platform/browserPreviewPlatform";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import type { TemplateLaunchSession } from "../../../shared/platform/types";
@@ -118,6 +120,7 @@ describe("browser preview platform chat themes", () => {
 
     const themes = await platform.chat.listThemes();
     expect(themes.map((theme) => theme.id)).toEqual(["windborne-adventure", "neon-night-city"]);
+    expect(themes.map((theme) => theme.previewUrl)).toEqual([windborneAdventurePreviewUrl, neonNightCityPreviewUrl]);
 
     const windborneManifest = await platform.chat.getThemeManifest("windborne-adventure");
     expect(windborneManifest.tokens.global?.themeColor).toBe("#f3cf57");

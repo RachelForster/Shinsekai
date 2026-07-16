@@ -278,6 +278,7 @@ export function ChatThemePicker({
       </IconButton>
       <Dialog
         bodyClassName="chat-theme-picker__dialog-body"
+        className="chat-theme-picker__dialog"
         closeLabel={t("common.close")}
         onClose={() => setOpen(false)}
         open={open}

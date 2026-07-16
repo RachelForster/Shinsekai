@@ -6,6 +6,7 @@
 }
 
 .top-stage-tools {
+  --top-stage-tools-controls-width: 64px;
   position: absolute;
   top: var(--stage-safe-top);
   right: var(--stage-safe-x);
@@ -51,6 +52,7 @@
 }
 
 .top-stage-tools[data-standalone-desktop="true"] {
+  --top-stage-tools-controls-width: 160px;
   right: auto;
   left: calc(50% + var(--chat-sprite-runtime-offset-x, 0px));
   transform: translateX(-50%);
@@ -122,7 +124,7 @@
 }
 
 .top-stage-tools:is(:hover, :focus-within) .top-stage-tools__controls {
-  max-width: 136px;
+  max-width: var(--top-stage-tools-controls-width);
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);

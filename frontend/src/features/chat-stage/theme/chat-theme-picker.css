@@ -1,7 +1,18 @@
+.dialog.chat-theme-picker__dialog {
+  display: grid;
+  width: min(960px, 100%);
+  max-height: min(760px, calc(100vh - 32px));
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
 .chat-theme-picker__dialog-body {
   display: grid;
+  min-width: 0;
+  min-height: 0;
   gap: 16px;
-  min-width: min(88vw, 960px);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .chat-theme-manager {
@@ -125,10 +136,6 @@
 }
 
 @media (max-width: 760px) {
-  .chat-theme-picker__dialog-body {
-    min-width: min(92vw, 92vw);
-  }
-
   .chat-theme-picker__grid {
     grid-template-columns: 1fr;
   }

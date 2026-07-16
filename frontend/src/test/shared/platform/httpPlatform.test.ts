@@ -766,6 +766,29 @@ describe("http platform", () => {
     );
   });
 
+  it("resolves chat theme preview images against the bridge origin", async () => {
+    const themes = [
+      {
+        id: "windborne-adventure",
+        name: { en: "Windborne Adventure" },
+        previewUrl: "/api/media?path=data%2Fchat_ui_themes%2Fwindborne-adventure%2Fpreview.png",
+        source: "builtin" as const,
+      },
+    ];
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(themes));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "bridge-secret");
+
+    await expect(platform.chat.listThemes()).resolves.toEqual([
+      {
+        ...themes[0],
+        previewUrl:
+          "http://127.0.0.1:8787/api/media?path=data%2Fchat_ui_themes%2Fwindborne-adventure%2Fpreview.png&shinsekai_bridge_token=bridge-secret",
+      },
+    ]);
+  });
+
   it("reads lightweight chat runtime status through the bridge", async () => {
     const runtimeStatus = {
       chatProcessRunning: true,

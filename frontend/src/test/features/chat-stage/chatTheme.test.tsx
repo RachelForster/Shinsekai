@@ -201,7 +201,9 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-dialog-body-min-height"]).toBe("0px");
     expect(resolved.style["--chat-dialog-body-overflow"]).toBe("auto");
     expect(resolved.style["--chat-dialog-body-scrollbar-gutter"]).toBe("auto");
-    expect(resolved.style["--chat-dialog-frame"]).toBe('url("asset://assets/dialog-border.svg") 28 fill / 28px round');
+    expect(resolved.style["--chat-dialog-frame"]).toBe(
+      'url("asset://assets/dialog-border.svg") 28 fill / 28px stretch',
+    );
     expect(resolved.style["--chat-dialog-frame-image"]).toBe('url("asset://assets/dialog-border.svg")');
     expect(resolved.style["--chat-dialog-frame-slice"]).toBe("28");
     expect(resolved.style["--chat-dialog-frame-width"]).toBe("28px");
@@ -258,7 +260,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-send-color"]).toBe("#ffffff");
     expect(resolved.style["--chat-name-background"]).toBe("rgba(28,22,48,0.92)");
     expect(resolved.style["--chat-name-background-image"]).toBe('url("asset://assets/name-plate.png")');
-    expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name-border.svg") 16 fill / 16px round');
+    expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name-border.svg") 16 fill / 16px stretch');
     expect(resolved.style["--chat-name-frame-image"]).toBe('url("asset://assets/name-border.svg")');
     expect(resolved.style["--chat-name-frame-slice"]).toBe("16");
     expect(resolved.style["--chat-name-frame-width"]).toBe("16px");
@@ -688,7 +690,7 @@ describe("chat theme runtime", () => {
     renderThemeTree(<ChatThemePicker onActiveThemeChange={onActiveThemeChange} onThemesChange={onThemesChange} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Manage themes" }));
-    expect(await screen.findByRole("dialog", { name: "Chat themes" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Chat themes" })).toHaveClass("chat-theme-picker__dialog");
 
     const uploadInput = document.querySelector(".chat-theme-picker__file-input") as HTMLInputElement;
     const file = new File(["theme"], "my-theme.zip", { type: "application/zip" });
