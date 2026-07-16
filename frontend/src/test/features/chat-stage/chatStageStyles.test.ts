@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const controlsCss: string = readFileSync("src/features/chat-stage/styles/controls.css", "utf8");
 const mediaLayersCss: string = readFileSync("src/features/chat-stage/styles/media-layers.css", "utf8");
+const optionsLayerCss: string = readFileSync("src/features/chat-stage/styles/options-layer.css", "utf8");
 const themePickerCss: string = readFileSync("src/features/chat-stage/theme/chat-theme-picker.css", "utf8");
 
 describe("chat stage immersive styles", () => {
@@ -51,5 +52,19 @@ describe("chat stage immersive styles", () => {
     expect(figureBlock).toContain("inset: 0;");
     expect(imageBlock).toContain("left: var(--sprite-axis-center);");
     expect(imageBlock).toContain("translate: calc(-50%");
+  });
+
+  it("renders choices as independent modern surfaces without an outer dialog frame", () => {
+    const layerBlock = optionsLayerCss.split(".options-layer {")[1]?.split("}")[0] ?? "";
+    const buttonBlock = optionsLayerCss.split(".options-layer__button {")[1]?.split("}")[0] ?? "";
+
+    expect(layerBlock).toContain("border: 0;");
+    expect(layerBlock).toContain("background: transparent;");
+    expect(layerBlock).toContain("box-shadow: none;");
+    expect(layerBlock).toContain("backdrop-filter: none;");
+    expect(buttonBlock).toContain("backdrop-filter: blur(18px) saturate(1.16);");
+    expect(buttonBlock).toContain("transform: none;");
+    expect(optionsLayerCss).toContain(".options-layer__item:has(.options-layer__button:hover:not(:disabled))");
+    expect(optionsLayerCss).toContain("@keyframes chat-option-enter");
   });
 });
