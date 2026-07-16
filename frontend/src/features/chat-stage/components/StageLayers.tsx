@@ -97,6 +97,7 @@ export function SpriteLayer({
               alt={sprite.label}
               className="sprite-layer__image"
               data-chat-stage-hitbox={onDragStart ? "true" : undefined}
+              key={sprite.path}
               onError={hideBrokenStageAsset}
               onMouseDown={onDragStart}
               src={stageAssetUrl(sprite.path)}

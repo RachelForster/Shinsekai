@@ -313,6 +313,42 @@ describe("ChatStagePage", () => {
     expect(screen.queryByText("old reply")).not.toBeInTheDocument();
   });
 
+  it("remounts only the sprite image when an expression changes so the switch animation replays", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ sprites: [{ id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 }] }),
+    );
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    const { container } = renderPage();
+
+    await screen.findByText("Ready");
+    const originalFigure = container.querySelector(".sprite-layer__figure");
+    const originalImage = container.querySelector(".sprite-layer__image");
+
+    act(() => {
+      listener?.({
+        characterName: "Mio",
+        scale: 1,
+        seq: 1,
+        slot: 0,
+        ts: 1,
+        type: "sprite.show",
+        url: "asset://mio-happy.png",
+        v: 1,
+      });
+    });
+
+    const nextFigure = container.querySelector(".sprite-layer__figure");
+    const nextImage = container.querySelector(".sprite-layer__image");
+    expect(nextFigure).toBe(originalFigure);
+    expect(nextFigure).toHaveAttribute("data-slot", "0");
+    expect(nextImage).not.toBe(originalImage);
+    expect(nextImage).toHaveAttribute("src", "asset://mio-happy.png");
+  });
+
   it("shows a selected option as the user message before the command response arrives", async () => {
     let resolveCommand!: (snapshot: ChatSnapshot) => void;
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));

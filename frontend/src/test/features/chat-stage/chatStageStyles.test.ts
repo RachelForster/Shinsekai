@@ -52,6 +52,8 @@ describe("chat stage immersive styles", () => {
     expect(figureBlock).toContain("inset: 0;");
     expect(imageBlock).toContain("left: var(--sprite-axis-center);");
     expect(imageBlock).toContain("translate: calc(-50%");
+    expect(imageBlock).toContain("chat-stage-sprite-in 340ms ease-out");
+    expect(imageBlock).toContain("chat-stage-sprite-slide 360ms");
   });
 
   it("renders choices as independent modern surfaces without an outer dialog frame", () => {

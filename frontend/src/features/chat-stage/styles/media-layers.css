@@ -88,7 +88,6 @@
   z-index: var(--sprite-layer-order);
   margin: 0;
   pointer-events: none;
-  animation: chat-stage-sprite-in 340ms ease-out;
 }
 
 .sprite-layer__image {
@@ -113,7 +112,9 @@
     opacity 280ms ease;
   user-select: none;
   -webkit-user-drag: none;
-  animation: chat-stage-sprite-slide 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation:
+    chat-stage-sprite-in 340ms ease-out,
+    chat-stage-sprite-slide 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sprite-layer__figure[data-draggable="true"] .sprite-layer__image {
