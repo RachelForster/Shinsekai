@@ -310,9 +310,9 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 
 当前赛博朋克主题可作为参考：
 
-- [`frame-dialog.svg`](../assets/chat_ui_themes/neon-night-city/frame-dialog.svg)：`128 × 128`，`slice 28 / width 10 / outset 2`；
-- [`frame-name.svg`](../assets/chat_ui_themes/neon-night-city/frame-name.svg)：`96 × 64`，`slice 16 / width 12 / outset 2`；
-- [`frame-panel.svg`](../assets/chat_ui_themes/neon-night-city/frame-panel.svg)：`96 × 96`，`slice 24 / width 12 / outset 2`。
+- [`frame-dialog.svg`](../assets/chat_ui_themes/neon-night-city/frame-dialog.svg)：`128 × 128`，`slice 28 / width 28 / outset 2`；
+- [`frame-name.svg`](../assets/chat_ui_themes/neon-night-city/frame-name.svg)：`96 × 64`，`slice 16 / width 16 / outset 2`；
+- [`frame-panel.svg`](../assets/chat_ui_themes/neon-night-city/frame-panel.svg)：`96 × 96`，`slice 24 / width 24 / outset 2`。
 
 ## 8. Token 定义
 

@@ -784,6 +784,26 @@ describe("chatStageReducer", () => {
     expect(aoi.sprites.map((sprite) => sprite.slot)).toEqual([2, 0, 1]);
   });
 
+  it("preserves snapshot LRU order so the most recent sprite stays in front", () => {
+    const hydrated = chatStageReducer(emptyChatState, {
+      snapshot: {
+        dialogText: "",
+        eventSeq: 3,
+        inputDraft: "",
+        options: [],
+        sprites: [
+          { id: "Aoi:2", label: "Aoi", path: "asset://aoi.png", slot: 2 },
+          { id: "Mio:0", label: "Mio", path: "asset://mio-happy.png", slot: 0 },
+        ],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+
+    expect(hydrated.sprites.map((sprite) => sprite.label)).toEqual(["Aoi", "Mio"]);
+    expect(hydrated.sprites.map((sprite) => sprite.slot)).toEqual([2, 0]);
+  });
+
   it("centers occupied sprite axes with the legacy Qt compensation", () => {
     const left = { id: "Mio", label: "Mio", path: "mio.png", slot: 0 };
     const middle = { id: "Ren", label: "Ren", path: "ren.png", slot: 1 };

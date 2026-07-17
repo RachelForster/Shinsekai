@@ -18,7 +18,11 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .builtin_chat_themes import BUILTIN_THEME_IDS, DEFAULT_BUILTIN_CHAT_THEME_ID
+from .builtin_chat_themes import (
+    BUILTIN_THEME_IDS,
+    DEFAULT_BUILTIN_CHAT_THEME_ID,
+    LEGACY_UNMARKED_BUILTIN_THEME_IDS,
+)
 from sdk.chat_ui_theme import (
     MANIFEST_NAME,
     locate_manifest_root,
@@ -38,6 +42,7 @@ RETIRED_BUILTIN_THEME_IDS = {"classic-dark", "light-paper"}
 
 #: manifest schema 版本，与前端 CHAT_THEME_SCHEMA 一致。
 CHAT_THEME_SCHEMA = 1
+BUILTIN_THEME_OWNER_MARKER = ".shinsekai-builtin-theme"
 
 
 def _themes_root() -> Path:
@@ -53,6 +58,26 @@ def _builtin_themes_root() -> Path:
 
 def _is_builtin_theme_id(theme_id: str) -> bool:
     return theme_id in BUILTIN_THEME_IDS
+
+
+def _builtin_theme_owner_marker(theme_dir: Path) -> Path:
+    return theme_dir / BUILTIN_THEME_OWNER_MARKER
+
+
+def _is_builtin_theme_dir(theme_dir: Path) -> bool:
+    theme_id = theme_dir.name
+    if not _is_builtin_theme_id(theme_id):
+        return False
+    if theme_id in LEGACY_UNMARKED_BUILTIN_THEME_IDS:
+        return True
+    try:
+        return _builtin_theme_owner_marker(theme_dir).read_text(encoding="utf-8").strip() == theme_id
+    except OSError:
+        return False
+
+
+def _mark_builtin_theme_owned(theme_dir: Path, theme_id: str) -> None:
+    _builtin_theme_owner_marker(theme_dir).write_text(f"{theme_id}\n", encoding="utf-8")
 
 
 def _is_retired_builtin_theme_id(theme_id: str) -> bool:
@@ -88,10 +113,14 @@ def _seed_builtin_themes() -> None:
             continue
         if not target.exists():
             shutil.copytree(source, target)
+            _mark_builtin_theme_owned(target, theme_id)
+            continue
+        if not target.is_dir() or not _is_builtin_theme_dir(target):
             continue
         source_version = _theme_version(source)
         if target.is_dir() and source_version and source_version != _theme_version(target):
             shutil.copytree(source, target, dirs_exist_ok=True)
+        _mark_builtin_theme_owned(target, theme_id)
 
 
 def _read_manifest(theme_dir: Path) -> Optional[Dict[str, Any]]:
@@ -132,7 +161,7 @@ def _summary(theme_dir: Path, manifest: Dict[str, Any]) -> Dict[str, Any]:
         "author": manifest.get("author"),
         "version": manifest.get("version"),
         "previewUrl": preview_url,
-        "source": "builtin" if _is_builtin_theme_id(theme_dir.name) else "user",
+        "source": "builtin" if _is_builtin_theme_dir(theme_dir) else "user",
     }
 
 
@@ -163,11 +192,7 @@ def get_chat_theme_manifest(state: BridgeState, theme_id: str) -> Dict[str, Any]
         raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
     root = _themes_root()
     manifest = _read_manifest(root / safe_id)
-    if (
-        manifest is None
-        and safe_id != DEFAULT_BUILTIN_CHAT_THEME_ID
-        and _is_builtin_theme_id(safe_id)
-    ):
+    if manifest is None and safe_id != DEFAULT_BUILTIN_CHAT_THEME_ID and _is_builtin_theme_dir(root / safe_id):
         manifest = _read_manifest(root / DEFAULT_BUILTIN_CHAT_THEME_ID)
     if manifest is None:
         raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
@@ -239,6 +264,7 @@ def install_theme_from_zip(
 
         # 以校验后规整的 manifest 落地（剔除非法字段），其余资源原样拷贝。
         shutil.copytree(manifest_root, target)
+        _builtin_theme_owner_marker(target).unlink(missing_ok=True)
         (target / MANIFEST_NAME).write_text(
             json.dumps(result.normalized, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -250,9 +276,9 @@ def install_theme_from_zip(
 def delete_chat_theme(state: BridgeState, theme_id: str) -> Dict[str, Any]:
     """删除一个用户主题目录。内置主题（M5 种子化后只读）不可删。"""
     safe_id = _safe_theme_id(theme_id)
-    if _is_builtin_theme_id(safe_id):
-        raise PermissionError(f"内置主题不可删除：{theme_id}")
     target = safe_child_path(_themes_root(), safe_id)
+    if _is_builtin_theme_dir(target):
+        raise PermissionError(f"内置主题不可删除：{theme_id}")
     if not target.is_dir():
         raise FileNotFoundError(f"主题不存在：{theme_id}")
     shutil.rmtree(target, ignore_errors=True)

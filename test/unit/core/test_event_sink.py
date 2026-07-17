@@ -103,6 +103,29 @@ class EventSinkSnapshotTests(unittest.TestCase):
             ],
         )
 
+    def test_sprite_snapshot_preserves_most_recent_foreground_order(self):
+        snapshot = make_empty_chat_snapshot()
+        for seq, name, slot in ((1, "Mio", 0), (2, "Aoi", 2), (3, "Mio", 0)):
+            snapshot = fold_event_into_snapshot(
+                snapshot,
+                {
+                    "characterName": name,
+                    "scale": 1.0,
+                    "seq": seq,
+                    "slot": slot,
+                    "ts": seq,
+                    "type": "sprite.show",
+                    "url": f"asset://{name.lower()}-{seq}.png",
+                    "v": 1,
+                },
+            )
+
+        self.assertEqual(
+            [(sprite["characterName"], sprite["slot"]) for sprite in snapshot["sprites"]],
+            [("Aoi", 2), ("Mio", 0)],
+        )
+        self.assertEqual(snapshot["sprites"][-1]["path"], "asset://mio-3.png")
+
     def test_chat_init_progress_is_folded_into_snapshot_and_sanitized(self):
         snapshot = make_empty_chat_snapshot()
 

@@ -229,7 +229,6 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             if event.get(axis) is not None:
                 next_sprite[axis] = event.get(axis)
         current.append(next_sprite)
-        current.sort(key=lambda item: (item.get("slot") if item.get("slot") is not None else 10**9, str(item.get("id") or "")))
         next_snapshot["sprites"] = current
         return next_snapshot
 

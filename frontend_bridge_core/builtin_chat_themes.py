@@ -12,6 +12,17 @@ DEFAULT_BUILTIN_CHAT_THEME_ID = "windborne-adventure"
 NEON_NIGHT_CITY_THEME_ID = "neon-night-city"
 SAKURA_DREAM_THEME_ID = "sakura-dream"
 
+# These themes were already built in before per-directory ownership markers
+# existed, so an unmarked directory with either ID is still managed by the
+# application.  ``sakura-dream`` is intentionally absent: older releases
+# allowed users to install that ID, and those directories must stay user-owned.
+LEGACY_UNMARKED_BUILTIN_THEME_IDS = frozenset(
+    {
+        DEFAULT_BUILTIN_CHAT_THEME_ID,
+        NEON_NIGHT_CITY_THEME_ID,
+    }
+)
+
 BUILTIN_THEME_IDS = frozenset(
     {
         DEFAULT_BUILTIN_CHAT_THEME_ID,

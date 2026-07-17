@@ -1,6 +1,10 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+import { chatThemeQueryKey } from "../../../entities/chat/repository";
+import { configQueryKey } from "../../../entities/config/repository";
+import type { AppConfig } from "../../../entities/config/types";
 import { useI18n } from "../../../shared/i18n";
 import { Button } from "../../../shared/ui";
 import { ChatThemeManager } from "./ChatThemePicker";
@@ -8,7 +12,27 @@ import "./chat-theme-management-page.css";
 
 export function ChatThemeManagementPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { t } = useI18n();
+
+  const handleActiveThemeChange = (id: string | null) => {
+    queryClient.setQueryData<AppConfig>(configQueryKey, (current) =>
+      current
+        ? {
+            ...current,
+            system_config: {
+              ...current.system_config,
+              chat_ui_theme_id: id ?? "",
+            },
+          }
+        : current,
+    );
+    void queryClient.invalidateQueries({ queryKey: configQueryKey });
+  };
+
+  const handleThemesChange = () => {
+    void queryClient.invalidateQueries({ queryKey: chatThemeQueryKey });
+  };
 
   return (
     <div className="page chat-theme-management-page">
@@ -29,7 +53,7 @@ export function ChatThemeManagementPage() {
         </div>
       </header>
       <section className="section chat-theme-management-page__content">
-        <ChatThemeManager />
+        <ChatThemeManager onActiveThemeChange={handleActiveThemeChange} onThemesChange={handleThemesChange} />
       </section>
     </div>
   );

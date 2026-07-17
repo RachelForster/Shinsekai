@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from frontend_bridge_core.chat_themes import (
+    BUILTIN_THEME_OWNER_MARKER,
     delete_chat_theme,
     get_chat_theme_manifest,
     list_chat_themes,
@@ -58,6 +59,15 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "sakura-dream" / "preview.png").is_file()
                 )
+                self.assertTrue(
+                    (
+                        Path(tempdir)
+                        / "data"
+                        / "chat_ui_themes"
+                        / "sakura-dream"
+                        / BUILTIN_THEME_OWNER_MARKER
+                    ).is_file()
+                )
             finally:
                 os.chdir(previous_cwd)
 
@@ -95,6 +105,34 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 theme_index = {item["id"]: item for item in themes}
                 self.assertEqual(theme_index["neon-night-city"]["version"], "1.3.1")
                 self.assertTrue((target / "frame-dialog.svg").is_file())
+                self.assertTrue((target / BUILTIN_THEME_OWNER_MARKER).is_file())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_preexisting_sakura_dream_stays_user_owned_and_is_not_refreshed(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                target = Path(tempdir) / "data" / "chat_ui_themes" / "sakura-dream"
+                target.mkdir(parents=True)
+                original_manifest = (
+                    '{"schema":1,"id":"sakura-dream","name":{"en":"My Sakura"},"tokens":{}}'
+                )
+                (target / "theme.json").write_text(original_manifest, encoding="utf-8")
+                (target / "frame-dialog.svg").write_text("user-owned-frame", encoding="utf-8")
+
+                themes = list_chat_themes(state)
+
+                summary = next(theme for theme in themes if theme["id"] == "sakura-dream")
+                self.assertEqual(summary["source"], "user")
+                self.assertEqual((target / "theme.json").read_text(encoding="utf-8"), original_manifest)
+                self.assertEqual((target / "frame-dialog.svg").read_text(encoding="utf-8"), "user-owned-frame")
+                self.assertFalse((target / BUILTIN_THEME_OWNER_MARKER).exists())
+
+                delete_chat_theme(state, "sakura-dream")
+                self.assertFalse(target.exists())
             finally:
                 os.chdir(previous_cwd)
 
