@@ -66,6 +66,7 @@ def _valid_manifest() -> dict:
                 "decoration": "accent",
                 "fontFamily": "Demo",
                 "hideWhenStartOption": False,
+                "overlapPx": 14,
                 "textShadow": "0 1px 2px rgba(0,0,0,0.2)",
             },
             "logs": {
@@ -117,6 +118,7 @@ def test_slugify_and_validate_manifest_normalizes_rich_theme() -> None:
     assert result.normalized["tokens"]["dialog"]["frameWidthPx"] == 14
     assert result.normalized["tokens"]["options"]["active"]["background"] == "rgba(40,40,40,0.9)"
     assert result.normalized["tokens"]["input"]["sendPlacement"] == "outside"
+    assert result.normalized["tokens"]["name"]["overlapPx"] == 14
     assert result.normalized["tokens"]["logs"]["levels"]["warn"]["color"] == "#ffee88"
     assert result.normalized["tokens"]["logs"]["panel"]["frameSlice"] == 24
     assert result.normalized["tokens"]["typewriter"]["sound"] == "assets/type.wav"

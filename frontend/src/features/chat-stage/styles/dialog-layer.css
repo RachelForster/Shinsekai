@@ -80,7 +80,7 @@
 
 .dialog-layer__name {
   position: absolute;
-  bottom: calc(100% - 1px);
+  bottom: calc(100% - var(--chat-name-overlap));
   left: var(--chat-name-left);
   z-index: 3;
   display: inline-flex;
@@ -95,7 +95,7 @@
   overflow: visible;
   border: var(--chat-name-border);
   border-bottom: var(--chat-name-border-bottom);
-  border-radius: var(--chat-name-border-radius) var(--chat-name-border-radius) 0 0;
+  border-radius: var(--chat-name-border-radius);
   color: var(--chat-name-runtime-color, var(--chat-name-color));
   background: var(--chat-name-sheen), var(--chat-name-background-image), var(--chat-name-background);
   background-position: center;

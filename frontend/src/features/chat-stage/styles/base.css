@@ -98,6 +98,7 @@
   --chat-name-color: #fff6f4;
   --chat-name-min-height: clamp(24px, 13%, 28px);
   --chat-name-line-offset: 15px;
+  --chat-name-overlap: 1px;
   --chat-name-padding: clamp(3px, 1.6%, 5px) 16px;
   --chat-name-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02));
   --chat-input-background: color-mix(in oklch, var(--stage-accent) 6%, rgba(18, 15, 12, 0.82));

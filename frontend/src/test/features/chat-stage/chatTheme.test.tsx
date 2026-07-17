@@ -127,6 +127,7 @@ describe("chat theme runtime", () => {
             align: "center",
             decoration: "line-dots",
             fontFamily: "Trebuchet MS, Georgia, serif",
+            overlapPx: 14,
             textShadow: "0 2px 4px rgba(0,0,0,0.7)",
             hideWhenStartOption: true,
             textSizePx: 30,
@@ -284,6 +285,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-name-border"]).toBe("0 solid transparent");
     expect(resolved.style["--chat-name-border-bottom"]).toBe("0 solid transparent");
     expect(resolved.style["--chat-name-hide-when-start-option"]).toBe("true");
+    expect(resolved.style["--chat-name-overlap"]).toBe("14px");
     expect(resolved.style["--chat-name-sheen"]).toBe("none");
     expect(resolved.style["--chat-name-text-shadow"]).toBe("0 2px 4px rgba(0,0,0,0.7)");
     expect(resolved.style["--chat-name-theme-font-size"]).toBe("30px");

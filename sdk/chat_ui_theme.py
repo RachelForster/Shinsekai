@@ -93,7 +93,16 @@ EXTRA_BLOCK_PROPS = {
     "input": frozenset({"fieldBackground", "fieldBorderRadius", "layout", "maxWidthPx", "sendPlacement"}),
     "line": frozenset({"expanded", "hover"}),
     "name": frozenset(
-        {"align", "decoration", "fontFamily", "hideWhenStartOption", "textShadow", "textSizePx", "textWeight"}
+        {
+            "align",
+            "decoration",
+            "fontFamily",
+            "hideWhenStartOption",
+            "overlapPx",
+            "textShadow",
+            "textSizePx",
+            "textWeight",
+        }
     ),
     "toolbar": frozenset({"placement", "reveal"}),
 }
@@ -146,6 +155,7 @@ NUMERIC_BOUNDS = {
     "maxWidthVw": (20, 60),
     "maxWidthPx": (320, 900),
     "nameClearanceVh": (2, 12),
+    "overlapPx": (0, 48),
     "textSizeVh": (1, 4),
     "textSizePx": (12, 64),
     "textWeight": (300, 900),
@@ -547,7 +557,7 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
                 else:
                     errors.append("tokens.name.hideWhenStartOption 必须是布尔值")
             _copy_safe_css_field(out, block, "fontFamily", errors, "tokens.name.fontFamily")
-            _copy_numeric_fields(out, block, ("textSizePx", "textWeight"), errors, "tokens.name")
+            _copy_numeric_fields(out, block, ("overlapPx", "textSizePx", "textWeight"), errors, "tokens.name")
             _copy_safe_css_field(out, block, "textShadow", errors, "tokens.name.textShadow")
         normalized_tokens[block_name] = out
 

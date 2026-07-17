@@ -105,6 +105,7 @@ export interface ChatThemeTokens {
     decoration?: "accent" | "line-dots";
     fontFamily?: string;
     hideWhenStartOption?: boolean;
+    overlapPx?: number;
     textShadow?: string;
     textSizePx?: number;
     textWeight?: number;
@@ -697,6 +698,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
   setPxVar(style, "--chat-name-theme-font-size", tokens.name?.textSizePx, 15, 12, 56);
   setIntegerVar(style, "--chat-name-theme-font-weight", tokens.name?.textWeight, 800, 300, 900);
+  setPxVar(style, "--chat-name-overlap", tokens.name?.overlapPx, 1, 0, 48);
   setStyleVar(style, "--chat-name-text-shadow", tokens.name?.textShadow);
   if (tokens.name?.align === "center") {
     style["--chat-name-justify-content"] = "center";

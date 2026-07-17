@@ -436,6 +436,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | `decoration` | `accent \| line-dots` | 强调装饰或两侧线点装饰。 |
 | `fontFamily` | string | 姓名单独使用的字体族，优先于 `global.fontFamily`。 |
 | `hideWhenStartOption` | boolean | 起始选项出现时隐藏姓名。 |
+| `overlapPx` | `0–48` | 姓名框向下覆盖对话框上沿的深度，单位 px；用于让姓名框及其 frame 挡住一部分对话框边框。省略时为 1 px。 |
 | `textShadow` | string | 姓名文字阴影。 |
 | `textSizePx` | `12–56` | 当前前端有效字号范围。SDK 校验兼容到 64，但运行时上限为 56。 |
 | `textWeight` | `300–900` | 姓名字重。 |
